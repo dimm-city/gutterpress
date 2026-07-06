@@ -158,7 +158,9 @@
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
       }) as { projectDir: string };
-      open = false;
+      // Successful create goes through close() like every other dismiss path,
+      // so the onClosed/triggerEl focus-restore contract holds on success too.
+      close();
       onCreated?.(result.projectDir);
     } catch (e) {
       error = friendlyCreateError(e instanceof Error ? e.message : String(e));

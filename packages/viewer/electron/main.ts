@@ -241,7 +241,7 @@ let activePreview: PreviewHandle | null = null;
 // closures unchanged.
 // ──────────────────────────────────────────────────────────────────────────
 
-const { readPrefs, writePrefs, existingDirectory } = createPrefsStore({
+const { readPrefs, writePrefs, updatePrefs, existingDirectory } = createPrefsStore({
   getUserDataDir: () => app.getPath("userData"),
   fs: { readFile, writeFile, mkdir, stat },
   migrateLegacyProjectState,
@@ -1061,6 +1061,7 @@ const discoverScanDeps: ScanDeps = {
 registerPrefsHooks({
   readPrefs,
   writePrefs,
+  updatePrefs,
   readSettings,
   writeSettings,
   existingDirectory,
@@ -1425,7 +1426,25 @@ ipcMain.handle("sync:setAutoSync", async (_e, enabled: boolean) => {
 
 // (api:doctor handler removed — migrated to server route)
 
-ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
+// api:preview invocations are SERIALIZED. ipcMain.handle runs overlapping
+// invocations concurrently at await points, and the start screen keeps the
+// window interactive while an open is in flight, so a second open can arrive
+// mid-flight. Unserialized, two invocations interleave around the
+// activePreview stop/start bookkeeping — orphaning a preview server (leaked
+// port + file watcher) and letting the superseded open stamp lastProjectDir/
+// recents last. Arrival order matches the renderer's open-epoch order, and
+// the renderer's epoch guard discards the superseded call's response.
+let previewRequestChain: Promise<unknown> = Promise.resolve();
+ipcMain.handle("api:preview", (_e, args: { input?: string }) => {
+  const run = previewRequestChain.then(() => handlePreviewRequest(args));
+  previewRequestChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+});
+
+async function handlePreviewRequest(args: { input?: string }) {
   const input = args?.input;
   if (!input || typeof input !== "string") {
     throw new Error("Missing 'input' (absolute path to a project directory)");
@@ -1476,17 +1495,17 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // re-deriving it.
   const source = await lib.detectProjectSource(openedDir);
 
-  const existingPrefs = await readPrefs();
-  await writePrefs({
-    ...existingPrefs,
-    lastProjectDir: activePreview.inputPath,
+  await updatePrefs((prefs) => ({
+    ...prefs,
+    lastProjectDir: openedDir,
     // Single source of truth for recents: every successful preview start
     // (modal, toolbar, or auto-reopen) upserts the folder here. Repo-backed
     // projects are "a project is its git repo" (CLAUDE.md) — the entry keys on
     // the repo root, with `lastActiveBook` remembering which book was open so
     // reopening restores it instead of falling back to the alphabetically
-    // first book.
-    recentFolders: upsertRecentFolder(existingPrefs.recentFolders, {
+    // first book. updatePrefs is an atomic read-modify-write, so this can't
+    // clobber a concurrent prefs patch (e.g. the start screen's toggle).
+    recentFolders: upsertRecentFolder(prefs.recentFolders, {
       path: source.type === "local-git-folder" ? source.repoRoot : openedDir,
       title,
       openedAt: new Date().toISOString(),
@@ -1494,7 +1513,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
         ? { lastActiveBook: openedDir }
         : {}),
     }),
-  });
+  }));
 
   // Trigger auto-sync once after the first auto-snapshot has had time to settle
   // (§4.2 project-open trigger). The snapshot debounce fires after N minutes of
@@ -1724,7 +1743,7 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     title,
     missingSharedAssets: activePreview.missingSharedAssets ?? [],
   };
-});
+}
 
 ipcMain.handle("api:stopPreview", async () => {
   if (activePreview) {

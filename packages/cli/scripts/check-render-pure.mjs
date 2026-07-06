@@ -9,26 +9,35 @@
 // helper chunk (topped with `createRequire(import.meta.url)`) leak into the
 // render graph. Production survived only via rollup tree-shaking; `vite dev`
 // served the chunk as-is and threw "node:module has been externalized" in
-// client code. render.ts is now built as its own non-split graph, and this
-// script fails the lib build if any Node-ism ever reappears in that closure.
+// client code.
 //
-// Builtin detection uses node:module's isBuiltin(), which covers the full,
-// version-accurate list including un-prefixed subpath forms ("fs/promises",
-// "path/posix", "tty", …) — never a hand-maintained set. Bare external
-// package specifiers are left external by `--packages=external` and cannot be
-// walked here; a node-only dependency would surface the moment `vite dev`
-// resolves it in the viewer, and keeping render.ts's dependency list tiny is
-// the real control for that class.
+// render.ts is built as its own NON-SPLIT single-entry graph, so dist/render.js
+// is one self-contained file by construction. The gate therefore bans, in that
+// one file:
+//   - ANY relative import — a `./chunk` import appearing here IS the shared-
+//     chunk regression returning, condemned without inspecting the chunk;
+//   - any Node builtin specifier, via node:module's isBuiltin() (covers the
+//     full, version-accurate list including un-prefixed subpath forms like
+//     "fs/promises" and "tty" — never a hand-maintained set);
+//   - createRequire anywhere in the text.
+// Bare external package specifiers are left external by `--packages=external`
+// and cannot be inspected here; a node-only dependency would surface the
+// moment `vite dev` resolves it in the viewer, and keeping render.ts's
+// dependency list tiny is the real control for that class. (The specifier
+// regexes are textual: a string literal that LOOKS like an import could
+// false-positive — acceptable for a loud, build-time gate on a 23KB file.)
 // ──────────────────────────────────────────────────────────────────────────
 import { readFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const distDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
-const entry = join(distDir, "render.js");
+const entry = join(
+  resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist"),
+  "render.js",
+);
 
-/** Collect every import/export specifier in a module's source. */
+/** Collect every import/export/require specifier in the module's source. */
 function specifiersOf(source) {
   const out = [];
   const patterns = [
@@ -42,37 +51,32 @@ function specifiersOf(source) {
   return out;
 }
 
-const violations = [];
-const visited = new Set();
-const queue = [entry];
+let source;
+try {
+  source = readFileSync(entry, "utf8");
+} catch {
+  console.error(`✖ ${entry} is unreadable — build incomplete?`);
+  process.exit(1);
+}
 
-while (queue.length > 0) {
-  const file = queue.pop();
-  if (visited.has(file)) continue;
-  visited.add(file);
-  let source;
-  try {
-    source = readFileSync(file, "utf8");
-  } catch {
-    violations.push(`${file}: unreadable (build incomplete?)`);
-    continue;
-  }
-  if (/createRequire/.test(source)) {
-    violations.push(`${file}: contains createRequire`);
-  }
-  for (const spec of specifiersOf(source)) {
-    if (isBuiltin(spec)) {
-      violations.push(`${file}: imports Node builtin "${spec}"`);
-    } else if (spec.startsWith("./") || spec.startsWith("../")) {
-      queue.push(resolve(dirname(file), spec));
-    }
+const violations = [];
+if (/createRequire/.test(source)) {
+  violations.push("contains createRequire");
+}
+for (const spec of specifiersOf(source)) {
+  if (isBuiltin(spec)) {
+    violations.push(`imports Node builtin "${spec}"`);
+  } else if (spec.startsWith("./") || spec.startsWith("../")) {
+    violations.push(
+      `imports relative chunk "${spec}" — render.js must stay a single non-split graph`,
+    );
   }
 }
 
 if (violations.length > 0) {
   console.error(
-    "✖ @dimm-city/print-md/render is no longer node-free — the viewer SPA " +
-      "value-imports it into the browser bundle (root CLAUDE.md §8):",
+    "✖ @dimm-city/print-md/render is no longer node-free/self-contained — the viewer " +
+      "SPA value-imports it into the browser bundle (root CLAUDE.md §8):",
   );
   for (const v of violations) console.error("  - " + v);
   console.error(
@@ -82,6 +86,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log(
-  `✓ render subpath is node-free (${visited.size} file(s) in dist/render.js closure)`,
-);
+console.log("✓ render subpath is node-free and self-contained (dist/render.js)");

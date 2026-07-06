@@ -101,6 +101,72 @@ try {
   rmSync(buildRoot, { recursive: true, force: true });
 }
 
+
+// Case 6 (widened policy): quoted digit-bearing builtin specifier => exit 1.
+const dirtyDir3 = mkdtempSync(join(tmpdir(), "render-purity-v8-"));
+try {
+  writeFileSync(join(dirtyDir3, "chunk.js"), 'import { getHeapStatistics } from "node:v8";\n');
+  check("directory with quoted node:v8 exits 1", run(dirtyDir3).status, 1);
+} finally {
+  rmSync(dirtyDir3, { recursive: true, force: true });
+}
+
+// Case 7 (widened policy): bare builtin require (whitespace-tolerant) => exit 1.
+const dirtyDir4 = mkdtempSync(join(tmpdir(), "render-purity-require-"));
+try {
+  writeFileSync(join(dirtyDir4, "chunk.js"), 'const e = require( "events" );\n');
+  check("directory with bare require(\"events\") exits 1", run(dirtyDir4).status, 1);
+} finally {
+  rmSync(dirtyDir4, { recursive: true, force: true });
+}
+
+// Case 8 (no false positive): minified object property {node:t} is NOT a
+// specifier and must pass.
+const cleanDir2 = mkdtempSync(join(tmpdir(), "render-purity-prop-"));
+try {
+  writeFileSync(join(cleanDir2, "chunk.js"), "const a={node:t,parent:p};export{a};\n");
+  check("minified {node:t} property passes (exit 0)", run(cleanDir2).status, 0);
+} finally {
+  rmSync(cleanDir2, { recursive: true, force: true });
+}
+
+// Case 9 (--strict): absent dir fails instead of skipping.
+const parent2 = mkdtempSync(join(tmpdir(), "render-purity-strict-absent-"));
+try {
+  const missing = join(parent2, "does-not-exist");
+  const r = spawnSync(process.execPath, [SCRIPT, missing, "--strict"], { encoding: "utf8" });
+  check("--strict absent directory exits 1", r.status, 1);
+} finally {
+  rmSync(parent2, { recursive: true, force: true });
+}
+
+// Case 10 (--strict): existing dir with ZERO scannable files fails — a gate
+// that scans nothing has silently stopped guarding.
+const emptyDir = mkdtempSync(join(tmpdir(), "render-purity-strict-empty-"));
+try {
+  writeFileSync(join(emptyDir, "image.png"), "not-really-a-png");
+  const r = spawnSync(process.execPath, [SCRIPT, emptyDir, "--strict"], { encoding: "utf8" });
+  check("--strict zero scannable files exits 1", r.status, 1);
+} finally {
+  rmSync(emptyDir, { recursive: true, force: true });
+}
+
+
+// Case 11 (vendored exemption): a guarded UMD require of a builtin inside a
+// vendor/ directory (the paged.js polyfill pattern) must PASS — layer 3 is
+// scoped to bundler output — while the same content outside vendor/ fails.
+const vendorDir = mkdtempSync(join(tmpdir(), "render-purity-vendor-"));
+try {
+  mkdirSync(join(vendorDir, "vendor"));
+  const umd = "if (typeof require === 'function') { var u = require('util'); }\n";
+  writeFileSync(join(vendorDir, "vendor", "paged.polyfill.js"), umd);
+  check("vendored guarded require passes (exit 0)", run(vendorDir).status, 0);
+  writeFileSync(join(vendorDir, "chunk.js"), umd);
+  check("same require outside vendor/ fails (exit 1)", run(vendorDir).status, 1);
+} finally {
+  rmSync(vendorDir, { recursive: true, force: true });
+}
+
 if (failures > 0) {
   console.error(`\n${failures} test(s) failed`);
   process.exit(1);

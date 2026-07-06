@@ -10,12 +10,11 @@ export const POST: RequestHandler = jsonRoute(
     if (!projectDir || typeof projectDir !== 'string') return { ok: false };
     const hooks = getPrefsHooks();
     if (!hooks) error(503, 'Prefs hooks not registered');
-    const current = await hooks.readPrefs();
-    await hooks.writePrefs({
+    await hooks.updatePrefs((current) => ({
       ...current,
       lastProjectDir: projectDir,
       projectStates: hooks.writeProjectState(current.projectStates as Record<string, unknown> | undefined, projectDir, (patch ?? {}) as Record<string, unknown>),
-    });
+    }));
     return { ok: true };
   }
 );

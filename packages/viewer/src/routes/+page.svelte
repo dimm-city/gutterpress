@@ -41,6 +41,8 @@
   import { buildViewerStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
+  import { isEditableTarget } from "$lib/a11y";
+  import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
   import { basenameOf, joinPath } from "$lib/platform/paths";
   import { shouldReconcileAfterSync } from "$lib/sync-status";
   import { onMount, tick } from "svelte";
@@ -254,19 +256,36 @@
    *  then (re)open it. Used by both the error CTA and the no-manifest banner. */
   async function setUpAsBook(dir: string) {
     if (!dir || !isDesktop()) return;
+    // Adopting is an open intent: claim the epoch NOW so an already-running
+    // open is superseded, and so an open the user starts DURING the adopt
+    // supersedes us (we re-check before touching shared state below).
+    const epoch = ++folderOpenEpoch;
+    dismissLanding(false);
     adopting = true;
+    busy = true;
+    busyLabel = "Setting up your book…";
     try {
       await api.app.adoptFolder({ dir });
+      invalidateDiscoveredProjects();
+      if (epoch !== folderOpenEpoch) return; // user opened something else meanwhile
       openError = null;
       failedOpenDir = null;
       adoptBannerDismissed = true;
-      await startFolderPreview(dir, "Setting up your book…");
+      await startFolderPreview(dir, "Setting up your book…", null, null, epoch);
     } catch (e) {
+      // Never stomp a newer open's error state with a stale adopt failure.
+      if (epoch !== folderOpenEpoch) return;
       openError = e instanceof Error ? e.message : String(e);
       // A failed adopt leaves the workspace empty — the start screen returns
       // on its own (landingVisible derived) and surfaces the error.
     } finally {
       adopting = false;
+      if (epoch === folderOpenEpoch && !previewUrl) {
+        // Adopt failed (or bailed) without handing off to an open: clear the
+        // busy we raised. On the success path startFolderPreview owns busy.
+        busy = false;
+        busyLabel = "";
+      }
     }
   }
   let urlPreviewError = $state<string | null>(null);
@@ -428,36 +447,45 @@
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
-   * Projects panel, and the start screen: restore the folder's saved
-   * per-project state (#43), then hand off to startFolderPreview. `busy` is
-   * raised BEFORE the restore-state fetch so no surface shows a dead gap (and
-   * the landing's derived visibility cannot flash back) while it loads.
+   * Projects panel, the start screen, the GitHub dialog, and the new-project
+   * wizard: leave the start screen, restore the folder's saved per-project
+   * state (#43), and hand off to startFolderPreview. There is NO await before
+   * startFolderPreview — the restore-state fetch is passed as a promise and
+   * consumed after the preview starts — so the open epoch is claimed at
+   * user-intent time (last click wins, never last-fetch-resolves wins) and
+   * `busy` covers the whole span with no dead gap.
    */
-  async function openProjectPath(path: string, label = "Opening your book…") {
+  function openProjectPath(path: string, label = "Opening your book…"): Promise<void> {
+    dismissLanding(false); // no-op when the start screen is hidden
     busy = true;
     busyLabel = label;
-    const restoreState = await api.app.getViewerProjectState(path).catch(() => null);
-    await startFolderPreview(path, label, restoreState, basenameOf(path));
+    const restoreState = api.app.getViewerProjectState(path).catch(() => null);
+    return startFolderPreview(path, label, restoreState, basenameOf(path));
   }
 
-  /** Open a book picked on the start screen (recents/favorites/typed path). */
-  async function openFromLanding(path: string) {
-    dismissLanding(false);
-    await openProjectPath(path);
-  }
+  // One OS folder picker at a time: a double-click on "Open a folder" must not
+  // stack two native dialogs (plain flag, not $state — nothing renders it).
+  let folderPickerOpen = false;
 
   async function browseFromLanding() {
     if (!isDesktop()) {
       toast?.error("Electron bridge unavailable — run via the viewer app");
       return;
     }
-    const pathStr = await api.dialog.openDirectory().catch(() => null);
-    if (!pathStr) return; // cancelled — stay on the start screen
-    await openFromLanding(pathStr);
+    if (folderPickerOpen) return;
+    folderPickerOpen = true;
+    try {
+      const pathStr = await api.dialog.openDirectory().catch(() => null);
+      if (!pathStr) return; // cancelled — stay on the start screen
+      await openProjectPath(pathStr);
+    } finally {
+      folderPickerOpen = false;
+    }
   }
 
+  const RELEASE_NOTES_URL = "https://github.com/dimm-city/print-md/releases";
   function openReleaseNotes() {
-    api.shell.openExternal("https://github.com/dimm-city/print-md/releases").catch(() => {});
+    api.shell.openExternal(RELEASE_NOTES_URL).catch(() => {});
   }
 
   function setLandingStartupPref(show: boolean) {
@@ -959,10 +987,16 @@
   // else the first editable file.
   async function ensureEditorFile() {
     if (!currentDir || !isDesktop()) return;
+    // Fire-and-forget continuation: capture the dir and bail if a different
+    // project took over during the listing, or this would load the OLD
+    // project's chapter into the NEW project's buffer (and auto-save edits
+    // into the wrong book on disk).
+    const dir = currentDir;
     const buf = ensureBuffer();
     if (buf.filePath) return;
     try {
-      const files = (await api.fs.listDir(currentDir)).filter((e) => !e.isDir);
+      const files = (await api.fs.listDir(dir)).filter((e) => !e.isDir);
+      if (dir !== currentDir || buf.filePath) return;
       const pick =
         files.filter((e) => /\.md$/i.test(e.name)).sort((a, b) => a.name.localeCompare(b.name))[0] ||
         files.find((e) => /\.(md|css)$/i.test(e.name));
@@ -1162,6 +1196,8 @@
 
     autoOpeningLastProject = true;
     lastProjectChecked = true;
+    // Reveal the main window / dismiss the splash — idempotent host-side.
+    const revealWindow = () => api.app.rendererReady().catch(() => {});
     api.app.getViewerPrefs()
       .then(async (prefsRaw) => {
         const prefs = prefsRaw as {
@@ -1181,51 +1217,51 @@
         }
 
         landingShowPref = prefs.showLandingAtStartup !== false;
+        landingReady = true;
         if (previewUrl || currentDir || currentUrl) {
           // Something was opened while prefs loaded (rare race) — don't cover
           // it with the start screen; just reveal the window.
-          landingReady = true;
-          api.app.rendererReady().catch(() => {});
+          revealWindow();
           return;
         }
         const dir = prefs.lastProjectDir ?? null;
-        const decision = decideStartupScreen({
+        const { showLanding } = decideStartupScreen({
           lastProjectDir: dir,
           landingEnabled: landingShowPref,
         });
-        landingReady = true;
-        if (decision.showLanding) {
+        if (showLanding) {
           // Hold the layer open over the pre-render; also dismiss the splash
-          // now — the start screen is interactive immediately.
-          if (decision.reopenLastProject) landingHold = true;
-          api.app.rendererReady().catch(() => {});
+          // now — the start screen is interactive immediately. (With no dir
+          // the hold is unnecessary: the empty workspace keeps it visible.)
+          if (dir) landingHold = true;
+          revealWindow();
         }
-        if (!decision.reopenLastProject || !dir) return;
+        if (!dir) return;
 
         landingContinueDir = dir;
-        // Mark the reopen in-flight before the awaits below so the continue
-        // card never flashes the first-run hero while restore state loads.
-        busy = true;
-        busyLabel = "Reopening previous folder…";
-        if (!decision.showLanding) {
+        if (!showLanding) {
           // Landing disabled: pre-landing behavior — the splash covers the
           // render and rendererReady fires on render-complete.
           api.app.splashStatus("Opening your project…", 45).catch(() => {});
         }
-        // Per-project state (#43) is keyed by folder path so opening a
-        // different project never pollutes this one's restore point.
-        const restoreState = await api.app
-          .getViewerProjectState(dir)
-          .catch(() => null);
-        await startFolderPreview(dir, "Reopening previous folder…", restoreState);
+        // Same pipeline as user-initiated opens, EXCEPT the landing must stay
+        // held over the pre-render, so this must not go through
+        // openProjectPath (whose first act is dismissLanding). Raise busy and
+        // hand the restore-state fetch over as a promise so the epoch is
+        // claimed at intent time with no await in between (#43: per-project
+        // restore keyed by folder path).
+        busy = true;
+        busyLabel = "Reopening previous folder…";
+        const restorePromise = api.app.getViewerProjectState(dir).catch(() => null);
+        await startFolderPreview(dir, "Reopening previous folder…", restorePromise);
         // If the saved project no longer opens (moved/renamed/deleted),
         // startFolderPreview sets openError but does NOT throw. The start
         // screen returns on its own (landingVisible derived: workspace is
         // empty again) and shows the error alongside recents and create/open
         // actions — just make sure the window is revealed on the landing-off
         // path, where render-complete will never fire.
-        if (openError) {
-          api.app.rendererReady().catch(() => {});
+        if (openError && !showLanding) {
+          revealWindow();
         }
         return;
       })
@@ -1234,7 +1270,7 @@
         // nothing open, the derived shows the start screen as the first
         // surface instead of a blank workspace.
         landingReady = true;
-        api.app.rendererReady().catch(() => {});
+        revealWindow();
       })
       .finally(() => {
         autoOpeningLastProject = false;
@@ -1374,14 +1410,10 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Don't intercept when focus is in an input/textarea/select, or inside
-      // the CodeMirror editor (#38) — its content node is a contenteditable
-      // DIV, so a tagName check alone would let preview-nav keys (arrows,
-      // Home/End, +/-/=, f) hijack core editing.
-      const t = e.target as HTMLElement | null;
-      const tag = t?.tagName ?? "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (t?.isContentEditable || t?.closest?.(".cm-editor")) return;
+      // Don't intercept when focus is in a form control or the CodeMirror
+      // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
+      // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
+      if (isEditableTarget(e.target)) return;
 
       const command = resolvePreviewNavCommand({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
@@ -1461,21 +1493,33 @@
   // Single-flight guard for the open pipeline. Since the start screen made
   // the window interactive during an in-flight open, a second open can start
   // before the first resolves (e.g. clicking a recent while the startup
-  // pre-render is opening). Each call claims the epoch; a superseded call's
+  // pre-render is opening). Every OPEN INTENT claims the epoch synchronously
+  // at its entry point — openProjectPath / openUrl / setUpAsBook have no
+  // awaits before the claim, so "last user action wins" is guaranteed at the
+  // intent boundary, never "last fetch to resolve wins". A superseded call's
   // continuations bail after every await instead of overwriting the newer
   // open's state, popping the old project's recovery dialog, or clearing the
-  // newer open's busy flag.
+  // newer open's busy flag. (The main process serializes the api:preview IPC
+  // itself — see electron/main.ts — so superseded calls can't orphan preview
+  // servers either.)
   let folderOpenEpoch = 0;
 
   async function startFolderPreview(
     dir: string,
     label = "Starting preview…",
-    restoreState: PersistedProjectState | null = null,
+    // May be a promise (openProjectPath passes the in-flight fetch) so the
+    // read overlaps classify/startPreview instead of preceding them.
+    restoreState:
+      | PersistedProjectState
+      | null
+      | Promise<PersistedProjectState | null> = null,
     // #49: adapter-precomputed display name when the folder was opened via a
     // FolderRef (picker/recents/favorites). Null when opened by raw key.
     displayName: string | null = null,
+    // Callers with work between their intent and this call (setUpAsBook's
+    // adopt) pass their pre-claimed epoch; everyone else claims here.
+    epoch = ++folderOpenEpoch,
   ) {
-    const epoch = ++folderOpenEpoch;
     const superseded = () => epoch !== folderOpenEpoch;
     openError = null;
     failedOpenDir = null;
@@ -1536,8 +1580,10 @@
       // pending save in the prior project isn't dropped on project switch).
       if (currentDir !== targetDir && buffer) {
         await buffer.flush().catch(() => {});
-        buffer.reset();
+        // Check BEFORE reset: a superseded call resuming from the flush must
+        // not wipe the buffer the winning open has already populated.
         if (superseded()) return;
+        buffer.reset();
       }
       currentDir = targetDir;
       leftPanelRef?.resetHistoryState();
@@ -1549,9 +1595,15 @@
       adoptBannerDismissed = false;
       void api.fs.listDir(targetDir)
         .then((entries) => {
+          // Detached continuation — guard it, or a superseded open's result
+          // could flip the adopt banner on/off for the WRONG project.
+          if (superseded()) return;
           currentFolderHasManifest = entries.some((e) => /^manifest\.ya?ml$/i.test(e.name));
         })
-        .catch(() => { currentFolderHasManifest = true; });
+        .catch(() => {
+          if (superseded()) return;
+          currentFolderHasManifest = true;
+        });
       // Clear stale problems from the previous project immediately so the badge
       // and panel don't show the old project's findings while the new one renders.
       problems = [];
@@ -1577,10 +1629,14 @@
       renderProgressPage = 0;
       pageNav.totalPages = 0;
       pageNav.currentPage = 1;
-      const restoredViewMode = restoreState?.viewMode;
+      // The restore-state fetch was started at intent time and has been
+      // overlapping classify/startPreview — settle it here where it's needed.
+      const restored = restoreState ? await restoreState : null;
+      if (superseded()) return;
+      const restoredViewMode = restored?.viewMode;
       pendingRestoreViewMode = restoredViewMode ?? null;
-      pendingRestorePage = restoreState?.currentPage && restoreState.currentPage > 1
-        ? restoreState.currentPage
+      pendingRestorePage = restored?.currentPage && restored.currentPage > 1
+        ? restored.currentPage
         : null;
       if (restoredViewMode) {
         // Per-project ViewerPrefs override → seed the settings store so the
@@ -1588,8 +1644,8 @@
         settings.set({ preview: { viewMode: restoredViewMode } });
       }
       zoomView.userSetViewMode = !!restoredViewMode;
-      if (typeof restoreState?.splitPaneRatio === "number") {
-        zoomView.restoreSplitRatio(restoreState.splitPaneRatio);
+      if (typeof restored?.splitPaneRatio === "number") {
+        zoomView.restoreSplitRatio(restored.splitPaneRatio);
       }
       // Loud signal for the #1 cause of wrong fonts/styles: shared asset dirs
       // (e.g. ../dc-design-guide/fonts) that don't resolve next to this project.
@@ -1614,6 +1670,11 @@
       if (superseded()) return;
       previewUrl = null;
       currentDir = null;
+      // Clear the URL source too: this open already tore down any URL preview
+      // (previewUrl is nulled), and a surviving currentUrl would keep the
+      // start screen hidden (shouldReshowLanding's URL branch) — stranding
+      // the author on a blank workspace with the error rendered nowhere.
+      currentUrl = null;
       leftPanelRef?.resetHistoryState();
       currentFolderDisplayName = null;
       docTitle = null;
@@ -1643,6 +1704,7 @@
    */
   async function switchBook(path: string) {
     if (busy || path === currentDir) return;
+    dismissLanding(false); // switching from a landing chip enters the workspace
     await startFolderPreview(path, "Switching book…");
   }
 
@@ -1651,6 +1713,8 @@
       toast?.error("Electron bridge unavailable — run via the viewer app");
       return;
     }
+    if (folderPickerOpen) return;
+    folderPickerOpen = true;
     busy = true;
     busyLabel = "Opening folder…";
     let handedOff = false;
@@ -1660,6 +1724,7 @@
       handedOff = true;
       await openProjectPath(pathStr, "Starting preview…");
     } finally {
+      folderPickerOpen = false;
       if (!handedOff) {
         busy = false;
         busyLabel = "";
@@ -1668,6 +1733,14 @@
   }
 
   function openUrl(url: string) {
+    // A URL preview is an open intent: claim the epoch so an in-flight folder
+    // open (e.g. the startup pre-render) is superseded and can't resolve later
+    // and silently replace this preview with the old book. The superseded
+    // open's finally no longer owns busy, so clear it here.
+    ++folderOpenEpoch;
+    busy = false;
+    busyLabel = "";
+    dismissLanding(false);
     openError = null;
     urlPreviewError = null;
     saveWarning = null;
@@ -2819,8 +2892,7 @@
   visible={landingVisible}
   continueTitle={landingContinueTitle}
   continueDetail={landingContinueDetail}
-  statusKind={landingStatus.kind}
-  statusLabel={landingStatus.label}
+  status={landingStatus}
   otherBooks={landingOtherBooks}
   booksDisabled={busy}
   errorTitle={landingErrorTitle}
@@ -2829,31 +2901,26 @@
   {adopting}
   version={appVersion}
   showAtStartup={landingShowPref}
-  showGitHub={isDesktop()}
+  updateReadyVersion={updateController.readyVersion}
+  updateAvailableVersion={updateController.availableVersion}
+  updateDownloading={updateController.downloading}
   onContinue={() => dismissLanding()}
-  onOpenPath={(path) => void openFromLanding(path)}
-  onSwitchBook={(path) => {
-    dismissLanding(false);
-    void switchBook(path);
-  }}
-  onOpenUrl={(url) => {
-    dismissLanding(false);
-    openUrl(url);
-  }}
+  onOpenPath={(path) => void openProjectPath(path)}
+  onSwitchBook={(path) => void switchBook(path)}
+  onOpenUrl={openUrl}
   onBrowse={() => void browseFromLanding()}
   onNewProject={() => newProjectWizardRef?.show()}
-  onOpenGitHub={() => (githubOpen = true)}
+  onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
   onOpenGuide={openSetupGuide}
   onOpenSettings={() => (settingsOpen = true)}
   onOpenHelp={() => (helpOpen = true)}
   onWhatsNew={openReleaseNotes}
   onAdopt={() => {
-    const dir = failedOpenDir;
-    if (!dir) return;
-    dismissLanding(false);
-    void setUpAsBook(dir);
+    if (failedOpenDir) void setUpAsBook(failedOpenDir);
   }}
   onToggleShowAtStartup={setLandingStartupPref}
+  onUpdateApply={() => updateController.applyNow()}
+  onUpdateDownload={() => updateController.download()}
 />
 
 <HelpDialog
@@ -2877,7 +2944,7 @@
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => {
-    dismissLanding(false);
+    invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
     return openProjectPath(projectDir, "Opening your project…");
   }}
   onAdvancedSetup={() => (advancedSetupOpen = true)}
@@ -2894,7 +2961,7 @@
   bind:this={newProjectWizardRef}
   bind:open={newProjectOpen}
   onCreated={(projectDir) => {
-    dismissLanding(false);
+    invalidateDiscoveredProjects(); // the new book must show up in lists now
     return openProjectPath(projectDir, "Opening your new book…");
   }}
   onClosed={() => {
@@ -3109,7 +3176,10 @@
     position: fixed;
     right: 16px;
     bottom: 16px;
-    z-index: 50;
+    /* Above the start screen (900): a live export's progress + Cancel must
+       stay reachable when the workspace empties and the landing returns.
+       Still below dialogs (1000+). */
+    z-index: 950;
     display: flex;
     align-items: center;
     gap: 10px;

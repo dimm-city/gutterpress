@@ -4,17 +4,19 @@
    *
    * A full-window layer shown at launch (and whenever nothing is open). The
    * previous book keeps PRE-RENDERING in the workspace underneath — visible
-   * through the frosted scrim — so "Open your book" lands on an already-
+   * through the translucent scrim — so "Open your book" lands on an already-
    * rendered (or visibly rendering) preview. The continue card mirrors that
    * live progress.
    *
    * Layer rules (hard constraints, see LoadingOverlay/PreviewFrame):
    * - The scrim is TRANSLUCENT, never opaque — the preview iframe underneath
    *   is cross-origin and Chromium throttles it to ~1fps when it has no
-   *   visible pixels (the 0.4.1 slow-render regression).
+   *   visible pixels (the 0.4.1 slow-render regression). No backdrop-filter:
+   *   a full-window blur re-composites on every iframe paint for the whole
+   *   pre-render, which taxes exactly the machines the pre-render is slow on.
    * - z-index sits above the toolbar (100) and the app loading overlay (50),
-   *   below dialogs (1000+) and toasts. Native <dialog>s render in the top
-   *   layer regardless, so the New book / GitHub dialogs open above this.
+   *   below dialogs (1000+) and the export pill (950). Dialogs open above
+   *   this layer.
    *
    * The host page owns all state; this component is presentational + focus
    * management. Recents/favorites/discovered reuse ProjectsListBody — the
@@ -25,7 +27,8 @@
   import { tick } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
-  import type { ContinueStatusKind } from "$lib/routes/startup-landing";
+  import { isEditableTarget } from "$lib/a11y";
+  import type { ContinueStatus } from "$lib/routes/startup-landing";
 
   let {
     visible = false,
@@ -33,8 +36,8 @@
     continueTitle = null,
     /** Secondary line under the title (repo · N books, or the folder path). */
     continueDetail = null,
-    statusKind = "opening",
-    statusLabel = "",
+    /** Live pre-render status for the continue card. */
+    status = { kind: "opening", label: "Opening your book…", detail: null } as ContinueStatus,
     /** Sibling books in the same project (multi-book repos). */
     otherBooks = [],
     /** Disable book chips while an open is in flight. */
@@ -46,7 +49,11 @@
     adopting = false,
     version = null,
     showAtStartup = true,
-    showGitHub = false,
+    /** Auto-updater state — the workspace banner is inert under this layer,
+     *  so the landing carries its own compact update affordance. */
+    updateReadyVersion = null,
+    updateAvailableVersion = null,
+    updateDownloading = false,
     onContinue,
     onOpenPath,
     onSwitchBook,
@@ -60,12 +67,13 @@
     onWhatsNew,
     onAdopt,
     onToggleShowAtStartup,
+    onUpdateApply,
+    onUpdateDownload,
   }: {
     visible?: boolean;
     continueTitle?: string | null;
     continueDetail?: string | null;
-    statusKind?: ContinueStatusKind;
-    statusLabel?: string;
+    status?: ContinueStatus;
     otherBooks?: Array<{ path: string; title: string }>;
     booksDisabled?: boolean;
     errorTitle?: string | null;
@@ -74,7 +82,9 @@
     adopting?: boolean;
     version?: string | null;
     showAtStartup?: boolean;
-    showGitHub?: boolean;
+    updateReadyVersion?: string | null;
+    updateAvailableVersion?: string | null;
+    updateDownloading?: boolean;
     onContinue?: () => void;
     onOpenPath?: (path: string) => void;
     onSwitchBook?: (path: string) => void;
@@ -88,6 +98,8 @@
     onWhatsNew?: () => void;
     onAdopt?: () => void;
     onToggleShowAtStartup?: (show: boolean) => void;
+    onUpdateApply?: () => void;
+    onUpdateDownload?: () => void;
   } = $props();
 
   let rootEl = $state<HTMLElement | undefined>(undefined);
@@ -102,17 +114,46 @@
   // recreates the section each show), landing on the primary action so Enter
   // "just works". The workspace behind is inert (host page). A use: action —
   // not $effect (banned) — since this is pure DOM setup on element mount.
+  // NEVER steal focus from an open dialog: the layer can remount UNDER one
+  // (e.g. a failed open empties the workspace while Settings is up), and the
+  // dialogs' Esc/tab-trap handlers are element-scoped — they die with focus.
   function focusOnShow(node: HTMLElement) {
-    void tick().then(() => (continueBtn ?? node).focus());
+    void tick().then(() => {
+      if (document.querySelector('[role="dialog"]')) return;
+      (continueBtn ?? rootEl ?? node).focus();
+    });
+  }
+
+  // Stall watchdog for the continue card: the render pipeline has no failure
+  // event (a paged.js hang inside the iframe never fires renderingComplete),
+  // so if the status stops progressing we tell the author instead of spinning
+  // forever. A use: action with update() — the param changes on every status
+  // label/detail tick, re-arming the timer; "ready" disarms it.
+  const STALL_MS = 45_000;
+  let stalled = $state(false);
+  function stallWatch(_node: HTMLElement, current: ContinueStatus) {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const arm = (s: ContinueStatus) => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      stalled = false;
+      if (s.kind === "ready") return;
+      timer = setTimeout(() => (stalled = true), STALL_MS);
+    };
+    arm(current);
+    return {
+      update: (next: ContinueStatus) => arm(next),
+      destroy: () => {
+        if (timer) clearTimeout(timer);
+      },
+    };
   }
 
   function onKeydown(e: KeyboardEvent) {
     if (e.key !== "Escape") return;
     // Esc inside a field means "cancel my typing", not "leave the start
     // screen" — never hijack it from form controls (e.g. the books search).
-    const t = e.target as HTMLElement | null;
-    const tag = t?.tagName ?? "";
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+    if (isEditableTarget(e.target)) return;
     // Esc = "get out of my way": same as Continue, but only when there is a
     // book behind the layer to land on.
     if (continueTitle && !errorTitle) {
@@ -120,12 +161,20 @@
       onContinue?.();
     }
   }
+
+  // The outroing layer must not eat clicks: when the landing dismisses, inert
+  // lifts from the workspace immediately, but the fading section stays in the
+  // DOM for the transition — without this, a fast follow-up click lands on
+  // the invisible scrim (or re-fires a landing button).
+  function onOutroStart(e: Event) {
+    (e.currentTarget as HTMLElement).style.pointerEvents = "none";
+  }
 </script>
 
 {#if visible}
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-  <!-- The layer is the focus root while shown (tabindex=-1 + programmatic
-       focus); keydown only adds an Esc convenience, no semantics change. -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -- the keydown
+       is a layer-scoped Esc convenience (never required: Continue is a real
+       button); the section is the focus root while the workspace is inert. -->
   <section
     class="landing"
     bind:this={rootEl}
@@ -134,6 +183,7 @@
     aria-label="Start screen"
     onkeydown={onKeydown}
     transition:fade={{ duration: 180 }}
+    onoutrostart={onOutroStart}
   >
     <div class="landing-col">
       <header class="brand-row">
@@ -143,6 +193,15 @@
           {#if version}<span class="brand-version">v{version}</span>{/if}
         </div>
         <div class="brand-right">
+          {#if updateReadyVersion && onUpdateApply}
+            <button type="button" class="update-chip" onclick={onUpdateApply}>
+              Update ready (v{updateReadyVersion}) — Restart &amp; update
+            </button>
+          {:else if updateAvailableVersion && onUpdateDownload}
+            <button type="button" class="update-chip" onclick={onUpdateDownload} disabled={updateDownloading}>
+              {updateDownloading ? "Downloading update…" : `Update available (v${updateAvailableVersion}) — Download`}
+            </button>
+          {/if}
           {#if onWhatsNew}
             <button type="button" class="landing-link" onclick={onWhatsNew}>
               What's new <Icon name="external-link" size={12} />
@@ -190,13 +249,22 @@
               {#if continueDetail}
                 <span class="cc-detail" title={continueDetail}>{continueDetail}</span>
               {/if}
-              <span class="cc-status" role="status" aria-live="polite" data-kind={statusKind}>
-                {#if statusKind === "ready"}
+              <!-- The live region announces only the COARSE label (changes per
+                   state, not per laid-out page); the per-page counter is
+                   visual-only so screen readers aren't flooded with hundreds
+                   of progress announcements during a large pre-render. -->
+              <span class="cc-status" data-kind={status.kind} use:stallWatch={status}>
+                {#if status.kind === "ready"}
                   <span class="cc-ready-icon"><Icon name="circle-check" size={14} /></span>
                 {:else}
                   <span class="cc-spinner" aria-hidden="true"></span>
                 {/if}
-                {statusLabel}
+                <span role="status" aria-live="polite">{status.label}</span>
+                {#if stalled && status.kind !== "ready"}
+                  <span class="cc-stalled">This is taking longer than expected — you can open your book to check on it.</span>
+                {:else if status.detail}
+                  <span aria-hidden="true">&nbsp;— {status.detail}</span>
+                {/if}
               </span>
             </div>
             <button type="button" class="btn-primary cc-open" bind:this={continueBtn} onclick={onContinue}>
@@ -236,7 +304,7 @@
           <span class="ac-title">Open a folder</span>
           <span class="ac-sub">A book saved on this computer</span>
         </button>
-        {#if showGitHub && onOpenGitHub}
+        {#if onOpenGitHub}
           <button type="button" class="action-card" onclick={onOpenGitHub}>
             <span class="ac-icon"><Icon name="github" size={18} /></span>
             <span class="ac-title">Open from GitHub</span>
@@ -279,18 +347,19 @@
   .landing {
     position: fixed;
     inset: 0;
-    z-index: 900; /* above toolbar (100) + app overlay (50); below dialogs (1000+) */
-    /* TRANSLUCENT frosted scrim — never fully opaque over the preview area
+    z-index: 900; /* above toolbar (100) + app overlay (50); below export pill (950) and dialogs (1000+) */
+    /* TRANSLUCENT scrim — never fully opaque over the preview area
        (cross-origin iframe throttling; see PreviewFrame.svelte). Near-opaque
        only across the top band so the workspace toolbar doesn't bleed through
-       crisply; the book ghosts through the glass below it. */
+       crisply; the book ghosts through below it. Deliberately NO
+       backdrop-filter: a full-window blur re-composites on every iframe paint
+       for the entire pre-render. */
     background: linear-gradient(
       to bottom,
       color-mix(in srgb, var(--app-bg) 97%, transparent) 0,
-      color-mix(in srgb, var(--app-bg) 88%, transparent) 140px,
-      color-mix(in srgb, var(--app-bg) 88%, transparent) 100%
+      color-mix(in srgb, var(--app-bg) 91%, transparent) 140px,
+      color-mix(in srgb, var(--app-bg) 91%, transparent) 100%
     );
-    backdrop-filter: blur(12px) saturate(1.05);
     overflow-y: auto;
     display: flex;
     justify-content: center;
@@ -333,6 +402,19 @@
   .brand-icon { font-size: 18px; }
   .brand-name { font-size: 15px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
   .brand-version { font-size: 11px; color: var(--app-text-faint); }
+
+  .update-chip {
+    background: var(--app-success-bg);
+    border: 1px solid var(--app-success-border);
+    color: var(--app-success-text);
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .update-chip:hover:not(:disabled) { filter: brightness(1.1); }
+  .update-chip:disabled { opacity: 0.7; cursor: default; }
 
   .landing-link {
     background: none;
@@ -383,6 +465,7 @@
   .cc-status {
     display: inline-flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 6px;
     font-size: 12px;
     color: var(--app-text-secondary);
@@ -390,6 +473,7 @@
   }
   .cc-status[data-kind="ready"] { color: var(--app-success-text, var(--app-text-secondary)); }
   .cc-ready-icon { display: inline-flex; color: var(--app-success-strong, currentColor); }
+  .cc-stalled { color: var(--app-warning-text, var(--app-text-secondary)); }
   .cc-spinner {
     width: 12px;
     height: 12px;
@@ -404,8 +488,11 @@
     .cc-spinner { animation-duration: 1.6s; }
   }
 
+  /* Matches the app-wide primary recipe (+page.svelte button.primary /
+     theme.css gradient contract) so the start screen's primaries don't render
+     as a third visual variant. */
   .btn-primary {
-    background: var(--app-accent);
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
     color: var(--app-accent-text);
     border: 1px solid var(--app-accent-border);
     border-radius: 8px;
@@ -415,7 +502,9 @@
     cursor: pointer;
     flex-shrink: 0;
   }
-  .btn-primary:hover:not(:disabled) { background: var(--app-accent-hover); }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(to bottom, var(--app-accent-bright), var(--app-accent-hover));
+  }
   .btn-primary:disabled { opacity: 0.6; cursor: default; }
   .btn-primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 

@@ -73,7 +73,10 @@
           }, 220);
         };
         var t = setInterval(function () {
-          if (document.querySelector(".toolbar")) {
+          // First-screen signal: the workspace toolbar OR the start screen
+          // (the landing is the first screen on fresh installs / web) — the
+          // boot cover must not be keyed to one workspace-internal element.
+          if (document.querySelector(".toolbar, .landing")) {
             clearInterval(t);
             done();
           }

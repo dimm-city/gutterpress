@@ -13,7 +13,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
-  import { discoverProjectsCached } from "$lib/projects-discover-cache";
+  import { discoverProjectsCached, type DiscoveredProject } from "$lib/projects-discover-cache";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
   // in the app-facing contract. Discovered projects still come back path-keyed
@@ -28,7 +28,6 @@
     lastActiveBook?: string;
   };
   type FavoriteFolder = { key: string; displayName: string; title: string; exists: boolean };
-  type DiscoveredProject = { path: string; title: string };
 
   let {
     onChosen,
@@ -308,7 +307,7 @@
         {placeholder}
         spellcheck="false"
         autocomplete="off"
-        aria-label="Folder path or web address"
+        aria-label={placeholder.replace(/…+$/, "")}
         onkeydown={(e) => {
           if (e.key === "Enter") { e.preventDefault(); void submitLocation(); }
           else if (e.key === "ArrowDown" && allRows.length > 0) {
@@ -480,19 +479,22 @@
     {/if}
   </div>
 
-  <!-- Actions footer -->
-  <div class="actions-footer">
-    {#if onOpenGitHub}
-      <button class="footer-action" onclick={onOpenGitHub} title="Open a project from GitHub">
-        <Icon name="github" size={14} /> Open from GitHub
-      </button>
-    {/if}
-    {#if onNewProject}
-      <button class="footer-action primary" onclick={onNewProject} title="Create a new book project">
-        <Icon name="plus" size={14} /> New project
-      </button>
-    {/if}
-  </div>
+  <!-- Actions footer — omitted entirely when the host provides its own action
+       surface (the start screen), so no empty bordered strip renders. -->
+  {#if onOpenGitHub || onNewProject}
+    <div class="actions-footer">
+      {#if onOpenGitHub}
+        <button class="footer-action" onclick={onOpenGitHub} title="Open a project from GitHub">
+          <Icon name="github" size={14} /> Open from GitHub
+        </button>
+      {/if}
+      {#if onNewProject}
+        <button class="footer-action primary" onclick={onNewProject} title="Create a new book project">
+          <Icon name="plus" size={14} /> New project
+        </button>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>

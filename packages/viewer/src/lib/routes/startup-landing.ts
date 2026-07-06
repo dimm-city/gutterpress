@@ -14,10 +14,10 @@ export interface StartupScreenDecision {
    * Show the start screen layer as the app's first screen. When true the
    * caller also reveals the window (rendererReady) immediately — the landing
    * is interactive right away, so the splash must not wait for the render.
+   * Whether the previous project reopens behind it is simply "is there a
+   * lastProjectDir" — the caller already holds that value.
    */
   showLanding: boolean;
-  /** Kick off the previous project (preview render) behind it. */
-  reopenLastProject: boolean;
 }
 
 /**
@@ -32,25 +32,28 @@ export function decideStartupScreen(opts: {
   lastProjectDir: string | null;
   landingEnabled: boolean;
 }): StartupScreenDecision {
-  if (!opts.lastProjectDir) {
-    return { showLanding: true, reopenLastProject: false };
-  }
-  if (!opts.landingEnabled) {
-    return { showLanding: false, reopenLastProject: true };
-  }
-  return { showLanding: true, reopenLastProject: true };
+  return { showLanding: !opts.lastProjectDir || opts.landingEnabled };
 }
 
 export type ContinueStatusKind = "opening" | "rendering" | "ready";
 
 export interface ContinueStatus {
   kind: ContinueStatusKind;
+  /**
+   * Coarse, plain-language status — changes only when `kind` changes, so the
+   * landing can announce it via aria-live without flooding screen readers.
+   */
   label: string;
+  /**
+   * Per-page progress suffix (e.g. "page 42…"). Updates on every laid-out
+   * page — VISUAL ONLY; the landing renders it aria-hidden.
+   */
+  detail: string | null;
 }
 
 /**
- * Plain-language status line for the continue card, tracking the live
- * pre-render happening behind the landing.
+ * Plain-language status for the continue card, tracking the live pre-render
+ * happening behind the landing.
  */
 export function continueStatus(input: {
   hasPreviewUrl: boolean;
@@ -58,18 +61,16 @@ export function continueStatus(input: {
   renderProgressPage: number;
 }): ContinueStatus {
   if (!input.hasPreviewUrl) {
-    return { kind: "opening", label: "Opening your book…" };
+    return { kind: "opening", label: "Opening your book…", detail: null };
   }
   if (input.rendering) {
     return {
       kind: "rendering",
-      label:
-        input.renderProgressPage > 0
-          ? `Preparing pages — page ${input.renderProgressPage}…`
-          : "Preparing your book…",
+      label: "Preparing your book…",
+      detail: input.renderProgressPage > 0 ? `page ${input.renderProgressPage}…` : null,
     };
   }
-  return { kind: "ready", label: "Your book is ready." };
+  return { kind: "ready", label: "Your book is ready.", detail: null };
 }
 
 /**

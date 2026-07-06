@@ -8,59 +8,62 @@ import {
 // ---------------------------------------------------------------------------
 // decideStartupScreen — the launch policy behind the start screen (welcome
 // landing). Mirrors the auto-reopen onMount block in +page.svelte. showLanding
-// doubles as "reveal the window immediately" at the call site.
+// doubles as "reveal the window immediately" at the call site; whether the
+// previous project reopens is simply "is there a lastProjectDir".
 // ---------------------------------------------------------------------------
 
-test("no previous project → landing is the welcome screen, no reopen", () => {
+test("no previous project → landing is the welcome screen", () => {
   expect(
     decideStartupScreen({ lastProjectDir: null, landingEnabled: true }),
-  ).toEqual({ showLanding: true, reopenLastProject: false });
+  ).toEqual({ showLanding: true });
 });
 
 test("no previous project → landing shows even when the pref is off (it IS the empty state)", () => {
   expect(
     decideStartupScreen({ lastProjectDir: null, landingEnabled: false }),
-  ).toEqual({ showLanding: true, reopenLastProject: false });
+  ).toEqual({ showLanding: true });
 });
 
-test("previous project + landing on → show landing and pre-render behind it", () => {
+test("previous project + landing on → show landing over the pre-render", () => {
   expect(
     decideStartupScreen({ lastProjectDir: "/books/novel", landingEnabled: true }),
-  ).toEqual({ showLanding: true, reopenLastProject: true });
+  ).toEqual({ showLanding: true });
 });
 
 test("previous project + landing off → pre-landing behavior (splash covers the render)", () => {
   expect(
     decideStartupScreen({ lastProjectDir: "/books/novel", landingEnabled: false }),
-  ).toEqual({ showLanding: false, reopenLastProject: true });
+  ).toEqual({ showLanding: false });
 });
 
 // ---------------------------------------------------------------------------
-// continueStatus — the continue card's live pre-render status line.
+// continueStatus — the continue card's live pre-render status. `label` is
+// coarse (stable per kind — safe for aria-live); `detail` carries the
+// per-page tick and is rendered aria-hidden.
 // ---------------------------------------------------------------------------
 
 test("no preview URL yet → opening", () => {
   expect(
     continueStatus({ hasPreviewUrl: false, rendering: false, renderProgressPage: 0 }),
-  ).toEqual({ kind: "opening", label: "Opening your book…" });
+  ).toEqual({ kind: "opening", label: "Opening your book…", detail: null });
 });
 
-test("rendering with no page progress yet → preparing", () => {
+test("rendering with no page progress yet → preparing, no detail", () => {
   expect(
     continueStatus({ hasPreviewUrl: true, rendering: true, renderProgressPage: 0 }),
-  ).toEqual({ kind: "rendering", label: "Preparing your book…" });
+  ).toEqual({ kind: "rendering", label: "Preparing your book…", detail: null });
 });
 
-test("rendering mid-layout → per-page progress", () => {
+test("rendering mid-layout → per-page progress goes in detail, label stays coarse", () => {
   expect(
     continueStatus({ hasPreviewUrl: true, rendering: true, renderProgressPage: 42 }),
-  ).toEqual({ kind: "rendering", label: "Preparing pages — page 42…" });
+  ).toEqual({ kind: "rendering", label: "Preparing your book…", detail: "page 42…" });
 });
 
 test("render settled → ready", () => {
   expect(
     continueStatus({ hasPreviewUrl: true, rendering: false, renderProgressPage: 287 }),
-  ).toEqual({ kind: "ready", label: "Your book is ready." });
+  ).toEqual({ kind: "ready", label: "Your book is ready.", detail: null });
 });
 
 // ---------------------------------------------------------------------------
@@ -92,10 +95,13 @@ test("a folder is open → stay hidden", () => {
   expect(shouldReshowLanding({ ...idle, hasCurrentDir: true })).toBe(false);
 });
 
-test("a URL preview is open and healthy → stay hidden", () => {
-  expect(
-    shouldReshowLanding({ ...idle, hasCurrentUrl: true, hasPreviewUrl: true }),
-  ).toBe(false);
+test("a URL preview still loading (currentUrl set, no iframe yet) → stay hidden", () => {
+  // Exercises the URL-specific branch on its own: during openUrl's microtask
+  // gap the URL is "open" with previewUrl momentarily null and no error —
+  // the landing must not flash over it. (A previous version of this suite
+  // also set hasPreviewUrl, which short-circuited before the URL branch and
+  // let a deletion of that branch pass the tests.)
+  expect(shouldReshowLanding({ ...idle, hasCurrentUrl: true })).toBe(false);
 });
 
 test("a URL preview failed → show (landing is the error surface)", () => {

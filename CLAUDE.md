@@ -301,11 +301,13 @@ the `api/lint/check-css` server route) and the editor's lint gutter calls
 
 **Verification (must pass before any viewer change is "done"):** the client
 SPA bundle must contain no host code — adapter-node emits the browser assets
-to `build/client/`, and this is now **enforced automatically**: the viewer's
-`npm run build` runs `scripts/check-client-pure.mjs`, which fails the build if
-host code (`fileURLToPath`/`createRequire`/`isomorphic-git`, any `node:*`
-specifier, or a bare builtin `require`) appears anywhere under
-`build/client/_app/` — and fails loudly if it finds zero JS files to scan.
+to `build/client/`, and this is now **enforced automatically** by ONE script,
+`tools/check-render-purity.mjs`: CI runs it (`.github/workflows/ci.yml`) and
+the viewer's `npm run build` runs it with `--strict` (absent dir or zero
+scannable files = failure). It fails on host code — the named leak
+identifiers (`fileURLToPath`/`createRequire`/`isomorphic-git`), any quoted
+`node:*` specifier, or a bare builtin `require()` (generated from
+`builtinModules`, never hand-listed) — anywhere under `build/client/`.
 Two caveats keep this honest:
 (1) the server side — `build/server/`, `build/handler.js`, and the
 `+server.ts` routes compiled into it — is host Node code by design; the check

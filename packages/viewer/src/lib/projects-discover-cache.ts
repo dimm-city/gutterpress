@@ -7,13 +7,15 @@
 // tab), and the start screen remounts on every re-show, so without this
 // module every launch ran two concurrent scans and every landing re-show ran
 // another. One module-level cache means: concurrent callers share a single
-// in-flight scan, and re-shows within the TTL reuse the last result. Recents
-// and favorites stay uncached — they are cheap single-file reads and must
-// reflect the open that just happened.
+// in-flight scan, re-shows within the TTL reuse the last result, and events
+// that change the discoverable set (create / adopt / clone) bust the cache
+// explicitly via invalidateDiscoveredProjects(). Recents and favorites stay
+// uncached — they are cheap single-file reads and must reflect the open that
+// just happened.
 // ──────────────────────────────────────────────────────────────────────────
-import { api } from "$lib/api";
+import { api, type DiscoveredProject } from "$lib/api";
 
-export type DiscoveredProject = { path: string; title: string };
+export type { DiscoveredProject };
 
 const TTL_MS = 60_000;
 
@@ -27,7 +29,7 @@ export function discoverProjectsCached(): Promise<DiscoveredProject[]> {
   inflight = api.app
     .discoverProjects()
     .then((r) => {
-      cache = r as DiscoveredProject[];
+      cache = r;
       cachedAt = Date.now();
       return cache;
     })
@@ -35,4 +37,14 @@ export function discoverProjectsCached(): Promise<DiscoveredProject[]> {
       inflight = null;
     });
   return inflight;
+}
+
+/**
+ * Drop the cached scan. Call after anything that changes the set of
+ * discoverable projects — creating a book, adopting a folder, cloning from
+ * GitHub — so the next list shows it without waiting out the TTL.
+ */
+export function invalidateDiscoveredProjects(): void {
+  cache = null;
+  cachedAt = 0;
 }

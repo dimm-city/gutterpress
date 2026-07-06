@@ -20,6 +20,13 @@ export interface PrefsHooks<
 > {
   readPrefs: () => Promise<Prefs>;
   writePrefs: (prefs: Prefs) => Promise<void>;
+  /**
+   * Atomic read-modify-write on the prefs store's write queue. Use this for
+   * every patch-style mutation — a bare readPrefs()+writePrefs() pair races
+   * the other prefs writers (api:preview's recents stamp, the start screen's
+   * startup toggle) and silently reverts their changes.
+   */
+  updatePrefs: (mutate: (prefs: Prefs) => Prefs) => Promise<Prefs>;
   readSettings: () => Promise<Settings>;
   writeSettings: (settings: Settings) => Promise<void>;
   existingDirectory: (dir: string | undefined) => Promise<string | null>;

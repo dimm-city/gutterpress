@@ -3,39 +3,61 @@
 //
 // CLAUDE.md §8 requires the viewer renderer bundle to stay "PWA-clean": it may
 // value-import exactly one lib entry (`@dimm-city/print-md/render`), and that
-// entry MUST remain free of host/node code. Nothing else enforced this. This
-// script scans the built viewer SPA output and FAILS (exit 1) if any forbidden
-// host/node token appears in it — the same tokens §8's grep verification lists.
+// entry MUST remain free of host/node code. This script scans the built viewer
+// SPA output and FAILS (exit 1) if any forbidden host/node marker appears in
+// it. It is the ONE implementation of the client-bundle check — CI runs it
+// (.github/workflows/ci.yml) and the viewer's `npm run build` runs it with
+// --strict, so the two invocations can never drift.
 //
-// Usage:  node tools/check-render-purity.mjs [buildDir]
+// Detection policy (three layers):
+//   1. Named identifiers that every historical leak carried
+//      (fileURLToPath / createRequire / isomorphic-git — the 0.4.0-beta.4 and
+//      2026-07 regressions).
+//   2. Any QUOTED `node:*` specifier — covers every builtin vite externalizes
+//      into a client chunk (node:path, node:v8, node:http2, …). Quoted, because
+//      a bare `node:x` also matches minified object properties like `{node:t}`.
+//   3. Bare `require("<builtin>")` for every entry in node:module's
+//      builtinModules — CJS-interop output that survives bundling. Generated,
+//      never hand-listed, so new builtins are covered automatically. This
+//      layer SKIPS files under a vendor/ directory: vendored third-party
+//      browser libs (the paged.js polyfill) legitimately carry guarded UMD
+//      `require('util')` branches that never execute in the browser, while a
+//      real leak lives in bundler-emitted chunks. Layers 1-2 still apply to
+//      vendored files.
+//
+// Usage:  node tools/check-render-purity.mjs [buildDir] [--strict]
 //   buildDir defaults to packages/viewer/build/client (relative to the repo
 //   root) — the browser assets adapter-node emits. It MUST NOT default to the
 //   whole build/ tree: adapter-node also emits build/server/ + build/handler.js
 //   (the compiled +server.ts host routes), which are host Node code BY DESIGN
 //   (§8) and legitimately contain node:fs/isomorphic-git/etc. Scoping to
 //   build/client/ is the whole point of the §8 verification contract.
-//   If the dir is absent (no build yet), it prints a skip notice and exits 0,
-//   so the check is safe to run before a build.
+//   Without --strict, an absent dir prints a skip notice and exits 0 (safe to
+//   run before a build). With --strict — the viewer build's mode — an absent
+//   dir OR zero scanned files is a FAILURE: a gate that scans nothing has
+//   silently stopped guarding.
 //
 // Dependency-free (Node built-ins only) by design — it must run in bare CI.
 // Tested by tools/check-render-purity.test.mjs (node tools/check-render-purity.test.mjs).
-import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Forbidden host/node markers — a hit means Node-target lib code leaked into the
-// renderer bundle (the exact failure that shipped the 0.4.0-beta.4 crash).
-// This is exactly §8's canonical verification list — do not widen it (e.g.
-// `postcss` was dropped: it's not in §8's grep, and scanning .css for it just
-// manufactures false positives).
-const FORBIDDEN = [
-  "fileURLToPath",
-  "node:module",
-  "createRequire",
-  "node:fs",
-  "node:url",
-  "isomorphic-git",
-];
+// Layer 1: named identifiers (substring match — they also catch unquoted use).
+const FORBIDDEN_IDENTIFIERS = ["fileURLToPath", "createRequire", "isomorphic-git"];
+
+// Layer 2: any quoted node:-prefixed specifier (digits included: node:v8).
+const QUOTED_NODE_SPECIFIER = /["'`]node:[a-z0-9_/]+["'`]/;
+
+// Layer 3: bare require of any builtin, whitespace-tolerant. Generated from
+// the runtime's own builtin list; private "_"-prefixed entries excluded.
+const BARE_BUILTIN_REQUIRE = new RegExp(
+  `require\\(\\s*["'](?:${builtinModules
+    .filter((name) => !name.startsWith("_"))
+    .map((name) => name.replace(/\//g, "\\/"))
+    .join("|")})["']\\s*\\)`,
+);
 
 // Only scan text-y build artifacts; skip source maps and binary assets.
 const SCAN_EXT = new Set([".js", ".mjs", ".cjs", ".ts", ".html", ".json", ".css"]);
@@ -46,26 +68,50 @@ function repoRoot() {
 }
 
 function walk(dir, out) {
-  for (const entry of readdirSync(dir)) {
-    const full = join(dir, entry);
-    const st = statSync(full);
-    if (st.isDirectory()) {
+  // withFileTypes + no symlink following: a stray symlink loop in the build
+  // output must not turn the gate into an ELOOP crash.
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
       walk(full, out);
-    } else if (st.isFile()) {
-      const dot = entry.lastIndexOf(".");
-      const ext = dot === -1 ? "" : entry.slice(dot);
+    } else if (entry.isFile()) {
+      const dot = entry.name.lastIndexOf(".");
+      const ext = dot === -1 ? "" : entry.name.slice(dot);
       if (SCAN_EXT.has(ext)) out.push(full);
     }
   }
 }
 
+function findViolation(text, file) {
+  for (const token of FORBIDDEN_IDENTIFIERS) {
+    if (text.includes(token)) return token;
+  }
+  const quoted = QUOTED_NODE_SPECIFIER.exec(text);
+  if (quoted) return quoted[0];
+  const isVendored = /[\\/]vendor[\\/]/.test(file);
+  if (!isVendored) {
+    const bare = BARE_BUILTIN_REQUIRE.exec(text);
+    if (bare) return bare[0];
+  }
+  return null;
+}
+
 function main() {
-  const arg = process.argv[2];
-  const buildDir = arg
-    ? arg
+  const args = process.argv.slice(2);
+  const strict = args.includes("--strict");
+  const dirArg = args.find((a) => !a.startsWith("--"));
+  const buildDir = dirArg
+    ? dirArg
     : join(repoRoot(), "packages", "viewer", "build", "client");
 
   if (!existsSync(buildDir)) {
+    if (strict) {
+      console.error(
+        `check-render-purity: FAIL — build dir not found (${buildDir}) in --strict mode.`,
+      );
+      process.exit(1);
+    }
     console.log(
       `check-render-purity: build dir not found (${buildDir}) — skipping (run after the viewer build).`,
     );
@@ -75,12 +121,18 @@ function main() {
   const files = [];
   walk(buildDir, files);
 
+  if (strict && files.length === 0) {
+    console.error(
+      `check-render-purity: FAIL — no scannable files under ${buildDir}; ` +
+        "the client bundle moved and this gate is scanning nothing. Update the path so it guards again.",
+    );
+    process.exit(1);
+  }
+
   const violations = [];
   for (const file of files) {
-    const text = readFileSync(file, "utf8");
-    for (const token of FORBIDDEN) {
-      if (text.includes(token)) violations.push({ file, token });
-    }
+    const token = findViolation(readFileSync(file, "utf8"), file);
+    if (token) violations.push({ file, token });
   }
 
   if (violations.length > 0) {
@@ -91,13 +143,15 @@ function main() {
       console.error(`  ${token}  ->  ${file}`);
     }
     console.error(
-      "\nThe SPA must only value-import @dimm-city/print-md/render, which must stay node-free.",
+      "\nThe SPA must only value-import @dimm-city/print-md/render, which must stay node-free.\n" +
+        "Move the Node work into an api/**/+server.ts route (or the IPC bridge) and call it\n" +
+        "through the platform adapter; use `import type` for types.",
     );
     process.exit(1);
   }
 
   console.log(
-    `check-render-purity: OK — scanned ${files.length} file(s) in ${buildDir}, no forbidden host/node tokens.`,
+    `check-render-purity: OK — scanned ${files.length} file(s) in ${buildDir}, no forbidden host/node markers.`,
   );
   process.exit(0);
 }
