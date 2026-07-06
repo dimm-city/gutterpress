@@ -13,7 +13,13 @@ import {
   createFileWatcher,
   startFileWatcher,
   stopFileWatcher,
+  injectPreviewScripts,
+  mirrorChanges,
+  cssHotSwapPaths,
+  decideBroadcast,
+  type ChangedDest,
 } from './file-watcher';
+import { pagedjsPolyfillTag } from '../lib/pagedjs-marker';
 import { resolveConfig } from '../lib/manifest';
 import type { ServerState } from './server-context';
 import type { PreviewServerOptions } from '../types';
@@ -124,6 +130,169 @@ describe('generateAndWriteHtml', () => {
     expect(content).toContain('Chapter 1');
     expect(content).toContain('Chapter 2');
   }, 60000);
+});
+
+describe('injectPreviewScripts', () => {
+  const html = `<!doctype html>\n<html><head><title>t</title>\n  ${pagedjsPolyfillTag()}\n</head><body></body></html>`;
+
+  test('swaps the polyfill slot for the interface scripts + served polyfill', () => {
+    const out = injectPreviewScripts(html, false);
+    expect(out).toContain('/preview/scripts/pagedjs-interface.js');
+    expect(out).toContain('/preview/scripts/pagedjs-bridge.js');
+    expect(out).toContain('/vendor/paged.polyfill.js');
+    expect(out).not.toContain('data-pagedjs-polyfill');
+  });
+
+  test('page-isolates chapters only in incremental mode', () => {
+    const isolate = '<style>.pmd-chapter{break-before:page}</style>';
+    expect(injectPreviewScripts(html, true)).toContain(isolate);
+    expect(injectPreviewScripts(html, false)).not.toContain(isolate);
+  });
+});
+
+describe('cssHotSwapPaths', () => {
+  const css = (p: string): ChangedDest => ({ relativePath: p, ext: '.css', event: 'change' });
+  const md = (p: string): ChangedDest => ({ relativePath: p, ext: '.md', event: 'change' });
+
+  test('returns every stylesheet path when the whole window is CSS', () => {
+    expect(cssHotSwapPaths([css('a.css'), css('sub/b.css')], 2)).toEqual(['a.css', 'sub/b.css']);
+  });
+
+  test('returns null when any change is not a stylesheet', () => {
+    expect(cssHotSwapPaths([css('a.css'), md('ch.md')], 2)).toBeNull();
+  });
+
+  test('returns null when a change resolved to no destination (count mismatch)', () => {
+    // A change outside every watch root is dropped by mirrorChanges — the
+    // fast path must not fire when it cannot account for every change.
+    expect(cssHotSwapPaths([css('a.css')], 2)).toBeNull();
+  });
+
+  test('returns null for an empty window', () => {
+    expect(cssHotSwapPaths([], 0)).toBeNull();
+  });
+});
+
+describe('decideBroadcast', () => {
+  const md = (p: string, event = 'change'): ChangedDest => ({ relativePath: p, ext: '.md', event });
+
+  test('single surviving markdown change splices its chapter (canonical id)', () => {
+    expect(decideBroadcast([md('sub/ch.md')], 1, true)).toEqual({
+      kind: 'chapter-splice',
+      chapterId: 'sub/ch.md',
+      relativePath: 'sub/ch.md',
+    });
+  });
+
+  test('multi-file windows always full-reload', () => {
+    expect(decideBroadcast([md('a.md'), md('b.md')], 2, true)).toEqual({ kind: 'full-reload' });
+  });
+
+  test('a deleted markdown file full-reloads, never splices', () => {
+    expect(decideBroadcast([md('a.md', 'unlink')], 1, true)).toEqual({ kind: 'full-reload' });
+  });
+
+  test('non-markdown and non-incremental changes full-reload', () => {
+    expect(decideBroadcast([{ relativePath: 'x.txt', ext: '.txt', event: 'change' }], 1, true))
+      .toEqual({ kind: 'full-reload' });
+    expect(decideBroadcast([md('a.md')], 1, false)).toEqual({ kind: 'full-reload' });
+  });
+});
+
+describe('mirrorChanges', () => {
+  let testDir: string;
+  let tempDir: string;
+
+  beforeEach(async () => {
+    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+  });
+
+  afterEach(async () => {
+    await rm(testDir, { recursive: true, force: true });
+    await rm(tempDir, { recursive: true, force: true });
+  });
+
+  test('copies a changed file into the temp dir and reports its dest', async () => {
+    await writeFile(join(testDir, 'ch.md'), '# hi');
+
+    const dests = await mirrorChanges([[join(testDir, 'ch.md'), 'change']], testDir, tempDir, []);
+
+    expect(dests).toEqual([{ relativePath: 'ch.md', ext: '.md', event: 'change' }]);
+    expect(await Bun.file(join(tempDir, 'ch.md')).text()).toBe('# hi');
+  });
+
+  test('a deleted file appears in the result without being copied', async () => {
+    const dests = await mirrorChanges([[join(testDir, 'gone.md'), 'unlink']], testDir, tempDir, []);
+
+    expect(dests).toEqual([{ relativePath: 'gone.md', ext: '.md', event: 'unlink' }]);
+    expect(await Bun.file(join(tempDir, 'gone.md')).exists()).toBe(false);
+  });
+
+  test('a directory event is reported but the directory is not copied', async () => {
+    const { mkdir } = await import('fs/promises');
+    await mkdir(join(testDir, 'themes'), { recursive: true });
+
+    const dests = await mirrorChanges([[join(testDir, 'themes'), 'addDir']], testDir, tempDir, []);
+
+    expect(dests).toEqual([{ relativePath: 'themes', ext: '', event: 'addDir' }]);
+    expect(await Bun.file(join(tempDir, 'themes')).exists()).toBe(false);
+  });
+
+  test('a failing copy is skipped without aborting the rest of the mirror', async () => {
+    // Editors that save via temp-file + rename can delete a file between the
+    // stat probe and the copy. Simulate a deterministic copy failure (dest is
+    // a directory → EISDIR): mirrorChanges must resolve, keep the entry, and
+    // still mirror the other changed files in the same window.
+    const { mkdir } = await import('fs/promises');
+    await writeFile(join(testDir, 'broken.md'), '# broken');
+    await writeFile(join(testDir, 'ok.md'), '# ok');
+    await mkdir(join(tempDir, 'broken.md'), { recursive: true });
+
+    const dests = await mirrorChanges(
+      [
+        [join(testDir, 'broken.md'), 'change'],
+        [join(testDir, 'ok.md'), 'change'],
+      ],
+      testDir,
+      tempDir,
+      []
+    );
+
+    expect(dests).toEqual([
+      { relativePath: 'broken.md', ext: '.md', event: 'change' },
+      { relativePath: 'ok.md', ext: '.md', event: 'change' },
+    ]);
+    expect(await Bun.file(join(tempDir, 'ok.md')).text()).toBe('# ok');
+  });
+
+  test('a change outside every watch root is dropped', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'print-md-test-outside-'));
+    try {
+      await writeFile(join(outside, 'x.css'), 'body{}');
+      const dests = await mirrorChanges([[join(outside, 'x.css'), 'change']], testDir, tempDir, []);
+      expect(dests).toEqual([]);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+
+  test('external asset root changes mirror under their dest name', async () => {
+    const shared = await mkdtemp(join(tmpdir(), 'print-md-test-shared-'));
+    try {
+      await writeFile(join(shared, 'core.css'), 'body{margin:0}');
+      const dests = await mirrorChanges(
+        [[join(shared, 'core.css'), 'change']],
+        testDir,
+        tempDir,
+        [{ src: shared, destName: '_shared' }]
+      );
+      expect(dests).toEqual([{ relativePath: '_shared/core.css', ext: '.css', event: 'change' }]);
+      expect(await Bun.file(join(tempDir, '_shared', 'core.css')).text()).toBe('body{margin:0}');
+    } finally {
+      await rm(shared, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('createFileWatcher', () => {

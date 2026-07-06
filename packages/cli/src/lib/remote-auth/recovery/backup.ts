@@ -9,22 +9,20 @@
  * Windows/macOS/Linux — the viewer ships on all three (CLAUDE.md §8). A literal
  * "/tmp" would make every risky-repair backup throw on Windows.
  *
- * WHY a bespoke inlined writer instead of a dependency:
- *   - packages/cli has no zip library (fflate, adm-zip, jszip are absent).
- *   - Adding a dependency adds a build surface and potential native bindings.
- *   - STORE-method ZIP is ~150 lines: local file header + raw bytes, central
- *     directory, end-of-central-directory record, CRC-32 with an inlined
- *     table. Zero imports beyond node:fs/node:os/node:path. Survives bun build
- *     --compile cleanly (no runtime package.json reads, no native bindings,
- *     no computed-path dynamic imports — CLAUDE.md §1/§3).
+ * The ZIP bytes are produced by fflate's streaming Zip/ZipPassThrough (STORE
+ * method — no compression), replacing the previous hand-rolled writer (#86).
+ * fflate is pure JS with zero dependencies, no runtime package.json/data
+ * reads, and no computed-path dynamic imports, so it bundles cleanly under
+ * bun build --compile (CLAUDE.md §1/§3). It is already a dependency (publish
+ * providers use its unzipSync).
  *
- * Verification (assertZipReadable / zipEntries): parses the EOCD + central
- * directory. assertZipReadable validates EVERY central-directory entry's
- * signature and bounds (not just the first) via positioned reads of the central
- * directory only — never the file data — so it stays memory-safe on multi-GB
- * backups while still catching corruption in any later entry. For STORE entries,
- * stored bytes ARE the file bytes, so a content check needs no inflate. The same
- * reader backs test zip-assertions helpers.
+ * Verification (assertZipReadable): deliberately NOT fflate. It validates
+ * EVERY central-directory entry's signature and bounds (not just the first)
+ * via positioned reads of the EOCD + central directory only — never the file
+ * data — so it stays memory-safe on multi-GB backups while still catching
+ * corruption in any later entry. fflate's unzip needs the whole archive in
+ * memory, so it cannot back this check; the small positioned-read parser
+ * stays.
  *
  * Retention: createRecoveryZip prunes stale backups (best-effort, never throws)
  * before writing a new one — see pruneOldBackups — so old backups do not fill
@@ -44,50 +42,9 @@ import { mkdir, open, readdir, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { Zip, ZipPassThrough, unzipSync } from "fflate";
+
 import type { RecoveryBackup, RecoveryContext } from "./types.ts";
-
-// ── CRC-32 (inlined, INCREMENTAL — bounded memory for streaming) ─────────────
-
-const CRC_TABLE: Uint32Array = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) {
-      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    }
-    t[n] = c;
-  }
-  return t;
-})();
-
-const CRC_INIT = 0xffffffff;
-function crc32Update(crc: number, buf: Uint8Array): number {
-  let c = crc;
-  for (let i = 0; i < buf.length; i++) {
-    c = CRC_TABLE[(c ^ buf[i]!) & 0xff]! ^ (c >>> 8);
-  }
-  return c >>> 0;
-}
-function crc32Final(crc: number): number {
-  return (crc ^ 0xffffffff) >>> 0;
-}
-
-// ── ZIP byte helpers ──────────────────────────────────────────────────────────
-
-function writeUint16LE(buf: Buffer, offset: number, val: number): void {
-  buf.writeUInt16LE(val & 0xffff, offset);
-}
-function writeUint32LE(buf: Buffer, offset: number, val: number): void {
-  buf.writeUInt32LE(val >>> 0, offset);
-}
-
-/** Write to a stream with backpressure (await `drain` when the buffer is full). */
-async function writeChunk(
-  stream: import("node:fs").WriteStream,
-  buf: Uint8Array,
-): Promise<void> {
-  if (!stream.write(buf)) await once(stream, "drain");
-}
 
 // ── File walker ───────────────────────────────────────────────────────────────
 
@@ -103,8 +60,9 @@ const EXCLUDED_PATHS = [".print-sync/cache", ".git/config"];
 function isExcluded(relPath: string): boolean {
   // Normalize to forward slashes so prefix matching is separator-agnostic.
   const normalized = relPath.split(path.sep).join("/");
-  const parts = normalized.split("/");
-  if (parts[0] && EXCLUDED_DIRS.has(parts[0])) return true;
+  // An excluded dir name is excluded at ANY depth, not just the repo root —
+  // a nested examples/site/node_modules must not balloon the backup.
+  if (normalized.split("/").some((part) => EXCLUDED_DIRS.has(part))) return true;
   return EXCLUDED_PATHS.some((p) => normalized === p || normalized.startsWith(p + "/"));
 }
 
@@ -273,15 +231,33 @@ export async function createRecoveryZip(
   relPaths.sort();
 
   // STREAM each file's bytes straight to disk — NEVER hold the whole repo (or a
-  // large packfile) in memory. Memory use is O(one chunk + the central
-  // directory headers), not O(repo size). This is what makes the backup safe on
-  // large repos (the old whole-buffer writer OOM'd on a big .git). Uses ZIP
-  // data descriptors (flag bit 3) so the CRC/size — unknown until the file has
-  // been streamed — are written AFTER the data, keeping it a single read pass.
+  // large packfile) in memory. Memory use is O(one chunk), not O(repo size),
+  // which is what makes the backup safe on large repos (a whole-buffer writer
+  // OOM'd on a big .git). fflate's streaming Zip emits its output synchronously
+  // from push(), so `pending` only ever holds the chunks of the one push being
+  // flushed; ZipPassThrough keeps the STORE method (raw bytes + CRC, written
+  // via a trailing data descriptor — a single read pass per file).
   const names: string[] = [];
-  const central: Buffer[] = [];
   const out = createWriteStream(zipPath);
-  let offset = 0;
+  const pending: Uint8Array[] = [];
+  let zipError: Error | null = null;
+  const zip = new Zip((err, chunk) => {
+    if (err) {
+      zipError ??= err;
+      return;
+    }
+    pending.push(chunk);
+  });
+
+  /** Drain fflate's emitted chunks into the file with write-stream backpressure. */
+  async function flushPending(): Promise<void> {
+    if (zipError) throw zipError;
+    while (pending.length > 0) {
+      const chunk = pending.shift()!;
+      if (!out.write(chunk)) await once(out, "drain");
+    }
+  }
+
   try {
     for (const rel of relPaths) {
       const abs = path.join(ctx.repoDir, rel);
@@ -294,78 +270,26 @@ export async function createRecoveryZip(
       if (!st.isFile()) continue;
 
       const name = rel.split(path.sep).join("/");
-      const nameBytes = Buffer.from(name, "utf8");
-      const localOffset = offset;
-
-      // Local file header (crc/sizes deferred to the data descriptor → 0 here).
-      const lh = Buffer.alloc(30 + nameBytes.length, 0);
-      writeUint32LE(lh, 0, 0x04034b50);
-      writeUint16LE(lh, 4, 20);
-      writeUint16LE(lh, 6, 0x0008); // bit 3: sizes/crc in a trailing data descriptor
-      writeUint16LE(lh, 8, 0); // STORE
-      writeUint16LE(lh, 26, nameBytes.length);
-      nameBytes.copy(lh, 30);
-      await writeChunk(out, lh);
-      offset += lh.length;
-
-      // Stream the file data, computing CRC + size incrementally.
-      let crc = CRC_INIT;
-      let size = 0;
+      const entry = new ZipPassThrough(name);
+      zip.add(entry);
       try {
         const rs = createReadStream(abs);
         for await (const chunk of rs as AsyncIterable<Buffer>) {
-          crc = crc32Update(crc, chunk);
-          size += chunk.length;
-          await writeChunk(out, chunk);
-          offset += chunk.length;
+          entry.push(chunk);
+          await flushPending();
         }
       } catch {
-        // File vanished/locked mid-read — the data descriptor still closes the
-        // entry consistently with whatever bytes were written.
+        // File vanished/locked mid-read — the final push below still closes
+        // the entry consistently with whatever bytes were written.
       }
-      crc = crc32Final(crc);
-
-      // Data descriptor (with signature): crc, compressed size, uncompressed size.
-      const dd = Buffer.alloc(16, 0);
-      writeUint32LE(dd, 0, 0x08074b50);
-      writeUint32LE(dd, 4, crc);
-      writeUint32LE(dd, 8, size);
-      writeUint32LE(dd, 12, size);
-      await writeChunk(out, dd);
-      offset += dd.length;
-
-      // Central directory entry (real crc/size; carries the data-descriptor flag).
-      const cd = Buffer.alloc(46 + nameBytes.length, 0);
-      writeUint32LE(cd, 0, 0x02014b50);
-      writeUint16LE(cd, 4, 20);
-      writeUint16LE(cd, 6, 20);
-      writeUint16LE(cd, 8, 0x0008);
-      writeUint16LE(cd, 10, 0);
-      writeUint32LE(cd, 16, crc);
-      writeUint32LE(cd, 20, size);
-      writeUint32LE(cd, 24, size);
-      writeUint16LE(cd, 28, nameBytes.length);
-      writeUint32LE(cd, 42, localOffset);
-      nameBytes.copy(cd, 46);
-      central.push(cd);
+      entry.push(new Uint8Array(0), true);
+      await flushPending();
       names.push(name);
     }
 
     // Central directory + end-of-central-directory record.
-    const cdStart = offset;
-    for (const cd of central) {
-      await writeChunk(out, cd);
-      offset += cd.length;
-    }
-    const cdSize = offset - cdStart;
-
-    const eocd = Buffer.alloc(22, 0);
-    writeUint32LE(eocd, 0, 0x06054b50);
-    writeUint16LE(eocd, 8, names.length);
-    writeUint16LE(eocd, 10, names.length);
-    writeUint32LE(eocd, 12, cdSize);
-    writeUint32LE(eocd, 16, cdStart);
-    await writeChunk(out, eocd);
+    zip.end();
+    await flushPending();
   } finally {
     await new Promise<void>((resolve, reject) => {
       out.on("error", reject);
@@ -391,49 +315,23 @@ export async function createRecoveryZip(
 export interface ZipEntryInfo {
   name: string;
   size: number;
-  /** For STORE entries, this is the raw file content. */
+  /** The extracted file content. */
   data: Uint8Array;
 }
 
 /**
- * Parse the central directory of a ZIP buffer and return entry info.
- * Works for STORE-method (no compression) zips only — the ones we write.
+ * Extract every entry of a ZIP buffer (fflate unzipSync). Returns [] for a
+ * buffer that is not a parseable zip — matching the old hand-rolled parser's
+ * "no EOCD found" behavior that some assertions rely on.
  */
 export function parseZipEntries(buf: Buffer): ZipEntryInfo[] {
-  // Find EOCD signature (0x06054b50) from the end.
-  let eocdOffset = -1;
-  for (let i = buf.length - 22; i >= 0; i--) {
-    if (buf.readUInt32LE(i) === 0x06054b50) {
-      eocdOffset = i;
-      break;
-    }
+  let files: Record<string, Uint8Array>;
+  try {
+    files = unzipSync(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
+  } catch {
+    return [];
   }
-  if (eocdOffset < 0) return [];
-
-  const cdOffset = buf.readUInt32LE(eocdOffset + 16);
-  const cdCount = buf.readUInt16LE(eocdOffset + 8);
-
-  const entries: ZipEntryInfo[] = [];
-  let pos = cdOffset;
-  for (let i = 0; i < cdCount; i++) {
-    if (buf.readUInt32LE(pos) !== 0x02014b50) break;
-    const nameLen = buf.readUInt16LE(pos + 28);
-    const extraLen = buf.readUInt16LE(pos + 30);
-    const commentLen = buf.readUInt16LE(pos + 32);
-    const size = buf.readUInt32LE(pos + 24); // uncompressed size
-    const localOffset = buf.readUInt32LE(pos + 42);
-    const name = buf.subarray(pos + 46, pos + 46 + nameLen).toString("utf8");
-
-    // For STORE entries, data starts right after the local file header.
-    const localNameLen = buf.readUInt16LE(localOffset + 26);
-    const localExtraLen = buf.readUInt16LE(localOffset + 28);
-    const dataStart = localOffset + 30 + localNameLen + localExtraLen;
-    const data = buf.subarray(dataStart, dataStart + size);
-
-    entries.push({ name, size, data });
-    pos += 46 + nameLen + extraLen + commentLen;
-  }
-  return entries;
+  return Object.entries(files).map(([name, data]) => ({ name, size: data.length, data }));
 }
 
 /**

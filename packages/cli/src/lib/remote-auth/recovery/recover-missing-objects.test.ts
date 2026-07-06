@@ -26,9 +26,9 @@
  *   I9. Guidance present in every non-recovered result.
  */
 
-import { describe, expect, test, beforeEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as nodeFs from "node:fs";
-import { readFile, writeFile, rm } from "node:fs/promises";
+import { writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir as freshTempDir } from "../../../test-helpers/testkit";
 

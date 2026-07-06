@@ -37,11 +37,32 @@ test("plain folder → local-only, no remote, nothing syncable", async () => {
     expect(diag.remoteUrl).toBeUndefined();
     expect(diag.credentialPresent).toBe(false);
     expect(diag.provider).toBeNull();
-    expect(diag.canPublishWhenImplemented).toBe(false);
     expect(diag.guidance).toBe("local-only");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("a pre-classified source is used as-is — no re-classification (#87)", async () => {
+  // The projectDir deliberately does NOT exist: if diagnoseProjectRemote
+  // re-classified instead of honoring options.source, the result would be a
+  // remote-less local-folder diagnosis, not the git diagnosis below.
+  const ghost = path.join("/tmp", "pmd-diag-does-not-exist-xyz");
+  const diag = await diagnoseProjectRemote(ghost, {
+    source: {
+      type: "local-git-folder",
+      path: ghost,
+      repoRoot: ghost,
+      subPath: "",
+      hasRemote: true,
+      remoteUrl: "https://github.com/me/book.git",
+      branch: "main",
+    },
+  });
+  expect(diag.classification.type).toBe("local-git-folder");
+  expect(diag.remoteProtocol).toBe("https");
+  expect(diag.branch).toBe("main");
+  expect(diag.guidance).toBe("connect-github-to-sync");
 });
 
 test("git folder without a remote → local-only with branch", async () => {
@@ -67,7 +88,6 @@ test("HTTPS github remote without credential → connect-github-to-sync", async 
     expect(diag.remoteHost).toBe("github.com");
     expect(diag.provider).toBe("github");
     expect(diag.credentialPresent).toBe(false);
-    expect(diag.canPublishWhenImplemented).toBe(false);
     expect(diag.guidance).toBe("connect-github-to-sync");
     expect(diag.tokenSettingsUrl).toBeNull(); // GitHub = managed flow, no token page
   } finally {
@@ -93,7 +113,6 @@ test("HTTPS gitea remote with stored credential → ready-to-sync + token link",
     const diag = await diagnoseProjectRemote(dir, { tokenStore: store });
     expect(diag.provider).toBe("gitea");
     expect(diag.credentialPresent).toBe(true);
-    expect(diag.canPublishWhenImplemented).toBe(true);
     expect(diag.guidance).toBe("ready-to-sync");
     expect(diag.tokenSettingsUrl).toBe(
       "https://gitea.example.com/user/settings/applications",
@@ -110,7 +129,6 @@ test("HTTPS non-GitHub remote without credential → https-connect-server", asyn
     const diag = await diagnoseProjectRemote(dir);
     expect(diag.provider).toBe("generic");
     expect(diag.guidance).toBe("https-connect-server");
-    expect(diag.canPublishWhenImplemented).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -133,7 +151,6 @@ test("SSH remote → ssh-use-own-tools, never syncable, host still recognized", 
     expect(diag.remoteHost).toBe("github.com");
     expect(diag.provider).toBe("github"); // drives the "switch to HTTPS" hint
     expect(diag.credentialPresent).toBe(true);
-    expect(diag.canPublishWhenImplemented).toBe(false);
     expect(diag.guidance).toBe("ssh-use-own-tools");
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -148,7 +165,6 @@ test("unparseable remote URL → protocol none, provider null, local-only", asyn
     expect(diag.remoteProtocol).toBe("none");
     expect(diag.provider).toBeNull();
     expect(diag.tokenSettingsUrl).toBeNull();
-    expect(diag.canPublishWhenImplemented).toBe(false);
     expect(diag.guidance).toBe("local-only");
   } finally {
     await rm(dir, { recursive: true, force: true });

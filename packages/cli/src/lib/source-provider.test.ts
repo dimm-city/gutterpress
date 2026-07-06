@@ -659,7 +659,6 @@ test("a marker left AFTER a successful commit does not create a phantom empty sn
   const dir = await tempDir();
   try {
     const provider = await initProject(dir);
-    const gitMod = (await import("isomorphic-git")).default;
     const fsMod = await import("node:fs");
 
     // A real snapshot that completes normally.

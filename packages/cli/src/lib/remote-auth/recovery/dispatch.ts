@@ -44,7 +44,6 @@ import { recover as recoverInterruptedMerge, stillApplies as interruptedMergeSti
 // ── Unknown-kind fallback ─────────────────────────────────────────────────────
 
 import { failSafeNoRepair } from "./failsafe.ts";
-import { makeManualGuidance } from "./manual-guidance.ts";
 
 /**
  * Fallback for the 'unknown' kind — no repair is attempted.

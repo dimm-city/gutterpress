@@ -126,7 +126,7 @@ export const recover: RecoverFn = async (ctx, error?) => {
     }
 
     // Confirm .git is now accessible.
-    const branch = await git.currentBranch({ fs, dir: ctx.repoDir });
+    await git.currentBranch({ fs, dir: ctx.repoDir });
 
     const guidance = makeManualGuidance(ctx, KIND, error, backupZipPath);
 

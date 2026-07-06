@@ -20,10 +20,20 @@
 
 import path from "node:path";
 
-import { detectProjectSource } from "../../project-source.ts";
+import { detectProjectSource, type ProjectSource } from "../../project-source.ts";
 import { diagnoseProjectRemote } from "../diagnose.ts";
-import type { HostCredential, TokenStore } from "../token-store.ts";
+import {
+  extractUrlCredential,
+  type HostCredential,
+  type TokenStore,
+} from "../token-store.ts";
 import type { ConfirmationGate, RecoveryContext } from "./types.ts";
+
+/** Strip any credential embedded in a classification's remote URL (D7). */
+function sanitizeSource(source: ProjectSource | null): ProjectSource | null {
+  if (!source || source.type !== "local-git-folder" || !source.remoteUrl) return source;
+  return { ...source, remoteUrl: extractUrlCredential(source.remoteUrl).cleanUrl };
+}
 
 export interface BuildRecoveryContextOptions {
   /** The directory the user opened (may be a subfolder of its repo). */
@@ -36,6 +46,14 @@ export interface BuildRecoveryContextOptions {
   authorName?: string;
   /** Operation-log file shared with the sync path. */
   logFile?: string;
+  /**
+   * Classification override (tests only — omit in production). Injected the
+   * same way as RecoveryContext's `now`/`faults`: bun's mock.module leaks
+   * across test files, so cross-cutting modules are never module-mocked.
+   */
+  classify?: typeof detectProjectSource;
+  /** Diagnosis override (tests only — omit in production). See `classify`. */
+  diagnose?: typeof diagnoseProjectRemote;
 }
 
 /** Resolve everything a recovery handler needs from a project directory. */
@@ -43,17 +61,22 @@ export async function buildRecoveryContext(
   options: BuildRecoveryContextOptions,
 ): Promise<RecoveryContext> {
   const { projectDir, confirmation, tokenStore, authorName, logFile } = options;
+  const classify = options.classify ?? detectProjectSource;
+  const diagnose = options.diagnose ?? diagnoseProjectRemote;
 
-  const source = await detectProjectSource(projectDir).catch(() => null);
+  // Classified ONCE here, then threaded into diagnoseProjectRemote below and
+  // stored on the context for inspectRepo — the recovery path never re-walks
+  // parent dirs to re-classify the same folder (#87).
+  const source = await classify(projectDir).catch(() => null);
   const gitSource = source && source.type === "local-git-folder" ? source : null;
   const repoDir = gitSource ? gitSource.repoRoot || gitSource.path : projectDir;
 
-  const diag = await diagnoseProjectRemote(projectDir, { tokenStore }).catch(() => ({
-    branch: undefined as string | undefined,
-    remoteUrl: undefined as string | undefined,
-  }));
-  const branch = diag.branch ?? gitSource?.branch ?? "main";
-  const remoteUrl = diag.remoteUrl;
+  const diag = await diagnose(projectDir, {
+    tokenStore,
+    ...(source ? { source } : {}),
+  }).catch(() => null);
+  const branch = diag?.branch ?? gitSource?.branch ?? "main";
+  const remoteUrl = diag?.remoteUrl;
 
   let credential: HostCredential | undefined;
   if (remoteUrl && tokenStore) {
@@ -70,6 +93,12 @@ export async function buildRecoveryContext(
   return {
     projectDir,
     repoDir,
+    // Stored SANITIZED (diagnose strips credentials embedded in the remote
+    // URL — D7). If the defensive diagnose catch above fired, fall back to
+    // the source classified at the top of this function (sanitized the same
+    // way) — a diagnose failure must not force consumers (inspectRepo) to
+    // re-walk parent dirs. null only when classification itself failed.
+    source: diag?.classification ?? sanitizeSource(source),
     branch,
     remoteUrl,
     repoSlug,

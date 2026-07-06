@@ -25,11 +25,11 @@
  * bun:test only — never Vitest.
  */
 
-import { describe, expect, test, beforeEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { makeTempDir } from "../../../test-helpers/testkit";
+import { initRepo as tkInitRepo, makeTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
@@ -44,7 +44,6 @@ import type {
 import {
   createFixtureRepo,
   startGitServer,
-  tempDir,
 } from "../test-support/git-http-server.ts";
 import { cloneRepository } from "../clone.ts";
 
@@ -87,13 +86,8 @@ function makeRemoteCtx(
   };
 }
 
-/** Initialize a minimal local repo with one commit on main. */
-async function initRepo(dir: string): Promise<string> {
-  await git.init({ fs, dir, defaultBranch: "main" });
-  await writeFile(path.join(dir, "chapter-01.md"), "# Chapter One\n\nInitial content.\n");
-  await git.add({ fs, dir, filepath: "chapter-01.md" });
-  return git.commit({ fs, dir, message: "initial commit", author: AUTHOR });
-}
+/** Initialize a minimal local repo with one commit on main (testkit initRepo, this file's author). */
+const initRepo = (dir: string) => tkInitRepo(dir, { author: AUTHOR });
 
 /** Detach HEAD to the given commit SHA (write HEAD directly). */
 async function detachHead(repoDir: string, commitSha: string): Promise<void> {
@@ -114,57 +108,6 @@ async function resolveMain(repoDir: string): Promise<string> {
 /** List all local branch names. */
 async function listBranches(repoDir: string): Promise<string[]> {
   return git.listBranches({ fs, dir: repoDir });
-}
-
-// ── Spy: assert no push was called with force:true ────────────────────────────
-//
-// The spec is "NEVER force:true on any push". We wrap httpClient to capture all
-// receive-pack ref-update lines and assert oldOid is never all-zeros (a
-// force/create-ref push with no expected old value). For simplicity we only need
-// to verify push was not destructive — checking the pkt-line body is overkill
-// here; instead we just count real push calls.
-
-interface PushSpy {
-  pushCallCount: number;
-  forcePushDetected: boolean;
-  httpClient: typeof httpNode;
-}
-
-function makePushSpy(): PushSpy {
-  const spy: PushSpy = {
-    pushCallCount: 0,
-    forcePushDetected: false,
-    httpClient: {
-      async request(opts: Parameters<typeof httpNode.request>[0]) {
-        // Detect push (receive-pack) requests.
-        if (
-          typeof opts.url === "string" &&
-          opts.url.includes("git-receive-pack")
-        ) {
-          spy.pushCallCount++;
-          // Check pkt-line commands for force indicators: if oldOid is
-          // 0000000000000000000000000000000000000000 on an UPDATE (not a
-          // create-new-ref), that signals a force push. For this test suite
-          // we just flag any receive-pack request that contains a zero old-oid
-          // followed by a non-zero new-oid on an existing ref as suspicious.
-          // A simpler and reliable check: collect the body lines.
-          const body = await opts.body;
-          let bodyText = "";
-          if (body) {
-            for await (const chunk of body as AsyncIterable<Uint8Array>) {
-              bodyText += Buffer.from(chunk).toString("binary");
-            }
-          }
-          if (bodyText.includes("force")) {
-            spy.forcePushDetected = true;
-          }
-        }
-        // Delegate to the real httpNode.
-        return httpNode.request(opts);
-      },
-    } as unknown as typeof httpNode,
-  };
-  return spy;
 }
 
 // ── Case A: clean detached HEAD, commit reachable from branch ─────────────────
@@ -841,12 +784,8 @@ describe("recover detached_head — safety: guidance fields always present", () 
 // out onto "main" (which silently relocates work for any non-"main" repo).
 
 /** Initialize a minimal local repo whose only branch is the given name. */
-async function initRepoOnBranch(dir: string, branch: string): Promise<string> {
-  await git.init({ fs, dir, defaultBranch: branch });
-  await writeFile(path.join(dir, "chapter-01.md"), "# Chapter One\n\nInitial content.\n");
-  await git.add({ fs, dir, filepath: "chapter-01.md" });
-  return git.commit({ fs, dir, message: "initial commit", author: AUTHOR });
-}
+const initRepoOnBranch = (dir: string, branch: string) =>
+  tkInitRepo(dir, { branch, author: AUTHOR });
 
 describe("recover detached_head — BUG 1: branch discovery when ctx.branch is empty", () => {
   test("repo whose only branch is 'master' recovers onto 'master', not 'main'", async () => {

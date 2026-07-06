@@ -35,22 +35,19 @@
 
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { tmpdir } from "node:os";
 
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
 import {
-  pullChanges,
   resolveConflicts,
   type ConflictFile,
   type ConflictResolution,
 } from "../sync.ts";
 import { cloneRepository } from "../clone.ts";
 import {
-  createFixtureRepo,
   startGitServer,
   tempDir,
   type GitServer,
@@ -59,7 +56,6 @@ import type {
   RecoveryContext,
   RecoveryResult,
   FaultPoint,
-  ConfirmationGate,
 } from "./types.ts";
 // The handler under test — does not exist yet (TDD: FAIL FIRST).
 import { recover } from "./recover-binary-conflict.ts";

@@ -1,6 +1,5 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 // htmlhint's package main is a UMD/CJS module. Node's ESM loader (Electron's
 // runtime) cannot extract the NAMED export `{ HTMLHint }` from it — it throws
 // "does not provide an export named 'HTMLHint'". A default import returns the
@@ -8,23 +7,12 @@ import { resolve } from "node:path";
 // about the named form, which is why this only failed in the Node-based viewer.)
 import htmlhint from "htmlhint";
 import { registerCheck } from "../registry";
+import { findConfigFile } from "./config-file";
 import type { Check, CheckContext, CheckResult } from "../types";
 
 const { HTMLHint } = htmlhint;
 
 const CONFIG_NAMES = [".htmlhintrc"];
-
-function findConfig(inputDir: string, explicit?: string | null): string | null {
-  if (explicit) {
-    const p = resolve(inputDir, explicit);
-    return existsSync(p) ? p : null;
-  }
-  for (const name of CONFIG_NAMES) {
-    const p = resolve(inputDir, name);
-    if (existsSync(p)) return p;
-  }
-  return null;
-}
 
 const check: Check = {
   id: "source.htmlhint",
@@ -43,7 +31,7 @@ const check: Check = {
       typeof sourceConfig.htmlhint === "string"
         ? sourceConfig.htmlhint
         : null;
-    const resolvedConfig = findConfig(ctx.inputDir, configPath);
+    const resolvedConfig = findConfigFile(ctx.inputDir, CONFIG_NAMES, configPath);
 
     if (!resolvedConfig && !configPath) return [];
 

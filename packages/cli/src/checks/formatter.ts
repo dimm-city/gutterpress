@@ -15,6 +15,16 @@ export function formatReport(
 }
 
 function formatText(report: RunnerReport): void {
+  // Ascending severity — infos, then warnings, then errors — so the most
+  // severe findings sit directly above the verdict line and stay visible
+  // when a long report scrolls the terminal. (Previously errors were
+  // sandwiched between warnings and infos.)
+  for (const r of report.infos) {
+    const loc = formatLocation(r.file, r.line, r.column);
+    log.info(`${loc}${r.message}`);
+    if (r.detail) log.info(`  ${r.detail}`);
+  }
+
   for (const r of report.warnings) {
     const loc = formatLocation(r.file, r.line, r.column);
     log.warn(`${loc}${r.message}`);
@@ -25,12 +35,6 @@ function formatText(report: RunnerReport): void {
     const loc = formatLocation(r.file, r.line, r.column);
     log.error(`${loc}${r.message}`);
     if (r.detail) log.error(`  ${r.detail}`);
-  }
-
-  for (const r of report.infos) {
-    const loc = formatLocation(r.file, r.line, r.column);
-    log.info(`${loc}${r.message}`);
-    if (r.detail) log.info(`  ${r.detail}`);
   }
 
   const { summary } = report;

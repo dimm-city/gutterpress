@@ -13,7 +13,6 @@ import { mkdir, remove, copyDirectory, fileExists } from '../utils/file-utils';
 import { info, debug, warn } from '../utils/logger';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { copyAssets } from '../lib/assets';
-import type { PreviewServerOptions } from '../types';
 import type { ResolvedConfig } from '../schema/manifest.types';
 import type { ServerState } from './server-context';
 import { generateAndWriteHtml, stopFileWatcher, startFileWatcher } from './file-watcher';
@@ -104,7 +103,7 @@ export async function initializePreviewDirectories(
   if (inputPath && config?.source?.assets) {
     await copyAssets(inputPath, tempDir, config.source.assets, {
       onCopy: (assetPath) => debug(`Copied manifest asset: ${assetPath}`),
-      onSkip: (assetPath, srcPath) => debug(`Manifest asset not found: ${srcPath} (skipping)`),
+      onSkip: (_assetPath, srcPath) => debug(`Manifest asset not found: ${srcPath} (skipping)`),
       onCollision: ({ destName, fileName, winnerAsset, loserAsset }) =>
         warn(
           `Asset collision: "${winnerAsset}/${fileName}" overwrites "${loserAsset}/${fileName}" ` +

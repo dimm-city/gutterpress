@@ -23,7 +23,7 @@
 
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import git from "isomorphic-git";

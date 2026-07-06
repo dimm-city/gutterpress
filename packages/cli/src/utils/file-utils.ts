@@ -25,15 +25,6 @@ export async function writeFile(filePath: string, content: string): Promise<void
 }
 
 /**
- * Resolve a file path to absolute
- * If already absolute, returns as-is
- * If relative, resolves from current working directory
- */
-export function resolveAbsolutePath(filePath: string): string {
-  return path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
-}
-
-/**
  * Check if a file exists
  */
 export async function fileExists(filePath: string): Promise<boolean> {

@@ -14,7 +14,6 @@ import {
   success,
   silence,
   reset,
-  type LogLevel,
 } from './logger.ts';
 
 describe('Logger', () => {

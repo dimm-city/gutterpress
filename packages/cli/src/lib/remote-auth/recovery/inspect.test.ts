@@ -112,6 +112,42 @@ describe("inspectRepo — present-but-corrupt .git (HEAD missing/garbage)", () =
   });
 });
 
+describe("inspectRepo — pre-classified ctx.source is reused (#87)", () => {
+  test("resolves the git root from ctx.source without re-classifying repoDir", async () => {
+    const repoRoot = await makeTempDir();
+    await makeCleanRepo(repoRoot);
+    // A repoDir that classification would call a plain folder: if inspectRepo
+    // re-classified instead of honoring ctx.source, it would look for .git
+    // here and report hasGitDir=false.
+    const elsewhere = await makeTempDir();
+
+    const health = await inspectRepo({
+      repoDir: elsewhere,
+      source: {
+        type: "local-git-folder",
+        path: repoRoot,
+        repoRoot,
+        subPath: "",
+        hasRemote: false,
+      },
+    });
+
+    expect(health.hasGitDir).toBe(true);
+    expect(health.currentBranch).toBe("main");
+  });
+
+  test("source=null (classification failed at context build) still classifies here", async () => {
+    const root = await makeTempDir();
+    await makeCleanRepo(root);
+    const sub = path.join(root, "book");
+    fs.mkdirSync(sub, { recursive: true });
+
+    const health = await inspectRepo({ repoDir: sub, source: null });
+
+    expect(health.hasGitDir).toBe(true);
+  });
+});
+
 describe("inspectRepo — opened at a SUBFOLDER of the repo (regression)", () => {
   // A project is often opened at a subfolder of its git repo ("opening a
   // subfolder syncs the whole repo"). inspectRepo MUST resolve the real git

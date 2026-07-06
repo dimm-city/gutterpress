@@ -30,9 +30,9 @@
  * bun:test only.
  */
 
-import { describe, expect, test, beforeEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir as freshTempDir } from "../../../test-helpers/testkit";
 
@@ -104,20 +104,6 @@ const DENY_GATE: ConfirmationGate = {
 const APPROVE_GATE: ConfirmationGate = {
   confirmRepair: async () => true,
 };
-
-// ── Helpers for remote state checks ──────────────────────────────────────────
-
-/**
- * Record the HEAD oid of a remote fixture repo so tests can assert it did
- * not change after a failed/blocked recovery.
- */
-async function remoteHead(remoteDir: string): Promise<string> {
-  try {
-    return await git.resolveRef({ fs, dir: remoteDir, ref: "HEAD" });
-  } catch {
-    return "";
-  }
-}
 
 // ── Test: happy path ──────────────────────────────────────────────────────────
 

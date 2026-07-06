@@ -143,7 +143,7 @@ export default defineCommand({
       tokenStore: new FileTokenStore(defaultConfigDir()),
     });
 
-    const health = await inspectRepo({ repoDir: ctx.repoDir });
+    const health = await inspectRepo({ repoDir: ctx.repoDir, source: ctx.source });
     // minLockAgeMs: 0 — a stuck lock the author is asking us to look at right
     // now should be diagnosed regardless of age; the stale-lock HANDLER still
     // re-checks age itself and returns retry_later while the lock is fresh,

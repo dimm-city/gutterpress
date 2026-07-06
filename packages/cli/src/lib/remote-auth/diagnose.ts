@@ -72,14 +72,6 @@ export interface ProjectRemoteDiagnosis {
    * gate, not a future-capability hint.
    */
   canSync: boolean;
-  /**
-   * @deprecated Same value as {@link canSync}. Do not use in new code —
-   * this field will be removed once all callers have migrated to `canSync`.
-   * (Terminology note: the concept formerly called "publish" is now "Sync";
-   * "Publish" is reserved for publishing output to distribution targets, #35.
-   * The alias keeps its original name for shape stability.)
-   */
-  canPublishWhenImplemented: boolean;
   guidance: RemoteGuidanceId;
 }
 
@@ -123,6 +115,12 @@ export function forgeKindForHost(host: string): ForgeKind {
 export interface DiagnoseProjectRemoteOptions {
   /** Host-keyed credential store to check for a stored connection. */
   tokenStore?: TokenStore;
+  /**
+   * Pre-classified source for `projectDir`, when the caller already ran
+   * detectProjectSource (e.g. buildRecoveryContext). Skips the redundant
+   * parent-dir walk; when omitted, classification runs here as before.
+   */
+  source?: ProjectSource;
 }
 
 /**
@@ -134,7 +132,7 @@ export async function diagnoseProjectRemote(
   projectDir: string,
   options: DiagnoseProjectRemoteOptions = {},
 ): Promise<ProjectRemoteDiagnosis> {
-  const classification = await detectProjectSource(projectDir);
+  const classification = options.source ?? (await detectProjectSource(projectDir));
 
   const rawRemoteUrl =
     classification.type === "local-git-folder" ? classification.remoteUrl : undefined;
@@ -150,7 +148,6 @@ export async function diagnoseProjectRemote(
       provider: null,
       tokenSettingsUrl: null,
       canSync: false,
-      canPublishWhenImplemented: false,
       guidance: "local-only",
     };
   }
@@ -194,7 +191,6 @@ export async function diagnoseProjectRemote(
     provider,
     tokenSettingsUrl: host ? knownForgeTokenUrl(host) : null,
     canSync,
-    canPublishWhenImplemented: canSync,
     guidance,
   };
 }

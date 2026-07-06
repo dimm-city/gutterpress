@@ -21,11 +21,8 @@
 
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { makeTempDir as freshTempDir } from "../../../test-helpers/testkit";
-
-import git from "isomorphic-git";
+import { makeTempDir as freshTempDir, makeTestRepo } from "../../../test-helpers/testkit";
 
 import { assertZipReadable, BACKUP_ROOT } from "./backup.ts";
 import { withBackupGate, failSafeNoRepair } from "./failsafe.ts";
@@ -40,15 +37,6 @@ import type {
 
 async function makeTempDir(): Promise<string> {
   return freshTempDir("failsafe-test-");
-}
-
-/** Create a minimal git repo with at least one file so the zip is non-empty. */
-async function makeTestRepo(dir: string): Promise<void> {
-  await git.init({ fs, dir, defaultBranch: "main" });
-  await writeFile(path.join(dir, "chapter-01.md"), "# Chapter One\n\nContent.\n");
-  await git.add({ fs, dir, filepath: "chapter-01.md" });
-  const author = { name: "Test Author", email: "test@test.local" };
-  await git.commit({ fs, dir, message: "initial", author });
 }
 
 // ── Context builder ───────────────────────────────────────────────────────────

@@ -23,7 +23,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as nodeFs from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import git from "isomorphic-git";
@@ -40,9 +40,7 @@ import {
 import type {
   ConfirmationGate,
   FaultInjector,
-  FaultPoint,
   RecoveryContext,
-  RecoveryResult,
 } from "./types.ts";
 
 // ── Import the handler under test ─────────────────────────────────────────────

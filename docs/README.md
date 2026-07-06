@@ -122,7 +122,6 @@ docs/
 ├── best-practices.md                      # Extended reference for best practices
 ├── contextual-cascade-principle.md        # ★ Recommended CSS architecture pattern
 ├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
-├── adr/                                   # Architecture Decision Records
 ├── migrations/                            # Migration guides
 │   └── 2026-05-removing-container-syntax.md
 └── [other files are redirects to User Guide chapters]

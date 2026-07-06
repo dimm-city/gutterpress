@@ -48,7 +48,7 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | Set up system tools (Chromium, Ghostscript, qpdf, etc) | [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) |
 | Develop / contribute to print-md itself | [CONTRIBUTING](./CONTRIBUTING.md) · [Architecture](./docs/ARCHITECTURE.md) |
 
-See [docs/](./docs/) for technical architecture, ADRs, and developer references.
+See [docs/](./docs/) for technical architecture and developer references.
 
 ## What print-md can do
 
