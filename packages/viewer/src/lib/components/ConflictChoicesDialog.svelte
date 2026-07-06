@@ -52,7 +52,23 @@
   let choices = $state<Record<string, "mine" | "theirs" | "both">>({});
   let phase = $state<"choosing" | "resolving" | "done" | "error">("choosing");
   let errorMessage = $state<string | null>(null);
+  /**
+   * What the current error is actually about — set alongside errorMessage at
+   * the same point in confirm(), so the header can be a function of state the
+   * same way the body already is (visual-gate round 1 finding: a static
+   * "file conflict" title was shown over the unrelated connection-setup
+   * error). Any future non-conflict error state reusing this dialog shell
+   * should add a case here rather than leaving the header hardcoded.
+   */
+  let errorKind = $state<"conflict" | "connection-setup">("conflict");
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
+
+  /** Header icon + title as a function of the dialog's current state. */
+  const header = $derived(
+    phase === "error" && errorKind === "connection-setup"
+      ? { icon: "link" as const, title: "Your online connection needs to be set up again" }
+      : { icon: "triangle-alert" as const, title: "Changes happened in two places" },
+  );
 
   /** Track which file disclosures are expanded (path → boolean). */
   let previewExpanded = $state<Record<string, boolean>>({});
@@ -62,6 +78,7 @@
   function onDialogMount(_el: HTMLElement) {
     phase = "choosing";
     errorMessage = null;
+    errorKind = "conflict";
     previewExpanded = {};
     previewCache = {};
     choices = Object.fromEntries(
@@ -130,6 +147,7 @@
     if (!projectDir || !localId || !remoteId || phase === "resolving") return;
     phase = "resolving";
     errorMessage = null;
+    errorKind = "conflict";
     const resolutions: ConflictResolutionChoice[] = files.map((f) => ({
       path: f.path,
       choice: choices[f.path] ?? "both",
@@ -166,6 +184,7 @@
         // "auth" branch above uses; the author's per-file choices are left
         // untouched so they can close this dialog and pick up later.
         phase = "error";
+        errorKind = "connection-setup";
         errorMessage =
           "This project needs its online connection set up differently before syncing can work.";
         onReconnect?.();
@@ -230,8 +249,8 @@
   >
     <header class="dialog-header">
       <h2 id="conflict-title">
-        <Icon name="triangle-alert" />
-        Changes happened in two places
+        <Icon name={header.icon} />
+        {header.title}
       </h2>
       <button
         class="close"

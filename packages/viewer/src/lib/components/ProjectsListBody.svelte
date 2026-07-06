@@ -364,8 +364,11 @@
                 <span class="row-icon" aria-hidden="true"><Icon name="star" size={13} /></span>
                 <span class="row-info">
                   <span class="row-title">{fav.title || fav.displayName}</span>
-                  <span class="row-path">{fav.key}{!fav.exists ? " — not found" : ""}</span>
+                  <span class="row-path">{fav.key}</span>
                 </span>
+                {#if !fav.exists}
+                  <span class="not-found-badge">Not found</span>
+                {/if}
               </div>
               <div class="row-actions">
                 <button class="icon-action star active" title="Remove from favorites" aria-label="Remove from favorites"
@@ -403,8 +406,11 @@
                   <span class="row-icon" aria-hidden="true"><Icon name="folder" size={13} /></span>
                   <span class="row-info">
                     <span class="row-title">{recent.title || recent.displayName}</span>
-                    <span class="row-path">{recent.key}{!recent.exists ? " — not found" : ""}</span>
+                    <span class="row-path">{recent.key}</span>
                   </span>
+                  {#if !recent.exists}
+                    <span class="not-found-badge">Not found</span>
+                  {/if}
                 </div>
                 <div class="row-actions">
                   <button class="icon-action star" class:active={favorited}
@@ -623,14 +629,37 @@
   }
   .list-row:not(.dimmed):focus-visible { border-color: var(--app-focus-ring); }
   /* Dimmed = folder not found. Use explicit full-opacity muted colors for legibility;
-     opacity dimming makes text fail WCAG AA on hover surfaces. Only the icon is dimmed. */
-  .list-row.dimmed { cursor: default; }
+     opacity dimming makes text fail WCAG AA on hover surfaces. Only the icon is dimmed.
+     The border-left color-coding reuses the same found/missing differentiator pattern
+     as HelpDialog's tool-status list (`.tools li.missing`), so unavailable rows read as
+     unavailable from the non-text cue alone, independent of the "Not found" badge text. */
+  .list-row.dimmed {
+    cursor: default;
+    border-left-width: 3px;
+    border-left-color: var(--app-warning-text);
+    padding-left: 6px;
+  }
   .list-row.dimmed .row-title { color: var(--app-text-muted); }
   .list-row.dimmed .row-icon { opacity: 0.45; }
   .row-icon { font-size: 13px; flex-shrink: 0; width: 16px; text-align: center; display: inline-flex; align-items: center; color: var(--app-text-faint); }
   .row-info { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .row-title { font-size: 12px; font-weight: 500; color: var(--app-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row-path { font-size: 10px; color: var(--app-text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, monospace; }
+  /* Fixed-width status label, laid out OUTSIDE the ellipsis-truncated .row-path span so
+     it survives regardless of path length (visual-gate round 1 finding). */
+  .not-found-badge {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--app-warning-text);
+    background: var(--app-warning-bg);
+    border: 1px solid var(--app-warning-border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
   .current-project-badge {
     flex-shrink: 0;
     font-size: 10px;
