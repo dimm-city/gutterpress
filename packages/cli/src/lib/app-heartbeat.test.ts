@@ -7,6 +7,7 @@ import path from "node:path";
 import {
   APP_HEARTBEAT_FRESH_MS,
   appHeartbeatPath,
+  heartbeatTtlMs,
   isAppHeartbeatFresh,
   readAppHeartbeat,
   removeAppHeartbeat,
@@ -92,6 +93,60 @@ test("writeAppHeartbeat is best-effort: a missing .git dir never throws", async 
     // No .git subdirectory created — the write target's parent doesn't exist.
     await expect(writeAppHeartbeat(dir)).resolves.toBeUndefined();
     expect(await readAppHeartbeat(dir)).toBeNull();
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("heartbeatTtlMs: null cadence (feature disabled) falls back to the fixed default", () => {
+  expect(heartbeatTtlMs(null)).toBe(APP_HEARTBEAT_FRESH_MS);
+});
+
+test("heartbeatTtlMs: TTL comfortably exceeds the refresh cadence at both ends of the range", () => {
+  // Default auto-sync cadence (2 min): TTL must be strictly greater than the
+  // cadence itself, or the marker goes stale at every tick boundary.
+  const twoMinCadence = 2 * 60_000;
+  expect(heartbeatTtlMs(twoMinCadence)).toBeGreaterThan(twoMinCadence);
+
+  // Max configurable cadence (24 h): same invariant must hold, not just at the
+  // default — this is exactly the case the fixed 2-min window got wrong.
+  const twentyFourHourCadence = 24 * 60 * 60_000;
+  expect(heartbeatTtlMs(twentyFourHourCadence)).toBeGreaterThan(twentyFourHourCadence);
+
+  // Min configurable cadence (1 min).
+  const oneMinCadence = 60_000;
+  expect(heartbeatTtlMs(oneMinCadence)).toBeGreaterThan(oneMinCadence);
+});
+
+test("stamped ttlMs wins over the reader's maxAgeMs fallback", async () => {
+  const dir = await makeRepoDir();
+  try {
+    const now = 1_700_000_000_000;
+    const cadence = 10 * 60_000; // 10 min — well past the fixed 2-min default
+    const ttlMs = heartbeatTtlMs(cadence);
+    await writeAppHeartbeat(dir, now, 4242, ttlMs);
+    expect(await readAppHeartbeat(dir)).toEqual({ pid: 4242, timestamp: now, ttlMs });
+
+    // 3 minutes later: stale under the fixed APP_HEARTBEAT_FRESH_MS default,
+    // but well within the stamped cadence-derived TTL — must read as fresh.
+    const threeMinLater = now + 3 * 60_000;
+    expect(threeMinLater - now).toBeGreaterThan(APP_HEARTBEAT_FRESH_MS);
+    expect(await isAppHeartbeatFresh(dir, threeMinLater)).toBe(true);
+
+    // Past the stamped TTL: reads as stale regardless of the maxAgeMs param.
+    expect(await isAppHeartbeatFresh(dir, now + ttlMs, /* maxAgeMs */ 24 * 60 * 60_000)).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("heartbeat with no ttlMs still uses the maxAgeMs fallback (back-compat)", async () => {
+  const dir = await makeRepoDir();
+  try {
+    const now = 1_700_000_000_000;
+    await writeAppHeartbeat(dir, now, 4242); // no ttlMs
+    expect(await isAppHeartbeatFresh(dir, now + APP_HEARTBEAT_FRESH_MS - 1)).toBe(true);
+    expect(await isAppHeartbeatFresh(dir, now + APP_HEARTBEAT_FRESH_MS)).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

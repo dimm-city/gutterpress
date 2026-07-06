@@ -468,14 +468,24 @@ function emitSyncStatus(payload: SyncStatusPayload): void {
 // the same way, SOLELY so the close/quit cleanup below knows what to remove.
 let openRepoDir: string | null = null;
 
-/** Best-effort: resolve `dir`'s repo root and (re)write the heartbeat there. */
+/**
+ * Best-effort: resolve `dir`'s repo root and (re)write the heartbeat there.
+ * Stamps the marker with a TTL derived from this app's OWN current auto-sync
+ * cadence (`heartbeatTtlMs`) — `repair` only ever sees the repo, never this
+ * app's settings, so the writer (here) is the only place that can translate
+ * "refreshed every `autoSyncMinutes`" into "stays fresh for at least this
+ * long". Without this, a fixed reader-side window (2 min) would read a live
+ * app as closed for most of any longer configured cadence (up to 24 h).
+ */
 async function refreshAppHeartbeat(dir: string): Promise<void> {
   try {
     const lib = await loadLib();
     const source = await lib.detectProjectSource(dir);
     if (source.type !== "local-git-folder") return;
     openRepoDir = source.repoRoot;
-    await lib.writeAppHeartbeat(source.repoRoot);
+    const settings = await readSettings();
+    const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
+    await lib.writeAppHeartbeat(source.repoRoot, Date.now(), process.pid, lib.heartbeatTtlMs(periodicMs));
   } catch (e) {
     console.warn("[app-heartbeat] refresh failed (non-fatal):", e);
   }
@@ -1502,9 +1512,10 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // App-open heartbeat (repair-vs-viewer detection, M2): write immediately so
   // a `print-md repair` run right after open already sees a fresh marker —
   // don't wait for the first periodic tick (up to autoSyncMinutes later).
+  // Reuses refreshAppHeartbeat (not a second inline write) so the TTL stamped
+  // here always matches the one the periodic refresh stamps.
   if (source.type === "local-git-folder") {
-    openRepoDir = source.repoRoot;
-    void lib.writeAppHeartbeat(source.repoRoot);
+    void refreshAppHeartbeat(openedDir);
   }
 
   // Local-git projects with no syncable remote get no sync status, so the

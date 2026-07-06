@@ -185,6 +185,7 @@ export type {
 // One implementation, shared by both hosts — see lib/app-heartbeat.ts.
 export {
   appHeartbeatPath,
+  heartbeatTtlMs,
   isAppHeartbeatFresh,
   readAppHeartbeat,
   removeAppHeartbeat,

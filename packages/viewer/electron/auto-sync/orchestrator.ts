@@ -140,6 +140,15 @@ export interface AutoSyncOrchestratorDeps {
    * invocation so it piggybacks on the existing periodic safety-sync tick
    * AND the file-change debounce fire — no dedicated timer is added for it.
    * Optional so existing callers/tests are unaffected.
+   *
+   * KNOWN LIMITATION: `run()` is only reachable via `armInterval`/`armDebounce`,
+   * both of which no-op when `autoSyncDelayMs` is `null` (auto-sync master
+   * switch off). With auto-sync off, the heartbeat is written once at project
+   * open (see main.ts) and never refreshed again, so it goes stale after its
+   * TTL even though the project may still be open. Accepted per the M2 spec
+   * (detection, not a cross-process lock manager; "do NOT add a new timer" —
+   * there is no other existing tick to piggyback on for this case) — `repair
+   * --force` remains the escape hatch.
    */
   refreshHeartbeat?: (dir: string) => void;
 }

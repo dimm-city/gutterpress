@@ -39,7 +39,14 @@ import { gitDirFor } from "./source-provider.ts";
 /** Filename only — never `*.lock` and never under `refs/`, see module doc. */
 const HEARTBEAT_FILENAME = "print-md-app-heartbeat";
 
-/** A heartbeat younger than this is treated as "the app still has this open". */
+/**
+ * Fallback freshness window used only when a heartbeat carries no `ttlMs`
+ * (an older writer, or one with no cadence to report). Prefer a
+ * cadence-derived TTL — see {@link heartbeatTtlMs} — since the actual
+ * refresh cadence ranges 1 min–24 h (AUTO_SYNC_MIN/MAX_MINUTES,
+ * host-policy.ts) and a fixed 2-minute window reads a live app as "closed"
+ * for most of any longer cadence.
+ */
 export const APP_HEARTBEAT_FRESH_MS = 2 * 60_000;
 
 export interface AppHeartbeat {
@@ -48,6 +55,38 @@ export interface AppHeartbeat {
   pid: number;
   /** Epoch ms the heartbeat was last (re)written. */
   timestamp: number;
+  /**
+   * Freshness window (ms) the writer says applies to THIS heartbeat, derived
+   * from its own refresh cadence (see {@link heartbeatTtlMs}). When present,
+   * `isAppHeartbeatFresh` honors it instead of its `maxAgeMs` fallback param —
+   * the writer knows how often it actually refreshes; the reader doesn't.
+   */
+  ttlMs?: number;
+}
+
+/** Refresh cadence is re-checked on every write, so the TTL only needs to
+ *  outlive one missed tick, not many — a small multiplier is enough and
+ *  keeps a live-but-idle app from reading as fresh for hours after it quit. */
+const HEARTBEAT_TTL_MULTIPLIER = 2;
+/** Covers the write's own async latency (detect + fs write landing a little
+ *  after the tick fires) so the marker isn't momentarily stale right at each
+ *  tick boundary. */
+const HEARTBEAT_TTL_BUFFER_MS = 30_000;
+
+/**
+ * The freshness window a heartbeat writer should stamp for a given refresh
+ * cadence (the actual interval this writer refreshes the marker on — e.g.
+ * `autoSyncDelayMs(settings.versionHistory)`). `null` (feature disabled, no
+ * periodic refresh at all) falls back to {@link APP_HEARTBEAT_FRESH_MS}.
+ *
+ * Standard heartbeat rule: TTL should comfortably exceed the refresh period
+ * so one missed/delayed tick doesn't read as "closed". Exported so both the
+ * viewer (the writer, which knows its own cadence) and tests can compute it
+ * consistently.
+ */
+export function heartbeatTtlMs(periodicMs: number | null): number {
+  if (periodicMs === null) return APP_HEARTBEAT_FRESH_MS;
+  return periodicMs * HEARTBEAT_TTL_MULTIPLIER + HEARTBEAT_TTL_BUFFER_MS;
 }
 
 /** Absolute path to the heartbeat marker for a repo. */
@@ -60,14 +99,21 @@ export function appHeartbeatPath(repoDir: string): string {
  * `.git` dir, read-only filesystem, …) is swallowed — it must never surface
  * as an error to the author, since it is only ever a background liveness
  * signal, not a required operation.
+ *
+ * `ttlMs`, when supplied, should be {@link heartbeatTtlMs} applied to this
+ * writer's OWN actual refresh cadence — it is stamped into the marker so a
+ * reader with no knowledge of that cadence still judges freshness correctly.
+ * Omit it (or pass `undefined`) when the caller has no cadence to report; the
+ * reader then falls back to its own `maxAgeMs` default.
  */
 export async function writeAppHeartbeat(
   repoDir: string,
   now: number = Date.now(),
   pid: number = process.pid,
+  ttlMs?: number,
 ): Promise<void> {
   try {
-    const heartbeat: AppHeartbeat = { pid, timestamp: now };
+    const heartbeat: AppHeartbeat = { pid, timestamp: now, ...(ttlMs !== undefined ? { ttlMs } : {}) };
     await writeFile(appHeartbeatPath(repoDir), JSON.stringify(heartbeat));
   } catch {
     // Best-effort — see module doc.
@@ -100,7 +146,9 @@ export async function readAppHeartbeat(repoDir: string): Promise<AppHeartbeat | 
       typeof (parsed as AppHeartbeat).pid === "number" &&
       typeof (parsed as AppHeartbeat).timestamp === "number"
     ) {
-      return { pid: (parsed as AppHeartbeat).pid, timestamp: (parsed as AppHeartbeat).timestamp };
+      const candidate = parsed as AppHeartbeat;
+      const ttlMs = typeof candidate.ttlMs === "number" ? candidate.ttlMs : undefined;
+      return { pid: candidate.pid, timestamp: candidate.timestamp, ...(ttlMs !== undefined ? { ttlMs } : {}) };
     }
     return null;
   } catch {
@@ -112,6 +160,10 @@ export async function readAppHeartbeat(repoDir: string): Promise<AppHeartbeat | 
  * True when a FRESH heartbeat exists for this repo — i.e. the print-md app
  * appears to have this project open right now. Absent/stale/corrupt all read
  * as "not open" (fail open: `repair` should not block on ambiguous signal).
+ *
+ * Freshness window: the heartbeat's own stamped `ttlMs` (derived from the
+ * writer's actual refresh cadence — see {@link heartbeatTtlMs}) wins when
+ * present; `maxAgeMs` is only a fallback for a heartbeat with none.
  */
 export async function isAppHeartbeatFresh(
   repoDir: string,
@@ -120,5 +172,5 @@ export async function isAppHeartbeatFresh(
 ): Promise<boolean> {
   const heartbeat = await readAppHeartbeat(repoDir);
   if (!heartbeat) return false;
-  return now - heartbeat.timestamp < maxAgeMs;
+  return now - heartbeat.timestamp < (heartbeat.ttlMs ?? maxAgeMs);
 }
