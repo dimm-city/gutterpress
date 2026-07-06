@@ -13,6 +13,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
+  import { discoverProjectsCached } from "$lib/projects-discover-cache";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
   // in the app-facing contract. Discovered projects still come back path-keyed
@@ -104,11 +105,12 @@
     } finally {
       loading = false;
     }
-    // Background scan — non-blocking
+    // Background scan — non-blocking. Cached + deduped module-wide: the start
+    // screen and the left panel each host this component, and the start
+    // screen remounts per show — one filesystem BFS serves them all.
     if (isDesktop()) {
-      api.app
-        .discoverProjects()
-        .then((r) => { discovered = r as typeof discovered; })
+      discoverProjectsCached()
+        .then((r) => { discovered = r; })
         .catch(() => {});
     }
   }

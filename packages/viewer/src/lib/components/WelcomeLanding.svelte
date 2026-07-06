@@ -55,6 +55,8 @@
     onNewProject,
     onOpenGitHub,
     onOpenGuide,
+    onOpenSettings,
+    onOpenHelp,
     onWhatsNew,
     onAdopt,
     onToggleShowAtStartup,
@@ -81,12 +83,20 @@
     onNewProject?: () => void;
     onOpenGitHub?: () => void;
     onOpenGuide?: () => void;
+    onOpenSettings?: () => void;
+    onOpenHelp?: () => void;
     onWhatsNew?: () => void;
     onAdopt?: () => void;
     onToggleShowAtStartup?: (show: boolean) => void;
   } = $props();
 
+  let rootEl = $state<HTMLElement | undefined>(undefined);
   let continueBtn = $state<HTMLButtonElement | undefined>(undefined);
+
+  /** Reclaim focus for the layer (e.g. after a dialog opened from it closes). */
+  export function focusLayer() {
+    (continueBtn ?? rootEl)?.focus();
+  }
 
   // Move focus into the layer whenever it appears (the {#if visible} block
   // recreates the section each show), landing on the primary action so Enter
@@ -97,9 +107,15 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
+    if (e.key !== "Escape") return;
+    // Esc inside a field means "cancel my typing", not "leave the start
+    // screen" — never hijack it from form controls (e.g. the books search).
+    const t = e.target as HTMLElement | null;
+    const tag = t?.tagName ?? "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
     // Esc = "get out of my way": same as Continue, but only when there is a
     // book behind the layer to land on.
-    if (e.key === "Escape" && continueTitle && !errorTitle) {
+    if (continueTitle && !errorTitle) {
       e.preventDefault();
       onContinue?.();
     }
@@ -112,6 +128,7 @@
        focus); keydown only adds an Esc convenience, no semantics change. -->
   <section
     class="landing"
+    bind:this={rootEl}
     use:focusOnShow
     tabindex="-1"
     aria-label="Start screen"
@@ -125,11 +142,23 @@
           <span class="brand-name">print-md</span>
           {#if version}<span class="brand-version">v{version}</span>{/if}
         </div>
-        {#if onWhatsNew}
-          <button type="button" class="landing-link" onclick={onWhatsNew}>
-            What's new <Icon name="external-link" size={12} />
-          </button>
-        {/if}
+        <div class="brand-right">
+          {#if onWhatsNew}
+            <button type="button" class="landing-link" onclick={onWhatsNew}>
+              What's new <Icon name="external-link" size={12} />
+            </button>
+          {/if}
+          {#if onOpenHelp}
+            <button type="button" class="brand-icon-btn" onclick={onOpenHelp} title="Help & about" aria-label="Help and about">
+              <Icon name="circle-help" size={16} />
+            </button>
+          {/if}
+          {#if onOpenSettings}
+            <button type="button" class="brand-icon-btn" onclick={onOpenSettings} title="Settings (Ctrl+,)" aria-label="Settings">
+              <Icon name="settings" size={16} />
+            </button>
+          {/if}
+        </div>
       </header>
 
       {#if errorTitle}
@@ -289,6 +318,18 @@
     gap: 12px;
   }
   .brand-left { display: flex; align-items: baseline; gap: 8px; }
+  .brand-right { display: flex; align-items: center; gap: 10px; }
+  .brand-icon-btn {
+    background: none;
+    border: 0;
+    padding: 4px;
+    border-radius: 6px;
+    color: var(--app-text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+  }
+  .brand-icon-btn:hover { color: var(--app-text); background: var(--app-control-hover-bg); }
+  .brand-icon-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .brand-icon { font-size: 18px; }
   .brand-name { font-size: 15px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
   .brand-version { font-size: 11px; color: var(--app-text-faint); }

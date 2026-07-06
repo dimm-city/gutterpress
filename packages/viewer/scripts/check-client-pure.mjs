@@ -21,7 +21,14 @@ const clientDir = resolve(
   "_app",
 );
 
-const BANNED = /fileURLToPath|node:module|createRequire|node:fs|node:url|isomorphic-git/;
+// The named identifiers catch the historical lib-chunk leaks (0.4.0-beta.4,
+// 2026-07); the QUOTED `node:` specifier catches ANY builtin import vite
+// externalizes into a client chunk (node:path, node:os, … — quoted, because
+// a bare `node:x` also matches minified object properties like `{node:t}`);
+// and the bare require() form catches un-prefixed builtin requires surviving
+// in CJS interop output.
+const BANNED =
+  /fileURLToPath|createRequire|isomorphic-git|["'`]node:[a-z_/]+["'`]|require\(["'](?:fs|path|os|url|module|process|child_process|crypto|stream|net|tls|http|https|zlib|util|tty|readline)["']\)/;
 
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
@@ -42,6 +49,14 @@ try {
   }
 } catch (err) {
   console.error(`✖ cannot scan ${clientDir}: ${err?.message ?? err}`);
+  process.exit(1);
+}
+
+if (scanned === 0) {
+  console.error(
+    `✖ no JS files found under ${clientDir} — the client bundle moved and ` +
+      "this gate is scanning nothing. Update the path so it guards again.",
+  );
   process.exit(1);
 }
 

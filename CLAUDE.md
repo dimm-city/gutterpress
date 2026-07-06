@@ -303,8 +303,10 @@ the `api/lint/check-css` server route) and the editor's lint gutter calls
 SPA bundle must contain no host code — adapter-node emits the browser assets
 to `build/client/`, and this is now **enforced automatically**: the viewer's
 `npm run build` runs `scripts/check-client-pure.mjs`, which fails the build if
-`fileURLToPath|node:module|createRequire|node:fs|node:url|isomorphic-git`
-appears anywhere under `build/client/_app/`. Two caveats keep this honest:
+host code (`fileURLToPath`/`createRequire`/`isomorphic-git`, any `node:*`
+specifier, or a bare builtin `require`) appears anywhere under
+`build/client/_app/` — and fails loudly if it finds zero JS files to scan.
+Two caveats keep this honest:
 (1) the server side — `build/server/`, `build/handler.js`, and the
 `+server.ts` routes compiled into it — is host Node code by design; the check
 scopes to `build/client/` only. (2) Rollup tree-shaking can HIDE a leak from

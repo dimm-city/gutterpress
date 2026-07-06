@@ -8,11 +8,18 @@
   let {
     open = $bindable(false),
     onCreated,
+    onClosed,
     triggerEl,
   }: {
     open?: boolean;
     /** Called with the created project folder so the host can open it. */
     onCreated?: (projectDir: string) => void;
+    /**
+     * Called after the dialog closes and focus was (attempted to be) returned
+     * to `triggerEl`. Hosts whose opener isn't focusable at close time — e.g.
+     * the start screen, whose workspace is inert — refocus their own surface.
+     */
+    onClosed?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
@@ -109,6 +116,7 @@
   function close() {
     open = false;
     triggerEl?.focus();
+    onClosed?.();
   }
 
   async function chooseLocation() {

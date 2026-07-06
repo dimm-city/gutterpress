@@ -2,28 +2,31 @@
 // ──────────────────────────────────────────────────────────────────────────
 // Purity gate for `@dimm-city/print-md/render` (dist/render.js).
 //
-// The viewer's SPA (CLAUDE.md §8 / ADR 0004) VALUE-imports this subpath into
-// the browser bundle — it must therefore contain zero Node-only code. The
-// 2026-07 regression this guards against: building render.ts in the same
+// The viewer's SPA (root CLAUDE.md §8 / ADR 0004) VALUE-imports this subpath
+// into the browser bundle — it must therefore contain zero Node-only code.
+// The 2026-07 regression this guards against: building render.ts in the same
 // `bun build --splitting` invocation as the Node entrypoints let a shared
 // helper chunk (topped with `createRequire(import.meta.url)`) leak into the
 // render graph. Production survived only via rollup tree-shaking; `vite dev`
 // served the chunk as-is and threw "node:module has been externalized" in
 // client code. render.ts is now built as its own non-split graph, and this
 // script fails the lib build if any Node-ism ever reappears in that closure.
+//
+// Builtin detection uses node:module's isBuiltin(), which covers the full,
+// version-accurate list including un-prefixed subpath forms ("fs/promises",
+// "path/posix", "tty", …) — never a hand-maintained set. Bare external
+// package specifiers are left external by `--packages=external` and cannot be
+// walked here; a node-only dependency would surface the moment `vite dev`
+// resolves it in the viewer, and keeping render.ts's dependency list tiny is
+// the real control for that class.
 // ──────────────────────────────────────────────────────────────────────────
 import { readFileSync } from "node:fs";
+import { isBuiltin } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const distDir = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist");
 const entry = join(distDir, "render.js");
-
-const NODE_BUILTINS = new Set([
-  "assert", "buffer", "child_process", "crypto", "events", "fs", "http",
-  "https", "module", "net", "os", "path", "process", "stream", "tls", "url",
-  "util", "v8", "vm", "worker_threads", "zlib",
-]);
 
 /** Collect every import/export specifier in a module's source. */
 function specifiersOf(source) {
@@ -58,7 +61,7 @@ while (queue.length > 0) {
     violations.push(`${file}: contains createRequire`);
   }
   for (const spec of specifiersOf(source)) {
-    if (spec.startsWith("node:") || NODE_BUILTINS.has(spec)) {
+    if (isBuiltin(spec)) {
       violations.push(`${file}: imports Node builtin "${spec}"`);
     } else if (spec.startsWith("./") || spec.startsWith("../")) {
       queue.push(resolve(dirname(file), spec));
@@ -69,7 +72,7 @@ while (queue.length > 0) {
 if (violations.length > 0) {
   console.error(
     "✖ @dimm-city/print-md/render is no longer node-free — the viewer SPA " +
-      "value-imports it into the browser bundle (viewer CLAUDE.md §8):",
+      "value-imports it into the browser bundle (root CLAUDE.md §8):",
   );
   for (const v of violations) console.error("  - " + v);
   console.error(

@@ -263,11 +263,10 @@
       await startFolderPreview(dir, "Setting up your book…");
     } catch (e) {
       openError = e instanceof Error ? e.message : String(e);
+      // A failed adopt leaves the workspace empty — the start screen returns
+      // on its own (landingVisible derived) and surfaces the error.
     } finally {
       adopting = false;
-      // A failed adopt leaves the workspace empty — surface the error on the
-      // start screen rather than a blank window.
-      maybeReshowLanding();
     }
   }
   let urlPreviewError = $state<string | null>(null);
@@ -287,7 +286,6 @@
   // New-project wizard (#25)
   let newProjectOpen = $state(false);
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
-  let newProjectBtn = $state<HTMLButtonElement | undefined>(undefined);
   // Manual force-save state for the status bar action button.
   let forceSaving = $state(false);
   // Sync-outcome routing + conflict/diagnosis state (Phase 5b). Owns the
@@ -341,7 +339,13 @@
   // Chromium throttles its layout to ~1fps; see PreviewFrame.svelte). Pure
   // decision logic lives in startup-landing.ts.
   let landingReady = $state(!isDesktop());
-  let landingVisible = $state(false);
+  // Explicit "stay up over a live workspace" flag: set when the startup
+  // decision shows the landing over the pre-rendering previous book, cleared
+  // by dismissLanding. Everything else about visibility is DERIVED from
+  // workspace state (landingVisible below), so any path that empties the
+  // workspace brings the start screen back structurally — there is no
+  // per-site "remember to reshow" call to forget.
+  let landingHold = $state(false);
   let landingShowPref = $state(true);
   // The book being reopened at startup — drives the continue card.
   let landingContinueDir = $state<string | null>(null);
@@ -349,6 +353,26 @@
   // dialog never fights it for focus; runs when the landing dismisses.
   let pendingRecoveryScanDir = $state<string | null>(null);
   let appVersion = $state<string | null>(null);
+  // Handle for reclaiming focus after a dialog opened FROM the landing closes
+  // without opening a project (the dialogs' triggerEl focus restore targets
+  // the inert workspace, which is a spec no-op).
+  let landingRef = $state<{ focusLayer: () => void } | null>(null);
+
+  // The landing is the app's ONLY empty state: visible while explicitly held
+  // open (startup pre-render behind it) and whenever nothing is open — a
+  // failed open, a failed URL preview, a failed prefs read, or a canceled
+  // render all bring it back on their own via this derived.
+  const landingVisible = $derived(
+    landingReady &&
+      (landingHold ||
+        shouldReshowLanding({
+          busy,
+          hasPreviewUrl: !!previewUrl,
+          hasCurrentDir: !!currentDir,
+          hasCurrentUrl: !!currentUrl,
+          hasUrlPreviewError: !!urlPreviewError,
+        })),
+  );
 
   const landingStatus = $derived(
     continueStatus({ hasPreviewUrl: !!previewUrl, rendering, renderProgressPage }),
@@ -383,44 +407,18 @@
   );
 
   /**
-   * The landing doubles as the app's ONLY empty state: it comes back whenever
-   * nothing is open so the author always has recents + create/open actions in
-   * front of them. $effect is banned, so this is called explicitly from every
-   * site that can empty the workspace: startFolderPreview's finally (failed
-   * open), stopPreview (close/canceled render), the URL-preview-blocked event,
-   * setUpAsBook's finally (failed adopt), and mount (web build's first screen).
-   */
-  function maybeReshowLanding() {
-    if (
-      shouldReshowLanding({
-        ready: landingReady,
-        visible: landingVisible,
-        busy,
-        hasPreviewUrl: !!previewUrl,
-        hasCurrentDir: !!currentDir,
-        hasCurrentUrl: !!currentUrl,
-        hasUrlPreviewError: !!urlPreviewError,
-      })
-    ) {
-      landingVisible = true;
-    }
-  }
-  onMount(() => {
-    // Web build: no splash/auto-reopen flow — the landing is the first screen.
-    maybeReshowLanding();
-  });
-
-  /**
-   * Hide the start screen. `runPendingRecoveryScan` is false when the user is
+   * Leave the start screen. `runPendingRecoveryScan` is false when the user is
    * opening something OTHER than the pre-rendered book — the new open runs its
    * own scan, and the deferred one would pop the old project's recovery dialog
-   * over the new project.
+   * over the new project. The layer may legitimately stay visible after this
+   * (nothing open = it IS the empty state); it actually leaves once an open
+   * raises `busy` or a preview mounts, via the landingVisible derived.
    */
   function dismissLanding(runPendingRecoveryScan = true) {
     const pending = pendingRecoveryScanDir;
     pendingRecoveryScanDir = null;
     if (!landingVisible) return;
-    landingVisible = false;
+    landingHold = false;
     if (runPendingRecoveryScan && pending && pending === currentDir) {
       void scanForRecovery(pending);
     }
@@ -428,12 +426,24 @@
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
 
+  /**
+   * The ONE open-a-project-folder pipeline behind the folder picker, the
+   * Projects panel, and the start screen: restore the folder's saved
+   * per-project state (#43), then hand off to startFolderPreview. `busy` is
+   * raised BEFORE the restore-state fetch so no surface shows a dead gap (and
+   * the landing's derived visibility cannot flash back) while it loads.
+   */
+  async function openProjectPath(path: string, label = "Opening your book…") {
+    busy = true;
+    busyLabel = label;
+    const restoreState = await api.app.getViewerProjectState(path).catch(() => null);
+    await startFolderPreview(path, label, restoreState, basenameOf(path));
+  }
+
   /** Open a book picked on the start screen (recents/favorites/typed path). */
   async function openFromLanding(path: string) {
     dismissLanding(false);
-    // Per-project state (#43): restore this folder's saved page/view.
-    const restoreState = await api.app.getViewerProjectState(path).catch(() => null);
-    await startFolderPreview(path, "Opening your book…", restoreState, basenameOf(path));
+    await openProjectPath(path);
   }
 
   async function browseFromLanding() {
@@ -538,6 +548,10 @@
     if (currentDir && sourceMode === "folder") {
       void syncController.refreshSyncDiag(currentDir);
     }
+    // Opened from the start screen and closed without opening anything: the
+    // dialog's own triggerEl focus restore targets the inert workspace, so
+    // reclaim focus for the landing (keeps its Esc handling alive).
+    if (landingVisible) landingRef?.focusLayer();
   }
 
   // ── Recovery overlay subscription ────────────────────────────────────────────
@@ -1134,7 +1148,6 @@
       if (!previewUrl) return;
       previewUrl = null;
       urlPreviewError = event.reason;
-      maybeReshowLanding();
     });
     return () => off?.();
   });
@@ -1156,13 +1169,15 @@
           showLandingAtStartup?: boolean;
           leftPanel?: { activeTab?: string; width?: number; open?: boolean };
         };
-        // Load persisted left panel state
+        // Load persisted left panel state — including the open flag, which
+        // applies on every launch path (the landing covers it until entry).
         const panelPrefs = prefs.leftPanel;
         if (!leftPanelPrefsLoaded) {
           leftPanelPrefsLoaded = true;
           if (panelPrefs?.activeTab) leftPanelTab = panelPrefs.activeTab as typeof leftPanelTab;
           if (typeof panelPrefs?.width === "number") leftPanelWidth = Math.min(480, Math.max(200, panelPrefs.width));
-          // Panel open state loaded below after we know if a project exists
+          leftPanelOpen = panelPrefs?.open ?? false;
+          if (leftPanelOpen) leftPanelRef?.notifyOpened();
         }
 
         landingShowPref = prefs.showLandingAtStartup !== false;
@@ -1179,17 +1194,14 @@
           landingEnabled: landingShowPref,
         });
         landingReady = true;
-        if (decision.showLanding) landingVisible = true;
-        if (decision.revealWindowEarly) {
-          // The start screen is interactive immediately — dismiss the splash
-          // now; the previous book keeps rendering behind the landing.
+        if (decision.showLanding) {
+          // Hold the layer open over the pre-render; also dismiss the splash
+          // now — the start screen is interactive immediately.
+          if (decision.reopenLastProject) landingHold = true;
           api.app.rendererReady().catch(() => {});
         }
         if (!decision.reopenLastProject || !dir) return;
 
-        // Restore panel open state from prefs (now we know there is a project)
-        leftPanelOpen = panelPrefs?.open ?? false;
-        if (leftPanelOpen) leftPanelRef?.notifyOpened();
         landingContinueDir = dir;
         // Mark the reopen in-flight before the awaits below so the continue
         // card never flashes the first-run hero while restore state loads.
@@ -1208,16 +1220,19 @@
         await startFolderPreview(dir, "Reopening previous folder…", restoreState);
         // If the saved project no longer opens (moved/renamed/deleted),
         // startFolderPreview sets openError but does NOT throw. The start
-        // screen is the error surface: it shows what happened alongside
-        // recents and create/open actions, so the author is never stranded.
+        // screen returns on its own (landingVisible derived: workspace is
+        // empty again) and shows the error alongside recents and create/open
+        // actions — just make sure the window is revealed on the landing-off
+        // path, where render-complete will never fire.
         if (openError) {
-          landingVisible = true;
           api.app.rendererReady().catch(() => {});
         }
         return;
       })
       .catch(() => {
-        // If reopen failed, still reveal the window (don't strand on the splash).
+        // Prefs read failed — reveal the window; with landingReady set and
+        // nothing open, the derived shows the start screen as the first
+        // surface instead of a blank workspace.
         landingReady = true;
         api.app.rendererReady().catch(() => {});
       })
@@ -1299,19 +1314,23 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
-      // The start screen owns the keyboard while it's up (its own Esc/Enter
-      // handling); workspace shortcuts must not act on the inert UI behind it.
-      if (landingVisible) return;
       const command = resolveGlobalShortcut({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
         key: e.key,
       });
       // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
+      // Allowed even over the start screen — the dialog renders outside the
+      // inert workspace, and on first run the landing is the only screen.
       if (command === "settings") {
         e.preventDefault();
         settingsOpen = !settingsOpen;
+        return;
       }
+      // The start screen owns the rest of the keyboard while it's up (its own
+      // Esc handling); workspace shortcuts must not act on the inert UI
+      // behind it.
+      if (landingVisible) return;
       // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
       if (command === "toggle-editor") {
         e.preventDefault();
@@ -1439,6 +1458,15 @@
   // Actions
   // ----------------------------------------------------------------
 
+  // Single-flight guard for the open pipeline. Since the start screen made
+  // the window interactive during an in-flight open, a second open can start
+  // before the first resolves (e.g. clicking a recent while the startup
+  // pre-render is opening). Each call claims the epoch; a superseded call's
+  // continuations bail after every await instead of overwriting the newer
+  // open's state, popping the old project's recovery dialog, or clearing the
+  // newer open's busy flag.
+  let folderOpenEpoch = 0;
+
   async function startFolderPreview(
     dir: string,
     label = "Starting preview…",
@@ -1447,6 +1475,8 @@
     // FolderRef (picker/recents/favorites). Null when opened by raw key.
     displayName: string | null = null,
   ) {
+    const epoch = ++folderOpenEpoch;
+    const superseded = () => epoch !== folderOpenEpoch;
     openError = null;
     failedOpenDir = null;
     urlPreviewError = null;
@@ -1471,6 +1501,7 @@
       projectSession.reset();
       syncController.syncDiag = null;
       await projectSession.classify(dir);
+      if (superseded()) return;
       const targetDir = projectSession.activeBookDir ?? dir;
       // One quiet, plain-language notice when the tracked "project" turns out
       // to be a whole repo rather than just the folder the author picked
@@ -1498,6 +1529,7 @@
       const data = await platform.startPreview({
         input: { key: targetDir, displayName: targetDisplayName },
       });
+      if (superseded()) return;
       sourceMode = "folder";
       // New folder: flush + clear any file selected from a previous project so
       // the editor pane doesn't point at a stale path (#44 — flush first so a
@@ -1505,6 +1537,7 @@
       if (currentDir !== targetDir && buffer) {
         await buffer.flush().catch(() => {});
         buffer.reset();
+        if (superseded()) return;
       }
       currentDir = targetDir;
       leftPanelRef?.resetHistoryState();
@@ -1538,6 +1571,7 @@
       // Force iframe remount by nulling first; reset overlay for the new iframe.
       previewUrl = null;
       await Promise.resolve();
+      if (superseded()) return;
       previewUrl = data.url;
       rendering = true;
       renderProgressPage = 0;
@@ -1575,6 +1609,9 @@
       // Start watching for external edits (replaces old $effect on currentDir).
       startFolderWatch(targetDir);
     } catch (e) {
+      // A superseded open must not clear the newer open's state or surface
+      // its own stale error.
+      if (superseded()) return;
       previewUrl = null;
       currentDir = null;
       leftPanelRef?.resetHistoryState();
@@ -1586,13 +1623,14 @@
       // failure was "this isn't a print-md project".
       failedOpenDir = dir;
       pendingRecoveryScanDir = null;
-      // The start screen re-appears (maybeReshowLanding in the finally below,
-      // once busy clears) and shows the error alongside recents and
+      // The start screen re-appears on its own (landingVisible derived: the
+      // workspace is empty again) and shows the error alongside recents and
       // create/open actions — the author is never stranded.
     } finally {
-      busy = false;
-      busyLabel = "";
-      maybeReshowLanding();
+      if (!superseded()) {
+        busy = false;
+        busyLabel = "";
+      }
     }
   }
 
@@ -1617,17 +1655,10 @@
     busyLabel = "Opening folder…";
     let handedOff = false;
     try {
-      // #49: the picker returns a path string; wrap into a host-neutral FolderRef.
       const pathStr = await api.dialog.openDirectory();
       if (!pathStr) return;
-      const folder = { key: pathStr, displayName: basenameOf(pathStr) };
-      // Per-project state (#43): restore whatever was saved for THIS folder
-      // (page, view mode, …) regardless of which project was last open.
-      const restoreState = await api.app
-        .getViewerProjectState(folder.key)
-        .catch(() => null);
       handedOff = true;
-      await startFolderPreview(folder.key, "Starting preview…", restoreState, folder.displayName);
+      await openProjectPath(pathStr, "Starting preview…");
     } finally {
       if (!handedOff) {
         busy = false;
@@ -1716,9 +1747,8 @@
     // Clear stale problems.
     problems = [];
     problemsOpen = false;
-    // The start screen is the app's empty state — bring it back now that the
-    // workspace is empty (no need to force the Projects panel open).
-    maybeReshowLanding();
+    // The start screen is the app's empty state — it returns on its own now
+    // that the workspace is empty (landingVisible derived).
   }
 
   async function savePdf() {
@@ -2583,7 +2613,7 @@
       }}
       onOpenProjectConfig={openProjectConfig}
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
-      onProjectChosen={(path) => startFolderPreview(path)}
+      onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
       onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
       onNewProject={() => newProjectWizardRef?.show()}
@@ -2785,6 +2815,7 @@
 <!-- Start screen: interactive cover over the (pre-rendering) workspace. Sits
      outside .app-root so it is never inert; dialogs (top layer) open above it. -->
 <WelcomeLanding
+  bind:this={landingRef}
   visible={landingVisible}
   continueTitle={landingContinueTitle}
   continueDetail={landingContinueDetail}
@@ -2813,6 +2844,8 @@
   onNewProject={() => newProjectWizardRef?.show()}
   onOpenGitHub={() => (githubOpen = true)}
   onOpenGuide={openSetupGuide}
+  onOpenSettings={() => (settingsOpen = true)}
+  onOpenHelp={() => (helpOpen = true)}
   onWhatsNew={openReleaseNotes}
   onAdopt={() => {
     const dir = failedOpenDir;
@@ -2825,6 +2858,9 @@
 
 <HelpDialog
   bind:open={helpOpen}
+  onClose={() => {
+    if (landingVisible) landingRef?.focusLayer();
+  }}
   onCheckForUpdates={() => updateController.check()}
   checkingUpdates={updateController.checking}
   updateReadyVersion={updateController.readyVersion}
@@ -2832,6 +2868,9 @@
 />
 <SettingsDialog
   bind:open={settingsOpen}
+  onClose={() => {
+    if (landingVisible) landingRef?.focusLayer();
+  }}
   onViewModeChange={(mode) => { if (client && !rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
   onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
@@ -2839,7 +2878,7 @@
   bind:open={githubOpen}
   onOpened={(projectDir) => {
     dismissLanding(false);
-    return startFolderPreview(projectDir, "Opening your project…");
+    return openProjectPath(projectDir, "Opening your project…");
   }}
   onAdvancedSetup={() => (advancedSetupOpen = true)}
   onClosed={onConnectDialogClosed}
@@ -2856,9 +2895,11 @@
   bind:open={newProjectOpen}
   onCreated={(projectDir) => {
     dismissLanding(false);
-    return startFolderPreview(projectDir, "Opening your new book…");
+    return openProjectPath(projectDir, "Opening your new book…");
   }}
-  triggerEl={newProjectBtn}
+  onClosed={() => {
+    if (landingVisible) landingRef?.focusLayer();
+  }}
 />
 <!-- Snippet picker (#29): insert a reusable markdown fragment at the cursor,
      prompting for {{variable}} placeholders. Desktop-only (file IO host gate). -->

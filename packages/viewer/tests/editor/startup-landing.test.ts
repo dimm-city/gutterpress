@@ -7,31 +7,32 @@ import {
 
 // ---------------------------------------------------------------------------
 // decideStartupScreen — the launch policy behind the start screen (welcome
-// landing). Mirrors the auto-reopen onMount block in +page.svelte.
+// landing). Mirrors the auto-reopen onMount block in +page.svelte. showLanding
+// doubles as "reveal the window immediately" at the call site.
 // ---------------------------------------------------------------------------
 
 test("no previous project → landing is the welcome screen, no reopen", () => {
   expect(
     decideStartupScreen({ lastProjectDir: null, landingEnabled: true }),
-  ).toEqual({ showLanding: true, reopenLastProject: false, revealWindowEarly: true });
+  ).toEqual({ showLanding: true, reopenLastProject: false });
 });
 
 test("no previous project → landing shows even when the pref is off (it IS the empty state)", () => {
   expect(
     decideStartupScreen({ lastProjectDir: null, landingEnabled: false }),
-  ).toEqual({ showLanding: true, reopenLastProject: false, revealWindowEarly: true });
+  ).toEqual({ showLanding: true, reopenLastProject: false });
 });
 
-test("previous project + landing on → show landing, pre-render behind it, reveal window early", () => {
+test("previous project + landing on → show landing and pre-render behind it", () => {
   expect(
     decideStartupScreen({ lastProjectDir: "/books/novel", landingEnabled: true }),
-  ).toEqual({ showLanding: true, reopenLastProject: true, revealWindowEarly: true });
+  ).toEqual({ showLanding: true, reopenLastProject: true });
 });
 
 test("previous project + landing off → pre-landing behavior (splash covers the render)", () => {
   expect(
     decideStartupScreen({ lastProjectDir: "/books/novel", landingEnabled: false }),
-  ).toEqual({ showLanding: false, reopenLastProject: true, revealWindowEarly: false });
+  ).toEqual({ showLanding: false, reopenLastProject: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -63,12 +64,11 @@ test("render settled → ready", () => {
 });
 
 // ---------------------------------------------------------------------------
-// shouldReshowLanding — the landing as the app's single empty state.
+// shouldReshowLanding — the landing as the app's single empty state. The host
+// wraps this in a $derived, so it is a pure predicate over workspace state.
 // ---------------------------------------------------------------------------
 
 const idle = {
-  ready: true,
-  visible: false,
   busy: false,
   hasPreviewUrl: false,
   hasCurrentDir: false,
@@ -76,16 +76,8 @@ const idle = {
   hasUrlPreviewError: false,
 };
 
-test("empty idle workspace → reshow", () => {
+test("empty idle workspace → show", () => {
   expect(shouldReshowLanding(idle)).toBe(true);
-});
-
-test("not ready (startup decision hasn't run) → never show", () => {
-  expect(shouldReshowLanding({ ...idle, ready: false })).toBe(false);
-});
-
-test("already visible → no-op", () => {
-  expect(shouldReshowLanding({ ...idle, visible: true })).toBe(false);
 });
 
 test("an open is in flight (busy) → stay hidden", () => {
@@ -106,7 +98,7 @@ test("a URL preview is open and healthy → stay hidden", () => {
   ).toBe(false);
 });
 
-test("a URL preview failed → reshow (landing is the error surface)", () => {
+test("a URL preview failed → show (landing is the error surface)", () => {
   expect(
     shouldReshowLanding({ ...idle, hasCurrentUrl: true, hasUrlPreviewError: true }),
   ).toBe(true);

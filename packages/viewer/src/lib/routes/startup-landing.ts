@@ -10,15 +10,14 @@
 // ──────────────────────────────────────────────────────────────────────────
 
 export interface StartupScreenDecision {
-  /** Show the start screen layer as the app's first screen. */
+  /**
+   * Show the start screen layer as the app's first screen. When true the
+   * caller also reveals the window (rendererReady) immediately — the landing
+   * is interactive right away, so the splash must not wait for the render.
+   */
   showLanding: boolean;
   /** Kick off the previous project (preview render) behind it. */
   reopenLastProject: boolean;
-  /**
-   * Reveal the main window (rendererReady) immediately — the landing is
-   * interactive right away, so the splash must not wait for the full render.
-   */
-  revealWindowEarly: boolean;
 }
 
 /**
@@ -34,12 +33,12 @@ export function decideStartupScreen(opts: {
   landingEnabled: boolean;
 }): StartupScreenDecision {
   if (!opts.lastProjectDir) {
-    return { showLanding: true, reopenLastProject: false, revealWindowEarly: true };
+    return { showLanding: true, reopenLastProject: false };
   }
   if (!opts.landingEnabled) {
-    return { showLanding: false, reopenLastProject: true, revealWindowEarly: false };
+    return { showLanding: false, reopenLastProject: true };
   }
-  return { showLanding: true, reopenLastProject: true, revealWindowEarly: true };
+  return { showLanding: true, reopenLastProject: true };
 }
 
 export type ContinueStatusKind = "opening" | "rendering" | "ready";
@@ -75,22 +74,18 @@ export function continueStatus(input: {
 
 /**
  * The landing doubles as the app's ONLY empty state: whenever nothing is open
- * (startup with no project, a failed open, a failed URL preview), it comes
- * back so the author always has recents + create/open actions in front of
- * them. `ready` gates the very first frames on desktop until the startup
- * decision has run (the splash covers that gap), so the layer never flashes
- * before we know whether to show it.
+ * (startup with no project, a failed open, a failed URL preview, a canceled
+ * render), it comes back so the author always has recents + create/open
+ * actions in front of them. The host derives the layer's visibility from this
+ * predicate over live workspace state — structural, no per-site reshow calls.
  */
 export function shouldReshowLanding(state: {
-  ready: boolean;
-  visible: boolean;
   busy: boolean;
   hasPreviewUrl: boolean;
   hasCurrentDir: boolean;
   hasCurrentUrl: boolean;
   hasUrlPreviewError: boolean;
 }): boolean {
-  if (!state.ready || state.visible) return false;
   if (state.busy || state.hasPreviewUrl || state.hasCurrentDir) return false;
   // A URL preview keeps the workspace as its error surface only while the
   // URL is still considered "open"; once it errored, the landing returns.
