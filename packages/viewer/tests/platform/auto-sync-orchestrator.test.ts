@@ -18,6 +18,8 @@ interface Harness {
   emitted: SyncStatusPayload[];
   /** Every projectDir passed to lib.syncProject, in call order. */
   syncCalls: string[];
+  /** Every dir passed to deps.refreshHeartbeat, in call order. */
+  heartbeatCalls: string[];
   /** Advance the fake clock. */
   setClock: (ms: number) => void;
 }
@@ -59,6 +61,8 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     recover: async () => (opts.recover ? opts.recover() : { status: "recovered", message: "ok" }),
   } as unknown as LibModule;
 
+  const heartbeatCalls: string[] = [];
+
   const deps: AutoSyncOrchestratorDeps = {
     loadLib: async () => lib,
     tokenStore: {} as AutoSyncOrchestratorDeps["tokenStore"],
@@ -68,12 +72,14 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     getWatchedDir: () => DIR,
     operationLogPath: (slug) => `/logs/${slug}.log`,
     buildRecoveryContext: async () => ({}) as never,
+    refreshHeartbeat: (dir) => heartbeatCalls.push(dir),
   };
 
   return {
     orch: new AutoSyncOrchestrator(deps),
     emitted,
     syncCalls,
+    heartbeatCalls,
     setClock: (ms) => {
       clock = ms;
     },
@@ -178,6 +184,32 @@ test("armInterval does not arm while conflict-latched", async () => {
   h.orch.getOrCreateState(DIR).conflictLatched = true;
   await h.orch.armInterval(DIR);
   expect(h.orch.getState(DIR)?.intervalHandle).toBeNull();
+});
+
+test("run() refreshes the app-open heartbeat for its dir (M2)", async () => {
+  const h = makeHarness();
+  await h.orch.run(DIR);
+  expect(h.heartbeatCalls).toEqual([DIR]);
+});
+
+test("run() refreshes the heartbeat even on an early-return guard path", async () => {
+  // sourceType other than local-git-folder short-circuits run() before any
+  // network call — heartbeat refresh must still have fired first.
+  const h = makeHarness({ sourceType: "local-folder" });
+  await h.orch.run(DIR);
+  expect(h.heartbeatCalls).toEqual([DIR]);
+  expect(h.syncCalls).toEqual([]);
+});
+
+test("the periodic safety-sync interval refreshes the heartbeat on tick, with no dedicated timer", async () => {
+  // A real (short) interval — proves the heartbeat refresh piggybacks on the
+  // actual periodic tick armInterval schedules, not a separate timer.
+  const h = makeHarness({ autoSyncDelayMs: 5 });
+  await h.orch.armInterval(DIR);
+  await new Promise((r) => setTimeout(r, 60));
+  h.orch.cancelTimer(DIR);
+  expect(h.heartbeatCalls.length).toBeGreaterThan(0);
+  expect(h.heartbeatCalls.every((d) => d === DIR)).toBe(true);
 });
 
 test("armDebounce arms a debounce timer", async () => {

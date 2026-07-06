@@ -12,6 +12,14 @@
  *   print-md repair            diagnose + prompt before any repair
  *   print-md repair --check    diagnose only; exit 1 when repair is needed
  *   print-md repair --yes      skip the prompt (still prints what will happen)
+ *   print-md repair --force    repair even if the app appears to have this open
+ *
+ * The app-open guard: the viewer leaves a small liveness marker under the
+ * repo's own `.git` dir while a project is open (app-heartbeat.ts). A fresh
+ * marker means the app may be mid-write on this same repo right now, so
+ * `repair` refuses to mutate anything (still safe to `--check`) unless the
+ * author passes `--force`. This is detection + an explicit override, not a
+ * cross-process lock — the author is always in control.
  *
  * All git work happens in the shared library (isomorphic-git); this file is
  * argument parsing, terminal I/O, and exit codes only.
@@ -28,6 +36,7 @@ import {
   defaultConfigDir,
   FileTokenStore,
   inspectRepo,
+  isAppHeartbeatFresh,
   isUnbornRepo,
   recover,
   verifyRepoReadable,
@@ -116,6 +125,11 @@ export default defineCommand({
       description: "Approve the repair without prompting",
       default: false,
     },
+    force: {
+      type: "boolean",
+      description: "Repair even if the print-md app appears to have this project open",
+      default: false,
+    },
   },
   async run({ args }) {
     const openedDir = path.resolve(args.dir ?? ".");
@@ -167,6 +181,17 @@ export default defineCommand({
 
     if (args.check) {
       console.log(`\nRun \`print-md repair\` to fix it. ${guidance.recommendedNextStep}`);
+      process.exitCode = 1;
+      return;
+    }
+
+    // --check is diagnose-only and never reaches here, so this guard only ever
+    // blocks an actual repair. A fresh heartbeat means the app may be mid-write
+    // on this same project right now — refuse to race it unless overridden.
+    if (!args.force && (await isAppHeartbeatFresh(ctx.repoDir))) {
+      console.log(
+        "\nThe print-md app appears to have this project open. Close it first, or re-run with --force.",
+      );
       process.exitCode = 1;
       return;
     }

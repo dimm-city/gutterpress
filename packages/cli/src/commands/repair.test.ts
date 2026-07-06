@@ -25,6 +25,9 @@ import { fileURLToPath } from "node:url";
 
 import git from "isomorphic-git";
 
+import { appHeartbeatPath, writeAppHeartbeat } from "../lib/app-heartbeat.ts";
+import { STALE_LOCK_MIN_AGE_MS } from "../lib/remote-auth/recovery/classify.ts";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_ENTRY = path.join(__dirname, "..", "cli.ts");
 
@@ -59,6 +62,32 @@ function runRepairCheck(dir: string): { exitCode: number; stdout: string; stderr
     stdout: result.stdout.toString(),
     stderr: result.stderr.toString(),
   };
+}
+
+function runRepair(
+  dir: string,
+  extraArgs: string[] = [],
+): { exitCode: number; stdout: string; stderr: string } {
+  const result = Bun.spawnSync({
+    cmd: ["bun", "run", CLI_ENTRY, "repair", dir, "--yes", ...extraArgs],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout.toString(),
+    stderr: result.stderr.toString(),
+  };
+}
+
+/** Make `.git/index.lock` look stale to recover-stale-lock.ts's own age re-check
+ *  (repair's diagnosis bypasses the age gate with minLockAgeMs:0, but the
+ *  handler that actually deletes it does not). */
+function makeStaleLock(dir: string): void {
+  const lockPath = path.join(dir, ".git", "index.lock");
+  fs.writeFileSync(lockPath, "");
+  const old = new Date(Date.now() - STALE_LOCK_MIN_AGE_MS - 60_000);
+  fs.utimesSync(lockPath, old, old);
 }
 
 describe("print-md repair --check diagnosis", () => {
@@ -105,6 +134,97 @@ describe("print-md repair --check diagnosis", () => {
       expect(stdout).not.toContain("looks healthy");
       expect(stdout).toContain("Found a problem");
       expect(exitCode).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+});
+
+describe("print-md repair app-open guard (M2)", () => {
+  test("a fresh app heartbeat blocks repair without --force and leaves the lock untouched", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "repair-heartbeat-fresh-"));
+    try {
+      await makeRepo(dir);
+      makeStaleLock(dir);
+      await writeAppHeartbeat(dir); // now — fresh
+
+      const { exitCode, stdout } = runRepair(dir);
+
+      expect(stdout).toContain("appears to have this project open");
+      expect(stdout).not.toContain("was removed");
+      expect(exitCode).toBe(1);
+      // The repair must never have run — the lock is still on disk.
+      expect(fs.existsSync(path.join(dir, ".git", "index.lock"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("--force repairs even with a fresh app heartbeat", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "repair-heartbeat-force-"));
+    try {
+      await makeRepo(dir);
+      makeStaleLock(dir);
+      await writeAppHeartbeat(dir); // now — fresh
+
+      const { exitCode, stdout } = runRepair(dir, ["--force"]);
+
+      expect(stdout).not.toContain("appears to have this project open");
+      expect(exitCode).toBe(0);
+      expect(fs.existsSync(path.join(dir, ".git", "index.lock"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("a stale app heartbeat does not block repair", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "repair-heartbeat-stale-"));
+    try {
+      await makeRepo(dir);
+      makeStaleLock(dir);
+      await writeAppHeartbeat(dir, Date.now() - 10 * 60_000); // 10 min old — stale
+
+      const { exitCode, stdout } = runRepair(dir);
+
+      expect(stdout).not.toContain("appears to have this project open");
+      expect(exitCode).toBe(0);
+      expect(fs.existsSync(path.join(dir, ".git", "index.lock"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("--check never blocks on a fresh app heartbeat (diagnose-only)", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "repair-heartbeat-check-"));
+    try {
+      await makeRepo(dir);
+      makeStaleLock(dir);
+      await writeAppHeartbeat(dir); // now — fresh
+
+      const { exitCode, stdout } = runRepairCheck(dir);
+
+      expect(stdout).not.toContain("appears to have this project open");
+      expect(stdout).toContain("Found a problem");
+      expect(exitCode).toBe(1); // --check's own "needs repair" exit code, not the guard's
+      // Diagnose-only: the lock must be untouched either way.
+      expect(fs.existsSync(path.join(dir, ".git", "index.lock"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("no heartbeat present does not block repair", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "repair-heartbeat-absent-"));
+    try {
+      await makeRepo(dir);
+      makeStaleLock(dir);
+      expect(fs.existsSync(appHeartbeatPath(dir))).toBe(false);
+
+      const { exitCode, stdout } = runRepair(dir);
+
+      expect(stdout).not.toContain("appears to have this project open");
+      expect(exitCode).toBe(0);
+      expect(fs.existsSync(path.join(dir, ".git", "index.lock"))).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
