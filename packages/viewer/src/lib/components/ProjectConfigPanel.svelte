@@ -47,6 +47,8 @@
     ProjectPluginEntry,
     PluginValidationResult,
     RecommendedPlugin,
+    PublishProviderCard,
+    PublishRunResult,
   } from "$lib/api";
   import type { ToastController } from "$lib/components/Toast.svelte";
   import { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
@@ -57,6 +59,7 @@
   import StylesSection from "$lib/components/config/StylesSection.svelte";
   import DesignSection from "$lib/components/config/DesignSection.svelte";
   import PluginsSection from "$lib/components/config/PluginsSection.svelte";
+  import PublishSection from "$lib/components/config/PublishSection.svelte";
 
   let {
     projectDir,
@@ -123,6 +126,17 @@
   let pluginBusyRef = $state<string | null>(null);
   let npmName = $state("");
 
+  // (6) Publish (#35)
+  let publishCards = $state<PublishProviderCard[]>([]);
+  let publishError = $state<string | null>(null);
+  let publishBusyId = $state<string | null>(null);
+  let publishResults = $state<Record<string, PublishRunResult>>({});
+  let publishConfigDrafts = $state<Record<string, Record<string, string>>>({});
+  let publishTokenDrafts = $state<Record<string, string>>({});
+  // Explicit artifact path per provider — viewer PDF exports go wherever the
+  // author chose in the save dialog, so the manifest-default rarely exists.
+  let publishArtifactDrafts = $state<Record<string, string>>({});
+
   // ── Theme thumbnails ────────────────────────────────────────────────────────
 
   async function loadThumb(t: ThemeInfo): Promise<void> {
@@ -161,14 +175,18 @@
       loadStyles(),
       design.loadDesign(),
       loadPlugins(),
+      loadPublish(),
     ]);
   }
 
   /** Refresh a single section after a mutation in that section. */
-  async function refresh(section: "themes" | "styles" | "design" | "plugins"): Promise<void> {
+  async function refresh(
+    section: "themes" | "styles" | "design" | "plugins" | "publish",
+  ): Promise<void> {
     if (section === "themes") await loadThemes();
     else if (section === "styles") await loadStyles();
     else if (section === "design") await design.loadDesign();
+    else if (section === "publish") await loadPublish();
     else await loadPlugins();
   }
 
@@ -447,6 +465,152 @@
     }
   }
 
+  // ── (6) Publish (#35) ────────────────────────────────────────────────────
+  //
+  // Credentials go straight to the host credential store via publish:connect
+  // and only redacted status comes back; the manifest holds non-secret
+  // settings. Runs are long (butler/swa uploads) — one provider at a time.
+
+  async function loadPublish(): Promise<void> {
+    if (!projectDir) return;
+    publishError = null;
+    try {
+      publishCards = await api.publish.listProviders(projectDir);
+    } catch (e) {
+      publishError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  function setPublishConfigDraft(providerId: string, key: string, value: string): void {
+    publishConfigDrafts = {
+      ...publishConfigDrafts,
+      [providerId]: { ...publishConfigDrafts[providerId], [key]: value },
+    };
+  }
+
+  function setPublishTokenDraft(providerId: string, value: string): void {
+    publishTokenDrafts = { ...publishTokenDrafts, [providerId]: value };
+  }
+
+  /**
+   * Write pending settings drafts to the manifest — the one draft-flush
+   * implementation Save/Connect/Publish all share, so a fix to draft handling
+   * can't diverge between them. On failure the draft is KEPT (the author's
+   * typed values must survive the error) and the error propagates.
+   */
+  async function flushPublishDraft(providerId: string): Promise<void> {
+    if (!projectDir) return;
+    const draft = publishConfigDrafts[providerId];
+    if (!draft || Object.keys(draft).length === 0) return;
+    await api.publish.setConfig(projectDir, providerId, draft);
+    publishConfigDrafts = { ...publishConfigDrafts, [providerId]: {} };
+  }
+
+  async function savePublishConfig(providerId: string): Promise<void> {
+    if (!projectDir || publishBusyId) return;
+    publishBusyId = providerId;
+    publishError = null;
+    try {
+      await flushPublishDraft(providerId);
+      await refresh("publish");
+      toast?.success?.("Publish settings saved.");
+    } catch (e) {
+      publishError = e instanceof Error ? e.message : String(e);
+    } finally {
+      publishBusyId = null;
+    }
+  }
+
+  async function connectPublish(providerId: string): Promise<void> {
+    if (!projectDir || publishBusyId) return;
+    const token = (publishTokenDrafts[providerId] ?? "").trim();
+    if (!token) {
+      publishError = "Paste an API key first.";
+      return;
+    }
+    publishBusyId = providerId;
+    publishError = null;
+    try {
+      // Unsaved settings (e.g. the Shopify store domain) are needed to verify
+      // the key — save them first.
+      await flushPublishDraft(providerId);
+      await api.publish.connect(projectDir, providerId, token);
+      publishTokenDrafts = { ...publishTokenDrafts, [providerId]: "" };
+      await refresh("publish");
+      toast?.success?.("Connected — the key is stored securely on this computer.");
+    } catch (e) {
+      publishError = e instanceof Error ? e.message : String(e);
+      // Settings may have been written before the failure — resync the cards
+      // so the panel shows what's actually on disk.
+      await refresh("publish");
+    } finally {
+      publishBusyId = null;
+    }
+  }
+
+  async function disconnectPublish(providerId: string): Promise<void> {
+    if (publishBusyId) return;
+    publishBusyId = providerId;
+    publishError = null;
+    try {
+      await api.publish.disconnect(providerId);
+      await refresh("publish");
+    } catch (e) {
+      publishError = e instanceof Error ? e.message : String(e);
+    } finally {
+      publishBusyId = null;
+    }
+  }
+
+  async function runPublish(providerId: string, dryRun: boolean): Promise<void> {
+    if (!projectDir || publishBusyId) return;
+    publishBusyId = providerId;
+    publishError = null;
+    try {
+      // Publishing saves pending settings so the run uses what the author
+      // sees; a dry run ("Check readiness") must have NO side effects, so it
+      // checks what's on disk.
+      if (!dryRun) await flushPublishDraft(providerId);
+      const artifactPath = (publishArtifactDrafts[providerId] ?? "").trim();
+      const result = await api.publish.run(projectDir, providerId, {
+        dryRun,
+        ...(artifactPath ? { artifactPath } : {}),
+      });
+      publishResults = { ...publishResults, [providerId]: result };
+      if (result.ok && !dryRun) {
+        toast?.success?.(
+          result.outcome?.kind === "guided"
+            ? "Upload package ready — follow the checklist to finish."
+            : "Published!",
+        );
+      }
+    } catch (e) {
+      publishError = e instanceof Error ? e.message : String(e);
+    } finally {
+      publishBusyId = null;
+    }
+  }
+
+  async function pickPublishArtifact(card: PublishProviderCard): Promise<void> {
+    try {
+      const picked =
+        card.format === "pdf"
+          ? await api.dialog.pickPdfFile()
+          : await api.dialog.openDirectory();
+      if (picked) {
+        publishArtifactDrafts = { ...publishArtifactDrafts, [card.id]: picked };
+      }
+    } catch (e) {
+      publishError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  function openPublishUrl(url: string): void {
+    void api.shell.openExternal(url).catch((e) => {
+      publishError = e instanceof Error ? e.message : String(e);
+    });
+  }
+
   const hasProject = $derived(!!projectDir);
 </script>
 
@@ -536,6 +700,24 @@
         {addRecommended}
         {addNpmPlugin}
         {addLocalPlugin}
+      />
+
+      <PublishSection
+        {publishError}
+        cards={publishCards}
+        busyId={publishBusyId}
+        results={publishResults}
+        configDrafts={publishConfigDrafts}
+        tokenDrafts={publishTokenDrafts}
+        artifactDrafts={publishArtifactDrafts}
+        setConfigDraft={setPublishConfigDraft}
+        setTokenDraft={setPublishTokenDraft}
+        pickArtifact={pickPublishArtifact}
+        saveConfig={savePublishConfig}
+        connect={connectPublish}
+        disconnect={disconnectPublish}
+        run={runPublish}
+        openUrl={openPublishUrl}
       />
 
     </div>
@@ -691,6 +873,27 @@
   .config-panel :global(.toggle:disabled) { opacity: 0.5; cursor: progress; }
 
   .config-panel :global(.advanced > summary) { cursor: pointer; user-select: none; font-size: 12px; font-weight: 600; color: var(--app-text-muted); padding: 4px 0; list-style-position: inside; }
+
+  /* Publish section (#35) */
+  .config-panel :global(.publish-list) { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .config-panel :global(.publish-card) { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-control-bg); }
+  .config-panel :global(.publish-head) { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .config-panel :global(.publish-name) { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .config-panel :global(.publish-meta) { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .config-panel :global(.status.off) { color: var(--app-text-faint); }
+  .config-panel :global(.publish-fields) { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .config-panel :global(.publish-field) { display: flex; flex-direction: column; gap: 3px; width: 100%; font-size: 11px; color: var(--app-text-muted); }
+  .config-panel :global(.publish-connect) { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .config-panel :global(.publish-actions) { display: flex; gap: 6px; }
+  .config-panel :global(.publish-result) { border-top: 1px solid var(--app-border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .config-panel :global(.publish-issues) { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+  .config-panel :global(.publish-issues .error) { color: var(--app-error-text); }
+  .config-panel :global(.publish-issues .warning) { color: var(--app-warning-text, #d29922); }
+  .config-panel :global(.publish-issues .info) { color: var(--app-text-muted); }
+  .config-panel :global(.success-line) { margin: 0; font-size: 12px; color: var(--app-success-text, #3fb950); display: inline-flex; align-items: center; gap: 4px; }
+  .config-panel :global(.publish-checklist) { margin: 0; padding-left: 18px; font-size: 11px; color: var(--app-text-muted); line-height: 1.5; }
+  .config-panel :global(.publish-result code) { font-size: 10px; word-break: break-all; }
+  .config-panel :global(button.link) { background: none; border: none; padding: 0; font-size: 11px; color: var(--app-focus-ring); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
 
   .empty { padding: 24px; text-align: center; color: var(--app-text-faint); font-size: 13px; }
 

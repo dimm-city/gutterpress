@@ -12,6 +12,7 @@ const SUBCOMMANDS = {
   new: () => import("./commands/new").then((m) => m.default),
   preview: () => import("./commands/preview").then((m) => m.default),
   build: () => import("./commands/build").then((m) => m.default),
+  publish: () => import("./commands/publish").then((m) => m.default),
   // CI / advanced:
   lint: () => import("./commands/lint").then((m) => m.default),
   validate: () => import("./commands/validate").then((m) => m.default),

@@ -264,6 +264,74 @@
           }
         }
       }
+    },
+    "publish": {
+      "type": "object",
+      "description": "Publish provider settings. Non-secret configuration only — API keys and tokens are stored in the host credential store, never in this file.",
+      "properties": {
+        "itch": {
+          "type": "object",
+          "description": "itch.io publishing (uploaded with butler)",
+          "properties": {
+            "target": {
+              "type": "string",
+              "description": "itch.io project as user/game (the butler push target)",
+              "pattern": "^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$",
+              "examples": ["dimm-city/operations-manual"]
+            },
+            "channel": {
+              "type": "string",
+              "description": "butler channel name",
+              "default": "pdf"
+            }
+          }
+        },
+        "drivethrurpg": {
+          "type": "object",
+          "description": "DriveThruRPG guided publishing (export package + open the publisher hub)",
+          "properties": {
+            "productUrl": {
+              "type": "string",
+              "description": "Existing product page URL, when updating a published title"
+            }
+          }
+        },
+        "kdp": {
+          "type": "object",
+          "description": "Amazon KDP guided publishing (export package + open kdp.amazon.com)",
+          "properties": {}
+        },
+        "azure-swa": {
+          "type": "object",
+          "description": "Azure Static Web Apps deployment of the HTML export",
+          "properties": {
+            "env": {
+              "type": "string",
+              "description": "Deploy environment",
+              "default": "production"
+            }
+          }
+        },
+        "shopify": {
+          "type": "object",
+          "description": "Shopify product publishing (Admin GraphQL API)",
+          "properties": {
+            "shop": {
+              "type": "string",
+              "description": "Store domain, e.g. my-store.myshopify.com"
+            },
+            "productId": {
+              "type": "string",
+              "description": "Existing product GID/id to update instead of creating a new one"
+            },
+            "apiVersion": {
+              "type": "string",
+              "description": "Admin GraphQL API version",
+              "default": "2026-04"
+            }
+          }
+        }
+      }
     }
   },
   "examples": [

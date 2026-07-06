@@ -13,11 +13,13 @@
  * Bundle-safe (CLAUDE.md §1/§3): no runtime package.json reads, no computed
  * dynamic imports, no bundlers.
  */
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { parseDocument, isSeq, isMap, YAMLSeq, Scalar } from "yaml";
-import type { Document } from "yaml";
-import { resolveManifestPath, loadManifestDoc } from "./manifest-doc";
+import {
+  resolveManifestPath,
+  loadManifestDoc,
+  writeManifestDoc as writeDoc,
+} from "./manifest-doc";
 
 /** The author-facing manifest subset the Config view can read + write. */
 export interface ProjectConfigFields {
@@ -27,12 +29,6 @@ export interface ProjectConfigFields {
   outputFilename?: string;
   /** `source.files` — the markdown inputs (null means "all chapter files"). */
   sourceFiles?: string[] | null;
-}
-
-/** Write the doc back, creating the project dir if needed. */
-async function writeDoc(file: string, doc: Document.Parsed): Promise<void> {
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, doc.toString(), "utf8");
 }
 
 /** Compute the difference of a partial update (only keys the caller set). */

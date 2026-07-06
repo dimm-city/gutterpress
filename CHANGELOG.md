@@ -3,6 +3,23 @@
 All notable changes to print-md are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Publish providers (#35).** Push a finished book to distribution platforms
+  from the new `print-md publish` command (headless/CI-safe: `--dry-run`,
+  `--json`, env-var credentials) and the desktop app's Project settings →
+  Publish section. Five providers: **itch.io** (direct upload via butler,
+  auto-downloaded on first publish), **Azure Static Web Apps** (deploys the
+  HTML export via the SWA CLI), **Shopify** (creates/updates the product via
+  the Admin GraphQL API), and guided flows for **DriveThruRPG** and **Amazon
+  KDP** (no upload APIs exist — print-md validates, stages an upload package
+  with a listing sheet, and opens the platform's upload page with a
+  checklist). Non-secret settings live in the manifest's new `publish:`
+  section; API keys are stored in the OS keychain (desktop) or the `0600`
+  user-config credential store (CLI) — never in the project folder.
+
 ## [0.6.1] - 2026-07-01
 
 ### Added

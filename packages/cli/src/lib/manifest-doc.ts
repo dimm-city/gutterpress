@@ -13,7 +13,7 @@
  * no computed dynamic imports, no bundlers.
  */
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseDocument, isSeq, YAMLSeq } from "yaml";
 import type { Document } from "yaml";
@@ -38,6 +38,15 @@ export async function loadManifestDoc(
     text = "";
   }
   return { doc: parseDocument(text), file };
+}
+
+/** Write the doc back, creating the project dir if needed. */
+export async function writeManifestDoc(
+  file: string,
+  doc: Document.Parsed,
+): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, doc.toString(), "utf8");
 }
 
 /** The named sequence node, creating (and attaching) an empty one if missing. */

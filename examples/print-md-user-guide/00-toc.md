@@ -2,7 +2,7 @@
 
 # Table of Contents
 
-<div class="lede">Eight chapters take you from first install to production-ready print PDFs.</div>
+<div class="lede">Nine chapters take you from first install to published, production-ready print PDFs.</div>
 
 <ol>
 <li><a href="#ch-getting-started">Getting Started</a> — Install, basic workflow, project structure, manifest configuration</li>
@@ -13,6 +13,7 @@
 <li><a href="#ch-plugins">Plugins</a> — Adding, installing, writing, and loading order for markdown-it plugins</li>
 <li><a href="#ch-validation">Validation & Best Practices</a> — 31 print checks, CLI usage, file organization, production workflow</li>
 <li><a href="#ch-system">System Setup</a> — Required external tools, per-platform install, troubleshooting</li>
+<li><a href="#ch-publishing">Publishing</a> — Sending your finished book to itch.io, DriveThruRPG, Amazon KDP, Azure, or Shopify</li>
 </ol>
 
 ---
