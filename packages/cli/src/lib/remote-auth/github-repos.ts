@@ -9,6 +9,7 @@
  */
 import type { HostCredential } from "./token-store.ts";
 import { githubApiHeaders, OFFLINE_MESSAGE } from "./github-auth.ts";
+import { MANIFEST_FILENAMES } from "../manifest.ts";
 
 const API_BASE = "https://api.github.com";
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -122,7 +123,14 @@ export interface RepoBook {
   name: string;
 }
 
-const MANIFEST_RE = /(^|\/)print-md\.ya?ml$/;
+// Manifest file stems this scan recognizes: the current `manifest.yaml`/`.yml`
+// (single source of truth: MANIFEST_FILENAMES) plus `print-md.yaml`/`.yml` for
+// back-compat with books authored before the manifest was renamed.
+const MANIFEST_NAME_STEMS = [
+  ...new Set(MANIFEST_FILENAMES.map((name) => name.replace(/\.ya?ml$/, ""))),
+  "print-md",
+];
+const MANIFEST_RE = new RegExp(`(^|/)(${MANIFEST_NAME_STEMS.join("|")})\\.ya?ml$`);
 
 type TreeEntry = { path?: string; type?: string; sha?: string };
 type TreeResponse = { tree?: TreeEntry[]; truncated?: boolean };
@@ -134,8 +142,9 @@ function bookFromManifestPath(manifestPath: string, repo: string): RepoBook {
 
 /**
  * Find the print-md books inside a repository branch: every directory that
- * contains a `print-md.yaml` / `print-md.yml` (the repository root counts,
- * with `path: ""`). Uses one `GET /repos/{owner}/{repo}/git/trees/{branch}
+ * contains a manifest (`manifest.yaml` / `.yml`, or the legacy `print-md.yaml`
+ * / `.yml`) — the repository root counts, with `path: ""`. Uses one
+ * `GET /repos/{owner}/{repo}/git/trees/{branch}
  * ?recursive=1` call; when GitHub truncates the recursive listing (very large
  * repositories) it falls back to scanning the root + each top-level directory
  * with non-recursive tree calls, so the result stays correct for the common
@@ -185,7 +194,7 @@ export async function listRepoBooks(
     const subRes = await apiGet(fetchImpl, treeUrl(dirEntry.sha!, false), credential.token);
     const subBody = (await subRes.json()) as TreeResponse;
     const hasManifest = (subBody.tree ?? []).some(
-      (e) => e.type === "blob" && (e.path === "print-md.yaml" || e.path === "print-md.yml"),
+      (e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path),
     );
     if (hasManifest) {
       books.push({ path: dirEntry.path!, name: dirEntry.path! });

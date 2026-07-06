@@ -59,6 +59,28 @@ describe("upsertRecentFolder", () => {
   });
 });
 
+describe("upsertRecentFolder — C2 lastActiveBook", () => {
+  test("carries an optional lastActiveBook field through unchanged", () => {
+    const entry: RecentFolder = { path: "/repo", title: "Repo", openedAt: "2026-07-05T00:00:00.000Z", lastActiveBook: "/repo/books/one" };
+    const result = upsertRecentFolder(undefined, entry);
+    expect(result).toEqual([entry]);
+  });
+
+  test("re-opening a different book in the same repo refreshes lastActiveBook", () => {
+    let list: RecentFolder[] = [
+      { ...rf("/repo"), lastActiveBook: "/repo/books/one" },
+    ];
+    list = upsertRecentFolder(list, { ...rf("/repo", "Repo", "2026-07-05T00:00:00.000Z"), lastActiveBook: "/repo/books/two" });
+    expect(list.length).toBe(1);
+    expect(list[0].lastActiveBook).toBe("/repo/books/two");
+  });
+
+  test("a standalone (non-git) entry has no lastActiveBook", () => {
+    const result = upsertRecentFolder(undefined, rf("/standalone"));
+    expect(result[0].lastActiveBook).toBeUndefined();
+  });
+});
+
 describe("removeRecentFolder", () => {
   test("removes the matching path", () => {
     const list = [rf("/a"), rf("/b"), rf("/c")];

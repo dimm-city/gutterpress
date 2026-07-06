@@ -655,6 +655,73 @@ test("a snapshot interrupted between staging and commit is recovered by the next
   }
 });
 
+test("a marker left AFTER a successful commit does not create a phantom empty snapshot", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    const gitMod = (await import("isomorphic-git")).default;
+    const fsMod = await import("node:fs");
+
+    // A real snapshot that completes normally.
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nEdited draft.\n");
+    const snap = await provider.snapshot({ projectDir: dir, message: "Real snapshot" });
+    const historyBefore = await provider.listHistory(dir);
+    expect(historyBefore.length).toBe(2);
+
+    // Simulate the OTHER crash window: the marker is written before staging
+    // and removed after `git.commit()` returns — a crash between those two
+    // events leaves the marker behind even though the commit above already
+    // succeeded and the working tree is clean. Hand-recreate that state.
+    fsMod.writeFileSync(path.join(gitDirFor(dir), "print-md-snapshot-staging"), "");
+    const changes = await listWorkdirChanges(dir, {});
+    expect(changes.adds.length + changes.removes.length).toBe(0);
+
+    const recovered = await provider.snapshot({
+      projectDir: dir,
+      message: "should never be committed",
+    });
+
+    // No new commit was made — the returned entry IS the pre-existing HEAD,
+    // not a duplicate "should never be committed" entry.
+    expect(recovered.id).toBe(snap.id);
+    const historyAfter = await provider.listHistory(dir);
+    expect(historyAfter.map((e) => e.id)).toEqual(historyBefore.map((e) => e.id));
+    expect(historyAfter.length).toBe(2);
+
+    // The stale marker is cleared so future snapshots stop "recovering".
+    expect(
+      fsMod.existsSync(path.join(gitDirFor(dir), "print-md-snapshot-staging")),
+    ).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the original crash-after-staging case still commits (unaffected by the phantom-snapshot guard)", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    const gitMod = (await import("isomorphic-git")).default;
+    const fsMod = await import("node:fs");
+
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nStaged edit.\n");
+    await gitMod.add({ fs: fsMod, dir, filepath: "chapter-01.md" });
+    fsMod.writeFileSync(path.join(gitDirFor(dir), "print-md-snapshot-staging"), "");
+
+    const snap = await provider.snapshot({ projectDir: dir, message: "recovered staged edit" });
+
+    const history = await provider.listHistory(dir);
+    expect(history[0]!.id).toBe(snap.id);
+    expect(history[0]!.message).toBe("recovered staged edit");
+    expect(history.length).toBe(2);
+    expect(
+      fsMod.existsSync(path.join(gitDirFor(dir), "print-md-snapshot-staging")),
+    ).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a clean tree with no stale marker still reports 'no changes'", async () => {
   const dir = await tempDir();
   try {

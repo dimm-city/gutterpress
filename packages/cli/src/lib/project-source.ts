@@ -49,8 +49,10 @@ export type ProjectSource =
       /**
        * Project directory relative to `repoRoot`, in canonical forward-slash
        * form (`"books/field-guide"`). Empty string when the project is the
-       * repository root itself. All history operations (snapshot / list /
-       * restore) are scoped to this path.
+       * repository root itself. Records WHERE the opened folder sits inside
+       * the repo — it does not scope anything: history/snapshot/restore/sync
+       * operate on the whole repo at `repoRoot` ("a project is its git repo"),
+       * never on just this subfolder.
        */
       subPath: string;
       hasRemote: boolean;
@@ -139,9 +141,14 @@ export function parseHeadBranch(headText: string): string | undefined {
  * (the folder's own `.git` is the `local-git-folder` case, not this).
  * Returns the nearest enclosing repo root, or `undefined` when none exists.
  *
- * Stops at the user's home directory (a repo above `~` is OS/system tooling,
- * not the author's project) and at the filesystem root. Pure `node:fs` stats —
- * no git involvement — so the walk costs one `stat` per ancestor.
+ * Stops at the user's home directory — a repo AT or ABOVE `~` is OS/system
+ * tooling (e.g. a dotfiles repo), not the author's project, and must never
+ * become the `repoRoot` for a bare folder the author opens under home (that
+ * would scope snapshot/restore/sync to the entire home directory). The home
+ * check runs BEFORE the `.git` probe on each ancestor so home itself is never
+ * treated as an enclosing repo, even if it happens to have a `.git` dir.
+ * Pure `node:fs` stats — no git involvement — so the walk costs one `stat`
+ * per ancestor.
  */
 export async function findEnclosingRepoDir(
   folderPath: string,
@@ -153,8 +160,8 @@ export async function findEnclosingRepoDir(
     const parent = path.dirname(dir);
     if (parent === dir) return undefined; // filesystem root reached
     dir = parent;
+    if (dir === home) return undefined; // never treat home as an enclosing repo
     if (await isDirectory(path.join(dir, ".git"))) return dir;
-    if (dir === home) return undefined; // never scan above the user's home
   }
   return undefined;
 }
@@ -220,7 +227,8 @@ export async function detectProjectSource(
 
   // No `.git` of its own — but it may sit INSIDE an existing repo (a book
   // subfolder of a larger monorepo). The project then shares the enclosing
-  // repo's history, with every operation scoped to its subPath.
+  // repo's whole-repo history; `subPath` only records where it sits, it does
+  // not scope any operation.
   const enclosingRepoDir = await findEnclosingRepoDir(folderPath);
   if (enclosingRepoDir !== undefined) {
     const { remoteUrl, branch } = await readGitDirInfo(
@@ -247,9 +255,10 @@ export async function detectProjectSource(
  *   `git init`, #13/#25) but no snapshot/history/restore until then; no sync.
  * - `local-git-folder`: version history already on, so snapshot/history/restore
  *   are available — including book subfolders of a larger repo (`subPath`
- *   non-empty), which share the enclosing repo's history scoped to their
- *   folder. Sync is offered only when a remote exists (the app can push via
- *   the user's externally-configured Git auth — #16).
+ *   non-empty), which share the enclosing repo's whole-repo history (`subPath`
+ *   is where the folder sits, not a scope). Sync is offered only when a
+ *   remote exists (the app can push via the user's externally-configured Git
+ *   auth — #16).
  * - `managed-github`: full app-managed read/write/version/sync.
  */
 export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {

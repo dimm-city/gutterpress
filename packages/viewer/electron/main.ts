@@ -457,6 +457,50 @@ function emitSyncStatus(payload: SyncStatusPayload): void {
   mainWindow?.webContents.send("sync:status", payload);
 }
 
+// ── App-open heartbeat (repair-vs-viewer detection, M2) ──────────────────────
+// `print-md repair` run from a terminal can race this app on the same repo —
+// the per-repo FIFO lock only serializes operations WITHIN a process. Rather
+// than a cross-process lock manager, this app leaves a small liveness marker
+// under the repo's own `.git` dir while a project is open (lib/app-heartbeat.ts,
+// shared by both hosts). `watchedDir` (the folder watcher's key) may be a BOOK
+// subfolder inside a larger repo (repo-root sessions), so the heartbeat always
+// targets the resolved repo root — a mirror of `watchedDir`, kept in lock-step
+// the same way, SOLELY so the close/quit cleanup below knows what to remove.
+let openRepoDir: string | null = null;
+
+/**
+ * Best-effort: resolve `dir`'s repo root and (re)write the heartbeat there.
+ * Stamps the marker with a TTL derived from this app's OWN current auto-sync
+ * cadence (`heartbeatTtlMs`) — `repair` only ever sees the repo, never this
+ * app's settings, so the writer (here) is the only place that can translate
+ * "refreshed every `autoSyncMinutes`" into "stays fresh for at least this
+ * long". Without this, a fixed reader-side window (2 min) would read a live
+ * app as closed for most of any longer configured cadence (up to 24 h).
+ */
+async function refreshAppHeartbeat(dir: string): Promise<void> {
+  try {
+    const lib = await loadLib();
+    const source = await lib.detectProjectSource(dir);
+    if (source.type !== "local-git-folder") return;
+    openRepoDir = source.repoRoot;
+    const settings = await readSettings();
+    const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
+    await lib.writeAppHeartbeat(source.repoRoot, Date.now(), process.pid, lib.heartbeatTtlMs(periodicMs));
+  } catch (e) {
+    console.warn("[app-heartbeat] refresh failed (non-fatal):", e);
+  }
+}
+
+/** Best-effort: remove the heartbeat for the currently tracked repo, if any. */
+function clearAppHeartbeat(): void {
+  const dir = openRepoDir;
+  if (!dir) return;
+  openRepoDir = null;
+  void loadLib()
+    .then((lib) => lib.removeAppHeartbeat(dir))
+    .catch((e) => console.warn("[app-heartbeat] cleanup failed (non-fatal):", e));
+}
+
 const autoSync = new AutoSyncOrchestrator({
   loadLib,
   tokenStore: electronTokenStore,
@@ -466,6 +510,9 @@ const autoSync = new AutoSyncOrchestrator({
   getWatchedDir: () => watchedDir,
   operationLogPath,
   buildRecoveryContext,
+  // Piggyback on the periodic safety-sync tick + edit debounce — no dedicated
+  // timer added for it (every autoSync.run() call refreshes the heartbeat).
+  refreshHeartbeat: (dir) => void refreshAppHeartbeat(dir),
 });
 
 /** Prompt initial pull after a project opens — seconds, NOT coupled to the
@@ -511,6 +558,9 @@ const folderWatch = new FolderWatcher({
     void flushAutoSnapshot();
     // Cancel all sync timers when the watched folder changes (project switch/close).
     autoSync.cancelAll();
+    // Same flush point covers app quit (mainWindow "closed" calls stopFolderWatch),
+    // so removing the heartbeat here covers both project close and app quit.
+    clearAppHeartbeat();
   },
   // Keep the module-level MIRROR in lock-step with the watcher's normalized dir
   // so the many off-limits `watchedDir` reads stay byte-identical.
@@ -1417,16 +1467,32 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     /* not a manifest project — keep dir basename */
   }
 
+  // Normalize so the map key and watchedDir comparison use the same canonical form.
+  const openedDir = path.resolve(activePreview.inputPath);
+  // C2 (book switcher): the viewer always opens an actual book folder (never a
+  // bare multi-book repo root — the renderer retargets to a resolved book
+  // before calling here), so `openedDir` is the active book. Detected once and
+  // reused below (recents + the local-status/preflight blocks) instead of each
+  // re-deriving it.
+  const source = await lib.detectProjectSource(openedDir);
+
   const existingPrefs = await readPrefs();
   await writePrefs({
     ...existingPrefs,
     lastProjectDir: activePreview.inputPath,
     // Single source of truth for recents: every successful preview start
-    // (modal, toolbar, or auto-reopen) upserts the folder here.
+    // (modal, toolbar, or auto-reopen) upserts the folder here. Repo-backed
+    // projects are "a project is its git repo" (CLAUDE.md) — the entry keys on
+    // the repo root, with `lastActiveBook` remembering which book was open so
+    // reopening restores it instead of falling back to the alphabetically
+    // first book.
     recentFolders: upsertRecentFolder(existingPrefs.recentFolders, {
-      path: activePreview.inputPath,
+      path: source.type === "local-git-folder" ? source.repoRoot : openedDir,
       title,
       openedAt: new Date().toISOString(),
+      ...(source.type === "local-git-folder" && source.subPath !== ""
+        ? { lastActiveBook: openedDir }
+        : {}),
     }),
   });
 
@@ -1436,14 +1502,21 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // initial sync. If no edits have happened the project may already be clean, and
   // syncProject will return "up-to-date" quickly — still worth running once on
   // open to pull any teammate changes that arrived since last session.
-  // Normalize so the map key and watchedDir comparison use the same canonical form.
-  const openedDir = path.resolve(activePreview.inputPath);
   // Start the periodic safety-sync interval now (idempotent) so incoming changes
   // pull even in a view-only session with no edits — it must NOT wait for the
   // first file change. Then do a PROMPT initial pull a few seconds after open
   // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
   // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
   void autoSync.armInterval(openedDir);
+
+  // App-open heartbeat (repair-vs-viewer detection, M2): write immediately so
+  // a `print-md repair` run right after open already sees a fresh marker —
+  // don't wait for the first periodic tick (up to autoSyncMinutes later).
+  // Reuses refreshAppHeartbeat (not a second inline write) so the TTL stamped
+  // here always matches the one the periodic refresh stamps.
+  if (source.type === "local-git-folder") {
+    void refreshAppHeartbeat(openedDir);
+  }
 
   // Local-git projects with no syncable remote get no sync status, so the
   // bottom-bar pill would stay hidden — yet they DO keep version history via
@@ -1453,7 +1526,6 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
   // their status from runAutoSync and ignore this branch.
   void (async () => {
     try {
-      const source = await lib.detectProjectSource(openedDir);
       if (source.type !== "local-git-folder") return;
       const diag = await lib.diagnoseProjectRemote(openedDir, {
         tokenStore: electronTokenStore,
@@ -1517,7 +1589,6 @@ ipcMain.handle("api:preview", async (_e, args: { input?: string }) => {
     let plog: ReturnType<typeof lib.resolveLogger> | undefined;
 
     try {
-      const source = await lib.detectProjectSource(openedDir);
       if (source.type !== "local-git-folder") {
         // Not a git project — release immediately and let the normal initial sync proceed.
         syncState.inFlight = false;

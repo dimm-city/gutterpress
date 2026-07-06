@@ -220,9 +220,15 @@ describe("recover interrupted_merge — copy discipline", () => {
 });
 
 // ── TOCTOU: marker vanished before recovery ─────────────────────────────────────
+//
+// This precondition is now enforced by the DISPATCHER's `stillApplies` probe
+// (dispatch.ts), INSIDE withRepoLock, before the bare handler is ever invoked
+// — so this test goes through dispatch.recover, not the bare `recover()`
+// export (the shared abort skeleton no longer has its own copy of this guard).
 
 describe("recover interrupted_merge — marker vanished before recovery", () => {
   test("no MERGE_HEAD → no-op recovered; worktree preserved, no backup, no confirm", async () => {
+    const { recover: dispatchRecover } = await import("./dispatch.ts");
     const dir = await makeTempDir("im-vanished-");
     await initRepo(dir);
     // The merge was finished/aborted externally between inspect and recover:
@@ -237,7 +243,7 @@ describe("recover interrupted_merge — marker vanished before recovery", () => 
       },
     };
 
-    const result = await recover(makeCtx(dir, { confirmation: gate }));
+    const result = await dispatchRecover("interrupted_merge", makeCtx(dir, { confirmation: gate }));
 
     expect(result.status).toBe("recovered");
     // No destructive path was entered: no confirmation prompt, no backup.

@@ -273,3 +273,17 @@ export interface RecoveryContext {
  * The dispatcher (dispatch.ts) maps SyncErrorKind → RecoverFn.
  */
 export type RecoverFn = (ctx: RecoveryContext, error?: unknown) => Promise<RecoveryResult>;
+
+/**
+ * Optional per-kind precondition probe a recover-<x>.ts module MAY export as
+ * `stillApplies`. The dispatcher calls it — for serializeRepo:true kinds only,
+ * INSIDE withRepoLock, immediately before invoking the handler body — to catch
+ * the case where the condition that justified this kind was already resolved
+ * (externally, or by a previous attempt) between classification and dispatch.
+ * Returning false means there is nothing left to repair; the dispatcher
+ * returns a benign no-op RecoveryResult without running the handler at all.
+ * Must be read-only and throw-free from the caller's perspective (probes
+ * should catch their own errors and resolve `true` — "assume it still
+ * applies" — rather than reject, so a probe failure never blocks recovery).
+ */
+export type StillAppliesFn = (ctx: RecoveryContext) => Promise<boolean>;

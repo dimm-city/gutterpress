@@ -11,6 +11,8 @@
 // implementations.
 // ──────────────────────────────────────────────────────────────────────────
 
+import { MANIFEST_FILENAMES } from "@dimm-city/print-md";
+
 export interface DiscoveredProject {
   path: string;
   title: string;
@@ -34,8 +36,6 @@ const SKIP_DIRS = new Set([
   ".Trash",
   "Library",
 ]);
-
-const MANIFEST_NAMES = ["manifest.yaml", "manifest.yml"] as const;
 
 export interface ScanDeps {
   /** List immediate child entries of `dir`, separating sub-directory names. */
@@ -83,7 +83,7 @@ export async function scanForProjects(
       // Is this directory itself a project?
       if (!excludeSet.has(dir)) {
         let isProject = false;
-        for (const name of MANIFEST_NAMES) {
+        for (const name of MANIFEST_FILENAMES) {
           if (await deps.fileExists(deps.join(dir, name))) {
             isProject = true;
             break;

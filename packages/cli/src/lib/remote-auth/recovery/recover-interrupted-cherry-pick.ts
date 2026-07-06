@@ -15,8 +15,16 @@
  * attached during a cherry-pick).
  */
 
-import { abortInterruptedOperation } from "./abort-interrupted-operation.ts";
-import type { RecoverFn } from "./types.ts";
+import { abortInterruptedOperation, anyMarkerPresent } from "./abort-interrupted-operation.ts";
+import type { RecoverFn, StillAppliesFn } from "./types.ts";
+
+const MARKER_FILES = ["CHERRY_PICK_HEAD"];
+
+/**
+ * Precondition probe (see types.ts `StillAppliesFn`) — the dispatcher's
+ * replacement for the abort skeleton's old hand-rolled TOCTOU guard.
+ */
+export const stillApplies: StillAppliesFn = async (ctx) => anyMarkerPresent(ctx, MARKER_FILES);
 
 /**
  * Success message. If the author had in-progress edits, be HONEST that the abort
@@ -37,7 +45,7 @@ function successMessage(hadLocalChanges: boolean): string {
 export const recover: RecoverFn = (ctx) =>
   abortInterruptedOperation(ctx, {
     kind: "interrupted_cherry_pick",
-    markerFiles: ["CHERRY_PICK_HEAD"],
+    markerFiles: MARKER_FILES,
     cleanupFiles: ["CHERRY_PICK_HEAD", "MERGE_MSG", "sequencer"],
     successMessage,
   });

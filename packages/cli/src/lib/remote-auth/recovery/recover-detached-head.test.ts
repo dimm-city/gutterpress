@@ -1036,3 +1036,43 @@ describe("recover detached_head — BUG 2: forced checkout survives a dirty tree
     expect(new TextDecoder().decode(blob)).toBe(editedBody);
   });
 });
+
+// ── TOCTOU: HEAD re-attached before recovery (dispatcher stillApplies) ────────
+//
+// HEAD may have been re-attached externally (e.g. the author ran a checkout
+// in a terminal) between classification and dispatch. The dispatcher's
+// `stillApplies` probe (dispatch.ts) re-checks this INSIDE withRepoLock,
+// before the handler body runs — so this goes through dispatch.recover, not
+// the bare `recover()` export.
+
+describe("recover detached_head — HEAD re-attached before recovery (dispatcher stillApplies)", () => {
+  test("HEAD no longer detached → no-op recovered; no confirm, no backup, no rescue branch", async () => {
+    const { recover: dispatchRecover } = await import("./dispatch.ts");
+    const dir = await makeTempDir("dh-reattached-");
+    const sha = await initRepo(dir);
+    await detachHead(dir, sha);
+    // HEAD was re-attached externally before recovery ran (e.g. the author
+    // checked out "main" directly).
+    await git.checkout({ fs, dir, ref: "main" });
+
+    let confirmCalled = false;
+    const gate: ConfirmationGate = {
+      confirmRepair: async () => {
+        confirmCalled = true;
+        return true;
+      },
+    };
+
+    const result = await dispatchRecover("detached_head", makeLocalCtx(dir, { confirmation: gate }));
+
+    expect(result.status).toBe("recovered");
+    expect(confirmCalled).toBe(false);
+    const r = result as Extract<RecoveryResult, { status: "recovered" }>;
+    expect(r.backupZipPath ?? "").toBe("");
+    // No rescue branch was created — nothing was touched.
+    const branches = await listBranches(dir);
+    expect(branches.some((b) => b.startsWith("recovery/detached-head-"))).toBe(false);
+    expect(await currentBranch(dir)).toBe("main");
+    expect(await resolveMain(dir)).toBe(sha);
+  });
+});

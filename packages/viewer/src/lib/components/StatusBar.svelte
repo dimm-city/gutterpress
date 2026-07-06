@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
-   * StatusBar — slim bottom bar hosting the sync status pill, save indicator,
-   * and the Problems panel toggle/body (VS Code-style).
+   * StatusBar — slim bottom bar hosting the book switcher (C2), sync status
+   * pill, save indicator, and the Problems panel toggle/body (VS Code-style).
    *
    * Layout (left → right):
-   *   [sync pill] [saving indicator] ············ [Problems toggle]
+   *   [book switcher] [sync pill] [saving indicator] ············ [Problems toggle]
    *
    * The bar is always visible when a project is open (the saving indicator shows
    * "All changes saved" at rest, never blank), so both pieces of status are
@@ -15,9 +15,11 @@
    */
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
+  import BookSwitcher from "$lib/components/BookSwitcher.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { onMount } from "svelte";
   import type { ConflictFileInfo, ProblemEntry } from "$lib/platform/contract";
+  import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
 
   let isCompact = $state(false);
 
@@ -48,6 +50,12 @@
     problems = [] as ProblemEntry[],
     /** Whether problems are loading. */
     problemsLoading = false,
+    /** Books (C2) in the open project's repo; switcher shows only when > 1. */
+    books = [] as ProjectBookEntry[],
+    /** The book the session currently targets. */
+    activeBookDir = null as string | null,
+    /** Called with a book's folder path when the author switches books. */
+    onSwitchBook = undefined as ((path: string) => void) | undefined,
     /** Whether the problems panel body is expanded. Bindable. */
     problemsOpen = $bindable(false),
     /** Called when a problem entry is clicked. */
@@ -77,6 +85,9 @@
     problems?: ProblemEntry[];
     problemsLoading?: boolean;
     problemsOpen?: boolean;
+    books?: ProjectBookEntry[];
+    activeBookDir?: string | null;
+    onSwitchBook?: (path: string) => void;
     onProblemSelect?: (p: ProblemEntry) => void;
     onReconnect?: () => void;
     onConflict?: (files: ConflictFileInfo[]) => void;
@@ -142,14 +153,23 @@
 
   let showProblems = $derived(!isCompact && !!projectDir && sourceMode === "folder");
 
+  // Book switcher (C2): only when the open repo actually has more than one book.
+  let showBookSwitcher = $derived(!!projectDir && sourceMode === "folder" && books.length > 1);
+
   onMount(updateCompact);
 </script>
 
 <svelte:window onresize={updateCompact} />
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [sync refresh icon] [sync pill] | [save indicator] [Save now] -->
+  <!-- Left cluster: [book switcher] | [sync refresh icon] [sync pill] | [save indicator] [Save now] -->
   <div class="status-left">
+    {#if showBookSwitcher}
+      <BookSwitcher {books} {activeBookDir} onSelect={(path) => onSwitchBook?.(path)} />
+      {#if showSync || showForceSync || fileOpen}
+        <span class="status-sep" aria-hidden="true"></span>
+      {/if}
+    {/if}
     {#if showForceSync}
       <!-- Sync now — a bare refresh icon at the far left; spins while syncing. -->
       <button

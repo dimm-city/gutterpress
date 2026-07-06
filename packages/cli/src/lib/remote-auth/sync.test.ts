@@ -29,6 +29,7 @@ import {
   type SyncOutcome,
 } from "./sync.ts";
 import type { HostCredential } from "./token-store.ts";
+import { MSG_NO_BRANCH } from "./sync-messages.ts";
 import {
   createFixtureRepo,
   FLUSH,
@@ -843,6 +844,34 @@ describe("resolveConflicts", () => {
       expect(outcome.message).toContain("at the same moment");
       // The work is not lost or left dirty; the merged racer changes landed
       // locally even though the push could not.
+      expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("setup error (detached HEAD → no named branch) → status error, code needs-connection-setup", async () => {
+    const { h, conflict } = await conflictSetup();
+    try {
+      // Detach HEAD directly (isomorphic-git's currentBranch() returns
+      // undefined once HEAD is a raw oid instead of a symbolic ref) so
+      // resolveConflicts's own currentBranchOrThrow() throws MSG_NO_BRANCH —
+      // the same setup-error path the viewer's ConflictChoicesDialog must
+      // route to its connect surface instead of rendering verbatim.
+      const oid = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      fs.writeFileSync(path.join(h.projectDir, ".git", "HEAD"), `${oid}\n`);
+
+      const outcome = await resolveConflicts({
+        projectDir: h.projectDir,
+        resolutions: [{ path: "chapter-01.md", choice: "mine" }],
+        localId: conflict.localId,
+        remoteId: conflict.remoteId,
+      });
+      expect(outcome.status).toBe("error");
+      if (outcome.status !== "error") throw new Error("unreachable");
+      expect(outcome.code).toBe("needs-connection-setup");
+      expect(outcome.message).toBe(MSG_NO_BRANCH);
+      // Nothing was touched: the working tree is untouched, no snapshot taken.
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
       await h.cleanup();

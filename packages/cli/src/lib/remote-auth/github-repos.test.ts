@@ -142,6 +142,31 @@ test("listRepoBooks finds every directory holding a print-md manifest (root coun
   expect(requested[0]).toContain("/repos/octocat/books/git/trees/main?recursive=1");
 });
 
+test("listRepoBooks finds books using the real manifest.yaml/.yml file names", async () => {
+  // The manifest was never actually named `print-md.yaml` in shipped
+  // projects/examples (see packages/cli/src/lib/manifest.ts) — books use
+  // `manifest.yaml`/`manifest.yml`. This must be discoverable too.
+  const fetchImpl = (async () =>
+    treeResponse([
+      { path: "manifest.yaml", type: "blob" },
+      { path: "books", type: "tree" },
+      { path: "books/field-guide", type: "tree" },
+      { path: "books/field-guide/manifest.yaml", type: "blob" },
+      { path: "books/op-manual", type: "tree" },
+      { path: "books/op-manual/manifest.yml", type: "blob" },
+      // Similar names that must NOT match.
+      { path: "books/notes/not-manifest.yaml", type: "blob" },
+      { path: "books/notes/manifest.yaml.bak", type: "blob" },
+    ])) as unknown as typeof fetch;
+
+  const books = await listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl });
+  expect(books).toEqual([
+    { path: "", name: "books" },
+    { path: "books/field-guide", name: "field-guide" },
+    { path: "books/op-manual", name: "op-manual" },
+  ]);
+});
+
 test("listRepoBooks returns [] when no manifest exists anywhere", async () => {
   const fetchImpl = (async () =>
     treeResponse([

@@ -134,6 +134,23 @@ export interface AutoSyncOrchestratorDeps {
     authorName?: string,
     logFile?: string,
   ) => Promise<RecoveryContext>;
+  /**
+   * Best-effort: refresh the app-open heartbeat (repair-vs-viewer detection,
+   * M2 — see lib/app-heartbeat.ts) for `dir`. Called on every `run()`
+   * invocation so it piggybacks on the existing periodic safety-sync tick
+   * AND the file-change debounce fire — no dedicated timer is added for it.
+   * Optional so existing callers/tests are unaffected.
+   *
+   * KNOWN LIMITATION: `run()` is only reachable via `armInterval`/`armDebounce`,
+   * both of which no-op when `autoSyncDelayMs` is `null` (auto-sync master
+   * switch off). With auto-sync off, the heartbeat is written once at project
+   * open (see main.ts) and never refreshed again, so it goes stale after its
+   * TTL even though the project may still be open. Accepted per the M2 spec
+   * (detection, not a cross-process lock manager; "do NOT add a new timer" —
+   * there is no other existing tick to piggyback on for this case) — `repair
+   * --force` remains the escape hatch.
+   */
+  refreshHeartbeat?: (dir: string) => void;
 }
 
 /**
@@ -310,6 +327,10 @@ export class AutoSyncOrchestrator {
    * Maps the SyncOutcome to an ambient status and emits it to the renderer.
    */
   async run(dir: string): Promise<void> {
+    // Any trigger reaching here — periodic tick, edit debounce, resume, prompt
+    // pull — is evidence the app is alive and working on `dir` right now.
+    this.deps.refreshHeartbeat?.(dir);
+
     const state = this.getOrCreateState(dir);
 
     // Single-flight guard: if already in flight, arm the runAgain flag so we run

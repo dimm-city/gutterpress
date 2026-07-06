@@ -37,10 +37,7 @@ import { isMergeConflictError, isPushRejected } from "./recovery/classify.ts";
 import {
   MSG_CONFLICT,
   MSG_EXPIRED_CHOICES,
-  MSG_NO_BRANCH,
-  MSG_NO_REMOTE,
   MSG_RACE,
-  MSG_SSH_REMOTE,
   MSG_SYNCED_MERGED,
   SYNC_SNAPSHOT_MESSAGE,
 } from "./sync-messages.ts";
@@ -52,6 +49,7 @@ import {
   onAuthFor,
   repoDirFor,
   resolveTransport,
+  setupErrorMessage,
 } from "./transport.ts";
 import type {
   GitCache,
@@ -513,14 +511,15 @@ export async function resolveConflicts(
         snapshotId,
       });
     } catch (e) {
-      if (
-        e instanceof Error &&
-        (e.message === MSG_NO_REMOTE ||
-          e.message === MSG_SSH_REMOTE ||
-          e.message === MSG_NO_BRANCH)
-      ) {
-        logger.error("resolve", `setup error`, { error: e.message });
-        return { status: "error", message: e.message, ...(snapshotId ? { snapshotId } : {}) };
+      const setupMsg = setupErrorMessage(e);
+      if (setupMsg) {
+        logger.error("resolve", `setup error`, { error: setupMsg });
+        return {
+          status: "error",
+          message: setupMsg,
+          code: "needs-connection-setup",
+          ...(snapshotId ? { snapshotId } : {}),
+        };
       }
       const errMsg = e instanceof Error ? e.message : String(e);
       logger.error("resolve", `unexpected error`, { error: errMsg });

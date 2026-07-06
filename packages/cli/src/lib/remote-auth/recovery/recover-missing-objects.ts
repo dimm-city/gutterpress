@@ -51,9 +51,27 @@ import { onAuthFor } from "../sync.ts";
 import { withBackupGate } from "./failsafe.ts";
 import { verifyRepoReadable } from "./inspect.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
-import type { RecoverFn, RecoveryResult } from "./types.ts";
+import type { RecoverFn, RecoveryResult, StillAppliesFn } from "./types.ts";
 
 const KIND = "missing_or_corrupt_objects" as const;
+
+/**
+ * Precondition probe (see types.ts `StillAppliesFn`): re-probe object-store
+ * readability right before the dispatcher hands off to `recover` below,
+ * reusing the SAME verifyRepoReadable check the handler itself uses to
+ * confirm a fetch actually repaired the store (inspect.ts) — one
+ * implementation, not a second copy that could drift. A successful read means
+ * the damage is already gone (e.g. a previous fetch attempt already fixed
+ * it), so there is nothing left to repair.
+ */
+export const stillApplies: StillAppliesFn = async (ctx) => {
+  try {
+    await verifyRepoReadable(ctx.repoDir);
+    return false;
+  } catch {
+    return true;
+  }
+};
 
 export const recover: RecoverFn = async (ctx, error?) => {
   return withBackupGate(

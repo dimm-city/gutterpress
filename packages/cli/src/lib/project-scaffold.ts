@@ -308,7 +308,18 @@ export async function scaffoldProject(
     } catch (e) {
       // Escape hatch: never fail the whole create just because Git init failed.
       versionHistory = "none";
-      versionHistoryError = e instanceof Error ? e.message : String(e);
+      // The one expected case: the new book landed inside a folder that's
+      // already part of an enclosing repo's version history (a multi-book
+      // project). That's not a failure — the book already has history,
+      // scoped at the repo root — so report it as such instead of the
+      // provider's generic "won't create a separate history here" message.
+      const { findEnclosingRepoDir } = await import("./project-source.ts");
+      const enclosingRepoDir = await findEnclosingRepoDir(projectDir);
+      versionHistoryError = enclosingRepoDir
+        ? `This book was added to ${path.basename(enclosingRepoDir)}'s shared version history; save a snapshot to record it.`
+        : e instanceof Error
+          ? e.message
+          : String(e);
     }
   }
 

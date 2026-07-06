@@ -29,7 +29,6 @@
   let {
     open = $bindable(false),
     projectDir,
-    bookSubPath = "",
     files = [],
     localId,
     remoteId,
@@ -41,7 +40,6 @@
   }: {
     open?: boolean;
     projectDir: string | null;
-    bookSubPath?: string;
     files?: ConflictFileInfo[];
     localId?: string | null;
     remoteId?: string | null;
@@ -54,7 +52,23 @@
   let choices = $state<Record<string, "mine" | "theirs" | "both">>({});
   let phase = $state<"choosing" | "resolving" | "done" | "error">("choosing");
   let errorMessage = $state<string | null>(null);
+  /**
+   * What the current error is actually about — set alongside errorMessage at
+   * the same point in confirm(), so the header can be a function of state the
+   * same way the body already is (visual-gate round 1 finding: a static
+   * "file conflict" title was shown over the unrelated connection-setup
+   * error). Any future non-conflict error state reusing this dialog shell
+   * should add a case here rather than leaving the header hardcoded.
+   */
+  let errorKind = $state<"conflict" | "connection-setup">("conflict");
   let dialogEl = $state<HTMLDivElement | undefined>(undefined);
+
+  /** Header icon + title as a function of the dialog's current state. */
+  const header = $derived(
+    phase === "error" && errorKind === "connection-setup"
+      ? { icon: "link" as const, title: "Your online connection needs to be set up again" }
+      : { icon: "triangle-alert" as const, title: "Changes happened in two places" },
+  );
 
   /** Track which file disclosures are expanded (path → boolean). */
   let previewExpanded = $state<Record<string, boolean>>({});
@@ -64,6 +78,7 @@
   function onDialogMount(_el: HTMLElement) {
     phase = "choosing";
     errorMessage = null;
+    errorKind = "conflict";
     previewExpanded = {};
     previewCache = {};
     choices = Object.fromEntries(
@@ -75,21 +90,10 @@
     queueMicrotask(() => dialogEl?.focus());
   }
 
-  function isOutsideBook(filePath: string): boolean {
-    return !!bookSubPath && !filePath.startsWith(bookSubPath + "/");
-  }
-
-  function displayPath(filePath: string): string {
-    return bookSubPath && filePath.startsWith(bookSubPath + "/")
-      ? filePath.slice(bookSubPath.length + 1)
-      : filePath;
-  }
-
-  /** Human-readable label for the file, falling back to the display path. */
+  /** Human-readable label for the file, falling back to the repo-relative path. */
   function fileLabel(filePath: string): string {
-    const display = displayPath(filePath);
     // Try to make a chapter-like label from the filename.
-    const name = basenameOf(display);
+    const name = basenameOf(filePath);
     // Strip extension and de-kebab for a readable label ("03-chapter.md" → "03 chapter").
     return name
       .replace(/\.[^.]+$/, "")
@@ -143,6 +147,7 @@
     if (!projectDir || !localId || !remoteId || phase === "resolving") return;
     phase = "resolving";
     errorMessage = null;
+    errorKind = "conflict";
     const resolutions: ConflictResolutionChoice[] = files.map((f) => ({
       path: f.path,
       choice: choices[f.path] ?? "both",
@@ -166,9 +171,30 @@
         phase = "error";
         errorMessage = outcome.message;
         onReconnect?.();
-      } else {
+      } else if (outcome.status === "offline") {
+        // Already a plain-language, non-technical message — safe to render
+        // as-is (unchanged from before this fix).
         phase = "error";
         errorMessage = outcome.message;
+      } else if (outcome.status === "error" && outcome.code === "needs-connection-setup") {
+        // The project's online connection itself is the problem (no online
+        // address / an SSH address / no named version line) — never render
+        // outcome.message here, it carries the lib's technical wording for
+        // that case. Route straight to the same connect/setup surface the
+        // "auth" branch above uses; the author's per-file choices are left
+        // untouched so they can close this dialog and pick up later.
+        phase = "error";
+        errorKind = "connection-setup";
+        errorMessage =
+          "This project needs its online connection set up differently before syncing can work.";
+        onReconnect?.();
+      } else {
+        phase = "error";
+        // Deliberately a fixed friendly string, NOT outcome.message: that
+        // field can carry raw technical error text that is unhelpful (and
+        // often alarming) to the non-technical authors this app targets.
+        // Same fixed copy as SyncController.handleForceSync's generic arm.
+        errorMessage = "Sync failed. Check your connection and try again.";
       }
     } catch (e) {
       phase = "error";
@@ -223,8 +249,8 @@
   >
     <header class="dialog-header">
       <h2 id="conflict-title">
-        <Icon name="triangle-alert" />
-        Changes happened in two places
+        <Icon name={header.icon} />
+        {header.title}
       </h2>
       <button
         class="close"
@@ -248,8 +274,8 @@
       {#if phase !== "error"}
         <p class="lede">
           You and a teammate changed some of the same files. A snapshot of
-          your work was saved automatically — you can always recover either
-          version from View History. Choose what to do with each file below.
+          your work was saved automatically before combining. Choose what to
+          do with each file below.
         </p>
 
         <!-- "Not sure?" affordance — recommended lossless default (§6.1) -->
@@ -264,13 +290,6 @@
           </button>
         </div>
 
-        {#if bookSubPath && files.some((f) => isOutsideBook(f.path))}
-          <p class="hint">
-            Some files below are outside this book but part of the same shared
-            folder — everything in it saves together.
-          </p>
-        {/if}
-
         <!-- svelte-ignore a11y_no_redundant_roles -->
         <ul class="file-list" role="list" aria-label="Files with differences">
           {#each files as file (file.path)}
@@ -279,7 +298,7 @@
             <li class="file-item">
               <div class="file-info">
                 <span class="file-label">{label}</span>
-                <span class="file-path">{displayPath(file.path)}{isOutsideBook(file.path) ? " · shared folder" : ""}</span>
+                <span class="file-path">{file.path}</span>
                 <span class="file-explain">{kindExplanation(file.kind)}{binary ? " Binary file — no preview available." : ""}</span>
               </div>
 
@@ -486,12 +505,6 @@
     font-size: 13px;
     line-height: 1.55;
     color: var(--app-text-secondary);
-  }
-  .hint {
-    font-size: 12px;
-    color: var(--app-text-faint);
-    margin: 0 0 12px;
-    line-height: 1.5;
   }
 
   /* "Not sure? Keep both" banner — the recommended-lossless affordance (§6.1). */

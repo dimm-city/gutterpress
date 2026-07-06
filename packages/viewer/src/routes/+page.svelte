@@ -10,9 +10,7 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type {
     ProblemEntry,
-    ProjectClassification,
     RecoveryConfirmRequest,
-    SnapshotEntry,
   } from "$lib/platform/contract";
   import { problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
@@ -301,11 +299,11 @@
   });
 
   // ── Project session capability state (#12) ───────────────────────────────────
-  // The classification wiring (source detection → capabilities → subPath /
-  // sharesParentHistory → prefs hint → history-refresh → sync gate) lives in the
+  // The classification wiring (source detection → capabilities → subPath →
+  // prefs hint → history-refresh → sync gate) lives in the
   // ProjectSessionController (Phase 5c). The component reset()s it and fires
-  // classify(dir) on folder open, applyReclassify()s after version history is
-  // enabled, and reads its rune getters. Host coupling injected (§8): the
+  // classify(dir) on folder open, and reads its rune getters. Host coupling
+  // injected (§8): the
   // classify round-trip, the ViewerPrefs writer, and the two fan-out callbacks
   // (History tab + SyncController).
   const projectSession = new ProjectSessionController({
@@ -314,6 +312,16 @@
     notifyHistoryRefresh: () => leftPanelRef?.notifyHistoryRefresh(),
     refreshSyncDiag: (dir) => void syncController.refreshSyncDiag(dir),
   });
+
+  // C2 (book switcher): the toolbar label shows the active book's own title by
+  // default (unchanged from before repo-root sessions). In a multi-book repo it
+  // is prefixed with the repo's folder name so the author can see, at a glance,
+  // that switching books (`<BookSwitcher>` below) stays within the same project.
+  let displayTitle = $derived(
+    projectSession.repoRoot && projectSession.books.length > 1
+      ? `${basenameOf(projectSession.repoRoot)} — ${docTitle || folderName}`
+      : docTitle || folderName,
+  );
 
   // ── Recovery UI state (transparent sync recovery) ────────────────────────────
   // The whole recovery UI state machine (RecoveryOverlay scrim, the blocked-
@@ -443,34 +451,6 @@
     recovery.dismissOverlay();
   }
 
-  // The open folder is a book subfolder of a larger versioned folder (full
-  // history features are available, scoped to the book by the host) and the
-  // book's path relative to that shared folder both live on the
-  // ProjectSessionController (projectSession.projectSharesParentHistory /
-  // projectSession.projectSubPath), derived by its classification wiring.
-
-  // History was just enabled (#13): adopt the upgraded capabilities and persist
-  // the re-classified source hint — same as what classifyProject does on open.
-  function onVersionHistoryEnabled(result: ProjectClassification) {
-    projectSession.applyReclassify(result);
-  }
-
-  // A restore rewrote project files on disk (#13). The preview server's file
-  // watcher re-renders on its own; the editor buffer reconciles via the folder
-  // watcher (#44). Confirm in the toast and refresh history so the new backup
-  // entry is visible immediately.
-  function onVersionRestored() {
-    toast?.success("Project restored — the preview will refresh in a moment.");
-    leftPanelRef?.notifyHistoryRefresh();
-  }
-
-  // A snapshot was saved (#13) — same toast pattern as onVersionRestored, so
-  // version-history feedback is consistent (the dialog itself shows no notice).
-  // Bump the key so the History tab list updates without requiring a tab switch.
-  function onVersionSnapshotSaved() {
-    toast?.success("Snapshot saved.");
-    leftPanelRef?.notifyHistoryRefresh();
-  }
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
     "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md";
@@ -1322,29 +1302,61 @@
         return;
       }
       const platform = getPlatform();
-      // #49: the app-facing contract takes a FolderRef. `dir` is the key; the
-      // displayName is the adapter-precomputed one when available, else the
-      // basename of the key.
+      // C2 (book switcher): classify the PICKED folder first, before any
+      // content pipeline opens. `dir` may be a bare multi-book repo root (no
+      // manifest of its own) — classify resolves which book is actually
+      // active (ProjectSessionController#activeBookDir) so preview/editor/
+      // watch never target a folder that isn't a book. Session identity
+      // (repoRoot/books/capabilities) stays keyed on the picked `dir`; only
+      // the content target below moves to the resolved book.
+      const previousRepoRoot = projectSession.repoRoot;
+      projectSession.reset();
+      syncController.syncDiag = null;
+      await projectSession.classify(dir);
+      const targetDir = projectSession.activeBookDir ?? dir;
+      // One quiet, plain-language notice when the tracked "project" turns out
+      // to be a whole repo rather than just the folder the author picked
+      // (a book nested inside a larger versioned folder, or a bare repo root
+      // redirected to one of its books). Once per repo per session — not on
+      // every subsequent switch between books already known to be in it.
+      if (
+        projectSession.repoRoot &&
+        projectSession.repoRoot !== previousRepoRoot &&
+        (targetDir !== dir || dir !== projectSession.repoRoot)
+      ) {
+        toast?.info(
+          `This book is part of ${basenameOf(projectSession.repoRoot)} — opened the whole project.`,
+        );
+      }
+      // #49: the app-facing contract takes a FolderRef. The folder actually
+      // rendered/edited/watched is `targetDir`, not necessarily the picked
+      // `dir`. Once retargeted, prefer the resolved book's own title (from
+      // the repo's book list) over the caller-supplied displayName, which
+      // described the picked folder.
+      const targetDisplayName =
+        targetDir === dir
+          ? (displayName ?? basenameOf(targetDir))
+          : (projectSession.books.find((b) => b.path === targetDir)?.title ?? basenameOf(targetDir));
       const data = await platform.startPreview({
-        input: { key: dir, displayName: displayName ?? basenameOf(dir) },
+        input: { key: targetDir, displayName: targetDisplayName },
       });
       sourceMode = "folder";
       // New folder: flush + clear any file selected from a previous project so
       // the editor pane doesn't point at a stale path (#44 — flush first so a
       // pending save in the prior project isn't dropped on project switch).
-      if (currentDir !== dir && buffer) {
+      if (currentDir !== targetDir && buffer) {
         await buffer.flush().catch(() => {});
         buffer.reset();
       }
-      currentDir = dir;
+      currentDir = targetDir;
       leftPanelRef?.resetHistoryState();
-      currentFolderDisplayName = displayName;
+      currentFolderDisplayName = targetDisplayName;
       currentUrl = null;
       // Detect a "loose" folder (no manifest) so we can offer to set it up as a
       // book. Default true (banner hidden) until the listing proves it's absent.
       currentFolderHasManifest = true;
       adoptBannerDismissed = false;
-      void api.fs.listDir(dir)
+      void api.fs.listDir(targetDir)
         .then((entries) => {
           currentFolderHasManifest = entries.some((e) => /^manifest\.ya?ml$/i.test(e.name));
         })
@@ -1364,13 +1376,6 @@
       // async settings/narrow timing. Idempotent + self-gated (no-op in view-only
       // contexts where there's nothing to edit).
       void ensureEditorFile();
-      // Classify the opened folder (#12) so capability-gated actions (#13/#25)
-      // can render. Always re-detected on open (a user may add/remove `.git`
-      // between sessions) and persisted as a hint. Fire-and-forget: a failure
-      // must never block the preview. Owned by the ProjectSessionController.
-      projectSession.reset();
-      syncController.syncDiag = null;
-      projectSession.classify(dir);
       docTitle = data.title ?? null;
       // Force iframe remount by nulling first; reset overlay for the new iframe.
       previewUrl = null;
@@ -1404,9 +1409,9 @@
         );
       }
       // Crash-recovery offer (#44): scan for snapshots left by an unclean exit.
-      void scanForRecovery(dir);
+      void scanForRecovery(targetDir);
       // Start watching for external edits (replaces old $effect on currentDir).
-      startFolderWatch(dir);
+      startFolderWatch(targetDir);
     } catch (e) {
       previewUrl = null;
       currentDir = null;
@@ -1429,6 +1434,18 @@
       busy = false;
       busyLabel = "";
     }
+  }
+
+  /**
+   * C2: switch the active book within the open repo (BookSwitcher). A full
+   * re-open at the sibling book's folder — the simplest correct mechanism per
+   * the C2 design note: classify() resolves the same repoRoot/books (it's the
+   * same repo), so session identity is unchanged; only the content pipeline
+   * (preview/editor/watch) retargets to the chosen book.
+   */
+  async function switchBook(path: string) {
+    if (busy || path === currentDir) return;
+    await startFolderPreview(path, "Switching book…");
   }
 
   async function openFolder() {
@@ -2064,7 +2081,7 @@
         </button>
       {:else if currentDir}
         <!-- Folder source: show the title/name; full path is the hover tooltip. -->
-        <span class="doc-title" title={currentDir}>{docTitle || folderName}</span>
+        <span class="doc-title" title={currentDir}>{displayTitle}</span>
       {:else}
         <span class="path no-project">print-md</span>
       {/if}
@@ -2387,7 +2404,6 @@
       projectDir={currentDir}
       projectDisplayName={currentFolderDisplayName}
       projectCapabilities={projectSession.projectCapabilities}
-      projectSharesParentHistory={projectSession.projectSharesParentHistory}
       editorFilePath={editorFilePath}
       sourceMode={sourceMode}
       outline={outline}
@@ -2408,9 +2424,6 @@
       onOpenUrl={openUrl}
       onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
       onNewProject={() => newProjectWizardRef?.show()}
-      onVersionHistoryEnabled={onVersionHistoryEnabled}
-      onSnapshotSaved={(entry) => onVersionSnapshotSaved()}
-      onVersionRestored={onVersionRestored}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -2624,6 +2637,9 @@
     {problems}
     problemsLoading={problemsLoading}
     bind:problemsOpen={problemsOpen}
+    books={projectSession.books}
+    activeBookDir={projectSession.activeBookDir}
+    onSwitchBook={(path) => void switchBook(path)}
     onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
     onConflict={(files) => syncController.onPillConflict(files)}
@@ -2717,7 +2733,6 @@
 <ConflictChoicesDialog
   bind:open={syncController.conflictOpen}
   projectDir={sourceMode === "folder" ? currentDir : null}
-  bookSubPath={projectSession.projectSubPath}
   files={syncController.conflictFiles}
   localId={syncController.conflictLocalId}
   remoteId={syncController.conflictRemoteId}

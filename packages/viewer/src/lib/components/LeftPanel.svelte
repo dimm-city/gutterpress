@@ -22,16 +22,9 @@
   import MediaPanel from "$lib/components/MediaPanel.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import ProjectConfigPanel from "$lib/components/ProjectConfigPanel.svelte";
-  import { getPlatform, isDesktop } from "$lib/platform";
-  import { friendlyHostError } from "$lib/errors";
-  import { relativeTime } from "$lib/format";
-  import { api } from "$lib/api";
+  import { isDesktop } from "$lib/platform";
   import type { OutlineEntry } from "$lib/preview-client";
-  import type {
-    ProjectCapabilities,
-    ProjectClassification,
-  } from "$lib/platform/contract";
-  import type { SnapshotEntry } from "$lib/api";
+  import type { ProjectCapabilities } from "$lib/platform/contract";
 
   export type PanelTab = "projects" | "toc" | "files" | "media" | "config";
 
@@ -43,7 +36,6 @@
     projectDir = null,
     projectDisplayName = null,
     projectCapabilities = null,
-    projectSharesParentHistory = false,
     editorFilePath = null,
     sourceMode = "folder",
     // Outline (TOC tab)
@@ -59,9 +51,6 @@
     onOpenUrl,
     onOpenGitHub,
     onNewProject,
-    onVersionHistoryEnabled,
-    onSnapshotSaved,
-    onVersionRestored,
     onSyncReconnect,
     onPanelStateChange,
   }: {
@@ -72,7 +61,6 @@
     projectDir?: string | null;
     projectDisplayName?: string | null;
     projectCapabilities?: ProjectCapabilities | null;
-    projectSharesParentHistory?: boolean;
     editorFilePath?: string | null;
     sourceMode?: "folder" | "url";
     outline?: OutlineEntry[];
@@ -89,63 +77,10 @@
     onOpenUrl?: (url: string) => void;
     onOpenGitHub?: () => void;
     onNewProject?: () => void;
-    onVersionHistoryEnabled?: (result: ProjectClassification) => void;
-    onSnapshotSaved?: (entry: SnapshotEntry) => void;
-    onVersionRestored?: (backupId?: string) => void;
     onSyncReconnect?: () => void;
     /** Called whenever tab or width changes so the parent can persist the state. */
     onPanelStateChange?: () => void;
   } = $props();
-
-  // Derived capabilities for History tab
-  let canEnable = $derived(projectCapabilities?.canEnableVersionHistory ?? false);
-  let canHistory = $derived(projectCapabilities?.canViewHistory ?? false);
-  let canSnapshot = $derived(projectCapabilities?.canSnapshot ?? false);
-  let canRestore = $derived(projectCapabilities?.canRestoreSnapshot ?? false);
-  let historyAvailable = $derived(!!projectDir && sourceMode === "folder" && !!projectCapabilities && (canEnable || canHistory));
-
-  // ── History tab state ─────────────────────────────────────────────────────
-  const AUTO_SNAPSHOT_MESSAGE = "Automatic snapshot";
-  type SnapshotHistoryRow =
-    | { kind: "single"; entry: SnapshotEntry }
-    | { kind: "auto-group"; entries: SnapshotEntry[] };
-
-  let historyEntries = $state<SnapshotEntry[]>([]);
-  let historyHasMore = $state(false);
-  let historyLoading = $state(false);
-  let historyLoadingMore = $state(false);
-  let historyBusy = $state(false);
-  let historyBusyAction = $state<string | null>(null);
-  let historyError = $state<string | null>(null);
-  let historyNotice = $state<string | null>(null);
-  let snapshotMessage = $state("");
-  let confirmRestoreId = $state<string | null>(null);
-
-  let historyRows = $derived.by<SnapshotHistoryRow[]>(() => {
-    const out: SnapshotHistoryRow[] = [];
-    let run: SnapshotEntry[] = [];
-    const flushRun = () => {
-      if (!run.length) return;
-      if (run.length === 1) out.push({ kind: "single", entry: run[0]! });
-      else out.push({ kind: "auto-group", entries: run });
-      run = [];
-    };
-    for (const entry of historyEntries) {
-      if (entry.message === AUTO_SNAPSHOT_MESSAGE) run.push(entry);
-      else { flushRun(); out.push({ kind: "single", entry }); }
-    }
-    flushRun();
-    return out;
-  });
-
-  // ── Load history when history tab becomes active ─────────────────────────
-  // Called from the tab onclick, keyboard nav, and onMount (for initial state).
-  // Guards duplicated here so multiple callers are safe.
-  function maybeLoadHistory() {
-    if (canHistory && projectDir && !historyLoading && !historyEntries.length) {
-      void refreshHistory();
-    }
-  }
 
   onMount(() => {
     if (open) notifyOpened();
@@ -155,101 +90,13 @@
   export function notifyOpened() {
   }
 
-  async function refreshHistory() {
-    if (!projectDir) return;
-    historyLoading = true;
-    try {
-      const page = await api.vcs.listSnapshotsPage(projectDir);
-      historyEntries = page.entries;
-      historyHasMore = page.hasMore;
-    } catch (e) {
-      historyError = friendly(e);
-      historyEntries = [];
-      historyHasMore = false;
-    } finally {
-      historyLoading = false;
-    }
-  }
-
-  async function loadOlderHistory() {
-    if (!projectDir || historyLoadingMore) return;
-    const last = historyEntries[historyEntries.length - 1];
-    if (!last) return;
-    historyLoadingMore = true;
-    try {
-      const page = await api.vcs.listSnapshotsPage(projectDir, { before: last.id });
-      historyEntries = [...historyEntries, ...page.entries];
-      historyHasMore = page.hasMore;
-    } catch (e) {
-      historyError = friendly(e);
-    } finally {
-      historyLoadingMore = false;
-    }
-  }
-
-  async function enableHistory() {
-    if (!projectDir || historyBusy) return;
-    historyBusy = true;
-    historyBusyAction = "Turning on version history — please wait.";
-    historyError = null;
-    try {
-      const result = await api.vcs.enableVersionHistory(projectDir);
-      onVersionHistoryEnabled?.(result as ProjectClassification);
-      historyNotice = "Version history is now enabled. Your first snapshot has been saved.";
-      await refreshHistory();
-    } catch (e) {
-      historyError = friendly(e);
-    } finally {
-      historyBusy = false;
-      historyBusyAction = null;
-    }
-  }
-
-  async function saveSnapshot() {
-    if (!projectDir || historyBusy) return;
-    historyBusy = true;
-    historyBusyAction = "Saving your snapshot — please wait.";
-    historyError = null;
-    historyNotice = null;
-    try {
-      const entry = await getPlatform().saveSnapshot(projectDir, snapshotMessage.trim() || undefined);
-      snapshotMessage = "";
-      onSnapshotSaved?.(entry);
-      await refreshHistory();
-    } catch (e) {
-      historyError = friendly(e);
-    } finally {
-      historyBusy = false;
-      historyBusyAction = null;
-    }
-  }
-
-  async function restoreSnapshot(id: string) {
-    if (!projectDir || historyBusy) return;
-    historyBusy = true;
-    historyBusyAction = "Restoring your project — please wait.";
-    historyError = null;
-    historyNotice = null;
-    try {
-      const result = await api.vcs.restoreSnapshot(projectDir, id);
-      confirmRestoreId = null;
-      onVersionRestored?.(result.backupId);
-      historyNotice = result.backupId
-        ? "Your project was restored. A backup of the previous state was saved first."
-        : "Your project was restored to that version.";
-      await refreshHistory();
-    } catch (e) {
-      historyError = friendly(e);
-    } finally {
-      historyBusy = false;
-      historyBusyAction = null;
-    }
-  }
-
-  // ── External refresh ──────────────────────────────────────────────────────
-  /** Called by the parent to force a history refresh (e.g. after save/restore). */
+  // ── External refresh (no-op host seam) ────────────────────────────────────
+  // The History tab this used to refresh was replaced by Config; there is
+  // currently no version-history UI in this panel. Kept as a no-op so
+  // ProjectSessionController and the sync-completion handlers in +page.svelte
+  // (which call it after a classify/sync round-trip) don't need to change
+  // with this cleanup.
   export function notifyHistoryRefresh() {
-    if (projectDir && canHistory) void refreshHistory();
   }
 
   // ── Panel close ──────────────────────────────────────────────────────────
@@ -266,15 +113,10 @@
     }
   }
 
-  // ── Reset history state when project changes ──────────────────────────────
+  // ── Reset history state when project changes (no-op host seam — see
+  // notifyHistoryRefresh above) ──────────────────────────────────────────────
   /** Called by the parent (via bind:this) whenever the active project changes. */
   export function resetHistoryState() {
-    historyEntries = [];
-    historyHasMore = false;
-    historyError = null;
-    historyNotice = null;
-    historyBusy = false;
-    confirmRestoreId = null;
   }
 
   // ── Tab definitions ───────────────────────────────────────────────────────
@@ -353,9 +195,6 @@
     }
   }
 
-  function friendly(e: unknown): string {
-    return friendlyHostError(e instanceof Error ? e.message : String(e));
-  }
 </script>
 
 <!-- Scrim overlay at narrow widths (panel overlays content) -->

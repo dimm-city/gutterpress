@@ -206,8 +206,13 @@ export const api = {
     setSettings: (settings: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/settings', settings),
     /** Get the OS native dark/light theme preference. */
     getNativeTheme: () => get<{ shouldUseDarkColors: boolean }>('/api/app/native-theme'),
-    /** Get the recent folders list (with exists flag). */
-    getRecentFolders: () => get<Array<{ path: string; title: string; exists: boolean }>>('/api/app/recent-folders'),
+    /** Get the recent folders list (with exists flag). `lastActiveBook` (C2) is
+     *  the absolute folder of the book that was active when a repo-backed
+     *  entry was recorded — absent for standalone (non-git) entries. */
+    getRecentFolders: () =>
+      get<Array<{ path: string; title: string; exists: boolean; lastActiveBook?: string }>>(
+        '/api/app/recent-folders',
+      ),
     /** Get the favorites list (with exists flag). */
     getFavorites: () => get<Array<{ path: string; title: string; exists: boolean }>>('/api/app/favorites'),
     /** Toggle a folder in the favorites list. */
@@ -217,9 +222,14 @@ export const api = {
     removeRecent: (path: string) => post<{ ok: boolean }>('/api/app/recent/remove', { path }),
     /** Discover print-md projects under the configured search roots. */
     discoverProjects: () => post<unknown[]>('/api/app/discover-projects', {}),
-    /** Classify a project folder (source type + capabilities). */
+    /** Classify a project folder (source type + capabilities + repo book list). */
     classifyProject: (projectDir: string) =>
-      post<{ source: unknown; capabilities: unknown }>('/api/app/classify-project', { projectDir }),
+      post<{
+        source: unknown;
+        capabilities: unknown;
+        repoRoot?: string;
+        books?: Array<{ path: string; title: string; subPath: string }>;
+      }>('/api/app/classify-project', { projectDir }),
     /** Scaffold a new project from a template. */
     createProject: (opts: Record<string, unknown>) => post<unknown>('/api/app/create-project', opts),
     /** Adopt an existing folder as a print-md project. */
@@ -427,7 +437,7 @@ export const api = {
     listRemoteBranches: (owner: string, repo: string) =>
       post<RemoteBranch[]>('/api/remote/list-branches', { owner, repo }),
 
-    /** Book folders (print-md.yaml/.yml) inside a repository branch. */
+    /** Book folders (manifest.yaml/.yml) inside a repository branch. */
     listRepoBooks: (owner: string, repo: string, branch: string) =>
       post<RepoBook[]>('/api/remote/list-repo-books', { owner, repo, branch }),
 

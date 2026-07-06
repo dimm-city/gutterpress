@@ -201,9 +201,15 @@ describe("recover interrupted_cherry_pick — copy discipline", () => {
 });
 
 // ── TOCTOU: marker vanished before recovery ─────────────────────────────────────
+//
+// This precondition is now enforced by the DISPATCHER's `stillApplies` probe
+// (dispatch.ts), INSIDE withRepoLock, before the bare handler is ever invoked
+// — so this test goes through dispatch.recover, not the bare `recover()`
+// export (the shared abort skeleton no longer has its own copy of this guard).
 
 describe("recover interrupted_cherry_pick — marker vanished before recovery", () => {
   test("no CHERRY_PICK_HEAD → no-op recovered; worktree preserved, no backup, no confirm", async () => {
+    const { recover: dispatchRecover } = await import("./dispatch.ts");
     const dir = await makeTempDir("cp-vanished-");
     await initRepo(dir);
     // The cherry-pick was finished/aborted externally between inspect and recover:
@@ -218,7 +224,7 @@ describe("recover interrupted_cherry_pick — marker vanished before recovery", 
       },
     };
 
-    const result = await recover(makeCtx(dir, { confirmation: gate }));
+    const result = await dispatchRecover("interrupted_cherry_pick", makeCtx(dir, { confirmation: gate }));
 
     expect(result.status).toBe("recovered");
     // No destructive path was entered: no confirmation prompt, no backup.
