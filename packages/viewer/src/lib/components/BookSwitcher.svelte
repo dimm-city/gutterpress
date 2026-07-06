@@ -37,10 +37,13 @@
 </script>
 
 <div class="book-switcher">
+  <!-- Plain disclosure of tab-navigable buttons — deliberately NOT
+       listbox/menu roles, which promise arrow-key/roving-focus interactions
+       this minimal widget doesn't implement (PR #92 review). -->
   <button
+    type="button"
     class="book-switcher-toggle"
     onclick={() => (open = !open)}
-    aria-haspopup="listbox"
     aria-expanded={open}
     title="Switch book"
   >
@@ -49,14 +52,14 @@
     <Icon name={open ? "chevron-up" : "chevron-down"} size={12} />
   </button>
   {#if open}
-    <ul class="book-switcher-list" role="listbox" aria-label="Books in this project">
+    <ul class="book-switcher-list" aria-label="Books in this project">
       {#each books as book (book.path)}
         <li>
           <button
+            type="button"
             class="book-switcher-option"
             class:active={book.path === activeBookDir}
-            role="option"
-            aria-selected={book.path === activeBookDir}
+            aria-current={book.path === activeBookDir ? "true" : undefined}
             onclick={() => choose(book.path)}
           >
             {book.title}

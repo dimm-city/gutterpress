@@ -311,7 +311,7 @@ test("resolveActiveBookDir: multiple books, picked folder is one of them → sta
   expect(resolveActiveBookDir("/repo/beta", "/repo", books)).toBe("/repo/beta");
 });
 
-test("resolveActiveBookDir: multiple books, bare repo root picked → first alphabetically by subPath", () => {
+test("resolveActiveBookDir: multiple books, bare repo root picked → first LISTED book (no re-sort; the classify server sorts by subPath)", () => {
   const books: ProjectBookEntry[] = [
     { path: "/repo/zeta", title: "zeta", subPath: "zeta" },
     { path: "/repo/alpha", title: "alpha", subPath: "alpha" },

@@ -92,10 +92,10 @@
 
   // ── External refresh (no-op host seam) ────────────────────────────────────
   // The History tab this used to refresh was replaced by Config; there is
-  // currently no restore/version-history UI. Kept as a no-op so
+  // currently no version-history UI in this panel. Kept as a no-op so
   // ProjectSessionController and the sync-completion handlers in +page.svelte
-  // (which call it after a classify/restore/sync round-trip) don't need to
-  // change with this cleanup.
+  // (which call it after a classify/sync round-trip) don't need to change
+  // with this cleanup.
   export function notifyHistoryRefresh() {
   }
 
