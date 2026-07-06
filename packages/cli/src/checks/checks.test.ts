@@ -442,6 +442,37 @@ describe("Check Formatter", () => {
     });
     expect(() => formatReport(report, "text")).not.toThrow();
   });
+
+  test("formatReport text mode orders results by ascending severity (infos, warnings, errors, summary)", () => {
+    // Errors must land directly above the verdict line — not sandwiched
+    // between warnings and infos (issue #87).
+    const report = makeReport({
+      infos: [{ checkId: "test", severity: "info", message: "info msg" }],
+      warnings: [{ checkId: "test", severity: "warning", message: "warn msg" }],
+      errors: [{ checkId: "test", severity: "error", message: "err msg" }],
+      summary: { total: 3, errors: 1, warnings: 1, infos: 1, passed: 0 },
+    });
+
+    const lines: string[] = [];
+    const capture = (msg: string) => { lines.push(String(msg)); };
+    const orig = { log: console.log, warn: console.warn, error: console.error };
+    console.log = capture as typeof console.log;
+    console.warn = capture as typeof console.warn;
+    console.error = capture as typeof console.error;
+    try {
+      formatReport(report, "text");
+    } finally {
+      console.log = orig.log;
+      console.warn = orig.warn;
+      console.error = orig.error;
+    }
+
+    const indexOf = (needle: string) => lines.findIndex((l) => l.includes(needle));
+    expect(indexOf("info msg")).toBeGreaterThanOrEqual(0);
+    expect(indexOf("info msg")).toBeLessThan(indexOf("warn msg"));
+    expect(indexOf("warn msg")).toBeLessThan(indexOf("err msg"));
+    expect(indexOf("err msg")).toBeLessThan(indexOf("VALIDATION FAILED"));
+  });
 });
 
 // ---------------------------------------------------------------------------
