@@ -36,12 +36,21 @@ import path from "node:path";
 
 import {
   abortInterruptedOperation,
+  anyMarkerPresent,
   type AbortResolveArgs,
   type AbortTargetPlan,
 } from "./abort-interrupted-operation.ts";
-import type { RecoverFn } from "./types.ts";
+import type { RecoverFn, StillAppliesFn } from "./types.ts";
 
 const fs = fsSync;
+
+const MARKER_FILES = ["rebase-merge", "rebase-apply"];
+
+/**
+ * Precondition probe (see types.ts `StillAppliesFn`) — the dispatcher's
+ * replacement for the abort skeleton's old hand-rolled TOCTOU guard.
+ */
+export const stillApplies: StillAppliesFn = async (ctx) => anyMarkerPresent(ctx, MARKER_FILES);
 
 /** Read a file expected to hold a single commit sha; undefined if absent/invalid. */
 function readShaFile(p: string): string | undefined {
@@ -141,7 +150,7 @@ async function resolveRebaseTarget({ ctx, gitDir }: AbortResolveArgs): Promise<A
 export const recover: RecoverFn = (ctx) =>
   abortInterruptedOperation(ctx, {
     kind: "interrupted_rebase",
-    markerFiles: ["rebase-merge", "rebase-apply"],
+    markerFiles: MARKER_FILES,
     cleanupFiles: ["rebase-merge", "rebase-apply"],
     resolveTarget: resolveRebaseTarget,
     successMessage,

@@ -58,13 +58,32 @@ import git from "isomorphic-git";
 
 import { gitAuthor, hasPendingChanges, listWorkdirChanges, stageChanges } from "../../source-provider.ts";
 import { withBackupGate } from "./failsafe.ts";
-import type { RecoveryContext, RecoveryResult } from "./types.ts";
+import type { RecoveryContext, RecoveryResult, StillAppliesFn } from "./types.ts";
 
 const fs = fsSync;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const KIND = "detached_head" as const;
+
+/**
+ * Precondition probe (see types.ts `StillAppliesFn`): re-probe whether HEAD is
+ * still detached right before the dispatcher hands off to `recover` below.
+ * HEAD may have been re-attached externally (e.g. the author ran a checkout
+ * in a terminal) between classification and dispatch. A thrown
+ * `currentBranch` read (HEAD/ref store unreadable) is a DIFFERENT, worse
+ * condition than detachment — conservatively report "still applies" so that
+ * case surfaces through the normal repair path rather than being swallowed
+ * here as a false no-op.
+ */
+export const stillApplies: StillAppliesFn = async (ctx) => {
+  try {
+    const branch = await git.currentBranch({ fs, dir: ctx.repoDir });
+    return branch == null;
+  } catch {
+    return true;
+  }
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

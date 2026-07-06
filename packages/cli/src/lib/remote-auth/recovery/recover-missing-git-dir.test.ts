@@ -898,11 +898,14 @@ describe("recover (missing_git_dir) — no remoteUrl", () => {
 // fs.cp MERGES into an existing directory. If `.git/` came back (author
 // restored the folder / ran an init in a terminal) after classification said
 // it was missing, copying a fresh clone's .git on top would produce a hybrid
-// of two object stores — corruption worse than either input. The handler must
-// detect this and no-op without prompting, backing up, or touching the repo.
+// of two object stores — corruption worse than either input. This precondition
+// is now enforced by the DISPATCHER's `stillApplies` probe (dispatch.ts),
+// INSIDE withRepoLock, before the bare handler is ever invoked — so this test
+// goes through dispatch.recover, not the bare `recover()` export.
 
 describe("recover (missing_git_dir) — .git reappeared (TOCTOU guard)", () => {
   test("existing .git → benign no-op: no confirm, no backup, repo untouched", async () => {
+    const { recover: dispatchRecover } = await import("./dispatch.ts");
     const { projectDir, remoteUrl, closeServer, initialHead } = await makeFixture();
     try {
       // .git was NEVER removed — classification is stale.
@@ -914,7 +917,7 @@ describe("recover (missing_git_dir) — .git reappeared (TOCTOU guard)", () => {
         },
       };
       const ctx = makeCtx(projectDir, remoteUrl, { confirmation: gate });
-      const result = await recover(ctx);
+      const result = await dispatchRecover("missing_git_dir", ctx);
 
       expect(result.status).toBe("recovered");
       expect(confirmCalled).toBe(false);

@@ -35,9 +35,27 @@ import git from "isomorphic-git";
 
 import { withBackupGate } from "./failsafe.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
-import type { RecoverFn, RecoveryResult } from "./types.ts";
+import type { RecoverFn, RecoveryResult, StillAppliesFn } from "./types.ts";
 
 const KIND = "corrupt_index" as const;
+
+/**
+ * Precondition probe (see types.ts `StillAppliesFn`): re-probe whether the
+ * index is still unreadable right before the dispatcher hands off to
+ * `recover` below. `git.listFiles` with no `ref` reads the current staging
+ * area directly from `.git/index` — the same file this handler deletes and
+ * rebuilds — so a successful read here means the corruption is already gone
+ * (e.g. a previous attempt already rebuilt it, or the author replaced the
+ * file externally) and there is nothing left to repair.
+ */
+export const stillApplies: StillAppliesFn = async (ctx) => {
+  try {
+    await git.listFiles({ fs, dir: ctx.repoDir });
+    return false;
+  } catch {
+    return true;
+  }
+};
 
 export const recover: RecoverFn = async (ctx, error?) => {
   return withBackupGate(ctx, KIND, async (backupZipPath) => {

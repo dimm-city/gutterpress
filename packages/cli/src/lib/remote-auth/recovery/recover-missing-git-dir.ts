@@ -37,26 +37,23 @@ import httpNode from "isomorphic-git/http/node";
 import { onAuthFor } from "../sync.ts";
 import { withBackupGate } from "./failsafe.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
-import type { RecoverFn, RecoveryResult } from "./types.ts";
+import type { RecoverFn, RecoveryResult, StillAppliesFn } from "./types.ts";
 
 const KIND = "missing_git_dir" as const;
 
+/**
+ * Precondition probe (see types.ts `StillAppliesFn`): `.git/` may have
+ * reappeared between classification and dispatch (e.g. the author restored
+ * the folder or ran an init in a terminal). The dispatcher calls this INSIDE
+ * withRepoLock, immediately before invoking `recover` below, replacing what
+ * used to be a hand-rolled upfront check duplicated here.
+ */
+export const stillApplies: StillAppliesFn = async (ctx) => {
+  return !fs.existsSync(path.join(ctx.repoDir, ".git"));
+};
+
 export const recover: RecoverFn = async (ctx, error?) => {
   const destGitDir = path.join(ctx.repoDir, ".git");
-
-  // TOCTOU guard: `.git/` may have reappeared between classification and now
-  // (e.g. the author restored the folder or ran an init in a terminal). There
-  // is nothing to repair — and falling through would MERGE a fresh clone's
-  // .git into the existing one (fs.cp merges into an existing directory),
-  // producing a hybrid of two object stores: corruption worse than either
-  // input state. Benign no-op instead.
-  if (fs.existsSync(destGitDir)) {
-    return {
-      status: "recovered",
-      message:
-        "Your project's version history was already back in place; no changes were needed.",
-    } satisfies RecoveryResult;
-  }
 
   // ── Guard: without a remote URL, reclone is impossible ──────────────────────
   if (!ctx.remoteUrl) {
@@ -95,9 +92,16 @@ export const recover: RecoverFn = async (ctx, error?) => {
       // ── Fault point: just before copying .git into project dir ────────────
       await ctx.faults?.before("replace_git_dir");
 
-      // Re-verify `.git/` is STILL absent right before the copy (the backup +
-      // clone above take real time). fs.cp would MERGE into a directory that
-      // appeared in the window — never do that.
+      // Re-verify `.git/` is STILL absent right before the copy. This is
+      // DELIBERATELY kept alongside the dispatcher-level `stillApplies` probe
+      // above (not a redundant duplicate of it): that probe only closes the
+      // window up to the moment the handler starts. Between then and here,
+      // withBackupGate has (1) zipped the whole project directory and (2)
+      // awaited ctx.confirmation.confirmRepair() — a real user-interaction
+      // wait with no time bound. `.git/` reappearing during that wait (the
+      // author restores the folder, or runs an init, while the confirm dialog
+      // is still open) is a real, not theoretical, TOCTOU window. fs.cp would
+      // MERGE into a directory that appeared in that window — never do that.
       if (fs.existsSync(destGitDir)) {
         return {
           status: "recovered",

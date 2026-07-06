@@ -13,9 +13,18 @@
  * invariant ordering lives here, once.
  *
  * Abort algorithm (pure isomorphic-git + node:fs — never the system git binary):
- *   1. TOCTOU guard: if NONE of `markerFiles` exist, the operation was already
- *      finished/aborted externally — return a benign no-op WITHOUT a backup,
- *      confirmation, or touching any ref/worktree.
+ *   1. TOCTOU precondition: if NONE of `markerFiles` exist, the operation was
+ *      already finished/aborted externally and there is nothing to abort. This
+ *      is now enforced by the DISPATCHER (dispatch.ts), which calls each
+ *      kind's exported `stillApplies` — built from `anyMarkerPresent` below —
+ *      INSIDE withRepoLock, before this function is ever invoked. There used
+ *      to be a duplicate hand-rolled copy of this same check at the top of
+ *      this function; it is deleted, not kept alongside the dispatcher probe,
+ *      because — unlike recover-missing-git-dir.ts — this function has no
+ *      SECOND re-check later (no re-check after the backup/confirm wait), so
+ *      the one check and the dispatcher probe cover the exact same window: the
+ *      dispatcher probe runs immediately before this function's synchronous
+ *      entry, with no work in between, just as the deleted local check did.
  *   2. withBackupGate (backup → confirm → risky → failsafe). Inside the callback:
  *   3. Capture whether the working tree had in-progress edits (best-effort).
  *   4. Resolve the restore target via `resolveTarget` (default:
@@ -50,6 +59,17 @@ import { withBackupGate } from "./failsafe.ts";
 import type { RecoveryContext, RecoveryResult, SyncErrorKind } from "./types.ts";
 
 const fs = fsSync;
+
+/**
+ * True when any of `markerFiles` (gitDir-relative) still exists. Shared by
+ * each interrupted-* handler's exported `stillApplies` (the dispatcher's
+ * precondition probe, see types.ts `StillAppliesFn`) so there is ONE
+ * implementation of "is this abort still needed", not three copies.
+ */
+export function anyMarkerPresent(ctx: RecoveryContext, markerFiles: string[]): boolean {
+  const gitDir = gitDirFor(ctx.repoDir);
+  return markerFiles.some((f) => fs.existsSync(path.join(gitDir, f)));
+}
 
 /** Arguments handed to a config's `resolveTarget`. */
 export interface AbortResolveArgs {
@@ -121,22 +141,10 @@ export async function abortInterruptedOperation(
 ): Promise<RecoveryResult> {
   const dir = ctx.repoDir;
   const gitDir = gitDirFor(dir);
-  const markerPaths = config.markerFiles.map((f) => path.join(gitDir, f));
 
-  // TOCTOU guard: the operation may have been finished or aborted externally
-  // (e.g. the author ran an abort in a terminal) between the preflight
-  // classification and now. If no marker remains there is nothing to abort —
-  // return a benign no-op WITHOUT creating a backup, prompting, or touching any
-  // ref/worktree. Falling through would force-reset uncommitted state (or, for
-  // a rebase, rewind a branch off a possibly-stale ORIG_HEAD) for a repair that
-  // is no longer needed.
-  if (!markerPaths.some((p) => fs.existsSync(p))) {
-    return {
-      status: "recovered",
-      message:
-        "Your project was already back to its last working state; no changes were needed.",
-    } satisfies RecoveryResult;
-  }
+  // The "operation already finished/aborted externally, nothing to abort"
+  // TOCTOU guard that used to live here is now the dispatcher's job — see the
+  // module header note above `anyMarkerPresent`.
 
   return withBackupGate(ctx, config.kind, async (backupZipPath) => {
     // Capture the working-tree state BEFORE aborting (best-effort) so the
@@ -183,7 +191,7 @@ export async function abortInterruptedOperation(
     }
 
     // Verify the abort actually cleared the markers.
-    if (markerPaths.some((p) => fs.existsSync(p))) {
+    if (anyMarkerPresent(ctx, config.markerFiles)) {
       throw new Error("The unfinished update could not be fully cleared.");
     }
 

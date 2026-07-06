@@ -27,6 +27,7 @@ import git from "isomorphic-git";
 import { assertZipReadable } from "./backup.ts";
 import {
   abortInterruptedOperation,
+  anyMarkerPresent,
   type AbortConfig,
 } from "./abort-interrupted-operation.ts";
 import type {
@@ -107,37 +108,53 @@ function baseConfig(overrides: Partial<AbortConfig> = {}): AbortConfig {
   };
 }
 
-// ── TOCTOU: marker vanished before recovery ─────────────────────────────────────
+// ── anyMarkerPresent — the shared "is this abort still needed" primitive ──────
+//
+// The "no marker present → benign no-op, no backup, no confirm" TOCTOU guard
+// used to be hand-rolled INSIDE abortInterruptedOperation itself. It is now
+// the DISPATCHER's job (dispatch.ts's `stillApplies` probe, built from this
+// same `anyMarkerPresent` and run INSIDE withRepoLock before the handler body
+// — see the module header comment in abort-interrupted-operation.ts). The
+// per-kind "already resolved, no-op through the dispatcher" behavior is
+// covered by each concrete handler's own test file (recover-interrupted-
+// rebase/cherry-pick/merge.test.ts, "marker vanished before recovery"
+// describe blocks, which go through dispatch.recover). What remains to unit
+// test HERE is the shared primitive itself.
 
-describe("abortInterruptedOperation — marker vanished", () => {
-  test("no marker → no-op recovered; no backup, no confirm, worktree preserved", async () => {
-    const dir = await makeTempDir("aio-vanished-");
+describe("anyMarkerPresent", () => {
+  test("false when none of markerFiles exist", async () => {
+    const dir = await makeTempDir("amp-none-");
     await initTwoCommitRepo(dir);
-    await writeFile(path.join(dir, "chapter-01.md"), "LOCAL EDIT — keep me\n");
 
-    let confirmCalled = false;
-    const gate: ConfirmationGate = {
-      confirmRepair: async () => {
-        confirmCalled = true;
-        return true;
-      },
-    };
-
-    const result = await abortInterruptedOperation(
-      makeCtx(dir, { confirmation: gate }),
-      baseConfig(),
-    );
-
-    expect(result.status).toBe("recovered");
-    expect(confirmCalled).toBe(false);
-    const r = result as Extract<RecoveryResult, { status: "recovered" }>;
-    expect(r.backupZipPath ?? "").toBe("");
-    expect(fs.readFileSync(path.join(dir, "chapter-01.md"), "utf8")).toBe(
-      "LOCAL EDIT — keep me\n",
-    );
+    expect(anyMarkerPresent(makeCtx(dir), [MARKER, "OTHER_MARK"])).toBe(false);
   });
 
-  test("any-of markerFiles present is enough to proceed", async () => {
+  test("true when only ONE of several markerFiles exists (any-of, not all-of)", async () => {
+    const dir = await makeTempDir("amp-anyof-");
+    await initTwoCommitRepo(dir);
+    fs.writeFileSync(path.join(dir, ".git", "OTHER_MARK"), "\n");
+
+    expect(anyMarkerPresent(makeCtx(dir), [MARKER, "OTHER_MARK"])).toBe(true);
+  });
+
+  test("true when the single markerFiles entry exists", async () => {
+    const dir = await makeTempDir("amp-single-");
+    await initTwoCommitRepo(dir);
+    fabricateMarker(dir);
+
+    expect(anyMarkerPresent(makeCtx(dir), [MARKER])).toBe(true);
+  });
+});
+
+// ── abortInterruptedOperation proceeds regardless of marker presence ──────────
+//
+// The abort skeleton itself no longer gates on markerFiles at entry (that
+// precondition lives at the dispatcher now) — it always runs the backup gate
+// when invoked directly, and only re-checks markerFiles at the END to verify
+// cleanup actually cleared them (see abort-interrupted-operation.ts).
+
+describe("abortInterruptedOperation — proceeds on invocation, verifies cleanup at the end", () => {
+  test("any-of markerFiles cleared by cleanupFiles → recovered with a backup", async () => {
     const dir = await makeTempDir("aio-anyof-");
     await initTwoCommitRepo(dir);
     // Only the second marker exists.

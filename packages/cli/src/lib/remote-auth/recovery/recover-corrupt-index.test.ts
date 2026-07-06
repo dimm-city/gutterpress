@@ -759,3 +759,44 @@ describe("recover-corrupt-index — fault at remove_index", () => {
     await expect(assertZipReadable(result.backupZipPath)).resolves.toBeUndefined();
   });
 });
+
+// ── TOCTOU: index already readable before recovery (dispatcher stillApplies) ─
+//
+// The index may have been fixed externally (e.g. a previous recovery attempt
+// already rebuilt it, or the author replaced the file) between classification
+// and dispatch. The dispatcher's `stillApplies` probe (dispatch.ts) re-checks
+// this INSIDE withRepoLock, before the handler body runs — so this test goes
+// through dispatch.recover, not the bare `recover()` export.
+
+describe("recover-corrupt-index — index already readable (dispatcher stillApplies)", () => {
+  test("readable index → no-op recovered; no confirm, no backup, index untouched", async () => {
+    const { recover: dispatchRecover } = await import("./dispatch.ts");
+    const dir = await makeTempDir();
+    await git.init({ fs, dir, defaultBranch: "main" });
+    await writeFile(path.join(dir, "chapter.md"), "# Chapter One\n\nHello world.\n");
+    await git.add({ fs, dir, filepath: "chapter.md" });
+    const author = { name: "Test Author", email: "test@test.local" };
+    await git.commit({ fs, dir, message: "initial commit", author });
+    // The index is healthy — NOT corrupted (unlike makeCorruptIndexRepo).
+    const indexPath = path.join(dir, ".git", "index");
+    const indexBefore = await readFile(indexPath);
+
+    let confirmCalled = false;
+    const gate: ConfirmationGate = {
+      confirmRepair: async () => {
+        confirmCalled = true;
+        return true;
+      },
+    };
+
+    const result = await dispatchRecover("corrupt_index", makeCtx(dir, { confirmation: gate }));
+
+    expect(result.status).toBe("recovered");
+    expect(confirmCalled).toBe(false);
+    const r = result as Extract<RecoveryResult, { status: "recovered" }>;
+    expect(r.backupZipPath ?? "").toBe("");
+    // The index was never touched — byte-for-byte identical.
+    const indexAfter = await readFile(indexPath);
+    expect(indexAfter.equals(indexBefore)).toBe(true);
+  });
+});

@@ -964,3 +964,39 @@ describe("recover-missing-objects — authenticated remote (private repo)", () =
     }
   });
 });
+
+// ── TOCTOU: object store already readable before recovery (dispatcher stillApplies) ─
+//
+// The object store may already be healthy again by the time recovery runs
+// (e.g. a previous fetch attempt already repaired it) between classification
+// and dispatch. The dispatcher's `stillApplies` probe (dispatch.ts) re-checks
+// this with the SAME verifyRepoReadable() the handler itself uses, INSIDE
+// withRepoLock, before the handler body runs — so this test goes through
+// dispatch.recover, not the bare `recover()` export.
+
+describe("recover-missing-objects — object store already readable (dispatcher stillApplies)", () => {
+  test("readable object store → no-op recovered; no confirm, no backup, no fetch", async () => {
+    const { recover: dispatchRecover } = await import("./dispatch.ts");
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+    // The object store is healthy — NOT damaged (unlike damageLooseObject).
+
+    let confirmCalled = false;
+    const gate: ConfirmationGate = {
+      confirmRepair: async () => {
+        confirmCalled = true;
+        return true;
+      },
+    };
+
+    const result = await dispatchRecover(
+      "missing_or_corrupt_objects",
+      makeCtx(dir, { confirmation: gate }),
+    );
+
+    expect(result.status).toBe("recovered");
+    expect(confirmCalled).toBe(false);
+    const r = result as Extract<RecoveryResult, { status: "recovered" }>;
+    expect(r.backupZipPath ?? "").toBe("");
+  });
+});
