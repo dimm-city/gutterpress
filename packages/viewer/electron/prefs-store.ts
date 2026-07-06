@@ -20,6 +20,12 @@ import type { ProjectSource } from "@dimm-city/print-md";
 
 export interface ViewerPrefs {
   lastProjectDir?: string;
+  /**
+   * Show the start screen (welcome landing) at launch. Default true; when
+   * false the app opens straight into the last book behind the splash (the
+   * pre-landing behavior). Toggled from the start screen's own checkbox.
+   */
+  showLandingAtStartup?: boolean;
   /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
   sidebarOpen?: boolean;
   /**

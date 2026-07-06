@@ -48,7 +48,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "rimraf dist && bun build src/index.ts src/api/index.ts src/cli.ts src/render.ts --target=node --packages=external --splitting --outdir=dist && tsc -p tsconfig.build.json",
+    "build": "rimraf dist && bun build src/index.ts src/api/index.ts src/cli.ts --target=node --packages=external --splitting --outdir=dist && bun build src/render.ts --target=node --packages=external --outdir=dist && node scripts/check-render-pure.mjs && tsc -p tsconfig.build.json",
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

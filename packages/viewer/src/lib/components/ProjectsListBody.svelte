@@ -39,6 +39,7 @@
     currentProjectDisplayName = null,
     filterInput = "",
     compact = false,
+    placeholder = "Folder path or web address…",
   }: {
     /** Called when the user selects a folder path to open. */
     onChosen?: (path: string) => void;
@@ -57,6 +58,8 @@
     filterInput?: string;
     /** Compact layout for use inside a panel tab (no outer padding). */
     compact?: boolean;
+    /** Placeholder for the location/search input (host-specific wording). */
+    placeholder?: string;
   } = $props();
 
   let location = $state("");
@@ -300,7 +303,7 @@
         bind:value={location}
         type="text"
         class="location-input"
-        placeholder="Folder path or web address…"
+        {placeholder}
         spellcheck="false"
         autocomplete="off"
         aria-label="Folder path or web address"
