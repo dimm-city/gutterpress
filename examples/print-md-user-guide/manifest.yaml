@@ -17,6 +17,7 @@ source:
     - 06-plugins.md
     - 07-validation.md
     - 08-system-setup.md
+    - 09-publishing.md
   assets:
     - styles
 

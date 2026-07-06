@@ -14,9 +14,41 @@ export interface PluginConfig {
   enabled?: boolean;
 }
 
+/**
+ * Non-secret, per-provider publish settings (#35). Secrets (API keys, tokens)
+ * NEVER live in the manifest — they belong to the host's credential store
+ * (CLI: 0600 file under the user config dir; viewer: Electron safeStorage).
+ */
+export interface PublishSettings {
+  itch?: {
+    /** itch.io project as `user/game` (the butler push target). */
+    target?: string;
+    /** butler channel name (default: "pdf"). */
+    channel?: string;
+  };
+  drivethrurpg?: {
+    /** Existing product page URL, when updating a published title. */
+    productUrl?: string;
+  };
+  kdp?: Record<string, never>;
+  azureSwa?: {
+    /** Deploy environment (default: "production"). */
+    env?: string;
+  };
+  shopify?: {
+    /** The store domain, e.g. `my-store.myshopify.com`. */
+    shop?: string;
+    /** Existing product GID/id to update instead of creating a new one. */
+    productId?: string;
+    /** Admin GraphQL API version (default: "2026-04"). */
+    apiVersion?: string;
+  };
+}
+
 export interface PrintMdManifest {
   title?: string;
   authors?: string[];
+  publish?: PublishSettings;
   preset?: "dtrpg";
   styles?: string[];
   plugins?: (string | PluginConfig)[];

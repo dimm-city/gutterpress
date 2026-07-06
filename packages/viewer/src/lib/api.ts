@@ -64,6 +64,10 @@ export type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   SyncOutcome,
+  PublishProviderCard,
+  PublishIssue,
+  PublishOutcomeInfo,
+  PublishRunResult,
 } from './platform/contract';
 
 import type {
@@ -89,6 +93,8 @@ import type {
   HostConnectionInfo,
   SyncOutcome,
   ProjectClassification,
+  PublishProviderCard,
+  PublishRunResult,
 } from './platform/contract';
 
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
@@ -466,6 +472,43 @@ export const api = {
       post<SyncOutcome>('/api/remote/sync', {
         projectDir,
         ...(message ? { message } : {}),
+      }),
+  },
+
+  publish: {
+    /** Provider cards: static info + redacted connection status + manifest config. */
+    listProviders: (projectDir: string) =>
+      post<PublishProviderCard[]>('/api/publish/list', { projectDir }),
+
+    /**
+     * Store + verify an API key for a provider. The token travels once, to the
+     * host; the response is redacted and the key never comes back.
+     */
+    connect: (projectDir: string, providerId: string, token: string) =>
+      post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
+        projectDir,
+        providerId,
+        token,
+      }),
+
+    /** Forget the stored key for a provider. */
+    disconnect: (providerId: string) =>
+      post<{ ok: boolean }>('/api/publish/disconnect', { providerId }),
+
+    /** Write NON-SECRET provider settings into the manifest's publish section. */
+    setConfig: (projectDir: string, providerId: string, values: Record<string, string>) =>
+      post<Record<string, Record<string, unknown>>>('/api/publish/set-config', {
+        projectDir,
+        providerId,
+        values,
+      }),
+
+    /** Publish (or preflight with dryRun). Long-running; resolves with the result. */
+    run: (projectDir: string, providerId: string, options?: { dryRun?: boolean }) =>
+      post<PublishRunResult>('/api/publish/run', {
+        projectDir,
+        providerId,
+        ...(options?.dryRun ? { dryRun: true } : {}),
       }),
   },
 };

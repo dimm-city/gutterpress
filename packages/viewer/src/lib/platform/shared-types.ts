@@ -358,6 +358,60 @@ export interface HostConnectionInfo {
   createdAt: number;
 }
 
+// ── Publish providers (#35) ────────────────────────────────────────────────
+//
+// Mirrors the lib's publish types — defined locally so the SPA never
+// value-imports the lib into the renderer bundle (§8 / ADR 0004).
+
+/** One provider card in the Publish panel — static info + redacted status. */
+export interface PublishProviderCard {
+  id: string;
+  label: string;
+  /** "api" = real upload; "guided" = staged package + checklist. */
+  kind: "api" | "guided";
+  /** Which build output the provider publishes. */
+  format: "pdf" | "html";
+  description: string;
+  credentialRequired: boolean;
+  /** Where the author creates the key (deep link for the connect UI). */
+  tokenUrl?: string;
+  /** Author-facing hint for the connect UI. */
+  hint?: string;
+  /** Redacted — a key exists for this provider (value never leaves the host). */
+  connected: boolean;
+  /** The provider's non-secret manifest `publish.<key>` settings. */
+  config: Record<string, string>;
+}
+
+/** One publish preflight finding. */
+export interface PublishIssue {
+  severity: "error" | "warning" | "info";
+  id: string;
+  message: string;
+}
+
+/** What a publish produced (see the lib's PublishOutcome). */
+export interface PublishOutcomeInfo {
+  kind: "published" | "guided";
+  url?: string;
+  detail?: string;
+  followUp?: string[];
+  packageDir?: string;
+  openUrl?: string;
+  checklist?: string[];
+}
+
+/** Structured result of a publish run (or dry run). */
+export interface PublishRunResult {
+  ok: boolean;
+  providerId: string;
+  issues: PublishIssue[];
+  outcome?: PublishOutcomeInfo;
+  error?: string;
+  /** Progress lines captured during the run (butler/swa output etc.). */
+  log?: string[];
+}
+
 // ── Local version history (#13) ───────────────────────────────────────────
 //
 // Mirrors the lib's source-provider types — defined locally so the SPA never

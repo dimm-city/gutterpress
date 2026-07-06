@@ -319,6 +319,47 @@ export type {
   SourceProvider,
 } from "../lib/source-provider.ts";
 
+// ── Publish providers (#35) — node-side only; the renderer reaches these
+// through the viewer's /api/publish/* server routes. ─────────────────────────
+export {
+  runPublish,
+  resolvePublishRequest,
+  manifestKeyFor,
+} from "../lib/publish/run-publish.ts";
+export type {
+  RunPublishOptions,
+  RunPublishResult,
+} from "../lib/publish/run-publish.ts";
+
+export {
+  listPublishProviders,
+  publishProviderFor,
+} from "../lib/publish/registry.ts";
+
+export {
+  readPublishSettings,
+  setPublishProviderConfig,
+} from "../lib/publish/manifest-publish.ts";
+
+export type {
+  PublishProvider,
+  PublishProviderId,
+  PublishProviderInfo,
+  PublishProviderKind,
+  PublishArtifact,
+  PublishArtifactFormat,
+  PublishAuthStatus,
+  PublishDeps,
+  PublishListingMetadata,
+  PublishOutcome,
+  PublishProduct,
+  PublishProject,
+  PublishRequest,
+  PreflightIssue,
+  CommandRunner,
+  CommandResult,
+} from "../lib/publish/types.ts";
+
 // ── Sync recovery (#15, ADR 0006 D5 — node-side only; never imported by renderer) ──
 // The recovery subsystem lives entirely in the host (main process / CLI).
 // Import-type is safe in the SPA; value imports must only reach the host.
