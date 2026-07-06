@@ -565,14 +565,7 @@ describe("mis-ordered markers, implicit wrapping, and warnings", () => {
 });
 
 describe("chapter label propagation to child @page elements", () => {
-  // NOTE (surprising / locked-as-is): the module-level doc comment above
-  // `chapterLabel` says the label is "propagated to every child @page", but
-  // the implementation clears `chapterLabel` after stamping it on the FIRST
-  // @page (see the `if (chapterLabel) { ... chapterLabel = ''; }` block in
-  // `openPage`). Only the first page in a chapter actually receives
-  // `data-chapter-label` and the `.chapter-opener` element. This test locks
-  // the REAL behavior, not the comment's claim.
-  test("only the first @page in a chapter gets data-chapter-label + .chapter-opener", () => {
+  test("every @page in a chapter gets data-chapter-label, but only the first gets .chapter-opener", () => {
     const { html } = renderPaged(
       "@chapter C.01\n@page\nP1\n@page\nP2\n@page\nP3\n"
     );
@@ -581,10 +574,16 @@ describe("chapter label propagation to child @page elements", () => {
         '<div class="page" data-chapter-label="C.01">' +
         '<div class="chapter-opener" data-chapter-label="C.01">C.01</div>\n<p>P1</p>\n' +
         "</div>" +
-        '<div class="page"><p>P2</p>\n</div>' +
-        '<div class="page"><p>P3</p>\n</div>' +
+        '<div class="page" data-chapter-label="C.01"><p>P2</p>\n</div>' +
+        '<div class="page" data-chapter-label="C.01"><p>P3</p>\n</div>' +
         "</div>"
     );
+  });
+
+  test("a multi-page chapter still exposes the label on page 2 without repeating the opener", () => {
+    const { html } = renderPaged("@chapter C.01\n@page\nP1\n@page\nP2\n");
+    expect(html).toContain('<div class="page" data-chapter-label="C.01"><p>P2</p>\n</div>');
+    expect(html.match(/chapter-opener/g) || []).toHaveLength(1);
   });
 
   test("a chapter with no name propagates nothing (no data-chapter-label, no opener)", () => {
@@ -612,7 +611,7 @@ describe("chapter label propagation to child @page elements", () => {
         '<div class="page" data-chapter-label="B">' +
         '<div class="chapter-opener" data-chapter-label="B">B</div>\n<p>P2</p>\n' +
         "</div>" +
-        '<div class="page"><p>P3</p>\n</div>' +
+        '<div class="page" data-chapter-label="B"><p>P3</p>\n</div>' +
         "</div>"
     );
   });
@@ -759,9 +758,9 @@ describe("@page-break / @column-break output", () => {
 });
 
 describe("column-split depth isolation (env.__colSplitDepth, not module state)", () => {
-  test("depth is unset when no @page/@chapter marker (the only resetters) appears at all", () => {
+  test("depth is reset to 0 at the start of each render, even when no @page/@chapter marker appears", () => {
     const { env } = renderPaged("@section\nA\n");
-    expect(env.__colSplitDepth).toBeUndefined();
+    expect(env.__colSplitDepth).toBe(0);
   });
 
   test("opening a @page unconditionally resets depth to 0 on env (defensive reset, not just lazy init)", () => {
@@ -824,17 +823,7 @@ describe("column-split depth isolation (env.__colSplitDepth, not module state)",
     expect(env.__colSplitDepth).toBe(0);
   });
 
-  // NOTE (surprising / locked-as-is): the defensive reset ONLY happens on
-  // layout_chapter_open / layout_page_open. If a render's FIRST marker is a
-  // .col-split @section (no preceding @page/@chapter to trigger the reset)
-  // on a reused `env` that already carries a nonzero depth, that baseline is
-  // NOT reset — the open/close pair still nets to the SAME (nonzero) value
-  // it started at, rather than 0. This does not visibly corrupt output for a
-  // single, well-formed .col-split section (increments/decrements are always
-  // paired 1:1 by the core auto-close logic), but it does mean depth can
-  // stay permanently nonzero on a long-lived, reused env. Locking this as
-  // observed today, not "fixing" it.
-  test("a leaked nonzero depth survives a render that never opens a @page/@chapter", () => {
+  test("a stale nonzero depth is cleared before a render whose first marker is a .col-split @section", () => {
     const env: PagedEnv = { __colSplitDepth: 2 };
     const { html } = renderPaged(
       "@section .col-split\nA\n@column-break\nB\n@end-section\n",
@@ -845,8 +834,7 @@ describe("column-split depth isolation (env.__colSplitDepth, not module state)",
       '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
         '<div class="col">\n<p>B</p>\n</div></div>\n'
     );
-    // Net zero change relative to the poisoned baseline -> still 2, not 0.
-    expect(env.__colSplitDepth).toBe(2);
+    expect(env.__colSplitDepth).toBe(0);
   });
 });
 

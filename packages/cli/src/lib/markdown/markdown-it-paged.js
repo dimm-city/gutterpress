@@ -236,6 +236,8 @@ function plugin(md, pluginOptions = {}) {
     if (!state.env.__layoutMarkersUsed) return;
 
     const out = [];
+    setDepth(state.env, 0);
+
     let chapterOpen = false;
     let spreadOpen = false;
     let pageOpen = false;
@@ -261,6 +263,7 @@ function plugin(md, pluginOptions = {}) {
     // rather than on the chapter wrapper (which paged.js may split into
     // an empty leading sheet).
     let chapterLabel = '';
+    let chapterOpenerEmitted = false;
 
     function closeOpenScopes() {
       closeSection();
@@ -275,6 +278,7 @@ function plugin(md, pluginOptions = {}) {
       chapterOpen = false;
       chapterCounterClass = '';
       chapterLabel = '';
+      chapterOpenerEmitted = false;
     }
 
     function closeSection() {
@@ -316,6 +320,7 @@ function plugin(md, pluginOptions = {}) {
       // having data-chapter-label on each child page lets CSS render the
       // chapter badge on the page where content actually lives.
       chapterLabel = meta.name || '';
+      chapterOpenerEmitted = false;
       // Resolve chapter counter class: explicit `.chapter-N` in the class
       // list takes priority over the `ch="N"` attribute.
       const explicit = (classes.match(/(?:^|\s)(chapter-\d+)(?=\s|$)/) || [])[1] || '';
@@ -367,13 +372,11 @@ function plugin(md, pluginOptions = {}) {
       // mechanism that survives pagination and is reusable across
       // projects (any project styling `.chapter-opener` gets the same
       // markup).
-      if (chapterLabel) {
+      if (chapterLabel && !chapterOpenerEmitted) {
         const opener = new state.Token('html_block', '', 0);
         opener.content = `<div class="chapter-opener" data-chapter-label="${escapeAttr(chapterLabel)}">${escapeHtml(chapterLabel)}</div>\n`;
         out.push(opener);
-        // Clear so subsequent @page directives in the same chapter don't
-        // emit another opener — the opener belongs on the FIRST page only.
-        chapterLabel = '';
+        chapterOpenerEmitted = true;
       }
 
       if (spreadOpen) {
