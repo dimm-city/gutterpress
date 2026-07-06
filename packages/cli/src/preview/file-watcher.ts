@@ -110,15 +110,6 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 `;
 
 /**
- * Generate HTML from markdown and write book.html to the temp directory.
- * renderChapters() does all the work (CSS, Paged.js script). We only inject
- * the toolbar interface script. The viewer's iframe loads `book.html` via
- * a relative URL — same name in dev and in published static-site builds.
- *
- * Empty `inputPath` writes a static placeholder — the viewer app (packages/viewer)
- * supplies a real path via its own folder picker.
- */
-/**
  * Whether the incremental live-preview (shell + per-chapter splice) is active.
  * DEFAULT ON; opt out with PRINTMD_PREVIEW_INCREMENTAL=0 to fall back to the
  * direct book.html preview (CSS hot-swap + full reload on content).
@@ -127,16 +118,16 @@ export function incrementalPreviewEnabled(): boolean {
   return process.env.PRINTMD_PREVIEW_INCREMENTAL !== "0";
 }
 
-export async function generateAndWriteHtml(
+/**
+ * Shared preview render path — the full book and the single-chapter splice
+ * document differ ONLY in which files render and whether chapters are wrapped.
+ * renderChapters() does all the work (CSS, Paged.js script slot).
+ */
+export async function renderBook(
   inputPath: string,
-  tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: any[] }
-): Promise<void> {
-  if (!inputPath) {
-    await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML, "utf-8");
-    return;
-  }
-  // Load plugins if configured
+  config: { title?: string; styles?: string[]; plugins?: any[] },
+  opts: { files: string[] | null; wrapChapters: boolean }
+): Promise<string> {
   let plugins;
   let pluginCss = '';
   if (config.plugins && config.plugins.length > 0) {
@@ -148,30 +139,36 @@ export async function generateAndWriteHtml(
       warn(`Skipping plugin "${ref}" in preview — ${err.message}`));
     pluginCss = collectPluginCss(plugins);
   }
-
-  const incremental = incrementalPreviewEnabled();
-  const html = await renderChapters(inputPath, {
+  return renderChapters(inputPath, {
     title: config.title ?? "Document",
     styles: config.styles,
-    files: config.source?.files ?? null,
+    files: opts.files,
     plugins,
     pluginCss,
-    wrapChapters: incremental,
+    wrapChapters: opts.wrapChapters,
   });
+}
 
-  // Inject into book.html, in order:
-  //   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
-  //   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (viewer)
-  //   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
-  //   4. Paged.js polyfill itself, served directly from the process-wide
-  //      embedded-assets dir by the HTTP server (see http-server.ts route
-  //      for /vendor/*). We no longer copy it into the per-project tempDir
-  //      because:
-  //        - The polyfill is 904 KB and copying it per open is wasted IO
-  //          (one of the worst-case Defender scan targets on Windows).
-  //        - The per-process extracted copy is identical across opens so
-  //          serving it from a stable disk path lets the OS file-cache
-  //          and Defender hash-cache stay warm across sessions.
+/**
+ * Rewrite rendered book HTML for the live preview. Injects, in order:
+ *   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
+ *   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (viewer)
+ *   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
+ *   4. Paged.js polyfill itself, served directly from the process-wide
+ *      embedded-assets dir by the HTTP server (see http-server.ts route
+ *      for /vendor/*). We no longer copy it into the per-project tempDir
+ *      because:
+ *        - The polyfill is 904 KB and copying it per open is wasted IO
+ *          (one of the worst-case Defender scan targets on Windows).
+ *        - The per-process extracted copy is identical across opens so
+ *          serving it from a stable disk path lets the OS file-cache
+ *          and Defender hash-cache stay warm across sessions.
+ *
+ * With `pageIsolateChapters` (the incremental preview), each chapter is also
+ * page-isolated so the shell can re-paginate and splice a single edited
+ * chapter without disturbing the others.
+ */
+export function injectPreviewScripts(html: string, pageIsolateChapters: boolean): string {
   const iface =
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
@@ -179,14 +176,39 @@ export async function generateAndWriteHtml(
     pagedjsPolyfillTagRegex(),
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
-
-  // Incremental preview: page-isolate each chapter so the shell can re-paginate
-  // and splice a single edited chapter without disturbing the others.
-  if (incremental && /<\/head>/i.test(output)) {
+  if (pageIsolateChapters && /<\/head>/i.test(output)) {
     output = output.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
   }
+  return output;
+}
 
-  await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), output, "utf-8");
+/**
+ * Generate HTML from markdown and write book.html to the temp directory.
+ * The viewer's iframe loads `book.html` via a relative URL — same name in
+ * dev and in published static-site builds.
+ *
+ * Empty `inputPath` writes a static placeholder — the viewer app (packages/viewer)
+ * supplies a real path via its own folder picker.
+ */
+export async function generateAndWriteHtml(
+  inputPath: string,
+  tempDir: string,
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: any[] }
+): Promise<void> {
+  if (!inputPath) {
+    await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML, "utf-8");
+    return;
+  }
+  const incremental = incrementalPreviewEnabled();
+  const html = await renderBook(inputPath, config, {
+    files: config.source?.files ?? null,
+    wrapChapters: incremental,
+  });
+  await fsp.writeFile(
+    path.join(tempDir, BOOK_HTML_FILENAME),
+    injectPreviewScripts(html, incremental),
+    "utf-8"
+  );
 }
 
 /**
@@ -201,36 +223,112 @@ export async function renderChapterPreviewHtml(
   file: string,
   config: { title?: string; styles?: string[]; plugins?: any[] }
 ): Promise<string> {
-  let plugins;
-  let pluginCss = '';
-  if (config.plugins && config.plugins.length > 0) {
-    // Live preview degrades gracefully: a plugin the author enabled but hasn't
-    // installed yet is skipped (with a loud warning) so the rest of the document
-    // still renders instead of the whole preview going blank. Build/export keep
-    // fail-fast (no onError) — a final artifact must not silently drop a plugin.
-    plugins = await loadPlugins(config.plugins, inputPath, (ref, err) =>
-      warn(`Skipping plugin "${ref}" in preview — ${err.message}`));
-    pluginCss = collectPluginCss(plugins);
+  const html = await renderBook(inputPath, config, { files: [file], wrapChapters: true });
+  return injectPreviewScripts(html, true);
+}
+
+/** One changed file, resolved to its temp-dir mirror destination. */
+export interface ChangedDest {
+  /** Forward-slash path relative to the temp dir (broadcast to clients). */
+  relativePath: string;
+  /** Lower-cased extension of the changed source file (e.g. ".css"). */
+  ext: string;
+  /** The chokidar event that reported the change (change, unlink, …). */
+  event: string;
+}
+
+/**
+ * Mirror every changed file into the temp directory — handles files inside
+ * the input path and files inside any external asset root. Deleted files are
+ * NOT copied (book.html is re-rendered from inputPath, the source of truth)
+ * but still appear in the returned list so the broadcast decision sees them.
+ */
+export async function mirrorChanges(
+  changes: [filePath: string, event: string][],
+  inputResolved: string,
+  tempDir: string,
+  externalRoots: { src: string; destName: string }[]
+): Promise<ChangedDest[]> {
+  const dests: ChangedDest[] = [];
+  for (const [changedPath, changedEvent] of changes) {
+    const dest = resolveDestinationForChange(changedPath, inputResolved, tempDir, externalRoots);
+    if (!dest) continue;
+    // A watch event can fire for a DIRECTORY (e.g. applying a theme
+    // creates `themes/<id>/`, bumping the parent dir's mtime). copyFile
+    // throws EISDIR on a directory, which previously aborted the entire
+    // rebuild and froze the live preview. The contained file gets its own
+    // event and is mirrored on its own; skip the directory itself.
+    if (existsSync(changedPath) && statSync(changedPath).isFile()) {
+      await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
+      await fsp.copyFile(changedPath, dest.destPath);
+      debug(`Updated: ${dest.relativePath}`);
+    }
+    dests.push({
+      relativePath: dest.relativePath,
+      ext: path.extname(changedPath).toLowerCase(),
+      event: changedEvent,
+    });
   }
-  const html = await renderChapters(inputPath, {
-    title: config.title ?? "Document",
-    styles: config.styles,
-    files: [file],
-    plugins,
-    pluginCss,
-    wrapChapters: true,
-  });
-  const iface =
-    '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
-    + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  let out = html.replace(
-    pagedjsPolyfillTagRegex(),
-    iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
-  );
-  if (/<\/head>/i.test(out)) {
-    out = out.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
+  return dests;
+}
+
+/**
+ * CSS hot-swap fast path: a stylesheet edit doesn't change content flow, so
+ * the client can re-fetch JUST those <link>s — no markdown re-render, no
+ * re-pagination, no reload. Scroll position is preserved and the new styles
+ * apply on the next frame. Returns the stylesheet paths to hot-swap, or null
+ * unless EVERY change in the window resolved to a stylesheet.
+ * (Geometry-affecting CSS like @page size won't re-flow page boxes until a
+ * content change triggers a full rebuild — acceptable for live tweaks.)
+ */
+export function cssHotSwapPaths(dests: ChangedDest[], changeCount: number): string[] | null {
+  if (
+    dests.length === changeCount &&
+    dests.length > 0 &&
+    dests.every((d) => d.ext === '.css')
+  ) {
+    return dests.map((d) => d.relativePath);
   }
-  return out;
+  return null;
+}
+
+/** How a content change is pushed to connected preview clients. */
+export type BroadcastDecision =
+  | { kind: 'chapter-splice'; chapterId: string; relativePath: string }
+  | { kind: 'full-reload' };
+
+/**
+ * Incremental: EXACTLY ONE markdown file changed (and still exists) →
+ * splice just that chapter in the live shell (re-paginate one chapter,
+ * not the whole doc). Any multi-file change — restore, sync merge —
+ * must full-reload instead: a single-chapter splice can only refresh
+ * one chapter and would leave the others stale.
+ *
+ * The chapterId is the CANONICAL chapter id — must equal the build's
+ * data-chapter-src for the same file (see lib/markdown/chapter-id.ts)
+ * or the shell can't find the chapter and degrades to a full swap.
+ */
+export function decideBroadcast(
+  dests: ChangedDest[],
+  changeCount: number,
+  incremental: boolean
+): BroadcastDecision {
+  const only = dests.length === 1 ? dests[0]! : null;
+  if (
+    incremental &&
+    changeCount === 1 &&
+    only &&
+    only.ext === '.md' &&
+    only.event !== 'unlink' &&
+    only.event !== 'unlinkDir'
+  ) {
+    return {
+      kind: 'chapter-splice',
+      chapterId: canonicalChapterId(only.relativePath),
+      relativePath: only.relativePath,
+    };
+  }
+  return { kind: 'full-reload' };
 }
 
 /**
@@ -290,51 +388,14 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       try {
         info('Regenerating preview...');
 
-        // Mirror EVERY changed file into the temp directory — handles files
-        // inside the input path and files inside any external asset root.
-        // Deleted files are skipped (book.html is re-rendered from inputPath,
-        // the source of truth, below).
-        const dests: { relativePath: string; ext: string; event: string }[] = [];
-        for (const [changedPath, changedEvent] of changes) {
-          const dest = resolveDestinationForChange(
-            changedPath,
-            inputResolved,
-            state.tempDir,
-            externalRoots
-          );
-          if (!dest) continue;
-          // A watch event can fire for a DIRECTORY (e.g. applying a theme
-          // creates `themes/<id>/`, bumping the parent dir's mtime). copyFile
-          // throws EISDIR on a directory, which previously aborted the entire
-          // rebuild and froze the live preview. The contained file gets its own
-          // event and is mirrored on its own; skip the directory itself.
-          if (existsSync(changedPath) && statSync(changedPath).isFile()) {
-            await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
-            await fsp.copyFile(changedPath, dest.destPath);
-            debug(`Updated: ${dest.relativePath}`);
-          }
-          dests.push({
-            relativePath: dest.relativePath,
-            ext: path.extname(changedPath).toLowerCase(),
-            event: changedEvent,
-          });
-        }
+        const dests = await mirrorChanges(changes, inputResolved, state.tempDir, externalRoots);
 
-        // CSS hot-swap fast path: a stylesheet edit doesn't change content flow,
-        // so we re-copy it (above) and tell the client to re-fetch JUST those
-        // <link>s — no markdown re-render, no re-pagination, no reload. Scroll
-        // position is preserved and the new styles apply on the next frame.
-        // Only taken when EVERY change in the window is a stylesheet.
-        // (Geometry-affecting CSS like @page size won't re-flow page boxes until
-        // a content change triggers a full rebuild — acceptable for live tweaks.)
-        if (
-          dests.length === changes.length &&
-          dests.length > 0 &&
-          dests.every((d) => d.ext === '.css')
-        ) {
-          for (const d of dests) {
-            state.previewServer?.broadcastCssUpdate(d.relativePath);
-            info(`CSS hot-swapped: ${d.relativePath}`);
+        // Stylesheet-only burst → hot-swap the re-copied <link>s and stop.
+        const cssPaths = cssHotSwapPaths(dests, changes.length);
+        if (cssPaths) {
+          for (const p of cssPaths) {
+            state.previewServer?.broadcastCssUpdate(p);
+            info(`CSS hot-swapped: ${p}`);
           }
           return;
         }
@@ -346,25 +407,10 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         state.config = updatedConfig;
         await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
 
-        // Incremental: EXACTLY ONE markdown file changed (and still exists) →
-        // splice just that chapter in the live shell (re-paginate one chapter,
-        // not the whole doc). Any multi-file change — restore, sync merge —
-        // must full-reload instead: a single-chapter splice can only refresh
-        // one chapter and would leave the others stale.
-        const only = dests.length === 1 ? dests[0]! : null;
-        if (
-          incrementalPreviewEnabled() &&
-          changes.length === 1 &&
-          only &&
-          only.ext === '.md' &&
-          only.event !== 'unlink' &&
-          only.event !== 'unlinkDir'
-        ) {
-          // Broadcast the CANONICAL chapter id — must equal the build's
-          // data-chapter-src for the same file (see lib/markdown/chapter-id.ts)
-          // or the shell can't find the chapter and degrades to a full swap.
-          state.previewServer?.broadcastContentUpdate(canonicalChapterId(only.relativePath));
-          info(`Chapter updated: ${only.relativePath}`);
+        const decision = decideBroadcast(dests, changes.length, incrementalPreviewEnabled());
+        if (decision.kind === 'chapter-splice') {
+          state.previewServer?.broadcastContentUpdate(decision.chapterId);
+          info(`Chapter updated: ${decision.relativePath}`);
         } else {
           // Tell every connected HMR client to reload.
           state.previewServer?.broadcastReload();
