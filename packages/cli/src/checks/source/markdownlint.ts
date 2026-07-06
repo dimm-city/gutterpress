@@ -1,9 +1,8 @@
-import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { lint } from "markdownlint/sync";
 import { parse as parseYaml } from "yaml";
 import { registerCheck } from "../registry";
+import { findConfigFile } from "./config-file";
 import type { Check, CheckContext, CheckResult } from "../types";
 
 const CONFIG_NAMES = [
@@ -14,19 +13,6 @@ const CONFIG_NAMES = [
   ".markdownlint-cli2.yaml",
   ".markdownlint-cli2.jsonc",
 ];
-
-function findConfig(inputDir: string, explicit?: string | null): string | null {
-  if (explicit) {
-    const p = resolve(inputDir, explicit);
-    return existsSync(p) ? p : null;
-  }
-  // Auto-detect
-  for (const name of CONFIG_NAMES) {
-    const p = resolve(inputDir, name);
-    if (existsSync(p)) return p;
-  }
-  return null;
-}
 
 /** Strip line and block comments so JSONC config files parse as JSON. */
 function stripJsonComments(s: string): string {
@@ -89,7 +75,7 @@ const check: Check = {
       typeof sourceConfig.markdownlint === "string"
         ? sourceConfig.markdownlint
         : null;
-    const resolvedConfig = findConfig(ctx.inputDir, configPath);
+    const resolvedConfig = findConfigFile(ctx.inputDir, CONFIG_NAMES, configPath);
 
     // If no config found and not explicitly set, skip silently
     if (!resolvedConfig && !configPath) return [];

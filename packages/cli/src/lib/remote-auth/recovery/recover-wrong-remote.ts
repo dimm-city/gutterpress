@@ -25,7 +25,6 @@
  */
 
 import git from "isomorphic-git";
-import * as fs from "node:fs";
 
 import type { RecoverFn, RecoveryResult } from "./types.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";

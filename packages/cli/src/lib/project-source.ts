@@ -20,9 +20,11 @@
  * reads to enable/disable actions, so new source types slot in without
  * reworking callers.
  */
-import { stat, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
+import { isDirectory } from "../utils/file-utils.ts";
 
 /**
  * The classified source of an opened project.
@@ -81,14 +83,6 @@ export interface ProjectCapabilities {
   canRestoreSnapshot: boolean;
   canSync: boolean;
   authManagedByApp: boolean;
-}
-
-async function isDirectory(target: string): Promise<boolean> {
-  try {
-    return (await stat(target)).isDirectory();
-  } catch {
-    return false;
-  }
 }
 
 /**

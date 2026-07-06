@@ -20,7 +20,6 @@ import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 import { pagedjsPolyfillTagRegex } from '../lib/pagedjs-marker';
-import { getAssetPath } from '../lib/embedded-assets';
 
 /**
  * Build the list of asset roots that live outside the input path and need

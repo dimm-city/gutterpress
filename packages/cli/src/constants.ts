@@ -17,11 +17,3 @@ export const DEBOUNCE = {
   /** Debounce delay for file watch events */
   FILE_WATCH: 100,
 } as const;
-
-/**
- * File names
- */
-export const FILENAMES = {
-  /** Manifest configuration file */
-  MANIFEST: 'manifest.yaml',
-} as const;

@@ -26,11 +26,6 @@ function topLevelFileNames(dir: string): string[] {
 }
 
 /**
- * Default asset directories when no manifest is provided
- */
-export const DEFAULT_ASSETS = ["css", "fonts", "images"];
-
-/**
  * Resolve the destination name for an asset path.
  * For relative paths like "../_shared", returns just the basename ("_shared").
  * For simple paths like "css", returns the path unchanged.

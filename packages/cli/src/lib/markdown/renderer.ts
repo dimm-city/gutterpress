@@ -2,7 +2,8 @@
  * Pure (node-free) markdown rendering core.
  *
  * §1/§8 / ADR 0004: this module imports ONLY pure JS — markdown-it and its
- * plugins, plus the inlined `markdown-it-paged.js`. It contains NO `node:*`,
+ * plugins, the inlined `markdown-it-paged.js`, and the node-free leveled
+ * logger (console-only). It contains NO `node:*`,
  * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported by the
  * browser renderer (the PWA WebAdapter, #33) AND bundled into the
  * `bun build --compile` CLI binary alike.
@@ -15,6 +16,7 @@
  * unaffected.
  */
 import MarkdownIt from "markdown-it";
+import { debug } from "../../utils/logger";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
 import markdownItPaged from "./markdown-it-paged.js";
@@ -178,9 +180,9 @@ export function applyPlugins(md: MarkdownIt, plugins: LoadedPlugin[]): void {
       throw new Error(`Failed to apply plugin "${name}": ${errorMsg}`);
     }
     if (metadata?.name) {
-      console.log(`Loaded plugin: ${metadata.name} v${metadata.version ?? "?"}`);
+      debug(`Loaded plugin: ${metadata.name} v${metadata.version ?? "?"}`);
     } else {
-      console.log(`Loaded plugin: ${name}`);
+      debug(`Loaded plugin: ${name}`);
     }
   }
 }

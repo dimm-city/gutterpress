@@ -3,7 +3,6 @@ import { isCheckEnabled } from "./policy";
 import { log } from "../utils/logger";
 import { isToolAvailable } from "../lib/tool-probe";
 import type { ResolvedConfig } from "../schema/manifest.types";
-import type { CheckCategory, CheckPhase } from "./types";
 import type { RunnerOptions } from "./runner";
 
 export interface ToolCheckResult {
