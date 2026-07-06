@@ -153,9 +153,29 @@
         phase = "error";
         errorMessage = outcome.message;
         onReconnect?.();
-      } else {
+      } else if (outcome.status === "offline") {
+        // Already a plain-language, non-technical message — safe to render
+        // as-is (unchanged from before this fix).
         phase = "error";
         errorMessage = outcome.message;
+      } else if (outcome.status === "error" && outcome.code === "needs-connection-setup") {
+        // The project's online connection itself is the problem (no online
+        // address / an SSH address / no named version line) — never render
+        // outcome.message here, it carries the lib's technical wording for
+        // that case. Route straight to the same connect/setup surface the
+        // "auth" branch above uses; the author's per-file choices are left
+        // untouched so they can close this dialog and pick up later.
+        phase = "error";
+        errorMessage =
+          "This project needs its online connection set up differently before syncing can work.";
+        onReconnect?.();
+      } else {
+        phase = "error";
+        // Deliberately a fixed friendly string, NOT outcome.message: that
+        // field can carry raw technical error text that is unhelpful (and
+        // often alarming) to the non-technical authors this app targets.
+        // Same fixed copy as SyncController.handleForceSync's generic arm.
+        errorMessage = "Sync failed. Check your connection and try again.";
       }
     } catch (e) {
       phase = "error";

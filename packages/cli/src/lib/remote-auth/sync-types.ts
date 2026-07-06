@@ -66,7 +66,20 @@ export type SyncOutcome =
     }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
-  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
+  | {
+      status: "error";
+      message: string;
+      /**
+       * Stable machine-readable signal for the small set of known "the project
+       * isn't set up right" failures (no remote / SSH remote / no named
+       * branch) — set by conflict-resolution.ts's setupErrorMessage() check.
+       * Lets a host UI route to its connect/setup surface without
+       * string-matching `message` (which stays free to reword).
+       */
+      code?: "needs-connection-setup";
+      snapshotId?: string;
+      filesChanged?: boolean;
+    };
 
 /**
  * Outcome of a pull-only attempt ({@link pullChanges}): fetch + fast-forward/

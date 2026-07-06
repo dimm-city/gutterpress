@@ -328,7 +328,20 @@ export type SyncOutcome =
     }
   | { status: "auth"; message: string; snapshotId?: string; filesChanged?: boolean }
   | { status: "offline"; message: string; snapshotId?: string; filesChanged?: boolean }
-  | { status: "error"; message: string; snapshotId?: string; filesChanged?: boolean };
+  | {
+      status: "error";
+      message: string;
+      /**
+       * Stable machine-readable signal for the small set of "the project isn't
+       * set up right" failures (no online address / SSH address / no named
+       * version line) the lib can identify. Lets the host route to its
+       * connect/setup surface without matching against `message` text (which
+       * stays free to reword) — mirrors the lib's SyncOutcome (sync-types.ts).
+       */
+      code?: "needs-connection-setup";
+      snapshotId?: string;
+      filesChanged?: boolean;
+    };
 
 /** Inputs for applying the author's conflict choices. */
 export interface ResolveSyncConflictsArgs {
