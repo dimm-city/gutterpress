@@ -15,7 +15,7 @@
         "chokidar": "^5.0.0",
         "citty": "^0.2.0",
         "diff3": "0.0.3",
-        "fflate": "^0.8.2",
+        "fflate": "0.8.3",
         "glob": "^13.0.0",
         "htmlhint": "^1.9.2",
         "isomorphic-git": "^1.38.4",

@@ -124,6 +124,22 @@ describe("createRecoveryZip — basic creation", () => {
     expect(backup.entries.every((e) => !e.includes("node_modules"))).toBe(true);
   });
 
+  test("NESTED node_modules is excluded too (not just at the repo root)", async () => {
+    const dir = await makeTempDir();
+    await makeTestRepo(dir);
+    const nested = path.join(dir, "examples", "site", "node_modules", "pkg");
+    await mkdir(nested, { recursive: true });
+    await writeFile(path.join(nested, "index.js"), "module.exports={};");
+    await writeFile(path.join(dir, "examples", "site", "page.md"), "# page\n");
+    const ctx = makeCtx(dir);
+
+    const backup = await createRecoveryZip(ctx, "exclude_nested_node_modules");
+
+    expect(backup.entries.every((e) => !e.includes("node_modules"))).toBe(true);
+    // Sibling content next to the nested node_modules is still included.
+    expect(backup.entries).toContain("examples/site/page.md");
+  });
+
   test("createdAt is a valid ISO string", async () => {
     const dir = await makeTempDir();
     await makeTestRepo(dir);
