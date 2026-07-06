@@ -749,9 +749,9 @@ describe("@page-break / @column-break output", () => {
 });
 
 describe("column-split depth isolation (env.__colSplitDepth, not module state)", () => {
-  test("depth is unset when no @page/@chapter marker (the only resetters) appears at all", () => {
+  test("depth is reset to 0 at the start of each render, even when no @page/@chapter marker appears", () => {
     const { env } = renderPaged("@section\nA\n");
-    expect(env.__colSplitDepth).toBeUndefined();
+    expect(env.__colSplitDepth).toBe(0);
   });
 
   test("opening a @page unconditionally resets depth to 0 on env (defensive reset, not just lazy init)", () => {
@@ -814,17 +814,7 @@ describe("column-split depth isolation (env.__colSplitDepth, not module state)",
     expect(env.__colSplitDepth).toBe(0);
   });
 
-  // NOTE (surprising / locked-as-is): the defensive reset ONLY happens on
-  // layout_chapter_open / layout_page_open. If a render's FIRST marker is a
-  // .col-split @section (no preceding @page/@chapter to trigger the reset)
-  // on a reused `env` that already carries a nonzero depth, that baseline is
-  // NOT reset — the open/close pair still nets to the SAME (nonzero) value
-  // it started at, rather than 0. This does not visibly corrupt output for a
-  // single, well-formed .col-split section (increments/decrements are always
-  // paired 1:1 by the core auto-close logic), but it does mean depth can
-  // stay permanently nonzero on a long-lived, reused env. Locking this as
-  // observed today, not "fixing" it.
-  test("a leaked nonzero depth survives a render that never opens a @page/@chapter", () => {
+  test("a stale nonzero depth is cleared before a render whose first marker is a .col-split @section", () => {
     const env: PagedEnv = { __colSplitDepth: 2 };
     const { html } = renderPaged(
       "@section .col-split\nA\n@column-break\nB\n@end-section\n",
@@ -835,8 +825,7 @@ describe("column-split depth isolation (env.__colSplitDepth, not module state)",
       '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
         '<div class="col">\n<p>B</p>\n</div></div>\n'
     );
-    // Net zero change relative to the poisoned baseline -> still 2, not 0.
-    expect(env.__colSplitDepth).toBe(2);
+    expect(env.__colSplitDepth).toBe(0);
   });
 });
 
