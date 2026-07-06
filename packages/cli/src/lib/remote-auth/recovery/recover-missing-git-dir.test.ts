@@ -26,9 +26,9 @@
  * Mocks: confirmation gate (UI dialog) and FaultInjector only.
  */
 
-import { describe, expect, test, beforeEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { writeFile, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir } from "../../../test-helpers/testkit";
 
@@ -38,7 +38,6 @@ import httpNode from "isomorphic-git/http/node";
 import {
   startGitServer,
   createFixtureRepo,
-  tempDir,
 } from "../test-support/git-http-server.ts";
 import { assertZipReadable, zipEntries } from "./backup.ts";
 import type {
@@ -53,7 +52,6 @@ import { recover } from "./recover-missing-git-dir.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const AUTHOR = { name: "Test Author", email: "test@test.local" };
 const FIXED_NOW = new Date("2025-01-15T12:00:00.000Z").getTime();
 
 /** Remove .git from a directory (simulates the problem being recovered). */

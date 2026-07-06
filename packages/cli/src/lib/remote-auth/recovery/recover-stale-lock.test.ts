@@ -22,13 +22,11 @@
  * bun:test only.
  */
 
-import { describe, expect, test, beforeEach } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import { writeFile, utimes } from "node:fs/promises";
 import path from "node:path";
-import { makeTempDir as freshTempDir } from "../../../test-helpers/testkit";
-
-import git from "isomorphic-git";
+import { makeTempDir as freshTempDir, makeTestRepo } from "../../../test-helpers/testkit";
 
 import { gitDirFor } from "../../source-provider.ts";
 import type {
@@ -53,15 +51,6 @@ const STALE_LOCK_AGE_MS = 10 * 60_000; // 10 min → should be recoverable
 
 async function makeTempDir(): Promise<string> {
   return freshTempDir("stale-lock-test-");
-}
-
-/** Create a minimal git repo with one committed file. */
-async function makeTestRepo(dir: string): Promise<void> {
-  await git.init({ fs, dir, defaultBranch: "main" });
-  await writeFile(path.join(dir, "chapter-01.md"), "# Chapter One\n\nContent.\n");
-  await git.add({ fs, dir, filepath: "chapter-01.md" });
-  const author = { name: "Test Author", email: "test@test.local" };
-  await git.commit({ fs, dir, message: "initial", author });
 }
 
 /**

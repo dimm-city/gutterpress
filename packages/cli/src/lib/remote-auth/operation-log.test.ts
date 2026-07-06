@@ -7,7 +7,6 @@ import {
   createFileLogger,
   resolveLogger,
   shortOid,
-  type OperationLogger,
 } from "./operation-log.ts";
 
 async function tempDir(): Promise<string> {

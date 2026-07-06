@@ -102,36 +102,25 @@ function makePushSpy(): {
 }
 
 /**
- * Build a fixture: remote repo serving only "main", plus a local clone
- * configured on the given branch (which may not exist on the remote).
- *
- * The local repo is cloned from the remote (so it's valid git), then we
- * update the local HEAD to point to the requested branch, simulating a
- * misconfiguration where the project's configured branch doesn't match
- * what's on the server.
+ * Build a fixture: remote repo serving only "main", plus a valid local clone.
+ * The wrong-branch misconfiguration is simulated by the CALLER setting
+ * ctx.branch (via makeCtx) to a branch the server does not have — the fixture
+ * itself always serves "main".
  */
-async function makeFixture(opts: {
-  localBranch?: string; // the branch ctx.branch will be set to; default "main"
-  serverBranch?: string; // the branch the server actually has; default "main"
-} = {}): Promise<{
+async function makeFixture(): Promise<{
   projectDir: string;
   remoteDir: string;
   remoteUrl: string;
   closeServer: () => Promise<void>;
   initialRemoteHead: string;
 }> {
-  const localBranch = opts.localBranch ?? "main";
-  const serverBranch = opts.serverBranch ?? "main";
 
   // Set up the remote fixture repo.
   const remoteDir = await makeTempDir("wrong-remote-remote-");
   const { head: initialRemoteHead } = await createFixtureRepo(remoteDir);
 
-  // The server serves a fixed branch name based on what's in the fixture.
-  // createFixtureRepo always creates "main". If serverBranch differs, we
-  // rename it so the server advertises the right name (not needed for these
-  // tests — we just use a server that has "main" and set localBranch to
-  // "missing-branch" to simulate the mismatch).
+  // createFixtureRepo always creates "main" — the only branch the server
+  // ever advertises in these tests.
   const server = await startGitServer(remoteDir);
 
   // Clone the remote so we have a valid local git repo.
@@ -675,7 +664,7 @@ describe("recover (wrong_remote_or_branch) — branch present on remote (known g
   test("returns blocked even when branch is present (handler is always a block for this kind)", async () => {
     // wrong_remote_or_branch is called only when the classifier decided it's wrong.
     // The handler always blocks — it cannot auto-fix a misconfigured remote.
-    const { projectDir, remoteUrl, closeServer } = await makeFixture({ localBranch: "main" });
+    const { projectDir, remoteUrl, closeServer } = await makeFixture();
     try {
       const ctx = makeCtx(projectDir, remoteUrl, "main");
       const result = await recover(ctx);
@@ -728,7 +717,7 @@ describe("recover (wrong_remote_or_branch) — detection: branch absent vs prese
 
   test("supportDetails indicates destination found when branch IS present on remote", async () => {
     // Server has "main"; configured branch is also "main" (present).
-    const { projectDir, remoteUrl, closeServer } = await makeFixture({ localBranch: "main" });
+    const { projectDir, remoteUrl, closeServer } = await makeFixture();
     try {
       const ctx = makeCtx(projectDir, remoteUrl, "main");
       const result = await recover(ctx);
@@ -749,7 +738,7 @@ describe("recover (wrong_remote_or_branch) — detection: branch absent vs prese
   test("absent-branch and present-branch results have different supportDetails", async () => {
     // Run both cases and assert they differ — definitively proves detection.
     const absentFixture = await makeFixture();
-    const presentFixture = await makeFixture({ localBranch: "main" });
+    const presentFixture = await makeFixture();
     try {
       const absentCtx = makeCtx(absentFixture.projectDir, absentFixture.remoteUrl, "missing-branch");
       const presentCtx = makeCtx(presentFixture.projectDir, presentFixture.remoteUrl, "main");
@@ -785,7 +774,7 @@ describe("recover (wrong_remote_or_branch) — detection: branch absent vs prese
   });
 
   test("no push issued in present-branch detection scenario", async () => {
-    const { projectDir, remoteUrl, closeServer } = await makeFixture({ localBranch: "main" });
+    const { projectDir, remoteUrl, closeServer } = await makeFixture();
     try {
       const spy = makePushSpy();
       const ctx = makeCtx(projectDir, remoteUrl, "main", { httpClient: spy.httpClient });
@@ -811,7 +800,7 @@ describe("recover (wrong_remote_or_branch) — detection: branch absent vs prese
 
   test("remote HEAD unchanged in present-branch detection scenario", async () => {
     const { projectDir, remoteUrl, remoteDir, closeServer, initialRemoteHead } =
-      await makeFixture({ localBranch: "main" });
+      await makeFixture();
     try {
       const ctx = makeCtx(projectDir, remoteUrl, "main");
       await recover(ctx);

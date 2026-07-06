@@ -26,7 +26,7 @@
 
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import git from "isomorphic-git";
@@ -38,7 +38,6 @@ import {
   SYNC_SNAPSHOT_MESSAGE,
   type ConflictResolution,
 } from "../sync.ts";
-import type { HostCredential } from "../token-store.ts";
 import {
   createFixtureRepo,
   startGitServer,
@@ -59,7 +58,6 @@ import { recover } from "./recover-merge-conflict.ts";
 // ── Test fixture helpers ──────────────────────────────────────────────────────
 
 const SERVER_AUTHOR = { name: "OnlineCopy", email: "server@test.local" };
-const ALICE_AUTHOR = { name: "Alice", email: "alice@test.local" };
 
 interface ConflictHarness {
   serverDir: string;
@@ -473,7 +471,6 @@ describe("resolveConflicts delegation — keeping Alice's version", () => {
       const ctx = makeCtx(h);
       const result = await recover(ctx);
       expect(result.status).toBe("needs_user");
-      const r = result as Extract<RecoveryResult, { status: "needs_user" }>;
 
       // Use the localId/remoteId from the result (they may be embedded in the
       // guidance or we derive them from the repo state).

@@ -19,7 +19,7 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { makeTempDir } from "../../../test-helpers/testkit";
+import { initRepo as tkInitRepo, makeTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 
@@ -59,13 +59,9 @@ async function currentBranch(repoDir: string): Promise<string | undefined> {
   return (await git.currentBranch({ fs, dir: repoDir })) ?? undefined;
 }
 
-/** One-commit repo on main; returns the HEAD sha. */
-async function initRepo(dir: string): Promise<string> {
-  await git.init({ fs, dir, defaultBranch: "main" });
-  await writeFile(path.join(dir, "chapter-01.md"), "# Chapter One\n\nOriginal.\n");
-  await git.add({ fs, dir, filepath: "chapter-01.md" });
-  return git.commit({ fs, dir, message: "initial commit", author: AUTHOR });
-}
+/** One-commit repo on main; returns the HEAD sha (testkit initRepo, this file's author). */
+const initRepo = (dir: string) =>
+  tkInitRepo(dir, { content: "# Chapter One\n\nOriginal.\n", message: "initial commit", author: AUTHOR });
 
 /** Fabricate an interrupted-cherry-pick on-disk state (HEAD stays attached). */
 async function fabricateCherryPick(dir: string, pickedSha: string): Promise<void> {

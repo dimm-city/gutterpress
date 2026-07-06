@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   listProjectPlugins,
@@ -21,10 +21,6 @@ function projectDir(): string {
 
 function writeManifest(dir: string, body: string): void {
   writeFileSync(join(dir, "manifest.yaml"), body, "utf8");
-}
-
-function readManifest(dir: string): string {
-  return readFileSync(join(dir, "manifest.yaml"), "utf8");
 }
 
 describe("plugin-manager", () => {

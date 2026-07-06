@@ -20,7 +20,7 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { makeTempDir } from "../../../test-helpers/testkit";
+import { commitFile as tkCommitFile, makeTempDir } from "../../../test-helpers/testkit";
 
 import git from "isomorphic-git";
 
@@ -67,12 +67,9 @@ async function resolveMain(repoDir: string): Promise<string> {
   return git.resolveRef({ fs, dir: repoDir, ref: "refs/heads/main" });
 }
 
-/** Commit `filename` with `body` on the current branch, return the new sha. */
-async function commitFile(dir: string, filename: string, body: string): Promise<string> {
-  await writeFile(path.join(dir, filename), body);
-  await git.add({ fs, dir, filepath: filename });
-  return git.commit({ fs, dir, message: `add ${filename}`, author: AUTHOR });
-}
+/** Commit `filename` with `body` on the current branch (testkit commitFile, this file's author). */
+const commitFile = (dir: string, filename: string, body: string) =>
+  tkCommitFile(dir, filename, body, { author: AUTHOR });
 
 /** Two-commit repo on main; returns { firstSha, secondSha (tip) }. */
 async function initTwoCommitRepo(dir: string): Promise<{ firstSha: string; secondSha: string }> {

@@ -24,9 +24,9 @@
  * git-http-server.ts; gitSpy wraps it to record push invocations.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import git from "isomorphic-git";
@@ -287,11 +287,6 @@ async function serverTree(serverDir: string): Promise<string> {
 /** A confirmation gate that always approves (used when no confirmation needed). */
 const alwaysApprove: ConfirmationGate = {
   confirmRepair: async () => true,
-};
-
-/** A confirmation gate that always denies. */
-const alwaysDeny: ConfirmationGate = {
-  confirmRepair: async () => false,
 };
 
 /** Build a minimal RecoveryContext for Alice's project. */

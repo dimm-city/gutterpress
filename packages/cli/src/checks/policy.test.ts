@@ -26,9 +26,8 @@ import {
   inspectionFailed,
   INSPECT_FAILED_CODE,
 } from "./policy";
-import { getChecks, getCheckById, registerCheck } from "./registry";
+import { getCheckById, registerCheck } from "./registry";
 import { checkToolAvailability } from "./tool-check";
-import { runChecks } from "./runner";
 import { makeCtx } from "../test-helpers/testkit";
 
 // self-register all checks
