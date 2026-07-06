@@ -20,6 +20,12 @@ import type { ProjectSource } from "@dimm-city/print-md";
 
 export interface ViewerPrefs {
   lastProjectDir?: string;
+  /**
+   * Show the start screen (welcome landing) at launch. Default true; when
+   * false the app opens straight into the last book behind the splash (the
+   * pre-landing behavior). Toggled from the start screen's own checkbox.
+   */
+  showLandingAtStartup?: boolean;
   /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
   sidebarOpen?: boolean;
   /**
@@ -73,6 +79,7 @@ export interface PrefsStoreDeps {
 export function createPrefsStore(deps: PrefsStoreDeps): {
   readPrefs(): Promise<ViewerPrefs>;
   writePrefs(p: ViewerPrefs): Promise<void>;
+  updatePrefs(mutate: (prefs: ViewerPrefs) => ViewerPrefs): Promise<ViewerPrefs>;
   prefsPath(): string;
   existingDirectory(dir: string | undefined): Promise<string | null>;
 } {
@@ -97,9 +104,44 @@ export function createPrefsStore(deps: PrefsStoreDeps): {
     }
   }
 
-  async function writePrefs(prefs: ViewerPrefs): Promise<void> {
+  async function writeNow(prefs: ViewerPrefs): Promise<void> {
     await deps.fs.mkdir(deps.getUserDataDir(), { recursive: true });
     await deps.fs.writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
+  }
+
+  // All mutations are serialized on one chain. Several writers share this
+  // file concurrently (the api:preview open flow in main, and the app/*
+  // server routes the renderer calls — including the start screen's
+  // "show at startup" toggle firing exactly while the startup open runs),
+  // and each does a read-modify-write; without serialization the last
+  // writer silently reverts the other's change.
+  let chain: Promise<unknown> = Promise.resolve();
+  function enqueue<T>(op: () => Promise<T>): Promise<T> {
+    const run = chain.then(op);
+    chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  function writePrefs(prefs: ViewerPrefs): Promise<void> {
+    return enqueue(() => writeNow(prefs));
+  }
+
+  /**
+   * Atomic read-modify-write: the read and the write happen inside one queue
+   * slot, so concurrent updates compose instead of clobbering each other.
+   * Prefer this over readPrefs()+writePrefs() for any patch-style mutation.
+   */
+  function updatePrefs(
+    mutate: (prefs: ViewerPrefs) => ViewerPrefs,
+  ): Promise<ViewerPrefs> {
+    return enqueue(async () => {
+      const next = mutate(await readPrefs());
+      await writeNow(next);
+      return next;
+    });
   }
 
   async function existingDirectory(
@@ -113,5 +155,5 @@ export function createPrefsStore(deps: PrefsStoreDeps): {
     }
   }
 
-  return { readPrefs, writePrefs, prefsPath, existingDirectory };
+  return { readPrefs, writePrefs, updatePrefs, prefsPath, existingDirectory };
 }

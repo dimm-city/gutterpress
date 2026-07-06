@@ -8,8 +8,11 @@ This repo is a Bun workspace with two packages:
   ALL runtime logic (markdown rendering, preview HTTP server, PDF generation via
   puppeteer-core, lint, validation — under `src/`) **and** the CLI entry
   (`src/cli.ts`). It exposes a library (`exports` → `dist/index.js`) and a CLI
-  (`bin` → `dist/cli.js`). Built the standard way: `bun build` (the three
-  entrypoints, `--target=node --packages=external --splitting`) + `tsc` for
+  (`bin` → `dist/cli.js`). Built the standard way: `bun build` (the Node
+  entrypoints, `--target=node --packages=external --splitting`; `src/render.ts`
+  is compiled as a SEPARATE non-split invocation so the node-free
+  `/render` subpath never shares a chunk with Node code — enforced by
+  `scripts/check-render-pure.mjs`) + `tsc` for
   `.d.ts` — see the package.json `build` script; deps are normal `dependencies`,
   not bundled. Also ships as a standalone single-file binary via `bun build
   --compile`, run inline by the `build-cli` job in `.github/workflows/release.yml`
@@ -296,14 +299,27 @@ CSS print-safety linting (`checkCss`) is postcss-based, so it runs host-side (in
 the `api/lint/check-css` server route) and the editor's lint gutter calls
 `getPlatform().checkCss(...)` (CodeMirror accepts a `Promise` lint source).
 
-**Verification (must pass before any viewer change is "done"):** after
-`npm run build`, the client SPA bundle must contain no host code — adapter-node
-emits the browser assets to `build/client/`, so
-`grep -rlE "fileURLToPath|node:module|createRequire|node:fs|node:url|isomorphic-git" build/client/_app/`
-must output **nothing**. (The server side — `build/server/`, `build/handler.js`,
-and the `+server.ts` routes compiled into it — is host Node code by design;
-scope the check to `build/client/`.) Treat a hit as a release-blocking
-regression. (The
+**Verification (must pass before any viewer change is "done"):** the client
+SPA bundle must contain no host code — adapter-node emits the browser assets
+to `build/client/`, and this is now **enforced automatically** by ONE script,
+`tools/check-render-purity.mjs`: CI runs it (`.github/workflows/ci.yml`) and
+the viewer's `npm run build` runs it with `--strict` (absent dir or zero
+scannable files = failure). It fails on host code — the named leak
+identifiers (`fileURLToPath`/`createRequire`/`isomorphic-git`), any quoted
+`node:*` specifier, or a bare builtin `require()` (generated from
+`builtinModules`, never hand-listed) — anywhere under `build/client/`.
+Two caveats keep this honest:
+(1) the server side — `build/server/`, `build/handler.js`, and the
+`+server.ts` routes compiled into it — is host Node code by design; the check
+scopes to `build/client/` only. (2) Rollup tree-shaking can HIDE a leak from
+the production scan while `vite dev` (no tree-shaking) still crashes on it —
+this is exactly how a shared bun-build chunk topped with `createRequire`
+leaked through `@dimm-city/print-md/render` in 2026-07. The lib side
+therefore has its own gate: `packages/cli`'s build compiles `src/render.ts`
+as a separate non-split `bun build` graph and runs
+`scripts/check-render-pure.mjs`, which fails if the `dist/render.js` closure
+contains any Node builtin or `createRequire`. Treat a hit from either gate as
+a release-blocking regression. (The
 `bun build --compile` CLI binary is the *opposite* environment — it bundles the
 lib's Node code on purpose; §1/§3 govern it. This rule governs the renderer.)
 

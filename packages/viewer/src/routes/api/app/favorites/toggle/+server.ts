@@ -11,11 +11,14 @@ export const POST: RequestHandler = jsonRoute(async (body: { path?: string; titl
   if (!folderPath || typeof folderPath !== 'string') error(400, 'path is required');
   const hooks = getPrefsHooks();
   if (!hooks) error(503, 'Prefs hooks not registered');
-  const current = await hooks.readPrefs();
-  const { favorites, favorited } = hooks.toggleFavoriteFolder(
-    current.favorites as FolderEntry[] | undefined,
-    { path: folderPath, title }
-  );
-  await hooks.writePrefs({ ...current, favorites });
+  let favorited = false;
+  await hooks.updatePrefs((current) => {
+    const result = hooks.toggleFavoriteFolder(
+      current.favorites as FolderEntry[] | undefined,
+      { path: folderPath, title }
+    );
+    favorited = result.favorited;
+    return { ...current, favorites: result.favorites };
+  });
   return { favorited };
 });

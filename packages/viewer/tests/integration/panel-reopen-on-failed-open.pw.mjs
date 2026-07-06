@@ -1,21 +1,27 @@
 #!/usr/bin/env node
 /**
  * Regression test: after `startFolderPreview` throws (bad path, no manifest,
- * etc.), the Projects panel MUST re-open so the user can try again.
+ * etc.), a project-browsing surface MUST be visible so the user can try again.
  *
  * The bug (beta.6 regression): the old `autoOpenPanel` `$effect` was removed
  * without replacement. When the user tried to open a folder that failed (e.g.,
- * a path with no print-md manifest), `currentDir` stayed null but the Projects
- * panel did not auto-open — the user was left with a blank welcome screen and
- * no path to try again except manually toggling the panel.
+ * a path with no print-md manifest), `currentDir` stayed null but no browsing
+ * UI auto-opened — the user was left with a blank welcome screen and no path
+ * to try again.
+ *
+ * Since the start screen (WelcomeLanding) became the app's single empty
+ * state, `.projects-body` (ProjectsListBody) is what it hosts: it shows on a
+ * fresh launch with no last project, and re-appears when a failed open
+ * empties the workspace. The assertions below hold for either surface (start
+ * screen or left panel), so this test guards the same "never stranded"
+ * contract.
  *
  * What this test verifies:
- *   1. Opens the app with a clean userData (no last project) — panel should
- *      auto-open on Projects tab on startup.
+ *   1. Opens the app with a clean userData (no last project) — a browsing
+ *      surface with `.projects-body` shows on startup.
  *   2. Enters a nonexistent path via the location input and presses Enter.
  *   3. Waits for the error to surface (openError, failedOpenDir state).
- *   4. Asserts the Projects panel is still visible (not hidden) after the
- *      failed open — specifically that `.projects-body` is present.
+ *   4. Asserts `.projects-body` is visible again after the failed open.
  *
  * Usage:
  *   node tests/integration/panel-reopen-on-failed-open.pw.mjs [exe-or-main-js]

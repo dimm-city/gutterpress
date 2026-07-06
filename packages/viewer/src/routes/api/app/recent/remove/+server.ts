@@ -10,10 +10,9 @@ export const POST: RequestHandler = jsonRoute(async (body: { path?: string }) =>
   if (!folderPath || typeof folderPath !== 'string') error(400, 'path is required');
   const hooks = getPrefsHooks();
   if (!hooks) error(503, 'Prefs hooks not registered');
-  const current = await hooks.readPrefs();
-  await hooks.writePrefs({
+  await hooks.updatePrefs((current) => ({
     ...current,
     recentFolders: hooks.removeRecentFolder(current.recentFolders as RecentFolder[] | undefined, folderPath),
-  });
+  }));
   return { ok: true };
 });

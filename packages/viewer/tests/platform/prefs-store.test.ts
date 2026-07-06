@@ -195,3 +195,66 @@ test("(f4) existingDirectory returns null when the argument is undefined (no sta
   expect(await store.existingDirectory(undefined)).toBeNull();
   expect(statCalls).toBe(0);
 });
+
+// ── updatePrefs (atomic read-modify-write) ─────────────────────────────────
+
+test("updatePrefs reads, mutates, and writes in one step, returning the result", async () => {
+  const { store, writes } = makeStore({
+    readFileImpl: async () => JSON.stringify({ lastProjectDir: "/old" }),
+  });
+  const next = await store.updatePrefs((prefs) => ({ ...prefs, sidebarOpen: true }));
+  expect(next).toEqual({ lastProjectDir: "/old", sidebarOpen: true });
+  expect(writes).toHaveLength(1);
+  expect(JSON.parse(writes[0]!.data)).toEqual({ lastProjectDir: "/old", sidebarOpen: true });
+});
+
+test("concurrent updatePrefs calls compose instead of clobbering (the start-screen-toggle vs api:preview race)", async () => {
+  // Backing "file" that reflects the last write, with a slow first read so an
+  // unserialized second RMW would read the PRE-update state and revert it.
+  let fileContents = JSON.stringify({});
+  let firstRead = true;
+  const { store, writes } = makeStore({
+    readFileImpl: async () => {
+      if (firstRead) {
+        firstRead = false;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      return fileContents;
+    },
+  });
+  // Keep the fake file in sync with writes.
+  const origPush = writes.push.bind(writes);
+  writes.push = (...items) => {
+    for (const w of items) fileContents = w.data;
+    return origPush(...items);
+  };
+
+  await Promise.all([
+    store.updatePrefs((prefs) => ({ ...prefs, lastProjectDir: "/book-a" })),
+    store.updatePrefs((prefs) => ({ ...prefs, showLandingAtStartup: false })),
+  ]);
+
+  expect(writes).toHaveLength(2);
+  // The second update must see the first one's write: both fields survive.
+  expect(JSON.parse(writes[1]!.data)).toEqual({
+    lastProjectDir: "/book-a",
+    showLandingAtStartup: false,
+  });
+});
+
+test("writePrefs shares the same queue as updatePrefs (no interleaved writes)", async () => {
+  let fileContents = JSON.stringify({ seed: 1 });
+  const { store, writes } = makeStore({ readFileImpl: async () => fileContents });
+  const origPush = writes.push.bind(writes);
+  writes.push = (...items) => {
+    for (const w of items) fileContents = w.data;
+    return origPush(...items);
+  };
+  await Promise.all([
+    store.updatePrefs((prefs) => ({ ...prefs, sidebarOpen: true })),
+    store.writePrefs({ lastProjectDir: "/direct" }),
+  ]);
+  // Queue order: the update lands first, then the direct write replaces it.
+  expect(JSON.parse(writes[0]!.data)).toEqual({ seed: 1, sidebarOpen: true });
+  expect(JSON.parse(writes[1]!.data)).toEqual({ lastProjectDir: "/direct" });
+});

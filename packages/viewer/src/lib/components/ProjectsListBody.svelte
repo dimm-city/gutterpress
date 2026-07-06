@@ -13,6 +13,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
+  import { discoverProjectsCached, type DiscoveredProject } from "$lib/projects-discover-cache";
 
   // #49: recents/favorites are FolderRef-shaped (key + precomputed displayName)
   // in the app-facing contract. Discovered projects still come back path-keyed
@@ -27,7 +28,6 @@
     lastActiveBook?: string;
   };
   type FavoriteFolder = { key: string; displayName: string; title: string; exists: boolean };
-  type DiscoveredProject = { path: string; title: string };
 
   let {
     onChosen,
@@ -39,6 +39,7 @@
     currentProjectDisplayName = null,
     filterInput = "",
     compact = false,
+    placeholder = "Folder path or web address…",
   }: {
     /** Called when the user selects a folder path to open. */
     onChosen?: (path: string) => void;
@@ -57,6 +58,8 @@
     filterInput?: string;
     /** Compact layout for use inside a panel tab (no outer padding). */
     compact?: boolean;
+    /** Placeholder for the location/search input (host-specific wording). */
+    placeholder?: string;
   } = $props();
 
   let location = $state("");
@@ -101,11 +104,12 @@
     } finally {
       loading = false;
     }
-    // Background scan — non-blocking
+    // Background scan — non-blocking. Cached + deduped module-wide: the start
+    // screen and the left panel each host this component, and the start
+    // screen remounts per show — one filesystem BFS serves them all.
     if (isDesktop()) {
-      api.app
-        .discoverProjects()
-        .then((r) => { discovered = r as typeof discovered; })
+      discoverProjectsCached()
+        .then((r) => { discovered = r; })
         .catch(() => {});
     }
   }
@@ -300,10 +304,10 @@
         bind:value={location}
         type="text"
         class="location-input"
-        placeholder="Folder path or web address…"
+        {placeholder}
         spellcheck="false"
         autocomplete="off"
-        aria-label="Folder path or web address"
+        aria-label={placeholder.replace(/…+$/, "")}
         onkeydown={(e) => {
           if (e.key === "Enter") { e.preventDefault(); void submitLocation(); }
           else if (e.key === "ArrowDown" && allRows.length > 0) {
@@ -475,19 +479,22 @@
     {/if}
   </div>
 
-  <!-- Actions footer -->
-  <div class="actions-footer">
-    {#if onOpenGitHub}
-      <button class="footer-action" onclick={onOpenGitHub} title="Open a project from GitHub">
-        <Icon name="github" size={14} /> Open from GitHub
-      </button>
-    {/if}
-    {#if onNewProject}
-      <button class="footer-action primary" onclick={onNewProject} title="Create a new book project">
-        <Icon name="plus" size={14} /> New project
-      </button>
-    {/if}
-  </div>
+  <!-- Actions footer — omitted entirely when the host provides its own action
+       surface (the start screen), so no empty bordered strip renders. -->
+  {#if onOpenGitHub || onNewProject}
+    <div class="actions-footer">
+      {#if onOpenGitHub}
+        <button class="footer-action" onclick={onOpenGitHub} title="Open a project from GitHub">
+          <Icon name="github" size={14} /> Open from GitHub
+        </button>
+      {/if}
+      {#if onNewProject}
+        <button class="footer-action primary" onclick={onNewProject} title="Create a new book project">
+          <Icon name="plus" size={14} /> New project
+        </button>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>

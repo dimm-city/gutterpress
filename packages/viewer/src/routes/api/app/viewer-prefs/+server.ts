@@ -14,7 +14,9 @@ export const GET: RequestHandler = jsonRoute(async () => {
 export const POST: RequestHandler = jsonRoute(async (patch: Record<string, unknown>) => {
   const hooks = getPrefsHooks();
   if (!hooks) error(503, 'Prefs hooks not registered');
-  const current = await hooks.readPrefs();
-  await hooks.writePrefs({ ...current, ...patch });
+  // Atomic read-modify-write: this route races the api:preview open flow's
+  // recents/lastProjectDir stamp (the start screen's startup toggle fires
+  // exactly while the startup open runs), so the patch must compose.
+  await hooks.updatePrefs((current) => ({ ...current, ...patch }));
   return { ok: true };
 });

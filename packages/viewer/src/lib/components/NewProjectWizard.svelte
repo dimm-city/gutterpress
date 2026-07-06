@@ -8,11 +8,18 @@
   let {
     open = $bindable(false),
     onCreated,
+    onClosed,
     triggerEl,
   }: {
     open?: boolean;
     /** Called with the created project folder so the host can open it. */
     onCreated?: (projectDir: string) => void;
+    /**
+     * Called after the dialog closes and focus was (attempted to be) returned
+     * to `triggerEl`. Hosts whose opener isn't focusable at close time — e.g.
+     * the start screen, whose workspace is inert — refocus their own surface.
+     */
+    onClosed?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
@@ -109,6 +116,7 @@
   function close() {
     open = false;
     triggerEl?.focus();
+    onClosed?.();
   }
 
   async function chooseLocation() {
@@ -150,7 +158,9 @@
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
       }) as { projectDir: string };
-      open = false;
+      // Successful create goes through close() like every other dismiss path,
+      // so the onClosed/triggerEl focus-restore contract holds on success too.
+      close();
       onCreated?.(result.projectDir);
     } catch (e) {
       error = friendlyCreateError(e instanceof Error ? e.message : String(e));

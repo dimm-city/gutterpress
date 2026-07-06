@@ -42,6 +42,7 @@ async function get<T>(url: string): Promise<T> {
 // (§8 / ADR 0004 renderer purity). Re-exported so existing `$lib/api` type
 // consumers keep resolving.
 export type {
+  DiscoveredProject,
   PluginKind,
   ProjectPluginEntry,
   PluginValidationResult,
@@ -71,6 +72,7 @@ export type {
 } from './platform/contract';
 
 import type {
+  DiscoveredProject,
   ProjectPluginEntry,
   PluginValidationResult,
   RecommendedPlugin,
@@ -229,7 +231,7 @@ export const api = {
     /** Remove a folder from the recent list. */
     removeRecent: (path: string) => post<{ ok: boolean }>('/api/app/recent/remove', { path }),
     /** Discover print-md projects under the configured search roots. */
-    discoverProjects: () => post<unknown[]>('/api/app/discover-projects', {}),
+    discoverProjects: () => post<DiscoveredProject[]>('/api/app/discover-projects', {}),
     /** Classify a project folder (source type + capabilities + repo book list). */
     classifyProject: (projectDir: string) =>
       post<{

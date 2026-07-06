@@ -116,15 +116,23 @@ export class ProjectSessionController {
 
   private deps: ProjectSessionDeps;
 
+  // Call-generation guard (the EditorBuffer.loadGen pattern): opens can
+  // overlap now that the start screen keeps the window interactive, and a
+  // superseded open's classify response resolving AFTER the winner's must not
+  // overwrite the shared session runes or persist the wrong projectSource.
+  private classifyGen = 0;
+
   constructor(deps: ProjectSessionDeps) {
     this.deps = deps;
   }
 
   /**
    * Reset capability session state for a fresh open, before {@link classify}
-   * repopulates it (mirrors the old inline reset at folder-open time).
+   * repopulates it (mirrors the old inline reset at folder-open time). Also
+   * invalidates any in-flight classify so its late result is dropped.
    */
   reset(): void {
+    this.classifyGen++;
     this.projectCapabilities = null;
     this.projectSubPath = "";
     this.repoRoot = null;
@@ -141,9 +149,11 @@ export class ProjectSessionController {
    * never block the preview — it only clears the capabilities.
    */
   classify(dir: string): Promise<void> {
+    const gen = ++this.classifyGen;
     return this.deps
       .classifyProject(dir)
       .then((result) => {
+        if (gen !== this.classifyGen) return; // superseded by a newer open
         const typedResult = result as {
           source: { type: string; subPath?: string };
           capabilities: ProjectCapabilities;
@@ -170,6 +180,7 @@ export class ProjectSessionController {
         }
       })
       .catch(() => {
+        if (gen !== this.classifyGen) return;
         this.projectCapabilities = null;
       });
   }

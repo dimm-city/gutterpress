@@ -8,7 +8,7 @@
   "description": "Desktop viewer for print-md (Electron + SvelteKit static SPA).",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && node ../../tools/check-render-purity.mjs build/client --strict",
     "preview": "vite preview",
     "test": "svelte-kit sync && node tests/pagedjs-interface.test.mjs && node tests/preview-bridge.test.mjs && bun test --isolate tests/updater tests/platform tests/recovery tests/editor tests/media",
     "electron:build": "electron-vite build && node --check out/main/main.js && node --check out/preload/preload.js",
