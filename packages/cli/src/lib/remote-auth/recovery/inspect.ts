@@ -42,7 +42,7 @@ import type { RepoHealth, RecoveryContext, SyncErrorKind } from "./types.ts";
  * mandate: no redundant walks on the hot path).
  */
 export async function inspectRepo(
-  ctx: Pick<RecoveryContext, "repoDir">,
+  ctx: Pick<RecoveryContext, "repoDir" | "source">,
   opts: { checkLocalChanges?: boolean } = {},
 ): Promise<RepoHealth> {
   // CRITICAL: resolve the ACTUAL git root. A project is often opened at a
@@ -51,12 +51,15 @@ export async function inspectRepo(
   // on every such project — which then runs the destructive missing-history
   // recovery (and OOMs zipping a large `.git`). Use the SAME resolution as the
   // sync path (detectProjectSource → gitScopeFor) so health and sync agree.
+  // A context built by buildRecoveryContext already carries that classification
+  // (ctx.source) — reuse it instead of re-walking parent dirs (#87); a bare
+  // `{repoDir}` caller still classifies here.
   // Genuine missing-git (no `.git` anywhere up the tree) classifies as
   // local-folder, so repoDir stays the opened dir and hasGitDir is correctly
   // false — the real recovery case is preserved.
   let repoDir = ctx.repoDir;
   try {
-    const source = await detectProjectSource(ctx.repoDir);
+    const source = ctx.source ?? (await detectProjectSource(ctx.repoDir));
     if (source.type === "local-git-folder") repoDir = gitScopeFor(source);
   } catch {
     // Classification failed — fall back to the opened dir.

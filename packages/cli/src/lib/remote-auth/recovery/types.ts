@@ -10,6 +10,7 @@
  */
 
 import type httpNode from "isomorphic-git/http/node";
+import type { ProjectSource } from "../../project-source.ts";
 import type { ConflictFile } from "../sync.ts";
 import type { HostCredential, TokenStore } from "../token-store.ts";
 
@@ -238,6 +239,14 @@ export interface RecoveryContext {
   projectDir: string;
   /** Absolute path to the git repository root. */
   repoDir: string;
+  /**
+   * The projectDir's classification, resolved ONCE by buildRecoveryContext and
+   * threaded to every consumer (inspectRepo, diagnoseProjectRemote) so the
+   * recovery path never re-walks parent dirs to re-classify the same folder.
+   * `null` records that classification failed; omitted means "not resolved" —
+   * consumers classify themselves in both cases.
+   */
+  source?: ProjectSource | null;
   /** Current branch name (may be empty on detached HEAD). */
   branch: string;
   /** Sanitized HTTPS remote URL (no embedded credentials). */

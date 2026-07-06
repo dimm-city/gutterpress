@@ -44,6 +44,28 @@ test("plain folder → local-only, no remote, nothing syncable", async () => {
   }
 });
 
+test("a pre-classified source is used as-is — no re-classification (#87)", async () => {
+  // The projectDir deliberately does NOT exist: if diagnoseProjectRemote
+  // re-classified instead of honoring options.source, the result would be a
+  // remote-less local-folder diagnosis, not the git diagnosis below.
+  const ghost = path.join("/tmp", "pmd-diag-does-not-exist-xyz");
+  const diag = await diagnoseProjectRemote(ghost, {
+    source: {
+      type: "local-git-folder",
+      path: ghost,
+      repoRoot: ghost,
+      subPath: "",
+      hasRemote: true,
+      remoteUrl: "https://github.com/me/book.git",
+      branch: "main",
+    },
+  });
+  expect(diag.classification.type).toBe("local-git-folder");
+  expect(diag.remoteProtocol).toBe("https");
+  expect(diag.branch).toBe("main");
+  expect(diag.guidance).toBe("connect-github-to-sync");
+});
+
 test("git folder without a remote → local-only with branch", async () => {
   const dir = await gitFolder({ branch: "draft" });
   try {

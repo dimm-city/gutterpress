@@ -44,16 +44,19 @@ export async function buildRecoveryContext(
 ): Promise<RecoveryContext> {
   const { projectDir, confirmation, tokenStore, authorName, logFile } = options;
 
+  // Classified ONCE here, then threaded into diagnoseProjectRemote below and
+  // stored on the context for inspectRepo — the recovery path never re-walks
+  // parent dirs to re-classify the same folder (#87).
   const source = await detectProjectSource(projectDir).catch(() => null);
   const gitSource = source && source.type === "local-git-folder" ? source : null;
   const repoDir = gitSource ? gitSource.repoRoot || gitSource.path : projectDir;
 
-  const diag = await diagnoseProjectRemote(projectDir, { tokenStore }).catch(() => ({
-    branch: undefined as string | undefined,
-    remoteUrl: undefined as string | undefined,
-  }));
-  const branch = diag.branch ?? gitSource?.branch ?? "main";
-  const remoteUrl = diag.remoteUrl;
+  const diag = await diagnoseProjectRemote(projectDir, {
+    tokenStore,
+    ...(source ? { source } : {}),
+  }).catch(() => null);
+  const branch = diag?.branch ?? gitSource?.branch ?? "main";
+  const remoteUrl = diag?.remoteUrl;
 
   let credential: HostCredential | undefined;
   if (remoteUrl && tokenStore) {
@@ -70,6 +73,10 @@ export async function buildRecoveryContext(
   return {
     projectDir,
     repoDir,
+    // Stored SANITIZED (diagnose strips credentials embedded in the remote
+    // URL — D7); null records that classification failed, so consumers
+    // (inspectRepo) conservatively re-classify.
+    source: diag?.classification ?? null,
     branch,
     remoteUrl,
     repoSlug,

@@ -8,14 +8,16 @@
  * then zip the entire home directory.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import * as projectSource from "../../project-source.ts";
 import type { HostCredential, TokenStore } from "../token-store.ts";
 import type { ConfirmationGate } from "./types.ts";
 import { buildRecoveryContext } from "./context.ts";
+import { inspectRepo } from "./inspect.ts";
 
 const GATE: ConfirmationGate = { confirmRepair: async () => false };
 
@@ -131,6 +133,43 @@ describe("buildRecoveryContext — branch, credential, slug", () => {
       expect(ctx.credential?.token).toBe("t0ken");
       // Slug is filesystem-safe (backup file naming).
       expect(ctx.repoSlug).toBe("my_book_");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("classifies the project folder exactly ONCE and threads it (context → diagnose → inspect)", async () => {
+    // Guard against the #87 hot-path regression: building a context used to
+    // classify the same folder 2-3× (context, diagnoseProjectRemote, and again
+    // in inspectRepo), each walking parent dirs with stats.
+    const root = await tempDir();
+    try {
+      const repo = path.join(root, "one-classify");
+      await mkdir(repo, { recursive: true });
+      await makeGitDir(repo, "main", "https://example.com/me/book.git");
+
+      const real = projectSource.detectProjectSource;
+      let calls = 0;
+      mock.module("../../project-source.ts", () => ({
+        ...projectSource,
+        detectProjectSource: async (p: string) => {
+          calls++;
+          return real(p);
+        },
+      }));
+      try {
+        const ctx = await buildRecoveryContext({ projectDir: repo, confirmation: GATE });
+        expect(calls).toBe(1);
+        expect(ctx.source?.type).toBe("local-git-folder");
+
+        // The preflight probe reuses the threaded classification too.
+        const health = await inspectRepo(ctx);
+        expect(health.hasGitDir).toBe(true);
+        expect(calls).toBe(1);
+      } finally {
+        // Restore the real module for the remaining tests.
+        mock.module("../../project-source.ts", () => ({ ...projectSource }));
+      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }
