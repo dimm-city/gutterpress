@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { FileTokenStore } from "../remote-auth/token-store";
 import { listPublishProviders, publishProviderFor } from "./registry";
-import { runPublish, resolvePublishRequest, manifestKeyFor } from "./run-publish";
+import { runPublish, resolvePublishRequest } from "./run-publish";
+import { connectPublishProvider } from "./connect";
 import { readPublishSettings, setPublishProviderConfig } from "./manifest-publish";
 import type {
   CommandResult,
@@ -12,7 +13,7 @@ import type {
   PublishDeps,
   PublishRequest,
 } from "./types";
-import { resolvePublishCredential } from "./types";
+import { resolvePublishCredential, publishConnectionStatus } from "./types";
 import { itchProvider, itchProjectUrl } from "./providers/itch";
 import { shopifyProvider, shopifyLegacyId } from "./providers/shopify";
 import { drivethrurpgProvider } from "./providers/drivethrurpg";
@@ -89,10 +90,26 @@ test("registry lists all five providers and resolves by id", () => {
   expect(() => publishProviderFor("nope")).toThrow(/Unknown publish provider/);
 });
 
-test("manifestKeyFor maps provider ids to manifest keys", () => {
-  expect(manifestKeyFor("azure-swa")).toBe("azureSwa");
-  expect(manifestKeyFor("itch")).toBe("itch");
-  expect(() => manifestKeyFor("nope")).toThrow();
+test("provider config is read from the manifest under the provider id itself", async () => {
+  const dir = await tempProject(
+    `title: T\nauthors: [A]\npublish:\n  azure-swa:\n    env: preview\n`,
+  );
+  try {
+    const deps = await depsFor(dir);
+    const req = await requestFor(dir, "azure-swa", deps);
+    expect(req.config).toEqual({ env: "preview" });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("every provider declares its author-editable config fields", () => {
+  for (const info of listPublishProviders()) {
+    expect(Array.isArray(info.configFields)).toBe(true);
+  }
+  expect(
+    publishProviderFor("shopify").info.configFields.map((f) => f.key),
+  ).toContain("apiVersion");
 });
 
 // ── credential resolution ───────────────────────────────────────────────────
@@ -176,15 +193,16 @@ test("itch upload passes the key via env only, never argv", async () => {
   const dir = await tempProject(MANIFEST);
   try {
     await withPdfArtifact(dir);
-    // First call: `which butler` (found); auth `butler status`; then push.
+    // authenticate hits api.itch.io via fetch; upload runs `which` + push.
+    const fetchOk = (async () =>
+      new Response("{}", { status: 200 })) as unknown as typeof globalThis.fetch;
     const { runner, calls } = fakeRunner([
-      { stdout: "/usr/bin/butler\n" }, // which (authenticate → ensureButler)
-      { code: 0 }, // butler status
       { stdout: "/usr/bin/butler\n" }, // which (upload → ensureButler)
       { code: 0, stdout: "build pushed" }, // butler push
     ]);
     const deps = await depsFor(dir, {
       runCommand: runner,
+      fetch: fetchOk,
       env: { BUTLER_API_KEY: "secret-key" },
     });
     const result = await runPublish({ projectDir: dir, providerId: "itch" }, deps);
@@ -456,6 +474,165 @@ test("shopify preflight requires the shop domain; legacy id helper works", async
     const issues = await shopifyProvider.preflight(req);
     expect(issues.some((i) => i.id === "shopify/shop-missing")).toBe(true);
     expect(shopifyLegacyId("gid://shopify/Product/123")).toBe("123");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── connect flow ────────────────────────────────────────────────────────────
+
+test("connectPublishProvider verifies the pasted key and only then stores it", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const seen: string[] = [];
+    const fetchFn = (async (_url: unknown, init?: RequestInit) => {
+      const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+      seen.push(auth);
+      return new Response("{}", {
+        status: auth.includes("good-key") ? 200 : 401,
+      });
+    }) as typeof globalThis.fetch;
+    // An exported env key must NOT shadow the paste being verified.
+    const deps = await depsFor(dir, {
+      fetch: fetchFn,
+      env: { BUTLER_API_KEY: "env-key" },
+    });
+    await deps.tokenStore.set("itch.io", {
+      host: "itch.io",
+      kind: "token",
+      token: "old-working-key",
+      createdAt: 1,
+    });
+
+    // Bad paste: rejected, and the old credential survives untouched.
+    await expect(
+      connectPublishProvider(
+        { projectDir: dir, providerId: "itch", token: "bad-key" },
+        deps,
+      ),
+    ).rejects.toThrow(/didn't accept the API key/);
+    expect((await deps.tokenStore.get("itch.io"))?.token).toBe("old-working-key");
+    expect(seen.pop()).toContain("bad-key"); // the paste was verified, not env-key
+
+    // Good paste: verified then persisted.
+    const result = await connectPublishProvider(
+      { projectDir: dir, providerId: "itch", token: "good-key" },
+      deps,
+    );
+    expect(result.connected).toBe(true);
+    expect((await deps.tokenStore.get("itch.io"))?.token).toBe("good-key");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("connectPublishProvider refuses guided providers and empty tokens", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const deps = await depsFor(dir);
+    await expect(
+      connectPublishProvider({ projectDir: dir, providerId: "kdp", token: "x" }, deps),
+    ).rejects.toThrow(/needs no API key/);
+    await expect(
+      connectPublishProvider({ projectDir: dir, providerId: "itch", token: "  " }, deps),
+    ).rejects.toThrow(/Paste an API key/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("publishConnectionStatus is the one shared definition of connected", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-status-"));
+  try {
+    const deps = await depsFor(dir);
+    const itch = publishProviderFor("itch").info;
+    expect((await publishConnectionStatus(itch, deps)).connected).toBe(false);
+    expect(
+      (await publishConnectionStatus(itch, { ...deps, env: { BUTLER_API_KEY: "k" } }))
+        .source,
+    ).toBe("env");
+    const kdp = publishProviderFor("kdp").info;
+    expect((await publishConnectionStatus(kdp, deps)).connected).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── security gates ──────────────────────────────────────────────────────────
+
+test("shopify never sends the token to a non-myshopify.com host", async () => {
+  const dir = await tempProject(
+    `title: T\nauthors: [A]\npublish:\n  shopify:\n    shop: attacker.example\n`,
+  );
+  try {
+    let fetched = false;
+    const fetchFn = (async () => {
+      fetched = true;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const deps = await depsFor(dir, {
+      fetch: fetchFn,
+      env: { SHOPIFY_ADMIN_TOKEN: "shpat_secret" },
+    });
+    const req = await requestFor(dir, "shopify", deps);
+    const auth = await shopifyProvider.authenticate(req);
+    expect(auth.ok).toBe(false);
+    expect(auth.message).toMatch(/myshopify\.com/);
+    expect(fetched).toBe(false); // the token never left the process
+
+    const issues = await shopifyProvider.preflight(req);
+    expect(issues.some((i) => i.id === "shopify/shop-invalid" && i.severity === "error")).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── html artifact checks ────────────────────────────────────────────────────
+
+test("azure-swa preflight requires book.html and warns about extra dist content", async () => {
+  const dir = await tempProject("title: T\nauthors: [A]\n");
+  try {
+    const out = path.join(dir, "dist");
+    await mkdir(out, { recursive: true });
+    const deps = await depsFor(dir, {
+      env: { SWA_CLI_DEPLOYMENT_TOKEN: "tok", SWA_CLI_PATH: "/opt/swa" },
+    });
+
+    // Empty dir: no book.html → blocking error.
+    let result = await runPublish(
+      { projectDir: dir, providerId: "azure-swa", dryRun: true },
+      deps,
+    );
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((i) => i.id === "publish/html-export-missing")).toBe(true);
+
+    // Export present but the sellable PDF sits next to it → warning.
+    await writeFile(path.join(out, "book.html"), "<html></html>");
+    await writeFile(path.join(out, "book.pdf"), "%PDF");
+    result = await runPublish(
+      { projectDir: dir, providerId: "azure-swa", dryRun: true },
+      deps,
+    );
+    expect(result.ok).toBe(true);
+    expect(
+      result.issues.some(
+        (i) => i.id === "publish/html-dir-extras" && i.severity === "warning",
+      ),
+    ).toBe(true);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("publish preflight flags a missing manifest title (no 'Document' fallback)", async () => {
+  const dir = await tempProject("authors: [A]\n");
+  try {
+    await withPdfArtifact(dir);
+    const deps = await depsFor(dir);
+    const req = await requestFor(dir, "shopify", deps);
+    expect(req.project.title).toBe("");
+    const issues = await shopifyProvider.preflight(req);
+    expect(issues.some((i) => i.id === "shopify/title-missing")).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

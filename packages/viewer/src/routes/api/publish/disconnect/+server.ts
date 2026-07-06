@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { getHooks, handleRemoteErrors } from '../_hooks';
+import { getHooks, handlePublishErrors } from '../_hooks';
 import { jsonRoute } from '../../_lib/handler';
 import type { RequestHandler } from './$types';
 
@@ -7,7 +7,7 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = jsonRoute(async (body: { providerId?: string }) => {
   const hooks = getHooks();
   if (!hooks) error(503, 'Publish hooks not available');
-  return handleRemoteErrors('publish:disconnect', async () => {
+  return handlePublishErrors('publish:disconnect', async () => {
     if (!body.providerId) throw new Error('publish:disconnect requires { providerId }');
     const lib = await hooks.loadLib();
     if (!lib.publishProviderFor) {

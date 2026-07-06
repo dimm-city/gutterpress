@@ -3,9 +3,10 @@ import path from "node:path";
 import {
   log,
   FileTokenStore,
+  connectPublishProvider,
   listPublishProviders,
   publishProviderFor,
-  resolvePublishRequest,
+  publishConnectionStatus,
   runPublish,
   openPath,
   type PublishDeps,
@@ -119,18 +120,13 @@ export default defineCommand({
       const providers = listPublishProviders();
       const rows = await Promise.all(
         providers.map(async (p) => {
-          const stored = p.credential.required
-            ? await store.get(p.credential.host)
-            : null;
-          const envSet = p.credential.envVar
-            ? !!process.env[p.credential.envVar]?.trim()
-            : false;
+          const status = await publishConnectionStatus(p, deps);
           return {
             id: p.id,
             label: p.label,
             kind: p.kind,
             format: p.format,
-            connected: !p.credential.required || !!stored || envSet,
+            connected: status.connected,
           };
         }),
       );
@@ -191,26 +187,20 @@ export default defineCommand({
         );
         process.exit(2);
       }
-      await store.set(provider.info.credential.host, {
-        host: provider.info.credential.host,
-        kind: "token",
-        token,
-        label: provider.info.label,
-        createdAt: Date.now(),
-      });
-      // Verify the stored key with the provider before declaring success.
-      const req = await resolvePublishRequest(
-        {
-          projectDir,
-          providerId: provider.info.id,
-          manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
-        },
-        deps,
-      );
-      const auth = await provider.authenticate(req);
-      if (!auth.ok) {
-        await store.delete(provider.info.credential.host);
-        log.error(auth.message ?? `${provider.info.label} rejected the key.`);
+      // Shared verify-before-store flow: the pasted key is checked with the
+      // platform first, so a bad paste can't clobber a working credential.
+      try {
+        await connectPublishProvider(
+          {
+            projectDir,
+            providerId: provider.info.id,
+            token,
+            manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
+          },
+          deps,
+        );
+      } catch (e) {
+        log.error(e instanceof Error ? e.message : String(e));
         process.exit(1);
       }
       log.success(`Connected ${provider.info.label}. The key is stored in your user config, not the project.`);

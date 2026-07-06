@@ -22,6 +22,7 @@ const info: PublishProviderInfo = {
   format: "pdf",
   description:
     "Prepare a KDP-ready package and open kdp.amazon.com (Amazon has no KDP API; automation violates its ToS).",
+  configFields: [],
   credential: { required: false, host: "kdp.amazon.com" },
 };
 

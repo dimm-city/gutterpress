@@ -1,12 +1,14 @@
 <script lang="ts">
   /**
    * Publish section of ProjectConfigPanel (#35) — provider cards with
-   * per-provider settings, connect (API key → host credential store, redacted
-   * status back), preflight and publish, and the run result (link / guided
-   * checklist + package folder). Presentational: state and `api.publish.*`
-   * calls live in the composition root; this child renders props and emits
-   * changes via callbacks. Token drafts pass through to the host once on
-   * connect and are cleared by the root — nothing secret is ever displayed.
+   * per-provider settings (rendered from each provider's declared
+   * `fields` — the panel carries no provider knowledge of its own), connect
+   * (API key → host credential store, redacted status back), preflight and
+   * publish, and the run result (link / guided checklist + package folder).
+   * Presentational: state and `api.publish.*` calls live in the composition
+   * root; this child renders props and emits changes via callbacks. Token
+   * drafts pass through to the host once on connect and are cleared by the
+   * root — nothing secret is ever displayed.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { PublishProviderCard, PublishRunResult } from "$lib/api";
@@ -18,8 +20,10 @@
     results,
     configDrafts,
     tokenDrafts,
+    artifactDrafts,
     setConfigDraft,
     setTokenDraft,
+    pickArtifact,
     saveConfig,
     connect,
     disconnect,
@@ -32,42 +36,17 @@
     results: Record<string, PublishRunResult>;
     configDrafts: Record<string, Record<string, string>>;
     tokenDrafts: Record<string, string>;
+    /** Explicit artifact path per provider (viewer exports go where the author chose). */
+    artifactDrafts: Record<string, string>;
     setConfigDraft: (providerId: string, key: string, value: string) => void;
     setTokenDraft: (providerId: string, value: string) => void;
+    pickArtifact: (card: PublishProviderCard) => void;
     saveConfig: (providerId: string) => void;
     connect: (providerId: string) => void;
     disconnect: (providerId: string) => void;
     run: (providerId: string, dryRun: boolean) => void;
     openUrl: (url: string) => void;
   } = $props();
-
-  /** Author-facing settings fields per provider (non-secret, manifest-backed). */
-  const CONFIG_FIELDS: Record<
-    string,
-    Array<{ key: string; label: string; placeholder: string }>
-  > = {
-    itch: [
-      { key: "target", label: "Project (user/game)", placeholder: "you/your-book" },
-      { key: "channel", label: "Channel", placeholder: "pdf" },
-    ],
-    drivethrurpg: [
-      {
-        key: "productUrl",
-        label: "Existing product URL (optional)",
-        placeholder: "https://www.drivethrurpg.com/product/…",
-      },
-    ],
-    kdp: [],
-    "azure-swa": [{ key: "env", label: "Environment", placeholder: "production" }],
-    shopify: [
-      { key: "shop", label: "Store domain", placeholder: "my-store.myshopify.com" },
-      { key: "productId", label: "Product ID (optional)", placeholder: "gid://shopify/Product/…" },
-    ],
-  };
-
-  function fieldsFor(card: PublishProviderCard) {
-    return CONFIG_FIELDS[card.id] ?? [];
-  }
 
   function draftValue(card: PublishProviderCard, key: string): string {
     return configDrafts[card.id]?.[key] ?? card.config[key] ?? "";
@@ -107,15 +86,15 @@
         </div>
         <p class="rec-desc">{card.description}</p>
 
-        {#if fieldsFor(card).length > 0}
+        {#if card.fields.length > 0}
           <div class="publish-fields">
-            {#each fieldsFor(card) as field (field.key)}
+            {#each card.fields as field (field.key)}
               <label class="publish-field">
                 <span>{field.label}</span>
                 <input
                   class="input"
                   type="text"
-                  placeholder={field.placeholder}
+                  placeholder={field.placeholder ?? ""}
                   value={draftValue(card, field.key)}
                   oninput={(e) => setConfigDraft(card.id, field.key, e.currentTarget.value)}
                 />
@@ -126,6 +105,22 @@
             </button>
           </div>
         {/if}
+
+        <div class="publish-field">
+          <span>{card.format === "pdf" ? "PDF to publish" : "Website folder to publish"} (optional — defaults to the project's build output)</span>
+          <div class="add-row">
+            <input
+              class="input"
+              type="text"
+              placeholder={card.format === "pdf" ? "…/book.pdf" : "…/dist"}
+              value={artifactDrafts[card.id] ?? ""}
+              readonly
+            />
+            <button class="ghost small" onclick={() => pickArtifact(card)} disabled={busy}>
+              Choose…
+            </button>
+          </div>
+        </div>
 
         {#if card.credentialRequired}
           {#if !card.connected}
@@ -169,14 +164,14 @@
         </div>
 
         {#if result}
+          {@const outcome = result.outcome}
           <div class={`publish-result ${result.ok ? "ok" : "failed"}`} role="status">
             {#if result.issues.length > 0}
               <ul class="publish-issues">
                 {#each result.issues as issue (issue.id)}
                   <li class={issue.severity}>
-                    {#if issue.severity === "error"}<Icon name="triangle-alert" size={12} />
-                    {:else if issue.severity === "warning"}<Icon name="triangle-alert" size={12} />
-                    {:else}<Icon name="info" size={12} />{/if}
+                    {#if issue.severity === "info"}<Icon name="info" size={12} />
+                    {:else}<Icon name="triangle-alert" size={12} />{/if}
                     {issue.message}
                   </li>
                 {/each}
@@ -184,37 +179,34 @@
             {/if}
             {#if !result.ok}
               <p class="error">{result.error ?? "Publish failed."}</p>
-            {:else if !result.outcome}
+            {:else if !outcome}
               <p class="success-line"><Icon name="circle-check" size={13} /> Ready to publish.</p>
-            {:else if result.outcome.kind === "published"}
+            {:else if outcome.kind === "published"}
               <p class="success-line">
-                <Icon name="circle-check" size={13} /> {result.outcome.detail ?? "Published."}
+                <Icon name="circle-check" size={13} /> {outcome.detail ?? "Published."}
               </p>
-              {#if result.outcome.url}
-                <button class="link" onclick={() => openUrl(result.outcome!.url!)}>
+              {#if outcome.url}
+                {@const url = outcome.url}
+                <button class="link" onclick={() => openUrl(url)}>
                   View it online <Icon name="external-link" size={12} />
                 </button>
               {/if}
-              {#if result.outcome.followUp?.length}
+              {#if outcome.followUp?.length}
                 <ol class="publish-checklist">
-                  {#each result.outcome.followUp as step, i (i)}<li>{step}</li>{/each}
+                  {#each outcome.followUp as step, i (i)}<li>{step}</li>{/each}
                 </ol>
               {/if}
             {:else}
               <p class="success-line">
-                <Icon name="circle-check" size={13} /> {result.outcome.detail ?? "Upload package prepared."}
+                <Icon name="circle-check" size={13} /> {outcome.detail ?? "Upload package prepared."}
               </p>
-              <p class="hint">Package folder: <code>{result.outcome.packageDir}</code></p>
-              {#if result.outcome.openUrl}
-                <button class="primary small" onclick={() => openUrl(result.outcome!.openUrl!)}>
-                  Open upload page <Icon name="external-link" size={12} />
-                </button>
-              {/if}
-              {#if result.outcome.checklist?.length}
-                <ol class="publish-checklist">
-                  {#each result.outcome.checklist as step, i (i)}<li>{step}</li>{/each}
-                </ol>
-              {/if}
+              <p class="hint">Package folder: <code>{outcome.packageDir}</code></p>
+              <button class="primary small" onclick={() => openUrl(outcome.openUrl)}>
+                Open upload page <Icon name="external-link" size={12} />
+              </button>
+              <ol class="publish-checklist">
+                {#each outcome.checklist as step, i (i)}<li>{step}</li>{/each}
+              </ol>
             {/if}
             {#if result.log?.length}
               <details class="status-raw">

@@ -20,7 +20,21 @@
  */
 import type { HostCredential, TokenStore } from "../remote-auth/token-store.ts";
 
-/** Stable provider identifiers (the `--provider` values / manifest keys). */
+/**
+ * One author-editable, NON-SECRET settings field (stored in the manifest's
+ * `publish.<id>` section). Declared by each provider so settings UIs are
+ * fully data-driven — a new provider brings its own fields, no UI edits.
+ */
+export interface PublishConfigField {
+  /** Manifest key under `publish.<id>` (e.g. "target"). */
+  key: string;
+  /** Author-facing label ("Project (user/game)"). */
+  label: string;
+  placeholder?: string;
+}
+
+/** Stable provider identifiers: the `--provider` values AND the manifest
+ * `publish.<id>` keys — one spelling everywhere. */
 export type PublishProviderId =
   | "itch"
   | "drivethrurpg"
@@ -49,6 +63,8 @@ export interface PublishProviderInfo {
   format: PublishArtifactFormat;
   /** One-line author-facing description of what publishing here does. */
   description: string;
+  /** The provider's author-editable manifest settings. */
+  configFields: PublishConfigField[];
   /**
    * Credential requirements. `host` keys the TokenStore entry; guided
    * providers need no credential at all. `envVar` is the CI escape hatch —
@@ -233,4 +249,20 @@ export async function resolvePublishCredential(
   }
   const stored = await deps.tokenStore.get(info.credential.host);
   return stored ? { credential: stored, source: "store" } : null;
+}
+
+/**
+ * Redacted connection status for a provider — the ONE definition of
+ * "connected" (env var or stored key) shared by the CLI's `--list` and the
+ * viewer's provider cards, so the two surfaces can never disagree.
+ */
+export async function publishConnectionStatus(
+  info: PublishProviderInfo,
+  deps: PublishDeps,
+): Promise<{ connected: boolean; source?: "env" | "store" }> {
+  if (!info.credential.required) return { connected: true };
+  const resolved = await resolvePublishCredential(info, deps);
+  return resolved
+    ? { connected: true, source: resolved.source }
+    : { connected: false };
 }

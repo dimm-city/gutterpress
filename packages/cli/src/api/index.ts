@@ -324,7 +324,6 @@ export type {
 export {
   runPublish,
   resolvePublishRequest,
-  manifestKeyFor,
 } from "../lib/publish/run-publish.ts";
 export type {
   RunPublishOptions,
@@ -336,6 +335,11 @@ export {
   publishProviderFor,
 } from "../lib/publish/registry.ts";
 
+export { connectPublishProvider } from "../lib/publish/connect.ts";
+export type { ConnectPublishProviderOptions } from "../lib/publish/connect.ts";
+
+export { publishConnectionStatus } from "../lib/publish/types.ts";
+
 export {
   readPublishSettings,
   setPublishProviderConfig,
@@ -346,6 +350,7 @@ export type {
   PublishProviderId,
   PublishProviderInfo,
   PublishProviderKind,
+  PublishConfigField,
   PublishArtifact,
   PublishArtifactFormat,
   PublishAuthStatus,

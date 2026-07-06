@@ -96,3 +96,35 @@ export async function handleRemoteErrors<T>(
     );
   }
 }
+
+// ── Publishing (publish:*) ───────────────────────────────────────────────────
+
+// The publish lib's author-facing guidance vocabulary (#35). Publishing has
+// its own allowlist + fallback — reusing the remote-git regex would mask
+// "Install the Azure SWA CLI…" style hints behind an "online repository"
+// message from the wrong domain. Token values never appear in publish lib
+// messages by construction (publish redaction invariant).
+const PUBLISH_FRIENDLY_ERROR =
+  /api key|access token|didn't accept|deployment token|connect (itch|azure|shopify)|butler|swa cli|myshopify|shopify|itch\.io|kdp|drivethrurpg|build (the|it)|print-md build|manifest|publish\.[a-z-]+|paste|couldn't reach|couldn't download|try again|not available in this version|needs no api key|book\.html|exit \d+|failed \(exit/i;
+
+/**
+ * Wrap a publish operation with the shared error-sanitization logic:
+ * author-friendly lib messages pass through verbatim; anything else is logged
+ * in full (with credentials redacted) and replaced with a terse safe message.
+ */
+export async function handlePublishErrors<T>(
+  channel: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`[${channel}] failed: ${redactUrlCredentials(msg)}`);
+    if (e instanceof Error && e.stack) console.error(redactUrlCredentials(e.stack));
+    if (PUBLISH_FRIENDLY_ERROR.test(msg)) throw new Error(msg);
+    throw new Error(
+      "Publishing could not be completed. See the app log for details.",
+    );
+  }
+}

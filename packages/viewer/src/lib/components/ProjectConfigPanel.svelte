@@ -133,6 +133,9 @@
   let publishResults = $state<Record<string, PublishRunResult>>({});
   let publishConfigDrafts = $state<Record<string, Record<string, string>>>({});
   let publishTokenDrafts = $state<Record<string, string>>({});
+  // Explicit artifact path per provider — viewer PDF exports go wherever the
+  // author chose in the save dialog, so the manifest-default rarely exists.
+  let publishArtifactDrafts = $state<Record<string, string>>({});
 
   // ── Theme thumbnails ────────────────────────────────────────────────────────
 
@@ -489,15 +492,26 @@
     publishTokenDrafts = { ...publishTokenDrafts, [providerId]: value };
   }
 
-  async function savePublishConfig(providerId: string): Promise<void> {
-    if (!projectDir || publishBusyId) return;
+  /**
+   * Write pending settings drafts to the manifest — the one draft-flush
+   * implementation Save/Connect/Publish all share, so a fix to draft handling
+   * can't diverge between them. On failure the draft is KEPT (the author's
+   * typed values must survive the error) and the error propagates.
+   */
+  async function flushPublishDraft(providerId: string): Promise<void> {
+    if (!projectDir) return;
     const draft = publishConfigDrafts[providerId];
     if (!draft || Object.keys(draft).length === 0) return;
+    await api.publish.setConfig(projectDir, providerId, draft);
+    publishConfigDrafts = { ...publishConfigDrafts, [providerId]: {} };
+  }
+
+  async function savePublishConfig(providerId: string): Promise<void> {
+    if (!projectDir || publishBusyId) return;
     publishBusyId = providerId;
     publishError = null;
     try {
-      await api.publish.setConfig(projectDir, providerId, draft);
-      publishConfigDrafts = { ...publishConfigDrafts, [providerId]: {} };
+      await flushPublishDraft(providerId);
       await refresh("publish");
       toast?.success?.("Publish settings saved.");
     } catch (e) {
@@ -519,17 +533,16 @@
     try {
       // Unsaved settings (e.g. the Shopify store domain) are needed to verify
       // the key — save them first.
-      const draft = publishConfigDrafts[providerId];
-      if (draft && Object.keys(draft).length > 0) {
-        await api.publish.setConfig(projectDir, providerId, draft);
-        publishConfigDrafts = { ...publishConfigDrafts, [providerId]: {} };
-      }
+      await flushPublishDraft(providerId);
       await api.publish.connect(projectDir, providerId, token);
       publishTokenDrafts = { ...publishTokenDrafts, [providerId]: "" };
       await refresh("publish");
       toast?.success?.("Connected — the key is stored securely on this computer.");
     } catch (e) {
       publishError = e instanceof Error ? e.message : String(e);
+      // Settings may have been written before the failure — resync the cards
+      // so the panel shows what's actually on disk.
+      await refresh("publish");
     } finally {
       publishBusyId = null;
     }
@@ -554,13 +567,15 @@
     publishBusyId = providerId;
     publishError = null;
     try {
-      // Save pending settings so the run uses what the author sees.
-      const draft = publishConfigDrafts[providerId];
-      if (draft && Object.keys(draft).length > 0) {
-        await api.publish.setConfig(projectDir, providerId, draft);
-        publishConfigDrafts = { ...publishConfigDrafts, [providerId]: {} };
-      }
-      const result = await api.publish.run(projectDir, providerId, { dryRun });
+      // Publishing saves pending settings so the run uses what the author
+      // sees; a dry run ("Check readiness") must have NO side effects, so it
+      // checks what's on disk.
+      if (!dryRun) await flushPublishDraft(providerId);
+      const artifactPath = (publishArtifactDrafts[providerId] ?? "").trim();
+      const result = await api.publish.run(projectDir, providerId, {
+        dryRun,
+        ...(artifactPath ? { artifactPath } : {}),
+      });
       publishResults = { ...publishResults, [providerId]: result };
       if (result.ok && !dryRun) {
         toast?.success?.(
@@ -573,6 +588,20 @@
       publishError = e instanceof Error ? e.message : String(e);
     } finally {
       publishBusyId = null;
+    }
+  }
+
+  async function pickPublishArtifact(card: PublishProviderCard): Promise<void> {
+    try {
+      const picked =
+        card.format === "pdf"
+          ? await api.dialog.pickPdfFile()
+          : await api.dialog.openDirectory();
+      if (picked) {
+        publishArtifactDrafts = { ...publishArtifactDrafts, [card.id]: picked };
+      }
+    } catch (e) {
+      publishError = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -680,8 +709,10 @@
         results={publishResults}
         configDrafts={publishConfigDrafts}
         tokenDrafts={publishTokenDrafts}
+        artifactDrafts={publishArtifactDrafts}
         setConfigDraft={setPublishConfigDraft}
         setTokenDraft={setPublishTokenDraft}
+        pickArtifact={pickPublishArtifact}
         saveConfig={savePublishConfig}
         connect={connectPublish}
         disconnect={disconnectPublish}

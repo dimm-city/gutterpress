@@ -151,6 +151,8 @@ export const api = {
       post<string | null>('/api/dialog/save-pdf', defaultName !== undefined ? { defaultName } : {}),
     /** Open native single image file picker. Resolves null when cancelled. */
     pickImageFile: () => post<string | null>('/api/dialog/pick-image-file'),
+    /** Native open dialog for the publish artifact (PDF). Null when cancelled. */
+    pickPdfFile: () => post<string | null>('/api/dialog/pick-pdf-file'),
     /** Open native multi-select image file picker. Resolves [] when cancelled. */
     pickImageFiles: () => post<string[]>('/api/dialog/pick-image-files'),
   },
@@ -504,11 +506,16 @@ export const api = {
       }),
 
     /** Publish (or preflight with dryRun). Long-running; resolves with the result. */
-    run: (projectDir: string, providerId: string, options?: { dryRun?: boolean }) =>
+    run: (
+      projectDir: string,
+      providerId: string,
+      options?: { dryRun?: boolean; artifactPath?: string },
+    ) =>
       post<PublishRunResult>('/api/publish/run', {
         projectDir,
         providerId,
         ...(options?.dryRun ? { dryRun: true } : {}),
+        ...(options?.artifactPath ? { artifactPath: options.artifactPath } : {}),
       }),
   },
 };

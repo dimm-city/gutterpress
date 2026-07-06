@@ -23,6 +23,13 @@ const info: PublishProviderInfo = {
   format: "pdf",
   description:
     "Prepare a validated upload package and open the DriveThruRPG publisher hub (DTRPG has no upload API).",
+  configFields: [
+    {
+      key: "productUrl",
+      label: "Existing product URL (optional)",
+      placeholder: "https://www.drivethrurpg.com/product/…",
+    },
+  ],
   credential: { required: false, host: "drivethrurpg.com" },
 };
 

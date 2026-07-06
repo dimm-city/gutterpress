@@ -27,6 +27,30 @@ import {
 export const SHOPIFY_HOST = "shopify";
 const DEFAULT_API_VERSION = "2026-04";
 
+/**
+ * The Admin API lives on the store's canonical `*.myshopify.com` domain only.
+ * Enforced as a HARD gate before any request: `publish.shopify.shop` comes
+ * from the manifest — a committed, shareable file — so posting the admin
+ * token to an arbitrary configured host would let a hostile or typo'd
+ * project exfiltrate it.
+ */
+const SHOP_DOMAIN_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
+
+function requireValidShop(shop: string): string {
+  if (!shop) {
+    throw new Error(
+      'Set the store first: publish.shopify.shop: "my-store.myshopify.com" in the manifest.',
+    );
+  }
+  if (!SHOP_DOMAIN_RE.test(shop)) {
+    throw new Error(
+      `publish.shopify.shop must be the store's myshopify.com domain (got "${shop}"). ` +
+        "The access token is only ever sent there.",
+    );
+  }
+  return shop;
+}
+
 const info: PublishProviderInfo = {
   id: "shopify",
   label: "Shopify",
@@ -34,6 +58,15 @@ const info: PublishProviderInfo = {
   format: "pdf",
   description:
     "Create or update a digital product on your Shopify store (file delivery is attached in the Shopify admin).",
+  configFields: [
+    { key: "shop", label: "Store domain", placeholder: "my-store.myshopify.com" },
+    {
+      key: "productId",
+      label: "Product ID (optional)",
+      placeholder: "gid://shopify/Product/…",
+    },
+    { key: "apiVersion", label: "API version (optional)", placeholder: DEFAULT_API_VERSION },
+  ],
   credential: {
     required: true,
     host: SHOPIFY_HOST,
@@ -69,7 +102,8 @@ async function adminGraphQL(
   query: string,
   variables: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
-  const { shop, apiVersion } = readConfig(req);
+  const { shop: rawShop, apiVersion } = readConfig(req);
+  const shop = requireValidShop(rawShop);
   const resolved = await resolvePublishCredential(info, req.deps);
   if (!resolved) {
     throw new Error(
@@ -145,16 +179,8 @@ export const shopifyProvider: PublishProvider = {
           "No Shopify access token found. Connect Shopify (or set SHOPIFY_ADMIN_TOKEN) first.",
       };
     }
-    const { shop } = readConfig(req);
-    if (!shop) {
-      return {
-        ok: false,
-        source: resolved.source,
-        message:
-          'Set the store first: publish.shopify.shop: "my-store.myshopify.com" in the manifest.',
-      };
-    }
     try {
+      // adminGraphQL enforces the myshopify.com shop-domain gate.
       await adminGraphQL(req, "{ shop { name } }");
       return { ok: true, source: resolved.source };
     } catch (e) {
@@ -176,11 +202,13 @@ export const shopifyProvider: PublishProvider = {
         message:
           'Set the store in the manifest: publish.shopify.shop: "my-store.myshopify.com".',
       });
-    } else if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shop)) {
+    } else if (!SHOP_DOMAIN_RE.test(shop)) {
+      // Mirrors the hard gate in adminGraphQL: the token is never sent to a
+      // non-myshopify.com host, so a bad domain must block, not warn.
       issues.push({
-        severity: "warning",
-        id: "shopify/shop-unusual",
-        message: `"${shop}" doesn't look like a myshopify.com domain — double-check the store address.`,
+        severity: "error",
+        id: "shopify/shop-invalid",
+        message: `publish.shopify.shop must be the store's myshopify.com domain (got "${shop}").`,
       });
     }
     if (!req.project.title) {

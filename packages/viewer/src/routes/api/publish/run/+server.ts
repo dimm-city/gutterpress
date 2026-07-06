@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { getHooks, handleRemoteErrors } from '../_hooks';
+import { getHooks, handlePublishErrors } from '../_hooks';
 import { jsonRoute, requireAbsolute } from '../../_lib/handler';
 import type { RequestHandler } from './$types';
 
@@ -18,7 +18,7 @@ export const POST: RequestHandler = jsonRoute(
   }) => {
     const hooks = getHooks();
     if (!hooks) error(503, 'Publish hooks not available');
-    return handleRemoteErrors('publish:run', async () => {
+    return handlePublishErrors('publish:run', async () => {
       const projectDir = requireAbsolute(body.projectDir, 'publish:run');
       if (!body.providerId) throw new Error('publish:run requires { providerId }');
       const lib = await hooks.loadLib();

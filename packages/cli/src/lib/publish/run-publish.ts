@@ -12,25 +12,14 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
-import type { PublishSettings } from "../../schema/manifest.types.ts";
 import { publishProviderFor } from "./registry.ts";
 import type {
   PreflightIssue,
   PublishArtifact,
   PublishDeps,
   PublishOutcome,
-  PublishProviderId,
   PublishRequest,
 } from "./types.ts";
-
-/** Manifest `publish:` keys per provider id ("azure-swa" → `azureSwa`). */
-const MANIFEST_KEYS: Record<PublishProviderId, keyof PublishSettings> = {
-  itch: "itch",
-  drivethrurpg: "drivethrurpg",
-  kdp: "kdp",
-  "azure-swa": "azureSwa",
-  shopify: "shopify",
-};
 
 export interface RunPublishOptions {
   projectDir: string;
@@ -55,13 +44,6 @@ export interface RunPublishResult {
   error?: string;
 }
 
-/** The provider's manifest `publish.<key>` section for `projectDir`. */
-export function manifestKeyFor(providerId: string): string {
-  const key = MANIFEST_KEYS[providerId as PublishProviderId];
-  if (!key) throw new Error(`Unknown publish provider "${providerId}".`);
-  return key;
-}
-
 /**
  * Resolve the {@link PublishRequest} for a provider from the project's
  * manifest — shared by `runPublish` and by hosts that call individual
@@ -76,11 +58,12 @@ export async function resolvePublishRequest(
     options.manifestPath ?? options.projectDir,
   );
   const config = resolveConfig({}, manifest);
+  // The manifest `publish:` section is keyed by the provider id itself —
+  // one spelling everywhere (`--provider azure-swa` ↔ `publish.azure-swa:`).
   const publishSettings = (manifest.publish ?? {}) as Record<string, unknown>;
   const providerConfig =
-    (publishSettings[manifestKeyFor(options.providerId)] as
-      | Record<string, unknown>
-      | undefined) ?? {};
+    (publishSettings[provider.info.id] as Record<string, unknown> | undefined) ??
+    {};
 
   const outDir = path.resolve(options.projectDir, config.output.dir);
   const defaultArtifact =
@@ -97,7 +80,10 @@ export async function resolvePublishRequest(
   return {
     project: {
       projectDir: options.projectDir,
-      title: config.title,
+      // Raw manifest values, not resolveConfig's — that fills title with the
+      // "Document" placeholder, which would defeat the providers' missing-
+      // title preflight checks and end up as a live product name.
+      title: manifest.title?.trim() ?? "",
       authors: config.authors,
     },
     config: providerConfig,
@@ -105,6 +91,13 @@ export async function resolvePublishRequest(
     deps,
   };
 }
+
+// Host-neutral build hints — the CLI user runs a command, the viewer user
+// exports from the app; the message must make sense to both.
+const PDF_HINT =
+  "Build the PDF first (print-md build, or export it from the app).";
+const HTML_HINT =
+  "Build the website export first (print-md build --format html).";
 
 /** Artifact-existence checks shared by every provider. */
 async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue[]> {
@@ -115,7 +108,7 @@ async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue
         {
           severity: "error",
           id: "publish/artifact-not-file",
-          message: `${artifact.path} is not a file. Build the PDF first: print-md build`,
+          message: `${artifact.path} is not a file. ${PDF_HINT}`,
         },
       ];
     }
@@ -124,7 +117,7 @@ async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue
         {
           severity: "error",
           id: "publish/artifact-not-dir",
-          message: `${artifact.path} is not a directory. Build the site first: print-md build --format html`,
+          message: `${artifact.path} is not a directory. ${HTML_HINT}`,
         },
       ];
     }
@@ -133,22 +126,63 @@ async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue
         {
           severity: "error",
           id: "publish/artifact-empty",
-          message: `${artifact.path} is empty. Rebuild it: print-md build`,
+          message: `${artifact.path} is empty. ${PDF_HINT}`,
         },
       ];
     }
+    if (artifact.format === "html") {
+      return htmlDirIssues(artifact.path);
+    }
   } catch {
-    const buildHint =
-      artifact.format === "html" ? "print-md build --format html" : "print-md build";
+    const hint = artifact.format === "html" ? HTML_HINT : PDF_HINT;
     return [
       {
         severity: "error",
         id: "publish/artifact-missing",
-        message: `No built ${artifact.format === "pdf" ? "PDF" : "HTML export"} at ${artifact.path}. Build it first: ${buildHint}`,
+        message: `No built ${artifact.format === "pdf" ? "PDF" : "HTML export"} at ${artifact.path}. ${hint}`,
       },
     ];
   }
   return [];
+}
+
+/**
+ * The html "artifact" is a whole directory that gets deployed AS-IS, so it
+ * must actually contain the site — and the author must know when unrelated
+ * build outputs (the sellable PDF, staged publish packages) would go public
+ * with it.
+ */
+async function htmlDirIssues(dir: string): Promise<PreflightIssue[]> {
+  const issues: PreflightIssue[] = [];
+  const isThere = async (rel: string) =>
+    stat(path.join(dir, rel)).then(
+      () => true,
+      () => false,
+    );
+  if (!(await isThere("book.html"))) {
+    issues.push({
+      severity: "error",
+      id: "publish/html-export-missing",
+      message: `${dir} has no book.html — it isn't an HTML export. ${HTML_HINT}`,
+    });
+  }
+  const extras = (
+    await Promise.all(
+      ["book.pdf", "publish"].map(async (rel) =>
+        (await isThere(rel)) ? rel : null,
+      ),
+    )
+  ).filter((rel): rel is string => rel !== null);
+  if (extras.length > 0) {
+    issues.push({
+      severity: "warning",
+      id: "publish/html-dir-extras",
+      message:
+        `${dir} also contains ${extras.join(" and ")} — everything in the folder is deployed and becomes publicly downloadable. ` +
+        "Use a dedicated output folder for the website (print-md build --format html --out <dir>) if that isn't intended.",
+    });
+  }
+  return issues;
 }
 
 /** Preflight → authenticate → upload, with structured results throughout. */

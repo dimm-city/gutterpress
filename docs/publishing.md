@@ -25,7 +25,9 @@ steps. If a platform later ships an API the provider upgrades in place.
 # What can I publish to, and what's connected?
 print-md publish --list
 
-# Store an API key (validated with the platform before it's saved)
+# Store an API key. The PASTED key is verified with the platform before it's
+# saved (env vars can't shadow it, and a rejected paste leaves any previously
+# working key untouched).
 print-md publish --provider itch --connect --token <key>
 echo "$KEY" | print-md publish --provider shopify --connect   # or via stdin
 
@@ -66,13 +68,18 @@ publish:
     channel: pdf                  # default: pdf
   drivethrurpg:
     productUrl: https://www.drivethrurpg.com/product/…   # optional, for updates
-  azureSwa:
+  azure-swa:
     env: production               # default: production
   shopify:
-    shop: my-store.myshopify.com
+    shop: my-store.myshopify.com  # must be the myshopify.com domain — the token is only ever sent there
     productId: gid://shopify/Product/…   # optional, update instead of create
     apiVersion: "2026-04"                # optional
 ```
+
+Sections are keyed by the provider id — the same spelling as
+`--provider <id>`. Each provider declares its editable fields
+(`PublishProviderInfo.configFields`), which is what the desktop app's
+settings form renders — adding a provider needs no UI changes.
 
 **Secrets never live in the project.** API keys are stored:
 
@@ -96,6 +103,7 @@ lib/publish/
   types.ts           PublishProvider contract + PublishDeps (injected seams)
   registry.ts        listPublishProviders() / publishProviderFor(id)
   run-publish.ts     runPublish(): preflight → authenticate → upload
+  connect.ts         connectPublishProvider(): verify the pasted key, THEN store
   manifest-publish.ts readPublishSettings/setPublishProviderConfig (yaml round-trip)
   command-runner.ts  injectable child-process seam (secrets via env only)
   butler.ts          butler acquisition (BUTLER_PATH → PATH → cache → download)

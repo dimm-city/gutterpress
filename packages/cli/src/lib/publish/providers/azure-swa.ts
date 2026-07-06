@@ -32,6 +32,7 @@ const info: PublishProviderInfo = {
   format: "html",
   description:
     "Deploy the HTML export as a website on Azure Static Web Apps (requires the SWA CLI).",
+  configFields: [{ key: "env", label: "Environment", placeholder: "production" }],
   credential: {
     required: true,
     host: AZURE_SWA_HOST,

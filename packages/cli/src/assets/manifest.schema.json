@@ -301,7 +301,7 @@
           "description": "Amazon KDP guided publishing (export package + open kdp.amazon.com)",
           "properties": {}
         },
-        "azureSwa": {
+        "azure-swa": {
           "type": "object",
           "description": "Azure Static Web Apps deployment of the HTML export",
           "properties": {

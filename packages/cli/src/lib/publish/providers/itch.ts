@@ -28,6 +28,10 @@ const info: PublishProviderInfo = {
   format: "pdf",
   description:
     "Upload the PDF to your itch.io project page (games, TTRPG supplements, zines).",
+  configFields: [
+    { key: "target", label: "Project (user/game)", placeholder: "you/your-book" },
+    { key: "channel", label: "Channel", placeholder: "pdf" },
+  ],
   credential: {
     required: true,
     host: ITCH_HOST,
@@ -68,21 +72,36 @@ export const itchProvider: PublishProvider = {
           "No itch.io API key found. Connect itch.io (or set BUTLER_API_KEY) first.",
       };
     }
-    const butler = await ensureButler(req.deps);
-    const run = req.deps.runCommand ?? defaultCommandRunner;
-    // `butler status` validates the key against the target without uploading.
-    const { target } = readConfig(req);
-    const args = target ? ["status", target] : ["version"];
-    const result = await run(butler, args, {
-      env: { BUTLER_API_KEY: resolved.credential.token },
-    });
-    if (result.code !== 0) {
+    // Verify the key itself against itch.io's server-side API (the endpoint
+    // butlerd uses). This works before the author has configured a target
+    // and doesn't need butler at all — a `butler version` fallback would
+    // succeed locally without ever checking the key.
+    const fetchFn = req.deps.fetch ?? globalThis.fetch;
+    let response: Response;
+    try {
+      response = await fetchFn("https://api.itch.io/profile", {
+        headers: { Authorization: `Bearer ${resolved.credential.token}` },
+      });
+    } catch {
+      return {
+        ok: false,
+        source: resolved.source,
+        message: "Couldn't reach itch.io. Check your connection and try again.",
+      };
+    }
+    if (response.status === 401 || response.status === 403) {
       return {
         ok: false,
         source: resolved.source,
         message:
-          "itch.io didn't accept the API key (or the project doesn't exist yet). " +
-          "Check the key and that the project page has been created on itch.io.",
+          "itch.io didn't accept the API key. Create one under itch.io → Settings → API keys and try again.",
+      };
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        source: resolved.source,
+        message: `itch.io answered unexpectedly (HTTP ${response.status}). Try again in a moment.`,
       };
     }
     return { ok: true, source: resolved.source };

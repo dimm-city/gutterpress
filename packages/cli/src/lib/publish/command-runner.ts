@@ -6,10 +6,41 @@
  * Unlike lib/exec.ts this seam accepts an env override, because publish
  * providers pass secrets (BUTLER_API_KEY, SWA_CLI_DEPLOYMENT_TOKEN) through
  * the environment — NEVER through argv, which is world-readable in process
- * lists.
+ * lists. (tool-probe.ts exists for PATH probing but spawns directly; publish
+ * needs the injectable-runner seam so tests can fake tool presence.)
  */
 import { spawn } from "node:child_process";
 import type { CommandResult, CommandRunner } from "./types.ts";
+
+/**
+ * Captured stdout/stderr are kept only for a short error tail and a URL
+ * scan — bound them so an hours-long `butler push` progress stream can't
+ * grow two unbounded strings in memory.
+ */
+const CAPTURE_LIMIT = 64 * 1024;
+
+function keepTail(buffer: string, chunk: string): string {
+  const joined = buffer + chunk;
+  return joined.length > CAPTURE_LIMIT ? joined.slice(-CAPTURE_LIMIT) : joined;
+}
+
+/** Per-stream line splitter: \n, \r\n, and bare \r (progress redraws) all flush. */
+function lineEmitter(onOutput: (line: string) => void) {
+  let carry = "";
+  const push = (chunk: string) => {
+    carry += chunk;
+    const lines = carry.split(/\r\n|\r|\n/);
+    carry = lines.pop() ?? "";
+    for (const line of lines) {
+      if (line.trim()) onOutput(line);
+    }
+  };
+  const flush = () => {
+    if (carry.trim()) onOutput(carry);
+    carry = "";
+  };
+  return { push, flush };
+}
 
 export const defaultCommandRunner: CommandRunner = (
   cmd,
@@ -25,30 +56,28 @@ export const defaultCommandRunner: CommandRunner = (
 
     let stdout = "";
     let stderr = "";
-    let carry = "";
-    const emitLines = (chunk: string) => {
-      if (!options.onOutput) return;
-      carry += chunk;
-      const lines = carry.split(/\r?\n/);
-      carry = lines.pop() ?? "";
-      for (const line of lines) {
-        if (line.trim()) options.onOutput(line);
-      }
-    };
+    // Each stream gets its own carry buffer — interleaved stdout/stderr
+    // chunks must not be glued into one garbled progress line.
+    const noop = () => {};
+    const outLines = lineEmitter(options.onOutput ?? noop);
+    const errLines = lineEmitter(options.onOutput ?? noop);
 
     child.stdout.on("data", (d: Buffer) => {
       const text = d.toString();
-      stdout += text;
-      emitLines(text);
+      stdout = keepTail(stdout, text);
+      if (options.onOutput) outLines.push(text);
     });
     child.stderr.on("data", (d: Buffer) => {
       const text = d.toString();
-      stderr += text;
-      emitLines(text);
+      stderr = keepTail(stderr, text);
+      if (options.onOutput) errLines.push(text);
     });
     child.on("error", reject);
     child.on("exit", (code, signal) => {
-      if (carry.trim() && options.onOutput) options.onOutput(carry);
+      if (options.onOutput) {
+        outLines.flush();
+        errLines.flush();
+      }
       if (code === null) {
         reject(new Error(`${cmd} was killed by signal ${signal}`));
       } else {
@@ -63,7 +92,9 @@ export async function commandExists(
   cmd: string,
   runCommand: CommandRunner = defaultCommandRunner,
 ): Promise<boolean> {
-  const probe = process.platform === "win32" ? "where" : "which";
+  // where.exe, not where: PowerShell aliases bare `where` to Where-Object
+  // (same choice as lib/tool-probe.ts).
+  const probe = process.platform === "win32" ? "where.exe" : "which";
   try {
     const result = await runCommand(probe, [cmd]);
     return result.code === 0 && result.stdout.trim().length > 0;
