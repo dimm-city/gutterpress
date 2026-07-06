@@ -53,7 +53,7 @@ const QUOTED_NODE_SPECIFIER = /["'`]node:[a-z0-9_/]+["'`]/;
 // Layer 3: bare require of any builtin, whitespace-tolerant. Generated from
 // the runtime's own builtin list; private "_"-prefixed entries excluded.
 const BARE_BUILTIN_REQUIRE = new RegExp(
-  `require\\(\\s*["'](?:${builtinModules
+  `(?<![\\w$])require\\(\\s*["'](?:${builtinModules
     .filter((name) => !name.startsWith("_"))
     .map((name) => name.replace(/\//g, "\\/"))
     .join("|")})["']\\s*\\)`,
