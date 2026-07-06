@@ -26,16 +26,22 @@ let inflight: Promise<DiscoveredProject[]> | null = null;
 export function discoverProjectsCached(): Promise<DiscoveredProject[]> {
   if (cache && Date.now() - cachedAt < TTL_MS) return Promise.resolve(cache);
   if (inflight) return inflight;
-  inflight = api.app
+
+  const p = api.app
     .discoverProjects()
     .then((r) => {
+      // If the cache was invalidated (or a newer scan started) while this scan
+      // was in flight, don't repopulate the module cache with stale results.
+      if (inflight !== p) return r;
       cache = r;
       cachedAt = Date.now();
       return cache;
     })
     .finally(() => {
-      inflight = null;
+      if (inflight === p) inflight = null;
     });
+
+  inflight = p;
   return inflight;
 }
 
@@ -47,4 +53,5 @@ export function discoverProjectsCached(): Promise<DiscoveredProject[]> {
 export function invalidateDiscoveredProjects(): void {
   cache = null;
   cachedAt = 0;
+  inflight = null;
 }
