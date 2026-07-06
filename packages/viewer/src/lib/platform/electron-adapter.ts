@@ -3,11 +3,12 @@
  * `window.electron`. (`isDesktop()` in index.ts may test for its presence.)
  *
  * Every implemented method delegates 1:1 to the preload bridge, so behaviour is
- * identical to the pre-#41 direct calls. The #44 surface (statFile, watchFolder,
- * setDirtyState, onFlushBeforeClose, onFolderChanged) plus getSecret/setSecret (#12)
- * are SCAFFOLDED only — the contract/types exist but there is no IPC behind them yet,
- * so they throw a descriptive error rather than delegate to a non-existent bridge method.
- * Wire them up (preload + main IPC) when implementing #44 / #12.
+ * identical to the pre-#41 direct calls. The #44 surface is wired (statFile via
+ * the fs server route; watchFolder/onFlushBeforeClose/onFolderChanged via the
+ * bridge). Only getSecret/setSecret (#12) remain SCAFFOLDED — the contract/types
+ * exist but there is no IPC behind them yet, so they throw a descriptive error
+ * rather than delegate to a non-existent bridge method. Wire them up (preload +
+ * main IPC) when implementing #12.
  * writeRecovery/clearRecovery/listRecovery/getConflictPreview — migrated to server routes.
  */
 import type {

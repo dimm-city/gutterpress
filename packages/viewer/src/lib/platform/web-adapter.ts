@@ -913,10 +913,7 @@ export class WebAdapter implements Platform {
 
   // writeRecovery, clearRecovery, listRecovery — migrated to server routes
   // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
-
-  setDirtyState(_isDirty: boolean): Promise<void> {
-    return rejectNotImplemented("setDirtyState");
-  }
+  // app:setDirtyState — migrated to server route (Phase 2B).
 
   onFlushBeforeClose(_cb: () => void): () => void {
     return () => {};

@@ -853,8 +853,8 @@ export interface HostServices {
   // writeRecovery, clearRecovery, listRecovery — migrated to server routes
   // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
 
-  /**
   // app:setDirtyState — migrated to server route (Phase 2B).
+
   /**
    * Subscribe to the main process's request to flush before the window closes
    * (#44). The renderer flushes its buffer then signals completion; main waits

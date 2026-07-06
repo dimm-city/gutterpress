@@ -196,7 +196,7 @@ declare global {
       onUrlPreviewBlocked(cb: (data: { url: string; reason: string }) => void): () => void;
       // writeRecovery, clearRecovery, listRecovery — migrated to server routes
       // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
-      setDirtyState(isDirty: boolean): Promise<void>;
+      // app:setDirtyState — migrated to server route (Phase 2B).
       onFlushBeforeClose(cb: () => void): () => void;
       onFolderChanged(cb: (data: { filename: string }) => void): () => void;
     };
