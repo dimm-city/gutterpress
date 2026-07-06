@@ -91,7 +91,7 @@ source:
     - chapter-02.md
 ```
 
-The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [configuration reference](https://github.com/dimm-city/print-md/blob/main/docs/user-guide.md#configuration) for details.
+The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [configuration reference](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md#manifest-configuration) for details.
 
 ## Commands
 
@@ -110,7 +110,7 @@ print-md build [input-dir] [options]
   --skip-post-validate
   --strip-annotations    PDF/X only: flatten form annotations (default: true)
   --icc <path>           PDF/X only: ICC profile for CMYK conversion
-  --pdfx-flavor    x1a | x3                  (default: x3)
+  --pdfx-flavor    x1a | x3                  (default: x1a)
 ```
 
 ### `print-md preview`
@@ -123,7 +123,7 @@ print-md preview [input-dir] [options]
   --port <n>        Bind port               (default: 3579)
   --host <h>        Bind host               (default: 127.0.0.1)
   --no-watch        Skip file watcher
-  --open            Open default browser    (default: false)
+  --open            Open default browser    (default: true; use --no-open to disable)
 ```
 
 Preview itself uses no external tools — pure JS rendering. Paged.js runs in your browser when you open the URL.

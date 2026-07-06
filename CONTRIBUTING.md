@@ -104,7 +104,6 @@ print-md/                        # Workspace root (private)
 │       └── src/                 # SvelteKit UI + server routes
 ├── examples/                    # Example projects
 ├── docs/                        # Documentation
-│   └── adr/                     # Architecture Decision Records
 └── package.json                 # Workspace root (private Bun workspace)
 ```
 
@@ -269,7 +268,7 @@ The project uses automated tools to monitor and update dependencies securely:
 1. **Automated Vulnerability Scanning**
    - **CI Security Audit**: Every push and pull request runs `bun audit` to check for known vulnerabilities
    - **Dependabot**: Automatically creates PRs for dependency updates weekly
-   - **Lock File Integrity**: CI verifies `bun.lockb` hasn't been tampered with
+   - **Lock File Integrity**: CI verifies `bun.lock` hasn't been tampered with
 
 2. **Manual Security Audits**
    ```bash
@@ -309,12 +308,12 @@ The project uses automated tools to monitor and update dependencies securely:
    bun audit
 
    # Commit updated lock file
-   git add bun.lockb package.json
+   git add bun.lock package.json
    git commit -m "chore(deps): add [package-name]"
    ```
 
 5. **Lock File Management**
-   - **Always commit** `bun.lockb` with dependency changes
+   - **Always commit** `bun.lock` with dependency changes
    - **Never manually edit** the lock file
    - **CI enforces** `--frozen-lockfile` to prevent inconsistencies
    - **Resolve conflicts** by running `bun install` after merging

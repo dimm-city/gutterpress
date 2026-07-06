@@ -14,8 +14,8 @@ Electron main process (out/main/main.js — ESM, built by electron-vite)
   │                            listens on 127.0.0.1:<random> (a local HTTP server)
   ├─ protocol.handle("app", ...) — proxies every app:// request to that
   │                            local server via fetch (so +server.ts routes run)
-  ├─ ipcMain.handle("preview:start", ...) — wraps lib.startPreviewServer
-  ├─ ipcMain.handle("build:*", ...)       — wraps lib.runBuild for Save PDF
+  ├─ ipcMain.handle("api:preview", ...)   — wraps lib.startPreviewServer
+  ├─ ipcMain.handle("api:build", ...)     — wraps lib.runBuild for Save PDF
   └─ webContents.send(...) push channels  — build progress, folder-changed,
                                             sync status, updater events
 

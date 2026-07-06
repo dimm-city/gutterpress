@@ -60,7 +60,7 @@ via `bun packages/cli/src/cli.ts` during development.
 > VERY IMPORTANT: All changes to this repo MUST comply with these goals.
 > All changes must REDUCE complexity unless it can be properly justified.
 
-- Create a way for non-technical writes to easily publish print materials using markdown and modern CSS
+- Create a way for non-technical writers to easily publish print materials using markdown and modern CSS
 - Allow most authors to write and perform layout using simple markdown syntax
 - Allow non-technical users to style their projects by setting CSS custom properties
 - Make handling page layout trivial

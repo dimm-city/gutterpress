@@ -167,8 +167,8 @@ Formatter (formatter.ts)
     └── JSON format (structured, for CI)
 ```
 
-**31 checks across 4 categories:**
-- **Source (4)**: markdownlint + htmlhint wrappers, print-safety CSS checks (postcss), callout validation
+**33 checks across 4 categories:**
+- **Source (6)**: markdownlint + htmlhint wrappers, print-safety CSS checks (postcss), local link/ref checks, alt-text and heading-order accessibility checks
 - **PDF (15)**: Structure, page size, color spaces, fonts, ink coverage, transparency, bleed, bookmarks, etc.
 - **Asset (8)**: Image size/DPI/color space/alpha, font references/licenses
 - **Heuristic (4)**: Text density, section density, layer count, placement variance
@@ -267,19 +267,19 @@ Styles are applied in a carefully designed cascade:
 
 **Location**: `packages/cli/src/commands/build.ts`
 
-The build command renders HTML to PDF directly via Playwright's Chromium integration. There are no separate format strategy classes; the build pipeline is a single linear flow:
+The build command renders HTML to PDF directly via puppeteer-core driving a system/bundled Chromium. There are no separate format strategy classes; the build pipeline is a single linear flow:
 
 ```typescript
 async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
   // 1. Serve HTML via Bun.serve on a random port
   const server = Bun.serve({ port, async fetch(req) { /* serve files from stage dir */ } });
 
-  // 2. Launch Chromium via Playwright
-  const browser = await chromium.launch({ headless: true, executablePath });
+  // 2. Launch Chromium via puppeteer-core
+  const browser = await puppeteer.launch({ headless: true, executablePath });
   const page = await browser.newPage();
 
   // 3. Navigate to HTML page, wait for Paged.js render
-  await page.goto(`http://localhost:${port}/${htmlFilename}`, { waitUntil: "networkidle" });
+  await page.goto(`http://localhost:${port}/${htmlFilename}`, { waitUntil: "networkidle0" });
   await page.waitForFunction(() => (window as any).__PAGED_RENDERED__ === true);
 
   // 4. Generate PDF
@@ -291,7 +291,7 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
 **Optional PDF/X conversion**: When `--format pdfx` is specified, the build command runs Ghostscript (`packages/cli/src/lib/ghostscript.ts`) to convert the Chromium PDF to CMYK PDF/X-1a or PDF/X-3, with optional annotation stripping for compliance.
 
 **Design Rationale**:
-- Direct Playwright rendering eliminates subprocess overhead
+- Direct puppeteer-core rendering eliminates subprocess overhead
 - Bun.serve as local file server avoids file:// protocol issues
 - Ghostscript post-processing handles CMYK conversion separately from rendering
 
@@ -580,14 +580,14 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
 - Modern APIs (fetch, WebSocket)
 - Better DX for single-user tools
 
-### 2. Why Playwright + Chromium for PDF?
+### 2. Why puppeteer-core + Chromium for PDF?
 
-**Chosen over**: Prince XML, Puppeteer, pagedjs-cli subprocess
+**Chosen over**: Prince XML, Playwright, pagedjs-cli subprocess
 
 **Reasons**:
 - Open-source and cross-platform (macOS, Linux, Windows)
 - Chromium engine supports full CSS Paged Media
-- Playwright API is more modern than Puppeteer
+- puppeteer-core ships no bundled browser (we resolve a system/bundled Chromium ourselves)
 - Direct page rendering eliminates subprocess overhead
 - Built-in PDF generation with `page.pdf()`
 - Better TypeScript support
@@ -722,4 +722,4 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 ---
 
 **Last Updated**: 2026-07-01
-**Version**: 0.6.1 (packages/cli + packages/viewer)
+**Version**: 0.7.1-beta.1 (packages/cli + packages/viewer)

@@ -178,14 +178,14 @@ my-book/
 ### Development Workflow
 
 ```bash
-# Fast iteration during writing
-print-md preview ./my-book --watch
+# Fast iteration during writing (watches by default)
+print-md preview ./my-book
 
 # Build for review
-print-md build ./my-book --format preview
+print-md build ./my-book --format html --out ./_review
 
 # Final production build
-print-md build ./my-book --output final.pdf
+print-md build ./my-book --out final.pdf
 ```
 
 ## Testing Checklist
