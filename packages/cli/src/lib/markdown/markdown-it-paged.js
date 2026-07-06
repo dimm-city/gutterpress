@@ -110,9 +110,14 @@ function parseMarkerLine(line) {
 
   const attrs = {};
   const classes = [];
+  let sawExplicitAttr = false;
+  let hasAmbiguousBareToken = false;
 
   for (let idx = 0; idx < body.length; idx++) {
-    if (idx === nameIndex) continue;
+    if (idx === nameIndex) {
+      if (sawExplicitAttr && isBareToken(body[idx])) hasAmbiguousBareToken = true;
+      continue;
+    }
 
     const t = body[idx];
 
@@ -130,6 +135,7 @@ function parseMarkerLine(line) {
 
     const eq = t.indexOf('=');
     if (eq > 0) {
+      sawExplicitAttr = true;
       const key = t.slice(0, eq).trim();
       const val = t.slice(eq + 1).trim();
       if (!key) continue;
@@ -145,11 +151,18 @@ function parseMarkerLine(line) {
       continue;
     }
 
+    if (sawExplicitAttr && isBareToken(t)) hasAmbiguousBareToken = true;
     classes.push(t);
   }
 
   if (classes.length) attrs.class = classes.join(' ');
-  return { kind, name, attrs };
+
+  // The warning itself is emitted by markerBlock AFTER the silent check —
+  // this parser is also invoked by markdown-it's silent paragraph-terminator
+  // probes, so warning from here would push duplicates onto env.
+  const marker = { kind, name, attrs };
+  if (hasAmbiguousBareToken) marker.__ambiguousBareToken = true;
+  return marker;
 }
 
 function warn(env, line, type, message, marker) {
@@ -205,6 +218,17 @@ function plugin(md, pluginOptions = {}) {
     const token = state.push('layout_marker', '', 0);
     token.meta = parsed;
     token.meta.__line = startLine + 1; // 1-based line number
+
+    if (parsed.__ambiguousBareToken) {
+      delete parsed.__ambiguousBareToken;
+      warn(
+        state.env,
+        startLine + 1,
+        'ambiguous_marker_token',
+        'A bare marker token after a key=value attribute is being interpreted as the marker name (or an extra class). Use comma-separated classes (class=a,b) or .class shorthand instead.',
+        parsed
+      );
+    }
 
     state.line = startLine + 1;
     return true;

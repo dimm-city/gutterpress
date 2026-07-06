@@ -150,6 +150,8 @@ Starts a new page. Optionally accepts one or more CSS class names:
 @page chapter sidebar-layout
 ```
 
+For multiple classes, use either comma-separated values in a `class=...` attribute or the `.class` shorthand. A trailing bare token after `class=...` is treated as a marker name instead of an extra class, so prefer `@page class=cover,sidebar` or `@page .cover .sidebar` over `@page class=cover sidebar`.
+
 ### @page-break — hard break
 
 Forces a page break without creating a `<div class="page">` wrapper. Use when you want a break inside flowing content without a new named page:

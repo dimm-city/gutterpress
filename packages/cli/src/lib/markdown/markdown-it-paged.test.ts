@@ -193,9 +193,39 @@ describe("marker grammar (parsed via rendered output + warnings)", () => {
       // parsing, so a space inside an unquoted class=... value does not
       // extend the value — it starts a new bare token, which then wins the
       // "single bare token" name-detection rule.
-      const { html } = renderPaged("@page class=foo bar\nHi\n");
+      const { html, env } = renderPaged("@page class=foo bar\nHi\n");
       expect(classList(html)).toEqual(["page", "foo"]);
       expect(attr(html, "data-page")).toBe("bar");
+      expect(env.layoutWarnings).toEqual([
+        {
+          line: 1,
+          type: "ambiguous_marker_token",
+          message:
+            "A bare marker token after a key=value attribute is being interpreted as the marker name (or an extra class). Use comma-separated classes (class=a,b) or .class shorthand instead.",
+          marker: { kind: "page", name: "bar", attrs: { class: "foo" }, __line: 1 },
+        },
+      ]);
+    });
+
+    test("an ambiguous marker interrupting a paragraph warns exactly once (silent terminator probes must not duplicate the warning)", () => {
+      // markerBlock is registered as a paragraph terminator (alt:
+      // ['paragraph', ...]), so markdown-it probes it in silent mode while
+      // scanning paragraph lines. The warning must only fire when the token
+      // is actually committed, not on every probe.
+      const { env } = renderPaged("Some paragraph text\n@page class=foo bar\nHi\n");
+      expect(env.layoutWarnings).toHaveLength(1);
+      expect(env.layoutWarnings![0]).toMatchObject({
+        line: 2,
+        type: "ambiguous_marker_token",
+      });
+    });
+
+    test("a bare token after key=value warns even when the name slot is already taken (token becomes a class)", () => {
+      const { html, env } = renderPaged("@page cover class=a bar\nHi\n");
+      expect(attr(html, "data-page")).toBe("cover");
+      expect(classList(html)).toEqual(["page", "a", "bar"]);
+      expect(env.layoutWarnings).toHaveLength(1);
+      expect(env.layoutWarnings![0]).toMatchObject({ type: "ambiguous_marker_token" });
     });
 
     test(".class token and class=... key both contribute, dot-token first", () => {
