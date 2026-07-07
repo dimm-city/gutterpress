@@ -348,18 +348,7 @@
     position: fixed;
     inset: 0;
     z-index: 900; /* above toolbar (100) + app overlay (50); below export pill (950) and dialogs (1000+) */
-    /* TRANSLUCENT scrim — never fully opaque over the preview area
-       (cross-origin iframe throttling; see PreviewFrame.svelte). Near-opaque
-       only across the top band so the workspace toolbar doesn't bleed through
-       crisply; the book ghosts through below it. Deliberately NO
-       backdrop-filter: a full-window blur re-composites on every iframe paint
-       for the entire pre-render. */
-    background: linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--app-bg) 97%, transparent) 0,
-      color-mix(in srgb, var(--app-bg) 91%, transparent) 140px,
-      color-mix(in srgb, var(--app-bg) 91%, transparent) 100%
-    );
+    background: var(--app-bg);
     overflow-y: auto;
     display: flex;
     justify-content: center;
