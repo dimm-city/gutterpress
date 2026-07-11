@@ -136,6 +136,16 @@
     headingTriggerEl?.focus();
   }
 
+  /** Escape-to-close for the heading popup. Attached to each `.popup-item`
+   *  button rather than the wrapping `<div>` — the popup is a plain
+   *  disclosure (see the "not role=listbox" comment on its markup below),
+   *  so its container has no legitimate interactive ARIA role to carry a
+   *  keydown handler; the buttons inside it are already interactive
+   *  elements and can own it directly, with no role invented to justify it. */
+  function onHeadingPopupKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") closeHeadingPopup();
+  }
+
   function pickHeading(level: 1 | 2 | 3 | 4) {
     onAction("heading", { level });
     headingOpen = false;
@@ -283,6 +293,13 @@
     moreTriggerEl?.focus();
   }
 
+  /** Escape-to-close for the More popup — same rationale as
+   *  `onHeadingPopupKeydown` above (plain disclosure, handler lives on the
+   *  interactive `.popup-item` buttons, not the non-interactive wrapper). */
+  function onMorePopupKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") closeMorePopup();
+  }
+
   // Close all open pickers when clicking outside.
   // Uses a "just opened" flag so the same click that opens a popup doesn't
   // immediately close it via event bubbling to the window handler.
@@ -367,10 +384,13 @@
               bind:this={headingPopupEl}
               class="toolbar-popup heading-popup"
               aria-label="Heading level"
-              onkeydown={(e) => { if (e.key === "Escape") closeHeadingPopup(); }}
             >
               {#each [1, 2, 3, 4] as level (level)}
-                <button class="popup-item" onclick={() => pickHeading(level as 1 | 2 | 3 | 4)}>
+                <button
+                  class="popup-item"
+                  onclick={() => pickHeading(level as 1 | 2 | 3 | 4)}
+                  onkeydown={onHeadingPopupKeydown}
+                >
                   H{level}
                 </button>
               {/each}
@@ -449,26 +469,25 @@
         bind:this={morePopupEl}
         class="toolbar-popup more-popup"
         aria-label="More formatting options"
-        onkeydown={(e) => { if (e.key === "Escape") closeMorePopup(); }}
       >
         {#each visibleItems as item, i (item.id)}
           {#if i > 0 && visibleItems[i - 1].group !== item.group}
             <hr class="popup-hr" />
           {/if}
           {#if item.kind === "save"}
-            <button class="popup-item" onclick={() => { onSave?.(); moreOpen = false; }}>{item.label}</button>
+            <button class="popup-item" onclick={() => { onSave?.(); moreOpen = false; }} onkeydown={onMorePopupKeydown}>{item.label}</button>
           {:else if item.kind === "heading"}
             {#each [1, 2, 3, 4] as level (level)}
-              <button class="popup-item" onclick={() => { pickHeading(level as 1 | 2 | 3 | 4); moreOpen = false; }}>
+              <button class="popup-item" onclick={() => { pickHeading(level as 1 | 2 | 3 | 4); moreOpen = false; }} onkeydown={onMorePopupKeydown}>
                 Heading {level}
               </button>
             {/each}
           {:else if item.kind === "table"}
-            <button class="popup-item" onclick={(e) => { openTableDialog(e); moreOpen = false; }}>{item.label}</button>
+            <button class="popup-item" onclick={(e) => { openTableDialog(e); moreOpen = false; }} onkeydown={onMorePopupKeydown}>{item.label}</button>
           {:else if item.kind === "image"}
-            <button class="popup-item" onclick={(e) => { openImageDialog(e); moreOpen = false; }}>{item.label}</button>
+            <button class="popup-item" onclick={(e) => { openImageDialog(e); moreOpen = false; }} onkeydown={onMorePopupKeydown}>{item.label}</button>
           {:else}
-            <button class="popup-item" onclick={() => { fireAction(item); moreOpen = false; }}>{item.label}</button>
+            <button class="popup-item" onclick={() => { fireAction(item); moreOpen = false; }} onkeydown={onMorePopupKeydown}>{item.label}</button>
           {/if}
         {/each}
       </div>

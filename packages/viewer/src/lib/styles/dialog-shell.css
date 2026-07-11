@@ -47,6 +47,27 @@
  * Behavior — focus trap, Escape-to-close, ARIA wiring, focus restore — is a
  * SEPARATE concern owned by the `dialogBehavior` action (`$lib/dialog.ts`).
  * This file is visual only.
+ *
+ * `:global(...)` on the variant/state classes below (`.dlg-close`,
+ * `.dlg-actions`, `.dlg-primary`, `.dlg-ghost`, `.dlg-danger-armed`, and
+ * their pseudo-states): each consuming dialog only renders a SUBSET of these
+ * (no dialog uses every variant — e.g. AdvancedSetupDialog has no `.dlg-actions`
+ * footer, SettingsDialog never arms `.dlg-danger-armed`). Because `@import`ed
+ * content is checked per consumer, Svelte's per-component unused-CSS-selector
+ * pass flagged whichever subset a given dialog's markup doesn't render — 38
+ * warnings across 9 dialogs (2026-07-11), even though every one of those
+ * selectors IS used, just by a sibling dialog that also imports this file.
+ * `:global(...)` only makes explicit what was already true (see the
+ * "applies globally" note above): it opts these rules out of per-component
+ * pruning without changing the compiled specificity of the "used" case (a
+ * production build shows the imported rule and same-named local overrides
+ * receiving the IDENTICAL scope hash today, e.g. `.dlg-primary.svelte-xxx`
+ * twice, tied at the class level and resolved by source order — local wins
+ * because it comes second; `:global()` instead makes the imported rule
+ * unscoped/one-class outright, so a same-named local override wins by
+ * specificity instead of by source order — same winner, no visual change).
+ * `.dlg-backdrop`/`.dlg-shell`/`.dlg-header`/`.dlg-header h2` stay un-global
+ * because every dialog uses them — nothing to prune, nothing to fix.
  */
 
 .dlg-backdrop {
@@ -98,7 +119,7 @@
      `--app-text` explicitly). Each of those 3 re-adds it locally. */
 }
 
-.dlg-close {
+:global(.dlg-close) {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -113,11 +134,11 @@
   min-width: 28px;
   min-height: 28px;
 }
-.dlg-close:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
-.dlg-close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-.dlg-close:disabled { opacity: 0.4; cursor: default; }
+:global(.dlg-close:hover:not(:disabled)) { color: var(--app-text); background: var(--app-surface-hover); }
+:global(.dlg-close:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+:global(.dlg-close:disabled) { opacity: 0.4; cursor: default; }
 
-.dlg-sr-only {
+:global(.dlg-sr-only) {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -129,7 +150,7 @@
   border: 0;
 }
 
-.dlg-actions {
+:global(.dlg-actions) {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
@@ -138,7 +159,7 @@
   border-top: 1px solid var(--app-border-subtle);
   background: var(--app-surface);
 }
-.dlg-actions button {
+:global(.dlg-actions button) {
   padding: 6px 14px;
   font-size: 13px;
   border-radius: 4px;
@@ -153,24 +174,24 @@
   border-width: 1px;
   border-style: solid;
 }
-.dlg-actions button:disabled { opacity: 0.45; cursor: default; }
+:global(.dlg-actions button:disabled) { opacity: 0.45; cursor: default; }
 
 /* Flat fill — the majority treatment (see the L5 note above for the gradient
    minority, which each of those three dialogs re-adds locally). border-color
    is explicit (not inherited from `.dlg-actions button`, which deliberately
    no longer sets it — see the comment there) so a primary button's border
    stays invisible against its own fill, matching the pre-migration look. */
-.dlg-primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); border-color: transparent; }
-.dlg-primary:not(:disabled):hover { background: var(--app-accent-hover); }
-.dlg-primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+:global(.dlg-primary) { background: var(--app-focus-ring); color: var(--app-text-on-accent); border-color: transparent; }
+:global(.dlg-primary:not(:disabled):hover) { background: var(--app-accent-hover); }
+:global(.dlg-primary:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
-.dlg-ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-.dlg-ghost:not(:disabled):hover { background: var(--app-surface-hover); color: var(--app-text); }
-.dlg-ghost:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+:global(.dlg-ghost) { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
+:global(.dlg-ghost:not(:disabled):hover) { background: var(--app-surface-hover); color: var(--app-text); }
+:global(.dlg-ghost:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
 /* Compact variant used for secondary in-body actions (e.g. a per-row
    "Disconnect"/"Show backup"/"Copy log" button that isn't in the footer). */
-.dlg-ghost.small {
+:global(.dlg-ghost.small) {
   padding: 4px 10px;
   font-size: 11px;
   border-radius: 5px;
@@ -181,11 +202,11 @@
    buttons that appear/disappear, so arming the confirm never steals focus).
    Mirrors CrashRecoveryDialog's Discard button; used by AdvancedSetupDialog's
    Disconnect (L2) and SnippetPicker's delete (M25). */
-.dlg-danger-armed {
+:global(.dlg-danger-armed) {
   background: var(--app-error-bg, transparent);
   border-color: var(--app-error-border, var(--app-error-text));
   color: var(--app-error-text);
 }
-.dlg-danger-armed:hover:not(:disabled) {
+:global(.dlg-danger-armed:hover:not(:disabled)) {
   background: var(--app-error-bg, var(--app-surface-hover));
 }

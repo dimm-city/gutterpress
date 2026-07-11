@@ -44,8 +44,17 @@ function ruleBody(css: string, selector: string): string {
 }
 
 describe("dialog-shell.css — border-color cascade (FIX ROUND 1 regression guard)", () => {
+  // Selectors below are `:global(...)` wrapped (2026-07-11, css_unused_selector
+  // fix — see the file's own top-of-file comment): each consuming dialog only
+  // renders a subset of this shared sheet's classes, and Svelte's per-component
+  // unused-CSS-selector pass was flagging whichever subset a given dialog's
+  // markup doesn't use, even though every selector IS used by some sibling
+  // dialog. `:global()` opts them out of that per-component pruning without
+  // changing the compiled specificity of the "used" case (confirmed against a
+  // production build). The selector text these tests search for must match
+  // that wrapper.
   test("the generic `.dlg-actions button` rule does not set a color-bearing border", () => {
-    const body = ruleBody(readCss(), ".dlg-actions button {");
+    const body = ruleBody(readCss(), ":global(.dlg-actions button) {");
     // Width/style are fine to restate here; a bare `border:` shorthand or a
     // `border-color:` longhand would clobber every per-variant color at
     // equal-or-higher specificity and must not reappear.
@@ -54,17 +63,17 @@ describe("dialog-shell.css — border-color cascade (FIX ROUND 1 regression guar
   });
 
   test("`.dlg-primary` supplies its own border-color (transparent, matching its own fill)", () => {
-    const body = ruleBody(readCss(), ".dlg-primary {");
+    const body = ruleBody(readCss(), ":global(.dlg-primary) {");
     expect(body).toMatch(/border-color\s*:\s*transparent/);
   });
 
   test("`.dlg-ghost` supplies its own visible border-color", () => {
-    const body = ruleBody(readCss(), ".dlg-ghost {");
+    const body = ruleBody(readCss(), ":global(.dlg-ghost) {");
     expect(body).toMatch(/border-color\s*:\s*var\(--app-border\)/);
   });
 
   test("`.dlg-danger-armed` still supplies its own error border-color", () => {
-    const body = ruleBody(readCss(), ".dlg-danger-armed {");
+    const body = ruleBody(readCss(), ":global(.dlg-danger-armed) {");
     expect(body).toMatch(/border-color\s*:\s*var\(--app-error-border/);
   });
 });
