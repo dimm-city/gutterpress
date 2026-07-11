@@ -18,12 +18,21 @@
     loading = false,
     open = $bindable(false),
     onSelect,
+    error = null,
   }: {
     problems: ProblemEntry[];
     loading?: boolean;
     /** Whether the panel body is expanded. */
     open?: boolean;
     onSelect?: (problem: ProblemEntry) => void;
+    /**
+     * Set when the lint API call itself failed (network/host/hooks-not-
+     * registered error), as distinct from a clean run that found zero
+     * problems. Rendered as a neutral row — NOT the green "all clear" state
+     * — so a broken checker is never mistaken for a validated project (#28,
+     * M5).
+     */
+    error?: string | null;
   } = $props();
 
   let groups = $derived(groupProblems(problems));
@@ -32,6 +41,7 @@
   // Polite live region: announce error/warning counts when lint completes.
   let lintAnnouncement = $derived.by<string>(() => {
     if (loading) return "";
+    if (error) return "Problems: we couldn't check your project this time";
     if (problems.length === 0) return "";
     const e = counts.errors;
     const w = counts.warnings;
@@ -71,7 +81,7 @@
     title={open ? "Collapse problems panel" : "Expand problems panel"}
   >
     <span class="strip-left">
-      <Icon name={counts.badge > 0 ? "triangle-alert" : "circle-check"} size={13} />
+      <Icon name={error ? "info" : counts.badge > 0 ? "triangle-alert" : "circle-check"} size={13} />
       <span class="strip-title">Problems</span>
       {#if counts.badge > 0}
         <span class="strip-counts">
@@ -91,6 +101,8 @@
       {/if}
       {#if loading}
         <span class="strip-status" role="status">Checking…</span>
+      {:else if error}
+        <span class="strip-status" role="status">Couldn't check</span>
       {/if}
     </span>
     <span class="strip-chevron" aria-hidden="true">
@@ -106,7 +118,12 @@
     aria-label="Problems list"
     aria-hidden={!open}
   >
-    {#if problems.length === 0}
+    {#if error}
+      <div class="empty-state" role="status">
+        <span class="empty-icon neutral-icon"><Icon name="info" size={18} /></span>
+        <p class="empty-text">{error}</p>
+      </div>
+    {:else if problems.length === 0}
       <div class="empty-state" role="status">
         <span class="empty-icon"><Icon name="circle-check" size={18} /></span>
         <p class="empty-text">
@@ -254,6 +271,10 @@
   .empty-icon {
     display: inline-flex;
     color: var(--app-success-text, #2e7d32);
+  }
+  /* Neutral (NOT green) — a lint-runner failure is not a validated all-clear. */
+  .neutral-icon {
+    color: var(--app-text-secondary);
   }
   .empty-text {
     margin: 0;

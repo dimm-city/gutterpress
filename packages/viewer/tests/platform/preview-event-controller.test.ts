@@ -218,6 +218,34 @@ test("renderingComplete singular page copy for a one-page book", () => {
   expect(h.log).toContain("toast:Your book is ready — 1 page");
 });
 
+// ── renderingComplete: first-render-only toast gate (M3) ─────────────────────
+// The success toast must fire once per project session — not on every
+// watcher-triggered rebuild (500ms auto-save debounce), which would otherwise
+// stack "Your book is ready" toasts nearly permanently on screen.
+
+test("renderingComplete toasts success only on the first render of a session", () => {
+  const h = make();
+  h.ctrl.handleEvent(rc(5));
+  h.ctrl.handleEvent(rc(6)); // watcher-triggered rebuild — must stay ambient
+  h.ctrl.handleEvent(rc(7)); // another rebuild
+  const toasts = h.log.filter((l) => l.startsWith("toast:"));
+  expect(toasts).toEqual(["toast:Your book is ready — 5 pages"]);
+});
+
+test("resetFirstRenderGate re-arms the toast for a newly opened project", () => {
+  const h = make();
+  h.ctrl.handleEvent(rc(5));
+  h.ctrl.handleEvent(rc(6));
+  h.ctrl.resetFirstRenderGate();
+  h.ctrl.handleEvent(rc(9)); // first render of the NEW project session
+  h.ctrl.handleEvent(rc(10)); // rebuild of the new session — still gated
+  const toasts = h.log.filter((l) => l.startsWith("toast:"));
+  expect(toasts).toEqual([
+    "toast:Your book is ready — 5 pages",
+    "toast:Your book is ready — 9 pages",
+  ]);
+});
+
 test("reveal still fires when the numeric zoom call rejects (pages never stranded hidden)", async () => {
   const h = make();
   h.zoom = "0.75";

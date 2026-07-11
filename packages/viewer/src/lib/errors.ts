@@ -45,6 +45,21 @@ export function friendlyPdfError(e: unknown): string {
   if (code === "EXPORT_CANCELED") {
     return "";
   }
+  // Sync-conflict export blocks throw a deliberately author-friendly message
+  // from the host (electron/export/controller.ts) — pass it through (scrubbed
+  // of IPC plumbing, see below) rather than overwriting it with the generic
+  // fallback below. `code` alone isn't reliable: `ipcRenderer.invoke` does not
+  // preserve custom Error properties across the IPC boundary, so also match
+  // the host's known conflict copy in the message text (both conflict
+  // messages share "two places" — see electron/export/controller.ts and
+  // ConflictChoicesDialog).
+  if (code === "SYNC_CONFLICT" || /two places/i.test(msg)) {
+    // `api:build` goes through ipcMain.handle with no re-serialization, so the
+    // renderer sees Electron's own `Error invoking remote method '<ns:op>':
+    // Error: <cause>` wrapper around the host's sentence. Scrub that transport
+    // prefix (shared helper, defined above) before showing it to the author.
+    return friendlyHostError(msg);
+  }
   if (code === "BUILD_ERROR") {
     const firstLine = msg.split("\n")[0]?.trim() ?? msg;
     return `PDF generation failed: ${firstLine}. Open Help (?) for setup details.`;

@@ -50,6 +50,10 @@
     problems = [] as ProblemEntry[],
     /** Whether problems are loading. */
     problemsLoading = false,
+    /** Set when the lint API call itself failed — distinct from a clean run
+     *  that found zero problems. Forwarded to ProblemsPanel's neutral (not
+     *  green) error row (#28, M5). */
+    problemsError = null as string | null,
     /** Books (C2) in the open project's repo; switcher shows only when > 1. */
     books = [] as ProjectBookEntry[],
     /** The book the session currently targets. */
@@ -84,6 +88,7 @@
     forceSyncing?: boolean;
     problems?: ProblemEntry[];
     problemsLoading?: boolean;
+    problemsError?: string | null;
     problemsOpen?: boolean;
     books?: ProjectBookEntry[];
     activeBookDir?: string | null;
@@ -221,6 +226,7 @@
       <ProblemsPanel
         {problems}
         loading={problemsLoading}
+        error={problemsError}
         bind:open={problemsOpen}
         onSelect={onProblemSelect}
       />

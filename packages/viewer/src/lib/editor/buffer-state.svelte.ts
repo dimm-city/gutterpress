@@ -45,6 +45,18 @@ export interface EditorBufferOptions {
   /** Called when an external edit is safely auto-reloaded (buffer was clean). */
   onAutoReloaded?: (filePath: string) => void;
   /**
+   * The single content-replacement notification (#H1). Fired synchronously
+   * whenever `content` is replaced with a disk version the caller did not
+   * type — the clean-buffer auto-reload branches of
+   * {@link EditorBuffer.reconcileExternalChange} AND the explicit
+   * conflict-banner {@link EditorBuffer.acceptExternal} path both go through
+   * this one callback. Consumers should push `content` into the live editor
+   * view here so the on-screen document can never desync from the buffer.
+   * Fired before `onAutoReloaded` so the editor is already updated by the
+   * time any "reloaded from disk" toast appears.
+   */
+  onContentReplaced?: (filePath: string, content: string) => void;
+  /**
    * Called whenever the buffer's pending-save state changes. Receives `true`
    * when there are unsaved edits (dirty or saving) and `false` once clean.
    * Use this to push dirty state to the host (e.g. window close gate) without
@@ -309,6 +321,7 @@ export class EditorBuffer {
         this.diskContent = "";
         this.diskMtimeMs = 0;
         this.setPhase("clean");
+        this.opts.onContentReplaced?.(filePath, "");
         this.opts.onAutoReloaded?.(filePath);
       }
       return;
@@ -343,6 +356,7 @@ export class EditorBuffer {
       this.diskContent = diskContent;
       this.diskMtimeMs = stat.mtimeMs;
       this.setPhase("clean");
+      this.opts.onContentReplaced?.(filePath, diskContent);
       this.opts.onAutoReloaded?.(filePath);
     }
   }
@@ -356,8 +370,13 @@ export class EditorBuffer {
     this.diskMtimeMs = ext.diskMtimeMs;
     this.setPhase("clean");
     this.externalChange = null;
-    if (this.filePath && this.opts.recoveryEnabled !== false) {
-      api.recovery.clear(this.filePath).catch(() => {});
+    if (this.filePath) {
+      // Same notification the silent auto-reload path uses (#H1) — keeps the
+      // conflict-banner "Reload" action from needing its own editor-sync call.
+      this.opts.onContentReplaced?.(this.filePath, ext.diskContent);
+      if (this.opts.recoveryEnabled !== false) {
+        api.recovery.clear(this.filePath).catch(() => {});
+      }
     }
   }
 

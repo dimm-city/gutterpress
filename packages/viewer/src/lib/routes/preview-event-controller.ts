@@ -104,9 +104,26 @@ export interface PreviewEventDeps {
 
 export class PreviewEventController {
   private deps: PreviewEventDeps;
+  // First-render-only success-toast gate (M3). `renderingComplete` fires for
+  // BOTH the initial render of a project AND every watcher-triggered rebuild
+  // (the 500ms auto-save debounce), so toasting unconditionally stacks
+  // "Your book is ready — N pages" toasts nearly permanently on screen while
+  // the author types. Later rebuilds stay ambient (ProblemsPanel/page count
+  // in existing chrome); only the first render of a session gets the toast.
+  private toastedThisSession = false;
 
   constructor(deps: PreviewEventDeps) {
     this.deps = deps;
+  }
+
+  /**
+   * Re-arm the first-render toast gate. Call when a new project/document
+   * session begins (a folder is opened, reopened, or the active book is
+   * switched) so that session's first render still gets the confirmation
+   * toast.
+   */
+  resetFirstRenderGate(): void {
+    this.toastedThisSession = false;
   }
 
   /**
@@ -183,8 +200,12 @@ export class PreviewEventController {
     if (restorePage && restorePage > 1) {
       d.scheduleMicrotask(() => d.pageNav.restoreProjectPage(restorePage));
     }
-    // UX-011: improved success toast copy.
-    d.toastSuccess(`Your book is ready — ${n} ${n === 1 ? "page" : "pages"}`);
+    // UX-011: improved success toast copy. M3: only the FIRST render of a
+    // session toasts — later watcher-triggered rebuilds stay ambient.
+    if (!this.toastedThisSession) {
+      this.toastedThisSession = true;
+      d.toastSuccess(`Your book is ready — ${n} ${n === 1 ? "page" : "pages"}`);
+    }
     // Build the chapter-jump outline from the freshly rendered DOM.
     d.refreshOutline();
     // Re-lint the project on every rebuild so the Problems panel tracks the

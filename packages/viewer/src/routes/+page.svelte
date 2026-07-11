@@ -899,6 +899,12 @@
         platform: getPlatform(),
         recoveryEnabled: settings.current.editor.crashRecovery,
         onError: (msg) => toast?.error(msg),
+        // Single content-replacement path (#H1): every place the buffer
+        // swaps in disk content — the silent clean-buffer auto-reload AND
+        // the conflict-banner "Reload" action (acceptExternal) — funnels
+        // through here, so the on-screen CodeMirror doc can never lag
+        // behind buffer.content. Runs before the auto-reload toast below.
+        onContentReplaced: (_filePath, content) => editorRef?.updateContent(content),
         onAutoReloaded: () => toast?.info?.("Reloaded from disk"),
         // Push pending-save state to main so the window close gate can flush
         // before quitting (#44). Called whenever hasPendingSave changes.
@@ -1007,9 +1013,10 @@
   }
 
   function reloadExternal() {
+    // acceptExternal() fires the buffer's onContentReplaced callback above,
+    // which pushes the reloaded content into the editor — no separate
+    // updateContent call needed here (#H1).
     buffer?.acceptExternal();
-    // Push the accepted external content into the editor immediately.
-    if (buffer) editorRef?.updateContent(buffer.content);
   }
 
   function keepMineExternal() {
@@ -1113,6 +1120,10 @@
   let problemsOpen = $state(false);
   let problems = $state<ProblemEntry[]>([]);
   let problemsLoading = $state(false);
+  // M5: distinct from "problems === [] because the project is clean" — set
+  // when the lint API call itself failed, so the panel can render a neutral
+  // "we couldn't check" row instead of a false green all-clear.
+  let problemsError = $state<string | null>(null);
   let problemBadge = $derived(problemCounts(problems).badge); // used for ProblemsPanel (informational)
 
   function refreshProblems() {
@@ -1122,14 +1133,25 @@
     api.lint.project(dir)
       .then((entries) => {
         // The project may have changed while the lint was in flight.
-        if (currentDir === dir) problems = entries;
+        if (currentDir === dir) {
+          problems = entries;
+          problemsError = null;
+        }
       })
       .catch(() => {
-        // Lint failing must never break the preview — show a clean panel.
-        if (currentDir === dir) problems = [];
+        // Lint failing must never break the preview, but it must also never
+        // present as a false "no problems found" all-clear (M5) — surface a
+        // distinct error state instead of silently clearing to [].
+        if (currentDir === dir) {
+          problems = [];
+          problemsError = "We couldn't check your project this time.";
+        }
       })
       .finally(() => {
-        problemsLoading = false;
+        // M5: without this guard, a stale in-flight lint from a project the
+        // author has since navigated away from can clear the NEW project's
+        // loading indicator out from under it.
+        if (currentDir === dir) problemsLoading = false;
       });
   }
 
@@ -1528,6 +1550,10 @@
     renderCompleteOverlay = false;
     busy = true;
     busyLabel = label;
+    // M3: a new project/document session is starting — re-arm the first-render
+    // success toast so this session's initial render still gets one, while
+    // later watcher-triggered rebuilds within it stay ambient.
+    previewEvents.resetFirstRenderGate();
     try {
       if (!isDesktop()) {
         toast?.error("Electron bridge unavailable — run via the viewer app");
@@ -1607,6 +1633,7 @@
       // Clear stale problems from the previous project immediately so the badge
       // and panel don't show the old project's findings while the new one renders.
       problems = [];
+      problemsError = null;
       // Drop the prior project's log path so the activity view can never surface
       // one project's log under another.
       logFilePath = null;
@@ -1756,6 +1783,7 @@
     buffer?.reset();
     stopFolderWatch();
     problems = [];
+    problemsError = null;
     problemsOpen = false;
     // Force iframe remount by nulling first.
     previewUrl = null;
@@ -1819,6 +1847,7 @@
     pendingRecoveryScanDir = null;
     // Clear stale problems.
     problems = [];
+    problemsError = null;
     problemsOpen = false;
     // The start screen is the app's empty state — it returns on its own now
     // that the workspace is empty (landingVisible derived).
@@ -2869,6 +2898,7 @@
     forceSyncing={syncController.forceSyncing}
     {problems}
     problemsLoading={problemsLoading}
+    {problemsError}
     bind:problemsOpen={problemsOpen}
     books={projectSession.books}
     activeBookDir={projectSession.activeBookDir}
