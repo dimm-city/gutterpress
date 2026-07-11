@@ -492,8 +492,12 @@ describe("Manifest validate section", () => {
       enabled: true,
       severity: "error",
     });
-    // allowedCallouts deprecated (::: syntax removed 2026-05-17) — default is now empty
-    expect(config.validate.source.allowedCallouts).toEqual([]);
+    // ARCH #24: allowedCallouts was deprecated-and-ignored (::: syntax
+    // removed 2026-05-17) yet still fully resolved into ResolvedConfig — it
+    // has since been deleted from ResolvedConfig/preset/validation-profile
+    // entirely; the manifest field still parses (for backward compat) but no
+    // longer appears on the resolved config at all.
+    expect((config.validate.source as Record<string, unknown>).allowedCallouts).toBeUndefined();
     expect(config.validate.assets.maxImageSize).toBe(10_000_000);
     expect(config.validate.pdf.forbidTransparency).toBe(true);
     expect(config.validate.heuristics.textDensityRange.min).toBe(200);
@@ -512,10 +516,10 @@ describe("Manifest validate section", () => {
     );
     expect(config.validate.enabled).toBe(false);
     expect(config.validate.assets.maxImageSize).toBe(5_000_000);
-    expect(config.validate.source.allowedCallouts).toEqual([
-      "note",
-      "warning",
-    ]);
+    // ARCH #24: a manifest-set allowedCallouts still parses (deprecated field
+    // kept on PrintMdManifest for backward compat) but is dropped, not
+    // resolved — it no longer appears anywhere on ResolvedConfig.
+    expect((config.validate.source as Record<string, unknown>).allowedCallouts).toBeUndefined();
     // Other defaults preserved
     expect(config.validate.assets.minImageDpi).toBe(300);
   });

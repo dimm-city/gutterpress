@@ -77,6 +77,17 @@ describe("manifest-config", () => {
       const fields = await readManifestFields(dir);
       expect(fields.sourceFiles).toBeNull();
     });
+
+    // ARCH finding #25: readManifestFields now routes through the shared
+    // loadManifestDoc (manifest-doc.ts) instead of re-implementing the
+    // resolve+read+parse sequence inline — so it picks up loadManifestDoc's
+    // .yml-fallback behavior for free, same as every other reader in this file.
+    test("reads from manifest.yml when only that file exists (loadManifestDoc routing)", async () => {
+      const dir = projectDir();
+      writeFileSync(join(dir, "manifest.yml"), "title: Yml Title\n", "utf8");
+      const fields = await readManifestFields(dir);
+      expect(fields.title).toBe("Yml Title");
+    });
   });
 
   describe("setManifestFields", () => {

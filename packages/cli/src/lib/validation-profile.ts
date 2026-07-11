@@ -10,73 +10,53 @@ export const DTRPG_STRICT_PDF_CHECKS = [
   "pdf.print.embedded-fonts",
 ] as const;
 
-function cloneConfig(config: ResolvedConfig): ResolvedConfig {
-  return {
-    ...config,
-    authors: [...config.authors],
-    styles: [...config.styles],
-    plugins: config.plugins.map((plugin) => ({
-      ...plugin,
-      options: { ...plugin.options },
-    })),
-    source: {
-      ...config.source,
-      assets: [...config.source.assets],
-      files: config.source.files ? [...config.source.files] : null,
-    },
-    output: { ...config.output },
-    pdfx: { ...config.pdfx },
-    page: { ...config.page },
-    ink: { ...config.ink },
-    lint: { ...config.lint },
-    validate: {
-      ...config.validate,
-      checks: { ...config.validate.checks },
-      source: {
-        ...config.validate.source,
-        allowedCallouts: [...config.validate.source.allowedCallouts],
-      },
-      assets: {
-        ...config.validate.assets,
-        allowedColorSpaces: [...config.validate.assets.allowedColorSpaces],
-        approvedFontFiles: [...config.validate.assets.approvedFontFiles],
-      },
-      pdf: { ...config.validate.pdf },
-      heuristics: {
-        ...config.validate.heuristics,
-        textDensityRange: { ...config.validate.heuristics.textDensityRange },
-      },
-    },
-  };
-}
-
-function enforceStrictPdfChecks(config: ResolvedConfig): void {
+/**
+ * Force (or fill in) the DTRPG-style strict PDF checks on `config` in place.
+ * ARCH finding #21: this used to be two near-duplicate functions differing
+ * only in an undefined-check — collapsed into one with an explicit flag.
+ *
+ * @param overwrite - `true`: unconditionally set every check to
+ *   `{enabled: true, severity: "error"}`, clobbering any existing value — the
+ *   "profile lock" behavior `applyValidationProfile("dtrpg")` needs.
+ *   `false` (default): only fill in checks the config left `undefined` — an
+ *   author who explicitly configured (or disabled) a check keeps that choice.
+ */
+function enforceStrictPdfChecks(config: ResolvedConfig, overwrite = false): void {
   for (const checkId of DTRPG_STRICT_PDF_CHECKS) {
-    config.validate.checks[checkId] = {
-      enabled: true,
-      severity: "error",
-    };
-  }
-}
-
-export function applyDtrpgPdfDefaults(config: ResolvedConfig): ResolvedConfig {
-  const next = cloneConfig(config);
-  for (const checkId of DTRPG_STRICT_PDF_CHECKS) {
-    if (next.validate.checks[checkId] === undefined) {
-      next.validate.checks[checkId] = {
+    if (overwrite || config.validate.checks[checkId] === undefined) {
+      config.validate.checks[checkId] = {
         enabled: true,
         severity: "error",
       };
     }
   }
+}
+
+/**
+ * Fill in the strict PDF checks (structure/PDF-X markers/metadata/embedded
+ * fonts) for any of them the config left unset, without overwriting an
+ * author's explicit choice. ARCH finding #21: replaces the old
+ * `applyDtrpgPdfDefaults` name, which implied a dtrpg-only opt-in even though
+ * `executeValidation` applies it to every PDF validation regardless of
+ * profile/preset — see validation-exec.ts.
+ */
+export function applyDefaultPdfStrictChecks(config: ResolvedConfig): ResolvedConfig {
+  const next = structuredClone(config);
+  enforceStrictPdfChecks(next, false);
   return next;
 }
+
+/**
+ * @deprecated Use {@link applyDefaultPdfStrictChecks} — kept as an alias so
+ * existing call sites keep resolving under the old, dtrpg-branded name.
+ */
+export const applyDtrpgPdfDefaults = applyDefaultPdfStrictChecks;
 
 export function applyValidationProfile(
   config: ResolvedConfig,
   profile: ValidationProfile
 ): ResolvedConfig {
-  const next = cloneConfig(config);
+  const next = structuredClone(config);
 
   if (profile === "dtrpg") {
     next.pdfx.flavor = DTRPG_PRESET.pdfx.flavor;
@@ -87,7 +67,7 @@ export function applyValidationProfile(
     next.validate.assets.allowedColorSpaces = [
       ...DTRPG_PRESET.validate.assets.allowedColorSpaces,
     ];
-    enforceStrictPdfChecks(next);
+    enforceStrictPdfChecks(next, true);
   }
 
   return next;

@@ -7,6 +7,7 @@ import {
   executeValidation,
   type ValidationExecutionResult,
 } from "../index.ts";
+import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
 
 type PreflightStatus = "GO" | "FIX" | "NO-GO";
 
@@ -183,6 +184,12 @@ export default defineCommand({
     description: "Run deterministic print preflight for a built PDF",
   },
   args: {
+    dir: {
+      type: "positional",
+      description:
+        "Project directory (default: cwd). Sets the pre-build source directory unless --input is also given.",
+      required: false,
+    },
     pdf: {
       type: "string",
       description: "Path to the PDF file to preflight",
@@ -190,7 +197,7 @@ export default defineCommand({
     },
     input: {
       type: "string",
-      description: "Optional source directory for pre-build checks",
+      description: "Optional source directory for pre-build checks (overrides the positional directory)",
     },
     manifest: {
       type: "string",
@@ -210,18 +217,26 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    // M46: `dir` (positional) sets the same source directory `--input` does —
+    // an explicit --input still wins.
+    const positionalDir = typeof args.dir === "string" ? args.dir : undefined;
+    const inputFlag = typeof args.input === "string" ? args.input : undefined;
+    const input = inputFlag ?? positionalDir;
+
     let execution;
     try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "preflight");
+
       execution = await executeValidation({
         manifest: typeof args.manifest === "string" ? args.manifest : undefined,
         pdf: typeof args.pdf === "string" ? args.pdf : undefined,
-        input: typeof args.input === "string" ? args.input : undefined,
+        input,
         phase: "post-build",
         profile: typeof args.profile === "string" ? args.profile : undefined,
       });
     } catch (error) {
       log.error(error instanceof Error ? error.message : String(error));
-      process.exit(2);
+      process.exit(error instanceof UsageError ? error.exitCode : EXIT_CODES.USAGE);
     }
 
     if (!execution) return;
@@ -252,7 +267,7 @@ export default defineCommand({
     log.info(`Markdown report: ${markdownPath}`);
 
     if (payload.status === "NO-GO") {
-      process.exit(1);
+      process.exit(EXIT_CODES.FINDINGS);
     }
   },
 });

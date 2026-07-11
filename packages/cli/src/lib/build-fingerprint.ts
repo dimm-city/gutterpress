@@ -1,11 +1,15 @@
-import { spawn } from "node:child_process";
+import * as fs from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import git from "isomorphic-git";
 import { resolveChromiumExecutable } from "./chromium";
-// Static JSON import — Bun inlines this at bundle time so the compiled
-// binary doesn't try to read package.json off disk (where it resolves to
-// `/package.json` via `import.meta.dir` inside `/$bunfs/`).
-import packageJson from "../../package.json";
+import { execCapture } from "./exec";
+import { detectProjectSource } from "./project-source";
+import { hasPendingChanges } from "./source-provider";
+// PACKAGE_META is a static package.json import — see version.ts's header for
+// why (the compiled `--compile` binary must never read package.json off
+// disk at runtime).
+import { PACKAGE_META } from "./version";
 
 type JsonValue =
   | string
@@ -30,20 +34,8 @@ export type BuildFingerprintInput = {
   pdfx: PdfxFingerprintConfig;
 };
 
-type PackageMeta = {
-  version: string;
-  dependencies: Record<string, string>;
-};
-
 const FINGERPRINT_FILENAME = "build-fingerprint.json";
 const VERSION_TIMEOUT_MS = 4000;
-
-const PACKAGE_META: PackageMeta = {
-  version: (packageJson as { version?: string }).version ?? "unknown",
-  dependencies:
-    (packageJson as { dependencies?: Record<string, string> }).dependencies ??
-    {},
-};
 
 function toJsonValue(value: unknown): JsonValue {
   if (value === null) return null;
@@ -75,55 +67,24 @@ function stableJsonStringify(value: JsonValue): string {
   return `${JSON.stringify(toJsonValue(value), null, 2)}\n`;
 }
 
-function runCapture(
+/**
+ * Best-effort spawn+capture: resolves `null` instead of throwing on any
+ * failure (missing binary, non-zero exit, or timeout) since a fingerprint
+ * field is optional metadata, never worth failing a build over. Delegates
+ * to exec.ts's shared `execCapture` for the actual spawn/timeout/settled-
+ * guard logic — see exec.ts's docstring for why that's a single
+ * implementation now instead of one of four parallel copies.
+ */
+async function runCapture(
   cmd: string,
   args: string[],
   cwd?: string
 ): Promise<{ stdout: string; stderr: string } | null> {
-  return new Promise((resolve) => {
-    const child = spawn(cmd, args, {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      child.kill("SIGKILL");
-      resolve(null);
-    }, VERSION_TIMEOUT_MS);
-
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolve(null);
-    });
-
-    child.on("exit", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (code === 0) {
-        resolve({ stdout, stderr });
-        return;
-      }
-      resolve(null);
-    });
-  });
+  try {
+    return await execCapture(cmd, args, { cwd, timeoutMs: VERSION_TIMEOUT_MS });
+  } catch {
+    return null;
+  }
 }
 
 async function getFirstLineVersion(
@@ -142,6 +103,23 @@ async function getFirstLineVersion(
   return line ?? null;
 }
 
+/**
+ * Resolve the fingerprint's `sourceRevision` block via the pure-JS
+ * `isomorphic-git` provider layer (CLAUDE.md §7) — NEVER the system `git`
+ * binary. Tries `sourceDir` then `process.cwd()`, same fallback order and
+ * graceful-null degradation the old `git rev-parse`-spawning implementation
+ * had, but now works identically whether or not a `git` executable exists on
+ * the host (arch finding #20).
+ *
+ * `detectProjectSource` (project-source.ts, pure `node:fs`) finds the repo
+ * root for BOTH "this dir IS the repo" and "this dir is a subfolder of an
+ * enclosing repo" the same way `git rev-parse --show-toplevel` did.
+ * `hasPendingChanges` (source-provider.ts) is the SAME lock-free dirty check
+ * the sync surface uses: a `WORKDIR`-vs-`STAGE` walk, deliberately never the
+ * `TREE` (history) walker — so this stays cheap on large repos with long
+ * history, unlike `git.statusMatrix`, which additionally diffs against HEAD's
+ * tree.
+ */
 async function getGitRevision(sourceDir?: string): Promise<{
   root: string;
   commit: string;
@@ -156,33 +134,29 @@ async function getGitRevision(sourceDir?: string): Promise<{
     if (seen.has(abs)) continue;
     seen.add(abs);
 
-    const root = await runCapture("git", ["rev-parse", "--show-toplevel"], abs);
-    if (!root) continue;
+    const source = await detectProjectSource(abs);
+    if (source.type !== "local-git-folder") continue;
+    const gitRoot = source.repoRoot;
 
-    const gitRoot = root.stdout.trim();
-    if (!gitRoot) continue;
+    let commit: string;
+    try {
+      commit = await git.resolveRef({ fs, dir: gitRoot, ref: "HEAD" });
+    } catch {
+      continue; // a repo with no commits yet — nothing to fingerprint
+    }
 
-    const commit = await runCapture("git", ["rev-parse", "HEAD"], gitRoot);
-    const shortCommit = await runCapture(
-      "git",
-      ["rev-parse", "--short", "HEAD"],
-      gitRoot
-    );
-    const status = await runCapture(
-      "git",
-      ["status", "--porcelain", "--untracked-files=no"],
-      gitRoot
-    );
-
-    if (!commit || !shortCommit || !status) {
+    let dirty: boolean;
+    try {
+      dirty = await hasPendingChanges(gitRoot);
+    } catch {
       continue;
     }
 
     return {
       root: gitRoot,
-      commit: commit.stdout.trim(),
-      shortCommit: shortCommit.stdout.trim(),
-      dirty: status.stdout.trim().length > 0,
+      commit,
+      shortCommit: commit.slice(0, 7),
+      dirty,
     };
   }
 

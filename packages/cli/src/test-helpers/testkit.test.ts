@@ -7,7 +7,7 @@
  * is the focused unit net for the helpers themselves.
  */
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, afterEach } from "bun:test";
 import * as nodeFs from "node:fs";
 import { readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
@@ -21,6 +21,8 @@ import {
   initRepo,
   commitFile,
   DEFAULT_TEST_AUTHOR,
+  stubProcessExit,
+  ProcessExitSignal,
 } from "./testkit";
 
 describe("makeTempDir", () => {
@@ -127,5 +129,47 @@ describe("git repo helpers", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("stubProcessExit", () => {
+  let exitSpy: ReturnType<typeof stubProcessExit> | undefined;
+
+  afterEach(() => {
+    exitSpy?.mockRestore();
+    exitSpy = undefined;
+  });
+
+  test("throws a ProcessExitSignal carrying the exit code instead of terminating", () => {
+    exitSpy = stubProcessExit();
+    expect(() => process.exit(2)).toThrow(ProcessExitSignal);
+    try {
+      process.exit(3);
+      throw new Error("expected process.exit(3) to throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ProcessExitSignal);
+      expect((err as ProcessExitSignal).code).toBe(3);
+    }
+  });
+
+  test("defaults to code 0 when called with no argument", () => {
+    exitSpy = stubProcessExit();
+    try {
+      process.exit();
+      throw new Error("expected process.exit() to throw");
+    } catch (err) {
+      expect((err as ProcessExitSignal).code).toBe(0);
+    }
+  });
+
+  test("mockRestore() removes the throwing stub (spyOn/mockRestore contract)", () => {
+    const realExit = process.exit;
+    exitSpy = stubProcessExit();
+    expect(process.exit).not.toBe(realExit);
+    exitSpy.mockRestore();
+    // Never actually CALL the restored real process.exit() here — that would
+    // terminate the test worker. Identity restoration is what mockRestore()
+    // contracts to do; that's what we can safely assert.
+    expect(process.exit).toBe(realExit);
   });
 });

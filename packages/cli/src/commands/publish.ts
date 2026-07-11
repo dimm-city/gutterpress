@@ -12,6 +12,7 @@ import {
   type PublishDeps,
   type RunPublishResult,
 } from "../index.ts";
+import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
 
 /**
  * `print-md publish` (#35) — push a built artifact to a publishing platform,
@@ -109,6 +110,16 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "publish");
+    } catch (error) {
+      if (error instanceof UsageError) {
+        log.error(error.message);
+        process.exit(error.exitCode);
+      }
+      throw error;
+    }
+
     const json = !!args.json;
     const store = new FileTokenStore();
     const deps: PublishDeps = {
@@ -149,14 +160,14 @@ export default defineCommand({
       log.error(
         "Specify a provider: print-md publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify> (or --list).",
       );
-      process.exit(2);
+      process.exit(EXIT_CODES.USAGE);
     }
     let provider;
     try {
       provider = publishProviderFor(providerId);
     } catch (e) {
       log.error(e instanceof Error ? e.message : String(e));
-      process.exit(2);
+      process.exit(EXIT_CODES.USAGE);
     }
     const projectDir = path.resolve((args.project as string | undefined) ?? ".");
 
@@ -185,7 +196,7 @@ export default defineCommand({
               ? `\nCreate one at: ${provider.info.credential.tokenUrl}`
               : ""),
         );
-        process.exit(2);
+        process.exit(EXIT_CODES.USAGE);
       }
       // Shared verify-before-store flow: the pasted key is checked with the
       // platform first, so a bad paste can't clobber a working credential.
@@ -201,7 +212,7 @@ export default defineCommand({
         );
       } catch (e) {
         log.error(e instanceof Error ? e.message : String(e));
-        process.exit(1);
+        process.exit(EXIT_CODES.FINDINGS);
       }
       log.success(`Connected ${provider.info.label}. The key is stored in your user config, not the project.`);
       return;
@@ -226,6 +237,6 @@ export default defineCommand({
           : result.outcome.url;
       if (target) await openPath(target).catch(() => {});
     }
-    if (!result.ok) process.exit(1);
+    if (!result.ok) process.exit(EXIT_CODES.FINDINGS);
   },
 });

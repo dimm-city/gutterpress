@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { existsSync, statSync, unlinkSync } from "node:fs";
+import { link, unlink } from "node:fs/promises";
+import { resolve, join, dirname, basename, extname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 import type { ResolvedPluginConfig } from "../../schema/manifest.types";
@@ -54,12 +55,24 @@ async function loadNpmPackage(
     // Not found — fall through to error
   }
 
+  // A bare filename that already ends in a JS extension but has no path
+  // separator (e.g. `my-plugin.js`) doesn't trip isFilePath's separator+
+  // extension heuristic (manifest.ts, ARCH finding #57) and so still reaches
+  // here as a "package name". Templating the generic `./plugins/<name>.js`
+  // suggestion onto a name that ALREADY has an extension produces a mangled
+  // `my-plugin.js.js` double-extension path that can never work — suggest
+  // the working fix (just add `./`) instead.
+  const looksLikeJsFilename = /\.(m?js|cjs)$/i.test(packageName);
+  const suggestedPath = looksLikeJsFilename
+    ? `./${packageName}`
+    : `./plugins/${packageName}.js`;
+
   throw new Error(
     `Plugin "${packageName}" not found. Install it in your project:\n` +
       `  cd ${baseDir} && bun add ${packageName}\n` +
       `or reference a local file:\n` +
       `  plugins:\n` +
-      `    - path: ./plugins/${packageName}.js`
+      `    - path: ${suggestedPath}`
   );
 }
 
@@ -111,15 +124,136 @@ function extractPluginExports(
 }
 
 /**
+ * Path-plugin ESM cache — keyed by resolved absolute file path, and only
+ * reused while the file's mtime matches the cached entry. Bun/Node never
+ * evict ESM module-map entries, so unconditionally busting on every load (the
+ * previous `?v=${Date.now()}` behavior) reloaded every path-plugin on every
+ * preview render and leaked a fresh module instance forever in the
+ * long-lived Electron host (ARCH finding #5). Keying on mtime means an
+ * untouched file is served from cache (bounded growth, proportional to
+ * distinct plugin paths — not load count) while an edited file is still
+ * always reloaded (the stale-plugin bug the original bust existed to fix
+ * stays fixed).
+ */
+interface CachedPathPlugin {
+  mtimeMs: number;
+  module: unknown;
+  /** The hard-linked shadow file this module was loaded from, if any. */
+  shadowPath: string | null;
+}
+const pathPluginCache = new Map<string, CachedPathPlugin>();
+
+/** Test-only: reset the path-plugin cache between test cases. */
+export function __resetPathPluginCacheForTests(): void {
+  pathPluginCache.clear();
+}
+
+// A query string is NOT a reliable cache-buster here: Node keys its ESM
+// module registry by the full URL (query included), but Bun's local `file://`
+// loader resolves the cache key by REAL PATH and ignores query/hash strings
+// entirely — confirmed empirically: neither a `?v=` query nor a symlink
+// pointing at the edited file busts it (Bun follows symlinks to their
+// realpath before the registry lookup). Since the standalone CLI binary
+// (`bun build --compile`, §1) runs on Bun's own embedded runtime for real
+// end users of `print-md preview`, a query-only bust would silently never
+// take effect there. A hard link IS a distinct realpath (unlike a symlink, it
+// has no "target" to resolve through), so importing a same-directory shadow
+// hard link named by mtime forces a genuinely fresh module on BOTH runtimes,
+// with zero content duplication, while same-directory placement preserves
+// the plugin's own relative imports (resolved against the importing
+// module's real directory, which the shadow link shares with the original).
+const liveShadowPaths = new Set<string>();
+let exitCleanupRegistered = false;
+function ensureExitCleanupRegistered(): void {
+  if (exitCleanupRegistered) return;
+  exitCleanupRegistered = true;
+  process.on("exit", () => {
+    for (const shadowPath of liveShadowPaths) {
+      try {
+        unlinkSync(shadowPath);
+      } catch {
+        // best effort — nothing to do if it's already gone
+      }
+    }
+  });
+}
+
+function shadowPathFor(pluginPath: string, mtimeMs: number): string {
+  const ext = extname(pluginPath);
+  const stem = basename(pluginPath, ext);
+  const token = String(mtimeMs).replace(/\./g, "-");
+  return join(dirname(pluginPath), `.${stem}.pmd-reload-${token}${ext}`);
+}
+
+/**
+ * Import a file-based plugin module, reusing a previous import when the file
+ * is unchanged (resolved path + mtime) and forcing a genuinely fresh import
+ * (via a same-directory hard-link shadow file, see above) only when the
+ * file's mtime has moved since the last load. The previous shadow link is
+ * removed once the new one has loaded successfully.
+ */
+async function loadCachedPathPluginModule(pluginPath: string): Promise<unknown> {
+  const mtimeMs = statSync(pluginPath).mtimeMs;
+  const cached = pathPluginCache.get(pluginPath);
+  if (cached && cached.mtimeMs === mtimeMs) {
+    return cached.module;
+  }
+
+  const shadowPath = shadowPathFor(pluginPath, mtimeMs);
+  let pluginModule: unknown;
+  let shadowActive = false;
+  try {
+    await link(pluginPath, shadowPath);
+    shadowActive = true;
+    ensureExitCleanupRegistered();
+    liveShadowPaths.add(shadowPath);
+    pluginModule = await import(pathToFileURL(shadowPath).href);
+  } catch (error) {
+    if (shadowActive) {
+      // The shadow link was created but the import itself failed (e.g. a
+      // syntax error in the edited plugin) — clean up and propagate the real
+      // error rather than silently falling back.
+      liveShadowPaths.delete(shadowPath);
+      await unlink(shadowPath).catch(() => {});
+      throw error;
+    }
+    // Could not even create the shadow link (read-only directory, or a stale
+    // link of the same name left by a crashed prior process) — fall back to
+    // a plain, uncached import so the load still succeeds when possible.
+    pluginModule = await import(pathToFileURL(pluginPath).href);
+  }
+
+  const previousShadow = cached?.shadowPath;
+  pathPluginCache.set(pluginPath, {
+    mtimeMs,
+    module: pluginModule,
+    shadowPath: shadowActive ? shadowPath : null,
+  });
+  if (previousShadow) {
+    liveShadowPaths.delete(previousShadow);
+    await unlink(previousShadow).catch(() => {});
+  }
+  return pluginModule;
+}
+
+/**
  * Load a single plugin from a file path or npm package.
  *
  * Throws if the plugin cannot be resolved, imported, or doesn't export a
  * valid plugin function. The error message identifies which manifest entry
  * failed so users can find it.
+ *
+ * `skipCache: true` is for the true one-shot fail-fast build/export process
+ * (`loadPlugins` with no `onError`): the process exits right after, so there
+ * is nothing to cache-bust against — plain, uncached imports. Every other
+ * caller (direct validation calls, and preview/live-reload via `loadPlugins`
+ * with `onError`) defaults to the mtime cache above, which is always correct
+ * to reuse in a long-lived host.
  */
 export async function loadPlugin(
   config: ResolvedPluginConfig,
-  baseDir: string
+  baseDir: string,
+  loadOptions?: { skipCache?: boolean }
 ): Promise<LoadedPlugin> {
   const pluginRef = config.path ?? config.name ?? "(unspecified)";
   let pluginModule: unknown;
@@ -154,11 +288,9 @@ export async function loadPlugin(
         );
       }
 
-      // Append a timestamp query param so Bun's ESM module cache is bypassed
-      // on each hot-reload — without this, edits to plugin files are silently
-      // ignored because Bun returns the cached module for the same file URL.
-      const fileUrl = pathToFileURL(pluginPath).href + `?v=${Date.now()}`;
-      pluginModule = await import(fileUrl);
+      pluginModule = loadOptions?.skipCache
+        ? await import(pathToFileURL(pluginPath).href)
+        : await loadCachedPathPluginModule(pluginPath);
       pluginName = config.name ?? config.path;
     } else {
       pluginModule = await loadNpmPackage(config.name!, baseDir);
@@ -196,20 +328,27 @@ export async function loadPlugin(
  *     is NOT silent skipping (the failure mode §5 warns against): the caller
  *     surfaces every skip loudly (preview warns in its log; the Plugins panel
  *     shows the plugin as "Not installed" with fix instructions).
+ *
+ * The same `onError` presence also picks the path-plugin caching mode
+ * (finding #5): fail-fast build/export mode is a one-shot process, so
+ * path-plugins are imported once, plainly, with no cache-busting; preview
+ * mode reuses the mtime cache in `loadPlugin` so an edited plugin reloads
+ * across renders but an unedited one is never re-imported.
  */
 export async function loadPlugins(
   configs: ResolvedPluginConfig[],
   baseDir: string,
   onError?: (pluginRef: string, error: Error) => void
 ): Promise<LoadedPlugin[]> {
+  const loadOptions = { skipCache: !onError };
   const plugins: LoadedPlugin[] = [];
   for (const config of configs) {
     if (!onError) {
-      plugins.push(await loadPlugin(config, baseDir));
+      plugins.push(await loadPlugin(config, baseDir, loadOptions));
       continue;
     }
     try {
-      plugins.push(await loadPlugin(config, baseDir));
+      plugins.push(await loadPlugin(config, baseDir, loadOptions));
     } catch (error) {
       onError(
         config.path ?? config.name ?? "(unspecified)",

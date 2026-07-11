@@ -12,6 +12,7 @@ import { copyAssets, resolveAssetDestName } from "./assets";
 import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
 import { prewarmBrowser, getBrowser, closeBrowser } from "./browser-pool";
 import { isToolAvailable } from "./tool-probe";
+import { INSTALL_HINTS as CANONICAL_INSTALL_HINTS } from "./install-hints";
 import { patchHtmlForPagedjs } from "./pagedjs";
 import { pagedjsPolyfillTagRegex } from "./pagedjs-marker";
 import {
@@ -22,6 +23,7 @@ import {
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { BOOK_HTML_FILENAME } from "./viewer";
 import { getAssetPath } from "./embedded-assets";
+import { resolveStaticPath, serveFile } from "./static-serve";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
@@ -112,9 +114,13 @@ interface MissingTool {
   installHint: string;
 }
 
+// Body text (per-platform install commands, no header) from the single
+// canonical source in ./install-hints.ts — see its docstring. Previously a
+// hand-copied, independently-worded duplicate of diagnostics.ts's and
+// chromium.ts's install hints.
 const INSTALL_HINTS: Record<"gs" | "qpdf", string> = {
-  gs: "  macOS:   brew install ghostscript\n  Ubuntu:  sudo apt install -y ghostscript\n  Windows: https://www.ghostscript.com/releases/gsdnld.html  (or: choco install ghostscript)",
-  qpdf: "  macOS:   brew install qpdf\n  Ubuntu:  sudo apt install -y qpdf\n  Windows: choco install qpdf  (or: https://github.com/qpdf/qpdf/releases)",
+  gs: CANONICAL_INSTALL_HINTS.gs.body,
+  qpdf: CANONICAL_INSTALL_HINTS.qpdf.body,
 };
 
 /**
@@ -198,35 +204,18 @@ function computeGates(
   return { lint, preValidate, postValidate };
 }
 
-const STATIC_MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".htm": "text/html; charset=utf-8",
-  ".css": "text/css",
-  ".js": "application/javascript",
-  ".mjs": "application/javascript",
-  ".json": "application/json",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".otf": "font/otf",
-};
-
 /**
  * Start a localhost static file server rooted at `dir`, serving `defaultFile`
  * for the `/` path. Returns the chosen port and a `close()` that resolves once
  * the server has shut down.
  *
- * Path-traversal protection: any request that resolves outside `dir` gets 403;
- * a missing file gets 404; `STATIC_MIME` maps the extension (falling back to
- * application/octet-stream). Shared by the static-HTML pagination pass and the
- * PDF render pass — both stage HTML + assets into a temp dir and need a real
- * HTTP origin so relative asset URLs resolve.
+ * Path-traversal protection, the MIME map, and the actual file response are
+ * the shared `./static-serve` primitives (`resolveStaticPath` + `serveFile`)
+ * also used by preview/http-server.ts — a request that resolves outside `dir`
+ * gets 403; a missing file gets 404 from `serveFile` itself. Shared by the
+ * static-HTML pagination pass and the PDF render pass — both stage HTML +
+ * assets into a temp dir and need a real HTTP origin so relative asset URLs
+ * resolve.
  */
 function createStaticFileServer(
   dir: string,
@@ -238,27 +227,14 @@ function createStaticFileServer(
     // Both current callers navigate straight to `/${filename}`, so the `"/"`
     // → defaultFile branch is a convenience fallback (e.g. a future caller
     // hitting the bare origin); it is not exercised on the render path today.
-    const relative =
-      url.pathname === "/"
-        ? defaultFile
-        : decodeURIComponent(url.pathname.replace(/^\/+/, ""));
-    const filePath = path.resolve(root, relative);
-    if (filePath !== root && !filePath.startsWith(root + path.sep)) {
+    const pathname = url.pathname === "/" ? "/" + defaultFile : url.pathname;
+    const filePath = resolveStaticPath(pathname, root);
+    if (!filePath) {
       res.writeHead(403);
       res.end("Forbidden");
       return;
     }
-    try {
-      const data = await fsp.readFile(filePath);
-      const ct =
-        STATIC_MIME[path.extname(filePath).toLowerCase()] ??
-        "application/octet-stream";
-      res.writeHead(200, { "Content-Type": ct });
-      res.end(data);
-    } catch {
-      res.writeHead(404);
-      res.end("Not found");
-    }
+    await serveFile(filePath, res);
   });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
@@ -325,12 +301,65 @@ declare function getComputedStyle(el: PagedPageElement): {
   height?: string;
 };
 
+/** How often the liveness poller re-checks the `.pagedjs_page` count (finding #19). */
+const STALL_POLL_INTERVAL_MS = 10_000;
+/**
+ * How long the page count must go without advancing before pagination is
+ * declared stalled. Deliberately several poll intervals, not one: a single
+ * flat poll is normal (a large/complex page can legitimately take one tick to
+ * lay out); a full minute with zero new pages is not "still working", it is
+ * "dead" (a plugin/CSS error wedged the chunker) — see finding #19.
+ */
+const STALL_WINDOW_MS = 60_000;
+
+/** Tracks the last-seen `.pagedjs_page` count and when it last advanced. */
+export interface PaginationLivenessState {
+  count: number;
+  lastAdvanceAt: number;
+}
+
+export interface PaginationLivenessResult {
+  stalled: boolean;
+  state: PaginationLivenessState;
+}
+
+/**
+ * Pure stall-detection decision (finding #19), extracted out of the polling
+ * loop below so it is unit-testable with a fake page-count source instead of
+ * a real puppeteer `page`. Given the latest `.pagedjs_page` count poll and the
+ * previously tracked state, decide whether pagination has stalled — the count
+ * has not advanced for at least `stallWindowMs` — and return the updated
+ * state (advancing resets the liveness clock; a flat or regressed count
+ * leaves `lastAdvanceAt` untouched).
+ */
+export function evaluatePaginationLiveness(
+  count: number,
+  now: number,
+  state: PaginationLivenessState,
+  stallWindowMs: number
+): PaginationLivenessResult {
+  if (count > state.count) {
+    return { stalled: false, state: { count, lastAdvanceAt: now } };
+  }
+  const stalled = now - state.lastAdvanceAt >= stallWindowMs;
+  return { stalled, state };
+}
+
 /**
  * Drive a puppeteer `page` to fully paginate the document at `url`: set the
  * viewport + timeouts, navigate (waiting for network idle so vendored assets +
  * the polyfill load), wait for web fonts, then block until Paged.js signals
  * `window.__PAGED_RENDERED__ === true` (best-effort — falls through on timeout
  * exactly as the original callers did).
+ *
+ * While waiting, a background poller checks the `.pagedjs_page` count every
+ * `STALL_POLL_INTERVAL_MS` and logs it (so a long build visibly advances
+ * instead of sitting silent), and fails fast with a BuildError the moment
+ * `evaluatePaginationLiveness` decides the count has stopped advancing for
+ * `STALL_WINDOW_MS` — instead of a wedged Paged.js run silently consuming the
+ * full `timeoutMs` / `RENDER_TIMEOUT_MS` budget (up to an hour) before anyone
+ * finds out. `timeoutMs` (== `RENDER_TIMEOUT_MS` at every call site) remains
+ * the outer budget for legitimately slow-but-advancing books.
  *
  * Shared navigate+wait sequence for BOTH render paths. Callers keep their own
  * tails: the PDF path calls `page.pdf()`; the static-HTML path serializes the
@@ -351,32 +380,84 @@ async function paginateAndCapture(
 
   await page.evaluate(() => document.fonts.ready);
 
-  await page
-    .waitForFunction(
-      () =>
-        (globalThis as typeof globalThis & { __PAGED_RENDERED__?: boolean })
-          .__PAGED_RENDERED__ === true,
-      {
-      timeout: timeoutMs,
-      },
-    )
-    .catch((err: unknown) => {
-      // ONLY a wait timeout is tolerable: Paged.js never signaled
-      // __PAGED_RENDERED__ in time, so proceed with whatever rendered but warn
-      // (an unsignaled run can ship a blank/partial PDF). Any OTHER failure —
-      // page crash, execution-context loss, navigation teardown — is a real
-      // error and must propagate; masking it would silently emit broken output.
-      // puppeteer-core throws a TimeoutError (identified by name to avoid a
-      // runtime import of the class, keeping §2 lazy-loading intact).
-      if ((err as { name?: string } | undefined)?.name !== "TimeoutError") {
-        throw err;
-      }
+  let livenessState: PaginationLivenessState = { count: 0, lastAdvanceAt: Date.now() };
+  let stalledAtCount: number | null = null;
+  let resolveStall: (() => void) | undefined;
+  const stallSignal = new Promise<void>((resolve) => {
+    resolveStall = resolve;
+  });
+
+  const pollTimer = setInterval(() => {
+    page
+      .evaluate(() => document.querySelectorAll(".pagedjs_page").length)
+      .then((count) => {
+        const { stalled, state } = evaluatePaginationLiveness(
+          count,
+          Date.now(),
+          livenessState,
+          STALL_WINDOW_MS
+        );
+        livenessState = state;
+        if (stalled) {
+          stalledAtCount = count;
+          clearInterval(pollTimer);
+          resolveStall?.();
+          return;
+        }
+        log.info(`Paginating… ${count} page(s) so far`);
+      })
+      .catch(() => {
+        // A transient evaluate failure (e.g. mid-navigation) is not itself a
+        // stall signal — the waitForFunction race below still catches a real
+        // page crash / context loss and propagates it.
+      });
+  }, STALL_POLL_INTERVAL_MS);
+
+  try {
+    const outcome = await Promise.race([
+      page
+        .waitForFunction(
+          () =>
+            (globalThis as typeof globalThis & { __PAGED_RENDERED__?: boolean })
+              .__PAGED_RENDERED__ === true,
+          {
+            timeout: timeoutMs,
+          },
+        )
+        .then((): "rendered" => "rendered")
+        .catch((err: unknown) => {
+          // ONLY a wait timeout is tolerable: Paged.js never signaled
+          // __PAGED_RENDERED__ in time, so proceed with whatever rendered but
+          // warn (an unsignaled run can ship a blank/partial PDF). Any OTHER
+          // failure — page crash, execution-context loss, navigation teardown
+          // — is a real error and must propagate; masking it would silently
+          // emit broken output. puppeteer-core throws a TimeoutError
+          // (identified by name to avoid a runtime import of the class,
+          // keeping §2 lazy-loading intact).
+          if ((err as { name?: string } | undefined)?.name !== "TimeoutError") {
+            throw err;
+          }
+          return "timeout" as const;
+        }),
+      stallSignal.then((): "stalled" => "stalled"),
+    ]);
+
+    if (outcome === "stalled") {
+      throw new BuildError(
+        `Pagination stalled at page ${stalledAtCount} — check plugin/CSS errors`,
+        1
+      );
+    }
+    if (outcome === "timeout") {
       log.warn(
         `Pagination did not complete within ${Math.round(
           timeoutMs / 1000
         )}s — output may be incomplete.`
       );
-    });
+    }
+  } finally {
+    clearInterval(pollTimer);
+  }
 }
 
 /** Default renderer: system Chromium via puppeteer-core (pooled + pre-warmable). */
@@ -826,11 +907,16 @@ export async function resolveIccProfile(
 
 /**
  * The shared build tail every output strategy ends with: write the build
- * fingerprint, log `Wrote:` + the fingerprint path, then close the pooled
- * browser unless the caller wants it kept warm (a preview/watch server does).
- * De-duplicates the identical closing sequence the HTML and PDF branches used
- * to inline. `wroteMessage` and the fingerprint/paths differ per format, so
- * they are passed in.
+ * fingerprint and log `Wrote:` + the fingerprint path. De-duplicates the
+ * identical fingerprint-writing sequence the HTML and PDF branches used to
+ * inline. `wroteMessage` and the fingerprint/paths differ per format, so they
+ * are passed in.
+ *
+ * Does NOT close the pooled browser (finding #50) — that used to happen here,
+ * on the success-only path, which leaked the pre-warmed Chromium whenever a
+ * quality gate or render step threw before reaching this function. The close
+ * is now a single try/finally around the whole pipeline in {@link runBuild}
+ * so it runs on every exit, not just this one.
  */
 async function finalizeBuild(
   ctx: BuildContext,
@@ -841,10 +927,6 @@ async function finalizeBuild(
   const fingerprintPath = await writeBuildFingerprint(fingerprint);
   log.success(wroteMessage);
   log.info(`Fingerprint: ${fingerprintPath}`);
-  // Close the pooled browser unless the caller (e.g. a preview server) wants it
-  // kept warm for the next rebuild. No-op if nothing was launched (including the
-  // injected-renderer path, which never used the pool).
-  if (!ctx.opts.keepBrowserAlive) await closeBrowser();
   return {
     outDir: ctx.outDir,
     htmlPath: paths.htmlPath,
@@ -1081,6 +1163,14 @@ class PdfOutput implements OutputStrategy {
  * run the quality gates, render the book, then hand off to the per-format output
  * strategy for pagination + finalize. The heavy lifting lives in the named
  * stages + strategies above; this reads as the pipeline it is.
+ *
+ * Everything from the prewarm decision onward runs inside a try/finally that
+ * closes the pooled browser (unless `keepBrowserAlive` is set) — finding #50:
+ * previously the close only happened on the success tail (inside
+ * `finalizeBuild`), so a prewarmed Chromium leaked whenever a quality gate,
+ * the render, or pagination itself threw. `closeBrowser()` is a no-op if
+ * nothing was launched (including the injected-renderer path, which never
+ * uses the pool), so it is safe to call unconditionally here.
  */
 export async function runBuild(
   opts: BuildRunnerOptions
@@ -1109,11 +1199,15 @@ export async function runBuild(
     (ctx.format === "html" && !!(await resolveChromiumExecutable()));
   if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 
-  await runQualityGates(ctx);
+  try {
+    await runQualityGates(ctx);
 
-  const htmlFile = await renderBook(ctx);
+    const htmlFile = await renderBook(ctx);
 
-  const strategy: OutputStrategy =
-    ctx.format === "html" ? new HtmlOutput() : new PdfOutput();
-  return strategy.finish(ctx, htmlFile);
+    const strategy: OutputStrategy =
+      ctx.format === "html" ? new HtmlOutput() : new PdfOutput();
+    return await strategy.finish(ctx, htmlFile);
+  } finally {
+    if (!opts.keepBrowserAlive) await closeBrowser();
+  }
 }

@@ -39,8 +39,12 @@ export { inspectImage } from "./lib/image-inspect.ts";
 export type { ImageInfo, ColorSpace } from "./lib/image-inspect.ts";
 
 // ── Print-safety CSS checks (#39) — backs the in-app CSS editor gutter ────────
-// The viewer's CSS editor runs `checkCss` in the renderer (postcss is pure JS)
-// to surface the SAME print-safety findings as the CLI validation pipeline.
+// Per CLAUDE.md §8, `checkCss` runs HOST-SIDE ONLY — the `api/lint/check-css`
+// server route imports it (postcss pulls in `node:url` etc., which crashes if
+// bundled into the SPA renderer per the 0.4.0-beta.4 incident); the editor's
+// lint gutter calls `getPlatform().checkCss(...)` over that route, never this
+// export directly. Exported here so the CLI's own validation pipeline and the
+// viewer's host-side route share one implementation.
 export { checkCss } from "./lib/printsafe.ts";
 export type { PrintSafeWarning } from "./lib/printsafe.ts";
 export {

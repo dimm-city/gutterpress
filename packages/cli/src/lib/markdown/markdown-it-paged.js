@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * markdown-it-paged (inlined from dimm-city/markdown-it-paged)
  *
@@ -197,7 +195,7 @@ function attachDataAttrs(token, kind, name, attrs) {
   }
 }
 
-function plugin(md, pluginOptions = {}) {
+export default function plugin(md, pluginOptions = {}) {
   const options = {
     implicitPage: false,
     preferPagesInSpreads: false,
@@ -440,10 +438,19 @@ function plugin(md, pluginOptions = {}) {
       const t = new state.Token('layout_section_open', 'div', 1);
       addClasses(t, 'section', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, 'section', meta.name, meta.attrs || {});
+      // Precomputed here (instead of scanned per-render from the renderer
+      // rule) so the col-split renderer branch is O(1): the transform pass
+      // is the single place that walks the marker stream, so it is also the
+      // right place to record whether THIS section's body contains a
+      // @column-break. Stored on the token's own `meta` (not env / not a
+      // rendered attribute) since it's per-token render guidance, not
+      // author-visible output.
+      t.meta = { hasColumnBreak: false };
       stack.open(
         {
           kind: 'section',
           meta: { name: meta.name || null, attrs: { ...(meta.attrs || {}) } },
+          openToken: t,
         },
         t
       );
@@ -538,6 +545,22 @@ function plugin(md, pluginOptions = {}) {
       }
 
       if (kind === 'column-break') {
+        // Record the column-break onto the currently open section's OPEN
+        // token (see openSection) rather than rescanning the token stream
+        // at render time. At most one section frame is ever open at a time
+        // (every section-affecting marker closes the current section
+        // before opening the next — see stack.close('section') above and
+        // in openPage/openChapter's stack.close calls), so "the currently
+        // open section" is unambiguously the one this column-break belongs
+        // to.
+        const openSectionFrame = stack.get('section');
+        if (openSectionFrame && openSectionFrame.openToken && !openSectionFrame.openToken.meta.hasColumnBreak) {
+          const sectionCls = openSectionFrame.openToken.attrGet('class') || '';
+          if (sectionCls.includes('col-split')) {
+            openSectionFrame.openToken.meta.hasColumnBreak = true;
+          }
+        }
+
         const t = new state.Token('layout_column_break', 'div', 0);
         t.attrSet('class', 'md-column-break');
         t.attrSet('aria-hidden', 'true');
@@ -593,38 +616,38 @@ function plugin(md, pluginOptions = {}) {
     if (env) env.__colSplitDepth = n;
   }
 
+  // layout_chapter_close / layout_spread_open / layout_spread_close /
+  // layout_page_close intentionally have NO renderer rule: markdown-it's own
+  // Renderer.render() already falls back to self.renderToken() for any token
+  // type with no registered rule (see markdown-it/lib/renderer.js), so a rule
+  // here that only forwarded to renderToken was dead weight that implied it
+  // did something. Only layout_chapter_open / layout_page_open need rules,
+  // because they also reset the col-split depth counter (a real side effect).
   md.renderer.rules.layout_chapter_open = (tokens, idx, opts, env, self) => {
     setDepth(env, 0);
     return self.renderToken(tokens, idx, opts);
   };
-  md.renderer.rules.layout_chapter_close = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
-  md.renderer.rules.layout_spread_open = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
-  md.renderer.rules.layout_spread_close = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
   md.renderer.rules.layout_page_open = (tokens, idx, opts, env, self) => {
     setDepth(env, 0);
     return self.renderToken(tokens, idx, opts);
   };
-  md.renderer.rules.layout_page_close = (tokens, idx, opts, env, self) => self.renderToken(tokens, idx, opts);
 
   md.renderer.rules.layout_section_open = (tokens, idx, opts, env, self) => {
     const token = tokens[idx];
     const cls = token.attrGet('class') || '';
 
-    if (cls.includes('col-split')) {
-      // Look ahead for layout_column_break before the matching section_close
-      let depth = 1;
-      let hasBreak = false;
-      for (let i = idx + 1; i < tokens.length; i++) {
-        const t = tokens[i];
-        if (t.type === 'layout_section_open') depth++;
-        if (t.type === 'layout_section_close') { depth--; if (depth === 0) break; }
-        if (t.type === 'layout_column_break' && depth === 1) { hasBreak = true; break; }
-      }
-      if (hasBreak) {
-        setDepth(env, getDepth(env) + 1);
-        // cls already contains 'section col-split'
-        return `<div class="${cls}"><div class="col">\n`;
-      }
+    // hasColumnBreak is precomputed once, during the layout_transform core
+    // pass (see openSection / the 'column-break' branch above), instead of
+    // rescanning the token stream here on every render.
+    if (cls.includes('col-split') && token.meta && token.meta.hasColumnBreak) {
+      setDepth(env, getDepth(env) + 1);
+      // cls already contains 'section col-split'; it is author-controlled
+      // (class=... / .class shorthand on the @section marker) and must be
+      // escaped the same as every other attribute value this file emits —
+      // it is not safe to assume the marker tokenizer already stripped
+      // everything attribute-unsafe (e.g. a `'`-quoted class=value can still
+      // carry a literal `"` through, see markdown-it-paged.test.ts).
+      return `<div class="${escapeAttr(cls)}"><div class="col">\n`;
     }
 
     return self.renderToken(tokens, idx, opts);
@@ -638,10 +661,13 @@ function plugin(md, pluginOptions = {}) {
     return self.renderToken(tokens, idx, opts);
   };
 
-  // nesting:0 on <div> emits only an opening tag — emit complete open+close pair instead
+  // nesting:0 on <div> emits only an opening tag — emit complete open+close pair instead.
+  // Both tokens' class is always the plugin's own literal ('md-page-break' /
+  // 'md-column-break') today, never author input, but escapeAttr is applied
+  // here too so this stays safe if that ever changes.
   md.renderer.rules.layout_page_break = (tokens, idx) => {
     const cls = tokens[idx].attrGet('class') || 'md-page-break';
-    return `<div class="${cls}" aria-hidden="true"></div>\n`;
+    return `<div class="${escapeAttr(cls)}" aria-hidden="true"></div>\n`;
   };
 
   md.renderer.rules.layout_column_break = (tokens, idx, opts, env) => {
@@ -649,7 +675,7 @@ function plugin(md, pluginOptions = {}) {
       return `</div><div class="col">\n`;
     }
     const cls = tokens[idx].attrGet('class') || 'md-column-break';
-    return `<div class="${cls}" aria-hidden="true"></div>\n`;
+    return `<div class="${escapeAttr(cls)}" aria-hidden="true"></div>\n`;
   };
 
   // layout_marker tokens are transformed away in the core rule
@@ -660,18 +686,48 @@ function plugin(md, pluginOptions = {}) {
  * Minimal Paged.js-friendly CSS for the classes this plugin emits.
  * Consumers should inject this into <head> after their user stylesheets so
  * the layout contract (page/section/column breaks) wins at equal specificity.
+ *
+ * Also ships five author-facing image/block utility classes (CLAUDE.md §0 —
+ * a behavior broadly useful to non-technical authors belongs in core, not a
+ * project layer; see UX finding M17). markdown-it-attrs is bundled by
+ * default (renderer.ts), so `![Art](x.jpg){.full-bleed}` already attaches
+ * the class to the rendered `<img>` — these rules are what make that class
+ * actually do something print-safe:
+ *
+ *   .center       — centers a block element (margin-inline: auto).
+ *   .float-left   — floats left with clearance margins.
+ *   .float-right  — floats right with clearance margins.
+ *   .full-width   — fills the page's content width (100%).
+ *   .full-bleed   — forces its own page (break-before) and cancels the
+ *                   page's LEFT/RIGHT margins via Paged.js's real
+ *                   `--pagedjs-margin-left`/`--pagedjs-margin-right` custom
+ *                   properties (set per-page by the polyfill from the active
+ *                   `@page` rule — see pagedjs/src/polisher/base.js), so
+ *                   content spans the page edge-to-edge horizontally. This
+ *                   does NOT cancel the top/bottom margins, extend past the
+ *                   trim into printer bleed overage, apply a named `@page`
+ *                   template, or remove headers/footers — none of that is
+ *                   implemented; the custom-property fallback of 0 means it
+ *                   degrades to plain full-width outside a Paged.js render.
  */
-const PAGED_CSS = `
+export const PAGED_CSS = `
 .md-page-break { break-before: page; }
 .page { break-before: page; }
 .spread { break-before: page; }
 .section { break-inside: avoid; }
 .section.col-split { break-inside: auto; }
 .md-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
-`;
 
-// CJS default export
-module.exports = plugin;
-// Allow ESM default import via interop
-module.exports.default = plugin;
-module.exports.PAGED_CSS = PAGED_CSS;
+.center { display: block; margin-left: auto; margin-right: auto; max-width: 100%; }
+.float-left { float: left; margin: 0 1em 1em 0; max-width: 50%; }
+.float-right { float: right; margin: 0 0 1em 1em; max-width: 50%; }
+.full-width { display: block; width: 100%; max-width: 100%; }
+.full-bleed {
+  display: block;
+  break-before: page;
+  max-width: none;
+  width: calc(100% + var(--pagedjs-margin-left, 0px) + var(--pagedjs-margin-right, 0px));
+  margin-left: calc(-1 * var(--pagedjs-margin-left, 0px));
+  margin-right: calc(-1 * var(--pagedjs-margin-right, 0px));
+}
+`;

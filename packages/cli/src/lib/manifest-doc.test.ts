@@ -1,8 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { isSeq } from "yaml";
-import { resolveManifestPath, loadManifestDoc, ensureSeq } from "./manifest-doc";
+import { isSeq, Scalar } from "yaml";
+import { resolveManifestPath, loadManifestDoc, ensureSeq, scalarString } from "./manifest-doc";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `manifest-doc-tests-${Date.now()}`);
 
@@ -93,6 +93,40 @@ describe("manifest-doc", () => {
       const seq = ensureSeq(doc, "styles");
       expect(seq.items).toHaveLength(2);
       expect(doc.get("styles", true)).toBe(seq);
+    });
+  });
+
+  // ARCH finding #25: scalarString is the ONE shared unwrap helper consumed by
+  // both manifest-config.ts (was `unwrapScalar`) and theme-manager.ts (was
+  // `styleHrefOf`) instead of two near-duplicate copies.
+  describe("scalarString", () => {
+    test("unwraps a Scalar node's .value", () => {
+      expect(scalarString(new Scalar("styles/book.css"))).toBe("styles/book.css");
+    });
+
+    test("passes a raw JS string through unchanged", () => {
+      expect(scalarString("themes/zine/theme.css")).toBe("themes/zine/theme.css");
+    });
+
+    test("returns null for a Scalar wrapping a non-string value", () => {
+      expect(scalarString(new Scalar(42))).toBeNull();
+      expect(scalarString(new Scalar(null))).toBeNull();
+    });
+
+    test("returns null for null/undefined/non-string primitives", () => {
+      expect(scalarString(null)).toBeNull();
+      expect(scalarString(undefined)).toBeNull();
+      expect(scalarString(42)).toBeNull();
+      expect(scalarString(true)).toBeNull();
+    });
+
+    test("a seq item read back via doc.get(key, true) round-trips through scalarString", async () => {
+      const dir = projectDir();
+      writeFileSync(dir + "/manifest.yaml", "styles:\n  - styles/book.css\n", "utf8");
+      const { doc } = await loadManifestDoc(dir);
+      const seq = ensureSeq(doc, "styles");
+      const [item] = seq.items;
+      expect(scalarString(item)).toBe("styles/book.css");
     });
   });
 });

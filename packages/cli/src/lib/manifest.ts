@@ -3,7 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { PrintMdManifest, ResolvedConfig, PluginConfig, ResolvedPluginConfig } from "../schema/manifest.types";
-import { DTRPG_PRESET, PRESETS } from "./presets";
+import { resolvePreset, warnOnce } from "./presets";
 
 /**
  * The manifest file names print-md recognizes, in lookup-preference order.
@@ -55,13 +55,24 @@ export async function loadManifestWithPath(
  * File paths start with './', '../', '/', or contain path separators with extensions.
  */
 function isFilePath(str: string): boolean {
-  return (
+  if (
     str.startsWith('./') ||
     str.startsWith('../') ||
     str.startsWith('/') ||
     // Windows absolute paths
     /^[a-zA-Z]:[\\/]/.test(str)
-  );
+  ) {
+    return true;
+  }
+  // Bare relative path with no `./` prefix (e.g. `plugins/my-plugin.js`) — a
+  // very natural thing for a non-technical author to write. Per this
+  // function's own documented contract: a path SEPARATOR combined with a
+  // recognized JS module EXTENSION is a file path, never an npm package
+  // name. Without a JS extension it stays ambiguous with a legitimate scoped
+  // package name (`@org/name`), so only slash+extension triggers this (ARCH
+  // finding #57 — previously this fell through to npm resolution and
+  // produced a "bun add plugins/my-plugin.js" dead-end that could never work).
+  return /[\\/].*\.(m?js|cjs)$/i.test(str);
 }
 
 /**
@@ -96,13 +107,68 @@ function normalizePluginConfig(plugin: string | PluginConfig): ResolvedPluginCon
   };
 }
 
+type PlainObject = Record<string, unknown>;
+
+/** Recursion helper's "every nested plain object stays optional too" type. */
+type DeepPartial<T> = T extends PlainObject
+  ? { [K in keyof T]?: DeepPartial<T[K]> }
+  : T;
+
+function isPlainObject(v: unknown): v is PlainObject {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 /**
- * Tracks manifests we've already warned about so deprecation notices fire
- * once per process even if `resolveConfig` is called repeatedly (e.g. on
- * every preview regen).
+ * Recursively merge a "closed shape" nested config object — cli overrides
+ * manifest overrides preset, leaf-by-leaf, at any depth (e.g.
+ * `validate.heuristics.textDensityRange.min`, three levels deep). Keys always
+ * come from `preset`'s own shape, NOT the union with `cli`/`manifest`, so a
+ * key the manifest type happens to carry alongside real ones but `preset`
+ * (and `ResolvedConfig`) doesn't declare — e.g. the deprecated `output.html`
+ * — can never leak into the resolved result; deprecated fields get their own
+ * explicit warn-and-ignore check instead (see `resolveConfig` below).
+ *
+ * A leaf value (anything that isn't a plain object — string, number,
+ * boolean, array, or `null`) resolves with the same `??` precedence the old
+ * hand-written chain used almost everywhere: the first of (cli, manifest,
+ * preset) that isn't `null`/`undefined` wins. The old code special-cased four
+ * fields (`lint.configPath`, `validate.source.{markdownlint,htmlhint,
+ * stylelint}`) with a `!== undefined` ternary instead of `??`, so an explicit
+ * manifest `null` would win over the preset default rather than falling
+ * through to it — but every preset default for those four fields is already
+ * `null`, so `??` resolves to the exact same value for every preset in this
+ * codebase. `??` is also the right behavior for `styles` (ARCH #2): a
+ * manifest author who writes `styles:` with nothing under it gets `null` from
+ * the yaml parser, and that must fall through to `resolveActiveStyles`'s own
+ * discovery, not crash trying to `.filter()` a `null`.
+ *
+ * ARCH finding #24: replaces ~40 hand-written `c.x ?? m.x ?? preset.x` lines
+ * with this one small typed deep-merge. `validate.checks` — an OPEN
+ * dictionary keyed by check id, where a manifest can introduce ids the preset
+ * never declared — is intentionally NOT run through this (a closed-shape
+ * merge would silently drop custom check ids); it keeps its own one-line
+ * `{...preset, ...manifest, ...cli}` union merge in `resolveConfig`.
  */
-let outputHtmlDeprecationWarned = false;
-let allowedCalloutsDeprecationWarned = false;
+function mergeShape<T extends PlainObject>(
+  cli: DeepPartial<T> | null | undefined,
+  manifest: DeepPartial<T> | null | undefined,
+  preset: T
+): T {
+  const out: PlainObject = {};
+  for (const key of Object.keys(preset)) {
+    const presetValue = preset[key];
+    const manifestValue = manifest ? (manifest as PlainObject)[key] : undefined;
+    const cliValue = cli ? (cli as PlainObject)[key] : undefined;
+    out[key] = isPlainObject(presetValue)
+      ? mergeShape(
+          cliValue as PlainObject | undefined,
+          manifestValue as PlainObject | undefined,
+          presetValue
+        )
+      : cliValue ?? manifestValue ?? presetValue;
+  }
+  return out as T;
+}
 
 /**
  * Merge CLI args > manifest > preset defaults into a fully-resolved config.
@@ -112,37 +178,29 @@ export function resolveConfig(
   cliOverrides: Partial<PrintMdManifest>,
   manifest: PrintMdManifest
 ): ResolvedConfig {
-  const presetName = cliOverrides.preset ?? manifest.preset ?? "dtrpg";
-  const preset = PRESETS[presetName] ?? DTRPG_PRESET;
+  const presetName = cliOverrides.preset ?? manifest.preset;
+  const preset = resolvePreset(presetName);
 
   const m = manifest;
   const c = cliOverrides;
 
-  // Deprecation: `output.html` is no longer configurable — the rendered book
-  // HTML is always written as `book.html` and the viewer's iframe loads it
-  // by that fixed name. Warn once per process if a manifest still sets it.
-  if (
-    !outputHtmlDeprecationWarned &&
-    (m.output?.html !== undefined || c.output?.html !== undefined)
-  ) {
-    outputHtmlDeprecationWarned = true;
-    // eslint-disable-next-line no-console
-    console.warn(
+  // Deprecated-keys table (ARCH #24): manifest/CLI fields that still parse
+  // (so old manifests don't break) but no longer affect resolution — each
+  // gets a one-line once-per-process notice instead of being threaded
+  // through the merge above.
+  if (m.output?.html !== undefined || c.output?.html !== undefined) {
+    warnOnce(
+      "output-html-deprecated",
       "[print-md] manifest field `output.html` is deprecated and ignored. " +
         "The rendered book HTML is always written as `book.html`."
     );
   }
-
-  // Deprecation: `validate.source.allowedCallouts` is a no-op as of 2026-05-17
-  // (the `:::` container syntax and its validation check were removed).
   if (
-    !allowedCalloutsDeprecationWarned &&
-    ((m.validate?.source?.allowedCallouts?.length ?? 0) > 0 ||
-      (c.validate?.source?.allowedCallouts?.length ?? 0) > 0)
+    (m.validate?.source?.allowedCallouts?.length ?? 0) > 0 ||
+    (c.validate?.source?.allowedCallouts?.length ?? 0) > 0
   ) {
-    allowedCalloutsDeprecationWarned = true;
-    // eslint-disable-next-line no-console
-    console.warn(
+    warnOnce(
+      "allowed-callouts-deprecated",
       "[print-md] manifest field `validate.source.allowedCallouts` is " +
         "deprecated and ignored. The `:::` container syntax it gated was " +
         "removed 2026-05-17. See docs/migrations/2026-05-removing-container-syntax.md."
@@ -161,85 +219,29 @@ export function resolveConfig(
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
-    styles: c.styles ?? m.styles ?? preset.styles,
+    // ARCH #2: no preset fallback here — resolveActiveStyles (style-resolver.ts)
+    // is the single source of default-stylesheet truth (styles/book.css, else
+    // the first discovered .css, else []). Baking a preset default in here
+    // defeated that documented fallback chain on every real render path.
+    styles: c.styles ?? m.styles,
     plugins,
-    source: {
-      files: c.source?.files ?? m.source?.files ?? preset.source.files,
-      assets: c.source?.assets ?? m.source?.assets ?? preset.source.assets,
-    },
-    output: {
-      dir: c.output?.dir ?? m.output?.dir ?? preset.output.dir,
-      filename: c.output?.filename ?? m.output?.filename ?? preset.output.filename,
-    },
-    pdfx: {
-      flavor: c.pdfx?.flavor ?? m.pdfx?.flavor ?? preset.pdfx.flavor,
-      icc: c.pdfx?.icc ?? m.pdfx?.icc ?? preset.pdfx.icc,
-      stripAnnotations: c.pdfx?.stripAnnotations ?? m.pdfx?.stripAnnotations ?? preset.pdfx.stripAnnotations,
-    },
-    page: {
-      width: c.page?.width ?? m.page?.width ?? preset.page.width,
-      height: c.page?.height ?? m.page?.height ?? preset.page.height,
-      tolerance: c.page?.tolerance ?? m.page?.tolerance ?? preset.page.tolerance,
-    },
-    ink: {
-      maxTac: c.ink?.maxTac ?? m.ink?.maxTac ?? preset.ink.maxTac,
-      tacTolerance: c.ink?.tacTolerance ?? m.ink?.tacTolerance ?? preset.ink.tacTolerance,
-    },
-    lint: {
-      enabled: c.lint?.enabled ?? m.lint?.enabled ?? preset.lint.enabled,
-      configPath: c.lint?.configPath !== undefined
-        ? c.lint.configPath
-        : m.lint?.configPath !== undefined
-          ? m.lint.configPath
-          : preset.lint.configPath,
-    },
+    source: mergeShape(c.source, m.source, preset.source),
+    output: mergeShape(c.output, m.output, preset.output),
+    pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),
+    page: mergeShape(c.page, m.page, preset.page),
+    ink: mergeShape(c.ink, m.ink, preset.ink),
+    lint: mergeShape(c.lint, m.lint, preset.lint),
     validate: {
       enabled: c.validate?.enabled ?? m.validate?.enabled ?? preset.validate.enabled,
       checks: { ...preset.validate.checks, ...m.validate?.checks, ...c.validate?.checks },
-      source: {
-        markdownlint: c.validate?.source?.markdownlint !== undefined
-          ? c.validate.source.markdownlint
-          : m.validate?.source?.markdownlint !== undefined
-            ? m.validate.source.markdownlint
-            : preset.validate.source.markdownlint,
-        htmlhint: c.validate?.source?.htmlhint !== undefined
-          ? c.validate.source.htmlhint
-          : m.validate?.source?.htmlhint !== undefined
-            ? m.validate.source.htmlhint
-            : preset.validate.source.htmlhint,
-        stylelint: c.validate?.source?.stylelint !== undefined
-          ? c.validate.source.stylelint
-          : m.validate?.source?.stylelint !== undefined
-            ? m.validate.source.stylelint
-            : preset.validate.source.stylelint,
-        allowedCallouts: c.validate?.source?.allowedCallouts
-          ?? m.validate?.source?.allowedCallouts
-          ?? preset.validate.source.allowedCallouts,
-      },
-      assets: {
-        maxImageSize: c.validate?.assets?.maxImageSize ?? m.validate?.assets?.maxImageSize ?? preset.validate.assets.maxImageSize,
-        minImageDpi: c.validate?.assets?.minImageDpi ?? m.validate?.assets?.minImageDpi ?? preset.validate.assets.minImageDpi,
-        allowedColorSpaces: c.validate?.assets?.allowedColorSpaces ?? m.validate?.assets?.allowedColorSpaces ?? preset.validate.assets.allowedColorSpaces,
-        allowAlpha: c.validate?.assets?.allowAlpha ?? m.validate?.assets?.allowAlpha ?? preset.validate.assets.allowAlpha,
-        approvedFontFiles: c.validate?.assets?.approvedFontFiles ?? m.validate?.assets?.approvedFontFiles ?? preset.validate.assets.approvedFontFiles,
-        requireFontLicense: c.validate?.assets?.requireFontLicense ?? m.validate?.assets?.requireFontLicense ?? preset.validate.assets.requireFontLicense,
-      },
-      pdf: {
-        requireBookmarks: c.validate?.pdf?.requireBookmarks ?? m.validate?.pdf?.requireBookmarks ?? preset.validate.pdf.requireBookmarks,
-        requireTocLinks: c.validate?.pdf?.requireTocLinks ?? m.validate?.pdf?.requireTocLinks ?? preset.validate.pdf.requireTocLinks,
-        minImageResolution: c.validate?.pdf?.minImageResolution ?? m.validate?.pdf?.minImageResolution ?? preset.validate.pdf.minImageResolution,
-        forbidTransparency: c.validate?.pdf?.forbidTransparency ?? m.validate?.pdf?.forbidTransparency ?? preset.validate.pdf.forbidTransparency,
-        requireBleed: c.validate?.pdf?.requireBleed ?? m.validate?.pdf?.requireBleed ?? preset.validate.pdf.requireBleed,
-        bleedSize: c.validate?.pdf?.bleedSize ?? m.validate?.pdf?.bleedSize ?? preset.validate.pdf.bleedSize,
-      },
-      heuristics: {
-        maxDecorativeLayers: c.validate?.heuristics?.maxDecorativeLayers ?? m.validate?.heuristics?.maxDecorativeLayers ?? preset.validate.heuristics.maxDecorativeLayers,
-        textDensityRange: {
-          min: c.validate?.heuristics?.textDensityRange?.min ?? m.validate?.heuristics?.textDensityRange?.min ?? preset.validate.heuristics.textDensityRange.min,
-          max: c.validate?.heuristics?.textDensityRange?.max ?? m.validate?.heuristics?.textDensityRange?.max ?? preset.validate.heuristics.textDensityRange.max,
-        },
-        maxParagraphsPerSection: c.validate?.heuristics?.maxParagraphsPerSection ?? m.validate?.heuristics?.maxParagraphsPerSection ?? preset.validate.heuristics.maxParagraphsPerSection,
-      },
+      source: mergeShape(c.validate?.source, m.validate?.source, preset.validate.source),
+      assets: mergeShape(c.validate?.assets, m.validate?.assets, preset.validate.assets),
+      pdf: mergeShape(c.validate?.pdf, m.validate?.pdf, preset.validate.pdf),
+      heuristics: mergeShape(
+        c.validate?.heuristics,
+        m.validate?.heuristics,
+        preset.validate.heuristics
+      ),
     },
   };
 }

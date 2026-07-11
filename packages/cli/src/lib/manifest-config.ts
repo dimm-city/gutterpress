@@ -13,12 +13,11 @@
  * Bundle-safe (CLAUDE.md §1/§3): no runtime package.json reads, no computed
  * dynamic imports, no bundlers.
  */
-import { readFile } from "node:fs/promises";
-import { parseDocument, isSeq, isMap, YAMLSeq, Scalar } from "yaml";
+import { isSeq, isMap, YAMLSeq, Scalar } from "yaml";
 import {
-  resolveManifestPath,
   loadManifestDoc,
   writeManifestDoc as writeDoc,
+  scalarString,
 } from "./manifest-doc";
 
 /** The author-facing manifest subset the Config view can read + write. */
@@ -34,17 +33,6 @@ export interface ProjectConfigFields {
 /** Compute the difference of a partial update (only keys the caller set). */
 function hasKey(obj: object, key: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
-}
-
-/** Stringify a yaml scalar/Pair item the way `doc.get` would unwrap it. */
-function unwrapScalar(item: unknown): string {
-  if (item == null) return "";
-  // A bare Scalar's `.value` holds the primitive; a Pair (key: value) exposes
-  // `.value` on its value side. Handle both — the seq items under `authors:`
-  // are string Scalars; nested-map items arrive as Pairs when read via `getIn`.
-  const v = (item as { value?: unknown }).value;
-  if (typeof v === "string") return v;
-  return String(item);
 }
 
 /**
@@ -108,14 +96,14 @@ export async function setManifestFields(
 
 /**
  * Read the author-facing manifest subset for the Config view's Details section.
- * Reads via the same yaml parse path as the renderer (`loadManifest`) and
- * surfaces empty/absent fields as empty strings so the form inputs are editable.
+ * Loads via the same shared {@link loadManifestDoc} every other manifest reader/
+ * writer in this module uses (ARCH finding #25 — this used to re-implement
+ * loadManifestDoc's read-and-parse inline) and surfaces empty/absent fields as
+ * empty strings so the form inputs are editable.
  */
 export async function readManifestFields(projectDir: string): Promise<ProjectConfigFields> {
-  const file = resolveManifestPath(projectDir);
   try {
-    const text = await readFile(file, "utf8");
-    const doc = parseDocument(text);
+    const { doc } = await loadManifestDoc(projectDir);
     const out: ProjectConfigFields = {};
     // `doc.get(key)` (no keepNode) unwraps Scalars to their JS primitives; an
     // absent key returns undefined. Nested keys go through `getIn`.
@@ -123,13 +111,13 @@ export async function readManifestFields(projectDir: string): Promise<ProjectCon
     if (typeof title === "string") out.title = title;
     const authors = doc.get("authors", true);
     if (isSeq(authors)) {
-      out.authors = (authors.items as unknown[]).map((i) => unwrapScalar(i));
+      out.authors = (authors.items as unknown[]).map((i) => scalarString(i) ?? "");
     }
     const outFilename = doc.getIn(["output", "filename"]);
     if (typeof outFilename === "string") out.outputFilename = outFilename;
     const filesNode = doc.getIn(["source", "files"], true);
     if (isSeq(filesNode)) {
-      out.sourceFiles = (filesNode.items as unknown[]).map((i) => unwrapScalar(i));
+      out.sourceFiles = (filesNode.items as unknown[]).map((i) => scalarString(i) ?? "");
     } else {
       // `files: null` is a deliberate "all chapter files" sentinel; an absent
       // key stays undefined so the form can distinguish "not set" from "null".

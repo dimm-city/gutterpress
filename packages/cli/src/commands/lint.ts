@@ -1,7 +1,8 @@
 import { defineCommand } from "citty";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { runLint } from "../index.ts";
+import { log, runLint } from "../index.ts";
+import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
 
 export default defineCommand({
   meta: {
@@ -20,21 +21,34 @@ export default defineCommand({
     },
   },
   async run({ args }) {
-    const filesArg = typeof args.files === "string" ? args.files : undefined;
-    const manifestArg = typeof args.manifest === "string" ? args.manifest : undefined;
-    const filesArgIsManifestDir =
-      filesArg &&
-      existsSync(filesArg) &&
-      statSync(filesArg).isDirectory() &&
-      (existsSync(join(filesArg, "manifest.yaml")) ||
-        existsSync(join(filesArg, "manifest.yml")));
+    try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "lint");
 
-    const result = await runLint({
-      files: filesArgIsManifestDir ? undefined : filesArg,
-      manifest: manifestArg ?? (filesArgIsManifestDir ? filesArg : undefined),
-    });
-    if (!result.ok) {
-      process.exit(2);
+      const filesArg = typeof args.files === "string" ? args.files : undefined;
+      const manifestArg = typeof args.manifest === "string" ? args.manifest : undefined;
+      const filesArgIsManifestDir =
+        filesArg &&
+        existsSync(filesArg) &&
+        statSync(filesArg).isDirectory() &&
+        (existsSync(join(filesArg, "manifest.yaml")) ||
+          existsSync(join(filesArg, "manifest.yml")));
+
+      const result = await runLint({
+        files: filesArgIsManifestDir ? undefined : filesArg,
+        manifest: manifestArg ?? (filesArgIsManifestDir ? filesArg : undefined),
+      });
+      if (!result.ok) {
+        // M47: findings, not usage — exit 1 (was 2, which collided with the
+        // usage-error code and made "you typo'd a flag" indistinguishable
+        // from "your CSS has findings").
+        process.exit(EXIT_CODES.FINDINGS);
+      }
+    } catch (error) {
+      if (error instanceof UsageError) {
+        log.error(error.message);
+        process.exit(error.exitCode);
+      }
+      throw error;
     }
   },
 });

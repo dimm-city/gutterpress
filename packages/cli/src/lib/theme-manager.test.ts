@@ -137,6 +137,22 @@ describe("theme-manager", () => {
       writeManifest(dir, ["title: Test", ""].join("\n"));
       expect(await getActiveTheme(dir)).toBeNull();
     });
+
+    // ARCH finding #25: setActiveThemeStyle now writes via the shared
+    // writeManifestDoc (manifest-doc.ts) instead of a bespoke
+    // `mkdir(projectDir) + writeFile`. Prove the project-dir-creation behavior
+    // survived the swap by NOT pre-creating the directory (unlike `projectDir()`,
+    // which always mkdir's up front).
+    test("applying a theme creates a not-yet-existing project directory (writeManifestDoc's mkdir)", async () => {
+      const dir = join(TMP_ROOT, `not-yet-created-${counter++}`);
+      expect(existsSync(dir)).toBe(false);
+
+      const result = await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+
+      expect(existsSync(join(dir, "manifest.yaml"))).toBe(true);
+      expect(result.id).toBe("clean-book");
+      expect(readManifest(dir)).toContain(`${THEMES_DIR}/clean-book/theme.css`);
+    });
   });
 
   describe("importThemeFromFolder", () => {

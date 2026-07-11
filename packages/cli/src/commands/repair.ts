@@ -42,6 +42,7 @@ import {
   verifyRepoReadable,
 } from "../index.ts";
 import { makeManualGuidance } from "../lib/remote-auth/recovery/manual-guidance.ts";
+import { rejectExtraPositionals, UsageError } from "../lib/cli-args.ts";
 import type {
   ConfirmationGate,
   RecoveryResult,
@@ -132,6 +133,17 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "repair");
+    } catch (error) {
+      if (error instanceof UsageError) {
+        console.error(error.message);
+        process.exitCode = error.exitCode;
+        return;
+      }
+      throw error;
+    }
+
     const openedDir = path.resolve(args.dir ?? ".");
 
     // The lib resolves everything (the project's OWN repo root — never an

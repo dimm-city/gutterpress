@@ -43,13 +43,36 @@ export function parseInkCov(out: string) {
   return pages;
 }
 
+export interface InkCoveragePage {
+  page: number;
+  c: number;
+  m: number;
+  y: number;
+  k: number;
+  tac: number;
+}
+
+/**
+ * Discriminated result for {@link getPerPageInkCoverage} (finding #51).
+ * Ghostscript failing (crash, corrupt PDF, missing binary, a Windows PATH
+ * mismatch — see finding #3) must be distinguishable from a legitimately
+ * measured, empty-pages result: both used to collapse to the same `[]`,
+ * which let the ink-coverage check silently PASS a book it never actually
+ * measured.
+ */
+export type InkCoverageResult =
+  | { ok: true; pages: InkCoveragePage[] }
+  | { ok: false; error: string };
+
 /**
  * Get per-page ink coverage using Ghostscript's inkcov device.
- * Returns an array of per-page CMYK coverage values (in percentages).
+ * Returns `{ ok: true, pages }` with per-page CMYK coverage (in percentages)
+ * on success, or `{ ok: false, error }` if gs could not be run/parsed —
+ * callers must surface the failure, not treat it as "0 pages measured".
  */
 export async function getPerPageInkCoverage(
   pdfPath: string
-): Promise<Array<{ page: number; c: number; m: number; y: number; k: number; tac: number }>> {
+): Promise<InkCoverageResult> {
   try {
     const { stdout } = await execCapture("gs", [
       "-q",
@@ -59,15 +82,21 @@ export async function getPerPageInkCoverage(
       pdfPath,
     ]);
     const pages = parseInkCov(stdout);
-    return pages.map((p, i) => ({
-      page: i + 1,
-      c: p.c * 100,
-      m: p.m * 100,
-      y: p.y * 100,
-      k: p.k * 100,
-      tac: p.sum * 100,
-    }));
-  } catch {
-    return [];
+    return {
+      ok: true,
+      pages: pages.map((p, i) => ({
+        page: i + 1,
+        c: p.c * 100,
+        m: p.m * 100,
+        y: p.y * 100,
+        k: p.k * 100,
+        tac: p.sum * 100,
+      })),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
   }
 }

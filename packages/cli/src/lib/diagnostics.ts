@@ -2,16 +2,21 @@
  * System diagnostics — surfaces tool availability + versions for the
  * viewer's Help/About dialog and the (planned) `print-md doctor` CLI.
  *
- * Reuses `resolveChromiumExecutable`, `findTool`, and `isToolAvailable`
- * so install-hint copy stays in one place. Probes are run in parallel;
- * total wall time is dominated by the slowest `--version` invocation
- * (~50-200ms per tool that's present, ~5ms per tool that's missing).
+ * Reuses `resolveChromiumExecutable`, `findTool`, and `isToolAvailable` for
+ * tool detection. Install-hint copy lives in `./install-hints.ts` — the
+ * single source of truth also consumed by build-runner.ts's preflight and
+ * chromium.ts's `requireChromiumExecutable` — not duplicated here. Probes
+ * are run in parallel; total wall time is dominated by the slowest
+ * `--version` invocation (~50-200ms per tool that's present, ~5ms per tool
+ * that's missing).
  */
 
-import { spawn } from "node:child_process";
 import { platform, arch, release } from "node:os";
 import { resolveChromiumExecutable } from "./chromium";
 import { findTool, isToolAvailable } from "./tool-probe";
+import { execCapture } from "./exec";
+import { INSTALL_HINTS as CANONICAL_INSTALL_HINTS, fullInstallHint } from "./install-hints";
+import { PACKAGE_VERSION } from "./version";
 
 export interface ToolStatus {
   name: string;
@@ -42,23 +47,10 @@ export interface SystemDiagnostics {
   docsUrl: string;
 }
 
-const INSTALL_HINTS: Record<string, string> = {
-  chromium:
-    "Install Google Chrome, Chromium, or Microsoft Edge:\n" +
-    "  macOS:   brew install --cask google-chrome\n" +
-    "  Ubuntu:  sudo apt install -y chromium-browser\n" +
-    "  Windows: https://www.google.com/chrome/  (Edge is auto-detected if pre-installed)\n" +
-    "Or set CHROMIUM_PATH=/path/to/chrome",
-  gs:
-    "Install Ghostscript:\n" +
-    "  macOS:   brew install ghostscript\n" +
-    "  Ubuntu:  sudo apt install -y ghostscript\n" +
-    "  Windows: https://www.ghostscript.com/releases/gsdnld.html  (or: choco install ghostscript)",
-  qpdf:
-    "Install qpdf:\n" +
-    "  macOS:   brew install qpdf\n" +
-    "  Ubuntu:  sudo apt install -y qpdf\n" +
-    "  Windows: choco install qpdf  (or: https://github.com/qpdf/qpdf/releases)",
+const INSTALL_HINTS: Record<keyof typeof CANONICAL_INSTALL_HINTS, string> = {
+  chromium: `${fullInstallHint("chromium")}\nOr set CHROMIUM_PATH=/path/to/chrome`,
+  gs: fullInstallHint("gs"),
+  qpdf: fullInstallHint("qpdf"),
 };
 
 const TOOLS_TO_PROBE: Array<{
@@ -88,58 +80,23 @@ const TOOLS_TO_PROBE: Array<{
   },
 ];
 
-async function getVersion(bin: string, args: string[] = ["--version"]): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    let stdout = "";
-    let stderr = "";
-    const p = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
-    p.stdout.on("data", (c) => { stdout += c.toString(); });
-    p.stderr.on("data", (c) => { stderr += c.toString(); });
-    p.on("error", () => resolve(undefined));
-    p.on("exit", () => {
-      const combined = (stdout || stderr).trim();
-      const first = combined.split(/\r?\n/)[0]?.trim();
-      resolve(first || undefined);
-    });
-    // Hard 2s ceiling — a broken binary that hangs shouldn't block the dialog.
-    setTimeout(() => p.kill("SIGKILL"), 2000);
-  });
-}
+// Hard 2s ceiling — a broken binary that hangs shouldn't block the dialog.
+const GET_VERSION_TIMEOUT_MS = 2000;
 
-let cachedLibVersion: string | undefined;
-async function readLibVersion(): Promise<string> {
-  if (cachedLibVersion) return cachedLibVersion;
+// Delegates to exec.ts's shared execCapture (see its docstring for why this
+// is one implementation instead of one of four parallel copies). Note this
+// now requires a zero exit code to report a version string — gs/qpdf both
+// exit 0 on `--version` — whereas the old bespoke spawn here ignored the
+// exit code entirely and would happily surface stderr from a failing
+// invocation as if it were a version string.
+async function getVersion(bin: string, args: string[] = ["--version"]): Promise<string | undefined> {
   try {
-    const { readFile } = await import("node:fs/promises");
-    const { join, dirname } = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    // bun build emits the diagnostics code into a bundled chunk whose depth in
-    // dist/ is not fixed (dist/index.js, dist/api/index.js, or dist/chunk-*.js),
-    // so a hard-coded "../.." overshoots. Walk up from the running module and
-    // return the version of the FIRST package.json named "@dimm-city/print-md".
-    let dir = dirname(fileURLToPath(import.meta.url));
-    for (let i = 0; i < 6; i++) {
-      try {
-        const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf-8")) as {
-          name?: string;
-          version?: string;
-        };
-        if (pkg.name === "@dimm-city/print-md" && pkg.version) {
-          cachedLibVersion = pkg.version;
-          return cachedLibVersion;
-        }
-      } catch {
-        // no package.json here (or unreadable) — keep walking up
-      }
-      const parent = dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-    cachedLibVersion = "unknown";
+    const { stdout, stderr } = await execCapture(bin, args, { timeoutMs: GET_VERSION_TIMEOUT_MS });
+    const combined = (stdout || stderr).trim();
+    return combined.split(/\r?\n/)[0]?.trim() || undefined;
   } catch {
-    cachedLibVersion = "unknown";
+    return undefined;
   }
-  return cachedLibVersion;
 }
 
 /**
@@ -148,7 +105,7 @@ async function readLibVersion(): Promise<string> {
  * tool is present (one `--version` per tool, in parallel).
  */
 export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
-  const libVersion = await readLibVersion();
+  const libVersion = PACKAGE_VERSION;
 
   // Chromium gets its own special probe (uses the existing resolver, not just PATH).
   // NOTE: do NOT spawn the browser to read its version — on Windows `chrome.exe

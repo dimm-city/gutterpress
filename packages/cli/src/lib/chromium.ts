@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { findTool } from "./tool-probe";
+import { INSTALL_HINTS } from "./install-hints";
 
 const SYSTEM_PATHS: string[] = [
   // CI / Docker env vars (checked first — explicit override always wins)
@@ -96,9 +97,7 @@ export async function requireChromiumExecutable(): Promise<string> {
       "No Chrome / Chromium / Edge binary found. print-md needs a Chromium-based browser to render PDFs.",
       "",
       "Install one of:",
-      "  macOS:   brew install --cask google-chrome",
-      "  Ubuntu:  sudo apt install -y chromium-browser",
-      "  Windows: https://www.google.com/chrome/   (or use Microsoft Edge — auto-detected if installed in the default location)",
+      INSTALL_HINTS.chromium.body,
       "",
       "Or point to an existing install:",
       "  CHROMIUM_PATH=/path/to/chrome print-md build ...",

@@ -1,5 +1,6 @@
 import { defineCommand } from "citty";
 import { log, executeAndReport, type OutputFormat } from "../index.ts";
+import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
 
 export default defineCommand({
   meta: {
@@ -7,13 +8,19 @@ export default defineCommand({
     description: "Validate source files and/or PDF for print compliance",
   },
   args: {
+    dir: {
+      type: "positional",
+      description:
+        "Project directory (default: cwd). Sets the pre-build source directory unless --input is also given.",
+      required: false,
+    },
     pdf: {
       type: "string",
       description: "Path to the PDF file to validate (post-build checks)",
     },
     input: {
       type: "string",
-      description: "Source directory for pre-build checks",
+      description: "Source directory for pre-build checks (overrides the positional directory)",
     },
     manifest: {
       type: "string",
@@ -50,13 +57,22 @@ export default defineCommand({
     const format: OutputFormat =
       args.format === "json" ? "json" : "text";
 
+    // M46: `dir` (positional) sets the same source directory `--input` does —
+    // an explicit --input still wins, but `print-md validate ./my-book` now
+    // actually validates ./my-book instead of silently validating cwd.
+    const positionalDir = typeof args.dir === "string" ? args.dir : undefined;
+    const inputFlag = typeof args.input === "string" ? args.input : undefined;
+    const input = inputFlag ?? positionalDir;
+
     let result;
     try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "validate");
+
       result = await executeAndReport(
         {
           manifest: typeof args.manifest === "string" ? args.manifest : undefined,
           pdf: typeof args.pdf === "string" ? args.pdf : undefined,
-          input: typeof args.input === "string" ? args.input : undefined,
+          input,
           category: typeof args.category === "string" ? args.category : undefined,
           only: typeof args.only === "string" ? args.only : undefined,
           skip: typeof args.skip === "string" ? args.skip : undefined,
@@ -67,11 +83,11 @@ export default defineCommand({
       );
     } catch (error) {
       log.error(error instanceof Error ? error.message : String(error));
-      process.exit(2);
+      process.exit(error instanceof UsageError ? error.exitCode : EXIT_CODES.USAGE);
     }
 
     if (!result.ok) {
-      process.exit(1);
+      process.exit(EXIT_CODES.FINDINGS);
     }
   },
 });

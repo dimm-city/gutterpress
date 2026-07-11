@@ -124,32 +124,38 @@ export async function patchHtmlForPagedjs(
   vendorPath: string
 ): Promise<void> {
   const html = await readFile(htmlPath, "utf8");
-  const hasPaged =
-    /paged\.(polyfill|js)/i.test(html) || /pagedjs/i.test(html);
+  // Detection MUST use only the stable marker/filename regex owned by
+  // pagedjs-marker.ts — never a bare `pagedjs` substring test. A document
+  // whose body TEXT merely mentions "pagedjs" (e.g. this project's own user
+  // guide) is not evidence of an existing polyfill slot; treating it as one
+  // previously fell through to a branch that injected the break handler
+  // WITHOUT the polyfill script, so Paged.js never loaded and
+  // __PAGED_RENDERED__ never fired (see finding #22 / the 60-minute stall).
+  const hasPagedSlot = pagedjsPolyfillTagRegex().test(html);
 
   let patched = html;
+  const inject = `${BREAK_INSIDE_HANDLER}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
 
-  if (!hasPaged) {
-    const inject = `${BREAK_INSIDE_HANDLER}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
-    if (patched.includes("</head>")) {
-      patched = patched.replace("</head>", `${inject}\n</head>`);
-    } else {
-      patched = inject + "\n" + patched;
-    }
-  } else {
-    // Paged.js already present — replace the polyfill slot (stable marker, or a
-    // legacy paged.polyfill src) with handler + local vendor copy so
+  if (hasPagedSlot) {
+    // Paged.js slot already present — replace it (stable marker, or a legacy
+    // paged.polyfill src) with handler + local vendor copy so
     // PagedConfig.before is set before execution.
     const match = patched.match(pagedjsPolyfillTagRegex());
-
     if (match) {
-      const inject = `${BREAK_INSIDE_HANDLER}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
       patched = patched.replace(match[0], inject);
-    } else if (patched.includes("</head>")) {
-      patched = patched.replace("</head>", `${BREAK_INSIDE_HANDLER}\n</head>`);
-    } else {
-      patched = BREAK_INSIDE_HANDLER + "\n" + patched;
+      await writeFile(htmlPath, patched, "utf8");
+      return;
     }
+    // Defensive fallback: hasPagedSlot used the same regex, so this should be
+    // unreachable, but if it ever diverges, always fall through to a FULL
+    // injection (handler + polyfill) — never handler-only — so the polyfill
+    // is guaranteed present either way.
+  }
+
+  if (patched.includes("</head>")) {
+    patched = patched.replace("</head>", `${inject}\n</head>`);
+  } else {
+    patched = inject + "\n" + patched;
   }
 
   await writeFile(htmlPath, patched, "utf8");

@@ -59,9 +59,12 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
 
   const md = createMarkdownRenderer(opts.plugins);
 
-  // Source files concatenate directly into the body. @chapter (DC plugin)
-  // owns chapter wrappers and IDs; print-md core does not impose a file-level
-  // wrapper.
+  // Source files concatenate directly into the body. @chapter is a CORE
+  // markdown-it-paged marker (parsed + wrapped + labeled by
+  // `markdown-it-paged.js`'s `openChapter`, not any project-specific plugin —
+  // see CLAUDE.md's "frozen chapter-opener" note) that owns chapter wrappers
+  // and IDs; print-md core itself does not impose a separate file-level
+  // wrapper on top of that.
   let bodyContent = "";
   for (const file of files) {
     // ONE canonical identity per chapter (see chapter-id.ts): the same

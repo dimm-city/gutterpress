@@ -16,8 +16,8 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
+import { STATIC_MIME, resolveStaticPath } from '../lib/static-serve.ts';
 import type { ServerState } from './server-context.ts';
-import { handleApiRequest } from './api-middleware.ts';
 import { renderChapterPreviewHtml, incrementalPreviewEnabled } from './file-watcher.ts';
 
 /**
@@ -131,25 +131,6 @@ const HMR_CLIENT_SNIPPET = `
 </script>
 `;
 
-const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".htm": "text/html; charset=utf-8",
-  ".css": "text/css",
-  ".js": "application/javascript",
-  ".mjs": "application/javascript",
-  ".json": "application/json",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".woff": "font/woff",
-  ".woff2": "font/woff2",
-  ".ttf": "font/ttf",
-  ".otf": "font/otf",
-};
-
 /**
  * Preview shell (opt-in via PRINTMD_PREVIEW_SHELL=1). Hosts book.html in an
  * iframe and double-buffers content reloads: on a markdown edit it paginates a
@@ -224,25 +205,6 @@ export async function findAvailablePort(startPort: number): Promise<number> {
 }
 
 /**
- * Resolve a request URL pathname to an absolute path inside `tempDir`.
- * Returns `null` if the resolved path escapes the temp dir root.
- */
-function resolveStaticPath(urlPathname: string, tempDir: string): string | null {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(urlPathname);
-  } catch {
-    return null;
-  }
-  const resolvedTemp = path.resolve(tempDir);
-  const candidate = path.resolve(resolvedTemp, '.' + decoded);
-  if (candidate !== resolvedTemp && !candidate.startsWith(resolvedTemp + path.sep)) {
-    return null;
-  }
-  return candidate;
-}
-
-/**
  * Inject the HMR client snippet just before the closing `</body>` tag.
  */
 function injectHmrClient(html: string): string {
@@ -260,7 +222,12 @@ function injectHmrClient(html: string): string {
  * caching keys per-origin and accumulates a fresh copy of every asset on each
  * run (this grew a user's HTTP cache to ~1.5 GB and made launch take ~10s as
  * Chromium indexed it). Live preview content changes on every edit anyway, so
- * nothing here should ever be written to the HTTP disk cache.
+ * nothing in `state.tempDir` should ever be written to the HTTP disk cache —
+ * every tempDir caller below relies on the 'no-store' default. The one
+ * override is the embedded-assets route just below, which passes a long
+ * cache value: those files are content-fixed per binary build (not per
+ * project), so caching them across reloads within one preview session is
+ * safe and saves re-downloading the ~900 KB polyfill on every page load.
  */
 async function serveStatic(
   absPath: string,
@@ -296,7 +263,7 @@ async function serveStatic(
     return;
   }
 
-  const ct = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+  const ct = STATIC_MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
   // Empty files: force 200 with empty body so placeholders (e.g. empty CSS)
   // load without error in some clients.
   res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': cacheControl });
@@ -307,25 +274,24 @@ async function serveStatic(
  * URL paths that resolve to the process-wide embedded assets dir, NOT the
  * per-project tempDir. These never change within a process lifetime so we
  * serve them from a stable disk location (avoids per-open copies, lets
- * Defender hash-cache stay warm, and lets Chrome's HTTP cache reuse the
- * response across reloads in the same session).
+ * Defender hash-cache stay warm) AND with a long, immutable Cache-Control
+ * (see `EMBEDDED_CACHE_CONTROL` below) so Chrome's HTTP cache reuses the
+ * response across reloads within the same preview session instead of
+ * re-fetching the ~900 KB polyfill on every load.
  */
 const EMBEDDED_PREFIXES = ['/vendor/', '/preview/scripts/'];
 const EMBEDDED_EXACT = new Set(['/favicon.ico']);
 
+/**
+ * Embedded assets are content-fixed per binary build — the same URL path
+ * never serves different bytes within one install — so they are safe to mark
+ * `immutable` with a max-age far beyond any single preview session.
+ */
+const EMBEDDED_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+
 function matchesEmbedded(urlPathname: string): boolean {
   if (EMBEDDED_EXACT.has(urlPathname)) return true;
   return EMBEDDED_PREFIXES.some((p) => urlPathname.startsWith(p));
-}
-
-/**
- * Pipe a Web API `Response` object into a Node.js `http.ServerResponse`.
- */
-async function pipeWebResponse(webRes: Response, res: http.ServerResponse): Promise<void> {
-  const headers: Record<string, string> = {};
-  webRes.headers.forEach((v, k) => { headers[k] = v; });
-  res.writeHead(webRes.status, headers);
-  res.end(Buffer.from(await webRes.arrayBuffer()));
 }
 
 /**
@@ -353,29 +319,33 @@ export async function createPreviewServer(
       return;
     }
 
-    // 2. API routes.
-    if (url.pathname.startsWith('/api/')) {
-      const webReq = new Request(`http://127.0.0.1${req.url!}`, {
-        method: req.method,
-        headers: Object.fromEntries(
-          Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(', ') : v ?? ''])
-        ),
+    // 2. API routes. The preview server is headless (viewer chrome — folder
+    // picker, GitHub clone — lives in the desktop app), so GET /api/status is
+    // the only endpoint: kept for backwards compatibility with any external
+    // tooling that checks server liveness. Inlined directly (finding #54) —
+    // a two-module Web-Request/Response dispatcher was retained scaffolding
+    // for exactly one hard-coded route.
+    if (url.pathname === '/api/status' && req.method === 'GET') {
+      const body = JSON.stringify({
+        hasInput: !!state.currentInputPath,
+        currentPath: state.currentInputPath,
       });
-      const webRes = await handleApiRequest(webReq, state);
-      if (webRes) {
-        await pipeWebResponse(webRes, res);
-        return;
-      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(body);
+      return;
+    }
+    if (url.pathname.startsWith('/api/')) {
       res.writeHead(404);
       res.end('Not Found');
       return;
     }
 
     // 3. Embedded assets (vendor + viewer scripts) — served from the
-    // process-wide extracted assets dir, with long cache headers. These
-    // never change within a process lifetime, so we never copy them into
-    // per-project tempDirs (avoids redundant disk writes that Windows
-    // Defender re-scans on every folder open).
+    // process-wide extracted assets dir, with a long, immutable cache header
+    // (EMBEDDED_CACHE_CONTROL). These never change within a process
+    // lifetime, so we never copy them into per-project tempDirs (avoids
+    // redundant disk writes that Windows Defender re-scans on every folder
+    // open) and it's safe to let the browser cache them across reloads.
     if (matchesEmbedded(url.pathname)) {
       const rel = url.pathname.slice(1); // strip leading '/'
       try {
@@ -383,7 +353,7 @@ export async function createPreviewServer(
         await serveStatic(
           absPath,
           res,
-          'no-store',
+          EMBEDDED_CACHE_CONTROL,
         );
       } catch {
         res.writeHead(404);

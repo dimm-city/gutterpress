@@ -137,11 +137,18 @@ export interface ResolvedPluginConfig {
   options: Record<string, unknown>;
 }
 
-/** Fully-resolved config with no optional fields. */
+/**
+ * Fully-resolved config. Every field is a concrete default with one
+ * deliberate exception: `styles` (ARCH finding #2). There is no preset
+ * default for it — `undefined` means "the manifest didn't set one", and
+ * `resolveActiveStyles` (style-resolver.ts) is the single source of truth for
+ * what that resolves to (styles/book.css, else the first discovered `.css`,
+ * else `[]`). Baking a preset default in here defeated that fallback chain.
+ */
 export interface ResolvedConfig {
   title: string;
   authors: string[];
-  styles: string[];
+  styles?: string[];
   plugins: ResolvedPluginConfig[];
   source: {
     files: string[] | null;
@@ -180,7 +187,6 @@ export interface ResolvedConfig {
       markdownlint: string | false | null;
       htmlhint: string | false | null;
       stylelint: string | false | null;
-      allowedCallouts: string[];
     };
     assets: {
       maxImageSize: number;

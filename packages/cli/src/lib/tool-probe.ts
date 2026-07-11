@@ -15,19 +15,15 @@
  *     runBuild so a missing tool becomes an actionable error in 50ms instead
  *     of a confusing ENOENT 90 seconds into the pipeline.
  *
- * One implementation; one place to fix bugs.
+ * One implementation; one place to fix bugs. Spawning goes through
+ * exec.ts's `execCapture`, which also owns the shared, correctly
+ * delimiter-joined `enhancedPath` (this file used to keep its own copy of
+ * that PATH construction, and exec.ts's copy hardcoded `:` — see
+ * docs/reviews 2026-07-10-architecture-critical-review.md, finding #3).
  */
 
-import { spawn } from "node:child_process";
-import { resolve as resolvePath, join, delimiter } from "node:path";
 import { platform } from "node:os";
-
-/**
- * print-md's own node_modules/.bin so locally-installed tools (htmlhint,
- * markdownlint-cli2, stylelint, etc) are findable when running from source.
- */
-const localBin = resolvePath(join(import.meta.dirname, "..", "..", "node_modules", ".bin"));
-const enhancedPath = `${localBin}${delimiter}${process.env.PATH ?? ""}`;
+import { execCapture } from "./exec";
 
 const IS_WINDOWS = platform() === "win32";
 const PROBE_CMD = IS_WINDOWS ? "where.exe" : "which";
@@ -36,14 +32,12 @@ const PROBE_CMD = IS_WINDOWS ? "where.exe" : "which";
  * Returns true if `tool` is resolvable via the platform's path-probe command.
  */
 export async function isToolAvailable(tool: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const p = spawn(PROBE_CMD, [tool], {
-      stdio: ["ignore", "ignore", "ignore"],
-      env: { ...process.env, PATH: enhancedPath },
-    });
-    p.on("error", () => resolve(false));
-    p.on("exit", (code) => resolve(code === 0));
-  });
+  try {
+    await execCapture(PROBE_CMD, [tool]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -54,18 +48,11 @@ export async function isToolAvailable(tool: string): Promise<boolean> {
  * return the first line.
  */
 export async function findTool(tool: string): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    let stdout = "";
-    const p = spawn(PROBE_CMD, [tool], {
-      stdio: ["ignore", "pipe", "ignore"],
-      env: { ...process.env, PATH: enhancedPath },
-    });
-    p.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    p.on("error", () => resolve(undefined));
-    p.on("exit", (code) => {
-      if (code !== 0) return resolve(undefined);
-      const firstLine = stdout.split(/\r?\n/).find((line) => line.trim().length > 0);
-      resolve(firstLine?.trim() || undefined);
-    });
-  });
+  try {
+    const { stdout } = await execCapture(PROBE_CMD, [tool]);
+    const firstLine = stdout.split(/\r?\n/).find((line) => line.trim().length > 0);
+    return firstLine?.trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }
