@@ -108,7 +108,10 @@ test("C2: the book switcher is wired into the status bar and gated on books.leng
 });
 
 test("C2: recents for a repo-backed project key on the repo root, remembering the last active book", () => {
-  const main = read("electron/main.ts");
-  expect(main).toContain('path: source.type === "local-git-folder" ? source.repoRoot : openedDir');
-  expect(main).toContain("lastActiveBook: openedDir");
+  // The preview-open pipeline (recents upsert included) was extracted from
+  // main.ts into electron/preview/controller.ts (ARCH review finding #6) —
+  // this logic now lives there, not in main.ts.
+  const controller = read("electron/preview/controller.ts");
+  expect(controller).toContain('path: source.type === "local-git-folder" ? source.repoRoot : openedDir');
+  expect(controller).toContain("lastActiveBook: openedDir");
 });

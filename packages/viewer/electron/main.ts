@@ -25,18 +25,28 @@ import {
   mergeSettings,
   type AppSettings,
 } from "./settings-store";
-import { createPrefsStore } from "./prefs-store";
-import { registerWriteHooks } from "./server-bridge/write-hooks";
-import { registerWatchHooks } from "./server-bridge/watch-hooks";
-import { registerAppHooks } from "./server-bridge/app-hooks";
-import { registerPrefsHooks } from "./server-bridge/prefs-hooks";
-import { registerRecoveryHooks } from "./server-bridge/recovery-hooks";
-import { registerDesktopHooks, registerDoctorHooks } from "./server-bridge/host-hooks";
-import { registerMediaHooks } from "./server-bridge/media-hooks";
-import { registerVcsHooks } from "./server-bridge/vcs-hooks";
-import { registerRemoteHooks } from "./server-bridge/remote-hooks";
+import { createPrefsStore, type ViewerPrefs } from "./prefs-store";
+// ARCH review #31: the 11 independent `registerXHooks()` service locators
+// have been collapsed into ONE `registerHostServices()` call (below) that
+// writes a single typed `HostServices` object. Each domain module below is
+// now imported for its TYPE only — main.ts builds one plain object per
+// domain at the same place it always did, and hands all of them to
+// `registerHostServices` together, once, after every dependency exists.
+import { registerHostServices } from "./server-bridge/host-services";
+import type { WriteHooks } from "./server-bridge/write-hooks";
+import type { WatchHooks } from "./server-bridge/watch-hooks";
+import type { AppHooks } from "./server-bridge/app-hooks";
+import type { PrefsHooks } from "./server-bridge/prefs-hooks";
+import type { RecoveryHooks } from "./server-bridge/recovery-hooks";
+import type { DesktopHooks, DoctorHooks } from "./server-bridge/host-hooks";
+import type { MediaHooks } from "./server-bridge/media-hooks";
+import type { VcsHooks } from "./server-bridge/vcs-hooks";
+import type { RemoteHooks } from "./server-bridge/remote-hooks";
+import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
+import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors } from "./server-bridge/friendly-errors";
-import { registerConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
+import type { ConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
+import type { FsGuardHooks } from "./server-bridge/fs-guard";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -53,25 +63,21 @@ import {
 } from "./updater";
 import type { UpdaterEventPayload } from "./bridge-types";
 import {
-  upsertRecentFolder,
   removeRecentFolder,
   toggleFavoriteFolder,
+  type RecentFolder,
 } from "./recent-folders";
 import {
   readProjectState,
   writeProjectState,
-  migrateLegacyProjectState,
+  type ProjectStateMap,
 } from "./project-state";
-import {
-  electronTokenStore,
-  type HostCredential,
-} from "./credential-store";
+import { electronTokenStore } from "./credential-store";
 import {
   setRecoveryBridgeWindow,
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
-  decideRunAgainAfterPreflight,
   getConflictPreviewImpl,
   preExportSyncGateBlockError,
 } from "./recovery-bridge";
@@ -79,11 +85,12 @@ import {
   AutoSyncOrchestrator,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
-import { mapRecoveryResultToEmit } from "./auto-sync/recovery-emit";
 import {
   ExportController,
   type ExportBuildArgs,
 } from "./export/controller";
+import { PreviewOpenController, type PreviewHandle } from "./preview/controller";
+import { GitHubDeviceFlow } from "./github-device-flow";
 import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
 import { FolderWatcher } from "./folder-watch/watcher";
 import type {
@@ -94,7 +101,6 @@ import type {
   ConfirmationGate,
   CreateProjectOptions,
   CreateProjectResult,
-  DeviceCodeInfo,
   PluginValidationResult,
   PrintSafeWarning,
   ProjectCapabilities,
@@ -110,12 +116,9 @@ import type {
   RepoBook,
   RestoreVersionResult,
   SourceProvider,
-  SyncErrorKind,
-  SyncOutcome,
   SystemDiagnostics,
   ThemeInfo,
   TokenStore as RecoveryTokenStore,
-  ConflictResolution as ConflictResolutionChoice,
 } from "@dimm-city/print-md";
 // The splash markup ships as a string baked into the main bundle (electron-vite
 // inlines `?raw`), so there is no separate file to resolve at runtime.
@@ -184,13 +187,6 @@ slog("main.js evaluated");
 // no afterPack hook, no symlink dance, no require()/Function() interop trick.
 // ──────────────────────────────────────────────────────────────────────────
 
-interface PreviewHandle {
-  url: string;
-  port: number;
-  inputPath: string;
-  missingSharedAssets?: string[];
-  stop: () => Promise<void>;
-}
 interface SplitOutPath {
   outDir: string;
   pdfFileOverride?: string;
@@ -200,17 +196,6 @@ interface BuildResult {
   htmlPath?: string;
   pdfPath?: string;
   fingerprintPath?: string;
-}
-interface ManifestWithPath {
-  manifest: { title?: string };
-  manifestDir: string;
-}
-interface GitHubAuthProviderInstance {
-  connect(callbacks: {
-    onUserCode: (info: DeviceCodeInfo) => void;
-    signal?: AbortSignal;
-  }): Promise<HostCredential>;
-  validate(credential: HostCredential): Promise<boolean>;
 }
 
 type LibModule = typeof import("@dimm-city/print-md");
@@ -244,14 +229,14 @@ let activePreview: PreviewHandle | null = null;
 // ./prefs-store (Phase 5b extraction; unit-tested in
 // tests/platform/prefs-store.test.ts) behind an injected-fs store factory.
 // main.ts instantiates the store with the live Electron userData dir +
-// node:fs/promises + the imported migrateLegacyProjectState and uses its
-// closures unchanged.
+// node:fs/promises and uses its closures unchanged. Writes are atomic
+// (`rename` over a `.tmp` file) and a corrupt read is preserved rather than
+// discarded (#34).
 // ──────────────────────────────────────────────────────────────────────────
 
 const { readPrefs, writePrefs, updatePrefs, existingDirectory } = createPrefsStore({
   getUserDataDir: () => app.getPath("userData"),
-  fs: { readFile, writeFile, mkdir, stat },
-  migrateLegacyProjectState,
+  fs: { readFile, writeFile, mkdir, stat, rename },
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -262,12 +247,13 @@ const { readPrefs, writePrefs, updatePrefs, existingDirectory } = createPrefsSto
 // ./settings-store (Phase 5b extraction; unit-tested in
 // tests/platform/settings-store.test.ts). main.ts instantiates the store with
 // the live Electron userData dir + node:fs/promises and uses its read/write
-// closures unchanged.
+// closures unchanged. Writes are atomic and a corrupt read is preserved
+// rather than discarded (#34).
 // ──────────────────────────────────────────────────────────────────────────
 
 const { readSettings, writeSettings } = createSettingsStore({
   getUserDataDir: () => app.getPath("userData"),
-  fs: { readFile, writeFile, mkdir },
+  fs: { readFile, writeFile, mkdir, rename },
 });
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -377,10 +363,9 @@ const operationLogPath = (repoSlug: string): string =>
 // The watcher/debounce/normalized-dir state + control logic lives in the
 // FolderWatcher class (electron/folder-watch/watcher.ts; unit-tested in
 // tests/platform/folder-watcher.test.ts) behind injected deps. main.ts keeps
-// thin startFolderWatch/stopFolderWatch delegators (below) and a module-level
-// MIRROR of `watchedDir` (updated ONLY via the watcher's onWatchedDirChanged)
-// SOLELY so the many off-limits reads stay byte-identical.
-let watchedDir: string | null = null;
+// thin startFolderWatch/stopFolderWatch delegators (below) and reads the
+// currently-watched dir straight off the watcher via `folderWatch.getWatchedDir()`
+// — no separate module-level copy of that state.
 
 // ── Automatic snapshots (RC1-3) ──────────────────────────────────────────────
 // Host-side debounced auto-snapshot: every edit signal (fs:writeFile inside the
@@ -398,20 +383,43 @@ let watchedDir: string | null = null;
 // The single scheduler instance (electron/auto-snapshot/scheduler.ts) owns the
 // pending timer + policy + the run/flush/cancel control logic — unit-tested in
 // tests/platform/auto-snapshot-scheduler.test.ts. main.ts wires the injected
-// deps below, keeps thin delegators (scheduleAutoSnapshot/flushAutoSnapshot/
-// cancelAutoSnapshotTimer) for its call sites, and keeps a module-level MIRROR
-// of the pending state (updated ONLY via onPendingChanged) SOLELY so createWindow's
-// `autoSnapshotPending !== null` read stays byte-identical without reaching into
-// the scheduler.
-let autoSnapshotPending: { dir: string } | null = null;
+// deps below and keeps thin delegators (scheduleAutoSnapshot/flushAutoSnapshot/
+// cancelAutoSnapshotTimer) for its call sites; createWindow's close-gate reads
+// pending state via `autoSnapshot.hasPending()` directly — no separate mirror.
 
 const autoSnapshot = new AutoSnapshotScheduler({
   loadLib,
   readSettings,
-  getWatchedDir: () => watchedDir,
+  getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
-  onPendingChanged: (dir) => {
-    autoSnapshotPending = dir === null ? null : { dir };
+  // M39 (UX critical review): the safety net used to fail silently forever
+  // (console.error + return) while the pill kept asserting "Version history
+  // on". Once AUTO_SNAPSHOT_FAILURE_THRESHOLD consecutive failures hit for the
+  // SAME dir, surface it through the SAME "sync:status" push channel + guidance
+  // dialog the transparent-sync recovery flow already uses (RecoveryUiController
+  // / RecoveryGuidanceDialog react to state:"error" + guidance today — this is
+  // also the one channel local-git-folder projects with no remote already
+  // receive events on, via the one-shot "local" status below) rather than
+  // inventing a second signal path. Scoped to the still-open project so a
+  // failure from a since-closed/switched project never surfaces stale.
+  onSnapshotFailed: (dir, consecutiveFailures, error) => {
+    if (folderWatch.getWatchedDir() !== dir) return;
+    const detail = error instanceof Error ? error.message : String(error);
+    emitSyncStatus({
+      state: "error",
+      projectDir: dir,
+      lastSyncAt: null,
+      logFile: operationLogPath(path.basename(dir)),
+      guidance: {
+        userSummary:
+          "Version history needs attention — the last few automatic backups of this project didn't complete.",
+        recommendedNextStep:
+          "Try saving a version now. If it keeps failing, make sure no other program has the project folder open or locked.",
+        recommendedAction: "Try again",
+        recommendedActionKey: "restore_repo",
+        supportDetails: `Auto-snapshot failed ${consecutiveFailures} times in a row for ${dir}: ${detail}`,
+      },
+    });
   },
 });
 
@@ -469,11 +477,10 @@ function emitSyncStatus(payload: SyncStatusPayload): void {
 // the per-repo FIFO lock only serializes operations WITHIN a process. Rather
 // than a cross-process lock manager, this app leaves a small liveness marker
 // under the repo's own `.git` dir while a project is open (lib/app-heartbeat.ts,
-// shared by both hosts). `watchedDir` (the folder watcher's key) may be a BOOK
-// subfolder inside a larger repo (repo-root sessions), so the heartbeat always
-// targets the resolved repo root — a mirror of `watchedDir`, kept in lock-step
-// the same way, SOLELY so the close/quit cleanup below knows what to remove.
-let openRepoDir: string | null = null;
+// shared by both hosts). `folderWatch.getWatchedDir()` (the folder watcher's
+// key) may be a BOOK subfolder inside a larger repo (repo-root sessions), so
+// the heartbeat always targets the resolved repo root, re-derived from the
+// watcher's own tracked dir on both write and cleanup — no separate mirror.
 
 /**
  * Best-effort: resolve `dir`'s repo root and (re)write the heartbeat there.
@@ -489,7 +496,6 @@ async function refreshAppHeartbeat(dir: string): Promise<void> {
     const lib = await loadLib();
     const source = await lib.detectProjectSource(dir);
     if (source.type !== "local-git-folder") return;
-    openRepoDir = source.repoRoot;
     const settings = await readSettings();
     const periodicMs = lib.autoSyncDelayMs(settings.versionHistory);
     await lib.writeAppHeartbeat(source.repoRoot, Date.now(), process.pid, lib.heartbeatTtlMs(periodicMs));
@@ -498,13 +504,22 @@ async function refreshAppHeartbeat(dir: string): Promise<void> {
   }
 }
 
-/** Best-effort: remove the heartbeat for the currently tracked repo, if any. */
+/**
+ * Best-effort: remove the heartbeat for the currently (or just-stopped)
+ * watched repo, if any. Called from the folder watcher's onStop callback,
+ * which fires BEFORE the watcher clears its own tracked dir — so
+ * `folderWatch.getWatchedDir()` still returns the project that was open,
+ * the same dir refreshAppHeartbeat resolved its repo root from.
+ */
 function clearAppHeartbeat(): void {
-  const dir = openRepoDir;
+  const dir = folderWatch.getWatchedDir();
   if (!dir) return;
-  openRepoDir = null;
   void loadLib()
-    .then((lib) => lib.removeAppHeartbeat(dir))
+    .then(async (lib) => {
+      const source = await lib.detectProjectSource(dir);
+      if (source.type !== "local-git-folder") return;
+      await lib.removeAppHeartbeat(source.repoRoot);
+    })
     .catch((e) => console.warn("[app-heartbeat] cleanup failed (non-fatal):", e));
 }
 
@@ -514,7 +529,7 @@ const autoSync = new AutoSyncOrchestrator({
   readSettings,
   emit: emitSyncStatus,
   now: Date.now,
-  getWatchedDir: () => watchedDir,
+  getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
   buildRecoveryContext,
   // Piggyback on the periodic safety-sync tick + edit debounce — no dedicated
@@ -522,39 +537,14 @@ const autoSync = new AutoSyncOrchestrator({
   refreshHeartbeat: (dir) => void refreshAppHeartbeat(dir),
 });
 
-/** Prompt initial pull after a project opens — seconds, NOT coupled to the
- *  10-min snapshot debounce (that coupling delayed the open pull ~10.5 min and
- *  hid incoming teammate changes until the user happened to edit something). */
-const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
-
-/** Detach a timer from the event loop so it never blocks app quit. */
-function unref(t: NodeJS.Timeout): void {
-  if (typeof t.unref === "function") t.unref();
-}
-
-/**
- * Arm a one-shot auto-sync for `dir` after `delayMs`, but only fire it if `dir`
- * is STILL the watched project when the timer expires (a project switch cancels
- * the stale run). The timer is unref'd so it never blocks quit. Folds the
- * copy-pasted "setTimeout → run if still watching → unref" idiom used across the
- * preview open/preflight paths into one helper.
- */
-function scheduleWatchedSync(dir: string, delayMs: number): void {
-  unref(
-    setTimeout(() => {
-      if (watchedDir === dir) void autoSync.run(dir);
-    }, delayMs),
-  );
-}
-
 const folderWatch = new FolderWatcher({
   watch: (dir, options, cb) => watch(dir, options, cb),
   resolve: (p) => path.resolve(p),
   onFolderChanged: (name) =>
     mainWindow?.webContents.send("fs:folderChanged", { filename: name }),
   onEditSignal: (dir) => {
-    // Edit signal: external editors and in-app saves both land here. Use the
-    // normalized dir (the resolved form) so the map key matches watchedDir.
+    // Edit signal: external editors and in-app saves both land here. `dir` is
+    // already the normalized (resolved) form, matching folderWatch.getWatchedDir().
     scheduleAutoSnapshot(dir);
     // Arm the sync debounce (strictly longer than snapshot — see scheduleAutoSync).
     autoSync.schedule(dir);
@@ -565,14 +555,10 @@ const folderWatch = new FolderWatcher({
     void flushAutoSnapshot();
     // Cancel all sync timers when the watched folder changes (project switch/close).
     autoSync.cancelAll();
-    // Same flush point covers app quit (mainWindow "closed" calls stopFolderWatch),
-    // so removing the heartbeat here covers both project close and app quit.
+    // Same flush point covers app quit (mainWindow "closed" calls stopFolderWatch).
+    // Runs BEFORE the watcher clears its own tracked dir (see FolderWatcher.stop),
+    // so clearAppHeartbeat can still read folderWatch.getWatchedDir() here.
     clearAppHeartbeat();
-  },
-  // Keep the module-level MIRROR in lock-step with the watcher's normalized dir
-  // so the many off-limits `watchedDir` reads stay byte-identical.
-  onWatchedDirChanged: (dir) => {
-    watchedDir = dir;
   },
 });
 
@@ -779,11 +765,13 @@ function createWindow() {
   // SvelteKit DX while still exercising the real Electron preload bridge
   // (window.electron.* IPC) against the same main process used in prod.
   //
-  // Prod mode: adapter-static emits an SPA in build/. We serve it via the
-  // app:// protocol so the page has a stable origin. Load the root "/" —
-  // NOT "/index.html" — so SvelteKit's client router sees the root route.
-  // (Loading /index.html makes the router try to resolve a page named
-  // "index.html" and throw "Not found: /index.html".)
+  // Prod mode: adapter-node emits a Node HTTP handler to build/handler.js.
+  // startSvelteKitServer() runs it on a local 127.0.0.1 server and
+  // registerAppProtocol() proxies app:// requests to it via fetch, so the
+  // page has a stable app:// origin. Load the root "/" — NOT "/index.html" —
+  // so SvelteKit's client router sees the root route. (Loading /index.html
+  // makes the router try to resolve a page named "index.html" and throw
+  // "Not found: /index.html".)
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   mainWindow.loadURL(devUrl || "app://local/");
   if (devUrl) {
@@ -825,7 +813,7 @@ function createWindow() {
   mainWindow.on("close", (e) => {
     if (isQuitting || !mainWindow) return;
     const needsFlush = rendererDirty;
-    const needsSnapshot = autoSnapshotPending !== null;
+    const needsSnapshot = autoSnapshot.hasPending();
     if (!needsFlush && !needsSnapshot) return;
     e.preventDefault();
     isQuitting = true;
@@ -894,22 +882,24 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // ──────────────────────────────────────────────────────────────────────────
-// Register write hooks for server routes (Phase 2A)
+// Host-service hook groups for server routes (Phase 2A) (ARCH review #31).
 // The SvelteKit handler runs in this same process but in a separate Vite
-// bundle scope. We use globalThis to pass the live hook references so the
-// fs:writeFile server route can trigger auto-snapshot/sync debounce.
+// bundle scope. Each group below is a plain object built where its
+// dependencies live; none of them writes to globalThis on its own — they are
+// all handed to ONE `registerHostServices()` call once every group exists
+// (see the end of this section, next to the former conflict-preview site).
 // ──────────────────────────────────────────────────────────────────────────
-registerWriteHooks({
+const writeHooksImpl: WriteHooks = {
   scheduleAutoSnapshot,
   scheduleAutoSync: (dir: string) => autoSync.schedule(dir),
-  getWatchedDir: () => watchedDir,
-});
-registerWatchHooks({
+  getWatchedDir: () => folderWatch.getWatchedDir(),
+};
+const watchHooksImpl: WatchHooks = {
   startFolderWatch,
   stopFolderWatch,
-  getWatchedDir: () => watchedDir,
-});
-registerAppHooks({
+  getWatchedDir: () => folderWatch.getWatchedDir(),
+};
+const appHooksImpl: AppHooks = {
   updateSplash,
   showMainWindowAndCloseSplash,
   setRendererDirty: (isDirty: boolean) => { rendererDirty = !!isDirty; },
@@ -917,13 +907,15 @@ registerAppHooks({
   sendToRenderer: (channel: string, ...args: unknown[]) => {
     mainWindow?.webContents.send(channel, ...args);
   },
-});
+};
 // Wire the PDF-export progress sender to the live main window (the export
 // subsystem itself lives in electron/pdf-export.ts).
 initPdfExport({
   sendProgress: (event) => mainWindow?.webContents.send("build:progress", event),
 });
-// registerPrefsHooks is called after discoverScanDeps is initialized (below)
+// prefsHooksImpl is built after discoverScanDeps is initialized (below); the
+// single registerHostServices() call that consumes it lives further down
+// still (ARCH #31 — see that call site's comment).
 
 // ──────────────────────────────────────────────────────────────────────────
 // IPC handlers (replace the deleted /api/* SvelteKit routes)
@@ -962,26 +954,6 @@ function secureHandle<Args extends unknown[], R>(
   });
 }
 
-// dialog:openDirectory migrated to SvelteKit server route (src/routes/api/dialog/open-directory).
-// dialog:savePdf, dialog:pickImageFile, dialog:pickImageFiles, fs:copyFile
-// migrated to SvelteKit server routes (src/routes/api/dialog/* and
-// src/routes/api/fs/copy-file) — see Phase 2A migration.
-
-// ── Media panel (#47): project image listing / thumbnails / inspection ───────
-
-// media:listImages, media:thumbnail, media:inspect migrated to SvelteKit server routes
-// (src/routes/api/media/*) — see Phase 2C migration.
-
-// (thumbnail/inspect handlers removed — migrated to server routes)
-
-// shell:openExternal, shell:showInFolder, log:read migrated to SvelteKit
-// server routes (src/routes/api/shell/* and src/routes/api/log/read) —
-// see Phase 2A migration.
-
-// ── Filesystem primitives (PlatformAdapter, #41) ──────────────────────────
-// fs:readFile, fs:writeFile, fs:statFile migrated to SvelteKit server routes
-// (src/routes/api/fs/*) — see Phase 2A migration.
-
 // ── Folder watching (PlatformAdapter.watchFolder, #44) ──────────────────────
 // Backs external-edit detection: a shallow fs.watch on the open project whose
 // debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
@@ -995,22 +967,21 @@ secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
 
 secureHandle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
   const normalized = path.resolve(dirPath);
-  if (watchedDir === normalized) stopFolderWatch();
+  if (folderWatch.getWatchedDir() === normalized) stopFolderWatch();
 });
 
 // ── Crash recovery (#44) ────────────────────────────────────────────────────
 // Sidecar snapshots under userData/recovery/. Never touches the user's file.
 // Exposed via SvelteKit server routes (src/routes/api/recovery/*) through
 // globalThis hooks — no IPC needed.
-registerRecoveryHooks({
+const recoveryHooksImpl: RecoveryHooks = {
   write: (filePath: string, content: string, baseMtimeMs: number) =>
     writeRecoveryStore(recoveryDir(), filePath, content, baseMtimeMs),
   clear: (filePath: string) => clearRecoveryStore(recoveryDir(), filePath),
   list: (projectDir: string) => listRecoveryStore(recoveryDir(), projectDir),
-});
+};
 
 // ── Unsaved-changes close gate (#44) ────────────────────────────────────────
-// app:setDirtyState migrated to server route (src/routes/api/app/dirty-state).
 // app:flushDone kept as IPC: the preload's onFlushBeforeClose fires it from
 // within the renderer via ipcRenderer.invoke — cannot route through fetch.
 secureHandle("app:flushDone", async (): Promise<void> => {
@@ -1018,15 +989,7 @@ secureHandle("app:flushDone", async (): Promise<void> => {
   flushResolve?.();
 });
 
-// ── Directory listing (PlatformAdapter.listDir, #38) ──────────────────────
-// fs:listDir migrated to SvelteKit server route (src/routes/api/fs/list-dir).
-// fs:listProjectFiles migrated to SvelteKit server route
-// (src/routes/api/fs/list-project-files) — see Phase 2A migration.
-
-// api:status, lint:checkCss, lint:project, api:doctor migrated to SvelteKit server routes
-// (src/routes/api/status, src/routes/api/lint/*, src/routes/api/doctor) — see Phase 2C.
-
-registerDesktopHooks({
+const desktopHooksImpl: DesktopHooks = {
   showOpenDialog: async (options) => {
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
     return win
@@ -1047,12 +1010,12 @@ registerDesktopHooks({
   },
   getNativeTheme: () => ({ shouldUseDarkColors: nativeTheme.shouldUseDarkColors }),
   getUserDataPath: () => app.getPath('userData'),
-});
+};
 
 // Media thumbnail generation is exposed through a hook instead of importing
 // `electron` from the SvelteKit handler bundle. Packaged adapter-node routes run
 // in a different ESM context, and importing Electron there can fail.
-registerMediaHooks({
+const mediaHooksImpl: MediaHooks = {
   async createThumbnail(filePath: string, maxPx: number): Promise<string | null> {
     const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
     if (ext === 'svg') {
@@ -1082,13 +1045,7 @@ registerMediaHooks({
         : img;
     return scaled.toDataURL();
   },
-});
-
-// app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
-// app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
-// app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
-// app:getFavorites, app:toggleFavorite, app:removeRecent
-// — all migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.
+};
 
 // ── Project discovery (#27) ─────────────────────────────────────────────────
 // Shallow (depth ≤ 3) BFS scan of projectSearchRoots for print-md projects
@@ -1117,9 +1074,18 @@ const discoverScanDeps: ScanDeps = {
   basename: (p: string) => basename(p),
 };
 
-// Register prefs/settings hooks for server routes (Phase 2B).
-// Must be AFTER discoverScanDeps is initialized.
-registerPrefsHooks({
+// Prefs/settings hooks for server routes (Phase 2B). Built here because
+// scanForProjects's closure needs discoverScanDeps, which is only assembled
+// right above — a real dependency, not the ordering LANDMINE it used to be:
+// this object is no longer registered on its own the moment it's built, so
+// there is nothing to get wrong by reading it before `registerHostServices`
+// runs at the end of this section (ARCH #31).
+//
+// `loadLib` is assigned directly — no cast. `host-services.ts` stores
+// `HostServices.prefs` against the REAL `LibModule` type (this file's own,
+// same type `loadLib` already returns), not a fabricated narrow subset, so
+// `Promise<LibModule>` here needs no narrowing to satisfy the field.
+const prefsHooksImpl: PrefsHooks<LibModule, ViewerPrefs, AppSettings, ProjectStateMap | undefined, RecentFolder> = {
   readPrefs,
   writePrefs,
   updatePrefs,
@@ -1133,31 +1099,14 @@ registerPrefsHooks({
   scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
   toggleFavoriteFolder,
   removeRecentFolder,
-  loadLib: loadLib as () => Promise<{
-    detectProjectSource: (path: string) => Promise<unknown>;
-    capabilitiesFor: (source: unknown) => unknown;
-    scaffoldProject: (opts: unknown) => Promise<unknown>;
-    adoptFolder: (opts: unknown) => Promise<unknown>;
-  }>,
-});
+  loadLib,
+};
 
-// Expose doctor-route hooks through globalThis so the SvelteKit handler never
-// imports `electron` directly in the packaged app.
-registerDoctorHooks({
+// Doctor-route hooks, exposed through the collapsed host object so the
+// SvelteKit handler never imports `electron` directly in the packaged app.
+const doctorHooksImpl: DoctorHooks = {
   getViewerVersion: () => app.getVersion(),
-});
-
-// app:discoverProjects, app:classifyProject, app:createProject, app:adoptFolder
-// — migrated to SvelteKit server routes (src/routes/api/app/*) in Phase 2B.
-
-// tpl:listBuiltIn, tpl:listCustom, tpl:saveAsTemplate, tpl:importFromFolder,
-// snip:list, snip:read, snip:save, snip:delete
-// — migrated to SvelteKit server routes (src/routes/api/tpl/*, src/routes/api/snip/*) in Phase 2D.
-
-// plugin:list, plugin:setEnabled, plugin:addNpm, plugin:import, plugin:validate, plugin:recommended,
-// theme:listBuiltIn, theme:listProject, theme:getActive, theme:apply, theme:importFromFolder,
-// theme:importFromUrl, theme:readCss, theme:remove, project:listStyles
-// — migrated to SvelteKit server routes (src/routes/api/plugin/*, src/routes/api/theme/*, src/routes/api/project/*) in Phase 2E.
+};
 
 // ── Local version history (#13) ──────────────────────────────────────────────
 // Thin pass-throughs to the lib's source-provider operations (isomorphic-git —
@@ -1166,8 +1115,8 @@ registerDoctorHooks({
 // from app:classifyProject. Paths MUST be absolute (trusted SPA, but a relative
 // path could resolve against the main-process CWD by accident).
 
-// Expose loadLib + operationLogPath for VCS SvelteKit server routes.
-registerVcsHooks({ loadLib, operationLogPath });
+// loadLib + operationLogPath for VCS SvelteKit server routes.
+const vcsHooksImpl: VcsHooks<LibModule> = { loadLib, operationLogPath };
 
 function requireAbsoluteDir(channel: string, projectDir: unknown): string {
   if (typeof projectDir !== "string" || !path.isAbsolute(projectDir)) {
@@ -1178,7 +1127,6 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
 
 // Error sanitization for vcs:* now lives in the shared server-bridge/friendly-errors
 // module (friendlyVcsError), consumed by the SvelteKit routes.
-// vcs:saveSnapshot, vcs:listSnapshots, vcs:listSnapshotsPage, vcs:restoreSnapshot — migrated to SvelteKit server routes (src/routes/api/vcs/*).
 
 // ── Managed GitHub integration (#15, ADR 0006) ───────────────────────────────
 // Auth (device flow), connection status, repo/branch discovery, clone-and-open.
@@ -1188,93 +1136,148 @@ function requireAbsoluteDir(channel: string, projectDir: unknown): string {
 
 const GITHUB_HOST = "github.com";
 
-// Expose lib + tokenStore for remote SvelteKit server routes (Phase 2F).
+// lib + tokenStore + GITHUB_HOST for remote SvelteKit server routes (Phase 2F).
 // The routes live in a separate Vite bundle and cannot directly import from
-// main.ts; they access loadLib / electronTokenStore / GITHUB_HOST through
-// this hook (same pattern as __printMdUpdaterGetStatus__ for /api/doctor).
-registerRemoteHooks({
+// main.ts; they access these through the collapsed host object instead.
+//
+// cloneRepository/resolveSyncConflicts (ARCH review #8) are bound closures —
+// not raw pieces — for the same reason: the routes that call them cannot see
+// `mainWindow`/`autoSync` directly, so each closure below does the FULL
+// operation (validation, lib call, and any main-process-only side effect like
+// the clone-progress push or the conflict-latch re-arm) that the old
+// `remote:cloneRepository`/`remote:resolveSyncConflicts` IPC handlers used to
+// do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
+// ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
+// these hooks are the raw operation.
+const remoteHooksImpl: RemoteHooks<LibModule> = {
   loadLib,
   tokenStore: electronTokenStore,
   GITHUB_HOST,
-});
+  cloneRepository: async (args) => {
+    if (!args || typeof args.url !== "string" || typeof args.parentDir !== "string") {
+      throw new Error("remote:cloneRepository requires { url, parentDir, folderName }");
+    }
+    if (!path.isAbsolute(args.parentDir)) {
+      throw new Error("remote:cloneRepository requires an absolute destination path");
+    }
+    const lib = await loadLib();
+    // Folder name is renderer-supplied (defaults to the repo name) — the
+    // lib's sanitizer reduces it to a single safe path segment so it can
+    // never escape the chosen parent directory (path-traversal guard).
+    const folderName = lib.sanitizeCloneFolderName(String(args.folderName ?? ""));
+    if (!folderName) {
+      throw new Error("remote:cloneRepository requires a project folder name");
+    }
+    const projectDir = path.join(args.parentDir, folderName);
+    const credential = await electronTokenStore.get(GITHUB_HOST);
+    const result = await lib.cloneRepository({
+      url: args.url,
+      dir: projectDir,
+      ...(credential ? { credential } : {}),
+      ...(args.branch ? { branch: args.branch } : {}),
+      ...(args.owner && args.repo
+        ? {
+            provenance: {
+              provider: "github" as const,
+              owner: args.owner,
+              repo: args.repo,
+            },
+          }
+        : {}),
+      onProgress: (event: CloneProgressEvent) => {
+        mainWindow?.webContents.send("remote:cloneProgress", event);
+      },
+    });
+    // Multi-book repository: the WHOLE repo is cloned once (ADR 0006 D2);
+    // the chosen book subfolder opens as the project, which classifies as
+    // a subfolder of the enclosing repo and inherits its history/sync.
+    const subPath = sanitizeBookSubPath(args.subPath);
+    const openDir = subPath
+      ? path.join(result.projectDir, ...subPath.split("/"))
+      : result.projectDir;
+    return { projectDir: openDir };
+  },
+  resolveSyncConflicts: async (args) => {
+    if (!args || typeof args.projectDir !== "string") {
+      throw new Error("remote:resolveSyncConflicts requires { projectDir }");
+    }
+    const dir = requireAbsoluteDir("remote:resolveSyncConflicts", args.projectDir);
+    if (
+      !Array.isArray(args.resolutions) ||
+      args.resolutions.length === 0 ||
+      !args.resolutions.every(
+        (r) =>
+          r &&
+          typeof r.path === "string" &&
+          r.path.length > 0 &&
+          (r.choice === "mine" || r.choice === "theirs" || r.choice === "both"),
+      )
+    ) {
+      throw new Error(
+        "remote:resolveSyncConflicts requires a non-empty resolutions list",
+      );
+    }
+    if (
+      typeof args.localId !== "string" ||
+      typeof args.remoteId !== "string" ||
+      !/^[0-9a-f]{40}$/i.test(args.localId) ||
+      !/^[0-9a-f]{40}$/i.test(args.remoteId)
+    ) {
+      throw new Error("remote:resolveSyncConflicts requires valid version ids");
+    }
+    const lib = await loadLib();
+    const outcome = await lib.resolveConflicts({
+      projectDir: dir,
+      resolutions: args.resolutions,
+      localId: args.localId,
+      remoteId: args.remoteId,
+      tokenStore: electronTokenStore,
+      logFile: operationLogPath(path.basename(dir)),
+    });
+    // §6.1: After successful resolution, clear the conflict latch so auto-sync
+    // resumes the transparent flow. The latch was set (and the timer cancelled)
+    // when the conflict was first detected; re-arm it now so the resolved content
+    // is pushed without requiring the user to toggle Settings off/on.
+    const resolvedKey = path.resolve(dir);
+    if (autoSync.hasState(resolvedKey)) {
+      autoSync.unlatch(resolvedKey);
+      // Re-arm the periodic timer (scheduleAutoSync is idempotent — safe to
+      // call even if a timer is already running).
+      autoSync.schedule(resolvedKey);
+    }
+    return outcome;
+  },
+};
 
 // Error sanitization (handleRemoteErrors: friendly lib messages pass through;
 // anything else is logged with credentials redacted and replaced with a terse
 // safe message) now lives in the shared server-bridge/friendly-errors module,
 // imported at the top of this file.
 
-// One device-flow connect at a time. `codePromise` resolves with the user code
-// (phase 1 of the two-phase invoke); `donePromise` resolves when the user
-// approves in the browser and the credential is stored (phase 2).
-interface ActiveGitHubConnect {
-  controller: AbortController;
-  codePromise: Promise<DeviceCodeInfo>;
-  donePromise: Promise<{ connected: boolean; username?: string }>;
-}
-let activeGitHubConnect: ActiveGitHubConnect | null = null;
+// The device-flow "one connect at a time" state trio lives in
+// electron/github-device-flow.ts as an injected-deps class (unit-tested in
+// tests/platform/github-device-flow.test.ts). main.ts wires the live
+// touch-points and keeps thin delegating handlers.
+//
+// Pass the client id explicitly: the lib is externalized, so its own
+// `process.env` read is NOT rewritten by the build — only THIS expression is
+// replaced by the electron-vite `define` that bakes the release client id in.
+const githubDeviceFlow = new GitHubDeviceFlow({
+  loadLib,
+  tokenStore: electronTokenStore,
+  githubHost: GITHUB_HOST,
+  clientId: () => process.env.PRINT_MD_GITHUB_CLIENT_ID ?? "",
+});
 
 secureHandle("remote:connectGitHubStart", () =>
-  handleRemoteErrors("remote:connectGitHubStart", async () => {
-    // Replace any in-flight attempt (e.g. the user reopened the dialog).
-    activeGitHubConnect?.controller.abort();
-    activeGitHubConnect = null;
-
-    const lib = await loadLib();
-    const controller = new AbortController();
-    let resolveCode!: (info: DeviceCodeInfo) => void;
-    const codePromise = new Promise<DeviceCodeInfo>((resolve) => {
-      resolveCode = resolve;
-    });
-    // Pass the client id explicitly: the lib is externalized, so its own
-    // `process.env` read is NOT rewritten by the build — only THIS expression
-    // is replaced by the electron-vite `define` that bakes the release
-    // client id in. resolveGitHubClientId treats ""/undefined as unset.
-    const provider = new lib.GitHubAuthProvider({
-      clientId: process.env.PRINT_MD_GITHUB_CLIENT_ID ?? "",
-    });
-    const donePromise = provider
-      .connect({ onUserCode: resolveCode, signal: controller.signal })
-      .then(async (credential) => {
-        await electronTokenStore.set(GITHUB_HOST, credential);
-        return {
-          connected: true,
-          ...(credential.username ? { username: credential.username } : {}),
-        };
-      });
-    // Park the rejection until remote:connectGitHubWait consumes it — an
-    // unconsumed failure must not surface as an unhandled rejection.
-    donePromise.catch(() => {});
-    activeGitHubConnect = { controller, codePromise, donePromise };
-    // If connect fails BEFORE producing a user code (offline, bad client id),
-    // codePromise never settles — race it against the failure so the start
-    // call rejects with the friendly message instead of hanging.
-    return await Promise.race([codePromise, donePromise.then(() => codePromise)]);
-  }),
+  handleRemoteErrors("remote:connectGitHubStart", () => githubDeviceFlow.start()),
 );
 
 secureHandle("remote:connectGitHubWait", () =>
-  handleRemoteErrors("remote:connectGitHubWait", async () => {
-    const active = activeGitHubConnect;
-    if (!active) {
-      throw new Error("No GitHub sign-in is in progress. Try again.");
-    }
-    try {
-      return await active.donePromise;
-    } finally {
-      if (activeGitHubConnect === active) activeGitHubConnect = null;
-    }
-  }),
+  handleRemoteErrors("remote:connectGitHubWait", () => githubDeviceFlow.wait()),
 );
 
-secureHandle("remote:connectGitHubCancel", async () => {
-  activeGitHubConnect?.controller.abort();
-  activeGitHubConnect = null;
-  return { ok: true };
-});
-
-// remote:disconnectGitHub, remote:getConnection, remote:listRepositories,
-// remote:listBranches, remote:listRepoBooks — migrated to SvelteKit server
-// routes (Phase 2F). Accessed via __printMdRemoteHooks__ globalThis hook.
+secureHandle("remote:connectGitHubCancel", async () => githubDeviceFlow.cancel());
 
 /**
  * Validate a renderer-supplied book subfolder path (repo-relative, "/"
@@ -1291,135 +1294,14 @@ function sanitizeBookSubPath(subPath: unknown): string {
   return segments.join("/");
 }
 
-secureHandle(
-  "remote:cloneRepository",
-  (
-    _e,
-    args: {
-      url: string;
-      parentDir: string;
-      folderName: string;
-      branch?: string;
-      owner?: string;
-      repo?: string;
-      /** Book subfolder to open after the clone ("" / absent = repo root). */
-      subPath?: string;
-    },
-  ): Promise<{ projectDir: string }> =>
-    handleRemoteErrors("remote:cloneRepository", async () => {
-      if (!args || typeof args.url !== "string" || typeof args.parentDir !== "string") {
-        throw new Error("remote:cloneRepository requires { url, parentDir, folderName }");
-      }
-      if (!path.isAbsolute(args.parentDir)) {
-        throw new Error("remote:cloneRepository requires an absolute destination path");
-      }
-      const lib = await loadLib();
-      // Folder name is renderer-supplied (defaults to the repo name) — the
-      // lib's sanitizer reduces it to a single safe path segment so it can
-      // never escape the chosen parent directory (path-traversal guard).
-      const folderName = lib.sanitizeCloneFolderName(String(args.folderName ?? ""));
-      if (!folderName) {
-        throw new Error("remote:cloneRepository requires a project folder name");
-      }
-      const projectDir = path.join(args.parentDir, folderName);
-      const credential = await electronTokenStore.get(GITHUB_HOST);
-      const result = await lib.cloneRepository({
-        url: args.url,
-        dir: projectDir,
-        ...(credential ? { credential } : {}),
-        ...(args.branch ? { branch: args.branch } : {}),
-        ...(args.owner && args.repo
-          ? {
-              provenance: {
-                provider: "github" as const,
-                owner: args.owner,
-                repo: args.repo,
-              },
-            }
-          : {}),
-        onProgress: (event: CloneProgressEvent) => {
-          mainWindow?.webContents.send("remote:cloneProgress", event);
-        },
-      });
-      // Multi-book repository: the WHOLE repo is cloned once (ADR 0006 D2);
-      // the chosen book subfolder opens as the project, which classifies as
-      // a subfolder of the enclosing repo and inherits its history/sync.
-      const subPath = sanitizeBookSubPath(args.subPath);
-      const openDir = subPath
-        ? path.join(result.projectDir, ...subPath.split("/"))
-        : result.projectDir;
-      return { projectDir: openDir };
-    }),
-);
-
 // remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
 // remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
-// remote:sync — migrated to SvelteKit server routes (Phase 2F).
-// Accessed via __printMdRemoteHooks__ globalThis hook.
-
-secureHandle(
-  "remote:resolveSyncConflicts",
-  (
-    _e,
-    args: {
-      projectDir: string;
-      resolutions: ConflictResolutionChoice[];
-      localId: string;
-      remoteId: string;
-    },
-  ): Promise<SyncOutcome> =>
-    handleRemoteErrors("remote:resolveSyncConflicts", async () => {
-      if (!args || typeof args.projectDir !== "string") {
-        throw new Error("remote:resolveSyncConflicts requires { projectDir }");
-      }
-      const dir = requireAbsoluteDir("remote:resolveSyncConflicts", args.projectDir);
-      if (
-        !Array.isArray(args.resolutions) ||
-        args.resolutions.length === 0 ||
-        !args.resolutions.every(
-          (r) =>
-            r &&
-            typeof r.path === "string" &&
-            r.path.length > 0 &&
-            (r.choice === "mine" || r.choice === "theirs" || r.choice === "both"),
-        )
-      ) {
-        throw new Error(
-          "remote:resolveSyncConflicts requires a non-empty resolutions list",
-        );
-      }
-      if (
-        typeof args.localId !== "string" ||
-        typeof args.remoteId !== "string" ||
-        !/^[0-9a-f]{40}$/i.test(args.localId) ||
-        !/^[0-9a-f]{40}$/i.test(args.remoteId)
-      ) {
-        throw new Error("remote:resolveSyncConflicts requires valid version ids");
-      }
-      const lib = await loadLib();
-      const outcome = await lib.resolveConflicts({
-        projectDir: dir,
-        resolutions: args.resolutions,
-        localId: args.localId,
-        remoteId: args.remoteId,
-        tokenStore: electronTokenStore,
-        logFile: operationLogPath(path.basename(dir)),
-      });
-      // §6.1: After successful resolution, clear the conflict latch so auto-sync
-      // resumes the transparent flow. The latch was set (and the timer cancelled)
-      // when the conflict was first detected; re-arm it now so the resolved content
-      // is pushed without requiring the user to toggle Settings off/on.
-      const resolvedKey = path.resolve(dir);
-      const resolvedState = autoSync.getState(resolvedKey);
-      if (resolvedState) {
-        resolvedState.conflictLatched = false;
-        // Re-arm the periodic timer (scheduleAutoSync is idempotent — safe to
-        // call even if a timer is already running).
-        autoSync.schedule(resolvedKey);
-      }
-      return outcome;
-    }),
-);
+// remote:sync, remote:cloneRepository, remote:resolveSyncConflicts —
+// migrated to SvelteKit server routes (Phase 2F / ARCH review #8:
+// src/routes/api/remote/*). The cloneRepository/resolveSyncConflicts
+// operations themselves are bound closures on remoteHooksImpl above (they
+// need mainWindow/autoSync, which the route's separate Vite bundle can't
+// reach directly). Accessed via __printMdRemoteHooks__ / __printMdHost__.
 
 // ── Sync recovery IPC (Foundation — §8 / ADR 0004) ──────────────────────────
 
@@ -1442,8 +1324,8 @@ secureHandle(
 );
 
 // sync:getConflictPreview — migrated to SvelteKit server route
-// (src/routes/api/sync/get-conflict-preview). Exposed via globalThis hook.
-registerConflictPreviewHooks({
+// (src/routes/api/sync/get-conflict-preview). Exposed via the collapsed host object.
+const conflictPreviewHooksImpl: ConflictPreviewHooks = {
   getConflictPreview: async (
     projectDir: string,
     relativePath: string,
@@ -1452,359 +1334,142 @@ registerConflictPreviewHooks({
     const lib = await loadLib();
     return getConflictPreviewImpl(projectDir, relativePath, kind, lib.onlineCopyPath);
   },
-});
+};
 
-// ── Auto-sync settings IPC (transparent-sync plan §4.3) ─────────────────────
-// The renderer calls setAutoSync(true|false) from the Settings panel. We persist
-// the flag into settings.versionHistory.autoSync and, if re-enabled, re-arm the
-// periodic safety timer for the currently open project (unlatch conflict if any,
-// since the user explicitly requested to resume).
-secureHandle("sync:setAutoSync", async (_e, enabled: boolean) => {
-  if (typeof enabled !== "boolean") {
-    throw new Error("sync:setAutoSync requires a boolean");
-  }
-  const current = await readSettings();
-  const updated: AppSettings = {
-    ...current,
-    versionHistory: { ...current.versionHistory, autoSync: enabled },
-  };
-  await writeSettings(updated);
+// ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
+// See electron/server-bridge/fs-guard.ts for the full policy this
+// implements. `projectRoots` unions the active preview's resolved input dir
+// (set the instant `api:preview` resolves — see `activePreview` above) with
+// the folder watcher's tracked dir (set slightly later, once the renderer
+// calls `fs:watchFolder`): the SPA's own open-project sequence
+// (`routes/+page.svelte`) lists/reads the NEW project's files
+// (`ensureEditorFile`, the manifest-detection `listDir`) BEFORE it starts
+// watching it, so gating on the watcher alone would 403 that legitimate
+// "open a different project" window.
+const fsGuardImpl: FsGuardHooks = {
+  projectRoots(): string[] {
+    const roots = new Set<string>();
+    if (activePreview) roots.add(path.resolve(activePreview.inputPath));
+    const watched = folderWatch.getWatchedDir();
+    if (watched) roots.add(watched);
+    return [...roots];
+  },
+  readOnlyRoots(): string[] {
+    // Crash-recovery sidecar snapshots (userData/recovery/): +page.svelte's
+    // restoreRecovery reads a snapshot's absolute recoveryPath (returned by
+    // recovery:list) through the generic fs/read-file route.
+    return [recoveryDir()];
+  },
+};
 
-  // When re-enabling, clear the conflict latch for the open project and arm
-  // the periodic timer — the author is explicitly asking to resume sync.
-  if (enabled && watchedDir) {
-    const state = autoSync.getOrCreateState(watchedDir);
-    state.conflictLatched = false;
-    // Re-arm: scheduleAutoSync will start the interval.
-    autoSync.schedule(watchedDir);
-  }
-  // When disabling, cancel all timers for the open project.
-  if (!enabled && watchedDir) {
-    autoSync.cancelTimer(watchedDir);
-  }
-  return { ok: true, autoSync: enabled };
+// ── Auto-sync settings (transparent-sync plan §4.3) — ARCH review #8 ────────
+// The renderer calls setAutoSync(true|false) from the Settings panel via the
+// SvelteKit server route (src/routes/api/sync/set-auto-sync — a pure settings
+// write, no push stream or live-BrowserWindow need, so it doesn't belong on
+// IPC). We persist the flag into settings.versionHistory.autoSync and, if
+// re-enabled, re-arm the periodic safety timer for the currently open project
+// (unlatch conflict if any, since the user explicitly requested to resume).
+const syncSettingsHooksImpl: SyncSettingsHooks = {
+  setAutoSync: async (enabled) => {
+    if (typeof enabled !== "boolean") {
+      throw new Error("sync:setAutoSync requires a boolean");
+    }
+    const current = await readSettings();
+    const updated: AppSettings = {
+      ...current,
+      versionHistory: { ...current.versionHistory, autoSync: enabled },
+    };
+    await writeSettings(updated);
+
+    // When re-enabling, clear the conflict latch for the open project and arm
+    // the periodic timer — the author is explicitly asking to resume sync.
+    const watchedDir = folderWatch.getWatchedDir();
+    if (enabled && watchedDir) {
+      autoSync.unlatch(watchedDir);
+      // Re-arm: scheduleAutoSync will start the interval.
+      autoSync.schedule(watchedDir);
+    }
+    // When disabling, cancel all timers for the open project.
+    if (!enabled && watchedDir) {
+      autoSync.cancelTimer(watchedDir);
+    }
+    return { ok: true, autoSync: enabled };
+  },
+};
+
+// ── Updater status/check/download hooks (ARCH review #8) ────────────────────
+// getStatus/checkForUpdates/download (electron/updater.ts) are plain
+// functions with no main.ts-only state of their OWN — but electron/updater.ts
+// itself has main-bundle-only mutable state (phase/lastError/…) populated by
+// the one initUpdater() call below, so it can't be imported fresh from a
+// route's separate bundle (see updater-hooks.ts's doc comment). Bound here so
+// the routes reach THIS process's initialized instance through the same
+// collapsed host object as everything else. `check()` is always the
+// user-initiated (non-silent) form — the silent background recheck stays a
+// direct call inside main.ts, sharing the same underlying module state.
+const updaterHooksImpl: UpdaterHooks = {
+  getStatus: () => getUpdaterStatus(),
+  check: () => checkForUpdates(),
+  download: () => downloadUpdate(),
+};
+
+// ── ONE registration for the entire host/route seam (ARCH review #31) ───────
+// Every hook group assembled above is registered here, atomically, as a
+// single `__printMdHost__` object — replacing the previous 11 independent
+// globalThis keys written from 8 scattered call sites. This is the LAST of
+// those construction points in the file, so every dependency any field's
+// closures need (discoverScanDeps, GITHUB_HOST, electronTokenStore,
+// activePreview, folderWatch, …) already exists.
+registerHostServices({
+  app: appHooksImpl,
+  conflictPreview: conflictPreviewHooksImpl,
+  desktop: desktopHooksImpl,
+  doctor: doctorHooksImpl,
+  fsGuard: fsGuardImpl,
+  media: mediaHooksImpl,
+  prefs: prefsHooksImpl,
+  recovery: recoveryHooksImpl,
+  remote: remoteHooksImpl,
+  sync: syncSettingsHooksImpl,
+  updater: updaterHooksImpl,
+  vcs: vcsHooksImpl,
+  watch: watchHooksImpl,
+  write: writeHooksImpl,
 });
 
 // (api:doctor handler removed — migrated to server route)
 
-// api:preview invocations are SERIALIZED. ipcMain.handle runs overlapping
-// invocations concurrently at await points, and the start screen keeps the
-// window interactive while an open is in flight, so a second open can arrive
-// mid-flight. Unserialized, two invocations interleave around the
-// activePreview stop/start bookkeeping — orphaning a preview server (leaked
-// port + file watcher) and letting the superseded open stamp lastProjectDir/
-// recents last. Arrival order matches the renderer's open-epoch order, and
-// the renderer's epoch guard discards the superseded call's response.
-let previewRequestChain: Promise<unknown> = Promise.resolve();
-secureHandle("api:preview", (_e, args: { input?: string }) => {
-  const run = previewRequestChain.then(() => handlePreviewRequest(args));
-  previewRequestChain = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
+// The preview-open pipeline (start server, detect source, recents upsert,
+// auto-sync arm/heartbeat/preflight, local-status emit) lives in
+// electron/preview/controller.ts as an injected-deps class (unit-tested in
+// tests/platform/preview-open-controller.test.ts) — including the api:preview
+// invocation-serialization behavior (see its open() doc comment: unserialized,
+// overlapping invocations interleave around activePreview stop/start
+// bookkeeping and can let a superseded open stamp lastProjectDir/recents
+// last). main.ts wires the live host touch-points and keeps a thin delegator.
+const previewOpen = new PreviewOpenController({
+  loadLib,
+  getActivePreview: () => activePreview,
+  setActivePreview: (preview) => {
+    activePreview = preview;
+  },
+  updatePrefs,
+  tokenStore: electronTokenStore,
+  operationLogPath,
+  emitSyncStatus,
+  getWatchedDir: () => folderWatch.getWatchedDir(),
+  armSyncInterval: (dir) => autoSync.armInterval(dir),
+  // The whole recovery flow (single-flight lock, recovery routing,
+  // conflict-latch, and the BUG-3 runAgain decision) is owned by the
+  // orchestrator — see AutoSyncOrchestrator.runPreflight (electron/auto-sync/orchestrator.ts).
+  runSyncPreflight: (dir, source) => autoSync.runPreflight(dir, source),
+  refreshAppHeartbeat,
+  mkdir: (dir, options) => mkdir(dir, options),
+  appendFile: (filePath, data) => appendFile(filePath, data),
+  setTimeout: (cb, ms) => setTimeout(cb, ms),
 });
 
-async function handlePreviewRequest(args: { input?: string }) {
-  const input = args?.input;
-  if (!input || typeof input !== "string") {
-    throw new Error("Missing 'input' (absolute path to a project directory)");
-  }
-
-  const lib = await loadLib();
-
-  // Replace any existing preview before starting a new one.
-  if (activePreview) {
-    await activePreview.stop().catch(() => {});
-    activePreview = null;
-  }
-
-  try {
-    activePreview = await lib.startPreviewServer({
-      input,
-      port: 0,
-      host: "127.0.0.1",
-      noWatch: false,
-      openBrowser: false,
-      verbose: false,
-      debug: false,
-      installSignalHandlers: false,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    const stack = e instanceof Error ? e.stack ?? "" : "";
-    console.error(`[api:preview] startPreviewServer failed: input=${input}`);
-    console.error(`  ${msg}`);
-    if (stack) console.error(stack);
-    throw new Error(`Preview server failed to start: ${msg}`);
-  }
-
-  let title: string = basename(input);
-  try {
-    const { manifest } = await lib.loadManifestWithPath(input);
-    if (manifest.title) title = manifest.title;
-  } catch {
-    /* not a manifest project — keep dir basename */
-  }
-
-  // Normalize so the map key and watchedDir comparison use the same canonical form.
-  const openedDir = path.resolve(activePreview.inputPath);
-  // C2 (book switcher): the viewer always opens an actual book folder (never a
-  // bare multi-book repo root — the renderer retargets to a resolved book
-  // before calling here), so `openedDir` is the active book. Detected once and
-  // reused below (recents + the local-status/preflight blocks) instead of each
-  // re-deriving it.
-  const source = await lib.detectProjectSource(openedDir);
-
-  await updatePrefs((prefs) => ({
-    ...prefs,
-    lastProjectDir: openedDir,
-    // Single source of truth for recents: every successful preview start
-    // (modal, toolbar, or auto-reopen) upserts the folder here. Repo-backed
-    // projects are "a project is its git repo" (CLAUDE.md) — the entry keys on
-    // the repo root, with `lastActiveBook` remembering which book was open so
-    // reopening restores it instead of falling back to the alphabetically
-    // first book. updatePrefs is an atomic read-modify-write, so this can't
-    // clobber a concurrent prefs patch (e.g. the start screen's toggle).
-    recentFolders: upsertRecentFolder(prefs.recentFolders, {
-      path: source.type === "local-git-folder" ? source.repoRoot : openedDir,
-      title,
-      openedAt: new Date().toISOString(),
-      ...(source.type === "local-git-folder" && source.subPath !== ""
-        ? { lastActiveBook: openedDir }
-        : {}),
-    }),
-  }));
-
-  // Trigger auto-sync once after the first auto-snapshot has had time to settle
-  // (§4.2 project-open trigger). The snapshot debounce fires after N minutes of
-  // quiet, so we wait for the snapshot delay + the extra sync gap before the
-  // initial sync. If no edits have happened the project may already be clean, and
-  // syncProject will return "up-to-date" quickly — still worth running once on
-  // open to pull any teammate changes that arrived since last session.
-  // Start the periodic safety-sync interval now (idempotent) so incoming changes
-  // pull even in a view-only session with no edits — it must NOT wait for the
-  // first file change. Then do a PROMPT initial pull a few seconds after open
-  // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
-  // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
-  void autoSync.armInterval(openedDir);
-
-  // App-open heartbeat (repair-vs-viewer detection, M2): write immediately so
-  // a `print-md repair` run right after open already sees a fresh marker —
-  // don't wait for the first periodic tick (up to autoSyncMinutes later).
-  // Reuses refreshAppHeartbeat (not a second inline write) so the TTL stamped
-  // here always matches the one the periodic refresh stamps.
-  if (source.type === "local-git-folder") {
-    void refreshAppHeartbeat(openedDir);
-  }
-
-  // Local-git projects with no syncable remote get no sync status, so the
-  // bottom-bar pill would stay hidden — yet they DO keep version history via
-  // auto-snapshots. Emit a one-shot "local" status (carrying the operation-log
-  // path) so the pill shows a clickable "Version history on" label that opens
-  // the log. Isolated from the sync/recovery flow below; canSync projects get
-  // their status from runAutoSync and ignore this branch.
-  void (async () => {
-    try {
-      if (source.type !== "local-git-folder") return;
-      const diag = await lib.diagnoseProjectRemote(openedDir, {
-        tokenStore: electronTokenStore,
-      });
-      if (diag.canSync) return; // sync flow owns the status for syncable repos
-      const logFile = operationLogPath(path.basename(openedDir));
-      // Ensure the log file exists (empty) so the viewer's log dialog shows the
-      // intended "No log entries recorded." empty state rather than "The log
-      // file could not be found." when no snapshot has been taken yet. appendFile
-      // with "" creates the file if absent and never truncates an existing one.
-      try {
-        await mkdir(path.dirname(logFile), { recursive: true });
-        await appendFile(logFile, "");
-      } catch {
-        // Non-fatal: the dialog falls back to its not-found message.
-      }
-      const localStatus = {
-        state: "local" as const,
-        projectDir: openedDir,
-        lastSyncAt: null,
-        logFile,
-      };
-      // "sync:status" is a fire-and-forget event with no replay, so an emit that
-      // beats the renderer's pill subscription is lost. Emit now (fast-mounted
-      // renderers) AND re-emit after the same open delay the canSync path relies
-      // on, by which point the pill has subscribed. Guarded by watchedDir so a
-      // project switch before the delay cancels the stale re-emit.
-      emitSyncStatus(localStatus);
-      const t = setTimeout(() => {
-        if (watchedDir === openedDir) emitSyncStatus(localStatus);
-      }, AUTO_SYNC_OPEN_DELAY_MS);
-      if (typeof (t as NodeJS.Timeout).unref === "function") (t as NodeJS.Timeout).unref();
-    } catch {
-      // Non-fatal: the pill simply stays hidden if detection/diagnosis fails.
-    }
-  })();
-
-  // Preflight recovery: before the initial sync, inspect the repo for structural
-  // conditions (stale lock, interrupted merge, detached head, missing git dir).
-  // If a recoverable condition is detected, route through recover() BEFORE the
-  // first runAutoSync so the author sees a transparent repair on open rather than
-  // a sync error. guard: only for local-git-folder projects.
-  //
-  // CONCURRENCY: preflight acquires the single-flight lock (state.inFlight=true)
-  // for the duration of recover() so runAutoSync cannot call lib.syncProject
-  // concurrently on the same repo. The initialSyncTimer is cancelled while
-  // preflight holds the lock; if runAutoSync fires (e.g. interval) it arms
-  // runAgain instead. After preflight releases the lock we either honour runAgain
-  // or, for a healthy repo, schedule a fresh initialSyncTimer.
-  void (async () => {
-    // Acquire single-flight lock before any git I/O.
-    const syncState = autoSync.getOrCreateState(openedDir);
-    if (syncState.inFlight) {
-      // Another sync is already in flight (unusual at open time) — skip preflight.
-      return;
-    }
-    syncState.inFlight = true;
-
-    // Declared outside the try so the catch block can log to the same file even
-    // if a step before ctx-creation throws (guarded: may still be undefined).
-    let plog: ReturnType<typeof lib.resolveLogger> | undefined;
-
-    try {
-      if (source.type !== "local-git-folder") {
-        // Not a git project — release immediately and let the normal initial sync proceed.
-        syncState.inFlight = false;
-        setTimeout(() => {
-          if (watchedDir === openedDir) void autoSync.run(openedDir);
-        }, AUTO_SYNC_OPEN_DELAY_MS);
-        return;
-      }
-
-      const health = await lib.inspectRepo({ repoDir: openedDir });
-      const kind = lib.classifyFromHealth(health) as SyncErrorKind | null;
-      if (kind === null) {
-        // Healthy repo — release lock and schedule the normal initial sync.
-        syncState.inFlight = false;
-        scheduleWatchedSync(openedDir, AUTO_SYNC_OPEN_DELAY_MS);
-        return;
-      }
-
-      console.log(`[preflight] structural condition '${kind}' detected for ${openedDir}; recovering before first sync`);
-      emitSyncStatus({
-        state: "recovering",
-        projectDir: openedDir,
-        lastSyncAt: autoSync.getLastSyncAt(openedDir) ?? null,
-        recovery: { phase: "checking", risk: "none" },
-      });
-
-      const preflightLogFile = operationLogPath(path.basename(openedDir));
-      const ctx = await buildRecoveryContext(openedDir, lib, electronTokenStore, undefined, preflightLogFile);
-
-      // Write the FULL structural diagnosis to the operation log BEFORE dispatching
-      // recover(), so support sees WHY a kind was chosen (which health signal, repo
-      // root vs opened dir, whether local changes existed) — not just a one-word
-      // kind. Same file + format the recovery subsystem itself writes to.
-      plog = lib.resolveLogger(preflightLogFile, "preflight");
-      plog.info(
-        "detect",
-        "structural condition detected on open",
-        lib.buildPreflightDiagnostics(openedDir, ctx.repoDir, health, kind),
-      );
-
-      let result: Awaited<ReturnType<typeof lib.recover>>;
-      try {
-        result = await lib.recover(kind, ctx);
-      } finally {
-        // Always release the single-flight lock when recover() settles.
-        syncState.inFlight = false;
-      }
-
-      const now = new Date().toISOString();
-      autoSync.setLastSyncAt(openedDir, now);
-
-      // Snapshot the pending auto-sync trigger BEFORE the per-status branches:
-      // runAutoSync may have set runAgain while we held the single-flight lock.
-      // A single authoritative decision below (decideRunAgainAfterPreflight)
-      // decides its fate so it is never silently dropped (BUG 3). The latching
-      // branches still clear runAgain themselves for their own emit logic; the
-      // post-chain decision is the one place that may actually re-run it.
-      const pendingRunAgain = syncState.runAgain;
-
-      // Map recover()'s result → emit payload via the ONE shared mapper (also
-      // used by AutoSyncOrchestrator.run). The preflight surfaces an authless
-      // needs_user as a generic error (its historical else-branch), hence
-      // authlessNeedsUserAs: "error". The follow-up (resume / retry timer /
-      // conflict-latch) is the preflight's own and stays here.
-      const em = mapRecoveryResultToEmit(result, {
-        projectDir: openedDir,
-        lastSyncAt: now,
-        logFile: preflightLogFile,
-        authlessNeedsUserAs: "error",
-      });
-      if (em.kind === "recovered") {
-        emitSyncStatus(em.status);
-        // The repo is healthy again: clear any conflict-latch and RESUME sync so
-        // the fix isn't left paused. If a trigger was already queued while we held
-        // the lock, decideRunAgainAfterPreflight below will run it ("run") — so
-        // only schedule the deferred sync here when nothing is queued, to avoid a
-        // double-run on the same repo.
-        syncState.conflictLatched = false;
-        if (!pendingRunAgain) {
-          plog.info("resume", "recovered — scheduling deferred sync", {
-            reason: "no queued trigger",
-          });
-          scheduleWatchedSync(openedDir, AUTO_SYNC_OPEN_DELAY_MS);
-        } else {
-          plog.info("resume", "recovered — honoring queued trigger", {
-            reason: "runAgain pending",
-          });
-        }
-      } else if (em.kind === "retry_later") {
-        emitSyncStatus(em.status);
-        // Honor the handler's requested delay (same idiom as the mid-sync
-        // retry_later arm) instead of waiting for the generic periodic timer —
-        // e.g. a fresh-but-not-stale lock asks to be re-checked as soon as it
-        // ages past the threshold, not minutes later.
-        scheduleWatchedSync(openedDir, em.retryAfterMs ?? 60_000);
-      } else {
-        // conflict OR error (blocked / failed / needs_user without files) —
-        // latch, stop the periodic timer to avoid churning, and surface.
-        syncState.conflictLatched = true;
-        syncState.runAgain = false;
-        autoSync.cancelTimer(openedDir);
-        emitSyncStatus(em.status);
-      }
-
-      // Honour (or intentionally suppress) the pending auto-sync trigger now that
-      // recover() has settled and the lock is released. For non-latching outcomes
-      // (recovered / retry_later) a queued trigger PROCEEDS — fixing the silent
-      // drop on the retry_later path. For latching outcomes (conflict/blocked/
-      // failed) the latch suppresses it. Always clear the flag so it can't leak
-      // into a later run. (BUG 3 — see decideRunAgainAfterPreflight.)
-      const runAgainDecision = decideRunAgainAfterPreflight(result.status, pendingRunAgain);
-      syncState.runAgain = false;
-      if (runAgainDecision === "run") {
-        void autoSync.run(openedDir);
-      }
-    } catch (err) {
-      // Preflight is non-blocking: always release the lock so the project is not
-      // permanently wedged. Then let the normal initial sync proceed.
-      syncState.inFlight = false;
-      console.warn("[preflight] recovery failed (non-fatal):", err);
-      plog?.error("preflight", "recovery failed (non-fatal)", { error: String(err) });
-      scheduleWatchedSync(openedDir, AUTO_SYNC_OPEN_DELAY_MS);
-    }
-  })();
-  // NOTE: the initialSyncTimer that used to be here has been moved inside the
-  // preflight IIFE above so the first runAutoSync is always deferred until after
-  // preflight releases its single-flight lock.
-
-  return {
-    url: activePreview.url,
-    port: activePreview.port,
-    input: activePreview.inputPath,
-    title,
-    missingSharedAssets: activePreview.missingSharedAssets ?? [],
-  };
-}
+secureHandle("api:preview", (_e, args: { input?: string }) => previewOpen.open(args));
 
 secureHandle("api:stopPreview", async () => {
   if (activePreview) {
@@ -1833,16 +1498,12 @@ secureHandle("api:cancelExport", async (_e, exportId: string) => {
 const exportController = new ExportController({
   loadLib,
   tokenStore: electronTokenStore,
-  emit: emitSyncStatus,
   isOnline: () => net.isOnline(),
-  now: Date.now,
   usePuppeteer: () => !!process.env.PRINTMD_VIEWER_PUPPETEER,
   pdfRenderer: electronPdfRenderer,
   sync: {
-    getState: (dir) => autoSync.getState(dir),
-    getOrCreateState: (dir) => autoSync.getOrCreateState(dir),
-    cancelTimer: (dir) => autoSync.cancelTimer(dir),
-    setLastSyncAt: (dir, iso) => autoSync.setLastSyncAt(dir, iso),
+    isConflictLatched: (dir) => autoSync.isConflictLatched(dir),
+    latchConflict: (dir, files) => autoSync.latchConflict(dir, files),
   },
   getActiveExportSession,
   setActiveExportSession,
@@ -1860,31 +1521,24 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 //
 // Active only in a packaged build with no vite dev server, on Windows/Linux
 // (see updaterSupported() in updater.ts; macOS auto-update needs signed
-// builds). In dev the IPC handlers are harmless no-ops. electron-updater
-// downloads updates in the background; the renderer shows a "restart to
-// update" banner on the "staged" event and calls updater:applyNow to quit
-// and install.
+// builds). electron-updater downloads updates in the background; the
+// renderer shows a "restart to update" banner on the "staged" event and calls
+// updater:applyNow to quit and install.
+//
+// getStatus/check/download (ARCH review #8) are plain request/response —
+// no push stream, no live-BrowserWindow need — so they're SvelteKit server
+// routes (src/routes/api/updater/*), which import getStatus/checkForUpdates/
+// download from ./updater.ts directly (no hooks bag needed: they're already
+// plain exported functions with no main.ts-only state). applyNow stays on
+// IPC: it flushes the live renderer's unsaved buffer via
+// `mainWindow.webContents.send` before quitting — a live-BrowserWindow call
+// §8 sanctions.
 // ──────────────────────────────────────────────────────────────────────────
 
 function sendUpdaterEvent(event: UpdaterEventPayload) {
   mainWindow?.webContents.send("updater:event", event);
 }
 initUpdater(sendUpdaterEvent);
-
-secureHandle("updater:getStatus", async () => {
-  return getUpdaterStatus();
-});
-
-secureHandle("updater:check", async () => {
-  // Platform gating (incl. the macOS/non-AppImage-Linux "download from
-  // GitHub" hint) lives inside checkForUpdates() so every caller gets the
-  // same honest status. User-initiated (non-silent): failures are reported.
-  return checkForUpdates();
-});
-
-secureHandle("updater:download", async () => {
-  return downloadUpdate();
-});
 
 secureHandle("updater:applyNow", async () => {
   // Flush unsaved editor state BEFORE the installer spawns: quitAndInstall
@@ -1969,7 +1623,20 @@ app.whenReady().then(async () => {
       await startSvelteKitServer(slog);
     } catch (err) {
       console.error("[sk-server] failed to start SvelteKit server:", err);
-      // Non-fatal: registerAppProtocol will return 503 until skServerPort is set.
+      // Non-fatal (ARCH review #28): registerAppProtocol still comes up and
+      // serves a styled retry page for every app:// request until
+      // skServerPort is set (corrupt install / port exhaustion / missing
+      // handler.js can all still resolve without a restart — e.g. a later
+      // manual retry). But a console.error alone stranded the author on a
+      // raw "SvelteKit server not started" page with zero explanation, so
+      // also surface it as a plain-language native dialog right away.
+      dialog.showErrorBox(
+        "print-md couldn't start",
+        "print-md's internal server didn't start, so the app can't load its interface.\n\n" +
+        "Try quitting and reopening print-md. If this keeps happening, reinstalling " +
+        "print-md usually fixes it.\n\n" +
+        `Details: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
   registerAppProtocol();
@@ -1978,10 +1645,16 @@ app.whenReady().then(async () => {
   createWindow();
   slog("createWindow returned (loadURL dispatched)");
 
-  // Fallback: if the renderer never reports ready (crash, hang), reveal the
-  // window anyway so the splash can't strand the user. Generous (60s) so a large
-  // book on a slow machine finishes rendering and dismisses the splash on its own
-  // signal rather than being cut off mid-render by the timeout.
+  // Fallback: if the renderer never reports ready (crash, hang, or landing
+  // disabled with nothing calling rendererReady), reveal the window anyway so
+  // the splash can't strand the user. This does NOT cut off a large book's
+  // full render mid-way: createWindow() already called mainWindow.showInactive()
+  // above, so the window has been painting real compositor frames underneath
+  // the (alwaysOnTop) splash the whole time — pagination runs at full speed
+  // regardless of when this timer fires. All this timeout does is stop
+  // waiting for the renderer's own "ready" signal and pull the splash out of
+  // the way early; the page keeps rendering live underneath either way. 15s
+  // is plenty for that — it is not a render-completion budget.
   splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000);
 
   // Background check on every launch (non-blocking, silent — see H1: a
@@ -2029,6 +1702,7 @@ app.whenReady().then(async () => {
   let wasOnline = net.isOnline();
   const onlinePoller = setInterval(() => {
     const isNowOnline = net.isOnline();
+    const watchedDir = folderWatch.getWatchedDir();
     if (!wasOnline && isNowOnline && watchedDir) {
       console.log("[auto-sync] network restored (online poll) — triggering sync");
       void autoSync.run(watchedDir);
@@ -2040,10 +1714,10 @@ app.whenReady().then(async () => {
   powerMonitor.on("resume", () => {
     // After a sleep/wake cycle the network may have changed — give it a moment
     // to reconnect, then attempt a sync if a project is open.
-    const resumedDir = watchedDir;
+    const resumedDir = folderWatch.getWatchedDir();
     if (resumedDir) {
       const t = setTimeout(() => {
-        if (watchedDir === resumedDir) {
+        if (folderWatch.getWatchedDir() === resumedDir) {
           console.log("[auto-sync] system resumed — triggering sync");
           void autoSync.run(resumedDir);
         }

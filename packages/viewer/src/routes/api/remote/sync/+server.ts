@@ -1,20 +1,20 @@
-import { isAbsolute } from 'node:path';
 import { getHooks, handleRemoteErrors, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
 import { gitIdentityArgs } from '$lib/server/settings';
-import { defineRoute } from '../../_lib/route';
+import { defineRoute, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<
-  { projectDir?: string; message?: string },
+  { projectDir: string; message?: string },
   RemoteHooks<LibModule, TokenStore>
 >({
   hooks: getHooks,
   hooksUnavailableMessage: 'Remote hooks not available',
+  validate: (raw) => {
+    const body = raw as { projectDir?: string; message?: string };
+    return { projectDir: requireAbsolute(body?.projectDir, 'remote:sync'), message: body?.message };
+  },
   call: async ({ body, hooks }) =>
     handleRemoteErrors('remote:sync', async () => {
-      if (!body?.projectDir || !isAbsolute(body.projectDir)) {
-        throw new Error('remote:sync requires an absolute project path');
-      }
       const lib = await hooks.loadLib();
       if (!lib.syncProject) {
         throw new Error('syncProject not available in this version of the lib');

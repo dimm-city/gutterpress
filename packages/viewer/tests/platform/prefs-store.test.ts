@@ -144,6 +144,43 @@ test("readPrefs round-trips valid stored JSON unchanged", async () => {
   });
 });
 
+// ── #30 migration: old-shape file → new shape, nothing lost ───────────────
+
+test("(#30) an old-shape viewer-prefs.json (pre-migration top-level currentPage/viewMode) still round-trips recents/favorites/projectStates/lastProjectDir intact", async () => {
+  // Shape a real pre-#43 file could have had: the deprecated top-level
+  // `currentPage`/`viewMode` migration-fallback fields alongside the fields
+  // that matter. `ViewerPrefs` no longer declares the legacy fields, but
+  // reading an old file must never discard the data that DOES still map to
+  // the current schema — that was the #34/#30 regression (a silent reset to
+  // `{}` on anything unexpected).
+  const legacyShapeFile = {
+    // Deprecated, no longer part of ViewerPrefs — must not crash the read
+    // and must not cause any other field to be dropped.
+    currentPage: 42,
+    viewMode: "two-column",
+    // Fields that matter and must survive unchanged.
+    lastProjectDir: "/users/book-one",
+    recentFolders: [{ path: "/users/book-one", lastOpened: 1700000000000 }],
+    favorites: [{ path: "/users/book-two", label: "Book Two" }],
+    projectStates: {
+      "/users/book-one": { currentPage: 12, viewMode: "single" },
+    },
+  };
+  const { store, renames } = makeStore({
+    readFileImpl: async () => JSON.stringify(legacyShapeFile),
+  });
+
+  const prefs = await store.readPrefs();
+
+  // A structurally-valid (if outdated) file is not corrupt — it must be read
+  // as-is, not preserved-and-reset.
+  expect(renames).toHaveLength(0);
+  expect(prefs.lastProjectDir).toBe("/users/book-one");
+  expect(prefs.recentFolders).toEqual(legacyShapeFile.recentFolders);
+  expect(prefs.favorites).toEqual(legacyShapeFile.favorites);
+  expect(prefs.projectStates).toEqual(legacyShapeFile.projectStates);
+});
+
 // ── writePrefs (atomic tmp+rename) ─────────────────────────────────────────
 
 test("(e) writePrefs mkdirs the userDataDir, writes pretty (2-space) JSON to <prefsPath>.tmp, then renames over prefsPath", async () => {
