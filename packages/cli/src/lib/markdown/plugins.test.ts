@@ -5,6 +5,7 @@ import MarkdownIt from "markdown-it";
 import {
   loadPlugin,
   loadPlugins,
+  loadPluginsWithCss,
   applyPlugins,
   collectPluginCss,
   __resetPathPluginCacheForTests,
@@ -375,6 +376,68 @@ describe("plugin loader", () => {
         TMP_ROOT
       );
       expect(collectPluginCss(loaded)).toBe("");
+    });
+  });
+
+  // ARCH finding #53: the "load plugins -> collectPluginCss" preamble was
+  // duplicated between preview/file-watcher.ts's renderBook and
+  // build-runner.ts's renderBook, differing ONLY in whether onError was
+  // supplied. These characterize the extracted helper against both call
+  // shapes so the duplication can be deleted without changing behavior.
+  describe("loadPluginsWithCss (ARCH #53)", () => {
+    test("undefined configs short-circuits to no plugins, empty css", async () => {
+      const result = await loadPluginsWithCss(undefined, TMP_ROOT);
+      expect(result.plugins).toBeUndefined();
+      expect(result.pluginCss).toBe("");
+    });
+
+    test("empty configs array short-circuits to no plugins, empty css", async () => {
+      const result = await loadPluginsWithCss([], TMP_ROOT);
+      expect(result.plugins).toBeUndefined();
+      expect(result.pluginCss).toBe("");
+    });
+
+    test("loads plugins and collects their css in one call", async () => {
+      fixture(
+        "css-c.mjs",
+        `export default function () {}; export const css = '.c {}';`
+      );
+
+      const result = await loadPluginsWithCss(
+        [cfg({ path: "css-c.mjs" })],
+        TMP_ROOT
+      );
+
+      expect(result.plugins).toHaveLength(1);
+      expect(result.plugins![0]!.name).toBe("css-c.mjs");
+      expect(result.pluginCss).toContain(".c {}");
+    });
+
+    test("fail-fast mode (no onError): a bad plugin aborts the whole load — matches build/export", async () => {
+      fixture("good2.mjs", `export default function (md) {}`);
+
+      await expect(
+        loadPluginsWithCss(
+          [cfg({ path: "good2.mjs" }), cfg({ path: "./bad-does-not-exist.mjs" })],
+          TMP_ROOT
+        )
+      ).rejects.toThrow(/bad-does-not-exist/);
+    });
+
+    test("degrade-and-report mode (onError supplied): bad plugin is skipped, good ones still render — matches preview", async () => {
+      fixture("ok2.mjs", `export default function (md) {}`);
+
+      const failures: Array<{ ref: string; message: string }> = [];
+      const result = await loadPluginsWithCss(
+        [cfg({ path: "ok2.mjs" }), cfg({ path: "./missing2.mjs" })],
+        TMP_ROOT,
+        (ref, err) => failures.push({ ref, message: err.message })
+      );
+
+      expect(result.plugins).toHaveLength(1);
+      expect(result.plugins![0]!.name).toBe("ok2.mjs");
+      expect(failures).toHaveLength(1);
+      expect(failures[0]!.ref).toBe("./missing2.mjs");
     });
   });
 });

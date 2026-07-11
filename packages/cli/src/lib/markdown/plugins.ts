@@ -22,7 +22,7 @@ export type {
   LoadedPlugin,
 } from "./renderer";
 export { applyPlugins, collectPluginCss } from "./renderer";
-import { BUILTIN_OPTIONAL_PLUGINS } from "./renderer";
+import { BUILTIN_OPTIONAL_PLUGINS, collectPluginCss } from "./renderer";
 
 /**
  * Resolve and import an npm plugin package.
@@ -357,5 +357,42 @@ export async function loadPlugins(
     }
   }
   return plugins;
+}
+
+/** Result of {@link loadPluginsWithCss}: loaded plugins ready for `applyPlugins`
+ * plus their concatenated CSS ready for injection into the rendered document. */
+export interface LoadedPluginsWithCss {
+  /** `undefined` (not `[]`) when there were no configs to load — matches the
+   * `plugins?:` field the renderer options expect, so callers can pass this
+   * straight through without an `?? []` at every call site. */
+  plugins: LoadedPlugin[] | undefined;
+  pluginCss: string;
+}
+
+/**
+ * Shared "load plugins -> collect their CSS" preamble (ARCH finding #53).
+ * Both real render paths — build/export's fail-fast `renderBook`
+ * (build-runner.ts) and the live preview's degrade-and-report
+ * `renderPreviewBook` (preview/file-watcher.ts) — did this in lockstep,
+ * differing ONLY in whether `onError` was supplied. `onError` presence still
+ * selects fail-fast vs degrade-and-report (see {@link loadPlugins}) and the
+ * matching path-plugin cache mode; this helper just removes the duplicated
+ * wiring around it.
+ *
+ * A `configs` of `undefined`/empty short-circuits WITHOUT calling
+ * `loadPlugins` at all (`plugins: undefined`, `pluginCss: ""`) — matching
+ * both call sites' prior behavior of never plugin-loading when the manifest
+ * declares no plugins.
+ */
+export async function loadPluginsWithCss(
+  configs: ResolvedPluginConfig[] | undefined | null,
+  baseDir: string,
+  onError?: (pluginRef: string, error: Error) => void
+): Promise<LoadedPluginsWithCss> {
+  if (!configs || configs.length === 0) {
+    return { plugins: undefined, pluginCss: "" };
+  }
+  const plugins = await loadPlugins(configs, baseDir, onError);
+  return { plugins, pluginCss: collectPluginCss(plugins) };
 }
 

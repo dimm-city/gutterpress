@@ -4,7 +4,7 @@
  * Validates file watching, debouncing, rebuild triggering, and state management
  */
 
-import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -129,6 +129,55 @@ describe('generateAndWriteHtml', () => {
     const content = await Bun.file(join(tempDir, 'book.html')).text();
     expect(content).toContain('Chapter 1');
     expect(content).toContain('Chapter 2');
+  }, 60000);
+
+  // ARCH finding #4 — preview terminal surfacing. Before this fix, the
+  // preview's renderPreviewBook() (shared by generateAndWriteHtml AND the
+  // incremental per-chapter splice) called renderChapters() with no way to
+  // observe markdown-it-paged's env.layoutWarnings, so an author whose marker
+  // was silently ignored (e.g. a stray @continue) got zero feedback anywhere
+  // in the running preview server. warn() (leveled logger) prints via
+  // console.log, not console.warn — see utils/logger.ts's emit().
+  test('warns via the leveled logger for a chapter with a marker mistake', async () => {
+    await writeFile(
+      join(testDir, 'chapter-01.md'),
+      '# Chapter One\n\n@continue\n\nOrphaned continuation text.\n'
+    );
+
+    const config = resolveConfig({ title: 'Test' }, {});
+
+    const logSpy = spyOn(console, 'log').mockImplementation(() => {});
+    let lines: string[];
+    try {
+      await generateAndWriteHtml(testDir, tempDir, config);
+      // Read mock.calls BEFORE mockRestore() — bun's mockRestore() clears the
+      // recorded call history (mockReset semantics), same as Jest.
+      lines = (logSpy.mock.calls as unknown[][]).map((call) => call.join(' '));
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    const match = lines.find(
+      (line) => line.includes('chapter-01.md') && line.includes('line 3') && line.includes('@continue')
+    );
+    expect(match).toBeDefined();
+  }, 60000);
+
+  test('does not warn for a chapter with no marker mistakes', async () => {
+    await writeFile(join(testDir, 'chapter-01.md'), '# Chapter One\n\nJust prose.\n');
+
+    const config = resolveConfig({ title: 'Test' }, {});
+
+    const logSpy = spyOn(console, 'log').mockImplementation(() => {});
+    let callCount: number;
+    try {
+      await generateAndWriteHtml(testDir, tempDir, config);
+      callCount = logSpy.mock.calls.length;
+    } finally {
+      logSpy.mockRestore();
+    }
+
+    expect(callCount).toBe(0);
   }, 60000);
 });
 

@@ -386,10 +386,14 @@ export async function createPreviewServer(
         res.writeHead(400); res.end('Bad Request'); return;
       }
       try {
+        // ARCH finding #53: ServerState.config is already a ResolvedConfig —
+        // it satisfies renderChapterPreviewHtml's (now correctly typed)
+        // config param structurally, so the ad-hoc cast + `|| {}` fallback
+        // (config is never null/undefined on ServerState) were both dead.
         const chapterHtml = await renderChapterPreviewHtml(
           state.currentInputPath,
           file,
-          (state.config as { title?: string; styles?: string[]; plugins?: unknown[] }) || {}
+          state.config
         );
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(chapterHtml);

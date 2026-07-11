@@ -7,7 +7,7 @@ import net from "node:net";
 import type { Page } from "puppeteer-core";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
-import { loadPlugins, collectPluginCss } from "./markdown/plugins";
+import { loadPluginsWithCss } from "./markdown/plugins";
 import { copyAssets, resolveAssetDestName } from "./assets";
 import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
 import { prewarmBrowser, getBrowser, closeBrowser } from "./browser-pool";
@@ -103,7 +103,7 @@ export function splitOutPath(
   return { outDir: resolved, pdfFileOverride: null };
 }
 
-interface Gates {
+export interface Gates {
   lint: boolean;
   preValidate: boolean;
   postValidate: boolean;
@@ -731,7 +731,7 @@ export async function renderHtmlToPdf(
  * Assembled by {@link resolveBuildContext}; consumed by {@link runQualityGates},
  * {@link renderBook}, and the {@link OutputStrategy} implementations.
  */
-interface BuildContext {
+export interface BuildContext {
   opts: BuildRunnerOptions;
   format: BuildFormat;
   inputDir: string;
@@ -747,7 +747,7 @@ interface BuildContext {
  * filesystem writes, no browser, no logging beyond computeGates' own
  * flags-ignored notice. Everything downstream reads from the returned context.
  */
-async function resolveBuildContext(
+export async function resolveBuildContext(
   opts: BuildRunnerOptions
 ): Promise<BuildContext> {
   const { format } = opts;
@@ -820,8 +820,16 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * `outDir/book.html`, and copy user asset directories. Returns the path to the
  * rendered book.html both output strategies then paginate. This is the shared
  * pre-format work; the per-format tails live in the strategies.
+ *
+ * ARCH finding #4: markdown-it-paged computes typed, line-numbered
+ * author-mistake warnings (`env.layoutWarnings`) that every real render path
+ * used to discard silently. `renderChaptersToFile`'s `onChapterWarnings`
+ * threads them back out here so a final artifact never omits a marker
+ * mistake without at least telling the author about it in the build log.
+ * Exported (not just for the pipeline) so this stage is unit-testable
+ * without driving the full `runBuild` pagination/PDF machinery.
  */
-async function renderBook(ctx: BuildContext): Promise<string> {
+export async function renderBook(ctx: BuildContext): Promise<string> {
   const { config, manifestDir, inputDir, outDir } = ctx;
 
   if (config.source.files && config.source.files.length > 0) {
@@ -830,15 +838,17 @@ async function renderBook(ctx: BuildContext): Promise<string> {
     log.info("Using all .md files in alphabetical order");
   }
 
-  let plugins;
-  let pluginCss = "";
+  // ARCH finding #53: fail-fast (no onError) — a final artifact must never
+  // silently omit author-configured formatting, so a bad plugin here aborts
+  // the whole build/export instead of degrading (see loadPlugins' doc comment
+  // and the LIVE PREVIEW's degrade-and-report counterpart in
+  // preview/file-watcher.ts's renderPreviewBook).
   if (config.plugins.length > 0) {
     log.info(`Loading ${config.plugins.length} plugin(s)...`);
-    plugins = await loadPlugins(config.plugins, manifestDir);
-    pluginCss = collectPluginCss(plugins);
-    if (plugins.length > 0) {
-      log.success(`Loaded ${plugins.length} plugin(s)`);
-    }
+  }
+  const { plugins, pluginCss } = await loadPluginsWithCss(config.plugins, manifestDir);
+  if (plugins && plugins.length > 0) {
+    log.success(`Loaded ${plugins.length} plugin(s)`);
   }
 
   const htmlFile = await renderChaptersToFile(inputDir, outDir, {
@@ -847,6 +857,11 @@ async function renderBook(ctx: BuildContext): Promise<string> {
     files: config.source.files,
     plugins,
     pluginCss,
+    onChapterWarnings: (file, warnings) => {
+      for (const w of warnings) {
+        log.warn(`  ${file}, line ${w.line}: ${w.message}`);
+      }
+    },
   });
   log.success(`Wrote ${htmlFile}`);
 

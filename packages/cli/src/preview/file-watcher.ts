@@ -14,12 +14,13 @@ import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
 import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
-import { loadPlugins, collectPluginCss } from '../lib/markdown/plugins';
+import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { resolveAssetDestName } from '../lib/assets';
 import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 import { pagedjsPolyfillTagRegex } from '../lib/pagedjs-marker';
+import type { ResolvedPluginConfig } from '../schema/manifest.types';
 
 /**
  * Build the list of asset roots that live outside the input path and need
@@ -121,23 +122,25 @@ export function incrementalPreviewEnabled(): boolean {
  * Shared preview render path — the full book and the single-chapter splice
  * document differ ONLY in which files render and whether chapters are wrapped.
  * renderChapters() does all the work (CSS, Paged.js script slot).
+ *
+ * Named `renderPreviewBook` (ARCH finding #53) to distinguish it from
+ * build-runner.ts's `renderBook` — same name, different module, and a
+ * genuinely different contract: this one is degrade-and-report (a plugin the
+ * author enabled but hasn't installed yet is skipped with a loud warning so
+ * the rest of the live preview still renders); build-runner.ts's is
+ * fail-fast, because a final artifact must never silently drop a plugin.
+ * Both preambles now share {@link loadPluginsWithCss}.
  */
-export async function renderBook(
+export async function renderPreviewBook(
   inputPath: string,
-  config: { title?: string; styles?: string[]; plugins?: any[] },
+  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] },
   opts: { files: string[] | null; wrapChapters: boolean }
 ): Promise<string> {
-  let plugins;
-  let pluginCss = '';
-  if (config.plugins && config.plugins.length > 0) {
-    // Live preview degrades gracefully: a plugin the author enabled but hasn't
-    // installed yet is skipped (with a loud warning) so the rest of the document
-    // still renders instead of the whole preview going blank. Build/export keep
-    // fail-fast (no onError) — a final artifact must not silently drop a plugin.
-    plugins = await loadPlugins(config.plugins, inputPath, (ref, err) =>
-      warn(`Skipping plugin "${ref}" in preview — ${err.message}`));
-    pluginCss = collectPluginCss(plugins);
-  }
+  const { plugins, pluginCss } = await loadPluginsWithCss(
+    config.plugins,
+    inputPath,
+    (ref, err) => warn(`Skipping plugin "${ref}" in preview — ${err.message}`)
+  );
   return renderChapters(inputPath, {
     title: config.title ?? "Document",
     styles: config.styles,
@@ -145,6 +148,17 @@ export async function renderBook(
     plugins,
     pluginCss,
     wrapChapters: opts.wrapChapters,
+    // ARCH finding #4: markdown-it-paged's typed, line-numbered author-mistake
+    // warnings (env.layoutWarnings) used to be discarded here too — this is the
+    // ONE render path shared by the full book (generateAndWriteHtml) and the
+    // incremental per-chapter splice (renderChapterPreviewHtml), so wiring it
+    // here surfaces a marker mistake live in the preview terminal on both a
+    // full rebuild and a single-chapter edit.
+    onChapterWarnings: (file, warnings) => {
+      for (const w of warnings) {
+        warn(`  ${file}, line ${w.line}: ${w.message}`);
+      }
+    },
   });
 }
 
@@ -192,14 +206,14 @@ export function injectPreviewScripts(html: string, pageIsolateChapters: boolean)
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: any[] }
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[] }
 ): Promise<void> {
   if (!inputPath) {
     await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML, "utf-8");
     return;
   }
   const incremental = incrementalPreviewEnabled();
-  const html = await renderBook(inputPath, config, {
+  const html = await renderPreviewBook(inputPath, config, {
     files: config.source?.files ?? null,
     wrapChapters: incremental,
   });
@@ -220,9 +234,9 @@ export async function generateAndWriteHtml(
 export async function renderChapterPreviewHtml(
   inputPath: string,
   file: string,
-  config: { title?: string; styles?: string[]; plugins?: any[] }
+  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
 ): Promise<string> {
-  const html = await renderBook(inputPath, config, { files: [file], wrapChapters: true });
+  const html = await renderPreviewBook(inputPath, config, { files: [file], wrapChapters: true });
   return injectPreviewScripts(html, true);
 }
 

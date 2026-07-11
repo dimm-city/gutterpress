@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { resolveConfig } from "../manifest";
-import { renderChaptersToFile } from "./index";
+import { renderChapters, renderChaptersToFile, type LayoutWarning } from "./index";
 
 /**
  * ARCH finding #2 — integration test REQUIRED by the work package: a manifest
@@ -98,4 +98,72 @@ test("an explicit manifest `styles:` list still wins over styles/book.css", asyn
   const html = await readFile(htmlFile, "utf8");
   expect(html).toContain('<link rel="stylesheet" href="my/custom.css">');
   expect(html).not.toContain("styles/book.css");
+});
+
+/**
+ * ARCH finding #4 — `assemble.ts`'s render loop previously called
+ * `md.render(content)` with NO env, so every `env.layoutWarnings`
+ * markdown-it-paged computed (8 typed, line-numbered author-mistake classes —
+ * see markdown-it-paged.js's header) landed in markdown-it's own throwaway
+ * internal env and was discarded before `renderChapters` ever returned.
+ * Before this fix there was NO way for a `renderChapters` caller to observe a
+ * marker mistake at all. `onChapterWarnings` is the fix: it must fire, keyed
+ * by the exact chapter file, with the line number and message intact.
+ */
+test("renderChapters surfaces markdown-it-paged layout warnings via onChapterWarnings (ARCH #4)", async () => {
+  const dir = await makeProject();
+  // A deliberate marker mistake: @continue with no open @section.
+  await writeFile(
+    join(dir, "01.md"),
+    "# Chapter One\n\n@continue\n\nOrphaned continuation text.\n",
+    "utf8",
+  );
+
+  const captured: { file: string; warnings: LayoutWarning[] }[] = [];
+  await renderChapters(dir, {
+    files: ["01.md"],
+    onChapterWarnings: (file, warnings) => captured.push({ file, warnings }),
+  });
+
+  expect(captured).toHaveLength(1);
+  expect(captured[0]?.file).toBe("01.md");
+  expect(captured[0]?.warnings).toHaveLength(1);
+  expect(captured[0]?.warnings[0]).toMatchObject({
+    line: 3,
+    type: "continue_without_section",
+    message: "@continue used without an open @section; ignoring marker.",
+  });
+});
+
+test("renderChaptersToFile forwards onChapterWarnings through to renderChapters (ARCH #4)", async () => {
+  const dir = await makeProject();
+  await writeFile(join(dir, "01.md"), "@continue\nHi\n", "utf8");
+
+  const captured: { file: string; warnings: LayoutWarning[] }[] = [];
+  const outDir = join(dir, "dist");
+  await renderChaptersToFile(dir, outDir, {
+    files: ["01.md"],
+    onChapterWarnings: (file, warnings) => captured.push({ file, warnings }),
+  });
+
+  expect(captured).toHaveLength(1);
+  expect(captured[0]?.warnings[0]?.type).toBe("continue_without_section");
+});
+
+/**
+ * A chapter with NO marker mistakes must never invoke the callback — the
+ * warning surface stays silent for the common case (no noise for well-formed
+ * documents).
+ */
+test("renderChapters does not invoke onChapterWarnings for a chapter with no marker mistakes", async () => {
+  const dir = await makeProject();
+  await writeFile(join(dir, "01.md"), "# Chapter One\n\nJust prose.\n", "utf8");
+
+  const captured: unknown[] = [];
+  await renderChapters(dir, {
+    files: ["01.md"],
+    onChapterWarnings: (file, warnings) => captured.push({ file, warnings }),
+  });
+
+  expect(captured).toHaveLength(0);
 });

@@ -19,6 +19,15 @@ import { INSTALL_HINTS as CANONICAL_INSTALL_HINTS, fullInstallHint } from "./ins
 import { PACKAGE_VERSION } from "./version";
 
 export interface ToolStatus {
+  /**
+   * Stable machine id for this tool, independent of the human-readable
+   * `name`/`bin` display strings (e.g. "chromium", "gs", "qpdf"). Consumers
+   * that need to single out a specific tool (the viewer's doctor route
+   * excludes the bundled-Chromium entry from the "external tools" list) MUST
+   * match on this field, not on `bin`/`name` — those are presentation text
+   * and can be reworded without notice (UX L10).
+   */
+  id: string;
   name: string;
   /** The canonical CLI/binary name being probed (gs, qpdf, etc). */
   bin: string;
@@ -54,12 +63,14 @@ const INSTALL_HINTS: Record<keyof typeof CANONICAL_INSTALL_HINTS, string> = {
 };
 
 const TOOLS_TO_PROBE: Array<{
+  id: string;
   bin: string;
   name: string;
   hintKey: keyof typeof INSTALL_HINTS;
   usedBy: ToolStatus["usedBy"];
 }> = [
   {
+    id: "gs",
     bin: "gs",
     name: "Ghostscript",
     hintKey: "gs",
@@ -70,6 +81,7 @@ const TOOLS_TO_PROBE: Array<{
     ],
   },
   {
+    id: "qpdf",
     bin: "qpdf",
     name: "qpdf",
     hintKey: "qpdf",
@@ -117,6 +129,7 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
   const chromiumVersion = undefined;
 
   const chromium: ToolStatus = {
+    id: "chromium",
     name: "Chromium-based browser",
     bin: "chrome / chromium / msedge",
     found: !!chromiumPath,
@@ -137,6 +150,7 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
       const found = available || !!path;
       const version = found ? await getVersion(t.bin) : undefined;
       return {
+        id: t.id,
         name: t.name,
         bin: t.bin,
         found,
