@@ -3,8 +3,10 @@ import { join, resolve } from "node:path";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./viewer";
+import { UsageError } from "./cli-args";
 import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
+import { getChecks } from "../checks/registry";
 import {
   checkToolAvailability,
   reportMissingTools,
@@ -57,6 +59,27 @@ function parseProfile(raw?: string): ValidationProfile | undefined {
   if (!raw) return undefined;
   if (raw === "dtrpg") return raw;
   throw new Error(`Unsupported profile: ${raw}. Supported profiles: dtrpg`);
+}
+
+/**
+ * Resolve `--phase` to a real {@link CheckPhase} (or `undefined`, meaning "no
+ * phase filter" — i.e. both phases). The README documents the friendly
+ * `pre`/`post`/`all` aliases; the internal filter only knows `pre-build`/
+ * `post-build`. Previously `args.phase` was cast straight to `CheckPhase`
+ * with no validation, so every documented value except the internal ones
+ * matched zero registered checks in `registry.ts` (strict equality) and the
+ * CLI silently reported "VALIDATION PASSED" with `total: 0`. Unknown values
+ * now throw `UsageError`, mirroring `parseFormat`/`parsePdfxFlavor`/
+ * `resolvePort` in `cli-args.ts`.
+ */
+function resolvePhaseArg(raw: string): CheckPhase | undefined {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "pre" || normalized === "pre-build") return "pre-build";
+  if (normalized === "post" || normalized === "post-build") return "post-build";
+  if (normalized === "all") return undefined;
+  throw new UsageError(
+    `Invalid --phase value: "${raw}". Expected "pre", "post", "all", "pre-build", or "post-build".`
+  );
 }
 
 function withProfileRequiredCheckErrors(
@@ -125,8 +148,22 @@ export async function executeValidation(
   const skip = parseCsv(typeof args.skip === "string" ? args.skip : undefined);
 
   let phase: CheckPhase | undefined;
-  if (typeof args.phase === "string") {
-    phase = args.phase as CheckPhase;
+  if (typeof args.phase === "string" && args.phase !== "") {
+    phase = resolvePhaseArg(args.phase);
+    if (phase) {
+      // Mirror the unmatched --only/--skip selector guard in registry.ts: a
+      // --phase (optionally narrowed further by --category) that matches no
+      // registered check is a usage error, not a silent "VALIDATION PASSED".
+      const matched = getChecks({ phase, category: categories });
+      if (matched.length === 0) {
+        const categorySuffix = categories?.length
+          ? ` with --category ${categories.join(",")}`
+          : "";
+        throw new UsageError(
+          `--phase ${args.phase}${categorySuffix} matched zero registered checks.`
+        );
+      }
+    }
   } else if (pdfPath && !inputDir) {
     phase = "post-build";
   } else if (inputDir && !pdfPath) {

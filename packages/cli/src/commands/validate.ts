@@ -38,7 +38,8 @@ export default defineCommand({
     },
     phase: {
       type: "string",
-      description: "Run checks for phase: pre-build or post-build",
+      description:
+        'Run checks for phase: pre | post | all | pre-build | post-build (default: all)',
     },
     profile: {
       type: "string",

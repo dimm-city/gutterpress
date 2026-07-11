@@ -145,7 +145,7 @@ Run the validation pipeline (pre-build source checks and/or post-build PDF check
 ```sh
 print-md validate [input-dir] [options]
 
-  --phase <p>       pre | post | all         (default: all)
+  --phase <p>       pre | post | all | pre-build | post-build   (default: all)
   --category <c>    source | asset | pdf | heuristic
   --only <ids>      Comma-separated check IDs
   --skip <ids>      Comma-separated check IDs
