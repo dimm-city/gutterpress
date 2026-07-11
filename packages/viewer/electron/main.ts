@@ -140,6 +140,13 @@ import {
   registerAppProtocol,
   startSvelteKitServer,
 } from "./sveltekit-host";
+import {
+  APP_ORIGIN,
+  decideNavigation,
+  decideWindowOpen,
+  isTrustedIpcSender,
+  type OriginPolicyConfig,
+} from "./navigation-policy";
 
 // Module directory, ESM-safe. We do NOT rely on electron-vite's injected
 // `__dirname` shim (`const __dirname = import.meta.dirname`): after main.ts was
@@ -649,7 +656,12 @@ function createWindow() {
       preload: path.resolve(HERE, "../preload/preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      // ARCH review finding #33: sandboxed (Electron default since v20). The
+      // preload (electron/preload.ts) uses only contextBridge + ipcRenderer,
+      // both sandbox-safe, so this costs nothing while shrinking the blast
+      // radius of a renderer compromise in a window that intentionally hosts
+      // third-party content in the cross-origin preview iframe.
+      sandbox: true,
       // CRITICAL: the window now starts hidden behind the splash, and the FIRST
       // project render (paged.js) happens while it's still hidden. Electron
       // background-throttles hidden/occluded windows — timers and rAF drop to
@@ -696,27 +708,43 @@ function createWindow() {
     Menu.buildFromTemplate(template).popup({ window: mainWindow ?? undefined });
   });
 
-  // Auth flows for URL previews sometimes rely on window.open popups, so allow
-  // http(s) popups inside Electron. Renderer code should still call
-  // `electron.openExternal()` when the user explicitly wants the system browser.
+  // ARCH review finding #1: no flow in this app actually needs an in-app
+  // popup window — GitHub device-flow connect and every external link
+  // already go through `shell.openExternal` (see AdvancedSetupDialog,
+  // GitHubDialog, HelpDialog, ProjectConfigPanel, +page.svelte; a grep for
+  // `window.open`/`target="_blank"` across src/ and electron/ has zero
+  // hits). The previous handler granted `window.open`/`target="_blank"`
+  // requests a full BrowserWindow for ANY https URL — and because
+  // `overrideBrowserWindowOptions` never cleared `preload`, that popup
+  // inherited the parent's full preload bridge. `decideWindowOpen` never
+  // grants a popup a window at all: http(s) requests open in the system
+  // browser instead, so there is nothing that could inherit the bridge.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) {
-      return {
-        action: "allow",
-        overrideBrowserWindowOptions: {
-          width: 1100,
-          height: 760,
-          parent: mainWindow ?? undefined,
-          autoHideMenuBar: true,
-          webPreferences: {
-            sandbox: true,
-            contextIsolation: true,
-            nodeIntegration: false,
-          },
-        },
-      };
+    const decision = decideWindowOpen(url);
+    if (decision.action === "open-external") {
+      void shell.openExternal(decision.url);
     }
     return { action: "deny" };
+  });
+
+  // ARCH review finding #1: deny top-frame navigation to anything but the
+  // app's own origin (prod) / the Vite dev server (dev). Without this, the
+  // cross-origin preview iframe (PreviewFrame.svelte, rendering author
+  // markdown with html:true) could navigate the TOP frame via a plain
+  // `<a target="_top" href="https://evil.example">` — and because the
+  // preload persists across a same-window navigation, the destination
+  // origin would receive the full `window.electron` bridge
+  // (arbitrary-path PDF write, arbitrary-directory repo clone, preview/watch
+  // control, …). http(s) destinations are opened in the system browser
+  // instead of loading in place; everything else (file:, javascript:,
+  // data:, arbitrary custom schemes) is denied outright.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    const decision = decideNavigation(url, originPolicyConfig());
+    if (decision.action === "allow") return;
+    event.preventDefault();
+    if (decision.action === "open-external") {
+      void shell.openExternal(decision.url);
+    }
   });
 
   // Surface renderer errors to stdout so terminal-launched runs reveal
@@ -899,7 +927,40 @@ initPdfExport({
 
 // ──────────────────────────────────────────────────────────────────────────
 // IPC handlers (replace the deleted /api/* SvelteKit routes)
+//
+// Every handler below is registered through `secureHandle`, not raw
+// `ipcMain.handle`, so that ALL of them — not some hand-picked subset —
+// reject invocations whose sender frame isn't the app's own origin (ARCH
+// review finding #1). This is what stands between the preload's full IPC
+// bridge (PDF-write, repo clone, preview/watch control, …) and any remote
+// origin that a navigation/popup bug might otherwise let load into a frame.
 // ──────────────────────────────────────────────────────────────────────────
+
+/** `will-navigate`/sender-validation config: prod app:// origin + (dev-only) Vite dev server. */
+function originPolicyConfig(): OriginPolicyConfig {
+  return { appOrigin: APP_ORIGIN, devServerOrigin: process.env.VITE_DEV_SERVER_URL ?? null };
+}
+
+/**
+ * Drop-in replacement for `ipcMain.handle` that rejects any invocation whose
+ * `event.senderFrame.url` isn't the trusted app origin (or the dev server
+ * origin, in dev) before calling `listener`. One mechanism applied to every
+ * channel, instead of a sender check duplicated into 18 handlers.
+ */
+function secureHandle<Args extends unknown[], R>(
+  channel: string,
+  listener: (event: Electron.IpcMainInvokeEvent, ...args: Args) => R,
+): void {
+  ipcMain.handle(channel, (event, ...args: Args) => {
+    if (!isTrustedIpcSender(event.senderFrame?.url, originPolicyConfig())) {
+      console.warn(
+        `[ipc] blocked "${channel}" from untrusted sender: ${event.senderFrame?.url ?? "unknown"}`,
+      );
+      throw new Error(`Blocked: untrusted sender for "${channel}"`);
+    }
+    return listener(event, ...args);
+  });
+}
 
 // dialog:openDirectory migrated to SvelteKit server route (src/routes/api/dialog/open-directory).
 // dialog:savePdf, dialog:pickImageFile, dialog:pickImageFiles, fs:copyFile
@@ -925,14 +986,14 @@ initPdfExport({
 // Backs external-edit detection: a shallow fs.watch on the open project whose
 // debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
 // project is open at a time, so subscribing replaces any prior watch.
-ipcMain.handle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
+secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
   if (!path.isAbsolute(dirPath)) {
     throw new Error(`fs:watchFolder requires an absolute path, got: ${dirPath}`);
   }
   startFolderWatch(dirPath);
 });
 
-ipcMain.handle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
+secureHandle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
   const normalized = path.resolve(dirPath);
   if (watchedDir === normalized) stopFolderWatch();
 });
@@ -952,7 +1013,7 @@ registerRecoveryHooks({
 // app:setDirtyState migrated to server route (src/routes/api/app/dirty-state).
 // app:flushDone kept as IPC: the preload's onFlushBeforeClose fires it from
 // within the renderer via ipcRenderer.invoke — cannot route through fetch.
-ipcMain.handle("app:flushDone", async (): Promise<void> => {
+secureHandle("app:flushDone", async (): Promise<void> => {
   rendererDirty = false;
   flushResolve?.();
 });
@@ -1152,7 +1213,7 @@ interface ActiveGitHubConnect {
 }
 let activeGitHubConnect: ActiveGitHubConnect | null = null;
 
-ipcMain.handle("remote:connectGitHubStart", () =>
+secureHandle("remote:connectGitHubStart", () =>
   handleRemoteErrors("remote:connectGitHubStart", async () => {
     // Replace any in-flight attempt (e.g. the user reopened the dialog).
     activeGitHubConnect?.controller.abort();
@@ -1191,7 +1252,7 @@ ipcMain.handle("remote:connectGitHubStart", () =>
   }),
 );
 
-ipcMain.handle("remote:connectGitHubWait", () =>
+secureHandle("remote:connectGitHubWait", () =>
   handleRemoteErrors("remote:connectGitHubWait", async () => {
     const active = activeGitHubConnect;
     if (!active) {
@@ -1205,7 +1266,7 @@ ipcMain.handle("remote:connectGitHubWait", () =>
   }),
 );
 
-ipcMain.handle("remote:connectGitHubCancel", async () => {
+secureHandle("remote:connectGitHubCancel", async () => {
   activeGitHubConnect?.controller.abort();
   activeGitHubConnect = null;
   return { ok: true };
@@ -1230,7 +1291,7 @@ function sanitizeBookSubPath(subPath: unknown): string {
   return segments.join("/");
 }
 
-ipcMain.handle(
+secureHandle(
   "remote:cloneRepository",
   (
     _e,
@@ -1296,7 +1357,7 @@ ipcMain.handle(
 // remote:sync — migrated to SvelteKit server routes (Phase 2F).
 // Accessed via __printMdRemoteHooks__ globalThis hook.
 
-ipcMain.handle(
+secureHandle(
   "remote:resolveSyncConflicts",
   (
     _e,
@@ -1367,7 +1428,7 @@ ipcMain.handle(
  * resolver map (in recovery-bridge.ts) receives the answer and unblocks the
  * awaiting recover() call.
  */
-ipcMain.handle(
+secureHandle(
   "recovery:confirm-response",
   (_e, { requestId, approved }: { requestId: string; approved: boolean }) => {
     if (typeof requestId !== "string" || typeof approved !== "boolean") {
@@ -1398,7 +1459,7 @@ registerConflictPreviewHooks({
 // the flag into settings.versionHistory.autoSync and, if re-enabled, re-arm the
 // periodic safety timer for the currently open project (unlatch conflict if any,
 // since the user explicitly requested to resume).
-ipcMain.handle("sync:setAutoSync", async (_e, enabled: boolean) => {
+secureHandle("sync:setAutoSync", async (_e, enabled: boolean) => {
   if (typeof enabled !== "boolean") {
     throw new Error("sync:setAutoSync requires a boolean");
   }
@@ -1435,7 +1496,7 @@ ipcMain.handle("sync:setAutoSync", async (_e, enabled: boolean) => {
 // recents last. Arrival order matches the renderer's open-epoch order, and
 // the renderer's epoch guard discards the superseded call's response.
 let previewRequestChain: Promise<unknown> = Promise.resolve();
-ipcMain.handle("api:preview", (_e, args: { input?: string }) => {
+secureHandle("api:preview", (_e, args: { input?: string }) => {
   const run = previewRequestChain.then(() => handlePreviewRequest(args));
   previewRequestChain = run.then(
     () => undefined,
@@ -1745,7 +1806,7 @@ async function handlePreviewRequest(args: { input?: string }) {
   };
 }
 
-ipcMain.handle("api:stopPreview", async () => {
+secureHandle("api:stopPreview", async () => {
   if (activePreview) {
     await activePreview.stop().catch(() => {});
     activePreview = null;
@@ -1753,7 +1814,7 @@ ipcMain.handle("api:stopPreview", async () => {
   return { stopped: true };
 });
 
-ipcMain.handle("api:cancelExport", async (_e, exportId: string) => {
+secureHandle("api:cancelExport", async (_e, exportId: string) => {
   const session = getActiveExportSession();
   if (!session || session.id !== exportId) {
     return { canceled: false };
@@ -1792,7 +1853,7 @@ const exportController = new ExportController({
   rm: (p) => rm(p, { force: true }),
 });
 
-ipcMain.handle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
+secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
 
 // ──────────────────────────────────────────────────────────────────────────
 // Auto-updater wiring (electron-updater — full-app updates from GitHub)
@@ -1810,22 +1871,22 @@ function sendUpdaterEvent(event: UpdaterEventPayload) {
 }
 initUpdater(sendUpdaterEvent);
 
-ipcMain.handle("updater:getStatus", async () => {
+secureHandle("updater:getStatus", async () => {
   return getUpdaterStatus();
 });
 
-ipcMain.handle("updater:check", async () => {
+secureHandle("updater:check", async () => {
   // Platform gating (incl. the macOS/non-AppImage-Linux "download from
   // GitHub" hint) lives inside checkForUpdates() so every caller gets the
   // same honest status. User-initiated (non-silent): failures are reported.
   return checkForUpdates();
 });
 
-ipcMain.handle("updater:download", async () => {
+secureHandle("updater:download", async () => {
   return downloadUpdate();
 });
 
-ipcMain.handle("updater:applyNow", async () => {
+secureHandle("updater:applyNow", async () => {
   // Flush unsaved editor state BEFORE the installer spawns: quitAndInstall
   // launches the NSIS installer (Windows) synchronously and only then quits,
   // so the installer would otherwise sit waiting on process exit while the
