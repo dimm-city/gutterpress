@@ -3,7 +3,15 @@
  * electron/main.ts). Covers the pure `mergeSettings` deep-merge and the
  * injected-fs store factory `createSettingsStore` (read/write + settingsPath).
  *
- * These are RED before electron/settings-store.ts exists.
+ * #29: `AppSettings`/`DEFAULT_SETTINGS` are imported from the shared module
+ * (`./bridge-types` → `src/lib/platform/shared-types.ts`) instead of being
+ * hand-duplicated here — this file re-imports them from `../../electron/
+ * settings-store` (which re-exports them) so a regression that reintroduces
+ * a local copy still shows up as a type/value mismatch here.
+ *
+ * #34: writes are atomic (`<file>.tmp` then `rename`) and a JSON-parse
+ * failure preserves the corrupt file as `<file>.corrupt-<ts>` instead of
+ * silently falling back to defaults with no trace of what was lost.
  */
 import { expect, test } from "bun:test";
 import path from "node:path";
@@ -73,14 +81,20 @@ interface MkdirCall {
   path: string;
   opts: unknown;
 }
+interface RenameCall {
+  from: string;
+  to: string;
+}
 
 function makeStore(opts: {
   userDataDir?: string;
   readFileImpl?: (p: string, enc: string) => Promise<string>;
+  renameImpl?: (from: string, to: string) => Promise<void>;
 } = {}) {
   const userDataDir = opts.userDataDir ?? "/userdata";
   const writes: WriteCall[] = [];
   const mkdirs: MkdirCall[] = [];
+  const renames: RenameCall[] = [];
 
   const deps: SettingsStoreDeps = {
     getUserDataDir: () => userDataDir,
@@ -97,10 +111,15 @@ function makeStore(opts: {
         mkdirs.push({ path: p, opts: o });
         return undefined;
       },
+      rename: opts.renameImpl
+        ? opts.renameImpl
+        : async (from: string, to: string) => {
+            renames.push({ from, to });
+          },
     },
   };
 
-  return { store: createSettingsStore(deps), writes, mkdirs, userDataDir };
+  return { store: createSettingsStore(deps), writes, mkdirs, renames, userDataDir };
 }
 
 test("settingsPath joins userDataDir with app-settings.json", () => {
@@ -109,21 +128,38 @@ test("settingsPath joins userDataDir with app-settings.json", () => {
 });
 
 test("readSettings returns DEFAULT_SETTINGS when the file is missing (readFile rejects)", async () => {
-  const { store } = makeStore({
+  const { store, renames } = makeStore({
     readFileImpl: async () => {
       throw new Error("ENOENT: no such file");
     },
   });
   const s = await store.readSettings();
   expect(s).toEqual(DEFAULT_SETTINGS);
+  // Missing file is normal (first run) — nothing to preserve.
+  expect(renames).toHaveLength(0);
 });
 
-test("readSettings returns DEFAULT_SETTINGS when stored JSON is invalid", async () => {
-  const { store } = makeStore({
+test("readSettings preserves a corrupt file as <path>.corrupt-<ts> instead of silently discarding it", async () => {
+  const { store, renames } = makeStore({
     readFileImpl: async () => "{ not valid json ]",
   });
   const s = await store.readSettings();
   expect(s).toEqual(DEFAULT_SETTINGS);
+  expect(renames).toHaveLength(1);
+  expect(renames[0]!.from).toBe(store.settingsPath());
+  expect(renames[0]!.to).toMatch(
+    new RegExp(`^${store.settingsPath().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.corrupt-\\d+$`),
+  );
+});
+
+test("readSettings still returns DEFAULT_SETTINGS when the preserve-rename itself fails", async () => {
+  const { store } = makeStore({
+    readFileImpl: async () => "{ not valid json ]",
+    renameImpl: async () => {
+      throw new Error("EACCES: cannot rename");
+    },
+  });
+  expect(await store.readSettings()).toEqual(DEFAULT_SETTINGS);
 });
 
 test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async () => {
@@ -144,8 +180,8 @@ test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async ()
   expect(s.appearance).toEqual(DEFAULT_SETTINGS.appearance);
 });
 
-test("writeSettings mkdirs the userDataDir then writes pretty JSON to settingsPath", async () => {
-  const { store, writes, mkdirs, userDataDir } = makeStore();
+test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>.tmp, then renames over settingsPath", async () => {
+  const { store, writes, mkdirs, renames, userDataDir } = makeStore();
   const settings: AppSettings = {
     ...DEFAULT_SETTINGS,
     editor: { ...DEFAULT_SETTINGS.editor, fontSize: 18 },
@@ -158,9 +194,14 @@ test("writeSettings mkdirs the userDataDir then writes pretty JSON to settingsPa
   expect(mkdirs[0]!.path).toBe(userDataDir);
   expect(mkdirs[0]!.opts).toEqual({ recursive: true });
 
-  // writeFile(settingsPath, JSON.stringify(settings, null, 2), "utf8").
+  // writeFile(settingsPath + ".tmp", JSON.stringify(settings, null, 2), "utf8").
   expect(writes).toHaveLength(1);
-  expect(writes[0]!.path).toBe(store.settingsPath());
+  expect(writes[0]!.path).toBe(`${store.settingsPath()}.tmp`);
   expect(writes[0]!.data).toBe(JSON.stringify(settings, null, 2));
   expect(writes[0]!.enc).toBe("utf8");
+
+  // rename(settingsPath + ".tmp", settingsPath).
+  expect(renames).toHaveLength(1);
+  expect(renames[0]!.from).toBe(`${store.settingsPath()}.tmp`);
+  expect(renames[0]!.to).toBe(store.settingsPath());
 });

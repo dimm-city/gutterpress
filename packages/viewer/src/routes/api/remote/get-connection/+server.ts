@@ -1,11 +1,13 @@
-import { error } from '@sveltejs/kit';
-import { getHooks } from '../_hooks';
-import { jsonRoute } from '../../_lib/handler';
+import { getHooks, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
+import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { host?: string }) => {
-  const hooks = getHooks();
-  if (!hooks) error(503, 'Remote hooks not available');
+export const POST: RequestHandler = defineRoute<
+  { host?: string },
+  RemoteHooks<LibModule, TokenStore>
+>({
+  hooks: getHooks,
+  hooksUnavailableMessage: 'Remote hooks not available',
   // Returns redacted status only — the token NEVER crosses this boundary.
-  return hooks.tokenStore.status(body?.host || hooks.GITHUB_HOST);
+  call: async ({ body, hooks }) => hooks.tokenStore.status(body?.host || hooks.GITHUB_HOST),
 });

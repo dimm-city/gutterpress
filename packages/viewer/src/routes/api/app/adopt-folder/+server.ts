@@ -1,19 +1,14 @@
-import { error } from '@sveltejs/kit';
-import path from 'node:path';
-import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-interface AdoptFolderLibModule {
-  adoptFolder: (opts: unknown) => Promise<unknown>;
-}
-
-export const POST: RequestHandler = jsonRoute(async (options: Record<string, unknown>) => {
-  if (!options || typeof options.dir !== 'string' || !path.isAbsolute(options.dir)) {
-    error(400, 'adoptFolder requires an absolute { dir }');
-  }
-  const hooks = getPrefsHooks<AdoptFolderLibModule>();
-  if (!hooks) error(503, 'Prefs hooks not registered');
-  const lib = await hooks.loadLib();
-  return lib.adoptFolder(options);
+export const POST: RequestHandler = defineRoute<Record<string, unknown>>({
+  validate: (raw) => {
+    const options = raw as Record<string, unknown>;
+    requireAbsolute(options.dir, 'adoptFolder');
+    return options;
+  },
+  call: async ({ body }) => {
+    const lib = await loadLib();
+    return lib.adoptFolder(body as unknown as Parameters<typeof lib.adoptFolder>[0]);
+  },
 });

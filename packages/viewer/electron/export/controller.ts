@@ -25,9 +25,8 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { preExportSyncGateBlockError } from "../recovery-bridge";
-import type { SyncStatusPayload } from "../auto-sync/orchestrator";
 import type { ExportProgressEvent, ExportSession } from "../pdf-export";
-import type { PdfRenderer, TokenStore } from "@dimm-city/print-md";
+import type { ConflictFile, PdfRenderer, TokenStore } from "@dimm-city/print-md";
 
 type LibModule = typeof import("@dimm-city/print-md");
 
@@ -53,12 +52,18 @@ export interface ExportBuildResult {
   fingerprintPath?: string;
 }
 
-/** The minimal slice of AutoSyncOrchestrator the pre-export gate needs. */
+/**
+ * The minimal slice of AutoSyncOrchestrator the pre-export gate needs — two
+ * methods, both owned by the orchestrator itself: a read (isConflictLatched)
+ * and the ONE mutation surface (latchConflict), which also cancels the
+ * project's timers, stamps lastSyncAt, and emits the conflict status. Finding
+ * #7 (2026-07-10 architecture review): this used to be `getState`/
+ * `getOrCreateState` returning the orchestrator's mutable state bag directly,
+ * which let the gate below reach in and hand-write `conflictLatched`.
+ */
 export interface ExportSyncGate {
-  getState(dir: string): { conflictLatched: boolean } | undefined;
-  getOrCreateState(dir: string): { conflictLatched: boolean };
-  cancelTimer(dir: string): void;
-  setLastSyncAt(dir: string, iso: string | null): void;
+  isConflictLatched(dir: string): boolean;
+  latchConflict(dir: string, files: ConflictFile[]): void;
 }
 
 /** External touch-points injected into the controller (all faked in tests). */
@@ -67,12 +72,8 @@ export interface ExportControllerDeps {
   loadLib: () => Promise<LibModule>;
   /** Credential store passed to lib.diagnoseProjectRemote / lib.syncProject. */
   tokenStore: TokenStore;
-  /** Emit a sync status event (used by the pre-export conflict gate). */
-  emit: (payload: SyncStatusPayload) => void;
   /** Network reachability (Electron net.isOnline in production). */
   isOnline: () => boolean;
-  /** Injectable clock (epoch ms) for gate timestamps. */
-  now: () => number;
   /** True when PRINTMD_VIEWER_PUPPETEER opts out of the Electron PDF renderer. */
   usePuppeteer: () => boolean;
   /** Electron-native PDF renderer (electron/pdf-export.ts). */
@@ -96,10 +97,6 @@ export interface ExportControllerDeps {
 
 export class ExportController {
   constructor(private readonly deps: ExportControllerDeps) {}
-
-  private nowIso(): string {
-    return new Date(this.deps.now()).toISOString();
-  }
 
   /**
    * Run one PDF/HTML export. Mirrors the original `api:build` handler exactly:
@@ -135,12 +132,11 @@ export class ExportController {
     // path.resolve() normalises the export dir to match the autoSyncStates key,
     // which is always normalised at assignment time in startFolderWatch.
     const exportDir = path.resolve(args.input);
-    // Use exportDir (already path.resolve'd) as the canonical key into
-    // autoSyncStates so both the hard-block read and the mid-gate conflict write
-    // (sync.getOrCreateState(exportDir) below) use the same key — regardless
-    // of whether exportDir happens to equal watchedDir.
-    const exportSyncState = this.deps.sync.getState(exportDir);
-    if (exportSyncState?.conflictLatched) {
+    // Use exportDir (already path.resolve'd) as the canonical key into the
+    // orchestrator's state map so both the hard-block read and the mid-gate
+    // conflict latch below use the same key — regardless of whether exportDir
+    // happens to equal watchedDir.
+    if (this.deps.sync.isConflictLatched(exportDir)) {
       // Hard block: the author MUST resolve before a PDF can be trusted.
       const err = new Error(
         "Cannot save a PDF while there are unresolved changes from two places. " +
@@ -168,18 +164,9 @@ export class ExportController {
             tokenStore: this.deps.tokenStore,
           });
           if (syncOutcome.status === "conflict") {
-            // A conflict surfaced mid-export-gate: latch and block.
-            const state = this.deps.sync.getOrCreateState(exportDir);
-            state.conflictLatched = true;
-            this.deps.sync.cancelTimer(exportDir);
-            const gateConflictAt = this.nowIso();
-            this.deps.sync.setLastSyncAt(exportDir, gateConflictAt);
-            this.deps.emit({
-              state: "conflict",
-              files: syncOutcome.files,
-              projectDir: exportDir,
-              lastSyncAt: gateConflictAt,
-            });
+            // A conflict surfaced mid-export-gate: latch (cancels timers,
+            // stamps lastSyncAt, and emits the conflict status) and block.
+            this.deps.sync.latchConflict(exportDir, syncOutcome.files);
             const conflictErr = new Error(
               "Changes happened in two places. Resolve the conflict first, then save the PDF.",
             );

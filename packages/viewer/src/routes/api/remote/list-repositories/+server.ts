@@ -1,20 +1,23 @@
-import { error } from '@sveltejs/kit';
-import { getHooks, handleRemoteErrors } from '../_hooks';
-import { jsonRoute } from '../../_lib/handler';
+import { getHooks, handleRemoteErrors, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
+import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async () => {
-  const hooks = getHooks();
-  if (!hooks) error(503, 'Remote hooks not available');
-  return handleRemoteErrors('remote:listRepositories', async () => {
-    const credential = await hooks.tokenStore.get(hooks.GITHUB_HOST);
-    if (!credential) {
-      throw new Error('Connect GitHub first to see your repositories.');
-    }
-    const lib = await hooks.loadLib();
-    if (!lib.listGitHubRepositories) {
-      throw new Error('listGitHubRepositories not available in this version of the lib');
-    }
-    return lib.listGitHubRepositories(credential);
-  });
+export const POST: RequestHandler = defineRoute<
+  Record<string, never>,
+  RemoteHooks<LibModule, TokenStore>
+>({
+  hooks: getHooks,
+  hooksUnavailableMessage: 'Remote hooks not available',
+  call: async ({ hooks }) =>
+    handleRemoteErrors('remote:listRepositories', async () => {
+      const credential = await hooks.tokenStore.get(hooks.GITHUB_HOST);
+      if (!credential) {
+        throw new Error('Connect GitHub first to see your repositories.');
+      }
+      const lib = await hooks.loadLib();
+      if (!lib.listGitHubRepositories) {
+        throw new Error('listGitHubRepositories not available in this version of the lib');
+      }
+      return lib.listGitHubRepositories(credential);
+    }),
 });

@@ -3,13 +3,18 @@
 // backing editor-state persistence (#43).
 //
 // Side-effect-free (no electron, no fs), so we exercise the transforms directly.
+//
+// #30: `lastChapter`/`sidebarOpen`/`cursorLine`/`editorScroll` were removed
+// from `ProjectState` (dead schema — never had a real consumer), and
+// `migrateLegacyProjectState` was deleted outright (the release carrying its
+// migration fallback has shipped). `ProjectState` now only carries the three
+// live fields: `currentPage`, `viewMode`, `splitPaneRatio`.
 // ──────────────────────────────────────────────────────────────────────────
 
 import { describe, expect, test } from "bun:test";
 import {
   readProjectState,
   writeProjectState,
-  migrateLegacyProjectState,
   type ProjectStateMap,
 } from "../../electron/project-state.js";
 
@@ -54,40 +59,10 @@ describe("writeProjectState", () => {
     expect(out["/a"]).toEqual({ currentPage: 5, viewMode: "single" });
   });
 
-  test("lastChapter and sidebarOpen round-trip through write→read", () => {
+  test("splitPaneRatio round-trips through write→read", () => {
     let map: ProjectStateMap = {};
-    map = writeProjectState(map, "/a", { lastChapter: "/a/ch1.md", sidebarOpen: false });
+    map = writeProjectState(map, "/a", { splitPaneRatio: 0.35 });
     const round = JSON.parse(JSON.stringify(map)) as ProjectStateMap;
-    expect(readProjectState(round, "/a")).toEqual({
-      lastChapter: "/a/ch1.md",
-      sidebarOpen: false,
-    });
-  });
-});
-
-describe("migrateLegacyProjectState", () => {
-  test("returns the existing map untouched when projectStates is present", () => {
-    const existing: ProjectStateMap = { "/a": { currentPage: 7 } };
-    expect(
-      migrateLegacyProjectState({ projectStates: existing, currentPage: 1, lastProjectDir: "/a" }),
-    ).toBe(existing);
-  });
-
-  test("seeds the last project's bucket from legacy top-level page/mode", () => {
-    expect(
-      migrateLegacyProjectState({
-        lastProjectDir: "/a",
-        currentPage: 4,
-        viewMode: "single",
-      }),
-    ).toEqual({ "/a": { currentPage: 4, viewMode: "single" } });
-  });
-
-  test("returns undefined when there is no last project to key on", () => {
-    expect(migrateLegacyProjectState({ currentPage: 4 })).toBeUndefined();
-  });
-
-  test("returns undefined when there is no legacy state to migrate", () => {
-    expect(migrateLegacyProjectState({ lastProjectDir: "/a" })).toBeUndefined();
+    expect(readProjectState(round, "/a")).toEqual({ splitPaneRatio: 0.35 });
   });
 });

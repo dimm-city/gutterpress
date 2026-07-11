@@ -1,15 +1,20 @@
 /**
  * Shared prefs/settings hooks for app:* server routes.
  *
- * The SvelteKit handler and main.ts run in the same Node.js process but in
- * separate Vite bundles. We use globalThis to share live references so the
- * server routes can call the prefs/settings read/write logic that lives in main.
+ * Storage lives in the single collapsed host object (ARCH review #31,
+ * `./host-services.ts`) — `getPrefsHooks()` is a thin derived selector over
+ * it. main.ts builds ONE concrete `PrefsHooks<LibModule, ViewerPrefs,
+ * AppSettings, ProjectStateMap | undefined, RecentFolder>` object and passes
+ * it as the `prefs` field to a single `registerHostServices()` call.
  *
- * main.ts calls registerPrefsHooks() once at startup.
- * Server routes call getPrefsHooks() to retrieve them.
+ * `getPrefsHooks<...>()` keeps its own generic parameters so call sites can
+ * ask for a narrower view (e.g. `getPrefsHooks<ProjectSourceLibModule>()`) —
+ * that's a safe, intentional narrowing at the point of USE, unlike the old
+ * per-hook registration's `as`-cast at the point of REGISTRATION, which threw
+ * real type information away before it ever reached the seam.
  */
 
-import { createHostBridge } from './create-host-bridge';
+import { getHostServices } from './host-services';
 
 export interface PrefsHooks<
   LibModule = unknown,
@@ -46,20 +51,15 @@ export interface PrefsHooks<
   loadLib: () => Promise<LibModule>;
 }
 
-// Generic per call-site; the bridge stores the base shape and the wrappers
-// re-apply the type parameters so callers keep `getPrefsHooks<LibModule>()`.
-const bridge = createHostBridge<PrefsHooks>('__printMdPrefsHooks__');
-
-export function registerPrefsHooks<
-  LibModule,
-  Prefs,
-  Settings,
-  ProjectStates,
-  RecentFolderEntry extends { path: string },
->(hooks: PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>): void {
-  bridge.register(hooks as unknown as PrefsHooks);
-}
-
+/**
+ * The live `PrefsHooks` slice of the collapsed host object, narrowed to
+ * whatever generic view the caller asks for. The cast here is the same
+ * "downcast to a narrower view" every call site already relied on before
+ * #31 — it is unrelated to (and does not reintroduce) the registration-side
+ * cast the ARCH review flagged, which has been eliminated: `host-services.ts`
+ * now stores the REAL concrete types, so `registerHostServices()` itself
+ * needs no cast at all.
+ */
 export function getPrefsHooks<
   LibModule = unknown,
   Prefs = Record<string, unknown>,
@@ -67,7 +67,10 @@ export function getPrefsHooks<
   ProjectStates = Record<string, unknown> | undefined,
   RecentFolderEntry extends { path: string } = { path: string; [k: string]: unknown },
 >(): PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry> | null {
-  return bridge.get() as unknown as
-    | PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>
-    | null;
+  const prefs = getHostServices()?.prefs;
+  return (
+    (prefs as unknown as
+      | PrefsHooks<LibModule, Prefs, Settings, ProjectStates, RecentFolderEntry>
+      | undefined) ?? null
+  );
 }

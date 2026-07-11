@@ -48,6 +48,15 @@ export interface AutoSnapshotDeps {
   clearTimer?: (h: unknown) => void;
   /** Fires on every pending set (dir) / clear (null) so a caller can mirror it. */
   onPendingChanged?: (dir: string | null) => void;
+  /**
+   * Fires once `run()`'s catch has failed {@link AUTO_SNAPSHOT_FAILURE_THRESHOLD}
+   * times in a row for `dir`, and again on every subsequent multiple of the
+   * threshold (M39). `consecutiveFailures` is always an exact multiple of the
+   * threshold when this fires. A success or a clean-tree run resets the streak
+   * (and this stops firing) without calling back. Optional — a caller that
+   * doesn't supply it just keeps the pre-existing console.error-only behavior.
+   */
+  onSnapshotFailed?: (dir: string, consecutiveFailures: number, error: unknown) => void;
 }
 
 /** Default timer arm: setTimeout that never keeps the app alive for a pending snapshot. */
@@ -61,9 +70,24 @@ function defaultClearTimer(h: unknown): void {
   clearTimeout(h as NodeJS.Timeout);
 }
 
+/**
+ * Consecutive `run()` failures (for the SAME dir) before `onSnapshotFailed`
+ * fires (M39 — UX critical review: the catch used to only `console.error` and
+ * return, so a persistently broken safety net — stale lock, permissions —
+ * gave zero signal while the pill kept asserting "Version history on"). Fires
+ * again on every subsequent multiple of the threshold so a long-running
+ * failure keeps re-signalling rather than going silent forever.
+ */
+export const AUTO_SNAPSHOT_FAILURE_THRESHOLD = 3;
+
 export class AutoSnapshotScheduler {
   /** The single armed debounce timer + its target dir, or null when idle. */
   private pending: { dir: string; timer: unknown } | null = null;
+
+  /** Consecutive `run()` failures for the most recent dir. Reset by a success
+   *  or a clean-tree ("no changes") outcome. Not per-dir: only one project is
+   *  ever watched at a time, matching the rest of this class's single-dir model. */
+  private consecutiveFailures = 0;
 
   private readonly setTimer: (cb: () => void, ms: number) => unknown;
   private readonly clearTimer: (h: unknown) => void;
@@ -143,12 +167,22 @@ export class AutoSnapshotScheduler {
         // remote/sync, but they DO snapshot — those snapshots must be logged).
         logFile: this.deps.operationLogPath(path.basename(dir)),
       });
+      // Success — the safety net is working again; clear any failure streak.
+      this.consecutiveFailures = 0;
     } catch (e) {
       const lib = await this.deps.loadLib().catch(() => null);
-      if (lib?.isNoChangesError(e)) return; // clean tree — expected, not an error
+      if (lib?.isNoChangesError(e)) {
+        // Clean tree — expected, not a failure of the safety net itself.
+        this.consecutiveFailures = 0;
+        return;
+      }
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[auto-snapshot] failed for ${dir}: ${msg}`);
       if (e instanceof Error && e.stack) console.error(e.stack);
+      this.consecutiveFailures += 1;
+      if (this.consecutiveFailures % AUTO_SNAPSHOT_FAILURE_THRESHOLD === 0) {
+        this.deps.onSnapshotFailed?.(dir, this.consecutiveFailures, e);
+      }
     }
   }
 }

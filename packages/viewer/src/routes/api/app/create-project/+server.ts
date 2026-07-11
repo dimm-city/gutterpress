@@ -1,18 +1,17 @@
 import { error } from '@sveltejs/kit';
-import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-interface CreateProjectLibModule {
-  scaffoldProject: (opts: unknown) => Promise<unknown>;
-}
-
-export const POST: RequestHandler = jsonRoute(async (options: Record<string, unknown>) => {
-  if (!options || typeof options.name !== 'string' || typeof options.parentDir !== 'string') {
-    error(400, 'createProject requires { name, parentDir }');
-  }
-  const hooks = getPrefsHooks<CreateProjectLibModule>();
-  if (!hooks) error(503, 'Prefs hooks not registered');
-  const lib = await hooks.loadLib();
-  return lib.scaffoldProject(options);
+export const POST: RequestHandler = defineRoute<Record<string, unknown>>({
+  validate: (raw) => {
+    const options = raw as Record<string, unknown>;
+    if (!options || typeof options.name !== 'string' || typeof options.parentDir !== 'string') {
+      error(400, 'createProject requires { name, parentDir }');
+    }
+    return options;
+  },
+  call: async ({ body }) => {
+    const lib = await loadLib();
+    return lib.scaffoldProject(body as unknown as Parameters<typeof lib.scaffoldProject>[0]);
+  },
 });

@@ -1,15 +1,13 @@
 /**
  * Shared write-side-effect hooks for fs:writeFile server route.
  *
- * The SvelteKit handler and main.ts run in the same Node.js process but in
- * separate Vite bundles. We use globalThis to share a live reference so the
- * server route can trigger the auto-snapshot/sync debounce that lives in main.
- *
- * main.ts calls registerWriteHooks() once at startup.
- * The server route calls getWriteHooks() to retrieve them.
+ * Storage lives in the single collapsed host object (ARCH review #31,
+ * `./host-services.ts`) — `getWriteHooks()` is a thin derived selector over
+ * it, retrieving the live reference the route uses to trigger the
+ * auto-snapshot/sync debounce that lives in main.
  */
 
-import { createHostBridge } from './create-host-bridge';
+import { getHostServices } from './host-services';
 
 export interface WriteHooks {
   scheduleAutoSnapshot: (dir: string) => void;
@@ -17,5 +15,7 @@ export interface WriteHooks {
   getWatchedDir: () => string | null;
 }
 
-export const { register: registerWriteHooks, get: getWriteHooks } =
-  createHostBridge<WriteHooks>('__printMdWriteHooks__');
+/** The live `WriteHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
+export function getWriteHooks(): WriteHooks | null {
+  return getHostServices()?.write ?? null;
+}

@@ -18,13 +18,27 @@ export type JsonRouteFn<B = unknown> = (
 ) => unknown | Promise<unknown>;
 
 /**
- * Wrap a route handler so it: parses the JSON body safely (missing/invalid body -> `{}`),
- * runs `fn`, returns `json(result)`, and maps a thrown non-`HttpError` to `error(500, msg)`
- * with `msg = e instanceof Error ? e.message : String(e)`. A thrown `HttpError`/redirect
- * (e.g. from `error(400, ...)` or {@link requireAbsolute}) propagates unchanged with its
- * own status.
+ * Reclassify a caught (non-`HttpError`) exception into a specific `{ status, message }`
+ * pair — e.g. an author-friendly lib message becoming a 422 passthrough instead of a
+ * generic 500. Return `null` to fall through to the default 500 mapping (#38).
  */
-export function jsonRoute<B = unknown>(fn: JsonRouteFn<B>) {
+export type ErrorClassifier = (e: unknown) => { status: number; message: string } | null;
+
+export interface JsonRouteOptions {
+  /** See {@link ErrorClassifier}. Only consulted for non-`HttpError`/redirect throws. */
+  onError?: ErrorClassifier;
+}
+
+/**
+ * Wrap a route handler so it: parses the JSON body safely (missing/invalid body -> `{}`;
+ * a bodyless GET request parses the same way), runs `fn`, returns `json(result)`, and maps
+ * a thrown non-`HttpError` to `error(500, msg)` with
+ * `msg = e instanceof Error ? e.message : String(e)` — unless `options.onError` reclassifies
+ * it first. A thrown `HttpError`/redirect (e.g. from `error(400, ...)` or
+ * {@link requireAbsolute}) always propagates unchanged with its own status, bypassing
+ * `onError` (#38).
+ */
+export function jsonRoute<B = unknown>(fn: JsonRouteFn<B>, options: JsonRouteOptions = {}) {
   return async (event: RequestEvent): Promise<Response> => {
     try {
       const body = ((await event.request.json().catch(() => ({}))) ?? {}) as B;
@@ -32,6 +46,10 @@ export function jsonRoute<B = unknown>(fn: JsonRouteFn<B>) {
       return json(result ?? null);
     } catch (e) {
       if (isHttpError(e) || isRedirect(e)) throw e;
+      if (options.onError) {
+        const classified = options.onError(e);
+        if (classified) throw error(classified.status, classified.message);
+      }
       const msg = e instanceof Error ? e.message : String(e);
       throw error(500, msg);
     }

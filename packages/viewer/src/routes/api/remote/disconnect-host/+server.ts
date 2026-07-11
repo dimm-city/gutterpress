@@ -1,16 +1,19 @@
-import { error } from '@sveltejs/kit';
-import { getHooks, handleRemoteErrors } from '../_hooks';
-import { jsonRoute } from '../../_lib/handler';
+import { getHooks, handleRemoteErrors, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
+import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { host?: string }) => {
-  const hooks = getHooks();
-  if (!hooks) error(503, 'Remote hooks not available');
-  return handleRemoteErrors('remote:disconnectHost', async () => {
-    if (typeof body?.host !== 'string' || !body.host.trim()) {
-      throw new Error('remote:disconnectHost requires a host');
-    }
-    await hooks.tokenStore.delete(body.host);
-    return { ok: true };
-  });
+export const POST: RequestHandler = defineRoute<
+  { host?: string },
+  RemoteHooks<LibModule, TokenStore>
+>({
+  hooks: getHooks,
+  hooksUnavailableMessage: 'Remote hooks not available',
+  call: async ({ body, hooks }) =>
+    handleRemoteErrors('remote:disconnectHost', async () => {
+      if (typeof body?.host !== 'string' || !body.host.trim()) {
+        throw new Error('remote:disconnectHost requires a host');
+      }
+      await hooks.tokenStore.delete(body.host);
+      return { ok: true };
+    }),
 });

@@ -16,7 +16,7 @@
  * responses (remote:getConnection returns a redacted status only).
  */
 import { app, safeStorage } from "electron";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /** Mirrors the lib's HostCredential (kept local; lib ships behind a dyn import). */
@@ -53,23 +53,53 @@ function normalizeHost(host: string): string {
 }
 
 async function readStore(): Promise<StoreFileShape> {
+  let raw: string;
   try {
-    const raw = await readFile(storePath(), "utf8");
+    raw = await readFile(storePath(), "utf8");
+  } catch {
+    // No readable file yet (first run, or removed) — nothing to preserve.
+    return { version: 1, credentials: {} };
+  }
+  try {
     const parsed = JSON.parse(raw) as StoreFileShape;
     if (parsed && typeof parsed === "object" && parsed.credentials) return parsed;
   } catch {
-    /* missing/corrupt → empty; reconnecting recreates the entry */
+    /* falls through to preserve-and-reset below */
   }
+  // The file exists but isn't valid JSON (or isn't shaped like a store).
+  // Preserve it instead of silently resetting to empty — that used to
+  // silently disconnect every configured GitHub/Git-server credential (#34).
+  await preserveCorruptFile(storePath()).catch(() => {});
   return { version: 1, credentials: {} };
+}
+
+async function preserveCorruptFile(target: string): Promise<void> {
+  const corruptPath = `${target}.corrupt-${Date.now()}`;
+  try {
+    await rename(target, corruptPath);
+    console.warn(
+      `[credential-store] ${target} was invalid; preserved as ${corruptPath} instead of being discarded.`,
+    );
+  } catch (renameErr) {
+    console.warn(
+      `[credential-store] ${target} was invalid but could not be preserved (rename failed):`,
+      renameErr,
+    );
+  }
 }
 
 async function writeStore(data: StoreFileShape): Promise<void> {
   await mkdir(app.getPath("userData"), { recursive: true });
-  await writeFile(storePath(), JSON.stringify(data, null, 2), {
+  const target = storePath();
+  const tmp = `${target}.tmp`;
+  // Atomic write (#34): write-then-rename so a crash mid-write can't
+  // truncate the real credentials file.
+  await writeFile(tmp, JSON.stringify(data, null, 2), {
     encoding: "utf8",
     mode: 0o600,
   });
-  await chmod(storePath(), 0o600).catch(() => {});
+  await chmod(tmp, 0o600).catch(() => {});
+  await rename(tmp, target);
 }
 
 // Serialize read-modify-write cycles.

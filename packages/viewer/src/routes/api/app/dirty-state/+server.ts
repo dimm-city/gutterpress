@@ -1,11 +1,13 @@
 import { getAppHooks } from '../../../../../electron/server-bridge/app-hooks';
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { dirty?: boolean }) => {
-  const hooks = getAppHooks();
-  if (hooks) {
-    hooks.setRendererDirty(!!body.dirty);
-  }
-  return { ok: true };
+export const POST: RequestHandler = defineRoute<{ dirty?: boolean }>({
+  call: async ({ body }) => {
+    const hooks = getAppHooks();
+    if (hooks) {
+      hooks.setRendererDirty(!!body.dirty);
+    }
+    return { ok: true };
+  },
 });

@@ -1,20 +1,30 @@
-import { error } from '@sveltejs/kit';
-import { getPrefsHooks } from '../../../../../../electron/server-bridge/prefs-hooks';
-import { jsonRoute } from '../../../_lib/handler';
+import { getPrefsHooks, type PrefsHooks } from '../../../../../../electron/server-bridge/prefs-hooks';
+import { defineRoute, requireAbsolute } from '../../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(
-  async (body: { projectDir?: string; state?: Record<string, unknown> }) => {
-    const projectDir = body.projectDir;
-    const patch = body.state;
-    if (!projectDir || typeof projectDir !== 'string') return { ok: false };
-    const hooks = getPrefsHooks();
-    if (!hooks) error(503, 'Prefs hooks not registered');
+export const POST: RequestHandler = defineRoute<
+  { projectDir: string; state: Record<string, unknown> },
+  PrefsHooks
+>({
+  hooks: getPrefsHooks,
+  hooksUnavailableMessage: 'Prefs hooks not registered',
+  validate: (raw) => {
+    const body = raw as { projectDir?: string; state?: Record<string, unknown> };
+    return {
+      projectDir: requireAbsolute(body.projectDir, 'app/viewer-project-state:set'),
+      state: body.state ?? {},
+    };
+  },
+  call: async ({ body, hooks }) => {
     await hooks.updatePrefs((current) => ({
       ...current,
-      lastProjectDir: projectDir,
-      projectStates: hooks.writeProjectState(current.projectStates as Record<string, unknown> | undefined, projectDir, (patch ?? {}) as Record<string, unknown>),
+      lastProjectDir: body.projectDir,
+      projectStates: hooks.writeProjectState(
+        current.projectStates as Record<string, unknown> | undefined,
+        body.projectDir,
+        body.state,
+      ),
     }));
     return { ok: true };
-  }
-);
+  },
+});

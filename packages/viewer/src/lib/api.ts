@@ -94,6 +94,9 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   SyncOutcome,
+  CloneRepositoryArgs,
+  ResolveSyncConflictsArgs,
+  UpdaterStatus,
   ProjectClassification,
   PublishProviderCard,
   PublishRunResult,
@@ -189,11 +192,10 @@ export const api = {
     /** Copy a file into a destination directory. Creates destDir if absent. Returns the dest path. */
     copyFile: (src: string, dest: string) =>
       post<string>('/api/fs/copy-file', { src, dest }),
-    /** Start watching a folder for changes. Only one watch at a time. */
-    watchFolder: (dirPath: string) => post<{ ok: boolean }>('/api/fs/watch-folder', { path: dirPath }),
-    /** Stop watching the currently watched folder. */
-    unwatchFolder: (dirPath?: string) =>
-      post<{ ok: boolean }>('/api/fs/unwatch-folder', dirPath ? { path: dirPath } : {}),
+    // watchFolder/unwatchFolder deleted (ARCH review #8) — the folder watch
+    // stays IPC-only (preload.ts / electron-adapter.ts); these client
+    // wrappers and their /api/fs/{watch,unwatch}-folder routes had zero
+    // callers, the IPC path being the live one.
     /** List top-level .md and .css files in a project directory. */
     listProjectFiles: (projectDir: string) =>
       post<ProjectFileEntry>('/api/fs/list-project-files', { projectDir }),
@@ -251,8 +253,11 @@ export const api = {
     rendererReady: () => post<{ ok: boolean }>('/api/app/renderer-ready', {}),
     /** Push the renderer dirty state to the main process close gate. */
     setDirtyState: (dirty: boolean) => post<{ ok: boolean }>('/api/app/dirty-state', { dirty }),
-    /** Signal that the renderer has flushed its buffer (close gate reply). */
-    flushDone: () => post<{ ok: boolean }>('/api/app/flush-done', {}),
+    // flushDone deleted (ARCH review #8) — this wrapper (and the
+    // /api/app/flush-done route) had zero callers: the real flush-before-close
+    // reply is fired directly over IPC (preload.ts's onFlushBeforeClose calls
+    // ipcRenderer.invoke("app:flushDone") — it can't route through fetch, since
+    // it must resolve synchronously with the renderer's own close-time flush).
   },
 
   media: {
@@ -393,8 +398,9 @@ export const api = {
       post<string[]>('/api/style/set-active', { projectDir, paths }),
   },
 
-  /** Health check — returns { ok: true, name, runtime }. */
-  status: () => get<{ ok: boolean; name: string; runtime: string }>('/api/status'),
+  // status() deleted (ARCH review #8) — this wrapper had zero callers.
+  // The /api/status route itself is left in place (a plain health-check GET,
+  // harmless to keep reachable even with no current client).
 
   /** System diagnostics (tool paths, versions, Chromium/Electron info). */
   doctor: () => get<unknown>('/api/doctor'),
@@ -415,6 +421,12 @@ export const api = {
     /** Fetch the yours/theirs text for one conflicted file for comparison. */
     getConflictPreview: (projectDir: string, path: string, kind?: ConflictKind) =>
       post<ConflictPreview>('/api/sync/get-conflict-preview', { projectDir, path, kind }),
+    /**
+     * Enable or disable the auto-sync master switch (ARCH review #8 — was
+     * IPC despite being a pure settings write).
+     */
+    setAutoSync: (enabled: boolean) =>
+      post<{ ok: boolean; autoSync: boolean }>('/api/sync/set-auto-sync', { enabled }),
   },
 
   vcs: {
@@ -487,6 +499,32 @@ export const api = {
         projectDir,
         ...(message ? { message } : {}),
       }),
+
+    /**
+     * Download ("clone") a repository into a new local project folder
+     * (ARCH review #8 — was IPC despite being a plain request/response; the
+     * clone-progress push stays a separate `onCloneProgress` subscription).
+     */
+    cloneRepository: (args: CloneRepositoryArgs) =>
+      post<{ projectDir: string }>('/api/remote/clone-repository', args),
+
+    /**
+     * Apply per-file conflict choices and sync the combined result (ARCH
+     * review #8 — was IPC despite being a plain request/response).
+     */
+    resolveSyncConflicts: (args: ResolveSyncConflictsArgs) =>
+      post<SyncOutcome>('/api/remote/resolve-sync-conflicts', args),
+  },
+
+  /**
+   * Auto-update surface (ARCH review #8 — getStatus/check/download were IPC
+   * despite being plain request/response; applyNow and the onEvent push
+   * stream stay on the bridge — see electron-adapter.ts's `updater` getter).
+   */
+  updater: {
+    getStatus: () => get<UpdaterStatus>('/api/updater/get-status'),
+    check: () => post<UpdaterStatus>('/api/updater/check'),
+    download: () => post<UpdaterStatus>('/api/updater/download'),
   },
 
   publish: {

@@ -1,10 +1,9 @@
-import { error } from '@sveltejs/kit';
-import { getDesktopHooks } from '$lib/server/host-hooks.js';
-import { jsonRoute } from '../../_lib/handler';
+import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
+import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = jsonRoute(async () => {
-  const hooks = getDesktopHooks();
-  if (!hooks) error(503, 'Desktop hooks not registered');
-  return hooks.getNativeTheme();
+export const GET: RequestHandler = defineRoute<Record<string, never>, DesktopHooks>({
+  hooks: getDesktopHooks,
+  hooksUnavailableMessage: 'Desktop hooks not registered',
+  call: async ({ hooks }) => hooks.getNativeTheme(),
 });

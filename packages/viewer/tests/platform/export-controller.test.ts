@@ -61,23 +61,23 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     BuildError: FakeBuildError,
   } as unknown as LibModule;
 
+  // Fakes the two-method ExportSyncGate surface (isConflictLatched +
+  // latchConflict) that AutoSyncOrchestrator exposes — see finding #7. The
+  // real latchConflict also cancels timers, stamps lastSyncAt, and emits the
+  // conflict status; this fake mirrors just the emit so gate tests can still
+  // assert on it.
   const sync: ExportControllerDeps["sync"] = {
-    getState: (dir: string) =>
-      opts.conflictLatched ? { conflictLatched: latched.has(dir) || opts.conflictLatched } : undefined,
-    getOrCreateState: (dir: string) => {
+    isConflictLatched: (dir) => latched.has(dir) || !!opts.conflictLatched,
+    latchConflict: (dir, files) => {
       latched.add(dir);
-      return { conflictLatched: true };
+      emitted.push({ state: "conflict", projectDir: dir, files, lastSyncAt: null });
     },
-    cancelTimer: () => {},
-    setLastSyncAt: () => {},
   };
 
   const deps: ExportControllerDeps = {
     loadLib: async () => lib,
     tokenStore: {} as ExportControllerDeps["tokenStore"],
-    emit: (p) => emitted.push(p),
     isOnline: () => opts.isOnline ?? true,
-    now: () => 1_700_000_000_000,
     usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
     sync,

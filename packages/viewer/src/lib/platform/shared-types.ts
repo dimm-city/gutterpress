@@ -3,7 +3,12 @@
  * that must be consistent across the Electron host and the SvelteKit renderer.
  *
  * RULES for this file:
- *   - Pure type/interface/type-alias declarations ONLY. No imports. No values.
+ *   - Pure type/interface/type-alias declarations ONLY, with ONE narrow
+ *     exception: a shared VALUE is allowed here when (a) it is a plain,
+ *     side-effect-free data literal (no functions, no `node:*`/electron/lib
+ *     imports — §8-safe to pull into the renderer bundle) and (b) both sides
+ *     need the exact same value and would otherwise hand-duplicate it (e.g.
+ *     `DEFAULT_SETTINGS` below). No imports, still, ever.
  *   - All types must be self-contained (no references to external modules).
  *   - Used by BOTH `electron/bridge-types.ts` (host side) and
  *     `src/lib/platform/contract.ts` (renderer side).
@@ -126,6 +131,50 @@ export interface AppSettings {
   };
 }
 
+/**
+ * Canonical settings defaults (#29/#45) — the ONE copy. Previously hand-
+ * duplicated between `electron/settings-store.ts` and
+ * `src/lib/platform/contract.ts` with "kept in sync manually" comments; both
+ * now import this value (contract.ts directly, settings-store.ts via
+ * `bridge-types.ts`'s value re-export) instead of redeclaring it.
+ */
+export const DEFAULT_SETTINGS: AppSettings = {
+  editor: {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    fontSize: 14,
+    lineHeight: 1.6,
+    spellCheckLanguage: "en-US",
+    autoSaveDelay: 2500,
+    crashRecovery: true,
+  },
+  appearance: {
+    theme: "system",
+    previewBg: "#5a5a5a",
+  },
+  preview: {
+    defaultZoom: "fit-width",
+    // Durable default view mode (settings-store.ts's readSettings() default).
+    // See ProjectState.viewMode below for the per-project override that
+    // takes precedence over this at project-open time.
+    viewMode: "two-column",
+    paneMode: "view",
+  },
+  versionHistory: {
+    autoSnapshot: true,
+    autoSnapshotMinutes: 10,
+    autoSync: true, // transparent-sync plan §6: ON by default when canSync
+    autoSyncMinutes: 2, // ~2 min periodic safety cadence
+  },
+  gitIdentity: {
+    authorName: "",
+    authorEmail: "",
+  },
+  advanced: {
+    fileWatcherInterval: 300,
+    logLevel: "warn",
+  },
+};
+
 /** A recursively-optional view of `T` — used for settings patches. */
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K];
@@ -136,13 +185,23 @@ export type DeepPartialSettings = DeepPartial<AppSettings>;
 
 // ── Per-project editor/preview state (#43) ────────────────────────────────
 
+/**
+ * `currentPage`, `viewMode`, and `splitPaneRatio` are the live fields (#30
+ * removed `lastChapter`/`sidebarOpen`/`cursorLine`/`editorScroll` — declared
+ * for a forthcoming in-app editor/chapter-list that never consumed them, so
+ * they carried through JSON as permanently-unread dead schema).
+ *
+ * `viewMode` here is a per-project SNAPSHOT, not the live value the UI reads:
+ * `AppSettings.preview.viewMode` (shared-types.ts above) is the durable
+ * default the UI reads/writes at all times; this snapshot is applied ONLY
+ * when a project is opened, overriding the durable value with that project's
+ * last-used mode so reopening a folder restores its own layout (see
+ * `ZoomViewController.applyViewMode`'s doc comment in the SPA, and
+ * `+page.svelte`'s restore-on-open flow). AppSettings wins everywhere else.
+ */
 export interface ProjectState {
   currentPage?: number;
   viewMode?: "single" | "two-column";
-  lastChapter?: string;
-  sidebarOpen?: boolean;
-  cursorLine?: number;
-  editorScroll?: number;
   splitPaneRatio?: number;
 }
 
@@ -152,10 +211,6 @@ export interface ViewerPrefs {
   lastProjectDir?: string | null;
   /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
   sidebarOpen?: boolean;
-  /** @deprecated (#43) migration fallback — read `projectStates[dir]` instead. */
-  currentPage?: number;
-  /** @deprecated (#43) migration fallback — read `projectStates[dir]` instead. */
-  viewMode?: "single" | "two-column";
   recentFolders?: Array<{ path: string; title: string; openedAt: string }>;
   favorites?: Array<{ path: string; title: string }>;
   /** Per-project editor/preview state keyed by folder path (#43). */

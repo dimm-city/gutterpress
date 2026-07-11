@@ -12,7 +12,11 @@ test("settings schema and dialog expose git author name and email", () => {
   expect(shared).toContain("gitIdentity");
   expect(shared).toContain("authorName");
   expect(shared).toContain("authorEmail");
-  expect(contract).toContain("gitIdentity");
+  // AppSettings (which carries gitIdentity) is imported from shared-types.ts
+  // (#29) rather than hand-duplicated in contract.ts — assert the wiring
+  // instead of the field name literally appearing in this file's source.
+  expect(contract).toContain("AppSettings");
+  expect(contract).toContain("shared-types");
   expect(dialog).toContain("Git identity");
   expect(dialog).toContain("set-git-author-name");
   expect(dialog).toContain("set-git-author-email");

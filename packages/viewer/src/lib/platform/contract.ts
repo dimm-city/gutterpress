@@ -578,49 +578,12 @@ export interface SyncStatus {
 
 // ── User settings (#45) ──────────────────────────────────────────────────────
 //
-// AppSettings is imported from shared-types above (re-exported at the top of
-// this file). Adding a new setting: add the key + default to DEFAULT_SETTINGS
-// AND update shared-types.ts. A matching UI control in SettingsDialog.svelte
-// is the only other change needed.
-
-/**
- * Canonical defaults. The single source of truth for the settings schema.
- * The inline `+page.svelte` defaults that used to live as local `$state`
- * (#5a5a5a / two-column / fit-width) now live here.
- */
-export const DEFAULT_SETTINGS: AppSettings = {
-  editor: {
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: 14,
-    lineHeight: 1.6,
-    spellCheckLanguage: "en-US",
-    autoSaveDelay: 2500,
-    crashRecovery: true,
-  },
-  appearance: {
-    theme: "system",
-    previewBg: "#5a5a5a",
-  },
-  preview: {
-    defaultZoom: "fit-width",
-    viewMode: "two-column",
-    paneMode: "view",
-  },
-  versionHistory: {
-    autoSnapshot: true,
-    autoSnapshotMinutes: 10,
-    autoSync: true,      // transparent-sync plan §6: ON by default when canSync
-    autoSyncMinutes: 2,  // ~2 min periodic safety cadence
-  },
-  gitIdentity: {
-    authorName: "",
-    authorEmail: "",
-  },
-  advanced: {
-    fileWatcherInterval: 300,
-    logLevel: "warn",
-  },
-};
+// AppSettings AND DEFAULT_SETTINGS are both imported from shared-types.ts
+// (#29) — no more hand-duplicated copy here or in
+// electron/settings-store.ts. Adding a new setting: add the key + default to
+// `DEFAULT_SETTINGS` in shared-types.ts (the ONE place); a matching UI
+// control in SettingsDialog.svelte is the only other change needed.
+export { DEFAULT_SETTINGS } from "./shared-types";
 
 // DeepPartial, PreviewStartResult, BuildResult, ExportProgressEvent,
 // UrlPreviewBlockedEvent imported from shared-types above (re-exported at
@@ -906,6 +869,14 @@ export interface ElectronBridge
     | "startPreview"
     | "build"
     | "capabilities"
+    // ARCH review #8: these three moved to server routes (api.sync.setAutoSync
+    // / api.remote.{cloneRepository,resolveSyncConflicts}) — the raw bridge no
+    // longer exposes them. `updater` is narrowed below instead of omitted:
+    // applyNow/onEvent stay on the bridge, only getStatus/check/download moved.
+    | "setAutoSync"
+    | "cloneRemoteRepository"
+    | "resolveSyncConflicts"
+    | "updater"
   > {
   openDirectory(): Promise<string | null>;
   readFile(path: string): Promise<string>;
@@ -923,4 +894,10 @@ export interface ElectronBridge
    * to change events for `path` and returns an unsubscribe fn.
    */
   watchFolder(path: string, cb: () => void): () => void;
+  /**
+   * ARCH review #8: getStatus/check/download migrated to server routes
+   * (api.updater.*) — the raw bridge only carries applyNow (quit + install,
+   * a live-BrowserWindow flush) and the onEvent push subscription.
+   */
+  updater: Pick<UpdaterApi, "applyNow" | "onEvent">;
 }

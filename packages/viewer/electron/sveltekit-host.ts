@@ -55,10 +55,73 @@ export async function startSvelteKitServer(
   });
 }
 
+/**
+ * A small, self-contained HTML error page shown in the `app://` window when
+ * the SvelteKit host server isn't reachable — either it hasn't started yet
+ * (503, {@link registerAppProtocol}'s early-return below) or a request to it
+ * failed after startup (502, the proxy `catch` below). Previously both cases
+ * returned a raw text body ("SvelteKit server not started" / "Proxy error:
+ * …") with no explanation and no way to recover short of force-quitting the
+ * app (ARCH review #28). No external assets/fonts/scripts — this must render
+ * standalone, since it exists precisely because the app's own server may not
+ * be up. Extracted as a pure function (no `protocol`/`Response` dependency)
+ * so it's unit-testable without a running Electron process.
+ */
+export function buildHostErrorPage(opts: {
+  title: string;
+  message: string;
+  detail?: string;
+}): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>${esc(opts.title)}</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    background: #1e1e1e; color: #e6e6e6;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  main { max-width: 32rem; padding: 2rem; text-align: center; }
+  h1 { font-size: 1.15rem; margin: 0 0 0.75rem; }
+  p { margin: 0 0 0.75rem; color: #b7b7b7; }
+  code { color: #8a8a8a; font-size: 0.8rem; word-break: break-word; }
+  button {
+    margin-top: 0.5rem; padding: 0.5rem 1.25rem; border-radius: 6px;
+    border: 1px solid #4a4a4a; background: #2d2d2d; color: #e6e6e6;
+    font-size: 0.9rem; cursor: pointer;
+  }
+  button:hover { background: #383838; }
+</style>
+</head>
+<body>
+<main>
+  <h1>${esc(opts.title)}</h1>
+  <p>${esc(opts.message)}</p>
+  <p>Try again in a moment, or quit and reopen print-md if this doesn't clear up.</p>
+  ${opts.detail ? `<p><code>${esc(opts.detail)}</code></p>` : ""}
+  <button onclick="location.reload()">Retry</button>
+</main>
+</body>
+</html>`;
+}
+
+const HTML_HEADERS = { "Content-Type": "text/html; charset=utf-8" };
+
 export function registerAppProtocol(): void {
   protocol.handle("app", async (req) => {
     if (skServerPort === null) {
-      return new Response("SvelteKit server not started", { status: 503 });
+      return new Response(
+        buildHostErrorPage({
+          title: "print-md is still starting",
+          message: "The app's internal server hasn't started yet.",
+        }),
+        { status: 503, headers: HTML_HEADERS }
+      );
     }
     const url = new URL(req.url);
     const targetUrl =
@@ -75,7 +138,14 @@ export function registerAppProtocol(): void {
       return await fetch(proxyReq);
     } catch (e) {
       console.error(`[app://] proxy error for ${url.pathname}:`, e);
-      return new Response("Proxy error: " + String(e), { status: 502 });
+      return new Response(
+        buildHostErrorPage({
+          title: "print-md ran into a problem",
+          message: "A request to the app's internal server failed.",
+          detail: String(e),
+        }),
+        { status: 502, headers: HTML_HEADERS }
+      );
     }
   });
 }

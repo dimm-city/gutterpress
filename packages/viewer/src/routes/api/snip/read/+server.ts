@@ -1,11 +1,18 @@
 import { error } from '@sveltejs/kit';
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { projectDir?: string; fileName?: string }) => {
-  if (typeof body.projectDir !== 'string' || typeof body.fileName !== 'string') {
-    error(400, 'snip/read requires { projectDir: string, fileName: string }');
-  }
-  const lib = await import('@dimm-city/print-md');
-  return lib.readSnippet(body.projectDir, body.fileName);
+export const POST: RequestHandler = defineRoute<{ projectDir: string; fileName: string }>({
+  validate: (raw) => {
+    const body = raw as { projectDir?: string; fileName?: string };
+    const projectDir = requireAbsolute(body.projectDir, 'snip/read');
+    if (typeof body.fileName !== 'string') {
+      error(400, 'snip/read requires { projectDir: string, fileName: string }');
+    }
+    return { projectDir, fileName: body.fileName };
+  },
+  call: async ({ body }) => {
+    const lib = await loadLib();
+    return lib.readSnippet(body.projectDir, body.fileName);
+  },
 });

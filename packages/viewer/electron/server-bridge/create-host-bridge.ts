@@ -1,14 +1,19 @@
 /**
- * Shared service-locator factory for the server-bridge/*-hooks.ts modules.
+ * Generic globalThis-backed service-locator factory.
  *
  * The SvelteKit handler and main.ts run in the same Node.js process but in
  * separate Vite bundles, so live references are shared through globalThis.
- * Every hooks module used to hand-roll the same register/get pair plus a
- * `declare global` augmentation; createHostBridge encapsulates that pattern
- * with a typed string-keyed record on globalThis (no `declare global`).
+ * Every `server-bridge/*-hooks.ts` module used to call this directly, one
+ * `createHostBridge(uniqueKey)` per domain (11 independent globalThis keys —
+ * ARCH review #31). They now all funnel through ONE shared instance,
+ * `./host-services.ts`'s `registerHostServices`/`getHostServices`
+ * (`__printMdHost__`), and each domain module's `getXHooks()` is a thin
+ * selector over that single object instead of its own bridge. This factory
+ * itself is unchanged and still generic — reach for it directly only if a
+ * genuinely separate globalThis slot is ever needed again.
  *
- * main.ts calls register(hooks) once at startup; server routes call get() to
- * retrieve them. get() returns null (never undefined) before registration.
+ * register(hooks) writes; get() reads. get() returns null (never undefined)
+ * before the first register() call.
  */
 export function createHostBridge<T>(globalKey: string): {
   register(hooks: T): void;

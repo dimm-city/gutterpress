@@ -33,9 +33,21 @@ interface FakeLibOptions {
   syncProject?: (projectDir: string) => unknown;
   /** SyncErrorKind returned by classifyGitError (drives the recover() path). */
   classifyGitError?: string;
-  /** RecoveryResult returned by lib.recover (the recover() path). */
+  /** RecoveryResult returned by lib.recover (the recover()/runPreflight path). */
   recover?: () => unknown;
+  /** SyncErrorKind|null returned by classifyFromHealth (drives runPreflight's
+   *  structural-condition branch). Default null (healthy repo). */
+  classifyFromHealth?: () => string | null;
 }
+
+/** A minimal local-git-folder ProjectSource for runPreflight tests. */
+const LOCAL_GIT_SOURCE = {
+  type: "local-git-folder" as const,
+  path: DIR,
+  repoRoot: DIR,
+  subPath: "",
+  hasRemote: true,
+};
 
 function makeHarness(opts: FakeLibOptions = {}): Harness {
   const emitted: SyncStatusPayload[] = [];
@@ -59,6 +71,9 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     inspectRepo: async () => ({}),
     classifyGitError: () => opts.classifyGitError ?? "unknown",
     recover: async () => (opts.recover ? opts.recover() : { status: "recovered", message: "ok" }),
+    classifyFromHealth: () => (opts.classifyFromHealth ? opts.classifyFromHealth() : null),
+    resolveLogger: () => ({ info: () => {}, error: () => {} }),
+    buildPreflightDiagnostics: () => ({}),
   } as unknown as LibModule;
 
   const heartbeatCalls: string[] = [];
@@ -150,7 +165,7 @@ test("clearing the latch re-enables syncing", async () => {
   expect(h.orch.getState(DIR)?.conflictLatched).toBe(true);
 
   // Explicit user resolution clears the latch (mirrors main.ts resolveConflicts).
-  h.orch.getOrCreateState(DIR).conflictLatched = false;
+  h.orch.unlatch(DIR);
   const before = h.syncCalls.length;
   await h.orch.run(DIR);
   await tick();
@@ -181,7 +196,7 @@ test("armInterval is a no-op when auto-sync is disabled by policy", async () => 
 
 test("armInterval does not arm while conflict-latched", async () => {
   const h = makeHarness();
-  h.orch.getOrCreateState(DIR).conflictLatched = true;
+  h.orch.latchConflict(DIR, []);
   await h.orch.armInterval(DIR);
   expect(h.orch.getState(DIR)?.intervalHandle).toBeNull();
 });
@@ -298,4 +313,195 @@ test("decideRunAgainAfterPreflight delegates the pure rule", () => {
   expect(h.orch.decideRunAgainAfterPreflight("needs_user", true)).toBe("suppress");
   expect(h.orch.decideRunAgainAfterPreflight("blocked", true)).toBe("suppress");
   expect(h.orch.decideRunAgainAfterPreflight("recovered", false)).toBe("none");
+});
+
+// ── External single-flight lock surface: acquire/release (finding #7) ────────
+// These exist so a caller OUTSIDE run() (runPreflight) can hold the exact same
+// lock across a multi-step async flow without reaching into the state bag.
+
+test("acquire succeeds when free and fails while held; release frees it again", () => {
+  const h = makeHarness();
+  expect(h.orch.acquire(DIR)).toBe(true);
+  expect(h.orch.acquire(DIR)).toBe(false); // already held
+  h.orch.release(DIR);
+  expect(h.orch.acquire(DIR)).toBe(true);
+});
+
+test("release is a no-op for an untracked dir (never creates state)", () => {
+  const h = makeHarness();
+  h.orch.release("/never-tracked");
+  expect(h.orch.hasState("/never-tracked")).toBe(false);
+});
+
+// ── Conflict-latch surface: latchConflict/unlatch/isConflictLatched ─────────
+// The ONE mutation surface for a conflict detected OUTSIDE run() (currently:
+// ExportController's pre-export sync gate) and the explicit-resolution path
+// (remote:resolveSyncConflicts) — replacing the old getState()/getOrCreateState()
+// reach-in-and-mutate pattern the finding calls out.
+
+test("latchConflict sets the latch, cancels timers, stamps lastSyncAt, and emits conflict", async () => {
+  const h = makeHarness();
+  await h.orch.armInterval(DIR); // arm a timer so we can prove latchConflict cancels it
+  expect(h.orch.getState(DIR)?.intervalHandle).toBeTruthy();
+
+  h.setClock(1_700_000_555_000);
+  h.orch.latchConflict(DIR, [{ path: "a.md" } as never]);
+
+  expect(h.orch.isConflictLatched(DIR)).toBe(true);
+  expect(h.orch.getState(DIR)?.intervalHandle).toBeNull();
+  expect(h.orch.getLastSyncAt(DIR)).toBe(new Date(1_700_000_555_000).toISOString());
+  const conflictEmit = h.emitted.find((e) => e.state === "conflict");
+  expect(conflictEmit?.projectDir).toBe(DIR);
+  expect(conflictEmit?.files).toEqual([{ path: "a.md" }]);
+});
+
+test("unlatch clears the latch without emitting", () => {
+  const h = makeHarness();
+  h.orch.latchConflict(DIR, []);
+  expect(h.orch.isConflictLatched(DIR)).toBe(true);
+  const before = h.emitted.length;
+  h.orch.unlatch(DIR);
+  expect(h.orch.isConflictLatched(DIR)).toBe(false);
+  expect(h.emitted.length).toBe(before);
+});
+
+test("unlatch is a no-op for an untracked dir", () => {
+  const h = makeHarness();
+  h.orch.unlatch("/never-tracked");
+  expect(h.orch.hasState("/never-tracked")).toBe(false);
+});
+
+test("isConflictLatched is false for an untracked dir", () => {
+  const h = makeHarness();
+  expect(h.orch.isConflictLatched("/never-tracked")).toBe(false);
+});
+
+// ── runPreflight ──────────────────────────────────────────────────────────────
+// Formerly a ~140-line IIFE hand-rolled in main.ts (finding #7). These pin the
+// single-flight / conflict-latch / runAgain(BUG 3) semantics on the extracted
+// method.
+
+test("runPreflight: non-git source releases the lock without any git I/O", async () => {
+  const h = makeHarness();
+  await h.orch.runPreflight(DIR, { type: "local-folder", path: DIR });
+  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
+});
+
+test("runPreflight: healthy repo (classifyFromHealth → null) releases the lock without calling recover", async () => {
+  let recoverCalled = false;
+  const h = makeHarness({
+    classifyFromHealth: () => null,
+    recover: () => {
+      recoverCalled = true;
+      return { status: "recovered", message: "ok" };
+    },
+  });
+  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
+  expect(recoverCalled).toBe(false);
+  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
+});
+
+test("runPreflight: skips entirely when the lock is already held", async () => {
+  let recoverCalled = false;
+  const h = makeHarness({
+    classifyFromHealth: () => "stale_lock",
+    recover: () => {
+      recoverCalled = true;
+      return { status: "recovered", message: "ok" };
+    },
+  });
+  expect(h.orch.acquire(DIR)).toBe(true); // hold the lock externally first
+  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
+  expect(recoverCalled).toBe(false);
+  expect(h.orch.acquire(DIR)).toBe(false); // still held — runPreflight never touched it
+});
+
+test("runPreflight: a structural condition + recovered result clears an existing latch, emits recovered, and releases the lock", async () => {
+  const h = makeHarness({
+    classifyFromHealth: () => "stale_lock",
+    recover: () => ({ status: "recovered", message: "ok" }),
+  });
+  h.orch.latchConflict(DIR, []); // pre-latch so we can prove recovery clears it
+  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
+
+  expect(h.orch.isConflictLatched(DIR)).toBe(false);
+  expect(h.emitted.some((e) => e.state === "recovered")).toBe(true);
+  expect(h.orch.acquire(DIR)).toBe(true); // lock was released
+});
+
+test("runPreflight: a conflict/error result latches, cancels the timer, and leaves runAgain cleared", async () => {
+  const h = makeHarness({
+    classifyFromHealth: () => "merge_conflict",
+    recover: () => ({ status: "blocked", message: "m", guidance: {} }),
+  });
+  await h.orch.armInterval(DIR);
+  expect(h.orch.getState(DIR)?.intervalHandle).toBeTruthy();
+
+  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
+
+  expect(h.orch.isConflictLatched(DIR)).toBe(true);
+  expect(h.orch.getState(DIR)?.intervalHandle).toBeNull();
+  expect(h.orch.getState(DIR)?.runAgain).toBe(false);
+  expect(h.emitted.some((e) => e.state === "error")).toBe(true);
+  expect(h.orch.acquire(DIR)).toBe(true); // lock released even on the latching branch
+});
+
+test("runPreflight: retry_later emits an offline status and re-arms run() after the requested delay", async () => {
+  const h = makeHarness({
+    classifyFromHealth: () => "stale_lock",
+    recover: () => ({ status: "retry_later", message: "m", retryAfterMs: 5 }),
+    syncProject: () => ({ status: "synced" }),
+  });
+
+  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
+  expect(h.emitted.some((e) => e.state === "offline")).toBe(true);
+
+  // The retry timer re-arms run() after retryAfterMs (guarded by getWatchedDir).
+  await new Promise((r) => setTimeout(r, 40));
+  expect(h.syncCalls).toEqual([DIR]);
+});
+
+test("runPreflight (BUG 3): a runAgain queued mid-recover() is honored once the lock releases", async () => {
+  // Gate lib.recover() so it stays in flight until we explicitly release it,
+  // and signal once it's actually been called (runPreflight reaches it only
+  // after several awaits — loadLib, inspectRepo, buildRecoveryContext).
+  let recoverCalledResolve: () => void;
+  const recoverCalled = new Promise<void>((r) => (recoverCalledResolve = r));
+  let releaseRecover: (() => void) | null = null;
+  const h = makeHarness({
+    classifyFromHealth: () => "stale_lock",
+    recover: () => {
+      recoverCalledResolve();
+      return new Promise((resolve) => {
+        releaseRecover = () => resolve({ status: "recovered", message: "ok" });
+      });
+    },
+    syncProject: () => ({ status: "synced" }),
+  });
+
+  const p = h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
+  await recoverCalled; // recover() is now in flight, holding the single-flight lock
+
+  // A trigger fires while the lock is held: run() queues runAgain instead of syncing.
+  await h.orch.run(DIR);
+  expect(h.orch.getState(DIR)?.runAgain).toBe(true);
+  expect(h.syncCalls).toEqual([]);
+
+  releaseRecover!();
+  await p;
+  await tick();
+
+  // The queued trigger was honored (not silently dropped) once recover() settled.
+  expect(h.syncCalls).toEqual([DIR]);
+  expect(h.orch.getState(DIR)?.runAgain).toBe(false);
+});
+
+test("runPreflight: a thrown step is non-fatal and always releases the lock", async () => {
+  const h = makeHarness({
+    classifyFromHealth: () => {
+      throw new Error("boom");
+    },
+  });
+  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
+  expect(h.orch.acquire(DIR)).toBe(true); // lock released in the catch branch
 });

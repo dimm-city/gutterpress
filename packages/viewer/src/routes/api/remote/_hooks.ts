@@ -19,3 +19,8 @@ export {
 } from '../../../../electron/server-bridge/remote-hooks';
 
 export { handleRemoteErrors } from '../../../../electron/server-bridge/friendly-errors';
+
+// cloneRepository/resolveSyncConflicts (ARCH review #8) body-arg shapes —
+// re-exported from the single canonical source (bridge-types.ts) so routes
+// don't hand-roll an inline shape for a multi-field body.
+export type { CloneRepositoryArgs, ResolveSyncConflictsArgs } from '../../../../electron/bridge-types';

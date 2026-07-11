@@ -1,10 +1,17 @@
 /**
  * Unit tests for the `prefs-store` host module (Phase 5b extraction from
  * electron/main.ts). Covers the injected-fs store factory `createPrefsStore`:
- * readPrefs (missing/invalid file, legacy projectStates migration), writePrefs
- * (mkdir + pretty JSON), prefsPath, and existingDirectory.
+ * readPrefs (missing/corrupt file), writePrefs (atomic tmp+rename write),
+ * prefsPath, and existingDirectory.
  *
- * These are RED before electron/prefs-store.ts exists.
+ * #34: writes are atomic (`<file>.tmp` then `rename`) and a JSON-parse
+ * failure preserves the corrupt file as `<file>.corrupt-<ts>` instead of
+ * silently resetting to `{}` — the old behavior that discarded recents,
+ * favorites, and per-project state on any truncated/corrupted write.
+ *
+ * #30: the legacy top-level `currentPage`/`viewMode` migration fallback
+ * (`migrateLegacyProjectState`) is deleted — `ViewerPrefs` no longer has
+ * those fields, so there is nothing left to migrate.
  */
 import { expect, test } from "bun:test";
 import path from "node:path";
@@ -13,7 +20,6 @@ import {
   type PrefsStoreDeps,
   type ViewerPrefs,
 } from "../../electron/prefs-store";
-import type { ProjectStateMap } from "../../electron/project-state";
 
 // ── Fake fs + userDataDir harness ─────────────────────────────────────────
 
@@ -26,6 +32,10 @@ interface MkdirCall {
   path: string;
   opts: unknown;
 }
+interface RenameCall {
+  from: string;
+  to: string;
+}
 interface StatResult {
   isDirectory(): boolean;
 }
@@ -34,12 +44,12 @@ function makeStore(opts: {
   userDataDir?: string;
   readFileImpl?: (p: string, enc: string) => Promise<string>;
   statImpl?: (p: string) => Promise<StatResult>;
-  migrate?: (prefs: ViewerPrefs) => ProjectStateMap | null;
+  renameImpl?: (from: string, to: string) => Promise<void>;
 } = {}) {
   const userDataDir = opts.userDataDir ?? "/userdata";
   const writes: WriteCall[] = [];
   const mkdirs: MkdirCall[] = [];
-  const migrateCalls: ViewerPrefs[] = [];
+  const renames: RenameCall[] = [];
 
   const deps: PrefsStoreDeps = {
     getUserDataDir: () => userDataDir,
@@ -61,10 +71,11 @@ function makeStore(opts: {
         : async () => {
             throw new Error("ENOENT");
           },
-    },
-    migrateLegacyProjectState: (prefs: ViewerPrefs) => {
-      migrateCalls.push(prefs);
-      return opts.migrate ? opts.migrate(prefs) : null;
+      rename: opts.renameImpl
+        ? opts.renameImpl
+        : async (from: string, to: string) => {
+            renames.push({ from, to });
+          },
     },
   };
 
@@ -72,14 +83,10 @@ function makeStore(opts: {
     store: createPrefsStore(deps),
     writes,
     mkdirs,
-    migrateCalls,
+    renames,
     userDataDir,
   };
 }
-
-const SAMPLE_MAP: ProjectStateMap = {
-  "/book": { currentPage: 3, viewMode: "single" },
-} as unknown as ProjectStateMap;
 
 // ── prefsPath ─────────────────────────────────────────────────────────────
 
@@ -90,61 +97,57 @@ test("prefsPath joins userDataDir with viewer-prefs.json", () => {
 
 // ── readPrefs ─────────────────────────────────────────────────────────────
 
-test("(a) readPrefs returns {} when readFile rejects (missing file)", async () => {
-  const { store } = makeStore({
+test("(a) readPrefs returns {} when readFile rejects (missing file, nothing preserved)", async () => {
+  const { store, renames } = makeStore({
     readFileImpl: async () => {
       throw new Error("ENOENT: no such file");
     },
   });
   expect(await store.readPrefs()).toEqual({});
+  // A missing file is normal (first run) — there's nothing to preserve.
+  expect(renames).toHaveLength(0);
 });
 
-test("(b) readPrefs returns {} when stored JSON is invalid", async () => {
-  const { store } = makeStore({
+test("(b) readPrefs preserves a corrupt file as <path>.corrupt-<ts> instead of silently discarding it", async () => {
+  const { store, renames } = makeStore({
     readFileImpl: async () => "{ not valid json ]",
   });
+  const prefs = await store.readPrefs();
+  expect(prefs).toEqual({});
+  expect(renames).toHaveLength(1);
+  expect(renames[0]!.from).toBe(store.prefsPath());
+  expect(renames[0]!.to).toMatch(
+    new RegExp(`^${store.prefsPath().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.corrupt-\\d+$`),
+  );
+});
+
+test("(b2) readPrefs still returns {} even when the preserve-rename itself fails", async () => {
+  const { store } = makeStore({
+    readFileImpl: async () => "{ not valid json ]",
+    renameImpl: async () => {
+      throw new Error("EACCES: cannot rename");
+    },
+  });
+  // Must not throw — a failed preservation attempt degrades to the old
+  // "start fresh" behavior rather than crashing the read path.
   expect(await store.readPrefs()).toEqual({});
 });
 
-test("(c) readPrefs seeds projectStates from migrate() when stored prefs have none", async () => {
-  const { store, migrateCalls } = makeStore({
-    readFileImpl: async () => JSON.stringify({ lastProjectDir: "/book" }),
-    migrate: () => SAMPLE_MAP,
-  });
-  const prefs = await store.readPrefs();
-  expect(prefs.projectStates).toEqual(SAMPLE_MAP);
-  // migrate was consulted with the parsed prefs.
-  expect(migrateCalls).toHaveLength(1);
-  expect(migrateCalls[0]!.lastProjectDir).toBe("/book");
-});
-
-test("(d) readPrefs does NOT overwrite an existing projectStates even if migrate() returns a map", async () => {
-  const existing: ProjectStateMap = {
-    "/other": { currentPage: 9, viewMode: "two-column" },
-  } as unknown as ProjectStateMap;
+test("readPrefs round-trips valid stored JSON unchanged", async () => {
   const { store } = makeStore({
     readFileImpl: async () =>
-      JSON.stringify({ lastProjectDir: "/book", projectStates: existing }),
-    migrate: () => SAMPLE_MAP,
+      JSON.stringify({ lastProjectDir: "/book", sidebarOpen: true }),
   });
-  const prefs = await store.readPrefs();
-  expect(prefs.projectStates).toEqual(existing);
+  expect(await store.readPrefs()).toEqual({
+    lastProjectDir: "/book",
+    sidebarOpen: true,
+  });
 });
 
-test("readPrefs leaves projectStates undefined when migrate() returns null", async () => {
-  const { store } = makeStore({
-    readFileImpl: async () => JSON.stringify({ sidebarOpen: true }),
-    migrate: () => null,
-  });
-  const prefs = await store.readPrefs();
-  expect(prefs.projectStates).toBeUndefined();
-  expect(prefs.sidebarOpen).toBe(true);
-});
+// ── writePrefs (atomic tmp+rename) ─────────────────────────────────────────
 
-// ── writePrefs ────────────────────────────────────────────────────────────
-
-test("(e) writePrefs mkdirs the userDataDir then writes pretty (2-space) JSON to prefsPath", async () => {
-  const { store, writes, mkdirs, userDataDir } = makeStore();
+test("(e) writePrefs mkdirs the userDataDir, writes pretty (2-space) JSON to <prefsPath>.tmp, then renames over prefsPath", async () => {
+  const { store, writes, mkdirs, renames, userDataDir } = makeStore();
   const prefs: ViewerPrefs = { lastProjectDir: "/book", sidebarOpen: true };
 
   await store.writePrefs(prefs);
@@ -154,9 +157,13 @@ test("(e) writePrefs mkdirs the userDataDir then writes pretty (2-space) JSON to
   expect(mkdirs[0]!.opts).toEqual({ recursive: true });
 
   expect(writes).toHaveLength(1);
-  expect(writes[0]!.path).toBe(store.prefsPath());
+  expect(writes[0]!.path).toBe(`${store.prefsPath()}.tmp`);
   expect(writes[0]!.data).toBe(JSON.stringify(prefs, null, 2));
   expect(writes[0]!.enc).toBe("utf8");
+
+  expect(renames).toHaveLength(1);
+  expect(renames[0]!.from).toBe(`${store.prefsPath()}.tmp`);
+  expect(renames[0]!.to).toBe(store.prefsPath());
 });
 
 // ── existingDirectory ─────────────────────────────────────────────────────
@@ -222,7 +229,8 @@ test("concurrent updatePrefs calls compose instead of clobbering (the start-scre
       return fileContents;
     },
   });
-  // Keep the fake file in sync with writes.
+  // Keep the fake file in sync with writes (the .tmp write is what carries
+  // the new content; the store's own rename is faked as a no-op above).
   const origPush = writes.push.bind(writes);
   writes.push = (...items) => {
     for (const w of items) fileContents = w.data;

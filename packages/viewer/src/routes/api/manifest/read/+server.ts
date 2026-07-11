@@ -1,13 +1,12 @@
-import { error } from '@sveltejs/kit';
-import { isAbsolute } from 'node:path';
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute, loadApiLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { projectDir?: string }) => {
-  const { projectDir } = body;
-  if (!projectDir || !isAbsolute(projectDir)) {
-    error(400, 'manifest/read requires an absolute projectDir');
-  }
-  const lib = await import('@dimm-city/print-md/api');
-  return lib.readManifestFields(projectDir);
+export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
+  validate: (raw) => ({
+    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'manifest/read'),
+  }),
+  call: async ({ body }) => {
+    const lib = await loadApiLib();
+    return lib.readManifestFields(body.projectDir);
+  },
 });

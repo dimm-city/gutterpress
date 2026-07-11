@@ -1,12 +1,9 @@
-import { json, error } from '@sveltejs/kit';
+import { defineRoute, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async () => {
-  try {
-    const lib = await import('@dimm-city/print-md');
-    return json(lib.listBuiltInTemplates());
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
-  }
-};
+export const GET: RequestHandler = defineRoute({
+  call: async () => {
+    const lib = await loadLib();
+    return lib.listBuiltInTemplates();
+  },
+});

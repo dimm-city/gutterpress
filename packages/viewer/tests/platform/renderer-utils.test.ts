@@ -71,6 +71,34 @@ test("friendlyPdfError still falls back to the generic message for unrelated err
   );
 });
 
+// ARCH #27 fix-round gap: `electron/pdf-export.ts`'s waitForPagedRendered
+// throws a typed BuildError on deadline ("Rendering did not finish after N
+// minutes — the export was stopped to avoid an incomplete PDF"). That error
+// crosses the `api:build` ipcMain.handle/ipcRenderer.invoke boundary, which
+// (like the SYNC_CONFLICT case above) strips the `code` and re-wraps the
+// message. friendlyPdfError must therefore recognize the timeout by message
+// text alone, or the author sees the generic "check System tools" fallback
+// instead of the reason their render was stopped.
+test("friendlyPdfError passes through a render-timeout message even without a surviving code", () => {
+  const err = new Error(
+    "Rendering did not finish after 60 minutes — the export was stopped to avoid an incomplete PDF",
+  );
+  expect(friendlyPdfError(err)).toBe(
+    "Rendering did not finish after 60 minutes — the export was stopped to avoid an incomplete PDF",
+  );
+});
+
+// Same, but through the real IPC shape the renderer actually receives (the
+// `api:build` handler wraps + Electron re-wraps again, dropping `code`).
+test("friendlyPdfError scrubs the IPC remote-method prefix off a render-timeout message with no surviving code", () => {
+  const err = new Error(
+    "Error invoking remote method 'api:build': Error: Rendering did not finish after 60 minutes — the export was stopped to avoid an incomplete PDF",
+  );
+  expect(friendlyPdfError(err)).toBe(
+    "Rendering did not finish after 60 minutes — the export was stopped to avoid an incomplete PDF",
+  );
+});
+
 // relativeTime renders a coarse "time ago" string for snapshot timestamps.
 test("relativeTime returns 'just now' under a minute", () => {
   expect(relativeTime(Date.now())).toBe("just now");
