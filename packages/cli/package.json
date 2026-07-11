@@ -75,7 +75,6 @@
     "markdown-it-sub": "^2.0.0",
     "markdown-it-sup": "^2.0.0",
     "markdownlint": "^0.40.0",
-    "pagedjs": "^0.4.3",
     "pdf-lib": "^1.17.1",
     "postcss": "^8.5.15",
     "puppeteer-core": "^25.0.4",
@@ -88,6 +87,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.13",
+    "pagedjs": "^0.4.3",
     "playwright": "^1.60.0",
     "rimraf": "^6.0.0",
     "typescript": "^5"

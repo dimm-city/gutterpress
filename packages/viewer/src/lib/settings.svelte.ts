@@ -10,7 +10,16 @@
  *
  * Distinct from `ViewerPrefs` (session/per-project state via setViewerPrefs).
  * Settings are durable user preferences persisted to `userData/app-settings.json`
- * on desktop and `localStorage` on web.
+ * on desktop. `api.app.getSettings`/`setSettings` reach that file through the
+ * `api/app/settings` server route, which requires Electron main to have
+ * registered its prefs hooks (`getPrefsHooks()`); outside Electron (a plain
+ * browser / `vite dev`) that route 503s, `_loadSettings()`'s `.catch()` keeps
+ * the in-memory defaults, and `set()`'s `.catch(() => {})` silently drops the
+ * write — so today settings do NOT persist on web; they reset every session.
+ * `WebAdapter` (web-adapter.ts) already has a real `localStorage`-backed
+ * `getSettings`/`setSettings` implementation, but it is dormant (unreachable
+ * from here) until the #33 PWA milestone wires this store onto
+ * `getPlatform()` for the web target — see `CLAUDE.md` §8.
  */
 import { DEFAULT_SETTINGS } from "$lib/platform";
 import type { AppSettings, DeepPartial } from "$lib/platform";
