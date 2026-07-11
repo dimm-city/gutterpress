@@ -5,6 +5,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Nothing merged since [0.7.1](#071---2026-07-07) yet.
+
+## [0.7.1] - 2026-07-07
+
+[Full Changelog](https://github.com/dimm-city/print-md/compare/v0.7.0...v0.7.1) ·
+[Release notes](https://github.com/dimm-city/print-md/releases/tag/v0.7.1)
+
 ### Added
 
 - **Publish providers (#35).** Push a finished book to distribution platforms
@@ -19,6 +26,48 @@ This project follows [Semantic Versioning](https://semver.org/).
   checklist). Non-secret settings live in the manifest's new `publish:`
   section; API keys are stored in the OS keychain (desktop) or the `0600`
   user-config credential store (CLI) — never in the project folder.
+
+### Changed
+
+- Code-quality remediation across five refactor phases: dedup, structured
+  checks, and breaking up several "god files" into composition roots.
+- Preview rendering and ZIP backup now use `fflate`.
+- Layout scope management refactored to stack-based frame tracking.
+- **Repo-root sessions.** A project is its whole repo: added a book switcher,
+  removed dead restore-UI code, and hardened recovery.
+- Added a welcome landing screen for the startup and empty states.
+
+### Fixed
+
+- `markdown-it-paged`: chapter labels now propagate to every page, col-split
+  depth resets per render (was leaking across chapters), and ambiguous marker
+  tokens now warn instead of silently misbehaving.
+- `release`: version input is normalized before semver validation.
+
+## [0.7.0] - 2026-07-02
+
+[Full Changelog](https://github.com/dimm-city/print-md/compare/v0.6.2...v0.7.0) ·
+[Release notes](https://github.com/dimm-city/print-md/releases/tag/v0.7.0)
+
+### Changed
+
+- **Git recovery overhaul.** Interrupted-operation repair, one shared
+  classifier, uniform locking, a library preflight check, and a repair CLI
+  command.
+- Replaced the custom hot-swap web-UI updater with `electron-updater`.
+- Release pipeline and auto-update hardening from a deep review pass.
+- The release workflow now dispatches `docker.yml` explicitly — a
+  `GITHUB_TOKEN`-authored release never triggers it on its own.
+
+## [0.6.2] - 2026-07-01
+
+[Full Changelog](https://github.com/dimm-city/print-md/compare/v0.6.1...v0.6.2) ·
+[Release notes](https://github.com/dimm-city/print-md/releases/tag/v0.6.2)
+
+### Fixed
+
+- Recover from an interrupted rebase/cherry-pick, with a clearer
+  guidance call-to-action on the fix screen.
 
 ## [0.6.1] - 2026-07-01
 
@@ -35,6 +84,39 @@ This project follows [Semantic Versioning](https://semver.org/).
   surfaces the existing Reload / Keep mine choice instead. Background sync now
   tells the UI when pulled files changed locally, so open buffers and problem
   checks refresh even when the shallow folder watcher misses nested file updates.
+
+## [0.6.0] - 2026-06-30
+
+[Full Changelog](https://github.com/dimm-city/print-md/compare/v0.5.4...v0.6.0) ·
+[Release notes](https://github.com/dimm-city/print-md/releases/tag/v0.6.0)
+
+### Added
+
+- **PWA scaffolding (#33).** A File System Access `WebAdapter`, a service
+  worker, and offline support laid the groundwork for running the editor in a
+  browser — desktop-only for now; full PWA support is tracked separately.
+- **Mobile-friendly editor (#34).** A single-column, tab-switched layout
+  (Markdown / CSS / Preview) usable down to phone widths.
+- **Snippets, project templates, a Plugin Manager, and a Theme Manager**
+  (#29, #30, #32).
+- **CSS-file picker (#66).** Choose which stylesheet to edit, on any screen
+  size.
+- View the project's git/sync activity log from the status pill.
+
+### Changed
+
+- **Single standard package.** The library and CLI are now one
+  `@dimm-city/print-md` package with no custom build step.
+- `FolderRef`/`FileRef` replace raw path strings in the viewer's platform
+  contract — groundwork the PWA work builds on (#49, #61).
+- Migrated 44 IPC handlers to SvelteKit server routes.
+
+### Fixed
+
+- Sync/build-runner deduplication and a racy-index data-safety fix (#49, #50,
+  #52).
+- Issue #68 follow-ups: type consolidation, accessibility, UX polish, and
+  removal of dead surface area.
 
 ## [0.5.4] - 2026-06-22
 
@@ -53,6 +135,14 @@ This project follows [Semantic Versioning](https://semver.org/).
   which shadowed Svelte's `$state` rune and miscompiled state reads into store
   auto-subscriptions — crashing the overlay with `state.subscribe is not a
   function` in production builds. The prop is now `recoveryState`.
+
+## [0.5.3] - 2026-06-19
+
+[Full Changelog](https://github.com/dimm-city/print-md/compare/v0.5.2...v0.5.3) ·
+[Release notes](https://github.com/dimm-city/print-md/releases/tag/v0.5.3)
+
+Maintenance release. No pull requests were listed against this tag; see the
+full diff above for the exact changes.
 
 ## [0.5.2] - 2026-06-16
 
@@ -151,8 +241,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 - Numerous viewer UX and sync-robustness fixes (responsive toolbar, themed
   scrollbars, render-overlay scoping, full-speed initial render, and more).
 
-> Entries for 0.3.x–0.4.x were not recorded here; see the
-> [GitHub Releases](https://github.com/dimm-city/print-md/releases) for those.
+> **0.3.x–0.4.x:** no release notes are available for this range, on GitHub or
+> here. The [0.5.1 release notes](https://github.com/dimm-city/print-md/releases/tag/v0.5.1)
+> record that the project's git and release history was reset at that release
+> to remove private material that was never intended for public distribution
+> — the corresponding tags and GitHub Releases no longer exist. `CLAUDE.md`'s
+> discussion of "milestones 0.4.0 and 0.5.0" and the `0.4.0-beta.4`
+> renderer-purity crash (see `docs/adr/0004-platform-abstraction.md`) are the
+> only surviving record of what shipped in that range.
 
 ## [0.2.1] - 2026-06-04
 

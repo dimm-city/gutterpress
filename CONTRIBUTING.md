@@ -97,7 +97,7 @@ print-md/                        # Workspace root (private)
 │   │   │   ├── commands/        # CLI command implementations
 │   │   │   ├── lib/             # Core libraries (markdown, preview, PDF, lint)
 │   │   │   ├── checks/          # Validation check system
-│   │   │   └── preview/         # Headless preview server (Bun.serve + chokidar)
+│   │   │   └── preview/         # Headless preview server (node:http + ws + chokidar)
 │   │   └── tests/               # Bun test suite
 │   └── viewer/                  # @dimm-city/print-md-viewer — Electron + SvelteKit desktop app
 │       ├── electron/            # Electron main process
@@ -110,8 +110,10 @@ print-md/                        # Workspace root (private)
 ### Key architectural boundaries
 
 - **`packages/cli/src/`** — No bundlers at runtime (see the "No bundlers at
-  runtime" rule in `CLAUDE.md` §1). Use `Bun.serve` for any server
-  needs, not Vite/Rollup/esbuild.
+  runtime" rule in `CLAUDE.md` §1). Use `node:http` + `ws` for any server
+  needs (see `packages/cli/src/preview/http-server.ts`), not Vite/Rollup/esbuild
+  and not `Bun.serve` — the lib runtime must stay Node-compatible so Electron's
+  bundled Node can run it in-process.
 - **`packages/viewer/`** — Vite/Rollup are intentional here (SvelteKit build).
   `@dimm-city/print-md` is SSR-external so it is never bundled by Vite.
 - **Plugin API** — Plugins are plain `(md, options) => void` markdown-it
@@ -165,7 +167,10 @@ Follow these conventions (not auto-enforced, but expected in review):
 ### Best Practices
 
 1. **Error Handling**
-   - Use custom error classes (`BuildError`, `ConfigError`)
+   - Use custom error classes where one exists for the failure kind
+     (`BuildError` for pipeline failures, `UsageError` for bad CLI
+     invocations — see `packages/cli/src/lib/build-error.ts` and
+     `packages/cli/src/lib/cli-args.ts`)
    - Provide helpful error messages
    - Include suggestions for fixing errors
 
@@ -188,14 +193,30 @@ Follow these conventions (not auto-enforced, but expected in review):
 
 ### Test Structure
 
+Most tests are **colocated** with the source file they cover, as
+`*.test.ts` next to the implementation:
+
+```
+packages/cli/src/
+├── lib/
+│   ├── manifest.ts
+│   ├── manifest.test.ts        # unit tests for manifest.ts
+│   ├── build-runner.ts
+│   └── build-runner.test.ts
+└── commands/
+    ├── repair.ts
+    └── repair.test.ts
+```
+
+A separate `tests/` tree holds cross-cutting suites that don't belong to one
+source file:
+
 ```
 packages/cli/tests/
-├── integration/            # Integration tests
-│   ├── cli-build.test.ts
-│   └── markdown-processing.test.ts
-└── unit/                   # Unit tests
-    ├── config/config-state.test.ts
-    └── utils/manifest-writer.test.ts
+├── compat/                 # Playwright/print-safety compat probes
+│   └── preview-smoke.pw.ts
+└── integration/            # End-to-end / platform-specific integration tests
+    └── preview-server-windows.test.ts
 ```
 
 ### Writing Tests
@@ -454,4 +475,4 @@ test(config): add tests for manifest validation
 
 ## License
 
-By contributing to print-md, you agree that your contributions will be licensed under the [CC-BY-4.0 License](./LICENSE).
+By contributing to print-md, you agree that your contributions will be licensed under the [MPL-2.0 License](./LICENSE).

@@ -72,7 +72,6 @@ winget install qpdf.qpdf  # PDF/X only
 # Required — any one works
 sudo apt install chromium-browser
 sudo apt install google-chrome-stable
-# or use puppeteer's bundled Chromium (no manual install needed)
 
 # Recommended
 sudo apt install ghostscript
@@ -92,17 +91,23 @@ sudo dnf install chromium ghostscript qpdf
 
 ### Chrome / Chromium — required for PDF
 
-Print-md uses Puppeteer to drive Chromium for PDF rendering. If no browser is found, you will see:
+Print-md uses `puppeteer-core` (not full `puppeteer`) to drive Chromium for PDF
+rendering. **`puppeteer-core` never downloads or bundles a browser** — it only
+ever drives one already on your machine. If no browser is found, you will see:
 
 ```
-error: No Chrome or Chromium binary found.
+No Chrome / Chromium / Edge binary found. print-md needs a Chromium-based
+browser to render PDFs.
 ```
 
-**Resolution options** (in priority order):
+**Resolution order** (print-md checks these in sequence — first match wins):
 
-1. Install Chrome or Chromium system-wide
-2. Set `CHROME_PATH` or `PUPPETEER_EXECUTABLE_PATH` to the binary location
-3. Let puppeteer-core download its bundled Chromium (`PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false`)
+1. The `CHROMIUM_PATH` or `PUPPETEER_EXECUTABLE_PATH` environment variable (either works; `CHROMIUM_PATH` is checked first)
+2. Standard install locations for Chrome, Chromium, Edge, and Brave on your OS (the paths installed by the commands above)
+3. A `PATH` probe (`which` / `where.exe`) for `google-chrome`, `chromium`, `chrome`, `msedge`, `brave`, and their platform-specific variants
+
+**Fix:** install Chrome, Chromium, Edge, or Brave normally (step 1 above), or
+set `CHROMIUM_PATH=/path/to/your/browser` if it's in a non-standard location.
 
 ### Ghostscript — recommended for PDF/X
 
@@ -179,18 +184,19 @@ including from the standalone binary.
 
 | Variable | Effect |
 |----------|--------|
-| `CHROME_PATH` | Override browser binary location |
-| `PUPPETEER_EXECUTABLE_PATH` | Alternative browser override |
-| `PUPPETEER_SKIP_CHROMIUM_DOWNLOAD` | Set to `false` to allow puppeteer to download Chromium |
-| `GS_PATH` | Override Ghostscript binary location |
+| `CHROMIUM_PATH` | Override browser binary location (checked first) |
+| `PUPPETEER_EXECUTABLE_PATH` | Alternative browser override (same priority as `CHROMIUM_PATH`) |
+
+Ghostscript and `qpdf` have no path-override environment variable — print-md
+spawns them as bare `gs` and `qpdf` and relies on your shell's `PATH`. If
+either is installed in a non-standard location, add it to `PATH` rather than
+trying to point print-md at it directly.
 
 ### Manifest tool paths
 
-```yaml
-tools:
-  chromePath: "/usr/bin/google-chrome"
-  ghostscriptPath: "/usr/local/bin/gs"
-```
+There is no manifest key for overriding tool binary paths — no `tools:`
+block, no `chromePath`/`ghostscriptPath` options. Use the environment
+variables above (Chromium) or `PATH` (Ghostscript, qpdf) instead.
 
 ## Troubleshooting
 
@@ -202,9 +208,12 @@ Ghostscript is not installed or not on `PATH`. Install it and verify:
 gs --version
 ```
 
-### `No Chrome or Chromium binary found`
+### `No Chrome / Chromium / Edge binary found`
 
-No browser was found. Install Chrome, set `CHROME_PATH`, or allow puppeteer to download Chromium.
+No browser was found. Install Chrome, Chromium, Edge, or Brave, or set
+`CHROMIUM_PATH` (or `PUPPETEER_EXECUTABLE_PATH`) to an existing binary.
+puppeteer-core cannot download one for you — see "Chrome / Chromium —
+required for PDF" above.
 
 ### `spawn qpdf ENOENT` during PDF/X build
 
@@ -218,7 +227,9 @@ install the relevant tool to enable them.
 
 ### A specific check still fails after installing its tool
 
-Restart the terminal to pick up the updated `PATH`. If the tool is in a non-standard location, set the corresponding environment variable.
+Restart the terminal to pick up the updated `PATH`. If the tool is in a
+non-standard location, set `CHROMIUM_PATH` (Chromium) or add it to `PATH`
+(Ghostscript, qpdf — they have no path-override variable).
 
 ## Roadmap
 

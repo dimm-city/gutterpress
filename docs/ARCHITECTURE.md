@@ -108,7 +108,7 @@ packages/cli/src/
 ├── preview/                # Preview server modules
 │   ├── routes.ts           # API route handlers
 │   ├── server-context.ts   # Server context
-│   ├── http-server.ts      # Bun.serve + WebSocket dev server
+│   ├── http-server.ts      # node:http + ws WebSocket dev server
 │   ├── file-watcher.ts     # File change detection
 │   ├── api-middleware.ts   # API middleware
 │   └── lifecycle.ts        # Server lifecycle
@@ -271,20 +271,24 @@ The build command renders HTML to PDF directly via puppeteer-core driving a syst
 
 ```typescript
 async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
-  // 1. Serve HTML via Bun.serve on a random port
-  const server = Bun.serve({ port, async fetch(req) { /* serve files from stage dir */ } });
+  // 1. Serve the staged HTML + assets via a local node:http static file
+  //    server on a random port (build-runner.ts's createStaticFileServer)
+  const { port, close } = await createStaticFileServer(stageDir, htmlFilename);
 
-  // 2. Launch Chromium via puppeteer-core
+  // 2. Launch Chromium via puppeteer-core (or, in the packaged Electron
+  //    viewer, an injected renderer backed by webContents.printToPDF —
+  //    see docs/adr/0002-pdf-rendering-and-pure-js-tooling.md)
   const browser = await puppeteer.launch({ headless: true, executablePath });
   const page = await browser.newPage();
 
   // 3. Navigate to HTML page, wait for Paged.js render
-  await page.goto(`http://localhost:${port}/${htmlFilename}`, { waitUntil: "networkidle0" });
+  await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, { waitUntil: "networkidle0" });
   await page.waitForFunction(() => (window as any).__PAGED_RENDERED__ === true);
 
   // 4. Generate PDF
   await page.pdf({ path: outPdf, printBackground: true, preferCSSPageSize: true });
   await browser.close();
+  await close();
 }
 ```
 
@@ -292,30 +296,35 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
 
 **Design Rationale**:
 - Direct puppeteer-core rendering eliminates subprocess overhead
-- Bun.serve as local file server avoids file:// protocol issues
+- A `node:http` local file server avoids file:// protocol issues, and stays
+  Node-compatible so the same renderer path runs inside Electron
 - Ghostscript post-processing handles CMYK conversion separately from rendering
 
 ## Preview Server
 
-### Bun-native HTTP + WebSocket
+### Node-compatible HTTP + WebSocket
 
 **Location**: `packages/cli/src/preview/http-server.ts`, `packages/cli/src/preview/api-middleware.ts`,
 `packages/cli/src/preview/routes.ts`
 
-Preview mode runs a single `Bun.serve` instance that handles static files,
-the `/api/*` route table, and a `/__print-md-hmr` WebSocket for full-reload
-broadcasts. There is no toolbar, page navigation, or folder picker — those
-live in the Electron viewer (`packages/viewer`).
+Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`
+for live reload) that handles static files, the `/api/*` route table, and a
+`/__print-md-hmr` WebSocket for full-reload broadcasts. It deliberately does
+**not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
+Electron viewer can run it in-process on Electron's bundled Node (see
+`CLAUDE.md`, Monorepo layout section, and §1). There is no toolbar, page
+navigation, or folder picker — those live in the Electron viewer
+(`packages/viewer`).
 
 ```
-User Browser / Electron Viewer → http://localhost:{port}
+User Browser / Electron Viewer → http://127.0.0.1:{port}
     ↓
-Bun.serve (packages/cli/src/preview/http-server.ts)
-    ├─→ /__print-md-hmr  WebSocket → broadcastReload()
+http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
+    ├─→ /__print-md-hmr  WebSocket upgrade → broadcastReload()
     │    (subscribers receive {type:"full-reload"} on file change)
     ├─→ /api/*           handleApiRequest (api-middleware.ts → routes.ts)
     │    └─→ GET  /api/status            (handleStatus — reports hasInput + currentPath)
-    └─→ /*               Bun.file from state.tempDir
+    └─→ /*               readFile (node:fs/promises) from state.tempDir
          ("/" redirects to book.html; HTML responses get a tiny inline
           HMR client injected before </body>; `..` traversal returns 404)
 ```
@@ -325,10 +334,11 @@ Bun.serve (packages/cli/src/preview/http-server.ts)
   bundle anything at preview time, it serves a pre-rendered `book.html`. Vite's
   CSS-as-JS-module pipeline and module-graph HMR were actively bypassed by
   custom plugins.
-- `Bun.serve` provides static serving, WebSockets (with built-in pub/sub via
-  `server.publish(topic, data)`), and request routing natively — exactly the
-  surface print-md needs, with no native bindings to extract under
-  `bun build --compile`.
+- `node:http` + `ws` provides static serving, WebSockets, and request routing
+  natively — exactly the surface print-md needs, with no native bindings to
+  extract under `bun build --compile`, **and** it runs unmodified under
+  Electron's bundled Node (the reason it replaced an earlier `Bun.serve`
+  implementation — `Bun.serve` is not available outside the Bun runtime).
 - See the "No bundlers at runtime" rule in `CLAUDE.md` §1 for the full rationale
   and links to the upstream Bun issues that motivated the change.
 
@@ -593,17 +603,21 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
 - Better TypeScript support
 - Predictable rendering with Paged.js polyfill
 
-### 3. Why Bun.serve for Preview (not Vite)?
+### 3. Why node:http + ws for Preview (not Vite, not Bun.serve)?
 
-**Chosen over**: Vite, webpack-dev-server, custom Node http server.
+**Chosen over**: Vite, webpack-dev-server, `Bun.serve`.
 
 **Reasons**:
 - print-md does not bundle code at preview time — it serves a pre-rendered
   `book.html` and triggers full-reload on file change. A bundler-based dev
   server is the wrong tool.
-- `Bun.serve` provides everything needed (static files, WebSocket pub/sub,
-  request routing) without the transitive native bindings (rollup,
-  lightningcss, fsevents) that break under `bun build --compile`.
+- `node:http` + the `ws` package provides everything needed (static files,
+  WebSocket pub/sub, request routing) without the transitive native bindings
+  (rollup, lightningcss, fsevents) that break under `bun build --compile`.
+- Unlike `Bun.serve` (an earlier implementation), `node:http` + `ws` also runs
+  unmodified under Electron's bundled Node, so the same preview server module
+  works both in the compiled CLI binary (under Bun) and in-process inside the
+  packaged viewer (under Node) — see `packages/cli/src/preview/http-server.ts`.
 - The previous Vite setup required two custom plugins solely to *bypass*
   Vite's CSS pipeline and module graph, plus a compile-time regex plugin to
   rewrite `package.json` reads in `node_modules/vite`. Removing Vite
@@ -617,10 +631,14 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
 **Reasons**:
 - Non-technical users need a native-feeling app with folder picker, page
   navigation, and PDF export — not a browser tab.
-- SvelteKit is built as a static SPA via `@sveltejs/adapter-static` and
-  served by Electron through a custom `app://` protocol handler. No
-  in-process HTTP server, no bundled Bun runtime. The renderer reaches
-  the lib through `ipcMain.handle()` rather than `fetch()`.
+- SvelteKit is built with `@sveltejs/adapter-node`, which emits a Node HTTP
+  handler (`build/handler.js`). Electron main starts that handler on a local
+  `127.0.0.1` server and serves the window through a custom `app://` protocol
+  handler that proxies each request to it with `fetch`. Host capabilities are
+  exposed as `src/routes/api/**/+server.ts` routes the renderer calls with
+  `fetch("/api/…")`; a narrow `ipcMain`/preload bridge is reserved for push
+  streams and calls that must drive a live `BrowserWindow` (see `CLAUDE.md`
+  §8 and `docs/adr/0004-platform-abstraction.md`).
 - The lib (`@dimm-city/print-md`) is Node.js-compatible at runtime
   (`node:http` + `ws` instead of `Bun.serve`, `node:fs` instead of
   `Bun.file`). Electron's bundled Node runs it directly via a dynamic

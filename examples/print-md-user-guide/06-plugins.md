@@ -131,13 +131,43 @@ These run automatically before any user plugins and do not need to be declared i
 |--------|---------|
 | `markdown-it-attrs` | `{#id .class key=val}` inline attribute syntax |
 | `markdown-it-footnote` | `[^1]` footnote syntax |
-| `markdown-it-paged` | `@page`, `@section`, `@column-break` layout markers |
-| DC alerts | `> [!NOTE]` GitHub-style alert syntax |
+| `markdown-it-deflist` | `Term` / `: definition` definition lists |
 | Source map | `data-source-line` attributes for error reporting |
+| `markdown-it-paged` | `@page`, `@section`, `@column-break` layout markers |
 
 @end-section
 
+> **Not built in:** GitHub-style `> [!NOTE]` alert syntax is **not** a core
+> plugin — it lives in the (separate, DC-branded) Dimm City plugin. A project
+> with no plugins configured will print `> [!NOTE]` as a literal blockquote
+> starting with the text `[!NOTE]`. For a callout that core renders on its
+> own, use `@section .callout-tip` … `@end-section` (see
+> [Chapter 9 — Publishing](./09-publishing.md)) or a plain `>` blockquote.
+
 > The `markdown-it-container` (`:::name ... :::`) block syntax was removed in 2026-05-17. Use `@`-prefixed markers instead — a named block like `::: callout-note ... :::` becomes `@section .callout-note ... @end-section`.
+
+## Bundled Optional Plugins
+
+These four are **not** loaded by default, but they ship inside the binary —
+enabling them by name in the manifest resolves instantly, with no npm
+install and no network access, unlike arbitrary third-party plugins:
+
+@section
+
+| Name | Adds | Example |
+|------|------|---------|
+| `markdown-it-mark` | `==highlighted==` → `<mark>highlighted</mark>` | `==important==` |
+| `markdown-it-sub` | `H~2~0` → `H<sub>2</sub>0` | `CO~2~` |
+| `markdown-it-sup` | `29^th^` → `29<sup>th</sup>` | `x^2^` |
+| `markdown-it-abbr` | `*[HTML]: definition` → `<abbr>` tooltips | `*[W3C]: World Wide Web Consortium` |
+
+@end-section
+
+```yaml
+plugins:
+  - markdown-it-mark
+  - markdown-it-sub
+```
 
 ## Plugin Load Order
 

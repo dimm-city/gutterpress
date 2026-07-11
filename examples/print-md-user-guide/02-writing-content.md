@@ -1,13 +1,13 @@
 # Writing Your Content {#ch-writing}
 
-<div class="lede">Print-md renders standard GitHub-flavored markdown to print-quality HTML. This chapter covers headings, text, tables, and the layout directives that control how content flows across pages.</div>
+<div class="lede">Print-md renders standard GitHub-flavored markdown to print-quality HTML. This chapter covers headings, text, tables, and the `@`-prefixed layout markers that control how content flows across pages — and calls out, wherever it matters, which behaviors are core print-md and which come from this guide's own <code>guide.css</code>.</div>
 
 ## Headings
 
-Six heading levels map to a type scale tuned for print:
+Six heading levels map to standard HTML:
 
 ```markdown
-# H1 — Chapter Title (starts new page, sets running header)
+# H1 — Chapter Title
 
 ## H2 — Major Section
 
@@ -20,10 +20,25 @@ Six heading levels map to a type scale tuned for print:
 ###### H6 — Tiny Heading
 ```
 
+Core print-md renders these as plain `<h1>`–`<h6>` — nothing more. **A new page on every H1, a running header, and the big chapter numeral are this guide's own theme (`guide.css`), not core:**
+
+```css
+/* guide.css — a project theme, NOT core print-md */
+h1 {
+  break-before: page;              /* starts a new page on every H1 */
+  page: chapter;
+  counter-increment: chapter;
+  /* ...type styling... */
+}
+h1 { string-set: chapter-title content(); }        /* feeds the running header */
+h1::before { content: counter(chapter, decimal-leading-zero); /* ...the numeral... */ }
+```
+
+A brand-new print-md project has none of this — headings are inert HTML until your own CSS (or a bundled theme, see [Chapter 4](./04-styling-theming.md)) styles them. If you want core, marker-driven pagination instead of an H1-triggered break, use `@chapter` / `@page` / `@page-break` — see [Layout Directives](#layout-directives) below.
+
 ### Heading rules
 
-- Use **H1 for chapter titles only** — one per file. H1 automatically starts a new page.
-- H1 sets the text that appears in the running header on every page.
+- Use **H1 for chapter titles only** — one per file is a strong convention, but core print-md does not enforce or special-case it.
 - Use H2–H3 for main sections. H4–H6 sparingly.
 - Keep headings under 60 characters.
 - Never skip heading levels (H1 → H3 without H2).
@@ -70,7 +85,7 @@ Use ordered lists for sequential steps. Use unordered lists for non-ordered item
 > And have multiple paragraphs.
 ```
 
-Blockquotes are styled with a left border and tinted background — good for quotes, references, or notes that don't need the full callout treatment.
+Core print-md emits a plain `<blockquote>`. The left border and tinted background you see rendered in this guide come from `guide.css` — bring your own `blockquote` rule (or a bundled theme) to get that look in your own project.
 
 ## Tables
 
@@ -86,16 +101,15 @@ Alignment:
 | Text   | Text   |    42 |
 ```
 
-Tables automatically:
-- Break across pages intelligently with repeated headers
-- Apply alternating row shading
-- Stay together when they fit on one page
+GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></table>` — that's markdown-it's built-in table support, not a print-md addition. Because the header row is real `<thead>` markup, Paged.js can repeat it when a table is forced to break across a page — standard CSS table fragmentation, independent of any stylesheet.
+
+Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare print-md project renders plain, unshaded tables that may break anywhere; wrap a table in `@section` (see [Layout Directives](#layout-directives)) if you need core to keep it together.
 
 Keep tables simple — 5 to 7 columns maximum. Align numbers right, text left.
 
 ## Markdown Attributes
 
-Add CSS classes, IDs, and attributes to any element using `markdown-it-attrs` syntax:
+Add CSS classes, IDs, and attributes to any element using `markdown-it-attrs` syntax (bundled — no install step needed):
 
 ```markdown
 # Chapter Title {#custom-id .special-class}
@@ -107,6 +121,8 @@ Paragraph with custom styling. {.highlight}
 [Link text](page.html){.download}
 ```
 
+`.center` above is one of core print-md's built-in image/block utility classes — see [Chapter 3, Common image classes](./03-visual-elements.md#common-image-classes) for the full set.
+
 ### Cross-References
 
 ```markdown
@@ -117,11 +133,11 @@ Content here...
 Later, reference it: [See Chapter One](#chapter-one)
 ```
 
-All headings get auto-generated anchors from their slugified text. You can override with `{#custom-id}`.
+Headings do **not** get an automatic id from their text — core print-md has no heading-slug step. Give a heading an explicit id with `{#custom-id}` (via `markdown-it-attrs`) before linking to it with `#custom-id`.
 
-## Layout Directives
+## Layout Directives {#layout-directives}
 
-Layout directives are `@`-prefixed markers that control how content flows across pages. They are provided by the built-in `markdown-it-paged` plugin.
+Layout directives are `@`-prefixed markers that control how content flows across pages. They are provided by the built-in `markdown-it-paged` plugin — this is core behavior, present in every print-md project regardless of theme.
 
 ### Quick syntax reference
 
@@ -129,28 +145,68 @@ Layout directives are `@`-prefixed markers that control how content flows across
 
 | Marker | Effect |
 |--------|--------|
-| `@page` | Start a new page (optionally with CSS class names) |
+| `@chapter` | Wrap content in a chapter; a bare label auto-injects a `.chapter-opener` on its first page |
+| `@spread` | Start a two-page spread group |
+| `@page` | Start a new page (optionally named and/or classed) |
 | `@page-break` | Hard break, no page wrapper emitted |
 | `@section` | Group content together to avoid mid-section breaks |
-| `@end-section` | Close `@section` or `@page`, stay on same page |
-| `@spread` | Start a two-page spread group |
+| `@end-section` | Close the current `@section` (no-op if none is open); stays on the same page |
+| `@continue` | Close the current `@section` and reopen a matching one, marked `.pmd-continued` |
 | `@column-break` | Force a column break inside a multi-column section |
 
 @end-section
 
+### @chapter — chapter wrapper (with automatic chapter-opener)
+
+`@chapter` is the flagship layout marker. It wraps everything until the next `@chapter` (or end of file) in `<div class="chapter">`. When given a bare label, it also auto-injects a **chapter-opener** element into the first `@page` inside it — the only element print-md generates on your behalf:
+
+```markdown
+@chapter C.01 #ch-bestiary
+
+@page
+
+# Bestiary
+
+Monsters and their stat blocks...
+```
+
+Renders:
+
+```html
+<div class="chapter" data-chapter-label="C.01" id="ch-bestiary">
+  <div class="page" data-chapter-label="C.01">
+    <div class="chapter-opener" data-chapter-label="C.01">C.01</div>
+    <h1>Bestiary</h1>
+    <p>Monsters and their stat blocks...</p>
+  </div>
+</div>
+```
+
+- The bare label (`C.01`) becomes `data-chapter-label` on the chapter **and** on every `@page` inside it, so CSS can reach it from the page where the content actually lives (Paged.js may split the chapter wrapper itself into an empty leading sheet).
+- `.chapter-opener` is a plain, unstyled `<div>` — style it yourself as a badge, a big numeral, a rule, or a full opener layout. It's injected once per chapter, on the first `@page` only.
+- `#id` / `.class` work like on any other marker: `@chapter #ch-bestiary .bestiary`.
+- No bare label means no `.chapter-opener` — there's no label to show.
+
 ### @page — start a new page
 
-Starts a new page. Optionally accepts one or more CSS class names:
+Starts a new page. A **single** bare word names the page; `.class` shorthand (or `class=a,b`) adds CSS classes — these are two different things:
 
 ```markdown
 @page
 
-@page chapter
+@page intro
 
-@page chapter sidebar-layout
+@page .cover .sidebar
+
+@page intro .cover
 ```
 
-For multiple classes, use either comma-separated values in a `class=...` attribute or the `.class` shorthand. A trailing bare token after `class=...` is treated as a marker name instead of an extra class, so prefer `@page class=cover,sidebar` or `@page .cover .sidebar` over `@page class=cover sidebar`.
+- `@page` → `<div class="page">`
+- `@page intro` (one bare word) → `<div class="page" data-page="intro">` — target it with `[data-page="intro"]`, not `.intro`.
+- `@page .cover .sidebar` (or `@page class=cover,sidebar`) → `<div class="page cover sidebar">`.
+- `@page intro .cover` (name + shorthand) → `<div class="page cover" data-page="intro">`.
+
+**Two or more bare words with no `.class`/`class=` are all treated as classes, with no name at all** — `@page cover sidebar` renders `<div class="page cover sidebar">`, no `data-page`. For predictable results, always use `.class` shorthand (or `class=...`) when you want a class, and reserve a single bare word for the page's name.
 
 ### @page-break — hard break
 
@@ -164,9 +220,11 @@ Content above.
 Content below, on a new page.
 ```
 
+Renders `<div class="md-page-break" aria-hidden="true"></div>` between the two paragraphs — a plain marker element, not a page container.
+
 ### @section and @end-section
 
-`@section` groups content to avoid mid-section page breaks. Close with `@end-section` — which stays on the current page rather than forcing a break:
+`@section` groups content to avoid mid-section page breaks (`.section { break-inside: avoid; }`, from core `PAGED_CSS`). Close with `@end-section` — which stays on the current page rather than forcing a break:
 
 ```markdown
 @section
@@ -182,6 +240,37 @@ Content below, on a new page.
 
 Continues on the same page as the section above.
 ```
+
+`@section` emits `<div class="section">` — plain `.section`, never `.region`.
+
+### @continue — split a named section without losing its identity
+
+`@continue` closes the **currently open** `@section` and immediately reopens a new one with the same name and attributes, plus an extra `pmd-continued` class. Use it when a named block has to spill past a break but you still want to style the overflow (e.g. a "(continued)" label) without repeating its heading:
+
+```markdown
+@section Notes
+
+First part of a long note...
+
+@continue
+
+The overflow, continuing.
+
+@end-section
+```
+
+Renders:
+
+```html
+<div class="section" data-section="Notes">
+  <p>First part of a long note...</p>
+</div>
+<div class="section pmd-continued" data-section="Notes">
+  <p>The overflow, continuing.</p>
+</div>
+```
+
+`@continue` used with no open `@section` is dropped with a warning — it does not resurrect a section already closed by `@end-section`.
 
 ### @column-break and @spread
 
@@ -211,5 +300,5 @@ Right column content.
 ### Print Optimization
 
 - Do not use `<br>` tags for spacing — use paragraph breaks and CSS margins
-- Let auto-rules handle chapter starts; use `@page` only when you need a named class or a forced break mid-flow
+- Core print-md never inserts a page break on its own — every break in a bare project comes from an explicit `@chapter` / `@page` / `@page-break` marker, or from a theme's own CSS (like this guide's H1 rule). Use `@page` when you need a named page, an id, or a forced break mid-flow.
 - Test font embedding in your final PDF before submitting to a printer

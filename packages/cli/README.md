@@ -35,6 +35,9 @@ The short version: you almost certainly want **Ghostscript** installed for PDF o
 ## Quick start
 
 ```sh
+# Scaffold a new project (manifest + starter chapter + stylesheet)
+print-md new "My First Book"
+
 # Build a PDF from a project directory
 print-md build ./my-book
 
@@ -95,6 +98,53 @@ The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`.
 
 ## Commands
 
+print-md has 9 subcommands. `new`, `preview`, `build`, and `publish` are the
+primary author commands; `lint`, `validate`, `audit`, and `preflight` are
+CI / advanced checks; `repair` is the version-history escape hatch. Every
+command also accepts `--help` for the authoritative, always-current flag
+list (`print-md <command> --help`) — this section is regenerated from the
+same source.
+
+### `print-md new`
+
+Scaffold a new project from an embedded starter template — the fastest way to start writing (see [Quick start](#quick-start)).
+
+```sh
+print-md new <name> [options]
+
+  --author <name>     Author name to record in the project
+  --dir <path>         Parent directory to create the project in (default: current directory)
+  --folder <name>      Folder name to create (default: a slug of the project name)
+  --template <id>      Starter template: book, ttrpg, zine, technical (default: book)
+  --git                Initialise local version history (default: true; use --no-git to skip)
+  --no-git
+```
+
+### `print-md preview`
+
+Live HTML preview server by default (serves `book.html`, triggers full-reload via WebSocket on file change — pure JS rendering, no external tools). Pass `--format pdf` or `--format pdfx` for a one-shot build-and-open instead of the live server.
+
+```sh
+print-md preview [input-dir] [options]
+
+  --format <fmt>          html (default, live HMR) | pdf | pdfx
+  --port <n>              Bind port                     (default: 3579, html only)
+  --host <h>              Bind host                     (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN.
+  --no-watch              Disable file watching (html only)
+  --open                  Automatically open browser/viewer (default: true; use --no-open to skip)
+  --no-open
+  --verbose               Enable verbose output
+  --debug                 Debug mode (preserve temporary files)
+  --out <dir>             Output directory                              (pdf|pdfx only)
+  --pdfx-flavor <flavor>  PDF/X flavor: x1a | x3                        (pdfx only)
+  --icc <path>            Path to ICC profile (required for --format pdfx)
+  --manifest <path>       Path to manifest.yaml
+  --strip-annotations     Strip PDF annotations for PDF/X compliance    (pdfx only)
+  --skip-lint             Skip CSS linting                              (pdf|pdfx only)
+  --skip-pre-validate     Skip pre-build validation                     (pdf|pdfx only)
+  --skip-post-validate    Skip post-build PDF/X validation              (pdfx only)
+```
+
 ### `print-md build`
 
 Build a PDF (default) or HTML output. Pipeline: `lint → validate:pre → convert → assets → build → validate:post`.
@@ -102,39 +152,57 @@ Build a PDF (default) or HTML output. Pipeline: `lint → validate:pre → conve
 ```sh
 print-md build [input-dir] [options]
 
-  --format          pdf | pdfx | html       (default: pdf)
-  --out             Output file or directory
-  --title           Override manifest title
-  --skip-lint       Skip the CSS print-safety pass
-  --skip-pre-validate
-  --skip-post-validate
-  --strip-annotations    PDF/X only: flatten form annotations (default: true)
-  --icc <path>           PDF/X only: ICC profile for CMYK conversion
-  --pdfx-flavor    x1a | x3                  (default: x1a)
+  --format <fmt>          pdf | pdfx | html       (default: pdf)
+  --out <path>            Output file or directory. For pdf|pdfx, --out may also be a .pdf file path.
+  --title <title>         Override manifest title
+  --pdfx-flavor <flavor>  PDF/X flavor: x1a | x3   (--format pdfx only)
+  --icc <path>            Path to ICC profile (required for --format pdfx)
+  --manifest <path>       Path to manifest.yaml
+  --strip-annotations     Strip PDF annotations for PDF/X compliance
+  --skip-lint             Skip the CSS print-safety pass (default: lint runs for pdf/pdfx)
+  --skip-pre-validate     Skip pre-build validation
+  --skip-post-validate    Skip post-build PDF/X validation
 ```
 
-### `print-md preview`
+### `print-md publish`
 
-Start a live preview server. Serves `book.html` and triggers full-reload via WebSocket when files change.
+Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI.
 
 ```sh
-print-md preview [input-dir] [options]
+print-md publish [project] [options]
 
-  --port <n>        Bind port               (default: 3579)
-  --host <h>        Bind host               (default: 127.0.0.1)
-  --no-watch        Skip file watcher
-  --open            Open default browser    (default: true; use --no-open to disable)
+  --provider <id>     itch | drivethrurpg | kdp | azure-swa | shopify
+  --list               List providers and connection status
+  --connect            Store an API key for --provider (from --token, the provider's env var, or piped stdin)
+  --disconnect         Forget the stored key for --provider
+  --token <key>        API key for --connect (prefer stdin/env var to keep it out of shell history)
+  --file <path>        Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location
+  --manifest <path>    Path to manifest.yaml
+  --dry-run            Preflight only; don't contact the platform
+  --json               Machine-readable JSON output (CI)
+  --open               Open the result page / guided upload page in the browser
 ```
 
-Preview itself uses no external tools — pure JS rendering. Paged.js runs in your browser when you open the URL.
+```sh
+# List providers and connection status
+print-md publish --list
+
+# Store an API key for itch.io, then publish
+print-md publish --provider itch --connect
+print-md publish --provider itch ./my-book
+```
 
 ### `print-md lint`
 
 Run print-md's print-safety CSS checks (postcss-based: remote URLs, rasterizing effects, Paged.js crash-prone selectors) against the project's CSS files.
 
 ```sh
-print-md lint [input-dir] [--files <glob>]
+print-md lint [files] [options]
+
+  --manifest <path>    Path to manifest.yaml
 ```
+
+`files` is a positional: either a project directory containing `manifest.yaml` (its configured stylesheets are linted), or a glob pattern for CSS files to lint directly. There is no `--files` flag — pass the directory/glob as the positional.
 
 Common print-unsafe patterns the plugin flags: remote `url(...)` references in CSS, paged.js-crashing `:is()`-with-sibling selectors, properties with no print equivalent.
 
@@ -142,15 +210,52 @@ Common print-unsafe patterns the plugin flags: remote `url(...)` references in C
 
 Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 7 — Validation](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/07-validation.md) for the full check list and [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md) for which external tools each check needs.
 
-```sh
-print-md validate [input-dir] [options]
+The positional directory and `--pdf`/`--input` are independent: the positional (or `--input`) sets the pre-build source directory, `--pdf` separately points at a built PDF for post-build checks. `--input` overrides the positional if both are given.
 
-  --phase <p>       pre | post | all | pre-build | post-build   (default: all)
-  --category <c>    source | asset | pdf | heuristic
-  --only <ids>      Comma-separated check IDs
-  --skip <ids>      Comma-separated check IDs
-  --format          text | json               (default: text)
+```sh
+print-md validate [dir] [options]
+
+  --pdf <path>         Path to the PDF file to validate (post-build checks)
+  --input <dir>        Source directory for pre-build checks (overrides the positional directory)
+  --manifest <path>    Path to manifest.yaml
+  --category <c>       Comma-separated categories: source, pdf, asset, heuristic
+  --only <ids>         Run only these check IDs/selectors (comma-separated)
+  --skip <ids>         Skip these check IDs/selectors (comma-separated)
+  --format <fmt>       text (default) | json
+  --phase <p>          pre | post | all | pre-build | post-build   (default: all)
+  --profile <p>        Validation profile lock (currently: dtrpg)
 ```
+
+### `print-md audit`
+
+Run asset-only validation checks (image DPI/format/color-space, print-readiness) without the rest of the validation pipeline.
+
+```sh
+print-md audit [dir] [options]
+
+  --input <dir>        Asset directory (overrides the positional directory)
+  --manifest <path>    Path to manifest.yaml
+  --only <ids>         Run only these check IDs/selectors (comma-separated)
+  --skip <ids>         Skip these check IDs/selectors (comma-separated)
+  --format <fmt>       text (default) | json
+```
+
+### `print-md preflight`
+
+Run a deterministic print preflight against an already-built PDF and write a GO/FIX/NO-GO report (JSON + Markdown) — the automatable gate for CI before handing a PDF to a printer.
+
+```sh
+print-md preflight [dir] --pdf <path> [options]
+
+  --pdf <path>              Path to the PDF file to preflight   (required)
+  --input <dir>             Optional source directory for pre-build checks (overrides the positional directory)
+  --manifest <path>         Path to manifest.yaml
+  --profile <p>             Validation profile lock (currently: dtrpg)
+  --report-dir <dir>        Output directory for preflight reports (default: alongside the PDF)
+  --name <name>             Base filename for report outputs
+```
+
+Exits 1 when the computed status is `NO-GO` (errors, or a required check skipped/failed).
 
 ### `print-md repair`
 
@@ -161,7 +266,21 @@ print-md repair [dir]
 
   --check     Diagnose only — never change anything (exit 1 when repair is needed)
   --yes       Approve the repair without prompting
+  --force     Repair even if the print-md app appears to have this project open
 ```
+
+## Exit codes
+
+Every command follows the same exit-code contract, so CI can branch on the result without parsing output:
+
+| Code | Meaning |
+|---|---|
+| `0` | Clean — no findings, nothing to fix. |
+| `1` | Findings — the command ran fine but reported findings/validation failures (`lint` CSS errors, `validate`/`preflight`/`audit` findings, a `build` quality-gate rejection). |
+| `2` | Usage — the invocation itself was wrong: a bad flag, positional argument, preset, or value. |
+| `3` | Pipeline — the build/render/export pipeline itself failed for a reason unrelated to usage or findings (I/O error, missing tool, renderer crash). |
+
+This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `repair`, `publish`, and `new`.
 
 ## Plugins
 

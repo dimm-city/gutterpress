@@ -118,7 +118,9 @@ Examples: ink coverage estimates, page count anomalies, unexpected blank pages.
 
 ## Manifest Configuration
 
-Add a `validate` section to configure which checks run and their thresholds:
+Add a `validate` section to enable/disable which checks run. Check
+*thresholds* (like the ink-coverage limit below) are configured under their
+own top-level manifest keys, not under `validate:`:
 
 ```yaml
 validate:
@@ -132,9 +134,13 @@ validate:
     htmlhint: false
     markdownlint: false
 
-  # Override thresholds for specific checks
-  thresholds:
-    pdf.print.ink-coverage: 240
+# Ink-coverage / TAC threshold — this is a TOP-LEVEL manifest key, not
+# nested under `validate:`. There is no `validate.thresholds` key; unknown
+# keys are silently ignored, so a threshold nested under `validate:` has no
+# effect at all.
+ink:
+  maxTac: 240        # max total area coverage %, default 240
+  tacTolerance: 0.5  # allowed overage before a page is flagged, default 0.5
 ```
 
 ## Automatic Tool Detection
