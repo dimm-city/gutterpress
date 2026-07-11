@@ -7,7 +7,8 @@
  * remote diagnosis refresh (`refreshSyncDiag`), and the ConflictChoicesDialog's
  * post-resolution cleanup (`clearConflict`). Owns the public runes the template
  * binds to: `conflictOpen` / `conflictFiles` / `conflictLocalId` /
- * `conflictRemoteId` / `forceSyncing` / `syncDiag`.
+ * `conflictRemoteId` / `conflictPending` / `conflictFetchFailed` /
+ * `forceSyncing` / `syncDiag`.
  *
  * Single-owner discipline mirrors `ExportController`
  * (`export/export-controller.svelte.ts`) and `PageNavController`
@@ -20,12 +21,24 @@
  * callbacks the outcome routing fans out to — `onSyncCompleted` (toast.success +
  * history refresh + optional reconcile, in the component) and `onFilesChanged`
  * (buffer reconcile + re-lint, in the component). `SyncOutcome` /
- * `ProjectRemoteDiagnosis` / `ConflictFileInfo` are type-only imports — ZERO
+ * `ProjectRemoteDiagnosis` / `ConflictFileEntry` are type-only imports — ZERO
  * `node:*` / lib value imports.
+ *
+ * M13 (2026-07-10 UX review): `onPillConflict` used to ALWAYS run a second
+ * network sync just to fetch `localId`/`remoteId` — the dialog opened with a
+ * silently-disabled primary button until that call landed, and swallowed a
+ * failure, leaving the button dead forever with no explanation. Most conflict
+ * emit sites (see `auto-sync/orchestrator.ts`) now carry the ids directly on
+ * the `SyncStatus` payload, so `onPillConflict` takes them as parameters and
+ * skips the fetch entirely when present. The fetch survives ONLY as a fallback
+ * for emit sites that cannot compute ids (the repair-driven conflict path —
+ * see `recovery-emit.ts`'s `needs_user` branch), gated behind an explicit
+ * `conflictPending` state, with `conflictFetchFailed` + `retryConflictIds()`
+ * covering the failure the old code used to swallow.
  */
 
 import type { SyncOutcome } from "../api";
-import type { ConflictFileInfo, ProjectRemoteDiagnosis } from "../platform/contract";
+import type { ConflictFileEntry, ProjectRemoteDiagnosis } from "../platform/contract";
 
 /** Minimal toast surface the controller drives (success is fired by the injected component callback). */
 export interface SyncToast {
@@ -58,11 +71,24 @@ export class SyncController {
   /** True while the ConflictChoicesDialog is open. */
   conflictOpen = $state(false);
   /** The conflicting files shown in the dialog. */
-  conflictFiles = $state<ConflictFileInfo[]>([]);
+  conflictFiles = $state<ConflictFileEntry[]>([]);
   /** The local snapshot id backing the conflict resolution (null until fetched). */
   conflictLocalId = $state<string | null>(null);
   /** The remote snapshot id backing the conflict resolution (null until fetched). */
   conflictRemoteId = $state<string | null>(null);
+  /**
+   * True while the fallback ids fetch is in flight (M13) — ONLY entered when
+   * the conflict emit site did not carry `localId`/`remoteId` on the
+   * `SyncStatus` payload. Drives ConflictChoicesDialog's "Getting things
+   * ready…" state.
+   */
+  conflictPending = $state(false);
+  /**
+   * True when the fallback ids fetch failed or came back unresolved (M13).
+   * Drives ConflictChoicesDialog's in-dialog retry affordance instead of
+   * leaving the primary button silently dead forever.
+   */
+  conflictFetchFailed = $state(false);
 
   private deps: SyncControllerDeps;
 
@@ -82,27 +108,51 @@ export class SyncController {
 
   /**
    * Called by the ambient SyncStatusPill when the auto-sync orchestrator emits
-   * a conflict state (§6.1). Opens the ConflictChoicesDialog immediately with
-   * the file list from the status event, then fetches the conflict IDs
-   * (localId/remoteId) via syncChanges — the only path that returns a
-   * SyncOutcome carrying those IDs. The confirm button stays disabled until the
-   * IDs arrive (ConflictChoicesDialog guards on !localId || !remoteId).
+   * a conflict state (§6.1), with the `localId`/`remoteId` from that SAME
+   * SyncStatus payload when the emitting host path could compute them (M13 —
+   * see the doc comment on `SyncStatus` in `platform/contract.ts`). When both
+   * are present this is the ENTIRE method: no network round-trip, and the
+   * primary button unlocks immediately.
+   *
+   * Only when ids are absent (a conflict emit site that cannot compute them,
+   * e.g. the repair-driven path) does this fall back to fetching them via
+   * `syncChanges` — the only OTHER path that returns a SyncOutcome carrying
+   * those ids — while `conflictPending` drives an explicit "Getting things
+   * ready…" state, and `conflictFetchFailed` (+ `retryConflictIds`) replaces
+   * the old silent swallow-and-die-forever behavior on failure.
    */
-  onPillConflict(files: ConflictFileInfo[]): void {
+  onPillConflict(files: ConflictFileEntry[], localId?: string, remoteId?: string): void {
     const dir = this.deps.currentDir();
     if (!dir) return;
     this.conflictFiles = files;
+    this.conflictOpen = true;
+    if (localId && remoteId) {
+      // Fast path (M13): the SyncStatus payload already carried the ids.
+      this.conflictLocalId = localId;
+      this.conflictRemoteId = remoteId;
+      this.conflictPending = false;
+      this.conflictFetchFailed = false;
+      return;
+    }
     this.conflictLocalId = null;
     this.conflictRemoteId = null;
-    this.conflictOpen = true;
-    // The SyncStatus payload does not carry localId/remoteId — those are only
-    // in the SyncOutcome returned by syncChanges (contract.ts lines 527-528).
-    // Fetch them now so ConflictChoicesDialog.confirm() can call resolveSyncConflicts.
+    this.fetchConflictIds(dir);
+  }
+
+  /**
+   * Fallback ids fetch (M13): only reached when the conflict emit site that
+   * opened the dialog did not carry `localId`/`remoteId`. Also the
+   * implementation behind `retryConflictIds()`.
+   */
+  private fetchConflictIds(dir: string): void {
+    this.conflictPending = true;
+    this.conflictFetchFailed = false;
     this.deps
       .syncChanges(dir)
       .then((outcome: SyncOutcome) => {
         // Discard if the user switched projects or already closed the dialog.
         if (this.deps.currentDir() !== dir || !this.conflictOpen) return;
+        this.conflictPending = false;
         if (outcome.status === "conflict") {
           this.conflictFiles = outcome.files;
           this.conflictLocalId = outcome.localId;
@@ -114,15 +164,31 @@ export class SyncController {
         } else if (outcome.status === "up-to-date") {
           this.conflictOpen = false;
           this.deps.onSyncCompleted(false, outcome.filesChanged === true);
+        } else {
+          // auth/offline/error: nothing more we can do automatically. Surface
+          // the failure (M13) instead of leaving the primary button silently
+          // disabled with no explanation — the dialog offers a retry.
+          this.conflictFetchFailed = true;
         }
-        // auth/offline/error: leave the dialog open so the user can still
-        // "Decide later"; the confirm button remains disabled.
       })
       .catch(() => {
-        // Network/host error: leave the dialog open at the file list view.
-        // The confirm button stays disabled; the History panel's advanced Sync
-        // surface remains available as a fallback.
+        // Network/host error: surface it (M13) rather than swallowing it.
+        if (this.deps.currentDir() !== dir || !this.conflictOpen) return;
+        this.conflictPending = false;
+        this.conflictFetchFailed = true;
       });
+  }
+
+  /**
+   * Retry the fallback ids fetch after a failure. Wired to
+   * ConflictChoicesDialog's "Try again" affordance in the pending/failed
+   * state (M13) — distinct from `confirm()`'s own retry, which re-runs
+   * `resolveSyncConflicts` once ids are already known.
+   */
+  retryConflictIds(): void {
+    const dir = this.deps.currentDir();
+    if (!dir || !this.conflictOpen) return;
+    this.fetchConflictIds(dir);
   }
 
   /**
@@ -138,10 +204,14 @@ export class SyncController {
       const outcome = await this.deps.syncChanges(dir);
       if (this.deps.currentDir() !== dir) return; // Project switched mid-sync.
       if (outcome.status === "conflict") {
-        // Route through the existing conflict dialog path.
+        // Route through the existing conflict dialog path. This SyncOutcome
+        // always carries localId/remoteId directly, so there is no pending
+        // fallback state to enter here (M13).
         this.conflictFiles = outcome.files;
         this.conflictLocalId = outcome.localId;
         this.conflictRemoteId = outcome.remoteId;
+        this.conflictPending = false;
+        this.conflictFetchFailed = false;
         this.conflictOpen = true;
       } else if (outcome.status === "synced") {
         this.deps.onSyncCompleted(outcome.mergedRemoteChanges, outcome.filesChanged === true);
@@ -174,5 +244,7 @@ export class SyncController {
     this.conflictFiles = [];
     this.conflictLocalId = null;
     this.conflictRemoteId = null;
+    this.conflictPending = false;
+    this.conflictFetchFailed = false;
   }
 }

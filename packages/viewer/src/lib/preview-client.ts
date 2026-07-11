@@ -52,10 +52,34 @@ export class PreviewClient {
   private pending = new Map<number, (msg: any) => void>();
   private listeners = new Set<(e: PreviewEvent) => void>();
   private win: Window | null = null;
+  /**
+   * The exact origin `attach()`-ed messages are accepted from and posted to
+   * (M31, 2026-07-10 UX review). Pinned via `setExpectedOrigin()` — NOT read
+   * from the iframe's own `window.location`, which throws for a cross-origin
+   * frame (the preview iframe always is: http://127.0.0.1 inside app://).
+   * Null means "no origin pinned yet" and every message is rejected /
+   * `call()` refuses to send — fail closed, never fall back to `'*'`.
+   */
+  private expectedOrigin: string | null = null;
+  /**
+   * Once true, `attach()` is a permanent no-op (M31). Set for URL-preview
+   * mode, where the SAME PreviewFrame+Client loads an arbitrary third-party
+   * page — that page must never be allowed to drive render state, page
+   * counts, or toasts via a spoofed `pmd:event`/`pmd:reply` message.
+   */
+  private locked = false;
   private handler: (e: MessageEvent) => void;
 
   constructor() {
     this.handler = (e: MessageEvent) => {
+      // M31: only accept messages from the exact window this client is
+      // attached to, at the exact origin pinned via setExpectedOrigin(). The
+      // preview iframe is cross-origin by design, and in URL-preview mode
+      // shows an arbitrary third-party page — without this check any page
+      // (or any other frame in the document) could spoof pmd:reply/pmd:event
+      // messages to drive render state, page counts, and success toasts.
+      if (!this.win || !this.expectedOrigin) return;
+      if (e.source !== this.win || e.origin !== this.expectedOrigin) return;
       const data = e.data;
       if (!data || typeof data !== "object") return;
       if (data.type === "pmd:reply") {
@@ -73,7 +97,41 @@ export class PreviewClient {
     }
   }
 
+  /**
+   * Pin the exact origin this client will accept messages from / target with
+   * postMessage (M31). Callers know the iframe's destination URL up front
+   * (PreviewFrame's `url` prop / +page.svelte's `previewUrl`/`currentUrl`)
+   * well before the iframe's "load" event calls attach() — pass that URL
+   * here first. A no-op after lockDown().
+   */
+  setExpectedOrigin(url: string | null | undefined) {
+    if (this.locked) return;
+    if (!url) {
+      this.expectedOrigin = null;
+      return;
+    }
+    try {
+      this.expectedOrigin = new URL(url).origin;
+    } catch {
+      this.expectedOrigin = null;
+    }
+  }
+
+  /**
+   * Permanently refuse to attach / exchange messages (M31). Call this instead
+   * of attach() in URL-preview mode — the frame shows an arbitrary
+   * third-party page, so the command/event bridge must never be wired up at
+   * all, not merely restricted to an origin (a page can't be trusted to not
+   * pretend to BE the pinned origin's content in the first place).
+   */
+  lockDown() {
+    this.locked = true;
+    this.win = null;
+    this.expectedOrigin = null;
+  }
+
   attach(win: Window | null) {
+    if (this.locked) return;
     this.win = win;
   }
 
@@ -84,6 +142,7 @@ export class PreviewClient {
     this.pending.clear();
     this.listeners.clear();
     this.win = null;
+    this.expectedOrigin = null;
   }
 
   on(fn: (e: PreviewEvent) => void): () => void {
@@ -92,14 +151,16 @@ export class PreviewClient {
   }
 
   async call<T = unknown>(cmd: string, args: unknown[] = []): Promise<T> {
-    if (!this.win) throw new Error("Preview frame not attached");
+    // M31: require a pinned origin, not just an attached window — never fall
+    // back to '*'. `setExpectedOrigin` must run before this can send.
+    if (!this.win || !this.expectedOrigin) throw new Error("Preview frame not attached");
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, (msg) => {
         if (msg.ok) resolve(msg.result as T);
         else reject(new Error(msg.error || "Unknown error"));
       });
-      this.win!.postMessage({ type: "pmd:cmd", id, cmd, args }, "*");
+      this.win!.postMessage({ type: "pmd:cmd", id, cmd, args }, this.expectedOrigin!);
       // Timeout long-pending commands so promises don't leak forever.
       setTimeout(() => {
         if (this.pending.has(id)) {
@@ -170,8 +231,8 @@ export class PreviewClient {
   }
 
   setBgColor(color: string) {
-    if (!this.win) return;
-    this.win.postMessage({ type: "pmd:bg-color", color }, "*");
+    if (!this.win || !this.expectedOrigin) return;
+    this.win.postMessage({ type: "pmd:bg-color", color }, this.expectedOrigin);
   }
 
   /**
@@ -180,7 +241,7 @@ export class PreviewClient {
    * @param css  CSS text to write into the style block.
    */
   injectStyles(id: string, css: string) {
-    if (!this.win) return;
-    this.win.postMessage({ type: "pmd:inject-styles", id, css }, "*");
+    if (!this.win || !this.expectedOrigin) return;
+    this.win.postMessage({ type: "pmd:inject-styles", id, css }, this.expectedOrigin);
   }
 }

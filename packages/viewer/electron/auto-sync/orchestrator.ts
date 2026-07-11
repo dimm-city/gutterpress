@@ -25,6 +25,7 @@
 import path from "node:path";
 import {
   decideRunAgainAfterPreflight as decideRunAgainAfterPreflightImpl,
+  isConflictFileBinary,
   type RecoveryResultStatus,
   type RunAgainDecision,
 } from "../recovery-bridge";
@@ -105,8 +106,21 @@ export interface SyncStatusPayload {
     | "local";
   /** Absolute path of the project this status applies to. */
   projectDir: string;
-  /** Present (non-empty) only when state === "conflict". */
-  files?: ConflictFileInfo[];
+  /**
+   * Present (non-empty) only when state === "conflict". Each entry carries the
+   * host-authoritative `isBinary` flag (L12 — see `isConflictFileBinary` in
+   * `../recovery-bridge`) so `ConflictChoicesDialog` never has to re-derive it
+   * from the file extension itself.
+   */
+  files?: Array<ConflictFileInfo & { isBinary: boolean }>;
+  /**
+   * Local/remote snapshot ids backing the conflict resolution (M13). Present
+   * only when this emit site can compute them — see the matching doc comment
+   * on `SyncStatus` in `src/lib/platform/contract.ts` (this type must match it
+   * EXACTLY).
+   */
+  localId?: string;
+  remoteId?: string;
   /**
    * ISO-8601 timestamp of the last completed sync attempt (success or failure),
    * or null when none has run in this session.
@@ -271,15 +285,29 @@ export class AutoSyncOrchestrator {
    * gate in ExportController). `run()`'s own conflict/error branches stay
    * inline — they have follow-up bookkeeping (runAgain, `em.status` reuse) that
    * is specific to the outcome shape already in hand there.
+   *
+   * `localId`/`remoteId` are optional (M13): the pre-export gate's caller
+   * (`export/controller.ts`) does not currently thread them through this
+   * method, so the ambient pill falls back to the ids-fetch path for that one
+   * emit site (`sync-controller.svelte.ts`'s `conflictPending` state) — this
+   * signature accepts them so a future caller CAN pass them without a
+   * breaking change.
    */
-  latchConflict(dir: string, files: ConflictFileInfo[]): void {
+  latchConflict(dir: string, files: ConflictFileInfo[], localId?: string, remoteId?: string): void {
     const state = this.getOrCreateState(dir);
     state.conflictLatched = true;
     state.runAgain = false;
     this.cancelTimer(dir);
     const at = this.nowIso();
     this.setLastSyncAt(dir, at);
-    this.deps.emit({ state: "conflict", files, projectDir: dir, lastSyncAt: at });
+    this.deps.emit({
+      state: "conflict",
+      files: files.map((f) => ({ ...f, isBinary: isConflictFileBinary(f.path) })),
+      projectDir: dir,
+      lastSyncAt: at,
+      ...(localId ? { localId } : {}),
+      ...(remoteId ? { remoteId } : {}),
+    });
   }
 
   /**
@@ -624,9 +652,14 @@ export class AutoSyncOrchestrator {
         this.cancelTimer(dir);
         this.deps.emit({
           state: "conflict",
-          files: outcome.files,
+          // M13: carry localId/remoteId directly so the renderer never needs a
+          // second network sync just to unlock ConflictChoicesDialog's primary
+          // button. L12: attach the host-authoritative isBinary per file.
+          files: outcome.files.map((f) => ({ ...f, isBinary: isConflictFileBinary(f.path) })),
           projectDir: dir,
           lastSyncAt: completedAt,
+          localId: outcome.localId,
+          remoteId: outcome.remoteId,
         });
         console.warn(`[auto-sync] conflict latched for ${dir} — auto-sync paused until resolved`);
         // Conflict-latch prevents the runAgain path from firing.

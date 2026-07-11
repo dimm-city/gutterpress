@@ -232,7 +232,7 @@
               It's a regular folder — want to turn it into a print-md book? We'll use any
               Markdown already inside it.
             </p>
-            <button type="button" class="btn-primary" onclick={onAdopt} disabled={adopting}>
+            <button type="button" class="btn-primary app-btn-primary" onclick={onAdopt} disabled={adopting}>
               {adopting ? "Setting up…" : "Set up this folder as a book"}
             </button>
           {:else}
@@ -267,7 +267,7 @@
                 {/if}
               </span>
             </div>
-            <button type="button" class="btn-primary cc-open" bind:this={continueBtn} onclick={onContinue}>
+            <button type="button" class="btn-primary app-btn-primary cc-open" bind:this={continueBtn} onclick={onContinue}>
               Open your book
             </button>
           </div>
@@ -477,22 +477,18 @@
     .cc-spinner { animation-duration: 1.6s; }
   }
 
-  /* Matches the app-wide primary recipe (+page.svelte button.primary /
-     theme.css gradient contract) so the start screen's primaries don't render
-     as a third visual variant. */
+  /* Color (gradient fill/hover/border-color/font-weight) now lives in
+     theme.css's `.app-btn-primary` — co-applied in the template (UX review
+     L5: the ONE primary variant, not a third local copy). This class keeps
+     only the start screen's own geometry. */
   .btn-primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    color: var(--app-accent-text);
-    border: 1px solid var(--app-accent-border);
+    border-width: 1px;
+    border-style: solid;
     border-radius: 8px;
     padding: 10px 20px;
     font-size: 14px;
-    font-weight: 600;
     cursor: pointer;
     flex-shrink: 0;
-  }
-  .btn-primary:hover:not(:disabled) {
-    background: linear-gradient(to bottom, var(--app-accent-bright), var(--app-accent-hover));
   }
   .btn-primary:disabled { opacity: 0.6; cursor: default; }
   .btn-primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }

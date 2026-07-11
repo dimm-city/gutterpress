@@ -100,6 +100,8 @@
   let themeBusyId = $state<string | null>(null);
   let themeUrl = $state("");
   let thumbs = $state<Record<string, string>>({});
+  /** UX review M7: `keyOf` of the theme card whose Remove is armed for a two-step confirm, or null. */
+  let removeArmedKey = $state<string | null>(null);
 
   // (3) Styles
   let styles = $state<ProjectStyle[]>([]);
@@ -249,6 +251,10 @@
   async function loadThemes(): Promise<void> {
     if (!projectDir) return;
     themeError = null;
+    // A refresh can change which cards exist (apply/remove/import all call
+    // this) — never leave a stale "Delete "X"?" confirm armed on a card that
+    // may no longer represent the same theme.
+    removeArmedKey = null;
     try {
       const [bi, pt, active] = await Promise.all([
         api.theme.listBuiltIn(),
@@ -269,6 +275,7 @@
     if (!projectDir || themeBusyId) return;
     themeBusyId = t.id;
     themeError = null;
+    removeArmedKey = null;
     try {
       const target: ApplyThemeTarget = { kind: t.kind, id: t.id };
       const applied = await api.theme.apply(projectDir, target);
@@ -299,6 +306,28 @@
     } finally {
       themeBusyId = null;
     }
+  }
+
+  /**
+   * UX review M7: Remove used to run an immediate recursive delete with no
+   * confirmation at any layer. This is a two-step inline confirm (mirrors the
+   * CrashRecoveryDialog Discard pattern, M12): the first click arms the card
+   * (AppearanceSection swaps its actions for a "Delete \"X\"?" warning naming
+   * the theme); a second click while armed performs the actual removal.
+   */
+  function requestRemoveTheme(t: ThemeInfo): void {
+    const key = keyOf(t);
+    if (removeArmedKey === key) {
+      removeArmedKey = null;
+      void removeTheme(t);
+    } else {
+      removeArmedKey = key;
+    }
+  }
+
+  /** Cancel an armed Remove confirm without deleting anything. */
+  function cancelRemoveTheme(): void {
+    removeArmedKey = null;
   }
 
   async function importThemeFolder(): Promise<void> {
@@ -654,8 +683,10 @@
         {thumbs}
         {themeBusyId}
         bind:themeUrl
+        {removeArmedKey}
         {applyTheme}
-        {removeTheme}
+        {requestRemoveTheme}
+        {cancelRemoveTheme}
         {importThemeFolder}
         {importThemeUrl}
       />
@@ -790,6 +821,9 @@
   .config-panel :global(.primary:hover:not(:disabled)) { background: var(--app-accent-hover); }
   .config-panel :global(.ghost) { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
   .config-panel :global(.ghost:hover:not(:disabled)) { background: var(--app-surface-hover); color: var(--app-text); }
+  /* Armed "Delete" confirm (UX review M7 two-step Remove). */
+  .config-panel :global(.danger) { background: var(--app-error-bg); border-color: var(--app-error-border); color: var(--app-error-text); }
+  .config-panel :global(.danger:hover:not(:disabled)) { background: var(--app-error-border); }
   .config-panel :global(button:disabled) { opacity: 0.5; cursor: not-allowed; }
   .config-panel :global(button.full) { width: 100%; justify-content: center; }
 
@@ -816,7 +850,12 @@
   .config-panel :global(.theme-info) { display: flex; flex-direction: column; gap: 1px; }
   .config-panel :global(.theme-name) { font-size: 12px; font-weight: 600; color: var(--app-text); }
   .config-panel :global(.theme-author) { font-size: 10px; color: var(--app-text-faint); }
-  .config-panel :global(.theme-actions) { display: flex; align-items: center; gap: 6px; }
+  .config-panel :global(.theme-actions) { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  /* Armed Remove confirm (UX review M7): names the theme + warns customizations
+     are gone for good, full-width above the Delete/Cancel pair. */
+  .config-panel :global(.remove-confirm-msg) {
+    flex: 1 1 100%; margin: 0; font-size: 11px; line-height: 1.4; color: var(--app-error-text);
+  }
   .config-panel :global(.badge) { font-size: 10px; color: var(--app-text-faint); background: var(--app-surface-hover); padding: 1px 6px; border-radius: 9px; }
   .config-panel :global(.muted.dim) { font-size: 11px; }
 

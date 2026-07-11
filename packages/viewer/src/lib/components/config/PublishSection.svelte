@@ -12,6 +12,7 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { PublishProviderCard, PublishRunResult } from "$lib/api";
+  import { friendlyPublishError } from "$lib/errors";
 
   let {
     publishError,
@@ -51,6 +52,12 @@
   function draftValue(card: PublishProviderCard, key: string): string {
     return configDrafts[card.id]?.[key] ?? card.config[key] ?? "";
   }
+
+  // M41 — a card whose provider needs a key must not offer an enabled
+  // Publish button while that key isn't connected (trust-by-failure: the
+  // click would just fail authentication). "Check readiness" (dry run) needs
+  // no credential — preflight never calls authenticate — so it stays enabled.
+  const CONNECT_FIRST_HINT = "Connect first — this provider needs an API key before you can publish.";
 </script>
 
 <section class="block">
@@ -60,16 +67,25 @@
   <p class="hint">
     Send your finished book to a platform. Build the PDF (or the HTML site for web
     hosting) first, then publish. API keys are stored securely on this computer —
-    never in your project folder.
+    never in your project folder. “Check readiness” runs a dry run — it reports
+    problems without publishing or changing anything.
   </p>
   {#if publishError}
-    <p class="error" role="alert">{publishError}</p>
+    {@const publishErr = friendlyPublishError(publishError)}
+    <p class="error" role="alert">{publishErr.summary}</p>
+    {#if publishErr.details}
+      <details class="status-raw">
+        <summary>Show details</summary>
+        <pre>{publishErr.details}</pre>
+      </details>
+    {/if}
   {/if}
 
   <ul class="publish-list">
     {#each cards as card (card.id)}
       {@const result = results[card.id]}
       {@const busy = busyId === card.id}
+      {@const needsConnect = card.credentialRequired && !card.connected}
       <li class="publish-card">
         <div class="publish-head">
           <span class="publish-name">{card.label}</span>
@@ -158,9 +174,18 @@
           <button class="ghost small" onclick={() => run(card.id, true)} disabled={busy}>
             Check readiness
           </button>
-          <button class="primary small" onclick={() => run(card.id, false)} disabled={busy}>
+          <button
+            class="primary small"
+            onclick={() => run(card.id, false)}
+            disabled={busy || needsConnect}
+            title={needsConnect ? CONNECT_FIRST_HINT : undefined}
+            aria-label={needsConnect ? `Publish — ${CONNECT_FIRST_HINT}` : "Publish"}
+          >
             {#if busy}<Icon name="refresh-cw" size={13} /> Publishing…{:else}Publish{/if}
           </button>
+          {#if needsConnect}
+            <span class="muted dim" title={CONNECT_FIRST_HINT}>Connect first</span>
+          {/if}
         </div>
 
         {#if result}
@@ -178,7 +203,14 @@
               </ul>
             {/if}
             {#if !result.ok}
-              <p class="error">{result.error ?? "Publish failed."}</p>
+              {@const runErr = friendlyPublishError(result.error ?? "Publish failed.")}
+              <p class="error">{runErr.summary}</p>
+              {#if runErr.details}
+                <details class="status-raw">
+                  <summary>Show details</summary>
+                  <pre>{runErr.details}</pre>
+                </details>
+              {/if}
             {:else if !outcome}
               <p class="success-line"><Icon name="circle-check" size={13} /> Ready to publish.</p>
             {:else if outcome.kind === "published"}

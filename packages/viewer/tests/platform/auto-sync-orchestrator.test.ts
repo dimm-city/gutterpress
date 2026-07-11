@@ -156,6 +156,28 @@ test("a 'conflict' outcome latches auto-sync and blocks subsequent runs", async 
   expect(h.syncCalls.length).toBe(before);
 });
 
+test("a 'conflict' outcome carries localId/remoteId and per-file isBinary on the emit (M13/L12)", async () => {
+  const h = makeHarness({
+    syncProject: () => ({
+      status: "conflict",
+      files: [{ path: "a.md", kind: "both-edited" }, { path: "cover.png", kind: "both-edited" }],
+      localId: "LOCAL1",
+      remoteId: "REMOTE1",
+    }),
+  });
+
+  await h.orch.run(DIR);
+  await tick();
+
+  const conflictEmit = h.emitted.find((e) => e.state === "conflict");
+  expect(conflictEmit?.localId).toBe("LOCAL1");
+  expect(conflictEmit?.remoteId).toBe("REMOTE1");
+  expect(conflictEmit?.files).toEqual([
+    { path: "a.md", kind: "both-edited", isBinary: false },
+    { path: "cover.png", kind: "both-edited", isBinary: true },
+  ]);
+});
+
 test("clearing the latch re-enables syncing", async () => {
   const h = makeHarness({
     syncProject: () => ({ status: "conflict", files: [{ path: "a.md" }] }),
@@ -352,7 +374,23 @@ test("latchConflict sets the latch, cancels timers, stamps lastSyncAt, and emits
   expect(h.orch.getLastSyncAt(DIR)).toBe(new Date(1_700_000_555_000).toISOString());
   const conflictEmit = h.emitted.find((e) => e.state === "conflict");
   expect(conflictEmit?.projectDir).toBe(DIR);
-  expect(conflictEmit?.files).toEqual([{ path: "a.md" }]);
+  // L12: isBinary is attached per file using the host-authoritative extension
+  // classifier (isConflictFileBinary) — ".md" is not binary.
+  expect(conflictEmit?.files).toEqual([{ path: "a.md", isBinary: false }]);
+  // M13: latchConflict's 2-arg callers (export/controller.ts's pre-export
+  // gate) don't have ids to pass, so they stay absent on this emit site.
+  expect(conflictEmit?.localId).toBeUndefined();
+  expect(conflictEmit?.remoteId).toBeUndefined();
+});
+
+test("latchConflict carries localId/remoteId through to the emit when the caller has them (M13)", () => {
+  const h = makeHarness();
+  h.orch.latchConflict(DIR, [{ path: "cover.png" } as never], "L1", "R1");
+  const conflictEmit = h.emitted.find((e) => e.state === "conflict");
+  expect(conflictEmit?.localId).toBe("L1");
+  expect(conflictEmit?.remoteId).toBe("R1");
+  // L12: a real binary extension is classified true.
+  expect(conflictEmit?.files).toEqual([{ path: "cover.png", isBinary: true }]);
 });
 
 test("unlatch clears the latch without emitting", () => {

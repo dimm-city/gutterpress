@@ -34,15 +34,15 @@
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
-    class="dialog"
+    class="dlg-shell"
     use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "settings-title" }}
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="settings-title">Settings</h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
+      <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -306,61 +306,31 @@
         </div>
       </details>
 
-      <footer class="actions">
-        <button class="primary" onclick={close}>Done</button>
+      <footer class="dlg-actions">
+        <button class="dlg-primary" onclick={close}>Done</button>
       </footer>
     </div>
   </div>
 {/if}
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  @import "$lib/styles/dialog-shell.css";
+
+  /* Settings is the tallest dialog in normal use (many rows); wider + a
+     slightly taller cap than the shared default. */
+  .dlg-shell {
     width: min(560px, 92vw);
     max-height: 88vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
+  /* Unlike the "pinned bar" dialogs (ConflictChoicesDialog, OperationLogDialog,
+     …), Settings' footer is the last item INSIDE the scrolling body, not a
+     sibling of it — restore its original in-flow spacing (no side padding,
+     it inherits dialog-body's own 16/18 padding; no flex-shrink, dialog-body
+     here isn't a flex container). */
+  .dlg-actions {
+    padding: 16px 0 0;
+    margin-top: 8px;
   }
-  .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* WCAG 2.5.8: minimum target size 24x24px */
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
   .dialog-body {
     padding: 16px 18px;
     overflow-y: auto;
@@ -453,21 +423,4 @@
   }
   .advanced-reset-row { border-bottom: none; margin-top: 4px; padding-bottom: 0; }
   .advanced-body { padding-top: 4px; }
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    padding-top: 16px;
-    margin-top: 8px;
-    border-top: 1px solid var(--app-border-subtle);
-  }
-  .actions button {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .actions .primary:hover { background: var(--app-accent-hover); }
 </style>

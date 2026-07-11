@@ -11,12 +11,24 @@
    * - The component owns no editor knowledge: it calls `onInsert(text)` with the
    *   final text and `getSelectionText()` to seed "Save selection as snippet".
    * - Desktop-only in v1 (file IO host gate); the trigger is hidden on web.
+   *
+   * Delete (M25) is a two-step inline confirm — the trash button arms on the
+   * first click ("Delete?" in place, no separate element popping up under
+   * the cursor) and a Cancel button appears alongside it; a second click on
+   * the (now armed) trash button actually deletes. Mirrors
+   * CrashRecoveryDialog's Discard button via the shared
+   * `requestInlineConfirm`/`cancelInlineConfirm` helpers (`$lib/dialog`).
    */
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import type { SnippetEntry } from "$lib/api";
   import { extractVariables, substituteVariables } from "$lib/editor/snippet-vars";
-  import { dialogBehavior } from "$lib/dialog";
+  import {
+    dialogBehavior,
+    requestInlineConfirm,
+    cancelInlineConfirm,
+    type InlineConfirmState,
+  } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -157,21 +169,39 @@
       error = e instanceof Error ? e.message : String(e);
     }
   }
+
+  // ── Two-step delete confirm (M25) ───────────────────────────────────────
+  let confirmDelete = $state<InlineConfirmState>({});
+
+  function requestDelete(entry: SnippetEntry) {
+    const { state, confirmed } = requestInlineConfirm(confirmDelete, entry.fileName);
+    confirmDelete = state;
+    if (confirmed) void remove(entry);
+  }
+
+  /** Cancelling returns focus to the (now-unarmed) trash button — the
+   *  Cancel button itself is removed from the DOM on click, so without this
+   *  focus would drop to <body>. */
+  function cancelDelete(entry: SnippetEntry, event: MouseEvent) {
+    confirmDelete = cancelInlineConfirm(confirmDelete, entry.fileName);
+    const row = (event.currentTarget as HTMLElement).closest("li");
+    queueMicrotask(() => row?.querySelector<HTMLButtonElement>(".snippet-del")?.focus());
+  }
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
     bind:this={dialogEl}
-    class="dialog"
+    class="dlg-shell"
     use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "snippet-picker-title" }}
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="snippet-picker-title">
         {#if mode === "list"}Snippets{:else if mode === "vars"}Fill in the snippet{:else}Save as snippet{/if}
       </h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close">
+      <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close">
         <Icon name="x" size={16} />
       </button>
     </header>
@@ -192,6 +222,7 @@
         {:else}
           <ul class="snippet-list">
             {#each snippets as entry (entry.fileName)}
+              {@const armed = confirmDelete[entry.fileName] ?? false}
               <li>
                 <button class="snippet-row" onclick={() => choose(entry)} title={`Insert “${entry.name}” at the cursor`}>
                   <span class="snippet-name">{entry.name}</span>
@@ -203,21 +234,32 @@
                     <Icon name="chevron-right" size={14} />
                   </span>
                 </button>
+                <!-- Single persistent button (M25) — arming the confirm only
+                     swaps its label/class in place so the first click never
+                     loses focus. -->
                 <button
                   class="snippet-del"
-                  title="Delete snippet"
-                  aria-label={`Delete ${entry.name}`}
-                  onclick={() => remove(entry)}
+                  class:dlg-danger-armed={armed}
+                  title={armed ? "Click again to permanently delete" : "Delete snippet"}
+                  aria-label={armed ? `Really delete ${entry.name}? This can't be undone.` : `Delete ${entry.name}`}
+                  onclick={() => requestDelete(entry)}
                 >
-                  <Icon name="trash" size={14} />
+                  {#if armed}
+                    <span class="snippet-del-confirm">Delete?</span>
+                  {:else}
+                    <Icon name="trash" size={14} />
+                  {/if}
                 </button>
+                {#if armed}
+                  <button class="snippet-del-cancel" onclick={(e) => cancelDelete(entry, e)}>Cancel</button>
+                {/if}
               </li>
             {/each}
           </ul>
         {/if}
-        <footer class="actions">
-          <button class="ghost" onclick={close}>Close</button>
-          <button class="primary" onclick={startSave}>Save selection as snippet</button>
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={close}>Close</button>
+          <button class="dlg-primary" onclick={startSave}>Save selection as snippet</button>
         </footer>
       {:else if mode === "vars"}
         <p class="muted">Enter values for this snippet, then insert it.</p>
@@ -227,9 +269,9 @@
             <input class="var-input" type="text" bind:value={varValues[v]} autocomplete="off" />
           </label>
         {/each}
-        <footer class="actions">
-          <button class="ghost" onclick={() => (mode = "list")}>Back</button>
-          <button class="primary" onclick={confirmVars}>Insert</button>
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={() => (mode = "list")}>Back</button>
+          <button class="dlg-primary" onclick={confirmVars}>Insert</button>
         </footer>
       {:else}
         <label class="field">
@@ -240,9 +282,9 @@
           <span>Content <em class="optional">(use <code>{"{{name}}"}</code> for fill-in fields)</em></span>
           <textarea class="save-body" bind:value={saveBody} rows="6"></textarea>
         </label>
-        <footer class="actions">
-          <button class="ghost" onclick={() => (mode = "list")}>Back</button>
-          <button class="primary" onclick={confirmSave}>Save snippet</button>
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={() => (mode = "list")}>Back</button>
+          <button class="dlg-primary" onclick={confirmSave}>Save snippet</button>
         </footer>
       {/if}
     </div>
@@ -250,28 +292,12 @@
 {/if}
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: var(--app-backdrop); z-index: 1000; }
-  .dialog {
-    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: min(480px, 94vw); max-height: 80vh;
-    background: var(--app-surface); color: var(--app-text-secondary);
-    border-radius: 8px; box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001; display: flex; flex-direction: column; overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  @import "$lib/styles/dialog-shell.css";
+
+  .dlg-shell {
+    width: min(480px, 94vw);
+    max-height: 80vh;
   }
-  .dialog-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px; border-bottom: 1px solid var(--app-border-subtle); flex-shrink: 0;
-  }
-  .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .close {
-    background: transparent; border: 1px solid transparent; border-radius: 5px;
-    color: var(--app-text-muted); cursor: pointer; padding: 4px;
-    display: inline-flex; align-items: center; justify-content: center;
-    min-width: 28px; min-height: 28px;
-  }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .dialog-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1; }
   .muted { margin: 0; font-size: 13px; color: var(--app-text-muted); }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
@@ -299,8 +325,27 @@
   .snippet-del {
     background: transparent; border: 1px solid var(--app-border); border-radius: 6px;
     color: var(--app-text-muted); cursor: pointer; padding: 0 8px; min-width: 32px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
   }
-  .snippet-del:hover { color: var(--app-error-text); background: var(--app-surface-hover); }
+  /* FIX ROUND 1: the base `.snippet-del` rule above sets background/border/
+     color longhands scoped to this component (Svelte's hash raises it to
+     0,2,0), which otherwise outranks the imported `.dlg-danger-armed`
+     (0,1,0) and leaves the armed "Delete?" button with zero red. Restate
+     the danger tokens here, scoped + more specific (0,3,0), so arming wins. */
+  .snippet-del.dlg-danger-armed {
+    background: var(--app-error-bg);
+    border-color: var(--app-error-border);
+    color: var(--app-error-text);
+  }
+  .snippet-del:hover:not(.dlg-danger-armed) { color: var(--app-error-text); background: var(--app-surface-hover); }
+  .snippet-del:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .snippet-del-confirm { padding: 0 2px; }
+  .snippet-del-cancel {
+    background: transparent; border: 1px solid var(--app-border); border-radius: 6px;
+    color: var(--app-text-muted); cursor: pointer; padding: 0 10px; font-size: 11px;
+  }
+  .snippet-del-cancel:hover { background: var(--app-surface-hover); color: var(--app-text); }
+  .snippet-del-cancel:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
   .optional { font-style: italic; color: var(--app-text-faint); font-weight: 400; }
@@ -311,13 +356,15 @@
   }
   .save-body { font-family: ui-monospace, monospace; resize: vertical; }
   .field input:focus, .save-body:focus { outline: none; border-color: var(--app-focus-ring); }
-  .actions {
-    display: flex; gap: 8px; justify-content: flex-end; padding-top: 14px;
-    margin-top: 4px; border-top: 1px solid var(--app-border-subtle); flex-shrink: 0;
+  /* In-flow footer (last item inside the scrolling body, not a pinned
+     sibling) — restore the original spacing; the shared default assumes a
+     pinned bar. */
+  .dlg-actions {
+    padding-top: 14px;
+    padding-left: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+    margin-top: 4px;
   }
-  .actions button { padding: 7px 16px; font-size: 13px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
-  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .actions .primary:hover { background: var(--app-accent-hover); }
-  .actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  .actions .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
+  .dlg-actions button { padding: 7px 16px; }
 </style>

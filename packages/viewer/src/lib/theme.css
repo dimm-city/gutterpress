@@ -236,3 +236,41 @@
   --app-scrollbar-thumb-hover: #909090;
   --app-scrollbar-track: transparent;
 }
+
+/**
+ * Primary-button color recipe (UX review L5) — the ONE "primary action"
+ * gradient fill shared app-wide. Previously duplicated verbatim as
+ * `button.primary` in +page.svelte and `.btn-primary` in WelcomeLanding (the
+ * latter's own comment called out avoiding "a third visual variant" while
+ * this shared recipe didn't actually exist yet). Both now apply this class
+ * alongside their own local, purely-layout class (padding/border-radius/
+ * font-size, which legitimately vary by context).
+ *
+ * Only the color-bearing declarations live here — background gradient, hover
+ * brighten, text/border color, focus ring, disabled dimming. Geometry stays
+ * local to each consumer.
+ *
+ * Known NOT-yet-converged treatments (different files, out of scope for this
+ * change — see UX review L5's fix note):
+ *   - `dialog-shell.css`'s shared `.dlg-primary` uses a flat `--app-focus-ring`
+ *     fill instead of this gradient (the majority of dialogs, including
+ *     NewProjectWizard and AdvancedSetupDialog — both launched from the
+ *     landing screen this recipe now serves).
+ *   - ConflictChoicesDialog / RecoveryConfirmDialog / RecoveryGuidanceDialog
+ *     already locally override `.dlg-primary` with this same gradient by
+ *     hand; they should adopt `.app-btn-primary` instead of their own copy.
+ * All four should converge on this one class.
+ */
+.app-btn-primary {
+  background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+  color: var(--app-accent-text);
+  border-color: var(--app-accent-border);
+  font-weight: 600;
+}
+.app-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(to bottom, var(--app-accent-bright), var(--app-accent-hover));
+}
+.app-btn-primary:focus-visible {
+  outline: 2px solid var(--app-focus-ring);
+  outline-offset: 2px;
+}

@@ -270,7 +270,10 @@ export interface ProjectStyle {
 // Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
 // defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
 // editable `:root` custom property surfaced to the guided Design panel.
-export type StyleTokenKind = "color" | "length" | "text";
+// `font` = a font-family stack (curated dropdown + free text); `number` = a
+// unitless number (e.g. `--leading: 1.55`) — same numeric control as `length`,
+// just with no unit suffix.
+export type StyleTokenKind = "color" | "length" | "text" | "font" | "number";
 export interface StyleToken {
   /** The custom-property name, e.g. `--heading-color`. */
   name: string;
@@ -280,9 +283,9 @@ export interface StyleToken {
   kind: StyleTokenKind;
   /** Human label derived from the name, e.g. "Heading color". */
   label: string;
-  /** For `length`: the numeric part. */
+  /** For `length`/`number`: the numeric part. */
   number?: number;
-  /** For `length`: the unit (px, rem, em, …). */
+  /** For `length`: the unit (px, rem, em, …). Absent for `number`. */
   unit?: string;
 }
 
@@ -524,6 +527,21 @@ export interface ConflictPreview {
 }
 
 /**
+ * One conflicted file as carried on a `SyncStatus` "conflict" payload, with
+ * the host's authoritative binary classification attached (L12 — 2026-07-10
+ * UX review). `electron/recovery-bridge.ts`'s `isConflictFileBinary` /
+ * `BINARY_EXTENSIONS` is the single source of truth; `ConflictChoicesDialog`
+ * must not re-derive this from the file extension itself. `isBinary` is
+ * optional because not every conflict-emit site can populate it yet — a
+ * missing value means "unknown, ask the host" (see the preview-disclosure
+ * fallback in `ConflictChoicesDialog.svelte` and the ids-fetch fallback path
+ * in `sync-controller.svelte.ts`), never "known not to be binary".
+ */
+export interface ConflictFileEntry extends ConflictFileInfo {
+  isBinary?: boolean;
+}
+
+/**
  * Payload pushed to the renderer whenever the auto-sync orchestrator's state
  * changes. `projectDir` scopes the event to one open project (the host may
  * manage multiple). `files` is populated only on `"conflict"`.
@@ -534,10 +552,30 @@ export interface SyncStatus {
   projectDir: string;
   /**
    * Conflict file list — present (non-empty) only when `state === "conflict"`.
-   * Uses `ConflictFileInfo` (defined below) so the shape stays single-sourced
-   * and cannot drift from the lib's ConflictFile.kind values.
+   * Uses `ConflictFileEntry` (defined above) so the shape stays single-sourced
+   * and cannot drift from the lib's ConflictFile.kind values, while adding the
+   * host-authoritative `isBinary` flag (L12).
    */
-  files?: ConflictFileInfo[];
+  files?: ConflictFileEntry[];
+  /**
+   * Local snapshot id backing the conflict resolution (M13 — 2026-07-10 UX
+   * review). Carried directly on the payload so the renderer never needs a
+   * SECOND network sync just to unlock ConflictChoicesDialog's primary
+   * button. Present only when `state === "conflict"` AND the emitting host
+   * path could compute it — the ambient auto-sync path
+   * (`auto-sync/orchestrator.ts`) always can; the repair-driven conflict path
+   * (`auto-sync/recovery-emit.ts`'s `needs_user` branch) forwards them
+   * whenever the underlying `RecoveryResult` carries them (the
+   * binary-conflict recovery producer threads its conflict tip OIDs through),
+   * and only omits them for the text-merge conflict path, which doesn't
+   * compute a tip pair. When absent, the renderer falls back to fetching the
+   * ids via `syncChanges` (see `sync-controller.svelte.ts`'s
+   * `conflictPending`/`conflictFetchFailed` states) instead of leaving the
+   * primary button silently dead forever.
+   */
+  localId?: string;
+  /** Remote snapshot id backing the conflict resolution — see {@link localId}. */
+  remoteId?: string;
   /**
    * ISO-8601 timestamp of the last completed sync attempt, or null when none
    * has run in this session. Lets the pill show "last synced 2 min ago".

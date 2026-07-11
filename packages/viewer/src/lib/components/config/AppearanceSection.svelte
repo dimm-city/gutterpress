@@ -8,6 +8,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import type { ThemeInfo } from "$lib/api";
   import { keyOf } from "./config-helpers";
+  import { visibleBuiltInThemes } from "./theme-grid";
 
   let {
     themeError,
@@ -17,8 +18,10 @@
     thumbs,
     themeBusyId,
     themeUrl = $bindable(""),
+    removeArmedKey,
     applyTheme,
-    removeTheme,
+    requestRemoveTheme,
+    cancelRemoveTheme,
     importThemeFolder,
     importThemeUrl,
   }: {
@@ -29,8 +32,13 @@
     thumbs: Record<string, string>;
     themeBusyId: string | null;
     themeUrl: string;
+    /** Key (`keyOf`) of the card whose Remove button is armed, or null. */
+    removeArmedKey: string | null;
     applyTheme: (t: ThemeInfo) => void;
-    removeTheme: (t: ThemeInfo) => void;
+    /** First click arms the Remove confirm on this card; a second click while armed removes it. */
+    requestRemoveTheme: (t: ThemeInfo) => void;
+    /** Disarm a Remove confirm without removing (Cancel / Escape / clicking elsewhere). */
+    cancelRemoveTheme: () => void;
     importThemeFolder: () => void;
     importThemeUrl: () => void;
   } = $props();
@@ -42,6 +50,14 @@
     // also light up when its copy is the active project theme.
     return t.kind === "project" && activeThemeId === t.id;
   }
+
+  // UX review M6: the grid used to render BOTH a built-in card and the
+  // project's own copy of the same theme, with no dedupe — clicking Apply on
+  // the built-in twin re-ran the destructive copy over the project copy's
+  // (possibly customized) theme.css. Once a project copy of an id exists, hide
+  // the built-in card for that id; see `visibleBuiltInThemes` for the full
+  // rationale. Removing the project copy makes the built-in card reappear.
+  let visibleBuiltIns = $derived(visibleBuiltInThemes(builtIns, projectThemes));
 </script>
 
 <section class="block">
@@ -51,7 +67,7 @@
   {/if}
   <p class="hint">Pick a look — applying copies the theme into your project and wires the manifest.</p>
   <ul class="theme-grid">
-    {#each builtIns as t (keyOf(t))}
+    {#each visibleBuiltIns as t (keyOf(t))}
       {@render themeCard(t)}
     {/each}
     {#each projectThemes as t (keyOf(t))}
@@ -95,19 +111,52 @@
       {#if isActiveTheme(t)}<span class="badge">active</span>{/if}
     </div>
     <div class="theme-actions">
-      {#if isActiveTheme(t)}
+      {#if removeArmedKey === keyOf(t)}
+        {@render removeConfirm(t)}
+      {:else if isActiveTheme(t)}
         <span class="muted dim">Current theme</span>
         {#if t.kind === "project"}
-          <button class="ghost small" onclick={() => removeTheme(t)} disabled={themeBusyId !== null} title="Remove this project theme">Remove</button>
+          <button class="ghost small" onclick={() => requestRemoveTheme(t)} disabled={themeBusyId !== null} title="Remove this project theme">Remove</button>
         {/if}
       {:else}
         <button class="primary small" onclick={() => applyTheme(t)} disabled={themeBusyId !== null}>Apply</button>
         {#if t.kind === "project"}
-          <button class="ghost icononly" onclick={() => removeTheme(t)} disabled={themeBusyId !== null} title="Remove" aria-label={`Remove ${t.name}`}>
+          <button class="ghost icononly" onclick={() => requestRemoveTheme(t)} disabled={themeBusyId !== null} title="Remove" aria-label={`Remove ${t.name}`}>
             <Icon name="trash" size={13} />
           </button>
         {/if}
       {/if}
     </div>
   </li>
+{/snippet}
+
+<!--
+  UX review M7: a one-click "Remove" used to run an immediate recursive delete
+  of the theme folder (and the customizations in its theme.css) with no
+  confirm at any layer. This mirrors the CrashRecoveryDialog two-step inline
+  confirm (M12): the FIRST click arms this block in place of the normal
+  actions (naming the theme + warning customizations are gone for good); a
+  SECOND click on "Delete" confirms. "Cancel" (or arming a different card)
+  backs out without deleting anything.
+-->
+{#snippet removeConfirm(t: ThemeInfo)}
+  <p class="remove-confirm-msg" role="alert">
+    Delete "{t.name}"? Its customizations can't be recovered.
+  </p>
+  <button
+    class="danger small"
+    onclick={() => requestRemoveTheme(t)}
+    disabled={themeBusyId !== null}
+    aria-label={`Confirm delete ${t.name}`}
+  >
+    Delete
+  </button>
+  <button
+    class="ghost small"
+    onclick={cancelRemoveTheme}
+    disabled={themeBusyId !== null}
+    aria-label={`Cancel deleting ${t.name}`}
+  >
+    Cancel
+  </button>
 {/snippet}

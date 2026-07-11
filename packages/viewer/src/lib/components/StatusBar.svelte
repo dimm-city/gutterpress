@@ -66,8 +66,13 @@
     onProblemSelect = undefined as ((p: ProblemEntry) => void) | undefined,
     /** Called when the sync pill needs the reconnect flow. */
     onReconnect = undefined as (() => void) | undefined,
-    /** Called when the sync pill reports a conflict. */
-    onConflict = undefined as ((files: ConflictFileInfo[]) => void) | undefined,
+    /** Called when the sync pill reports a conflict. Receives the pill's
+     *  localId/remoteId when it already has them (the conflict SyncStatus
+     *  payload carries them — M13), so the dialog can skip its own
+     *  ids-fetch fallback. */
+    onConflict = undefined as
+      | ((files: ConflictFileInfo[], localId?: string, remoteId?: string) => void)
+      | undefined,
     /** Called when the sync/git status pill is clicked in a quiet state —
      *  receives the project's operation-log path (or null) to view the log. */
     onShowLog = undefined as ((logFilePath: string | null) => void) | undefined,
@@ -95,7 +100,7 @@
     onSwitchBook?: (path: string) => void;
     onProblemSelect?: (p: ProblemEntry) => void;
     onReconnect?: () => void;
-    onConflict?: (files: ConflictFileInfo[]) => void;
+    onConflict?: (files: ConflictFileInfo[], localId?: string, remoteId?: string) => void;
     onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
     onForceSync?: () => void;
@@ -156,7 +161,13 @@
     !!projectDir && sourceMode === "folder" && (canSync || canSnapshot),
   );
 
-  let showProblems = $derived(!isCompact && !!projectDir && sourceMode === "folder");
+  // L9: Problems access used to disappear entirely below 820px (isCompact
+  // gated the whole cluster off). It now always renders — ProblemsPanel's own
+  // `compact` prop shrinks the toggle strip to an icon + count badge, and the
+  // `.compact` class below repositions the expanded body as a full-viewport
+  // overlay instead of the normal "grows upward from the bar" panel, which
+  // has no room to be useful at narrow widths.
+  let showProblems = $derived(!!projectDir && sourceMode === "folder");
 
   // Book switcher (C2): only when the open repo actually has more than one book.
   let showBookSwitcher = $derived(!!projectDir && sourceMode === "folder" && books.length > 1);
@@ -222,13 +233,14 @@
 
   <!-- Right cluster: problems panel toggle embedded in the bar -->
   {#if showProblems}
-    <div class="status-right">
+    <div class="status-right" class:compact={isCompact}>
       <ProblemsPanel
         {problems}
         loading={problemsLoading}
         error={problemsError}
         bind:open={problemsOpen}
         onSelect={onProblemSelect}
+        compact={isCompact}
       />
     </div>
   {/if}
@@ -371,8 +383,7 @@
     .status-left :global(.sync-pill),
     .save-text,
     .status-sep,
-    .status-action,
-    .status-right {
+    .status-action {
       display: none;
     }
   }
@@ -424,6 +435,20 @@
     border-bottom: none;
     box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0,0,0,0.12));
     z-index: 300;
+  }
+
+  /* L9: below 820px the "grows upward from the bar" panel has no room to be
+     useful — reposition the expanded body as a full-viewport overlay instead
+     (below the toolbar, above everything else short of app dialogs). The
+     compact toggle strip itself (icon + count badge) stays inline in the bar. */
+  .status-right.compact :global(.panel-body) {
+    position: fixed;
+    top: 56px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    max-height: none;
+    z-index: 900;
   }
   .shell-actions {
     display: flex;

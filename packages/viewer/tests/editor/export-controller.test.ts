@@ -162,3 +162,62 @@ test("beginSimpleExport/endSimpleExport toggle only the busy flag (HTML path)", 
   ctrl.endSimpleExport();
   expect(ctrl.exporting).toBe(false);
 });
+
+// ── M27: start() must clear a stale activeExportId ──────────────────────────
+
+test("start() clears any previously adopted activeExportId (M27 — prevents cross-wiring two exports)", () => {
+  const { ctrl } = makeController();
+  ctrl.start();
+  ctrl.syncProgress(ev({ exportId: "exp-1", state: "rendering" }));
+  expect(ctrl.activeExportId).toBe("exp-1");
+  ctrl.markSuccess();
+  // A second export begins (a keyboard shortcut fired again before the pill
+  // tore down) — start() must clear the stale id, or export B's progress
+  // events would be silently dropped by the id filter in syncProgress, and
+  // Cancel would keep targeting export A.
+  ctrl.start();
+  expect(ctrl.activeExportId).toBe(null);
+});
+
+// ── M28: pre-gate "started" + message shows a syncing label that survives
+//    the ticker, and reverts once the real build-start event arrives ────────
+
+test("a pre-gate 'started' event with a message shows that message and adopts the id (M28)", () => {
+  const { ctrl, clock } = makeController();
+  ctrl.start();
+  ctrl.syncProgress(ev({ exportId: "exp-1", state: "started", message: "Syncing latest changes…" }));
+  expect(ctrl.activeExportId).toBe("exp-1");
+  expect(ctrl.pdfProgress).toBe("Syncing latest changes…");
+  // The 1s ticker must not clobber the syncing message with the elapsed-time
+  // label — this is exactly the bug the ticker's unconditional updateLabel()
+  // call would otherwise reintroduce.
+  clock.tick(4);
+  expect(ctrl.pdfProgress).toBe("Syncing latest changes…");
+
+  // The real build-start event (no message) reverts to the normal label.
+  ctrl.syncProgress(ev({ exportId: "exp-1", state: "started" }));
+  expect(ctrl.pdfProgress).toMatch(/^Preparing PDF…/);
+});
+
+test("markCanceling during the syncing phase shows Canceling…, not the stale sync message", () => {
+  const { ctrl } = makeController();
+  ctrl.start();
+  ctrl.syncProgress(ev({ exportId: "exp-1", state: "started", message: "Syncing latest changes…" }));
+  ctrl.markCanceling();
+  expect(ctrl.pdfProgress).toBe("Canceling export…");
+});
+
+// ── M29: a 'conflict' progress event resets the pill instead of being
+//    silently dropped (the actual conflict-resolution UI is driven by the
+//    separate sync:status channel — this just stops the pill fighting it) ──
+
+test("syncProgress on a 'conflict' state resets the export pill (M29)", () => {
+  const { ctrl, clock } = makeController();
+  ctrl.start();
+  ctrl.syncProgress(ev({ exportId: "exp-1", state: "conflict" }));
+  expect(ctrl.exporting).toBe(false);
+  expect(ctrl.state).toBe("idle");
+  expect(ctrl.activeExportId).toBe(null);
+  expect(ctrl.pdfProgress).toBe(null);
+  expect(clock.running).toBe(false);
+});

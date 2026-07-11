@@ -108,3 +108,64 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
     },
   };
 }
+
+/**
+ * Wrap a close handler so it is a no-op while `blocked` is true — the shared
+ * guard behind a dialog's mid-operation dismissal rule (UX review M19): the
+ * backdrop click, the header close button, AND Escape (routed through
+ * `dialogBehavior`'s `onClose`) all funnel through the SAME wrapped function,
+ * so a dialog can't be dismissed by any of the three gestures while e.g. a
+ * create/connect/clone is in flight. Promotes the pattern GitHubDialog
+ * already used ad hoc (`closeBlocked`) so NewProjectWizard and
+ * AdvancedSetupDialog don't each hand-roll their own copy.
+ *
+ * `blocked` is a getter (not a plain boolean) so callers can pass a reactive
+ * accessor (e.g. `() => creating`) and always guard against the CURRENT
+ * value, not the value captured when the dialog opened.
+ */
+export function guardedClose(
+  onClose: () => void,
+  blocked: () => boolean,
+): () => void {
+  return () => {
+    if (!blocked()) onClose();
+  };
+}
+
+/** A keyed set of "armed" (awaiting a confirming second click) ids. */
+export type InlineConfirmState = Readonly<Record<string, true>>;
+
+/**
+ * Two-step inline-confirm state transition for a destructive per-row action
+ * (Disconnect, Delete, …), extracted from the pattern CrashRecoveryDialog
+ * pioneered for its Discard button: the first call arms `key` (the button's
+ * label swaps to "Really …?" in place — no second element appears, so
+ * focus is never lost); a second call while `key` is already armed reports
+ * `confirmed: true` so the caller runs the actual destructive action, and
+ * clears the armed state.
+ *
+ * Pure and state-shape-only — the caller owns the actual `$state` and reacts
+ * to `confirmed`. Kept in `dialog.ts` (not duplicated per-dialog) so
+ * AdvancedSetupDialog's Disconnect (L2) and SnippetPicker's delete (M25)
+ * share one tested implementation.
+ */
+export function requestInlineConfirm(
+  state: InlineConfirmState,
+  key: string,
+): { state: InlineConfirmState; confirmed: boolean } {
+  if (state[key]) {
+    const { [key]: _armed, ...rest } = state;
+    return { state: rest, confirmed: true };
+  }
+  return { state: { ...state, [key]: true }, confirmed: false };
+}
+
+/** Disarm `key` without confirming (e.g. its "Cancel" button, or re-opening the dialog). */
+export function cancelInlineConfirm(
+  state: InlineConfirmState,
+  key: string,
+): InlineConfirmState {
+  if (!state[key]) return state;
+  const { [key]: _armed, ...rest } = state;
+  return rest;
+}

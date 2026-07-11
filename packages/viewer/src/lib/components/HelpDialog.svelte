@@ -134,14 +134,14 @@
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
-  <div class="dialog" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "help-title" }} use:loadOnOpen>
-    <header class="dialog-header">
+  <div class="dlg-shell" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "help-title" }} use:loadOnOpen>
+    <header class="dlg-header">
       <div class="dialog-title-group">
         <h2 id="help-title">About Print MD</h2>
       </div>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
+      <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -149,7 +149,7 @@
         <p class="status">Checking system…</p>
       {:else if error}
         <p class="status error">{error}</p>
-        <button class="primary" onclick={load}>Retry</button>
+        <button class="dlg-primary" onclick={load}>Retry</button>
       {:else if data}
         <section class="version-strip" aria-label="Loaded versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
@@ -281,12 +281,12 @@
         </section>
         </details>
 
-        <footer class="actions">
-          <button class="ghost" onclick={copyReport} title="Copy system info to clipboard — useful when asking for support">
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={copyReport} title="Copy system info to clipboard — useful when asking for support">
             {copied ? "Copied!" : "Copy diagnostic info"}
           </button>
-          <button class="ghost" onclick={openDocs}>View setup guide</button>
-          <button class="primary" onclick={close}>Close</button>
+          <button class="dlg-ghost" onclick={openDocs}>View setup guide</button>
+          <button class="dlg-primary" onclick={close}>Close</button>
         </footer>
       {/if}
     </div>
@@ -294,54 +294,21 @@
 {/if}
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  @import "$lib/styles/dialog-shell.css";
+
+  /* Help/About is the widest dialog (versions, tables, tool lists). */
+  .dlg-shell {
     width: min(720px, 92vw);
     max-height: 88vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
+  /* Footer is the last item INSIDE the scrolling body here, not a pinned
+     sibling — restore its original in-flow spacing (see SettingsDialog for
+     the same note). */
+  .dlg-actions {
+    padding: 16px 0 0;
+    margin-top: 8px;
   }
   .dialog-title-group { display: flex; align-items: baseline; gap: 10px; }
-  .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* WCAG 2.5.8: minimum target size 24x24px */
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
   .dialog-body {
     padding: 16px 18px;
     overflow-y: auto;
@@ -504,23 +471,4 @@
     white-space: pre-wrap;
   }
   .install-note { font-size: 11px; color: var(--app-text-muted); margin: 0 0 6px; }
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    padding-top: 16px;
-    margin-top: 8px;
-    border-top: 1px solid var(--app-border-subtle);
-  }
-  .actions button {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .actions .primary:hover { background: var(--app-accent-hover); }
-  .actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  .actions .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

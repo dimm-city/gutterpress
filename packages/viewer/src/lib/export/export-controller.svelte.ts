@@ -27,14 +27,17 @@ export type ExportState =
 
 /**
  * Progress event shape emitted by the host build over `onBuildProgress`.
- * Defined locally (not imported from the lib) so the renderer stays PWA-clean.
+ *
+ * M29 (2026-07-10 UX review): this used to be a byte-identical SECOND copy of
+ * `shared-types.ts`'s `ExportProgressEvent`, justified by a PWA-cleanliness
+ * comment that didn't actually apply — `shared-types.ts` is itself renderer-
+ * local (no `node:*` / lib value imports) and a `import type` re-export here
+ * is erased at build time, so it stays §8-clean. Re-exported (not just
+ * imported) so existing consumers (`+page.svelte`, this file's own tests)
+ * don't need their import path to change.
  */
-export type ExportProgressEvent = {
-  exportId: string;
-  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
-  pages?: number;
-  message?: string;
-};
+export type { ExportProgressEvent } from "../platform/shared-types";
+import type { ExportProgressEvent } from "../platform/shared-types";
 
 /**
  * Timer seam so the elapsed-seconds ticker can be driven by a fake clock in
@@ -62,6 +65,15 @@ export class ExportController {
 
   private timer: unknown = null;
   private timers: ExportTimerSeam;
+  /**
+   * Host-supplied label override for the pre-build phase (M28) — e.g. "Syncing
+   * latest changes…" while the pre-export sync safety gate runs. Set from a
+   * "started" event that carries a `message`; cleared once a normal FSM state
+   * (or another "started" with no message) arrives. Kept separate from
+   * `pdfProgress` so the 1s ticker's `updateLabel()` re-asserts it each tick
+   * instead of being clobbered by the elapsed-seconds label.
+   */
+  private pendingMessage: string | null = null;
 
   constructor(timers?: Partial<ExportTimerSeam>) {
     this.timers = {
@@ -77,6 +89,13 @@ export class ExportController {
     this.exporting = true;
     this.state = "started";
     this.pages = 0;
+    // M27: a second export (either keyboard shortcut, uncaught by savePdf()'s
+    // own guard) used to inherit the FIRST export's activeExportId here — its
+    // own "started" event then never matched (syncProgress ignores non-
+    // matching ids) and its Cancel targeted the wrong export. start() must be
+    // as much a full reset as reset() is for this one field.
+    this.activeExportId = null;
+    this.pendingMessage = null;
     this.pdfProgress = "Preparing PDF…";
     this.startTimer();
   }
@@ -118,11 +137,19 @@ export class ExportController {
     this.state = "idle";
     this.pages = 0;
     this.elapsedSeconds = 0;
+    this.pendingMessage = null;
     this.pdfProgress = null;
   }
 
   /** Recompute `pdfProgress` from the current FSM state + counters. */
   updateLabel(): void {
+    // M28: a host-supplied pre-build label (e.g. "Syncing latest changes…")
+    // wins over the normal FSM label until it is cleared — re-asserted here
+    // so the 1s ticker doesn't overwrite it with "Preparing PDF… Ns".
+    if (this.pendingMessage) {
+      this.pdfProgress = this.pendingMessage;
+      return;
+    }
     const elapsed = this.elapsedSeconds >= 3 ? ` ${this.elapsedSeconds}s` : "";
     if (this.state === "success") {
       this.pdfProgress = `PDF saved${elapsed}`;
@@ -148,10 +175,39 @@ export class ExportController {
   /** Fold a host progress event into the FSM (ignores events for other exports). */
   syncProgress(event: ExportProgressEvent): void {
     if (this.activeExportId && event.exportId !== this.activeExportId) return;
+    // Adopting the id here (not only from the "real" started event) is what
+    // makes M28's pre-gate event light up Cancel immediately — Cancel is
+    // gated on `activeExportId` alone (+page.svelte), and this is the
+    // earliest event the host can send.
     if (!this.activeExportId) this.activeExportId = event.exportId;
     if (event.pages) this.pages = event.pages;
-    if (event.state === "started") this.state = "started";
-    else if (event.state === "rendering") this.state = "rendering";
+    if (event.state === "conflict") {
+      // M29: the pre-export sync safety gate found an unresolved conflict.
+      // The SAME conflict is already routed to ConflictChoicesDialog via the
+      // independent sync:status channel (AutoSyncOrchestrator.latchConflict →
+      // SyncStatusPill → SyncController.onPillConflict) — this event only
+      // needs to stop the export pill being left stuck on "Preparing PDF…"
+      // underneath that dialog. build()'s rejected promise (SYNC_CONFLICT)
+      // also calls reset() in savePdf()'s finally; this is the earlier,
+      // idempotent path so the pill clears the instant the host knows.
+      this.reset();
+      return;
+    }
+    if (event.state === "started") {
+      this.state = "started";
+      // Pre-export sync safety gate (M28, electron/export/controller.ts):
+      // the host sends this SAME wire state early — before it even knows
+      // whether a sync is needed — carrying a descriptive `message`. Reusing
+      // "started" + the existing free-text `message` field (instead of a new
+      // state value) keeps ExportProgressEvent's `state` union identical
+      // end-to-end. The later bare "started" (no message) marks the real
+      // build start and reverts to the normal ticking label.
+      this.pendingMessage = event.message ?? null;
+      this.updateLabel();
+      return;
+    }
+    this.pendingMessage = null;
+    if (event.state === "rendering") this.state = "rendering";
     else if (event.state === "finalizing") this.state = "finalizing";
     else if (event.state === "success") this.state = "success";
     this.updateLabel();
@@ -159,6 +215,7 @@ export class ExportController {
 
   /** Enter the canceling state and refresh the label. */
   markCanceling(): void {
+    this.pendingMessage = null;
     this.state = "canceling";
     this.updateLabel();
   }
@@ -166,6 +223,7 @@ export class ExportController {
   /** Record success: adopt the host export id, stop the ticker, refresh label. */
   markSuccess(exportId?: string | null): void {
     if (exportId) this.activeExportId = exportId;
+    this.pendingMessage = null;
     this.state = "success";
     this.stopTimer();
     this.updateLabel();

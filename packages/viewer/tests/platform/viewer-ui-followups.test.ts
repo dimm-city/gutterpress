@@ -58,7 +58,37 @@ test("bottom status uses save icons, slower autosave default, and compact mobile
   expect(status).toContain("pending changes");
   expect(status).toContain("@media screen and (max-width: 820px)");
   expect(status).toContain("display: none");
-  expect(status).toContain("showProblems = $derived(!isCompact");
+  // L9: Problems access used to disappear entirely below 820px
+  // (`!isCompact` gated the whole cluster off). It now always renders as a
+  // compact icon + count badge that opens the panel as a full-viewport
+  // overlay — see ProblemsPanel's own `compact` prop.
+  expect(status).toContain('showProblems = $derived(!!projectDir && sourceMode === "folder")');
+  expect(status).toContain("compact={isCompact}");
+  expect(status).toContain(".status-right.compact");
+});
+
+test("L9 regression: compact Problems overlay has a reachable close control and closes on select/Escape", () => {
+  // The compact overlay (`.status-right.compact :global(.panel-body)`, fixed
+  // and z-index:900) visually covers the toggle strip that would otherwise
+  // collapse it, so the panel must not depend on that strip to be dismissed.
+  const panel = read("src/lib/components/ProblemsPanel.svelte");
+  const problems = read("src/lib/problems.ts");
+  // Decision logic is real, unit-tested predicates (see problems.test.ts),
+  // not inline booleans only checkable by reading the component.
+  expect(problems).toContain("export function closesPanelOnSelect");
+  expect(problems).toContain("export function closesPanelOnEscape");
+  expect(panel).toContain("closesPanelOnSelect");
+  expect(panel).toContain("closesPanelOnEscape");
+  // A visible, always-reachable close button lives inside the overlay itself.
+  expect(panel).toContain('{#if compact}');
+  expect(panel).toContain('aria-label="Close problems panel"');
+  expect(panel).toContain("onclick={() => (open = false)}");
+  // Escape is wired via a window-level keydown handler.
+  expect(panel).toContain("<svelte:window onkeydown={handleWindowKeydown} />");
+  // Selecting an entry routes through the shared close-aware handler, not the
+  // raw onSelect callback directly.
+  expect(panel).toContain("onclick={() => selectEntry(entry)}");
+  expect(panel).not.toContain("onclick={() => onSelect?.(entry)}");
 });
 
 test("top toolbar small-screen styles/config controls are removed", () => {

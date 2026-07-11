@@ -33,6 +33,7 @@ import type {
   RepoBook,
   CloneProgressEvent,
   ConflictFileInfo,
+  ExportProgressEvent,
 } from "./bridge-types";
 
 declare global {
@@ -185,12 +186,10 @@ declare global {
       }>;
       // doctor migrated to server route (Phase 2C)
       // Event subscriptions
-      onBuildProgress(cb: (data: {
-        exportId: string;
-        state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
-        pages?: number;
-        message?: string;
-      }) => void): () => void;
+      // M29: ExportProgressEvent used to be hand-duplicated here — it is now
+      // the single shared-types.ts type (re-exported via bridge-types.ts),
+      // same as every other payload type in this file.
+      onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
       onUrlPreviewBlocked(cb: (data: { url: string; reason: string }) => void): () => void;
       // writeRecovery, clearRecovery, listRecovery — migrated to server routes
       // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.

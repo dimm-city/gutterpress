@@ -14,7 +14,6 @@
    * - Responsive: at <=820px the panel overlays with a translucent scrim (doesn't
    *   crush the preview).
    */
-  import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
   type IconName = ComponentProps<typeof Icon>["name"];
@@ -82,23 +81,6 @@
     onPanelStateChange?: () => void;
   } = $props();
 
-  onMount(() => {
-    if (open) notifyOpened();
-  });
-
-  /** Called by the parent when the panel is opened externally (e.g. toolbar toggle). */
-  export function notifyOpened() {
-  }
-
-  // ── External refresh (no-op host seam) ────────────────────────────────────
-  // The History tab this used to refresh was replaced by Config; there is
-  // currently no version-history UI in this panel. Kept as a no-op so
-  // ProjectSessionController and the sync-completion handlers in +page.svelte
-  // (which call it after a classify/sync round-trip) don't need to change
-  // with this cleanup.
-  export function notifyHistoryRefresh() {
-  }
-
   // ── Panel close ──────────────────────────────────────────────────────────
   function close() {
     open = false;
@@ -111,12 +93,6 @@
       e.stopPropagation();
       close();
     }
-  }
-
-  // ── Reset history state when project changes (no-op host seam — see
-  // notifyHistoryRefresh above) ──────────────────────────────────────────────
-  /** Called by the parent (via bind:this) whenever the active project changes. */
-  export function resetHistoryState() {
   }
 
   // ── Tab definitions ───────────────────────────────────────────────────────
@@ -494,22 +470,15 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
-  /* 11px is the legibility floor for primary navigation labels (judges×2).
-     max-width+ellipsis: a label may truncate, but a TAB never clips away. */
+  /* Tab labels are intentionally icon-only at every panel width (user
+     request) — icons + title tooltips + aria-label keep the tabs
+     identifiable without a visible label. (Decided once here: no
+     width-conditional toggle — a prior version had a full label typography
+     ruleset immediately followed by an unconditional `display: none`, plus a
+     redundant `@container` rule repeating the same hide.) */
   .tab-label {
-    font-size: 11px; line-height: 1; text-transform: uppercase;
-    letter-spacing: 0.02em;
-    max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+    display: none;
   }
-  /* Labels are intentionally icon-only; title + aria-label preserve meaning. */
-  .tab-label { display: none; }
-
-  /* Labels disappear entirely (icon-only) when the panel is too narrow for
-     the FULL text of all five tabs — no truncated “PROJ…” (user request).
-     Icons + title tooltips + aria-labels keep the tabs identifiable. ~370px
-     gives the longest label set comfortable room at equal flex shares
-     (judge gate: at exactly 331px PROJECTS sat on the ellipsis boundary). */
-  @container (max-width: 370px) { .tab-label { display: none; } }
   .resize-handle {
     position: absolute;
     top: 0; right: -3px; bottom: 0;

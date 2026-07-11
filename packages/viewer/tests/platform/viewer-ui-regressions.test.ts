@@ -43,11 +43,91 @@ test("splash screen is closable and has a shorter fallback timeout", () => {
 
 test("editor toolbar has a save button and usable small-screen overflow", () => {
   const src = read("src/lib/components/EditorToolbar.svelte");
+  // The Save button's copy/icon are now declared once in toolbar-actions.ts
+  // (M23: one item array drives both the toolbar and the More menu) rather
+  // than hand-typed inline in the component markup.
+  const actions = read("src/lib/editor/toolbar-actions.ts");
   expect(src).toContain("onSave");
-  expect(src).toContain("Save changes now");
-  expect(src).toContain("Icon name=\"save\"");
+  expect(src).toContain("saveItems");
+  expect(actions).toContain("Save changes now");
+  expect(actions).toContain('icon: "save"');
   expect(src).toContain("overflow: visible");
   expect(src).toContain("background: var(--app-surface-raised");
+});
+
+test("M23: the More menu renders the full shared item array, not a hand-duplicated subset that can drop Save/Snippet", () => {
+  const src = read("src/lib/components/EditorToolbar.svelte");
+  const morePopupIdx = src.indexOf('class="toolbar-popup more-popup"');
+  expect(morePopupIdx).toBeGreaterThan(-1);
+  // The More menu must iterate the SAME unfiltered array the toolbar groups
+  // are filtered from, so it can never omit an item the toolbar shows.
+  const moreEachIdx = src.indexOf("{#each visibleItems as item, i (item.id)}", morePopupIdx);
+  expect(moreEachIdx).toBeGreaterThan(morePopupIdx);
+  // Guard against reverting to the old bug: a second, hand-typed list of
+  // buttons that called onAction directly and had already dropped Save and
+  // Snippet by the time it was reviewed.
+  expect(src).not.toContain('onAction("bold"); moreOpen = false');
+  expect(src).not.toContain('onAction("italic"); moreOpen = false');
+});
+
+test("M11: the table-insert dialog is hoisted outside .insert-group, which is display:none at exactly the widths where the More menu exists", () => {
+  const src = read("src/lib/components/EditorToolbar.svelte");
+  const groupStart = src.indexOf('<div class="tb-group insert-group">');
+  const groupEnd = src.indexOf('<!-- "More" overflow button', groupStart);
+  expect(groupStart).toBeGreaterThan(-1);
+  expect(groupEnd).toBeGreaterThan(groupStart);
+  const insertGroupRegion = src.slice(groupStart, groupEnd);
+
+  // The trigger button lives inside the (hideable) insert group...
+  expect(insertGroupRegion).toContain("openTableDialog");
+  // ...but the popup/dialog itself — and its backdrop — must NOT be nested
+  // inside that group, unlike the old dead control.
+  expect(insertGroupRegion).not.toContain("image-dialog-backdrop");
+  expect(insertGroupRegion).not.toContain('aria-label="Insert table"');
+
+  // The dialog is rendered as a top-level sibling after the toolbar's
+  // {#if isMarkdown} block closes, exactly like the (already-correct) image
+  // dialog — so it keeps working from the More menu even when
+  // `.insert-group` is hidden.
+  const toolbarCloseIdx = src.indexOf("{/if}", groupEnd);
+  const tableDialogIdx = src.indexOf('aria-label="Insert table"');
+  expect(tableDialogIdx).toBeGreaterThan(toolbarCloseIdx);
+});
+
+test("M24 (fix round 1): opening the heading or More popup moves focus inside it, so an Escape keydown fired right after opening reaches the popup's own handler", () => {
+  // The popup <div> is a SIBLING of its trigger button, not an ancestor, and
+  // <svelte:window> only binds onclick — so an Escape keydown whose target is
+  // still the trigger (focus never moved) can never bubble to the popup div's
+  // onkeydown handler. Opening must move focus into the popup itself, the
+  // same pattern already used by the table/image dialogs.
+  const src = read("src/lib/components/EditorToolbar.svelte");
+
+  const openHeadingIdx = src.indexOf("function openHeadingPopup");
+  const openHeadingEnd = src.indexOf("\n  }", openHeadingIdx);
+  expect(openHeadingIdx).toBeGreaterThan(-1);
+  const openHeadingBody = src.slice(openHeadingIdx, openHeadingEnd);
+  expect(openHeadingBody).toContain("queueMicrotask");
+  expect(openHeadingBody).toContain("headingPopupEl");
+
+  const openMoreIdx = src.indexOf("function openMorePopup");
+  const openMoreEnd = src.indexOf("\n  }", openMoreIdx);
+  expect(openMoreIdx).toBeGreaterThan(-1);
+  const openMoreBody = src.slice(openMoreIdx, openMoreEnd);
+  expect(openMoreBody).toContain("queueMicrotask");
+  expect(openMoreBody).toContain("morePopupEl");
+
+  // The popup divs must actually expose the elements referenced above.
+  expect(src).toContain("bind:this={headingPopupEl}");
+  expect(src).toContain("bind:this={morePopupEl}");
+
+  // The existing Escape handlers must stay in place (option B was not taken).
+  expect(src).toContain('if (e.key === "Escape") closeHeadingPopup();');
+  expect(src).toContain('if (e.key === "Escape") closeMorePopup();');
+
+  // No ARIA role should be reintroduced while fixing this (M24 stays a plain
+  // disclosure).
+  expect(src).not.toContain('role="listbox"');
+  expect(src).not.toContain('role="menu"');
 });
 
 test("About dialog copy reflects current save/export shortcuts", () => {
@@ -76,7 +156,7 @@ test("left sidebar replaces History with Config and uses icon-only short tabs", 
   expect(src).toContain("ProjectConfigPanel");
   expect(src).toContain('id: "config"');
   expect(src).not.toContain('id: "history"');
-  expect(src).toContain(".tab-label { display: none; }");
+  expect(src).toMatch(/\.tab-label\s*\{\s*display:\s*none;\s*\}/);
   expect(src).toContain("min-height: 32px");
 });
 

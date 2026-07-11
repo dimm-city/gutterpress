@@ -21,6 +21,8 @@ import {
   applyPageBreak,
   applyTable,
   applyImage,
+  TOOLBAR_ITEMS,
+  visibleToolbarItems,
 } from "../../src/lib/editor/toolbar-actions";
 import type { EditorView } from "@codemirror/view";
 
@@ -296,4 +298,88 @@ test("applyImage: no attrs when neither width nor position given", () => {
   applyImage(v as unknown as EditorView, "assets/img.jpg", "Plain");
   expect(getDoc(v)).toContain("![Plain](assets/img.jpg)\n");
   expect(getDoc(v)).not.toContain("{");
+});
+
+// ── L6: empty-selection toggle must not pile up marker debris ───────────────
+// Repeated Ctrl+B (or Ctrl+I / Ctrl+Shift+X / Ctrl+`) on an empty selection
+// used to insert a brand-new marker pair every time instead of noticing the
+// cursor already sits directly between an existing pair, so pressing Bold
+// twice on an empty document produced "****" -> "******" instead of toggling
+// back off.
+
+test("applyBold: toggling twice on an empty selection does not pile up marker debris", () => {
+  const v = makeMockView("");
+  applyBold(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("****");
+  applyBold(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("");
+  expect(getSel(v)).toEqual({ from: 0, to: 0 });
+});
+
+test("applyBold: empty selection sitting between existing ** markers removes them", () => {
+  // "abc" + "**" + "**" + "def" with the cursor collapsed exactly between the
+  // two marker pairs (position 5).
+  const v = makeMockView("abc****def", 5, 5);
+  applyBold(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("abcdef");
+  expect(getSel(v)).toEqual({ from: 3, to: 3 });
+});
+
+test("applyItalic: toggling twice on an empty selection does not pile up marker debris", () => {
+  const v = makeMockView("");
+  applyItalic(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("__");
+  applyItalic(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("");
+});
+
+test("applyBold: empty selection NOT between markers still inserts a fresh pair", () => {
+  const v = makeMockView("hello", 5, 5);
+  applyBold(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("hello****");
+});
+
+// ── M23: toolbar/More-menu share one declarative item array ─────────────────
+// The main toolbar groups and the narrow-width More menu must render from the
+// exact same filtered item list so an item can never exist in one surface and
+// not the other (the bug: Save and Snippet were hand-omitted from the old
+// hand-duplicated More menu list).
+
+test("visibleToolbarItems: includes save and desktop-only items when both flags are true", () => {
+  const items = visibleToolbarItems({ hasSave: true, desktop: true });
+  expect(items.some((i) => i.id === "save")).toBe(true);
+  expect(items.some((i) => i.id === "snippet")).toBe(true);
+  expect(items.some((i) => i.id === "image")).toBe(true);
+});
+
+test("visibleToolbarItems: drops save item when hasSave is false", () => {
+  const items = visibleToolbarItems({ hasSave: false, desktop: true });
+  expect(items.some((i) => i.id === "save")).toBe(false);
+});
+
+test("visibleToolbarItems: drops desktop-only items (image, snippet) when desktop is false", () => {
+  const items = visibleToolbarItems({ hasSave: true, desktop: false });
+  expect(items.some((i) => i.id === "image")).toBe(false);
+  expect(items.some((i) => i.id === "snippet")).toBe(false);
+  // Non-desktop-only items are unaffected.
+  expect(items.some((i) => i.id === "bold")).toBe(true);
+});
+
+test("visibleToolbarItems: every visible item belongs to exactly one known group (no orphans dropped from the More menu)", () => {
+  const items = visibleToolbarItems({ hasSave: true, desktop: true });
+  const groups = ["save", "primary", "block", "insert"];
+  for (const item of items) {
+    expect(groups).toContain(item.group);
+  }
+  // The same array (filtered per-group for the toolbar, unfiltered for the
+  // More menu) must account for every visible item exactly once.
+  const total = groups
+    .map((g) => items.filter((i) => i.group === g).length)
+    .reduce((a, b) => a + b, 0);
+  expect(total).toBe(items.length);
+});
+
+test("TOOLBAR_ITEMS: declares Save and Snippet exactly once each (the drift this array prevents)", () => {
+  expect(TOOLBAR_ITEMS.filter((i) => i.id === "save")).toHaveLength(1);
+  expect(TOOLBAR_ITEMS.filter((i) => i.id === "snippet")).toHaveLength(1);
 });

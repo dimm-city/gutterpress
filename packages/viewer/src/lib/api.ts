@@ -283,6 +283,19 @@ export const api = {
           colorSpace: 'srgb' | 'gray' | 'cmyk' | '';
         } | null;
       } | null>('/api/media/inspect', { imagePath }),
+    /**
+     * Import an author-picked image (absolute path, from anywhere on disk —
+     * e.g. a native file dialog) into the given project, returning the
+     * project-relative markdown `src` to use. The ONE host-side
+     * implementation of the import policy (UX review M10): already-inside
+     * the project just computes the relative path; outside the project
+     * copies into an existing `images/` dir if present, else `assets/`
+     * (created on demand), de-duplicating a colliding basename. Both
+     * EditorToolbar and MediaPanel call this — neither does its own path/fs
+     * math (CLAUDE.md §8).
+     */
+    importImage: (projectDir: string, src: string) =>
+      post<{ src: string; copied: boolean }>('/api/media/import-image', { projectDir, src }),
   },
 
   lint: {

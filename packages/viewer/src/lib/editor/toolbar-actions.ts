@@ -40,6 +40,22 @@ export function toggleInlineWrap(view: EditorView, marker: string): void {
   const mLen = marker.length;
 
   if (from === to) {
+    // Empty selection: if the cursor already sits directly between an
+    // existing marker pair, remove it (toggle off) instead of inserting a
+    // nested pair. Without this check, repeated Ctrl+B on an empty selection
+    // piled up marker debris: "" -> "****" -> "******" -> "********" ... (L6).
+    const existingBefore = view.state.doc.sliceString(Math.max(0, from - mLen), from);
+    const existingAfter = view.state.doc.sliceString(to, to + mLen);
+    if (existingBefore === marker && existingAfter === marker) {
+      view.dispatch({
+        changes: [
+          { from: from - mLen, to: from, insert: "" },
+          { from: to, to: to + mLen, insert: "" },
+        ],
+        selection: EditorSelection.cursor(from - mLen),
+      });
+      return;
+    }
     // No selection: insert both markers and place cursor inside.
     view.dispatch({
       changes: { from, to, insert: marker + marker },
@@ -297,5 +313,218 @@ export function applyImage(
   view.dispatch({
     changes: { from: insertAt, to: insertAt, insert: snippet },
     selection: EditorSelection.cursor(insertAt + snippet.length),
+  });
+}
+
+// ── Toolbar item declarations (single source of truth — M23) ────────────────
+//
+// EditorToolbar renders BOTH the always-visible toolbar groups AND the
+// narrow-width "More" overflow menu from this ONE array. Previously the More
+// menu was a hand-duplicated second list of buttons that had already drifted
+// from the toolbar — it silently omitted Save and Snippet, so Save vanished
+// entirely once the container narrowed enough to hide the primary group.
+// Deriving both surfaces from the same filtered list makes that class of
+// drift structurally impossible: an item is either in this array (and shows
+// up everywhere it should) or it isn't declared at all.
+//
+// Pure data + a pure filter function — zero Svelte imports, so it is testable
+// the same way the transaction helpers above are.
+
+/** Which visually-grouped section of the always-visible toolbar an item renders in. */
+export type ToolbarGroup = "save" | "primary" | "block" | "insert";
+
+/**
+ * How an item behaves when activated:
+ * - "save"/"action": a single button that fires a callback directly.
+ * - "heading"/"table"/"image": opens a picker (popup or dialog) — the
+ *   component supplies the bespoke markup for these, but membership,
+ *   ordering, and group/visibility rules still come from this array.
+ */
+export type ToolbarItemKind = "save" | "action" | "heading" | "table" | "image";
+
+export interface ToolbarItemDef {
+  /** Stable identity — also the {#each} key. */
+  id: string;
+  kind: ToolbarItemKind;
+  /** For kind "action": the ToolbarAction name fired via onAction(action). */
+  action?: string;
+  /** Icon name (EditorToolbar resolves this against its own IconName type). */
+  icon: string;
+  /** Tooltip (title attribute) for the icon-only toolbar button. */
+  title: string;
+  /** aria-label for the icon-only toolbar button (may differ from the More-menu label). */
+  ariaLabel: string;
+  /** Plain-text label shown for this item inside the More menu. */
+  label: string;
+  group: ToolbarGroup;
+  /** Only shown when isDesktop() — image insert and snippet need host IPCs. */
+  desktopOnly?: boolean;
+}
+
+export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
+  {
+    id: "save",
+    kind: "save",
+    icon: "save",
+    title: "Save changes now",
+    ariaLabel: "Save changes now",
+    label: "Save",
+    group: "save",
+  },
+  {
+    id: "bold",
+    kind: "action",
+    action: "bold",
+    icon: "bold",
+    title: "Bold (Ctrl+B)",
+    ariaLabel: "Bold",
+    label: "Bold",
+    group: "primary",
+  },
+  {
+    id: "italic",
+    kind: "action",
+    action: "italic",
+    icon: "italic",
+    title: "Italic (Ctrl+I)",
+    ariaLabel: "Italic",
+    label: "Italic",
+    group: "primary",
+  },
+  {
+    id: "strikethrough",
+    kind: "action",
+    action: "strikethrough",
+    icon: "strikethrough",
+    title: "Strikethrough",
+    ariaLabel: "Strikethrough",
+    label: "Strikethrough",
+    group: "primary",
+  },
+  {
+    id: "code",
+    kind: "action",
+    action: "code",
+    icon: "code",
+    title: "Inline code",
+    ariaLabel: "Inline code",
+    label: "Inline code",
+    group: "primary",
+  },
+  {
+    id: "link",
+    kind: "action",
+    action: "link",
+    icon: "link-2",
+    title: "Link (Ctrl+K)",
+    ariaLabel: "Insert link",
+    label: "Link",
+    group: "primary",
+  },
+  {
+    id: "blockquote",
+    kind: "action",
+    action: "blockquote",
+    icon: "quote",
+    title: "Blockquote",
+    ariaLabel: "Blockquote",
+    label: "Blockquote",
+    group: "block",
+  },
+  {
+    id: "ul",
+    kind: "action",
+    action: "ul",
+    icon: "list",
+    title: "Bullet list",
+    ariaLabel: "Unordered list",
+    label: "Bullet list",
+    group: "block",
+  },
+  {
+    id: "ol",
+    kind: "action",
+    action: "ol",
+    icon: "list-ordered",
+    title: "Numbered list",
+    ariaLabel: "Ordered list",
+    label: "Numbered list",
+    group: "block",
+  },
+  {
+    id: "heading",
+    kind: "heading",
+    icon: "heading",
+    title: "Insert heading",
+    ariaLabel: "Insert heading",
+    label: "Heading",
+    group: "block",
+  },
+  {
+    id: "hr",
+    kind: "action",
+    action: "hr",
+    icon: "minus",
+    title: "Horizontal rule",
+    ariaLabel: "Insert horizontal rule",
+    label: "Horizontal rule",
+    group: "insert",
+  },
+  {
+    id: "page-break",
+    kind: "action",
+    action: "page-break",
+    icon: "file-separator",
+    title: "Page break (@page-break)",
+    ariaLabel: "Insert page break",
+    label: "Page break",
+    group: "insert",
+  },
+  {
+    id: "table",
+    kind: "table",
+    icon: "table",
+    title: "Insert table",
+    ariaLabel: "Insert table",
+    label: "Insert table…",
+    group: "insert",
+  },
+  {
+    id: "image",
+    kind: "image",
+    icon: "image",
+    title: "Insert image",
+    ariaLabel: "Insert image",
+    label: "Insert image…",
+    group: "insert",
+    desktopOnly: true,
+  },
+  {
+    id: "snippet",
+    kind: "action",
+    action: "snippet",
+    icon: "puzzle",
+    title: "Insert snippet (Ctrl/Cmd+Shift+S)",
+    ariaLabel: "Insert snippet",
+    label: "Insert snippet",
+    group: "insert",
+    desktopOnly: true,
+  },
+];
+
+/**
+ * Filters `TOOLBAR_ITEMS` down to what should be visible right now. Both the
+ * grouped toolbar buttons (filtered further by `.group`) and the flat More
+ * menu (rendered unfiltered) must be derived from this same list so neither
+ * surface can omit an item the other one shows.
+ */
+export function visibleToolbarItems(opts: {
+  hasSave: boolean;
+  desktop: boolean;
+}): ToolbarItemDef[] {
+  return TOOLBAR_ITEMS.filter((item) => {
+    if (item.kind === "save" && !opts.hasSave) return false;
+    if (item.desktopOnly && !opts.desktop) return false;
+    return true;
   });
 }

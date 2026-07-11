@@ -114,6 +114,8 @@ test("initial public rune state matches the +page.svelte defaults", () => {
   expect(ctrl.conflictFiles).toEqual([]);
   expect(ctrl.conflictLocalId).toBe(null);
   expect(ctrl.conflictRemoteId).toBe(null);
+  expect(ctrl.conflictPending).toBe(false);
+  expect(ctrl.conflictFetchFailed).toBe(false);
   expect(ctrl.forceSyncing).toBe(false);
   expect(ctrl.syncDiag).toBe(null);
 });
@@ -160,6 +162,8 @@ test("handleForceSync conflict -> fills files/ids and opens the dialog", async (
   expect(h.ctrl.conflictLocalId).toBe("L1");
   expect(h.ctrl.conflictRemoteId).toBe("R1");
   expect(h.ctrl.conflictOpen).toBe(true);
+  expect(h.ctrl.conflictPending).toBe(false);
+  expect(h.ctrl.conflictFetchFailed).toBe(false);
   expect(h.onSyncCompleted.calls.length).toBe(0);
 });
 
@@ -287,7 +291,7 @@ test("onPillConflict no-ops when there is no open project", async () => {
   expect(h.sync.calls.length).toBe(0);
 });
 
-test("onPillConflict opens the dialog immediately with files + nulled ids", () => {
+test("onPillConflict opens the dialog immediately with files + nulled ids, and fetches ids (legacy/no-id emit site)", () => {
   const h = make();
   h.sync.manual = true;
   h.ctrl.onPillConflict(FILES);
@@ -295,7 +299,112 @@ test("onPillConflict opens the dialog immediately with files + nulled ids", () =
   expect(h.ctrl.conflictFiles).toEqual(FILES);
   expect(h.ctrl.conflictLocalId).toBe(null);
   expect(h.ctrl.conflictRemoteId).toBe(null);
+  expect(h.ctrl.conflictPending).toBe(true);
   expect(h.sync.calls).toEqual(["/proj"]);
+});
+
+// ── M13: ids carried directly on the conflict payload — no second sync ──────
+
+test("onPillConflict with localId+remoteId already present skips the network fetch entirely (M13)", () => {
+  const h = make();
+  h.ctrl.onPillConflict(FILES, "L1", "R1");
+  expect(h.ctrl.conflictOpen).toBe(true);
+  expect(h.ctrl.conflictFiles).toEqual(FILES);
+  expect(h.ctrl.conflictLocalId).toBe("L1");
+  expect(h.ctrl.conflictRemoteId).toBe("R1");
+  expect(h.ctrl.conflictPending).toBe(false);
+  expect(h.ctrl.conflictFetchFailed).toBe(false);
+  // The whole point: no second network sync was made.
+  expect(h.sync.calls.length).toBe(0);
+});
+
+test("onPillConflict falls back to the network fetch when only ONE id is present", () => {
+  const h = make();
+  h.sync.manual = true;
+  h.ctrl.onPillConflict(FILES, "L1", undefined);
+  expect(h.ctrl.conflictLocalId).toBe(null);
+  expect(h.ctrl.conflictPending).toBe(true);
+  expect(h.sync.calls).toEqual(["/proj"]);
+});
+
+test("onPillConflict fallback fetch sets conflictPending then clears it on success", async () => {
+  const h = make();
+  h.sync.manual = true;
+  h.sync.next = {
+    status: "conflict",
+    message: "",
+    files: FILES,
+    localId: "L9",
+    remoteId: "R9",
+  };
+  h.ctrl.onPillConflict(FILES);
+  expect(h.ctrl.conflictPending).toBe(true);
+  h.sync.resolveAll();
+  await flush();
+  expect(h.ctrl.conflictPending).toBe(false);
+  expect(h.ctrl.conflictFetchFailed).toBe(false);
+  expect(h.ctrl.conflictLocalId).toBe("L9");
+  expect(h.ctrl.conflictRemoteId).toBe("R9");
+});
+
+test("onPillConflict fallback fetch failure sets conflictFetchFailed (not a dead silent button)", async () => {
+  const ctrl = new SyncController({
+    syncChanges: () => Promise.reject(new Error("net down")),
+    diagnose: () => Promise.resolve(DIAG),
+    currentDir: () => "/proj",
+    toast: () => null,
+    onSyncCompleted: () => {},
+    onFilesChanged: () => {},
+  });
+  ctrl.onPillConflict(FILES);
+  expect(ctrl.conflictPending).toBe(true);
+  await flush();
+  expect(ctrl.conflictPending).toBe(false);
+  expect(ctrl.conflictFetchFailed).toBe(true);
+  expect(ctrl.conflictOpen).toBe(true); // dialog stays open, not silently dead
+});
+
+test("onPillConflict fallback fetch resolving to auth/offline/error sets conflictFetchFailed", async () => {
+  const h = make();
+  h.sync.next = { status: "auth", message: "" };
+  h.ctrl.onPillConflict(FILES);
+  await flush();
+  expect(h.ctrl.conflictFetchFailed).toBe(true);
+  expect(h.ctrl.conflictPending).toBe(false);
+  expect(h.ctrl.conflictOpen).toBe(true);
+});
+
+test("retryConflictIds re-runs the fallback fetch and can recover from a failure", async () => {
+  const h = make();
+  h.sync.next = { status: "auth", message: "" };
+  h.ctrl.onPillConflict(FILES);
+  await flush();
+  expect(h.ctrl.conflictFetchFailed).toBe(true);
+
+  h.sync.next = {
+    status: "conflict",
+    message: "",
+    files: FILES,
+    localId: "LR",
+    remoteId: "RR",
+  };
+  h.ctrl.retryConflictIds();
+  expect(h.ctrl.conflictPending).toBe(true);
+  await flush();
+  expect(h.ctrl.conflictFetchFailed).toBe(false);
+  expect(h.ctrl.conflictLocalId).toBe("LR");
+  expect(h.ctrl.conflictRemoteId).toBe("RR");
+  expect(h.sync.calls).toEqual(["/proj", "/proj"]);
+});
+
+test("retryConflictIds no-ops when there is no open project or dialog is closed", () => {
+  const noProject = make({ dir: null });
+  noProject.ctrl.retryConflictIds();
+  expect(noProject.sync.calls.length).toBe(0);
+
+  const closed = make();
+  closed.ctrl.retryConflictIds();
+  expect(closed.sync.calls.length).toBe(0);
 });
 
 test("onPillConflict conflict outcome -> fills localId/remoteId", async () => {
@@ -410,13 +519,17 @@ test("refreshSyncDiag nulls syncDiag on a thrown diagnosis", async () => {
 
 // ── clearConflict ──────────────────────────────────────────────────────────
 
-test("clearConflict resets files/ids (dialog onResolved cleanup) without touching conflictOpen", () => {
+test("clearConflict resets files/ids/pending/failed (dialog onResolved cleanup) without touching conflictOpen", () => {
   const h = make();
   h.ctrl.conflictFiles = FILES;
   h.ctrl.conflictLocalId = "L1";
   h.ctrl.conflictRemoteId = "R1";
+  h.ctrl.conflictPending = true;
+  h.ctrl.conflictFetchFailed = true;
   h.ctrl.clearConflict();
   expect(h.ctrl.conflictFiles).toEqual([]);
   expect(h.ctrl.conflictLocalId).toBe(null);
   expect(h.ctrl.conflictRemoteId).toBe(null);
+  expect(h.ctrl.conflictPending).toBe(false);
+  expect(h.ctrl.conflictFetchFailed).toBe(false);
 });

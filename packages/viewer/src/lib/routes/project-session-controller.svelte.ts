@@ -21,9 +21,9 @@
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
  * (§8 / ADR 0004): the host classify round-trip, the ViewerPrefs writer, and the
- * two component fan-out callbacks (`notifyHistoryRefresh` → the LeftPanel;
- * `refreshSyncDiag` → the SyncController). `ProjectCapabilities` is a
- * type-only import — ZERO `node:*` / lib value imports.
+ * component fan-out callback (`refreshSyncDiag` → the SyncController).
+ * `ProjectCapabilities` is a type-only import — ZERO `node:*` / lib value
+ * imports.
  *
  * NOTE (deferred): the broader open/stop lifecycle and the rest of the session
  * runes (`currentDir` / `sourceMode` / `docTitle` / `currentFolderDisplayName` /
@@ -95,8 +95,6 @@ export interface ProjectSessionDeps {
   classifyProject: (dir: string) => Promise<ClassifyResult>;
   /** Persist the re-detected source hint (fire-and-forget on the component side). */
   setViewerPrefs: (prefs: Record<string, unknown>) => Promise<unknown>;
-  /** Re-notify the History tab so it reloads once capabilities are known. */
-  notifyHistoryRefresh: () => void;
   /** Refresh the remote diagnosis for a syncable project (SyncController). */
   refreshSyncDiag: (dir: string) => void;
 }
@@ -169,10 +167,6 @@ export class ProjectSessionController {
         this.deps
           .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
           .catch(() => {});
-        // Re-notify so the History tab can load now that canHistory is set. The
-        // earlier notify at folder-open time may have been a no-op because
-        // projectCapabilities was still null.
-        this.deps.notifyHistoryRefresh();
         // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only when
         // the diagnosis says the project is actually syncable. Local reads only.
         if (typedResult.capabilities.canSync) {

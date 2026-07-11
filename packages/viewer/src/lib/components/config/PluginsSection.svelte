@@ -12,7 +12,7 @@
     PluginValidationResult,
     RecommendedPlugin,
   } from "$lib/api";
-  import { pluginStatus } from "./config-helpers";
+  import { pluginStatus, pluginLabel } from "./config-helpers";
 
   let {
     pluginError,
@@ -45,6 +45,18 @@
   function isPluginConfigured(name: string): boolean {
     return plugins.some((p) => p.ref === name);
   }
+
+  // Copy-to-clipboard feedback for the "Not installed" install command (M33).
+  // Keyed by ref so copying one row's command doesn't flash "Copied!" on another.
+  let copiedRef = $state<string | null>(null);
+  function copyInstallCommand(ref: string, command: string): void {
+    navigator.clipboard.writeText(command).then(() => {
+      copiedRef = ref;
+      setTimeout(() => {
+        if (copiedRef === ref) copiedRef = null;
+      }, 1500);
+    }).catch(() => {});
+  }
 </script>
 
 <section class="block">
@@ -58,24 +70,38 @@
     <p class="error" role="alert">{pluginError}</p>
   {/if}
   {#if plugins.length === 0}
-    <p class="muted">No plugins configured yet. Add one below, or pick a feature above.</p>
+    <p class="muted">No plugins configured yet. Pick a feature below, or add one via Advanced.</p>
   {:else}
     <ul class="plugin-list">
       {#each plugins as entry (entry.ref)}
         {@const st = pluginStatus(entry, validation, pluginValidating)}
+        {@const label = pluginLabel(entry, recommended)}
         <li class:disabled={!entry.enabled}>
           <div class="plugin-main">
-            <span class="plugin-name">{entry.ref}</span>
+            <span class="plugin-label">{label}</span>
+            {#if label !== entry.ref}<span class="plugin-name">{entry.ref}</span>{/if}
             <span class="plugin-meta">
               <span class="kind">{entry.kind === "local" ? "local file" : "npm"}</span>
-              <span class={`status ${st.kind}`}>
+              <span class={`status ${st.kind}`} class:stale-status={st.kind === "stale"}>
                 {#if st.kind === "ok"}<Icon name="circle-check" size={12} />
                 {:else if st.kind === "error"}<Icon name="triangle-alert" size={12} />
-                {:else if st.kind === "checking"}<Icon name="refresh-cw" size={12} />{/if}
+                {:else if st.kind === "checking"}<Icon name="refresh-cw" size={12} />
+                {:else if st.kind === "stale"}<Icon name="circle-help" size={12} />{/if}
                 {st.label}
               </span>
             </span>
             {#if st.detail}<p class="status-detail">{st.detail}</p>{/if}
+            {#if st.installCommand}
+              <div class="install-row">
+                <code class="install-cmd">{st.installCommand}</code>
+                <button type="button" class="ghost small" onclick={() => copyInstallCommand(entry.ref, st.installCommand ?? "")}>
+                  {copiedRef === entry.ref ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              {#if st.guideHref}
+                <a class="guide-link" href={st.guideHref} target="_blank" rel="noopener noreferrer">How to install a plugin →</a>
+              {/if}
+            {/if}
             {#if st.raw}
               <details class="status-raw"><summary>Show details</summary><pre>{st.raw}</pre></details>
             {/if}
@@ -119,3 +145,26 @@
     <p class="hint">A plugin added by name must already be installed in your project. Local files are referenced directly.</p>
   </details>
 </section>
+
+<style>
+  /* Friendly label (M33) — a new class, own-scoped, so it doesn't have to
+     fight the parent's `.plugin-name` monospace rule for specificity/order.
+     The raw ref (still `.plugin-name`, still monospace via the parent's
+     shared `.config-panel` styles) only renders as a secondary line when it
+     differs from the label — i.e. for anything not on the recommended list. */
+  .plugin-label { font-size: 12px; font-weight: 600; color: var(--app-text); }
+  /* Distinct from `.status.checking` (M34) — a stalled/failed check, not one
+     in flight. A new class (not an override of `.status.error`) so it reads
+     as its own state rather than reusing the error color. */
+  .stale-status { color: var(--app-warning-text, #b45309); }
+  .install-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+  .install-cmd {
+    font-size: 11px;
+    padding: 2px 6px;
+    background: var(--app-control-bg);
+    border: 1px solid var(--app-border);
+    border-radius: 4px;
+    color: var(--app-text);
+  }
+  .guide-link { font-size: 11px; margin-top: 2px; }
+</style>

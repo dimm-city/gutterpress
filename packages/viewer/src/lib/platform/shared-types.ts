@@ -570,7 +570,14 @@ export interface BuildResult {
 
 export interface ExportProgressEvent {
   exportId: string;
-  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
+  /**
+   * `conflict` (M29, 2026-07-10 UX review): the pre-export sync safety gate
+   * (electron/export/controller.ts) can discover an unresolved conflict
+   * before a PDF is built. Included here so both sides of the IPC boundary
+   * (and any renderer switch over `state`) see it — the compiler catches the
+   * next drift instead of a silently-dropped event.
+   */
+  state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error" | "conflict";
   pages?: number;
   message?: string;
 }

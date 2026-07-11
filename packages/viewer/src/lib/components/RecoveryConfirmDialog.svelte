@@ -15,7 +15,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { getPlatform } from "$lib/platform";
   import type { RecoveryConfirmRequest } from "$lib/platform/contract";
-  import { trapFocus } from "$lib/a11y";
+  import { dialogBehavior } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -31,7 +31,6 @@
 
   /** Prevent double-answering the gate. */
   let answered = $state(false);
-  let dialogEl = $state<HTMLElement | undefined>(undefined);
   /** Status announced to assistive tech when the author answers. */
   let statusMsg = $state("");
 
@@ -42,17 +41,14 @@
    */
   let isHigh = $derived(request?.confirmation.risk === "high");
 
+  /** Selector for the button dialogBehavior should focus on open — "Not now"
+   *  for high-risk (calmer, safer default), "Continue" otherwise. */
+  let initialFocusSelector = $derived(
+    isHigh ? "button[data-action='not-now']" : "button[data-action='continue']",
+  );
+
   function onDialogMount(_el: HTMLElement) {
     answered = false;
-    queueMicrotask(() => {
-      if (!dialogEl) return;
-      const risk = request?.confirmation.risk;
-      if (risk === "high") {
-        dialogEl.querySelector<HTMLElement>("button[data-action='not-now']")?.focus();
-      } else {
-        dialogEl.querySelector<HTMLElement>("button[data-action='continue']")?.focus();
-      }
-    });
   }
 
   async function answer(approved: boolean) {
@@ -62,7 +58,7 @@
       ? "Applying the fix…"
       : "Cancelled — nothing was changed.";
     open = false;
-    triggerEl?.focus();
+    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
     try {
       await getPlatform().respondRecoveryConfirm(request.requestId, approved);
     } catch (e) {
@@ -76,23 +72,23 @@
 </script>
 
 {#if open && request}
-  <div class="backdrop" role="presentation" onclick={() => answer(false)}></div>
+  <div class="dlg-backdrop" role="presentation" onclick={() => answer(false)}></div>
 
   <div
-    bind:this={dialogEl}
-    class="dialog"
+    class="dlg-shell"
     class:high={isHigh}
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="recovery-confirm-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
+    use:dialogBehavior={{
+      onClose: () => answer(false),
+      triggerEl,
+      labelledBy: "recovery-confirm-title",
+      initialFocus: initialFocusSelector,
+    }}
     use:onDialogMount
   >
     <!-- Live region for status announcements (populated when the author answers). -->
-    <div class="sr-only" role="status" aria-live="polite">{statusMsg}</div>
+    <div class="dlg-sr-only" role="status" aria-live="polite">{statusMsg}</div>
 
-    <header class="dialog-header" class:high={isHigh}>
+    <header class="dlg-header" class:high={isHigh}>
       <h2 id="recovery-confirm-title">
         {#if isHigh}<span class="warn-glyph" aria-hidden="true"><Icon name="triangle-alert" size={18} /></span>{/if}
         We can fix this — your choice
@@ -121,14 +117,14 @@
       </div>
     </div>
 
-    <footer class="actions">
+    <footer class="dlg-actions">
       <button
-        class="ghost"
+        class="dlg-ghost"
         data-action="not-now"
         onclick={() => answer(false)}
       >Not now</button>
       <button
-        class="primary"
+        class="dlg-primary"
         data-action="continue"
         onclick={() => answer(true)}
       >Continue</button>
@@ -136,57 +132,26 @@
   </div>
 {/if}
 
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) answer(false);
-  }}
-/>
-
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
+  @import "$lib/styles/dialog-shell.css";
 
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  .dlg-shell {
     width: min(480px, 94vw);
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    /* Content-sized — this dialog is short by design, no scroll cap. */
+    max-height: none;
   }
 
   /* High-risk: a calm-but-distinct accent so it never reads identical to the
      medium dialog (three-judge gate). Amber edge + warning glyph, not alarm. */
-  .dialog.high {
+  .dlg-shell.high {
     border-top: 3px solid var(--app-warning, #d9a441);
   }
 
-  .dialog-header {
+  .dlg-header {
     padding: 18px 20px 14px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
   }
-
-  .dialog-header h2 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
+  .dlg-header h2 {
     color: var(--app-text);
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
   }
 
   .warn-glyph {
@@ -246,51 +211,22 @@
   .show-backup-btn:hover { background: var(--app-surface-hover); color: var(--app-text); }
   .show-backup-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    flex-shrink: 0;
+  /* Pinned footer here uses 20px horizontal padding + 16px button padding —
+     a hair roomier than the shared 18px/14px default (this dialog only ever
+     has two buttons, no crowding to avoid). */
+  .dlg-actions {
     padding: 14px 20px;
-    border-top: 1px solid var(--app-border-subtle);
-    background: var(--app-surface);
   }
-
-  .actions button {
+  .dlg-actions button {
     padding: 6px 16px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
   }
 
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-  .primary {
+  /* Gradient fill (see dialog-shell.css's note — a pre-existing, separately
+     filed inconsistency (L5), preserved here rather than unified). */
+  .dlg-primary {
     background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
     border-color: var(--app-accent-border);
     color: var(--app-accent-text);
   }
-  .primary:hover:not(:disabled) { background: var(--app-accent-hover); }
-  .primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-
-  .ghost {
-    background: transparent;
-    color: var(--app-text-muted);
-    border-color: var(--app-border);
-  }
-  .ghost:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
-  .ghost:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .dlg-primary:hover:not(:disabled) { background: var(--app-accent-hover); }
 </style>

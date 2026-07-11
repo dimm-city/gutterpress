@@ -21,13 +21,20 @@
    */
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
+  import { friendlyHostError } from "$lib/errors";
   import type {
     ProjectRemoteDiagnosis,
     RemoteAccessResult,
     RemoteConnection,
     HostConnectionInfo,
   } from "$lib/platform/contract";
-  import { trapFocus } from "$lib/a11y";
+  import {
+    dialogBehavior,
+    guardedClose,
+    requestInlineConfirm,
+    cancelInlineConfirm,
+    type InlineConfirmState,
+  } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -41,8 +48,6 @@
     /** Called whenever the dialog closes. Useful for post-close refresh. */
     onClosed?: () => void;
   } = $props();
-
-  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
 
   let diag = $state<ProjectRemoteDiagnosis | null>(null);
   let diagLoading = $state(false);
@@ -69,6 +74,8 @@
   // Connected-servers list.
   let disconnecting = $state<string | null>(null);
   let disconnectError = $state<string | null>(null);
+  /** Two-step Disconnect confirm (L2), keyed by host — see `requestDisconnect`. */
+  let confirmDisconnect = $state<InlineConfirmState>({});
 
   let serverInputTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -83,8 +90,8 @@
     connectError = null;
     connectNotice = null;
     disconnectError = null;
+    confirmDisconnect = {};
     tokenUrl = null;
-    queueMicrotask(() => dialogEl?.focus());
     void load();
     return {
       destroy() {
@@ -130,15 +137,10 @@
         }
       }
     } catch (e) {
-      if (gen === loadGen) loadError = friendly(e);
+      if (gen === loadGen) loadError = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {
       if (gen === loadGen) diagLoading = false;
     }
-  }
-
-  function friendly(e: unknown): string {
-    const msg = e instanceof Error ? e.message : String(e);
-    return msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
   }
 
   async function runRemoteTest() {
@@ -148,7 +150,7 @@
     try {
       testResult = await api.remote.testRemoteAccess(diag.remoteUrl) as RemoteAccessResult;
     } catch (e) {
-      testResult = { ok: false, reason: "unknown", message: friendly(e) };
+      testResult = { ok: false, reason: "unknown", message: friendlyHostError(e instanceof Error ? e.message : String(e)) };
     } finally {
       testing = false;
     }
@@ -180,7 +182,7 @@
         diag = await api.remote.diagnoseProjectRemote(projectDir).catch(() => diag) as ProjectRemoteDiagnosis;
       }
     } catch (e) {
-      connectError = friendly(e);
+      connectError = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {
       connecting = false;
     }
@@ -203,10 +205,29 @@
         diag = await api.remote.diagnoseProjectRemote(projectDir).catch(() => diag) as ProjectRemoteDiagnosis;
       }
     } catch (e) {
-      disconnectError = friendly(e);
+      disconnectError = friendlyHostError(e instanceof Error ? e.message : String(e));
     } finally {
       disconnecting = null;
     }
+  }
+
+  /**
+   * Inline "Really disconnect?" confirm (L2) — Disconnect deletes a stored
+   * access token the dialog's own copy calls the most painful thing to
+   * re-acquire in the product, so it gets the same two-step swap
+   * CrashRecoveryDialog uses for Discard: the first click arms the button in
+   * place, a second click while armed confirms.
+   */
+  function requestDisconnect(host: string) {
+    const { state, confirmed } = requestInlineConfirm(confirmDisconnect, host);
+    confirmDisconnect = state;
+    if (confirmed) void disconnect(host);
+  }
+
+  function cancelDisconnect(host: string, event: MouseEvent) {
+    confirmDisconnect = cancelInlineConfirm(confirmDisconnect, host);
+    const row = (event.currentTarget as HTMLElement).closest(".conn-row");
+    queueMicrotask(() => row?.querySelector<HTMLButtonElement>(".conn-disconnect")?.focus());
   }
 
   function openLink(url: string) {
@@ -254,30 +275,31 @@
     return safe || "The connection test failed. See the app log for details.";
   }
 
-  function close() {
+  /**
+   * M19 — mid-connect dismissal guard: wrapped in `guardedClose` so the
+   * backdrop click, the header close button, and Escape (via
+   * `dialogBehavior`'s `onClose`) can't dismiss the dialog while a
+   * connect-server probe is in flight (previously unguarded on every path).
+   */
+  const close = guardedClose(() => {
     tokenInput = ""; // belt and braces — never carry a token across closes
     open = false;
-    triggerEl?.focus();
+    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
     onClosed?.();
-  }
+  }, () => connecting);
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
-    bind:this={dialogEl}
-    class="dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="advanced-setup-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
+    class="dlg-shell"
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "advanced-setup-title", focusContainer: true }}
     use:onDialogMount
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="advanced-setup-title">Advanced setup</h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
+      <button class="dlg-close" onclick={close} disabled={connecting} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -337,7 +359,7 @@
             Nothing is changed or uploaded.
           </p>
           <div class="test-row">
-            <button class="ghost" onclick={runRemoteTest} disabled={testing}>
+            <button class="dlg-ghost" onclick={runRemoteTest} disabled={testing}>
               {testing ? "Testing…" : "Test remote access"}
             </button>
             {#if testResult}
@@ -409,7 +431,7 @@
         {/if}
         <div class="connect-actions">
           <button
-            class="primary"
+            class="dlg-primary"
             onclick={connectServer}
             disabled={connecting || !serverInput.trim() || !tokenInput.trim()}
           >
@@ -424,18 +446,29 @@
           {/if}
           <ul class="conn-list" role="list" aria-label="Connected servers">
             {#each connections as conn (conn.host)}
+              {@const armed = confirmDisconnect[conn.host] ?? false}
               <li role="listitem" class="conn-row">
                 <span class="conn-label">
                   {conn.label ?? conn.host}
                   {#if conn.kind === "github-oauth"}<span class="badge">GitHub</span>{/if}
                 </span>
+                <!-- Two-step confirm (L2) — a single persistent button whose
+                     label/class swap in place, so arming never loses focus. -->
                 <button
-                  class="ghost small"
-                  onclick={() => disconnect(conn.host)}
+                  class="dlg-ghost small conn-disconnect"
+                  class:dlg-danger-armed={armed}
+                  onclick={() => requestDisconnect(conn.host)}
                   disabled={disconnecting !== null}
                 >
-                  {disconnecting === conn.host ? "Removing…" : "Disconnect"}
+                  {disconnecting === conn.host
+                    ? "Removing…"
+                    : armed
+                      ? "Really disconnect?"
+                      : "Disconnect"}
                 </button>
+                {#if armed}
+                  <button class="dlg-ghost small" onclick={(e) => cancelDisconnect(conn.host, e)}>Cancel</button>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -488,62 +521,13 @@
   </div>
 {/if}
 
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) close();
-  }}
-/>
-
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  @import "$lib/styles/dialog-shell.css";
+
+  .dlg-shell {
     width: min(560px, 92vw);
     max-height: 84vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    overflow: hidden;
   }
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-  }
-  .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* WCAG 2.5.8: minimum target size 24x24px */
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
   .dialog-body {
     padding: 16px 18px;
     display: flex;
@@ -604,20 +588,33 @@
   }
   .field input:focus { outline: none; border-color: var(--app-focus-ring); }
   .connect-actions { display: flex; justify-content: flex-end; }
-  button.primary,
-  button.ghost {
+  /* Unlike most dialogs, none of these buttons live in a `.dlg-actions`
+     footer (there isn't one here) — `.dlg-primary`/`.dlg-ghost` only get
+     color/hover from the shared sheet, so the base sizing normally supplied
+     by `.dlg-actions button` needs restating locally.
+     FIX ROUND 1: this rule used to restate the color-bearing `border`
+     shorthand (`1px solid transparent`), which — because Svelte's scope hash
+     raises `.dlg-primary`/`.dlg-ghost` here to two classes (0,2,0) — always
+     outranked the shared sheet's `.dlg-ghost` border-color (0,1,0) AND its
+     `.dlg-danger-armed` border-color (also 0,1,0), leaving standalone ghosts
+     (Test remote access, Disconnect) borderless and the armed "Really
+     disconnect?" button missing its red border. Restating only width/style
+     here (no color) lets the shared sheet's per-variant rules — including
+     `.dlg-danger-armed`, which wins the tie there by source order — supply
+     border-color as designed. */
+  .dlg-primary,
+  .dlg-ghost {
     padding: 6px 14px;
     font-size: 13px;
     border-radius: 4px;
     cursor: pointer;
-    border: 1px solid transparent;
+    border-width: 1px;
+    border-style: solid;
   }
   button:disabled { opacity: 0.45; cursor: default; }
-  button.primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  button.primary:not(:disabled):hover { background: var(--app-accent-hover); }
-  button.ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  button.ghost:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
-  button.ghost.small { padding: 3px 10px; font-size: 12px; }
+  /* Original had no border-radius override for .small (so it inherited the
+     base 4px above) — restate it, or the shared sheet's 5px would win. */
+  .dlg-ghost.small { padding: 3px 10px; font-size: 12px; border-radius: 4px; }
   .conn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   .conn-row {
     display: flex;

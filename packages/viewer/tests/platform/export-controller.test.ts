@@ -22,6 +22,12 @@ interface HarnessOpts {
   activeSession?: ExportSession | null;
   /** conflictLatched flag returned by sync.getState. */
   conflictLatched?: boolean;
+  /**
+   * Flips the (by-then-minted) active session's `canceled` flag while
+   * syncProject is in flight — simulates a Cancel click landing during the
+   * pre-export sync gate (M28).
+   */
+  cancelDuringSync?: boolean;
 }
 
 interface Harness {
@@ -50,6 +56,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     diagnoseProjectRemote: async () => ({ canSync: opts.canSync ?? false }),
     syncProject: async () => {
       counters.sync += 1;
+      if (opts.cancelDuringSync && session) session.canceled = true;
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
     splitOutPath: (tempOutPath: string) => ({ outDir: `${tempOutPath}.dir` }),
@@ -203,5 +210,59 @@ test("a BuildError from runBuild surfaces as a BUILD_ERROR", async () => {
   expect((err as Error & { code?: string }).code).toBe("BUILD_ERROR");
   expect((err as Error).message).toBe("missing tool X");
   // session cleaned up even on failure
+  expect(h.getSession()).toBeNull();
+});
+
+// ── M28: the exportId is minted and the session registered as active BEFORE
+//    the pre-export sync gate runs, so Cancel is live immediately ───────────
+
+test("mints the exportId and registers the active session before the gate's network work (M28)", async () => {
+  let sessionDuringGate: ExportSession | null | undefined;
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    canSync: true,
+    isOnline: true,
+    syncProject: () => {
+      sessionDuringGate = h.getSession();
+      return { status: "up-to-date" };
+    },
+  });
+  await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  expect(sessionDuringGate).not.toBeNull();
+  expect(sessionDuringGate?.id).toBeTruthy();
+});
+
+test("sends a pre-gate 'started' progress event with a syncing message before any gate work (M28)", async () => {
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    canSync: true,
+    isOnline: true,
+  });
+  await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  // First event: the pre-gate one, minted before isConflictLatched/detectProjectSource
+  // even run. Still `state: "started"` (ExportProgressEvent's union is
+  // unchanged end-to-end) — distinguished by its message.
+  expect(h.progress[0]?.state).toBe("started");
+  expect(h.progress[0]?.message).toMatch(/sync/i);
+  // The real build-start "started" event follows, with no message.
+  const realStarted = h.progress.find((p, i) => i > 0 && p.state === "started");
+  expect(realStarted).toBeDefined();
+  expect(realStarted?.message).toBeUndefined();
+});
+
+test("Cancel during the pre-export sync gate aborts before runBuild (M28)", async () => {
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    canSync: true,
+    isOnline: true,
+    cancelDuringSync: true,
+  });
+  const err = await h.controller
+    .build({ input: "/book", out: "/out/book.pdf" })
+    .catch((e) => e);
+  expect((err as Error & { code?: string }).code).toBe("EXPORT_CANCELED");
+  expect(h.runBuildCalls).toBe(0);
+  expect(h.progress.some((p) => p.state === "canceled")).toBe(true);
+  // Session cleaned up so a subsequent export isn't blocked.
   expect(h.getSession()).toBeNull();
 });

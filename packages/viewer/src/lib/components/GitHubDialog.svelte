@@ -11,6 +11,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import { basenameOf } from "$lib/platform/paths";
+  import { friendlyHostError } from "$lib/errors";
   import type {
     DeviceCodeInfo,
     RemoteRepository,
@@ -18,7 +19,7 @@
     RepoBook,
     CloneProgressEvent,
   } from "$lib/platform/contract";
-  import { trapFocus } from "$lib/a11y";
+  import { dialogBehavior } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -127,7 +128,11 @@
       // The user may have closed the dialog mid-flow — only surface errors
       // while it is still open.
       if (open) {
-        error = e instanceof Error ? e.message : String(e);
+        // This path is IPC-bridged (getPlatform() → ipcRenderer.invoke), so
+        // unlike the api.remote.* fetch routes (sanitized host-side) the raw
+        // "Error invoking remote method '…':" transport prefix can reach here
+        // unscrubbed (L11) — scrub it before it reaches the writer.
+        error = friendlyHostError(e instanceof Error ? e.message : String(e));
         step = "connect";
       }
     } finally {
@@ -259,7 +264,8 @@
       onClosed?.();
       onOpened?.(projectDir);
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      // Also IPC-bridged (platform.cloneRemoteRepository) — same L11 scrub.
+      error = friendlyHostError(e instanceof Error ? e.message : String(e));
       step = "configure";
     } finally {
       unsubscribe();
@@ -288,7 +294,7 @@
       getPlatform().connectGitHubCancel().catch(() => {});
     }
     open = false;
-    triggerEl?.focus();
+    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
     onClosed?.();
   }
 
@@ -304,24 +310,20 @@
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
     bind:this={dialogEl}
-    class="dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="github-dialog-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
+    class="dlg-shell"
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "github-dialog-title" }}
     use:onDialogMount
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="github-dialog-title">
         {#if step === "connect" || step === "code"}Connect GitHub{:else if step === "repos"}Choose a repository{:else if step === "configure"}Open project{:else if step === "books"}Choose a book{:else}Downloading…{/if}
       </h2>
       <button
-        class="close"
+        class="dlg-close"
         onclick={close}
         disabled={step === "cloning"}
         title="Close (Esc)"
@@ -333,7 +335,7 @@
       <!-- Persistent live region: announcing the user code from a node that
            already exists is reliable; a region mounted WITH its content is
            routinely skipped by screen readers. -->
-      <div class="sr-only" role="status" aria-live="assertive">
+      <div class="dlg-sr-only" role="status" aria-live="assertive">
         {code ? `Your GitHub sign-in code is ${code.userCode}. Enter it on the GitHub page that opened.` : ""}
       </div>
 
@@ -356,9 +358,9 @@
             >Open Advanced setup</button>
           </p>
         {/if}
-        <footer class="actions">
-          <button class="ghost" onclick={close}>Cancel</button>
-          <button bind:this={connectBtn} class="primary" onclick={connect} disabled={busy}>
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={close}>Cancel</button>
+          <button bind:this={connectBtn} class="dlg-primary" onclick={connect} disabled={busy}>
             {busy ? "Contacting GitHub…" : "Connect GitHub"}
           </button>
         </footer>
@@ -376,8 +378,8 @@
             >{code.verificationUri}</button>
           {/if}
         </p>
-        <footer class="actions">
-          <button class="ghost" onclick={close}>Cancel</button>
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={close}>Cancel</button>
         </footer>
       {:else if step === "repos"}
         {#if username}
@@ -430,11 +432,11 @@
             >Advanced setup</button>
           </p>
         {/if}
-        <footer class="actions">
-          <button class="ghost" onclick={close}>Cancel</button>
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={close}>Cancel</button>
           <button
             bind:this={refreshBtn}
-            class="ghost"
+            class="dlg-ghost"
             onclick={() => loadRepos()}
             disabled={reposLoading}
           >Refresh</button>
@@ -459,14 +461,14 @@
           <span>Where to save it</span>
           <div class="dest-row">
             <span class="dest-path">{destination ?? "Choose a folder…"}</span>
-            <button class="ghost" onclick={pickDestination}>Browse…</button>
+            <button class="dlg-ghost" onclick={pickDestination}>Browse…</button>
           </div>
         </div>
-        <footer class="actions">
-          <button class="ghost" onclick={() => (step = "repos")}>Back</button>
-          <button class="ghost" onclick={close}>Cancel</button>
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={() => (step = "repos")}>Back</button>
+          <button class="dlg-ghost" onclick={close}>Cancel</button>
           <button
-            class="primary"
+            class="dlg-primary"
             onclick={openProject}
             disabled={!destination || !folderName.trim() || busy}
           >{booksLoading ? "Looking inside…" : "Open project"}</button>
@@ -492,9 +494,9 @@
           The whole folder is saved on this computer either way — this just
           chooses which book opens.
         </p>
-        <footer class="actions">
-          <button class="ghost" onclick={() => (step = "configure")}>Back</button>
-          <button class="ghost" onclick={close}>Cancel</button>
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={() => (step = "configure")}>Back</button>
+          <button class="dlg-ghost" onclick={close}>Cancel</button>
         </footer>
       {:else if step === "cloning"}
         <p class="hint" role="status" aria-live="polite">{progressLabel(cloneProgress)}</p>
@@ -524,63 +526,14 @@
   </div>
 {/if}
 
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) close();
-  }}
-/>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  @import "$lib/styles/dialog-shell.css";
+
+  .dlg-shell {
     width: min(560px, 92vw);
     max-height: 80vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    overflow: hidden;
   }
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-  }
-  .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* WCAG 2.5.8: minimum target size 24x24px */
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .close:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
-  .close:disabled { opacity: 0.4; cursor: default; }
   .dialog-body {
     padding: 16px 18px;
     display: flex;
@@ -588,17 +541,6 @@
     gap: 12px;
     overflow-y: auto;
     flex: 1;
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
   .hint { font-size: 13px; margin: 0; line-height: 1.5; }
   .hint.subtle { color: var(--app-text-faint); font-size: 12px; }
@@ -734,23 +676,9 @@
     from { margin-left: 0; }
     to { margin-left: 65%; }
   }
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    padding-top: 16px;
-    border-top: 1px solid var(--app-border-subtle);
+  /* In-flow footer (last item inside the scrolling body) — restore its
+     original spacing; the shared default assumes a pinned bar. */
+  .dlg-actions {
+    padding: 16px 0 0;
   }
-  .actions button {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-  .actions button:disabled { opacity: 0.45; cursor: default; }
-  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .actions .primary:not(:disabled):hover { background: var(--app-accent-hover); }
-  .actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  .actions .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

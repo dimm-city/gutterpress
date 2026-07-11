@@ -11,7 +11,14 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ProblemEntry } from "$lib/platform/contract";
-  import { friendlySource, groupProblems, problemCounts } from "$lib/problems";
+  import {
+    closesPanelOnEscape,
+    closesPanelOnSelect,
+    friendlySource,
+    groupProblems,
+    problemCounts,
+    splitProblemMessage,
+  } from "$lib/problems";
 
   let {
     problems,
@@ -19,6 +26,7 @@
     open = $bindable(false),
     onSelect,
     error = null,
+    compact = false,
   }: {
     problems: ProblemEntry[];
     loading?: boolean;
@@ -33,10 +41,40 @@
      * M5).
      */
     error?: string | null;
+    /**
+     * L9: below 820px the host (StatusBar) has no room for the "Problems"
+     * label/status text — this shrinks the toggle strip to an icon + count
+     * badge (an explicit aria-label carries what the hidden text used to
+     * convey) while leaving the expand/collapse behavior untouched. The host
+     * is responsible for presenting the expanded body as an overlay in this
+     * mode; this component only changes the toggle strip's content.
+     */
+    compact?: boolean;
   } = $props();
 
   let groups = $derived(groupProblems(problems));
   let counts = $derived(problemCounts(problems));
+
+  /**
+   * L9 regression fix: in compact mode the expanded body is presented by the
+   * host (StatusBar) as a full-viewport overlay that visually covers the
+   * toggle strip below it, so the strip's own collapse click can no longer
+   * reach it (the overlay intercepts the click). Selecting a problem should
+   * also return the writer to the now-unobscured editor rather than leaving
+   * the overlay open on top of it.
+   */
+  function selectEntry(entry: ProblemEntry) {
+    onSelect?.(entry);
+    if (closesPanelOnSelect(compact)) open = false;
+  }
+
+  /** Escape closes the compact overlay in place — there is otherwise no
+   *  dismiss path once the toggle strip is covered (see selectEntry above). */
+  function handleWindowKeydown(e: KeyboardEvent) {
+    if (closesPanelOnEscape(compact, open, e.key)) {
+      open = false;
+    }
+  }
 
   // Polite live region: announce error/warning counts when lint completes.
   let lintAnnouncement = $derived.by<string>(() => {
@@ -63,12 +101,15 @@
   } as const;
 </script>
 
+<svelte:window onkeydown={handleWindowKeydown} />
+
 <!-- Polite live region: announces error/warning counts when lint completes -->
 <div role="status" aria-live="polite" aria-atomic="true" class="sr-only">{lintAnnouncement}</div>
 
 <section
   class="problems-panel"
   class:expanded={open}
+  class:compact
   aria-label="Problems"
 >
   <!-- Toggle strip — always visible at the bottom edge.
@@ -79,6 +120,9 @@
     aria-expanded={open}
     aria-controls="problems-body"
     title={open ? "Collapse problems panel" : "Expand problems panel"}
+    aria-label={compact
+      ? `Problems${loading ? ": checking" : error ? ": couldn't check" : counts.badge > 0 ? `: ${counts.badge} ${counts.badge === 1 ? "issue" : "issues"}` : ": none"}`
+      : undefined}
   >
     <span class="strip-left">
       <Icon name={error ? "info" : counts.badge > 0 ? "triangle-alert" : "circle-check"} size={13} />
@@ -118,6 +162,22 @@
     aria-label="Problems list"
     aria-hidden={!open}
   >
+    {#if compact}
+      <!-- L9: the compact overlay has no other reachable dismiss control
+           (see selectEntry/handleWindowKeydown above) — give it one directly. -->
+      <div class="panel-body-bar">
+        <span class="panel-body-bar-title">Problems</span>
+        <button
+          class="panel-close-btn"
+          onclick={() => (open = false)}
+          aria-label="Close problems panel"
+          title="Close problems panel"
+        >
+          <Icon name="x" size={15} />
+          Close
+        </button>
+      </div>
+    {/if}
     {#if error}
       <div class="empty-state" role="status">
         <span class="empty-icon neutral-icon"><Icon name="info" size={18} /></span>
@@ -141,18 +201,20 @@
             </div>
             <ul class="entry-list">
               {#each group.entries as entry, i (i)}
+                {@const parts = splitProblemMessage(entry.message)}
                 <li>
                   {#if entry.filePath}
                     <button
                       class="entry clickable"
-                      onclick={() => onSelect?.(entry)}
+                      onclick={() => selectEntry(entry)}
                       title="Open this file at the problem"
                     >
                       <span class="entry-severity sev-{entry.severity}">
                         <Icon name={SEVERITY_ICON[entry.severity]} size={14} />
                         <span class="sr-only">{SEVERITY_LABEL[entry.severity]}:</span>
                       </span>
-                      <span class="entry-message">{entry.message}</span>
+                      <span class="entry-message">{parts.text}</span>
+                      {#if parts.code}<span class="entry-code">{parts.code}</span>{/if}
                       <span class="entry-source">{friendlySource(entry.source)}</span>
                       {#if entry.line}
                         <span class="entry-line">line {entry.line}</span>
@@ -164,7 +226,8 @@
                         <Icon name={SEVERITY_ICON[entry.severity]} size={14} />
                         <span class="sr-only">{SEVERITY_LABEL[entry.severity]}:</span>
                       </span>
-                      <span class="entry-message">{entry.message}</span>
+                      <span class="entry-message">{parts.text}</span>
+                      {#if parts.code}<span class="entry-code">{parts.code}</span>{/if}
                       <span class="entry-source">{friendlySource(entry.source)}</span>
                     </div>
                   {/if}
@@ -262,6 +325,48 @@
   }
 
   /* ── Panel body ──────────────────────────────────────────────────────────── */
+  /* L9: compact-only header bar with an always-reachable close control. Sticky
+     (not static) so it stays visible at the top of the overlay while the
+     problems list beneath it scrolls. */
+  .panel-body-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 10px 12px;
+    background: var(--app-surface-raised);
+    border-bottom: 1px solid var(--app-border);
+  }
+  .panel-body-bar-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--app-text-secondary);
+  }
+  .panel-close-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 1px solid var(--app-border-strong);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--app-text);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .panel-close-btn:hover {
+    background: var(--app-control-hover-bg);
+  }
+  .panel-close-btn:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: -2px;
+  }
+
   .empty-state {
     display: flex;
     align-items: center;
@@ -376,6 +481,25 @@
     color: var(--app-text-faint);
     font-variant-numeric: tabular-nums;
     align-self: center;
+  }
+
+  /* M32: the rule code (e.g. "MD013/line-length") is a demoted suffix, not
+     part of the headline — small, muted, monospace, never competing with
+     .entry-message for attention. */
+  .entry-code {
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--app-text-faint);
+    align-self: center;
+  }
+
+  /* L9: compact mode (host below 820px) shrinks the toggle strip to an icon
+     + count badge — the "Problems" label and loading/error status text would
+     not fit, and are still carried by the button's aria-label. */
+  .problems-panel.compact .strip-title,
+  .problems-panel.compact .strip-status {
+    display: none;
   }
 
   .sr-only {

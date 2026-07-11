@@ -28,7 +28,7 @@
 import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ConflictFileInfo } from "../../src/lib/platform/contract";
+import type { ConflictFileInfo, ConflictFileEntry } from "../../src/lib/platform/contract";
 
 // ── PWA-cleanliness scan ──────────────────────────────────────────────────────
 
@@ -180,50 +180,78 @@ describe("getConflictPreview call contract", () => {
 });
 
 // ── Feature: binary-file branch ───────────────────────────────────────────────
+//
+// L12: the host (electron/recovery-bridge.ts) is the SINGLE authority for
+// binary classification. ConflictChoicesDialog.svelte no longer has a local
+// isBinary()/extension-regex of its own — it trusts a host-supplied
+// `file.isBinary === true` outright, and only falls back to a
+// getConflictPreview() round-trip (whose response also carries the
+// authoritative isBinary) when the flag is absent. These tests assert THAT
+// contract, not a client-side regex that no longer exists in the component.
 
-describe("binary file — no preview, no getConflictPreview call", () => {
-  test("isBinary() regex matches known binary extensions", () => {
-    // This mirrors the isBinary() function inside ConflictChoicesDialog.svelte.
-    // The function must remain consistent — tests will catch any regression.
-    const binaryPattern =
-      /\.(png|jpg|jpeg|gif|webp|svg|avif|ico|bmp|tiff?|woff2?|otf|ttf|eot|pdf)$/i;
+describe("host-authoritative isBinary — no local regex, no preview fetch for known binaries", () => {
+  const componentPath = path.resolve(
+    __dirname,
+    "../../src/lib/components/ConflictChoicesDialog.svelte",
+  );
 
-    const binaryFiles = [
-      "hero.png",
-      "font.woff2",
-      "icon.svg",
-      "photo.jpg",
-      "doc.pdf",
-      "cover.avif",
-    ];
-    const textFiles = ["chapter-01.md", "theme.css", "manifest.yaml", "README.txt"];
-
-    for (const f of binaryFiles) {
-      expect(binaryPattern.test(f)).toBe(true);
-    }
-    for (const f of textFiles) {
-      expect(binaryPattern.test(f)).toBe(false);
-    }
-  });
-
-  test("binary file skips getConflictPreview entirely", async () => {
+  test("known-binary file (host-supplied isBinary: true) skips getConflictPreview entirely", async () => {
     let called = false;
-
     const mockGetPreview = async () => {
       called = true;
       return { mine: "", theirs: "", kind: "both-edited" as const, isBinary: true };
     };
 
-    const binaryPattern =
-      /\.(png|jpg|jpeg|gif|webp|svg|avif|ico|bmp|tiff?|woff2?|otf|ttf|eot|pdf)$/i;
-    const filePath = "assets/hero.png";
+    // Mirrors ConflictChoicesDialog.svelte's togglePreview(): `knownBinary`
+    // comes straight from the payload's per-file isBinary flag.
+    const file: ConflictFileEntry = {
+      path: "assets/hero.png",
+      kind: "both-edited",
+      isBinary: true,
+    };
+    const knownBinary = file.isBinary === true;
 
-    // Simulate the component's conditional: if isBinary → skip preview call
-    if (!binaryPattern.test(filePath)) {
+    if (!knownBinary) {
       await mockGetPreview();
     }
 
-    expect(called).toBe(false); // getConflictPreview must NOT be called for binary
+    expect(knownBinary).toBe(true);
+    expect(called).toBe(false); // getConflictPreview must NOT be called when the host already says binary
+  });
+
+  test("isBinary absent (older/other emit site) still asks the host via getConflictPreview", async () => {
+    let called = false;
+    const mockGetPreview = async () => {
+      called = true;
+      return { mine: "", theirs: "", kind: "both-edited" as const, isBinary: true };
+    };
+
+    // No isBinary on the payload entry — the component must not guess from
+    // the filename; it defers to the host round-trip instead.
+    const file: ConflictFileEntry = {
+      path: "assets/mystery.dat",
+      kind: "both-edited",
+    };
+    const knownBinary = file.isBinary === true;
+
+    if (!knownBinary) {
+      await mockGetPreview();
+    }
+
+    expect(knownBinary).toBe(false);
+    expect(called).toBe(true); // falls back to the host, which returns the authoritative isBinary
+  });
+
+  test("component source has no local binary-extension regex and no isBinary() function", () => {
+    const source = fs.readFileSync(componentPath, "utf-8");
+    // The old client-side classifier this test file used to mirror is gone.
+    expect(source).not.toMatch(/\.\(png\|jpg/);
+    expect(source).not.toMatch(/function\s+isBinary\s*\(/);
+  });
+
+  test("component reads the host-supplied per-file isBinary flag", () => {
+    const source = fs.readFileSync(componentPath, "utf-8");
+    expect(source).toMatch(/\bisBinary\s*===\s*true\b/);
   });
 
   test("binary file disclosure shows 'No preview for this kind of file.'", () => {
@@ -357,15 +385,24 @@ describe("REGRESSION GUARD — gate-passed ConflictChoicesDialog invariants", ()
     expect(source).toContain("setAll");
   });
 
-  test("focus trap (trapFocus) still present", () => {
+  // M1/#42 (dialog-system consolidation): the focus trap, role="dialog",
+  // aria-modal, and Escape-to-close moved from hand-rolled markup/
+  // `svelte:window` onto the shared `dialogBehavior` action (`$lib/dialog.ts`,
+  // unit-tested there) — mirrors CrashRecoveryDialog.test.ts's "M12 fix 1"
+  // convention. `close()`'s own `phase === "resolving"` guard (tested below)
+  // is what dialogBehavior's `onClose` calls, so Escape/backdrop/the header
+  // button all still respect it.
+  test("focus trap: owned by dialogBehavior, not a locally hand-wired trapFocus", () => {
     const source = fs.readFileSync(componentPath, "utf-8");
-    expect(source).toContain("trapFocus");
+    expect(source).not.toContain("trapFocus");
+    expect(source).toMatch(/import\s*\{[^}]*dialogBehavior[^}]*\}\s*from\s*["']\$lib\/dialog["']/);
   });
 
-  test("dialog still has role='dialog' and aria-modal", () => {
+  test("dialog does NOT hand-declare role='dialog'/aria-modal (owned by dialogBehavior)", () => {
     const source = fs.readFileSync(componentPath, "utf-8");
-    expect(source).toContain('role="dialog"');
-    expect(source).toContain('aria-modal="true"');
+    expect(source).not.toContain('role="dialog"');
+    expect(source).not.toContain('aria-modal="true"');
+    expect(source).toMatch(/use:dialogBehavior=\{\{[^}]*onClose:\s*close/s);
   });
 
   test("close guard: cannot close mid-resolving", () => {
@@ -381,10 +418,10 @@ describe("REGRESSION GUARD — gate-passed ConflictChoicesDialog invariants", ()
     expect(source).toContain("resolveSyncConflicts");
   });
 
-  test("Escape key still closes when allowed (svelte:window onkeydown)", () => {
+  test("Escape key still closes when allowed — via dialogBehavior's onClose, not a local svelte:window handler", () => {
     const source = fs.readFileSync(componentPath, "utf-8");
-    expect(source).toContain("Escape");
-    expect(source).toContain("svelte:window");
+    expect(source).not.toContain("svelte:window");
+    expect(source).toMatch(/use:dialogBehavior=\{\{[^}]*onClose:\s*close/s);
   });
 
   test("preview addition does NOT add any git jargon to author-visible strings", () => {

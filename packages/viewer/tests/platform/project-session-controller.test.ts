@@ -34,7 +34,6 @@ interface Harness {
   ctrl: ProjectSessionController;
   classify: Spy<[string]> & { next: ClassifyResult; reject: boolean };
   setViewerPrefs: Spy<[Record<string, unknown>]>;
-  notifyHistoryRefresh: Spy<[]>;
   refreshSyncDiag: Spy<[string]>;
 }
 
@@ -64,7 +63,6 @@ function makeHarness(): Harness {
       : Promise.resolve(classify.next);
   };
   const setViewerPrefs = spy<[Record<string, unknown>]>();
-  const notifyHistoryRefresh = spy<[]>();
   const refreshSyncDiag = spy<[string]>();
   const ctrl = new ProjectSessionController({
     classifyProject,
@@ -72,10 +70,9 @@ function makeHarness(): Harness {
       setViewerPrefs(p);
       return Promise.resolve();
     },
-    notifyHistoryRefresh: () => notifyHistoryRefresh(),
     refreshSyncDiag: (d) => refreshSyncDiag(d),
   });
-  return { ctrl, classify, setViewerPrefs, notifyHistoryRefresh, refreshSyncDiag };
+  return { ctrl, classify, setViewerPrefs, refreshSyncDiag };
 }
 
 test("reset clears all capability session state", () => {
@@ -108,7 +105,6 @@ test("classify: local-git-folder subfolder populates subPath + persists source",
   expect(h.ctrl.projectCapabilities).toEqual(caps);
   expect(h.ctrl.projectSubPath).toBe("books/one");
   expect(h.setViewerPrefs.calls).toEqual([[{ projectSource: source }]]);
-  expect(h.notifyHistoryRefresh.calls.length).toBe(1);
   // canSync false → no diagnosis refresh.
   expect(h.refreshSyncDiag.calls.length).toBe(0);
 });
@@ -284,7 +280,6 @@ test("classify: a rejected classification clears capabilities (never blocks prev
 
   expect(h.ctrl.projectCapabilities).toBeNull();
   expect(h.setViewerPrefs.calls.length).toBe(0);
-  expect(h.notifyHistoryRefresh.calls.length).toBe(0);
 });
 
 // ── resolveActiveBookDir (pure) — C1 book-selection rules ────────────────────

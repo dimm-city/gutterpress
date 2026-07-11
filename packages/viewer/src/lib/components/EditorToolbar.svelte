@@ -10,16 +10,25 @@
    * - All actions operate through `onAction(action, payload?)` — a callback prop
    *   that the parent (+page.svelte) routes into the EditorView transaction. The
    *   toolbar has zero direct knowledge of CodeMirror; it just fires named events.
-   * - The Insert Image flow involves host IPCs (pickImageFile + copyFile), so the
-   *   toolbar accepts `projectDir` and `platform` to keep it testable without a
-   *   full Electron environment.
+   * - The Insert Image flow involves host calls (dialog.pickImageFile +
+   *   api.media.importImage — the ONE host-side import-policy route, UX
+   *   review M10), so the toolbar accepts `projectDir` to keep it testable
+   *   without a full Electron environment. The toolbar does no path/fs math
+   *   of its own; the route returns the project-relative `src` to insert.
    * - At narrow editor-pane widths (~350px) the toolbar uses @container to overflow
    *   secondary actions into a "More" popover so nothing clips or wraps.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import type { ComponentProps } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
+  import { visibleToolbarItems, type ToolbarItemDef } from "$lib/editor/toolbar-actions";
+
+  // toolbar-actions.ts declares item icons as plain strings (it stays
+  // Svelte-import-free by design). Narrow to Icon's actual prop type here,
+  // at the render boundary, the same way LeftPanel.svelte derives IconName.
+  type IconName = ComponentProps<typeof Icon>["name"];
 
   let {
     /** Current file path — toolbar is only active for .md files. */
@@ -63,21 +72,105 @@
     filePath !== null && /\.(md|markdown)$/i.test(filePath),
   );
 
+  // ── M23: single declarative item array drives BOTH the grouped toolbar
+  // buttons and the flat More menu — see toolbar-actions.ts for rationale. ──
+  let visibleItems = $derived(
+    visibleToolbarItems({ hasSave: !!onSave, desktop: isDesktop() }),
+  );
+  let saveItems = $derived(visibleItems.filter((i) => i.group === "save"));
+  let primaryItems = $derived(visibleItems.filter((i) => i.group === "primary"));
+  let blockItems = $derived(visibleItems.filter((i) => i.group === "block"));
+  let insertItems = $derived(visibleItems.filter((i) => i.group === "insert"));
+
+  function fireAction(item: ToolbarItemDef) {
+    if (item.action) onAction(item.action as ToolbarAction);
+  }
+
+  // ── Generic focus-trap helpers, shared by the image and table dialogs ──────
+  function focusableElementsIn(container: HTMLElement | undefined): HTMLElement[] {
+    return Array.from(
+      container?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ) ?? []
+    );
+  }
+
+  function trapFocusIn(e: KeyboardEvent, container: HTMLElement | undefined) {
+    if (e.key !== "Tab") return;
+    const focusable = focusableElementsIn(container);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) return;
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   // ── Heading level picker ──────────────────────────────────────────────────────
   let headingOpen = $state(false);
+  /** The toolbar button that opened the heading popup — Escape restores focus here. */
+  let headingTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
+  /** The popup <div> itself — focused into on open so Escape is reachable immediately. */
+  let headingPopupEl = $state<HTMLDivElement | undefined>(undefined);
+
+  function openHeadingPopup(e: MouseEvent) {
+    headingTriggerEl = e.currentTarget as HTMLButtonElement;
+    openPopup(() => { headingOpen = !headingOpen; });
+    // M24 fix round 1: the popup <div> is a SIBLING of this trigger button,
+    // not an ancestor, so an Escape keydown whose target is still the
+    // trigger (focus left where it was) never bubbles to the popup's own
+    // onkeydown handler. Move focus into the popup on open — the same
+    // pattern the table/image dialogs already use — so Escape works right
+    // away instead of only after the user Tabs into the popup.
+    if (headingOpen) {
+      queueMicrotask(() => focusableElementsIn(headingPopupEl)[0]?.focus());
+    }
+  }
+
+  function closeHeadingPopup() {
+    headingOpen = false;
+    headingTriggerEl?.focus();
+  }
 
   function pickHeading(level: 1 | 2 | 3 | 4) {
     onAction("heading", { level });
     headingOpen = false;
   }
 
-  // ── Table column picker ──────────────────────────────────────────────────────
+  // ── Table column picker (M11: a fixed-position dialog, like the image
+  // dialog below, so it works regardless of which trigger opened it — the
+  // always-visible toolbar button OR the More menu item — and is never
+  // nested inside a container that can be `display: none` at the exact
+  // widths where the More menu exists). ──────────────────────────────────────
   let tableOpen = $state(false);
   let tableCols = $state(3);
+  let tableDialogEl = $state<HTMLDivElement | undefined>(undefined);
+  /** The toolbar/More-menu button that opened the table dialog — focus is restored on close. */
+  let tableDialogTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
+
+  function openTableDialog(e: MouseEvent) {
+    tableDialogTriggerEl = e.currentTarget as HTMLButtonElement;
+    tableOpen = true;
+    queueMicrotask(() => focusableElementsIn(tableDialogEl)[0]?.focus());
+  }
 
   function insertTable() {
     onAction("table", { cols: tableCols });
+    closeTableDialog();
+  }
+
+  function cancelTable() {
+    closeTableDialog();
+  }
+
+  function closeTableDialog() {
     tableOpen = false;
+    tableDialogTriggerEl?.focus();
+    tableDialogTriggerEl = undefined;
   }
 
   // ── Image insert dialog ──────────────────────────────────────────────────────
@@ -91,29 +184,6 @@
   let imageDialogEl = $state<HTMLDivElement | undefined>(undefined);
   /** The toolbar button that opened the image dialog — focus is restored on close. */
   let imageDialogTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
-
-  function imageDialogFocusableElements() {
-    return Array.from(
-      imageDialogEl?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    );
-  }
-
-  function imageTrapFocus(e: KeyboardEvent) {
-    if (e.key !== "Tab") return;
-    const focusable = imageDialogFocusableElements();
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  }
 
   async function pickImage() {
     if (!isDesktop()) return;
@@ -140,25 +210,13 @@
     imageBusy = true;
     let finalSrc = imageSrc;
     try {
-      // If the image is outside the project folder, copy it to assets/ first.
-      if (
-        projectDir &&
-        isDesktop() &&
-        !imageSrc.startsWith(projectDir.replace(/[\\/]+$/, ""))
-      ) {
-        const sep = projectDir.includes("\\") ? "\\" : "/";
-        const assetsDir = projectDir.replace(/[\\/]+$/, "") + sep + "assets";
-        const copied = await api.fs.copyFile(imageSrc, assetsDir);
-        // Build a relative path from the project root (assets/filename).
-        finalSrc = "assets/" + basenameOf(copied);
-      } else if (projectDir) {
-        // Image is inside the project: compute project-relative path.
-        const norm = (s: string) => s.replace(/\\/g, "/");
-        const projNorm = norm(projectDir).replace(/\/+$/, "");
-        const srcNorm = norm(imageSrc);
-        finalSrc = srcNorm.startsWith(projNorm + "/")
-          ? srcNorm.slice(projNorm.length + 1)
-          : basenameOf(srcNorm);
+      // All import policy (inside-project vs. copy-to-images/assets,
+      // separator-aware containment, name collisions) lives host-side in
+      // ONE route (UX review M10) — the toolbar just hands it the picked
+      // absolute path and gets back a project-relative `src`.
+      if (projectDir && isDesktop()) {
+        const result = await api.media.importImage(projectDir, imageSrc);
+        finalSrc = result.src;
       }
     } catch (e) {
       imageError =
@@ -199,11 +257,31 @@
     imageDialogTriggerEl = e.currentTarget as HTMLButtonElement;
     imageOpen = true;
     // Focus the first focusable element inside the dialog after it mounts.
-    queueMicrotask(() => imageDialogFocusableElements()[0]?.focus());
+    queueMicrotask(() => focusableElementsIn(imageDialogEl)[0]?.focus());
   }
 
   // ── "More" overflow menu (shown at narrow toolbar widths via @container) ────
   let moreOpen = $state(false);
+  /** The button that opened the More menu — Escape restores focus here. */
+  let moreTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
+  /** The popup <div> itself — focused into on open so Escape is reachable immediately. */
+  let morePopupEl = $state<HTMLDivElement | undefined>(undefined);
+
+  function openMorePopup(e: MouseEvent) {
+    moreTriggerEl = e.currentTarget as HTMLButtonElement;
+    openPopup(() => { moreOpen = !moreOpen; });
+    // M24 fix round 1: same rationale as openHeadingPopup above — move focus
+    // into the popup on open so Escape closes it immediately, not only after
+    // the user manually Tabs in.
+    if (moreOpen) {
+      queueMicrotask(() => focusableElementsIn(morePopupEl)[0]?.focus());
+    }
+  }
+
+  function closeMorePopup() {
+    moreOpen = false;
+    moreTriggerEl?.focus();
+  }
 
   // Close all open pickers when clicking outside.
   // Uses a "just opened" flag so the same click that opens a popup doesn't
@@ -223,10 +301,10 @@
     const target = e.target as HTMLElement | null;
     if (!target?.closest?.(".toolbar-popup, .tb-popup-wrap")) {
       headingOpen = false;
-      tableOpen = false;
       moreOpen = false;
     }
-    // Don't close imageOpen on outside click (it's a modal-style dialog).
+    // Don't close imageOpen/tableOpen on outside click — both are
+    // modal-style fixed dialogs with their own backdrop click-to-close.
   }
 </script>
 
@@ -234,201 +312,132 @@
 
 {#if isMarkdown}
 <div class="editor-toolbar" role="toolbar" aria-label="Markdown formatting toolbar">
-  <!-- Primary group: always-visible inline formatting -->
+  <!-- Primary group: Save (when wired) + always-visible inline formatting.
+       Both this group AND the More menu below render from `visibleItems`
+       (toolbar-actions.ts) so Save/Snippet can never be listed in one place
+       and silently dropped from the other (M23). -->
   <div class="tb-group primary-group">
-    {#if onSave}
+    {#each saveItems as item (item.id)}
       <button
         class="tb-btn save-btn"
         onclick={onSave}
-        title="Save changes now"
-        aria-label="Save changes now"
+        title={item.title}
+        aria-label={item.ariaLabel}
       >
-        <Icon name="save" size={14} />
+        <Icon name={item.icon as IconName} size={14} />
       </button>
       <span class="tb-sep save-sep" aria-hidden="true"></span>
-    {/if}
-    <button
-      class="tb-btn"
-      onclick={() => onAction("bold")}
-      title="Bold (Ctrl+B)"
-      aria-label="Bold"
-    >
-      <Icon name="bold" size={14} />
-    </button>
-    <button
-      class="tb-btn"
-      onclick={() => onAction("italic")}
-      title="Italic (Ctrl+I)"
-      aria-label="Italic"
-    >
-      <Icon name="italic" size={14} />
-    </button>
-    <button
-      class="tb-btn"
-      onclick={() => onAction("strikethrough")}
-      title="Strikethrough"
-      aria-label="Strikethrough"
-    >
-      <Icon name="strikethrough" size={14} />
-    </button>
-    <button
-      class="tb-btn"
-      onclick={() => onAction("code")}
-      title="Inline code"
-      aria-label="Inline code"
-    >
-      <Icon name="code" size={14} />
-    </button>
-    <button
-      class="tb-btn"
-      onclick={() => onAction("link")}
-      title="Link (Ctrl+K)"
-      aria-label="Insert link"
-    >
-      <Icon name="link-2" size={14} />
-    </button>
+    {/each}
+    {#each primaryItems as item (item.id)}
+      <button
+        class="tb-btn"
+        onclick={() => fireAction(item)}
+        title={item.title}
+        aria-label={item.ariaLabel}
+      >
+        <Icon name={item.icon as IconName} size={14} />
+      </button>
+    {/each}
   </div>
 
   <span class="tb-sep" aria-hidden="true"></span>
 
   <!-- Block formatting group -->
   <div class="tb-group block-group">
-    <button
-      class="tb-btn"
-      onclick={() => onAction("blockquote")}
-      title="Blockquote"
-      aria-label="Blockquote"
-    >
-      <Icon name="quote" size={14} />
-    </button>
-    <button
-      class="tb-btn"
-      onclick={() => onAction("ul")}
-      title="Bullet list"
-      aria-label="Unordered list"
-    >
-      <Icon name="list" size={14} />
-    </button>
-    <button
-      class="tb-btn"
-      onclick={() => onAction("ol")}
-      title="Numbered list"
-      aria-label="Ordered list"
-    >
-      <Icon name="list-ordered" size={14} />
-    </button>
-
-    <!-- Heading picker -->
-    <div class="tb-popup-wrap">
-      <button
-        class="tb-btn tb-btn-split"
-        onclick={() => openPopup(() => { headingOpen = !headingOpen; })}
-        aria-haspopup="listbox"
-        aria-expanded={headingOpen}
-        title="Insert heading"
-        aria-label="Insert heading"
-      >
-        <Icon name="heading" size={14} />
-        <Icon name="chevron-down" size={10} />
-      </button>
-      {#if headingOpen}
-        <div class="toolbar-popup heading-popup" role="listbox" aria-label="Heading level">
-          {#each [1, 2, 3, 4] as level (level)}
-            <button
-              class="popup-item"
-              role="option"
-              aria-selected="false"
-              onclick={() => pickHeading(level as 1 | 2 | 3 | 4)}
+    {#each blockItems as item (item.id)}
+      {#if item.kind === "heading"}
+        <!-- Heading picker: a plain disclosure, not role=listbox — this
+             widget implements neither arrow-key roving focus nor
+             aria-selected, so the listbox contract would be a lie (M24;
+             BookSwitcher.svelte:40-43 documents the same call). Escape closes
+             and returns focus to the trigger. -->
+        <div class="tb-popup-wrap">
+          <button
+            class="tb-btn tb-btn-split"
+            onclick={openHeadingPopup}
+            aria-expanded={headingOpen}
+            title={item.title}
+            aria-label={item.ariaLabel}
+          >
+            <Icon name={item.icon as IconName} size={14} />
+            <Icon name="chevron-down" size={10} />
+          </button>
+          {#if headingOpen}
+            <div
+              bind:this={headingPopupEl}
+              class="toolbar-popup heading-popup"
+              aria-label="Heading level"
+              onkeydown={(e) => { if (e.key === "Escape") closeHeadingPopup(); }}
             >
-              H{level}
-            </button>
-          {/each}
+              {#each [1, 2, 3, 4] as level (level)}
+                <button class="popup-item" onclick={() => pickHeading(level as 1 | 2 | 3 | 4)}>
+                  H{level}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
+      {:else}
+        <button
+          class="tb-btn"
+          onclick={() => fireAction(item)}
+          title={item.title}
+          aria-label={item.ariaLabel}
+        >
+          <Icon name={item.icon as IconName} size={14} />
+        </button>
       {/if}
-    </div>
+    {/each}
   </div>
 
   <span class="tb-sep" aria-hidden="true"></span>
 
-  <!-- Insert group: HR, page break, table, image -->
+  <!-- Insert group: HR, page break, table, image, snippet -->
   <div class="tb-group insert-group">
-    <button
-      class="tb-btn"
-      onclick={() => onAction("hr")}
-      title="Horizontal rule"
-      aria-label="Insert horizontal rule"
-    >
-      <Icon name="minus" size={14} />
-    </button>
-    <button
-      class="tb-btn"
-      onclick={() => onAction("page-break")}
-      title="Page break (@page-break)"
-      aria-label="Insert page break"
-    >
-      <Icon name="file-separator" size={14} />
-    </button>
-
-    <!-- Table column picker -->
-    <div class="tb-popup-wrap">
-      <button
-        class="tb-btn tb-btn-split"
-        onclick={() => openPopup(() => { tableOpen = !tableOpen; })}
-        aria-haspopup="dialog"
-        aria-expanded={tableOpen}
-        title="Insert table"
-        aria-label="Insert table"
-      >
-        <Icon name="table" size={14} />
-        <Icon name="chevron-down" size={10} />
-      </button>
-      {#if tableOpen}
-        <div class="toolbar-popup table-popup">
-          <label class="popup-label">
-            Columns
-            <input
-              type="number"
-              min="1"
-              max="10"
-              bind:value={tableCols}
-              class="popup-input"
-              aria-label="Number of columns"
-            />
-          </label>
-          <button class="popup-action" onclick={insertTable}>Insert table</button>
-        </div>
+    {#each insertItems as item (item.id)}
+      {#if item.kind === "table"}
+        <!-- Opens the fixed-position table dialog below — NOT nested inside
+             this group, so it keeps working from the More menu even when
+             `.insert-group` is `display: none` at narrow widths (M11). -->
+        <button
+          class="tb-btn"
+          onclick={openTableDialog}
+          title={item.title}
+          aria-label={item.ariaLabel}
+        >
+          <Icon name={item.icon as IconName} size={14} />
+        </button>
+      {:else if item.kind === "image"}
+        <button
+          class="tb-btn"
+          onclick={openImageDialog}
+          title={item.title}
+          aria-label={item.ariaLabel}
+        >
+          <Icon name={item.icon as IconName} size={14} />
+        </button>
+      {:else}
+        <button
+          class="tb-btn"
+          onclick={() => fireAction(item)}
+          title={item.title}
+          aria-label={item.ariaLabel}
+        >
+          <Icon name={item.icon as IconName} size={14} />
+        </button>
       {/if}
-    </div>
-
-    <!-- Image insert (desktop only) -->
-    {#if isDesktop()}
-      <button
-        class="tb-btn"
-        onclick={openImageDialog}
-        title="Insert image"
-        aria-label="Insert image"
-      >
-        <Icon name="image" size={14} />
-      </button>
-
-      <!-- Snippet picker (desktop only): insert a reusable markdown fragment (#29). -->
-      <button
-        class="tb-btn"
-        onclick={() => onAction("snippet")}
-        title="Insert snippet (Ctrl/Cmd+Shift+S)"
-        aria-label="Insert snippet"
-      >
-        <Icon name="puzzle" size={14} />
-      </button>
-    {/if}
+    {/each}
   </div>
 
-  <!-- "More" overflow button — CSS @container shows this at narrow widths only -->
+  <!-- "More" overflow button — CSS @container shows this at narrow widths only.
+       Renders EVERY item in `visibleItems` (unfiltered by group) so nothing
+       reachable in the full-width toolbar goes missing here (M23). Plain
+       disclosure, not role=menu — see the heading picker comment above; same
+       rationale (M24). -->
   <div class="tb-more-wrap">
     <button
       class="tb-btn tb-more-btn"
-      onclick={() => openPopup(() => { moreOpen = !moreOpen; })}
-      aria-haspopup="menu"
+      onclick={openMorePopup}
       aria-expanded={moreOpen}
       title="More formatting options"
       aria-label="More formatting options"
@@ -436,29 +445,72 @@
       <Icon name="more-horizontal" size={14} />
     </button>
     {#if moreOpen}
-      <div class="toolbar-popup more-popup" role="menu">
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("bold"); moreOpen = false; }}>Bold</button>
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("italic"); moreOpen = false; }}>Italic</button>
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("strikethrough"); moreOpen = false; }}>Strikethrough</button>
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("code"); moreOpen = false; }}>Inline code</button>
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("link"); moreOpen = false; }}>Link</button>
-        <hr class="popup-hr" />
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("blockquote"); moreOpen = false; }}>Blockquote</button>
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("ul"); moreOpen = false; }}>Bullet list</button>
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("ol"); moreOpen = false; }}>Numbered list</button>
-        <button class="popup-item" role="menuitem" onclick={() => { pickHeading(1); moreOpen = false; }}>Heading 1</button>
-        <button class="popup-item" role="menuitem" onclick={() => { pickHeading(2); moreOpen = false; }}>Heading 2</button>
-        <button class="popup-item" role="menuitem" onclick={() => { pickHeading(3); moreOpen = false; }}>Heading 3</button>
-        <button class="popup-item" role="menuitem" onclick={() => { pickHeading(4); moreOpen = false; }}>Heading 4</button>
-        <hr class="popup-hr" />
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("hr"); moreOpen = false; }}>Horizontal rule</button>
-        <button class="popup-item" role="menuitem" onclick={() => { onAction("page-break"); moreOpen = false; }}>Page break</button>
-        <button class="popup-item" role="menuitem" onclick={() => { tableOpen = true; moreOpen = false; }}>Insert table…</button>
-        {#if isDesktop()}
-          <button class="popup-item" role="menuitem" onclick={(e) => { openImageDialog(e); moreOpen = false; }}>Insert image…</button>
-        {/if}
+      <div
+        bind:this={morePopupEl}
+        class="toolbar-popup more-popup"
+        aria-label="More formatting options"
+        onkeydown={(e) => { if (e.key === "Escape") closeMorePopup(); }}
+      >
+        {#each visibleItems as item, i (item.id)}
+          {#if i > 0 && visibleItems[i - 1].group !== item.group}
+            <hr class="popup-hr" />
+          {/if}
+          {#if item.kind === "save"}
+            <button class="popup-item" onclick={() => { onSave?.(); moreOpen = false; }}>{item.label}</button>
+          {:else if item.kind === "heading"}
+            {#each [1, 2, 3, 4] as level (level)}
+              <button class="popup-item" onclick={() => { pickHeading(level as 1 | 2 | 3 | 4); moreOpen = false; }}>
+                Heading {level}
+              </button>
+            {/each}
+          {:else if item.kind === "table"}
+            <button class="popup-item" onclick={(e) => { openTableDialog(e); moreOpen = false; }}>{item.label}</button>
+          {:else if item.kind === "image"}
+            <button class="popup-item" onclick={(e) => { openImageDialog(e); moreOpen = false; }}>{item.label}</button>
+          {:else}
+            <button class="popup-item" onclick={() => { fireAction(item); moreOpen = false; }}>{item.label}</button>
+          {/if}
+        {/each}
       </div>
     {/if}
+  </div>
+</div>
+{/if}
+
+<!-- Table insert dialog (fixed-position overlay, rendered outside the
+     toolbar — same pattern as the image dialog below, and for the same
+     reason: M11 found this popup dead at every width where the More menu
+     exists because it used to live inside `.insert-group`, which
+     `display: none`s at exactly those widths.) -->
+{#if tableOpen}
+<div class="image-dialog-backdrop" role="none" onclick={cancelTable}></div>
+<div
+  bind:this={tableDialogEl}
+  class="image-dialog table-dialog"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Insert table"
+  tabindex="-1"
+  onkeydown={(e) => {
+    if (e.key === "Escape") { cancelTable(); return; }
+    trapFocusIn(e, tableDialogEl);
+  }}
+>
+  <h3 class="image-dialog-title">Insert table</h3>
+  <label class="popup-label">
+    Columns
+    <input
+      type="number"
+      min="1"
+      max="10"
+      bind:value={tableCols}
+      class="popup-input"
+      aria-label="Number of columns"
+    />
+  </label>
+  <div class="image-actions">
+    <button class="image-cancel" onclick={cancelTable}>Cancel</button>
+    <button class="image-insert primary" onclick={insertTable}>Insert table</button>
   </div>
 </div>
 {/if}
@@ -475,7 +527,7 @@
   tabindex="-1"
   onkeydown={(e) => {
     if (e.key === "Escape") { cancelImage(); return; }
-    imageTrapFocus(e);
+    trapFocusIn(e, imageDialogEl);
   }}
 >
   <h3 class="image-dialog-title">Insert image</h3>
@@ -693,11 +745,6 @@
     text-align: center;
   }
 
-  .table-popup {
-    min-width: 160px;
-    padding: 8px;
-    gap: 6px;
-  }
   .popup-label {
     display: flex;
     align-items: center;
@@ -716,20 +763,12 @@
     font-size: 12px;
     text-align: right;
   }
-  .popup-action {
-    display: block;
-    width: 100%;
-    padding: 5px 8px;
-    background: var(--app-accent, #4ea1ff);
-    color: var(--app-accent-text, #ffffff);
-    border: none;
-    border-radius: 3px;
-    font-size: 12px;
-    cursor: pointer;
-    text-align: center;
-  }
-  .popup-action:hover {
-    opacity: 0.9;
+
+  /* Table insert dialog reuses .image-dialog's fixed/modal chrome, just
+     narrower — its only content is a column-count field. Compound selector
+     so it wins over .image-dialog's width regardless of source order. */
+  .image-dialog.table-dialog {
+    width: clamp(220px, 60vw, 300px);
   }
 
   /* ── More overflow button ─────────────────────────────────────────────────── */

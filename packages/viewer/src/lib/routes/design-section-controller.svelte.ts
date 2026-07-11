@@ -89,8 +89,13 @@ export class DesignSectionController {
   get colorTokens(): StyleToken[] {
     return this.tokens.filter((t) => t.kind === "color");
   }
+  // Font tokens are derived locally by DesignSection.svelte from the full
+  // `tokens` prop (see its header comment) rather than exposed as a separate
+  // controller getter — one less prop to keep wired between here and there.
+  // "length" (has a unit) and "number" (unitless, e.g. `--leading: 1.55`)
+  // share one numeric-input control in the panel, so one bucket serves both.
   get sizeTokens(): StyleToken[] {
-    return this.tokens.filter((t) => t.kind === "length");
+    return this.tokens.filter((t) => t.kind === "length" || t.kind === "number");
   }
   get otherTokens(): StyleToken[] {
     return this.tokens.filter((t) => t.kind === "text");

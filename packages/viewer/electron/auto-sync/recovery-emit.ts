@@ -27,7 +27,8 @@
  * Node/lib-side ONLY — never imported by the renderer.
  */
 
-import type { ConflictFile, RecoveryResult } from "@dimm-city/print-md";
+import type { RecoveryResult } from "@dimm-city/print-md";
+import { isConflictFileBinary } from "../recovery-bridge";
 import type { SyncStatusPayload } from "./orchestrator";
 
 /** The follow-up bucket a caller acts on. Mirrors the branches both call sites
@@ -115,7 +116,20 @@ export function mapRecoveryResultToEmit(
           kind: "conflict",
           status: {
             state: "conflict",
-            files: result.files as ConflictFile[],
+            // L12: attach the host-authoritative isBinary per file (single
+            // source of truth — recovery-bridge.ts's isConflictFileBinary).
+            // M13: forward the conflict tip OIDs when this RecoveryResult
+            // carries them. The binary-conflict recovery producer
+            // (recover-binary-conflict.ts) populates localId/remoteId
+            // alongside files, so this branch CAN report them — only the
+            // text-merge conflict builder (outcome-mapping.ts's `conflict`
+            // case) omits them, in which case the renderer falls back to
+            // fetching the ids via syncChanges (see the
+            // conflictPending/conflictFetchFailed states in
+            // sync-controller.svelte.ts) instead of a permanently dead button.
+            files: result.files.map((f) => ({ ...f, isBinary: isConflictFileBinary(f.path) })),
+            ...(result.localId ? { localId: result.localId } : {}),
+            ...(result.remoteId ? { remoteId: result.remoteId } : {}),
             projectDir,
             lastSyncAt,
             logFile,

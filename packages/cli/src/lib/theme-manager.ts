@@ -284,6 +284,18 @@ async function setActiveThemeStyle(projectDir: string, id: string): Promise<void
  * (built-in themes are copied out of the embedded assets; project themes are
  * already present) and wire the manifest so its `theme.css` is the active
  * stylesheet. Returns the applied {@link ThemeInfo}.
+ *
+ * No-data-loss mandate (UX review M6): a project theme's `theme.css` is the
+ * exact file the Design panel writes token edits into, so re-copying a
+ * built-in over an EXISTING `themes/<id>/` would silently discard every
+ * customization the author made after the first apply. Applying a built-in
+ * therefore never overwrites an existing project theme folder — if one is
+ * already there (customized or not), the built-in is copied into a fresh id
+ * (via the same {@link uniqueThemeId} helper import/folder-import uses) and
+ * THAT becomes active, leaving the original folder untouched. In the normal UI flow the
+ * Appearance grid hides a built-in card once its project copy exists (so this
+ * path isn't reachable by clicking Apply twice); this guard is the
+ * defense-in-depth backstop for any other caller of this function.
  */
 export async function applyTheme(
   projectDir: string,
@@ -293,12 +305,16 @@ export async function applyTheme(
 
   if (target.kind === "builtin") {
     const resolved = await resolveBuiltInTheme(target.id);
-    const destDir = path.join(projectDir, THEMES_DIR, target.id);
+    let destId = target.id;
+    if (existsSync(path.join(projectDir, THEMES_DIR, destId, "theme.css"))) {
+      destId = await uniqueThemeId(projectDir, target.id);
+    }
+    const destDir = path.join(projectDir, THEMES_DIR, destId);
     await mkdir(destDir, { recursive: true });
     // Copy the whole theme folder (css + json + any bundled fonts/assets).
     await cp(resolved.dir, destDir, { recursive: true });
     // The copied theme now lives in the project — surface it as a project theme.
-    info = themeInfo(target.id, "project", await readThemeMeta(path.join(destDir, "theme.json")));
+    info = themeInfo(destId, "project", await readThemeMeta(path.join(destDir, "theme.json")));
   } else {
     const dir = themeDirFor(projectDir, target.id);
     if (!existsSync(path.join(dir, "theme.css"))) {
