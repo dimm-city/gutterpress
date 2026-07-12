@@ -223,6 +223,28 @@ export const api = {
     /** List top-level .md and .css files in a project directory. */
     listProjectFiles: (projectDir: string) =>
       post<ProjectFileEntry>('/api/fs/list-project-files', { projectDir }),
+
+    // ── Tree CRUD (UX review M9) ─────────────────────────────────────────
+    // `dir` + `name` (not a full path) so path-joining stays host-side —
+    // see create-file/+server.ts's header comment.
+    /** Create a new file under `dir`. Fails (409) if a file already exists there. */
+    createFile: (dir: string, name: string, content = '') =>
+      post<{ path: string; mtimeMs: number }>('/api/fs/create-file', { dir, name, content }),
+    /** Create a new folder under `dir`. Fails (409) if something already exists there. */
+    createFolder: (dir: string, name: string) =>
+      post<{ path: string }>('/api/fs/create-folder', { dir, name }),
+    /** Rename a file/folder in place (same parent dir, new name). Fails (409) on a name collision. */
+    renamePath: (path: string, newName: string) =>
+      post<{ path: string }>('/api/fs/rename', { path, newName }),
+    /**
+     * Delete a file or folder (recursive). When the project has version
+     * history the host snapshots the working tree first (best-effort no-op
+     * when there's nothing new to save) so the deleted content stays
+     * recoverable through Version History; the call rejects WITHOUT
+     * deleting if that safety snapshot fails.
+     */
+    deletePath: (path: string, projectDir: string) =>
+      post<{ ok: true }>('/api/fs/delete', { path, projectDir }),
   },
 
   app: {

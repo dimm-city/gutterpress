@@ -13,7 +13,7 @@
    *
    * This is the COMPOSITION ROOT: it instantiates one `*SectionController`
    * per domain (UX review M14 — the controller-per-section extraction the
-   * Design section started) and renders six presentational children (one per
+   * Design section started) and renders four presentational sections (one per
    * domain) under `./config/`, passing each ITS controller as a single prop.
    * The children carry no state, no `api` value import — all `api.*` calls
    * live in the controllers under `$lib/routes/*-section-controller.svelte.ts`.
@@ -22,24 +22,29 @@
    * `$lib/styles/config-section-shared.css`, `@import`ed per section (see
    * that file's header for why).
    *
-   * Six sections, each owning its own controller + `api.*` calls (no
-   * `$effect`: data loads on mount + after mutations, mirroring the
-   * History-tab pattern):
-   *   1. Details    — title, authors, output filename, source files (manifest
-   *                    fields with NO prior writer — `api.manifest.{read,setFields}`).
-   *   2. Appearance — theme grid: apply / remove / import (folder + URL).
-   *                    `api.theme.*`.
-   *   3. Styles     — active-stylesheet toggle + open-in-editor.
-   *                    `api.style.setActive` + `api.project.listStyles`.
-   *   4. Design     — `:root` CSS custom properties (colors + sizes) parsed +
-   *                    written client-side (regex + canvas hex-normalise),
-   *                    debounced per token. Ported verbatim from the retired
-   *                    DesignPanel; this was the first section to get the
-   *                    controller extraction.
-   *   5. Plugins    — configured list + toggle + validate, plus the
-   *                    recommended built-in features and an advanced
-   *                    add-by-name/local path. `api.plugin.*`.
-   *   6. Publish    — provider cards, connect/settings/run. `api.publish.*`.
+   * Four sections, still backed by SIX controllers (no `$effect`: data loads
+   * on mount + after mutations, mirroring the History-tab pattern):
+   *   1. Details       — title, authors, output filename, source files
+   *                       (manifest fields with NO prior writer —
+   *                       `api.manifest.{read,setFields}`).
+   *   2. Look & style  — UX review M35: Appearance/Styles/Design used to be
+   *                       three separate developer-shaped sections named after
+   *                       API namespaces rather than "how my book looks."
+   *                       They're merged into ONE writer-shaped section here —
+   *                       theme grid (`AppearanceSection`, `api.theme.*`) →
+   *                       design tokens (`DesignSection`, client-side `:root`
+   *                       custom-property parse/write) → the raw stylesheet
+   *                       checkbox list (`StylesSection`, `api.style.setActive`
+   *                       + `api.project.listStyles`) demoted behind an
+   *                       "Advanced" disclosure, since a writer almost never
+   *                       needs to hand-toggle individual stylesheets. Three
+   *                       controllers still back it 1:1 (kept from W5 — this
+   *                       merge is composition/IA, not new state machinery);
+   *                       only the presentation collapsed to one heading.
+   *   3. Plugins       — configured list + toggle + validate, plus the
+   *                       recommended built-in features and an advanced
+   *                       add-by-name/local path. `api.plugin.*`.
+   *   4. Publish       — provider cards, connect/settings/run. `api.publish.*`.
    *
    * Cross-section refresh: applying/removing a theme changes the active
    * stylesheet, so Appearance's controller is given an `afterThemeChange`
@@ -219,9 +224,20 @@
   {:else}
     <div class="sections" class:embedded={sidebarEmbedded}>
       <DetailsSection controller={details} />
-      <AppearanceSection controller={appearance} />
-      <StylesSection controller={styles} />
-      <DesignSection controller={design} />
+      <!-- UX review M35: theme grid → design tokens → stylesheet list (behind
+           Advanced), merged under one writer-shaped "Look & style" heading —
+           see the header comment above for the full rationale. -->
+      <section class="block look-style">
+        <h3>Look &amp; style</h3>
+        <AppearanceSection controller={appearance} />
+        <DesignSection controller={design} />
+        <details class="advanced">
+          <summary class="advanced-summary">Advanced: stylesheets</summary>
+          <div class="advanced-body">
+            <StylesSection controller={styles} />
+          </div>
+        </details>
+      </section>
       <PluginsSection controller={plugins} />
       <PublishSection controller={publish} />
     </div>
@@ -258,4 +274,36 @@
   .sections.embedded { padding-top: 12px; }
 
   .empty { padding: 24px; text-align: center; color: var(--app-text-faint); font-size: 13px; }
+
+  /* UX review M35 — the merged "Look & style" section. `.block`/`h3` come
+     from the shared import above; only the layout gap between its three
+     panes (theme grid / design tokens / Advanced disclosure) and the
+     disclosure chrome are owned here, since `<details>`/`<summary>` are
+     literal elements in THIS component's own template (not a child's), so
+     plain scoped CSS applies without needing `:global(...)`. The gap override
+     is qualified with the `.config-panel` ancestor (also this component's own
+     root element) so its specificity safely beats the shared `:global(.config-panel
+     .block)` gap rule regardless of CSS source-file ordering. */
+  .config-panel .look-style { gap: 14px; }
+  .look-style :global(.look-subsection) { display: flex; flex-direction: column; gap: 8px; }
+  .advanced {
+    border-top: 1px solid var(--app-border-subtle);
+    padding-top: 8px;
+  }
+  .advanced-summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--app-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .advanced-summary::-webkit-details-marker { display: none; }
+  .advanced-summary::before { content: "▸"; font-size: 10px; }
+  .advanced[open] > .advanced-summary::before { content: "▾"; }
+  .advanced-body { padding-top: 10px; }
 </style>

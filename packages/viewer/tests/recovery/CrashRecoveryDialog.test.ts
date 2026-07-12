@@ -128,9 +128,11 @@ describe("CrashRecoveryDialog — Compare versions preview (M12 fix 2)", () => {
     expect(source).toContain("aria-expanded");
   });
 
-  test("renders 'Recovered (unsaved)' and 'Currently on disk' pane labels", () => {
+  test("renders 'Your unsaved changes' and 'Currently on disk' pane labels", () => {
+    // M38: was "Recovered (unsaved)" — renamed off the "recovery" vocabulary
+    // (see the vocabulary-separation describe block below).
     const source = readSource();
-    expect(source).toContain("Recovered (unsaved)");
+    expect(source).toContain("Your unsaved changes");
     expect(source).toContain("Currently on disk");
   });
 
@@ -258,6 +260,50 @@ describe("CrashRecoveryDialog — Compare versions preview (M12 fix 2)", () => {
       threw = true;
     }
     expect(threw).toBe(false);
+  });
+});
+
+// ── M38: crash-draft vs sync-repair vocabulary separation ────────────────────
+
+/**
+ * Extracts the rendered markup only (everything after the closing
+ * `</script>` and before the opening `<style>`), so the vocabulary check below
+ * covers what a writer actually SEES/hears (text, aria-label/title attributes)
+ * without tripping on internal identifiers (`RecoveryItem`, `recoveryPath`,
+ * doc-comment prose) that are explicitly allowed to keep the word "recovery"
+ * per the naming-map comment in this component's header and in
+ * electron/recovery.ts / electron/recovery-bridge.ts.
+ */
+function renderedMarkup(): string {
+  const source = readSource();
+  const scriptEnd = source.indexOf("</script>");
+  const styleStart = source.indexOf("<style>", scriptEnd);
+  expect(scriptEnd).toBeGreaterThan(-1);
+  expect(styleStart).toBeGreaterThan(scriptEnd);
+  return source.slice(scriptEnd + "</script>".length, styleStart);
+}
+
+describe("CrashRecoveryDialog — M38 crash-draft vocabulary (not 'recovery')", () => {
+  test("the writer-facing title uses 'unsaved changes', not 'recovered'", () => {
+    const markup = renderedMarkup();
+    expect(markup).toContain("Unsaved changes found");
+  });
+
+  test("no writer-facing 'recovery' jargon anywhere in the rendered markup", () => {
+    // The crash-draft dialog and the sync-repair dialogs (RecoveryConfirmDialog/
+    // RecoveryGuidanceDialog/RecoveryOverlay) share the word "recovery" only in
+    // internal identifiers/comments (see this file's header naming-map note).
+    // Nothing a writer can see or hear (text nodes, aria-label, title) may use
+    // that word — "unsaved changes" is the only vocabulary this surface uses.
+    const markup = renderedMarkup();
+    const hits = markup.match(/recovery/gi) ?? [];
+    expect(hits).toEqual([]);
+  });
+
+  test("no writer-facing 'snapshot' jargon either (collides with version-history 'snapshot')", () => {
+    const markup = renderedMarkup();
+    const hits = markup.match(/snapshot/gi) ?? [];
+    expect(hits).toEqual([]);
   });
 });
 

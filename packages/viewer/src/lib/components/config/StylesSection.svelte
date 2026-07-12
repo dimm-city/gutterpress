@@ -1,9 +1,15 @@
 <script lang="ts">
   /**
-   * Styles section of ProjectConfigPanel — the active-stylesheet toggle +
-   * open-in-editor list. All state and `api.style.*` / `api.project.listStyles`
-   * calls live in `StylesSectionController` (passed as the single `controller`
-   * prop, per the design-controller pattern — see M14); this child renders the
+   * Stylesheet-list sub-section of the merged "Look & style" section (UX
+   * review M35 — see AppearanceSection's header comment for the merge
+   * rationale). This is the THIRD pane ProjectConfigPanel composes under one
+   * "Look & style" heading — the raw monospace-path checkbox list a writer
+   * almost never needs, so the parent now nests it behind an "Advanced"
+   * `<details>` disclosure instead of giving it an always-visible section of
+   * its own. No section wrapper or `<h3>` of its own anymore. All state and
+   * `api.style.*` / `api.project.listStyles` calls live in
+   * `StylesSectionController` (passed as the single `controller` prop, per
+   * the design-controller pattern — see M14); this child renders the
    * controller's rune fields and calls its intent methods.
    *
    * M35 guard: unchecking every stylesheet yields an unstyled preview with no
@@ -22,8 +28,8 @@
   let activeCount = $derived(controller.styles.filter((s) => s.active).length);
 </script>
 
-<section class="block">
-  <h3>Styles</h3>
+<div class="look-subsection styles-subsection">
+  <p class="hint">Turn individual stylesheets on or off. Most writers never need this — a theme manages its own stylesheets automatically.</p>
   {#if controller.stylesError}
     <p class="error" role="alert">{controller.stylesError}</p>
   {/if}
@@ -53,7 +59,7 @@
       {/each}
     </ul>
   {/if}
-</section>
+</div>
 
 <style>
   @import "$lib/styles/config-section-shared.css";

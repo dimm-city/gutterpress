@@ -44,6 +44,9 @@
     toggleBtn,
     onJumpToOutline,
     onSelectEditorFile,
+    onBeforeRenameOpenFile,
+    onFileRenamed,
+    onFileDeleted,
     onOpenProjectConfig,
     onInsertImage,
     onProjectChosen,
@@ -68,6 +71,12 @@
     toggleBtn?: HTMLButtonElement | undefined;
     onJumpToOutline?: (entry: OutlineEntry) => void;
     onSelectEditorFile?: (path: string) => void;
+    /** FileTree row actions (UX review M9): forwarded straight to FileTree's
+     *  `onBeforeRename`/`onFileRenamed`/`onFileDeleted` — see +page.svelte's
+     *  handlers for why the open-file buffer needs these three hooks. */
+    onBeforeRenameOpenFile?: (path: string) => void | Promise<void>;
+    onFileRenamed?: (oldPath: string, newPath: string) => void;
+    onFileDeleted?: (path: string) => void;
     /** Open the unified Project Configuration view (#PCV) that subsumes the
      *  retired Themes/Design/Plugins/Edit-CSS modal managers. */
     onOpenProjectConfig?: () => void;
@@ -291,6 +300,9 @@
             {projectDir}
             selectedPath={editorFilePath}
             onSelectFile={onSelectEditorFile}
+            onBeforeRename={onBeforeRenameOpenFile}
+            {onFileRenamed}
+            {onFileDeleted}
           />
         {/key}
       {/if}

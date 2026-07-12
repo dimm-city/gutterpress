@@ -1,13 +1,18 @@
 <script lang="ts">
   /**
-   * Appearance section of ProjectConfigPanel — the theme grid (apply / remove /
-   * import from folder + URL) and per-card thumbnail preview. All state,
-   * `api.theme.*` calls, and thumbnail loading live in
+   * Theme sub-section of the merged "Look & style" section (UX review M35 —
+   * Appearance/Styles/Design used to be three developer-shaped sections;
+   * this is now the first of three panes ProjectConfigPanel composes under
+   * one "Look & style" heading: theme grid → design tokens → stylesheet list
+   * behind Advanced). Renders the theme grid (apply / remove / import from
+   * folder + URL) and per-card thumbnail preview — no section wrapper or
+   * `<h3>` of its own anymore; the parent owns the outer `.block`/heading.
+   * All state, `api.theme.*` calls, and thumbnail loading live in
    * `AppearanceSectionController` (passed as the single `controller` prop, per
    * the design-controller pattern — see M14); this child renders the
    * controller's rune fields and calls its intent methods. Shared primitives
-   * come from `config-section-shared.css`; the Appearance-only theme-grid/
-   * theme-card/thumbnail layout is scoped here.
+   * come from `config-section-shared.css`; the theme-grid/theme-card/
+   * thumbnail layout is scoped here.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ThemeInfo } from "$lib/platform/dtos";
@@ -34,8 +39,8 @@
   let visibleBuiltIns = $derived(visibleBuiltInThemes(controller.builtIns, controller.projectThemes));
 </script>
 
-<section class="block">
-  <h3>Appearance</h3>
+<div class="look-subsection theme-subsection">
+  <h4 class="subhead">Theme</h4>
   {#if controller.themeError}
     <p class="error" role="alert">{controller.themeError}</p>
   {/if}
@@ -63,7 +68,7 @@
     />
     <button class="ghost small" onclick={controller.importThemeUrl} disabled={controller.themeBusyId !== null}>Import</button>
   </div>
-</section>
+</div>
 
 {#snippet themeCard(t: ThemeInfo)}
   <li class="theme-card" class:active={isActiveTheme(t)}>

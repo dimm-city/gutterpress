@@ -6,6 +6,16 @@
    * the next debounce) or Discard (delete the sidecar only — never the real
    * file). One dialog covers all pending entries; the author resolves each.
    *
+   * UX review M38: this dialog is the writer-facing surface for the CRASH-DRAFT
+   * subsystem — a different concept from the sync-repair "recovery" flows
+   * (RecoveryConfirmDialog/RecoveryGuidanceDialog/RecoveryOverlay). The two
+   * subsystems share the word "recovery" internally (this file's name,
+   * `electron/recovery.ts`, the `RecoveryItem`/`recoveryPath` identifiers
+   * below) but writer-facing copy in THIS dialog must stay inside the
+   * "unsaved changes" vocabulary and never say "recovery" — see the naming-map
+   * comments at `electron/recovery.ts` / `electron/recovery-bridge.ts` for the
+   * full two-domain split.
+   *
    * M12 fix (dialog-system migration pilot): adopts the shared `dialogBehavior`
    * action (Escape → "Decide later", ARIA contract owned by the action on the
    * dialog element itself, focus trap + initial focus + focus restore), adds a
@@ -125,11 +135,11 @@
   >
     <header class="cr-head">
       <span class="cr-icon"><Icon name="file-text" /></span>
-      <h2 id="cr-title">Unsaved changes recovered</h2>
+      <h2 id="cr-title">Unsaved changes found</h2>
     </header>
     <p class="cr-lede">
       We found unsaved changes from your last session. Restore them into the
-      editor, or discard the recovery snapshot.
+      editor, or discard them.
     </p>
     <ul class="cr-list">
       {#each items as item (item.filePath)}
@@ -181,8 +191,8 @@
                   <p class="cr-preview-unavailable">No preview available for this file.</p>
                 {:else}
                   <div class="cr-pane-row">
-                    <div class="cr-preview-pane" aria-label="Recovered version">
-                      <div class="cr-pane-label">Recovered (unsaved)</div>
+                    <div class="cr-preview-pane" aria-label="Your unsaved version">
+                      <div class="cr-pane-label">Your unsaved changes</div>
                       <pre class="cr-pane-content">{preview.recovered}</pre>
                     </div>
                     <div class="cr-preview-pane" aria-label="Version on disk">

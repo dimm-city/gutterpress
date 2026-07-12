@@ -46,10 +46,17 @@
     </header>
 
     <div class="dialog-body">
-      <!-- Appearance ------------------------------------------------------- -->
+      <!-- App appearance (light/dark chrome) --------------------------------
+           UX review M38: named "Appearance" here, but the config panel also
+           used to have its OWN "Appearance" section for the print theme —
+           two different concepts, same word. That panel section is now
+           merged into "Look & style" (M35), so this is the only surviving
+           "Appearance" in the app; the heading is qualified as "App
+           appearance" anyway so the two can never collide again even if a
+           future panel section reintroduces the word. -->
       <section class="group">
         <div class="group-head">
-          <h3>Appearance</h3>
+          <h3>App appearance</h3>
           <button class="reset" onclick={() => settings.resetSection("appearance")} title="Reset appearance to defaults">Reset</button>
         </div>
         <div class="row">
@@ -169,10 +176,14 @@
             onchange={(e) => settings.set({ editor: { autoSaveDelay: Math.round(Number((e.currentTarget as HTMLInputElement).value) * 1000) } })}
           />
         </div>
+        <!-- UX review M38: writer-facing vocabulary caps at "unsaved changes"
+             (this is the crash-draft subsystem, not sync repair) — the label/
+             hint below deliberately avoid the word "recovery"; the setting
+             key (`editor.crashRecovery`) is internal/persisted and unchanged. -->
         <div class="row row-toggle">
           <div class="row-label">
-            <label for="set-crash-recovery">Crash recovery</label>
-            <span class="row-hint">Restore your work if the app closes unexpectedly</span>
+            <label for="set-crash-recovery">Restore unsaved changes</label>
+            <span class="row-hint">If the app closes unexpectedly, offer to restore your unsaved changes next time you open the project</span>
           </div>
           <input
             id="set-crash-recovery"

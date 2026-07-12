@@ -1,14 +1,19 @@
 <script lang="ts">
   /**
-   * Design section of ProjectConfigPanel — the guided `:root` custom-property
-   * editor (fonts + colors + sizes/numbers + other). All token state, the
-   * debounced read-modify-write token machinery, and `api.fs.*` calls live in
-   * `DesignSectionController` (passed as the single `controller` prop — this
-   * was the first section to get the controller extraction; see M14 for the
-   * other five). `toHex` is a pure browser-only helper (§8-clean). The Fonts
-   * list is derived locally from the controller's full `tokens` field rather
-   * than a separate `fontTokens` getter — one less thing to keep wired, and
-   * it can never silently go stale.
+   * Design-tokens sub-section of the merged "Look & style" section (UX review
+   * M35 — see AppearanceSection's header comment for the merge rationale).
+   * The guided `:root` custom-property editor (fonts + colors + sizes/numbers
+   * + other) is the SECOND of the three panes ProjectConfigPanel composes
+   * under one "Look & style" heading, after the theme grid and before the
+   * stylesheet list (now behind Advanced). No section wrapper or `<h3>` of
+   * its own anymore; the parent owns the outer `.block`/heading. All token
+   * state, the debounced read-modify-write token machinery, and `api.fs.*`
+   * calls live in `DesignSectionController` (passed as the single `controller`
+   * prop — this was the first section to get the controller extraction; see
+   * M14 for the other five). `toHex` is a pure browser-only helper (§8-clean).
+   * The Fonts list is derived locally from the controller's full `tokens`
+   * field rather than a separate `fontTokens` getter — one less thing to keep
+   * wired, and it can never silently go stale.
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { StyleToken } from "$lib/platform/dtos";
@@ -30,9 +35,9 @@
   const fontTokens = $derived(controller.tokens.filter((t) => t.kind === "font"));
 </script>
 
-<section class="block">
+<div class="look-subsection design-subsection">
   <div class="block-head">
-    <h3>Design</h3>
+    <h4 class="tokens-title">Design tokens</h4>
     <div class="row">
       {#if controller.designSaveStatus === "saving"}<span class="save-status saving" aria-live="polite">Saving…</span>
       {:else if controller.designSaveStatus === "saved"}<span class="save-status saved" aria-live="polite">Changes saved</span>{/if}
@@ -138,11 +143,17 @@
       <Icon name="file-text" size={13} /> Edit raw CSS
     </button>
   {/if}
-</section>
+</div>
 
 <style>
   @import "$lib/styles/config-section-shared.css";
 
+  /* This sub-section's own heading sits in a `.block-head` row beside the
+     save-status/revert controls (see the template) — a dedicated local class
+     (not the shared `.subhead`, which carries a top margin meant for a
+     heading stacked directly under a preceding block, not one sharing a flex
+     row with other controls). */
+  .tokens-title { margin: 0; font-size: 11px; font-weight: 600; color: var(--app-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
   .token-row { justify-content: space-between; }
   .token-row.dirty .token-label { color: var(--app-accent, #4ea1ff); }
   .token-label { flex: 1; font-size: 12px; color: var(--app-text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

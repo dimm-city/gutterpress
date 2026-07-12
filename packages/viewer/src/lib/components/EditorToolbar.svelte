@@ -23,7 +23,12 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
-  import { visibleToolbarItems, type ToolbarItemDef } from "$lib/editor/toolbar-actions";
+  import {
+    visibleToolbarItems,
+    LAYOUT_BLOCK_ITEMS,
+    type ToolbarItemDef,
+    type LayoutBlockKind,
+  } from "$lib/editor/toolbar-actions";
 
   // toolbar-actions.ts declares item icons as plain strings (it stays
   // Svelte-import-free by design). Narrow to Icon's actual prop type here,
@@ -60,12 +65,14 @@
     | "page-break"
     | "table"
     | "image"
-    | "snippet";
+    | "snippet"
+    | "layout-block";
 
   export type ToolbarPayload =
     | { level: 1 | 2 | 3 | 4 }           // heading
     | { cols: number }                    // table
-    | { src: string; alt: string; width?: string; position?: string }; // image
+    | { src: string; alt: string; width?: string; position?: string } // image
+    | { kind: LayoutBlockKind };          // layout-block
 
   // The toolbar is only meaningful for markdown files.
   let isMarkdown = $derived(
@@ -151,6 +158,36 @@
     headingOpen = false;
   }
 
+  // ── Insert layout block picker (UX M26) ──────────────────────────────────
+  // Same plain-disclosure pattern as the heading popup above: Chapter /
+  // Section / Two columns / Page break / Spread, inserting the core
+  // `@marker` skeleton for the picked kind via toolbar-actions.ts helpers.
+  let layoutOpen = $state(false);
+  let layoutTriggerEl = $state<HTMLButtonElement | undefined>(undefined);
+  let layoutPopupEl = $state<HTMLDivElement | undefined>(undefined);
+
+  function openLayoutPopup(e: MouseEvent) {
+    layoutTriggerEl = e.currentTarget as HTMLButtonElement;
+    openPopup(() => { layoutOpen = !layoutOpen; });
+    if (layoutOpen) {
+      queueMicrotask(() => focusableElementsIn(layoutPopupEl)[0]?.focus());
+    }
+  }
+
+  function closeLayoutPopup() {
+    layoutOpen = false;
+    layoutTriggerEl?.focus();
+  }
+
+  function onLayoutPopupKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") closeLayoutPopup();
+  }
+
+  function pickLayoutBlock(kind: LayoutBlockKind) {
+    onAction("layout-block", { kind });
+    layoutOpen = false;
+  }
+
   // ── Table column picker (M11: a fixed-position dialog, like the image
   // dialog below, so it works regardless of which trigger opened it — the
   // always-visible toolbar button OR the More menu item — and is never
@@ -187,7 +224,9 @@
   let imageOpen = $state(false);
   let imageAlt = $state("");
   let imageWidth = $state("");
-  let imagePosition = $state<"" | "float-left" | "float-right" | "center" | "full-width">("");
+  let imagePosition = $state<
+    "" | "float-left" | "float-right" | "center" | "full-width" | "full-bleed"
+  >("");
   let imageSrc = $state("");        // picked absolute path from host
   let imageBusy = $state(false);
   let imageError = $state("");
@@ -318,6 +357,7 @@
     const target = e.target as HTMLElement | null;
     if (!target?.closest?.(".toolbar-popup, .tb-popup-wrap")) {
       headingOpen = false;
+      layoutOpen = false;
       moreOpen = false;
     }
     // Don't close imageOpen/tableOpen on outside click — both are
@@ -412,10 +452,44 @@
 
   <span class="tb-sep" aria-hidden="true"></span>
 
-  <!-- Insert group: HR, page break, table, image, snippet -->
+  <!-- Insert group: layout block, HR, page break, table, image, snippet -->
   <div class="tb-group insert-group">
     {#each insertItems as item (item.id)}
-      {#if item.kind === "table"}
+      {#if item.kind === "layout-block"}
+        <!-- Insert layout block picker (UX M26) — Chapter / Section / Two
+             columns / Page break / Spread, same split-button + popup
+             pattern as the heading picker below. -->
+        <div class="tb-popup-wrap">
+          <button
+            class="tb-btn tb-btn-split"
+            onclick={openLayoutPopup}
+            aria-expanded={layoutOpen}
+            title={item.title}
+            aria-label={item.ariaLabel}
+          >
+            <Icon name={item.icon as IconName} size={14} />
+            <Icon name="chevron-down" size={10} />
+          </button>
+          {#if layoutOpen}
+            <div
+              bind:this={layoutPopupEl}
+              class="toolbar-popup layout-popup"
+              aria-label="Insert layout block"
+            >
+              {#each LAYOUT_BLOCK_ITEMS as block (block.kind)}
+                <button
+                  class="popup-item"
+                  title={block.detail}
+                  onclick={() => pickLayoutBlock(block.kind)}
+                  onkeydown={onLayoutPopupKeydown}
+                >
+                  {block.label}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {:else if item.kind === "table"}
         <!-- Opens the fixed-position table dialog below — NOT nested inside
              this group, so it keeps working from the More menu even when
              `.insert-group` is `display: none` at narrow widths (M11). -->
@@ -480,6 +554,12 @@
             {#each [1, 2, 3, 4] as level (level)}
               <button class="popup-item" onclick={() => { pickHeading(level as 1 | 2 | 3 | 4); moreOpen = false; }} onkeydown={onMorePopupKeydown}>
                 Heading {level}
+              </button>
+            {/each}
+          {:else if item.kind === "layout-block"}
+            {#each LAYOUT_BLOCK_ITEMS as block (block.kind)}
+              <button class="popup-item" title={block.detail} onclick={() => { pickLayoutBlock(block.kind); moreOpen = false; }} onkeydown={onMorePopupKeydown}>
+                {block.label}
               </button>
             {/each}
           {:else if item.kind === "table"}
@@ -609,6 +689,7 @@
       <option value="float-left">Float left</option>
       <option value="float-right">Float right</option>
       <option value="full-width">Full width</option>
+      <option value="full-bleed">Full bleed (own page, edge-to-edge)</option>
     </select>
     <p class="image-hint">
       These are standard print-md image classes documented in the user guide.

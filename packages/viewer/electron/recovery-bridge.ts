@@ -1,6 +1,21 @@
 /**
  * recovery-bridge.ts — Host-side helper for sync recovery.
  *
+ * NAMING MAP (UX review M38): "recovery" names TWO unrelated subsystems in
+ * this codebase, and they must not be confused:
+ *   1. CRASH-DRAFT recovery (`electron/recovery.ts` + its `/api/recovery/*`
+ *      routes + CrashRecoveryDialog.svelte) — an in-editor unsaved-changes
+ *      sidecar. Writer-facing vocabulary: "unsaved changes" only, never
+ *      "recovery".
+ *   2. SYNC-REPAIR recovery (THIS FILE + RecoveryOverlay /
+ *      RecoveryConfirmDialog / RecoveryGuidanceDialog) — git-repair machinery
+ *      for a broken local-git project. Writer-facing vocabulary: "backup" /
+ *      "repair", also never the bare word "recovery" in visible copy.
+ * Internal identifiers (this file's name, `RecoveryContext`, `RecoveryResult`,
+ * the route paths) keep the word "recovery" — renaming them broadly is out of
+ * scope (churn with no writer-facing value); only each domain's writer-facing
+ * dialog copy is disambiguated.
+ *
  * Keeps electron/main.ts diff small by extracting:
  *  1. The pending-confirm resolver map + ConfirmationGate bridge
  *  2. buildRecoveryContext() — resolves RecoveryContext from a projectDir

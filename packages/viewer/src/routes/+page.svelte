@@ -1168,6 +1168,57 @@
     })();
   }
 
+  /**
+   * FileTree row actions (UX review M9): the tree performs the actual
+   * create/rename/delete host calls itself; these three hooks are the ONLY
+   * point where the open-file buffer needs to react. The buffer's own
+   * external-edit reconciliation is driven by the folder watcher, which is a
+   * single NON-RECURSIVE `fs.watch` on the project ROOT — it can't observe a
+   * rename/delete of a file in a nested folder, so this app's own tree
+   * actions must tell the buffer directly rather than rely on that watcher.
+   */
+
+  /**
+   * Called BEFORE the rename API call fires, only when `path` is the open
+   * file. Must run BEFORE the rename, not after: the rename call only moves
+   * whatever is on disk right now, so a flush AFTER renaming would stat the
+   * buffer's still-old `filePath`, find it missing, and (per
+   * EditorBuffer.externalChangeBeforeSave's own safety check) refuse to
+   * write at all — raising a spurious "this file was deleted" conflict
+   * banner off the author's OWN rename, with the edit stranded in the dirty
+   * buffer under neither name. `flush()` is a no-op when the buffer isn't
+   * dirty, so it's safe to await unconditionally.
+   */
+  async function onTreeBeforeRename(path: string): Promise<void> {
+    if (buffer && buffer.filePath === path) {
+      await buffer.flush().catch(() => {});
+    }
+  }
+
+  /**
+   * Called after a successful rename. `selectEditorFile` re-reads from disk
+   * at `newPath` — since `onTreeBeforeRename` already flushed (or the buffer
+   * was already clean), disk content at `newPath` matches the buffer, so
+   * this is a clean no-op reload that just repoints `filePath`/`diskMtimeMs`.
+   */
+  function onTreeFileRenamed(oldPath: string, newPath: string): void {
+    if (editorFilePath === oldPath) {
+      selectEditorFile(newPath);
+    }
+  }
+
+  /**
+   * Called after a successful delete. Close the buffer rather than leaving
+   * it pointing at a path that no longer exists — the exact "must not
+   * silently point at a missing path" failure mode M9 calls out (a stray
+   * edit afterward would otherwise silently recreate the deleted file).
+   */
+  function onTreeFileDeleted(path: string): void {
+    if (editorFilePath === path) {
+      buffer?.reset();
+    }
+  }
+
   function onEditorChange(value: string) {
     if (!isDesktop()) return;
     ensureBuffer().edit(value);
@@ -2471,6 +2522,9 @@
           focusEditorWhenReady();
         }
       }}
+      onBeforeRenameOpenFile={onTreeBeforeRename}
+      onFileRenamed={onTreeFileRenamed}
+      onFileDeleted={onTreeFileDeleted}
       onOpenProjectConfig={openProjectConfig}
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}

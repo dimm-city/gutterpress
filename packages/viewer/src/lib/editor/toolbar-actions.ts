@@ -316,6 +316,125 @@ export function applyImage(
   });
 }
 
+// ── Insert layout block (UX M26) ─────────────────────────────────────────────
+// The toolbar previously exposed none of print-md's own layout primitives
+// beyond @page-break (UX finding M26). These helpers insert a correct core
+// `@marker` skeleton (markdown-it-paged.js's whitelist — chapter/spread/
+// page/section/continue/page-break/column-break/end-section; see the
+// plugin's own header comment) as its own block after the CURRENT line,
+// blank-line padded — the same convention applyHr/applyPageBreak above
+// already use. Project-plugin markers (@sidebar, @callout, …) are NOT core
+// (CLAUDE.md §5/§6) and have no helper here; a project plugin that wants a
+// picker entry should contribute its own toolbar item, not extend this one.
+
+/** Which layout skeleton `applyLayoutBlock` inserts. */
+export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break" | "spread";
+
+/** `@chapter` + a nested `@page`, with the title placeholder selected so
+ *  typing immediately replaces it (mirrors applyLink's "select link text"
+ *  placeholder pattern above).
+ *
+ *  The placeholder is QUOTED (`@chapter "Chapter Title"`), not bare. A bare
+ *  multi-word label tokenizes into more than one bare token in
+ *  `parseMarkerLine`, which fails its "exactly one bare token" name rule and
+ *  silently degrades to no `data-chapter-label` / no `.chapter-opener` —
+ *  exactly the opposite of what this control advertises. Quoting collapses
+ *  the label to a single token regardless of internal spaces, so it actually
+ *  produces the label + chapter-opener (verified against the real
+ *  markdown-it-paged plugin). See marker-completions.ts's
+ *  `applyChapterCompletion` for the identical fix applied to the completion
+ *  source's `@chapter` template. */
+export function applyChapterBlock(view: EditorView): void {
+  const { from } = mainSel(view);
+  const line = view.state.doc.lineAt(from);
+  const insertAt = line.to;
+  const label = "Chapter Title";
+  const prefix = '\n\n@chapter "';
+  const suffix = '"';
+  const labelStart = insertAt + prefix.length;
+  const insert = `${prefix}${label}${suffix}\n\n@page\n\n`;
+  view.dispatch({
+    changes: { from: insertAt, to: insertAt, insert },
+    selection: EditorSelection.range(labelStart, labelStart + label.length),
+  });
+}
+
+/** `@section` / `@end-section` pair, cursor left on the blank line between
+ *  them (same shape as the marker-completions.ts inline template, just
+ *  block-inserted after the current line instead of typed in place). */
+export function applySectionBlock(view: EditorView): void {
+  const { from } = mainSel(view);
+  const line = view.state.doc.lineAt(from);
+  const insertAt = line.to;
+  const prefix = "\n\n@section\n";
+  const insert = `${prefix}\n@end-section\n\n`;
+  const cursorPos = insertAt + prefix.length;
+  view.dispatch({
+    changes: { from: insertAt, to: insertAt, insert },
+    selection: EditorSelection.cursor(cursorPos),
+  });
+}
+
+/** A working two-column section. `.col-split` (not bare `.two-column`) is
+ *  required — Paged.js strips `break-after: column` during CSS
+ *  preprocessing, so plain CSS column balancing never breaks where
+ *  `@column-break` sits; `.col-split` opts into markdown-it-paged's explicit
+ *  `<div class="col">` renderer path instead (see the plugin's own
+ *  "col-split handling" comment), which is what actually breaks reliably. */
+export function applyTwoColumnBlock(view: EditorView): void {
+  const { from } = mainSel(view);
+  const line = view.state.doc.lineAt(from);
+  const insertAt = line.to;
+  const prefix = "\n\n@section .col-split\n";
+  const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
+  const cursorPos = insertAt + prefix.length;
+  view.dispatch({
+    changes: { from: insertAt, to: insertAt, insert },
+    selection: EditorSelection.cursor(cursorPos),
+  });
+}
+
+/** `@spread` with a first nested `@page`, cursor left ready to write. */
+export function applySpreadBlock(view: EditorView): void {
+  const { from } = mainSel(view);
+  const line = view.state.doc.lineAt(from);
+  const insertAt = line.to;
+  const insert = "\n\n@spread\n\n@page\n\n";
+  view.dispatch({
+    changes: { from: insertAt, to: insertAt, insert },
+    selection: EditorSelection.cursor(insertAt + insert.length),
+  });
+}
+
+/** Dispatches to the right layout-block helper for `kind`. `"page-break"`
+ *  reuses the existing {@link applyPageBreak} — one canonical implementation
+ *  of the `@page-break` token, not a second copy. */
+export function applyLayoutBlock(view: EditorView, kind: LayoutBlockKind): void {
+  switch (kind) {
+    case "chapter":     applyChapterBlock(view); break;
+    case "section":     applySectionBlock(view); break;
+    case "two-column":  applyTwoColumnBlock(view); break;
+    case "page-break":  applyPageBreak(view); break;
+    case "spread":      applySpreadBlock(view); break;
+  }
+}
+
+/** Picker entries for the "Insert layout block" toolbar control — the order
+ *  shown in the popup. */
+export interface LayoutBlockItem {
+  kind: LayoutBlockKind;
+  label: string;
+  detail: string;
+}
+
+export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
+  { kind: "chapter", label: "Chapter", detail: "@chapter — wraps content, auto chapter-opener" },
+  { kind: "section", label: "Section", detail: "@section … @end-section — keeps content together" },
+  { kind: "two-column", label: "Two columns", detail: "@section .col-split … @column-break … @end-section" },
+  { kind: "page-break", label: "Page break", detail: "@page-break — hard break, no page wrapper" },
+  { kind: "spread", label: "Spread", detail: "@spread — a two-page facing spread" },
+] as const;
+
 // ── Toolbar item declarations (single source of truth — M23) ────────────────
 //
 // EditorToolbar renders BOTH the always-visible toolbar groups AND the
@@ -336,11 +455,12 @@ export type ToolbarGroup = "save" | "primary" | "block" | "insert";
 /**
  * How an item behaves when activated:
  * - "save"/"action": a single button that fires a callback directly.
- * - "heading"/"table"/"image": opens a picker (popup or dialog) — the
- *   component supplies the bespoke markup for these, but membership,
- *   ordering, and group/visibility rules still come from this array.
+ * - "heading"/"table"/"image"/"layout-block": opens a picker (popup or
+ *   dialog) — the component supplies the bespoke markup for these, but
+ *   membership, ordering, and group/visibility rules still come from this
+ *   array.
  */
-export type ToolbarItemKind = "save" | "action" | "heading" | "table" | "image";
+export type ToolbarItemKind = "save" | "action" | "heading" | "table" | "image" | "layout-block";
 
 export interface ToolbarItemDef {
   /** Stable identity — also the {#each} key. */
@@ -468,6 +588,15 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     title: "Horizontal rule",
     ariaLabel: "Insert horizontal rule",
     label: "Horizontal rule",
+    group: "insert",
+  },
+  {
+    id: "layout-block",
+    kind: "layout-block",
+    icon: "columns-2",
+    title: "Insert layout block (chapter, section, columns, spread…)",
+    ariaLabel: "Insert layout block",
+    label: "Insert layout block…",
     group: "insert",
   },
   {

@@ -7,6 +7,7 @@
  */
 import { test, expect } from "bun:test";
 import { EditorState, EditorSelection, type Transaction } from "@codemirror/state";
+import { createMarkdownRenderer } from "@dimm-city/print-md/render";
 import {
   applyBold,
   applyItalic,
@@ -21,6 +22,12 @@ import {
   applyPageBreak,
   applyTable,
   applyImage,
+  applyLayoutBlock,
+  applyChapterBlock,
+  applySectionBlock,
+  applyTwoColumnBlock,
+  applySpreadBlock,
+  LAYOUT_BLOCK_ITEMS,
   TOOLBAR_ITEMS,
   visibleToolbarItems,
 } from "../../src/lib/editor/toolbar-actions";
@@ -382,4 +389,104 @@ test("visibleToolbarItems: every visible item belongs to exactly one known group
 test("TOOLBAR_ITEMS: declares Save and Snippet exactly once each (the drift this array prevents)", () => {
   expect(TOOLBAR_ITEMS.filter((i) => i.id === "save")).toHaveLength(1);
   expect(TOOLBAR_ITEMS.filter((i) => i.id === "snippet")).toHaveLength(1);
+});
+
+// ── M26: "Insert layout block" picker ────────────────────────────────────────
+// A small picker offering Chapter / Section / Two columns / Page break /
+// Spread, inserting the correct core `@marker` skeleton at the cursor. Each
+// helper is block-level (operates on the current line, blank-line padded —
+// same convention as applyHr/applyPageBreak above), not the inline
+// completion-popup insertion in marker-completions.ts.
+
+test("LAYOUT_BLOCK_ITEMS: offers exactly Chapter / Section / Two columns / Page break / Spread", () => {
+  const kinds = LAYOUT_BLOCK_ITEMS.map((i) => i.kind);
+  expect(kinds).toEqual(["chapter", "section", "two-column", "page-break", "spread"]);
+  for (const item of LAYOUT_BLOCK_ITEMS) {
+    expect(item.label.length).toBeGreaterThan(0);
+  }
+});
+
+test("applyChapterBlock: inserts @chapter with a QUOTED, selected title placeholder, plus a nested @page", () => {
+  const v = makeMockView("intro");
+  applyChapterBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+  // Quoting is load-bearing — see applyChapterBlock's doc comment and the
+  // round-trip test below. An unquoted multi-word label silently loses
+  // data-chapter-label / .chapter-opener.
+  expect(doc).toBe('intro\n\n@chapter "Chapter Title"\n\n@page\n\n');
+  const sel = getSel(v);
+  // Selection covers the label only, not the surrounding quotes.
+  expect(v.state.sliceDoc(sel.from, sel.to)).toBe("Chapter Title");
+});
+
+test("applyChapterBlock: the produced block renders data-chapter-label + .chapter-opener through the real plugin", () => {
+  const v = makeMockView("intro");
+  applyChapterBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+
+  const md = createMarkdownRenderer();
+  const html = md.render(doc);
+
+  expect(html).toContain('data-chapter-label="Chapter Title"');
+  expect(html).toContain('class="chapter-opener"');
+  // Must NOT regress to the broken junk-class form.
+  expect(html).not.toContain('class="chapter Chapter Title"');
+});
+
+test("applySectionBlock: inserts the @section/@end-section pair with cursor on the blank line between", () => {
+  const v = makeMockView("stats");
+  applySectionBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+  expect(doc).toBe("stats\n\n@section\n\n@end-section\n\n");
+  const sel = getSel(v);
+  expect(sel.from).toBe(sel.to);
+  expect(v.state.doc.lineAt(sel.from).text).toBe("");
+});
+
+test("applyTwoColumnBlock: uses .col-split (not bare .two-column) so @column-break actually breaks under Paged.js", () => {
+  const v = makeMockView("before");
+  applyTwoColumnBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+  expect(doc).toContain("@section .col-split");
+  expect(doc).toContain("@column-break");
+  expect(doc).toContain("@end-section");
+  // Marker order: section open, column-break, section close.
+  expect(doc.indexOf("@section .col-split")).toBeLessThan(doc.indexOf("@column-break"));
+  expect(doc.indexOf("@column-break")).toBeLessThan(doc.lastIndexOf("@end-section"));
+});
+
+test("applySpreadBlock: inserts @spread with a nested @page", () => {
+  const v = makeMockView("x");
+  applySpreadBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+  expect(doc).toBe("x\n\n@spread\n\n@page\n\n");
+});
+
+test("applyLayoutBlock: dispatches to the right helper for each kind", () => {
+  for (const kind of ["chapter", "section", "two-column", "page-break", "spread"] as const) {
+    const v = makeMockView("content");
+    applyLayoutBlock(v as unknown as EditorView, kind);
+    const doc = getDoc(v);
+    expect(doc.length).toBeGreaterThan("content".length);
+  }
+});
+
+test("applyLayoutBlock('page-break') reuses the canonical @page-break token", () => {
+  const v = makeMockView("content");
+  applyLayoutBlock(v as unknown as EditorView, "page-break");
+  expect(getDoc(v)).toBe("content\n\n@page-break\n\n");
+});
+
+test("TOOLBAR_ITEMS: declares an insert-layout-block control in the insert group", () => {
+  const item = TOOLBAR_ITEMS.find((i) => i.id === "layout-block");
+  expect(item).toBeDefined();
+  expect(item?.group).toBe("insert");
+});
+
+// ── M26: image dialog Position must offer .full-bleed (documented but missing) ─
+
+test("toolbar-actions.ts documents .full-bleed as a supported image position class", () => {
+  const v = makeMockView("text");
+  applyImage(v as unknown as EditorView, "assets/cover.jpg", "Cover", undefined, "full-bleed");
+  expect(getDoc(v)).toContain("![Cover](assets/cover.jpg){.full-bleed}");
 });

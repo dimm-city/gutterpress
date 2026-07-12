@@ -57,6 +57,7 @@
     applyPageBreak,
     applyTable,
     applyImage,
+    applyLayoutBlock,
   } from "$lib/editor/toolbar-actions";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import { markdown } from "@codemirror/lang-markdown";
@@ -76,6 +77,7 @@
     pagedMediaCompletionSource,
     type EditorLanguage,
   } from "$lib/editor/css-editor";
+  import { markerCompletionSource } from "$lib/editor/marker-completions";
   import { onMount } from "svelte";
 
   let {
@@ -134,6 +136,7 @@
   const languageCompartment = new Compartment();
   const cssLintCompartment = new Compartment();
   const cssCompletionCompartment = new Compartment();
+  const markdownCompletionCompartment = new Compartment();
   // The language the view is currently configured for. Seeded at mount;
   // updated by switchFile() when a file switch changes it. Each `buildState()`
   // call bakes the resolved language into the new/restored EditorState via
@@ -172,6 +175,12 @@
   function cssCompletionExtensions(lang: EditorLanguage): Extension {
     if (lang !== "css") return [];
     return autocompletion({ override: [pagedMediaCompletionSource] });
+  }
+
+  /** Core `@marker` completions (UX M26) — active only for markdown docs. */
+  function markdownCompletionExtensions(lang: EditorLanguage): Extension {
+    if (lang !== "markdown") return [];
+    return autocompletion({ override: [markerCompletionSource] });
   }
 
   // Theme-aware syntax highlighting. Every colour is a CSS custom property
@@ -262,6 +271,7 @@
         languageCompartment.of(languageExtension(lang)),
         cssLintCompartment.of(cssLintExtensions(lang)),
         cssCompletionCompartment.of(cssCompletionExtensions(lang)),
+        markdownCompletionCompartment.of(markdownCompletionExtensions(lang)),
         syntaxHighlighting(printmdHighlight, { fallback: true }),
         keymap.of([
           ...defaultKeymap,
@@ -472,6 +482,11 @@
       case "image": {
         const img = payload as { src: string; alt: string; width?: string; position?: string } | undefined;
         if (img) applyImage(view, img.src, img.alt, img.width, img.position);
+        break;
+      }
+      case "layout-block": {
+        const block = payload as { kind: Parameters<typeof applyLayoutBlock>[1] } | undefined;
+        if (block) applyLayoutBlock(view, block.kind);
         break;
       }
     }
