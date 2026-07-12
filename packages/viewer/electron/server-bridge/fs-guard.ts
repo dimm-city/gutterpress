@@ -28,13 +28,16 @@
  * both go back to empty, so a stray fs-route call from the SPA with no
  * project open is rejected rather than falling back to "anywhere".
  *
- * `readOnlyRoots()` extends **read-file only**, with directories that are
- * legitimately read from outside the open project but must never be a
- * write-file/list-dir/stat-file/copy-file-`dest` target: today, just the
- * crash-recovery sidecar dir under `userData/recovery/` —
- * `+page.svelte`'s `restoreRecovery` reads a snapshot's absolute
- * `recoveryPath` (returned by `recovery:list`) through the generic
- * `fs/read-file` route rather than a dedicated recovery-read route.
+ * `readOnlyRoots()` extends the read paths (`fs/read-file` and `log/read`),
+ * with directories that are legitimately read from outside the open project
+ * but must never be a write-file/list-dir/stat-file/copy-file-`dest` target:
+ *   - the crash-recovery sidecar dir under `userData/recovery/` —
+ *     `+page.svelte`'s `restoreRecovery` reads a snapshot's absolute
+ *     `recoveryPath` (returned by `recovery:list`) through the generic
+ *     `fs/read-file` route rather than a dedicated recovery-read route; and
+ *   - the operation-log dir under `userData/logs/` — `ProjectActivityView` /
+ *     the operation-log dialog read the per-project `.log` file through the
+ *     `log/read` route. App-managed and non-sensitive.
  *
  * `copy-file`'s `src` is DELIBERATELY EXEMPT from both allow-lists — see the
  * comment on `src/routes/api/fs/copy-file/+server.ts`'s `validate`. The

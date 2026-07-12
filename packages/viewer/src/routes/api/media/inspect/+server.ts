@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { stat } from 'node:fs/promises';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
@@ -9,7 +9,13 @@ export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
     if (!body.imagePath || typeof body.imagePath !== 'string') {
       error(400, "'imagePath' string is required");
     }
-    return { imagePath: requireAbsolute(body.imagePath, 'media:inspect') };
+    // Confine to the open project (ARCH #37) — see media/thumbnail.
+    return {
+      imagePath: requireWithinProjectRoot(
+        requireAbsolute(body.imagePath, 'media:inspect'),
+        'media:inspect',
+      ),
+    };
   },
   call: async ({ body }) => {
     let s;

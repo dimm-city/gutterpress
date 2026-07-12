@@ -9,6 +9,11 @@ import { POST as writeFileRoute } from "../../src/routes/api/fs/write-file/+serv
 import { POST as listDirRoute } from "../../src/routes/api/fs/list-dir/+server";
 import { POST as statFileRoute } from "../../src/routes/api/fs/stat-file/+server";
 import { POST as copyFileRoute } from "../../src/routes/api/fs/copy-file/+server";
+import { POST as listProjectFilesRoute } from "../../src/routes/api/fs/list-project-files/+server";
+import { POST as listImagesRoute } from "../../src/routes/api/media/list-images/+server";
+import { POST as inspectImageRoute } from "../../src/routes/api/media/inspect/+server";
+import { POST as thumbnailRoute } from "../../src/routes/api/media/thumbnail/+server";
+import { POST as logReadRoute } from "../../src/routes/api/log/read/+server";
 
 // ARCH review #37: `/api/fs/{read-file,write-file,list-dir,stat-file,
 // copy-file}` used to accept ANY absolute path (only guard: isAbsolute).
@@ -230,4 +235,83 @@ test("fs/read-file: fails closed (403) when no project is open (empty projectRoo
     readFileRoute({ request: request({ path: path.join(projectDir, "chapter-01.md") }) } as Parameters<typeof readFileRoute>[0]),
   );
   expect(status).toBe(403);
+});
+
+// ── fs/list-project-files (code-review: the one generic fs route the #37
+//    sweep missed — a readdir on any absolute path) ────────────────────────
+
+test("fs/list-project-files: an in-project dir is allowed", async () => {
+  const res = await listProjectFilesRoute({
+    request: request({ projectDir }),
+  } as Parameters<typeof listProjectFilesRoute>[0]);
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ md: ["chapter-01.md"], css: [] });
+});
+
+test("fs/list-project-files: a directory outside the open project is rejected (403)", async () => {
+  const { status, message } = await caught(
+    listProjectFilesRoute({ request: request({ projectDir: outsideDir }) } as Parameters<typeof listProjectFilesRoute>[0]),
+  );
+  expect(status).toBe(403);
+  expect(message).toBe("fs:listProjectFiles: path is outside the open project");
+});
+
+test("fs/list-project-files: a sibling-prefix dir is rejected (403)", async () => {
+  const { status } = await caught(
+    listProjectFilesRoute({ request: request({ projectDir: siblingDir }) } as Parameters<typeof listProjectFilesRoute>[0]),
+  );
+  expect(status).toBe(403);
+});
+
+// ── media routes (code-review: thumbnail/inspect/list-images read arbitrary
+//    image bytes/trees without the #37 guard) ───────────────────────────────
+
+test("media/list-images: an in-project dir is allowed", async () => {
+  const res = await listImagesRoute({
+    request: request({ projectDir }),
+  } as Parameters<typeof listImagesRoute>[0]);
+  expect(res.status).toBe(200);
+});
+
+test("media/list-images: a directory outside the open project is rejected (403)", async () => {
+  const { status, message } = await caught(
+    listImagesRoute({ request: request({ projectDir: outsideDir }) } as Parameters<typeof listImagesRoute>[0]),
+  );
+  expect(status).toBe(403);
+  expect(message).toBe("media:listImages: path is outside the open project");
+});
+
+test("media/inspect: an image path outside the open project is rejected (403)", async () => {
+  const { status, message } = await caught(
+    inspectImageRoute({ request: request({ imagePath: path.join(outsideDir, "secret.txt") }) } as Parameters<typeof inspectImageRoute>[0]),
+  );
+  expect(status).toBe(403);
+  expect(message).toBe("media:inspect: path is outside the open project");
+});
+
+test("media/thumbnail: an image path outside the open project is rejected (403)", async () => {
+  const { status, message } = await caught(
+    thumbnailRoute({ request: request({ imagePath: path.join(siblingDir, "secret.md") }) } as Parameters<typeof thumbnailRoute>[0]),
+  );
+  expect(status).toBe(403);
+  expect(message).toBe("media:thumbnail: path is outside the open project");
+});
+
+// ── log/read (code-review: read any absolute path's full contents) ─────────
+
+test("log/read: a path under the read-only root (operation logs / recovery) is allowed", async () => {
+  await writeFile(path.join(recoveryDir, "op.log"), "log line", "utf8");
+  const res = await logReadRoute({
+    request: request({ logPath: path.join(recoveryDir, "op.log") }),
+  } as Parameters<typeof logReadRoute>[0]);
+  expect(res.status).toBe(200);
+  expect(await res.json()).toBe("log line");
+});
+
+test("log/read: an absolute path outside the read-allow-list is rejected (403)", async () => {
+  const { status, message } = await caught(
+    logReadRoute({ request: request({ logPath: path.join(outsideDir, "secret.txt") }) } as Parameters<typeof logReadRoute>[0]),
+  );
+  expect(status).toBe(403);
+  expect(message).toBe("log:read: path is outside the open project");
 });

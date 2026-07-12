@@ -20,6 +20,7 @@ import packageJson from "../../package.json";
 type PackageMeta = {
   version: string;
   dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
 };
 
 export const PACKAGE_META: PackageMeta = {
@@ -27,6 +28,12 @@ export const PACKAGE_META: PackageMeta = {
   dependencies:
     (packageJson as { dependencies?: Record<string, string> }).dependencies ??
     {},
+  // pagedjs lives here (its runtime artifact is the vendored patched polyfill;
+  // the npm entry is only the re-vendoring diff base — see PAGEDJS-PATCHES.md),
+  // so build-fingerprint reads its version from devDependencies.
+  devDependencies:
+    (packageJson as { devDependencies?: Record<string, string> })
+      .devDependencies ?? {},
 };
 
 /** The print-md lib version, e.g. `"0.7.1"`. */

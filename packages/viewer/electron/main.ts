@@ -128,7 +128,11 @@ import type {
 // build time; the suppression documents the tsc-only gap.
 // @ts-expect-error vite `?raw` string import — resolved by electron-vite, not tsc
 import splashHtml from "./splash.html?raw";
-import { recoveryDir as recoveryDirImpl, operationLogPath as operationLogPathImpl } from "./recovery-paths";
+import {
+  recoveryDir as recoveryDirImpl,
+  operationLogPath as operationLogPathImpl,
+  logsDir as logsDirImpl,
+} from "./recovery-paths";
 import {
   ExportCanceledError,
   electronPdfRenderer,
@@ -354,6 +358,7 @@ function showMainWindowAndCloseSplash(): void {
 // operation log lives under userData/logs/. The pure path/slug builders live in
 // ./recovery-paths; these thin wrappers bind them to the live userData dir.
 const recoveryDir = (): string => recoveryDirImpl(app.getPath("userData"));
+const logsDir = (): string => logsDirImpl(app.getPath("userData"));
 const operationLogPath = (repoSlug: string): string =>
   operationLogPathImpl(app.getPath("userData"), repoSlug);
 
@@ -1357,10 +1362,14 @@ const fsGuardImpl: FsGuardHooks = {
     return [...roots];
   },
   readOnlyRoots(): string[] {
-    // Crash-recovery sidecar snapshots (userData/recovery/): +page.svelte's
-    // restoreRecovery reads a snapshot's absolute recoveryPath (returned by
-    // recovery:list) through the generic fs/read-file route.
-    return [recoveryDir()];
+    // Directories legitimately READ from outside the open project:
+    //  - Crash-recovery sidecar snapshots (userData/recovery/): +page.svelte's
+    //    restoreRecovery reads a snapshot's absolute recoveryPath (returned by
+    //    recovery:list) through the generic fs/read-file route.
+    //  - Operation logs (userData/logs/): ProjectActivityView / the operation-
+    //    log dialog read the per-project log file through the log/read route.
+    //    App-managed, non-sensitive, never a write target through these routes.
+    return [recoveryDir(), logsDir()];
   },
 };
 

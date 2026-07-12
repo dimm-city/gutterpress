@@ -456,18 +456,34 @@ export class AutoSyncOrchestrator {
     // resolves it. Auto-snapshot keeps running; we just skip network work.
     if (state.conflictLatched) return;
 
+    // Claim the single-flight slot NOW, synchronously, before the first await
+    // below. The guard above only READS state.inFlight; setting it after the
+    // policy awaits (as this used to) was a TOCTOU hole — two triggers that
+    // both entered before either reached the await would both pass the guard
+    // and call syncProject concurrently on the same repo. Every "don't sync
+    // this time" exit between here and the syncProject call must releaseFlight()
+    // so the slot is never stuck true (which would block all future syncs).
+    state.inFlight = true;
+    const releaseFlight = (): void => {
+      state.inFlight = false;
+      if (state.runAgain) {
+        state.runAgain = false;
+        void this.run(dir);
+      }
+    };
+
     // Re-check live policy every run so a settings change applies immediately.
     const [lib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
 
     // Guard: watched dir may have changed while we awaited the above.
-    if (this.deps.getWatchedDir() !== dir) return;
+    if (this.deps.getWatchedDir() !== dir) return releaseFlight();
 
     // Guard: auto-sync policy (master switch).
-    if (lib.autoSyncDelayMs(settings.versionHistory) === null) return;
+    if (lib.autoSyncDelayMs(settings.versionHistory) === null) return releaseFlight();
 
     // Guard: only local-git-folder projects sync.
     const source = await lib.detectProjectSource(dir);
-    if (source.type !== "local-git-folder") return;
+    if (source.type !== "local-git-folder") return releaseFlight();
 
     // Guard: canSync = HTTPS remote + stored credential. Local-only projects never
     // auto-sync (transparent-sync plan §6; ADR 0006 D4). Use the credential-aware
@@ -476,9 +492,9 @@ export class AutoSyncOrchestrator {
     // (each returning auth/error, churning the network unattended). Same gate the
     // renderer pill is shown on, so host and UI agree.
     const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: this.deps.tokenStore });
-    if (!diag.canSync) return;
+    if (!diag.canSync) return releaseFlight();
 
-    state.inFlight = true;
+    // Flag already held since the top of the flight section.
     this.deps.emit({ state: "syncing", projectDir: dir, lastSyncAt: this.getLastSyncAt(dir) });
 
     // Compute the operation log path for this project so sync + recovery share

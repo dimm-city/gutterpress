@@ -101,7 +101,7 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
     }
   }
 
-  async function writeSettings(settings: AppSettings): Promise<void> {
+  async function writeNow(settings: AppSettings): Promise<void> {
     await deps.fs.mkdir(deps.getUserDataDir(), { recursive: true });
     const target = settingsPath();
     const tmp = `${target}.tmp`;
@@ -112,6 +112,22 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
     // so readers never observe a partially-written app-settings.json.
     await deps.fs.writeFile(tmp, JSON.stringify(settings, null, 2), "utf8");
     await deps.fs.rename(tmp, target);
+  }
+
+  // Serialize every write on one chain, exactly like prefs-store (#34): the
+  // main-process open flow and the app/* settings routes the renderer calls
+  // can both write concurrently. Without serialization two overlapping writers
+  // race on the shared `<file>.tmp` path — the second `writeFile` can truncate
+  // the tmp the first is mid-`rename` on (ENOENT / a corrupt merge), and the
+  // last full-object writer silently reverts the other's change (lost update).
+  let chain: Promise<unknown> = Promise.resolve();
+  function writeSettings(settings: AppSettings): Promise<void> {
+    const run = chain.then(() => writeNow(settings));
+    chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   return { readSettings, writeSettings, settingsPath };

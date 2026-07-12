@@ -259,9 +259,26 @@ async function paginateAndCapture(
     ]);
 
     if (outcome === "stalled") {
-      throw new BuildError(
-        `Pagination stalled at page ${stalledAtCount} — check plugin/CSS errors`,
-        1
+      // Distinguish a truly-dead chunker from a slow finalizer. When ZERO
+      // pages ever rendered (stalledAtCount === 0), Paged.js wedged before
+      // producing anything — a blank PDF is useless, so fail fast (the
+      // finding #19 case). When pages DO exist, the count has merely plateaued
+      // — most often Paged.js is in a long post-layout pass (footnotes, TOC)
+      // before signaling __PAGED_RENDERED__, or a single large page is still
+      // laying out. Killing the whole build there would false-positive on a
+      // legitimately slow book; instead ship what rendered with the same
+      // warning the timeout path uses (partial output is recoverable, a hard
+      // failure is not).
+      if (!stalledAtCount) {
+        throw new BuildError(
+          `Pagination produced no pages within ${Math.round(
+            STALL_WINDOW_MS / 1000
+          )}s — check plugin/CSS errors`,
+          1
+        );
+      }
+      log.warn(
+        `Pagination stopped advancing at ${stalledAtCount} page(s) — output may be incomplete (check plugin/CSS errors if it looks truncated).`
       );
     }
     if (outcome === "timeout") {

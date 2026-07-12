@@ -243,17 +243,13 @@ async function loadCachedPathPluginModule(pluginPath: string): Promise<unknown> 
  * valid plugin function. The error message identifies which manifest entry
  * failed so users can find it.
  *
- * `skipCache: true` is for the true one-shot fail-fast build/export process
- * (`loadPlugins` with no `onError`): the process exits right after, so there
- * is nothing to cache-bust against — plain, uncached imports. Every other
- * caller (direct validation calls, and preview/live-reload via `loadPlugins`
- * with `onError`) defaults to the mtime cache above, which is always correct
- * to reuse in a long-lived host.
+ * Path plugins always go through the mtime cache (see the call below): it is
+ * correct in both a one-shot CLI build and the long-lived Electron host that
+ * runs `runBuild` in-process, so no caller-selected cache mode is needed.
  */
 export async function loadPlugin(
   config: ResolvedPluginConfig,
   baseDir: string,
-  loadOptions?: { skipCache?: boolean }
 ): Promise<LoadedPlugin> {
   const pluginRef = config.path ?? config.name ?? "(unspecified)";
   let pluginModule: unknown;
@@ -288,9 +284,16 @@ export async function loadPlugin(
         );
       }
 
-      pluginModule = loadOptions?.skipCache
-        ? await import(pathToFileURL(pluginPath).href)
-        : await loadCachedPathPluginModule(pluginPath);
+      // Always route through the mtime cache. A bare
+      // `import(pathToFileURL(...).href)` is NOT freshness-safe when the
+      // process outlives one build: the viewer runs `runBuild` in-process in
+      // the long-lived Electron host (a memoized lib import, never a child
+      // process), so a second build/export in the same session would serve the
+      // FIRST build's plugin module from Node's ESM registry (which never
+      // evicts) — a stale-plugin regression. The mtime cache reloads on any
+      // edit and reuses an untouched file, correct in both a one-shot CLI
+      // build and the long-lived host.
+      pluginModule = await loadCachedPathPluginModule(pluginPath);
       pluginName = config.name ?? config.path;
     } else {
       pluginModule = await loadNpmPackage(config.name!, baseDir);
@@ -329,26 +332,24 @@ export async function loadPlugin(
  *     surfaces every skip loudly (preview warns in its log; the Plugins panel
  *     shows the plugin as "Not installed" with fix instructions).
  *
- * The same `onError` presence also picks the path-plugin caching mode
- * (finding #5): fail-fast build/export mode is a one-shot process, so
- * path-plugins are imported once, plainly, with no cache-busting; preview
- * mode reuses the mtime cache in `loadPlugin` so an edited plugin reloads
- * across renders but an unedited one is never re-imported.
+ * Path plugins are loaded through the mtime cache in `loadPlugin` regardless
+ * of mode (finding #5): an edited plugin reloads across renders while an
+ * unedited one is never re-imported, correct in both a one-shot CLI build and
+ * the long-lived Electron host.
  */
 export async function loadPlugins(
   configs: ResolvedPluginConfig[],
   baseDir: string,
   onError?: (pluginRef: string, error: Error) => void
 ): Promise<LoadedPlugin[]> {
-  const loadOptions = { skipCache: !onError };
   const plugins: LoadedPlugin[] = [];
   for (const config of configs) {
     if (!onError) {
-      plugins.push(await loadPlugin(config, baseDir, loadOptions));
+      plugins.push(await loadPlugin(config, baseDir));
       continue;
     }
     try {
-      plugins.push(await loadPlugin(config, baseDir, loadOptions));
+      plugins.push(await loadPlugin(config, baseDir));
     } catch (error) {
       onError(
         config.path ?? config.name ?? "(unspecified)",

@@ -1,10 +1,15 @@
 import { readdir } from 'node:fs/promises';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: (raw) => ({
-    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'fs:listProjectFiles'),
+    // Confine to the open project (ARCH #37) — this readdir is the same
+    // arbitrary-directory-enumeration primitive fs/list-dir guards.
+    projectDir: requireWithinProjectRoot(
+      requireAbsolute((raw as { projectDir?: string }).projectDir, 'fs:listProjectFiles'),
+      'fs:listProjectFiles',
+    ),
   }),
   call: async ({ body }) => {
     const entries = await readdir(body.projectDir, { withFileTypes: true });

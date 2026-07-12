@@ -17,6 +17,7 @@ import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
 import { STATIC_MIME, resolveStaticPath } from '../lib/static-serve.ts';
+import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
 import { renderChapterPreviewHtml, incrementalPreviewEnabled } from './file-watcher.ts';
 
@@ -233,6 +234,7 @@ async function serveStatic(
   absPath: string,
   res: http.ServerResponse,
   cacheControl: string = 'no-store',
+  extraHeaders: Record<string, string> = {},
 ): Promise<void> {
   let filePath = absPath;
 
@@ -266,7 +268,7 @@ async function serveStatic(
   const ct = STATIC_MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
   // Empty files: force 200 with empty body so placeholders (e.g. empty CSS)
   // load without error in some clients.
-  res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': cacheControl });
+  res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': cacheControl, ...extraHeaders });
   res.end(data);
 }
 
@@ -283,11 +285,19 @@ const EMBEDDED_PREFIXES = ['/vendor/', '/preview/scripts/'];
 const EMBEDDED_EXACT = new Set(['/favicon.ico']);
 
 /**
- * Embedded assets are content-fixed per binary build — the same URL path
- * never serves different bytes within one install — so they are safe to mark
- * `immutable` with a max-age far beyond any single preview session.
+ * Embedded assets are content-fixed per print-md VERSION, not forever: the
+ * preview server binds a fixed default port (3579), so the SAME URL on the
+ * SAME origin serves DIFFERENT bytes after a print-md upgrade. `immutable`
+ * would pin a browser to the old ~900 KB polyfill for a year (it forbids even
+ * a reload from revalidating), silently serving stale vendored scripts across
+ * an upgrade. Instead we tag each response with a version ETag and use
+ * `no-cache` (store, but revalidate before every use): an unchanged version
+ * returns a 304 with no body — so the polyfill is still never re-downloaded
+ * within or across sessions — while an upgrade's new ETag forces a fresh 200.
  */
-const EMBEDDED_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+const EMBEDDED_CACHE_CONTROL = 'public, no-cache';
+/** Version-stamped ETag so a print-md upgrade invalidates the browser cache. */
+const EMBEDDED_ETAG = `"pmd-${PACKAGE_VERSION}"`;
 
 function matchesEmbedded(urlPathname: string): boolean {
   if (EMBEDDED_EXACT.has(urlPathname)) return true;
@@ -347,6 +357,14 @@ export async function createPreviewServer(
     // redundant disk writes that Windows Defender re-scans on every folder
     // open) and it's safe to let the browser cache them across reloads.
     if (matchesEmbedded(url.pathname)) {
+      // Conditional request: when the browser already has this version's copy
+      // (If-None-Match matches the version ETag), answer 304 with no body —
+      // the ~900 KB polyfill is never re-read from disk or re-sent.
+      if (req.headers['if-none-match'] === EMBEDDED_ETAG) {
+        res.writeHead(304, { ETag: EMBEDDED_ETAG, 'Cache-Control': EMBEDDED_CACHE_CONTROL });
+        res.end();
+        return;
+      }
       const rel = url.pathname.slice(1); // strip leading '/'
       try {
         const absPath = await getAssetPath(rel);
@@ -354,6 +372,7 @@ export async function createPreviewServer(
           absPath,
           res,
           EMBEDDED_CACHE_CONTROL,
+          { ETag: EMBEDDED_ETAG },
         );
       } catch {
         res.writeHead(404);

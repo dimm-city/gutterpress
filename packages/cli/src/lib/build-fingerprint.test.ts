@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeBuildFingerprint } from "./build-fingerprint";
-import { providerFor } from "./source-provider";
+import { providerFor, listWorkdirChanges, stageChanges } from "./source-provider";
 import { PACKAGE_META } from "./version";
 
 // Covers the migration of build-fingerprint's private runCapture() onto
@@ -233,6 +233,39 @@ test("writeBuildFingerprint records dirty:true when the working tree has unsaved
         iccPath: null,
         stripAnnotations: null,
       },
+    });
+
+    const payload = await readFingerprint(outPath);
+    expect(payload.sourceRevision).not.toBeNull();
+    expect(payload.sourceRevision!.dirty).toBe(true);
+  } finally {
+    await rm(repoDir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
+test("writeBuildFingerprint records dirty:true for STAGED-but-uncommitted changes (code-review: not just WORKDIR-vs-STAGE)", async () => {
+  const repoDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-repo-"));
+  const outDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-out-"));
+  try {
+    await writeFile(join(repoDir, "chapter-01.md"), "# Hello\n");
+    await providerFor({ type: "local-folder", path: repoDir }).initVersionHistory({
+      projectDir: repoDir,
+      initialMessage: "Initial snapshot",
+    });
+    // Edit AND stage it (like `git add`), so the working tree matches the
+    // index but the index differs from HEAD. The old WORKDIR-vs-STAGE-only
+    // dirty check reported clean here; hasUncommittedChanges must report dirty.
+    await writeFile(join(repoDir, "chapter-01.md"), "# Hello\n\nStaged edit.\n");
+    const cache = {};
+    await stageChanges(repoDir, await listWorkdirChanges(repoDir, cache), cache);
+
+    const outPath = await writeBuildFingerprint({
+      command: "build",
+      outputDir: outDir,
+      sourceDir: repoDir,
+      args: {},
+      pdfx: { requestedFlavor: null, resolvedFlavor: "x1a", iccPath: null, stripAnnotations: null },
     });
 
     const payload = await readFingerprint(outPath);

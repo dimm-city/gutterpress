@@ -2,7 +2,7 @@ import { error } from '@sveltejs/kit';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { getMediaHooks } from '../../../../../electron/server-bridge/media-hooks';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 const THUMB_MAX_PX = 192;
@@ -28,7 +28,15 @@ export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
     if (!body.imagePath || typeof body.imagePath !== 'string') {
       error(400, "'imagePath' string is required");
     }
-    return { imagePath: requireAbsolute(body.imagePath, 'media:thumbnail') };
+    // Confine to the open project (ARCH #37): a renderer-origin fetch must
+    // not thumbnail (and thus read the bytes of) arbitrary files on disk. The
+    // Media panel only ever passes in-project paths from listImages.
+    return {
+      imagePath: requireWithinProjectRoot(
+        requireAbsolute(body.imagePath, 'media:thumbnail'),
+        'media:thumbnail',
+      ),
+    };
   },
   call: async ({ body }) => {
     const filePath = body.imagePath;

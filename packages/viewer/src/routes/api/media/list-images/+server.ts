@@ -1,6 +1,6 @@
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /** Image extensions surfaced in the Media panel (lowercase, no dot). */
@@ -16,7 +16,13 @@ const MEDIA_SCAN_MAX_FILES = 2000;
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
   validate: (raw) => ({
-    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'media:listImages'),
+    // Confine to the open project (ARCH #37): this walk (depth 6, up to 2000
+    // entries) must not enumerate arbitrary directory trees for renderer-origin
+    // callers.
+    projectDir: requireWithinProjectRoot(
+      requireAbsolute((raw as { projectDir?: string }).projectDir, 'media:listImages'),
+      'media:listImages',
+    ),
   }),
   call: async ({ body }) => {
     const results: Array<{

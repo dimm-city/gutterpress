@@ -5,7 +5,7 @@ import git from "isomorphic-git";
 import { resolveChromiumExecutable } from "./chromium";
 import { execCapture } from "./exec";
 import { detectProjectSource } from "./project-source";
-import { hasPendingChanges } from "./source-provider";
+import { hasUncommittedChanges } from "./source-provider";
 // PACKAGE_META is a static package.json import — see version.ts's header for
 // why (the compiled `--compile` binary must never read package.json off
 // disk at runtime).
@@ -114,11 +114,12 @@ async function getFirstLineVersion(
  * `detectProjectSource` (project-source.ts, pure `node:fs`) finds the repo
  * root for BOTH "this dir IS the repo" and "this dir is a subfolder of an
  * enclosing repo" the same way `git rev-parse --show-toplevel` did.
- * `hasPendingChanges` (source-provider.ts) is the SAME lock-free dirty check
- * the sync surface uses: a `WORKDIR`-vs-`STAGE` walk, deliberately never the
- * `TREE` (history) walker — so this stays cheap on large repos with long
- * history, unlike `git.statusMatrix`, which additionally diffs against HEAD's
- * tree.
+ * `hasUncommittedChanges` (source-provider.ts) is the lock-free dirty check:
+ * a `WORKDIR`-vs-`STAGE` walk PLUS a `STAGE`-vs-`HEAD` compare, matching
+ * `git status --porcelain`'s notion of dirty (a `git add`-ed but uncommitted
+ * change still counts). This is provenance, not the hot sync path, so the
+ * extra HEAD-tree compare is acceptable here — the sync surface's
+ * `hasPendingChanges` deliberately stays WORKDIR-vs-STAGE only.
  */
 async function getGitRevision(sourceDir?: string): Promise<{
   root: string;
@@ -147,7 +148,7 @@ async function getGitRevision(sourceDir?: string): Promise<{
 
     let dirty: boolean;
     try {
-      dirty = await hasPendingChanges(gitRoot);
+      dirty = await hasUncommittedChanges(gitRoot);
     } catch {
       continue;
     }
@@ -181,7 +182,12 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
     bun: (process.versions as Record<string, string | undefined>).bun ?? null,
     node: process.versions.node,
     "puppeteer-core": PACKAGE_META.dependencies["puppeteer-core"] ?? null,
-    pagedjs: PACKAGE_META.dependencies.pagedjs ?? null,
+    // pagedjs is a devDependency (its runtime form is the vendored polyfill);
+    // fall back to dependencies so a future re-promotion still records it.
+    pagedjs:
+      PACKAGE_META.devDependencies.pagedjs ??
+      PACKAGE_META.dependencies.pagedjs ??
+      null,
     ghostscript: gsVersion,
     qpdf: qpdfVersion,
     // Path, not version — recording the version would require spawning the GUI.
