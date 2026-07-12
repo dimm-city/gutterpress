@@ -68,6 +68,22 @@
   let favorites = $state<FavoriteFolder[]>([]);
   let discovered = $state<DiscoveredProject[]>([]);
   let loading = $state(false);
+  // M20: the recents/favorites load used to catch-and-ignore, so a failed
+  // load rendered the exact same "No recent projects yet" copy as a
+  // genuinely empty list — a lie that hides a real problem from the writer.
+  // Tracked per-surface (this component owns one load surface: recents +
+  // favorites, loaded together below) so the empty-state branch can tell
+  // "failed" from "empty" apart and offer a working Retry instead of a
+  // false all-clear.
+  let lastLoadError = $state<string | null>(null);
+  // M20 (surface 3 — discover scan): tracked separately from `lastLoadError`
+  // (recents/favorites) because it's a distinct background load with its own
+  // section in the list. Without this, a failed scan (e.g. EACCES on a
+  // search root) and a genuinely empty scan both rendered as "no Discovered
+  // section at all" — indistinguishable from each other and, combined with
+  // empty recents/favorites, from the top-level "no projects yet" empty
+  // state too.
+  let discoverError = $state<string | null>(null);
   let locationInput = $state<HTMLInputElement | undefined>(undefined);
   let containerEl = $state<HTMLDivElement | undefined>(undefined);
 
@@ -99,18 +115,35 @@
         title: f.title,
         exists: f.exists,
       }));
+      lastLoadError = null;
     } catch {
-      // non-fatal
+      // M20: surface this instead of swallowing — the empty-state branch
+      // below checks `lastLoadError` to avoid rendering the "no projects
+      // yet" hint over a load that actually failed.
+      lastLoadError = "Couldn't load your books.";
     } finally {
       loading = false;
     }
     // Background scan — non-blocking. Cached + deduped module-wide: the start
     // screen and the left panel each host this component, and the start
     // screen remounts per show — one filesystem BFS serves them all.
-    if (isDesktop()) {
-      discoverProjectsCached()
-        .then((r) => { discovered = r; })
-        .catch(() => {});
+    void loadDiscovered();
+  }
+
+  async function loadDiscovered() {
+    if (!isDesktop()) return;
+    try {
+      discovered = await discoverProjectsCached();
+      discoverError = null;
+    } catch {
+      // M20: surface this instead of swallowing — a scan failure (e.g.
+      // EACCES on a search root) must render observably differently from a
+      // genuinely empty scan, matching the recents/favorites and template
+      // load fixes. `discoverProjectsCached()` doesn't cache a rejection
+      // (see projects-discover-cache.ts), so calling this again — e.g. from
+      // the Retry button below — genuinely re-runs the scan rather than
+      // replaying a stale failure.
+      discoverError = "Couldn't discover projects on disk.";
     }
   }
 
@@ -427,13 +460,18 @@
               </li>
             {/each}
           </ul>
+        {:else if lastLoadError}
+          <div class="load-error" role="alert">
+            <span>{lastLoadError}</span>
+            <button type="button" class="retry-btn" onclick={() => loadLists()}>Retry</button>
+          </div>
         {:else if !loading}
           <p class="empty-section-hint">No recent projects yet. Open a folder to get started.</p>
         {/if}
       </section>
     {/if}
 
-    {#if filteredDiscovered.length > 0}
+    {#if filteredDiscovered.length > 0 || discoverError}
       <section class="list-section">
         <h3 class="list-heading">
           Discovered
@@ -441,35 +479,42 @@
             <span class="list-heading-count">({filteredDiscovered.length})</span>
           {/if}
         </h3>
-        <ul class="list" aria-label="Discovered projects">
-          {#each visibleDiscovered as proj, i}
-            {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
-            <li class="list-item">
-              <div
-                class="list-row"
-                tabindex="0"
-                role="button"
-                onclick={() => openRow(proj.path)}
-                onkeydown={(e) => onListKeydown(e, rowIndex, proj.path)}
-                title={proj.path}
-              >
-                <span class="row-icon" aria-hidden="true"><Icon name="search" size={13} /></span>
-                <span class="row-info">
-                  <span class="row-title">{proj.title || basenameOf(proj.path)}</span>
-                  <span class="row-path">{proj.path}</span>
-                </span>
-              </div>
-              <div class="row-actions">
-                <button class="icon-action star" title="Add to favorites" aria-label="Add to favorites"
-                  onclick={(e) => toggleFavorite(proj.path, proj.title, e)}><Icon name="star" size={13} /></button>
-              </div>
-            </li>
-          {/each}
-        </ul>
-        {#if filteredDiscovered.length > DISCOVERED_CAP}
-          <button class="show-all-btn" onclick={() => (expandedForFilter = discoveredExpanded ? null : effectiveFilter)}>
-            {discoveredExpanded ? "Show fewer" : `Show all ${filteredDiscovered.length} discovered`}
-          </button>
+        {#if filteredDiscovered.length > 0}
+          <ul class="list" aria-label="Discovered projects">
+            {#each visibleDiscovered as proj, i}
+              {@const rowIndex = filteredFavorites.length + filteredRecents.length + i}
+              <li class="list-item">
+                <div
+                  class="list-row"
+                  tabindex="0"
+                  role="button"
+                  onclick={() => openRow(proj.path)}
+                  onkeydown={(e) => onListKeydown(e, rowIndex, proj.path)}
+                  title={proj.path}
+                >
+                  <span class="row-icon" aria-hidden="true"><Icon name="search" size={13} /></span>
+                  <span class="row-info">
+                    <span class="row-title">{proj.title || basenameOf(proj.path)}</span>
+                    <span class="row-path">{proj.path}</span>
+                  </span>
+                </div>
+                <div class="row-actions">
+                  <button class="icon-action star" title="Add to favorites" aria-label="Add to favorites"
+                    onclick={(e) => toggleFavorite(proj.path, proj.title, e)}><Icon name="star" size={13} /></button>
+                </div>
+              </li>
+            {/each}
+          </ul>
+          {#if filteredDiscovered.length > DISCOVERED_CAP}
+            <button class="show-all-btn" onclick={() => (expandedForFilter = discoveredExpanded ? null : effectiveFilter)}>
+              {discoveredExpanded ? "Show fewer" : `Show all ${filteredDiscovered.length} discovered`}
+            </button>
+          {/if}
+        {:else if discoverError}
+          <div class="load-error" role="alert">
+            <span>{discoverError}</span>
+            <button type="button" class="retry-btn" onclick={() => loadDiscovered()}>Retry</button>
+          </div>
         {/if}
       </section>
     {/if}
@@ -605,6 +650,32 @@
   }
   .list-heading-count { font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 10px; color: var(--app-text-faint); }
   .empty-section-hint { font-size: 11px; color: var(--app-text-faint); margin: 2px 0 0 2px; font-style: italic; }
+  .load-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 2px 2px 0;
+    padding: 6px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    background: var(--app-error-bg);
+    border: 1px solid var(--app-error-border);
+    color: var(--app-error-text);
+  }
+  .retry-btn {
+    margin-left: auto;
+    padding: 3px 9px;
+    font-size: 11px;
+    border-radius: 5px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    color: var(--app-text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .retry-btn:hover { background: var(--app-surface-hover); }
+  .retry-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .show-all-btn {
     background: none; border: none; cursor: pointer;
     font-size: 11px; color: var(--app-link); padding: 3px 2px; text-align: left; border-radius: 3px;

@@ -329,6 +329,16 @@ CodeMirror's lint-source contract expects one async function to hand it, not
 because every route needs a `Platform` method; the route itself is still the
 (A) path.
 
+**Svelte 5 conventions: `$effect` is banned in the SPA.** Enforced by eslint
+(`no-restricted-syntax` in `packages/viewer/eslint.config.*`) — the error
+message lists the sanctioned alternatives (onMount for DOM setup/cleanup,
+event handlers for user-triggered state, `$derived` + `class:` bindings for
+reactive presentation, `{#key}` for identity re-init, `untrack()` for one-time
+reads). For imperative side-effects on settings changes specifically, use the
+settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
+(see `src/lib/settings.svelte.ts`'s header) — every state replacement flows
+through one choke point, so the notify cannot be forgotten by a new setter.
+
 **Dormant PWA scaffolding (`WebAdapter`, kept for #33).** The PWA remains a
 goal, so `WebAdapter` (`src/lib/platform/web-adapter.ts`) intentionally keeps a
 partial, currently-unreachable implementation of several capabilities —

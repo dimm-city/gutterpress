@@ -38,10 +38,17 @@
   let templates = $state<TemplateInfo[]>([]);
   let selectedTemplate = $state<TemplateInfo | null>(null);
   let importing = $state(false);
+  // M20: a failed listBuiltIn() call used to catch into `templates = []`,
+  // which silently omits the whole "Start from a template" radiogroup — a
+  // writer never learns templates exist and creates a bare default book.
+  // Tracked separately from `error` (the create-flow error) so a template
+  // load failure can render its own Retry without touching the create form.
+  let templatesError = $state<string | null>(null);
 
   const BUILTIN_IDS = ["book", "ttrpg", "zine", "technical"];
 
   async function loadTemplates() {
+    templatesError = null;
     try {
       const builtins = await api.tpl.listBuiltIn();
       let customs: TemplateInfo[] = [];
@@ -57,6 +64,7 @@
     } catch {
       templates = [];
       selectedTemplate = null;
+      templatesError = "Templates couldn't be loaded.";
     }
   }
 
@@ -318,6 +326,14 @@
             </button>
           {/if}
         </div>
+      {:else if templatesError}
+        <div class="field">
+          <span>Start from a template</span>
+          <div class="load-error" role="alert">
+            <span>{templatesError}</span>
+            <button type="button" class="retry-btn" onclick={loadTemplates}>Retry</button>
+          </div>
+        </div>
       {/if}
 
       <div class="field">
@@ -415,6 +431,32 @@
   }
   .import-tpl:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
   .import-tpl:disabled { opacity: 0.5; cursor: default; }
+
+  .load-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--app-error-bg);
+    border: 1px solid var(--app-error-border);
+    color: var(--app-error-text);
+  }
+  .retry-btn {
+    margin-left: auto;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 5px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    color: var(--app-text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .retry-btn:hover { background: var(--app-surface-hover); }
+  .retry-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
 

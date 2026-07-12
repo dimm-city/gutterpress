@@ -130,6 +130,88 @@ test("M24 (fix round 1): opening the heading or More popup moves focus inside it
   expect(src).not.toContain('role="menu"');
 });
 
+test("ARCH #42: the table and image dialogs use the shared dialogBehavior action, not a hand-rolled trap", () => {
+  const src = read("src/lib/components/EditorToolbar.svelte");
+
+  expect(src).toMatch(
+    /import\s*\{[^}]*dialogBehavior[^}]*\}\s*from\s*["']\$lib\/dialog["']/,
+  );
+
+  const tableStart = src.indexOf("{#if tableOpen}");
+  const tableEnd = src.indexOf("{/if}", tableStart);
+  expect(tableStart).toBeGreaterThan(-1);
+  expect(tableEnd).toBeGreaterThan(tableStart);
+  const tableBlock = src.slice(tableStart, tableEnd);
+
+  const imageStart = src.indexOf("{#if imageOpen}");
+  const imageEnd = src.indexOf("{/if}", imageStart);
+  expect(imageStart).toBeGreaterThan(-1);
+  expect(imageEnd).toBeGreaterThan(imageStart);
+  const imageBlock = src.slice(imageStart, imageEnd);
+
+  // Each fixed-position dialog wires the shared action with its own close
+  // handler and trigger button for focus-restore — mirroring every other
+  // migrated dialog shell (dialogBehavior owns ARIA/Escape/trap/restore).
+  expect(tableBlock).toMatch(/use:dialogBehavior=\{\{\s*onClose:\s*cancelTable,\s*triggerEl:\s*tableDialogTriggerEl\s*\}\}/);
+  expect(imageBlock).toMatch(/use:dialogBehavior=\{\{\s*onClose:\s*cancelImage,\s*triggerEl:\s*imageDialogTriggerEl\s*\}\}/);
+
+  for (const block of [tableBlock, imageBlock]) {
+    // No hand-declared ARIA (owned by the action now) and no hand-rolled trap.
+    expect(block).not.toContain('role="dialog"');
+    expect(block).not.toContain('aria-modal="true"');
+    expect(block).not.toContain('tabindex="-1"');
+    expect(block).not.toContain("trapFocusIn");
+    expect(block).not.toMatch(/onkeydown=\{[\s\S]*?Escape/);
+  }
+
+  // The hand-rolled trap helper (and its duplicated FOCUSABLE copy) is gone
+  // entirely — dialogBehavior is the one implementation now.
+  expect(src).not.toContain("function trapFocusIn");
+});
+
+test("ARCH #42: EditorToolbar no longer hand-declares its own FOCUSABLE selector string", () => {
+  const src = read("src/lib/components/EditorToolbar.svelte");
+  // This exact literal used to be duplicated here (EditorToolbar.svelte:97-99),
+  // copying dialog.ts's private FOCUSABLE constant. It must not come back —
+  // any remaining non-modal need (the heading/layout/more popups still want
+  // "focus the first focusable child" on open) sources the selector from the
+  // shared export instead of re-declaring it.
+  expect(src).not.toContain(
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  );
+  expect(src).toMatch(
+    /import\s*\{[^}]*FOCUSABLE[^}]*\}\s*from\s*["']\$lib\/dialog["']/,
+  );
+});
+
+test("ARCH #42: image/table dialog triggers are still captured on open for focus-restore", () => {
+  const src = read("src/lib/components/EditorToolbar.svelte");
+  const openImageIdx = src.indexOf("function openImageDialog");
+  const openImageEnd = src.indexOf("\n  }", openImageIdx);
+  expect(src.slice(openImageIdx, openImageEnd)).toContain(
+    "imageDialogTriggerEl = e.currentTarget as HTMLButtonElement;",
+  );
+
+  const openTableIdx = src.indexOf("function openTableDialog");
+  const openTableEnd = src.indexOf("\n  }", openTableIdx);
+  expect(src.slice(openTableIdx, openTableEnd)).toContain(
+    "tableDialogTriggerEl = e.currentTarget as HTMLButtonElement;",
+  );
+});
+
+test("ARCH #42: dialog.ts exports FOCUSABLE and owns the one private trapFocus implementation", () => {
+  const dialogSrc = read("src/lib/dialog.ts");
+  expect(dialogSrc).toMatch(/export const FOCUSABLE\s*=/);
+  // dialog.ts now owns trapFocus directly (not imported from a11y.ts) since
+  // dialogBehavior is its only legitimate caller.
+  expect(dialogSrc).not.toMatch(/import\s*\{\s*trapFocus\s*\}\s*from\s*["']\$lib\/a11y["']/);
+  expect(dialogSrc).toMatch(/function trapFocus\(/);
+  expect(dialogSrc).not.toMatch(/export\s+function\s+trapFocus/);
+
+  const a11ySrc = read("src/lib/a11y.ts");
+  expect(a11ySrc).not.toMatch(/export\s+function\s+trapFocus/);
+});
+
 test("About dialog copy reflects current save/export shortcuts", () => {
   const src = read("src/lib/components/HelpDialog.svelte");
   expect(src).toContain("Save source edits");

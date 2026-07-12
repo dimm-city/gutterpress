@@ -23,6 +23,7 @@
   import { getPlatform, isDesktop } from "$lib/platform";
   import { basenameOf } from "$lib/platform/paths";
   import { api } from "$lib/api";
+  import { dialogBehavior, FOCUSABLE } from "$lib/dialog";
   import {
     visibleToolbarItems,
     LAYOUT_BLOCK_ITEMS,
@@ -93,28 +94,16 @@
     if (item.action) onAction(item.action as ToolbarAction);
   }
 
-  // ── Generic focus-trap helpers, shared by the image and table dialogs ──────
+  // ── Focus-first-child helper for the heading/layout/More popups below ──────
+  // These are plain disclosures, not modal dialogs (see the "not role=listbox"
+  // comments on their markup), so they don't go through `dialogBehavior` — they
+  // only need "focus the first focusable child on open," not a full ARIA/
+  // Escape/Tab-trap/restore contract. The table and image dialogs below ARE
+  // modal and use `dialogBehavior` directly (ARCH #42), which owns the trap
+  // itself; this helper reuses the same shared `FOCUSABLE` selector from
+  // dialog.ts rather than hand-rolling its own copy.
   function focusableElementsIn(container: HTMLElement | undefined): HTMLElement[] {
-    return Array.from(
-      container?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    );
-  }
-
-  function trapFocusIn(e: KeyboardEvent, container: HTMLElement | undefined) {
-    if (e.key !== "Tab") return;
-    const focusable = focusableElementsIn(container);
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (!first || !last) return;
-    if (e.shiftKey && document.activeElement === first) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
+    return Array.from(container?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
   }
 
   // ── Heading level picker ──────────────────────────────────────────────────────
@@ -202,7 +191,7 @@
   function openTableDialog(e: MouseEvent) {
     tableDialogTriggerEl = e.currentTarget as HTMLButtonElement;
     tableOpen = true;
-    queueMicrotask(() => focusableElementsIn(tableDialogEl)[0]?.focus());
+    // Initial focus placement is handled by the dialogBehavior action.
   }
 
   function insertTable() {
@@ -215,9 +204,9 @@
   }
 
   function closeTableDialog() {
+    // Focus restoration to `tableDialogTriggerEl` is handled by the
+    // dialogBehavior action.
     tableOpen = false;
-    tableDialogTriggerEl?.focus();
-    tableDialogTriggerEl = undefined;
   }
 
   // ── Image insert dialog ──────────────────────────────────────────────────────
@@ -286,8 +275,8 @@
     imagePosition = "";
     imageOpen = false;
     imageBusy = false;
-    imageDialogTriggerEl?.focus();
-    imageDialogTriggerEl = undefined;
+    // Focus restoration to `imageDialogTriggerEl` is handled by the
+    // dialogBehavior action.
   }
 
   function cancelImage() {
@@ -298,15 +287,14 @@
     imageError = "";
     imageOpen = false;
     imageBusy = false;
-    imageDialogTriggerEl?.focus();
-    imageDialogTriggerEl = undefined;
+    // Focus restoration to `imageDialogTriggerEl` is handled by the
+    // dialogBehavior action.
   }
 
   function openImageDialog(e: MouseEvent) {
     imageDialogTriggerEl = e.currentTarget as HTMLButtonElement;
     imageOpen = true;
-    // Focus the first focusable element inside the dialog after it mounts.
-    queueMicrotask(() => focusableElementsIn(imageDialogEl)[0]?.focus());
+    // Initial focus placement is handled by the dialogBehavior action.
   }
 
   // ── "More" overflow menu (shown at narrow toolbar widths via @container) ────
@@ -586,14 +574,8 @@
 <div
   bind:this={tableDialogEl}
   class="image-dialog table-dialog"
-  role="dialog"
-  aria-modal="true"
   aria-label="Insert table"
-  tabindex="-1"
-  onkeydown={(e) => {
-    if (e.key === "Escape") { cancelTable(); return; }
-    trapFocusIn(e, tableDialogEl);
-  }}
+  use:dialogBehavior={{ onClose: cancelTable, triggerEl: tableDialogTriggerEl }}
 >
   <h3 class="image-dialog-title">Insert table</h3>
   <label class="popup-label">
@@ -620,14 +602,8 @@
 <div
   bind:this={imageDialogEl}
   class="image-dialog"
-  role="dialog"
-  aria-modal="true"
   aria-label="Insert image"
-  tabindex="-1"
-  onkeydown={(e) => {
-    if (e.key === "Escape") { cancelImage(); return; }
-    trapFocusIn(e, imageDialogEl);
-  }}
+  use:dialogBehavior={{ onClose: cancelImage, triggerEl: imageDialogTriggerEl }}
 >
   <h3 class="image-dialog-title">Insert image</h3>
 

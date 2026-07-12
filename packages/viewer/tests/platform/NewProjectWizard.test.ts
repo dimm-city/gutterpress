@@ -113,3 +113,40 @@ describe("NewProjectWizard — M21 default parentDir", () => {
     expect(src).toMatch(/canCreate\s*=\s*\$derived\(nameValid\s*&&\s*!!parentDir\s*&&\s*!creating\)/);
   });
 });
+
+describe("NewProjectWizard — M20 template-load failure surfaces instead of silently omitting the section", () => {
+  test("tracks a templatesError surface separate from the create-flow `error` state", () => {
+    const src = readSource();
+    expect(src).toMatch(/let templatesError = \$state<string \| null>\(null\)/);
+  });
+
+  test("loadTemplates() clears templatesError up front and sets it (not templates = [] silently) on failure", () => {
+    const src = readSource();
+    const fn = src.slice(
+      src.indexOf("async function loadTemplates("),
+      src.indexOf("async function importTemplate("),
+    );
+    // Cleared before the try, so a retry after a prior failure starts clean.
+    expect(fn).toMatch(/async function loadTemplates\(\)\s*\{\s*templatesError = null;/);
+    const catchBlock = fn.slice(fn.lastIndexOf("} catch {"), fn.lastIndexOf("}"));
+    expect(catchBlock).toContain("templates = [];");
+    expect(catchBlock).toContain("selectedTemplate = null;");
+    expect(catchBlock).toMatch(/templatesError\s*=\s*["'].+["'];/);
+  });
+
+  test("the template section renders a Retry (via loadTemplates) instead of vanishing when templates is empty due to an error", () => {
+    const src = readSource();
+    const templateArea = src.slice(
+      src.indexOf("{#if templates.length > 0}"),
+      src.indexOf("<div class=\"field\">\n        <span>Where should we save it?</span>"),
+    );
+    const errorBranchIdx = templateArea.indexOf("{:else if templatesError}");
+    expect(errorBranchIdx).toBeGreaterThan(-1);
+    const errorBranch = templateArea.slice(errorBranchIdx);
+    expect(errorBranch).toContain("Start from a template");
+    expect(errorBranch).toContain("{templatesError}");
+    expect(errorBranch).toMatch(/onclick=\{loadTemplates\}/);
+    expect(errorBranch).toContain(">Retry<");
+    expect(errorBranch).toMatch(/role="alert"/);
+  });
+});

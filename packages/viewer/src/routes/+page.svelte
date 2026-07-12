@@ -57,7 +57,7 @@
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
   import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
   import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
-  import { useSettings, _loadSettings } from "$lib/settings.svelte";
+  import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -1094,28 +1094,28 @@
     return buffer;
   }
 
-  // Keep the recovery-enabled toggle (#45) in sync with the live setting.
-  // Subscribe via the settings observer so the buffer is updated whenever the
-  // setting changes (e.g. SettingsDialog toggle), without using $effect.
-  onMount(() => {
-    return settings.subscribe((s) => {
-      buffer?.setRecoveryEnabled(s.editor.crashRecovery);
-    });
-  });
-
-  // Re-inject viewer canvas styles when the preview background colour changes
-  // in Settings. The initial injection happens in the renderingComplete handler;
-  // this subscriber catches live changes without requiring a re-render.
-  onMount(() => {
-    let lastBg: string | undefined;
-    return settings.subscribe((s) => {
-      const bg = s.appearance.previewBg;
-      if (bg !== lastBg && client) {
-        lastBg = bg;
-        client.injectStyles("viewer-canvas", buildViewerStyles(bg));
-      }
-    });
-  });
+  // ARCH #61: imperative settings side-effects go through the store's single
+  // onSettingsChange channel ($effect is banned in the SPA — see CLAUDE.md and
+  // the store header; the store's replaceState choke point owns the notify, so
+  // the old forgot-to-notify hazard is structurally gone). Each sink is
+  // wrapped in settingsChangeGuard so it fires only when ITS field changed:
+  // - crashRecovery → the live buffer's recovery toggle (#45); the buffer's
+  //   own constructor seeds recoveryEnabled, so a fresh buffer needs no push.
+  // - previewBg → re-inject viewer canvas styles; initial injection happens in
+  //   the renderingComplete handler, this catches live changes. The ready()
+  //   check keeps a pre-mount change from being dropped (it re-fires once the
+  //   preview client exists).
+  const recoverySink = settingsChangeGuard<boolean>((enabled) => buffer?.setRecoveryEnabled(enabled));
+  const previewBgSink = settingsChangeGuard<string>(
+    (bg) => client?.injectStyles("viewer-canvas", buildViewerStyles(bg)),
+    () => !!client,
+  );
+  onMount(() =>
+    onSettingsChange((s) => {
+      recoverySink(s.editor.crashRecovery);
+      previewBgSink(s.appearance.previewBg);
+    }),
+  );
 
   // External-edit detection (#44): watch the open folder; on any debounced
   // change, ask the buffer to reconcile the open document against disk.

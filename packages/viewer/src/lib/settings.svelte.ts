@@ -8,6 +8,20 @@
  * Reads are reactive: components that reference `useSettings().current.<...>`
  * inside a `$derived`/`$effect`/template re-run when a setting changes.
  *
+ * Notification channels (ARCH #61): rune reactivity serves reads — templates
+ * and `$derived` re-run when `current` changes. Imperative side-effects
+ * (pushing a changed value into a non-reactive sink like the preview client
+ * or the editor buffer) go through `onSettingsChange()` below, because this
+ * repo BANS `$effect` in the SPA (enforced by eslint `no-restricted-syntax`;
+ * see CLAUDE.md §8's viewer conventions). The hazard #61 flagged — a setter
+ * that forgets the manual notify loop silently breaking imperative
+ * consumers — is closed structurally: every state replacement routes through
+ * the single `replaceState()` choke point, which owns the notify. Because
+ * `set()` replaces the WHOLE `current` object on every call (not just the
+ * touched section), listeners fire on every settings change — use
+ * `settingsChangeGuard()` below to dedupe against the value actually read,
+ * exactly as the old `lastBg`-style closures did.
+ *
  * Distinct from `ViewerPrefs` (session/per-project state via setViewerPrefs).
  * Settings are durable user preferences persisted to `userData/app-settings.json`
  * on desktop. `api.app.getSettings`/`setSettings` reach that file through the
@@ -36,8 +50,32 @@ const state = $state<{ current: AppSettings; loaded: boolean }>({
 
 let loadPromise: Promise<void> | null = null;
 
-/** Subscribers notified after every `set()` call with the updated settings. */
-const subscribers: Array<(settings: AppSettings) => void> = [];
+type SettingsListener = (current: AppSettings) => void;
+const listeners = new Set<SettingsListener>();
+
+/**
+ * The single choke point every state replacement routes through, so the
+ * imperative notification can never be forgotten by a future setter (the
+ * dual-write hazard ARCH #61 flagged).
+ */
+function replaceState(next: AppSettings): void {
+  state.current = next;
+  for (const fn of listeners) fn(state.current);
+}
+
+/**
+ * Register an imperative settings-change listener; returns an unsubscribe.
+ * For side-effect consumers only (the repo bans `$effect` — see the header);
+ * reactive reads should use `useSettings().current` directly. Listeners fire
+ * on EVERY settings change — wrap field-specific sinks in
+ * `settingsChangeGuard()` to dedupe.
+ */
+export function onSettingsChange(fn: SettingsListener): () => void {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
 
 function isAppSettings(value: unknown): value is AppSettings {
   if (!value || typeof value !== "object") return false;
@@ -55,12 +93,9 @@ export function _loadSettings(): Promise<void> {
     .getSettings()
     .then((loaded) => {
       if (isAppSettings(loaded)) {
-        state.current = loaded;
+        replaceState(loaded);
       }
       state.loaded = true;
-      // Notify imperative subscribers (subscribe() callers) so they can react
-      // to the persisted values that just arrived.
-      for (const fn of [...subscribers]) fn(state.current);
     })
     .catch(() => {
       // Keep the defaults already in `state.current`.
@@ -74,9 +109,8 @@ export function _loadSettings(): Promise<void> {
  * the platform adapter. Accepts a deep-partial so callers patch one section.
  */
 function set(patch: DeepPartial<AppSettings>): void {
-  state.current = deepMergeSettings(state.current, patch);
+  replaceState(deepMergeSettings(state.current, patch));
   api.app.setSettings(patch as Record<string, unknown>).catch(() => {});
-  for (const fn of [...subscribers]) fn(state.current);
 }
 
 /** Reset one section to its defaults and persist. */
@@ -99,17 +133,41 @@ export function useSettings() {
     },
     set,
     resetSection,
-    /**
-     * Subscribe to settings changes. The callback is called after every `set()`
-     * with the full updated `AppSettings`. Returns an unsubscribe function.
-     * Use in `onMount` with its return teardown instead of `$effect`.
-     */
-    subscribe(fn: (settings: AppSettings) => void): () => void {
-      subscribers.push(fn);
-      return () => {
-        const i = subscribers.indexOf(fn);
-        if (i >= 0) subscribers.splice(i, 1);
-      };
-    },
+  };
+}
+
+/**
+ * Build a guarded settings-change sink for use inside an `onSettingsChange`
+ * listener (ARCH #61). `set()` replaces the whole `AppSettings.current`
+ * object on every call, so a listener that reads one nested field (e.g.
+ * `current.appearance.previewBg`) would otherwise re-apply its side effect
+ * on every UNRELATED settings change too.
+ *
+ * The returned function calls `onChange(value)` only when `value` differs
+ * (`!==`) from the last value it actually applied, AND `ready()` (default:
+ * always true) returns true. `ready()` is checked BEFORE recording the value
+ * as "seen", so a value that arrives while the guarded resource isn't ready
+ * yet (e.g. the preview client hasn't mounted) is not silently dropped —
+ * the sink still fires the next time it's called with `ready()` true, even if
+ * the value hasn't changed since the skipped attempt. This mirrors the
+ * `lastBg`-style closures the manual `subscribe()` consumers used to hand-roll
+ * individually.
+ *
+ * Usage (an `onSettingsChange` listener, registered in `onMount`):
+ * ```ts
+ * const bgSink = settingsChangeGuard((bg: string) => client?.injectStyles(...), () => !!client);
+ * const off = onSettingsChange((s) => bgSink(s.appearance.previewBg));
+ * ```
+ */
+export function settingsChangeGuard<T>(
+  onChange: (value: T) => void,
+  ready: () => boolean = () => true,
+): (value: T) => void {
+  let last: T | undefined;
+  return (value: T) => {
+    if (value !== last && ready()) {
+      last = value;
+      onChange(value);
+    }
   };
 }
