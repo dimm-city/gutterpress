@@ -639,7 +639,9 @@ function createWindow() {
     // the splash (with a fallback timeout so the splash can never strand the user).
     show: false,
     webPreferences: {
-      preload: path.resolve(HERE, "../preload/preload.js"),
+      // NOTE: .cjs — a sandboxed preload cannot be ESM (see
+      // electron.vite.config.ts's preload output comment).
+      preload: path.resolve(HERE, "../preload/preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       // ARCH review finding #33: sandboxed (Electron default since v20). The
