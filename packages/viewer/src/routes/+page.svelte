@@ -42,7 +42,7 @@
   import { api } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
-  import { basenameOf, joinPath } from "$lib/platform/paths";
+  import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
   import { shouldReconcileAfterSync } from "$lib/sync-status";
   import { onMount, tick } from "svelte";
   import {
@@ -1197,13 +1197,16 @@
 
   /**
    * Called after a successful rename. `selectEditorFile` re-reads from disk
-   * at `newPath` — since `onTreeBeforeRename` already flushed (or the buffer
-   * was already clean), disk content at `newPath` matches the buffer, so
-   * this is a clean no-op reload that just repoints `filePath`/`diskMtimeMs`.
+   * at the new path — since `onTreeBeforeRename` already flushed (or the buffer
+   * was already clean), disk content there matches the buffer, so this is a
+   * clean no-op reload that just repoints `filePath`/`diskMtimeMs`. When a
+   * FOLDER containing the open file is renamed, the open file moves with it:
+   * repoint to its new nested path (`newPath` + the tail below `oldPath`)
+   * rather than leaving the editor bound to the old, now-missing location.
    */
   function onTreeFileRenamed(oldPath: string, newPath: string): void {
-    if (editorFilePath === oldPath) {
-      selectEditorFile(newPath);
+    if (editorFilePath && isPathAtOrUnder(editorFilePath, oldPath)) {
+      selectEditorFile(newPath + editorFilePath.slice(oldPath.length));
     }
   }
 
@@ -1212,9 +1215,11 @@
    * it pointing at a path that no longer exists — the exact "must not
    * silently point at a missing path" failure mode M9 calls out (a stray
    * edit afterward would otherwise silently recreate the deleted file).
+   * FileTree can delete directories recursively, so this fires when the open
+   * file IS the deleted path OR lives inside a deleted folder.
    */
   function onTreeFileDeleted(path: string): void {
-    if (editorFilePath === path) {
+    if (editorFilePath && isPathAtOrUnder(editorFilePath, path)) {
       buffer?.reset();
     }
   }
@@ -2739,7 +2744,7 @@
     onSwitchBook={(path) => void switchBook(path)}
     onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
-    onConflict={(files) => syncController.onPillConflict(files)}
+    onConflict={(files, localId, remoteId) => syncController.onPillConflict(files, localId, remoteId)}
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}

@@ -177,8 +177,13 @@ test("+page.svelte defines and wires the FileTree open-file rename/delete handle
   expect(page).toContain("function onTreeFileRenamed");
   expect(page).toContain("function onTreeFileDeleted");
   expect(page).toContain("buffer.flush()");
-  expect(page).toContain("selectEditorFile(newPath)");
+  expect(page).toContain("selectEditorFile(newPath");
   expect(page).toContain("buffer?.reset()");
+  // The rename/delete handlers must treat a renamed/deleted DIRECTORY as
+  // affecting an open file nested inside it (code-review), not only an exact
+  // path match — the containment predicate is unit-tested in paths.test.ts.
+  expect(page).toContain("isPathAtOrUnder(editorFilePath, oldPath)");
+  expect(page).toContain("isPathAtOrUnder(editorFilePath, path)");
   expect(page).toContain("onBeforeRenameOpenFile={onTreeBeforeRename}");
   expect(page).toContain("onFileRenamed={onTreeFileRenamed}");
   expect(page).toContain("onFileDeleted={onTreeFileDeleted}");

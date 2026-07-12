@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { basenameOf, fileRef } from "../../src/lib/platform/paths";
+import { basenameOf, fileRef, isPathAtOrUnder } from "../../src/lib/platform/paths";
 
 // basenameOf is the single shared, PWA-clean (no node:path) basename helper used
 // by the adapter, +page.svelte, and the editor/conflict components (#61). It must
@@ -36,4 +36,26 @@ test("fileRef wraps a path into { key, displayName: basename }", () => {
     key: "C:\\proj\\assets\\cover.png",
     displayName: "cover.png",
   });
+});
+
+// isPathAtOrUnder underpins +page.svelte's FileTree rename/delete handlers
+// (code-review): a renamed/deleted DIRECTORY must be treated as affecting an
+// open file nested inside it, while a sibling with a shared string prefix must
+// NOT match.
+test("isPathAtOrUnder: an exact path matches", () => {
+  expect(isPathAtOrUnder("/proj/ch1.md", "/proj/ch1.md")).toBe(true);
+});
+
+test("isPathAtOrUnder: a file nested under a directory matches (POSIX and Windows)", () => {
+  expect(isPathAtOrUnder("/proj/part1/ch1.md", "/proj/part1")).toBe(true);
+  expect(isPathAtOrUnder("C:\\proj\\part1\\ch1.md", "C:\\proj\\part1")).toBe(true);
+});
+
+test("isPathAtOrUnder: a sibling with a shared string prefix does NOT match", () => {
+  expect(isPathAtOrUnder("/proj/part10/ch1.md", "/proj/part1")).toBe(false);
+  expect(isPathAtOrUnder("/a/proj2/ch1.md", "/a/proj")).toBe(false);
+});
+
+test("isPathAtOrUnder: an unrelated path does NOT match", () => {
+  expect(isPathAtOrUnder("/other/ch1.md", "/proj/part1")).toBe(false);
 });

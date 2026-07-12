@@ -38,6 +38,9 @@ interface FakeLibOptions {
   /** SyncErrorKind|null returned by classifyFromHealth (drives runPreflight's
    *  structural-condition branch). Default null (healthy repo). */
   classifyFromHealth?: () => string | null;
+  /** When set, diagnoseProjectRemote rejects with this — to exercise the
+   *  probe-failure path in run() (code-review: must release the lock). */
+  diagnoseThrows?: Error;
 }
 
 /** A minimal local-git-folder ProjectSource for runPreflight tests. */
@@ -60,7 +63,10 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     autoSnapshotDelayMs: () =>
       opts.autoSnapshotDelayMs === undefined ? 600_000 : opts.autoSnapshotDelayMs,
     detectProjectSource: async () => ({ type: opts.sourceType ?? "local-git-folder" }),
-    diagnoseProjectRemote: async () => ({ canSync: opts.canSync ?? true }),
+    diagnoseProjectRemote: async () => {
+      if (opts.diagnoseThrows) throw opts.diagnoseThrows;
+      return { canSync: opts.canSync ?? true };
+    },
     syncProject: async ({ projectDir }: { projectDir: string }) => {
       syncCalls.push(projectDir);
       const r = opts.syncProject
@@ -135,6 +141,26 @@ test("concurrent triggers coalesce to exactly one queued follow-up run", async (
 
   // Total syncProject calls: the original + exactly one coalesced follow-up.
   expect(h.syncCalls.length).toBe(2);
+});
+
+test("a probe failure releases the single-flight lock (code-review: no wedge)", async () => {
+  // With inFlight now claimed BEFORE the policy probes, a thrown probe must
+  // still release it — otherwise every future trigger only arms runAgain and
+  // auto-sync is wedged until restart.
+  const opts: FakeLibOptions = { diagnoseThrows: new Error("network down") };
+  const h = makeHarness(opts);
+
+  await expect(h.orch.run(DIR)).rejects.toThrow("network down");
+  // The lock is released, not stuck true.
+  expect(h.orch.getState(DIR)?.inFlight).toBe(false);
+  expect(h.syncCalls.length).toBe(0);
+
+  // The probe recovers; the SAME orchestrator is NOT wedged — the next trigger
+  // proceeds all the way through syncProject.
+  opts.diagnoseThrows = undefined;
+  await h.orch.run(DIR);
+  expect(h.orch.getState(DIR)?.inFlight).toBe(false);
+  expect(h.syncCalls.length).toBe(1);
 });
 
 test("a 'conflict' outcome latches auto-sync and blocks subsequent runs", async () => {

@@ -473,26 +473,41 @@ export class AutoSyncOrchestrator {
     };
 
     // Re-check live policy every run so a settings change applies immediately.
-    const [lib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
+    // The probes below are wrapped so a THROW from any of them still releases
+    // the single-flight slot: once inFlight is set (above), a rejected
+    // loadLib / readSettings / detectProjectSource / diagnoseProjectRemote that
+    // escaped without releasing would leave inFlight stuck true, and every
+    // future trigger for this project would only ever arm runAgain — wedging
+    // auto-sync until the app restarts.
+    let lib!: LibModule;
+    try {
+      const [loadedLib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
+      lib = loadedLib;
 
-    // Guard: watched dir may have changed while we awaited the above.
-    if (this.deps.getWatchedDir() !== dir) return releaseFlight();
+      // Guard: watched dir may have changed while we awaited the above.
+      if (this.deps.getWatchedDir() !== dir) return releaseFlight();
 
-    // Guard: auto-sync policy (master switch).
-    if (lib.autoSyncDelayMs(settings.versionHistory) === null) return releaseFlight();
+      // Guard: auto-sync policy (master switch).
+      if (lib.autoSyncDelayMs(settings.versionHistory) === null) return releaseFlight();
 
-    // Guard: only local-git-folder projects sync.
-    const source = await lib.detectProjectSource(dir);
-    if (source.type !== "local-git-folder") return releaseFlight();
+      // Guard: only local-git-folder projects sync.
+      const source = await lib.detectProjectSource(dir);
+      if (source.type !== "local-git-folder") return releaseFlight();
 
-    // Guard: canSync = HTTPS remote + stored credential. Local-only projects never
-    // auto-sync (transparent-sync plan §6; ADR 0006 D4). Use the credential-aware
-    // diagnosis — NOT capabilitiesFor().canSync, which is hasRemote-only and would
-    // run syncProject on every trigger for SSH or uncredentialed-HTTPS projects
-    // (each returning auth/error, churning the network unattended). Same gate the
-    // renderer pill is shown on, so host and UI agree.
-    const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: this.deps.tokenStore });
-    if (!diag.canSync) return releaseFlight();
+      // Guard: canSync = HTTPS remote + stored credential. Local-only projects never
+      // auto-sync (transparent-sync plan §6; ADR 0006 D4). Use the credential-aware
+      // diagnosis — NOT capabilitiesFor().canSync, which is hasRemote-only and would
+      // run syncProject on every trigger for SSH or uncredentialed-HTTPS projects
+      // (each returning auth/error, churning the network unattended). Same gate the
+      // renderer pill is shown on, so host and UI agree.
+      const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: this.deps.tokenStore });
+      if (!diag.canSync) return releaseFlight();
+    } catch (probeErr) {
+      // Release the single-flight slot before propagating, so a transient infra
+      // failure in a probe can't permanently wedge this project's auto-sync.
+      releaseFlight();
+      throw probeErr;
+    }
 
     // Flag already held since the top of the flight section.
     this.deps.emit({ state: "syncing", projectDir: dir, lastSyncAt: this.getLastSyncAt(dir) });
