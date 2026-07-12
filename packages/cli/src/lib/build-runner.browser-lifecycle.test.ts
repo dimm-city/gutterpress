@@ -20,7 +20,7 @@ import { test, expect, spyOn, afterEach } from "bun:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PdfRenderInput } from "./build-runner.ts";
+import type { PdfRenderInput } from "./pagination.ts";
 import * as browserPool from "./browser-pool.ts";
 import * as chromium from "./chromium.ts";
 

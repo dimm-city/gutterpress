@@ -20,8 +20,11 @@ test("fullInstallHint composes 'Install <label>:' header + body", () => {
   expect(hint).toContain("brew install ghostscript");
 });
 
-test("build-runner, diagnostics, and chromium all import the canonical install hints instead of hand-copying them", async () => {
-  const files = ["./build-runner.ts", "./diagnostics.ts", "./chromium.ts"];
+test("build-preflight, diagnostics, and chromium all import the canonical install hints instead of hand-copying them", async () => {
+  // build-runner.ts's tool preflight (ARCH finding #9) now lives in
+  // ./build-preflight.ts — that is the file that imports the canonical hints
+  // for the build pipeline's preflight check.
+  const files = ["./build-preflight.ts", "./diagnostics.ts", "./chromium.ts"];
   for (const rel of files) {
     const src = await Bun.file(new URL(rel, import.meta.url)).text();
     expect(src).toContain('from "./install-hints"');

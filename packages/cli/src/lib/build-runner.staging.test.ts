@@ -4,7 +4,8 @@ import { mkdtemp, writeFile, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { runBuild, type PdfRenderInput } from "./build-runner.ts";
+import { runBuild } from "./build-runner.ts";
+import type { PdfRenderInput } from "./pagination.ts";
 
 /**
  * Staging-hygiene guard (P2 / build-tmpdir-staging): a build must NOT leave a

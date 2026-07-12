@@ -9,7 +9,7 @@ import {
   injectNavigationScripts,
   shipRuntimePaginatedHtml,
   stagePaginationInput,
-} from "./build-runner.ts";
+} from "./build-staging.ts";
 import { pagedjsPolyfillTag } from "./pagedjs-marker.ts";
 
 // The break-inside handler block is injected by patchHtmlForPagedjs and ends up

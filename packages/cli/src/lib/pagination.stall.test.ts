@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { evaluatePaginationLiveness, type PaginationLivenessState } from "./build-runner.ts";
+import { evaluatePaginationLiveness, type PaginationLivenessState } from "./pagination.ts";
 
 /**
  * Unit tests for the pure stall-detection decision (finding #19): given a

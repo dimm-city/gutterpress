@@ -7,7 +7,7 @@ import { resolveChromiumExecutable } from "./chromium.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 import { closeBrowser } from "./browser-pool.ts";
 import { patchHtmlForPagedjs } from "./pagedjs.ts";
-import { paginateToStaticHtml, renderHtmlToPdf } from "./build-runner.ts";
+import { paginateToStaticHtml, renderHtmlToPdf } from "./pagination.ts";
 
 /**
  * Render smoke-test (issue #52 guard): drives the REAL Chromium render path —
@@ -67,7 +67,7 @@ const testIf = chromium ? test : test.skip;
 if (!chromium) {
   // eslint-disable-next-line no-console
   console.warn(
-    "[build-runner.render.test] No Chromium resolved via resolveChromiumExecutable() — skipping render smoke-tests. Install Chrome/Chromium or set CHROMIUM_PATH to run them."
+    "[pagination.test] No Chromium resolved via resolveChromiumExecutable() — skipping render smoke-tests. Install Chrome/Chromium or set CHROMIUM_PATH to run them."
   );
 }
 
