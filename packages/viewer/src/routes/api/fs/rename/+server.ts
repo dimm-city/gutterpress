@@ -13,15 +13,15 @@ import type { RequestHandler } from './$types';
 // destination primitive. Fails (409) rather than silently overwriting an
 // existing same-named entry.
 export const POST: RequestHandler = defineRoute<{ path: string; newName: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { path?: string; newName?: string };
-    const from = requireWithinProjectRoot(requireAbsolute(body.path, 'fs:rename'), 'fs:rename');
+    const from = await requireWithinProjectRoot(requireAbsolute(body.path, 'fs:rename'), 'fs:rename');
     const newName = requireSegment(body.newName, 'fs:rename newName');
     return { path: from, newName };
   },
   call: async ({ body }) => {
     const dir = path.dirname(body.path);
-    const to = requireWithinProjectRoot(path.join(dir, body.newName), 'fs:rename');
+    const to = await requireWithinProjectRoot(path.join(dir, body.newName), 'fs:rename');
     if (path.resolve(to) === path.resolve(body.path)) {
       // Same name — a no-op rename (e.g. the author retyped the existing
       // name and hit Enter). Nothing to do; report the unchanged path.

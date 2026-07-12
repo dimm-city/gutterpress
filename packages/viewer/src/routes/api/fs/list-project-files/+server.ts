@@ -3,10 +3,10 @@ import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_l
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
-  validate: (raw) => ({
+  validate: async (raw) => ({
     // Confine to the open project (ARCH #37) — this readdir is the same
     // arbitrary-directory-enumeration primitive fs/list-dir guards.
-    projectDir: requireWithinProjectRoot(
+    projectDir: await requireWithinProjectRoot(
       requireAbsolute((raw as { projectDir?: string }).projectDir, 'fs:listProjectFiles'),
       'fs:listProjectFiles',
     ),

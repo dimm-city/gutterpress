@@ -47,6 +47,7 @@ import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors } from "./server-bridge/friendly-errors";
 import type { ConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
 import type { FsGuardHooks } from "./server-bridge/fs-guard";
+import { createPickedFilesService } from "./server-bridge/picked-files";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -1373,6 +1374,14 @@ const fsGuardImpl: FsGuardHooks = {
   },
 };
 
+// ── picked-file one-time capability (P1 review) ─────────────────────────────
+// See electron/server-bridge/picked-files.ts for the full policy. Native
+// dialog picks (dialog:pickImageFile[s]) register the paths the OS dialog
+// itself returned; media:importImage / fs:copyFile consume them before
+// copying a src from outside the open project. One process-lifetime instance
+// (not per-request), same as fsGuardImpl above.
+const pickedFilesImpl = createPickedFilesService();
+
 // ── Auto-sync settings (transparent-sync plan §4.3) — ARCH review #8 ────────
 // The renderer calls setAutoSync(true|false) from the Settings panel via the
 // SvelteKit server route (src/routes/api/sync/set-auto-sync — a pure settings
@@ -1438,6 +1447,7 @@ registerHostServices({
   doctor: doctorHooksImpl,
   fsGuard: fsGuardImpl,
   media: mediaHooksImpl,
+  pickedFiles: pickedFilesImpl,
   prefs: prefsHooksImpl,
   recovery: recoveryHooksImpl,
   remote: remoteHooksImpl,

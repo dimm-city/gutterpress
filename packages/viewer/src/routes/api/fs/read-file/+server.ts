@@ -3,11 +3,11 @@ import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_l
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ path: string }>({
-  validate: (raw) => ({
+  validate: async (raw) => ({
     // includeReadOnlyRoots: the only generic-fs caller reading OUTSIDE the
     // open project is +page.svelte's crash-recovery restore, reading a
     // sidecar snapshot's absolute recoveryPath (ARCH review #37).
-    path: requireWithinProjectRoot(
+    path: await requireWithinProjectRoot(
       requireAbsolute((raw as { path?: string }).path, 'fs:readFile'),
       'fs:readFile',
       { includeReadOnlyRoots: true },

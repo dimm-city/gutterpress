@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile, symlink } from "node:fs/promises";
+import { mkdtempSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { POST as readFileRoute } from "../../src/routes/api/fs/read-file/+server";
 import { POST as writeFileRoute } from "../../src/routes/api/fs/write-file/+server";
 import { POST as listDirRoute } from "../../src/routes/api/fs/list-dir/+server";
@@ -20,9 +22,18 @@ import { POST as logReadRoute } from "../../src/routes/api/log/read/+server";
 // These pin the project-scoping guard: inside the open project is allowed,
 // a sibling directory with a shared string prefix is rejected (the
 // "/home/u/proj" vs "/home/u/proj2" regression), anything else outside is
-// rejected, and the two deliberately-exempt behaviors — read-file's
-// crash-recovery sidecar allowance, and copy-file's unrestricted `src` — are
-// locked in rather than accidentally tightened or loosened later.
+// rejected, and read-file's crash-recovery sidecar allowance is locked in
+// rather than accidentally tightened or loosened later.
+//
+// `copy-file`'s `src` is deliberately exempt from THIS module's project-root
+// allow-lists (it needs to reach anywhere on disk to copy an author-picked
+// file in) — but P1 review found that exemption had NOTHING else backing it
+// up, so an outside `src` is now gated by a separate one-time picked-file
+// capability instead (`electron/server-bridge/picked-files.ts`). See
+// picked-files-capability.test.ts for the tests pinning that guard itself;
+// the one `copy-file` test below just simulates "the src was picked" via
+// `pickedFiles.register(...)` so it can keep testing the allow-list
+// interaction (dest confinement) it's actually about.
 
 function request(body: unknown): Request {
   return new Request("http://local.test", {
@@ -42,10 +53,48 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
   }
 }
 
+// Probe symlink support ONCE at module load (synchronously, before any
+// `test.skipIf` gate is evaluated) — sandboxed/restricted CI runners or
+// non-admin Windows can't create symlinks. CI linux can, so this is expected
+// to stay `true` there; the skip exists purely so the suite degrades
+// gracefully elsewhere rather than failing on an environment limitation.
+const canSymlink = (() => {
+  const base = mkdtempSync(path.join(tmpdir(), "pmd-fs-guard-symlink-probe-"));
+  try {
+    const target = path.join(base, "target");
+    mkdirSync(target);
+    symlinkSync(target, path.join(base, "link"), "dir");
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+})();
+
 let projectDir: string;
 let siblingDir: string; // shares a string prefix with projectDir but is a DIFFERENT directory
 let outsideDir: string;
 let recoveryDir: string;
+let aliasPath: string; // projectDir/alias — not created by default, see createAlias()
+let pickedFiles: ReturnType<typeof createPickedFilesService>;
+
+/**
+ * Create a project-LOCAL symlink (`projectDir/alias`) whose real target is
+ * OUTSIDE the project — the exact escape the P1 review flagged:
+ * `path.resolve()` only normalizes lexical segments (`..`, `.`), so
+ * `projectDir/alias/secret.txt` passes a lexical containment check even
+ * though the filesystem call that follows lands in `outsideDir`.
+ *
+ * Created lazily, per-test, rather than in `beforeEach` for every test: an
+ * extra `alias` entry under `projectDir` would otherwise change the baseline
+ * `fs/list-dir: the open project dir is allowed` listing (unrelated to this
+ * guard) for every test in the file, not just the ones about the escape.
+ */
+async function createAlias(): Promise<string> {
+  await symlink(outsideDir, aliasPath, "dir");
+  return aliasPath;
+}
 
 beforeEach(async () => {
   const base = await mkdtemp(path.join(tmpdir(), "pmd-fs-guard-"));
@@ -53,6 +102,7 @@ beforeEach(async () => {
   siblingDir = path.join(base, "proj2"); // "proj" + "2" — the sibling-prefix case
   outsideDir = path.join(base, "elsewhere");
   recoveryDir = path.join(base, "recovery");
+  aliasPath = path.join(projectDir, "alias");
   await mkdir(projectDir, { recursive: true });
   await mkdir(siblingDir, { recursive: true });
   await mkdir(outsideDir, { recursive: true });
@@ -64,6 +114,7 @@ beforeEach(async () => {
 
   const fsGuard = { projectRoots: () => [projectDir], readOnlyRoots: () => [recoveryDir] };
   const noop = () => {};
+  pickedFiles = createPickedFilesService();
   const services = {
     app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, resolveFlush: noop, sendToRenderer: noop },
     conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
@@ -78,6 +129,7 @@ beforeEach(async () => {
     doctor: { getViewerVersion: () => "0.0.0-test" },
     fsGuard,
     media: { createThumbnail: async () => null },
+    pickedFiles,
     prefs: {
       readPrefs: async () => ({}),
       writePrefs: async () => {},
@@ -205,9 +257,11 @@ test("fs/stat-file: an outside path is rejected (403)", async () => {
 
 // ── copy-file ────────────────────────────────────────────────────────────
 
-test("fs/copy-file: src OUTSIDE the project is a PINNED exemption (the image-picker import flow) — dest inside is allowed", async () => {
+test("fs/copy-file: a PICKED src OUTSIDE the project is allowed (the image-picker import flow) — dest inside is allowed", async () => {
+  const src = path.join(outsideDir, "secret.txt");
+  pickedFiles.register([src]); // simulate: the native dialog just returned this path
   const res = await copyFileRoute({
-    request: request({ src: path.join(outsideDir, "secret.txt"), dest: path.join(projectDir, "assets") }),
+    request: request({ src, dest: path.join(projectDir, "assets") }),
   } as Parameters<typeof copyFileRoute>[0]);
   expect(res.status).toBe(200);
   const destPath = (await res.json()) as string;
@@ -315,3 +369,104 @@ test("log/read: an absolute path outside the read-allow-list is rejected (403)",
   expect(status).toBe(403);
   expect(message).toBe("log:read: path is outside the open project");
 });
+
+// ── symlink escape (P1 review on isWithinRoot): path.resolve() normalizes
+//    lexical segments but leaves symlinks intact. A project-local symlink
+//    (`projectDir/alias`) whose real target is `outsideDir` must still be
+//    REJECTED once containment is checked against the canonicalized path —
+//    on the pre-fix lexical-only check, all of these would have PASSED
+//    containment and then had the underlying fs call follow the symlink
+//    outside the project. ─────────────────────────────────────────────────
+
+test.skipIf(!canSymlink)(
+  "fs/read-file: reading through a project-local symlink aliasing an outside dir is rejected (403)",
+  async () => {
+    await createAlias();
+    const { status, message } = await caught(
+      readFileRoute({
+        request: request({ path: path.join(aliasPath, "secret.txt") }),
+      } as Parameters<typeof readFileRoute>[0]),
+    );
+    expect(status).toBe(403);
+    expect(message).toBe("fs:readFile: path is outside the open project");
+  },
+);
+
+test.skipIf(!canSymlink)(
+  "fs/read-file: reading the symlink entry itself (projectDir/alias) is rejected (403)",
+  async () => {
+    await createAlias();
+    const { status } = await caught(
+      readFileRoute({ request: request({ path: aliasPath }) } as Parameters<typeof readFileRoute>[0]),
+    );
+    expect(status).toBe(403);
+  },
+);
+
+test.skipIf(!canSymlink)(
+  "fs/list-dir: listing through a project-local symlink aliasing an outside dir is rejected (403)",
+  async () => {
+    await createAlias();
+    const { status } = await caught(
+      listDirRoute({ request: request({ path: aliasPath }) } as Parameters<typeof listDirRoute>[0]),
+    );
+    expect(status).toBe(403);
+  },
+);
+
+test.skipIf(!canSymlink)(
+  "fs/write-file: writing through a project-local symlink aliasing an outside dir is rejected (403), nothing lands in outsideDir",
+  async () => {
+    await createAlias();
+    const target = path.join(aliasPath, "pwned.txt");
+    const { status, message } = await caught(
+      writeFileRoute({ request: request({ path: target, content: "pwned" }) } as Parameters<typeof writeFileRoute>[0]),
+    );
+    expect(status).toBe(403);
+    expect(message).toBe("fs:writeFile: path is outside the open project");
+    await expect(readFile(path.join(outsideDir, "pwned.txt"), "utf8")).rejects.toThrow();
+  },
+);
+
+test.skipIf(!canSymlink)(
+  "fs/stat-file: stat-ing through a project-local symlink aliasing an outside dir is rejected (403)",
+  async () => {
+    await createAlias();
+    const { status } = await caught(
+      statFileRoute({
+        request: request({ path: path.join(aliasPath, "secret.txt") }),
+      } as Parameters<typeof statFileRoute>[0]),
+    );
+    expect(status).toBe(403);
+  },
+);
+
+// ── dangling-symlink escape (fix round 2): a project-local symlink whose
+//    TARGET'S PARENT exists but whose target LEAF does not yet exist. The
+//    earlier `createAlias()` cases only cover a symlink whose target already
+//    exists (`outsideDir` itself); `fs.realpath` throws ENOENT on that kind of
+//    dangling link the same way it throws ENOENT on a plain missing path, so
+//    the tolerant-realpath walk-up used to (wrongly) treat the link's own
+//    basename as an inert non-existent tail segment and re-append it to the
+//    already-canonicalized PARENT — producing a canonical path back INSIDE
+//    the project even though `write-file`'s `open(path, "w")` follows the
+//    link and creates the file OUTSIDE. On the pre-fix code this test
+//    observes a 200 and a planted file in `outsideDir`. ────────────────────
+
+test.skipIf(!canSymlink)(
+  "fs/write-file: writing through a project-local DANGLING symlink (target leaf absent) is rejected (403), nothing lands outside",
+  async () => {
+    const danglingTarget = path.join(outsideDir, "planted.txt"); // parent (outsideDir) exists, leaf does not
+    const evilLink = path.join(projectDir, "evil");
+    await symlink(danglingTarget, evilLink, "file");
+
+    const { status, message } = await caught(
+      writeFileRoute({
+        request: request({ path: evilLink, content: "PWNED" }),
+      } as Parameters<typeof writeFileRoute>[0]),
+    );
+    expect(status).toBe(403);
+    expect(message).toBe("fs:writeFile: path is outside the open project");
+    await expect(readFile(danglingTarget, "utf8")).rejects.toThrow();
+  },
+);

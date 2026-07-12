@@ -23,7 +23,7 @@ const MEDIA_MIME: Record<string, string> = {
 };
 
 export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { imagePath?: string; width?: number; height?: number };
     if (!body.imagePath || typeof body.imagePath !== 'string') {
       error(400, "'imagePath' string is required");
@@ -32,7 +32,7 @@ export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
     // not thumbnail (and thus read the bytes of) arbitrary files on disk. The
     // Media panel only ever passes in-project paths from listImages.
     return {
-      imagePath: requireWithinProjectRoot(
+      imagePath: await requireWithinProjectRoot(
         requireAbsolute(body.imagePath, 'media:thumbnail'),
         'media:thumbnail',
       ),

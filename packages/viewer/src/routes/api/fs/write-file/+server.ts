@@ -7,11 +7,11 @@ import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_l
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ path: string; content: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { path?: string; content?: string };
     if (body.content === undefined) error(400, 'content is required');
     return {
-      path: requireWithinProjectRoot(requireAbsolute(body.path, 'fs:writeFile'), 'fs:writeFile'),
+      path: await requireWithinProjectRoot(requireAbsolute(body.path, 'fs:writeFile'), 'fs:writeFile'),
       content: body.content,
     };
   },

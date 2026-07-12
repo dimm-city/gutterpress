@@ -4,14 +4,14 @@ import { defineRoute, loadLib, requireAbsolute, requireWithinProjectRoot } from 
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { imagePath?: string };
     if (!body.imagePath || typeof body.imagePath !== 'string') {
       error(400, "'imagePath' string is required");
     }
     // Confine to the open project (ARCH #37) — see media/thumbnail.
     return {
-      imagePath: requireWithinProjectRoot(
+      imagePath: await requireWithinProjectRoot(
         requireAbsolute(body.imagePath, 'media:inspect'),
         'media:inspect',
       ),

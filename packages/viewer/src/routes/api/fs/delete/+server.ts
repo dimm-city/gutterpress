@@ -46,13 +46,13 @@ export const POST: RequestHandler = defineRoute<
 >({
   hooks: () => getVcsHooks<LibModule>(),
   hooksUnavailableMessage: 'VCS hooks not registered',
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { path?: string; projectDir?: string };
-    const projectDir = requireWithinProjectRoot(
+    const projectDir = await requireWithinProjectRoot(
       requireAbsolute(body.projectDir, 'fs:delete'),
       'fs:delete',
     );
-    const target = requireWithinProjectRoot(requireAbsolute(body.path, 'fs:delete'), 'fs:delete');
+    const target = await requireWithinProjectRoot(requireAbsolute(body.path, 'fs:delete'), 'fs:delete');
     if (path.resolve(target) === path.resolve(projectDir)) {
       error(400, 'fs:delete cannot delete the project root');
     }

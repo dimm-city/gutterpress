@@ -4,8 +4,8 @@ import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_l
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ path: string }>({
-  validate: (raw) => ({
-    path: requireWithinProjectRoot(
+  validate: async (raw) => ({
+    path: await requireWithinProjectRoot(
       requireAbsolute((raw as { path?: string }).path, 'fs:listDir'),
       'fs:listDir',
     ),

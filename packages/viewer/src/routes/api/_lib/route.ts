@@ -70,9 +70,12 @@ export interface DefineRouteOptions<Body, Hooks> {
   /**
    * Validate + narrow the raw parsed body before `call` runs. Throw
    * `error(400, …)` (directly, or via {@link requireAbsolute}) to reject.
-   * Omit to pass the parsed body through unchanged.
+   * Omit to pass the parsed body through unchanged. May return `Body`
+   * directly or `Promise<Body>` — routes whose validation calls the async
+   * `requireWithinProjectRoot` (symlink-safe containment, P1 review) need
+   * `async`; the factory `await`s either shape the same way.
    */
-  validate?: (body: unknown, event: RequestEvent) => Body;
+  validate?: (body: unknown, event: RequestEvent) => Body | Promise<Body>;
   /** Do the route's actual work. Its return value is serialized with `json()`. */
   call: (args: DefineRouteArgs<Body, Hooks>) => unknown | Promise<unknown>;
   /** See {@link ErrorClassifier} — reclassify a caught error into a specific status. */
@@ -95,7 +98,7 @@ export function defineRoute<Body = unknown, Hooks = undefined>(
         if (!resolved) error(503, options.hooksUnavailableMessage ?? 'Hooks not registered');
         hooks = resolved;
       }
-      const body = options.validate ? options.validate(rawBody, event) : (rawBody as Body);
+      const body = options.validate ? await options.validate(rawBody, event) : (rawBody as Body);
       return options.call({ body, event, hooks: hooks as Hooks });
     },
     { onError: options.onError },

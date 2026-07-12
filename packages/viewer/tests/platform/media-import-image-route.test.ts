@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { POST as importImageRoute } from "../../src/routes/api/media/import-image/+server";
 
 // UX review M10: EditorToolbar's "Insert Image" dialog and MediaPanel's "Add
@@ -16,6 +17,15 @@ import { POST as importImageRoute } from "../../src/routes/api/media/import-imag
 // file. These tests pin the ONE host-side route that now owns that policy:
 // inside/outside/sibling-prefix containment, images/-vs-assets/ destination
 // selection, and name-collision de-duplication.
+//
+// P1 review: a `src` OUTSIDE the project must now be a one-time picked-file
+// capability (`electron/server-bridge/picked-files.ts`) — see
+// picked-files-capability.test.ts for the tests pinning that requirement
+// itself (an un-picked src is rejected, a picked one is consumed on first
+// use). The destination/dedup tests below aren't about that guard, so they
+// call `pickedFiles.register([src])` first to simulate "the native dialog
+// just returned this path" and keep exercising the behavior they're actually
+// about.
 
 function request(body: unknown): Request {
   return new Request("http://local.test", {
@@ -40,6 +50,7 @@ let projectDir: string;
 let siblingDir: string; // shares a string prefix with projectDir but is a DIFFERENT directory
 let outsideDir: string;
 let savedHostServices: HostServices | null;
+let pickedFiles: ReturnType<typeof createPickedFilesService>;
 
 beforeEach(async () => {
   // This suite intentionally calls registerHostServices (like the sibling
@@ -62,6 +73,7 @@ beforeEach(async () => {
 
   const fsGuard = { projectRoots: () => [projectDir], readOnlyRoots: () => [] };
   const noop = () => {};
+  pickedFiles = createPickedFilesService();
   const services = {
     app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, resolveFlush: noop, sendToRenderer: noop },
     conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
@@ -76,6 +88,7 @@ beforeEach(async () => {
     doctor: { getViewerVersion: () => "0.0.0-test" },
     fsGuard,
     media: { createThumbnail: async () => null },
+    pickedFiles,
     prefs: {
       readPrefs: async () => ({}),
       writePrefs: async () => {},
@@ -125,6 +138,7 @@ test("src already inside the project: returns the relative path, copies nothing"
 test("sibling dir with a shared string prefix is NOT treated as inside — it gets copied in", async () => {
   const src = path.join(siblingDir, "cover.png");
   await writeFile(src, "sibling-content", "utf8");
+  pickedFiles.register([src]); // simulate: the native dialog just returned this path
 
   const res = await importImageRoute({
     request: request({ projectDir, src }),
@@ -143,6 +157,7 @@ test("sibling dir with a shared string prefix is NOT treated as inside — it ge
 test("outside the project, no images/ dir yet: copies into assets/ (created on demand)", async () => {
   const src = path.join(outsideDir, "photo.jpg");
   await writeFile(src, "outside-content", "utf8");
+  pickedFiles.register([src]);
 
   const res = await importImageRoute({
     request: request({ projectDir, src }),
@@ -158,6 +173,7 @@ test("outside the project, an existing images/ dir wins over assets/", async () 
   await mkdir(path.join(projectDir, "images"), { recursive: true });
   const src = path.join(outsideDir, "photo.jpg");
   await writeFile(src, "outside-content", "utf8");
+  pickedFiles.register([src]);
 
   const res = await importImageRoute({
     request: request({ projectDir, src }),
@@ -176,6 +192,7 @@ test("a colliding basename in the destination gets a de-duplicated name, origina
   await writeFile(path.join(projectDir, "assets", "cover.png"), "original", "utf8");
   const src = path.join(outsideDir, "cover.png");
   await writeFile(src, "new-cover", "utf8");
+  pickedFiles.register([src]);
 
   const res = await importImageRoute({
     request: request({ projectDir, src }),
@@ -189,6 +206,7 @@ test("a colliding basename in the destination gets a de-duplicated name, origina
 test("two successive imports of differently-named files never collide with each other", async () => {
   const srcA = path.join(outsideDir, "cover.png");
   await writeFile(srcA, "a", "utf8");
+  pickedFiles.register([srcA]);
   const resA = await importImageRoute({
     request: request({ projectDir, src: srcA }),
   } as Parameters<typeof importImageRoute>[0]);
@@ -196,6 +214,7 @@ test("two successive imports of differently-named files never collide with each 
 
   const srcB = path.join(outsideDir, "cover-b.png");
   await writeFile(srcB, "b", "utf8");
+  pickedFiles.register([srcB]);
   const resB = await importImageRoute({
     request: request({ projectDir, src: srcB }),
   } as Parameters<typeof importImageRoute>[0]);

@@ -13,15 +13,15 @@ import type { RequestHandler } from './$types';
 // image-import flows. Fails (409) rather than silently overwriting when a
 // file already exists at the target — this is a CREATE, not a save.
 export const POST: RequestHandler = defineRoute<{ dir: string; name: string; content: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { dir?: string; name?: string; content?: unknown };
-    const dir = requireWithinProjectRoot(requireAbsolute(body.dir, 'fs:createFile'), 'fs:createFile');
+    const dir = await requireWithinProjectRoot(requireAbsolute(body.dir, 'fs:createFile'), 'fs:createFile');
     const name = requireSegment(body.name, 'fs:createFile name');
     const content = typeof body.content === 'string' ? body.content : '';
     return { dir, name, content };
   },
   call: async ({ body }) => {
-    const target = requireWithinProjectRoot(path.join(body.dir, body.name), 'fs:createFile');
+    const target = await requireWithinProjectRoot(path.join(body.dir, body.name), 'fs:createFile');
     await mkdir(body.dir, { recursive: true });
     try {
       await writeFile(target, body.content, { encoding: 'utf-8', flag: 'wx' });

@@ -5,6 +5,7 @@ import { getConflictPreviewHooks } from "../../electron/server-bridge/conflict-p
 import { getDesktopHooks, getDoctorHooks } from "../../electron/server-bridge/host-hooks";
 import { getFsGuardHooks } from "../../electron/server-bridge/fs-guard";
 import { getMediaHooks } from "../../electron/server-bridge/media-hooks";
+import { getPickedFilesHooks } from "../../electron/server-bridge/picked-files";
 import { getPrefsHooks } from "../../electron/server-bridge/prefs-hooks";
 import { getRecoveryHooks } from "../../electron/server-bridge/recovery-hooks";
 import { getRemoteHooks } from "../../electron/server-bridge/remote-hooks";
@@ -39,6 +40,7 @@ test("getHostServices() and every domain accessor return null before registratio
   expect(getDoctorHooks()).toBeNull();
   expect(getFsGuardHooks()).toBeNull();
   expect(getMediaHooks()).toBeNull();
+  expect(getPickedFilesHooks()).toBeNull();
   expect(getPrefsHooks()).toBeNull();
   expect(getRecoveryHooks()).toBeNull();
   expect(getRemoteHooks()).toBeNull();
@@ -63,6 +65,7 @@ const fakeDesktop = {
 const fakeDoctor = { getViewerVersion: () => "0.0.0-test" };
 const fakeFsGuard = { projectRoots: () => ["/fake/project"], readOnlyRoots: () => ["/fake/recovery"] };
 const fakeMedia = { createThumbnail: async () => null };
+const fakePickedFiles = { register: () => {}, consume: () => false };
 const fakePrefs = {
   readPrefs: async () => ({}),
   writePrefs: async () => {},
@@ -92,6 +95,7 @@ const fakeServices = {
   doctor: fakeDoctor,
   fsGuard: fakeFsGuard,
   media: fakeMedia,
+  pickedFiles: fakePickedFiles,
   prefs: fakePrefs,
   recovery: fakeRecovery,
   remote: fakeRemote,
@@ -112,6 +116,7 @@ test("every domain accessor reads its own field off the single registered object
   expect(getDoctorHooks()).toBe(fakeDoctor as never);
   expect(getFsGuardHooks()).toBe(fakeFsGuard as never);
   expect(getMediaHooks()).toBe(fakeMedia as never);
+  expect(getPickedFilesHooks()).toBe(fakePickedFiles as never);
   expect(getPrefsHooks()).toBe(fakePrefs as never);
   expect(getRecoveryHooks()).toBe(fakeRecovery as never);
   expect(getRemoteHooks()).toBe(fakeRemote as never);

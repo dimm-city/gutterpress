@@ -1,7 +1,9 @@
+import { error } from '@sveltejs/kit';
 import { mkdir, copyFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
-import { isWithinRoot } from '../../../../../electron/server-bridge/fs-guard';
+import { isWithinRootCanonical } from '../../../../../electron/server-bridge/fs-guard';
+import { getPickedFilesHooks } from '../../../../../electron/server-bridge/picked-files';
 import type { RequestHandler } from './$types';
 
 // ARCH/UX review M10: the toolbar's "Insert Image" dialog and MediaPanel's
@@ -20,16 +22,27 @@ import type { RequestHandler } from './$types';
 // `fs/copy-file`'s `src`) becomes a project-relative markdown `src`. Both
 // EditorToolbar and MediaPanel call it through `api.media.importImage` and
 // contain zero path/fs logic of their own (CLAUDE.md §8).
+//
+// P1 review: "author-picked, via the native file dialog" used to be an
+// UNENFORCED assumption — any same-origin script could POST an arbitrary
+// absolute `src`, have it copied into the project by THIS route, then read
+// it back out through the scoped `fs:readFile` route. `src` outside the
+// project is now required to be a one-time "picked-file" capability
+// (`../../../../../electron/server-bridge/picked-files.ts`), registered ONLY
+// by `dialog:pickImageFile[s]` when the native dialog itself returns a path,
+// and consumed here on first use — see the `call` below.
 export const POST: RequestHandler = defineRoute<{ projectDir: string; src: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; src?: string };
-    const projectDir = requireWithinProjectRoot(
+    const projectDir = await requireWithinProjectRoot(
       requireAbsolute(body.projectDir, 'media:importImage'),
       'media:importImage',
     );
-    // `src` is DELIBERATELY NOT confined to the open project (same policy as
-    // fs/copy-file's `src` — see that route's comment): it comes from a
-    // native file dialog and may point anywhere on disk.
+    // `src` is not confined to the open project (same policy as
+    // fs/copy-file's `src` — see that route's comment): it's meant to come
+    // from a native file dialog and may point anywhere on disk. That "meant
+    // to" is enforced in `call` below (the picked-file capability check),
+    // not here — this only validates shape (absolute).
     const src = requireAbsolute(body.src, 'media:importImage');
     return { projectDir, src };
   },
@@ -38,12 +51,30 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; src: strin
     const srcResolved = path.resolve(body.src);
 
     // Already inside the project: no copy, just compute the project-relative
-    // src. `isWithinRoot` is separator-aware containment (candidate === root,
-    // or nested under `root + path.sep`) — never a bare `startsWith`, which is
-    // exactly the sibling-prefix bug this route replaces.
-    if (isWithinRoot(srcResolved, projectRoot)) {
+    // src. `isWithinRootCanonical` realpaths both sides before the
+    // separator-aware containment compare (candidate === root, or nested
+    // under `root + path.sep`) — never a bare `startsWith` (the sibling-prefix
+    // bug this route replaces), and never a lexical-only compare either: a
+    // native-file-dialog `src` that is itself a symlink pointing outside the
+    // project must not be treated as "already inside" just because its alias
+    // happens to live under the project root (P1 review). No picker
+    // capability is required for this branch: nothing is copied, and reading
+    // a path already inside the open project reveals nothing the scoped
+    // fs:readFile route wouldn't already allow.
+    if (await isWithinRootCanonical(srcResolved, projectRoot)) {
       const rel = path.relative(projectRoot, srcResolved).split(path.sep).join('/');
       return { src: rel, copied: false };
+    }
+
+    // Outside the project: this is the exact escape the P1 review flagged —
+    // copying an arbitrary host path INTO the scoped project tree, then
+    // being able to read it back out via fs:readFile. Require a one-time
+    // picked-file capability, consumed here, so only a `src` the native
+    // dialog itself just returned (via dialog:pickImageFile[s]) can be
+    // copied in; a `src` no picker call produced — or one already spent —
+    // is rejected.
+    if (!getPickedFilesHooks()?.consume(srcResolved)) {
+      error(403, 'media:importImage: src was not returned by a recent file picker');
     }
 
     // Outside the project: copy it in. Destination policy (ONE rule,

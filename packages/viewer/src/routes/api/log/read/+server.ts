@@ -12,7 +12,7 @@ export const POST: RequestHandler = defineRoute<{ logPath?: string }>({
     // userData/logs/, covered by readOnlyRoots(). Without this a renderer-origin
     // fetch could read any absolute path's full contents — the exact
     // arbitrary-file-read primitive the fs-guard exists to close.
-    requireWithinProjectRoot(logPath, 'log:read', { includeReadOnlyRoots: true });
+    await requireWithinProjectRoot(logPath, 'log:read', { includeReadOnlyRoots: true });
     try {
       return await readFile(logPath, 'utf-8');
     } catch {

@@ -1,6 +1,13 @@
-import { test, expect } from "bun:test";
+import { test, expect, describe } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import { UsageError } from "./cli-args";
 import { resolveConfig } from "./manifest";
+import { getAssetPath } from "./embedded-assets";
+import { scaffoldProject } from "./project-scaffold";
+import { BUILT_IN_TEMPLATE_IDS } from "./project-templates";
 import {
   BOOK_PRESET,
   DTRPG_PRESET,
@@ -151,4 +158,64 @@ test("resolvePreset's 'no preset set' notice respects resetWarnOnce (no leftover
     console.warn = orig;
     resetWarnOnce();
   }
+});
+
+// ── Maintainer review (P4, presets.ts:236): every built-in template manifest
+// must declare an explicit `preset` so a fresh `print-md new` project never
+// silently falls through resolvePreset's undefined-preset path (which
+// defaults to dtrpg's vendor geometry/TAC/PDF/X forcing) unless the template
+// actually wants dtrpg — as `ttrpg` genuinely does (it IS the DriveThruRPG
+// use case the dtrpg preset exists for). `book`/`technical`/`zine` get the
+// neutral `book` preset.
+describe("built-in template manifests declare an explicit preset (maintainer review, presets.ts:236)", () => {
+  const EXPECTED_TEMPLATE_PRESET: Record<(typeof BUILT_IN_TEMPLATE_IDS)[number], string> = {
+    book: "book",
+    ttrpg: "dtrpg",
+    technical: "book",
+    zine: "book",
+  };
+
+  test("every shipped template id has an expected preset pinned in this test (no silent additions)", () => {
+    expect(Object.keys(EXPECTED_TEMPLATE_PRESET).sort()).toEqual(
+      [...BUILT_IN_TEMPLATE_IDS].sort()
+    );
+  });
+
+  for (const id of BUILT_IN_TEMPLATE_IDS) {
+    test(`template "${id}" manifest declares preset: ${EXPECTED_TEMPLATE_PRESET[id]}`, async () => {
+      const manifestPath = await getAssetPath(`templates/${id}/manifest.yaml`);
+      const raw = await readFile(manifestPath, "utf8");
+      const manifest = parseYaml(raw) as { preset?: string };
+      expect(manifest.preset).toBe(EXPECTED_TEMPLATE_PRESET[id]);
+    });
+  }
+
+  test("resolveConfig for a freshly scaffolded project from each built-in template never hits the undefined-preset warn path", async () => {
+    resetWarnOnce();
+    const lines: string[] = [];
+    const orig = console.warn;
+    console.warn = ((m: unknown) => {
+      lines.push(String(m));
+    }) as typeof console.warn;
+    const parent = await mkdtemp(path.join(tmpdir(), "pmd-preset-scaffold-"));
+    try {
+      for (const id of BUILT_IN_TEMPLATE_IDS) {
+        const result = await scaffoldProject({
+          name: `Preset Check ${id}`,
+          parentDir: parent,
+          template: id,
+          versionHistory: "none",
+        });
+        const raw = await readFile(result.manifestPath, "utf8");
+        const manifest = parseYaml(raw);
+        resolveConfig({}, manifest);
+      }
+      const noPresetWarnings = lines.filter((l) => l.includes("No `preset` set"));
+      expect(noPresetWarnings).toEqual([]);
+    } finally {
+      console.warn = orig;
+      resetWarnOnce();
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
 });

@@ -39,20 +39,35 @@
  *     the operation-log dialog read the per-project `.log` file through the
  *     `log/read` route. App-managed and non-sensitive.
  *
- * `copy-file`'s `src` is DELIBERATELY EXEMPT from both allow-lists — see the
- * comment on `src/routes/api/fs/copy-file/+server.ts`'s `validate`. The
- * editor's "insert image" / media-panel "import" flows pick `src` via a
- * native OS file dialog (`dialog:pickImageFile[s]`); the whole point of the
- * route is copying a file the author chose from ANYWHERE on disk into the
- * project. Only `dest` (what actually gets written) is confined.
+ * `copy-file`'s `src` is EXEMPT from both allow-lists for a different reason
+ * than the read-only exemptions above: the editor's "insert image" /
+ * media-panel "import" flows need to copy an author-picked file from
+ * ANYWHERE on disk INTO the project, so `src` can't be confined to a project
+ * root the way `dest` is. That used to be "enforced" by nothing but a
+ * docstring asserting `src` "came from a native file dialog" — a same-origin
+ * script could just POST an arbitrary `src` and the route would copy it in
+ * no questions asked (P1 review). `src` outside the project is now gated by
+ * a SEPARATE mechanism, not this module's root allow-lists: `fs/copy-file`
+ * (and `media/import-image`, the other route with the same shape) require a
+ * `src` outside the project to be a one-time "picked-file" capability —
+ * registered ONLY when `dialog:pickImageFile[s]` hands back a path the
+ * native dialog itself just returned, and consumed on first use. See
+ * `./picked-files.ts`. Only `dest` (what actually gets written) is confined
+ * by THIS module's allow-lists.
  */
 import path from "node:path";
+import { realpath, lstat, readlink } from "node:fs/promises";
 import { getHostServices } from "./host-services";
 
 /**
  * True if `candidate` (an absolute path) IS `root`, or is nested under it.
  * Never a bare `startsWith(root)` — that would let a sibling directory with a
  * shared prefix (`/home/u/proj2` against a `/home/u/proj` root) match.
+ *
+ * Purely LEXICAL (`path.resolve`, no filesystem access) — it does not follow
+ * symlinks. Callers making an authorization decision must canonicalize both
+ * sides first with {@link isWithinRootCanonical}/{@link isWithinAnyRootCanonical};
+ * this function remains the final separator-aware string compare either way.
  */
 export function isWithinRoot(candidate: string, root: string): boolean {
   const resolvedRoot = path.resolve(root);
@@ -63,9 +78,127 @@ export function isWithinRoot(candidate: string, root: string): boolean {
   );
 }
 
-/** True if `candidate` is within ANY of `roots`. */
+/** True if `candidate` is within ANY of `roots`. Lexical only — see {@link isWithinRoot}. */
 export function isWithinAnyRoot(candidate: string, roots: readonly string[]): boolean {
   return roots.some((root) => isWithinRoot(candidate, root));
+}
+
+/**
+ * Resolve `p` to its canonical (symlink-free) form, tolerating a tail that
+ * doesn't exist on disk yet — e.g. a write/create target whose parent
+ * directories exist but whose final segment(s) don't.
+ *
+ * `fs.realpath` throws `ENOENT` (or `ENOTDIR`, if a path component that
+ * should be a directory turns out to be a file) on any non-existent
+ * component, so a create/write target can't be realpath'd directly. This
+ * walks up from `p` until it finds the deepest EXISTING ancestor, realpaths
+ * THAT ancestor (following any symlinks in it), then re-appends the
+ * non-existent tail segments unchanged.
+ *
+ * This is what makes containment checks symlink-safe for both reads (the
+ * whole path already exists) and writes/creates (the parent exists, the leaf
+ * doesn't yet): a project-local symlink pointing outside the project no
+ * longer fools the containment check, because it runs on the REAL target
+ * directory, not the lexical alias path.
+ *
+ * DANGLING SYMLINKS (fix round 2): `fs.realpath` reports ENOENT both for "no
+ * entry exists here at all" AND for "an entry exists here as a symlink whose
+ * ultimate target doesn't exist" — those are NOT the same thing. If we always
+ * treated the failing component's basename as an inert non-existent tail
+ * segment, a project-local DANGLING symlink (e.g.
+ * `projectDir/evil -> /home/victim/victimdir/planted.txt`, where
+ * `victimdir` exists but `planted.txt` doesn't yet) would canonicalize to
+ * `projectDir/evil` — INSIDE the project — even though a subsequent
+ * `open(path, "w")` on that same symlink creates `planted.txt` OUTSIDE the
+ * project. So before falling through to the tail-accumulation path, `lstat`
+ * the failing component: if it exists as a symlink, resolve it via
+ * `readlink` (relative to its own realpath'd parent) and keep resolving from
+ * there — only genuinely-absent components fall through to the lexical tail.
+ */
+export async function realpathTolerant(p: string): Promise<string> {
+  return realpathTolerantAt(path.resolve(p), [], 0);
+}
+
+// Bounds the recursion driven by chains of dangling symlinks (including a
+// cycle of dangling links pointing at each other, which — unlike a cycle of
+// REAL symlinks — `fs.realpath` can't detect via ELOOP, because it never
+// gets far enough to notice a loop; every hop 404s first). 40 mirrors the
+// typical OS symlink-hop limit (Linux's `MAXSYMLINKS`).
+const MAX_SYMLINK_DEPTH = 40;
+
+async function realpathTolerantAt(
+  target: string,
+  trailingTail: readonly string[],
+  depth: number,
+): Promise<string> {
+  const tail: string[] = [...trailingTail];
+  let current = target;
+  for (;;) {
+    try {
+      const real = await realpath(current);
+      return tail.length ? path.join(real, ...tail) : real;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException)?.code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw e;
+
+      let linkStat: Awaited<ReturnType<typeof lstat>> | null = null;
+      try {
+        linkStat = await lstat(current);
+      } catch (lstatErr) {
+        const lstatCode = (lstatErr as NodeJS.ErrnoException)?.code;
+        if (lstatCode !== "ENOENT" && lstatCode !== "ENOTDIR") throw lstatErr;
+        linkStat = null; // genuinely nothing here — fall through to the tail path below
+      }
+
+      if (linkStat?.isSymbolicLink()) {
+        if (depth >= MAX_SYMLINK_DEPTH) {
+          throw Object.assign(
+            new Error(`realpathTolerant: too many levels of symbolic links resolving ${target}`),
+            { code: "ELOOP" },
+          );
+        }
+        const parent = path.dirname(current);
+        const realParent = parent === current ? current : await realpathTolerantAt(parent, [], depth + 1);
+        const linkTarget = await readlink(current);
+        const resolvedTarget = path.isAbsolute(linkTarget) ? linkTarget : path.join(realParent, linkTarget);
+        // Keep resolving from the link's target, carrying the same trailing
+        // tail (segments after `current` that were already peeled off).
+        return realpathTolerantAt(path.resolve(resolvedTarget), tail, depth + 1);
+      }
+
+      const parent = path.dirname(current);
+      if (parent === current) return target; // hit the fs root; give up, lexical fallback
+      tail.unshift(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * Symlink-safe version of {@link isWithinAnyRoot}: canonicalizes `candidate`
+ * and each `root` (see {@link realpathTolerant}) before the separator-aware
+ * containment compare, so a project-local symlink aliasing an outside
+ * directory — or a symlinked project root itself — can no longer pass as
+ * "inside". Use for any check that GATES a filesystem read/write; use the
+ * plain lexical {@link isWithinAnyRoot} only for non-authorization decisions
+ * (e.g. "should this write trigger an auto-snapshot debounce").
+ */
+export async function isWithinAnyRootCanonical(
+  candidate: string,
+  roots: readonly string[],
+): Promise<boolean> {
+  if (roots.length === 0) return false;
+  const canonCandidate = await realpathTolerant(candidate);
+  for (const root of roots) {
+    const canonRoot = await realpathTolerant(root);
+    if (isWithinRoot(canonCandidate, canonRoot)) return true;
+  }
+  return false;
+}
+
+/** Symlink-safe version of {@link isWithinRoot} — see {@link isWithinAnyRootCanonical}. */
+export async function isWithinRootCanonical(candidate: string, root: string): Promise<boolean> {
+  return isWithinAnyRootCanonical(candidate, [root]);
 }
 
 export interface FsGuardHooks {
