@@ -51,7 +51,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     let captured: buildRunnerMod.BuildRunnerOptions | undefined;
     stubRunBuild(async (opts) => {
       captured = opts;
-      return { pdfPath: "/fake/out.pdf", htmlPath: null };
+      return { pdfPath: "/fake/out.pdf", htmlPath: undefined };
     });
 
     await runCommand(buildCommand, {
@@ -68,7 +68,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     let captured: buildRunnerMod.BuildRunnerOptions | undefined;
     stubRunBuild(async (opts) => {
       captured = opts;
-      return { pdfPath: null, htmlPath: null };
+      return { pdfPath: null, htmlPath: undefined };
     });
 
     await runCommand(buildCommand, { rawArgs: [] });
@@ -81,7 +81,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     let captured: buildRunnerMod.BuildRunnerOptions | undefined;
     stubRunBuild(async (opts) => {
       captured = opts;
-      return { pdfPath: "/tmp/out-dir/custom.pdf", htmlPath: null };
+      return { pdfPath: "/tmp/out-dir/custom.pdf", htmlPath: undefined };
     });
 
     await runCommand(buildCommand, {
@@ -96,7 +96,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
     let captured: buildRunnerMod.BuildRunnerOptions | undefined;
     stubRunBuild(async (opts) => {
       captured = opts;
-      return { pdfPath: "/fake/out.pdfx", htmlPath: null };
+      return { pdfPath: "/fake/out.pdfx", htmlPath: undefined };
     });
 
     await runCommand(buildCommand, {
@@ -146,7 +146,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
 
   test("an invalid --format is a usage error (exit 2); runBuild is never called", async () => {
     stubExit();
-    stubRunBuild(async () => ({ pdfPath: null, htmlPath: null }));
+    stubRunBuild(async () => ({ pdfPath: null, htmlPath: undefined }));
 
     await expect(
       runCommand(buildCommand, { rawArgs: [".", "--format", "docx"] })
@@ -157,7 +157,7 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
 
   test("an extra positional is a usage error (exit 2); runBuild is never called", async () => {
     stubExit();
-    stubRunBuild(async () => ({ pdfPath: null, htmlPath: null }));
+    stubRunBuild(async () => ({ pdfPath: null, htmlPath: undefined }));
 
     await expect(runCommand(buildCommand, { rawArgs: ["a", "b"] })).rejects.toThrow(
       /process\.exit\(2\)/

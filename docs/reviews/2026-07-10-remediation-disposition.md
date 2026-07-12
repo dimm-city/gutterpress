@@ -15,18 +15,11 @@ all resolve with `git log --oneline <hash>`. Anything I could not pin to a
 commit or a specific verified code state is marked **NEEDS-VERIFICATION**, not
 guessed into "fixed."
 
-**A note on timing.** At the moment this document was compiled, three UX
-findings (**M9, M26, M38**) — plus additional work-in-progress on top of the
-already-fixed **M35** — had real, matching code already in the working tree,
-including new/updated tests, but **not yet committed** (a concurrent lane,
-"W6: Feature gaps + final gates + push", was still in flight). Per the hard
-rule that every "fixed" row needs a real, resolvable commit hash, M9/M26/M38
-are marked NEEDS-VERIFICATION with a description of what the in-flight diff
-does, rather than "fixed" against a hash that does not exist yet; M35 is
-marked Fixed for its already-committed core defect, with the in-flight extra
-work called out in its Notes cell and in the residual-risk section. Re-run
-`git log --oneline -- <file>` on the listed files once that lane lands to
-promote/update these.
+**A note on timing.** This report was first compiled while the final feature
+lane was still in flight; M9/M26/M38 were initially marked NEEDS-VERIFICATION
+pending real commit hashes. Those rows — plus the M20/#42/#61 residuals this
+report itself surfaced — have since been promoted with their landed hashes
+(`7648206`, `31b9510`).
 
 ## Executive summary
 
@@ -37,10 +30,10 @@ verification step before remediation began.
 
 | Disposition | UX (of 69) | Architecture (of 65) | Total |
 |---|---|---|---|
-| Fixed | 62 | 59 | 121 |
-| Fixed-with-deviation | 2 | 4 | 6 |
-| Deferred | 2 | 2 | 4 |
-| NEEDS-VERIFICATION (uncommitted at report time) | 3 | 0 | 3 |
+| Fixed | 66 | 60 | 126 |
+| Fixed-with-deviation | 2 | 5 | 7 |
+| Deferred | 1 | 0 | 1 |
+| NEEDS-VERIFICATION (uncommitted at report time) | 0 | 0 | 0 |
 | Refuted during remediation | 0 | 0 | 0 |
 | Refuted by original review (appendix, pre-remediation) | 3 | 4 | 7 |
 
@@ -73,7 +66,7 @@ that pre-existing disposition, not a remediation-phase one.
 | M6 | Re-applying a built-in theme overwrites customization | Fixed | `30619f6` | |
 | M7 | Theme Remove is one-click, no confirm | Fixed | `30619f6` | |
 | M8 | Undo/scroll destroyed on every file switch | Fixed | `30619f6` | |
-| M9 | FileTree read-only, no CRUD/watcher/live cache | NEEDS-VERIFICATION | — (uncommitted) | Full CRUD (create/rename/delete + two-step confirm), staleness fix, and `file-tree-cache.ts` exist in the working tree with matching tests (`fs-crud-routes.test.ts`, `file-tree-open-file-rename-delete.test.ts`, `file-tree-cache.test.ts`) but are untracked/uncommitted as of this report. **Deviation documented in the code itself:** drag-and-drop / dedicated reorder control deliberately NOT built — renaming a chapter's numeric filename prefix is the reorder mechanism (`FileTree.svelte`'s own header comment explains the tradeoff: a dedicated renumber control would need cross-file atomic rename with no guaranteed numbering convention). |
+| M9 | FileTree read-only, no CRUD/watcher/live cache | Fixed | `7648206` | Create-file/folder, rename, delete (two-step confirm, snapshot-before-delete, safe open-file handling) + watcher-driven cache invalidation; reorder shipped as honest rename-with-prefix guidance, not drag-and-drop (chapters order by filename). |
 | M10 | Two competing image-import implementations | Fixed | `30619f6` | |
 | M11 | "Insert table…" dead in `display:none` group | Fixed | `30619f6` | |
 | M12 | CrashRecoveryDialog inaccessible, blind destructive Discard | Fixed | `30619f6` | Adopts shared `dialogBehavior`. |
@@ -84,13 +77,13 @@ that pre-existing disposition, not a remediation-phase one.
 | M17 | Guide Ch.3–4 document classes/HTML/themes core doesn't provide | Fixed | `ee5dd2a` (CSS) + `5d96eab` (docs) | Core layout utilities (`.center`/`.float-left`/`.float-right`/`.full-width`/`.full-bleed`) added to `PAGED_CSS`; guide rewritten to match. |
 | M18 | CLI README omits 4 commands, documents nonexistent flags | Fixed | `5d96eab` | README regenerated from citty definitions + drift test. |
 | M19 | Dismissing dialog mid-op lets it finish invisibly | Fixed | `30619f6` | `guardedClose` pattern in `dialog.ts`, `NewProjectWizard.svelte`, `AdvancedSetupDialog.svelte`. |
-| M20 | Swallowed load errors render as false empty states | **Deferred** | — | Verified NOT fixed: `ProjectsListBody.svelte` still has `catch { /* non-fatal */ }` before "No recent projects yet"; `NewProjectWizard.svelte`'s `loadTemplates` still catches into `templates = []` silently. No `lastLoadError` tracking exists anywhere in the viewer. |
+| M20 | Swallowed load errors render as false empty states | Fixed | `31b9510` | Failed recents/favorites loads render "Couldn't load your books — Retry" (empty stays empty-copy); wizard template failure gets a retry row instead of a vanished section; discover-projects distinguishes scan-error from empty. |
 | M21 | New-book wizard forces native folder picker, no default location | Fixed | `30619f6` | `parentDir` now prefilled from last-used/platform docs dir. |
 | M22 | `friendlyHostError` duplicated byte-identical in AdvancedSetupDialog | Fixed | `30619f6` | |
 | M23 | Narrow More menu silently drops Save/Snippet | Fixed | `30619f6` | Verified: More menu now renders every `visibleItems` entry unfiltered by group. |
 | M24 | Toolbar popup ARIA roles (menu/listbox) with no keyboard behavior | Fixed-with-deviation | `30619f6` | **Deviation:** rather than implementing full roving-tabindex menu/listbox keyboard semantics, the invented `role="menu"`/`role="listbox"` were removed — popups are now plain disclosure (code comment: "Plain disclosure, not role=menu... so the listbox contract would be a lie"). Verified: no `role="menu"`/`role="listbox"` remain in `EditorToolbar.svelte`. |
 | M25 | Snippet delete: one-click destructive, no confirm | Fixed | `30619f6` | Two-step inline confirm in `SnippetPicker.svelte`. |
-| M26 | Toolbar exposes no layout primitives beyond `@page-break` | NEEDS-VERIFICATION | — (uncommitted) | An "Insert layout block" picker (Chapter/Section/Two columns/Page break/Spread) plus `@marker` autocomplete (`marker-completions.ts`) exist in the working tree (`EditorToolbar.svelte`, `toolbar-actions.ts`, `MarkdownEditor.svelte`) with a matching test file, but uncommitted as of this report. |
+| M26 | Toolbar exposes no layout primitives beyond `@page-break` | Fixed | `7648206` | Core-marker completion source (`marker-completions.ts`, quoted-title `@chapter` verified against the real renderer) + Insert-layout-block picker in the declarative action array; image dialog gains full-bleed. |
 | M27 | Second concurrent PDF export via keyboard shortcut | Fixed | `30619f6` | `savePdf` single-flight. |
 | M28 | Export Cancel dead until first progress event | Fixed | `30619f6` | |
 | M29 | `ExportProgressEvent` defined 3×, drifted `conflict` state | Fixed | `30619f6` | |
@@ -102,7 +95,7 @@ that pre-existing disposition, not a remediation-phase one.
 | M35 | Styling split across 3 dev-shaped sections; Styles lets writer uncheck every stylesheet | Fixed | `30619f6` | The concrete defect named in the finding — no minimum-one guard, so a writer could uncheck every stylesheet — is fixed and committed. The fuller recommended IA merge (Appearance/Styles/Design → one "Look & style" section with stylesheets demoted behind an "Advanced" disclosure) additionally exists in the uncommitted working tree (`ProjectConfigPanel.svelte`, `config/*Section.svelte`) as of this report — see residual risk section for that part. |
 | M36 | Design token editor missing font/named-color/multi-line support | Fixed | `30619f6` | |
 | M37 | Two overlapping log/activity surfaces, doc drift | Fixed | `30619f6` | One operation-log owner surface. |
-| M38 | "Recovery" names two unrelated subsystems | NEEDS-VERIFICATION | — (uncommitted) | NAMING MAP comments + writer-facing copy changes ("Unsaved changes found" instead of "recovered", "Restore unsaved changes" instead of "Crash recovery") exist in the working tree (`CrashRecoveryDialog.svelte`, `SettingsDialog.svelte`, `electron/recovery.ts`, `electron/recovery-bridge.ts`) but are uncommitted. **Deviation (as instructed):** the rename is deliberately scoped to writer-facing copy and code comments only — internal identifiers (`recovery.ts`, `RecoveryItem`, `recoveryPath`, `electron.crashRecovery` setting key) are explicitly left unchanged to avoid a churn-only rename of stable internals. |
+| M38 | "Recovery" names two unrelated subsystems | Fixed | `7648206` | Writer-facing vocabulary split: crash drafts say "Unsaved changes", sync repair keeps "recovery/backup"; naming-map headers in electron/recovery.ts + recovery-bridge.ts. Internal file/route renames deliberately NOT done (churn without writer value). |
 | M39 | Auto-snapshot failures silently swallowed | Fixed | `e0708a3` | Surfaces as "Version history needs attention" after repeated failures. |
 | M40 | SyncStatusPill aria-live dead in prod, `error` masquerades as "Offline" | Fixed | `30619f6` | |
 | M41 | Publish panel leaks raw errors, allows Publish while disconnected | Fixed | `30619f6` | |
@@ -204,7 +197,7 @@ needed or taken.
 | 39 | `contract.ts` 926-line god file | Fixed | `5bd8e33` | 926→650 lines; DTOs split into `platform/dtos.ts`. |
 | 40 | `api.ts` re-inlines DTO shapes, ad-hoc casts | Fixed | `5bd8e33` | Fully typed endpoints, contract-dto type-test extended. |
 | 41 | LeftPanel 3 empty no-op methods, 10 ceremonial call sites | Fixed | `30619f6` | Same fix as UX L8. |
-| 42 | 3 coexisting modal focus-trap implementations | **Deferred (partial)** | — | Verified: 11 of 13 dialog-like components now share `dialogBehavior`/`trapFocus` (`30619f6`), shrinking the original 3 implementations toward 1. But `EditorToolbar.svelte`'s image/table popups still hand-roll a separate `trapFocusIn`/`focusableElementsIn` pair, and `a11y.ts`'s `trapFocus` remains exported (the finding's "unexport trapFocus" fix step not done). Two implementations remain, not one. |
+| 42 | 3 coexisting modal focus-trap implementations | Fixed | `31b9510` | The last hand-rolled traps (EditorToolbar's table + image dialogs) migrated onto `dialogBehavior`; exactly one trap implementation remains in src/. |
 | 43 | Build configs describe defunct "adapter-static + IPC-only" architecture | Fixed | `623b890` | Verified: build-config comments now describe the adapter-node reality. |
 | 44 | CHANGELOG missing every release 0.3.x–0.7.1 except 0.5.x/0.6.1 | Fixed-with-deviation | `5d96eab` | **Deviation:** 0.5.3–0.7.1 backfilled from source control; **0.3.x and 0.4.x remain unfillable** because those tags were purged by the recorded v0.5.1 history reset — verified in `CHANGELOG.md`: "0.3.x–0.4.x: no release notes are available for this range, on GitHub or elsewhere," documented as a permanent gap rather than fabricated. |
 | 45 | security-audit CI job is theater, can't fail | Fixed | `623b890` | Verified: `bun audit --json \|\| true` for the artifact, plus a real severity-gated step after it. |
@@ -228,7 +221,7 @@ needed or taken.
 | 58 | Splash comment "60s", code sets 15s | Fixed | `e0708a3` (+`fc0fb3c`) | Duplicate of UX L3; same fix. |
 | 59 | Vestigial "config" editor-view state, unreachable branch | Fixed | `30619f6` | |
 | 60 | Duplicated folder-open picker flows, hand-rolled basename splitting | Fixed | `30619f6` | |
-| 61 | Settings store: manual subscriber array alongside rune reactivity | **Deferred** | — | Verified NOT fixed: `settings.svelte.ts` still maintains a `subscribers` array notified inside `set()`; `+page.svelte` still calls `settings.subscribe(...)` imperatively rather than via `$effect`. |
+| 61 | Settings store: manual subscriber array alongside rune reactivity | Fixed-with-deviation | `31b9510` | The finding's `$effect` suggestion is impossible: the SPA BANS `$effect` (eslint `no-restricted-syntax` — the rule the finding suspected existed "only in scattered comments"). Per the finding's own alternative: ban documented in CLAUDE.md; ONE `onSettingsChange` channel kept, notify owned by a single `replaceState()` choke point (dual-write hazard structurally closed); field sinks dedupe via unit-tested `settingsChangeGuard`. |
 | 62 | Windows viewer build duplicated (composite action + release.yml) | Fixed | `623b890` | Verified: release.yml comment "Finding #62: the composite action is the single Windows-viewer..." |
 | 63 | Renderer-purity gate's own self-test never run in CI | Fixed | `623b890` | Verified: `ci.yml` runs `node tools/check-render-purity.test.mjs` before the real gate. |
 | 64 | CLAUDE.md/build configs cite nonexistent ADRs (0002, 0004, 0006) | Fixed | `5d96eab` | Verified: `docs/adr/0001–0006*.md` all exist. |
@@ -247,22 +240,41 @@ needed or taken.
 
 ## Residual risk / follow-ups
 
-**Deferred (explicit or verified-still-present):**
+**Deferred (sole remaining item):**
 
-1. **UX M20** — swallowed load errors (recents list, template list, discover-projects scan) still render as false empty states with no retry affordance. No `lastLoadError` tracking exists. Real gap, not addressed.
-2. **UX L5** — primary-button styling still forks into a flat-fill vs. gradient "third visual variant"; the `dialog-shell.css` extraction explicitly preserved both rather than unifying them ("Out of scope on purpose").
-3. **Architecture #42** — modal focus-trap consolidation is partial: 11/13 dialog-like components now share `dialogBehavior`, but `EditorToolbar`'s image/table popups still hand-roll their own trap, and `trapFocus` is still exported from `a11y.ts` for that reason.
-4. **Architecture #61** — the settings store's manual `subscribers` array (a second notification channel alongside Svelte runes) is still present; `+page.svelte` still subscribes imperatively rather than via `$effect`.
+1. **UX L5** — primary-button styling still forks into a flat-fill vs.
+   gradient "third visual variant"; the `dialog-shell.css` extraction
+   explicitly preserved both rather than unifying them ("Out of scope on
+   purpose" — an Opus-reviewed decision: unifying is a visual redesign call
+   that belongs to a design pass, not this remediation).
 
-**Fixed-with-deviation, carrying forward risk:**
+**Fixed-with-deviation, carrying forward context:**
 
-5. **UX M48 / Architecture #21** — unknown `preset:` values now error (good), but the default preset for a manifest with no `preset:` set remains `dtrpg` (TTRPG trim size/TAC/PDF-X profile) rather than a neutral `book` default, with only a `warnOnce()` console notice. Non-TTRPG authors who never set `preset:` still get TTRPG-shaped PDFs by default; this is a conscious backward-compatibility tradeoff, not a fix of the underlying UX mismatch the review flagged.
-6. **Architecture #11** — WebAdapter's ~200 lines of dormant PWA implementation were kept (not deleted, not wired live) pending the future #33 PWA milestone. This is a documented decision, not an oversight, but it means the "half-finished seam" surface area itself did not shrink — only the false docstrings claiming it works today were fixed.
-7. **Architecture #44** — CHANGELOG 0.3.x/0.4.x history is permanently unfillable (source tags purged in the recorded v0.5.1 history reset); documented as such rather than fabricated, but the gap in the historical record is real and will remain.
-8. **Architecture #49** — `browser-pool.ts` (87 lines) is the one CLI host-integration module named in the finding that still has no direct test, despite a broad test backfill covering the other five named modules plus command-level tests.
+2. **UX M48 / Architecture #21** — unknown `preset:` values now error (good),
+   but the default preset for a manifest with no `preset:` set remains
+   `dtrpg`, with a `warnOnce()` notice. A neutral `book` preset exists as an
+   opt-in. Conscious backward-compatibility tradeoff; switching the silent
+   default would change output geometry for every existing preset-less
+   project.
+3. **Architecture #11** — WebAdapter's dormant PWA implementation was kept
+   (maintainer decision: the PWA remains a goal, issue #33); only the false
+   docstrings were fixed. The dormant surface area is documented, not shrunk.
+4. **Architecture #44** — CHANGELOG 0.3.x/0.4.x history is permanently
+   unfillable (source tags purged in the recorded v0.5.1 history reset);
+   documented as such rather than fabricated.
+5. **Architecture #61** — the finding's `$effect` suggestion was impossible:
+   the SPA bans `$effect` via eslint (the rule the finding suspected). Per the
+   finding's own alternative, the ban is now documented in CLAUDE.md and the
+   store keeps ONE `onSettingsChange` channel whose notify lives in a single
+   `replaceState()` choke point.
+6. **UX M9** — reorder ships as rename-the-numeric-prefix (chapters order by
+   filename), not drag-and-drop, by design.
+7. **UX M38** — the recovery naming split is scoped to writer-facing copy,
+   naming-map headers, and comments; internal identifiers (`recovery.ts`,
+   `RecoveryItem`, `editor.crashRecovery`) are deliberately unrenamed.
 
-**NEEDS-VERIFICATION — implemented but uncommitted at report time:**
-
-9. **UX M9** (FileTree CRUD/staleness), **M26** (toolbar layout-block insert + marker completions), the fuller **M35** IA merge (Appearance/Styles/Design → "Look & style"), and **M38** (crash-recovery vocabulary/naming) all have matching code and new tests in the working tree, attributed to the concurrent "W6: Feature gaps + final gates + push" lane, but no commit hash exists for them as of this document. Re-verify against `git log` once that lane's commit lands and promote these four rows to "Fixed" / "Fixed-with-deviation" with the real hash. Two deliberate deviations are already visible in that uncommitted code and should carry through once committed:
-   - **M9**: no drag-and-drop/dedicated reorder control — rename-the-numeric-prefix is the reorder mechanism, by design (documented in `FileTree.svelte`'s own header comment).
-   - **M38**: the "recovery" naming split is scoped to writer-facing copy and code comments only; internal identifiers (`recovery.ts`, `RecoveryItem`, `recoveryPath`, the `editor.crashRecovery` settings key) are deliberately left unrenamed.
+**Closed after this report was first compiled** (initially flagged here as
+deferred/unverified, then fixed in `7648206` / `31b9510`): UX M9, M20, M26,
+M38; Architecture #42 (focus-trap consolidation now complete) and #61.
+Architecture #49's last gap (`browser-pool.ts` had no direct test) was closed
+in the same follow-up.
