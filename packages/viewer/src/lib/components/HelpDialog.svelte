@@ -1,27 +1,9 @@
 <script lang="ts">
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
+  import type { DoctorDiagnostics } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
   import { dialogBehavior } from "$lib/dialog";
-
-  interface ToolStatus {
-    name: string;
-    bin: string;
-    found: boolean;
-    path?: string;
-    version?: string;
-    usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
-    installHint: string;
-  }
-  interface Diagnostics {
-    libVersion: string;
-    viewerVersion: string;
-    electronVersion: string;
-    chromeVersion: string;
-    platform: { os: string; arch: string; release: string; node: string };
-    tools: ToolStatus[];
-    docsUrl: string;
-  }
 
   let {
     open = $bindable(false),
@@ -42,7 +24,7 @@
     updateAvailableVersion?: string | null;
   } = $props();
 
-  let data = $state<Diagnostics | null>(null);
+  let data = $state<DoctorDiagnostics | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
   let copied = $state(false);
@@ -55,7 +37,7 @@
         error = "Desktop system details are only available in the viewer app.";
         return;
       }
-      data = (await api.doctor()) as Diagnostics;
+      data = await api.doctor();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {

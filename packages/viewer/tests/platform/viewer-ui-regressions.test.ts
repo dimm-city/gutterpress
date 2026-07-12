@@ -168,14 +168,18 @@ test("editor top saved/configure overlay is removed", () => {
 });
 
 test("C2: a folder open classifies BEFORE the content pipeline opens, so a bare multi-book repo root retargets to the resolved book", () => {
-  const src = read("src/routes/+page.svelte");
-  const classifyIdx = src.indexOf("await projectSession.classify(dir)");
-  const startPreviewIdx = src.indexOf("await platform.startPreview(");
+  // The folder-open pipeline (startFolderPreview) moved from +page.svelte into
+  // ProjectLifecycleController (Phase 5d, UX H5 / ARCH #10) — see
+  // project-lifecycle-controller.test.ts for the behavioral (non-source-text)
+  // characterization of this same C2 guarantee.
+  const src = read("src/lib/routes/project-lifecycle-controller.svelte.ts");
+  const classifyIdx = src.indexOf("await d.projectSession.classify(dir)");
+  const startPreviewIdx = src.indexOf("await d.startPreviewHost(");
   expect(classifyIdx).toBeGreaterThan(-1);
   expect(startPreviewIdx).toBeGreaterThan(-1);
   expect(classifyIdx).toBeLessThan(startPreviewIdx);
-  expect(src).toContain("const targetDir = projectSession.activeBookDir ?? dir;");
-  expect(src).toContain("input: { key: targetDir, displayName: targetDisplayName }");
+  expect(src).toContain("const targetDir = d.projectSession.activeBookDir ?? dir;");
+  expect(src).toContain("d.startPreviewHost({ key: targetDir, displayName: targetDisplayName })");
 });
 
 test("C2: the book switcher is wired into the status bar and gated on books.length > 1", () => {

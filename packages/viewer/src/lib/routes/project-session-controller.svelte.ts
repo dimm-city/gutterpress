@@ -47,24 +47,10 @@
  */
 
 import type { ProjectCapabilities } from "../platform/contract";
+import type { ProjectClassification, ProjectClassificationBook } from "../platform/dtos";
 
 /** A book (manifest-containing folder) found inside a classified project's repo. */
-export interface ProjectBookEntry {
-  /** Absolute path to the book folder. */
-  path: string;
-  /** Display title — the folder's basename (background-scan convention). */
-  title: string;
-  /** Book's path relative to the repo root, forward-slash form; "" at the repo root. */
-  subPath: string;
-}
-
-/** Loosely-typed host classify result — the api layer returns `unknown` fields. */
-export type ClassifyResult = {
-  source: unknown;
-  capabilities: unknown;
-  repoRoot?: string;
-  books?: ProjectBookEntry[];
-};
+export type ProjectBookEntry = ProjectClassificationBook;
 
 /**
  * Resolve which book is "active" after opening `pickedDir` inside a repo whose
@@ -92,7 +78,7 @@ export function resolveActiveBookDir(
 
 export interface ProjectSessionDeps {
   /** Host round-trip: classify a project folder (source type + capabilities). */
-  classifyProject: (dir: string) => Promise<ClassifyResult>;
+  classifyProject: (dir: string) => Promise<ProjectClassification>;
   /** Persist the re-detected source hint (fire-and-forget on the component side). */
   setViewerPrefs: (prefs: Record<string, unknown>) => Promise<unknown>;
   /** Refresh the remote diagnosis for a syncable project (SyncController). */
@@ -152,24 +138,16 @@ export class ProjectSessionController {
       .classifyProject(dir)
       .then((result) => {
         if (gen !== this.classifyGen) return; // superseded by a newer open
-        const typedResult = result as {
-          source: { type: string; subPath?: string };
-          capabilities: ProjectCapabilities;
-          repoRoot?: string;
-          books?: ProjectBookEntry[];
-        };
-        this.projectCapabilities = typedResult.capabilities;
+        this.projectCapabilities = result.capabilities;
         this.projectSubPath =
-          typedResult.source.type === "local-git-folder" ? (typedResult.source.subPath ?? "") : "";
-        this.repoRoot = typedResult.repoRoot ?? null;
-        this.books = typedResult.books ?? [];
-        this.activeBookDir = resolveActiveBookDir(dir, typedResult.repoRoot, this.books);
-        this.deps
-          .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
-          .catch(() => {});
+          result.source.type === "local-git-folder" ? (result.source.subPath ?? "") : "";
+        this.repoRoot = result.repoRoot ?? null;
+        this.books = result.books ?? [];
+        this.activeBookDir = resolveActiveBookDir(dir, result.repoRoot, this.books);
+        this.deps.setViewerPrefs({ projectSource: result.source }).catch(() => {});
         // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only when
         // the diagnosis says the project is actually syncable. Local reads only.
-        if (typedResult.capabilities.canSync) {
+        if (result.capabilities.canSync) {
           this.deps.refreshSyncDiag(dir);
         }
       })

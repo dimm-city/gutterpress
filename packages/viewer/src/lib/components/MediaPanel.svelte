@@ -15,7 +15,7 @@
   import { onMount } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
-  import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/contract";
+  import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/dtos";
   import {
     buildPrintWarnings,
     defaultAltText,

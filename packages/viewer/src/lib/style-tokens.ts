@@ -7,7 +7,7 @@
  * `toHex`) — no node/svelte imports, §8-clean.
  */
 
-import type { StyleToken } from "$lib/platform/contract";
+import type { StyleToken } from "$lib/platform/dtos";
 
 // ── Color / font / numeric classification ───────────────────────────────────
 //

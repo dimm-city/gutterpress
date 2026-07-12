@@ -20,10 +20,10 @@
   import { friendlyHostError } from "$lib/errors";
   import type {
     ConflictFileEntry,
-    ConflictPreview,
     ConflictResolutionChoice,
     SyncOutcome,
   } from "$lib/platform/contract";
+  import type { ConflictPreview } from "$lib/platform/dtos";
   import { dialogBehavior } from "$lib/dialog";
 
   let {

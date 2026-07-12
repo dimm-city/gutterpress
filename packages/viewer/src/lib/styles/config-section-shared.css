@@ -1,0 +1,96 @@
+/**
+ * Shared "chrome" CSS for ProjectConfigPanel's six section components (UX
+ * review M14 — god-file cleanup, mirrors `dialog-shell.css`'s consolidation
+ * for the ten modal dialogs).
+ *
+ * Every section used to depend on ~150 lines of `.config-panel :global(...)`
+ * rules authored in the PARENT (`ProjectConfigPanel.svelte`) — an untyped
+ * styling contract where renaming a class in a child silently un-styled it,
+ * and `.config-panel :global(button)` restyled every button in the whole
+ * subtree with no visibility from any one section's own file. Each section
+ * now owns its OWN domain-specific CSS in its own `<style>` block (plain
+ * Svelte scoping, no `:global` needed — see e.g. `AppearanceSection.svelte`'s
+ * `.theme-grid`/`.theme-card`). Only the primitives multiple sections
+ * genuinely share — block/field chrome, buttons, inputs, status pills — live
+ * here ONCE, pulled into each section with:
+ *
+ *   <style>
+ *     @import "$lib/styles/config-section-shared.css";
+ *     /* the section's own bespoke rules *\/
+ *   </style>
+ *
+ * Every rule below is prefixed `.config-panel <selector>` and wrapped in
+ * `:global(...)` — NOT because Svelte can't scope it (it always could, for
+ * the rules a section's own template happens to use), but because
+ * `.config-panel` is the PARENT's root class, never present in any section's
+ * own template, so normal per-component scope-matching could never succeed on
+ * the ancestor part of the selector. `:global(...)` also opts every rule out
+ * of Svelte's per-component unused-CSS-selector pass — exactly like
+ * `dialog-shell.css`'s variant classes — so an @importing section that only
+ * uses a SUBSET of these primitives (e.g. StylesSection never renders a
+ * `.primary` button) doesn't get flagged for the primitives a SIBLING section
+ * uses. The literal `.config-panel` prefix is what keeps this containED to
+ * the config panel's own subtree — identical to the pre-split behavior
+ * (`.config-panel :global(button)` in the old parent block) — rather than
+ * leaking these generic class names (`.primary`, `.error`, `.row`, …)
+ * app-wide the way a bare `:global(.primary)` would.
+ *
+ * Domain-only primitives (theme grid, style list, design tokens, plugin
+ * list/toggle, publish cards, …) are NOT here — they live in each owning
+ * section's own `<style>` block, scoped normally.
+ */
+
+:global(.config-panel .block) { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--app-border-subtle); }
+:global(.config-panel .block:last-child) { border-bottom: none; }
+:global(.config-panel .block h3) {
+  margin: 0; font-size: 12px; font-weight: 600; color: var(--app-text);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+:global(.config-panel .block-head) { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+:global(.config-panel .subhead) { margin: 6px 0 2px; font-size: 11px; font-weight: 600; color: var(--app-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+:global(.config-panel .muted) { margin: 0; font-size: 13px; color: var(--app-text-muted); }
+:global(.config-panel .error) { margin: 0; color: var(--app-error-text); font-size: 12px; }
+:global(.config-panel .hint) { margin: 0; font-size: 11.5px; color: var(--app-text-faint); line-height: 1.4; }
+:global(.config-panel .row) { display: flex; align-items: center; gap: 8px; }
+
+:global(.config-panel .field) { display: flex; flex-direction: column; gap: 3px; }
+:global(.config-panel .field .lbl) { font-size: 11px; color: var(--app-text-muted); font-weight: 500; }
+:global(.config-panel .input) {
+  background: var(--app-surface-sunken); border: 1px solid var(--app-border);
+  color: var(--app-text-secondary); padding: 7px 9px; border-radius: 5px;
+  font-size: 13px; font-family: inherit; width: 100%; box-sizing: border-box;
+}
+:global(.config-panel .input:focus) { outline: none; border-color: var(--app-focus-ring); }
+:global(.config-panel textarea.input) { resize: vertical; font-family: ui-monospace, monospace; font-size: 12px; }
+:global(.config-panel .input.sharp) { width: auto; min-width: 0; flex: 1; }
+
+:global(.config-panel button) {
+  display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px;
+  font-size: 13px; border-radius: 5px; cursor: pointer; border: 1px solid transparent;
+  font-family: inherit;
+}
+:global(.config-panel button.small) { padding: 5px 10px; font-size: 12px; }
+:global(.config-panel button.icononly) { padding: 5px; }
+:global(.config-panel .primary) { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
+:global(.config-panel .primary:hover:not(:disabled)) { background: var(--app-accent-hover); }
+:global(.config-panel .ghost) { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
+:global(.config-panel .ghost:hover:not(:disabled)) { background: var(--app-surface-hover); color: var(--app-text); }
+:global(.config-panel button:disabled) { opacity: 0.5; cursor: not-allowed; }
+
+:global(.config-panel .add-row) { display: flex; gap: 6px; }
+:global(.config-panel .add-row .input) { flex: 1; }
+
+:global(.config-panel .badge) { font-size: 10px; color: var(--app-text-faint); background: var(--app-surface-hover); padding: 1px 6px; border-radius: 9px; }
+:global(.config-panel .muted.dim) { font-size: 11px; }
+
+:global(.config-panel .kind) { color: var(--app-text-faint); }
+:global(.config-panel .status) { display: inline-flex; align-items: center; gap: 3px; font-weight: 500; }
+:global(.config-panel .status.ok) { color: var(--app-success-text, #3fb950); }
+:global(.config-panel .status.error) { color: var(--app-error-text); }
+:global(.config-panel .status.checking), :global(.config-panel .status.disabled) { color: var(--app-text-faint); }
+:global(.config-panel .status-detail) { margin: 0; font-size: 11px; color: var(--app-error-text); line-height: 1.35; }
+:global(.config-panel .status-raw) { margin: 2px 0 0; }
+:global(.config-panel .status-raw > summary) { font-size: 11px; color: var(--app-text-muted); cursor: pointer; user-select: none; }
+:global(.config-panel .status-raw > pre) { margin: 4px 0 0; padding: 6px; font-size: 11px; color: var(--app-text-muted); background: var(--app-control-bg); border: 1px solid var(--app-border); border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
+:global(.config-panel .rec-desc) { margin: 0; font-size: 11px; color: var(--app-text-muted); line-height: 1.4; }

@@ -1,72 +1,55 @@
 <script lang="ts">
   /**
    * Details section of ProjectConfigPanel — title, authors, output filename,
-   * source files. Presentational: all state + `api.*` calls live in the
-   * composition root; this child renders props and emits changes via callbacks
-   * ($bindable drafts for the plain text fields). Styles come from the root's
-   * `.config-panel :global(...)` layer, so this file carries none.
+   * source files. All state + `api.manifest.*` calls live in
+   * `DetailsSectionController` (passed as the single `controller` prop, per
+   * the design-controller pattern — see M14); this child renders the
+   * controller's rune fields and calls its intent methods directly (plain
+   * text fields bind straight to controller fields via `bind:value`, same as
+   * `pageNav.pageEditValue` in `+page.svelte`). Shared primitives (`.block`,
+   * `.field`, `.input`, buttons, …) come from `config-section-shared.css`;
+   * the Details-only layout (`.authors`, `.author-row`, `.add`) is scoped
+   * here.
    */
   import Icon from "$lib/components/Icon.svelte";
+  import type { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
 
-  let {
-    detailsError,
-    titleDraft = $bindable(""),
-    authorsDraft,
-    outputDraft = $bindable(""),
-    sourceDraft = $bindable(""),
-    detailsSaving,
-    addAuthor,
-    removeAuthor,
-    setAuthor,
-    saveDetails,
-  }: {
-    detailsError: string | null;
-    titleDraft: string;
-    authorsDraft: string[];
-    outputDraft: string;
-    sourceDraft: string;
-    detailsSaving: boolean;
-    addAuthor: () => void;
-    removeAuthor: (i: number) => void;
-    setAuthor: (i: number, v: string) => void;
-    saveDetails: () => void;
-  } = $props();
+  let { controller }: { controller: DetailsSectionController } = $props();
 </script>
 
 <section class="block">
   <h3>Details</h3>
-  {#if detailsError}
-    <p class="error" role="alert">{detailsError}</p>
+  {#if controller.detailsError}
+    <p class="error" role="alert">{controller.detailsError}</p>
   {/if}
   <label class="field">
     <span class="lbl">Title</span>
     <input
       class="input"
       type="text"
-      value={titleDraft}
-      oninput={(e) => (titleDraft = e.currentTarget.value)}
+      bind:value={controller.titleDraft}
       placeholder="Untitled project"
     />
   </label>
   <div class="field">
     <span class="lbl">Authors</span>
     <div class="authors">
-      {#each authorsDraft as _, i (i)}
+      {#each controller.authorsDraft as _, i (i)}
         <div class="author-row">
           <input
             class="input"
             type="text"
-            value={authorsDraft[i]}
-            oninput={(e) => setAuthor(i, e.currentTarget.value)}
+            value={controller.authorsDraft[i]}
+            oninput={(e) => controller.setAuthor(i, e.currentTarget.value)}
             placeholder="Author name"
             aria-label={`Author ${i + 1}`}
           />
-          <button class="ghost icononly" onclick={() => removeAuthor(i)} title="Remove author" aria-label={`Remove author ${i + 1}`}>
+          <button class="ghost icononly" onclick={() => controller.removeAuthor(i)} title="Remove author" aria-label={`Remove author ${i + 1}`}>
             <Icon name="x" size={13} />
           </button>
         </div>
       {/each}
-      <button class="ghost small add" onclick={addAuthor}><Icon name="plus" size={12} /> Add author</button>
+      <button class="ghost small add" onclick={controller.addAuthor}><Icon name="plus" size={12} /> Add author</button>
     </div>
   </div>
   <label class="field">
@@ -74,8 +57,7 @@
     <input
       class="input"
       type="text"
-      value={outputDraft}
-      oninput={(e) => (outputDraft = e.currentTarget.value)}
+      bind:value={controller.outputDraft}
       placeholder="book.pdf"
     />
   </label>
@@ -85,11 +67,20 @@
       class="input"
       rows="3"
       placeholder="chapter-01.md&#10;chapter-02.md&#10;(Leave blank to include all chapter files.)"
-      oninput={(e) => (sourceDraft = e.currentTarget.value)}
-    >{sourceDraft}</textarea>
+      bind:value={controller.sourceDraft}
+    ></textarea>
     <span class="hint">One file per line. Leave blank to include all markdown files in the project.</span>
   </label>
-  <button class="primary small" onclick={saveDetails} disabled={detailsSaving}>
-    {detailsSaving ? "Saving…" : "Save details"}
+  <button class="primary small" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
+    {controller.detailsSaving ? "Saving…" : "Save details"}
   </button>
 </section>
+
+<style>
+  @import "$lib/styles/config-section-shared.css";
+
+  .authors { display: flex; flex-direction: column; gap: 4px; }
+  .author-row { display: flex; gap: 4px; align-items: center; }
+  .author-row .input { flex: 1; }
+  .add { align-self: flex-start; }
+</style>

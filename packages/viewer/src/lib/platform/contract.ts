@@ -1,5 +1,5 @@
 /**
- * Viewer-facing platform contract (#41).
+ * Viewer-facing platform contract (#41, ARCH review #39).
  *
  * `PlatformAdapter` (the narrow, genuinely host-divergent primitive surface) is
  * the canonical contract and lives in `@dimm-city/print-md`. The viewer adds
@@ -10,6 +10,22 @@
  * The app consumes `Platform` = `PlatformAdapter & HostServices` via
  * `getPlatform()`. It must NOT touch `window.electron` directly — that access
  * is confined to `electron-adapter.ts`.
+ *
+ * This file is the SEAM-INTERFACE file: `HostServices`, `ElectronBridge`,
+ * `Platform`, and the small cluster of types those interfaces' members
+ * reference directly (`UpdaterApi`, `FolderRef`/`FileRef`, `PreviewStartArgs`/
+ * `BuildArgs`, `PlatformCapabilities`, `NativeThemeState`,
+ * `FolderChangedEvent`, and the sync/recovery status vocabulary —
+ * `SyncStatus`/`SyncState`/`RecoveryConfirmRequest`/`ManualGuidanceInfo`/
+ * `RepairConfirmationInfo`/`RecoveryProgressInfo`/`RecoveryActionKey`/
+ * `ConflictFileEntry`). Plain request/response DTOs that the seam does NOT
+ * reference — the ~30 shapes server routes return (plugin manager, theme
+ * manager, style resolver, media panel, problems panel, project
+ * classification, …) — live in `./dtos.ts`. IPC payload types shared with the
+ * Electron host process (and mirrored into `electron/bridge-types.ts`) live in
+ * `./shared-types.ts`. This file re-exports both so existing `$lib/platform/
+ * contract` importers keep resolving; new code should import DTOs from
+ * `./dtos` directly.
  */
 import type {
   PlatformAdapter,
@@ -108,185 +124,14 @@ export type {
   UrlPreviewBlockedEvent,
 };
 
-// ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
-//
-// Phase-0 type stubs only — no implementation in this pass. See
-// docs/design/issue-44-plan.md.
-
-/** Lifecycle of the in-app editor buffer relative to disk (#44). */
-export type EditorBufferPhase = "clean" | "dirty" | "saving" | "error";
-
 /**
- * One pending crash-recovery snapshot (#44), stored under
- * `<userData>/recovery/`. `savedAt` is epoch ms of the snapshot; `baseMtimeMs`
- * is the disk mtime the snapshot was taken against, so launch-time recovery can
- * skip entries the user has since saved or that an external edit superseded.
+ * Payload of an `onFolderChanged` event (#44) — the changed entry's basename.
+ * Defined here (not `./dtos`) because `HostServices.onFolderChanged`
+ * references it directly. Other DTOs — e.g. `ProjectClassification` — live
+ * only in `./dtos`; import from there directly.
  */
-export interface RecoveryEntry {
-  filePath: string;
-  recoveryPath: string;
-  savedAt: number;
-  baseMtimeMs: number;
-}
-
-/** Payload of an `onFolderChanged` event (#44) — the changed entry's basename. */
 export interface FolderChangedEvent {
   filename: string;
-}
-
-/** Result of classifying an opened folder (#12). */
-export interface ProjectClassification {
-  source: ProjectSource;
-  capabilities: ProjectCapabilities;
-}
-
-// ── Local version history (#13) ───────────────────────────────────────────────
-//
-// SnapshotEntry, SnapshotPage, RestoreVersionResult imported from shared-types
-// (exported at the top of this file). Defined once, not mirrored.
-
-/** Paging inputs for {@link HostServices.listSnapshotsPage}. */
-export interface ListSnapshotsOptions {
-  /** Max entries per page (host default: 100). */
-  limit?: number;
-  /** Continuation cursor: the id of the previous page's LAST entry. */
-  before?: string;
-}
-
-/**
- * One CSS print-safety warning (#39). Mirrors the lib's `PrintSafeWarning`
- * (packages/cli/src/lib/printsafe.ts) — defined locally so the SPA never imports
- * the lib (and its postcss/node deps) into the renderer bundle.
- */
-export interface PrintSafeWarning {
-  rule: string;
-  severity: "error" | "warning";
-  message: string;
-  line: number;
-  column: number;
-}
-
-/**
- * One row in the Problems panel (#28). Mirrors the lib's `CheckResult`
- * (packages/cli/src/checks/types.ts) plus a resolved absolute path — defined
- * locally so the SPA never value-imports the lib (§8 / ADR 0004).
- */
-export interface ProblemEntry {
-  /** Absolute path of the offending file, when the check reported one. */
-  filePath?: string;
-  /** Project-relative display path (falls back to the basename). */
-  file?: string;
-  /** 1-based line number, when known. */
-  line?: number;
-  column?: number;
-  severity: "error" | "warning" | "info";
-  message: string;
-  /** Originating check id (e.g. "source.links.local-refs"). */
-  source: string;
-}
-
-// TemplateInfo and SnippetEntry migrated to $lib/api.ts (Phase 2D — tpl/snip server routes).
-
-// ── Plugin manager (#30) ──────────────────────────────────────────────────────
-//
-// Mirror the lib's plugin-manager types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004).
-
-/** How a plugin entry is referenced in the manifest. */
-export type PluginKind = "local" | "npm";
-
-/** One configured plugin, as surfaced to the manager UI. */
-export interface ProjectPluginEntry {
-  /** Stable reference: the manifest `path` (local) or `name` (npm). */
-  ref: string;
-  /** `"local"` (file path) or `"npm"` (package name). */
-  kind: PluginKind;
-  /** Per-project enable flag (manifest `enabled: false` = disabled). */
-  enabled: boolean;
-}
-
-/** Result of load-testing one configured plugin. */
-export interface PluginValidationResult {
-  ref: string;
-  kind: PluginKind;
-  enabled: boolean;
-  /** `true` when the plugin loaded OK (or is disabled and skipped). */
-  ok: boolean;
-  /** The loader's fail-fast error message when `ok` is `false`. */
-  error?: string;
-}
-
-/** A curated, informational plugin recommendation (NOT auto-installed). */
-export interface RecommendedPlugin {
-  name: string;
-  /** Short plain-language feature name (the row title; `name` is demoted). */
-  label?: string;
-  description: string;
-  /** print-md ships this plugin — "Add" enables it instantly, no install. */
-  builtin?: boolean;
-}
-
-// ── Theme manager (#32) ───────────────────────────────────────────────────────
-//
-// Mirror the lib's theme-manager types — defined locally so the SPA never
-// value-imports the lib (§8 / ADR 0004).
-
-/** Author-friendly metadata for one theme (built-in or project). */
-export interface ThemeInfo {
-  /** Stable id (a built-in id, or a slug for imported/applied themes). */
-  id: string;
-  /** Display name. */
-  name: string;
-  /** Theme author, when known. */
-  author?: string;
-  /** One-line description. */
-  description: string;
-  /** `"builtin"` (embedded) or `"project"` (copied into the project). */
-  kind: "builtin" | "project";
-  /** Optional preview image path relative to the theme folder. */
-  preview?: string | null;
-}
-
-/** Which theme to apply: a built-in id, or a project theme already on disk. */
-export type ApplyThemeTarget =
-  | { kind: "builtin"; id: string }
-  | { kind: "project"; id: string };
-
-// ── Style resolver (CSS editor; audit B2/G1) ──────────────────────────────────
-//
-// Mirrors the lib's `ProjectStyle` (packages/cli/src/lib/style-resolver.ts) —
-// defined locally so the SPA never value-imports the lib (§8 / ADR 0004).
-
-/** One resolvable project stylesheet surfaced to the CSS-editor picker. */
-export interface ProjectStyle {
-  /** Absolute path to the `.css` file (the editor's open key). */
-  path: string;
-  /** Project-relative, "/"-separated display name (e.g. `themes/dark/theme.css`). */
-  displayName: string;
-  /** True when the stylesheet is in the manifest `styles:` list (the active set). */
-  active: boolean;
-}
-
-// Mirrors the lib's `StyleToken` (packages/cli/src/lib/style-tokens.ts) —
-// defined locally so the SPA never value-imports the lib (§8 / ADR 0004). One
-// editable `:root` custom property surfaced to the guided Design panel.
-// `font` = a font-family stack (curated dropdown + free text); `number` = a
-// unitless number (e.g. `--leading: 1.55`) — same numeric control as `length`,
-// just with no unit suffix.
-export type StyleTokenKind = "color" | "length" | "text" | "font" | "number";
-export interface StyleToken {
-  /** The custom-property name, e.g. `--heading-color`. */
-  name: string;
-  /** The raw declared value, e.g. `#cc0000` or `1.5rem`. */
-  value: string;
-  /** Which guided control to render. */
-  kind: StyleTokenKind;
-  /** Human label derived from the name, e.g. "Heading color". */
-  label: string;
-  /** For `length`/`number`: the numeric part. */
-  number?: number;
-  /** For `length`: the unit (px, rem, em, …). Absent for `number`. */
-  unit?: string;
 }
 
 // ── Host RPC payload shapes ────────────────────────────────────────────────
@@ -340,32 +185,11 @@ export interface FileRef {
   displayName: string;
 }
 
-export interface RecentFolderEntry {
-  key: string;
-  displayName: string;
-  title: string;
-  openedAt: string;
-  exists: boolean;
-}
-
-export interface FavoriteEntry {
-  key: string;
-  displayName: string;
-  title: string;
-  exists: boolean;
-}
-
 // ProjectState and ViewerPrefs are imported from shared-types above
 // (re-exported at the top of this file). ViewerPrefs.leftPanel is typed as
 // LeftPanelPrefs — both defined in shared-types.ts and re-exported here.
 
 export type { SharedViewerPrefs as ViewerPrefs, LeftPanelPrefs };
-
-/** A print-md project discovered by the background scan (#27). */
-export interface DiscoveredProject {
-  path: string;
-  title: string;
-}
 
 // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────────
 //
@@ -376,35 +200,8 @@ export interface DiscoveredProject {
 // ── Advanced Setup (#14, ADR 0006 D3/D7) ──────────────────────────────────────
 //
 // RemoteAccessResult and ProjectRemoteDiagnosis imported from shared-types above
-// (re-exported at the top of this file). The refined ForgeKind / RemoteGuidanceId
-// named aliases below give consumers more semantic type names.
-
-/** Why a remote-access probe failed, in machine-readable form. */
-export type RemoteAccessFailureReason =
-  | "auth"
-  | "not-found"
-  | "unreachable"
-  | "ssh-unsupported"
-  | "tls"
-  | "unknown";
-
-/** Recognized forge families, for per-provider guidance copy. */
-export type ForgeKind =
-  | "github"
-  | "gitea"
-  | "forgejo"
-  | "gitlab"
-  | "bitbucket"
-  | "azure"
-  | "generic";
-
-/** Machine-readable next-step hint the UI maps to author copy. */
-export type RemoteGuidanceId =
-  | "local-only"
-  | "connect-github-to-sync"
-  | "https-connect-server"
-  | "ready-to-sync"
-  | "ssh-use-own-tools";
+// (re-exported at the top of this file). Refined ForgeKind / RemoteGuidanceId
+// named aliases live in ./dtos (not part of the seam).
 
 /** Environment status for the Advanced Setup panel — re-exported from shared-types. */
 export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
@@ -413,7 +210,9 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 //
 // Defined locally here — decoupled from the lib — so the SPA never
 // value-imports the lib (§8 / ADR 0004). Main emits `sync:status` events with
-// this payload; the renderer drives the ambient status pill from it.
+// this payload; the renderer drives the ambient status pill from it. Kept
+// alongside HostServices (rather than in ./dtos) because `onSyncStatus` and
+// `onRecoveryConfirm` reference this cluster directly.
 
 /**
  * Ambient sync state emitted by the host auto-sync orchestrator and surfaced
@@ -514,16 +313,6 @@ export interface RecoveryConfirmRequest {
   requestId: string;
   projectDir: string;
   confirmation: RepairConfirmationInfo;
-}
-
-/**
- * Yours/theirs text for the conflict preview disclosure in ConflictChoicesDialog.
- */
-export interface ConflictPreview {
-  mine: string;
-  theirs: string;
-  kind: ConflictKind;
-  isBinary: boolean;
 }
 
 /**
@@ -651,51 +440,6 @@ export interface NativeThemeState {
 }
 
 /**
- * Host RPC services. Host-divergent (IPC vs HTTP) but not part of the narrow
- * filesystem/secrets primitive surface, so kept separate from PlatformAdapter.
- */
-/** Payload types for the image pick/copy host service (#31). */
-export interface ImagePickResult {
-  /** Absolute path chosen by the user, or null when cancelled. */
-  filePath: string | null;
-}
-
-// ── Media panel (#47) ─────────────────────────────────────────────────────────
-//
-// Mirrors the lib's ImageInfo (packages/cli/src/lib/image-inspect.ts) — defined
-// locally so the SPA never value-imports the lib (§8 / ADR 0004).
-
-/** One image file found under the open project folder. */
-export interface MediaImageEntry {
-  /** File basename ("cover.png"). */
-  name: string;
-  /** Project-relative path, "/"-separated — also the markdown src to insert. */
-  relPath: string;
-  /** Absolute path on disk (input to thumbnails / inspection). */
-  path: string;
-  /** File size in bytes. */
-  size: number;
-  mtimeMs: number;
-}
-
-/** Header-parse result for one image (PNG/JPEG/TIFF). */
-export interface MediaImageInfo {
-  width: number;
-  height: number;
-  /** Effective DPI from metadata; 72 when the file carries no density info. */
-  xDpi: number;
-  yDpi: number;
-  hasAlpha: boolean;
-  colorSpace: "srgb" | "gray" | "cmyk" | "";
-}
-
-/** Detail-view payload: size always; `info` null for unparsed formats (SVG…). */
-export interface MediaImageDetails {
-  fileSize: number;
-  info: MediaImageInfo | null;
-}
-
-/**
  * Coarse host capability flags (#49) so the UI can degrade gracefully without
  * branching on `platform === "web"`. Electron returns all-true; the Web adapter
  * returns the conservative set (see WebAdapter.capabilities for the Safari/OPFS
@@ -710,6 +454,10 @@ export interface PlatformCapabilities {
   persistentFolderAccess: boolean;
 }
 
+/**
+ * Host RPC services. Host-divergent (IPC vs HTTP) but not part of the narrow
+ * filesystem/secrets primitive surface, so kept separate from PlatformAdapter.
+ */
 export interface HostServices {
   /** Integer IPC-surface version; mirrors DESKTOP_API in electron/preload.ts. */
   readonly apiVersion: number;
@@ -721,34 +469,10 @@ export interface HostServices {
    */
   capabilities(): PlatformCapabilities;
 
-  // savePdf, pickImageFile, copyFile, pickImageFiles migrated to server routes
-  // listProjectImages, imageThumbnail, inspectImage migrated to server routes (Phase 2C)
-  // openExternal, showInFolder migrated to server routes
-
-  // Lib API / app state
-  // getStatus migrated to server route (Phase 2C)
-  // app:getLastProject, app:splashStatus, app:rendererReady — migrated to
-  // server routes (Phase 2B).
-
-  // listProjectFiles migrated to server route (src/routes/api/fs/list-project-files)
-  // checkCss, lintProject migrated to server routes (Phase 2C)
-
-  // app:getViewerPrefs, app:setViewerPrefs, app:getViewerProjectState,
-  // app:setViewerProjectState, app:getSettings, app:setSettings,
-  // app:getNativeTheme, app:getRecentFolders, app:getFavorites,
-  // app:toggleFavorite, app:removeRecent, app:discoverProjects,
-  // app:classifyProject, app:createProject, app:adoptFolder
-  // — migrated to SvelteKit server routes (Phase 2B).
-
   // Native (OS) theme (#48) — push channel kept (main→renderer push, not request/reply)
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
 
-  // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from HostServices.
-  // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from HostServices.
-
   // ── Local version history (#13) ───────────────────────────────────────────
-  // enableVersionHistory, listSnapshots, listSnapshotsPage, restoreSnapshot
-  // — migrated to SvelteKit server routes (src/routes/api/vcs/*).
   /**
    * Save an explicit snapshot of the project's current state. `message` is
    * optional author text; the host substitutes a default when blank. Rejects
@@ -768,9 +492,6 @@ export interface HostServices {
   connectGitHubWait(): Promise<RemoteConnection>;
   /** Cancel an in-flight device flow (user closed the dialog). */
   connectGitHubCancel(): Promise<{ ok: boolean }>;
-  // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
-  // listRepoBooks, diagnoseProjectRemote, testRemoteAccess, connectGenericHost,
-  // disconnectHost, listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
 
   /** Download ("clone") a repository into a new local project folder. */
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
@@ -822,8 +543,6 @@ export interface HostServices {
    */
   respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
 
-  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
-
   /**
    * Enable or disable the auto-sync master switch for the current project.
    * Persisted via the host settings store (equivalent to toggling
@@ -832,29 +551,19 @@ export interface HostServices {
    */
   setAutoSync(enabled: boolean): Promise<void>;
 
-  // syncChanges — migrated to server route (Phase 2F).
-
   // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
   /** Apply per-file conflict choices and sync the combined result. */
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
-
-  // readLogFile migrated to server route (src/routes/api/log/read)
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;
   stopPreview(): Promise<{ stopped: boolean }>;
   cancelExport(exportId: string): Promise<{ canceled: boolean }>;
   build(args: BuildArgs): Promise<BuildResult>;
-  // doctor migrated to server route (Phase 2C)
 
   // Event subscriptions (return an unsubscribe fn)
   onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
   onUrlPreviewBlocked(cb: (data: UrlPreviewBlockedEvent) => void): () => void;
-
-  // writeRecovery, clearRecovery, listRecovery — migrated to server routes
-  // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
-
-  // app:setDirtyState — migrated to server route (Phase 2B).
 
   /**
    * Subscribe to the main process's request to flush before the window closes

@@ -18,7 +18,8 @@
   import BookSwitcher from "$lib/components/BookSwitcher.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { onMount } from "svelte";
-  import type { ConflictFileInfo, ProblemEntry } from "$lib/platform/contract";
+  import type { ConflictFileInfo } from "$lib/platform/contract";
+  import type { ProblemEntry } from "$lib/platform/dtos";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
 
   let isCompact = $state(false);

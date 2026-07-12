@@ -2,7 +2,7 @@
  * Problems panel helpers (#28). Pure functions over `ProblemEntry[]` so the
  * grouping/labeling logic is unit-testable outside Svelte.
  */
-import type { ProblemEntry } from "$lib/platform/contract";
+import type { ProblemEntry } from "$lib/platform/dtos";
 
 /** One file's worth of problems, ready to render as a panel group. */
 export interface ProblemGroup {

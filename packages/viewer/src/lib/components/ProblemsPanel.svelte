@@ -10,7 +10,7 @@
    * live in the navbar any more.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import type { ProblemEntry } from "$lib/platform/contract";
+  import type { ProblemEntry } from "$lib/platform/dtos";
   import {
     closesPanelOnEscape,
     closesPanelOnSelect,

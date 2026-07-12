@@ -22,7 +22,6 @@ import type {
   UrlPreviewBlockedEvent,
   UpdaterApi,
   NativeThemeState,
-  ProjectClassification,
   // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   // TemplateInfo, SnippetEntry — removed (Phase 2D)
   // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)

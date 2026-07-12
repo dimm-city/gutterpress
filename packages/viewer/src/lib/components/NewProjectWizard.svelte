@@ -218,7 +218,7 @@
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
-      }) as { projectDir: string };
+      });
       // Remember this location as the default next time (M21) — best-effort,
       // never blocks the create flow.
       if (parentDir) void api.app.setViewerPrefs({ newProjectParentDir: parentDir }).catch(() => {});

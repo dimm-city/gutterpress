@@ -22,8 +22,6 @@ export type {
   ViewerPrefs,
   AppSettings,
   DeepPartial,
-  RecentFolderEntry,
-  FavoriteEntry,
   FolderRef,
   FileRef,
   PlatformCapabilities,
@@ -34,8 +32,9 @@ export type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
   NativeThemeState,
-  PrintSafeWarning,
 } from "./contract";
+
+export type { RecentFolderEntry, FavoriteEntry, PrintSafeWarning } from "./dtos";
 
 let instance: Platform | null = null;
 

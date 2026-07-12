@@ -25,7 +25,7 @@
  * `$lib/style-tokens` string helpers — ZERO `node:*` / lib value imports.
  */
 
-import type { ProjectStyle, StyleToken } from "$lib/platform/contract";
+import type { ProjectStyle, StyleToken } from "$lib/platform/dtos";
 import {
   parseStyleTokens,
   applyTokenUpdates,

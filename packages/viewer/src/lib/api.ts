@@ -36,25 +36,16 @@ async function get<T>(url: string): Promise<T> {
 // These were previously RE-DECLARED here, and one copy had already drifted
 // (`ProjectRemoteDiagnosis.classification` was `any` instead of the typed
 // `ProjectSource`). They are now imported type-only from `./platform/contract`
-// (which itself sources them from `shared-types.ts` / the lib), so the api
-// client and the host/renderer contract can never disagree again. `import type`
-// is fully erased at build, so the SPA still never value-imports the lib
-// (§8 / ADR 0004 renderer purity). Re-exported so existing `$lib/api` type
-// consumers keep resolving.
+// (the seam interfaces + IPC-shared types) and `./platform/dtos` (the plain
+// request/response DTOs, ARCH review #39/#40), so the api client and the
+// host/renderer contract can never disagree again. `import type` is fully
+// erased at build, so the SPA still never value-imports the lib (§8 / ADR
+// 0004 renderer purity). Re-exported so existing `$lib/api` type consumers
+// keep resolving.
 export type {
-  DiscoveredProject,
-  PluginKind,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ProjectStyle,
   FileWriteResult,
   FileStat,
-  RecoveryEntry,
   ConflictKind,
-  ConflictPreview,
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
@@ -69,21 +60,15 @@ export type {
   PublishIssue,
   PublishOutcomeInfo,
   PublishRunResult,
+  ViewerPrefs,
+  ProjectState,
+  CreateProjectResult,
 } from './platform/contract';
 
 import type {
-  DiscoveredProject,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ProjectStyle,
   FileWriteResult,
   FileStat,
-  RecoveryEntry,
   ConflictKind,
-  ConflictPreview,
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
@@ -97,10 +82,49 @@ import type {
   CloneRepositoryArgs,
   ResolveSyncConflictsArgs,
   UpdaterStatus,
-  ProjectClassification,
   PublishProviderCard,
   PublishRunResult,
+  ViewerPrefs,
+  ProjectState,
+  CreateProjectResult,
 } from './platform/contract';
+
+export type {
+  DiscoveredProject,
+  PluginKind,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ProjectStyle,
+  RecoveryEntry,
+  ConflictPreview,
+  ProjectClassification,
+  MediaImageEntry,
+  MediaImageDetails,
+  PrintSafeWarning,
+  ProblemEntry,
+  DoctorDiagnostics,
+} from './platform/dtos';
+
+import type {
+  DiscoveredProject,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ProjectStyle,
+  RecoveryEntry,
+  ConflictPreview,
+  ProjectClassification,
+  MediaImageEntry,
+  MediaImageDetails,
+  PrintSafeWarning,
+  ProblemEntry,
+  DoctorDiagnostics,
+} from './platform/dtos';
 
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
 
@@ -203,12 +227,12 @@ export const api = {
 
   app: {
     /** Get viewer prefs (lastProjectDir, recentFolders, projectStates, etc.). */
-    getViewerPrefs: () => get<Record<string, unknown>>('/api/app/viewer-prefs'),
+    getViewerPrefs: () => get<ViewerPrefs>('/api/app/viewer-prefs'),
     /** Shallow-merge patch into viewer prefs. */
     setViewerPrefs: (prefs: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/viewer-prefs', prefs),
     /** Get per-project editor/preview state for the given projectDir. */
     getViewerProjectState: (projectDir: string) =>
-      post<Record<string, unknown> | null>('/api/app/viewer-project-state/get', { projectDir }),
+      post<ProjectState | null>('/api/app/viewer-project-state/get', { projectDir }),
     /** Set per-project editor/preview state for the given projectDir. */
     setViewerProjectState: (projectDir: string, state: Record<string, unknown>) =>
       post<{ ok: boolean }>('/api/app/viewer-project-state/set', { projectDir, state }),
@@ -236,16 +260,13 @@ export const api = {
     discoverProjects: () => post<DiscoveredProject[]>('/api/app/discover-projects', {}),
     /** Classify a project folder (source type + capabilities + repo book list). */
     classifyProject: (projectDir: string) =>
-      post<{
-        source: unknown;
-        capabilities: unknown;
-        repoRoot?: string;
-        books?: Array<{ path: string; title: string; subPath: string }>;
-      }>('/api/app/classify-project', { projectDir }),
+      post<ProjectClassification>('/api/app/classify-project', { projectDir }),
     /** Scaffold a new project from a template. */
-    createProject: (opts: Record<string, unknown>) => post<unknown>('/api/app/create-project', opts),
+    createProject: (opts: Record<string, unknown>) =>
+      post<CreateProjectResult>('/api/app/create-project', opts),
     /** Adopt an existing folder as a print-md project. */
-    adoptFolder: (opts: Record<string, unknown>) => post<unknown>('/api/app/adopt-folder', opts),
+    adoptFolder: (opts: Record<string, unknown>) =>
+      post<CreateProjectResult>('/api/app/adopt-folder', opts),
     /** Push a splash status update (status text, progress 0-100, sub-status). */
     splashStatus: (status?: string, progress?: number, sub?: string) =>
       post<{ ok: boolean }>('/api/app/splash-status', { status, progress, sub }),
@@ -263,26 +284,13 @@ export const api = {
   media: {
     /** List all image files under a project directory (recursive, bounded). */
     listImages: (projectDir: string) =>
-      post<Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>>(
-        '/api/media/list-images',
-        { projectDir },
-      ),
+      post<MediaImageEntry[]>('/api/media/list-images', { projectDir }),
     /** Generate a small (≤192px) thumbnail data URL for an image. Returns null when unavailable. */
     thumbnail: (imagePath: string, width?: number, height?: number) =>
       post<string | null>('/api/media/thumbnail', { imagePath, width, height }),
     /** Inspect an image file — returns file size + header metadata (dimensions, DPI, alpha, color space). */
     inspect: (imagePath: string) =>
-      post<{
-        fileSize: number;
-        info: {
-          width: number;
-          height: number;
-          xDpi: number;
-          yDpi: number;
-          hasAlpha: boolean;
-          colorSpace: 'srgb' | 'gray' | 'cmyk' | '';
-        } | null;
-      } | null>('/api/media/inspect', { imagePath }),
+      post<MediaImageDetails | null>('/api/media/inspect', { imagePath }),
     /**
      * Import an author-picked image (absolute path, from anywhere on disk —
      * e.g. a native file dialog) into the given project, returning the
@@ -301,21 +309,10 @@ export const api = {
   lint: {
     /** Run CSS print-safety lint on the given CSS content. Returns an array of warnings. */
     checkCss: (cssPath: string, content: string) =>
-      post<Array<{ rule: string; severity: 'error' | 'warning'; message: string; line: number; column: number }>>(
-        '/api/lint/check-css',
-        { cssPath, content },
-      ),
+      post<PrintSafeWarning[]>('/api/lint/check-css', { cssPath, content }),
     /** Run project-wide pre-build source lint checks. Returns problem entries for the Problems panel. */
     project: (projectDir: string) =>
-      post<Array<{
-        filePath?: string;
-        file?: string;
-        line?: number;
-        column?: number;
-        severity: 'error' | 'warning' | 'info';
-        message: string;
-        source: string;
-      }>>('/api/lint/project', { projectDir }),
+      post<ProblemEntry[]>('/api/lint/project', { projectDir }),
   },
 
   tpl: {
@@ -416,7 +413,7 @@ export const api = {
   // harmless to keep reachable even with no current client).
 
   /** System diagnostics (tool paths, versions, Chromium/Electron info). */
-  doctor: () => get<unknown>('/api/doctor'),
+  doctor: () => get<DoctorDiagnostics>('/api/doctor'),
 
   recovery: {
     /** Write a debounced crash-recovery snapshot of the open buffer (#44). */

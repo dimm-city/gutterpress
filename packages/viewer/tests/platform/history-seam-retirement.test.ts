@@ -98,6 +98,8 @@ describe("+page.svelte — H2 sync-completion refresh wired to ProjectActivityVi
 
   test("ProjectActivityView remounts on project switch (no stale snapshot/log list from a prior project)", () => {
     const src = readPage();
-    expect(src).toMatch(/\{#key currentDir\}\s*\n\s*<ProjectActivityView/);
+    // currentDir moved onto ProjectLifecycleController (Phase 5d, UX H5 / ARCH
+    // #10) — the template now reads lifecycle.currentDir.
+    expect(src).toMatch(/\{#key lifecycle\.currentDir\}\s*\n\s*<ProjectActivityView/);
   });
 });

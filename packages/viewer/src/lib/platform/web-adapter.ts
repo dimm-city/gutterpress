@@ -52,13 +52,9 @@ import type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
-  RecentFolderEntry,
-  FavoriteEntry,
   UpdaterApi,
   UpdaterStatus,
   NativeThemeState,
-  DiscoveredProject,
-  ProjectClassification,
   // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   FileStat,
   FileWriteResult,
@@ -81,6 +77,12 @@ import type {
   FileRef,
   PlatformCapabilities,
 } from "./contract";
+import type {
+  RecentFolderEntry,
+  FavoriteEntry,
+  DiscoveredProject,
+  ProjectClassification,
+} from "./dtos";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
