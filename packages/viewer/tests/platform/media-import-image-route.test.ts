@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile, symlink, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
@@ -219,6 +219,52 @@ test("two successive imports of differently-named files never collide with each 
     request: request({ projectDir, src: srcB }),
   } as Parameters<typeof importImageRoute>[0]);
   expect(await resB.json()).toEqual({ src: "assets/cover-b.png", copied: true });
+});
+
+// ── destDir containment (symlinked assets/, PR #98 maintainer review) ──────
+//
+// `projectDir` is canonicalized, but the destination this route computes
+// (`projectDir/assets` or `projectDir/images`) was NOT — a `call`-derived path
+// assembled AFTER validate, never re-checked. If the project's `assets/` is a
+// symlink aliasing a directory OUTSIDE the project, the pre-fix route still
+// returns 200 with a project-relative `src` while `copyFile` actually writes
+// the image outside the project tree entirely.
+
+test("project/assets symlinked to an outside directory: import is REJECTED (403), nothing written outside", async () => {
+  const outsideTarget = path.join(base, "outside-assets-target");
+  await mkdir(outsideTarget, { recursive: true });
+  await symlink(outsideTarget, path.join(projectDir, "assets"), "dir");
+
+  const src = path.join(outsideDir, "photo.png");
+  await writeFile(src, "escape-payload", "utf8");
+  pickedFiles.register([src]);
+
+  const { status, message } = await caught(
+    importImageRoute({
+      request: request({ projectDir, src }),
+    } as Parameters<typeof importImageRoute>[0]),
+  );
+  expect(status).toBe(403);
+  expect(message).toBe("media:importImage: path is outside the open project");
+
+  // Nothing should have been written into the symlink target outside the project.
+  const outsideEntries = await readdir(outsideTarget);
+  expect(outsideEntries).toEqual([]);
+});
+
+test("project/assets is a normal (non-symlink) directory: import still succeeds", async () => {
+  const src = path.join(outsideDir, "photo.png");
+  await writeFile(src, "normal-content", "utf8");
+  pickedFiles.register([src]);
+
+  const res = await importImageRoute({
+    request: request({ projectDir, src }),
+  } as Parameters<typeof importImageRoute>[0]);
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ src: "assets/photo.png", copied: true });
+  expect(await readFile(path.join(projectDir, "assets", "photo.png"), "utf8")).toBe(
+    "normal-content",
+  );
 });
 
 // ── project-scoping guard ───────────────────────────────────────────────────

@@ -93,7 +93,20 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; src: strin
     } catch {
       // Project root unreadable — fall through to the assets/ default.
     }
-    const destDir = path.join(projectRoot, destName);
+    // `destDir` is assembled AFTER `validate` (projectRoot + a literal
+    // 'assets'/'images' segment), so it is NOT covered by `validate`'s
+    // canonicalizing check on `projectDir` itself. If the project's `assets/`
+    // (or `images/`) is a symlink aliasing a directory OUTSIDE the project,
+    // an uncontained `mkdir`/`copyFile` here would silently write the picked
+    // image outside the project tree while still reporting success with a
+    // project-relative `src` (maintainer review, PR #98). Re-run the same
+    // realpath-based containment guard on this call-computed destination —
+    // exactly the "join of an already-validated dir + a name segment" case
+    // `requireWithinProjectRoot`'s own doc comment calls out.
+    const destDir = await requireWithinProjectRoot(
+      path.join(projectRoot, destName),
+      'media:importImage',
+    );
     await mkdir(destDir, { recursive: true });
 
     const uniqueName = await uniqueBasename(destDir, path.basename(srcResolved));

@@ -164,7 +164,15 @@ export async function resolveBuildContext(
     manifest
   );
 
-  const outDir = opts.outDir ?? path.resolve(config.output.dir);
+  // An explicit --out is already resolved (against the CWD, by splitOutPath
+  // in commands/build.ts) before it reaches here — pass it through unchanged.
+  // Otherwise, config.output.dir (relative by default, e.g. "dist") must
+  // resolve against the PROJECT being built (manifestDir), not the command's
+  // CWD — see maintainer P1 (PR #98): building multiple absolute-path projects
+  // from one CWD collided on a single shared <cwd>/dist. An absolute
+  // config.output.dir stays absolute (path.resolve ignores the base in that
+  // case).
+  const outDir = opts.outDir ?? path.resolve(manifestDir, config.output.dir);
   const gates = computeGates(format, opts, config);
 
   return { opts, format, inputDir, outDir, manifestDir, config, gates };

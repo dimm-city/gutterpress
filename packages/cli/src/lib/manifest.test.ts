@@ -88,7 +88,7 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
   });
 
   test("preset: book selects BOOK_PRESET's geometry/ink/validate wholesale", () => {
-    const config = resolveConfig({}, { preset: "book" as "dtrpg" });
+    const config = resolveConfig({}, { preset: "book" });
     expect(config.page).toEqual(BOOK_PRESET.page);
     expect(config.ink).toEqual(BOOK_PRESET.ink);
     expect(config.validate.checks).toEqual(BOOK_PRESET.validate.checks);

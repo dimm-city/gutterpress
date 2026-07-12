@@ -970,6 +970,20 @@ secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
   if (!path.isAbsolute(dirPath)) {
     throw new Error(`fs:watchFolder requires an absolute path, got: ${dirPath}`);
   }
+  // P1 review (PR #98): this call used to accept ANY absolute path from the
+  // renderer, and fsGuardImpl.projectRoots() (below) trusted whatever
+  // directory ended up watched — so a same-origin script could call
+  // fs:watchFolder("/home/user/.ssh") and turn an arbitrary directory into an
+  // authorized fs-route root (direct reads, copy-file's "inside project"
+  // shortcut, …). The watcher exists ONLY to watch the already-open project,
+  // so it is now gated on the host-set `activePreview`, never on
+  // renderer-supplied input — matching projectRoots()'s sole authorization
+  // source.
+  if (!activePreview || path.resolve(dirPath) !== path.resolve(activePreview.inputPath)) {
+    throw new Error(
+      `fs:watchFolder: dirPath must be the active preview's project directory (got: ${dirPath})`,
+    );
+  }
   startFolderWatch(dirPath);
 });
 
@@ -1346,21 +1360,24 @@ const conflictPreviewHooksImpl: ConflictPreviewHooks = {
 
 // ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this
-// implements. `projectRoots` unions the active preview's resolved input dir
-// (set the instant `api:preview` resolves — see `activePreview` above) with
-// the folder watcher's tracked dir (set slightly later, once the renderer
-// calls `fs:watchFolder`): the SPA's own open-project sequence
-// (`routes/+page.svelte`) lists/reads the NEW project's files
-// (`ensureEditorFile`, the manifest-detection `listDir`) BEFORE it starts
-// watching it, so gating on the watcher alone would 403 that legitimate
+// implements. `projectRoots` is derived SOLELY from the active preview's
+// resolved input dir (set the instant `api:preview` resolves — see
+// `activePreview` above), never from the folder watcher's tracked dir. It
+// used to also union in `folderWatch.getWatchedDir()`, but that let a
+// renderer-supplied `fs:watchFolder` call (any absolute path, e.g. the user's
+// SSH directory) authorize itself as a project root — the watcher's tracked
+// dir is host-authorized input, not an independent authorization source (P1
+// review, PR #98; `fs:watchFolder` above now rejects any dirPath that isn't
+// this same `activePreview`). The SPA's own open-project sequence
+// (`routes/+page.svelte` / `project-lifecycle-controller.svelte.ts`) already
+// awaits `startPreviewHost` (which sets `activePreview`) BEFORE it
+// lists/reads the new project's files (`ensureEditorFile`, the
+// manifest-detection `listDir`) and BEFORE it calls `fs:watchFolder`, so
+// dropping the watcher union does not 403 that legitimate
 // "open a different project" window.
 const fsGuardImpl: FsGuardHooks = {
   projectRoots(): string[] {
-    const roots = new Set<string>();
-    if (activePreview) roots.add(path.resolve(activePreview.inputPath));
-    const watched = folderWatch.getWatchedDir();
-    if (watched) roots.add(watched);
-    return [...roots];
+    return activePreview ? [path.resolve(activePreview.inputPath)] : [];
   },
   readOnlyRoots(): string[] {
     // Directories legitimately READ from outside the open project:

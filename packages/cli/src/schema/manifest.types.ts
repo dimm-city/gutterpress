@@ -51,7 +51,7 @@ export interface PrintMdManifest {
   title?: string;
   authors?: string[];
   publish?: PublishSettings;
-  preset?: "dtrpg";
+  preset?: "dtrpg" | "book";
   styles?: string[];
   plugins?: (string | PluginConfig)[];
   source?: {

@@ -13,7 +13,15 @@ export const DTRPG_PRESET: VendorPreset = {
   plugins: [],
   source: {
     files: null,
-    assets: ["css", "fonts", "images"],
+    // "styles" and "assets" cover what `print-md new` actually scaffolds
+    // (a starter `styles/book.css` theme + an `assets/` dir the authoring
+    // guide tells writers to put images in — see chapter 1/3 of the user
+    // guide). "css"/"fonts"/"images" are kept for pre-existing projects that
+    // relied on those conventional dir names before scaffolding existed
+    // (maintainer review, presets.ts:115 — a fresh project's starter theme
+    // and `assets/cover.svg`-style media were referenced by the built HTML
+    // but never copied into the output).
+    assets: ["css", "fonts", "images", "styles", "assets"],
   },
   output: {
     dir: "dist",
@@ -113,7 +121,10 @@ export const BOOK_PRESET: VendorPreset = {
   plugins: [],
   source: {
     files: null,
-    assets: ["css", "fonts", "images"],
+    // See the matching comment on DTRPG_PRESET.source.assets above (maintainer
+    // review, presets.ts:115) — every built-in template resolves to either this
+    // preset or DTRPG_PRESET, and both scaffold `styles/book.css` + `assets/`.
+    assets: ["css", "fonts", "images", "styles", "assets"],
   },
   output: {
     dir: "dist",

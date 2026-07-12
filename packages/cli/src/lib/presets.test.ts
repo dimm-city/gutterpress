@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -8,6 +9,8 @@ import { resolveConfig } from "./manifest";
 import { getAssetPath } from "./embedded-assets";
 import { scaffoldProject } from "./project-scaffold";
 import { BUILT_IN_TEMPLATE_IDS } from "./project-templates";
+import { resolveBuildContext, renderBook } from "./build-runner";
+import { stagePaginationInput, createStageRoot } from "./build-staging";
 import {
   BOOK_PRESET,
   DTRPG_PRESET,
@@ -88,7 +91,7 @@ test("book preset still enables generic, vendor-agnostic PDF health checks", () 
 });
 
 test("resolveConfig with preset: book resolves the book preset's geometry", () => {
-  const config = resolveConfig({}, { preset: "book" as "dtrpg" });
+  const config = resolveConfig({}, { preset: "book" });
   expect(config.page.width).toBe(432);
   expect(config.page.height).toBe(648);
   expect(config.ink.maxTac).toBe(400);
@@ -216,6 +219,129 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
       console.warn = orig;
       resetWarnOnce();
       await rm(parent, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── Maintainer P1 (presets.ts:115) — BOOK_PRESET/DTRPG_PRESET.source.assets
+// omitted "styles" and "assets", the two directories `print-md new` actually
+// scaffolds (a starter `styles/book.css` theme + an `assets/` dir the user
+// guide tells authors to put images in). Every built-in template's manifest
+// references `styles/book.css` and resolves to one of these two presets, so a
+// fresh project's theme CSS and any `assets/*` media were never copied into
+// build output even though the rendered HTML/PDF references them.
+describe("preset source.assets covers what print-md new actually scaffolds (maintainer P1, presets.ts:115)", () => {
+  test("both presets' source.assets include styles and assets alongside the legacy css/fonts/images", () => {
+    for (const preset of [DTRPG_PRESET, BOOK_PRESET]) {
+      expect(preset.source.assets).toEqual(
+        expect.arrayContaining(["css", "fonts", "images", "styles", "assets"])
+      );
+    }
+  });
+
+  const dirsToClean: string[] = [];
+  async function cleanup() {
+    await Promise.all(
+      dirsToClean.splice(0).map((d) => rm(d, { recursive: true, force: true }))
+    );
+  }
+
+  // Every built-in template scaffolds styles/book.css + an assets/ dir and
+  // resolves to either book or dtrpg (presets.test.ts's own
+  // EXPECTED_TEMPLATE_PRESET table above), so both presets must be exercised.
+  const TEMPLATES_TO_CHECK: Array<(typeof BUILT_IN_TEMPLATE_IDS)[number]> = [
+    "book", // -> BOOK_PRESET
+    "ttrpg", // -> DTRPG_PRESET
+  ];
+
+  for (const templateId of TEMPLATES_TO_CHECK) {
+    test(`a real static (HTML) build of a fresh "${templateId}"-template project copies styles/book.css and assets/cover.svg into the output dir`, async () => {
+      const parent = await mkdtemp(path.join(tmpdir(), "pmd-preset-assets-scaffold-"));
+      dirsToClean.push(parent);
+      try {
+        const { projectDir } = await scaffoldProject({
+          name: `Asset Copy Check ${templateId}`,
+          parentDir: parent,
+          template: templateId,
+          versionHistory: "none",
+        });
+
+        // The starter theme is real (project-scaffold.ts copies it from the
+        // embedded theme assets) — assert it landed before testing the build.
+        const starterCssPath = path.join(projectDir, "styles", "book.css");
+        expect(existsSync(starterCssPath)).toBe(true);
+
+        // Reproduce the maintainer's repro: an author drops a cover image into
+        // assets/, exactly as the user guide instructs.
+        await writeFile(
+          path.join(projectDir, "assets", "cover.svg"),
+          '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>\n',
+          "utf8"
+        );
+
+        const outDir = path.join(parent, `${templateId}-out`);
+        const ctx = await resolveBuildContext({
+          inputDir: projectDir,
+          format: "html",
+          outDir,
+          rawArgs: {},
+        });
+        await renderBook(ctx);
+
+        // The built output must contain BOTH the starter theme CSS the
+        // manifest's `styles:` list references AND the author's media the
+        // guide told them to put in assets/ — neither was copied before this
+        // fix, even though book.html references both paths.
+        expect(existsSync(path.join(outDir, "styles", "book.css"))).toBe(true);
+        expect(existsSync(path.join(outDir, "assets", "cover.svg"))).toBe(true);
+      } finally {
+        await cleanup();
+      }
+    });
+  }
+
+  // PDF staging shares the exact same `config.source.assets` list (build-runner.ts's
+  // PdfOutput strategy passes it straight to stagePaginationInput), so the same
+  // omission silently dropped the starter theme + author media from PDF builds
+  // too. Exercise stagePaginationInput directly (no Chromium needed) against a
+  // book.html + already-copied styles/assets in outDir, mirroring exactly what
+  // PdfOutput.finish does before handing off to the PDF renderer.
+  test("PDF staging (stagePaginationInput) copies styles/book.css and assets/cover.svg using the book preset's source.assets list", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pmd-preset-assets-pdfstage-"));
+    dirsToClean.push(dir);
+    try {
+      const outDir = path.join(dir, "out");
+      const stageDir = await createStageRoot();
+      dirsToClean.push(stageDir);
+
+      const { mkdir } = await import("node:fs/promises");
+      await mkdir(path.join(outDir, "styles"), { recursive: true });
+      await mkdir(path.join(outDir, "assets"), { recursive: true });
+      await writeFile(
+        path.join(outDir, "styles", "book.css"),
+        "body { color: black; }\n",
+        "utf8"
+      );
+      await writeFile(
+        path.join(outDir, "assets", "cover.svg"),
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>\n',
+        "utf8"
+      );
+      const htmlFile = path.join(outDir, "book.html");
+      await writeFile(
+        htmlFile,
+        '<!DOCTYPE html><html><head><link rel="stylesheet" href="styles/book.css"></head>' +
+          '<body><img src="assets/cover.svg"></body></html>',
+        "utf8"
+      );
+
+      const config = resolveConfig({}, { preset: "book" });
+      await stagePaginationInput(htmlFile, outDir, config.source.assets, stageDir);
+
+      expect(existsSync(path.join(stageDir, "styles", "book.css"))).toBe(true);
+      expect(existsSync(path.join(stageDir, "assets", "cover.svg"))).toBe(true);
+    } finally {
+      await cleanup();
     }
   });
 });
