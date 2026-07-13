@@ -82,12 +82,12 @@ describe("ProjectActivityView — H2 restore action", () => {
 
   test("shows a plain-language confirmation before restoring (no git jargon in the prompt)", () => {
     const src = readSource();
-    expect(src).toContain("We'll save what you have now first");
+    expect(src).toContain("We'll save your current work as a version first");
     // The confirmation copy itself must not say "commit" — it's addressed to
     // the non-technical audience even though the operation is a git checkout.
     const confirmLine = src
       .split("\n")
-      .find((l) => l.includes("We'll save what you have now first"));
+      .find((l) => l.includes("We'll save your current work as a version first"));
     expect(confirmLine ?? "").not.toMatch(/\bcommit\b/i);
   });
 

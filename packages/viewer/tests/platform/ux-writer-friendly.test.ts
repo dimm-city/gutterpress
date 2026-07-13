@@ -1,0 +1,114 @@
+/**
+ * Writer-friendly UX follow-up (maintainer request): saving / previous
+ * versions / online copy / crash recovery are presented to non-technical
+ * writers as plain-language protection layers, and the TOC panel is a
+ * collapsible tree. No component-render harness exists here, so — following the
+ * repo convention (ProjectActivityView.test.ts) — these assert on the compiled
+ * source text: the new writer-facing strings appear, the jargon-y ones don't,
+ * and the interaction wiring is present.
+ */
+import { expect, test, describe } from "bun:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+const root = path.resolve(import.meta.dir, "../..");
+const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
+
+describe("Settings — 'Saving & recovery' group with writer-friendly labels", () => {
+  const dialog = read("src/lib/components/SettingsDialog.svelte");
+  test("consolidated group + plain-language controls", () => {
+    expect(dialog).toContain("Saving &amp; recovery");
+    expect(dialog).toContain("Save edits automatically");
+    expect(dialog).toContain("Keep previous versions");
+    expect(dialog).toContain("Create a version after I stop editing for");
+    expect(dialog).toContain("Keep an online copy up to date");
+    expect(dialog).toContain("Recover edits after an unexpected close");
+  });
+  test("crash recovery is described as a temporary emergency copy, distinct from history", () => {
+    expect(dialog).toContain("temporary emergency copy");
+    expect(dialog).toContain("separate from your previous versions");
+  });
+  test("turning off one layer does not imply the others are disabled", () => {
+    expect(dialog).toContain("does not affect saving on this computer");
+    expect(dialog).toContain("or your previous versions");
+  });
+  test("old jargon labels are gone", () => {
+    expect(dialog).not.toContain("Automatic snapshots");
+    expect(dialog).not.toContain("Automatically keep changes in sync");
+    expect(dialog).not.toContain(">Git identity<");
+  });
+});
+
+describe("Previous versions timeline (ProjectActivityView)", () => {
+  const view = read("src/lib/components/ProjectActivityView.svelte");
+  test("titled 'Previous versions', renders a day-grouped timeline via the helper", () => {
+    expect(view).toContain("Previous versions");
+    expect(view).toContain("groupVersionsByDay");
+    expect(view).toContain("versionLabel(entry.message)");
+    expect(view).toContain("day.label");
+  });
+  test("restore copy states current work is saved as a version first", () => {
+    expect(view).toContain("Restore this version");
+    expect(view).toContain("We'll save your current work as a version first");
+  });
+  test("raw log stays behind a Technical details disclosure; no operation-log framing", () => {
+    expect(view).toContain("<summary>Technical details</summary>");
+    expect(view).not.toContain("Operation log");
+    expect(view).not.toContain("No snapshots yet");
+  });
+});
+
+describe("Status bar — one calm state opening a 3-row protection summary", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  test("default label is 'All work saved'", () => {
+    expect(status).toContain('return "All work saved"');
+    expect(status).not.toContain('return "All changes saved"');
+  });
+  test("summary shows local save, previous versions, and online copy separately", () => {
+    expect(status).toContain("On this computer");
+    expect(status).toContain("Previous versions");
+    expect(status).toContain("Online copy");
+  });
+  test("a manual 'Save a version now' action is offered", () => {
+    expect(status).toContain("Save a version now");
+    expect(status).toContain("onSaveVersion");
+  });
+});
+
+describe("Failure & conflict copy reassures that local work is safe", () => {
+  test("sync failure keeps a calm, reassuring message", () => {
+    const ctrl = read("src/lib/routes/sync-controller.svelte.ts");
+    expect(ctrl).toContain("Your work is saved on this computer");
+  });
+  test("conflict is 'This project changed in two places', not 'merge conflict'", () => {
+    const dlg = read("src/lib/components/ConflictChoicesDialog.svelte");
+    expect(dlg).toContain("This project changed in two places");
+    expect(dlg).not.toContain("merge conflict");
+  });
+  test("the sync pill uses 'Previous versions available', not 'Version history on'", () => {
+    const pill = read("src/lib/components/SyncStatusPill.svelte");
+    expect(pill).toContain("Previous versions available");
+    expect(pill).not.toContain("Version history on");
+  });
+});
+
+describe("Table of contents — collapsible tree matching the Files panel", () => {
+  const left = read("src/lib/components/LeftPanel.svelte");
+  test("renders an accessible tree with expanded-state + level semantics", () => {
+    expect(left).toContain('role="tree"');
+    expect(left).toContain('role="treeitem"');
+    expect(left).toContain("aria-expanded={hasChildren ? isOpen : undefined}");
+    expect(left).toContain("aria-level={depth}");
+  });
+  test("derives the hierarchy from the flat outline and reveals the active branch", () => {
+    expect(left).toContain("buildTocTree(outline)");
+    expect(left).toContain("ancestorKeysForActive(outline, activeOutlineIndex)");
+  });
+  test("expansion is a separate control from navigation (chevron button ≠ label button)", () => {
+    // A dedicated disclosure button toggles; the label button navigates.
+    expect(left).toContain("onclick={() => toggleToc(node.key)}");
+    expect(left).toContain("onclick={() => onJumpToOutline?.(node.entry)}");
+    // Keyboard expand/collapse is wired independently of navigation.
+    expect(left).toContain("onkeydown={(e) => onTocKeydown(e, node)}");
+  });
+});

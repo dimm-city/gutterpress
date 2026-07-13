@@ -20,7 +20,7 @@ test("project activity view has an explicit close action returning to the editor
   expect(page).toContain("closeActivityView");
   expect(page).toContain("onClose={closeActivityView}");
   expect(activity).toContain("onClose");
-  expect(activity).toContain("Close activity view");
+  expect(activity).toContain("Close previous versions");
 });
 
 test("files tab no longer has configure project button and embedded panels own their own consistent headers", () => {
@@ -55,7 +55,7 @@ test("bottom status uses save icons, slower autosave default, and compact mobile
   expect(settingsStore).toContain("DEFAULT_SETTINGS");
   expect(settingsStore).toContain("bridge-types");
   expect(status).toContain("saveStateIcon");
-  expect(status).toContain("pending changes");
+  expect(status).toContain("Pending changes");
   expect(status).toContain("@media screen and (max-width: 820px)");
   expect(status).toContain("display: none");
   // L9: Problems access used to disappear entirely below 820px

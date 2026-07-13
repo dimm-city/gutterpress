@@ -164,8 +164,28 @@
             onchange={(e) => settings.set({ editor: { spellCheckLanguage: (e.currentTarget as HTMLInputElement).value } })}
           />
         </div>
+      </section>
+
+      <!-- Saving & recovery (UX follow-up: writer-friendly protection model) -
+           The three protection layers a writer actually reasons about — saved
+           on this computer, previous versions, and the online copy — plus the
+           temporary emergency crash-draft, grouped together with plain labels.
+           None of the underlying machinery changes; the persisted keys
+           (editor.autoSaveDelay / editor.crashRecovery, versionHistory.
+           autoSnapshot / autoSnapshotMinutes / autoSync) are internal and
+           unchanged (the schema `editor` and `versionHistory` sections still
+           own them, so each section's Reset still restores its own keys). -->
+      <section class="group">
+        <div class="group-head">
+          <h3>Saving &amp; recovery</h3>
+          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset previous-version and online-copy settings to defaults">Reset</button>
+        </div>
+        <!-- On this computer -->
         <div class="row">
-          <label for="set-autosave">Auto-save delay (seconds)</label>
+          <div class="row-label">
+            <label for="set-autosave">Save edits automatically</label>
+            <span class="row-hint">Writes your current changes to this computer as you work (delay in seconds)</span>
+          </div>
           <input
             id="set-autosave"
             type="number"
@@ -176,34 +196,11 @@
             onchange={(e) => settings.set({ editor: { autoSaveDelay: Math.round(Number((e.currentTarget as HTMLInputElement).value) * 1000) } })}
           />
         </div>
-        <!-- UX review M38: writer-facing vocabulary caps at "unsaved changes"
-             (this is the crash-draft subsystem, not sync repair) — the label/
-             hint below deliberately avoid the word "recovery"; the setting
-             key (`editor.crashRecovery`) is internal/persisted and unchanged. -->
+        <!-- Previous versions -->
         <div class="row row-toggle">
           <div class="row-label">
-            <label for="set-crash-recovery">Restore unsaved changes</label>
-            <span class="row-hint">If the app closes unexpectedly, offer to restore your unsaved changes next time you open the project</span>
-          </div>
-          <input
-            id="set-crash-recovery"
-            type="checkbox"
-            checked={s.editor.crashRecovery}
-            onchange={(e) => { const enabled = (e.currentTarget as HTMLInputElement).checked; settings.set({ editor: { crashRecovery: enabled } }); onCrashRecoveryChange?.(enabled); }}
-          />
-        </div>
-      </section>
-
-      <!-- Version history (RC1-3) ------------------------------------------ -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Version history</h3>
-          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset version history settings to defaults">Reset</button>
-        </div>
-        <div class="row row-toggle">
-          <div class="row-label">
-            <label for="set-auto-snapshot">Automatic snapshots</label>
-            <span class="row-hint">Save a snapshot of your work after you pause editing (only for projects with version history turned on)</span>
+            <label for="set-auto-snapshot">Keep previous versions</label>
+            <span class="row-hint">Lets you return to earlier versions of the project. Turning this off does not affect saving on this computer.</span>
           </div>
           <input
             id="set-auto-snapshot"
@@ -213,7 +210,7 @@
           />
         </div>
         <div class="row">
-          <label for="set-auto-snapshot-minutes">Save after this many quiet minutes</label>
+          <label for="set-auto-snapshot-minutes">Create a version after I stop editing for (minutes)</label>
           <input
             id="set-auto-snapshot-minutes"
             type="number"
@@ -225,13 +222,13 @@
             onchange={(e) => settings.set({ versionHistory: { autoSnapshotMinutes: Number((e.currentTarget as HTMLInputElement).value) } })}
           />
         </div>
-        <!-- Auto-sync toggle (transparent-sync plan §6 / §8 step 7). Default ON
-             for projects with a remote; local-only projects never auto-sync
-             regardless of this toggle (the host enforces the canSync gate). -->
+        <!-- Online copy (transparent-sync plan §6 / §8 step 7). Default ON for
+             projects with a remote; local-only projects never sync regardless
+             of this toggle (the host enforces the canSync gate). -->
         <div class="row row-toggle">
           <div class="row-label">
-            <label for="set-auto-sync">Automatically keep changes in sync</label>
-            <span class="row-hint">When a repository is connected, changes are saved to it in the background — you see only a small status indicator and are asked only when two copies conflict</span>
+            <label for="set-auto-sync">Keep an online copy up to date</label>
+            <span class="row-hint">Available when this project is connected to an online service — changes are saved to it in the background. Turning this off does not affect saving on this computer or your previous versions.</span>
           </div>
           <input
             id="set-auto-sync"
@@ -246,31 +243,46 @@
             }}
           />
         </div>
+        <!-- Emergency copy (crash-draft subsystem — kept distinct from previous
+             versions, per UX follow-up + review M38). The persisted key
+             `editor.crashRecovery` is internal/unchanged. -->
+        <div class="row row-toggle">
+          <div class="row-label">
+            <label for="set-crash-recovery">Recover edits after an unexpected close</label>
+            <span class="row-hint">Keeps a temporary emergency copy of your unsaved edits until they are saved. This is separate from your previous versions.</span>
+          </div>
+          <input
+            id="set-crash-recovery"
+            type="checkbox"
+            checked={s.editor.crashRecovery}
+            onchange={(e) => { const enabled = (e.currentTarget as HTMLInputElement).checked; settings.set({ editor: { crashRecovery: enabled } }); onCrashRecoveryChange?.(enabled); }}
+          />
+        </div>
       </section>
 
-      <!-- Git identity ------------------------------------------------------ -->
+      <!-- Your name on saved versions -------------------------------------- -->
       <section class="group">
         <div class="group-head">
-          <h3>Git identity</h3>
-          <button class="reset" onclick={() => settings.resetSection("gitIdentity")} title="Reset git identity to defaults">Reset</button>
+          <h3>Your name on saved versions</h3>
+          <button class="reset" onclick={() => settings.resetSection("gitIdentity")} title="Reset the name on saved versions to defaults">Reset</button>
         </div>
         <div class="row">
-          <label for="set-git-author-name">Author name</label>
+          <label for="set-git-author-name">Name</label>
           <input
             id="set-git-author-name"
             type="text"
             value={s.gitIdentity.authorName}
-            placeholder="Use existing Git name"
+            placeholder="Use your existing name"
             onchange={(e) => settings.set({ gitIdentity: { authorName: (e.currentTarget as HTMLInputElement).value } })}
           />
         </div>
         <div class="row">
-          <label for="set-git-author-email">Author email</label>
+          <label for="set-git-author-email">Email</label>
           <input
             id="set-git-author-email"
             type="email"
             value={s.gitIdentity.authorEmail}
-            placeholder="Use existing Git email"
+            placeholder="Use your existing email"
             onchange={(e) => settings.set({ gitIdentity: { authorEmail: (e.currentTarget as HTMLInputElement).value } })}
           />
         </div>

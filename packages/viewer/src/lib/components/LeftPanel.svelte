@@ -22,6 +22,7 @@
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import ProjectConfigPanel from "$lib/components/ProjectConfigPanel.svelte";
   import { isDesktop } from "$lib/platform";
+  import { buildTocTree, ancestorKeysForActive, type TocNode } from "$lib/routes/toc-tree";
   import type { OutlineEntry } from "$lib/preview-client";
   import type { ProjectCapabilities } from "$lib/platform/contract";
 
@@ -89,6 +90,39 @@
     /** Called whenever tab or width changes so the parent can persist the state. */
     onPanelStateChange?: () => void;
   } = $props();
+
+  // ── TOC tree (collapsible, mirrors the Files panel) ───────────────────────
+  // The outline is a FLAT list of headings carrying only a `level`; derive the
+  // nesting from those levels (see $lib/routes/toc-tree). The active item's
+  // ancestors are always revealed so opening the panel shows where the cursor
+  // is; the user's own expand/collapse choices layer on top and persist while
+  // the panel stays mounted (it is never {#if}-unmounted, only CSS-hidden).
+  const tocTree = $derived(buildTocTree(outline));
+  const activeEntryIndex = $derived(outline[activeOutlineIndex]?.index);
+  const activeAncestorKeys = $derived(new Set(ancestorKeysForActive(outline, activeOutlineIndex)));
+  let tocExpanded = $state<Set<string>>(new Set());
+  function tocOpen(key: string): boolean {
+    return tocExpanded.has(key) || activeAncestorKeys.has(key);
+  }
+  function toggleToc(key: string) {
+    const next = new Set(tocExpanded);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    tocExpanded = next;
+  }
+  // Arrow keys expand/collapse the focused node WITHOUT navigating (Enter/Space
+  // on the row's label button navigates); this keeps expansion and navigation
+  // independent, per the tree-view contract.
+  function onTocKeydown(e: KeyboardEvent, node: { key: string; children: unknown[] }) {
+    if (node.children.length === 0) return;
+    if (e.key === "ArrowRight" && !tocOpen(node.key)) {
+      e.preventDefault();
+      toggleToc(node.key);
+    } else if (e.key === "ArrowLeft" && tocOpen(node.key)) {
+      e.preventDefault();
+      toggleToc(node.key);
+    }
+  }
 
   // ── Panel close ──────────────────────────────────────────────────────────
   function close() {
@@ -258,26 +292,54 @@
           <p>{projectDir ? "No outline — render the book to see chapters." : "Open a project to see its table of contents."}</p>
         </div>
       {:else}
-        <ul class="toc-list">
-          {#each outline as entry, i (entry.index)}
-            <li>
-              <button
-                class="toc-item"
-                class:active={i === activeOutlineIndex}
-                class:toc-top={entry.level <= 1}
-                class:toc-sub={entry.level >= 3}
-                style="padding-left: {10 + (entry.level - 1) * 16}px"
-                onclick={() => onJumpToOutline?.(entry)}
-                title={entry.text}
-              >
-                <span class="toc-text">{entry.text}</span>
-                <span class="toc-page">{entry.page || ""}</span>
-              </button>
-            </li>
+        <ul class="toc-list" role="tree" aria-label="Table of contents">
+          {#each tocTree as node (node.key)}
+            {@render tocRow(node, 1)}
           {/each}
         </ul>
       {/if}
     </div>
+
+    {#snippet tocRow(node: TocNode, depth: number)}
+      {@const hasChildren = node.children.length > 0}
+      {@const isOpen = tocOpen(node.key)}
+      <li role="treeitem" aria-level={depth} aria-expanded={hasChildren ? isOpen : undefined} aria-selected={node.entry.index === activeEntryIndex}>
+        <div class="toc-row" style="padding-left: {6 + (depth - 1) * 14}px">
+          {#if hasChildren}
+            <button
+              type="button"
+              class="toc-twisty"
+              tabindex="-1"
+              onclick={() => toggleToc(node.key)}
+              aria-label={isOpen ? `Collapse ${node.entry.text}` : `Expand ${node.entry.text}`}
+            >
+              <Icon name={isOpen ? "chevron-down" : "chevron-right"} size={14} />
+            </button>
+          {:else}
+            <span class="toc-twisty toc-twisty-spacer"></span>
+          {/if}
+          <button
+            class="toc-item"
+            class:active={node.entry.index === activeEntryIndex}
+            class:toc-top={depth === 1}
+            class:toc-sub={depth >= 3}
+            onclick={() => onJumpToOutline?.(node.entry)}
+            onkeydown={(e) => onTocKeydown(e, node)}
+            title={node.entry.text}
+          >
+            <span class="toc-text">{node.entry.text}</span>
+            <span class="toc-page">{node.entry.page || ""}</span>
+          </button>
+        </div>
+        {#if hasChildren && isOpen}
+          <ul class="toc-list nested" role="group">
+            {#each node.children as child (child.key)}
+              {@render tocRow(child, depth + 1)}
+            {/each}
+          </ul>
+        {/if}
+      </li>
+    {/snippet}
 
     <!-- Files tab -->
     <div
@@ -575,17 +637,37 @@
     overflow-y: auto;
     flex: 1 1 auto;
   }
+  /* Nested groups add no padding of their own — indentation comes from the
+     depth-based padding-left on .toc-row, matching the Files-panel tree. */
+  .toc-list.nested { padding: 0; overflow: visible; flex: none; }
+  .toc-row { display: flex; align-items: stretch; gap: 2px; }
+  .toc-twisty {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--app-text-faint);
+    cursor: pointer;
+  }
+  .toc-twisty:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
+  .toc-twisty:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+  .toc-twisty-spacer { cursor: default; }
   .toc-item {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     text-align: left;
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
-    padding: 5px 10px 5px 10px;
+    padding: 5px 8px;
     font-size: 12px;
     color: var(--app-text-secondary);
     cursor: pointer;

@@ -233,7 +233,7 @@ test("handleForceSync error -> error toast; onFilesChanged only when filesChange
   noChange.sync.next = { status: "error", message: "" };
   await noChange.ctrl.handleForceSync();
   expect(noChange.toast!.error.calls).toEqual([
-    ["Sync failed. Check your connection and try again."],
+    ["Couldn't update the online copy. Your work is saved on this computer — we'll try again later."],
   ]);
   expect(noChange.onFilesChanged.calls.length).toBe(0);
 
@@ -243,7 +243,7 @@ test("handleForceSync error -> error toast; onFilesChanged only when filesChange
   expect(changed.onFilesChanged.calls.length).toBe(1);
 });
 
-test("handleForceSync rejection -> error toast with the message; clears forceSyncing", async () => {
+test("handleForceSync rejection -> reassuring error toast (no raw message); clears forceSyncing", async () => {
   const toast = makeToast();
   const ctrl = new SyncController({
     syncChanges: () => Promise.reject(new Error("net down")),
@@ -254,7 +254,11 @@ test("handleForceSync rejection -> error toast with the message; clears forceSyn
     onFilesChanged: () => {},
   });
   await ctrl.handleForceSync();
-  expect(toast.error.calls).toEqual([["Sync failed: net down"]]);
+  // The raw error text ("net down") is deliberately NOT surfaced — the writer
+  // gets a calm, reassuring message that says their local work is safe.
+  expect(toast.error.calls).toEqual([
+    ["Couldn't update the online copy. Your work is saved on this computer — we'll try again later."],
+  ]);
   expect(ctrl.forceSyncing).toBe(false);
 });
 

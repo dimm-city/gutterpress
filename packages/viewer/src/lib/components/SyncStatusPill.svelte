@@ -125,9 +125,9 @@
       case "offline":
         return "Offline — changes are saved on this computer";
       case "local":
-        // Local-git project, no remote: version history is on (auto-snapshots).
-        // Clickable → opens the operation log (§5.2 advanced-path reachability).
-        return "Version history on";
+        // Local project, no online copy: previous versions are being kept.
+        // Clickable → opens the Previous versions view (§5.2 reachability).
+        return "Previous versions available";
       case "auth":
         return "Reconnect your project";
       case "conflict":

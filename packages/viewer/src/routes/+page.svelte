@@ -2756,6 +2756,18 @@
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
+    onSaveVersion={async () => {
+      const dir = lifecycle.currentDir;
+      if (!dir) return;
+      try {
+        await api.vcs.saveSnapshot(dir);
+        toast?.success("Saved a version.");
+        activityViewRef?.refreshHistory();
+      } catch (e) {
+        toast?.error(friendlyHostError(e instanceof Error ? e.message : String(e)));
+        throw e;
+      }
+    }}
     onOpenSettings={() => (settingsOpen = true)}
     onOpenHelp={() => (helpOpen = true)}
   />

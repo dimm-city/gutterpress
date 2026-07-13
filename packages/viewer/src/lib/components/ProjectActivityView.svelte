@@ -19,6 +19,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api, type SnapshotEntry } from "$lib/api";
   import { friendlyHostError } from "$lib/errors";
+  import { versionLabel, versionDescription, groupVersionsByDay } from "$lib/routes/version-timeline";
 
   let {
     projectDir,
@@ -35,6 +36,10 @@
   } = $props();
 
   let entries = $state<SnapshotEntry[]>([]);
+  // Newest-first versions grouped into day buckets for the timeline. Date.now()
+  // is read at derive time (fine in the SPA — the ban is on workflow scripts,
+  // not runtime), so "Today"/"Yesterday" stay current as versions load.
+  const days = $derived(groupVersionsByDay(entries, Date.now()));
   let hasMore = $state(false);
   let historyLoading = $state(false);
   let loadingOlder = $state(false);
@@ -136,62 +141,67 @@
 
 <div class="activity-view">
   <header class="activity-header">
-    <h2><Icon name="history" size={16} /> Project activity</h2>
-    <button class="close" onclick={onClose} title="Close activity view" aria-label="Close activity view"><Icon name="x" size={14} /></button>
+    <h2><Icon name="history" size={16} /> Previous versions</h2>
+    <button class="close" onclick={onClose} title="Close" aria-label="Close previous versions"><Icon name="x" size={14} /></button>
   </header>
 
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 
   <section class="activity-section">
-    <h3>Version history</h3>
     {#if historyLoading}
-      <p class="muted">Loading history…</p>
+      <p class="muted">Loading previous versions…</p>
     {:else if entries.length === 0}
-      <p class="muted">No snapshots yet.</p>
+      <p class="muted">No versions yet.</p>
     {:else}
-      <ul class="history-list">
-        {#each entries as entry (entry.id)}
-          <li>
-            <div class="entry-row">
-              <div class="entry-info">
-                <span class="msg">{entry.message}</span>
-                <span class="meta">{when(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}</span>
-              </div>
-              {#if restoreConfirmId === entry.id}
-                <div class="restore-confirm">
-                  <span class="confirm-copy">We'll save what you have now first. Restore to this version?</span>
+      {#each days as day (day.key)}
+        <h3 class="day-heading">{day.label}</h3>
+        <ul class="history-list">
+          {#each day.entries as entry (entry.id)}
+            <li>
+              <div class="entry-row">
+                <div class="entry-info">
+                  <span class="msg">{versionLabel(entry.message)}</span>
+                  {#if versionDescription(entry.message)}
+                    <span class="desc">{versionDescription(entry.message)}</span>
+                  {/if}
+                  <span class="meta">{when(entry.timestamp)}{entry.author ? ` · ${entry.author}` : ""}</span>
+                </div>
+                {#if restoreConfirmId === entry.id}
+                  <div class="restore-confirm">
+                    <span class="confirm-copy">We'll save your current work as a version first. Restore to this version?</span>
+                    <button
+                      class="ghost small"
+                      onclick={cancelRestore}
+                      disabled={restoringId === entry.id}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      class="primary small"
+                      onclick={() => confirmRestore(entry.id)}
+                      disabled={restoringId === entry.id}
+                    >
+                      {restoringId === entry.id ? "Restoring…" : "Yes, restore"}
+                    </button>
+                  </div>
+                {:else}
                   <button
                     class="ghost small"
-                    onclick={cancelRestore}
-                    disabled={restoringId === entry.id}
+                    onclick={() => armRestore(entry.id)}
+                    disabled={restoringId !== null}
+                    title="Restore the project to this version"
                   >
-                    Cancel
+                    Restore this version
                   </button>
-                  <button
-                    class="primary small"
-                    onclick={() => confirmRestore(entry.id)}
-                    disabled={restoringId === entry.id}
-                  >
-                    {restoringId === entry.id ? "Restoring…" : "Yes, restore"}
-                  </button>
-                </div>
-              {:else}
-                <button
-                  class="ghost small"
-                  onclick={() => armRestore(entry.id)}
-                  disabled={restoringId !== null}
-                  title="Restore the project to this version"
-                >
-                  Restore
-                </button>
+                {/if}
+              </div>
+              {#if restoreError && (restoreConfirmId === entry.id || restoringId === entry.id)}
+                <p class="error restore-error" role="alert">{restoreError}</p>
               {/if}
-            </div>
-            {#if restoreError && (restoreConfirmId === entry.id || restoringId === entry.id)}
-              <p class="error restore-error" role="alert">{restoreError}</p>
-            {/if}
-          </li>
-        {/each}
-      </ul>
+            </li>
+          {/each}
+        </ul>
+      {/each}
       {#if hasMore}
         <button class="ghost" onclick={loadOlder} disabled={loadingOlder}>
           {loadingOlder ? "Loading…" : "Show older versions"}
@@ -200,19 +210,18 @@
     {/if}
   </section>
 
-  <section class="activity-section">
-    <h3>Operation log</h3>
-    {#if logLoading}
-      <p class="muted">Loading log…</p>
-    {:else if logContent}
-      <details class="log-details">
-        <summary>Technical details</summary>
-        <pre>{logContent}</pre>
-      </details>
-    {:else}
-      <p class="muted">No log entries recorded.</p>
-    {/if}
-  </section>
+  {#if logContent || logLoading}
+    <section class="activity-section">
+      {#if logLoading}
+        <p class="muted">Loading…</p>
+      {:else}
+        <details class="log-details">
+          <summary>Technical details</summary>
+          <pre>{logContent}</pre>
+        </details>
+      {/if}
+    </section>
+  {/if}
 </div>
 
 <style>
@@ -221,6 +230,9 @@
   h2 { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 15px; color: var(--app-text); }
   .activity-section { padding: 0 16px 14px; display: flex; flex-direction: column; gap: 8px; }
   h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text); }
+  .day-heading { margin: 6px 0 2px; font-size: 11px; text-transform: none; letter-spacing: 0; color: var(--app-text-muted); }
+  .day-heading:first-of-type { margin-top: 0; }
+  .desc { color: var(--app-text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
   .history-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .history-list li { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
   .entry-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
