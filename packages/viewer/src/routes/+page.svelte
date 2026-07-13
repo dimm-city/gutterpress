@@ -20,6 +20,7 @@
   import SettingsDialog from "$lib/components/SettingsDialog.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
+  import PublishWizard from "$lib/components/PublishWizard.svelte";
   import AdvancedSetupDialog from "$lib/components/AdvancedSetupDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
@@ -37,6 +38,7 @@
   import { RecoveryUiController } from "$lib/routes/recovery-ui-controller.svelte";
   import { StartupController } from "$lib/routes/startup-controller.svelte";
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
+  import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildViewerStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
@@ -160,6 +162,29 @@
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   });
   let diagnosticsTools = $state<DiagnosticsTool[] | null>(null);
+
+  // Publishing (#35 → toolbar wizard): the same PublishSectionController that
+  // used to live in ProjectConfigPanel's "crammed at the bottom" Publish
+  // section now drives the front-and-centre PublishWizard opened from the
+  // toolbar. Constructed here so the wizard and the toolbar button share one
+  // instance. Host coupling injected (§8) — api.publish.* / api.dialog.* /
+  // api.shell.*; toast/lifecycle are safe forward-referenced closures.
+  const publishController = new PublishSectionController({
+    projectDir: () => lifecycle.currentDir,
+    listProviders: (dir) => api.publish.listProviders(dir),
+    setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
+    connect: (dir, providerId, token) => api.publish.connect(dir, providerId, token),
+    disconnect: (providerId) => api.publish.disconnect(providerId),
+    run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
+    pickPdfFile: () => api.dialog.pickPdfFile(),
+    openDirectory: () => api.dialog.openDirectory(),
+    openExternal: (url) => api.shell.openExternal(url),
+    onSaved: () => toast?.success?.("Publish settings saved."),
+    onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
+    onPublished: (guided) =>
+      toast?.success?.(guided ? "Upload package ready — follow the checklist to finish." : "Published!"),
+  });
+  let publishOpen = $state(false);
 
   // #33 Phase 4: PDF/build gating via the capabilities() seam (NOT a
   // `platform === "web"` branch). `nativeSavePath` is true on the desktop host
@@ -2481,6 +2506,20 @@
         {/if}
         <span class="save-hint" role="note">PDF export requires the desktop app</span>
       {/if}
+      <!-- Publish: front-and-centre entry to the publishing wizard (desktop
+           only — the publish providers run host-side). Sits right next to
+           Save PDF so authors find it without digging through settings. -->
+      {#if isDesktop()}
+        <button
+          class="publish-btn icon-text"
+          onclick={() => (publishOpen = true)}
+          disabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
+          title="Publish your book to itch.io, KDP, Shopify and more"
+        >
+          <Icon name="cloud-upload" />
+          <span class="save-btn-label">Publish</span>
+        </button>
+      {/if}
       <!-- Overflow menu: holds less-common project actions so the toolbar never
            crowds page navigation. Settings and Help live in the bottom status bar. -->
       <details class="menu more-menu">
@@ -2840,6 +2879,11 @@
   onClosed={onConnectDialogClosed}
   triggerEl={leftPanelToggleBtn}
 />
+{#if publishOpen}
+  <!-- Mounted fresh on open so the wizard loads providers in onMount and resets
+       to step 1 (no $effect, per CLAUDE.md §8). -->
+  <PublishWizard controller={publishController} onClose={() => (publishOpen = false)} />
+{/if}
 <AdvancedSetupDialog
   bind:open={advancedSetupOpen}
   projectDir={lifecycle.sourceMode === "folder" ? lifecycle.currentDir : null}
@@ -3251,6 +3295,12 @@
     gap: 6px;
   }
   .icon-text :global(svg) { flex: 0 0 auto; }
+
+  /* Publish: an accent-outlined CTA sitting beside the filled Save PDF — a
+     major action (front-and-centre per the publishing UX request) that stays
+     visually secondary to the one primary gradient button. */
+  .publish-btn { border-color: var(--app-accent-border); color: var(--app-accent); font-weight: 600; }
+  .publish-btn:hover:not(:disabled) { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); }
 
   /* UX-014: small text label under/beside view mode icon */
   .view-label { font-size: 11px; }

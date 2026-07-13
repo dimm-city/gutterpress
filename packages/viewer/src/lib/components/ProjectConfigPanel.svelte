@@ -65,14 +65,12 @@
   import { StylesSectionController } from "$lib/routes/styles-section-controller.svelte";
   import { DesignSectionController } from "$lib/routes/design-section-controller.svelte";
   import { PluginsSectionController } from "$lib/routes/plugins-section-controller.svelte";
-  import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import DetailsSection from "$lib/components/config/DetailsSection.svelte";
   import AppearanceSection from "$lib/components/config/AppearanceSection.svelte";
   import StylesSection from "$lib/components/config/StylesSection.svelte";
   import DesignSection from "$lib/components/config/DesignSection.svelte";
   import PluginsSection from "$lib/components/config/PluginsSection.svelte";
-  import PublishSection from "$lib/components/config/PublishSection.svelte";
 
   let {
     projectDir,
@@ -159,22 +157,9 @@
     addLocal: (dir) => api.plugin.addLocal(dir),
   });
 
-  // ── (6) Publish (#35) ───────────────────────────────────────────────────
-  const publish = new PublishSectionController({
-    projectDir: projectDirAccessor,
-    listProviders: (dir) => api.publish.listProviders(dir),
-    setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
-    connect: (dir, providerId, token) => api.publish.connect(dir, providerId, token),
-    disconnect: (providerId) => api.publish.disconnect(providerId),
-    run: (dir, providerId, options) => api.publish.run(dir, providerId, options),
-    pickPdfFile: () => api.dialog.pickPdfFile(),
-    openDirectory: () => api.dialog.openDirectory(),
-    openExternal: (url) => api.shell.openExternal(url),
-    onSaved: () => toast?.success?.("Publish settings saved."),
-    onConnected: () => toast?.success?.("Connected — the key is stored securely on this computer."),
-    onPublished: (guided) =>
-      toast?.success?.(guided ? "Upload package ready — follow the checklist to finish." : "Published!"),
-  });
+  // Publishing (#35) moved OUT of this panel to the front-and-centre toolbar
+  // PublishWizard (it used to be the crammed last section here). The
+  // PublishSectionController now lives in +page.svelte and drives the wizard.
 
   // ── Lifecycle: load every section's data on mount ────────────────────────
 
@@ -198,7 +183,6 @@
       styles.loadStyles(),
       design.loadDesign(),
       plugins.loadPlugins(),
-      publish.loadPublish(),
     ]);
   }
 
@@ -239,7 +223,6 @@
         </details>
       </section>
       <PluginsSection controller={plugins} />
-      <PublishSection controller={publish} />
     </div>
   {/if}
 </div>
