@@ -143,6 +143,19 @@ export interface SnippetEntry {
   variables: string[];
 }
 
+/** Static publish-provider metadata (no project needed) — used by the
+ *  Settings → Connections tab to classify + label stored credentials. */
+export interface PublishProviderStaticInfo {
+  id: string;
+  label: string;
+  kind: 'api' | 'guided';
+  credentialRequired: boolean;
+  /** The TokenStore host this provider's credentials are keyed under. */
+  credentialHost: string | null;
+  tokenUrl: string | null;
+  hint: string | null;
+}
+
 // ── Project configuration view (#PCV) — author-facing manifest subset ──────
 // Declared locally (mirrors the lib's `ProjectConfigFields`) so the SPA bundle
 // stays free of value imports from `@dimm-city/print-md` (§8 renderer purity).
@@ -569,6 +582,10 @@ export const api = {
     /** Provider cards: static info + redacted connection status + manifest config. */
     listProviders: (projectDir: string) =>
       post<PublishProviderCard[]>('/api/publish/list', { projectDir }),
+
+    /** Static provider metadata — id/label/credential host. No project needed
+     *  (Settings → Connections classification + labels). */
+    providers: () => post<PublishProviderStaticInfo[]>('/api/publish/providers', {}),
 
     /**
      * Store + verify an API key for a provider. The token travels once, to the

@@ -441,6 +441,10 @@ export interface HostConnectionInfo {
   username?: string;
   label?: string;
   createdAt: number;
+  /** True when the stored ciphertext no longer decrypts (OS keyring changed):
+   *  the entry LOOKS connected but sync/publish see no credential. The UI
+   *  presents it as "needs reconnecting". */
+  unreadable?: boolean;
 }
 
 // ── Publish providers (#35) ────────────────────────────────────────────────

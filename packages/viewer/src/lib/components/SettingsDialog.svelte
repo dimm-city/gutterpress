@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
+  import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -9,12 +10,16 @@
     open = $bindable(false),
     onClose,
     triggerEl,
+    projectDir = null,
     onViewModeChange,
     onCrashRecoveryChange,
   }: {
     open?: boolean;
     onClose?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
+    /** The open project dir (Connections tab: adding a publishing key verifies
+     *  against the platform, and some checks read the project's settings). */
+    projectDir?: string | null;
     /** Called immediately when the user changes the view mode setting. */
     onViewModeChange?: (mode: "single" | "two-column") => void;
     /** Called immediately when the user toggles crash recovery. */
@@ -28,6 +33,21 @@
     open = false;
     onClose?.();
   }
+
+  // ── Tabs ────────────────────────────────────────────────────────────────────
+  // The stacked-sections layout outgrew one scroll (six groups + the new
+  // Connections management), so the dialog is tabbed: each tab renders one
+  // cohesive slice. The active tab persists across opens within a session —
+  // reopening lands where the user last was.
+  type SettingsTab = "app" | "editor" | "saving" | "connections" | "advanced";
+  const TABS: Array<{ id: SettingsTab; label: string }> = [
+    { id: "app", label: "App" },
+    { id: "editor", label: "Editor" },
+    { id: "saving", label: "Saving" },
+    { id: "connections", label: "Connections" },
+    { id: "advanced", label: "Advanced" },
+  ];
+  let activeTab = $state<SettingsTab>("app");
 
   // ── Typed setters (one line per control, per the "one-line setting" goal) ──
   const s = $derived(settings.current);
@@ -45,6 +65,18 @@
       <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
+    <div class="tab-bar" role="tablist" aria-label="Settings sections">
+      {#each TABS as tab (tab.id)}
+        <button
+          role="tab"
+          class="tab"
+          class:active={activeTab === tab.id}
+          aria-selected={activeTab === tab.id}
+          onclick={() => (activeTab = tab.id)}
+        >{tab.label}</button>
+      {/each}
+    </div>
+
     <div class="dialog-body">
       <!-- App appearance (light/dark chrome) --------------------------------
            UX review M38: named "Appearance" here, but the config panel also
@@ -54,6 +86,7 @@
            "Appearance" in the app; the heading is qualified as "App
            appearance" anyway so the two can never collide again even if a
            future panel section reintroduces the word. -->
+      {#if activeTab === "app"}
       <section class="group">
         <div class="group-head">
           <h3>App appearance</h3>
@@ -117,6 +150,9 @@
         </div>
       </section>
 
+      {/if}
+
+      {#if activeTab === "editor"}
       <!-- Editor ----------------------------------------------------------- -->
       <section class="group">
         <div class="group-head">
@@ -166,6 +202,9 @@
         </div>
       </section>
 
+      {/if}
+
+      {#if activeTab === "saving"}
       <!-- Saving & recovery (UX follow-up: writer-friendly protection model) -
            The three protection layers a writer actually reasons about — saved
            on this computer, previous versions, and the online copy — plus the
@@ -288,6 +327,19 @@
         </div>
       </section>
 
+      {/if}
+
+      {#if activeTab === "connections"}
+      <!-- Connections — the central place to manage every stored credential:
+           GitHub, other Git servers, and publishing accounts (itch.io, Azure,
+           Shopify …). Management lives in its own component; this dialog only
+           hosts it. -->
+      <section class="group">
+        <ConnectionsSettings {projectDir} />
+      </section>
+      {/if}
+
+      {#if activeTab === "advanced"}
       <!-- Advanced (collapsed by default) --------------------------------- -->
       <!-- Developer-oriented knobs (file-watch polling, log verbosity). Hidden
            behind a disclosure so a non-technical writer never has to reason
@@ -328,6 +380,7 @@
         </div>
         </div>
       </details>
+      {/if}
 
       <footer class="dlg-actions">
         <button class="dlg-primary" onclick={close}>Done</button>
@@ -358,6 +411,30 @@
     padding: 16px 18px;
     overflow-y: auto;
   }
+  /* ── Tab bar ── */
+  .tab-bar {
+    display: flex;
+    gap: 2px;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--app-border-subtle);
+    flex-shrink: 0;
+  }
+  .tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--app-text-muted);
+    font-size: 12.5px;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--app-text); }
+  .tab.active {
+    color: var(--app-text);
+    border-bottom-color: var(--app-accent, #4a9eff);
+    font-weight: 600;
+  }
+  .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
   .group { margin-bottom: 20px; }
   .group-head {
     display: flex;

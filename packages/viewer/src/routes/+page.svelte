@@ -2490,6 +2490,20 @@
 
       <!-- UX-039: separator before Save PDF -->
       <span class="toolbar-sep" aria-hidden="true"></span>
+      <!-- Save: flush all pending editor changes to disk NOW (the same
+           force-save the status bar's "Save now" runs). Sits beside Export so
+           the save→export pair reads as one workflow. Disabled (with an
+           "everything saved" tooltip) when there is nothing pending. -->
+      <button
+        class="save-btn icon-text save-now"
+        onclick={handleForceSave}
+        disabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
+        title={!editorFilePath || editorSavePhase === "clean" ? "All changes saved" : "Save pending changes (Ctrl+S)"}
+        aria-label="Save pending changes"
+      >
+        <Icon name="save" />
+        <span class="save-btn-label">{forceSaving ? "Saving…" : "Save"}</span>
+      </button>
       <!-- #33 Phase 4: PDF export is desktop-only (puppeteer/printToPDF). On the
            web (capabilities().nativeSavePath === false) the control is replaced
            with a short "requires the desktop app" note. On desktop
@@ -2891,6 +2905,7 @@
 />
 <SettingsDialog
   bind:open={settingsOpen}
+  projectDir={lifecycle.currentDir}
   onClose={() => {
     if (landingVisible) landingRef?.focusLayer();
   }}
