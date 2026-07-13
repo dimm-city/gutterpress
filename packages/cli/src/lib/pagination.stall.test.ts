@@ -1,5 +1,11 @@
 import { test, expect } from "bun:test";
-import { evaluatePaginationLiveness, type PaginationLivenessState } from "./pagination.ts";
+import type { Page } from "puppeteer-core";
+import {
+  evaluatePaginationLiveness,
+  paginateAndCapture,
+  type PaginationLivenessState,
+} from "./pagination.ts";
+import { BuildError } from "./build-error.ts";
 
 /**
  * Unit tests for the pure stall-detection decision (finding #19): given a
@@ -94,4 +100,150 @@ test("a count going backwards (unexpected) is treated as no-advance, not a crash
   const result = evaluatePaginationLiveness(3, 60_000, state, STALL_WINDOW_MS);
   expect(result.stalled).toBe(true);
   expect(result.state.count).toBe(8); // lastAdvanceAt tracking is unchanged
+});
+
+/**
+ * Fail-hard policy integration tests (owner finding #11): an incomplete
+ * pagination run — one that never signals `window.__PAGED_RENDERED__`,
+ * whether because the `.pagedjs_page` count stalled or the outer wait timed
+ * out — must throw a BuildError from `paginateAndCapture` instead of warning
+ * and letting a caller print/serialize a truncated DOM as if it were a
+ * finished document. These drive the REAL `paginateAndCapture` (not just the
+ * pure `evaluatePaginationLiveness` decision above) against a fake puppeteer
+ * `Page` — mirrors the mocking approach in browser-pool.test.ts — so no real
+ * Chromium/browser is needed and the (production) 10s/60s poll/stall windows
+ * are overridden via `paginateAndCapture`'s `livenessConfig` seam to
+ * millisecond-scale so the tests run fast.
+ */
+
+/**
+ * Minimal fake satisfying the puppeteer `Page` members `paginateAndCapture`
+ * touches: `setViewport`/`setDefaultNavigationTimeout`/`setDefaultTimeout`/
+ * `goto` are no-ops; `evaluate` is called once up-front for
+ * `document.fonts.ready` (resolved with `undefined`) and then once per
+ * liveness poll for the `.pagedjs_page` count, returning the next entry of
+ * `counts` (the last entry repeats once the sequence is exhausted, so a
+ * short array can still back an arbitrary number of polls); `waitForFunction`
+ * is caller-supplied so each test controls whether/when the
+ * `__PAGED_RENDERED__` wait "signals".
+ */
+function makeFakePage(config: {
+  counts: number[];
+  waitForFunction: () => Promise<void>;
+}): Page {
+  let evaluateCalls = 0;
+  const fake = {
+    setViewport: async () => {},
+    setDefaultNavigationTimeout: () => {},
+    setDefaultTimeout: () => {},
+    goto: async () => {},
+    evaluate: async () => {
+      evaluateCalls++;
+      if (evaluateCalls === 1) return undefined; // document.fonts.ready
+      const idx = Math.min(evaluateCalls - 2, config.counts.length - 1);
+      return config.counts[idx];
+    },
+    waitForFunction: config.waitForFunction,
+  };
+  return fake as unknown as Page;
+}
+
+/** __PAGED_RENDERED__ never fires — the returned promise never settles, so the
+ *  stall/timeout path (whichever the test is driving) always wins the race. */
+function neverSignals(): Promise<void> {
+  return new Promise(() => {});
+}
+
+/** Simulates puppeteer's real behavior: `waitForFunction` rejects with a
+ *  `TimeoutError` (matched by `.name`, same as the real puppeteer-core class)
+ *  after `ms` — standing in for the outer `timeoutMs` wait expiring. */
+function timesOutAfter(ms: number): () => Promise<void> {
+  return () =>
+    new Promise((_resolve, reject) => {
+      setTimeout(() => {
+        const err = new Error("waitForFunction timeout (fake)");
+        err.name = "TimeoutError";
+        reject(err);
+      }, ms);
+    });
+}
+
+test("a plateaued page count (stall) that never signals __PAGED_RENDERED__ throws a BuildError, not a warn-and-continue", async () => {
+  const page = makeFakePage({
+    counts: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3], // flat — never advances past 3
+    waitForFunction: neverSignals,
+  });
+
+  let caught: unknown;
+  try {
+    await paginateAndCapture(page, "http://127.0.0.1:0/book.html", 999_000, undefined, {
+      pollIntervalMs: 5,
+      stallWindowMs: 30,
+    });
+  } catch (err) {
+    caught = err;
+  }
+
+  expect(caught).toBeInstanceOf(BuildError);
+  expect((caught as BuildError).message).toContain(
+    "Pagination did not complete — output would be truncated"
+  );
+  expect((caught as BuildError).message).toContain("stalled at 3 page(s)");
+});
+
+test("a page count that never gets off zero (dead chunker) throws a BuildError", async () => {
+  const page = makeFakePage({
+    counts: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    waitForFunction: neverSignals,
+  });
+
+  await expect(
+    paginateAndCapture(page, "http://127.0.0.1:0/book.html", 999_000, undefined, {
+      pollIntervalMs: 5,
+      stallWindowMs: 30,
+    })
+  ).rejects.toThrow(BuildError);
+});
+
+test("a wait timeout (page count keeps advancing but __PAGED_RENDERED__ never fires) throws a BuildError instead of shipping the partial DOM", async () => {
+  const page = makeFakePage({
+    // Keeps advancing on every poll, so the stall detector never fires — only
+    // the outer wait-timeout path can be responsible for the throw here. The
+    // stall window is set absurdly large so it categorically cannot win the
+    // race in a fast test.
+    counts: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    waitForFunction: timesOutAfter(15),
+  });
+
+  let caught: unknown;
+  try {
+    await paginateAndCapture(page, "http://127.0.0.1:0/book.html", 999_000, undefined, {
+      pollIntervalMs: 5,
+      stallWindowMs: 1_000_000,
+    });
+  } catch (err) {
+    caught = err;
+  }
+
+  expect(caught).toBeInstanceOf(BuildError);
+  expect((caught as BuildError).message).toContain(
+    "Pagination did not complete — output would be truncated"
+  );
+  expect((caught as BuildError).message).toContain("no __PAGED_RENDERED__ signal");
+});
+
+test("a render that signals __PAGED_RENDERED__ before any stall/timeout completes successfully (no BuildError)", async () => {
+  const page = makeFakePage({
+    counts: [1, 2, 3],
+    waitForFunction: () => Promise.resolve(),
+  });
+
+  await expect(
+    paginateAndCapture(page, "http://127.0.0.1:0/book.html", 999_000, undefined, {
+      // Large enough that neither a stall nor a poll can matter before the
+      // wait resolves — isolates this test to the "rendered" outcome only.
+      pollIntervalMs: 1_000_000,
+      stallWindowMs: 1_000_000,
+    })
+  ).resolves.toBeUndefined();
 });

@@ -14,7 +14,7 @@
  */
 import { app, protocol } from "electron";
 import path from "node:path";
-import { createServer } from "node:http";
+import { createServer, type IncomingHttpHeaders, type RequestListener } from "node:http";
 import { pathToFileURL, fileURLToPath } from "node:url";
 
 // Module directory, ESM-safe — see the note on `HERE` in main.ts. Do NOT use the
@@ -24,6 +24,64 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 let skServerPort: number | null = null;
 
+/**
+ * Test-only: lets unit tests exercise registerAppProtocol's "server is up,
+ * host is local" proxy path directly, without spinning up a real adapter-node
+ * build via startSvelteKitServer (which loads handler.js from disk). Never
+ * called from production code — main.ts only ever sets skServerPort by
+ * actually starting the server. Mirrors the `__resetPlatform`-style test seam
+ * in src/lib/platform/index.ts.
+ */
+export function __setSkServerPortForTests(port: number | null): void {
+  skServerPort = port;
+}
+
+// ── Caller authentication (P1 review, PR #98, finding #2) ──────────────────
+// The adapter-node HTTP server is bound to 127.0.0.1 with an OS-assigned
+// port, but a loopback bind alone is NOT caller authentication — any other
+// local process (another user-level app, a script) can discover the port
+// (e.g. by scanning 127.0.0.1) and call the same privileged
+// `src/routes/api/**/+server.ts` routes (fs, git, GitHub token, …) the
+// renderer uses. main.ts mints a per-session random bearer token
+// (node:crypto, never persisted) once at process start and passes it to both
+// startSvelteKitServer() and registerAppProtocol() below: the app:// proxy
+// injects it into every request it forwards, and the loopback server itself
+// rejects any request that doesn't carry it — so a stray process that finds
+// the port but not the token gets a 401.
+const AUTH_HEADER = "x-print-md-token";
+
+/** Pure — does `headers` carry the expected bearer token? Unit-testable with a plain header object, no live server required. */
+export function isAuthorizedRequest(
+  headers: IncomingHttpHeaders,
+  token: string,
+): boolean {
+  const provided = headers[AUTH_HEADER];
+  return typeof provided === "string" && token.length > 0 && provided === token;
+}
+
+/**
+ * Wrap a raw Node HTTP handler (SvelteKit adapter-node's `handler`, or any
+ * fake handler in tests) so a request without the correct bearer token is
+ * rejected with 401 before it ever reaches the real handler. Exported
+ * separately from startSvelteKitServer (which loads the real handler from an
+ * on-disk build) so the auth behavior is testable against a plain
+ * node:http server with no Electron process or build output involved.
+ */
+export function withTokenAuth(
+  handler: RequestListener,
+  token: string,
+): RequestListener {
+  return (req, res) => {
+    if (!isAuthorizedRequest(req.headers, token)) {
+      res.statusCode = 401;
+      res.setHeader("Content-Type", "text/plain; charset=utf-8");
+      res.end("Unauthorized");
+      return;
+    }
+    handler(req, res);
+  };
+}
+
 function getSvelteKitHandlerPath(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, "app.asar", "build", "handler.js")
@@ -32,14 +90,15 @@ function getSvelteKitHandlerPath(): string {
 
 export async function startSvelteKitServer(
   slog: (msg: string) => void,
+  authToken: string,
 ): Promise<number> {
   if (skServerPort) return skServerPort;
   const handlerPath = getSvelteKitHandlerPath();
   slog(`loading SvelteKit handler from ${handlerPath}`);
   const { handler } = (await import(pathToFileURL(handlerPath).href)) as {
-    handler: Parameters<typeof createServer>[0];
+    handler: RequestListener;
   };
-  const server = createServer(handler);
+  const server = createServer(withTokenAuth(handler, authToken));
   return new Promise<number>((resolve, reject) => {
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
@@ -112,8 +171,45 @@ export function buildHostErrorPage(opts: {
 
 const HTML_HEADERS = { "Content-Type": "text/html; charset=utf-8" };
 
-export function registerAppProtocol(): void {
+/**
+ * Build the outgoing loopback request for an incoming `app://local/...`
+ * request: rewrites the target to `http://127.0.0.1:<port>` and injects the
+ * session bearer token as a header. Exported separately from
+ * registerAppProtocol so the header-injection behavior is unit-testable
+ * without an Electron process or a live server on either end.
+ */
+export function buildProxyRequest(
+  req: Request,
+  port: number,
+  authToken: string,
+): Request {
+  const url = new URL(req.url);
+  const targetUrl = "http://127.0.0.1:" + port + url.pathname + url.search;
+  const headers = new Headers(req.headers);
+  headers.set(AUTH_HEADER, authToken);
+  return new Request(targetUrl, {
+    method: req.method,
+    headers,
+    body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
+    // @ts-expect-error — duplex is required for streaming POST bodies in Node 18+
+    duplex: "half",
+  });
+}
+
+export function registerAppProtocol(authToken: string): void {
   protocol.handle("app", async (req) => {
+    const url = new URL(req.url);
+    // P1 review (PR #98, finding #2): the app:// scheme is registered as
+    // "standard", which means ANY host under it — app://evil/... just as
+    // much as app://local/... — is a well-formed request this handler
+    // receives. The pre-fix handler ignored `url.host` entirely and proxied
+    // every app:// request to the privileged loopback server regardless of
+    // host. Only the app's own "local" host may reach the proxy; anything
+    // else is rejected outright (never forwarded).
+    if (url.hostname !== "local") {
+      console.warn(`[app://] rejected request for untrusted host "${url.hostname}"`);
+      return new Response("Not Found", { status: 404 });
+    }
     if (skServerPort === null) {
       return new Response(
         buildHostErrorPage({
@@ -123,19 +219,8 @@ export function registerAppProtocol(): void {
         { status: 503, headers: HTML_HEADERS }
       );
     }
-    const url = new URL(req.url);
-    const targetUrl =
-      "http://127.0.0.1:" + skServerPort + url.pathname + url.search;
     try {
-      const proxyReq = new Request(targetUrl, {
-        method: req.method,
-        headers: req.headers,
-        body:
-          req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-        // @ts-expect-error — duplex is required for streaming POST bodies in Node 18+
-        duplex: "half",
-      });
-      return await fetch(proxyReq);
+      return await fetch(buildProxyRequest(req, skServerPort, authToken));
     } catch (e) {
       console.error(`[app://] proxy error for ${url.pathname}:`, e);
       return new Response(

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir, readFile, symlink, readdir } from "node:fs/promises";
+import { mkdtempSync, mkdirSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
@@ -44,6 +45,22 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
     return { status: e.status, message: (e.body as { message?: unknown }).message };
   }
 }
+
+// Probe symlink support ONCE at module load (mirrors fs-routes-scoping.test.ts) —
+// sandboxed/restricted CI runners or non-admin Windows can't create symlinks.
+const canSymlink = (() => {
+  const probeBase = mkdtempSync(path.join(tmpdir(), "pmd-media-import-symlink-probe-"));
+  try {
+    const target = path.join(probeBase, "target");
+    mkdirSync(target);
+    symlinkSync(target, path.join(probeBase, "link"), "dir");
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(probeBase, { recursive: true, force: true });
+  }
+})();
 
 let base: string;
 let projectDir: string;
@@ -251,6 +268,45 @@ test("project/assets symlinked to an outside directory: import is REJECTED (403)
   const outsideEntries = await readdir(outsideTarget);
   expect(outsideEntries).toEqual([]);
 });
+
+// ── destPath dangling-symlink escape (maintainer review, PR #98, finding #6b) ──
+//
+// Here `destDir` (project/assets) is a NORMAL directory — this is NOT the
+// symlinked-destDir case above. But the exact computed write target
+// (`destDir/<uniqueName>`) is already occupied by a DANGLING symlink whose
+// target lives OUTSIDE the project and doesn't exist yet. The pre-fix
+// collision check (`stat`) follows symlinks, so for a dangling link it gets
+// ENOENT — indistinguishable from "nothing here" — and `uniqueBasename`
+// treats the occupied name as free. `copyFile` then follows the symlink on
+// write, planting the imported image at the OUTSIDE target instead of
+// creating a new file in the project.
+
+test.skipIf(!canSymlink)(
+  "a dangling symlink at the computed destPath, pointing outside the project, is rejected (403); nothing is created outside",
+  async () => {
+    await mkdir(path.join(projectDir, "assets"), { recursive: true });
+    const outsideTargetParent = path.join(base, "outside-dangling-parent");
+    await mkdir(outsideTargetParent, { recursive: true });
+    const danglingTarget = path.join(outsideTargetParent, "planted.png"); // parent exists, leaf does not
+    // Plant the dangling symlink at the EXACT name the import will try to use.
+    await symlink(danglingTarget, path.join(projectDir, "assets", "cover.png"), "file");
+
+    const src = path.join(outsideDir, "cover.png");
+    await writeFile(src, "escape-payload", "utf8");
+    pickedFiles.register([src]);
+
+    const { status, message } = await caught(
+      importImageRoute({
+        request: request({ projectDir, src }),
+      } as Parameters<typeof importImageRoute>[0]),
+    );
+    expect(status).toBe(403);
+    expect(message).toBe("media:importImage: path is outside the open project");
+
+    // Nothing should have been created at the dangling symlink's outside target.
+    await expect(readFile(danglingTarget, "utf8")).rejects.toThrow();
+  },
+);
 
 test("project/assets is a normal (non-symlink) directory: import still succeeds", async () => {
   const src = path.join(outsideDir, "photo.png");

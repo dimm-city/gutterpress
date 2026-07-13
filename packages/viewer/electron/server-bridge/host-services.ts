@@ -36,7 +36,7 @@ import type { ConflictPreviewHooks } from "./conflict-preview-hooks";
 import type { DesktopHooks, DoctorHooks } from "./host-hooks";
 import type { FsGuardHooks } from "./fs-guard";
 import type { MediaHooks } from "./media-hooks";
-import type { PickedFilesHooks } from "./picked-files";
+import type { PickedFilesHooks, SavePathHooks } from "./picked-files";
 import type { PrefsHooks } from "./prefs-hooks";
 import type { RecoveryHooks } from "./recovery-hooks";
 import type { RemoteHooks, TokenStore } from "./remote-hooks";
@@ -71,6 +71,7 @@ export interface HostServices {
   prefs: PrefsHooks<LibModule, ViewerPrefs, AppSettings, ProjectStateMap | undefined, RecentFolder>;
   recovery: RecoveryHooks;
   remote: RemoteHooks<LibModule, TokenStore>;
+  savePaths: SavePathHooks;
   sync: SyncSettingsHooks;
   updater: UpdaterHooks;
   vcs: VcsHooks<LibModule>;

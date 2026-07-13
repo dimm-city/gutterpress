@@ -142,8 +142,14 @@ export async function resolveBuildContext(
   const { format } = opts;
   const inputDir = path.resolve(opts.inputDir);
 
+  // ARCH finding #12 (PR #98, maintainer HIGH): an explicit --manifest that
+  // doesn't exist is a user error (typo) and must fail loudly rather than
+  // silently falling back to the "no manifest configured" default — that
+  // fallback is only legitimate when no --manifest was given at all (scanning
+  // inputDir for a manifest that may reasonably not exist).
   const { manifest, manifestDir } = await loadManifestWithPath(
-    opts.manifestPath ?? inputDir
+    opts.manifestPath ?? inputDir,
+    { explicit: opts.manifestPath !== undefined }
   );
 
   const pdfxConfigOverride =

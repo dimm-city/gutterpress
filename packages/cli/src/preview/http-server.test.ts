@@ -304,3 +304,91 @@ describe('createPreviewServer', () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 });
+
+describe('/__chapter route', () => {
+  let workDir: string;
+  let server: PreviewServer | null;
+  let port: number;
+
+  beforeEach(async () => {
+    workDir = await mkdtemp(join(tmpdir(), 'print-md-chapter-test-'));
+    server = null;
+    port = 50000 + Math.floor(Math.random() * 5000);
+  });
+
+  afterEach(async () => {
+    if (server) {
+      await server.close();
+      server = null;
+    }
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  test('renders an in-project chapter', async () => {
+    // `currentInputPath` (the served project/markdown source root) is
+    // deliberately a SUBDIRECTORY of workDir, distinct from `tempDir` — the
+    // route confines `file` to currentInputPath, not tempDir.
+    const projectDir = join(workDir, 'project');
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(join(projectDir, 'chapter1.md'), '# Hello Chapter');
+
+    const state = makeState(projectDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(
+      `http://localhost:${port}/__chapter?file=${encodeURIComponent('chapter1.md')}`
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('Hello Chapter');
+  });
+
+  test('rejects a path-traversal file param that escapes the project root', async () => {
+    const projectDir = join(workDir, 'project');
+    const outsideDir = join(workDir, 'outside');
+    await mkdir(projectDir, { recursive: true });
+    await mkdir(outsideDir, { recursive: true });
+    await writeFile(join(projectDir, 'chapter1.md'), '# In Project');
+    await writeFile(join(outsideDir, 'secret.md'), '# TOP SECRET DATA');
+
+    const state = makeState(projectDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(
+      `http://localhost:${port}/__chapter?file=${encodeURIComponent('../outside/secret.md')}`
+    );
+    // Never 200, and the outside file's content must never reach the client
+    // — a traversal that "succeeds" as a 500 (e.g. some other read error)
+    // but still leaks the body would be just as bad as a 200.
+    expect(res.status).not.toBe(200);
+    expect([400, 404]).toContain(res.status);
+    const body = await res.text();
+    expect(body).not.toContain('TOP SECRET DATA');
+  });
+
+  test('rejects a backslash-based path-traversal file param', async () => {
+    // The raw `file` query param is guarded with `resolveWithinRoot`, but the
+    // actual read sink (assembleBookHtml -> canonicalChapterId) normalizes
+    // `\` to `/` BEFORE resolving against the project root. `path.resolve`
+    // on POSIX treats `\` as a literal filename character, so a raw guard
+    // check on `..\\..\\secret.md` passes containment while the sink's
+    // canonicalized form (`../../secret.md`) escapes the root. The guard
+    // must run on the same canonicalized string the sink reads.
+    const projectDir = join(workDir, 'project');
+    const outsideDir = join(workDir, 'outside');
+    await mkdir(projectDir, { recursive: true });
+    await mkdir(outsideDir, { recursive: true });
+    await writeFile(join(projectDir, 'chapter1.md'), '# In Project');
+    await writeFile(join(outsideDir, 'secret.md'), '# TOP SECRET DATA');
+
+    const state = makeState(projectDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(
+      `http://localhost:${port}/__chapter?file=${encodeURIComponent('..\\outside\\secret.md')}`
+    );
+    expect(res.status).not.toBe(200);
+    expect([400, 404]).toContain(res.status);
+    const body = await res.text();
+    expect(body).not.toContain('TOP SECRET DATA');
+  });
+});

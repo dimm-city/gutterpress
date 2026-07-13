@@ -93,6 +93,17 @@ export interface ExportControllerDeps {
   rename: (from: string, to: string) => Promise<void>;
   /** fs.promises.rm(path, { force: true }) — clean up the temp file. */
   rm: (path: string) => Promise<void>;
+  /**
+   * Authorize AND consume (one-time) a `SavePathHooks` capability for the
+   * requested `out` path (finding #4, 2026-07-13 maintainer review). Must
+   * return `true` only for a path the `dialog:savePdf` route itself just
+   * registered — i.e. one the native Save dialog actually returned — and
+   * `false` for anything else (never chosen, already consumed, or expired).
+   * `api:build` refuses to write/rename onto an `out` this rejects, closing
+   * the arbitrary-file-overwrite gap where a renderer-controlled `out` was
+   * previously trusted with no proof it came from the Save dialog.
+   */
+  consumeSavePath: (absPath: string) => boolean;
 }
 
 export class ExportController {
@@ -119,6 +130,22 @@ export class ExportController {
     const requestedOutPath = args.out;
     if (!requestedOutPath) {
       throw new Error("Missing 'out' for PDF export");
+    }
+    // Finding #4 (2026-07-13 maintainer review): `out` must be a path the
+    // native Save dialog itself just returned (registered as a one-time
+    // capability by the `dialog:savePdf` route), not merely any absolute
+    // path the renderer happens to send. Checked BEFORE the session is
+    // minted below, so an unauthorized `out` never occupies the single-export
+    // slot or emits a progress event. Consuming here (not just checking) means
+    // a second `api:build` call replaying the same `out` — without a fresh
+    // Save dialog round-trip — is rejected too.
+    if (!this.deps.consumeSavePath(requestedOutPath)) {
+      const err = new Error(
+        "The PDF's save location wasn't chosen via the Save dialog. " +
+        "Use \"Save PDF\" and pick a destination, then try again.",
+      );
+      (err as Error & { code?: string }).code = "OUT_NOT_AUTHORIZED";
+      throw err;
     }
 
     // Mint the session and register it as active BEFORE the pre-export sync

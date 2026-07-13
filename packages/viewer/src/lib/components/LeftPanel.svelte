@@ -373,11 +373,22 @@
           <p>Open a project folder to configure it.</p>
         </div>
       {:else}
-        <ProjectConfigPanel
-          {projectDir}
-          sidebarEmbedded={true}
-          onEditRawCss={(path) => onSelectEditorFile?.(path)}
-        />
+        <!-- Keyed by projectDir (finding #9): ProjectConfigPanel loads every
+             section's data once in onMount and keeps it in in-memory
+             controller state with no reactive re-load on projectDir change.
+             Without this key, switching projects while the Config tab is
+             mounted would leave project A's unsaved drafts (Details/Publish/
+             etc.) resident and writable into project B. Remounting on
+             projectDir change forces onMount to re-run loadAll() for the
+             newly-opened project and discards any stale in-memory state —
+             same pattern as FileTree/MediaPanel above. -->
+        {#key projectDir}
+          <ProjectConfigPanel
+            {projectDir}
+            sidebarEmbedded={true}
+            onEditRawCss={(path) => onSelectEditorFile?.(path)}
+          />
+        {/key}
       {/if}
     </div>
 

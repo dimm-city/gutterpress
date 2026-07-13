@@ -165,8 +165,7 @@ export function evaluatePaginationLiveness(
  * Drive a puppeteer `page` to fully paginate the document at `url`: set the
  * viewport + timeouts, navigate (waiting for network idle so vendored assets +
  * the polyfill load), wait for web fonts, then block until Paged.js signals
- * `window.__PAGED_RENDERED__ === true` (best-effort — falls through on timeout
- * exactly as the original callers did).
+ * `window.__PAGED_RENDERED__ === true`.
  *
  * While waiting, a background poller checks the `.pagedjs_page` count every
  * `STALL_POLL_INTERVAL_MS` and logs it (so a long build visibly advances
@@ -177,16 +176,35 @@ export function evaluatePaginationLiveness(
  * finds out. `timeoutMs` (== `RENDER_TIMEOUT_MS` at every call site) remains
  * the outer budget for legitimately slow-but-advancing books.
  *
+ * Policy (owner's call, superseding an earlier "warn and ship partial output"
+ * behavior): pagination either completes — `__PAGED_RENDERED__` fires — or the
+ * build FAILS. A stall (count plateaus, whether at zero or after some pages)
+ * and an outright wait timeout are BOTH treated as an incomplete render and
+ * throw a `BuildError`; neither path falls through to let a caller print/
+ * serialize whatever partial DOM exists. A silently-truncated "successful"
+ * print-ready PDF is worse than a build that fails loudly — non-technical
+ * authors have no way to notice half their book is missing. The stall check
+ * still fails fast (within `stallWindowMs` of the last advance) rather than
+ * waiting out the full `timeoutMs` budget.
+ *
  * Shared navigate+wait sequence for BOTH render paths. Callers keep their own
  * tails: the PDF path calls `page.pdf()`; the static-HTML path serializes the
- * DOM. Per-caller knobs (viewport, timeout) are passed in so behavior is never
- * silently changed.
+ * DOM — neither tail runs unless this function returns normally, i.e. unless
+ * pagination actually completed. Per-caller knobs (viewport, timeout,
+ * liveness window) are passed in so behavior is never silently changed;
+ * `livenessConfig` defaults to the production constants and exists as a seam
+ * for tests to shrink the poll/stall windows instead of waiting 60+ real
+ * seconds.
  */
-async function paginateAndCapture(
+export async function paginateAndCapture(
   page: Page,
   url: string,
   timeoutMs: number,
-  viewport: { width: number; height: number } = { width: 1920, height: 1080 }
+  viewport: { width: number; height: number } = { width: 1920, height: 1080 },
+  livenessConfig: { pollIntervalMs: number; stallWindowMs: number } = {
+    pollIntervalMs: STALL_POLL_INTERVAL_MS,
+    stallWindowMs: STALL_WINDOW_MS,
+  }
 ): Promise<void> {
   await page.setViewport(viewport);
   page.setDefaultNavigationTimeout(timeoutMs);
@@ -211,7 +229,7 @@ async function paginateAndCapture(
           count,
           Date.now(),
           livenessState,
-          STALL_WINDOW_MS
+          livenessConfig.stallWindowMs
         );
         livenessState = state;
         if (stalled) {
@@ -227,7 +245,7 @@ async function paginateAndCapture(
         // stall signal — the waitForFunction race below still catches a real
         // page crash / context loss and propagates it.
       });
-  }, STALL_POLL_INTERVAL_MS);
+  }, livenessConfig.pollIntervalMs);
 
   try {
     const outcome = await Promise.race([
@@ -242,14 +260,16 @@ async function paginateAndCapture(
         )
         .then((): "rendered" => "rendered")
         .catch((err: unknown) => {
-          // ONLY a wait timeout is tolerable: Paged.js never signaled
-          // __PAGED_RENDERED__ in time, so proceed with whatever rendered but
-          // warn (an unsignaled run can ship a blank/partial PDF). Any OTHER
-          // failure — page crash, execution-context loss, navigation teardown
-          // — is a real error and must propagate; masking it would silently
-          // emit broken output. puppeteer-core throws a TimeoutError
-          // (identified by name to avoid a runtime import of the class,
-          // keeping §2 lazy-loading intact).
+          // A wait timeout is a distinct OUTCOME, not tolerated silently: Paged.js
+          // never signaled __PAGED_RENDERED__ in time, so the render is incomplete
+          // and the outcome switch below throws a BuildError instead of letting a
+          // caller print/serialize whatever partial DOM exists (an earlier
+          // "warn and ship partial output" policy — superseded, see the owner's
+          // policy note on this function's docstring). Any OTHER failure — page
+          // crash, execution-context loss, navigation teardown — is a real error
+          // and must propagate as-is; masking it would silently emit broken
+          // output. puppeteer-core throws a TimeoutError (identified by name to
+          // avoid a runtime import of the class, keeping §2 lazy-loading intact).
           if ((err as { name?: string } | undefined)?.name !== "TimeoutError") {
             throw err;
           }
@@ -259,33 +279,29 @@ async function paginateAndCapture(
     ]);
 
     if (outcome === "stalled") {
-      // Distinguish a truly-dead chunker from a slow finalizer. When ZERO
-      // pages ever rendered (stalledAtCount === 0), Paged.js wedged before
-      // producing anything — a blank PDF is useless, so fail fast (the
-      // finding #19 case). When pages DO exist, the count has merely plateaued
-      // — most often Paged.js is in a long post-layout pass (footnotes, TOC)
-      // before signaling __PAGED_RENDERED__, or a single large page is still
-      // laying out. Killing the whole build there would false-positive on a
-      // legitimately slow book; instead ship what rendered with the same
-      // warning the timeout path uses (partial output is recoverable, a hard
-      // failure is not).
-      if (!stalledAtCount) {
-        throw new BuildError(
-          `Pagination produced no pages within ${Math.round(
-            STALL_WINDOW_MS / 1000
-          )}s — check plugin/CSS errors`,
-          1
-        );
-      }
-      log.warn(
-        `Pagination stopped advancing at ${stalledAtCount} page(s) — output may be incomplete (check plugin/CSS errors if it looks truncated).`
+      // A stall is a build failure regardless of stalledAtCount. When ZERO
+      // pages ever rendered, Paged.js wedged before producing anything (the
+      // finding #19 case). When pages DO exist, the count merely plateaued —
+      // most often Paged.js is stuck in a long post-layout pass (footnotes,
+      // TOC) or a single large page is wedged — but either way
+      // `__PAGED_RENDERED__` never fired, so the DOM is not the finished
+      // document: printing/serializing it would ship a silently-truncated
+      // artifact reported as success. Fail fast (within `stallWindowMs` of the
+      // last advance) rather than waiting out the full `timeoutMs` budget.
+      const detail = stalledAtCount
+        ? `stalled at ${stalledAtCount} page(s) after ${Math.round(
+            livenessConfig.stallWindowMs / 1000
+          )}s with no further progress`
+        : `produced no pages within ${Math.round(livenessConfig.stallWindowMs / 1000)}s`;
+      throw new BuildError(
+        `Pagination did not complete — output would be truncated (${detail}; check plugin/CSS errors).`
       );
     }
     if (outcome === "timeout") {
-      log.warn(
-        `Pagination did not complete within ${Math.round(
+      throw new BuildError(
+        `Pagination did not complete — output would be truncated (no __PAGED_RENDERED__ signal within ${Math.round(
           timeoutMs / 1000
-        )}s — output may be incomplete.`
+        )}s).`
       );
     }
   } finally {

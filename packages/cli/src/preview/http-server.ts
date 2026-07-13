@@ -16,10 +16,11 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
-import { STATIC_MIME, resolveStaticPath } from '../lib/static-serve.ts';
+import { STATIC_MIME, resolveStaticPath, resolveWithinRoot } from '../lib/static-serve.ts';
 import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
 import { renderChapterPreviewHtml, incrementalPreviewEnabled } from './file-watcher.ts';
+import { canonicalChapterId } from '../lib/markdown/chapter-id.ts';
 
 /**
  * URL path that upgrades to a WebSocket subscribed to the reload topic.
@@ -402,6 +403,25 @@ export async function createPreviewServer(
     if (url.pathname === '/__chapter') {
       const file = url.searchParams.get('file');
       if (!file || !state.currentInputPath) {
+        res.writeHead(400); res.end('Bad Request'); return;
+      }
+      // `file` is a raw query-string value — unlike `url.pathname`, the WHATWG
+      // URL parser does NOT dot-segment-normalize query params, so an
+      // unguarded `../../etc/passwd` reaches renderChapterPreviewHtml verbatim
+      // and gets read/rendered from outside the project. Confine it to the
+      // served project root the same way the static route confines
+      // `url.pathname` to `state.tempDir` via resolveStaticPath.
+      //
+      // The guard MUST run on `canonicalChapterId(file)`, not the raw `file`:
+      // the actual read sink (assembleBookHtml, via renderChapterPreviewHtml
+      // -> renderPreviewBook) resolves `canonicalChapterId(file)`, which
+      // converts `\` to `/` before joining against the project root. On
+      // POSIX, `path.resolve` treats `\` as a literal filename character, so
+      // checking the raw string lets `..\\..\\secret.md` pass containment
+      // while the sink's canonicalized form (`../../secret.md`) escapes the
+      // root — a guard/sink mismatch. Guarding the canonicalized string
+      // closes that gap because it's the exact string the sink reads.
+      if (!resolveWithinRoot(canonicalChapterId(file), state.currentInputPath)) {
         res.writeHead(400); res.end('Bad Request'); return;
       }
       try {

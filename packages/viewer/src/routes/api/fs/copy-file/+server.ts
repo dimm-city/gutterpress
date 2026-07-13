@@ -49,6 +49,16 @@ export const POST: RequestHandler = defineRoute<{ src: string; dest: string }>({
 
     await mkdir(body.dest, { recursive: true });
     const destPath = path.join(body.dest, path.basename(srcResolved));
+    // `validate` only confined `body.dest` (the directory) — the FINAL write
+    // path (`dest/basename`) was never re-checked. If that exact path is
+    // itself a symlink (e.g. an attacker pre-planted
+    // `<dest>/<basename> -> /outside/target`), `copyFile` follows destination
+    // symlinks on write, so an uncontained call here would silently overwrite
+    // whatever the symlink points at outside the project (maintainer review,
+    // PR #98, finding #6a). Re-run the canonicalizing containment guard on
+    // this call-computed path, same as `media/import-image` already does for
+    // its own destDir/destPath.
+    await requireWithinProjectRoot(destPath, 'fs:copyFile');
     await copyFile(srcResolved, destPath);
     return destPath;
   },

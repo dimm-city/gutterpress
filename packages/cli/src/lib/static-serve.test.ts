@@ -5,7 +5,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { STATIC_MIME, resolveStaticPath, serveFile } from "./static-serve.ts";
+import { STATIC_MIME, resolveStaticPath, resolveWithinRoot, serveFile } from "./static-serve.ts";
 
 // ── STATIC_MIME ──────────────────────────────────────────────────────────
 
@@ -62,6 +62,38 @@ test("resolveStaticPath returns null for a malformed URI-encoded path", () => {
 test("resolveStaticPath allows the root itself", () => {
   const root = "/srv/book";
   expect(resolveStaticPath("/", root)).toBe(root);
+});
+
+// ── resolveWithinRoot ────────────────────────────────────────────────────
+//
+// Shared containment guard for callers that already hold a decoded,
+// filesystem-relative string with no pathname to strip — e.g. a raw HTTP
+// query-string value. Query params are NOT dot-segment-normalized by the
+// WHATWG URL parser the way `url.pathname` is (see the end-to-end block
+// below), so a route reading `..` straight out of `url.searchParams` needs
+// this guard directly; it cannot rely on resolveStaticPath's URL-pathname
+// framing.
+
+test("resolveWithinRoot resolves a plain relative path inside root", () => {
+  const root = "/srv/book";
+  expect(resolveWithinRoot("chapter1.md", root)).toBe(join(root, "chapter1.md"));
+  expect(resolveWithinRoot("sub/data.json", root)).toBe(join(root, "sub", "data.json"));
+});
+
+test("resolveWithinRoot returns null for a raw (unnormalized) '..' escape", () => {
+  const root = "/srv/book";
+  // This is exactly the shape a query param delivers verbatim — unlike a URL
+  // pathname, nothing upstream has collapsed the dot-segments yet.
+  expect(resolveWithinRoot("../outside/secret.md", root)).toBeNull();
+  expect(resolveWithinRoot("../../etc/passwd", root)).toBeNull();
+});
+
+test("resolveWithinRoot confines an absolute-looking path under root", () => {
+  const root = "/srv/book";
+  // No ".." segment, so it's contained under root rather than treated as a
+  // real filesystem-root path — same behavior resolveStaticPath gives a URL
+  // pathname.
+  expect(resolveWithinRoot("/etc/passwd", root)).toBe(join(root, "etc", "passwd"));
 });
 
 // ── serveFile (real HTTP round-trip) ────────────────────────────────────

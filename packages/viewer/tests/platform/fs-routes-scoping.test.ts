@@ -16,6 +16,7 @@ import { POST as listImagesRoute } from "../../src/routes/api/media/list-images/
 import { POST as inspectImageRoute } from "../../src/routes/api/media/inspect/+server";
 import { POST as thumbnailRoute } from "../../src/routes/api/media/thumbnail/+server";
 import { POST as logReadRoute } from "../../src/routes/api/log/read/+server";
+import { POST as getConflictPreviewRoute } from "../../src/routes/api/sync/get-conflict-preview/+server";
 
 // ARCH review #37: `/api/fs/{read-file,write-file,list-dir,stat-file,
 // copy-file}` used to accept ANY absolute path (only guard: isAbsolute).
@@ -278,6 +279,36 @@ test("fs/copy-file: dest OUTSIDE the project is rejected (403) even with an in-p
   expect(message).toBe("fs:copyFile: path is outside the open project");
 });
 
+// `validate` only confines the DESTINATION DIRECTORY — the FINAL write path
+// (`dest/basename(src)`) was never re-checked before `copyFile`. `copyFile`
+// follows destination symlinks the same way `open(path, "w")` does, so if an
+// attacker (or a stray leftover file) already planted a symlink at that exact
+// path pointing OUTSIDE the project, the pre-fix route would silently
+// overwrite the external target while still reporting 200 (maintainer
+// review, PR #98, finding #6a).
+test.skipIf(!canSymlink)(
+  "fs/copy-file: <dest>/<basename(src)> is itself a symlink to an outside target — rejected (403), outside target untouched",
+  async () => {
+    const destDir = path.join(projectDir, "assets");
+    await mkdir(destDir, { recursive: true });
+    const outsideTarget = path.join(outsideDir, "victim.txt");
+    await writeFile(outsideTarget, "original outside content", "utf8");
+    const src = path.join(projectDir, "chapter-01.md"); // in-project src — needs no picker capability
+    // Plant a symlink at the EXACT computed destination path
+    // (destDir/basename(src)) pointing outside the project.
+    await symlink(outsideTarget, path.join(destDir, path.basename(src)), "file");
+
+    const { status, message } = await caught(
+      copyFileRoute({
+        request: request({ src, dest: destDir }),
+      } as Parameters<typeof copyFileRoute>[0]),
+    );
+    expect(status).toBe(403);
+    expect(message).toBe("fs:copyFile: path is outside the open project");
+    expect(await readFile(outsideTarget, "utf8")).toBe("original outside content");
+  },
+);
+
 // ── no project open ─────────────────────────────────────────────────────
 
 test("fs/read-file: fails closed (403) when no project is open (empty projectRoots)", async () => {
@@ -369,6 +400,70 @@ test("log/read: an absolute path outside the read-allow-list is rejected (403)",
   expect(status).toBe(403);
   expect(message).toBe("log:read: path is outside the open project");
 });
+
+// ── sync/get-conflict-preview (P1 review, PR #98 finding #5): `projectDir`
+//    used to only be checked for `isAbsolute` — no confinement to the open
+//    project at all — so a same-origin script could point it at any
+//    directory on disk and read the file back as the "mine" preview. The
+//    derived file target (`projectDir` + the caller-supplied relative
+//    `path`) must also be confined CANONICALLY, not by the lexical
+//    startsWith check `getConflictPreviewImpl` does on its own, since a
+//    project-local symlink aliasing an outside directory defeats a lexical
+//    check the same way it does for the plain fs routes above. ───────────
+
+test("sync/get-conflict-preview: an in-project projectDir + path is allowed", async () => {
+  const res = await getConflictPreviewRoute({
+    request: request({ projectDir, path: "chapter-01.md", kind: "both-edited" }),
+  } as Parameters<typeof getConflictPreviewRoute>[0]);
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ mine: "", theirs: "", kind: "both-edited", isBinary: false });
+});
+
+test("sync/get-conflict-preview: a projectDir outside the open project is rejected (403)", async () => {
+  const { status, message } = await caught(
+    getConflictPreviewRoute({
+      request: request({ projectDir: outsideDir, path: "secret.txt", kind: "both-edited" }),
+    } as Parameters<typeof getConflictPreviewRoute>[0]),
+  );
+  expect(status).toBe(403);
+  expect(message).toBe("sync:getConflictPreview: path is outside the open project");
+});
+
+test("sync/get-conflict-preview: a sibling-prefix projectDir is rejected (403)", async () => {
+  const { status } = await caught(
+    getConflictPreviewRoute({
+      request: request({ projectDir: siblingDir, path: "secret.md", kind: "both-edited" }),
+    } as Parameters<typeof getConflictPreviewRoute>[0]),
+  );
+  expect(status).toBe(403);
+});
+
+test("sync/get-conflict-preview: fails closed (403) when no project is open (empty projectRoots)", async () => {
+  registerHostServices({
+    ...(await import("../../electron/server-bridge/host-services")).getHostServices()!,
+    fsGuard: { projectRoots: () => [], readOnlyRoots: () => [] },
+  } as HostServices);
+  const { status } = await caught(
+    getConflictPreviewRoute({
+      request: request({ projectDir, path: "chapter-01.md", kind: "both-edited" }),
+    } as Parameters<typeof getConflictPreviewRoute>[0]),
+  );
+  expect(status).toBe(403);
+});
+
+test.skipIf(!canSymlink)(
+  "sync/get-conflict-preview: a legitimate in-project projectDir with a `path` escaping through a project-local symlink is rejected (403)",
+  async () => {
+    await createAlias(); // projectDir/alias -> outsideDir (which contains secret.txt)
+    const { status, message } = await caught(
+      getConflictPreviewRoute({
+        request: request({ projectDir, path: "alias/secret.txt", kind: "both-edited" }),
+      } as Parameters<typeof getConflictPreviewRoute>[0]),
+    );
+    expect(status).toBe(403);
+    expect(message).toBe("sync:getConflictPreview: path is outside the open project");
+  },
+);
 
 // ── symlink escape (P1 review on isWithinRoot): path.resolve() normalizes
 //    lexical segments but leaves symlinks intact. A project-local symlink

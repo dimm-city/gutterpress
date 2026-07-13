@@ -23,6 +23,13 @@ interface HarnessOpts {
   /** conflictLatched flag returned by sync.getState. */
   conflictLatched?: boolean;
   /**
+   * Fake for the `consumeSavePath` capability check (finding #4). Defaults to
+   * an always-authorize `() => true` so every pre-existing test — none of
+   * which exercises the save-path capability — keeps its prior "the `out` I
+   * passed is always accepted" behavior unchanged.
+   */
+  consumeSavePath?: (absPath: string) => boolean;
+  /**
    * Flips the (by-then-minted) active session's `canceled` flag while
    * syncProject is in flight — simulates a Cancel click landing during the
    * pre-export sync gate (M28).
@@ -104,6 +111,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     rm: async (p) => {
       removed.push(p);
     },
+    consumeSavePath: opts.consumeSavePath ?? (() => true),
   };
 
   return {
@@ -150,6 +158,41 @@ test("missing input is rejected before any work", async () => {
 test("missing out is rejected", async () => {
   const h = makeHarness();
   await expect(h.controller.build({ input: "/book" })).rejects.toThrow(/Missing 'out'/);
+});
+
+// ── finding #4 (2026-07-13 maintainer review): PDF export accepts arbitrary
+//    output paths — `out` must be a one-time capability the Save dialog
+//    itself registered, not merely any renderer-supplied absolute path ──────
+
+test("an 'out' never issued by the Save dialog is rejected with OUT_NOT_AUTHORIZED, before any work happens", async () => {
+  const h = makeHarness({ consumeSavePath: () => false });
+  const err = await h.controller
+    .build({ input: "/book", out: "/etc/passwd" })
+    .catch((e) => e);
+  expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
+  // No session was minted, no progress emitted, no build/rename attempted —
+  // the check runs before any of that side-effecting work.
+  expect(h.getSession()).toBeNull();
+  expect(h.progress.length).toBe(0);
+  expect(h.runBuildCalls).toBe(0);
+  expect(h.renamed.length).toBe(0);
+});
+
+test("an 'out' the Save dialog registered is consumed exactly once — a replay of the same 'out' is rejected", async () => {
+  const authorized = new Set(["/out/book.pdf"]);
+  const consumeSavePath = (absPath: string) => authorized.delete(absPath);
+  const h = makeHarness({ consumeSavePath });
+
+  const res = await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  expect(res.pdfPath).toBe("/out/book.pdf");
+
+  // Same 'out', no fresh Save dialog round-trip — the capability was already
+  // spent by the first build, so a second attempt (e.g. a script replaying
+  // the same api:build call) must not silently succeed.
+  const err = await h.controller
+    .build({ input: "/book", out: "/out/book.pdf" })
+    .catch((e) => e);
+  expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
 });
 
 test("pdfx without icc is rejected", async () => {

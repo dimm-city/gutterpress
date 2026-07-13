@@ -42,6 +42,21 @@ export function getAllCheckIds(): string[] {
   return Array.from(checks.keys());
 }
 
+/**
+ * The set of `CheckCategory` values actually in use by registered checks.
+ * Derived from the registry (rather than a hand-maintained literal list) so
+ * it can never drift from `CheckCategory`'s real members — used to validate
+ * `--category` input against something other than a bare `as CheckCategory`
+ * cast, which previously accepted any string.
+ */
+export function getKnownCategories(): CheckCategory[] {
+  const categories = new Set<CheckCategory>();
+  for (const check of checks.values()) {
+    categories.add(check.category);
+  }
+  return Array.from(categories);
+}
+
 export interface ResolvedSelectors {
   /** Check IDs matched by the selectors (deduplicated, in match order). */
   resolved: string[];

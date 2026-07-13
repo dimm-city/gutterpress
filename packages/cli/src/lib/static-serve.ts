@@ -32,6 +32,33 @@ export const STATIC_MIME: Record<string, string> = {
 };
 
 /**
+ * Confine an already-decoded relative path to `root`, guarding against path
+ * traversal (`..` segments, absolute-looking paths escaping via `..`).
+ * Returns `null` if the resolved path escapes `root`.
+ *
+ * Shared by {@link resolveStaticPath} (which decodes a URL pathname first)
+ * AND by callers that already hold a decoded string with no pathname
+ * semantics to strip — e.g. the preview server's `/__chapter?file=` query
+ * param. Query-string values are NOT dot-segment-normalized by the WHATWG
+ * URL parser the way `url.pathname` is (see static-serve.test.ts's
+ * end-to-end block for why that matters), so any route reading a raw query
+ * param as a filesystem-relative path MUST run it through this guard itself
+ * — it cannot rely on the URL parser to have already stripped `..` the way
+ * a pathname-based route can.
+ */
+export function resolveWithinRoot(relPath: string, root: string): string | null {
+  const resolvedRoot = path.resolve(root);
+  const candidate = path.resolve(
+    resolvedRoot,
+    "." + (relPath.startsWith("/") ? relPath : "/" + relPath)
+  );
+  if (candidate !== resolvedRoot && !candidate.startsWith(resolvedRoot + path.sep)) {
+    return null;
+  }
+  return candidate;
+}
+
+/**
  * Resolve a request URL pathname to an absolute path inside `root`, guarding
  * against path traversal (`..`, encoded separators, absolute-looking paths).
  * Returns `null` if the pathname cannot be decoded or the resolved path
@@ -44,12 +71,7 @@ export function resolveStaticPath(urlPathname: string, root: string): string | n
   } catch {
     return null;
   }
-  const resolvedRoot = path.resolve(root);
-  const candidate = path.resolve(resolvedRoot, "." + decoded);
-  if (candidate !== resolvedRoot && !candidate.startsWith(resolvedRoot + path.sep)) {
-    return null;
-  }
-  return candidate;
+  return resolveWithinRoot(decoded, root);
 }
 
 /**

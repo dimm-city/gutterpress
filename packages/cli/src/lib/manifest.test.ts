@@ -1,5 +1,9 @@
-import { test, expect, describe } from "bun:test";
-import { resolveConfig } from "./manifest";
+import { test, expect, describe, afterEach } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { resolveConfig, loadManifestWithPath } from "./manifest";
+import { UsageError } from "./cli-args";
 import { DTRPG_PRESET, BOOK_PRESET, resetWarnOnce } from "./presets";
 
 // ARCH finding #57: isFilePath's own doc comment promises "File paths start
@@ -247,5 +251,61 @@ describe("resolveConfig deprecation warnings (finding #24)", () => {
       console.warn = orig;
       resetWarnOnce();
     }
+  });
+});
+
+// ── ARCH finding #12 (PR #98, maintainer HIGH) — an EXPLICIT --manifest path
+// that doesn't exist is a user error (typo) and must fail loudly, unlike the
+// legitimate "no --manifest given, scan the project dir" case, which must
+// keep silently falling back to defaults ─────────────────────────────────────
+describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
+  const dirsToClean: string[] = [];
+
+  afterEach(async () => {
+    for (const d of dirsToClean.splice(0)) {
+      await rm(d, { recursive: true, force: true });
+    }
+  });
+
+  test("explicit: true + nonexistent path throws UsageError naming the path (typo repro)", async () => {
+    const missing = join(tmpdir(), "print-md-typo-manifest-does-not-exist.yaml");
+
+    await expect(
+      loadManifestWithPath(missing, { explicit: true })
+    ).rejects.toThrow(UsageError);
+    await expect(
+      loadManifestWithPath(missing, { explicit: true })
+    ).rejects.toThrow(`manifest not found: ${missing}`);
+  });
+
+  test("explicit: false (or omitted) + nonexistent path silently falls back to an empty manifest (legacy/default-discovery behavior preserved)", async () => {
+    const missing = join(tmpdir(), "print-md-no-such-project-dir-xyz");
+
+    const { manifest, manifestDir } = await loadManifestWithPath(missing);
+    expect(manifest).toEqual({});
+    expect(manifestDir).toBe(missing);
+
+    // Passing `explicit: false` explicitly must behave identically.
+    const explicitFalse = await loadManifestWithPath(missing, { explicit: false });
+    expect(explicitFalse.manifest).toEqual({});
+  });
+
+  test("no pathOrDir at all (no --manifest, cwd scan) never throws, regardless of explicit", async () => {
+    const { manifest } = await loadManifestWithPath(undefined, { explicit: true });
+    // explicit is irrelevant when there's no path to be explicit ABOUT.
+    expect(manifest).toBeDefined();
+  });
+
+  test("explicit: true + a path that DOES resolve to a real manifest still loads it normally", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pmd-manifest-explicit-ok-"));
+    dirsToClean.push(dir);
+    const manifestPath = join(dir, "manifest.yaml");
+    await Bun.write(manifestPath, "title: Explicit And Present\n");
+
+    const { manifest, manifestDir } = await loadManifestWithPath(manifestPath, {
+      explicit: true,
+    });
+    expect(manifest.title).toBe("Explicit And Present");
+    expect(manifestDir).toBe(dir);
   });
 });

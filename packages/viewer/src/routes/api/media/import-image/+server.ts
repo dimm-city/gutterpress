@@ -111,6 +111,18 @@ export const POST: RequestHandler = defineRoute<{ projectDir: string; src: strin
 
     const uniqueName = await uniqueBasename(destDir, path.basename(srcResolved));
     const destPath = path.join(destDir, uniqueName);
+    // `uniqueBasename`'s `stat`-based collision check treats a DANGLING
+    // symlink at `destDir/uniqueName` as "doesn't exist" (`stat` follows the
+    // link and gets ENOENT for the missing target), so it can hand back that
+    // exact occupied name as the "unique" one. `copyFile` then follows that
+    // same symlink on write, planting the imported image at the symlink's
+    // target instead of creating a new file (maintainer review, PR #98,
+    // finding #6b). Canonically confining this FINAL write path — same fix as
+    // `fs/copy-file` — closes it: `requireWithinProjectRoot` resolves through
+    // the symlink (dangling or not, see `realpathTolerant`'s doc comment) and
+    // rejects once that resolves outside the project, before `copyFile` ever
+    // runs.
+    await requireWithinProjectRoot(destPath, 'media:importImage');
     await copyFile(srcResolved, destPath);
     return { src: `${destName}/${uniqueName}`, copied: true };
   },

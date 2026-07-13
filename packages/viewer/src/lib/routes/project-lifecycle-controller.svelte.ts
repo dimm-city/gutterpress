@@ -234,6 +234,10 @@ export class ProjectLifecycleController {
   ): Promise<void> {
     const d = this.deps;
     const superseded = () => epoch !== this.folderOpenEpoch;
+    // Tracks whether the outgoing project's buffer has already been flushed
+    // (below, before startPreviewHost) so the catch block's own defensive
+    // flush doesn't redundantly re-flush an already-clean buffer.
+    let outgoingBufferFlushed = false;
     this.openError = null;
     this.failedOpenDir = null;
     this.urlPreviewError = null;
@@ -276,19 +280,29 @@ export class ProjectLifecycleController {
         targetDir === dir
           ? (displayName ?? basenameOf(targetDir))
           : (d.projectSession.books.find((b) => b.path === targetDir)?.title ?? basenameOf(targetDir));
-      const data = await d.startPreviewHost({ key: targetDir, displayName: targetDisplayName });
-      if (superseded()) return;
-      this.sourceMode = "folder";
       // New folder: flush + clear any file selected from a previous project so
       // the editor pane doesn't point at a stale path (#44 — flush first so a
       // pending save in the prior project isn't dropped on project switch).
+      // MUST happen BEFORE startPreviewHost below (#7 fix): the host derives
+      // its fs-route authorization root SOLELY from the active preview
+      // (electron/server-bridge/fs-guard.ts's `projectRoots()`), and
+      // establishes the NEW project as that root the instant `startPreviewHost`
+      // is dispatched (electron/preview/controller.ts's `runOpen`). Flushing
+      // AFTER that call would race the pending write for the OLD project
+      // against the root having already moved — the write would fall outside
+      // the new root, get rejected 403, and the buffer would still be reset,
+      // silently discarding the edit with no disk write.
       if (this.currentDir !== targetDir) {
         await d.flushBuffer();
+        outgoingBufferFlushed = true;
         // Check BEFORE reset: a superseded call resuming from the flush must
         // not wipe the buffer the winning open has already populated.
         if (superseded()) return;
         d.resetBuffer();
       }
+      const data = await d.startPreviewHost({ key: targetDir, displayName: targetDisplayName });
+      if (superseded()) return;
+      this.sourceMode = "folder";
       this.currentDir = targetDir;
       this.currentFolderDisplayName = targetDisplayName;
       this.currentUrl = null;
@@ -361,12 +375,18 @@ export class ProjectLifecycleController {
       // ~500ms debounce window, opens a folder B whose classify/startPreview
       // throws would have folder A's still-pending save silently dropped by
       // resetExtras()'s buffer.reset() (cancelTimers + clear in-memory
-      // content), with no disk write and no recovery snapshot.
-      await d.flushBuffer();
-      // Re-check: a supersession landing DURING the flush (the user opened
-      // yet another folder while this failed open was flushing) must not let
-      // this stale catch clobber the winning open's state.
-      if (superseded()) return;
+      // content), with no disk write and no recovery snapshot. Skipped when
+      // the try block already flushed it above (#7 fix) — e.g. startPreviewHost
+      // itself is what threw — so a clean buffer isn't redundantly re-flushed;
+      // this is still reached when classify() (before the pre-flush point)
+      // is what threw.
+      if (!outgoingBufferFlushed) {
+        await d.flushBuffer();
+        // Re-check: a supersession landing DURING the flush (the user opened
+        // yet another folder while this failed open was flushing) must not
+        // let this stale catch clobber the winning open's state.
+        if (superseded()) return;
+      }
       // H5 fix: route through the SAME resetWorkspace() the other two
       // teardown paths use, instead of a narrower hand-list — this is what
       // now also clears Problems/pageNav/the editor pane/the buffer/the

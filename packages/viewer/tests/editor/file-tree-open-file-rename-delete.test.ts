@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { EditorBuffer } from "../../src/lib/editor/buffer-state.svelte";
+import { isPathAtOrUnder } from "../../src/lib/platform/paths";
 import type { FileStat, FileWriteResult, Platform } from "../../src/lib/platform/contract";
 
 // UX review M9 (WP FT): "renaming/deleting the OPEN file must behave" — the
@@ -110,6 +111,37 @@ test("renaming the open file: flush-before-rename, then reload at the new path �
   expect(platform.has("/book/chapter-01.md")).toBe(false);
 });
 
+test("renaming a FOLDER containing the dirty open file: flush-before-rename must fire on containment (isPathAtOrUnder), not exact path match, so the edit is preserved", async () => {
+  const platform = new MemoryPlatform({ "/book/ch1/page.md": "saved text" });
+  const buffer = makeBuffer(platform);
+  await buffer.load("/book/ch1/page.md");
+  buffer.edit("saved text + unsaved edit");
+  expect(buffer.hasPendingSave).toBe(true);
+
+  const oldFolder = "/book/ch1";
+  const newFolder = "/book/intro";
+
+  // onTreeBeforeRename: the item being renamed is the FOLDER, not the exact
+  // open file path — the open file is nested under it, so the flush must
+  // still fire (isPathAtOrUnder), matching the fixed +page.svelte handler.
+  if (buffer.filePath && isPathAtOrUnder(buffer.filePath, oldFolder)) {
+    await buffer.flush().catch(() => {});
+  }
+  expect(buffer.phase).toBe("clean");
+  expect(platform.getContent("/book/ch1/page.md")).toBe("saved text + unsaved edit");
+
+  // The folder rename itself moves every file nested under it.
+  platform.externalRename("/book/ch1/page.md", "/book/intro/page.md");
+
+  // onTreeFileRenamed: reload at the new nested path.
+  await selectEditorFile(buffer, "/book/intro/page.md");
+
+  expect(buffer.filePath).toBe("/book/intro/page.md");
+  expect(buffer.content).toBe("saved text + unsaved edit");
+  expect(buffer.phase).toBe("clean");
+  expect(platform.has("/book/ch1/page.md")).toBe(false);
+});
+
 test("renaming the open file in the WRONG order (flush after rename) strands the unsaved edit behind a spurious conflict banner — this is exactly what flush-before-rename avoids", async () => {
   const platform = new MemoryPlatform({ "/book/chapter-01.md": "saved text" });
   const buffer = makeBuffer(platform);
@@ -187,4 +219,22 @@ test("+page.svelte defines and wires the FileTree open-file rename/delete handle
   expect(page).toContain("onBeforeRenameOpenFile={onTreeBeforeRename}");
   expect(page).toContain("onFileRenamed={onTreeFileRenamed}");
   expect(page).toContain("onFileDeleted={onTreeFileDeleted}");
+});
+
+// Maintainer review finding #8: the pre-rename FLUSH must match on
+// containment too, not only an exact path — renaming a FOLDER that contains
+// the dirty open file never equals `buffer.filePath` exactly, so an
+// exact-match-only check silently skips the flush and the edit is carried
+// away, unsaved, moving out from under the buffer's still-old path. This
+// asserts `onTreeBeforeRename`'s own body (not just anywhere in the file)
+// uses `isPathAtOrUnder`, symmetric with `onTreeFileRenamed`/
+// `onTreeFileDeleted` above.
+test("+page.svelte's onTreeBeforeRename flushes on containment (isPathAtOrUnder), not exact path match only", () => {
+  const root = path.resolve(import.meta.dir, "../..");
+  const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
+  const match = page.match(/async function onTreeBeforeRename\([\s\S]*?\n  \}/);
+  expect(match).not.toBeNull();
+  const body = match![0];
+  expect(body).toContain("isPathAtOrUnder(");
+  expect(body).not.toContain("buffer.filePath === path");
 });

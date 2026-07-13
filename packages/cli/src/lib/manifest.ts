@@ -4,6 +4,7 @@ import { resolve, dirname } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { PrintMdManifest, ResolvedConfig, PluginConfig, ResolvedPluginConfig } from "../schema/manifest.types";
 import { resolvePreset, warnOnce } from "./presets";
+import { UsageError } from "./cli-args";
 
 /**
  * The manifest file names print-md recognizes, in lookup-preference order.
@@ -28,10 +29,21 @@ export async function loadManifest(
 
 /**
  * Load manifest.yaml and return both the manifest and the directory it was found in.
- * Returns an empty manifest and the current working directory if no manifest is found.
+ * Returns an empty manifest and the current working directory if no manifest is found —
+ * UNLESS `explicit` is set (ARCH finding #12/PR #98): a caller that resolved
+ * `pathOrDir` from a user-supplied `--manifest` flag (as opposed to a project
+ * directory being scanned for a manifest that may legitimately not exist) must
+ * pass `{ explicit: true }` so a missing/typo'd path throws instead of
+ * silently resolving to an empty manifest. A typo like `--manifest
+ * ./typo.yaml` previously fell through to the "no manifest" default AND left
+ * `manifestDir` pointing at the nonexistent path itself
+ * (`resolve("./typo.yaml")`), so a later `path.resolve(manifestDir,
+ * config.output.dir)` could create build output beneath a directory named
+ * after the missing file.
  */
 export async function loadManifestWithPath(
-  pathOrDir?: string
+  pathOrDir?: string,
+  opts?: { explicit?: boolean }
 ): Promise<{ manifest: PrintMdManifest; manifestDir: string }> {
   const candidates = pathOrDir
     ? [resolve(pathOrDir), ...MANIFEST_FILENAMES.map((name) => resolve(pathOrDir, name))]
@@ -43,6 +55,10 @@ export async function loadManifestWithPath(
       const manifest = (parseYaml(raw) as PrintMdManifest) ?? {};
       return { manifest, manifestDir: dirname(p) };
     }
+  }
+
+  if (opts?.explicit && pathOrDir) {
+    throw new UsageError(`manifest not found: ${pathOrDir}`);
   }
 
   // If no manifest found, return empty manifest and the input dir or cwd

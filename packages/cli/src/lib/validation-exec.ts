@@ -6,7 +6,7 @@ import { BOOK_HTML_FILENAME } from "./viewer";
 import { UsageError } from "./cli-args";
 import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
-import { getChecks } from "../checks/registry";
+import { getChecks, getKnownCategories } from "../checks/registry";
 import {
   checkToolAvailability,
   reportMissingTools,
@@ -82,6 +82,30 @@ function resolvePhaseArg(raw: string): CheckPhase | undefined {
   );
 }
 
+/**
+ * Resolve `--category` (CSV) to validated {@link CheckCategory} values. This
+ * mirrors {@link resolvePhaseArg}'s bug shape: `args.category` was previously
+ * cast straight to `CheckCategory` (`s as CheckCategory`) with no validation,
+ * so a typo like `--category asset,srouce` silently produced a category that
+ * matches zero registered checks instead of failing loudly. Unknown values
+ * now throw `UsageError`, same as an unrecognized `--phase`.
+ */
+function resolveCategoryArg(raw?: string): CheckCategory[] | undefined {
+  const parsed = parseCsv(raw);
+  if (!parsed) return undefined;
+
+  const known = new Set(getKnownCategories());
+  const invalid = parsed.filter((c) => !known.has(c as CheckCategory));
+  if (invalid.length > 0) {
+    const knownList = Array.from(known).sort().join(", ");
+    throw new UsageError(
+      `Invalid --category value: "${invalid.join(", ")}". Expected one of: ${knownList}.`
+    );
+  }
+
+  return parsed as CheckCategory[];
+}
+
 function withProfileRequiredCheckErrors(
   report: RunnerReport,
   tools: ToolCheckResult,
@@ -142,32 +166,46 @@ export async function executeValidation(
     throw new Error(`File not found: ${pdfPath}`);
   }
 
-  const categories = parseCsv(typeof args.category === "string" ? args.category : undefined)
-    ?.map((s) => s as CheckCategory);
+  const categories = resolveCategoryArg(
+    typeof args.category === "string" ? args.category : undefined
+  );
   const only = parseCsv(typeof args.only === "string" ? args.only : undefined);
   const skip = parseCsv(typeof args.skip === "string" ? args.skip : undefined);
 
   let phase: CheckPhase | undefined;
   if (typeof args.phase === "string" && args.phase !== "") {
     phase = resolvePhaseArg(args.phase);
-    if (phase) {
-      // Mirror the unmatched --only/--skip selector guard in registry.ts: a
-      // --phase (optionally narrowed further by --category) that matches no
-      // registered check is a usage error, not a silent "VALIDATION PASSED".
-      const matched = getChecks({ phase, category: categories });
-      if (matched.length === 0) {
-        const categorySuffix = categories?.length
-          ? ` with --category ${categories.join(",")}`
-          : "";
-        throw new UsageError(
-          `--phase ${args.phase}${categorySuffix} matched zero registered checks.`
-        );
-      }
-    }
   } else if (pdfPath && !inputDir) {
     phase = "post-build";
   } else if (inputDir && !pdfPath) {
     phase = "pre-build";
+  }
+
+  // Mirror the unmatched --only/--skip selector guard in registry.ts: a
+  // phase/category selection that matches no registered check is a usage
+  // error, never a silent "VALIDATION PASSED". This MUST run for every way
+  // `phase` can end up set here, not just an explicit non-"all" `--phase`:
+  //   - an explicit narrow value ("--phase pre-build")
+  //   - "--phase all", which resolves to `phase === undefined` ("no filter")
+  //   - a phase auto-selected above from --pdf/--input with no --phase given
+  // The previous implementation only guarded inside the explicit-and-non-"all"
+  // branch, so `--phase all --category bogus` (or an unknown category with no
+  // --phase at all, auto-selecting a phase) matched zero checks and reported
+  // a false-green PASS. It intentionally does NOT run when `--only` is set:
+  // runChecks() (runner.ts) selects checks purely by resolved ids in that
+  // case and never consults phase/category, and --only already has its own
+  // unmatched-selector guard there.
+  if (!only || only.length === 0) {
+    const matched = getChecks({ phase, category: categories });
+    if (matched.length === 0) {
+      const phasePart = phase ? `--phase ${phase}` : "--phase all";
+      const categoryPart = categories?.length
+        ? ` --category ${categories.join(",")}`
+        : "";
+      throw new UsageError(
+        `${phasePart}${categoryPart} matched zero registered checks.`
+      );
+    }
   }
 
   let markdownFiles: string[] | undefined;

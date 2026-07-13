@@ -38,7 +38,7 @@ const main = readFileSync(
 
 test("ARCH #28: a SvelteKit boot failure shows a plain-language native dialog, not just a console.error swallow", () => {
   // The try/catch around startSvelteKitServer() in app.whenReady().
-  const bootBlockStart = main.indexOf("await startSvelteKitServer(slog);");
+  const bootBlockStart = main.indexOf("await startSvelteKitServer(slog, skAuthToken);");
   expect(bootBlockStart).toBeGreaterThan(-1);
   const catchBlock = main.slice(bootBlockStart, bootBlockStart + 1500);
 
@@ -97,4 +97,66 @@ test("residual docs-sweep fix: the prod-mode window-load comment describes adapt
   const precedingComment = main.slice(Math.max(0, loadUrlIdx - 800), loadUrlIdx);
   expect(precedingComment).toContain("adapter-node emits a Node HTTP handler");
   expect(precedingComment).not.toContain("adapter-static emits an SPA");
+});
+
+// ARCH review finding #1 (CRITICAL): a packaged build must never trust
+// VITE_DEV_SERVER_URL for window loading, the IPC/navigation origin policy,
+// or the "skip the local server" decision — otherwise an attacker who
+// launches the packaged binary with that env var set can point it at remote
+// content that then receives the full preload/IPC bridge. All three call
+// sites named in the finding (window load, originPolicyConfig(), and the
+// whenReady() server-start gate) must route through the single
+// resolveDevServerUrl(app.isPackaged, …) gate — none of them may read
+// `process.env.VITE_DEV_SERVER_URL` directly.
+test("ARCH #1: resolveDevServerUrl is imported from navigation-policy", () => {
+  expect(main).toMatch(
+    /import\s*\{[^}]*\bresolveDevServerUrl\b[^}]*\}\s*from\s*"\.\/navigation-policy"/,
+  );
+});
+
+test("ARCH #1: mainWindow.loadURL uses the packaged-aware gate, not the raw env var", () => {
+  const idx = main.indexOf(
+    'const devUrl = resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL);',
+  );
+  expect(idx).toBeGreaterThan(-1);
+  const loadUrlIdx = main.indexOf('mainWindow.loadURL(devUrl || "app://local/");', idx);
+  expect(loadUrlIdx).toBeGreaterThan(idx);
+  expect(loadUrlIdx - idx).toBeLessThan(200);
+});
+
+test("ARCH #1: originPolicyConfig()'s devServerOrigin uses the packaged-aware gate", () => {
+  const fnIdx = main.indexOf("function originPolicyConfig(): OriginPolicyConfig {");
+  expect(fnIdx).toBeGreaterThan(-1);
+  const body = main.slice(fnIdx, fnIdx + 400);
+  expect(body).toContain(
+    "resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)",
+  );
+  // Must not fall back to reading the raw env var directly into the config.
+  expect(body).not.toContain("devServerOrigin: process.env.VITE_DEV_SERVER_URL");
+});
+
+test("ARCH #1: the whenReady() local-server-start gate uses the packaged-aware helper", () => {
+  const idx = main.indexOf("await startSvelteKitServer(slog, skAuthToken);");
+  expect(idx).toBeGreaterThan(-1);
+  const precedingGate = main.slice(Math.max(0, idx - 400), idx);
+  expect(precedingGate).toContain(
+    "if (!resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)) {",
+  );
+  expect(precedingGate).not.toContain("if (!process.env.VITE_DEV_SERVER_URL) {");
+});
+
+test("ARCH #1: no remaining direct process.env.VITE_DEV_SERVER_URL reads outside resolveDevServerUrl(...) call sites", () => {
+  // Every occurrence of the raw env var must be an argument to
+  // resolveDevServerUrl(...) (or inside a comment) — never read standalone
+  // for a trust/load decision.
+  const rawReads = [...main.matchAll(/process\.env\.VITE_DEV_SERVER_URL/g)];
+  expect(rawReads.length).toBeGreaterThan(0); // sanity: the var is still used somewhere
+  for (const m of rawReads) {
+    const idx = m.index ?? -1;
+    const lineStart = main.lastIndexOf("\n", idx) + 1;
+    const line = main.slice(lineStart, main.indexOf("\n", idx));
+    const isComment = line.trim().startsWith("//") || line.trim().startsWith("*");
+    const isGatedCall = line.includes("resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)");
+    expect(isComment || isGatedCall).toBe(true);
+  }
 });

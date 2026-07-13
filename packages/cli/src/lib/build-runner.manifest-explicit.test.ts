@@ -1,0 +1,93 @@
+/**
+ * Regression test for ARCH finding #12 (PR #98, maintainer HIGH,
+ * manifest.ts:36-50):
+ *
+ * "explicit missing manifests silently fall back to defaults. A typo in
+ * --manifest can create output beneath a directory named after the missing
+ * file."
+ *
+ * `resolveBuildContext` (Stage 1 — pure planning, no filesystem writes) is
+ * where `opts.manifestPath` reaches `loadManifestWithPath` and where the
+ * resulting `manifestDir` feeds `outDir` (see build-runner.output-dir.test.ts
+ * for that half of the contract). This file pins the OTHER half: an
+ * explicit, nonexistent `--manifest` path must throw a `UsageError` here,
+ * before `runBuild` ever creates `outDir` — and the legitimate
+ * no-`--manifest`-given case (scanning `inputDir`, which may have no
+ * manifest at all) must keep silently using preset defaults exactly as
+ * before.
+ */
+import { test, expect, afterEach } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { resolveBuildContext, runBuild } from "./build-runner.ts";
+import { UsageError } from "./cli-args.ts";
+
+const dirsToClean: string[] = [];
+
+afterEach(async () => {
+  for (const d of dirsToClean.splice(0)) {
+    await rm(d, { recursive: true, force: true });
+  }
+});
+
+test("resolveBuildContext throws UsageError when --manifest points at a nonexistent path (typo repro)", async () => {
+  const projA = await mkdtemp(join(tmpdir(), "pmd-proj-typo-manifest-"));
+  dirsToClean.push(projA);
+
+  const missingManifest = join(projA, "typo.yaml");
+
+  await expect(
+    resolveBuildContext({
+      inputDir: projA,
+      format: "html",
+      manifestPath: missingManifest,
+      rawArgs: {},
+    })
+  ).rejects.toThrow(UsageError);
+
+  await expect(
+    resolveBuildContext({
+      inputDir: projA,
+      format: "html",
+      manifestPath: missingManifest,
+      rawArgs: {},
+    })
+  ).rejects.toThrow(`manifest not found: ${missingManifest}`);
+});
+
+test("runBuild rejects with UsageError before creating any output directory when --manifest is a typo'd path", async () => {
+  const projA = await mkdtemp(join(tmpdir(), "pmd-proj-typo-manifest-build-"));
+  dirsToClean.push(projA);
+
+  const missingManifest = join(projA, "typo.yaml");
+  const outDir = join(projA, "dist");
+
+  await expect(
+    runBuild({
+      inputDir: projA,
+      format: "html",
+      manifestPath: missingManifest,
+      rawArgs: {},
+    })
+  ).rejects.toThrow(UsageError);
+
+  // No output must be created — the maintainer's exact complaint was output
+  // being written beneath a directory named after the missing manifest path.
+  expect(await Bun.file(outDir).exists()).toBe(false);
+});
+
+test("resolveBuildContext with NO --manifest given still silently uses preset defaults when the project dir has no manifest file (legitimate default-discovery preserved)", async () => {
+  const projNoManifest = await mkdtemp(join(tmpdir(), "pmd-proj-no-manifest-"));
+  dirsToClean.push(projNoManifest);
+
+  const ctx = await resolveBuildContext({
+    inputDir: projNoManifest,
+    format: "html",
+    rawArgs: {},
+  });
+
+  expect(ctx.manifestDir).toBe(projNoManifest);
+  expect(ctx.config.title).toBe("Document"); // preset default, no throw
+});

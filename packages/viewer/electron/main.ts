@@ -14,6 +14,7 @@ import {
 } from "electron";
 import path from "node:path";
 import os from "node:os";
+import { randomBytes } from "node:crypto";
 import { appendFile, copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import * as fs from "node:fs";
@@ -47,7 +48,7 @@ import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors } from "./server-bridge/friendly-errors";
 import type { ConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
 import type { FsGuardHooks } from "./server-bridge/fs-guard";
-import { createPickedFilesService } from "./server-bridge/picked-files";
+import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import {
   writeRecovery as writeRecoveryStore,
   clearRecovery as clearRecoveryStore,
@@ -153,6 +154,7 @@ import {
   decideNavigation,
   decideWindowOpen,
   isTrustedIpcSender,
+  resolveDevServerUrl,
   type OriginPolicyConfig,
 } from "./navigation-policy";
 
@@ -780,7 +782,9 @@ function createWindow() {
   // so SvelteKit's client router sees the root route. (Loading /index.html
   // makes the router try to resolve a page named "index.html" and throw
   // "Not found: /index.html".)
-  const devUrl = process.env.VITE_DEV_SERVER_URL;
+  //
+  // ARCH #1 (CRITICAL): gated by resolveDevServerUrl() — null when packaged.
+  const devUrl = resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL);
   mainWindow.loadURL(devUrl || "app://local/");
   if (devUrl) {
     mainWindow.webContents.openDevTools({ mode: "detach" });
@@ -865,9 +869,18 @@ function createWindow() {
 // The adapter-node HTTP bridge (startSvelteKitServer) and the app:// protocol
 // proxy (registerAppProtocol) live in electron/sveltekit-host.ts. The privileged-
 // scheme registration stays here so it runs at its original point (before
-// app.whenReady). main.ts calls startSvelteKitServer(slog) + registerAppProtocol()
-// from whenReady below.
+// app.whenReady). main.ts calls startSvelteKitServer(slog, skAuthToken) +
+// registerAppProtocol(skAuthToken) from whenReady below.
 // ──────────────────────────────────────────────────────────────────────────
+
+// P1 review (PR #98, finding #2): a loopback bind (127.0.0.1) is not caller
+// authentication — any other local process that discovers the OS-assigned
+// port could otherwise call the privileged adapter-node API routes directly.
+// Mint a per-session random bearer token once at process start (never
+// persisted, never leaves this process except as the header
+// registerAppProtocol injects into its own proxied requests below); the
+// loopback server rejects any request that doesn't carry it.
+const skAuthToken = randomBytes(32).toString("hex");
 
 // The `VAAPI version is too old` / `MESA-LOADER` lines in the launch log are
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
@@ -936,9 +949,19 @@ initPdfExport({
 // origin that a navigation/popup bug might otherwise let load into a frame.
 // ──────────────────────────────────────────────────────────────────────────
 
-/** `will-navigate`/sender-validation config: prod app:// origin + (dev-only) Vite dev server. */
+/**
+ * `will-navigate`/sender-validation config: prod app:// origin + (dev-only)
+ * Vite dev server. ARCH review finding #1 (CRITICAL): devServerOrigin goes
+ * through resolveDevServerUrl(), which is null whenever app.isPackaged — a
+ * packaged build must never add an attacker-supplied VITE_DEV_SERVER_URL to
+ * the trusted-origin policy that guards the IPC bridge and top-frame
+ * navigation.
+ */
 function originPolicyConfig(): OriginPolicyConfig {
-  return { appOrigin: APP_ORIGIN, devServerOrigin: process.env.VITE_DEV_SERVER_URL ?? null };
+  return {
+    appOrigin: APP_ORIGIN,
+    devServerOrigin: resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL),
+  };
 }
 
 /**
@@ -1399,6 +1422,15 @@ const fsGuardImpl: FsGuardHooks = {
 // (not per-request), same as fsGuardImpl above.
 const pickedFilesImpl = createPickedFilesService();
 
+// ── save-path one-time capability (finding #4, 2026-07-13 maintainer review) ─
+// See electron/server-bridge/picked-files.ts for the full policy. The native
+// Save dialog (dialog:savePdf) registers the absolute path it itself just
+// returned; the export controller (electron/export/controller.ts) consumes
+// it before writing/renaming a PDF onto `out`. A separate instance from
+// pickedFilesImpl above — the Save dialog's results must never authorize a
+// media:importImage/fs:copyFile `src` read, and vice versa.
+const savePathsImpl = createSavePathsService();
+
 // ── Auto-sync settings (transparent-sync plan §4.3) — ARCH review #8 ────────
 // The renderer calls setAutoSync(true|false) from the Settings panel via the
 // SvelteKit server route (src/routes/api/sync/set-auto-sync — a pure settings
@@ -1468,6 +1500,7 @@ registerHostServices({
   prefs: prefsHooksImpl,
   recovery: recoveryHooksImpl,
   remote: remoteHooksImpl,
+  savePaths: savePathsImpl,
   sync: syncSettingsHooksImpl,
   updater: updaterHooksImpl,
   vcs: vcsHooksImpl,
@@ -1550,6 +1583,7 @@ const exportController = new ExportController({
   isExportCanceledError: (e) => e instanceof ExportCanceledError,
   rename: (from, to) => rename(from, to),
   rm: (p) => rm(p, { force: true }),
+  consumeSavePath: (absPath) => savePathsImpl.consume(absPath),
 });
 
 secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
@@ -1653,12 +1687,15 @@ app.whenReady().then(async () => {
   createSplashWindow();
 
   updateSplash("Preparing the interface…", 18);
-  // In dev mode (VITE_DEV_SERVER_URL set) the SvelteKit dev server is already
-  // running externally — skip the local handler.js launch. In prod, start the
-  // adapter-node HTTP server and wire it to the app:// protocol.
-  if (!process.env.VITE_DEV_SERVER_URL) {
+  // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
+  // server is already running externally — skip the local handler.js launch.
+  // In prod (or a packaged build where VITE_DEV_SERVER_URL is set by an
+  // attacker — ARCH review finding #1, CRITICAL — resolveDevServerUrl()
+  // ignores it), start the adapter-node HTTP server and wire it to the
+  // app:// protocol so the window only ever loads local content.
+  if (!resolveDevServerUrl(app.isPackaged, process.env.VITE_DEV_SERVER_URL)) {
     try {
-      await startSvelteKitServer(slog);
+      await startSvelteKitServer(slog, skAuthToken);
     } catch (err) {
       console.error("[sk-server] failed to start SvelteKit server:", err);
       // Non-fatal (ARCH review #28): registerAppProtocol still comes up and
@@ -1677,7 +1714,7 @@ app.whenReady().then(async () => {
       );
     }
   }
-  registerAppProtocol();
+  registerAppProtocol(skAuthToken);
   registerUrlPreviewHeaderWatch();
   updateSplash("Loading print-md…", 28);
   createWindow();

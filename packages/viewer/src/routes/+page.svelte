@@ -1179,8 +1179,16 @@
    */
 
   /**
-   * Called BEFORE the rename API call fires, only when `path` is the open
-   * file. Must run BEFORE the rename, not after: the rename call only moves
+   * Called BEFORE the rename API call fires, when `path` (the item being
+   * renamed) IS the open file OR is an ancestor DIRECTORY of it — `path` can
+   * name a folder, and renaming a folder moves everything nested under it,
+   * including a dirty open file several levels down. Symmetric with
+   * `onTreeFileRenamed`/`onTreeFileDeleted` below, which already use
+   * `isPathAtOrUnder` for exactly this reason; an exact-match-only check here
+   * would skip the flush for a folder rename and let the edit be carried
+   * away, unsaved, under the buffer's still-old path.
+   *
+   * Must run BEFORE the rename, not after: the rename call only moves
    * whatever is on disk right now, so a flush AFTER renaming would stat the
    * buffer's still-old `filePath`, find it missing, and (per
    * EditorBuffer.externalChangeBeforeSave's own safety check) refuse to
@@ -1190,7 +1198,7 @@
    * dirty, so it's safe to await unconditionally.
    */
   async function onTreeBeforeRename(path: string): Promise<void> {
-    if (buffer && buffer.filePath === path) {
+    if (buffer && buffer.filePath && isPathAtOrUnder(buffer.filePath, path)) {
       await buffer.flush().catch(() => {});
     }
   }

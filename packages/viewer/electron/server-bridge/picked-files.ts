@@ -1,40 +1,53 @@
 /**
- * One-time "picked file" capability (P1 review on `media:importImage` and
- * `fs:copyFile`).
+ * One-time "picked path" capability (P1 review on `media:importImage` and
+ * `fs:copyFile`; extended for finding #4 of the 2026-07-13 maintainer review
+ * to cover `api:build`'s PDF `out` path).
  *
- * Both of those routes accept a `src` path that is DELIBERATELY allowed to
- * point anywhere on disk — the whole point is copying a file the author
- * picked from outside the project INTO it. Before this module, the only
- * thing standing behind that was a docstring claiming `src` "came from a
- * native file dialog" — nothing actually enforced it. Any same-origin script
- * (a compromised plugin, a preview XSS) could POST an arbitrary absolute
- * `src` straight to either route, have it copied into the open project, then
- * read it back out through the scoped `fs:readFile` route: an
- * unscoped-source read primitive hiding behind two routes whose docstrings
- * merely asserted honesty.
+ * `media:importImage` and `fs:copyFile` accept a `src` path that is
+ * DELIBERATELY allowed to point anywhere on disk — the whole point is
+ * copying a file the author picked from outside the project INTO it. Before
+ * this module, the only thing standing behind that was a docstring claiming
+ * `src` "came from a native file dialog" — nothing actually enforced it. Any
+ * same-origin script (a compromised plugin, a preview XSS) could POST an
+ * arbitrary absolute `src` straight to either route, have it copied into the
+ * open project, then read it back out through the scoped `fs:readFile`
+ * route: an unscoped-source read primitive hiding behind two routes whose
+ * docstrings merely asserted honesty.
  *
- * This module is the fix, implementing the maintainer's "exchange the picker
- * result for a one-time opaque capability" option:
+ * `api:build`'s `out` path has the mirror-image shape: it's a WRITE target
+ * that is deliberately allowed to point anywhere on disk (the whole point of
+ * "Save PDF as…" is letting the author choose a destination), and the export
+ * controller atomically renames the finished PDF onto it — an arbitrary-file
+ * overwrite primitive if `out` were trusted from the renderer alone.
+ *
+ * Both are fixed the same way — the maintainer's "exchange the picker/dialog
+ * result for a one-time opaque capability" option — via the two factories
+ * below, which share the same bounded one-time-token set implementation
+ * (`createCapabilitySet`):
  *
  *   - `dialog:pickImageFile` / `dialog:pickImageFiles` REGISTER every
- *     absolute path the native dialog itself just returned (see those
- *     routes' `call`).
- *   - `media:importImage` / `fs:copyFile` must CONSUME (one-time) a `src`
- *     from that set before copying anything from OUTSIDE the project — a
- *     `src` that wasn't registered by a recent pick (or was already
- *     consumed) is rejected with 403.
+ *     absolute path the native OPEN dialog itself just returned (see those
+ *     routes' `call`); `media:importImage` / `fs:copyFile` must CONSUME
+ *     (one-time) a `src` from that set before copying anything from OUTSIDE
+ *     the project — a `src` that wasn't registered by a recent pick (or was
+ *     already consumed) is rejected with 403.
+ *   - `dialog:savePdf` REGISTERS the absolute path the native SAVE dialog
+ *     itself just returned; `api:build`'s export controller must CONSUME
+ *     that path as `out` before writing/renaming anything onto it — an
+ *     `out` the Save dialog never returned (or one already consumed) is
+ *     rejected.
  *
- * The picker result still round-trips through the renderer (the SPA calls
- * `api.dialog.pickImageFile()`, gets a path back, and later passes that same
- * path to `api.media.importImage()`) — that's fine, because the HOST is what
- * recorded the path in the first place. A script handing back a path it was
- * never given doesn't authorize anything; only a path this process's own
- * dialog call produced does.
+ * Either result still round-trips through the renderer (the SPA calls the
+ * dialog route, gets a path back, and later passes that same path to the
+ * follow-up route) — that's fine, because the HOST is what recorded the path
+ * in the first place. A script handing back a path it was never given
+ * doesn't authorize anything; only a path this process's own dialog call
+ * produced does.
  *
- * Bounded on two axes so a script that just spams the picker route can't
- * grow this without limit: a max entry count (oldest un-consumed pick
- * evicted first) and a TTL (an un-consumed pick expires — the user can
- * simply pick again).
+ * Each capability set is bounded on two axes so a script that just spams the
+ * dialog route can't grow it without limit: a max entry count (oldest
+ * un-consumed entry evicted first) and a TTL (an un-consumed entry expires —
+ * the user can simply re-open the dialog).
  */
 import path from "node:path";
 import { getHostServices } from "./host-services";
@@ -59,6 +72,35 @@ export interface PickedFilesHooks {
 /** The live `PickedFilesHooks` slice of the collapsed host object (ARCH #31), or null before `registerHostServices` runs. */
 export function getPickedFilesHooks(): PickedFilesHooks | null {
   return getHostServices()?.pickedFiles ?? null;
+}
+
+/**
+ * One-time "save path" capability (finding #4, 2026-07-13 maintainer
+ * review): the write-side mirror of {@link PickedFilesHooks}, guarding
+ * `api:build`'s `out` instead of `media:importImage`/`fs:copyFile`'s `src`.
+ * Kept as a distinct interface/instance (not a reuse of `pickedFiles`) so a
+ * path a native OPEN dialog returned (source-read intent) can never
+ * authorize a WRITE via `api:build`, and vice versa — the two dialogs answer
+ * different questions and their capabilities stay in separate pools.
+ */
+export interface SavePathHooks {
+  /**
+   * Record that the native SAVE dialog just returned this absolute path,
+   * making it eligible for exactly one later {@link SavePathHooks.consume}.
+   */
+  register(absPath: string): void;
+  /**
+   * Authorize AND consume `absPath`. Returns `true` — removing the entry, so
+   * a second call with the same path returns `false` — if `absPath` was
+   * registered by a recent, not-yet-consumed Save dialog result; `false`
+   * otherwise (never chosen, already consumed, or expired past the TTL).
+   */
+  consume(absPath: string): boolean;
+}
+
+/** The live `SavePathHooks` slice of the collapsed host object (ARCH #31), or null before `registerHostServices` runs. */
+export function getSavePathsHooks(): SavePathHooks | null {
+  return getHostServices()?.savePaths ?? null;
 }
 
 export interface PickedFilesServiceOptions {
@@ -87,12 +129,17 @@ const DEFAULT_MAX_ENTRIES = 64;
 const DEFAULT_TTL_MS = 10 * 60 * 1000;
 
 /**
- * Build a real {@link PickedFilesHooks} implementation: an in-memory
- * allow-set, process-lifetime only — never persisted, which is fine, since
- * an un-consumed pick surviving a restart isn't a real use case (the user
- * just re-picks).
+ * Shared bounded one-time-token set behind both {@link createPickedFilesService}
+ * and {@link createSavePathsService} — the register/consume/eviction/TTL
+ * mechanics are identical for both capability directions (read-source vs.
+ * write-destination); only the public method arity differs (`register`
+ * takes a batch for multi-select picks, a single path for one Save dialog
+ * result), which each factory adapts below. An in-memory allow-set,
+ * process-lifetime only — never persisted, which is fine, since an
+ * un-consumed entry surviving a restart isn't a real use case (the user just
+ * re-picks / re-chooses).
  */
-export function createPickedFilesService(options: PickedFilesServiceOptions = {}): PickedFilesHooks {
+function createCapabilitySet(options: PickedFilesServiceOptions = {}): PickedFilesHooks {
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
   const now = options.now ?? Date.now;
@@ -117,7 +164,7 @@ export function createPickedFilesService(options: PickedFilesServiceOptions = {}
   return {
     register(paths) {
       pruneExpired();
-      // A single dialog pick can legitimately return more paths than
+      // A single dialog result can legitimately return more paths than
       // maxEntries (multi-select import) — the eviction floor for THIS
       // batch is never below the batch's own length, so the batch can't
       // self-evict. Older, unrelated entries from earlier picks are still
@@ -140,6 +187,30 @@ export function createPickedFilesService(options: PickedFilesServiceOptions = {}
       if (!entries.has(key)) return false;
       entries.delete(key);
       return true;
+    },
+  };
+}
+
+/** Build a real {@link PickedFilesHooks} implementation — see {@link createCapabilitySet}. */
+export function createPickedFilesService(options: PickedFilesServiceOptions = {}): PickedFilesHooks {
+  return createCapabilitySet(options);
+}
+
+/**
+ * Build a real {@link SavePathHooks} implementation — see
+ * {@link createCapabilitySet}. A separate underlying set from
+ * `createPickedFilesService` (a fresh `createCapabilitySet()` call, not a
+ * shared instance): the SAVE dialog's results must never authorize an
+ * `media:importImage`/`fs:copyFile` `src` read, and vice versa.
+ */
+export function createSavePathsService(options: PickedFilesServiceOptions = {}): SavePathHooks {
+  const inner = createCapabilitySet(options);
+  return {
+    register(absPath) {
+      inner.register([absPath]);
+    },
+    consume(absPath) {
+      return inner.consume(absPath);
     },
   };
 }

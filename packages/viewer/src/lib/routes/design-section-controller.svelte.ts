@@ -161,21 +161,36 @@ export class DesignSectionController {
   }
 
   private async commitPendingTokens(): Promise<void> {
-    if (!this.cssPath || this.tokenPending.size === 0) return;
+    // Capture the target path BEFORE any await (finding #10): a concurrent
+    // loadDesign() — a stylesheet/theme switch — can reassign `this.cssPath`
+    // while we're parked on the read below. Reading `this.cssPath` again after
+    // the await for the write would fold the OLD sheet's tokens into the NEWLY
+    // selected file, corrupting it. Bind one local `cssPath` and read AND write
+    // it, so a batch always lands on the exact sheet its edits came from.
+    const cssPath = this.cssPath;
+    if (!cssPath || this.tokenPending.size === 0) return;
     // Drain the coalesced edits into one batch, then read → fold → write once.
     const updates: TokenUpdate[] = [...this.tokenPending.entries()].map(
       ([name, value]) => ({ name, value }),
     );
     this.tokenPending.clear();
     try {
-      const css = await this.deps.readFile(this.cssPath);
-      await this.deps.writeFile(this.cssPath, applyTokenUpdates(css, updates));
-      if (this.tokenPending.size === 0) this.designSaveStatus = "saved";
+      const css = await this.deps.readFile(cssPath);
+      await this.deps.writeFile(cssPath, applyTokenUpdates(css, updates));
+      // Only advance the badge if the active sheet is still the one we wrote;
+      // if a switch happened mid-flight, the badge belongs to the new sheet
+      // (loadDesign already reset it to "idle") — don't clobber it with "saved".
+      if (this.cssPath === cssPath && this.tokenPending.size === 0)
+        this.designSaveStatus = "saved";
     } catch (e) {
       // Re-queue the failed batch (unless a newer edit already superseded it) so
-      // a later flush can retry, and surface the error.
-      for (const u of updates) if (!this.tokenPending.has(u.name)) this.tokenPending.set(u.name, u.value);
-      this.designSaveStatus = "idle";
+      // a later flush can retry, and surface the error — but only while we're
+      // still on the same sheet, so a failed OLD-sheet write can't leak its
+      // edits into the pending queue of a sheet the user just switched to.
+      if (this.cssPath === cssPath) {
+        for (const u of updates) if (!this.tokenPending.has(u.name)) this.tokenPending.set(u.name, u.value);
+        this.designSaveStatus = "idle";
+      }
       this.deps.onError?.(`Couldn't save changes: ${e instanceof Error ? e.message : String(e)}`);
     }
   }

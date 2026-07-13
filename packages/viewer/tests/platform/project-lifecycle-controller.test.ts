@@ -385,13 +385,17 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
   expect(ctrl.failedOpenDir).toBe("/broken");
 });
 
-test("a supersession landing DURING the failed-open catch's flush must not clobber the winning open's state", async () => {
-  // The epoch guard must survive the newly-added await: if a second open wins
-  // WHILE the first (failing) open's catch is still awaiting flushBuffer, the
-  // stale catch's re-check must bail instead of resetting the winner's state
-  // or reporting a stale error.
+test("a supersession landing DURING the outgoing-buffer pre-flush (before startPreviewHost) must not clobber the winning open's state", async () => {
+  // #7 fix: the outgoing project's buffer is now flushed BEFORE
+  // startPreviewHost is called (startPreviewHost is what moves the host's fs
+  // authorization root — see the fix's comment at the call site). The epoch
+  // guard must survive that await: if a second open wins WHILE the first
+  // open is still parked awaiting its pre-flush, the stale first open's
+  // re-check (right after the flush) must bail — it must never reach
+  // startPreviewHost, reset a buffer, or touch the winner's state.
   const flushGate = deferred<void>();
   const resetExtras = spy<[]>();
+  const resetBuffer = spy<[]>();
   let startCall = 0;
   let flushCall = 0;
   const ctrl = new ProjectLifecycleController({
@@ -399,9 +403,7 @@ test("a supersession landing DURING the failed-open catch's flush must not clobb
     desktopRequiredMessage: "needs desktop",
     startPreviewHost: () => {
       startCall++;
-      return startCall === 1
-        ? Promise.reject(new Error("boom"))
-        : Promise.resolve({ url: "preview://ok", title: "Ok" });
+      return Promise.resolve({ url: "preview://ok", title: "Ok" });
     },
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: () => Promise.resolve(),
@@ -420,16 +422,16 @@ test("a supersession landing DURING the failed-open catch's flush must not clobb
     setViewModeSetting: () => {},
     setPendingRestore: () => {},
     resetFirstRenderGate: () => {},
-    // ONLY the first invocation (the first open's catch) blocks on flushGate,
-    // resolved explicitly below after the second (winning) open has already
-    // completed. The second open's own mid-pipeline flush (a normal, unrelated
-    // buffer flush) resolves immediately so it isn't entangled with the
-    // stale catch's timing.
+    // ONLY the first invocation (the first open's pre-flush) blocks on
+    // flushGate, resolved explicitly below after the second (winning) open
+    // has already completed. The second open's own pre-flush (call #2)
+    // resolves immediately so it isn't entangled with the stale first
+    // open's timing.
     flushBuffer: () => {
       flushCall++;
       return flushCall === 1 ? flushGate.promise : Promise.resolve();
     },
-    resetBuffer: () => {},
+    resetBuffer: () => resetBuffer(),
     ensureEditorFile: () => {},
     startFolderWatch: () => {},
     isLandingVisible: () => false,
@@ -442,25 +444,30 @@ test("a supersession landing DURING the failed-open catch's flush must not clobb
     resetExtras: () => resetExtras(),
   });
 
-  const first = ctrl.startFolderPreview("/broken");
-  // Let the first open run past classify/startPreviewHost's rejection and
-  // into the catch, where it is now parked awaiting flushGate.
+  const first = ctrl.startFolderPreview("/first");
+  // Let the first open run past classify and into the pre-flush block, where
+  // it is now parked awaiting flushGate — BEFORE it has ever reached
+  // startPreviewHost, exactly the ordering the #7 fix requires.
   await flush();
+  expect(startCall).toBe(0);
 
-  const second = ctrl.startFolderPreview("/ok");
+  const second = ctrl.startFolderPreview("/second");
   await second;
   await flush();
-  expect(ctrl.currentDir).toBe("/ok");
+  expect(ctrl.currentDir).toBe("/second");
 
   // Now let the stale first open's flush resolve.
   flushGate.resolve();
   await first;
   await flush();
 
-  expect(startCall).toBe(2);
-  // The stale catch must not stomp the winner's state, report a stale error,
-  // or run resetWorkspace()/resetExtras() at all.
-  expect(ctrl.currentDir).toBe("/ok");
+  // The stale first open's post-flush supersession check must bail: it must
+  // never call resetBuffer or startPreviewHost for /first, and must not
+  // stomp the winner's state, report a stale error, or run
+  // resetWorkspace()/resetExtras() at all.
+  expect(startCall).toBe(1); // only /second ever reached startPreviewHost
+  expect(resetBuffer.calls.length).toBe(1); // only /second's reset
+  expect(ctrl.currentDir).toBe("/second");
   expect(ctrl.openError).toBeNull();
   expect(ctrl.failedOpenDir).toBeNull();
   expect(resetExtras.calls.length).toBe(0);
@@ -493,6 +500,75 @@ test("a superseded open's failure must not clobber the winning open's state", as
   // The stale failure must not stomp the winner's state.
   expect(ctrl.currentDir).toBe("/ok");
   expect(ctrl.openError).toBeNull();
+});
+
+// ── Project switch flush-before-root-move (finding #7) ──────────────────────
+
+test("startFolderPreview: switching projects flushes the OUTGOING project's dirty buffer BEFORE startPreviewHost moves the authorization root", async () => {
+  // electron/preview/controller.ts's runOpen sets `activePreview` to the NEW
+  // project the instant `api:preview` (this controller's `startPreviewHost`)
+  // is dispatched — and `projectRoots()` (electron/server-bridge/fs-guard.ts)
+  // is sourced SOLELY from `activePreview`. If the outgoing project's dirty
+  // buffer isn't flushed to disk until AFTER startPreviewHost fires, the
+  // flush's write lands outside the (already-moved) authorization root and is
+  // rejected 403 by requireWithinProjectRoot — silently discarding the edit
+  // when resetBuffer() then wipes the buffer regardless. The flush must
+  // complete before startPreviewHost is ever called.
+  const order: string[] = [];
+  const ctrl = new ProjectLifecycleController({
+    isDesktop: () => true,
+    desktopRequiredMessage: "needs desktop",
+    startPreviewHost: () => {
+      order.push("startPreviewHost");
+      return Promise.resolve({ url: "preview://b", title: "B" });
+    },
+    stopPreviewHost: () => Promise.resolve({}),
+    adoptFolder: () => Promise.resolve(),
+    listDir: () => Promise.resolve([]),
+    invalidateDiscoveredProjects: () => {},
+    projectSession: {
+      repoRoot: null,
+      books: [],
+      activeBookDir: null,
+      reset: () => {},
+      classify: () => Promise.resolve(),
+    },
+    clearSyncDiag: () => {},
+    pageNav: { totalPages: 0, currentPage: 1 },
+    zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
+    setViewModeSetting: () => {},
+    setPendingRestore: () => {},
+    resetFirstRenderGate: () => {},
+    flushBuffer: () => {
+      order.push("flush-start");
+      // Model a real async disk write (e.g. EditorBuffer.flush's doSave)
+      // completing on a later microtask, not synchronously.
+      return Promise.resolve().then(() => {
+        order.push("flush-end");
+      });
+    },
+    resetBuffer: () => order.push("resetBuffer"),
+    ensureEditorFile: () => {},
+    startFolderWatch: () => {},
+    isLandingVisible: () => false,
+    setPendingRecoveryScanDir: () => {},
+    scanForRecovery: () => {},
+    dismissLanding: () => {},
+    toast: () => null,
+    clearStaleProjectState: () => {},
+    onMissingSharedAssets: () => {},
+    resetExtras: () => {},
+  });
+
+  // Project A is already open with (implicitly) a dirty editor buffer.
+  ctrl.currentDir = "/projA";
+
+  await ctrl.startFolderPreview("/projB");
+
+  // The outgoing buffer's flush must fully settle — and the buffer must be
+  // reset — before startPreviewHost (which moves the host's authorization
+  // root to /projB) is ever invoked.
+  expect(order).toEqual(["flush-start", "flush-end", "resetBuffer", "startPreviewHost"]);
 });
 
 // ── setUpAsBook ───────────────────────────────────────────────────────────────
