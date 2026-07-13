@@ -74,7 +74,7 @@ import {
   writeProjectState,
   type ProjectStateMap,
 } from "./project-state";
-import { electronTokenStore } from "./credential-store";
+import { electronTokenStore, onCredentialChange } from "./credential-store";
 import {
   setRecoveryBridgeWindow,
   handleConfirmResponse,
@@ -87,6 +87,7 @@ import {
   AutoSyncOrchestrator,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
+import { unsyncedStateFor } from "./auto-sync/unsynced-status";
 import {
   ExportController,
   type ExportBuildArgs,
@@ -475,8 +476,19 @@ function flushAutoSnapshot(): Promise<void> | undefined {
 // auto-sync module state of its own. The header comment above documents the
 // invariants the orchestrator enforces.
 
+/**
+ * Last emitted status per project dir (resolved-path keyed) — the queryable
+ * counterpart to the push channel. "sync:status" is fire-and-forget with no
+ * replay, so a renderer that subscribes AFTER an emit (project open races the
+ * pill's mount; one-shot "connect"/"local" states) used to strand on stale or
+ * blank status forever. The pill now seeds itself from `sync:getStatus`
+ * (below) right after subscribing.
+ */
+const lastSyncStatusByDir = new Map<string, SyncStatusPayload>();
+
 /** Emit a sync status event to the renderer, safe to call when no window exists. */
 function emitSyncStatus(payload: SyncStatusPayload): void {
+  lastSyncStatusByDir.set(path.resolve(payload.projectDir), payload);
   mainWindow?.webContents.send("sync:status", payload);
 }
 
@@ -577,6 +589,43 @@ function stopFolderWatch(): void {
 function startFolderWatch(dirPath: string): void {
   folderWatch.start(dirPath);
 }
+
+// ── Credential changes drive the sync state machine ──────────────────────────
+// The orchestrator's inputs (is a credential stored for the project's remote?)
+// must not change behind its back: when the user connects or disconnects a
+// host, re-diagnose the OPEN project and either start syncing right away
+// (connect → the pill flips to "Saving changes…" within seconds — the reward
+// for connecting used to be an unchanged status until some later tick) or
+// re-emit the honest not-syncing state (disconnect → "connect"/"local").
+onCredentialChange((host) => {
+  void (async () => {
+    try {
+      const dir = folderWatch.getWatchedDir();
+      if (!dir) return;
+      const lib = await loadLib();
+      const source = await lib.detectProjectSource(dir);
+      if (source.type !== "local-git-folder") return;
+      const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: electronTokenStore });
+      // Only react when the changed credential is the one this project's
+      // remote resolves to — a publish-platform key (itch.io, `host#account`
+      // compound keys) must not trigger a git sync.
+      if (!diag.remoteHost || host.trim().toLowerCase() !== diag.remoteHost) return;
+      if (diag.canSync) {
+        void autoSync.armInterval(dir);
+        void autoSync.run(dir);
+      } else {
+        emitSyncStatus({
+          state: unsyncedStateFor(diag),
+          projectDir: dir,
+          lastSyncAt: autoSync.getLastSyncAt(dir),
+          logFile: operationLogPath(path.basename(dir)),
+        });
+      }
+    } catch (e) {
+      console.warn("[credential-change] sync re-diagnosis failed (non-fatal):", e);
+    }
+  })();
+});
 
 // Renderer pushes its pending-save state here so the window `close` gate can
 // flush before quitting. `flushResolve` is set while main awaits the renderer's
@@ -1008,6 +1057,16 @@ secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
     );
   }
   startFolderWatch(dirPath);
+  // Arm the periodic safety-sync interval NOW — the watcher is live, so
+  // armInterval's watched-dir guard finally holds. The open-time arm
+  // (PreviewOpenController.runOpen → armSyncInterval) fires BEFORE the
+  // renderer calls fs:watchFolder, so its guard saw the previous project (or
+  // null) and silently no-opped; and even a lucky arm was wiped by
+  // FolderWatcher.start()'s stop() → onStop → autoSync.cancelAll() just now.
+  // Net effect pre-fix: a view-only session NEVER pulled teammate changes —
+  // the interval only ever started after the first local edit. (Reopening the
+  // SAME dir skipped the wipe, which is why sync seemed intermittent.)
+  void autoSync.armInterval(folderWatch.getWatchedDir() ?? path.resolve(dirPath));
 });
 
 secureHandle("fs:unwatchFolder", async (_e, dirPath: string): Promise<void> => {
@@ -1463,6 +1522,10 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
       autoSync.cancelTimer(watchedDir);
     }
     return { ok: true, autoSync: enabled };
+  },
+  getStatus: async (projectDir) => {
+    if (typeof projectDir !== "string" || !projectDir) return null;
+    return lastSyncStatusByDir.get(path.resolve(projectDir)) ?? null;
   },
 };
 

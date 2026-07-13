@@ -8,11 +8,12 @@
  * folder that isn't itself a book can retarget before any content surface
  * opens — see the C2 note below), whose chain never rejects and
  * populates `projectCapabilities`, derives `projectSubPath` (a book's path
- * relative to its repo root; "" when the book IS the repo root), persists the
- * re-detected source hint via ViewerPrefs, re-notifies the History tab, and —
- * only when the project is actually syncable — refreshes the remote
- * diagnosis. The template reads the public rune getters
- * (`projectCapabilities` / `projectSubPath`).
+ * relative to its repo root; "" when the book IS the repo root), and persists
+ * the re-detected source hint via ViewerPrefs. The template reads the public
+ * rune getters (`projectCapabilities` / `projectSubPath`). The remote
+ * diagnosis is deliberately NOT refreshed from here — the lifecycle controller
+ * does it after `currentDir` is assigned, so the SyncController's stale-guard
+ * can actually accept the result (see the NOTE in classify()).
  *
  * Single-owner discipline mirrors `SyncController`
  * (`sync-controller.svelte.ts`) and `PageNavController`
@@ -20,8 +21,7 @@
  * intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the host classify round-trip, the ViewerPrefs writer, and the
- * component fan-out callback (`refreshSyncDiag` → the SyncController).
+ * (§8 / ADR 0004): the host classify round-trip and the ViewerPrefs writer.
  * `ProjectCapabilities` is a type-only import — ZERO `node:*` / lib value
  * imports.
  *
@@ -81,8 +81,6 @@ export interface ProjectSessionDeps {
   classifyProject: (dir: string) => Promise<ProjectClassification>;
   /** Persist the re-detected source hint (fire-and-forget on the component side). */
   setViewerPrefs: (prefs: Record<string, unknown>) => Promise<unknown>;
-  /** Refresh the remote diagnosis for a syncable project (SyncController). */
-  refreshSyncDiag: (dir: string) => void;
 }
 
 export class ProjectSessionController {
@@ -157,11 +155,15 @@ export class ProjectSessionController {
         this.books = result.books ?? [];
         this.activeBookDir = resolveActiveBookDir(dir, result.repoRoot, this.books);
         this.deps.setViewerPrefs({ projectSource: result.source }).catch(() => {});
-        // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only when
-        // the diagnosis says the project is actually syncable. Local reads only.
-        if (result.capabilities.canSync) {
-          this.deps.refreshSyncDiag(dir);
-        }
+        // NOTE: the remote diagnosis (SyncController.refreshSyncDiag) is NOT
+        // fired from here anymore. It used to be, and was silently discarded
+        // on essentially every open: refreshSyncDiag's stale-guard compares
+        // against lifecycle.currentDir, which is only assigned AFTER the
+        // (seconds-long) preview start — while the diagnosis (millisecond fs
+        // reads) resolved first and failed the compare. Worse, it was keyed to
+        // the PICKED dir while currentDir becomes the retargeted activeBookDir.
+        // The lifecycle controller now refreshes it right after currentDir is
+        // assigned, keyed to the same targetDir (see openFolder).
       })
       .catch(() => {
         if (gen !== this.classifyGen) return;

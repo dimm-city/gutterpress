@@ -79,6 +79,7 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   SyncOutcome,
+  SyncStatus,
   CloneRepositoryArgs,
   ResolveSyncConflictsArgs,
   UpdaterStatus,
@@ -459,6 +460,16 @@ export const api = {
      */
     setAutoSync: (enabled: boolean) =>
       post<{ ok: boolean; autoSync: boolean }>('/api/sync/set-auto-sync', { enabled }),
+    /**
+     * The last sync status the host emitted for a project, or null. The
+     * queryable counterpart to the fire-and-forget onSyncStatus push channel —
+     * the status pill seeds itself from this right after subscribing so a
+     * subscription that lands after an emit (project open racing the pill's
+     * mount; the one-shot "connect"/"local" states) never strands on
+     * blank/stale status.
+     */
+    getStatus: (projectDir: string) =>
+      post<SyncStatus | null>('/api/sync/status', { projectDir }),
   },
 
   vcs: {

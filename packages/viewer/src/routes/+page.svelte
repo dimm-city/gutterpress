@@ -378,14 +378,15 @@
 
   // ── Project session capability state (#12) ───────────────────────────────────
   // The classification wiring (source detection → capabilities → subPath →
-  // prefs hint → sync gate) lives in the ProjectSessionController (Phase 5c).
-  // The component reset()s it and fires classify(dir) on folder open, and
-  // reads its rune getters. Host coupling injected (§8): the classify
-  // round-trip, the ViewerPrefs writer, and the SyncController fan-out.
+  // prefs hint) lives in the ProjectSessionController (Phase 5c). The
+  // component reset()s it and fires classify(dir) on folder open, and reads
+  // its rune getters. Host coupling injected (§8): the classify round-trip
+  // and the ViewerPrefs writer. The remote-diagnosis refresh moved to the
+  // lifecycle controller (after currentDir is assigned) — see its
+  // refreshSyncDiag dep below.
   const projectSession = new ProjectSessionController({
     classifyProject: (dir) => api.app.classifyProject(dir),
     setViewerPrefs: (prefs) => api.app.setViewerPrefs(prefs),
-    refreshSyncDiag: (dir) => void syncController.refreshSyncDiag(dir),
   });
 
   // ── Project open/close lifecycle (Phase 5d, UX H5 / ARCH #10) ────────────────
@@ -414,6 +415,7 @@
     clearSyncDiag: () => {
       syncController.syncDiag = null;
     },
+    refreshSyncDiag: (dir) => void syncController.refreshSyncDiag(dir),
     pageNav,
     zoomView,
     setViewModeSetting: (mode) => settings.set({ preview: { viewMode: mode } }),
@@ -2793,6 +2795,7 @@
     onSwitchBook={(path) => void switchBook(path)}
     onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
+    onConnectOnline={onSyncReconnect}
     onConflict={(files, localId, remoteId) => syncController.onPillConflict(files, localId, remoteId)}
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}

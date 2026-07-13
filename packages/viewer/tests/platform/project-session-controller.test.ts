@@ -34,7 +34,6 @@ interface Harness {
   ctrl: ProjectSessionController;
   classify: Spy<[string]> & { next: ClassifyResult; reject: boolean };
   setViewerPrefs: Spy<[Record<string, unknown>]>;
-  refreshSyncDiag: Spy<[string]>;
 }
 
 function makeCaps(over: Partial<Record<string, boolean>> = {}) {
@@ -45,7 +44,6 @@ function makeCaps(over: Partial<Record<string, boolean>> = {}) {
     canSnapshot: true,
     canViewHistory: true,
     canRestoreSnapshot: true,
-    canSync: false,
     authManagedByApp: false,
     ...over,
   };
@@ -63,16 +61,14 @@ function makeHarness(): Harness {
       : Promise.resolve(classify.next);
   };
   const setViewerPrefs = spy<[Record<string, unknown>]>();
-  const refreshSyncDiag = spy<[string]>();
   const ctrl = new ProjectSessionController({
     classifyProject,
     setViewerPrefs: (p) => {
       setViewerPrefs(p);
       return Promise.resolve();
     },
-    refreshSyncDiag: (d) => refreshSyncDiag(d),
   });
-  return { ctrl, classify, setViewerPrefs, refreshSyncDiag };
+  return { ctrl, classify, setViewerPrefs };
 }
 
 test("reset clears all capability session state", () => {
@@ -95,7 +91,7 @@ test("reset clears all capability session state", () => {
 test("classify: local-git-folder subfolder populates subPath + persists source", async () => {
   const h = makeHarness();
   const source = { type: "local-git-folder", subPath: "books/one" };
-  const caps = makeCaps({ canSync: false });
+  const caps = makeCaps();
   h.classify.next = { source, capabilities: caps };
 
   h.ctrl.classify("/proj");
@@ -105,8 +101,6 @@ test("classify: local-git-folder subfolder populates subPath + persists source",
   expect(h.ctrl.projectCapabilities).toEqual(caps);
   expect(h.ctrl.projectSubPath).toBe("books/one");
   expect(h.setViewerPrefs.calls).toEqual([[{ projectSource: source }]]);
-  // canSync false → no diagnosis refresh.
-  expect(h.refreshSyncDiag.calls.length).toBe(0);
 });
 
 test("classify: local-git-folder repo root has an empty subPath", async () => {
@@ -260,15 +254,12 @@ test("classify: switching to a sibling book (re-classify at its path) keeps repo
   expect(h.ctrl.books).toEqual(books);
 });
 
-test("classify: canSync capability triggers a scoped diagnosis refresh", async () => {
-  const h = makeHarness();
-  h.classify.next = { source: { type: "local-git-folder" }, capabilities: makeCaps({ canSync: true }) };
+// The remote-diagnosis refresh deliberately does NOT fire from classify():
+// it used to, and the SyncController's stale-guard (which compares against
+// lifecycle.currentDir — assigned only AFTER the preview host starts)
+// discarded the result on every open. The lifecycle controller now refreshes
+// it after currentDir is assigned — see project-lifecycle-controller.
 
-  h.ctrl.classify("/proj");
-  await flush();
-
-  expect(h.refreshSyncDiag.calls).toEqual([["/proj"]]);
-});
 
 test("classify: a rejected classification clears capabilities (never blocks preview)", async () => {
   const h = makeHarness();

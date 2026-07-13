@@ -10,7 +10,7 @@ import * as fs from "node:fs";
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
-import { detectProjectSource } from "../project-source.ts";
+import { detectProjectSource, syncRemoteFor } from "../project-source.ts";
 import {
   gitScopeFor,
   hasPendingChanges,
@@ -18,6 +18,7 @@ import {
   snapshotWorkingTreeUnlocked,
 } from "../source-provider.ts";
 import {
+  credentialHostKey,
   extractUrlCredential,
   type HostCredential,
   type TokenStore,
@@ -72,8 +73,10 @@ export async function resolveTransport(
   dir: string,
   options: { credential?: HostCredential; tokenStore?: TokenStore },
 ): Promise<RemoteTransport> {
-  const remotes = await git.listRemotes({ fs, dir });
-  const origin = remotes.find((r) => r.remote === "origin") ?? remotes[0];
+  // The ONE remote-resolution rule, shared with detectProjectSource
+  // (syncRemoteFor) — "which remote / is there a remote" must have a single
+  // answer across detection, diagnosis, and this transport.
+  const origin = await syncRemoteFor(dir);
   if (!origin?.url) throw new Error(MSG_NO_REMOTE);
 
   const { cleanUrl, credential: urlCredential } = extractUrlCredential(origin.url);
@@ -84,9 +87,10 @@ export async function resolveTransport(
     throw new Error(MSG_SSH_REMOTE);
   }
   if (!/^https?:$/.test(parsed.protocol)) throw new Error(MSG_SSH_REMOTE);
-  const host = parsed.port
-    ? `${parsed.hostname}:${parsed.port}`.toLowerCase()
-    : parsed.hostname.toLowerCase();
+  // The ONE canonical host-key derivation, shared with diagnose and every
+  // credential writer — see credentialHostKey. Ad-hoc per-site derivation is
+  // how stored credentials became invisible to their own remote's lookups.
+  const host = credentialHostKey(cleanUrl);
 
   let credential = options.credential ?? undefined;
   if (!credential && options.tokenStore) {

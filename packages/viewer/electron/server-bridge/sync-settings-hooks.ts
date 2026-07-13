@@ -18,6 +18,15 @@ export interface SyncSettingsHooks {
    * inline.
    */
   setAutoSync(enabled: boolean): Promise<{ ok: true; autoSync: boolean }>;
+  /**
+   * The last "sync:status" payload emitted for `projectDir`, or null when none
+   * has been emitted this session. The queryable counterpart to the
+   * fire-and-forget push channel: the status pill seeds itself from this right
+   * after subscribing, so a subscription that lands after an emit (project
+   * open races the pill's mount; the one-shot "connect"/"local" states) no
+   * longer strands on blank/stale status.
+   */
+  getStatus(projectDir: string): Promise<object | null>;
 }
 
 /** The live `SyncSettingsHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */

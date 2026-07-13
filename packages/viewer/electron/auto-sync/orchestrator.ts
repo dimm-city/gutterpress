@@ -100,10 +100,14 @@ export interface SyncStatusPayload {
     | "error"
     | "recovering"
     | "recovered"
-    // "local" — a local-git project with no syncable remote. There is no sync,
-    // but version history (auto-snapshots) is active; the pill surfaces a
-    // clickable "Version history on" label that opens the operation log.
-    | "local";
+    // "local" — a local-git project with NO usable remote (none, or SSH-only).
+    // There is no sync, but version history (auto-snapshots) is active; the
+    // pill surfaces a clickable "Previous versions" label.
+    | "local"
+    // "connect" — the repo HAS an HTTPS remote but print-md holds no usable
+    // credential for it. One connect step away from syncing; the renderer
+    // surfaces a Connect action.
+    | "connect";
   /** Absolute path of the project this status applies to. */
   projectDir: string;
   /**

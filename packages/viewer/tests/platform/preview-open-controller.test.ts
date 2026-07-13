@@ -14,6 +14,9 @@ interface HarnessOpts {
   subPath?: string;
   repoRoot?: string;
   canSync?: boolean;
+  /** Diagnosis detail consumed by unsyncedStateFor ("connect" vs "local"). */
+  remoteProtocol?: "https" | "ssh" | "none";
+  credentialPresent?: boolean;
   manifestTitle?: string | undefined;
   manifestThrows?: boolean;
   startPreviewServer?: () => unknown;
@@ -81,7 +84,14 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
         : { type: "local-folder" as const, path: "/book" },
     diagnoseProjectRemote: async () => {
       calls.push("diagnoseProjectRemote");
-      return { canSync: opts.canSync ?? false };
+      // Carry the fields unsyncedStateFor reads — a bare {canSync} fake is
+      // exactly the "fake flattens the diagnosis to one boolean" drift the
+      // 2026-07 git-subsystem review flagged.
+      return {
+        canSync: opts.canSync ?? false,
+        remoteProtocol: opts.remoteProtocol ?? "none",
+        credentialPresent: opts.credentialPresent ?? false,
+      };
     },
   } as unknown as LibModule;
 
@@ -305,6 +315,40 @@ test("local-status: delayed re-emit is cancelled (skipped) if the project switch
   h.timers[0]!.cb();
   // getWatchedDir() !== openedDir ("/other" !== "/book") — no second emit.
   expect(h.emitted.length).toBe(1);
+});
+
+test("connect-status: an HTTPS remote with no credential emits 'connect', not 'local'", async () => {
+  // The modal externally-cloned-repo case: a remote print-md just isn't
+  // connected to must NOT read as "kept on this computer" (shipped field
+  // defect — it was reported as a remote-detection bug). The renderer offers
+  // a Connect action on this state.
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    repoRoot: "/book",
+    canSync: false,
+    remoteProtocol: "https",
+    credentialPresent: false,
+    watchedDir: "/book",
+  });
+  await h.controller.open({ input: "/book" });
+  await settle();
+  expect(h.emitted.length).toBe(1);
+  expect(h.emitted[0]!.state).toBe("connect");
+});
+
+test("connect-status: an SSH-only remote stays 'local' (not connectable in-app)", async () => {
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    repoRoot: "/book",
+    canSync: false,
+    remoteProtocol: "ssh",
+    credentialPresent: false,
+    watchedDir: "/book",
+  });
+  await h.controller.open({ input: "/book" });
+  await settle();
+  expect(h.emitted.length).toBe(1);
+  expect(h.emitted[0]!.state).toBe("local");
 });
 
 test("overlapping open() calls are serialized in arrival order", async () => {

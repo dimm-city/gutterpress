@@ -69,7 +69,12 @@ export interface ProjectCapabilities {
   canSnapshot: boolean;
   canViewHistory: boolean;
   canRestoreSnapshot: boolean;
-  canSync: boolean;
+  // Deliberately NO canSync — syncability is credential-aware and answered
+  // ONLY by diagnoseProjectRemote().canSync (cached renderer-side as the
+  // SyncController's syncDiag). The old capability-level canSync (= hasRemote,
+  // any protocol, no credential check) was a second, weaker gate with the same
+  // name, and the divergence produced contradictory sync UI. Remote PRESENCE
+  // for display lives on `source.hasRemote`.
   authManagedByApp: boolean;
 }
 

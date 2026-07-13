@@ -7,8 +7,6 @@ import {
   detectProjectSource,
   capabilitiesFor,
   findEnclosingRepoDir,
-  parseRemoteUrl,
-  parseHeadBranch,
 } from "./project-source";
 
 async function tempDir(): Promise<string> {
@@ -23,7 +21,6 @@ test("plain folder (no .git) → local-folder", async () => {
     const caps = capabilitiesFor(source);
     expect(caps.canEnableVersionHistory).toBe(true);
     expect(caps.canSnapshot).toBe(false);
-    expect(caps.canSync).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -49,7 +46,6 @@ test("folder with .git but no remote → local-git-folder, hasRemote false", asy
     const caps = capabilitiesFor(source);
     expect(caps.canSnapshot).toBe(true);
     expect(caps.canEnableVersionHistory).toBe(false);
-    expect(caps.canSync).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -72,35 +68,104 @@ test("folder with .git and an HTTPS remote → local-git-folder, hasRemote true"
       expect(source.remoteUrl).toBe("https://github.com/owner/repo.git");
       expect(source.branch).toBe("feature/x");
     }
-    const caps = capabilitiesFor(source);
-    expect(caps.canSync).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("parseRemoteUrl handles SSH remotes and prefers origin", () => {
-  const config = `[remote "upstream"]
-\turl = git@github.com:up/stream.git
-[remote "origin"]
-\turl = git@github.com:owner/repo.git
-`;
-  expect(parseRemoteUrl(config)).toBe("git@github.com:owner/repo.git");
+// ── Engine parity: detection reads the config the way git itself does ────────
+// Remote/branch now come from isomorphic-git (the sync engine's own machinery),
+// so layouts the old hand-rolled regex missed must classify correctly.
+
+async function repoWithConfig(dir: string, config: string, head = "ref: refs/heads/main\n") {
+  const gitDir = path.join(dir, ".git");
+  await mkdir(gitDir, { recursive: true });
+  await writeFile(path.join(gitDir, "HEAD"), head);
+  await writeFile(path.join(gitDir, "config"), config);
+}
+
+test("SSH remotes detected; origin preferred over other remotes", async () => {
+  const dir = await tempDir();
+  try {
+    await repoWithConfig(
+      dir,
+      `[remote "upstream"]\n\turl = git@github.com:up/stream.git\n[remote "origin"]\n\turl = git@github.com:owner/repo.git\n`,
+    );
+    const source = await detectProjectSource(dir);
+    if (source.type !== "local-git-folder") throw new Error("expected git folder");
+    expect(source.remoteUrl).toBe("git@github.com:owner/repo.git");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
-test("parseRemoteUrl falls back to first remote when no origin", () => {
-  const config = `[remote "fork"]\n\turl = https://example.com/a.git\n`;
-  expect(parseRemoteUrl(config)).toBe("https://example.com/a.git");
+test("falls back to the first remote when no origin exists", async () => {
+  const dir = await tempDir();
+  try {
+    await repoWithConfig(dir, `[remote "fork"]\n\turl = https://example.com/a.git\n`);
+    const source = await detectProjectSource(dir);
+    if (source.type !== "local-git-folder") throw new Error("expected git folder");
+    expect(source.remoteUrl).toBe("https://example.com/a.git");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
-test("parseRemoteUrl returns undefined on empty/malformed config", () => {
-  expect(parseRemoteUrl("")).toBeUndefined();
-  expect(parseRemoteUrl("[core]\n\tbare = false\n")).toBeUndefined();
+test("case-variant sections and multi-value urls read like git itself", async () => {
+  const dir = await tempDir();
+  try {
+    // `[Remote "origin"]` — section names are case-insensitive to git; two
+    // `url =` entries — git uses the LAST. The old regex parser missed both
+    // (hasRemote:false / first-url), silently disabling sync for repos the
+    // engine could sync.
+    await repoWithConfig(
+      dir,
+      `[Remote "origin"]\n\tURL = https://old.example.com/a.git\n\turl = https://new.example.com/a.git\n`,
+    );
+    const source = await detectProjectSource(dir);
+    if (source.type !== "local-git-folder") throw new Error("expected git folder");
+    expect(source.hasRemote).toBe(true);
+    expect(source.remoteUrl).toBe("https://new.example.com/a.git");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
-test("parseHeadBranch returns undefined on detached HEAD", () => {
-  expect(parseHeadBranch("9fceb02d0ae598e95dc970b74767f19372d61af8\n")).toBeUndefined();
-  expect(parseHeadBranch("ref: refs/heads/main\n")).toBe("main");
+test("a submodule-style checkout (`.git` FILE) is its OWN repo, never the superproject", async () => {
+  const dir = await tempDir();
+  try {
+    // Superproject repo at the root, with its own remote.
+    await repoWithConfig(
+      dir,
+      `[remote "origin"]\n\turl = https://github.com/owner/super.git\n`,
+    );
+    // Submodule checkout at book/: a `.git` FILE pointing into the
+    // superproject's modules dir (the exact layout `git submodule` creates).
+    const book = path.join(dir, "book");
+    const modulesGitDir = path.join(dir, ".git", "modules", "book");
+    await mkdir(book, { recursive: true });
+    await mkdir(modulesGitDir, { recursive: true });
+    await writeFile(path.join(modulesGitDir, "HEAD"), "ref: refs/heads/main\n");
+    await writeFile(
+      path.join(modulesGitDir, "config"),
+      `[core]\n\trepositoryformatversion = 0\n\tworktree = ../../../book\n[remote "origin"]\n\turl = https://github.com/owner/book.git\n`,
+    );
+    await writeFile(path.join(book, ".git"), "gitdir: ../.git/modules/book\n");
+
+    const source = await detectProjectSource(book);
+    expect(source.type).toBe("local-git-folder");
+    if (source.type === "local-git-folder") {
+      // Its OWN repo — treating it as part of the superproject pointed
+      // snapshot/restore/sync at the WRONG repository.
+      expect(source.repoRoot).toBe(book);
+      expect(source.subPath).toBe("");
+      // The SUBMODULE's remote, not the superproject's.
+      expect(source.remoteUrl).toBe("https://github.com/owner/book.git");
+      expect(source.branch).toBe("main");
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 // ── Enclosing-repo detection (book subfolders of a larger repo) ──────────────
@@ -135,7 +200,6 @@ test("folder nested inside a repo → local-git-folder scoped to its subPath", a
     expect(caps.canSnapshot).toBe(true);
     expect(caps.canViewHistory).toBe(true);
     expect(caps.canRestoreSnapshot).toBe(true);
-    expect(caps.canSync).toBe(true);
     expect(caps.canWriteLocal).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -315,11 +379,20 @@ test("home directory itself is never treated as an enclosing repo", async () => 
   }
 });
 
-test("parseHeadBranch returns undefined for garbage / empty HEAD content", () => {
-  // Detached HEAD (raw SHA) and outright garbage both yield no branch name.
-  expect(parseHeadBranch("not a ref at all")).toBeUndefined();
-  expect(parseHeadBranch("")).toBeUndefined();
-  expect(
-    parseHeadBranch("ref: refs/tags/v1.0.0\n"),
-  ).toBeUndefined(); // a tag ref is not a branch
+test("detached HEAD (raw SHA) yields no branch name but stays a repo", async () => {
+  const dir = await tempDir();
+  try {
+    await repoWithConfig(
+      dir,
+      "[core]\n\trepositoryformatversion = 0\n",
+      "9fceb02d0ae598e95dc970b74767f19372d61af8\n",
+    );
+    const source = await detectProjectSource(dir);
+    expect(source.type).toBe("local-git-folder");
+    if (source.type === "local-git-folder") {
+      expect(source.branch).toBeUndefined();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

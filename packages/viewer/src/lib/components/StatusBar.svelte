@@ -74,6 +74,10 @@
     onProblemSelect = undefined as ((p: ProblemEntry) => void) | undefined,
     /** Called when the sync pill needs the reconnect flow. */
     onReconnect = undefined as (() => void) | undefined,
+    /** Called when the author clicks "Connect to sync online" in the summary
+     *  (the `connect` state: an HTTPS remote print-md isn't connected to).
+     *  Routes to the same connect/reconnect flow as the pill. */
+    onConnectOnline = undefined as (() => void) | undefined,
     /** Called when the sync pill reports a conflict. Receives the pill's
      *  localId/remoteId when it already has them (the conflict SyncStatus
      *  payload carries them — M13), so the dialog can skip its own
@@ -114,6 +118,7 @@
     onSwitchBook?: (path: string) => void;
     onProblemSelect?: (p: ProblemEntry) => void;
     onReconnect?: () => void;
+    onConnectOnline?: () => void;
     onConflict?: (files: ConflictFileInfo[], localId?: string, remoteId?: string) => void;
     onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
@@ -196,10 +201,15 @@
       case "up-to-date":
       case "recovered":
         return "Up to date";
+      case "connect":
+        // An HTTPS remote exists but print-md isn't connected to it — one
+        // connect step from syncing. The summary popover pairs this with a
+        // Connect action (below) so the row directs instead of dead-ending.
+        return "Not connected yet";
       case "local":
-        // A remote IS configured but print-md isn't auto-syncing it (SSH, or an
-        // HTTPS remote with no stored credential) → don't imply it's local-only.
-        // No remote at all → the honest "only on this computer" copy.
+        // A remote IS configured but print-md isn't auto-syncing it (SSH) →
+        // don't imply it's local-only. No remote at all → the honest "only on
+        // this computer" copy.
         return hasRemote ? "Not syncing automatically" : "Kept on this computer";
       case "idle":
       default:
@@ -355,6 +365,13 @@
               <li><span class="summary-key">Previous versions</span><span class="summary-val">{previousVersionsText}</span></li>
               <li><span class="summary-key">Online copy</span><span class="summary-val">{onlineCopyText}</span></li>
             </ul>
+            {#if liveSyncState === "connect" && onConnectOnline}
+              <!-- The row directs instead of dead-ending: one click starts the
+                   connect flow for the repo's existing online copy. -->
+              <button class="summary-action" onclick={() => { summaryOpen = false; onConnectOnline?.(); }}>
+                Connect to sync online
+              </button>
+            {/if}
             {#if canSnapshot && onSaveVersion}
               <button class="summary-action" onclick={saveVersionNow} disabled={savingVersion}>
                 {savingVersion ? "Saving a version…" : "Save a version now"}

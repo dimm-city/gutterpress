@@ -27,6 +27,7 @@
 
 import path from "node:path";
 import { AUTO_SYNC_OPEN_DELAY_MS, type SyncStatusPayload } from "../auto-sync/orchestrator";
+import { unsyncedStateFor } from "../auto-sync/unsynced-status";
 import { upsertRecentFolder } from "../recent-folders";
 import type { ViewerPrefs } from "../prefs-store";
 import type { TokenStore } from "@dimm-city/print-md";
@@ -208,11 +209,11 @@ export class PreviewOpenController {
       void this.deps.refreshAppHeartbeat(openedDir);
     }
 
-    // Local-git projects with no syncable remote get no sync status, so the
-    // bottom-bar pill would stay hidden — yet they DO keep version history via
-    // auto-snapshots. Emit a one-shot "local" status (carrying the operation-log
-    // path) so the pill shows a clickable "Version history on" label that opens
-    // the log. Isolated from the sync/recovery flow below; canSync projects get
+    // Local-git projects the auto-sync engine won't sync still need an ambient
+    // status (the pill would otherwise stay blank): "connect" when an HTTPS
+    // remote merely lacks a print-md credential (the renderer offers a Connect
+    // action), or "local" when there is no usable remote (version history
+    // only). Isolated from the sync/recovery flow below; canSync projects get
     // their status from runAutoSync and ignore this branch.
     void this.emitLocalStatusIfUnsynced(lib, openedDir, source);
 
@@ -257,7 +258,12 @@ export class PreviewOpenController {
         // Non-fatal: the dialog falls back to its not-found message.
       }
       const localStatus: SyncStatusPayload = {
-        state: "local" as const,
+        // "connect" for an HTTPS remote print-md just isn't connected to (one
+        // step from syncing — the renderer offers a Connect action); "local"
+        // only when there is genuinely no usable remote (none / SSH-only).
+        // Collapsing both into "local" made a connectable repo read as "kept
+        // on this computer" — reported in the field as a remote-detection bug.
+        state: unsyncedStateFor(diag),
         projectDir: openedDir,
         lastSyncAt: null,
         logFile,

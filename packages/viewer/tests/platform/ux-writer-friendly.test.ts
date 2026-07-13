@@ -98,6 +98,44 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
     expect(session).toContain("result.source.hasRemote");
     expect(page).toContain("hasRemote={projectSession.projectHasRemote}");
   });
+  test("the 'connect' state directs the writer to the connect flow (never a dead end)", () => {
+    const pill = read("src/lib/components/SyncStatusPill.svelte");
+    const page = read("src/routes/+page.svelte");
+    // Pill: actionable copy + click routes to the same connect/reconnect flow
+    // as "auth" — an HTTPS remote print-md isn't connected to is ONE step from
+    // syncing, not a "kept on this computer" dead end.
+    expect(pill).toContain('case "connect":');
+    expect(pill).toContain("Connect to keep an online copy");
+    expect(pill).toContain('syncState === "auth" || syncState === "connect"');
+    // Status summary: the row pairs honest copy with a one-click action.
+    expect(status).toContain('case "connect":');
+    expect(status).toContain("Not connected yet");
+    expect(status).toContain("Connect to sync online");
+    expect(status).toContain("onConnectOnline");
+    expect(page).toContain("onConnectOnline={onSyncReconnect}");
+  });
+  test("the pill seeds itself from the host's retained status (no lost one-shot emits)", () => {
+    const pill = read("src/lib/components/SyncStatusPill.svelte");
+    // "sync:status" is fire-and-forget; a subscription that lands after the
+    // project-open emit used to strand the pill blank/stale forever.
+    expect(pill).toContain("api.sync");
+    expect(pill).toContain(".getStatus(projectDir)");
+    // A live push wins over the (older) seed.
+    expect(pill).toContain("receivedLive");
+  });
+  test("the at-open diagnosis is keyed to the dir currentDir is assigned (race fixed)", () => {
+    const lifecycle = read("src/lib/routes/project-lifecycle-controller.svelte.ts");
+    // refreshSyncDiag fires AFTER `this.currentDir = targetDir` with the SAME
+    // targetDir — the old classify()-time call was deterministically discarded
+    // by the SyncController's stale-guard on every open.
+    const assignIdx = lifecycle.indexOf("this.currentDir = targetDir;");
+    const refreshIdx = lifecycle.indexOf("d.refreshSyncDiag(targetDir);");
+    expect(assignIdx).toBeGreaterThan(-1);
+    expect(refreshIdx).toBeGreaterThan(assignIdx);
+    // And classify() no longer fires it at all.
+    const session = read("src/lib/routes/project-session-controller.svelte.ts");
+    expect(session).not.toContain("deps.refreshSyncDiag(");
+  });
 });
 
 describe("Failure & conflict copy reassures that local work is safe", () => {

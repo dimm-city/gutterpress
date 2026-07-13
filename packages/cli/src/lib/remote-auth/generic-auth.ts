@@ -18,7 +18,7 @@ import type httpNode from "isomorphic-git/http/node";
 
 import type { HostCallbacks, RemoteAuthProvider } from "./github-auth.ts";
 import { GITHUB_HOST } from "./github-auth.ts";
-import type { HostCredential } from "./token-store.ts";
+import { credentialHostKey, type HostCredential } from "./token-store.ts";
 import { testRemoteAccess, type RemoteAccessResult } from "./test-access.ts";
 
 /** What the Advanced Setup UI collects for "Connect a Git server". */
@@ -60,22 +60,14 @@ export interface GenericAuthOptions {
 
 /**
  * Reduce user input ("https://git.example.com/some/repo", "Git.Example.com",
- * "git.example.com:3000/x") to the normalized host the credential is keyed by
- * (hostname[:port], lower-case). Returns "" when nothing usable remains.
+ * "git.example.com:3000/x") to the normalized host the credential is keyed by.
+ * Delegates to {@link credentialHostKey} — the ONE canonical derivation shared
+ * by every credential writer and reader — so a host typed here always keys
+ * identically to the same host parsed out of a remote URL by diagnose or the
+ * sync transport. Returns "" when nothing usable remains.
  */
 export function normalizeForgeHost(input: string): string {
-  const trimmed = String(input ?? "").trim();
-  if (!trimmed) return "";
-  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  try {
-    const url = new URL(candidate);
-    if (!url.hostname) return "";
-    return url.port ? `${url.hostname}:${url.port}`.toLowerCase() : url.hostname.toLowerCase();
-  } catch {
-    return "";
-  }
+  return credentialHostKey(input);
 }
 
 /**

@@ -73,6 +73,8 @@ export interface ProjectLifecycleProjectSession {
   repoRoot: string | null;
   books: ProjectBookEntry[];
   activeBookDir: string | null;
+  /** Read after classify() resolves — gates the post-open diagnosis refresh. */
+  projectCapabilities: { canSnapshot: boolean } | null;
   reset(): void;
   classify(dir: string): Promise<void>;
 }
@@ -110,6 +112,16 @@ export interface ProjectLifecycleDeps {
   projectSession: ProjectLifecycleProjectSession;
   /** Clear the composed SyncController's diagnosis before classifying a new dir. */
   clearSyncDiag: () => void;
+  /**
+   * Refresh the composed SyncController's remote diagnosis for the opened
+   * project. MUST be called only after `currentDir` is assigned (the
+   * SyncController's stale-guard compares the diagnosed dir against
+   * currentDir, so an earlier call — as the classify() chain used to make —
+   * is deterministically discarded on every open) and keyed to the SAME
+   * targetDir that currentDir was assigned (the picked dir may have been
+   * retargeted to a book).
+   */
+  refreshSyncDiag: (dir: string) => void;
   /** The composed PageNavController instance (shared reference). */
   pageNav: ProjectLifecyclePageNav;
   /** The composed ZoomViewController instance (shared reference). */
@@ -306,6 +318,17 @@ export class ProjectLifecycleController {
       this.currentDir = targetDir;
       this.currentFolderDisplayName = targetDisplayName;
       this.currentUrl = null;
+      // Refresh the remote diagnosis for any local-git project — NOW, after
+      // currentDir is assigned and keyed to the same targetDir, so the
+      // SyncController's stale-guard accepts the result. (This used to fire
+      // from projectSession.classify() with the PICKED dir before currentDir
+      // was set — deterministically discarded on every open, leaving syncDiag
+      // null all session: Sync-now hidden and reconnect routing broken even
+      // for fully-connected projects.) Gated on canSnapshot — true exactly
+      // for local-git-folder sources; the diagnosis itself decides syncability.
+      if (d.projectSession.projectCapabilities?.canSnapshot) {
+        d.refreshSyncDiag(targetDir);
+      }
       // Detect a "loose" folder (no manifest) so the caller can offer to set
       // it up as a book. Default true (banner hidden) until the listing
       // proves it's absent.

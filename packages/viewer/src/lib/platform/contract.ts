@@ -241,10 +241,16 @@ export type SyncState =
   | "error"
   | "recovering"
   | "recovered"
-  // "local" — a local-git project with no syncable remote. No sync runs, but
-  // version history (auto-snapshots) is active; the status pill shows a
-  // clickable "Version history on" label that opens the operation log.
-  | "local";
+  // "local" — a local-git project with NO usable remote (none configured, or
+  // SSH-only). No sync runs, but version history (auto-snapshots) is active;
+  // the status pill shows a clickable "Previous versions" label.
+  | "local"
+  // "connect" — the repo HAS an HTTPS remote but print-md holds no usable
+  // credential for it (the starting state of every repo cloned outside
+  // print-md: GitHub Desktop, VS Code, plain git). One connect step away from
+  // syncing — the pill and status summary surface a Connect action instead of
+  // the misleading "kept on this computer" framing.
+  | "connect";
 
 // ── Recovery types — defined locally; no lib value import in the SPA ─────────
 //

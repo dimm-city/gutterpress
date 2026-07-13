@@ -17,6 +17,7 @@
    */
   import { onMount } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { api } from "$lib/api";
   import type { SyncStatus, SyncState, ConflictFileEntry } from "$lib/platform/contract";
 
   let {
@@ -88,7 +89,7 @@
       onSyncState?.("idle");
       return;
     }
-    const unsubscribe = getPlatform().onSyncStatus((status: SyncStatus) => {
+    const applyStatus = (status: SyncStatus) => {
       // Scope to this project only (the host may manage multiple open windows).
       if (status.projectDir !== projectDir) return;
       syncState = status.state;
@@ -111,7 +112,24 @@
           if (syncState === "recovered") { syncState = "synced"; onSyncState?.("synced"); }
         }, 4000);
       }
+    };
+    let receivedLive = false;
+    const unsubscribe = getPlatform().onSyncStatus((status: SyncStatus) => {
+      receivedLive = true;
+      applyStatus(status);
     });
+    // Seed from the host's retained status: "sync:status" is fire-and-forget
+    // with no replay, so any emit that happened BEFORE this subscription (the
+    // project-open one-shot "connect"/"local" states especially) would
+    // otherwise be lost and the pill would sit blank/stale until the next
+    // periodic tick. A push that lands first wins — the seed is older by
+    // definition, so it never overwrites a live event.
+    void api.sync
+      .getStatus(projectDir)
+      .then((status) => {
+        if (!receivedLive && status) applyStatus(status);
+      })
+      .catch(() => {});
     return () => {
       unsubscribe();
       if (recoveredTimer) { clearTimeout(recoveredTimer); recoveredTimer = null; }
@@ -135,6 +153,12 @@
         // Local project, no online copy: previous versions are being kept.
         // Clickable → opens the Previous versions view (§5.2 reachability).
         return "Previous versions available";
+      case "connect":
+        // An HTTPS remote exists but print-md isn't connected to it — one
+        // step from syncing. Actionable copy + click routes to the connect
+        // flow (same plumbing as "auth"), instead of the old misleading
+        // "local" framing that read as a remote-detection bug.
+        return "Connect to keep an online copy";
       case "auth":
         return "Reconnect your project";
       case "conflict":
@@ -196,8 +220,13 @@
   /** True for states that require user attention. */
   let isWarning = $derived(syncState === "auth" || syncState === "conflict");
 
+  /** "connect" invites (not warns): accent dot, clickable, neutral text. */
+  let isInvite = $derived(syncState === "connect");
+
   function handleClick() {
-    if (syncState === "auth") {
+    if (syncState === "auth" || syncState === "connect") {
+      // Both route to the connect/reconnect flow — "connect" is the
+      // never-connected variant of the same action.
       onReconnect?.();
     } else if (syncState === "conflict") {
       onConflict?.(conflictFiles, conflictLocalId, conflictRemoteId);
@@ -214,7 +243,7 @@
    * - quiet states are interactive when an onDetails handler is provided (§5.2).
    */
   let interactive = $derived(
-    syncState === "auth" || syncState === "conflict" || !!onDetails,
+    syncState === "auth" || syncState === "conflict" || syncState === "connect" || !!onDetails,
   );
 </script>
 
@@ -235,6 +264,7 @@
       class:quiet={isQuiet}
       class:active={isActive}
       class:warning={isWarning}
+      class:invite={isInvite}
       onclick={handleClick}
       aria-label={ariaLabel}
       title={pillText}
@@ -245,6 +275,8 @@
         <span class="pill-dot warning-dot" aria-hidden="true"></span>
       {:else if syncState === "auth"}
         <span class="pill-dot auth-dot" aria-hidden="true"></span>
+      {:else if syncState === "connect"}
+        <span class="pill-dot connect-dot" aria-hidden="true"></span>
       {/if}
       <span class="pill-text">{pillText}</span>
     </button>
@@ -373,4 +405,7 @@
   }
   .warning-dot { background: var(--app-warning-text, #b45309); }
   .auth-dot    { background: var(--app-warning-text, #b45309); }
+  /* "connect" invites rather than warns — accent-colored dot, neutral text. */
+  .connect-dot { background: var(--app-accent, #4a9eff); }
+  .sync-pill.invite { cursor: pointer; }
 </style>
