@@ -16,12 +16,15 @@ const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
 describe("Toolbar Publish button (front-and-centre entry point)", () => {
   const page = read("src/routes/+page.svelte");
-  test("a Publish button sits by Save PDF and opens the wizard", () => {
-    expect(page).toContain("class=\"publish-btn icon-text\"");
-    expect(page).toContain('name="cloud-upload"');
+  test("a Publish button sits by Save PDF, uses the global button style, and opens the wizard", () => {
+    const pubIdx = page.indexOf('name="cloud-upload"');
+    expect(pubIdx).toBeGreaterThan(-1);
     expect(page).toContain("publishOpen = true");
+    // The Publish button follows the global primary button style (#5) — the
+    // same class the neighbouring Save PDF button uses.
+    const region = page.slice(Math.max(0, pubIdx - 300), pubIdx);
+    expect(region).toContain("app-btn-primary");
     // Rendered right after the Save PDF / Export HTML block.
-    const pubIdx = page.indexOf("publish-btn icon-text");
     const savePdfIdx = page.indexOf("exportController.savePdf()");
     expect(savePdfIdx).toBeGreaterThan(-1);
     expect(pubIdx).toBeGreaterThan(savePdfIdx);
@@ -54,10 +57,19 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
     expect(wiz).toContain("controller.connectPublish(card.id)");
     expect(wiz).toContain("controller.setPublishConfigDraft(card.id");
   });
-  test("is a three-step wizard (choose → set up → publish)", () => {
-    expect(wiz).toContain("let step = $state<Step>(1)");
-    expect(wiz).toContain("Where do you want to publish?");
-    expect(wiz).toContain("Set up your destinations");
+  test("generates a dynamic setup step per selected destination (not one long form)", () => {
+    expect(wiz).toContain("let stepIndex = $state(0)");
+    // choose + one step per selected destination + publish
+    expect(wiz).toContain("const totalSteps = $derived(selectedCards.length + 2)");
+    expect(wiz).toContain('stepKind === "setup"');
+    expect(wiz).toContain("selectedCards[stepIndex - 1]");
+  });
+  test("uses the shared dialog form conventions, not config-section classes (#3)", () => {
+    expect(wiz).toContain('@import "$lib/styles/dialog-shell.css"');
+    expect(wiz).toContain('class="dlg-primary"');
+    expect(wiz).toContain('class="dlg-ghost"');
+    expect(wiz).toContain('class="field"');
+    expect(wiz).not.toContain("config-section-shared.css");
   });
   test("supports selecting multiple destinations and publishing to all", () => {
     expect(wiz).toContain("let selected = $state<Set<string>>");

@@ -19,7 +19,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import { onMount } from "svelte";
-  import type { ConflictFileInfo } from "$lib/platform/contract";
+  import type { ConflictFileInfo, SyncState } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
 
@@ -167,7 +167,35 @@
     if (latestVersionAt == null) return "No versions yet";
     return `Latest version ${relativeTime(latestVersionAt, Date.now())}`;
   });
-  let onlineCopyText = $derived(canSync ? "Kept up to date in the background" : "Not set up for this project");
+  // Live sync state from the pill (below), so the "online copy" row reflects
+  // reality (up to date / offline / syncing) instead of only the static
+  // capability flag — which wrongly read "not set up" for projects that DO
+  // sync (user feedback). Falls back to the capability flag only when idle.
+  let liveSyncState = $state<SyncState>("idle");
+  let onlineCopyText = $derived.by((): string => {
+    switch (liveSyncState) {
+      case "syncing":
+      case "recovering":
+        return "Saving changes…";
+      case "offline":
+        return "Offline — your work is safe here";
+      case "error":
+        return "Paused — your work is safe here";
+      case "auth":
+        return "Needs reconnecting";
+      case "conflict":
+        return "Needs your review";
+      case "synced":
+      case "up-to-date":
+      case "recovered":
+        return "Up to date";
+      case "local":
+        return "Kept on this computer";
+      case "idle":
+      default:
+        return canSync ? "Up to date" : "Not set up yet";
+    }
+  });
 
   async function fetchLatestVersion() {
     if (!projectDir || !canSnapshot) return;
@@ -292,6 +320,7 @@
           onReconnect={onReconnect}
           onConflict={onConflict}
           onDetails={onShowLog}
+          onSyncState={(s) => (liveSyncState = s)}
         />
       {/key}
     {/if}

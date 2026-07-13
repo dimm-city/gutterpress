@@ -39,11 +39,16 @@
      * OperationLogDialog, a separate modal used only by the recovery flows).
      */
     onDetails,
+    onSyncState,
   }: {
     projectDir?: string | null;
     onReconnect?: () => void;
     onConflict?: (files: ConflictFileEntry[], localId?: string, remoteId?: string) => void;
     onDetails?: (logFilePath: string | null) => void;
+    /** Fired on every sync-state transition so an ancestor (the status-bar
+     *  protection summary) can show the live online-copy status instead of a
+     *  static capability flag. */
+    onSyncState?: (state: SyncState) => void;
   } = $props();
 
   let syncState = $state<SyncState>("idle");
@@ -80,12 +85,14 @@
     if (!isDesktop() || !projectDir) {
       syncState = "idle";
       conflictFiles = [];
+      onSyncState?.("idle");
       return;
     }
     const unsubscribe = getPlatform().onSyncStatus((status: SyncStatus) => {
       // Scope to this project only (the host may manage multiple open windows).
       if (status.projectDir !== projectDir) return;
       syncState = status.state;
+      onSyncState?.(status.state);
       conflictFiles = status.files ?? [];
       conflictLocalId = status.localId;
       conflictRemoteId = status.remoteId;
@@ -101,7 +108,7 @@
       if (status.state === "recovered") {
         recoveredTimer = setTimeout(() => {
           recoveredTimer = null;
-          if (syncState === "recovered") syncState = "synced";
+          if (syncState === "recovered") { syncState = "synced"; onSyncState?.("synced"); }
         }, 4000);
       }
     });

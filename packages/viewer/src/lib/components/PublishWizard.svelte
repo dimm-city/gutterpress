@@ -1,22 +1,24 @@
 <script lang="ts">
   /**
-   * PublishWizard — a front-and-centre, step-by-step publishing flow opened from
-   * the main toolbar's Publish button. It replaces the old "last section of
-   * Project settings" surface (which a non-technical author had to scroll to
-   * find) with a guided wizard: choose where to publish → set up each
-   * destination (reusing saved connections automatically, or connecting/
-   * changing the key here) → publish.
+   * PublishWizard — front-and-centre publishing flow opened from the toolbar
+   * Publish button (replaces the old crammed Project-settings section).
+   *
+   * Flow is DYNAMIC: [choose destinations] → one setup step PER selected
+   * destination → [publish]. No long scrolling form — each destination gets its
+   * own focused step.
+   *
+   * Chrome + form controls follow the shared dialog conventions
+   * (dialog-shell.css `.dlg-*`, `.field` inputs, `.dlg-primary`/`.dlg-ghost`
+   * buttons) exactly like NewProjectWizard, so it matches the rest of the app.
    *
    * ZERO new backend: it drives the existing PublishSectionController
-   * (api.publish.*), so provider discovery, verify-before-store connect,
-   * per-project manifest settings, dry-run readiness, and structured results
-   * are all reused. Credentials remain stored securely on this computer by the
-   * host (safeStorage) and are shared across a user's projects — the wizard
-   * simply surfaces that reuse and lets the author change the key per project.
+   * (api.publish.*). Credentials stay in the host store (safeStorage) and are
+   * reused across projects; the wizard surfaces connection status and lets the
+   * author connect/change a key inline.
    *
-   * PWA-clean + $effect-free (CLAUDE.md §8): all host work is through the
-   * injected controller; load happens onMount (the parent mounts this fresh via
-   * {#if}); step/selection are plain local state driven by event handlers.
+   * PWA-clean + $effect-free (CLAUDE.md §8): host work goes through the injected
+   * controller; the parent mounts this fresh via {#if} so load runs in onMount;
+   * step/selection are plain local state driven by event handlers.
    */
   import Icon from "$lib/components/Icon.svelte";
   import { onMount } from "svelte";
@@ -35,17 +37,30 @@
     onClose?: () => void;
   } = $props();
 
-  type Step = 1 | 2 | 3;
-  let step = $state<Step>(1);
+  // 0 = choose; 1..N = setup step for selectedCards[i-1]; N+1 = publish.
+  let stepIndex = $state(0);
   let selected = $state<Set<string>>(new Set());
 
   const cards = $derived(controller.publishCards);
   const selectedCards = $derived(cards.filter((c) => selected.has(c.id)));
-  // Direct-upload destinations still needing a key block the Publish step.
-  const blockedCards = $derived(selectedCards.filter((c) => c.credentialRequired && !c.connected));
+  const totalSteps = $derived(selectedCards.length + 2);
+  const stepKind = $derived(
+    stepIndex === 0 ? "choose" : stepIndex >= totalSteps - 1 ? "publish" : "setup",
+  );
+  const currentCard = $derived(
+    stepKind === "setup" ? (selectedCards[stepIndex - 1] ?? null) : null,
+  );
+  const stepLabels = $derived([
+    "Choose",
+    ...selectedCards.map((c) => c.label),
+    "Publish",
+  ]);
+  const blockedCards = $derived(
+    selectedCards.filter((c) => c.credentialRequired && !c.connected),
+  );
 
   onMount(() => {
-    step = 1;
+    stepIndex = 0;
     selected = new Set();
     void controller.loadPublish();
   });
@@ -53,56 +68,48 @@
   function close() {
     onClose?.();
   }
-
-  function toggle(id: string) {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    selected = next;
+  function next() {
+    stepIndex = Math.min(stepIndex + 1, totalSteps - 1);
   }
-
+  function back() {
+    stepIndex = Math.max(stepIndex - 1, 0);
+  }
+  function toggle(id: string) {
+    const nextSet = new Set(selected);
+    if (nextSet.has(id)) nextSet.delete(id);
+    else nextSet.add(id);
+    selected = nextSet;
+  }
   function draftValue(card: PublishProviderCard, key: string): string {
     return controller.publishConfigDrafts[card.id]?.[key] ?? card.config[key] ?? "";
   }
-
   async function publishAll() {
-    // Sequential — the controller serializes on publishBusyId (one long
-    // butler/swa upload at a time); awaiting each keeps results ordered.
     for (const card of selectedCards) {
-      if (card.credentialRequired && !card.connected) continue; // skip un-set-up direct targets
+      if (card.credentialRequired && !card.connected) continue;
       await controller.runPublish(card.id, false);
     }
   }
-
-  const STEP_TITLES: Record<Step, string> = {
-    1: "Where do you want to publish?",
-    2: "Set up your destinations",
-    3: "Publish",
-  };
 </script>
 
 <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
 <div class="dlg-shell wizard" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "publish-wizard-title" }}>
   <header class="dlg-header">
-    <div class="title-wrap">
-      <Icon name="cloud-upload" size={18} />
-      <h2 id="publish-wizard-title">Publish your book</h2>
-    </div>
+    <h2 id="publish-wizard-title"><Icon name="cloud-upload" size={18} /> Publish your book</h2>
     <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
   </header>
 
-  <!-- Step indicator -->
+  <!-- Dynamic step indicator: Choose → each destination → Publish -->
   <ol class="steps" aria-label="Publishing steps">
-    {#each [1, 2, 3] as n (n)}
-      <li class:done={step > n} class:current={step === n}>
-        <span class="step-dot">{n}</span>
-        <span class="step-label">{STEP_TITLES[n as Step]}</span>
+    {#each stepLabels as label, i (i)}
+      <li class:done={stepIndex > i} class:current={stepIndex === i}>
+        <span class="step-dot">{stepIndex > i ? "✓" : i + 1}</span>
+        <span class="step-label">{label}</span>
       </li>
     {/each}
   </ol>
 
-  <div class="wizard-body">
+  <div class="dialog-body">
     {#if controller.publishError}
       {@const err = friendlyPublishError(controller.publishError)}
       <p class="error" role="alert">{err.summary}</p>
@@ -111,16 +118,15 @@
       {/if}
     {/if}
 
-    {#if step === 1}
-      <!-- ── Step 1: choose destination(s) ──────────────────────────────── -->
-      <p class="lede">Pick one or more places to send your finished book. You can publish to several at once.</p>
+    {#if stepKind === "choose"}
+      <p class="lead">Pick one or more places to send your finished book. Each one gets its own quick setup step.</p>
       {#if cards.length === 0}
         <p class="muted">Loading destinations…</p>
       {:else}
         <ul class="dest-list">
           {#each cards as card (card.id)}
             <li>
-              <label class="dest">
+              <label class="dest" class:selected={selected.has(card.id)}>
                 <input type="checkbox" checked={selected.has(card.id)} onchange={() => toggle(card.id)} />
                 <span class="dest-main">
                   <span class="dest-name">{card.label}</span>
@@ -128,7 +134,6 @@
                 </span>
                 <span class="dest-meta">
                   <span class="badge">{card.kind === "api" ? "direct upload" : "guided"}</span>
-                  <span class="badge subtle">{card.format}</span>
                   {#if card.credentialRequired}
                     <span class={`status ${card.connected ? "ok" : "off"}`}>
                       {#if card.connected}<Icon name="circle-check" size={12} /> Connected{:else}Needs a key{/if}
@@ -142,90 +147,79 @@
           {/each}
         </ul>
       {/if}
-    {:else if step === 2}
-      <!-- ── Step 2: set up each selected destination ───────────────────── -->
-      <p class="lede">
-        Your saved connections are reused automatically. Add or change a key here to
-        publish this project — keys are stored securely on this computer, never in your
-        project folder.
-      </p>
-      {#each selectedCards as card (card.id)}
-        {@const busy = controller.publishBusyId === card.id}
-        <section class="setup-card">
-          <h3>{card.label}</h3>
+    {:else if stepKind === "setup" && currentCard}
+      {@const card = currentCard}
+      {@const busy = controller.publishBusyId === card.id}
+      <p class="lead">Set up <strong>{card.label}</strong>. Saved connections are reused automatically — you only enter a key once.</p>
 
-          {#if card.fields.length > 0}
-            <div class="fields">
-              {#each card.fields as field (field.key)}
-                <label class="field">
-                  <span>{field.label}</span>
-                  <input
-                    class="input"
-                    type="text"
-                    placeholder={field.placeholder ?? ""}
-                    value={draftValue(card, field.key)}
-                    oninput={(e) => controller.setPublishConfigDraft(card.id, field.key, e.currentTarget.value)}
-                  />
-                </label>
-              {/each}
-              <button class="ghost small" onclick={() => controller.savePublishConfig(card.id)} disabled={busy}>Save settings</button>
+      {#if card.fields.length > 0}
+        {#each card.fields as field (field.key)}
+          <label class="field" for={`pw-${card.id}-${field.key}`}>
+            <span>{field.label}</span>
+            <input
+              id={`pw-${card.id}-${field.key}`}
+              type="text"
+              placeholder={field.placeholder ?? ""}
+              value={draftValue(card, field.key)}
+              oninput={(e) => controller.setPublishConfigDraft(card.id, field.key, e.currentTarget.value)}
+            />
+          </label>
+        {/each}
+        <button class="dlg-ghost self-start" onclick={() => controller.savePublishConfig(card.id)} disabled={busy}>Save settings</button>
+      {/if}
+
+      {#if card.credentialRequired}
+        {#if card.connected}
+          <div class="conn-ok">
+            <span><Icon name="circle-check" size={14} /> Connected — reusing your saved key.</span>
+            <button class="dlg-ghost" onclick={() => controller.disconnectPublish(card.id)} disabled={busy}>Use a different key</button>
+          </div>
+        {:else}
+          <label class="field" for={`pw-${card.id}-key`}>
+            <span>API key</span>
+            {#if card.hint}<span class="field-hint">{card.hint}</span>{/if}
+            <div class="key-row">
+              <input
+                id={`pw-${card.id}-key`}
+                type="password"
+                placeholder="Paste API key"
+                value={controller.publishTokenDrafts[card.id] ?? ""}
+                oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
+                onkeydown={(e) => { if (e.key === "Enter") controller.connectPublish(card.id); }}
+              />
+              <button class="dlg-primary" onclick={() => controller.connectPublish(card.id)} disabled={busy}>Connect</button>
             </div>
-          {/if}
-
-          {#if card.credentialRequired}
-            {#if card.connected}
-              <div class="conn ok">
-                <span><Icon name="circle-check" size={13} /> Connected — reusing your saved key.</span>
-                <button class="ghost small" onclick={() => controller.disconnectPublish(card.id)} disabled={busy}>Use a different key</button>
-              </div>
-            {:else}
-              <div class="conn">
-                {#if card.hint}<p class="hint">{card.hint}</p>{/if}
-                <div class="add-row">
-                  <input
-                    class="input"
-                    type="password"
-                    placeholder="Paste API key"
-                    value={controller.publishTokenDrafts[card.id] ?? ""}
-                    oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
-                    onkeydown={(e) => { if (e.key === "Enter") controller.connectPublish(card.id); }}
-                  />
-                  <button class="primary small" onclick={() => controller.connectPublish(card.id)} disabled={busy}>Connect</button>
-                </div>
-                {#if card.tokenUrl}
-                  <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
-                {/if}
-              </div>
+            {#if card.tokenUrl}
+              <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
             {/if}
-          {:else}
-            <p class="muted">No account or key needed — we'll prepare an upload package with step-by-step instructions.</p>
-          {/if}
-        </section>
-      {/each}
+          </label>
+        {/if}
+      {:else}
+        <p class="muted">No account or key needed — we'll prepare an upload package with step-by-step instructions.</p>
+      {/if}
     {:else}
-      <!-- ── Step 3: publish ────────────────────────────────────────────── -->
-      <p class="lede">
+      <!-- Publish step -->
+      <p class="lead">
         Publishing uses your project's latest build output. If you've changed the book,
         use <strong>Save PDF</strong> first, then publish.
       </p>
       {#if blockedCards.length > 0}
         <p class="warn" role="alert">
-          <Icon name="triangle-alert" size={13} />
-          {blockedCards.map((c) => c.label).join(", ")} still {blockedCards.length === 1 ? "needs" : "need"} a key —
-          go back to set {blockedCards.length === 1 ? "it" : "them"} up, or publish the others.
+          <Icon name="triangle-alert" size={14} />
+          {blockedCards.map((c) => c.label).join(", ")} still {blockedCards.length === 1 ? "needs" : "need"} a key — go back to set {blockedCards.length === 1 ? "it" : "them"} up, or publish the others.
         </p>
       {/if}
       {#each selectedCards as card (card.id)}
         {@const busy = controller.publishBusyId === card.id}
         {@const needsConnect = card.credentialRequired && !card.connected}
         {@const result = controller.publishResults[card.id]}
-        <section class="publish-card">
-          <div class="pc-head">
+        <section class="pub-row">
+          <div class="pub-head">
             <span class="dest-name">{card.label}</span>
-            <div class="pc-actions">
-              <button class="ghost small" onclick={() => controller.runPublish(card.id, true)} disabled={busy}>Check readiness</button>
+            <div class="pub-actions">
+              <button class="dlg-ghost" onclick={() => controller.runPublish(card.id, true)} disabled={busy}>Check readiness</button>
               <button
-                class="primary small"
+                class="dlg-primary"
                 onclick={() => controller.runPublish(card.id, false)}
                 disabled={busy || needsConnect}
                 title={needsConnect ? "Connect first — this destination needs a key." : undefined}
@@ -234,7 +228,6 @@
               </button>
             </div>
           </div>
-
           {#if result}
             {@const outcome = result.outcome}
             <div class={`result ${result.ok ? "ok" : "failed"}`} role="status">
@@ -265,8 +258,8 @@
                 {/if}
               {:else}
                 <p class="success-line"><Icon name="circle-check" size={13} /> {outcome.detail ?? "Upload package prepared."}</p>
-                <p class="hint">Package folder: <code>{outcome.packageDir}</code></p>
-                <button class="primary small" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
+                <p class="muted small">Package folder: <code>{outcome.packageDir}</code></p>
+                <button class="dlg-primary" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
                 <ol class="checklist">{#each outcome.checklist as s, i (i)}<li>{s}</li>{/each}</ol>
               {/if}
             </div>
@@ -274,79 +267,91 @@
         </section>
       {/each}
     {/if}
-  </div>
 
-  <footer class="wizard-footer">
-    {#if step > 1}
-      <button class="ghost" onclick={() => (step = (step - 1) as Step)}>Back</button>
-    {:else}
-      <button class="ghost" onclick={close}>Cancel</button>
-    {/if}
-    <div class="spacer"></div>
-    {#if step === 1}
-      <button class="primary" onclick={() => (step = 2)} disabled={selected.size === 0}>Next</button>
-    {:else if step === 2}
-      <button class="primary" onclick={() => (step = 3)}>Next</button>
-    {:else}
-      <button
-        class="primary"
-        onclick={publishAll}
-        disabled={controller.publishBusyId !== null || selectedCards.every((c) => c.credentialRequired && !c.connected)}
-        title="Publish to every ready destination"
-      >
-        Publish to all
-      </button>
-      <button class="ghost" onclick={close}>Done</button>
-    {/if}
-  </footer>
+    <footer class="dlg-actions">
+      {#if stepIndex > 0}
+        <button class="dlg-ghost" onclick={back}>Back</button>
+      {:else}
+        <button class="dlg-ghost" onclick={close}>Cancel</button>
+      {/if}
+      <div class="spacer"></div>
+      {#if stepKind === "choose"}
+        <button class="dlg-primary" onclick={next} disabled={selected.size === 0}>Next</button>
+      {:else if stepKind === "setup"}
+        <button class="dlg-primary" onclick={next}>Next</button>
+      {:else}
+        <button
+          class="dlg-primary"
+          onclick={publishAll}
+          disabled={controller.publishBusyId !== null || selectedCards.every((c) => c.credentialRequired && !c.connected)}
+        >
+          Publish to all
+        </button>
+        <button class="dlg-ghost" onclick={close}>Done</button>
+      {/if}
+    </footer>
+  </div>
 </div>
 
 <style>
   @import "$lib/styles/dialog-shell.css";
-  @import "$lib/styles/config-section-shared.css";
 
-  .wizard { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); display: flex; flex-direction: column; }
-  .title-wrap { display: inline-flex; align-items: center; gap: 8px; }
-  .title-wrap h2 { margin: 0; }
+  .wizard { width: min(560px, 94vw); max-height: 84vh; }
+  .dlg-header h2 { color: var(--app-text); }
 
-  .steps { list-style: none; display: flex; gap: 4px; margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--app-border); }
-  .steps li { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; font-size: 11px; color: var(--app-text-faint); }
+  .steps { list-style: none; display: flex; gap: 4px; margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--app-border-subtle); overflow-x: auto; }
+  .steps li { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--app-text-faint); white-space: nowrap; flex-shrink: 0; }
   .steps li.current { color: var(--app-text); font-weight: 600; }
   .steps li.done { color: var(--app-text-muted); }
-  .step-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--app-border-strong); font-size: 11px; flex-shrink: 0; }
+  .step-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--app-border-strong); font-size: 11px; }
   .steps li.current .step-dot { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); }
-  .steps li.done .step-dot { background: var(--app-control-hover-bg); }
-  .step-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .steps li.done .step-dot { background: var(--app-surface-hover); }
 
-  .wizard-body { padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-  .lede { margin: 0; font-size: 12px; color: var(--app-text-secondary); line-height: 1.5; }
+  .dialog-body { padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1; }
+  .lead { margin: 0; font-size: 13px; color: var(--app-text-muted); }
+  .muted { color: var(--app-text-muted); font-size: 12px; margin: 0; }
+  .muted.small { font-size: 11px; }
+  .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
+  .warn { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--app-warning-text, #d29922); }
+
+  /* Fields match NewProjectWizard / the shared dialog form language. */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
+  .field-hint { font-weight: 400 !important; color: var(--app-text-faint) !important; font-size: 11px !important; }
+  .field input {
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 100%;
+  }
+  .field input:focus { outline: none; border-color: var(--app-focus-ring); }
+  .key-row { display: flex; gap: 8px; }
+  .key-row input { flex: 1; min-width: 0; }
+  .self-start { align-self: flex-start; }
 
   .dest-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-  .dest { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-control-bg); cursor: pointer; }
-  .dest:hover { border-color: var(--app-border-strong); }
-  .dest input { margin-top: 2px; }
+  .dest { display: flex; align-items: flex-start; gap: 10px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); cursor: pointer; }
+  .dest:hover { background: var(--app-surface-hover); }
+  .dest.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
+  .dest input { margin-top: 2px; flex-shrink: 0; }
   .dest-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
   .dest-name { font-size: 13px; font-weight: 600; color: var(--app-text); }
-  .dest-desc { font-size: 11px; color: var(--app-text-muted); }
+  .dest-desc { font-size: 11px; color: var(--app-text-faint); line-height: 1.35; }
   .dest-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 10px; flex-shrink: 0; }
-  .badge { padding: 1px 6px; border-radius: 10px; background: var(--app-control-hover-bg); color: var(--app-text-muted); }
-  .badge.subtle { background: transparent; }
+  .badge { padding: 1px 6px; border-radius: 10px; background: var(--app-surface); border: 1px solid var(--app-border); color: var(--app-text-muted); }
   .status { display: inline-flex; align-items: center; gap: 3px; }
   .status.ok { color: var(--app-success-text, #3fb950); }
   .status.off { color: var(--app-text-faint); }
 
-  .setup-card, .publish-card { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-control-bg); }
-  .setup-card h3, .pc-head .dest-name { margin: 0; font-size: 13px; }
-  .fields { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-  .field { display: flex; flex-direction: column; gap: 3px; width: 100%; font-size: 11px; color: var(--app-text-muted); }
-  .conn { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-  .conn.ok { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--app-success-text, #3fb950); }
-  .conn.ok span { display: inline-flex; align-items: center; gap: 4px; }
+  .conn-ok { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--app-success-text, #3fb950); }
+  .conn-ok span { display: inline-flex; align-items: center; gap: 6px; }
 
-  .pc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .pc-actions { display: flex; gap: 6px; }
-  .warn { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--app-warning-text, #d29922); }
-
+  .pub-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
+  .pub-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pub-actions { display: flex; gap: 6px; }
   .result { border-top: 1px solid var(--app-border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
   .issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
   .issues .error { color: var(--app-error-text); }
@@ -355,8 +360,13 @@
   .success-line { margin: 0; font-size: 12px; color: var(--app-success-text, #3fb950); display: inline-flex; align-items: center; gap: 4px; }
   .checklist { margin: 0; padding-left: 18px; font-size: 11px; color: var(--app-text-muted); line-height: 1.5; }
   .result code { font-size: 10px; word-break: break-all; }
+
+  .status-raw summary { cursor: pointer; color: var(--app-text-muted); font-size: 12px; }
+  .status-raw pre { margin: 6px 0 0; padding: 8px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); border-radius: 6px; font-size: 11px; white-space: pre-wrap; overflow: auto; }
+
   button.link { background: none; border: none; padding: 0; font-size: 11px; color: var(--app-focus-ring); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
 
-  .wizard-footer { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--app-border); }
-  .wizard-footer .spacer { flex: 1; }
+  /* In-flow footer inside the scrolling body (matches NewProjectWizard). */
+  .dlg-actions { display: flex; align-items: center; gap: 8px; padding: 14px 0 0; margin-top: 4px; }
+  .dlg-actions .spacer { flex: 1; }
 </style>

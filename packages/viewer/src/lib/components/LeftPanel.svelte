@@ -110,6 +110,16 @@
     else next.add(key);
     tocExpanded = next;
   }
+  // Selecting a section navigates to it AND expands it (user feedback), so its
+  // subsections come into view — expand-then-navigate, never a collapse.
+  function selectToc(node: TocNode) {
+    if (node.children.length > 0 && !tocOpen(node.key)) {
+      const next = new Set(tocExpanded);
+      next.add(node.key);
+      tocExpanded = next;
+    }
+    onJumpToOutline?.(node.entry);
+  }
   // Arrow keys expand/collapse the focused node WITHOUT navigating (Enter/Space
   // on the row's label button navigates); this keeps expansion and navigation
   // independent, per the tree-view contract.
@@ -323,7 +333,7 @@
             class:active={node.entry.index === activeEntryIndex}
             class:toc-top={depth === 1}
             class:toc-sub={depth >= 3}
-            onclick={() => onJumpToOutline?.(node.entry)}
+            onclick={() => selectToc(node)}
             onkeydown={(e) => onTocKeydown(e, node)}
             title={node.entry.text}
           >

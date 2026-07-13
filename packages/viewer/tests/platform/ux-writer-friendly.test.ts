@@ -73,6 +73,16 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
     expect(status).toContain("Save a version now");
     expect(status).toContain("onSaveVersion");
   });
+  test("the online-copy row reflects the LIVE sync state, not just the capability flag (#1)", () => {
+    const pill = read("src/lib/components/SyncStatusPill.svelte");
+    // StatusBar derives the row from the live state surfaced by the pill,
+    // so a syncing/up-to-date project never wrongly reads "not set up".
+    expect(status).toContain("liveSyncState");
+    expect(status).toContain("onSyncState={(s) => (liveSyncState = s)}");
+    expect(status).not.toContain('canSync ? "Kept up to date in the background" : "Not set up for this project"');
+    // The pill surfaces every transition upward.
+    expect(pill).toContain("onSyncState?.(status.state)");
+  });
 });
 
 describe("Failure & conflict copy reassures that local work is safe", () => {
@@ -105,10 +115,16 @@ describe("Table of contents — collapsible tree matching the Files panel", () =
     expect(left).toContain("ancestorKeysForActive(outline, activeOutlineIndex)");
   });
   test("expansion is a separate control from navigation (chevron button ≠ label button)", () => {
-    // A dedicated disclosure button toggles; the label button navigates.
+    // A dedicated disclosure button toggles; the label button selects.
     expect(left).toContain("onclick={() => toggleToc(node.key)}");
-    expect(left).toContain("onclick={() => onJumpToOutline?.(node.entry)}");
+    expect(left).toContain("onclick={() => selectToc(node)}");
     // Keyboard expand/collapse is wired independently of navigation.
     expect(left).toContain("onkeydown={(e) => onTocKeydown(e, node)}");
+  });
+
+  test("selecting a section also expands it (navigate + reveal children)", () => {
+    // selectToc adds the node to the expanded set before navigating.
+    expect(left).toContain("function selectToc(node: TocNode)");
+    expect(left).toContain("onJumpToOutline?.(node.entry)");
   });
 });

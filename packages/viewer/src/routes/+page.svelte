@@ -2511,7 +2511,7 @@
            Save PDF so authors find it without digging through settings. -->
       {#if isDesktop()}
         <button
-          class="publish-btn icon-text"
+          class="primary app-btn-primary save-btn icon-text"
           onclick={() => (publishOpen = true)}
           disabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
           title="Publish your book to itch.io, KDP, Shopify and more"
@@ -3295,12 +3295,6 @@
     gap: 6px;
   }
   .icon-text :global(svg) { flex: 0 0 auto; }
-
-  /* Publish: an accent-outlined CTA sitting beside the filled Save PDF — a
-     major action (front-and-centre per the publishing UX request) that stays
-     visually secondary to the one primary gradient button. */
-  .publish-btn { border-color: var(--app-accent-border); color: var(--app-accent); font-weight: 600; }
-  .publish-btn:hover:not(:disabled) { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); }
 
   /* UX-014: small text label under/beside view mode icon */
   .view-label { font-size: 11px; }
