@@ -43,3 +43,8 @@ jobs:
       - name: Run cross-browser preview smoke test
         working-directory: packages/cli
         run: node_modules/.bin/playwright test -c tests/compat/playwright.config.ts
+        env:
+          # Surface each webServer's spawn/readiness/exit (incl. exit code) so
+          # a bare "Process from config.webServer exited early" is diagnosable
+          # from the job log instead of unreproducible-flake guesswork.
+          DEBUG: "pw:webserver"
