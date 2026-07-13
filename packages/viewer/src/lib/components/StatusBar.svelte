@@ -36,6 +36,12 @@
     sourceMode = "folder" as "folder" | "url",
     /** Whether the project has sync capability (canSync). */
     canSync = false,
+    /** Whether the project's repo has a configured remote at all (any protocol),
+     *  even when print-md can't auto-sync it (SSH, or HTTPS with no stored
+     *  credential). Lets the "Online copy" row say syncing simply isn't set up —
+     *  rather than "Kept on this computer", which wrongly implies no remote when
+     *  one is in fact configured (user feedback). */
+    hasRemote = false,
     /** Whether the project keeps local version history (canSnapshot) — true for
      *  any local-git project even without a syncable remote. Drives the pill so
      *  local-only projects still get a clickable "Version history" affordance. */
@@ -93,6 +99,7 @@
     projectDir?: string | null;
     sourceMode?: "folder" | "url";
     canSync?: boolean;
+    hasRemote?: boolean;
     canSnapshot?: boolean;
     savePhase?: "clean" | "dirty" | "saving" | "error";
     fileOpen?: boolean;
@@ -190,10 +197,14 @@
       case "recovered":
         return "Up to date";
       case "local":
-        return "Kept on this computer";
+        // A remote IS configured but print-md isn't auto-syncing it (SSH, or an
+        // HTTPS remote with no stored credential) → don't imply it's local-only.
+        // No remote at all → the honest "only on this computer" copy.
+        return hasRemote ? "Not syncing automatically" : "Kept on this computer";
       case "idle":
       default:
-        return canSync ? "Up to date" : "Not set up yet";
+        if (canSync) return "Up to date";
+        return hasRemote ? "Not syncing automatically" : "Not set up yet";
     }
   });
 

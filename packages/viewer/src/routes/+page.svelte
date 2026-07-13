@@ -489,12 +489,13 @@
   );
 
   // C2 (book switcher): the toolbar label shows the active book's own title by
-  // default (unchanged from before repo-root sessions). In a multi-book repo it
-  // is prefixed with the repo's folder name so the author can see, at a glance,
-  // that switching books (`<BookSwitcher>` below) stays within the same project.
+  // default (unchanged from before repo-root sessions). In a multi-book repo the
+  // book title leads and is suffixed with the repo's folder name so the author
+  // sees, at a glance, that switching books (`<BookSwitcher>` below) stays within
+  // the same project — book-title-first per author feedback.
   let displayTitle = $derived(
     projectSession.repoRoot && projectSession.books.length > 1
-      ? `${basenameOf(projectSession.repoRoot)} — ${lifecycle.docTitle || folderName}`
+      ? `${lifecycle.docTitle || folderName} — ${basenameOf(projectSession.repoRoot)}`
       : lifecycle.docTitle || folderName,
   );
 
@@ -2474,10 +2475,10 @@
           class="primary app-btn-primary save-btn icon-text"
           onclick={() => exportController.savePdf()}
           disabled={lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
-          title="Save as PDF (Ctrl+Shift+E)"
+          title="Export as PDF (Ctrl+Shift+E)"
         >
           <Icon name="file-down" />
-          <span class="save-btn-label">{exportController.exporting ? "Saving…" : "Save PDF"}</span>
+          <span class="save-btn-label">{exportController.exporting ? "Exporting…" : "Export"}</span>
         </button>
         <!-- UX-023: explain why Save PDF is disabled -->
         {#if !lifecycle.currentDir && !lifecycle.busy}
@@ -2777,6 +2778,7 @@
     projectDir={lifecycle.currentDir}
     sourceMode={lifecycle.sourceMode}
     canSync={!!(syncController.syncDiag?.canSync)}
+    hasRemote={projectSession.projectHasRemote}
     canSnapshot={!!(projectSession.projectCapabilities?.canSnapshot)}
     savePhase={editorSavePhase}
     fileOpen={!!editorFilePath}

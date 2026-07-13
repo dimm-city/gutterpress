@@ -91,6 +91,15 @@ export class ProjectSessionController {
   projectCapabilities = $state<ProjectCapabilities | null>(null);
   /** The book's path relative to its shared repo ("" for standalone projects). */
   projectSubPath = $state("");
+  /**
+   * Whether the open project's git repo has a configured remote (any protocol),
+   * regardless of whether print-md can auto-sync to it. Distinguishes a project
+   * that HAS an online copy but isn't print-md-synced (SSH remote, or an HTTPS
+   * remote with no stored credential) from a purely local one — so the status
+   * bar's "Online copy" row never wrongly reads "Kept on this computer" when a
+   * remote is in fact configured (user feedback). False for non-git folders.
+   */
+  projectHasRemote = $state(false);
   /** Root of the repo the open folder belongs to; null when there is no repo. */
   repoRoot = $state<string | null>(null);
   /** Books (manifest-containing folders) found inside `repoRoot`; [] when there is no repo. */
@@ -119,6 +128,7 @@ export class ProjectSessionController {
     this.classifyGen++;
     this.projectCapabilities = null;
     this.projectSubPath = "";
+    this.projectHasRemote = false;
     this.repoRoot = null;
     this.books = [];
     this.activeBookDir = null;
@@ -141,6 +151,8 @@ export class ProjectSessionController {
         this.projectCapabilities = result.capabilities;
         this.projectSubPath =
           result.source.type === "local-git-folder" ? (result.source.subPath ?? "") : "";
+        this.projectHasRemote =
+          result.source.type === "local-git-folder" ? result.source.hasRemote : false;
         this.repoRoot = result.repoRoot ?? null;
         this.books = result.books ?? [];
         this.activeBookDir = resolveActiveBookDir(dir, result.repoRoot, this.books);

@@ -145,7 +145,7 @@
             <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
             <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes auto-save, and {modKey}+S or the editor save button saves immediately.</li>
             <li><strong>Keep a history of your work</strong> — click the sync/status pill to see your project's saved history and activity log.</li>
-            <li><strong>Export PDF</strong> — click <em>Save PDF</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
+            <li><strong>Export PDF</strong> — click <em>Export</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
           </ol>
           <p class="gs-note">Don't have a project yet? Visit the <button class="inline-link" onclick={openDocs}>online setup guide</button> to create one.</p>
         </section>
@@ -221,7 +221,7 @@
         <section class="tools">
           <h3>Optional system tools</h3>
           <p class="hint">
-            print-md renders your preview using the built-in browser engine. The standard <strong>Save PDF</strong> feature needs no extra tools. The optional <strong>pre-press PDF export</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
+            print-md renders your preview using the built-in browser engine. The standard <strong>Export</strong> feature needs no extra tools. The optional <strong>pre-press PDF export</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
           </p>
           <ul>
             {#each data.tools as t (t.bin)}

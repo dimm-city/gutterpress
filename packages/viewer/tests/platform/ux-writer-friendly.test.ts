@@ -83,6 +83,21 @@ describe("Status bar — one calm state opening a 3-row protection summary", () 
     // The pill surfaces every transition upward.
     expect(pill).toContain("onSyncState?.(status.state)");
   });
+  test("a configured-but-unsynced remote is NOT reported as local-only (#1)", () => {
+    const page = read("src/routes/+page.svelte");
+    const session = read("src/lib/routes/project-session-controller.svelte.ts");
+    // The status bar takes a hasRemote signal and only says "Kept on this
+    // computer" when there is genuinely no remote; a project WITH a remote that
+    // print-md just isn't auto-syncing (SSH / uncredentialed HTTPS) reads
+    // "Not syncing automatically" instead.
+    expect(status).toContain("hasRemote");
+    expect(status).toContain('return hasRemote ? "Not syncing automatically" : "Kept on this computer"');
+    // hasRemote flows from the project source classification, through the
+    // session controller, to the status bar.
+    expect(session).toContain("projectHasRemote");
+    expect(session).toContain("result.source.hasRemote");
+    expect(page).toContain("hasRemote={projectSession.projectHasRemote}");
+  });
 });
 
 describe("Failure & conflict copy reassures that local work is safe", () => {

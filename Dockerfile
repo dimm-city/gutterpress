@@ -52,13 +52,27 @@ RUN cd packages/cli && bun run build
 RUN <<'DOCKER_EOF'
 set -eu
 cat <<'JS_EOF' > /tmp/pin-runtime-deps.mjs
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const pkg = JSON.parse(readFileSync("packages/cli/package.json", "utf8"));
+// Resolve each dep the way Node would from packages/cli: a workspace install
+// may keep a package's direct deps NESTED under packages/cli/node_modules, or
+// HOIST them to the repo-root node_modules (bun chooses per-dep, and the choice
+// can shift between bun versions). Check the nested path first (it wins at
+// runtime when present), then fall back to the hoisted root — so the pin never
+// ENOENTs on a hoisted dep. Fail loudly if a declared dep is installed nowhere.
+const searchRoots = ["packages/cli/node_modules", "node_modules"];
 const pinned = {};
 for (const dep of Object.keys(pkg.dependencies)) {
-  const depPkgPath = join("packages/cli/node_modules", dep, "package.json");
+  const depPkgPath = searchRoots
+    .map((root) => join(root, dep, "package.json"))
+    .find((p) => existsSync(p));
+  if (!depPkgPath) {
+    throw new Error(
+      `Cannot pin "${dep}": no installed package.json under ${searchRoots.join(" or ")}`,
+    );
+  }
   pinned[dep] = JSON.parse(readFileSync(depPkgPath, "utf8")).version;
 }
 writeFileSync(

@@ -254,7 +254,7 @@
       <!-- Publish step -->
       <p class="lead">
         Publishing uses your project's latest build output. If you've changed the book,
-        use <strong>Save PDF</strong> first, then publish.
+        use <strong>Export</strong> first, then publish.
       </p>
       {#if blockedCards.length > 0}
         <p class="warn" role="alert">
