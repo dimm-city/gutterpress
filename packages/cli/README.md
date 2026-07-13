@@ -175,6 +175,7 @@ print-md publish [project] [options]
   --list               List providers and connection status
   --connect            Store an API key for --provider (from --token, the provider's env var, or piped stdin)
   --disconnect         Forget the stored key for --provider
+  --account <label>    Named-credential label for --connect/--disconnect (keep several accounts per provider); omit for the default
   --token <key>        API key for --connect (prefer stdin/env var to keep it out of shell history)
   --file <path>        Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location
   --manifest <path>    Path to manifest.yaml
