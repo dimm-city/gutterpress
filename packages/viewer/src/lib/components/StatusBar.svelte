@@ -17,6 +17,7 @@
   import ProblemsPanel from "$lib/components/ProblemsPanel.svelte";
   import BookSwitcher from "$lib/components/BookSwitcher.svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import { api } from "$lib/api";
   import { onMount } from "svelte";
   import type { ConflictFileInfo } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
@@ -81,6 +82,11 @@
     onForceSave = undefined as (() => void) | undefined,
     /** Called when the author clicks "Sync now". */
     onForceSync = undefined as (() => void) | undefined,
+    /** Called when the author clicks "Save a version now" in the summary.
+     *  Resolves when the version is saved (or rejects on failure) so the
+     *  summary can refresh its "latest version" line and the parent can show
+     *  the single confirmation toast. */
+    onSaveVersion = undefined as (() => Promise<void>) | undefined,
     onOpenSettings = undefined as (() => void) | undefined,
     onOpenHelp = undefined as (() => void) | undefined,
   }: {
@@ -105,6 +111,7 @@
     onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
     onForceSync?: () => void;
+    onSaveVersion?: () => Promise<void>;
     onOpenSettings?: () => void;
     onOpenHelp?: () => void;
   } = $props();
@@ -121,9 +128,87 @@
         return "Save error";
       case "clean":
       default:
-        return "All changes saved";
+        return "All work saved";
     }
   });
+
+  // ── Protection summary (UX follow-up: one calm status → a compact summary) ──
+  // Clicking the save indicator opens a small popover that shows the three
+  // protections a writer reasons about, each separately: saved on this
+  // computer, previous versions, and the online copy. Rows 1 and 3 use data the
+  // bar already has; the "previous versions" time is fetched lazily on open via
+  // the PWA-clean api.vcs route (no $effect — event-driven, per CLAUDE.md §8).
+  let summaryOpen = $state(false);
+  let summaryEl = $state<HTMLDivElement | null>(null);
+  let latestVersionAt = $state<number | null>(null);
+  let versionsLoaded = $state(false);
+  let versionsLoading = $state(false);
+
+  function relativeTime(ms: number, now: number): string {
+    const secs = Math.max(0, Math.round((now - ms) / 1000));
+    if (secs < 60) return "just now";
+    const mins = Math.round(secs / 60);
+    if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    const dayCount = Math.round(hours / 24);
+    return `${dayCount} day${dayCount === 1 ? "" : "s"} ago`;
+  }
+
+  let onThisComputerText = $derived.by((): string => {
+    if (forceSaving || savePhase === "saving" || savePhase === "dirty") return "Saving…";
+    if (savePhase === "error") return "Couldn't save — check the file";
+    return "Saved";
+  });
+  let previousVersionsText = $derived.by((): string => {
+    if (!canSnapshot) return "Off for this project";
+    if (versionsLoading) return "Checking…";
+    if (!versionsLoaded) return "";
+    if (latestVersionAt == null) return "No versions yet";
+    return `Latest version ${relativeTime(latestVersionAt, Date.now())}`;
+  });
+  let onlineCopyText = $derived(canSync ? "Kept up to date in the background" : "Not set up for this project");
+
+  async function fetchLatestVersion() {
+    if (!projectDir || !canSnapshot) return;
+    versionsLoading = true;
+    try {
+      const page = await api.vcs.listSnapshotsPage(projectDir, { limit: 1 });
+      latestVersionAt = page.entries[0]?.timestamp ?? null;
+      versionsLoaded = true;
+    } catch {
+      // Non-fatal: the summary just shows a blank "previous versions" line
+      // rather than an alarming error in the always-visible chrome.
+      versionsLoaded = true;
+    } finally {
+      versionsLoading = false;
+    }
+  }
+
+  function toggleSummary() {
+    summaryOpen = !summaryOpen;
+    if (summaryOpen && canSnapshot && !versionsLoaded) void fetchLatestVersion();
+  }
+
+  let savingVersion = $state(false);
+  async function saveVersionNow() {
+    if (!onSaveVersion || savingVersion) return;
+    savingVersion = true;
+    try {
+      await onSaveVersion();
+      // Reflect the new version in the summary immediately.
+      versionsLoaded = false;
+      await fetchLatestVersion();
+    } catch {
+      // The parent surfaces the failure toast; keep the summary calm.
+    } finally {
+      savingVersion = false;
+    }
+  }
+
+  function onWindowPointerDown(e: PointerEvent) {
+    if (summaryOpen && summaryEl && !summaryEl.contains(e.target as Node)) summaryOpen = false;
+  }
 
   /** CSS modifier class for the save indicator. */
   let saveClass = $derived.by((): string => {
@@ -176,7 +261,7 @@
   onMount(updateCompact);
 </script>
 
-<svelte:window onresize={updateCompact} />
+<svelte:window onresize={updateCompact} onpointerdown={onWindowPointerDown} />
 
 <div class="status-bar" role="status" aria-label="Application status">
   <!-- Left cluster: [book switcher] | [sync refresh icon] [sync pill] | [save indicator] [Save now] -->
@@ -214,12 +299,30 @@
       <span class="status-sep" aria-hidden="true"></span>
     {/if}
     {#if fileOpen}
-      <span
-        class="save-indicator {saveClass}"
-        aria-live="polite"
-        aria-atomic="true"
-        title={savePhase === "dirty" || savePhase === "saving" ? "pending changes need to be saved" : saveLabel}
-      ><Icon name={saveStateIcon} size={13} /><span class="save-text">{saveLabel}</span></span>
+      <div class="save-summary-wrap" bind:this={summaryEl}>
+        <button
+          type="button"
+          class="save-indicator {saveClass}"
+          aria-haspopup="dialog"
+          aria-expanded={summaryOpen}
+          onclick={toggleSummary}
+          title={savePhase === "dirty" || savePhase === "saving" ? "Pending changes are being saved" : "What's protecting your work"}
+        ><Icon name={saveStateIcon} size={13} /><span class="save-text" aria-live="polite" aria-atomic="true">{saveLabel}</span></button>
+        {#if summaryOpen}
+          <div class="save-summary" role="dialog" aria-label="What's protecting your work">
+            <ul class="summary-rows">
+              <li><span class="summary-key">On this computer</span><span class="summary-val">{onThisComputerText}</span></li>
+              <li><span class="summary-key">Previous versions</span><span class="summary-val">{previousVersionsText}</span></li>
+              <li><span class="summary-key">Online copy</span><span class="summary-val">{onlineCopyText}</span></li>
+            </ul>
+            {#if canSnapshot && onSaveVersion}
+              <button class="summary-action" onclick={saveVersionNow} disabled={savingVersion}>
+                {savingVersion ? "Saving a version…" : "Save a version now"}
+              </button>
+            {/if}
+          </div>
+        {/if}
+      </div>
     {/if}
     {#if showForceSave}
       <button
@@ -355,7 +458,8 @@
     }
   }
 
-  /* ── Save indicator ───────────────────────────────────────────────────── */
+  /* ── Save indicator (now a button that opens the protection summary) ────── */
+  .save-summary-wrap { position: relative; display: inline-flex; }
   .save-indicator {
     display: inline-flex;
     align-items: center;
@@ -364,7 +468,45 @@
     white-space: nowrap;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     transition: color 0.15s;
+    background: transparent;
+    border: none;
+    padding: 2px 4px;
+    border-radius: 3px;
+    cursor: pointer;
   }
+  .save-indicator:hover { background: var(--app-surface-hover, rgba(255,255,255,0.06)); }
+  .save-indicator:focus-visible { outline: 2px solid var(--app-accent, #4a9eff); outline-offset: 1px; }
+
+  /* Protection summary popover — grows upward from the bar, like ProblemsPanel. */
+  .save-summary {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 240px;
+    padding: 8px;
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-border);
+    border-radius: 8px;
+    box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0,0,0,0.18));
+    z-index: 400;
+  }
+  .summary-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .summary-rows li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .summary-key { font-size: 11px; color: var(--app-text); font-weight: 600; }
+  .summary-val { font-size: 11px; color: var(--app-text-secondary); text-align: right; }
+  .summary-action {
+    margin-top: 8px;
+    width: 100%;
+    font-size: 11px;
+    padding: 5px 8px;
+    border: 1px solid var(--app-border-strong);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--app-text-secondary);
+    cursor: pointer;
+  }
+  .summary-action:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover, rgba(255,255,255,0.06)); }
+  .summary-action:disabled { opacity: 0.6; cursor: default; }
   /* Resting (saved): visible but calm — not faint enough to miss. */
   .save-indicator.saved {
     color: var(--app-text-secondary);

@@ -138,8 +138,9 @@
       <h2 id="cr-title">Unsaved changes found</h2>
     </header>
     <p class="cr-lede">
-      We found unsaved changes from your last session. Restore them into the
-      editor, or discard them.
+      The app kept a temporary emergency copy of edits that weren't saved when it
+      closed unexpectedly. Restore them into the editor, or discard them. This is
+      separate from your previous versions.
     </p>
     <ul class="cr-list">
       {#each items as item (item.filePath)}

@@ -229,11 +229,13 @@ export class SyncController {
         // Generic error state. Deliberately a friendly fixed string, NOT
         // outcome.message: that field carries raw git/network error text that is
         // unhelpful (and often alarming) to the non-technical authors this app
-        // targets. Details remain available via the advanced Sync surface.
-        this.deps.toast()?.error("Sync failed. Check your connection and try again.");
+        // targets. Details remain available via the advanced Sync surface. The
+        // copy reassures that local work is safe (UX follow-up: a sync failure
+        // must state what remains safe).
+        this.deps.toast()?.error("Couldn't update the online copy. Your work is saved on this computer — we'll try again later.");
       }
-    } catch (e) {
-      this.deps.toast()?.error(`Sync failed: ${e instanceof Error ? e.message : String(e)}`);
+    } catch {
+      this.deps.toast()?.error("Couldn't update the online copy. Your work is saved on this computer — we'll try again later.");
     } finally {
       if (this.deps.currentDir() === dir) this.forceSyncing = false;
     }

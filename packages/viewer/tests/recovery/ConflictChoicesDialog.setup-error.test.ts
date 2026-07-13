@@ -89,7 +89,7 @@ describe("ConflictChoicesDialog source — setup-error routing shape", () => {
   test("confirm() shows the SAME fixed generic line as SyncController's generic error arm", async () => {
     const src = await readFile(COMPONENT_PATH, "utf-8");
     const body = extractConfirmFn(src);
-    expect(body).toContain("Sync failed. Check your connection and try again.");
+    expect(body).toContain("Couldn't update the online copy. Your work is saved on this computer — we'll try again later.");
   });
 
   test("confirm() reads outcome.message in ONLY the auth and offline branches — never for the generic/setup-error arms", async () => {

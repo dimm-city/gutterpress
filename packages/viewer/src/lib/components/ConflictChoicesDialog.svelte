@@ -84,7 +84,7 @@
   const header = $derived(
     phase === "error" && errorKind === "connection-setup"
       ? { icon: "link" as const, title: "Your online connection needs to be set up again" }
-      : { icon: "triangle-alert" as const, title: "Changes happened in two places" },
+      : { icon: "triangle-alert" as const, title: "This project changed in two places" },
   );
 
   /** Track which file disclosures are expanded (path → boolean). */
@@ -214,7 +214,7 @@
         // field can carry raw technical error text that is unhelpful (and
         // often alarming) to the non-technical authors this app targets.
         // Same fixed copy as SyncController.handleForceSync's generic arm.
-        errorMessage = "Sync failed. Check your connection and try again.";
+        errorMessage = "Couldn't update the online copy. Your work is saved on this computer — we'll try again later.";
       }
     } catch (e) {
       phase = "error";
@@ -308,7 +308,7 @@
         {/if}
 
         <p class="lede">
-          You and a teammate changed some of the same files. A snapshot of
+          You and a teammate changed some of the same files. A copy of
           your work was saved automatically before combining. Choose what to
           do with each file below.
         </p>
