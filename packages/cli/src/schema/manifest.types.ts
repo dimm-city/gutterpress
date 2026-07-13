@@ -21,12 +21,21 @@ export interface PluginConfig {
  * credential store (CLI: 0600 file under the user config dir; viewer:
  * Electron safeStorage).
  */
+/**
+ * The name (label) of the SAVED credential this book uses for a provider, when
+ * the user keeps more than one (e.g. two itch.io accounts). It is NOT a secret
+ * — just a reference into the host credential store's named entries; empty/
+ * absent uses the default (bare-host) credential. This book-level choice
+ * overrides any project/global default.
+ */
 export interface PublishSettings {
   itch?: {
     /** itch.io project as `user/game` (the butler push target). */
     target?: string;
     /** butler channel name (default: "pdf"). */
     channel?: string;
+    /** Saved-credential label to use (see PublishSettings doc). */
+    credential?: string;
   };
   drivethrurpg?: {
     /** Existing product page URL, when updating a published title. */
@@ -36,6 +45,8 @@ export interface PublishSettings {
   "azure-swa"?: {
     /** Deploy environment (default: "production"). */
     env?: string;
+    /** Saved-credential label to use (see PublishSettings doc). */
+    credential?: string;
   };
   shopify?: {
     /** The store domain, e.g. `my-store.myshopify.com`. */
@@ -44,6 +55,8 @@ export interface PublishSettings {
     productId?: string;
     /** Admin GraphQL API version (default: "2026-04"). */
     apiVersion?: string;
+    /** Saved-credential label to use (see PublishSettings doc). */
+    credential?: string;
   };
 }
 

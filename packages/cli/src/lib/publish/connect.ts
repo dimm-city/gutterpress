@@ -15,17 +15,18 @@
 import type { HostCredential, TokenStore } from "../remote-auth/token-store.ts";
 import { publishProviderFor } from "./registry.ts";
 import { resolvePublishRequest } from "./run-publish.ts";
-import type { PublishDeps } from "./types.ts";
+import { publishCredentialKey, type PublishDeps } from "./types.ts";
 
-/** A TokenStore view that answers `host` with `candidate`, delegating the rest. */
+/** A TokenStore view that answers `key` with `candidate`, delegating the rest. */
 function overlayStore(
   inner: TokenStore,
-  host: string,
+  key: string,
   candidate: HostCredential,
 ): TokenStore {
+  const wanted = key.trim().toLowerCase();
   return {
     get: async (h) =>
-      h.trim().toLowerCase() === host ? candidate : inner.get(h),
+      h.trim().toLowerCase() === wanted ? candidate : inner.get(h),
     // The trial store is read-only by construction — providers only read.
     set: async () => {},
     delete: async () => {},
@@ -38,6 +39,12 @@ export interface ConnectPublishProviderOptions {
   providerId: string;
   /** The pasted API key. NEVER log this. */
   token: string;
+  /**
+   * Optional account label for a NAMED credential — lets a user keep several
+   * credentials for one provider (e.g. two itch.io accounts). Stored under the
+   * compound `<host>#<account>` key; empty means the default (bare-host) entry.
+   */
+  account?: string;
   manifestPath?: string;
 }
 
@@ -61,11 +68,21 @@ export async function connectPublishProvider(
   if (!token) throw new Error("Paste an API key first.");
 
   const host = info.credential.host;
+  const account = (options.account ?? "").trim();
+  // Named account → compound `<host>#<account>` key; no account → the legacy
+  // bare-host entry (so existing single-credential setups are unchanged).
+  const key = publishCredentialKey(host, account);
   const candidate: HostCredential = {
-    host,
+    host, // the REAL host — redacted listings filter accounts by this
     kind: "token",
     token,
-    label: info.label,
+    // `username` carries the account label so a picker can recover it from
+    // `list()`/`listRedacted()` (which don't expose the compound store key);
+    // the default (unnamed) credential has none.
+    ...(account ? { username: account } : {}),
+    // The account name is what a picker shows; fall back to the provider label
+    // for the unnamed/default credential.
+    label: account || info.label,
     createdAt: Date.now(),
   };
 
@@ -80,13 +97,16 @@ export async function connectPublishProvider(
   const trialDeps: PublishDeps = {
     ...deps,
     env: {}, // the pasted key must be the one verified — no env shadowing
-    tokenStore: overlayStore(deps.tokenStore, host, candidate),
+    // Verify THIS account's key, overriding any manifest/selection default so
+    // `authenticate` resolves the candidate under the compound key.
+    credentialAccount: account || undefined,
+    tokenStore: overlayStore(deps.tokenStore, key, candidate),
   };
   const auth = await provider.authenticate({ ...req, deps: trialDeps });
   if (!auth.ok) {
     throw new Error(auth.message ?? `${info.label} didn't accept that key.`);
   }
 
-  await deps.tokenStore.set(host, candidate);
+  await deps.tokenStore.set(key, candidate);
   return { connected: true, providerId: info.id };
 }

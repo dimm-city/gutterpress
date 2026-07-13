@@ -134,6 +134,31 @@ export interface PublishDeps {
   configDir?: string;
   /** Live progress line sink (CLI logger / viewer progress log). */
   onProgress?: (message: string) => void;
+  /**
+   * The selected NAMED credential (account label) for this operation, when the
+   * user has more than one saved credential for the provider. The store is
+   * keyed by a compound `<host>#<account>` for named accounts (see
+   * {@link publishCredentialKey}); empty/undefined resolves the legacy
+   * bare-host entry, so existing single-credential setups keep working. The
+   * orchestrator sets this from the effective selection (book manifest →
+   * project/global default); providers read it transparently via
+   * {@link resolvePublishCredential}.
+   */
+  credentialAccount?: string;
+}
+
+/**
+ * The TokenStore key for a publishing provider credential. Named accounts use a
+ * compound `<host>#<account>` key so MULTIPLE credentials can coexist under one
+ * provider host (two itch.io accounts, two Shopify stores) in the same flat
+ * store — WITHOUT changing the TokenStore contract or disturbing git-sync,
+ * which keeps using bare host keys. An empty/absent account is the bare host
+ * (the legacy single-credential entry). The account segment is trimmed; host
+ * normalisation (lower-casing) is left to the store's `normalizeHost`.
+ */
+export function publishCredentialKey(host: string, account?: string | null): string {
+  const a = (account ?? "").trim();
+  return a ? `${host}#${a}` : host;
 }
 
 /** Everything a provider method needs for one operation. */
@@ -231,6 +256,7 @@ export interface PublishProvider {
 export async function resolvePublishCredential(
   info: PublishProviderInfo,
   deps: PublishDeps,
+  account: string | undefined = deps.credentialAccount,
 ): Promise<{ credential: HostCredential; source: "env" | "store" } | null> {
   const env = deps.env ?? process.env;
   const fromEnv = info.credential.envVar
@@ -247,7 +273,10 @@ export async function resolvePublishCredential(
       source: "env",
     };
   }
-  const stored = await deps.tokenStore.get(info.credential.host);
+  // Named account → compound key; no account → the legacy bare-host entry.
+  const stored = await deps.tokenStore.get(
+    publishCredentialKey(info.credential.host, account),
+  );
   return stored ? { credential: stored, source: "store" } : null;
 }
 
@@ -259,10 +288,45 @@ export async function resolvePublishCredential(
 export async function publishConnectionStatus(
   info: PublishProviderInfo,
   deps: PublishDeps,
+  account: string | undefined = deps.credentialAccount,
 ): Promise<{ connected: boolean; source?: "env" | "store" }> {
   if (!info.credential.required) return { connected: true };
-  const resolved = await resolvePublishCredential(info, deps);
+  const resolved = await resolvePublishCredential(info, deps, account);
   return resolved
     ? { connected: true, source: resolved.source }
     : { connected: false };
+}
+
+/** A saved credential for a provider, REDACTED (no token) — for a picker. */
+export interface PublishSavedAccount {
+  /**
+   * The account label (the compound-key `#<account>` segment). Empty string is
+   * the default (unnamed / bare-host) credential.
+   */
+  account: string;
+  /** Display name for the picker (the credential's label). */
+  label: string;
+  createdAt: number;
+}
+
+/**
+ * The saved credentials for a provider, redacted — one per named account plus
+ * the default (unnamed) entry, when present. Recovered from the store's flat
+ * {@link TokenStore.list} by matching the provider host; the account label is
+ * carried in each credential's `username` (see `connect.ts`), empty for the
+ * default entry. Never returns token values.
+ */
+export async function listPublishAccounts(
+  info: PublishProviderInfo,
+  deps: PublishDeps,
+): Promise<PublishSavedAccount[]> {
+  const wantHost = info.credential.host.trim().toLowerCase();
+  const all = await deps.tokenStore.list();
+  return all
+    .filter((c) => c.host.trim().toLowerCase() === wantHost)
+    .map((c) => ({
+      account: (c.username ?? "").trim(),
+      label: c.label ?? (c.username || info.label),
+      createdAt: c.createdAt,
+    }));
 }

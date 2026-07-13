@@ -65,6 +65,19 @@ export async function resolvePublishRequest(
     (publishSettings[provider.info.id] as Record<string, unknown> | undefined) ??
     {};
 
+  // Which SAVED credential (account label) to use for this provider. The
+  // book's own manifest (`publish.<id>.credential`) is the most specific and
+  // overrides the front-end's project/global default (passed in via
+  // `deps.credentialAccount`); empty means the default (bare-host) credential.
+  const bookAccount =
+    typeof providerConfig.credential === "string"
+      ? providerConfig.credential.trim()
+      : "";
+  const effectiveAccount = bookAccount || deps.credentialAccount;
+  const effectiveDeps: PublishDeps = effectiveAccount
+    ? { ...deps, credentialAccount: effectiveAccount }
+    : deps;
+
   const outDir = path.resolve(options.projectDir, config.output.dir);
   const defaultArtifact =
     provider.info.format === "pdf"
@@ -88,7 +101,7 @@ export async function resolvePublishRequest(
     },
     config: providerConfig,
     artifact,
-    deps,
+    deps: effectiveDeps,
   };
 }
 
