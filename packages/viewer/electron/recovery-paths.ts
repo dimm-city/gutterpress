@@ -24,9 +24,15 @@ export function slugifyRepo(repoSlug: string): string {
   return repoSlug.replace(/[^a-zA-Z0-9_-]/g, "_") || "repo";
 }
 
+// The sync/recovery operation logs live under userData/logs/. One file per
+// project slug so logs from different projects don't interleave.
+export function logsDir(userDataDir: string): string {
+  return path.join(userDataDir, "logs");
+}
+
 // The sync/recovery operation log lives under userData/logs/. One file per
 // project slug so logs from different projects don't interleave. The file is
 // appended to (not truncated) so a user can see history across sessions.
 export function operationLogPath(userDataDir: string, repoSlug: string): string {
-  return path.join(userDataDir, "logs", `${slugifyRepo(repoSlug)}.log`);
+  return path.join(logsDir(userDataDir), `${slugifyRepo(repoSlug)}.log`);
 }

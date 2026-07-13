@@ -19,7 +19,11 @@ import {
 import { GITHUB_HOST } from "./github-auth.ts";
 import { knownForgeTokenUrl } from "./generic-auth.ts";
 import { isSshRemoteUrl } from "./test-access.ts";
-import { extractUrlCredential, type TokenStore } from "./token-store.ts";
+import {
+  credentialHostKey,
+  extractUrlCredential,
+  type TokenStore,
+} from "./token-store.ts";
 
 /** How the project's remote is addressed. "https" covers smart HTTP(S). */
 export type RemoteProtocol = "https" | "ssh" | "none";
@@ -83,13 +87,15 @@ export function parseRemoteOrigin(url: string): {
   const trimmed = url.trim();
   if (!trimmed) return { protocol: "none" };
   // scp-like git@host:owner/repo.git — no scheme, can't feed URL() directly.
+  // Host derivation MUST go through credentialHostKey — the ONE canonical key
+  // every credential writer uses — so a stored credential is always found for
+  // its own remote (host-key drift was a recurring "connected but never
+  // syncable" defect class).
   const scp = /^[\w.-]+@([\w.][\w.-]*):/.exec(trimmed);
-  if (scp) return { protocol: "ssh", host: scp[1]!.toLowerCase() };
+  if (scp) return { protocol: "ssh", host: credentialHostKey(trimmed) };
   try {
     const parsed = new URL(trimmed);
-    const host = parsed.port
-      ? `${parsed.hostname}:${parsed.port}`.toLowerCase()
-      : parsed.hostname.toLowerCase();
+    const host = credentialHostKey(trimmed);
     if (/^https?:$/.test(parsed.protocol)) return { protocol: "https", host };
     if (/^ssh:$/.test(parsed.protocol) || isSshRemoteUrl(trimmed)) {
       return { protocol: "ssh", host };
@@ -155,8 +161,8 @@ export async function diagnoseProjectRemote(
   const { protocol, host } = parseRemoteOrigin(rawRemoteUrl);
   // D7: never surface a token fossilized in the clone URL — sanitize both the
   // top-level remoteUrl AND the embedded classification (the UI displays both).
-  const remoteUrl =
-    protocol === "https" ? extractUrlCredential(rawRemoteUrl).cleanUrl : rawRemoteUrl;
+  const urlExtraction = protocol === "https" ? extractUrlCredential(rawRemoteUrl) : null;
+  const remoteUrl = urlExtraction ? urlExtraction.cleanUrl : rawRemoteUrl;
   const sanitizedClassification: ProjectSource =
     classification.type === "local-git-folder" && classification.remoteUrl
       ? { ...classification, remoteUrl }
@@ -170,6 +176,11 @@ export async function diagnoseProjectRemote(
       credentialPresent = false;
     }
   }
+  // A token embedded in the remote URL authenticates syncs (resolveTransport's
+  // URL-credential fallback), so it counts as a present credential here too —
+  // otherwise a working externally-configured setup diagnoses as "not
+  // connected" and auto-sync never engages for it.
+  if (!credentialPresent && urlExtraction?.credential) credentialPresent = true;
 
   const provider = host && protocol !== "none" ? forgeKindForHost(host) : null;
   const canSync = protocol === "https" && credentialPresent;

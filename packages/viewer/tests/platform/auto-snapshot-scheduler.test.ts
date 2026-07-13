@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   AutoSnapshotScheduler,
+  AUTO_SNAPSHOT_FAILURE_THRESHOLD,
   type AutoSnapshotDeps,
 } from "../../electron/auto-snapshot/scheduler";
 
@@ -56,6 +57,8 @@ interface FakeLibOptions {
   /** Called per provider.snapshot(); may throw/reject to exercise error paths. */
   snapshot?: (args: unknown) => unknown;
   isNoChangesError?: (e: unknown) => boolean;
+  /** Injected onSnapshotFailed dep (M39 failure-threshold signal). */
+  onSnapshotFailed?: (dir: string, consecutiveFailures: number, error: unknown) => void;
 }
 
 interface Harness {
@@ -106,6 +109,7 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     setTimer: clock.set,
     clearTimer: clock.clear,
     onPendingChanged: (d) => pendingChanges.push(d),
+    ...(opts.onSnapshotFailed ? { onSnapshotFailed: opts.onSnapshotFailed } : {}),
   };
 
   return {
@@ -255,4 +259,118 @@ test("(j) onPendingChanged fires dir on arm and null on clear", async () => {
   expect(h.pendingChanges).toContain(DIR);
   h.sched.cancel();
   expect(h.pendingChanges[h.pendingChanges.length - 1]).toBeNull();
+});
+
+// ── onSnapshotFailed threshold signal (M39 — UX critical review) ────────────────
+//
+// AutoSnapshotScheduler.run's catch used to only console.error and return — a
+// persistently failing safety net gave zero signal. onSnapshotFailed fires once
+// consecutive failures for the SAME dir reach AUTO_SNAPSHOT_FAILURE_THRESHOLD,
+// and again every subsequent multiple of the threshold (so a long-running
+// failure keeps re-signalling instead of going silent forever). A success, or a
+// clean-tree ("no changes") outcome, resets the streak.
+
+test("(k) onSnapshotFailed does NOT fire before the failure threshold is reached", async () => {
+  const failed: [string, number, unknown][] = [];
+  const h = makeHarness({
+    snapshot: () => {
+      throw new Error("disk full");
+    },
+    onSnapshotFailed: (dir, n, e) => failed.push([dir, n, e]),
+  });
+  for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD - 1; i++) {
+    await h.sched.run(DIR);
+  }
+  expect(failed.length).toBe(0);
+});
+
+test("(k) onSnapshotFailed fires exactly once when consecutive failures reach the threshold", async () => {
+  const failed: [string, number, unknown][] = [];
+  const boom = new Error("disk full");
+  const h = makeHarness({
+    snapshot: () => {
+      throw boom;
+    },
+    onSnapshotFailed: (dir, n, e) => failed.push([dir, n, e]),
+  });
+  for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD; i++) {
+    await h.sched.run(DIR);
+  }
+  expect(failed).toEqual([[DIR, AUTO_SNAPSHOT_FAILURE_THRESHOLD, boom]]);
+});
+
+test("(k) onSnapshotFailed fires again on every subsequent multiple of the threshold", async () => {
+  const failed: [string, number, unknown][] = [];
+  const h = makeHarness({
+    snapshot: () => {
+      throw new Error("disk full");
+    },
+    onSnapshotFailed: (dir, n) => failed.push([dir, n, undefined]),
+  });
+  for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD * 2; i++) {
+    await h.sched.run(DIR);
+  }
+  expect(failed.map((f) => f[1])).toEqual([
+    AUTO_SNAPSHOT_FAILURE_THRESHOLD,
+    AUTO_SNAPSHOT_FAILURE_THRESHOLD * 2,
+  ]);
+});
+
+test("(l) a successful run resets the consecutive-failure streak", async () => {
+  const failed: [string, number, unknown][] = [];
+  let shouldFail = true;
+  const h = makeHarness({
+    snapshot: () => {
+      if (shouldFail) throw new Error("disk full");
+      return { ok: true };
+    },
+    onSnapshotFailed: (dir, n) => failed.push([dir, n, undefined]),
+  });
+  for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD - 1; i++) {
+    await h.sched.run(DIR);
+  }
+  expect(failed.length).toBe(0);
+  shouldFail = false;
+  await h.sched.run(DIR); // success — resets the streak
+  shouldFail = true;
+  for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD - 1; i++) {
+    await h.sched.run(DIR);
+  }
+  // Only (threshold - 1) failures accrued since the reset — still below threshold.
+  expect(failed.length).toBe(0);
+});
+
+test("(m) a clean tree (isNoChangesError) is not counted as a failure and resets the streak", async () => {
+  const failed: [string, number, unknown][] = [];
+  const clean = new Error("nothing to commit");
+  let raiseClean = false;
+  const h = makeHarness({
+    snapshot: () => {
+      throw raiseClean ? clean : new Error("disk full");
+    },
+    isNoChangesError: (e) => e === clean,
+    onSnapshotFailed: (dir, n) => failed.push([dir, n, undefined]),
+  });
+  for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD - 1; i++) {
+    await h.sched.run(DIR);
+  }
+  expect(failed.length).toBe(0);
+  raiseClean = true;
+  await h.sched.run(DIR); // clean tree — resets the streak, not a failure
+  raiseClean = false;
+  for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD - 1; i++) {
+    await h.sched.run(DIR);
+  }
+  expect(failed.length).toBe(0);
+});
+
+test("(n) onSnapshotFailed is optional — a missing dep never throws from run()", async () => {
+  const h = makeHarness({
+    snapshot: () => {
+      throw new Error("disk full");
+    },
+  });
+  for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD + 1; i++) {
+    await expect(h.sched.run(DIR)).resolves.toBeUndefined();
+  }
 });

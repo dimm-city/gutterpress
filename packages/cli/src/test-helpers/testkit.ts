@@ -17,6 +17,7 @@ import * as nodeFs from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { spyOn } from "bun:test";
 import git from "isomorphic-git";
 import type { FsClient } from "isomorphic-git";
 
@@ -150,4 +151,41 @@ export async function commitFile(
     message: opts.message ?? `add ${filename}`,
     author: opts.author ?? DEFAULT_TEST_AUTHOR,
   });
+}
+
+// ---------------------------------------------------------------------------
+// process.exit stubbing (command-level citty dispatch tests)
+// ---------------------------------------------------------------------------
+
+/**
+ * Thrown by {@link stubProcessExit}'s stub instead of actually terminating
+ * the test worker. Carries the exit code so `expect(...).rejects.toThrow(...)`
+ * can assert on it directly.
+ */
+export class ProcessExitSignal extends Error {
+  code: number;
+  constructor(code: number) {
+    super(`process.exit(${code})`);
+    this.name = "ProcessExitSignal";
+    this.code = code;
+  }
+}
+
+/**
+ * Replace `process.exit` with a stub that THROWS a {@link ProcessExitSignal}
+ * instead of ending the process — mirroring real `process.exit()` semantics
+ * (nothing after the call site ever runs) while staying observable in tests.
+ * Command handlers routinely do `log.error(...); process.exit(code);` with no
+ * `return` after — without this, a naive no-op stub would fall through into
+ * whatever code follows and throw on unrelated undefined state.
+ *
+ * Callers MUST `mockRestore()` the returned spy (e.g. in `afterEach`) —
+ * `process` is a shared global across the whole test run, exactly like the
+ * `spyOn`/`mockRestore` discipline documented in
+ * `build-runner.browser-lifecycle.test.ts`.
+ */
+export function stubProcessExit(): ReturnType<typeof spyOn<typeof process, "exit">> {
+  return spyOn(process, "exit").mockImplementation(((code?: number) => {
+    throw new ProcessExitSignal(code ?? 0);
+  }) as unknown as typeof process.exit);
 }

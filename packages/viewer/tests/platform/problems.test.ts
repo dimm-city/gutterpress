@@ -1,8 +1,12 @@
 import { test, expect } from "bun:test";
 import {
+  closesPanelOnEscape,
+  closesPanelOnSelect,
   friendlySource,
   groupProblems,
+  MISSING_ASSETS_SOURCE,
   problemCounts,
+  splitProblemMessage,
 } from "../../src/lib/problems";
 import type { ProblemEntry } from "../../src/lib/platform/contract";
 
@@ -57,4 +61,65 @@ test("groupProblems: same line sorts errors before warnings before infos", () =>
     "warning",
     "info",
   ]);
+});
+
+// M30: the missing-shared-asset-folder finding is a synthetic viewer source,
+// not a CLI check — it still needs a friendly label like every other source.
+test("friendlySource maps the missing-shared-assets synthetic source to 'Missing assets'", () => {
+  expect(friendlySource(MISSING_ASSETS_SOURCE)).toBe("Missing assets");
+});
+
+// M32: markdownlint's writer-first message format is "<description> (<code>)"
+// — split it so the panel can demote the code to secondary text.
+test("splitProblemMessage splits a trailing rule-code suffix from the description", () => {
+  expect(
+    splitProblemMessage("Line length limit exceeded (MD013/line-length)"),
+  ).toEqual({ text: "Line length limit exceeded", code: "MD013/line-length" });
+});
+
+test("splitProblemMessage passes plain messages through with code: null", () => {
+  expect(splitProblemMessage("Image is missing alt text")).toEqual({
+    text: "Image is missing alt text",
+    code: null,
+  });
+  // Leading-jargon messages (checks not yet migrated to the trailing-suffix
+  // convention) have no trailing "(...)" and are left untouched, not mangled.
+  expect(splitProblemMessage("tagname-lowercase: Tag name must be lowercase")).toEqual({
+    text: "tagname-lowercase: Tag name must be lowercase",
+    code: null,
+  });
+});
+
+// L9 regression fix: the compact overlay has no reachable toggle-strip to
+// close it (the overlay itself covers the strip), so closing is driven by
+// selecting a result or pressing Escape instead. These predicates are the
+// shared decision logic — asserted directly so the fix is verified by
+// behavior, not just by grepping the component's markup.
+test("closesPanelOnSelect: only compact mode closes the panel on selection", () => {
+  expect(closesPanelOnSelect(true)).toBe(true);
+  expect(closesPanelOnSelect(false)).toBe(false);
+});
+
+test("closesPanelOnEscape: only Escape, while compact AND open, closes the panel", () => {
+  expect(closesPanelOnEscape(true, true, "Escape")).toBe(true);
+  // Not compact — the normal expanded panel isn't a covering overlay, so
+  // Escape must not silently collapse it out from under an unrelated keypress.
+  expect(closesPanelOnEscape(false, true, "Escape")).toBe(false);
+  // Not open — nothing to close.
+  expect(closesPanelOnEscape(true, false, "Escape")).toBe(false);
+  // Any other key is ignored.
+  expect(closesPanelOnEscape(true, true, "Enter")).toBe(false);
+});
+
+// M32: SOURCE_LABELS must cover every check the CLI actually registers under
+// category "source" — keyed to the live registry (not a hand-copied id list)
+// so a new check can't ship without a label silently rendering its raw id.
+test("SOURCE_LABELS covers every registered source-category CLI check", async () => {
+  const { getChecks } = await import("@dimm-city/print-md");
+  const sourceChecks = getChecks({ category: "source" });
+  // Guard against a false-pass if the registry ever failed to populate.
+  expect(sourceChecks.length).toBeGreaterThan(0);
+  for (const check of sourceChecks) {
+    expect(friendlySource(check.id)).not.toBe(check.id);
+  }
 });

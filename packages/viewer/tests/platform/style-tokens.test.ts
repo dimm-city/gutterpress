@@ -6,20 +6,87 @@ import {
   applyTokenUpdates,
 } from "../../src/lib/style-tokens";
 
-test("makeStyleToken classifies color / length / text", () => {
+test("makeStyleToken classifies color / length / font / text", () => {
   expect(makeStyleToken("--heading-color", "#cc0000").kind).toBe("color");
   const len = makeStyleToken("--gap", "1.5rem");
   expect(len.kind).toBe("length");
   expect(len.number).toBe(1.5);
   expect(len.unit).toBe("rem");
-  expect(makeStyleToken("--font-body", "Georgia, serif").kind).toBe("text");
+  // A font stack is now its own guided kind, not raw "Other" text (M36).
+  expect(makeStyleToken("--font-body", "Georgia, serif").kind).toBe("font");
+  expect(makeStyleToken("--accent-note", "italic").kind).toBe("text");
   expect(makeStyleToken("--heading-color", "#cc0000").label).toBe("Heading color");
+});
+
+test("makeStyleToken routes named CSS colors through the color control (M36)", () => {
+  // Previously `white`/`black`/etc fell to a bare text input because only
+  // hex/rgb/hsl/oklch were recognized as colors.
+  expect(makeStyleToken("--color-paper", "white").kind).toBe("color");
+  expect(makeStyleToken("--color-ink", "black").kind).toBe("color");
+  expect(makeStyleToken("--accent", "rebeccapurple").kind).toBe("color");
+  expect(makeStyleToken("--overlay", "Transparent").kind).toBe("color");
+  // Case-insensitive.
+  expect(makeStyleToken("--color-paper", "WHITE").kind).toBe("color");
+  // A non-color word must not be misclassified as a color.
+  expect(makeStyleToken("--font-body", "Georgia").kind).not.toBe("color");
+});
+
+test("makeStyleToken detects font-family tokens by property name (M36)", () => {
+  // Every built-in theme names its font tokens this way — the first thing a
+  // writer changes must not land in "Other" as raw text.
+  expect(makeStyleToken("--font-body", `"Georgia", "Times New Roman", serif`).kind).toBe("font");
+  expect(makeStyleToken("--font-display", `"Impact", "Arial Black", sans-serif`).kind).toBe("font");
+  expect(makeStyleToken("--font-mono", `"Menlo", "Consolas", monospace`).kind).toBe("font");
+  // Font-size/weight/scale/style must NOT be misclassified as font-family.
+  expect(makeStyleToken("--font-size", "12pt").kind).toBe("length");
+  expect(makeStyleToken("--font-weight", "600").kind).toBe("number");
+});
+
+test("makeStyleToken detects font-family tokens by value shape even without 'font' in the name (M36)", () => {
+  const t = makeStyleToken("--heading-typeface", `"Iowan Old Style", Georgia, serif`);
+  expect(t.kind).toBe("font");
+  // A single generic keyword with no name hint still counts.
+  expect(makeStyleToken("--body-typeface", "serif").kind).toBe("font");
+  // A comma list with no generic-family fallback is NOT assumed to be a font.
+  expect(makeStyleToken("--misc-list", "foo, bar").kind).not.toBe("font");
+});
+
+test("makeStyleToken classifies unitless numbers as the numeric kind (M36)", () => {
+  const t = makeStyleToken("--leading", "1.55");
+  expect(t.kind).toBe("number");
+  expect(t.number).toBe(1.55);
+  expect(t.unit).toBeUndefined();
+  expect(makeStyleToken("--z-index", "2").kind).toBe("number");
+  expect(makeStyleToken("--offset", "-1.5").kind).toBe("number");
 });
 
 test("parseStyleTokens reads :root custom properties in source order", () => {
   const css = `:root {\n  --a: #111111;\n  --b: 2rem;\n}\nh1 { color: var(--a); }`;
   const tokens = parseStyleTokens(css);
   expect(tokens.map((t) => t.name)).toEqual(["--a", "--b"]);
+});
+
+test("parseStyleTokens reads a value that wraps across multiple physical lines (M36)", () => {
+  // Previously one-declaration-per-line parsing required the terminating `;`
+  // on the SAME line as the property name, so a wrapped value like this font
+  // stack was silently hidden from the panel entirely.
+  const css = [
+    ":root {",
+    '  --font-body: "Georgia",',
+    '    "Times New Roman",',
+    "    serif;",
+    "  --leading: 1.55;",
+    "}",
+  ].join("\n");
+  const tokens = parseStyleTokens(css);
+  expect(tokens.map((t) => t.name)).toEqual(["--font-body", "--leading"]);
+  const font = tokens.find((t) => t.name === "--font-body")!;
+  expect(font.kind).toBe("font");
+  expect(font.value).toContain("Times New Roman");
+  expect(font.value).toContain("serif");
+  const leading = tokens.find((t) => t.name === "--leading")!;
+  expect(leading.kind).toBe("number");
+  expect(leading.number).toBe(1.55);
 });
 
 test("updateRootToken replaces an existing declaration and inserts a missing one", () => {

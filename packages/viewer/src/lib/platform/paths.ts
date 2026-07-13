@@ -32,6 +32,22 @@ export function joinPath(base: string, ...segments: string[]): string {
 }
 
 /**
+ * True when `child` IS `ancestor`, or is nested under it. Separator-aware
+ * (both `/` and `\`) so a sibling with a shared string prefix (`/a/proj2` vs
+ * `/a/proj`) never matches. Used by +page.svelte's FileTree rename/delete
+ * handlers: those operations can target a DIRECTORY, so the open file must be
+ * treated as affected when it lives inside a renamed/deleted folder, not only
+ * when the path is an exact match.
+ */
+export function isPathAtOrUnder(child: string, ancestor: string): boolean {
+  return (
+    child === ancestor ||
+    child.startsWith(ancestor + "/") ||
+    child.startsWith(ancestor + "\\")
+  );
+}
+
+/**
  * Wrap a host file path into a host-neutral {@link FileRef} (#61), analogous to
  * the adapter's FolderRef wrapping (#49). `key` is the host path / FSA handle id;
  * `displayName` is the precomputed basename so the UI never splits a path itself.

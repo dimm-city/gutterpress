@@ -1,18 +1,20 @@
-import { error } from '@sveltejs/kit';
 import { join } from 'node:path';
-import { getDesktopHooks } from '$lib/server/host-hooks.js';
-import { jsonRoute } from '../../_lib/handler';
+import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
+import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: Record<string, unknown>) => {
-  if (typeof body.projectDir !== 'string') {
-    error(400, 'saveAsTemplate requires { projectDir: string }');
-  }
-  const projectDir: string = body.projectDir;
-  const name: string = typeof body.name === 'string' ? body.name : '';
-  const hooks = getDesktopHooks();
-  if (!hooks) error(503, 'Desktop hooks not registered');
-  const templatesRoot = join(hooks.getUserDataPath(), 'templates');
-  const lib = await import('@dimm-city/print-md');
-  return lib.saveProjectAsTemplate({ projectDir, name, templatesRoot });
+export const POST: RequestHandler = defineRoute<{ projectDir: string; name: string }, DesktopHooks>({
+  hooks: getDesktopHooks,
+  hooksUnavailableMessage: 'Desktop hooks not registered',
+  validate: (raw) => {
+    const body = raw as Record<string, unknown>;
+    const projectDir = requireAbsolute(body.projectDir, 'tpl/save-as-template');
+    const name = typeof body.name === 'string' ? body.name : '';
+    return { projectDir, name };
+  },
+  call: async ({ body, hooks }) => {
+    const templatesRoot = join(hooks.getUserDataPath(), 'templates');
+    const lib = await loadLib();
+    return lib.saveProjectAsTemplate({ projectDir: body.projectDir, name: body.name, templatesRoot });
+  },
 });

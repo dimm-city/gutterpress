@@ -1,10 +1,13 @@
 import { test, expect } from "bun:test";
 import {
+  EXIT_CODES,
   UsageError,
   parseFormat,
   parsePdfxFlavor,
+  rejectExtraPositionals,
   resolvePort,
 } from "./cli-args.ts";
+import { BuildError } from "./build-error.ts";
 import { NETWORK } from "../constants.ts";
 
 // ── parseFormat ──────────────────────────────────────────────────────────────
@@ -101,5 +104,48 @@ test("resolvePort throws a UsageError with exitCode 2 on invalid input", () => {
         `Invalid --port value: "${bad}". Expected a non-negative number (0 = OS-assigned).`
       );
     }
+  }
+});
+
+// ── EXIT_CODES contract (M47) ───────────────────────────────────────────────
+
+test("EXIT_CODES defines the one contract: 0 clean / 1 findings / 2 usage / 3 pipeline", () => {
+  expect(EXIT_CODES.OK).toBe(0);
+  expect(EXIT_CODES.FINDINGS).toBe(1);
+  expect(EXIT_CODES.USAGE).toBe(2);
+  expect(EXIT_CODES.PIPELINE).toBe(3);
+});
+
+test("UsageError defaults to EXIT_CODES.USAGE (2)", () => {
+  expect(new UsageError("bad flag").exitCode).toBe(EXIT_CODES.USAGE);
+});
+
+test("BuildError defaults to EXIT_CODES.PIPELINE (3), distinct from UsageError's default", () => {
+  const err = new BuildError("pipeline blew up");
+  expect(err.exitCode).toBe(EXIT_CODES.PIPELINE);
+  expect(err.exitCode).not.toBe(new UsageError("bad flag").exitCode);
+});
+
+test("BuildError still honors an explicit exit code (e.g. a findings-style gate failure)", () => {
+  expect(new BuildError("pre-build validation failed", EXIT_CODES.FINDINGS).exitCode).toBe(1);
+});
+
+// ── rejectExtraPositionals (M46) ────────────────────────────────────────────
+
+test("rejectExtraPositionals allows exactly the declared count", () => {
+  expect(() => rejectExtraPositionals(["a"], 1, "build")).not.toThrow();
+  expect(() => rejectExtraPositionals([], 1, "build")).not.toThrow();
+  expect(() => rejectExtraPositionals(undefined, 1, "build")).not.toThrow();
+});
+
+test("rejectExtraPositionals throws a UsageError naming the command on extras", () => {
+  try {
+    rejectExtraPositionals(["a", "b"], 1, "build");
+    throw new Error("expected UsageError");
+  } catch (err) {
+    expect(err).toBeInstanceOf(UsageError);
+    expect((err as UsageError).exitCode).toBe(EXIT_CODES.USAGE);
+    expect((err as UsageError).message).toContain("print-md build");
+    expect((err as UsageError).message).toContain("b");
   }
 });

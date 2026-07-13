@@ -6,7 +6,7 @@
  * it is unit-testable with bun:test and PWA-clean by construction.
  */
 // Relative import (not $lib) so the module loads under bare `bun test` too.
-import type { MediaImageDetails } from "./platform/contract";
+import type { MediaImageDetails } from "./platform/dtos";
 
 /** File extensions the Media panel surfaces (mirrors main's MEDIA_IMAGE_EXTS). */
 export const MEDIA_IMAGE_EXT_RE = /\.(png|jpe?g|webp|gif|svg|tiff?)$/i;

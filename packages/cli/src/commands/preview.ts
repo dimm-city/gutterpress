@@ -12,6 +12,7 @@ import {
 import {
   parseFormat,
   parsePdfxFlavor,
+  rejectExtraPositionals,
   resolvePort,
   UsageError,
 } from "../lib/cli-args.ts";
@@ -41,18 +42,19 @@ export default defineCommand({
     "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation (pdfx only)" },
   },
   async run({ args }) {
-    const inputPath = args.input ? path.resolve(args.input as string) : undefined;
-
-    if (inputPath !== undefined) {
-      if (!fs.existsSync(inputPath) || !fs.statSync(inputPath).isDirectory()) {
-        log.error(`Input directory does not exist: ${inputPath}`);
-        process.exit(1);
-      }
-    }
-
-    const openFlag = args.open;
-
     try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "preview");
+
+      const inputPath = args.input ? path.resolve(args.input as string) : undefined;
+
+      if (inputPath !== undefined) {
+        if (!fs.existsSync(inputPath) || !fs.statSync(inputPath).isDirectory()) {
+          throw new UsageError(`Input directory does not exist: ${inputPath}`);
+        }
+      }
+
+      const openFlag = args.open;
+
       const format = parseFormat(args.format, { default: "html" });
 
       if (format === "html") {
@@ -69,8 +71,7 @@ export default defineCommand({
       }
 
       if (inputPath === undefined) {
-        log.error(`--format ${format} requires an input directory.`);
-        process.exit(2);
+        throw new UsageError(`--format ${format} requires an input directory.`);
       }
 
       const pdfxFlavor = parsePdfxFlavor(args["pdfx-flavor"], format);

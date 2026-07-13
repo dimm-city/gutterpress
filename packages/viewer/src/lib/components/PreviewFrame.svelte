@@ -34,7 +34,30 @@
   });
 </script>
 
-<iframe bind:this={frame} src={url} title="print-md preview"></iframe>
+<!--
+  ARCH review finding #1: the preview is cross-origin (http://127.0.0.1 inside
+  app://local) and renders author markdown with html:true, so a raw
+  `<a target="_top">` in a shared project could otherwise navigate the top
+  frame straight to a remote origin (which then inherits the live preload
+  bridge via main.ts's — now closed — will-navigate hole). `sandbox` denies
+  top-navigation and popups outright, as defense in depth alongside the host's
+  will-navigate/setWindowOpenHandler policy.
+  allow-scripts is required: the pagedjs-bridge.js running inside the frame
+  drives paged.js layout and the postMessage command bridge (preview-client.ts).
+  allow-same-origin is required too: without it the sandboxed frame gets an
+  opaque origin, which breaks its own same-origin resource fetches (fonts,
+  images, the adapter-node routes it's served from) — normally allow-scripts +
+  allow-same-origin together would let a same-origin frame strip its own
+  sandbox, but that escape needs the frame's real origin to match the
+  embedding document's, and this frame's real origin (http://127.0.0.1:<port>)
+  never matches the parent's (app://local), so the combination is safe here.
+-->
+<iframe
+  bind:this={frame}
+  src={url}
+  title="print-md preview"
+  sandbox="allow-scripts allow-same-origin"
+></iframe>
 
 <style>
   /*

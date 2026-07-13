@@ -1,11 +1,12 @@
-import { error } from '@sveltejs/kit';
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { projectDir?: string }) => {
-  if (typeof body.projectDir !== 'string') {
-    error(400, 'snip/list requires { projectDir: string }');
-  }
-  const lib = await import('@dimm-city/print-md');
-  return lib.listSnippets(body.projectDir);
+export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
+  validate: (raw) => ({
+    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'snip/list'),
+  }),
+  call: async ({ body }) => {
+    const lib = await loadLib();
+    return lib.listSnippets(body.projectDir);
+  },
 });

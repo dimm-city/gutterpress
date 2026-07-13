@@ -6,12 +6,18 @@
  * enable version history, snapshot, view history, sync — WITHOUT exposing
  * Git terminology to non-technical authors.
  *
- * Scope for 0.4.0: detection uses ONLY Node `fs/promises` and a small regex
- * scan of `.git/config` + `.git/HEAD`. There is deliberately:
+ * Detection notes:
  *   - NO shell-out to the system `git` binary (CLAUDE.md §7).
- *   - NO `isomorphic-git` dependency yet — that lands in #13 when actual
- *     commit/log/restore operations are needed. The `.git` directory layout is
- *     simple enough to read directly for classification.
+ *   - Remote/branch are read via isomorphic-git (`listRemotes`/`currentBranch`)
+ *     — the SAME machinery the sync engine uses — so detection and transport
+ *     can never disagree about "has a remote". (An earlier hand-rolled regex
+ *     over `.git/config` diverged from the engine on case-variant sections,
+ *     multi-value `url =` entries, gitfile layouts, and IPv6 URLs — each
+ *     divergence surfaced as a repo the engine could sync that the UI called
+ *     unsyncable, or vice versa.)
+ *   - A `.git` FILE (a `gitdir:` pointer — `git worktree` checkouts and
+ *     submodules) counts as a repo of its own; isomorphic-git resolves the
+ *     indirection internally for all reads.
  *   - NO `managed-github` detection — the type variant exists for #15/#16 but
  *     `detectProjectSource` only ever returns `local-folder` or
  *     `local-git-folder`.
@@ -20,11 +26,12 @@
  * reads to enable/disable actions, so new source types slot in without
  * reworking callers.
  */
-import { readFile } from "node:fs/promises";
+import * as fs from "node:fs";
+import { stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { isDirectory } from "../utils/file-utils.ts";
+import git from "isomorphic-git";
 
 /**
  * The classified source of an opened project.
@@ -72,7 +79,14 @@ export type ProjectSource =
 /**
  * What the UI may offer for a given source. Derived purely from the source
  * type; no I/O. Drives which user-facing buttons (Enable Version History,
- * Save Snapshot, View History, Sync) are shown.
+ * Save Snapshot, View History) are shown.
+ *
+ * Deliberately NO `canSync` here: syncability is a credential-aware question
+ * only `diagnoseProjectRemote().canSync` (remote-auth/diagnose.ts) can answer.
+ * This interface used to carry a second, weaker `canSync` (= hasRemote, any
+ * protocol, no credential check), and the two same-named-but-different gates
+ * were a recurring source of contradictory sync behavior. Remote PRESENCE, for
+ * display purposes, lives on the classification itself (`source.hasRemote`).
  */
 export interface ProjectCapabilities {
   canRead: boolean;
@@ -81,53 +95,66 @@ export interface ProjectCapabilities {
   canSnapshot: boolean;
   canViewHistory: boolean;
   canRestoreSnapshot: boolean;
-  canSync: boolean;
   authManagedByApp: boolean;
 }
 
 /**
- * Extract the `origin` (or first) remote URL from `.git/config` text.
- *
- * Handles the standard ini-ish layout produced by `git remote add`:
- *
- *   [remote "origin"]
- *       url = https://github.com/owner/repo.git
- *
- * Works for HTTPS and SSH (`git@github.com:owner/repo.git`) URLs. Prefers a
- * remote literally named `origin`; falls back to the first remote with a URL.
- * Returns `undefined` if there is no remote (defensive — never throws).
+ * The remote a project syncs against: `origin` when one exists, else the first
+ * remote. Pure pick over a `listRemotes` result — see {@link syncRemoteFor}
+ * for the I/O helper detection and the sync transport share.
  */
-export function parseRemoteUrl(configText: string): string | undefined {
-  // Split into `[section ...]` blocks, keeping the header with its body.
-  const sectionRe = /\[remote\s+"([^"]+)"\]([^[]*)/g;
-  let firstUrl: string | undefined;
-  let originUrl: string | undefined;
-  let match: RegExpExecArray | null;
-  while ((match = sectionRe.exec(configText)) !== null) {
-    const name = match[1];
-    const body = match[2] ?? "";
-    const urlMatch = /^\s*url\s*=\s*(.+?)\s*$/m.exec(body);
-    if (!urlMatch) continue;
-    const url = urlMatch[1];
-    if (!url) continue;
-    if (firstUrl === undefined) firstUrl = url;
-    if (name === "origin") {
-      originUrl = url;
-      break;
-    }
-  }
-  return originUrl ?? firstUrl;
+export function pickSyncRemote<T extends { remote: string; url?: string }>(
+  remotes: T[],
+): T | undefined {
+  return remotes.find((r) => r.remote === "origin") ?? remotes[0];
 }
 
 /**
- * Extract the current branch from `.git/HEAD` text.
+ * THE one answer to "which remote does this repo sync against, and what's its
+ * URL" — shared by detection (`detectProjectSource`) and the sync transport
+ * (`resolveTransport`), so the two layers can never disagree about whether a
+ * remote exists (each divergence shipped as a repo the engine could sync that
+ * the UI called local-only, or vice versa).
  *
- * Normal repos store `ref: refs/heads/<branch>`. A detached HEAD stores a raw
- * commit hash — return `undefined` in that case (no meaningful branch name).
+ * `listRemotes` scans `[remote "…"]` sections case-SENSITIVELY, but git itself
+ * (and isomorphic-git's own fetch/push, via config `get`) treats section names
+ * case-INSENSITIVELY — so a hand-edited `[Remote "origin"]` IS syncable by the
+ * engine while being invisible to `listRemotes`. The `getConfig` fallback
+ * covers exactly that: it uses the same case-insensitive, last-value-wins
+ * lookup the engine's transport uses. Never throws.
  */
-export function parseHeadBranch(headText: string): string | undefined {
-  const match = /^ref:\s*refs\/heads\/(.+?)\s*$/m.exec(headText);
-  return match ? match[1] : undefined;
+export async function syncRemoteFor(
+  dir: string,
+): Promise<{ remote: string; url: string } | undefined> {
+  try {
+    const remotes = await git.listRemotes({ fs, dir });
+    const picked = pickSyncRemote(remotes);
+    if (picked?.url) return picked;
+  } catch {
+    // fall through to the config lookup
+  }
+  try {
+    const url = (await git.getConfig({ fs, dir, path: "remote.origin.url" })) as
+      | string
+      | undefined;
+    if (url) return { remote: "origin", url };
+  } catch {
+    // no readable config → no remote
+  }
+  return undefined;
+}
+
+/**
+ * What sits at `<dir>/.git`: a directory (standard repo), a file (a `gitdir:`
+ * pointer — worktree/submodule checkout), or nothing.
+ */
+async function gitEntryKind(dir: string): Promise<"dir" | "file" | "none"> {
+  try {
+    const s = await stat(path.join(dir, ".git"));
+    return s.isDirectory() ? "dir" : "file";
+  } catch {
+    return "none";
+  }
 }
 
 /**
@@ -155,28 +182,25 @@ export async function findEnclosingRepoDir(
     if (parent === dir) return undefined; // filesystem root reached
     dir = parent;
     if (dir === home) return undefined; // never treat home as an enclosing repo
-    if (await isDirectory(path.join(dir, ".git"))) return dir;
+    if ((await gitEntryKind(dir)) !== "none") return dir;
   }
   return undefined;
 }
 
-/** Read remote URL + branch from a `.git` directory; never throws. */
-async function readGitDirInfo(gitDir: string): Promise<{
+/**
+ * Read the sync remote's URL + current branch for the repo checked out at
+ * `dir`, via isomorphic-git (which resolves `.git`-file indirection itself).
+ * Never throws — any failure degrades to "no remote / no branch".
+ */
+async function readRepoInfo(dir: string): Promise<{
   remoteUrl?: string;
   branch?: string;
 }> {
-  let remoteUrl: string | undefined;
-  try {
-    const configText = await readFile(path.join(gitDir, "config"), "utf8");
-    remoteUrl = parseRemoteUrl(configText);
-  } catch {
-    remoteUrl = undefined;
-  }
+  const remoteUrl = (await syncRemoteFor(dir))?.url;
 
   let branch: string | undefined;
   try {
-    const headText = await readFile(path.join(gitDir, "HEAD"), "utf8");
-    branch = parseHeadBranch(headText);
+    branch = (await git.currentBranch({ fs, dir })) || undefined;
   } catch {
     branch = undefined;
   }
@@ -205,9 +229,14 @@ export function repoSubPath(repoRoot: string, folderPath: string): string {
 export async function detectProjectSource(
   folderPath: string,
 ): Promise<ProjectSource> {
-  const ownGitDir = path.join(folderPath, ".git");
-  if (await isDirectory(ownGitDir)) {
-    const { remoteUrl, branch } = await readGitDirInfo(ownGitDir);
+  // A `.git` DIRECTORY is a standard checkout; a `.git` FILE is a `gitdir:`
+  // pointer — a `git worktree` checkout or a submodule. Either way THIS folder
+  // is the checkout the author works in, so it is its own repoRoot. (A
+  // submodule must never resolve to the enclosing superproject: that pointed
+  // snapshot/restore/sync at the WRONG repository — restore force-checked-out
+  // the whole superproject tree.)
+  if ((await gitEntryKind(folderPath)) !== "none") {
+    const { remoteUrl, branch } = await readRepoInfo(folderPath);
     return {
       type: "local-git-folder",
       path: folderPath,
@@ -225,9 +254,7 @@ export async function detectProjectSource(
   // not scope any operation.
   const enclosingRepoDir = await findEnclosingRepoDir(folderPath);
   if (enclosingRepoDir !== undefined) {
-    const { remoteUrl, branch } = await readGitDirInfo(
-      path.join(enclosingRepoDir, ".git"),
-    );
+    const { remoteUrl, branch } = await readRepoInfo(enclosingRepoDir);
     return {
       type: "local-git-folder",
       path: folderPath,
@@ -246,14 +273,15 @@ export async function detectProjectSource(
  * Map a {@link ProjectSource} to the actions the UI may offer. Pure; no I/O.
  *
  * - `local-folder`: read/write only; version history can be ENABLED (a later
- *   `git init`, #13/#25) but no snapshot/history/restore until then; no sync.
+ *   `git init`, #13/#25) but no snapshot/history/restore until then.
  * - `local-git-folder`: version history already on, so snapshot/history/restore
  *   are available — including book subfolders of a larger repo (`subPath`
  *   non-empty), which share the enclosing repo's whole-repo history (`subPath`
- *   is where the folder sits, not a scope). Sync is offered only when a
- *   remote exists (the app can push via the user's externally-configured Git
- *   auth — #16).
- * - `managed-github`: full app-managed read/write/version/sync.
+ *   is where the folder sits, not a scope).
+ * - `managed-github`: full app-managed read/write/version history.
+ *
+ * Syncability is deliberately NOT answered here — see the interface doc
+ * comment: `diagnoseProjectRemote().canSync` is the one sync gate.
  */
 export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
   switch (source.type) {
@@ -265,7 +293,6 @@ export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
         canSnapshot: false,
         canViewHistory: false,
         canRestoreSnapshot: false,
-        canSync: false,
         authManagedByApp: false,
       };
     case "local-git-folder":
@@ -276,7 +303,6 @@ export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
         canSnapshot: true,
         canViewHistory: true,
         canRestoreSnapshot: true,
-        canSync: source.hasRemote,
         authManagedByApp: false,
       };
     case "managed-github":
@@ -287,7 +313,6 @@ export function capabilitiesFor(source: ProjectSource): ProjectCapabilities {
         canSnapshot: true,
         canViewHistory: true,
         canRestoreSnapshot: true,
-        canSync: true,
         authManagedByApp: true,
       };
   }

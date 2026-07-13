@@ -43,10 +43,12 @@ print-md build
 print-md publish --provider itch
 ```
 
-@callout(tip)
-DriveThruRPG has strict print requirements. Run `print-md validate --profile
-dtrpg` before uploading — it checks bleed, ink density and more.
-@end
+@section .callout-tip
+
+**Tip:** DriveThruRPG has strict print requirements. Run `print-md validate
+--profile dtrpg` before uploading — it checks bleed, ink density and more.
+
+@end-section
 
 ## Publishing From CI
 

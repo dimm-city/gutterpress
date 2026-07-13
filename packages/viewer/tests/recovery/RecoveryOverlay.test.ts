@@ -374,13 +374,25 @@ describe("scrim / iframe-throttle guard (hard rule 3 / 0.4.1 regression)", () =>
 
   test("uses 'pane' variant positioning (scoped to preview area, not full-app)", () => {
     const src = readSource();
-    // The spec says: use "pane" positioning so it scrims the preview area only.
-    // Acceptable signals: position:absolute (pane), or a reference to the pane variant.
-    const hasPane =
-      src.includes("pane") ||
-      src.includes("position: absolute") ||
-      src.includes("position:absolute");
-    expect(hasPane).toBe(true);
+    // L13 (2026-07-10 UX review): this used to be a bare substring grep for
+    // "pane" that a since-deleted no-op CSS rule existed ONLY to satisfy.
+    // Assert the actual behavior instead: the root overlay element's class
+    // list includes the "pane" variant, AND that class's own CSS rule (not
+    // just some rule elsewhere in the file) sets position: absolute — the
+    // thing that actually scopes the scrim to the preview pane instead of
+    // covering the full app.
+    const rootClassMatch = /<div\s+class="([^"]*\brecovery-overlay\b[^"]*)"/.exec(src);
+    expect(rootClassMatch).not.toBeNull();
+    expect(rootClassMatch![1].split(/\s+/)).toContain("pane");
+
+    const styleStart = src.indexOf("<style");
+    const styleEnd = src.indexOf("</style>");
+    expect(styleStart).toBeGreaterThan(-1);
+    expect(styleEnd).toBeGreaterThan(styleStart);
+    const css = src.slice(styleStart, styleEnd);
+    const ruleMatch = /\.recovery-overlay\s*\{([^}]*)\}/.exec(css);
+    expect(ruleMatch).not.toBeNull();
+    expect(ruleMatch![1]).toMatch(/position\s*:\s*absolute/);
   });
 });
 

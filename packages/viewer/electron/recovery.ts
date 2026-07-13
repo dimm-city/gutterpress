@@ -1,6 +1,20 @@
 // ──────────────────────────────────────────────────────────────────────────
 // recovery.ts — crash-recovery sidecar store (#44).
 //
+// NAMING MAP (UX review M38): "recovery" names TWO unrelated subsystems in
+// this codebase, and they must not be confused:
+//   1. CRASH-DRAFT recovery (THIS FILE + its `/api/recovery/*` routes +
+//      CrashRecoveryDialog.svelte) — an in-editor unsaved-changes sidecar.
+//      Writer-facing vocabulary: "unsaved changes" only, never "recovery".
+//   2. SYNC-REPAIR recovery (recovery-bridge.ts + RecoveryOverlay /
+//      RecoveryConfirmDialog / RecoveryGuidanceDialog) — git-repair machinery
+//      for a broken local-git project. Writer-facing vocabulary: "backup" /
+//      "repair", also never the bare word "recovery" in visible copy.
+// Internal identifiers (this file's name, `RecoveryEntry`, the route paths)
+// keep the word "recovery" — renaming them broadly is out of scope (churn
+// with no writer-facing value); only each domain's writer-facing dialog copy
+// is disambiguated.
+//
 // The in-app editor (#38) auto-saves on a debounce; between an edit and that
 // disk write the buffer differs from disk and an unclean exit would lose it.
 // This module persists a debounced *sidecar snapshot* of the open buffer under

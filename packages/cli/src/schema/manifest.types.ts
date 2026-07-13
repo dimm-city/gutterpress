@@ -21,12 +21,21 @@ export interface PluginConfig {
  * credential store (CLI: 0600 file under the user config dir; viewer:
  * Electron safeStorage).
  */
+/**
+ * The name (label) of the SAVED credential this book uses for a provider, when
+ * the user keeps more than one (e.g. two itch.io accounts). It is NOT a secret
+ * — just a reference into the host credential store's named entries; empty/
+ * absent uses the default (bare-host) credential. This book-level choice
+ * overrides any project/global default.
+ */
 export interface PublishSettings {
   itch?: {
     /** itch.io project as `user/game` (the butler push target). */
     target?: string;
     /** butler channel name (default: "pdf"). */
     channel?: string;
+    /** Saved-credential label to use (see PublishSettings doc). */
+    credential?: string;
   };
   drivethrurpg?: {
     /** Existing product page URL, when updating a published title. */
@@ -36,6 +45,8 @@ export interface PublishSettings {
   "azure-swa"?: {
     /** Deploy environment (default: "production"). */
     env?: string;
+    /** Saved-credential label to use (see PublishSettings doc). */
+    credential?: string;
   };
   shopify?: {
     /** The store domain, e.g. `my-store.myshopify.com`. */
@@ -44,6 +55,8 @@ export interface PublishSettings {
     productId?: string;
     /** Admin GraphQL API version (default: "2026-04"). */
     apiVersion?: string;
+    /** Saved-credential label to use (see PublishSettings doc). */
+    credential?: string;
   };
 }
 
@@ -51,7 +64,7 @@ export interface PrintMdManifest {
   title?: string;
   authors?: string[];
   publish?: PublishSettings;
-  preset?: "dtrpg";
+  preset?: "dtrpg" | "book";
   styles?: string[];
   plugins?: (string | PluginConfig)[];
   source?: {
@@ -137,11 +150,18 @@ export interface ResolvedPluginConfig {
   options: Record<string, unknown>;
 }
 
-/** Fully-resolved config with no optional fields. */
+/**
+ * Fully-resolved config. Every field is a concrete default with one
+ * deliberate exception: `styles` (ARCH finding #2). There is no preset
+ * default for it — `undefined` means "the manifest didn't set one", and
+ * `resolveActiveStyles` (style-resolver.ts) is the single source of truth for
+ * what that resolves to (styles/book.css, else the first discovered `.css`,
+ * else `[]`). Baking a preset default in here defeated that fallback chain.
+ */
 export interface ResolvedConfig {
   title: string;
   authors: string[];
-  styles: string[];
+  styles?: string[];
   plugins: ResolvedPluginConfig[];
   source: {
     files: string[] | null;
@@ -180,7 +200,6 @@ export interface ResolvedConfig {
       markdownlint: string | false | null;
       htmlhint: string | false | null;
       stylelint: string | false | null;
-      allowedCallouts: string[];
     };
     assets: {
       maxImageSize: number;

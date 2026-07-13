@@ -14,7 +14,6 @@
    * - Responsive: at <=820px the panel overlays with a translucent scrim (doesn't
    *   crush the preview).
    */
-  import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
   type IconName = ComponentProps<typeof Icon>["name"];
@@ -23,6 +22,7 @@
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import ProjectConfigPanel from "$lib/components/ProjectConfigPanel.svelte";
   import { isDesktop } from "$lib/platform";
+  import { buildTocTree, ancestorKeysForActive, type TocNode } from "$lib/routes/toc-tree";
   import type { OutlineEntry } from "$lib/preview-client";
   import type { ProjectCapabilities } from "$lib/platform/contract";
 
@@ -45,6 +45,9 @@
     toggleBtn,
     onJumpToOutline,
     onSelectEditorFile,
+    onBeforeRenameOpenFile,
+    onFileRenamed,
+    onFileDeleted,
     onOpenProjectConfig,
     onInsertImage,
     onProjectChosen,
@@ -69,6 +72,12 @@
     toggleBtn?: HTMLButtonElement | undefined;
     onJumpToOutline?: (entry: OutlineEntry) => void;
     onSelectEditorFile?: (path: string) => void;
+    /** FileTree row actions (UX review M9): forwarded straight to FileTree's
+     *  `onBeforeRename`/`onFileRenamed`/`onFileDeleted` — see +page.svelte's
+     *  handlers for why the open-file buffer needs these three hooks. */
+    onBeforeRenameOpenFile?: (path: string) => void | Promise<void>;
+    onFileRenamed?: (oldPath: string, newPath: string) => void;
+    onFileDeleted?: (path: string) => void;
     /** Open the unified Project Configuration view (#PCV) that subsumes the
      *  retired Themes/Design/Plugins/Edit-CSS modal managers. */
     onOpenProjectConfig?: () => void;
@@ -82,21 +91,47 @@
     onPanelStateChange?: () => void;
   } = $props();
 
-  onMount(() => {
-    if (open) notifyOpened();
-  });
-
-  /** Called by the parent when the panel is opened externally (e.g. toolbar toggle). */
-  export function notifyOpened() {
+  // ── TOC tree (collapsible, mirrors the Files panel) ───────────────────────
+  // The outline is a FLAT list of headings carrying only a `level`; derive the
+  // nesting from those levels (see $lib/routes/toc-tree). The active item's
+  // ancestors are always revealed so opening the panel shows where the cursor
+  // is; the user's own expand/collapse choices layer on top and persist while
+  // the panel stays mounted (it is never {#if}-unmounted, only CSS-hidden).
+  const tocTree = $derived(buildTocTree(outline));
+  const activeEntryIndex = $derived(outline[activeOutlineIndex]?.index);
+  const activeAncestorKeys = $derived(new Set(ancestorKeysForActive(outline, activeOutlineIndex)));
+  let tocExpanded = $state<Set<string>>(new Set());
+  function tocOpen(key: string): boolean {
+    return tocExpanded.has(key) || activeAncestorKeys.has(key);
   }
-
-  // ── External refresh (no-op host seam) ────────────────────────────────────
-  // The History tab this used to refresh was replaced by Config; there is
-  // currently no version-history UI in this panel. Kept as a no-op so
-  // ProjectSessionController and the sync-completion handlers in +page.svelte
-  // (which call it after a classify/sync round-trip) don't need to change
-  // with this cleanup.
-  export function notifyHistoryRefresh() {
+  function toggleToc(key: string) {
+    const next = new Set(tocExpanded);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    tocExpanded = next;
+  }
+  // Selecting a section navigates to it AND expands it (user feedback), so its
+  // subsections come into view — expand-then-navigate, never a collapse.
+  function selectToc(node: TocNode) {
+    if (node.children.length > 0 && !tocOpen(node.key)) {
+      const next = new Set(tocExpanded);
+      next.add(node.key);
+      tocExpanded = next;
+    }
+    onJumpToOutline?.(node.entry);
+  }
+  // Arrow keys expand/collapse the focused node WITHOUT navigating (Enter/Space
+  // on the row's label button navigates); this keeps expansion and navigation
+  // independent, per the tree-view contract.
+  function onTocKeydown(e: KeyboardEvent, node: { key: string; children: unknown[] }) {
+    if (node.children.length === 0) return;
+    if (e.key === "ArrowRight" && !tocOpen(node.key)) {
+      e.preventDefault();
+      toggleToc(node.key);
+    } else if (e.key === "ArrowLeft" && tocOpen(node.key)) {
+      e.preventDefault();
+      toggleToc(node.key);
+    }
   }
 
   // ── Panel close ──────────────────────────────────────────────────────────
@@ -111,12 +146,6 @@
       e.stopPropagation();
       close();
     }
-  }
-
-  // ── Reset history state when project changes (no-op host seam — see
-  // notifyHistoryRefresh above) ──────────────────────────────────────────────
-  /** Called by the parent (via bind:this) whenever the active project changes. */
-  export function resetHistoryState() {
   }
 
   // ── Tab definitions ───────────────────────────────────────────────────────
@@ -273,26 +302,54 @@
           <p>{projectDir ? "No outline — render the book to see chapters." : "Open a project to see its table of contents."}</p>
         </div>
       {:else}
-        <ul class="toc-list">
-          {#each outline as entry, i (entry.index)}
-            <li>
-              <button
-                class="toc-item"
-                class:active={i === activeOutlineIndex}
-                class:toc-top={entry.level <= 1}
-                class:toc-sub={entry.level >= 3}
-                style="padding-left: {10 + (entry.level - 1) * 16}px"
-                onclick={() => onJumpToOutline?.(entry)}
-                title={entry.text}
-              >
-                <span class="toc-text">{entry.text}</span>
-                <span class="toc-page">{entry.page || ""}</span>
-              </button>
-            </li>
+        <ul class="toc-list" role="tree" aria-label="Table of contents">
+          {#each tocTree as node (node.key)}
+            {@render tocRow(node, 1)}
           {/each}
         </ul>
       {/if}
     </div>
+
+    {#snippet tocRow(node: TocNode, depth: number)}
+      {@const hasChildren = node.children.length > 0}
+      {@const isOpen = tocOpen(node.key)}
+      <li role="treeitem" aria-level={depth} aria-expanded={hasChildren ? isOpen : undefined} aria-selected={node.entry.index === activeEntryIndex}>
+        <div class="toc-row" style="padding-left: {6 + (depth - 1) * 14}px">
+          {#if hasChildren}
+            <button
+              type="button"
+              class="toc-twisty"
+              tabindex="-1"
+              onclick={() => toggleToc(node.key)}
+              aria-label={isOpen ? `Collapse ${node.entry.text}` : `Expand ${node.entry.text}`}
+            >
+              <Icon name={isOpen ? "chevron-down" : "chevron-right"} size={14} />
+            </button>
+          {:else}
+            <span class="toc-twisty toc-twisty-spacer"></span>
+          {/if}
+          <button
+            class="toc-item"
+            class:active={node.entry.index === activeEntryIndex}
+            class:toc-top={depth === 1}
+            class:toc-sub={depth >= 3}
+            onclick={() => selectToc(node)}
+            onkeydown={(e) => onTocKeydown(e, node)}
+            title={node.entry.text}
+          >
+            <span class="toc-text">{node.entry.text}</span>
+            <span class="toc-page">{node.entry.page || ""}</span>
+          </button>
+        </div>
+        {#if hasChildren && isOpen}
+          <ul class="toc-list nested" role="group">
+            {#each node.children as child (child.key)}
+              {@render tocRow(child, depth + 1)}
+            {/each}
+          </ul>
+        {/if}
+      </li>
+    {/snippet}
 
     <!-- Files tab -->
     <div
@@ -315,6 +372,9 @@
             {projectDir}
             selectedPath={editorFilePath}
             onSelectFile={onSelectEditorFile}
+            onBeforeRename={onBeforeRenameOpenFile}
+            {onFileRenamed}
+            {onFileDeleted}
           />
         {/key}
       {/if}
@@ -385,11 +445,22 @@
           <p>Open a project folder to configure it.</p>
         </div>
       {:else}
-        <ProjectConfigPanel
-          {projectDir}
-          sidebarEmbedded={true}
-          onEditRawCss={(path) => onSelectEditorFile?.(path)}
-        />
+        <!-- Keyed by projectDir (finding #9): ProjectConfigPanel loads every
+             section's data once in onMount and keeps it in in-memory
+             controller state with no reactive re-load on projectDir change.
+             Without this key, switching projects while the Config tab is
+             mounted would leave project A's unsaved drafts (Details/Publish/
+             etc.) resident and writable into project B. Remounting on
+             projectDir change forces onMount to re-run loadAll() for the
+             newly-opened project and discards any stale in-memory state —
+             same pattern as FileTree/MediaPanel above. -->
+        {#key projectDir}
+          <ProjectConfigPanel
+            {projectDir}
+            sidebarEmbedded={true}
+            onEditRawCss={(path) => onSelectEditorFile?.(path)}
+          />
+        {/key}
       {/if}
     </div>
 
@@ -494,22 +565,15 @@
     outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
-  /* 11px is the legibility floor for primary navigation labels (judges×2).
-     max-width+ellipsis: a label may truncate, but a TAB never clips away. */
+  /* Tab labels are intentionally icon-only at every panel width (user
+     request) — icons + title tooltips + aria-label keep the tabs
+     identifiable without a visible label. (Decided once here: no
+     width-conditional toggle — a prior version had a full label typography
+     ruleset immediately followed by an unconditional `display: none`, plus a
+     redundant `@container` rule repeating the same hide.) */
   .tab-label {
-    font-size: 11px; line-height: 1; text-transform: uppercase;
-    letter-spacing: 0.02em;
-    max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+    display: none;
   }
-  /* Labels are intentionally icon-only; title + aria-label preserve meaning. */
-  .tab-label { display: none; }
-
-  /* Labels disappear entirely (icon-only) when the panel is too narrow for
-     the FULL text of all five tabs — no truncated “PROJ…” (user request).
-     Icons + title tooltips + aria-labels keep the tabs identifiable. ~370px
-     gives the longest label set comfortable room at equal flex shares
-     (judge gate: at exactly 331px PROJECTS sat on the ellipsis boundary). */
-  @container (max-width: 370px) { .tab-label { display: none; } }
   .resize-handle {
     position: absolute;
     top: 0; right: -3px; bottom: 0;
@@ -583,17 +647,37 @@
     overflow-y: auto;
     flex: 1 1 auto;
   }
+  /* Nested groups add no padding of their own — indentation comes from the
+     depth-based padding-left on .toc-row, matching the Files-panel tree. */
+  .toc-list.nested { padding: 0; overflow: visible; flex: none; }
+  .toc-row { display: flex; align-items: stretch; gap: 2px; }
+  .toc-twisty {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--app-text-faint);
+    cursor: pointer;
+  }
+  .toc-twisty:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
+  .toc-twisty:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+  .toc-twisty-spacer { cursor: default; }
   .toc-item {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     text-align: left;
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
-    padding: 5px 10px 5px 10px;
+    padding: 5px 8px;
     font-size: 12px;
     color: var(--app-text-secondary);
     cursor: pointer;

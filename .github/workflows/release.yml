@@ -114,6 +114,19 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
+      # Finding #44: a release must ship with a changelog entry. Stable and
+      # prerelease dispatches alike need the CHANGELOG.md heading in place
+      # BEFORE the tag/artifacts exist, so a forgotten changelog update fails
+      # loudly here instead of shipping silently. Backfilling historical gaps
+      # is a separate concern from this gate.
+      - name: Verify CHANGELOG.md has an entry for this version
+        run: |
+          ESCAPED_VERSION="$(echo "$VERSION" | sed -e 's/\./\\./g')"
+          if ! grep -qE "^## \[${ESCAPED_VERSION}\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [$VERSION]' heading. Add a changelog entry for this release (Keep a Changelog format) before dispatching."
+            exit 1
+          fi
+
       - uses: ./.github/actions/bun
 
       - name: Bump version in package.json
@@ -146,12 +159,26 @@ jobs:
             git push
           fi
 
-          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
-            git tag -d "v$VERSION"
+          # Finding #48: a stable release tag is immutable once pushed —
+          # re-dispatching the same stable VERSION must fail loudly instead of
+          # silently deleting and re-pointing a tag consumers may already have
+          # pulled artifacts against. Only prerelease versions (VERSION
+          # contains '-', e.g. 0.4.0-beta.1) may be re-dispatched to let a
+          # release/* branch iterate on a beta before it ships stable.
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            if echo "$VERSION" | grep -qE -- '-'; then
+              echo "Prerelease v$VERSION already exists on origin — re-dispatch replaces it."
+              git push origin ":refs/tags/v$VERSION"
+            else
+              echo "::error::Tag v$VERSION already exists on origin. Stable release tags are immutable — refusing to re-point it. Dispatch a new version instead."
+              exit 1
+            fi
           fi
 
-          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
-            git push origin ":refs/tags/v$VERSION"
+          # Clear any local tag left over so tag creation below is idempotent
+          # (should not normally exist on a fresh checkout).
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            git tag -d "v$VERSION"
           fi
 
           git tag "v$VERSION"
@@ -282,16 +309,12 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build package dist
-        run: bun run build
-        working-directory: packages/cli
-
+      # Finding #62: the composite action is the single Windows-viewer
+      # packaging path — also used by viewer-debug-build.yml — so the two
+      # never diverge again (it pins node 20, matching the "never bun run"
+      # electron-builder/npm constraint documented above).
       - name: Build Windows installer and zip
-        working-directory: packages/viewer
-        run: npm run dist:win
+        uses: ./.github/actions/build-viewer-windows-zip
 
       # latest.yml + the installer .blockmap are the electron-updater feed —
       # they must ship on the GitHub release next to the installer.
@@ -344,11 +367,25 @@ jobs:
   # ── 4. Publish to npm (skippable) ─────────────────────────────────────────
   publish-npm:
     name: Publish to npm
-    # build-cli must succeed first — a broken CLI build should never reach npm.
-    # No explicit needs.build-cli.result guard is required: GitHub Actions
-    # skips a job by default when any of its `needs` jobs did not succeed.
-    needs: [version, build-cli]
-    if: ${{ !inputs.skip_npm_publish }}
+    # Finding #48: gate npm on the FULL artifact set, not just build-cli. npm
+    # is the one artifact users install unconditionally (no `if-no-files-found`
+    # opt-out like the GitHub release assets), so it must never publish a
+    # version whose GitHub release could still fail to materialize. This
+    # mirrors the github-release job's own gate below — `always()` +
+    # explicit success/skipped checks — rather than relying on `needs`' default
+    # skip-on-failure, because a plain `needs` skip on skip_viewer's
+    # intentionally-skipped viewer jobs would also (wrongly) skip npm publish.
+    needs:
+      [version, build-cli, build-viewer-linux, build-viewer-windows, build-viewer-mac, verify-windows]
+    if: |
+      always() &&
+      !inputs.skip_npm_publish &&
+      needs.version.result == 'success' &&
+      needs.build-cli.result == 'success' &&
+      needs.verify-windows.result == 'success' &&
+      (needs.build-viewer-linux.result == 'success' || needs.build-viewer-linux.result == 'skipped') &&
+      (needs.build-viewer-windows.result == 'success' || needs.build-viewer-windows.result == 'skipped') &&
+      (needs.build-viewer-mac.result == 'success' || needs.build-viewer-mac.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -500,12 +537,20 @@ jobs:
             PRERELEASE_FLAG="--prerelease"
           fi
 
-          # Delete any existing release for this tag (could be a stub left
-          # over from an earlier failed run). The tag itself is kept — the
-          # version job already pointed it at the current commit.
+          # Finding #48: mirror the tag-immutability check from the `version`
+          # job here too. A stable release, once published, must not be
+          # silently deleted and recreated. Prereleases may still be
+          # re-dispatched (the version job already allowed re-pointing the
+          # tag in that case), so a stub release left over from an earlier
+          # failed run of the SAME prerelease is replaced deliberately.
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            echo "Deleting existing release $TAG to recreate with current artifacts..."
-            gh release delete "$TAG" --yes --repo "$REPO"
+            if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then
+              echo "Prerelease $TAG already has a release — deleting to recreate with current artifacts..."
+              gh release delete "$TAG" --yes --repo "$REPO"
+            else
+              echo "::error::Release $TAG already exists. Stable releases are immutable — refusing to delete and recreate it. Dispatch a new version instead."
+              exit 1
+            fi
           fi
 
           gh release create "$TAG" \

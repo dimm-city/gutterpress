@@ -1,12 +1,14 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import MarkdownIt from "markdown-it";
 import {
   loadPlugin,
   loadPlugins,
+  loadPluginsWithCss,
   applyPlugins,
   collectPluginCss,
+  __resetPathPluginCacheForTests,
 } from "./plugins";
 import type { ResolvedPluginConfig } from "../../schema/manifest.types";
 
@@ -132,6 +134,24 @@ describe("plugin loader", () => {
         loadPlugin(cfg({ name: "this-package-does-not-exist-xyz" }), TMP_ROOT)
       ).rejects.toThrow(/bun add this-package-does-not-exist-xyz/);
     });
+
+    // ARCH finding #57 near-miss: a bare filename with a JS extension but no
+    // path separator (e.g. `my-plugin.js`, unlike `plugins/my-plugin.js`
+    // which isFilePath now catches directly, see manifest.test.ts) still
+    // reaches npm resolution and fails. The suggested local-file fix must be
+    // a path that could actually work — not the old template's
+    // `./plugins/my-plugin.js.js` double-extension nonsense.
+    test("near-miss error for a bare '*.js' name suggests a working ./ prefix, not a mangled double extension", async () => {
+      let message = "";
+      try {
+        await loadPlugin(cfg({ name: "my-plugin.js" }), TMP_ROOT);
+        throw new Error("expected loadPlugin to reject");
+      } catch (e) {
+        message = e instanceof Error ? e.message : String(e);
+      }
+      expect(message).toContain("path: ./my-plugin.js");
+      expect(message).not.toContain("my-plugin.js.js");
+    });
   });
 
   describe("loadPlugins (multi)", () => {
@@ -202,6 +222,115 @@ describe("plugin loader", () => {
     });
   });
 
+  describe("path-plugin caching (finding #5)", () => {
+    // Each ESM module's top-level code runs exactly once per DISTINCT import
+    // URL. We use that to observe whether a load actually re-imported the
+    // module (URL changed / cache-busted) or reused a cached module (URL
+    // unchanged / no import performed) — a counter bumped at module scope
+    // increments only on a real fresh import.
+    const counterKey = "__pmd_plugin_load_counts__";
+
+    beforeEach(() => {
+      (globalThis as any)[counterKey] = {};
+      __resetPathPluginCacheForTests();
+    });
+
+    function pluginSource(id: string, version: number): string {
+      return [
+        `globalThis[${JSON.stringify(counterKey)}] = globalThis[${JSON.stringify(counterKey)}] || {};`,
+        `globalThis[${JSON.stringify(counterKey)}][${JSON.stringify(id)}] = (globalThis[${JSON.stringify(counterKey)}][${JSON.stringify(id)}] || 0) + 1;`,
+        `export default function (md) { md.__version = ${version}; }`,
+        `export const version = ${version};`,
+      ].join("\n");
+    }
+
+    function loadCount(id: string): number {
+      return ((globalThis as any)[counterKey]?.[id] as number) ?? 0;
+    }
+
+    test("modifying a plugin file causes a reload (the stale-plugin bug stays fixed)", async () => {
+      const id = "reload-on-change";
+      const path = fixture(`${id}.mjs`, pluginSource(id, 1));
+
+      const first = await loadPlugin(cfg({ path: `${id}.mjs` }), TMP_ROOT);
+      const md1 = new MarkdownIt();
+      applyPlugins(md1, [first]);
+      expect((md1 as any).__version).toBe(1);
+      expect(loadCount(id)).toBe(1);
+
+      // Rewrite with different content AND force a distinct mtime — some
+      // filesystems have coarse mtime granularity, so set it explicitly
+      // rather than relying on real-clock drift between writes.
+      writeFileSync(path, pluginSource(id, 2));
+      const future = new Date(Date.now() + 10_000);
+      utimesSync(path, future, future);
+
+      const second = await loadPlugin(cfg({ path: `${id}.mjs` }), TMP_ROOT);
+      const md2 = new MarkdownIt();
+      applyPlugins(md2, [second]);
+      expect((md2 as any).__version).toBe(2);
+      // A genuinely fresh import happened — the module body ran again.
+      expect(loadCount(id)).toBe(2);
+    });
+
+    test("re-loading an unchanged plugin file reuses the cached module (no re-import, no unbounded growth)", async () => {
+      const id = "cache-hit";
+      fixture(`${id}.mjs`, pluginSource(id, 1));
+
+      await loadPlugin(cfg({ path: `${id}.mjs` }), TMP_ROOT);
+      await loadPlugin(cfg({ path: `${id}.mjs` }), TMP_ROOT);
+      await loadPlugin(cfg({ path: `${id}.mjs` }), TMP_ROOT);
+
+      // The file never changed, so the module body must have run exactly
+      // once — three re-imports of an unedited file would be the leak finding
+      // #5 describes.
+      expect(loadCount(id)).toBe(1);
+    });
+
+    test("fail-fast loadPlugins (no onError / build mode) does not cache-bust — a single one-shot load per plugin", async () => {
+      const id = "build-mode";
+      fixture(`${id}.mjs`, pluginSource(id, 1));
+
+      const loaded = await loadPlugins([cfg({ path: `${id}.mjs` })], TMP_ROOT);
+      expect(loaded).toHaveLength(1);
+      expect(loadCount(id)).toBe(1);
+    });
+
+    test("preview loadPlugins (onError supplied) reloads a changed plugin across renders", async () => {
+      const id = "preview-mode";
+      const path = fixture(`${id}.mjs`, pluginSource(id, 1));
+      const onError = () => {};
+
+      const firstRender = await loadPlugins(
+        [cfg({ path: `${id}.mjs` })],
+        TMP_ROOT,
+        onError
+      );
+      const md1 = new MarkdownIt();
+      applyPlugins(md1, firstRender);
+      expect((md1 as any).__version).toBe(1);
+
+      // Unchanged file, second render — must NOT re-import.
+      await loadPlugins([cfg({ path: `${id}.mjs` })], TMP_ROOT, onError);
+      expect(loadCount(id)).toBe(1);
+
+      // Edit the file, third render — MUST re-import and reflect the edit.
+      writeFileSync(path, pluginSource(id, 2));
+      const future = new Date(Date.now() + 10_000);
+      utimesSync(path, future, future);
+
+      const thirdRender = await loadPlugins(
+        [cfg({ path: `${id}.mjs` })],
+        TMP_ROOT,
+        onError
+      );
+      const md3 = new MarkdownIt();
+      applyPlugins(md3, thirdRender);
+      expect((md3 as any).__version).toBe(2);
+      expect(loadCount(id)).toBe(2);
+    });
+  });
+
   describe("applyPlugins", () => {
     test("propagates plugin apply errors", async () => {
       fixture(
@@ -247,6 +376,68 @@ describe("plugin loader", () => {
         TMP_ROOT
       );
       expect(collectPluginCss(loaded)).toBe("");
+    });
+  });
+
+  // ARCH finding #53: the "load plugins -> collectPluginCss" preamble was
+  // duplicated between preview/file-watcher.ts's renderBook and
+  // build-runner.ts's renderBook, differing ONLY in whether onError was
+  // supplied. These characterize the extracted helper against both call
+  // shapes so the duplication can be deleted without changing behavior.
+  describe("loadPluginsWithCss (ARCH #53)", () => {
+    test("undefined configs short-circuits to no plugins, empty css", async () => {
+      const result = await loadPluginsWithCss(undefined, TMP_ROOT);
+      expect(result.plugins).toBeUndefined();
+      expect(result.pluginCss).toBe("");
+    });
+
+    test("empty configs array short-circuits to no plugins, empty css", async () => {
+      const result = await loadPluginsWithCss([], TMP_ROOT);
+      expect(result.plugins).toBeUndefined();
+      expect(result.pluginCss).toBe("");
+    });
+
+    test("loads plugins and collects their css in one call", async () => {
+      fixture(
+        "css-c.mjs",
+        `export default function () {}; export const css = '.c {}';`
+      );
+
+      const result = await loadPluginsWithCss(
+        [cfg({ path: "css-c.mjs" })],
+        TMP_ROOT
+      );
+
+      expect(result.plugins).toHaveLength(1);
+      expect(result.plugins![0]!.name).toBe("css-c.mjs");
+      expect(result.pluginCss).toContain(".c {}");
+    });
+
+    test("fail-fast mode (no onError): a bad plugin aborts the whole load — matches build/export", async () => {
+      fixture("good2.mjs", `export default function (md) {}`);
+
+      await expect(
+        loadPluginsWithCss(
+          [cfg({ path: "good2.mjs" }), cfg({ path: "./bad-does-not-exist.mjs" })],
+          TMP_ROOT
+        )
+      ).rejects.toThrow(/bad-does-not-exist/);
+    });
+
+    test("degrade-and-report mode (onError supplied): bad plugin is skipped, good ones still render — matches preview", async () => {
+      fixture("ok2.mjs", `export default function (md) {}`);
+
+      const failures: Array<{ ref: string; message: string }> = [];
+      const result = await loadPluginsWithCss(
+        [cfg({ path: "ok2.mjs" }), cfg({ path: "./missing2.mjs" })],
+        TMP_ROOT,
+        (ref, err) => failures.push({ ref, message: err.message })
+      );
+
+      expect(result.plugins).toHaveLength(1);
+      expect(result.plugins![0]!.name).toBe("ok2.mjs");
+      expect(failures).toHaveLength(1);
+      expect(failures[0]!.ref).toBe("./missing2.mjs");
     });
   });
 });

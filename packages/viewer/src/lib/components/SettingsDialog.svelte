@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
+  import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -9,12 +10,16 @@
     open = $bindable(false),
     onClose,
     triggerEl,
+    projectDir = null,
     onViewModeChange,
     onCrashRecoveryChange,
   }: {
     open?: boolean;
     onClose?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
+    /** The open project dir (Connections tab: adding a publishing key verifies
+     *  against the platform, and some checks read the project's settings). */
+    projectDir?: string | null;
     /** Called immediately when the user changes the view mode setting. */
     onViewModeChange?: (mode: "single" | "two-column") => void;
     /** Called immediately when the user toggles crash recovery. */
@@ -29,27 +34,62 @@
     onClose?.();
   }
 
+  // ── Tabs ────────────────────────────────────────────────────────────────────
+  // The stacked-sections layout outgrew one scroll (six groups + the new
+  // Connections management), so the dialog is tabbed: each tab renders one
+  // cohesive slice. The active tab persists across opens within a session —
+  // reopening lands where the user last was.
+  type SettingsTab = "app" | "editor" | "saving" | "connections" | "advanced";
+  const TABS: Array<{ id: SettingsTab; label: string }> = [
+    { id: "app", label: "App" },
+    { id: "editor", label: "Editor" },
+    { id: "saving", label: "Saving" },
+    { id: "connections", label: "Connections" },
+    { id: "advanced", label: "Advanced" },
+  ];
+  let activeTab = $state<SettingsTab>("app");
+
   // ── Typed setters (one line per control, per the "one-line setting" goal) ──
   const s = $derived(settings.current);
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
-    class="dialog"
+    class="dlg-shell"
     use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "settings-title" }}
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="settings-title">Settings</h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
+      <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
+    <div class="tab-bar" role="tablist" aria-label="Settings sections">
+      {#each TABS as tab (tab.id)}
+        <button
+          role="tab"
+          class="tab"
+          class:active={activeTab === tab.id}
+          aria-selected={activeTab === tab.id}
+          onclick={() => (activeTab = tab.id)}
+        >{tab.label}</button>
+      {/each}
+    </div>
+
     <div class="dialog-body">
-      <!-- Appearance ------------------------------------------------------- -->
+      <!-- App appearance (light/dark chrome) --------------------------------
+           UX review M38: named "Appearance" here, but the config panel also
+           used to have its OWN "Appearance" section for the print theme —
+           two different concepts, same word. That panel section is now
+           merged into "Look & style" (M35), so this is the only surviving
+           "Appearance" in the app; the heading is qualified as "App
+           appearance" anyway so the two can never collide again even if a
+           future panel section reintroduces the word. -->
+      {#if activeTab === "app"}
       <section class="group">
         <div class="group-head">
-          <h3>Appearance</h3>
+          <h3>App appearance</h3>
           <button class="reset" onclick={() => settings.resetSection("appearance")} title="Reset appearance to defaults">Reset</button>
         </div>
         <div class="row">
@@ -110,6 +150,9 @@
         </div>
       </section>
 
+      {/if}
+
+      {#if activeTab === "editor"}
       <!-- Editor ----------------------------------------------------------- -->
       <section class="group">
         <div class="group-head">
@@ -157,8 +200,31 @@
             onchange={(e) => settings.set({ editor: { spellCheckLanguage: (e.currentTarget as HTMLInputElement).value } })}
           />
         </div>
+      </section>
+
+      {/if}
+
+      {#if activeTab === "saving"}
+      <!-- Saving & recovery (UX follow-up: writer-friendly protection model) -
+           The three protection layers a writer actually reasons about — saved
+           on this computer, previous versions, and the online copy — plus the
+           temporary emergency crash-draft, grouped together with plain labels.
+           None of the underlying machinery changes; the persisted keys
+           (editor.autoSaveDelay / editor.crashRecovery, versionHistory.
+           autoSnapshot / autoSnapshotMinutes / autoSync) are internal and
+           unchanged (the schema `editor` and `versionHistory` sections still
+           own them, so each section's Reset still restores its own keys). -->
+      <section class="group">
+        <div class="group-head">
+          <h3>Saving &amp; recovery</h3>
+          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset previous-version and online-copy settings to defaults">Reset</button>
+        </div>
+        <!-- On this computer -->
         <div class="row">
-          <label for="set-autosave">Auto-save delay (seconds)</label>
+          <div class="row-label">
+            <label for="set-autosave">Save edits automatically</label>
+            <span class="row-hint">Writes your current changes to this computer as you work (delay in seconds)</span>
+          </div>
           <input
             id="set-autosave"
             type="number"
@@ -169,30 +235,11 @@
             onchange={(e) => settings.set({ editor: { autoSaveDelay: Math.round(Number((e.currentTarget as HTMLInputElement).value) * 1000) } })}
           />
         </div>
+        <!-- Previous versions -->
         <div class="row row-toggle">
           <div class="row-label">
-            <label for="set-crash-recovery">Crash recovery</label>
-            <span class="row-hint">Restore your work if the app closes unexpectedly</span>
-          </div>
-          <input
-            id="set-crash-recovery"
-            type="checkbox"
-            checked={s.editor.crashRecovery}
-            onchange={(e) => { const enabled = (e.currentTarget as HTMLInputElement).checked; settings.set({ editor: { crashRecovery: enabled } }); onCrashRecoveryChange?.(enabled); }}
-          />
-        </div>
-      </section>
-
-      <!-- Version history (RC1-3) ------------------------------------------ -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Version history</h3>
-          <button class="reset" onclick={() => settings.resetSection("versionHistory")} title="Reset version history settings to defaults">Reset</button>
-        </div>
-        <div class="row row-toggle">
-          <div class="row-label">
-            <label for="set-auto-snapshot">Automatic snapshots</label>
-            <span class="row-hint">Save a snapshot of your work after you pause editing (only for projects with version history turned on)</span>
+            <label for="set-auto-snapshot">Keep previous versions</label>
+            <span class="row-hint">Lets you return to earlier versions of the project. Turning this off does not affect saving on this computer.</span>
           </div>
           <input
             id="set-auto-snapshot"
@@ -202,7 +249,7 @@
           />
         </div>
         <div class="row">
-          <label for="set-auto-snapshot-minutes">Save after this many quiet minutes</label>
+          <label for="set-auto-snapshot-minutes">Create a version after I stop editing for (minutes)</label>
           <input
             id="set-auto-snapshot-minutes"
             type="number"
@@ -214,13 +261,13 @@
             onchange={(e) => settings.set({ versionHistory: { autoSnapshotMinutes: Number((e.currentTarget as HTMLInputElement).value) } })}
           />
         </div>
-        <!-- Auto-sync toggle (transparent-sync plan §6 / §8 step 7). Default ON
-             for projects with a remote; local-only projects never auto-sync
-             regardless of this toggle (the host enforces the canSync gate). -->
+        <!-- Online copy (transparent-sync plan §6 / §8 step 7). Default ON for
+             projects with a remote; local-only projects never sync regardless
+             of this toggle (the host enforces the canSync gate). -->
         <div class="row row-toggle">
           <div class="row-label">
-            <label for="set-auto-sync">Automatically keep changes in sync</label>
-            <span class="row-hint">When a repository is connected, changes are saved to it in the background — you see only a small status indicator and are asked only when two copies conflict</span>
+            <label for="set-auto-sync">Keep an online copy up to date</label>
+            <span class="row-hint">Available when this project is connected to an online service — changes are saved to it in the background. Turning this off does not affect saving on this computer or your previous versions.</span>
           </div>
           <input
             id="set-auto-sync"
@@ -235,36 +282,64 @@
             }}
           />
         </div>
+        <!-- Emergency copy (crash-draft subsystem — kept distinct from previous
+             versions, per UX follow-up + review M38). The persisted key
+             `editor.crashRecovery` is internal/unchanged. -->
+        <div class="row row-toggle">
+          <div class="row-label">
+            <label for="set-crash-recovery">Recover edits after an unexpected close</label>
+            <span class="row-hint">Keeps a temporary emergency copy of your unsaved edits until they are saved. This is separate from your previous versions.</span>
+          </div>
+          <input
+            id="set-crash-recovery"
+            type="checkbox"
+            checked={s.editor.crashRecovery}
+            onchange={(e) => { const enabled = (e.currentTarget as HTMLInputElement).checked; settings.set({ editor: { crashRecovery: enabled } }); onCrashRecoveryChange?.(enabled); }}
+          />
+        </div>
       </section>
 
-      <!-- Git identity ------------------------------------------------------ -->
+      <!-- Your name on saved versions -------------------------------------- -->
       <section class="group">
         <div class="group-head">
-          <h3>Git identity</h3>
-          <button class="reset" onclick={() => settings.resetSection("gitIdentity")} title="Reset git identity to defaults">Reset</button>
+          <h3>Your name on saved versions</h3>
+          <button class="reset" onclick={() => settings.resetSection("gitIdentity")} title="Reset the name on saved versions to defaults">Reset</button>
         </div>
         <div class="row">
-          <label for="set-git-author-name">Author name</label>
+          <label for="set-git-author-name">Name</label>
           <input
             id="set-git-author-name"
             type="text"
             value={s.gitIdentity.authorName}
-            placeholder="Use existing Git name"
+            placeholder="Use your existing name"
             onchange={(e) => settings.set({ gitIdentity: { authorName: (e.currentTarget as HTMLInputElement).value } })}
           />
         </div>
         <div class="row">
-          <label for="set-git-author-email">Author email</label>
+          <label for="set-git-author-email">Email</label>
           <input
             id="set-git-author-email"
             type="email"
             value={s.gitIdentity.authorEmail}
-            placeholder="Use existing Git email"
+            placeholder="Use your existing email"
             onchange={(e) => settings.set({ gitIdentity: { authorEmail: (e.currentTarget as HTMLInputElement).value } })}
           />
         </div>
       </section>
 
+      {/if}
+
+      {#if activeTab === "connections"}
+      <!-- Connections — the central place to manage every stored credential:
+           GitHub, other Git servers, and publishing accounts (itch.io, Azure,
+           Shopify …). Management lives in its own component; this dialog only
+           hosts it. -->
+      <section class="group">
+        <ConnectionsSettings {projectDir} />
+      </section>
+      {/if}
+
+      {#if activeTab === "advanced"}
       <!-- Advanced (collapsed by default) --------------------------------- -->
       <!-- Developer-oriented knobs (file-watch polling, log verbosity). Hidden
            behind a disclosure so a non-technical writer never has to reason
@@ -305,66 +380,61 @@
         </div>
         </div>
       </details>
+      {/if}
 
-      <footer class="actions">
-        <button class="primary" onclick={close}>Done</button>
+      <footer class="dlg-actions">
+        <button class="dlg-primary" onclick={close}>Done</button>
       </footer>
     </div>
   </div>
 {/if}
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  @import "$lib/styles/dialog-shell.css";
+
+  /* Settings is the tallest dialog in normal use (many rows); wider + a
+     slightly taller cap than the shared default. */
+  .dlg-shell {
     width: min(560px, 92vw);
     max-height: 88vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
+  /* Unlike the "pinned bar" dialogs (ConflictChoicesDialog, OperationLogDialog,
+     …), Settings' footer is the last item INSIDE the scrolling body, not a
+     sibling of it — restore its original in-flow spacing (no side padding,
+     it inherits dialog-body's own 16/18 padding; no flex-shrink, dialog-body
+     here isn't a flex container). */
+  .dlg-actions {
+    padding: 16px 0 0;
+    margin-top: 8px;
   }
-  .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* WCAG 2.5.8: minimum target size 24x24px */
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
   .dialog-body {
     padding: 16px 18px;
     overflow-y: auto;
   }
+  /* ── Tab bar ── */
+  .tab-bar {
+    display: flex;
+    gap: 2px;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--app-border-subtle);
+    flex-shrink: 0;
+  }
+  .tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--app-text-muted);
+    font-size: 12.5px;
+    padding: 8px 10px;
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--app-text); }
+  .tab.active {
+    color: var(--app-text);
+    border-bottom-color: var(--app-accent, #4a9eff);
+    font-weight: 600;
+  }
+  .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
   .group { margin-bottom: 20px; }
   .group-head {
     display: flex;
@@ -453,21 +523,4 @@
   }
   .advanced-reset-row { border-bottom: none; margin-top: 4px; padding-bottom: 0; }
   .advanced-body { padding-top: 4px; }
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    padding-top: 16px;
-    margin-top: 8px;
-    border-top: 1px solid var(--app-border-subtle);
-  }
-  .actions button {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .actions .primary:hover { background: var(--app-accent-hover); }
 </style>

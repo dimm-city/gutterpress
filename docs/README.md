@@ -105,6 +105,14 @@ print-md validate --pdf dist/book.pdf
 
 ### Common Callouts
 
+> **Plugin required:** `> [!note]`-style GitHub alert syntax is **not** part
+> of core print-md — it lives in the separate, DC-branded Dimm City plugin.
+> Without that plugin configured, these print as literal blockquote text
+> (`[!note] ...`). See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugins.md)
+> to add it, or use `@section .callout-tip` … `@end-section` (a plain marker
+> core always renders — see [User Guide: Chapter 9 — Publishing](../examples/print-md-user-guide/09-publishing.md))
+> or a plain `>` blockquote for a core-only callout.
+
 ```markdown
 > [!note]      Blue - General information
 > [!tip]       Green - Helpful advice
@@ -124,10 +132,17 @@ docs/
 ├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── migrations/                            # Migration guides
 │   └── 2026-05-removing-container-syntax.md
-└── [other files are redirects to User Guide chapters]
+├── docker.md                              # Running print-md in Docker
+├── publishing.md                          # Publishing built output to platforms
+├── schema-autocomplete.md                 # manifest.yaml JSON Schema / editor autocomplete
+├── design-guides.md                       # Companion design-guide projects
+├── desktop-shortcut.md                    # OS desktop shortcuts for the viewer
+├── reviews/                               # Point-in-time critical review reports
+└── [remaining files are point-in-time audits/plans, kept for history — not
+     part of the current documentation set]
 ```
 
-All authoring documentation lives in the **[Print-md User Guide](../examples/print-md-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials only.
+All authoring documentation lives in the **[Print-md User Guide](../examples/print-md-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials — some current (the files listed above), some historical audit/planning artifacts kept for the record.
 
 ## Contributing
 

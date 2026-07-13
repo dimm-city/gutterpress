@@ -36,25 +36,16 @@ async function get<T>(url: string): Promise<T> {
 // These were previously RE-DECLARED here, and one copy had already drifted
 // (`ProjectRemoteDiagnosis.classification` was `any` instead of the typed
 // `ProjectSource`). They are now imported type-only from `./platform/contract`
-// (which itself sources them from `shared-types.ts` / the lib), so the api
-// client and the host/renderer contract can never disagree again. `import type`
-// is fully erased at build, so the SPA still never value-imports the lib
-// (§8 / ADR 0004 renderer purity). Re-exported so existing `$lib/api` type
-// consumers keep resolving.
+// (the seam interfaces + IPC-shared types) and `./platform/dtos` (the plain
+// request/response DTOs, ARCH review #39/#40), so the api client and the
+// host/renderer contract can never disagree again. `import type` is fully
+// erased at build, so the SPA still never value-imports the lib (§8 / ADR
+// 0004 renderer purity). Re-exported so existing `$lib/api` type consumers
+// keep resolving.
 export type {
-  DiscoveredProject,
-  PluginKind,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ProjectStyle,
   FileWriteResult,
   FileStat,
-  RecoveryEntry,
   ConflictKind,
-  ConflictPreview,
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
@@ -69,21 +60,15 @@ export type {
   PublishIssue,
   PublishOutcomeInfo,
   PublishRunResult,
+  ViewerPrefs,
+  ProjectState,
+  CreateProjectResult,
 } from './platform/contract';
 
 import type {
-  DiscoveredProject,
-  ProjectPluginEntry,
-  PluginValidationResult,
-  RecommendedPlugin,
-  ThemeInfo,
-  ApplyThemeTarget,
-  ProjectStyle,
   FileWriteResult,
   FileStat,
-  RecoveryEntry,
   ConflictKind,
-  ConflictPreview,
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
@@ -94,10 +79,53 @@ import type {
   ConnectGenericHostArgs,
   HostConnectionInfo,
   SyncOutcome,
-  ProjectClassification,
+  SyncStatus,
+  CloneRepositoryArgs,
+  ResolveSyncConflictsArgs,
+  UpdaterStatus,
   PublishProviderCard,
   PublishRunResult,
+  ViewerPrefs,
+  ProjectState,
+  CreateProjectResult,
 } from './platform/contract';
+
+export type {
+  DiscoveredProject,
+  PluginKind,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ProjectStyle,
+  RecoveryEntry,
+  ConflictPreview,
+  ProjectClassification,
+  MediaImageEntry,
+  MediaImageDetails,
+  PrintSafeWarning,
+  ProblemEntry,
+  DoctorDiagnostics,
+} from './platform/dtos';
+
+import type {
+  DiscoveredProject,
+  ProjectPluginEntry,
+  PluginValidationResult,
+  RecommendedPlugin,
+  ThemeInfo,
+  ApplyThemeTarget,
+  ProjectStyle,
+  RecoveryEntry,
+  ConflictPreview,
+  ProjectClassification,
+  MediaImageEntry,
+  MediaImageDetails,
+  PrintSafeWarning,
+  ProblemEntry,
+  DoctorDiagnostics,
+} from './platform/dtos';
 
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
 
@@ -113,6 +141,19 @@ export interface SnippetEntry {
   name: string;
   fileName: string;
   variables: string[];
+}
+
+/** Static publish-provider metadata (no project needed) — used by the
+ *  Settings → Connections tab to classify + label stored credentials. */
+export interface PublishProviderStaticInfo {
+  id: string;
+  label: string;
+  kind: 'api' | 'guided';
+  credentialRequired: boolean;
+  /** The TokenStore host this provider's credentials are keyed under. */
+  credentialHost: string | null;
+  tokenUrl: string | null;
+  hint: string | null;
 }
 
 // ── Project configuration view (#PCV) — author-facing manifest subset ──────
@@ -189,24 +230,45 @@ export const api = {
     /** Copy a file into a destination directory. Creates destDir if absent. Returns the dest path. */
     copyFile: (src: string, dest: string) =>
       post<string>('/api/fs/copy-file', { src, dest }),
-    /** Start watching a folder for changes. Only one watch at a time. */
-    watchFolder: (dirPath: string) => post<{ ok: boolean }>('/api/fs/watch-folder', { path: dirPath }),
-    /** Stop watching the currently watched folder. */
-    unwatchFolder: (dirPath?: string) =>
-      post<{ ok: boolean }>('/api/fs/unwatch-folder', dirPath ? { path: dirPath } : {}),
+    // watchFolder/unwatchFolder deleted (ARCH review #8) — the folder watch
+    // stays IPC-only (preload.ts / electron-adapter.ts); these client
+    // wrappers and their /api/fs/{watch,unwatch}-folder routes had zero
+    // callers, the IPC path being the live one.
     /** List top-level .md and .css files in a project directory. */
     listProjectFiles: (projectDir: string) =>
       post<ProjectFileEntry>('/api/fs/list-project-files', { projectDir }),
+
+    // ── Tree CRUD (UX review M9) ─────────────────────────────────────────
+    // `dir` + `name` (not a full path) so path-joining stays host-side —
+    // see create-file/+server.ts's header comment.
+    /** Create a new file under `dir`. Fails (409) if a file already exists there. */
+    createFile: (dir: string, name: string, content = '') =>
+      post<{ path: string; mtimeMs: number }>('/api/fs/create-file', { dir, name, content }),
+    /** Create a new folder under `dir`. Fails (409) if something already exists there. */
+    createFolder: (dir: string, name: string) =>
+      post<{ path: string }>('/api/fs/create-folder', { dir, name }),
+    /** Rename a file/folder in place (same parent dir, new name). Fails (409) on a name collision. */
+    renamePath: (path: string, newName: string) =>
+      post<{ path: string }>('/api/fs/rename', { path, newName }),
+    /**
+     * Delete a file or folder (recursive). When the project has version
+     * history the host snapshots the working tree first (best-effort no-op
+     * when there's nothing new to save) so the deleted content stays
+     * recoverable through Version History; the call rejects WITHOUT
+     * deleting if that safety snapshot fails.
+     */
+    deletePath: (path: string, projectDir: string) =>
+      post<{ ok: true }>('/api/fs/delete', { path, projectDir }),
   },
 
   app: {
     /** Get viewer prefs (lastProjectDir, recentFolders, projectStates, etc.). */
-    getViewerPrefs: () => get<Record<string, unknown>>('/api/app/viewer-prefs'),
+    getViewerPrefs: () => get<ViewerPrefs>('/api/app/viewer-prefs'),
     /** Shallow-merge patch into viewer prefs. */
     setViewerPrefs: (prefs: Record<string, unknown>) => post<{ ok: boolean }>('/api/app/viewer-prefs', prefs),
     /** Get per-project editor/preview state for the given projectDir. */
     getViewerProjectState: (projectDir: string) =>
-      post<Record<string, unknown> | null>('/api/app/viewer-project-state/get', { projectDir }),
+      post<ProjectState | null>('/api/app/viewer-project-state/get', { projectDir }),
     /** Set per-project editor/preview state for the given projectDir. */
     setViewerProjectState: (projectDir: string, state: Record<string, unknown>) =>
       post<{ ok: boolean }>('/api/app/viewer-project-state/set', { projectDir, state }),
@@ -234,70 +296,54 @@ export const api = {
     discoverProjects: () => post<DiscoveredProject[]>('/api/app/discover-projects', {}),
     /** Classify a project folder (source type + capabilities + repo book list). */
     classifyProject: (projectDir: string) =>
-      post<{
-        source: unknown;
-        capabilities: unknown;
-        repoRoot?: string;
-        books?: Array<{ path: string; title: string; subPath: string }>;
-      }>('/api/app/classify-project', { projectDir }),
+      post<ProjectClassification>('/api/app/classify-project', { projectDir }),
     /** Scaffold a new project from a template. */
-    createProject: (opts: Record<string, unknown>) => post<unknown>('/api/app/create-project', opts),
+    createProject: (opts: Record<string, unknown>) =>
+      post<CreateProjectResult>('/api/app/create-project', opts),
     /** Adopt an existing folder as a print-md project. */
-    adoptFolder: (opts: Record<string, unknown>) => post<unknown>('/api/app/adopt-folder', opts),
-    /** Push a splash status update (status text, progress 0-100, sub-status). */
-    splashStatus: (status?: string, progress?: number, sub?: string) =>
-      post<{ ok: boolean }>('/api/app/splash-status', { status, progress, sub }),
-    /** Signal that the renderer first screen is ready (closes the splash). */
-    rendererReady: () => post<{ ok: boolean }>('/api/app/renderer-ready', {}),
+    adoptFolder: (opts: Record<string, unknown>) =>
+      post<CreateProjectResult>('/api/app/adopt-folder', opts),
     /** Push the renderer dirty state to the main process close gate. */
     setDirtyState: (dirty: boolean) => post<{ ok: boolean }>('/api/app/dirty-state', { dirty }),
-    /** Signal that the renderer has flushed its buffer (close gate reply). */
-    flushDone: () => post<{ ok: boolean }>('/api/app/flush-done', {}),
+    // flushDone deleted (ARCH review #8) — this wrapper (and the
+    // /api/app/flush-done route) had zero callers: the real flush-before-close
+    // reply is fired directly over IPC (preload.ts's onFlushBeforeClose calls
+    // ipcRenderer.invoke("app:flushDone") — it can't route through fetch, since
+    // it must resolve synchronously with the renderer's own close-time flush).
   },
 
   media: {
     /** List all image files under a project directory (recursive, bounded). */
     listImages: (projectDir: string) =>
-      post<Array<{ name: string; relPath: string; path: string; size: number; mtimeMs: number }>>(
-        '/api/media/list-images',
-        { projectDir },
-      ),
+      post<MediaImageEntry[]>('/api/media/list-images', { projectDir }),
     /** Generate a small (≤192px) thumbnail data URL for an image. Returns null when unavailable. */
     thumbnail: (imagePath: string, width?: number, height?: number) =>
       post<string | null>('/api/media/thumbnail', { imagePath, width, height }),
     /** Inspect an image file — returns file size + header metadata (dimensions, DPI, alpha, color space). */
     inspect: (imagePath: string) =>
-      post<{
-        fileSize: number;
-        info: {
-          width: number;
-          height: number;
-          xDpi: number;
-          yDpi: number;
-          hasAlpha: boolean;
-          colorSpace: 'srgb' | 'gray' | 'cmyk' | '';
-        } | null;
-      } | null>('/api/media/inspect', { imagePath }),
+      post<MediaImageDetails | null>('/api/media/inspect', { imagePath }),
+    /**
+     * Import an author-picked image (absolute path, from anywhere on disk —
+     * e.g. a native file dialog) into the given project, returning the
+     * project-relative markdown `src` to use. The ONE host-side
+     * implementation of the import policy (UX review M10): already-inside
+     * the project just computes the relative path; outside the project
+     * copies into an existing `images/` dir if present, else `assets/`
+     * (created on demand), de-duplicating a colliding basename. Both
+     * EditorToolbar and MediaPanel call this — neither does its own path/fs
+     * math (CLAUDE.md §8).
+     */
+    importImage: (projectDir: string, src: string) =>
+      post<{ src: string; copied: boolean }>('/api/media/import-image', { projectDir, src }),
   },
 
   lint: {
     /** Run CSS print-safety lint on the given CSS content. Returns an array of warnings. */
     checkCss: (cssPath: string, content: string) =>
-      post<Array<{ rule: string; severity: 'error' | 'warning'; message: string; line: number; column: number }>>(
-        '/api/lint/check-css',
-        { cssPath, content },
-      ),
+      post<PrintSafeWarning[]>('/api/lint/check-css', { cssPath, content }),
     /** Run project-wide pre-build source lint checks. Returns problem entries for the Problems panel. */
     project: (projectDir: string) =>
-      post<Array<{
-        filePath?: string;
-        file?: string;
-        line?: number;
-        column?: number;
-        severity: 'error' | 'warning' | 'info';
-        message: string;
-        source: string;
-      }>>('/api/lint/project', { projectDir }),
+      post<ProblemEntry[]>('/api/lint/project', { projectDir }),
   },
 
   tpl: {
@@ -393,11 +439,12 @@ export const api = {
       post<string[]>('/api/style/set-active', { projectDir, paths }),
   },
 
-  /** Health check — returns { ok: true, name, runtime }. */
-  status: () => get<{ ok: boolean; name: string; runtime: string }>('/api/status'),
+  // status() deleted (ARCH review #8) — this wrapper had zero callers.
+  // The /api/status route itself is left in place (a plain health-check GET,
+  // harmless to keep reachable even with no current client).
 
   /** System diagnostics (tool paths, versions, Chromium/Electron info). */
-  doctor: () => get<unknown>('/api/doctor'),
+  doctor: () => get<DoctorDiagnostics>('/api/doctor'),
 
   recovery: {
     /** Write a debounced crash-recovery snapshot of the open buffer (#44). */
@@ -415,6 +462,22 @@ export const api = {
     /** Fetch the yours/theirs text for one conflicted file for comparison. */
     getConflictPreview: (projectDir: string, path: string, kind?: ConflictKind) =>
       post<ConflictPreview>('/api/sync/get-conflict-preview', { projectDir, path, kind }),
+    /**
+     * Enable or disable the auto-sync master switch (ARCH review #8 — was
+     * IPC despite being a pure settings write).
+     */
+    setAutoSync: (enabled: boolean) =>
+      post<{ ok: boolean; autoSync: boolean }>('/api/sync/set-auto-sync', { enabled }),
+    /**
+     * The last sync status the host emitted for a project, or null. The
+     * queryable counterpart to the fire-and-forget onSyncStatus push channel —
+     * the status pill seeds itself from this right after subscribing so a
+     * subscription that lands after an emit (project open racing the pill's
+     * mount; the one-shot "connect"/"local" states) never strands on
+     * blank/stale status.
+     */
+    getStatus: (projectDir: string) =>
+      post<SyncStatus | null>('/api/sync/status', { projectDir }),
   },
 
   vcs: {
@@ -487,6 +550,32 @@ export const api = {
         projectDir,
         ...(message ? { message } : {}),
       }),
+
+    /**
+     * Download ("clone") a repository into a new local project folder
+     * (ARCH review #8 — was IPC despite being a plain request/response; the
+     * clone-progress push stays a separate `onCloneProgress` subscription).
+     */
+    cloneRepository: (args: CloneRepositoryArgs) =>
+      post<{ projectDir: string }>('/api/remote/clone-repository', args),
+
+    /**
+     * Apply per-file conflict choices and sync the combined result (ARCH
+     * review #8 — was IPC despite being a plain request/response).
+     */
+    resolveSyncConflicts: (args: ResolveSyncConflictsArgs) =>
+      post<SyncOutcome>('/api/remote/resolve-sync-conflicts', args),
+  },
+
+  /**
+   * Auto-update surface (ARCH review #8 — getStatus/check/download were IPC
+   * despite being plain request/response; applyNow and the onEvent push
+   * stream stay on the bridge — see electron-adapter.ts's `updater` getter).
+   */
+  updater: {
+    getStatus: () => get<UpdaterStatus>('/api/updater/get-status'),
+    check: () => post<UpdaterStatus>('/api/updater/check'),
+    download: () => post<UpdaterStatus>('/api/updater/download'),
   },
 
   publish: {
@@ -494,20 +583,30 @@ export const api = {
     listProviders: (projectDir: string) =>
       post<PublishProviderCard[]>('/api/publish/list', { projectDir }),
 
+    /** Static provider metadata — id/label/credential host. No project needed
+     *  (Settings → Connections classification + labels). */
+    providers: () => post<PublishProviderStaticInfo[]>('/api/publish/providers', {}),
+
     /**
      * Store + verify an API key for a provider. The token travels once, to the
-     * host; the response is redacted and the key never comes back.
+     * host; the response is redacted and the key never comes back. An optional
+     * `account` label stores a NAMED credential (a user can keep several per
+     * provider); empty stores the default.
      */
-    connect: (projectDir: string, providerId: string, token: string) =>
+    connect: (projectDir: string, providerId: string, token: string, account?: string) =>
       post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
         projectDir,
         providerId,
         token,
+        ...(account ? { account } : {}),
       }),
 
-    /** Forget the stored key for a provider. */
-    disconnect: (providerId: string) =>
-      post<{ ok: boolean }>('/api/publish/disconnect', { providerId }),
+    /** Forget a stored key for a provider (the default, or a named `account`). */
+    disconnect: (providerId: string, account?: string) =>
+      post<{ ok: boolean }>('/api/publish/disconnect', {
+        providerId,
+        ...(account ? { account } : {}),
+      }),
 
     /** Write NON-SECRET provider settings into the manifest's publish section. */
     setConfig: (projectDir: string, providerId: string, values: Record<string, string>) =>

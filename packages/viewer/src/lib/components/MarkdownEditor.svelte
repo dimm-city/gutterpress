@@ -4,10 +4,30 @@
    *
    * Renders the markdown source of `filePath` with markdown syntax
    * highlighting and a basic dark theme, emitting `onChange(newContent)` on
-   * each user edit. Document switching is handled by reconfiguring the existing
-   * EditorView (dispatching a full-document replace) rather than tearing the
-   * view down — cheaper and keeps scroll/undo behaviour sane. No print-md
-   * extension awareness yet (a follow-on per the issue).
+   * each user edit. No print-md extension awareness yet (a follow-on per the
+   * issue).
+   *
+   * ONE EditorView for the component's lifetime (UX review M8). The exported
+   * `switchFile(path, content)` swaps the open document via `view.setState(...)`
+   * with a freshly built or cache-restored `EditorState` — it never tears the
+   * view down. The outgoing file's live state (doc, selection, undo history) is
+   * stashed in `stateCache` (`$lib/editor/editor-state-cache.ts`, a bounded
+   * LRU) keyed by its file path, along with its scroll offset; switching back
+   * to a recently open file restores all three instead of starting cold. This
+   * used to be exactly what this header claimed and the code didn't do: the
+   * parent wrapped this component in `{#key editorFilePath}`, which destroyed
+   * and rebuilt the whole view (discarding undo/selection/scroll) on every
+   * switch. That wrapper is gone; this file now does what it always said it did.
+   *
+   * Neither the initial file switch nor a same-file external content change
+   * (an auto-reload while this file stays open) is driven by watching the
+   * `filePath`/`content` props reactively — this repo bans `$effect` (see
+   * eslint.config.js), so the parent calls exported imperative methods
+   * instead: `switchFile()` when it changes which file is open, and
+   * `updateContent()` for the #H1 same-file auto-reload path. Reading
+   * `content` reactively here would also fire on every keystroke's
+   * onChange→buffer round trip, fighting the user's own typing — so the
+   * explicit-call design is the right one independent of the lint rule.
    */
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
   import {
@@ -16,6 +36,7 @@
     Compartment,
     type Extension,
   } from "@codemirror/state";
+  import { EditorStateCache } from "$lib/editor/editor-state-cache";
   import {
     defaultKeymap,
     history,
@@ -36,6 +57,7 @@
     applyPageBreak,
     applyTable,
     applyImage,
+    applyLayoutBlock,
   } from "$lib/editor/toolbar-actions";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import { markdown } from "@codemirror/lang-markdown";
@@ -55,6 +77,7 @@
     pagedMediaCompletionSource,
     type EditorLanguage,
   } from "$lib/editor/css-editor";
+  import { markerCompletionSource } from "$lib/editor/marker-completions";
   import { onMount } from "svelte";
 
   let {
@@ -113,13 +136,24 @@
   const languageCompartment = new Compartment();
   const cssLintCompartment = new Compartment();
   const cssCompletionCompartment = new Compartment();
-  // The language the view is currently configured for. Seeded at mount; the
-  // doc-swap effect reconfigures the compartments when it changes.
+  const markdownCompletionCompartment = new Compartment();
+  // The language the view is currently configured for. Seeded at mount;
+  // updated by switchFile() when a file switch changes it. Each `buildState()`
+  // call bakes the resolved language into the new/restored EditorState via
+  // these same Compartment instances, so a `setState()` swap always carries
+  // the right language/lint/completion config with it.
   let currentLanguage: EditorLanguage = "plain";
-  // The filePath the view's document currently belongs to. Used by the doc-swap
-  // effect to tell a same-file content reload (preserve caret) from a file
-  // switch (reset caret). Seeded at mount alongside the initial document.
+  // The filePath the view's document currently belongs to. Used by
+  // switchFile() to no-op a call that doesn't actually change the open file.
+  // Seeded at mount alongside the initial document.
   let appliedPath: string | null = null;
+  // Per-file EditorState + scroll cache (UX review M8) — see the header
+  // comment. Lives for the component's lifetime, not reset on file switch.
+  const stateCache = new EditorStateCache<{
+    state: EditorState;
+    scrollTop: number;
+    scrollLeft: number;
+  }>(20);
 
   /** Build the language extension for a given resolved language mode. */
   function languageExtension(lang: EditorLanguage): Extension {
@@ -141,6 +175,12 @@
   function cssCompletionExtensions(lang: EditorLanguage): Extension {
     if (lang !== "css") return [];
     return autocompletion({ override: [pagedMediaCompletionSource] });
+  }
+
+  /** Core `@marker` completions (UX M26) — active only for markdown docs. */
+  function markdownCompletionExtensions(lang: EditorLanguage): Extension {
+    if (lang !== "markdown") return [];
+    return autocompletion({ override: [markerCompletionSource] });
   }
 
   // Theme-aware syntax highlighting. Every colour is a CSS custom property
@@ -215,8 +255,12 @@
     "&.cm-focused": { outline: "none" },
   });
 
-  function buildState(doc: string): EditorState {
-    const lang = languageForPath(filePath);
+  // `forPath` is passed explicitly rather than read off the `filePath` prop:
+  // `switchFile()` must resolve the language for the file it was just told
+  // to switch TO, not risk racing however/whenever Svelte propagates the
+  // prop update through to this read.
+  function buildState(doc: string, forPath: string | null): EditorState {
+    const lang = languageForPath(forPath);
     return EditorState.create({
       doc,
       extensions: [
@@ -227,6 +271,7 @@
         languageCompartment.of(languageExtension(lang)),
         cssLintCompartment.of(cssLintExtensions(lang)),
         cssCompletionCompartment.of(cssCompletionExtensions(lang)),
+        markdownCompletionCompartment.of(markdownCompletionExtensions(lang)),
         syntaxHighlighting(printmdHighlight, { fallback: true }),
         keymap.of([
           ...defaultKeymap,
@@ -256,17 +301,16 @@
     });
   }
 
-  // Mount the EditorView once the host node exists.
-  // The parent wraps this component in {#key filePath} so onMount fires fresh
-  // for each new file, providing the same file-switch doc-swap behaviour.
-  // Same-file content updates (external edits while the file is open) are
-  // handled by the exported updateContent() method called from the parent.
+  // Mount the EditorView ONCE when the host node exists. It lives for the
+  // component's lifetime; file switches are handled by the exported
+  // switchFile() below, called explicitly by the parent, never by tearing
+  // this view down.
   let detachScroll: (() => void) | null = null;
   onMount(() => {
     if (!host) return;
     currentLanguage = languageForPath(filePath);
     appliedPath = filePath;
-    view = new EditorView({ state: buildState(content), parent: host });
+    view = new EditorView({ state: buildState(content, filePath), parent: host });
     // Editor→preview scroll sync: emit the top visible line as the user
     // scrolls (rAF-coalesced). Bound to scrollDOM rather than updateListener
     // because pure scrolling doesn't produce editor transactions.
@@ -290,6 +334,61 @@
       view = null;
     };
   });
+
+  /**
+   * Switch the live view to `newPath`/`newContent` without destroying it
+   * (UX review M8). Stashes the outgoing file's state + scroll into
+   * `stateCache`, then either restores a cached state for `newPath` (when its
+   * cached doc still matches the incoming content — i.e. nothing changed on
+   * disk while the author was away) or builds a fresh one (first visit, or a
+   * stale cache entry invalidated by an external change).
+   *
+   * Called EXPLICITLY by the parent whenever it changes which file is open
+   * (chapter navigation, crash-recovery restore) — not driven by a reactive
+   * `$effect` on the `filePath`/`content` props. This repo bans `$effect`
+   * (see eslint.config.js's `no-restricted-syntax` rule); it is also the
+   * right call here regardless: a prop-watching effect that read `content`
+   * would need to ignore every keystroke's onChange→buffer round trip
+   * (which updates `content` for the SAME file) to avoid fighting the user's
+   * own typing, and `filePath` changes are already always the direct result
+   * of a caller-known action, never an incidental re-render — so an explicit
+   * call is both simpler and matches this file's existing imperative-export
+   * pattern (`updateContent`, `revealLine`, `insertSnippet`, …).
+   */
+  export function switchFile(newPath: string | null, newContent: string): void {
+    if (!view || newPath === appliedPath) return;
+    if (appliedPath) {
+      stateCache.set(appliedPath, {
+        state: view.state,
+        scrollTop: view.scrollDOM.scrollTop,
+        scrollLeft: view.scrollDOM.scrollLeft,
+      });
+    }
+    appliedPath = newPath;
+    currentLanguage = languageForPath(newPath);
+    if (newPath == null) return; // nothing open — template hides the host
+
+    const cached = stateCache.get(newPath);
+    let nextState: EditorState;
+    let scrollTop = 0;
+    let scrollLeft = 0;
+    if (cached && cached.state.doc.toString() === newContent) {
+      nextState = cached.state;
+      scrollTop = cached.scrollTop;
+      scrollLeft = cached.scrollLeft;
+    } else {
+      // No cache entry, or the disk content changed while this file wasn't
+      // open — a stale cached doc must never resurrect over fresh content.
+      stateCache.delete(newPath);
+      nextState = buildState(newContent, newPath);
+    }
+    view.setState(nextState);
+    const v = view;
+    requestAnimationFrame(() => {
+      v.scrollDOM.scrollTop = scrollTop;
+      v.scrollDOM.scrollLeft = scrollLeft;
+    });
+  }
 
   /**
    * Apply an externally-updated content for the currently-open file (e.g. an
@@ -383,6 +482,11 @@
       case "image": {
         const img = payload as { src: string; alt: string; width?: string; position?: string } | undefined;
         if (img) applyImage(view, img.src, img.alt, img.width, img.position);
+        break;
+      }
+      case "layout-block": {
+        const block = payload as { kind: Parameters<typeof applyLayoutBlock>[1] } | undefined;
+        if (block) applyLayoutBlock(view, block.kind);
         break;
       }
     }

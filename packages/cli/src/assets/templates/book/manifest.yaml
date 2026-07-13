@@ -6,5 +6,6 @@ source:
     - chapter-01.md
 styles:
   - styles/book.css
+preset: book
 output:
   filename: "{{OUTPUT_PDF}}"

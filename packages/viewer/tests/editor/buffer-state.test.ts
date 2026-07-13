@@ -138,6 +138,51 @@ test("reconcileExternalChange reloads a clean buffer after a pull updates the fi
   expect(events).toEqual(["auto:/book/chapter.md"]);
 });
 
+test("reconcileExternalChange on a clean buffer fires onContentReplaced with the new content before onAutoReloaded (H1)", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "old local text" });
+  const events: string[] = [];
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    saveDelayMs: 10_000,
+    recoveryEnabled: false,
+    onExternalConflict: () => events.push("conflict"),
+    onAutoReloaded: (filePath) => events.push(`auto:${filePath}`),
+    onContentReplaced: (filePath, content) => events.push(`replaced:${filePath}:${content}`),
+  });
+
+  await buffer.load("/book/chapter.md");
+  platform.externalWrite("/book/chapter.md", "remote text from pull");
+
+  await buffer.reconcileExternalChange();
+
+  expect(events).toEqual([
+    "replaced:/book/chapter.md:remote text from pull",
+    "auto:/book/chapter.md",
+  ]);
+});
+
+test("acceptExternal (the reloadExternal conflict-banner path) fires the same onContentReplaced callback (H1)", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "old local text" });
+  const events: string[] = [];
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    saveDelayMs: 10_000,
+    recoveryEnabled: false,
+    onExternalConflict: () => events.push("conflict"),
+    onContentReplaced: (filePath, content) => events.push(`replaced:${filePath}:${content}`),
+  });
+
+  await buffer.load("/book/chapter.md");
+  platform.externalWrite("/book/chapter.md", "remote text from pull");
+  buffer.edit("dirty local edit that conflicts");
+  await buffer.flush();
+  expect(buffer.externalChange).not.toBeNull();
+
+  buffer.acceptExternal();
+
+  expect(events).toContain("replaced:/book/chapter.md:remote text from pull");
+});
+
 test("reconcileExternalChange does not silently resurrect a clean file deleted by a pull", async () => {
   const platform = new MemoryPlatform({ "/book/chapter.md": "old local text" });
   const events: string[] = [];

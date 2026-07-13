@@ -7,6 +7,7 @@
  */
 import { test, expect } from "bun:test";
 import { EditorState, EditorSelection, type Transaction } from "@codemirror/state";
+import { createMarkdownRenderer } from "@dimm-city/print-md/render";
 import {
   applyBold,
   applyItalic,
@@ -21,6 +22,14 @@ import {
   applyPageBreak,
   applyTable,
   applyImage,
+  applyLayoutBlock,
+  applyChapterBlock,
+  applySectionBlock,
+  applyTwoColumnBlock,
+  applySpreadBlock,
+  LAYOUT_BLOCK_ITEMS,
+  TOOLBAR_ITEMS,
+  visibleToolbarItems,
 } from "../../src/lib/editor/toolbar-actions";
 import type { EditorView } from "@codemirror/view";
 
@@ -296,4 +305,188 @@ test("applyImage: no attrs when neither width nor position given", () => {
   applyImage(v as unknown as EditorView, "assets/img.jpg", "Plain");
   expect(getDoc(v)).toContain("![Plain](assets/img.jpg)\n");
   expect(getDoc(v)).not.toContain("{");
+});
+
+// ── L6: empty-selection toggle must not pile up marker debris ───────────────
+// Repeated Ctrl+B (or Ctrl+I / Ctrl+Shift+X / Ctrl+`) on an empty selection
+// used to insert a brand-new marker pair every time instead of noticing the
+// cursor already sits directly between an existing pair, so pressing Bold
+// twice on an empty document produced "****" -> "******" instead of toggling
+// back off.
+
+test("applyBold: toggling twice on an empty selection does not pile up marker debris", () => {
+  const v = makeMockView("");
+  applyBold(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("****");
+  applyBold(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("");
+  expect(getSel(v)).toEqual({ from: 0, to: 0 });
+});
+
+test("applyBold: empty selection sitting between existing ** markers removes them", () => {
+  // "abc" + "**" + "**" + "def" with the cursor collapsed exactly between the
+  // two marker pairs (position 5).
+  const v = makeMockView("abc****def", 5, 5);
+  applyBold(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("abcdef");
+  expect(getSel(v)).toEqual({ from: 3, to: 3 });
+});
+
+test("applyItalic: toggling twice on an empty selection does not pile up marker debris", () => {
+  const v = makeMockView("");
+  applyItalic(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("__");
+  applyItalic(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("");
+});
+
+test("applyBold: empty selection NOT between markers still inserts a fresh pair", () => {
+  const v = makeMockView("hello", 5, 5);
+  applyBold(v as unknown as EditorView);
+  expect(getDoc(v)).toBe("hello****");
+});
+
+// ── M23: toolbar/More-menu share one declarative item array ─────────────────
+// The main toolbar groups and the narrow-width More menu must render from the
+// exact same filtered item list so an item can never exist in one surface and
+// not the other (the bug: Save and Snippet were hand-omitted from the old
+// hand-duplicated More menu list).
+
+test("visibleToolbarItems: includes save and desktop-only items when both flags are true", () => {
+  const items = visibleToolbarItems({ hasSave: true, desktop: true });
+  expect(items.some((i) => i.id === "save")).toBe(true);
+  expect(items.some((i) => i.id === "snippet")).toBe(true);
+  expect(items.some((i) => i.id === "image")).toBe(true);
+});
+
+test("visibleToolbarItems: drops save item when hasSave is false", () => {
+  const items = visibleToolbarItems({ hasSave: false, desktop: true });
+  expect(items.some((i) => i.id === "save")).toBe(false);
+});
+
+test("visibleToolbarItems: drops desktop-only items (image, snippet) when desktop is false", () => {
+  const items = visibleToolbarItems({ hasSave: true, desktop: false });
+  expect(items.some((i) => i.id === "image")).toBe(false);
+  expect(items.some((i) => i.id === "snippet")).toBe(false);
+  // Non-desktop-only items are unaffected.
+  expect(items.some((i) => i.id === "bold")).toBe(true);
+});
+
+test("visibleToolbarItems: every visible item belongs to exactly one known group (no orphans dropped from the More menu)", () => {
+  const items = visibleToolbarItems({ hasSave: true, desktop: true });
+  const groups = ["save", "primary", "block", "insert"];
+  for (const item of items) {
+    expect(groups).toContain(item.group);
+  }
+  // The same array (filtered per-group for the toolbar, unfiltered for the
+  // More menu) must account for every visible item exactly once.
+  const total = groups
+    .map((g) => items.filter((i) => i.group === g).length)
+    .reduce((a, b) => a + b, 0);
+  expect(total).toBe(items.length);
+});
+
+test("TOOLBAR_ITEMS: declares Save and Snippet exactly once each (the drift this array prevents)", () => {
+  expect(TOOLBAR_ITEMS.filter((i) => i.id === "save")).toHaveLength(1);
+  expect(TOOLBAR_ITEMS.filter((i) => i.id === "snippet")).toHaveLength(1);
+});
+
+// ── M26: "Insert layout block" picker ────────────────────────────────────────
+// A small picker offering Chapter / Section / Two columns / Page break /
+// Spread, inserting the correct core `@marker` skeleton at the cursor. Each
+// helper is block-level (operates on the current line, blank-line padded —
+// same convention as applyHr/applyPageBreak above), not the inline
+// completion-popup insertion in marker-completions.ts.
+
+test("LAYOUT_BLOCK_ITEMS: offers exactly Chapter / Section / Two columns / Page break / Spread", () => {
+  const kinds = LAYOUT_BLOCK_ITEMS.map((i) => i.kind);
+  expect(kinds).toEqual(["chapter", "section", "two-column", "page-break", "spread"]);
+  for (const item of LAYOUT_BLOCK_ITEMS) {
+    expect(item.label.length).toBeGreaterThan(0);
+  }
+});
+
+test("applyChapterBlock: inserts @chapter with a QUOTED, selected title placeholder, plus a nested @page", () => {
+  const v = makeMockView("intro");
+  applyChapterBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+  // Quoting is load-bearing — see applyChapterBlock's doc comment and the
+  // round-trip test below. An unquoted multi-word label silently loses
+  // data-chapter-label / .chapter-opener.
+  expect(doc).toBe('intro\n\n@chapter "Chapter Title"\n\n@page\n\n');
+  const sel = getSel(v);
+  // Selection covers the label only, not the surrounding quotes.
+  expect(v.state.sliceDoc(sel.from, sel.to)).toBe("Chapter Title");
+});
+
+test("applyChapterBlock: the produced block renders data-chapter-label + .chapter-opener through the real plugin", () => {
+  const v = makeMockView("intro");
+  applyChapterBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+
+  const md = createMarkdownRenderer();
+  const html = md.render(doc);
+
+  expect(html).toContain('data-chapter-label="Chapter Title"');
+  expect(html).toContain('class="chapter-opener"');
+  // Must NOT regress to the broken junk-class form.
+  expect(html).not.toContain('class="chapter Chapter Title"');
+});
+
+test("applySectionBlock: inserts the @section/@end-section pair with cursor on the blank line between", () => {
+  const v = makeMockView("stats");
+  applySectionBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+  expect(doc).toBe("stats\n\n@section\n\n@end-section\n\n");
+  const sel = getSel(v);
+  expect(sel.from).toBe(sel.to);
+  expect(v.state.doc.lineAt(sel.from).text).toBe("");
+});
+
+test("applyTwoColumnBlock: uses .col-split (not bare .two-column) so @column-break actually breaks under Paged.js", () => {
+  const v = makeMockView("before");
+  applyTwoColumnBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+  expect(doc).toContain("@section .col-split");
+  expect(doc).toContain("@column-break");
+  expect(doc).toContain("@end-section");
+  // Marker order: section open, column-break, section close.
+  expect(doc.indexOf("@section .col-split")).toBeLessThan(doc.indexOf("@column-break"));
+  expect(doc.indexOf("@column-break")).toBeLessThan(doc.lastIndexOf("@end-section"));
+});
+
+test("applySpreadBlock: inserts @spread with a nested @page", () => {
+  const v = makeMockView("x");
+  applySpreadBlock(v as unknown as EditorView);
+  const doc = getDoc(v);
+  expect(doc).toBe("x\n\n@spread\n\n@page\n\n");
+});
+
+test("applyLayoutBlock: dispatches to the right helper for each kind", () => {
+  for (const kind of ["chapter", "section", "two-column", "page-break", "spread"] as const) {
+    const v = makeMockView("content");
+    applyLayoutBlock(v as unknown as EditorView, kind);
+    const doc = getDoc(v);
+    expect(doc.length).toBeGreaterThan("content".length);
+  }
+});
+
+test("applyLayoutBlock('page-break') reuses the canonical @page-break token", () => {
+  const v = makeMockView("content");
+  applyLayoutBlock(v as unknown as EditorView, "page-break");
+  expect(getDoc(v)).toBe("content\n\n@page-break\n\n");
+});
+
+test("TOOLBAR_ITEMS: declares an insert-layout-block control in the insert group", () => {
+  const item = TOOLBAR_ITEMS.find((i) => i.id === "layout-block");
+  expect(item).toBeDefined();
+  expect(item?.group).toBe("insert");
+});
+
+// ── M26: image dialog Position must offer .full-bleed (documented but missing) ─
+
+test("toolbar-actions.ts documents .full-bleed as a supported image position class", () => {
+  const v = makeMockView("text");
+  applyImage(v as unknown as EditorView, "assets/cover.jpg", "Cover", undefined, "full-bleed");
+  expect(getDoc(v)).toContain("![Cover](assets/cover.jpg){.full-bleed}");
 });

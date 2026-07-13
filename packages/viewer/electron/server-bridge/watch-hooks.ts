@@ -1,9 +1,12 @@
 /**
  * Shared folder-watch hooks for watch-folder/unwatch-folder server routes.
- * Same globalThis pattern as write-hooks.ts.
+ *
+ * Storage lives in the single collapsed host object (ARCH review #31,
+ * `./host-services.ts`) — `getWatchHooks()` is a thin derived selector over
+ * it. Same pattern as write-hooks.ts.
  */
 
-import { createHostBridge } from './create-host-bridge';
+import { getHostServices } from './host-services';
 
 export interface WatchHooks {
   startFolderWatch: (dir: string) => void;
@@ -11,5 +14,7 @@ export interface WatchHooks {
   getWatchedDir: () => string | null;
 }
 
-export const { register: registerWatchHooks, get: getWatchHooks } =
-  createHostBridge<WatchHooks>('__printMdWatchHooks__');
+/** The live `WatchHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
+export function getWatchHooks(): WatchHooks | null {
+  return getHostServices()?.watch ?? null;
+}

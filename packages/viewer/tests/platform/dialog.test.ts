@@ -19,7 +19,13 @@
  */
 import { describe, test, expect } from "bun:test";
 import { Window } from "happy-dom";
-import { dialogBehavior } from "../../src/lib/dialog";
+import {
+  dialogBehavior,
+  guardedClose,
+  requestInlineConfirm,
+  cancelInlineConfirm,
+  type InlineConfirmState,
+} from "../../src/lib/dialog";
 
 /** Flush the queueMicrotask the action uses to defer initial focus. */
 const tick = () =>
@@ -174,5 +180,71 @@ describe("dialogBehavior action", () => {
     first.focus();
     handle?.destroy?.();
     expect(doc.activeElement).toBe(second);
+  });
+});
+
+describe("guardedClose (M19 — mid-operation dismissal guard)", () => {
+  test("invokes onClose when not blocked", () => {
+    let closed = 0;
+    const close = guardedClose(() => closed++, () => false);
+    close();
+    expect(closed).toBe(1);
+  });
+
+  test("is a no-op while blocked", () => {
+    let closed = 0;
+    const close = guardedClose(() => closed++, () => true);
+    close();
+    close();
+    expect(closed).toBe(0);
+  });
+
+  test("re-reads the blocked getter on every call (reactive, not captured once)", () => {
+    let closed = 0;
+    let blocked = true;
+    const close = guardedClose(() => closed++, () => blocked);
+    close();
+    expect(closed).toBe(0);
+    blocked = false;
+    close();
+    expect(closed).toBe(1);
+  });
+});
+
+describe("requestInlineConfirm / cancelInlineConfirm (L2 / M25 — two-step destructive confirm)", () => {
+  test("first request arms the key without confirming", () => {
+    const { state, confirmed } = requestInlineConfirm({}, "a");
+    expect(confirmed).toBe(false);
+    expect(state).toEqual({ a: true });
+  });
+
+  test("second request while armed confirms and clears the key", () => {
+    const armed: InlineConfirmState = { a: true };
+    const { state, confirmed } = requestInlineConfirm(armed, "a");
+    expect(confirmed).toBe(true);
+    expect(state).toEqual({});
+  });
+
+  test("keys are independent — arming one does not confirm another", () => {
+    const armed: InlineConfirmState = { a: true };
+    const { state, confirmed } = requestInlineConfirm(armed, "b");
+    expect(confirmed).toBe(false);
+    expect(state).toEqual({ a: true, b: true });
+  });
+
+  test("does not mutate the input state object", () => {
+    const armed: InlineConfirmState = { a: true };
+    requestInlineConfirm(armed, "a");
+    expect(armed).toEqual({ a: true });
+  });
+
+  test("cancelInlineConfirm disarms a key", () => {
+    const state = cancelInlineConfirm({ a: true, b: true }, "a");
+    expect(state).toEqual({ b: true });
+  });
+
+  test("cancelInlineConfirm is a no-op (same reference) when the key isn't armed", () => {
+    const state: InlineConfirmState = { b: true };
+    expect(cancelInlineConfirm(state, "a")).toBe(state);
   });
 });

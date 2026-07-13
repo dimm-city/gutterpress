@@ -2,6 +2,7 @@ import { defineCommand } from "citty";
 import { resolve } from "node:path";
 import { scaffoldProject, BUILT_IN_TEMPLATE_IDS } from "../index.ts";
 import type { CreateProjectError, ProjectTemplateId } from "../index.ts";
+import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
 
 /**
  * `print-md new` — scaffold a new project from an embedded starter template.
@@ -45,6 +46,16 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "new");
+    } catch (error) {
+      if (error instanceof UsageError) {
+        console.error(error.message);
+        process.exit(error.exitCode);
+      }
+      throw error;
+    }
+
     const name = String(args.name);
     const parentDir = resolve(
       typeof args.dir === "string" && args.dir ? args.dir : process.cwd(),
@@ -56,7 +67,7 @@ export default defineCommand({
         console.error(
           `Unknown template "${args.template}". Choose one of: ${BUILT_IN_TEMPLATE_IDS.join(", ")}.`,
         );
-        process.exit(2);
+        process.exit(EXIT_CODES.USAGE);
       }
       template = args.template as ProjectTemplateId;
     }
@@ -87,8 +98,13 @@ export default defineCommand({
       const err = e as CreateProjectError;
       const code = err && typeof err.code === "string" ? err.code : "scaffold-io";
       console.error(`Could not create project: ${err?.message ?? String(e)}`);
-      // Distinct exit codes per failure class for scripting.
-      process.exit(code === "target-exists" ? 3 : 2);
+      // M47: map onto the one exit-code contract. "target-exists" /
+      // "invalid-name" / "parent-not-writable" are all bad-input preconditions
+      // the author chose (a usage error, code 2); "scaffold-io" is an
+      // operational I/O failure during the scaffold itself (a pipeline
+      // failure, code 3) — previously inverted (target-exists got the
+      // "pipeline" code 3, everything else including scaffold-io got 2).
+      process.exit(code === "scaffold-io" ? EXIT_CODES.PIPELINE : EXIT_CODES.USAGE);
     }
   },
 });

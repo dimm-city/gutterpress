@@ -25,9 +25,8 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { preExportSyncGateBlockError } from "../recovery-bridge";
-import type { SyncStatusPayload } from "../auto-sync/orchestrator";
 import type { ExportProgressEvent, ExportSession } from "../pdf-export";
-import type { PdfRenderer, TokenStore } from "@dimm-city/print-md";
+import type { ConflictFile, PdfRenderer, TokenStore } from "@dimm-city/print-md";
 
 type LibModule = typeof import("@dimm-city/print-md");
 
@@ -53,12 +52,18 @@ export interface ExportBuildResult {
   fingerprintPath?: string;
 }
 
-/** The minimal slice of AutoSyncOrchestrator the pre-export gate needs. */
+/**
+ * The minimal slice of AutoSyncOrchestrator the pre-export gate needs — two
+ * methods, both owned by the orchestrator itself: a read (isConflictLatched)
+ * and the ONE mutation surface (latchConflict), which also cancels the
+ * project's timers, stamps lastSyncAt, and emits the conflict status. Finding
+ * #7 (2026-07-10 architecture review): this used to be `getState`/
+ * `getOrCreateState` returning the orchestrator's mutable state bag directly,
+ * which let the gate below reach in and hand-write `conflictLatched`.
+ */
 export interface ExportSyncGate {
-  getState(dir: string): { conflictLatched: boolean } | undefined;
-  getOrCreateState(dir: string): { conflictLatched: boolean };
-  cancelTimer(dir: string): void;
-  setLastSyncAt(dir: string, iso: string | null): void;
+  isConflictLatched(dir: string): boolean;
+  latchConflict(dir: string, files: ConflictFile[]): void;
 }
 
 /** External touch-points injected into the controller (all faked in tests). */
@@ -67,12 +72,8 @@ export interface ExportControllerDeps {
   loadLib: () => Promise<LibModule>;
   /** Credential store passed to lib.diagnoseProjectRemote / lib.syncProject. */
   tokenStore: TokenStore;
-  /** Emit a sync status event (used by the pre-export conflict gate). */
-  emit: (payload: SyncStatusPayload) => void;
   /** Network reachability (Electron net.isOnline in production). */
   isOnline: () => boolean;
-  /** Injectable clock (epoch ms) for gate timestamps. */
-  now: () => number;
   /** True when PRINTMD_VIEWER_PUPPETEER opts out of the Electron PDF renderer. */
   usePuppeteer: () => boolean;
   /** Electron-native PDF renderer (electron/pdf-export.ts). */
@@ -92,14 +93,21 @@ export interface ExportControllerDeps {
   rename: (from: string, to: string) => Promise<void>;
   /** fs.promises.rm(path, { force: true }) — clean up the temp file. */
   rm: (path: string) => Promise<void>;
+  /**
+   * Authorize AND consume (one-time) a `SavePathHooks` capability for the
+   * requested `out` path (finding #4, 2026-07-13 maintainer review). Must
+   * return `true` only for a path the `dialog:savePdf` route itself just
+   * registered — i.e. one the native Save dialog actually returned — and
+   * `false` for anything else (never chosen, already consumed, or expired).
+   * `api:build` refuses to write/rename onto an `out` this rejects, closing
+   * the arbitrary-file-overwrite gap where a renderer-controlled `out` was
+   * previously trusted with no proof it came from the Save dialog.
+   */
+  consumeSavePath: (absPath: string) => boolean;
 }
 
 export class ExportController {
   constructor(private readonly deps: ExportControllerDeps) {}
-
-  private nowIso(): string {
-    return new Date(this.deps.now()).toISOString();
-  }
 
   /**
    * Run one PDF/HTML export. Mirrors the original `api:build` handler exactly:
@@ -123,6 +131,48 @@ export class ExportController {
     if (!requestedOutPath) {
       throw new Error("Missing 'out' for PDF export");
     }
+    // Finding #4 (2026-07-13 maintainer review): `out` must be a path the
+    // native Save dialog itself just returned (registered as a one-time
+    // capability by the `dialog:savePdf` route), not merely any absolute
+    // path the renderer happens to send. Checked BEFORE the session is
+    // minted below, so an unauthorized `out` never occupies the single-export
+    // slot or emits a progress event. Consuming here (not just checking) means
+    // a second `api:build` call replaying the same `out` — without a fresh
+    // Save dialog round-trip — is rejected too.
+    if (!this.deps.consumeSavePath(requestedOutPath)) {
+      const err = new Error(
+        "The PDF's save location wasn't chosen via the Save dialog. " +
+        "Use \"Save PDF\" and pick a destination, then try again.",
+      );
+      (err as Error & { code?: string }).code = "OUT_NOT_AUTHORIZED";
+      throw err;
+    }
+
+    // Mint the session and register it as active BEFORE the pre-export sync
+    // safety gate below (M28). The exportId used to only exist AFTER the gate
+    // finished, so Cancel — gated on the renderer knowing an exportId at all —
+    // stayed dead through a slow/flaky network sync, leaving an uncancelable
+    // "Preparing PDF…" stall. Sending this "started" progress event right away
+    // (reusing the existing wire state + free-text `message` field rather than
+    // adding a new state value, so ExportProgressEvent's `state` union is
+    // unchanged end-to-end) lets the renderer adopt the id — lighting up
+    // Cancel immediately — and label the pill "Syncing latest changes…" for
+    // as long as the gate takes.
+    const tempOutPath = `${requestedOutPath}.print-md.tmp.pdf`;
+    const { outDir, pdfFileOverride } = lib.splitOutPath(tempOutPath, format);
+    const exportSession: ExportSession = {
+      id: randomUUID(),
+      canceled: false,
+      outPath: requestedOutPath,
+      tempOutPath,
+      win: null,
+    };
+    this.deps.setActiveExportSession(exportSession);
+    this.deps.sendProgress({
+      exportId: exportSession.id,
+      state: "started",
+      message: "Syncing latest changes…",
+    });
 
     // ── PDF-export safety gate (transparent-sync plan §5.3) ──────────────────
     // Before building, check the open project's sync state and act accordingly:
@@ -135,13 +185,13 @@ export class ExportController {
     // path.resolve() normalises the export dir to match the autoSyncStates key,
     // which is always normalised at assignment time in startFolderWatch.
     const exportDir = path.resolve(args.input);
-    // Use exportDir (already path.resolve'd) as the canonical key into
-    // autoSyncStates so both the hard-block read and the mid-gate conflict write
-    // (sync.getOrCreateState(exportDir) below) use the same key — regardless
-    // of whether exportDir happens to equal watchedDir.
-    const exportSyncState = this.deps.sync.getState(exportDir);
-    if (exportSyncState?.conflictLatched) {
+    // Use exportDir (already path.resolve'd) as the canonical key into the
+    // orchestrator's state map so both the hard-block read and the mid-gate
+    // conflict latch below use the same key — regardless of whether exportDir
+    // happens to equal watchedDir.
+    if (this.deps.sync.isConflictLatched(exportDir)) {
       // Hard block: the author MUST resolve before a PDF can be trusted.
+      this.deps.setActiveExportSession(null);
       const err = new Error(
         "Cannot save a PDF while there are unresolved changes from two places. " +
         "Resolve the conflict first, then try again.",
@@ -155,6 +205,7 @@ export class ExportController {
     // which is always valid and fully snapshotted. Gate errors are non-fatal.
     try {
       const exportSource = await lib.detectProjectSource(exportDir);
+      this.deps.throwIfCanceled(exportSession);
       if (exportSource.type === "local-git-folder") {
         // Credential-aware gate (ADR 0006 D4) — NOT capabilitiesFor().canSync,
         // which is hasRemote-only and would attempt a pre-export syncProject
@@ -162,24 +213,17 @@ export class ExportController {
         const exportDiag = await lib.diagnoseProjectRemote(exportDir, {
           tokenStore: this.deps.tokenStore,
         });
+        this.deps.throwIfCanceled(exportSession);
         if (exportDiag.canSync && this.deps.isOnline()) {
           const syncOutcome = await lib.syncProject({
             projectDir: exportDir,
             tokenStore: this.deps.tokenStore,
           });
+          this.deps.throwIfCanceled(exportSession);
           if (syncOutcome.status === "conflict") {
-            // A conflict surfaced mid-export-gate: latch and block.
-            const state = this.deps.sync.getOrCreateState(exportDir);
-            state.conflictLatched = true;
-            this.deps.sync.cancelTimer(exportDir);
-            const gateConflictAt = this.nowIso();
-            this.deps.sync.setLastSyncAt(exportDir, gateConflictAt);
-            this.deps.emit({
-              state: "conflict",
-              files: syncOutcome.files,
-              projectDir: exportDir,
-              lastSyncAt: gateConflictAt,
-            });
+            // A conflict surfaced mid-export-gate: latch (cancels timers,
+            // stamps lastSyncAt, and emits the conflict status) and block.
+            this.deps.sync.latchConflict(exportDir, syncOutcome.files);
             const conflictErr = new Error(
               "Changes happened in two places. Resolve the conflict first, then save the PDF.",
             );
@@ -191,27 +235,31 @@ export class ExportController {
         }
       }
     } catch (gateErr) {
+      // M28: a Cancel click during the gate — the exportId now exists this
+      // early, so Cancel can fire mid-sync. Honour it the same way the
+      // post-build cancel path does, rather than falling into the "swallow
+      // non-fatal gate errors" branch below.
+      if (exportSession.canceled || this.deps.isExportCanceledError(gateErr)) {
+        this.deps.setActiveExportSession(null);
+        this.deps.sendProgress({ exportId: exportSession.id, state: "canceled" });
+        const err = new Error("PDF export canceled");
+        (err as Error & { code?: string }).code = "EXPORT_CANCELED";
+        throw err;
+      }
       // Re-throw conflict blocks; swallow all other gate errors (non-fatal for export).
       const blockErr = preExportSyncGateBlockError(gateErr);
-      if (blockErr) throw blockErr;
+      if (blockErr) {
+        this.deps.setActiveExportSession(null);
+        throw blockErr;
+      }
       const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
       console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
     }
     // ── end PDF-export safety gate ────────────────────────────────────────────
 
-    const tempOutPath = `${requestedOutPath}.print-md.tmp.pdf`;
-    const { outDir, pdfFileOverride } = lib.splitOutPath(tempOutPath, format);
-    const exportSession: ExportSession = {
-      id: randomUUID(),
-      canceled: false,
-      outPath: requestedOutPath,
-      tempOutPath,
-      win: null,
-    };
-    this.deps.setActiveExportSession(exportSession);
-    this.deps.sendProgress({ exportId: exportSession.id, state: "started" });
-
     try {
+      this.deps.throwIfCanceled(exportSession);
+      this.deps.sendProgress({ exportId: exportSession.id, state: "started" });
       const result = await lib.runBuild({
         inputDir: args.input,
         format,

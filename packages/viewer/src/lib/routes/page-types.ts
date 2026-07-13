@@ -6,11 +6,10 @@
  * component itself stays focused on wiring, per the Phase 5 decomposition.
  */
 
-export type DiagnosticsTool = {
-  name: string;
-  found: boolean;
-  usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
-};
+import type { DoctorDiagnostics } from "$lib/api";
+
+/** One diagnosed tool row, as returned by `api.doctor()` (ARCH review #40). */
+export type DiagnosticsTool = DoctorDiagnostics["tools"][number];
 
 export type UrlPreviewBlockedEvent = {
   url: string;

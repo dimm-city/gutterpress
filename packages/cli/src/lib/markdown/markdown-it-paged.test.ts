@@ -20,6 +20,8 @@
 import { describe, test, expect } from "bun:test";
 import MarkdownIt from "markdown-it";
 import markdownItPaged, { PAGED_CSS } from "./markdown-it-paged.js";
+import { createMarkdownRenderer } from "./renderer";
+import { assembleBookHtml } from "./assemble";
 
 interface LayoutWarning {
   line: number;
@@ -859,6 +861,131 @@ describe("column-split depth isolation (env.__colSplitDepth, not module state)",
   });
 });
 
+describe("col-split has-column-break detection (characterization for the transform-time precompute)", () => {
+  // These pin the exact rendered output of the O(n) forward scan currently
+  // done per-section inside the layout_section_open renderer rule
+  // (:615-622). A refactor that precomputes "does this section contain a
+  // column-break" once, during the layout_transform core pass, must produce
+  // byte-identical output for every case below — in particular the flag
+  // must be scoped to exactly one section's open/close pair and must never
+  // leak onto a sibling, a @continue continuation, or a later section.
+
+  test("a col-split section with TWO column-breaks (three columns) col-wraps every segment", () => {
+    const { html } = renderPaged(
+      "@section .col-split\nA\n@column-break\nB\n@column-break\nC\n@end-section\n"
+    );
+    expect(html).toBe(
+      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
+        '<div class="col">\n<p>B</p>\n</div>' +
+        '<div class="col">\n<p>C</p>\n</div></div>\n'
+    );
+  });
+
+  test("two independent col-split sections, both with breaks, back to back: each gets its own column wrapping, depth resets between them", () => {
+    const { html } = renderPaged(
+      "@section .col-split\nA\n@column-break\nB\n@end-section\n" +
+        "@section .col-split\nC\n@column-break\nD\n@end-section\n"
+    );
+    expect(html).toBe(
+      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
+        '<div class="col">\n<p>B</p>\n</div></div>\n' +
+        '<div class="section col-split"><div class="col">\n<p>C</p>\n</div>' +
+        '<div class="col">\n<p>D</p>\n</div></div>\n'
+    );
+  });
+
+  test("a col-split section WITHOUT a break followed by one WITH a break: the flag must not leak from the second section onto the first (or vice versa)", () => {
+    const { html } = renderPaged(
+      "@section .col-split\nA\n@end-section\n" +
+        "@section .col-split\nB\n@column-break\nC\n@end-section\n"
+    );
+    expect(html).toBe(
+      '<div class="section col-split"><p>A</p>\n</div>' +
+        '<div class="section col-split"><div class="col">\n<p>B</p>\n</div>' +
+        '<div class="col">\n<p>C</p>\n</div></div>\n'
+    );
+  });
+
+  test("a col-split section WITH a break followed by one WITHOUT: order reversed, still no leak", () => {
+    const { html } = renderPaged(
+      "@section .col-split\nA\n@column-break\nB\n@end-section\n" +
+        "@section .col-split\nC\n@end-section\n"
+    );
+    expect(html).toBe(
+      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
+        '<div class="col">\n<p>B</p>\n</div></div>\n' +
+        '<div class="section col-split"><p>C</p>\n</div>'
+    );
+  });
+
+  test("@continue on a col-split section: the continuation section's own has-column-break is evaluated independently of the original section's", () => {
+    const { html } = renderPaged(
+      "@section .col-split\nA\n@column-break\nB\n@continue\nC\n@end-section\n"
+    );
+    // First section had a break -> column-wrapped. The continuation section
+    // (no break inside it) does not -> plain renderToken output, even though
+    // it inherits the .col-split class from the section it continues.
+    expect(html).toBe(
+      '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
+        '<div class="col">\n<p>B</p>\n</div></div>\n' +
+        '<div class="section col-split pmd-continued"><p>C</p>\n</div>'
+    );
+  });
+
+  test("@continue on a col-split section where only the CONTINUATION has a break", () => {
+    const { html } = renderPaged(
+      "@section .col-split\nA\n@continue\nB\n@column-break\nC\n@end-section\n"
+    );
+    expect(html).toBe(
+      '<div class="section col-split"><p>A</p>\n</div>' +
+        '<div class="section col-split pmd-continued"><div class="col">\n<p>B</p>\n</div>' +
+        '<div class="col">\n<p>C</p>\n</div></div>\n'
+    );
+  });
+
+  test("a column-break outside of any col-split section (plain .section) never sets a stray flag that could leak forward", () => {
+    const { html } = renderPaged(
+      "@section\nA\n@column-break\nB\n@end-section\n" +
+        "@section .col-split\nC\n@end-section\n"
+    );
+    expect(html).toBe(
+      '<div class="section"><p>A</p>\n' +
+        '<div class="md-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>' +
+        '<div class="section col-split"><p>C</p>\n</div>'
+    );
+  });
+});
+
+describe("redundant pass-through renderer rules removed (characterization: output unaffected)", () => {
+  // layout_chapter_close / layout_spread_open / layout_spread_close /
+  // layout_page_close previously had renderer rules that did nothing but
+  // `return self.renderToken(tokens, idx, opts)` — exactly what markdown-it's
+  // own Renderer.render() does by default for any token type with no
+  // registered rule. Deleting those rules must not change a single byte of
+  // output, including when the tokens carry extra attrs (id / data-*) that
+  // flow through renderToken's normal attribute-rendering path.
+  test("spread open+close and chapter close render identically for a fully-attributed nest", () => {
+    const { html } = renderPaged(
+      "@chapter C.01 ch=2 .extra #cid\n@spread MySpread region=x #spr\n@page\nHi\n"
+    );
+    expect(html).toBe(
+      '<div class="chapter extra" data-chapter-label="C.01" id="cid" data-ch="2">' +
+        '<div class="spread" data-spread="MySpread" data-region="x" id="spr">' +
+        '<div class="page chapter-2" data-chapter-label="C.01">' +
+        '<div class="chapter-opener" data-chapter-label="C.01">C.01</div>\n' +
+        "<p>Hi</p>\n</div></div></div>"
+    );
+  });
+
+  test("page close renders identically when a page carries an id and data attrs", () => {
+    const { html } = renderPaged("@page MyPage #pid template=cover\nHi\n@page\nBye\n");
+    expect(html).toBe(
+      '<div class="page" data-page="MyPage" data-template="cover" id="pid"><p>Hi</p>\n</div>' +
+        '<div class="page"><p>Bye</p>\n</div>'
+    );
+  });
+});
+
 describe("HTML escaping", () => {
   test("chapter-opener text content and data-chapter-label attr are escaped for <, & and >", () => {
     const { html } = renderPaged('@chapter "<a&b>"\n@page\nHi\n');
@@ -879,6 +1006,27 @@ describe("HTML escaping", () => {
     const { html } = renderPaged("@page note=a<b&c\nHi\n");
     expect(attr(html, "data-note")).toBe("a&lt;b&amp;c");
   });
+
+  test("a quote/angle bracket smuggled into a .col-split section's class via a mismatched-quote class=value must be escaped in the rendered class attribute, not break out of it", () => {
+    // parseMarkerLine's tokenizer only treats a quote character as a
+    // delimiter for ITS OWN quote type: while inside a `'...'` run, a literal
+    // `"` character is copied straight into the token body (see the
+    // single/double-quoted key=value tests above). That lets an author's
+    // (or a template's) class value carry a real `"` plus `<`/`>` into
+    // `token.attrGet('class')`. The col-split renderer branch must escape
+    // that value with the file's own `escapeAttr` before interpolating it,
+    // the same as every other attribute this file emits — it must never
+    // reach the output raw and break out of the `class="..."` attribute.
+    const { html } = renderPaged(
+      "@section .col-split class='x\"><y'\nA\n@column-break\nB\n@end-section\n"
+    );
+    // The raw, unescaped characters must never appear as literal HTML.
+    expect(html).not.toContain('x"><y');
+    expect(html).toBe(
+      '<div class="section col-split x&quot;&gt;&lt;y"><div class="col">\n<p>A</p>\n</div>' +
+        '<div class="col">\n<p>B</p>\n</div></div>\n'
+    );
+  });
 });
 
 describe("PAGED_CSS export", () => {
@@ -894,6 +1042,90 @@ describe("PAGED_CSS export", () => {
       ".md-column-break",
     ]) {
       expect(PAGED_CSS).toContain(selector);
+    }
+  });
+});
+
+// The five author-facing image/block utility classes promised by the user
+// guide (Chapter 3 "Common image classes" / "Full-bleed artwork") — see UX
+// finding M17 and CLAUDE.md §0 (author-first primitive layering: a behavior
+// broadly useful to non-technical authors belongs in core, not a project
+// layer). markdown-it-attrs (bundled, see renderer.ts) already lets authors
+// attach `{.center}` etc. to any element; PAGED_CSS must supply the matching
+// print-safe rules so the classes actually do something.
+describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
+  test("defines .center as a block-centering rule", () => {
+    const rule = PAGED_CSS.match(/\.center\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/margin-left:\s*auto/);
+    expect(rule![0]).toMatch(/margin-right:\s*auto/);
+  });
+
+  test("defines .float-left / .float-right as real floats with margins", () => {
+    const left = PAGED_CSS.match(/\.float-left\s*\{[^}]*\}/);
+    const right = PAGED_CSS.match(/\.float-right\s*\{[^}]*\}/);
+    expect(left).not.toBeNull();
+    expect(right).not.toBeNull();
+    expect(left![0]).toMatch(/float:\s*left/);
+    expect(left![0]).toMatch(/margin:/);
+    expect(right![0]).toMatch(/float:\s*right/);
+    expect(right![0]).toMatch(/margin:/);
+  });
+
+  test("defines .full-width as 100% of the content width", () => {
+    const rule = PAGED_CSS.match(/\.full-width\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/width:\s*100%/);
+  });
+
+  test("defines .full-bleed using break-before + Paged.js's own page-margin custom properties (no fabricated @page art template)", () => {
+    const rule = PAGED_CSS.match(/\.full-bleed\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    const body = rule![0];
+    expect(body).toMatch(/break-before:\s*page/);
+    // Escapes to the page's own trim edge via the real, Paged.js-populated
+    // --pagedjs-margin-* custom properties (see node_modules/pagedjs
+    // src/polisher/base.js / atpage.js) — not an invented mechanism.
+    expect(body).toMatch(/--pagedjs-margin-left/);
+    expect(body).toMatch(/--pagedjs-margin-right/);
+    expect(body).toMatch(/margin-left:\s*calc\(-1 \*/);
+    expect(body).toMatch(/margin-right:\s*calc\(-1 \*/);
+    // Must NOT promise a named `art` page template or header/footer removal —
+    // neither is implemented.
+    expect(PAGED_CSS).not.toMatch(/@page\s+art\b/);
+  });
+});
+
+describe("author-facing image/block utilities — rendered output (M17)", () => {
+  test("markdown-it-attrs (bundled) attaches .center/.float-left/.float-right/.full-width/.full-bleed to images", () => {
+    const md = createMarkdownRenderer();
+    const html = md.render(
+      "![Centered](a.jpg){.center}\n\n" +
+      "![Left](b.jpg){.float-left}\n\n" +
+      "![Right](c.jpg){.float-right}\n\n" +
+      "![Wide](d.jpg){.full-width}\n\n" +
+      "![Bleed](e.jpg){.full-bleed}\n"
+    );
+    expect(html).toContain('<img src="a.jpg" alt="Centered" class="center">');
+    expect(html).toContain('<img src="b.jpg" alt="Left" class="float-left">');
+    expect(html).toContain('<img src="c.jpg" alt="Right" class="float-right">');
+    expect(html).toContain('<img src="d.jpg" alt="Wide" class="full-width">');
+    expect(html).toContain('<img src="e.jpg" alt="Bleed" class="full-bleed">');
+  });
+
+  test("a book.html build carries the utility-class CSS through assembleBookHtml's injected <style> block", async () => {
+    const html = await assembleBookHtml({
+      files: ["01-page.md"],
+      readText: async () => "![Art](art.jpg){.full-bleed}\n",
+      styles: [],
+      title: "Utility class build test",
+    });
+
+    expect(html).toContain('<img src="art.jpg" alt="Art" class="full-bleed">');
+    // The style block is the one, real vehicle for this CSS (assemble.ts
+    // injects PAGED_CSS verbatim) — no separate theme/plugin CSS is involved.
+    for (const selector of [".center", ".float-left", ".float-right", ".full-width", ".full-bleed"]) {
+      expect(html).toContain(selector);
     }
   });
 });

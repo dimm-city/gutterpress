@@ -15,7 +15,7 @@
  * SECURITY INVARIANT: token values must never be logged or embedded in error
  * messages. Use {@link redactCredential} for any diagnostics.
  */
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -56,6 +56,48 @@ export function redactCredential(
 }
 
 /**
+ * THE canonical credential-store key for a remote host — the ONE derivation
+ * every writer (GitHub device flow, generic connect, embedded-URL migration)
+ * and every reader (diagnose, transport) must share. Historically each site
+ * derived its own key (the device flow hardcoded `github.com`, the URL
+ * migration dropped `:port`, generic connect kept `www.`), so a credential
+ * stored by one flow could be invisible to the lookup of another — the
+ * "connected successfully but never syncable" defect class.
+ *
+ * Accepts a bare hostname ("Git.Example.com"), a host:port pair
+ * ("git.example.com:3000"), any URL on the host, or an scp-like SSH address
+ * ("git@host:owner/repo.git"). Returns `hostname[:port]` lower-cased with any
+ * leading `www.` stripped (so `www.github.com` remotes find the `github.com`
+ * device-flow credential). The port is kept ONLY when explicit and
+ * non-default — `new URL` already drops :443/:80 for https/http. Returns ""
+ * when nothing usable remains.
+ */
+export function credentialHostKey(hostOrUrl: string): string {
+  const trimmed = String(hostOrUrl ?? "").trim();
+  if (!trimmed) return "";
+  // scp-like SSH (git@host:owner/repo.git) — URL() can't parse it.
+  const scp = /^[\w.-]+@([\w.][\w.-]*):/.exec(trimmed);
+  if (scp) return stripWww(scp[1]!.toLowerCase());
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (!url.hostname) return "";
+    const host = url.port
+      ? `${url.hostname}:${url.port}`.toLowerCase()
+      : url.hostname.toLowerCase();
+    return stripWww(host);
+  } catch {
+    return "";
+  }
+}
+
+function stripWww(host: string): string {
+  return host.startsWith("www.") && host.length > 4 ? host.slice(4) : host;
+}
+
+/**
  * Resolve the print-md user config directory (where the CLI token store
  * lives). There is no pre-existing lib config-dir mechanism to follow (the CLI
  * config cascade is per-project manifest based), so this establishes the
@@ -92,23 +134,43 @@ export class FileTokenStore implements TokenStore {
   }
 
   private async read(): Promise<StoredFileShape> {
+    let raw: string;
     try {
-      const raw = await readFile(this.filePath, "utf8");
+      raw = await readFile(this.filePath, "utf8");
+    } catch {
+      // Missing (or unreadable) file → empty store. A transient read failure
+      // degrades to "not connected" for THIS call but never rewrites the file
+      // by itself — only an explicit set/delete writes.
+      return { version: 1, credentials: {} };
+    }
+    try {
       const parsed = JSON.parse(raw) as StoredFileShape;
       if (parsed && typeof parsed === "object" && parsed.credentials) return parsed;
     } catch {
-      // Missing or corrupt file → start empty. Corruption must not strand the
-      // user; reconnecting re-creates the entry.
+      // Corrupt JSON: preserve the evidence BEFORE any subsequent set/delete
+      // overwrites it (the viewer's credential store fixed this exact silent
+      // total-credential-loss as #34 — same pattern here). Best-effort; the
+      // store still starts empty so the user can reconnect.
+      await writeFile(`${this.filePath}.corrupt`, raw, {
+        encoding: "utf8",
+        mode: 0o600,
+      }).catch(() => {});
     }
     return { version: 1, credentials: {} };
   }
 
   private async write(data: StoredFileShape): Promise<void> {
     await mkdir(path.dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(data, null, 2), {
+    // Atomic replace (tmp + rename): a crash mid-write must never leave a
+    // half-written credentials.json, because the next read would treat it as
+    // corrupt and the next set() would persist an EMPTY store — destroying
+    // every stored credential at once (#34-class failure).
+    const tmpPath = `${this.filePath}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(data, null, 2), {
       encoding: "utf8",
       mode: 0o600,
     });
+    await rename(tmpPath, this.filePath);
     // writeFile's mode only applies on creation — enforce on every write so a
     // pre-existing looser file is tightened.
     await chmod(this.filePath, 0o600);
@@ -192,7 +254,12 @@ export function extractUrlCredential(url: string): UrlCredentialExtraction {
   parsed.username = "";
   parsed.password = "";
   const credential: HostCredential = {
-    host: parsed.hostname.toLowerCase(),
+    // The canonical key derivation — MUST match what diagnose/transport look
+    // up for this remote. The old `parsed.hostname` dropped the `:port`, so a
+    // credential migrated from `https://tok@host:3000/x.git` was stored under
+    // a key (`host`) that no reader (`host:3000`) could ever find — connected
+    // once, never syncable again.
+    host: credentialHostKey(parsed.toString()),
     kind: "token",
     token,
     ...(username ? { username } : {}),

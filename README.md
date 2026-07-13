@@ -14,9 +14,14 @@ print-md is a desktop application (with a CLI for power users) that turns a fold
 | **macOS** | `print-md-viewer-<version>-arm64.dmg` | Open the disk image, drag the app to Applications |
 | **Linux** | `print-md-viewer-<version>.AppImage` | `chmod +x` the file, then double-click or run it |
 
-The desktop app is fully self-contained — no Bun, Node, or other runtime to install. The only thing you may need is a Chromium-based browser (Chrome, Edge, Brave, etc) installed on the machine for the **Save PDF** feature; see the [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) for details.
+The desktop app is fully self-contained — no Bun, Node, Chromium, or other runtime to install. **Save PDF** renders through Electron's own bundled Chromium (`webContents.printToPDF`), so there's nothing extra to set up. (The separate `print-md` CLI, for scripting and CI, does need a Chromium-based browser on the machine it runs on — see [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) if you're using that instead.)
 
 ## Your first book
+
+**Prefer the command line?** `print-md new "My Book"` scaffolds a project
+folder with a manifest, a starter chapter, and a stylesheet in one command —
+no hand-written `manifest.yaml` required (see the [CLI README](./packages/cli/README.md)).
+Otherwise, start from the desktop app:
 
 1. **Make a folder** anywhere on your computer with a couple of markdown files in it:
 
@@ -40,7 +45,7 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | Understand markdown extensions (page breaks, columns, callouts) | [User Guide: Chapter 2 — Writing Your Content](./examples/print-md-user-guide/02-writing-content.md) |
 | Style your book with CSS (fonts, colors, page size, margins) | [User Guide: Chapter 4 — Styling & Theming](./examples/print-md-user-guide/04-styling-theming.md) |
 | **Structure your CSS like a pro** — the recommended pattern for variant assignment | [Contextual Cascade Principle](./docs/contextual-cascade-principle.md) |
-| Create TTRPG/games content (stat blocks, dice notation, etc) | [User Guide: Chapter 5 — TTRPG Extensions](./examples/print-md-user-guide/05-ttrpg-extensions.md) |
+| Write TTRPG/game content (stat blocks, dice notation, read-aloud boxes) — no plugin required | [User Guide: Chapter 5 — TTRPG Extensions](./examples/print-md-user-guide/05-ttrpg-extensions.md) |
 | **Use the CLI** for scripting, CI builds, or batch work | [CLI README](./packages/cli/README.md) |
 | **Run the whole pipeline in Docker** (all print tools pre-installed) | [Docker guide](./docs/docker.md) |
 | Add custom markdown plugins | [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md) |

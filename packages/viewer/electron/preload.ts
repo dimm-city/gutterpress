@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
-  UpdaterStatus,
   UpdaterEventPayload,
   DeviceCodeInfo,
   RemoteConnection,
@@ -8,11 +7,8 @@ import type {
   RemoteBranch,
   RepoBook,
   CloneProgressEvent,
-  CloneRepositoryArgs,
   ConflictFileInfo,
   ConflictResolutionChoice,
-  SyncOutcome,
-  ResolveSyncConflictsArgs,
   RawPreviewStartArgs,
   PreviewStartResult,
   RawBuildArgs,
@@ -26,8 +22,13 @@ import type {
  * calls is added or removed. With full-app updates (electron-updater) the
  * shell and SPA always ship together, so this is a sanity check rather than a
  * version-skew gate.
+ *
+ * 3 -> 4 (ARCH review #8): removed updater:getStatus/check/download,
+ * sync:setAutoSync, remote:cloneRepository, remote:resolveSyncConflicts —
+ * migrated to SvelteKit server routes (plain request/response, no push
+ * stream or live-BrowserWindow need).
  */
-const DESKTOP_API = 3;
+const DESKTOP_API = 4;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -144,14 +145,13 @@ contextBridge.exposeInMainWorld("electron", {
 
   // ──────────────────────────────────────────────────────────────────────
   // Auto-update surface (electron-updater — full-app updates from GitHub)
+  // getStatus/check/download migrated to server routes (api.updater.*) —
+  // ARCH review #8: plain request/response, no push stream or
+  // live-BrowserWindow need. applyNow stays IPC: it flushes the live
+  // renderer's unsaved buffer via `mainWindow.webContents.send` before
+  // quitting — a live-BrowserWindow call §8 sanctions.
   // ──────────────────────────────────────────────────────────────────────
   updater: {
-    getStatus: (): Promise<UpdaterStatus> =>
-      ipcRenderer.invoke("updater:getStatus"),
-    check: (): Promise<UpdaterStatus> =>
-      ipcRenderer.invoke("updater:check"),
-    download: (): Promise<UpdaterStatus> =>
-      ipcRenderer.invoke("updater:download"),
     applyNow: (): Promise<{ applied: boolean; version?: string }> =>
       ipcRenderer.invoke("updater:applyNow"),
     /** Subscribe to updater events from main. Returns an unsubscribe fn. */
@@ -184,7 +184,7 @@ contextBridge.exposeInMainWorld("electron", {
   },
 
   // getStatus migrated to server route (Phase 2C)
-  // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+  // app:getLastProject, app:getViewerPrefs,
   // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
   // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
   // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
@@ -215,10 +215,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("remote:connectGitHubCancel"),
   // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
   // listRepoBooks — migrated to server routes (Phase 2F).
-  cloneRemoteRepository: (
-    args: CloneRepositoryArgs,
-  ): Promise<{ projectDir: string }> =>
-    ipcRenderer.invoke("remote:cloneRepository", args),
+  // cloneRemoteRepository migrated to server route (api.remote.cloneRepository)
+  // — ARCH review #8: plain request/response, no push stream involved itself.
   /** Subscribe to clone progress from main. Returns an unsubscribe fn. */
   onCloneProgress: (cb: (data: CloneProgressEvent) => void): (() => void) =>
     forwardPush("remote:cloneProgress", cb),
@@ -229,19 +227,13 @@ contextBridge.exposeInMainWorld("electron", {
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ─
   // Main emits `sync:status` push events whenever the orchestrator state machine
   // transitions. The renderer subscribes via onSyncStatus to drive the ambient
-  // pill without polling. setAutoSync is a one-way prefs setter (invoke, no
-  // blocking reply needed — the orchestrator picks up the change on next trigger).
+  // pill without polling. setAutoSync migrated to server route
+  // (api.sync.setAutoSync) — ARCH review #8: a pure settings write, no push
+  // stream or live-BrowserWindow need.
 
   /** Subscribe to ambient sync-status push events. Returns an unsubscribe fn. */
   onSyncStatus: (cb: (data: unknown) => void): (() => void) =>
     forwardPush("sync:status", cb),
-
-  /**
-   * Enable or disable the auto-sync master switch. Fire-and-forget —
-   * no reply payload; the orchestrator picks up the prefs change immediately.
-   */
-  setAutoSync: (enabled: boolean): Promise<void> =>
-    ipcRenderer.invoke("sync:setAutoSync", enabled),
 
   // ── Sync recovery seam (Foundation — §8 / ADR 0004) ─────────────────────
   // Main sends 'recovery:confirm-request' push events when the recovery subsystem
@@ -259,12 +251,9 @@ contextBridge.exposeInMainWorld("electron", {
   // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
 
   // syncChanges — migrated to server route (Phase 2F).
+  // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)
+  // — ARCH review #8: plain request/response.
 
-  // ── Sync (#15 sync phase, ADR 0006 D5) ───────────────────────────────────
-  resolveSyncConflicts: (
-    args: ResolveSyncConflictsArgs,
-  ): Promise<SyncOutcome> =>
-    ipcRenderer.invoke("remote:resolveSyncConflicts", args),
   startPreview: (args: RawPreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

@@ -1,10 +1,14 @@
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vite";
 
-// adapter-static + IPC architecture: the renderer talks to Electron's main
-// process via window.electron.* (preload bridge), never via fetch(). The
-// SvelteKit build is pure client — no SSR, no server bundle, no node deps
-// pulled into vite's graph. So no externals / noExternal config needed.
+// adapter-node architecture (see svelte.config.js): the SvelteKit build emits
+// a Node server bundle (build/server/, build/handler.js) alongside the client
+// assets (build/client/). The renderer reaches the host mainly via
+// fetch("/api/...") against src/routes/api/**/+server.ts routes; a narrow
+// ipcMain/preload bridge (window.electron.*) is reserved for push-event
+// streams and calls that must drive a live BrowserWindow — see CLAUDE.md §8.
+// This config only builds the SvelteKit app itself; no externals / noExternal
+// config needed here (electron.vite.config.ts handles the main/preload build).
 export default defineConfig({
   plugins: [sveltekit()],
   server: {

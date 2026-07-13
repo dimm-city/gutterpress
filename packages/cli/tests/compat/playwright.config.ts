@@ -27,7 +27,7 @@ export default defineConfig({
   webServer: [
     {
       // Simple example: the shipped user guide.
-      command: "bun src/cli.ts preview ../../examples/print-md-user-guide --open false --port 4111",
+      command: "bun src/cli.ts preview ../../examples/print-md-user-guide --no-open --port 4111",
       cwd: "../..",
       url: "http://127.0.0.1:4111/book.html",
       reuseExistingServer: !process.env.CI,
@@ -35,7 +35,7 @@ export default defineConfig({
     },
     {
       // Design-guide example (named pages, string() headers, two-column).
-      command: "bun src/cli.ts preview ../../examples/with-design-guide/design-guide --open false --port 4112",
+      command: "bun src/cli.ts preview ../../examples/with-design-guide/design-guide --no-open --port 4112",
       cwd: "../..",
       url: "http://127.0.0.1:4112/book.html",
       reuseExistingServer: !process.env.CI,
@@ -44,7 +44,7 @@ export default defineConfig({
     {
       // Synthetic fixture covering position: running() and custom properties
       // in @page margin boxes (no shipped example uses position: running()).
-      command: "bun src/cli.ts preview tests/compat/fixtures/feature-probe --open false --port 4113",
+      command: "bun src/cli.ts preview tests/compat/fixtures/feature-probe --no-open --port 4113",
       cwd: "../..",
       url: "http://127.0.0.1:4113/book.html",
       reuseExistingServer: !process.env.CI,

@@ -1,8 +1,12 @@
 /**
  * Shared desktop/doctor hooks for server routes that need Electron host APIs.
+ *
+ * Storage lives in the single collapsed host object (ARCH review #31,
+ * `./host-services.ts`) — `getDesktopHooks()`/`getDoctorHooks()` are thin
+ * derived selectors over it.
  */
 
-import { createHostBridge } from './create-host-bridge';
+import { getHostServices } from './host-services';
 
 export interface DialogFilter {
   name: string;
@@ -40,8 +44,12 @@ export interface DoctorHooks {
   getViewerVersion: () => string;
 }
 
-export const { register: registerDesktopHooks, get: getDesktopHooks } =
-  createHostBridge<DesktopHooks>('__printMdDesktopHooks__');
+/** The live `DesktopHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
+export function getDesktopHooks(): DesktopHooks | null {
+  return getHostServices()?.desktop ?? null;
+}
 
-export const { register: registerDoctorHooks, get: getDoctorHooks } =
-  createHostBridge<DoctorHooks>('__printMdDoctorHooks__');
+/** The live `DoctorHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
+export function getDoctorHooks(): DoctorHooks | null {
+  return getHostServices()?.doctor ?? null;
+}

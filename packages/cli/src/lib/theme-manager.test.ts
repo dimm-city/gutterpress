@@ -137,6 +137,101 @@ describe("theme-manager", () => {
       writeManifest(dir, ["title: Test", ""].join("\n"));
       expect(await getActiveTheme(dir)).toBeNull();
     });
+
+    // ARCH finding #25: setActiveThemeStyle now writes via the shared
+    // writeManifestDoc (manifest-doc.ts) instead of a bespoke
+    // `mkdir(projectDir) + writeFile`. Prove the project-dir-creation behavior
+    // survived the swap by NOT pre-creating the directory (unlike `projectDir()`,
+    // which always mkdir's up front).
+    test("applying a theme creates a not-yet-existing project directory (writeManifestDoc's mkdir)", async () => {
+      const dir = join(TMP_ROOT, `not-yet-created-${counter++}`);
+      expect(existsSync(dir)).toBe(false);
+
+      const result = await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+
+      expect(existsSync(join(dir, "manifest.yaml"))).toBe(true);
+      expect(result.id).toBe("clean-book");
+      expect(readManifest(dir)).toContain(`${THEMES_DIR}/clean-book/theme.css`);
+    });
+
+    // UX review M6: re-applying a built-in must never clobber an existing
+    // project copy of the same theme — that copy's theme.css is exactly the
+    // file the Design panel writes customizations into.
+    describe("non-destructive re-apply of a built-in (M6)", () => {
+      test("re-applying a built-in theme does not overwrite an already-customized project copy", async () => {
+        const dir = projectDir();
+        writeManifest(dir, ["title: Test", ""].join("\n"));
+
+        await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+        const customizedPath = join(dir, THEMES_DIR, "clean-book", "theme.css");
+        const customized = ":root { --custom-token: hotpink; } /* design panel edit */\n";
+        writeFileSync(customizedPath, customized, "utf8");
+
+        const result = await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+
+        // The original, customized copy is untouched byte-for-byte.
+        expect(readFileSync(customizedPath, "utf8")).toBe(customized);
+        // A fresh id was used instead of clobbering the existing one.
+        expect(result.id).not.toBe("clean-book");
+        expect(existsSync(join(dir, THEMES_DIR, result.id, "theme.css"))).toBe(true);
+      });
+
+      test("the fresh copy becomes the active theme, wired via its own id", async () => {
+        const dir = projectDir();
+        writeManifest(dir, ["title: Test", ""].join("\n"));
+
+        await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+        writeFileSync(
+          join(dir, THEMES_DIR, "clean-book", "theme.css"),
+          ":root { --custom-token: hotpink; }\n",
+          "utf8",
+        );
+        const result = await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+
+        const active = await getActiveTheme(dir);
+        expect(active?.id).toBe(result.id);
+        expect(readManifest(dir)).toContain(`${THEMES_DIR}/${result.id}/theme.css`);
+        // The old (still-customized) theme's style entry was removed, not left
+        // dangling alongside the new one.
+        expect(readManifest(dir)).not.toContain(`${THEMES_DIR}/clean-book/theme.css`);
+      });
+
+      test("re-applying a built-in that has never been copied into the project still uses the plain id (no gratuitous suffix)", async () => {
+        const dir = projectDir();
+        writeManifest(dir, ["title: Test", ""].join("\n"));
+
+        const result = await applyTheme(dir, { kind: "builtin", id: "zine" });
+
+        expect(result.id).toBe("zine");
+      });
+
+      test("a third re-apply after two customized copies picks a still-fresh id", async () => {
+        const dir = projectDir();
+        writeManifest(dir, ["title: Test", ""].join("\n"));
+
+        const first = await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+        writeFileSync(
+          join(dir, THEMES_DIR, first.id, "theme.css"),
+          ":root { --v: 1; }\n",
+          "utf8",
+        );
+        const second = await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+        writeFileSync(
+          join(dir, THEMES_DIR, second.id, "theme.css"),
+          ":root { --v: 2; }\n",
+          "utf8",
+        );
+        const third = await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+
+        expect(new Set([first.id, second.id, third.id]).size).toBe(3);
+        expect(
+          readFileSync(join(dir, THEMES_DIR, first.id, "theme.css"), "utf8"),
+        ).toContain("--v: 1");
+        expect(
+          readFileSync(join(dir, THEMES_DIR, second.id, "theme.css"), "utf8"),
+        ).toContain("--v: 2");
+      });
+    });
   });
 
   describe("importThemeFromFolder", () => {

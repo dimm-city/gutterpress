@@ -59,3 +59,22 @@ export function ensureSeq(doc: Document.Parsed, key: string): YAMLSeq {
   }
   return seq as YAMLSeq;
 }
+
+/**
+ * Unwrap a yaml seq item (or `getIn`-style Pair) to its string value: `null`
+ * when the item isn't a string. Handles both a bare Scalar/Pair-shaped node
+ * (`{ value: … }`, as `doc.get(key, true)` returns for seq items) and a
+ * plain JS string (as a freshly-constructed `Scalar`'s `.value` or a raw
+ * array entry would be).
+ *
+ * ARCH finding #25: this was two near-duplicate helpers — `unwrapScalar`
+ * (manifest-config.ts) and `styleHrefOf` (theme-manager.ts) — with the same
+ * shape-sniffing logic. One implementation here, consumed by both.
+ */
+export function scalarString(item: unknown): string | null {
+  if (item && typeof item === "object" && "value" in (item as object)) {
+    const v = (item as { value: unknown }).value;
+    return typeof v === "string" ? v : null;
+  }
+  return typeof item === "string" ? item : null;
+}

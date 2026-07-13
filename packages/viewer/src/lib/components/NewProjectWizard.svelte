@@ -3,15 +3,19 @@
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { TemplateInfo } from "$lib/api";
-  import { trapFocus } from "$lib/a11y";
+  import { dialogBehavior, guardedClose } from "$lib/dialog";
+
+  // L4: `open` used to also be an external `$bindable` prop (`bind:open`),
+  // but the host never reads it — the ONLY open protocol is the imperative
+  // `show()` below (reset + template-load + focus work the write-only
+  // binding would silently skip if flipped directly). Purely internal state.
+  let open = $state(false);
 
   let {
-    open = $bindable(false),
     onCreated,
     onClosed,
     triggerEl,
   }: {
-    open?: boolean;
     /** Called with the created project folder so the host can open it. */
     onCreated?: (projectDir: string) => void;
     /**
@@ -34,10 +38,17 @@
   let templates = $state<TemplateInfo[]>([]);
   let selectedTemplate = $state<TemplateInfo | null>(null);
   let importing = $state(false);
+  // M20: a failed listBuiltIn() call used to catch into `templates = []`,
+  // which silently omits the whole "Start from a template" radiogroup — a
+  // writer never learns templates exist and creates a bare default book.
+  // Tracked separately from `error` (the create-flow error) so a template
+  // load failure can render its own Retry without touching the create form.
+  let templatesError = $state<string | null>(null);
 
   const BUILTIN_IDS = ["book", "ttrpg", "zine", "technical"];
 
   async function loadTemplates() {
+    templatesError = null;
     try {
       const builtins = await api.tpl.listBuiltIn();
       let customs: TemplateInfo[] = [];
@@ -53,6 +64,7 @@
     } catch {
       templates = [];
       selectedTemplate = null;
+      templatesError = "Templates couldn't be loaded.";
     }
   }
 
@@ -75,9 +87,6 @@
 
   let creating = $state(false);
   let error = $state<string | null>(null);
-
-  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
-  let nameInput = $state<HTMLInputElement | undefined>(undefined);
 
   // A friendly preview of the folder name we'll create (slug of the title). Kept
   // purely informational — the writer never types a slug.
@@ -103,6 +112,58 @@
     error = null;
   }
 
+  /**
+   * Parent directory of an absolute path — pure string op, no `node:path`
+   * (§8 PWA-clean). Kept local to this component rather than added to
+   * `$lib/platform/paths.ts` (owned by a concurrent lane); hoist it there if
+   * a second caller needs it.
+   */
+  function parentDirOf(p: string): string | null {
+    const trimmed = p.replace(/[\\/]+$/, "");
+    const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+    return idx > 0 ? trimmed.slice(0, idx) : null;
+  }
+
+  /**
+   * Default `parentDir` to a sensible writable location (M21) instead of
+   * leaving Create dead behind a mandatory native folder picker. Priority:
+   *
+   *   1. the parent folder the writer last chose HERE (persisted in viewer
+   *      prefs under `newProjectParentDir` — `api.app.set/getViewerPrefs`
+   *      already exist and merge shallowly, so this needs no new route);
+   *   2. the folder containing the most recently opened project
+   *      (`lastProjectDir`, already returned — and existence-checked — by
+   *      `getViewerPrefs`) — a writer's existing project folder is a sound
+   *      proxy for "where my books live";
+   *   3. nothing — "Choose folder…" stays the escape hatch either way.
+   *
+   * A true first-run default (an OS Documents folder via the host's
+   * `defaultProjectSearchRoots()`, already used by discover-projects) needs
+   * a renderer-reachable route that does not exist yet — out of scope here
+   * (no new `src/routes/api/**` files in this change); (1)/(2) cover every
+   * returning writer, which is the common case.
+   */
+  async function loadDefaultParentDir() {
+    if (!isDesktop()) return;
+    try {
+      const prefs = await api.app.getViewerPrefs();
+      // The writer may have already used "Choose folder…" while this was in
+      // flight — never clobber a choice they already made.
+      if (parentDir) return;
+      const saved = prefs.newProjectParentDir;
+      if (typeof saved === "string" && saved) {
+        parentDir = saved;
+        return;
+      }
+      const lastProjectDir = prefs.lastProjectDir;
+      if (typeof lastProjectDir === "string" && lastProjectDir) {
+        parentDir = parentDirOf(lastProjectDir);
+      }
+    } catch {
+      /* non-fatal — Create stays reachable via "Choose folder…" either way */
+    }
+  }
+
   /** Open the wizard (a user gesture from the parent) — resets + loads templates.
    *  No `$effect` on `open`, matching the other dialogs' show() pattern. */
   export function show(trigger?: HTMLButtonElement): void {
@@ -110,14 +171,22 @@
     reset();
     open = true;
     void loadTemplates();
-    queueMicrotask(() => nameInput?.focus());
+    void loadDefaultParentDir();
   }
 
-  function close() {
+  /**
+   * M19 — mid-create dismissal guard: `guardedClose` makes this a no-op
+   * while `creating` is true, so the backdrop click, the header close
+   * button, AND Escape (routed through `dialogBehavior`'s `onClose`) can no
+   * longer dismiss the dialog out from under an in-flight create() — which
+   * used to keep running and silently open (or fail to open) a project the
+   * writer had visibly dismissed.
+   */
+  const close = guardedClose(() => {
     open = false;
-    triggerEl?.focus();
+    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
     onClosed?.();
-  }
+  }, () => creating);
 
   async function chooseLocation() {
     if (!isDesktop()) {
@@ -157,9 +226,16 @@
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
-      }) as { projectDir: string };
-      // Successful create goes through close() like every other dismiss path,
-      // so the onClosed/triggerEl focus-restore contract holds on success too.
+      });
+      // Remember this location as the default next time (M21) — best-effort,
+      // never blocks the create flow.
+      if (parentDir) void api.app.setViewerPrefs({ newProjectParentDir: parentDir }).catch(() => {});
+      // `close` is guarded on `creating` (M19) — clear it BEFORE calling
+      // close() here, or the guard would treat this as still-in-flight and
+      // no-op the close. Successful create goes through close() like every
+      // other dismiss path, so the onClosed/triggerEl focus-restore contract
+      // holds on success too.
+      creating = false;
       close();
       onCreated?.(result.projectDir);
     } catch (e) {
@@ -182,20 +258,15 @@
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
-    bind:this={dialogEl}
-    class="dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="new-project-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
+    class="dlg-shell"
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "new-project-title", initialFocus: "#np-name" }}
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="new-project-title">Create a new book</h2>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
+      <button class="dlg-close" onclick={close} disabled={creating} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -205,7 +276,6 @@
         <span>What's your book called?</span>
         <input
           id="np-name"
-          bind:this={nameInput}
           bind:value={name}
           type="text"
           placeholder="My First Book"
@@ -256,13 +326,26 @@
             </button>
           {/if}
         </div>
+      {:else if templatesError}
+        <div class="field">
+          <span>Start from a template</span>
+          <div class="load-error" role="alert">
+            <span>{templatesError}</span>
+            <button type="button" class="retry-btn" onclick={loadTemplates}>Retry</button>
+          </div>
+        </div>
       {/if}
 
       <div class="field">
         <span>Where should we save it?</span>
         <div class="location-row">
-          <button class="ghost browse" onclick={chooseLocation} disabled={creating}>
-            Choose folder…
+          <!-- M21: parentDir is prefilled (last-used parent, else the
+               folder containing the most recent project) whenever we have
+               one, so this reads as "Change…" — the escape hatch, not the
+               only way in — rather than a dead Create hiding behind a
+               mandatory folder picker. -->
+          <button class="dlg-ghost browse" onclick={chooseLocation} disabled={creating}>
+            {parentDir ? "Change…" : "Choose folder…"}
           </button>
           {#if parentDir}
             <span class="location-path" title={parentDir}>{parentDir}{folderPreview ? `/${folderPreview}` : ""}</span>
@@ -284,9 +367,9 @@
         <p class="error" role="alert">{error}</p>
       {/if}
 
-      <footer class="actions">
-        <button class="ghost" onclick={close}>Cancel</button>
-        <button class="primary" onclick={create} disabled={!canCreate}>
+      <footer class="dlg-actions">
+        <button class="dlg-ghost" onclick={close} disabled={creating}>Cancel</button>
+        <button class="dlg-primary" onclick={create} disabled={!canCreate}>
           {creating ? "Creating…" : "Create book"}
         </button>
       </footer>
@@ -294,62 +377,13 @@
   </div>
 {/if}
 
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open && !creating) close();
-  }}
-/>
-
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  @import "$lib/styles/dialog-shell.css";
+
+  .dlg-shell {
     width: min(520px, 94vw);
     max-height: 80vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    overflow: hidden;
   }
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-  }
-  .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* WCAG 2.5.8: minimum target size 24x24px */
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .dialog-body {
     padding: 18px;
     display: flex;
@@ -398,6 +432,32 @@
   .import-tpl:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
   .import-tpl:disabled { opacity: 0.5; cursor: default; }
 
+  .load-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--app-error-bg);
+    border: 1px solid var(--app-error-border);
+    color: var(--app-error-text);
+  }
+  .retry-btn {
+    margin-left: auto;
+    padding: 4px 10px;
+    font-size: 12px;
+    border-radius: 5px;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    color: var(--app-text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .retry-btn:hover { background: var(--app-surface-hover); }
+  .retry-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
 
   .location-row {
@@ -428,25 +488,14 @@
   }
   .checkbox input { margin-top: 2px; flex-shrink: 0; }
 
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    padding-top: 14px;
+  /* In-flow footer (last item inside the scrolling body) — restore its
+     original spacing + button padding; the shared default assumes a pinned
+     bar with slightly tighter buttons. */
+  .dlg-actions {
+    padding: 14px 0 0;
     margin-top: 4px;
-    border-top: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
   }
-  .actions button {
+  .dlg-actions button {
     padding: 7px 16px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
   }
-  .actions button:disabled { opacity: 0.45; cursor: default; }
-  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .actions .primary:not(:disabled):hover { background: var(--app-accent-hover); }
-  .actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  .actions .ghost:not(:disabled):hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

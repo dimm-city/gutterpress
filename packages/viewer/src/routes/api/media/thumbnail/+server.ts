@@ -1,7 +1,8 @@
-import { json, error } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { getMediaHooks } from '../../../../../electron/server-bridge/media-hooks';
+import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 const THUMB_MAX_PX = 192;
@@ -21,25 +22,37 @@ const MEDIA_MIME: Record<string, string> = {
   avif: 'image/avif',
 };
 
-export const POST: RequestHandler = async ({ request }) => {
-  try {
-    const body = await request.json().catch(() => ({})) as { imagePath?: string; width?: number; height?: number };
+export const POST: RequestHandler = defineRoute<{ imagePath: string }>({
+  validate: async (raw) => {
+    const body = raw as { imagePath?: string; width?: number; height?: number };
+    if (!body.imagePath || typeof body.imagePath !== 'string') {
+      error(400, "'imagePath' string is required");
+    }
+    // Confine to the open project (ARCH #37): a renderer-origin fetch must
+    // not thumbnail (and thus read the bytes of) arbitrary files on disk. The
+    // Media panel only ever passes in-project paths from listImages.
+    return {
+      imagePath: await requireWithinProjectRoot(
+        requireAbsolute(body.imagePath, 'media:thumbnail'),
+        'media:thumbnail',
+      ),
+    };
+  },
+  call: async ({ body }) => {
     const filePath = body.imagePath;
-    if (!filePath || typeof filePath !== 'string') return error(400, "'imagePath' string is required");
-    if (!path.isAbsolute(filePath)) return error(400, `media:thumbnail requires an absolute path, got: ${filePath}`);
 
     let s;
     try {
       s = await stat(filePath);
     } catch {
-      return json(null);
+      return null;
     }
 
     const cached = thumbCache.get(filePath);
     if (cached && cached.mtimeMs === s.mtimeMs) {
       thumbCache.delete(filePath);
       thumbCache.set(filePath, cached);
-      return json(cached.dataUrl);
+      return cached.dataUrl;
     }
 
     const ext = filePath.slice(filePath.lastIndexOf('.') + 1).toLowerCase();
@@ -52,7 +65,7 @@ export const POST: RequestHandler = async ({ request }) => {
         }
       } else {
         const hooks = getMediaHooks();
-        if (!hooks) return error(503, 'Media hooks not registered');
+        if (!hooks) error(503, 'Media hooks not registered');
         dataUrl = await hooks.createThumbnail(filePath, THUMB_MAX_PX);
         if (!dataUrl && s.size <= THUMB_FALLBACK_MAX_BYTES && MEDIA_MIME[ext]) {
           const buf = await readFile(filePath);
@@ -69,9 +82,6 @@ export const POST: RequestHandler = async ({ request }) => {
       if (oldest === undefined) break;
       thumbCache.delete(oldest);
     }
-    return json(dataUrl);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return error(500, msg);
-  }
-};
+    return dataUrl;
+  },
+});

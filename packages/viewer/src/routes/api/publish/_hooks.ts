@@ -43,8 +43,17 @@ export interface LibPublishProviderInfo {
  */
 export interface PublishRouteDeps {
   tokenStore: TokenStore;
+  /** The selected NAMED account (label) to resolve against; "" = default. */
+  credentialAccount?: string;
   /** Progress-line sink for long runs (butler/swa output). */
   onProgress?: (line: string) => void;
+}
+
+/** A saved credential for a provider, redacted (no token). */
+export interface LibPublishSavedAccount {
+  account: string;
+  label: string;
+  createdAt: number;
 }
 
 export interface PublishLibModule {
@@ -53,12 +62,22 @@ export interface PublishLibModule {
   publishConnectionStatus?(
     info: LibPublishProviderInfo,
     deps: PublishRouteDeps,
+    account?: string,
   ): Promise<{ connected: boolean; source?: 'env' | 'store' }>;
+  /** Redacted saved credentials for a provider (default + named accounts). */
+  listPublishAccounts?(
+    info: LibPublishProviderInfo,
+    deps: PublishRouteDeps,
+  ): Promise<LibPublishSavedAccount[]>;
+  /** The compound `<host>#<account>` store key ("" account → bare host). */
+  publishCredentialKey?(host: string, account?: string): string;
   connectPublishProvider?(
     options: {
       projectDir: string;
       providerId: string;
       token: string;
+      /** Named-account label; empty stores the default (bare-host) credential. */
+      account?: string;
     },
     deps: PublishRouteDeps,
   ): Promise<{ connected: boolean; providerId: string }>;

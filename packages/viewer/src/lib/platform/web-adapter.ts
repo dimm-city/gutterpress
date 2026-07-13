@@ -1,15 +1,20 @@
 /**
- * WebAdapter — stub for the future PWA host (#41 acceptance: "ready for 0.6.0,
- * throws 'not implemented' for file watch").
+ * WebAdapter — NOT a stub: a deliberate, partial PWA implementation of
+ * `HostServices`, kept dormant pending the PWA milestone (#33). See
+ * `CLAUDE.md` §8 ("Dormant PWA scaffolding") and
+ * `docs/adr/0004-platform-abstraction.md`.
  *
- * The viewer ships Electron-only in 0.4.0; this adapter is selected only when
- * the app runs in a plain browser (e.g. `vite dev` with no preload). To match
- * today's behaviour in that context — where `window.electron` is undefined and
- * the app's capability guards short-circuit — host-service methods return
- * REJECTED promises (so existing `.catch()` fire-and-forget calls stay silent)
- * and subscription methods return a no-op unsubscribe. The genuinely
- * host-divergent primitives throw, to be implemented via the File System Access
- * API in 0.6.0.
+ * The viewer ships Electron-only today; this adapter is selected only when
+ * the app runs in a plain browser (e.g. `vite dev` with no preload, or a
+ * future browser PWA build). Several methods below ARE genuinely implemented
+ * against browser APIs (IndexedDB-backed recents/favorites/viewer-prefs, a
+ * `localStorage` settings fallback, `matchMedia` theming, File System Access
+ * primitives) — but they are currently UNREACHABLE from the live app: the
+ * desktop UI's real call sites go through `api.app.*` (a server route,
+ * `isDesktop()`-gated), not `getPlatform()`. Do not delete these as "dead
+ * code" — they are the starting point #33 will wire up. Methods that have no
+ * meaningful web behavior yet return REJECTED promises (so existing
+ * `.catch()` fire-and-forget calls stay silent) or a no-op unsubscribe.
  */
 import { DEFAULT_SETTINGS } from "./contract";
 import { basenameOf } from "./paths";
@@ -47,13 +52,9 @@ import type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
-  RecentFolderEntry,
-  FavoriteEntry,
   UpdaterApi,
   UpdaterStatus,
   NativeThemeState,
-  DiscoveredProject,
-  ProjectClassification,
   // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   FileStat,
   FileWriteResult,
@@ -76,6 +77,12 @@ import type {
   FileRef,
   PlatformCapabilities,
 } from "./contract";
+import type {
+  RecentFolderEntry,
+  FavoriteEntry,
+  DiscoveredProject,
+  ProjectClassification,
+} from "./dtos";
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
@@ -446,14 +453,6 @@ export class WebAdapter implements Platform {
     const key = (await this.store.get(STORE_META, LAST_PROJECT_KEY)) as string | undefined;
     return key ?? null;
   }
-  // No splash window on the web — these are safe no-ops (a PWA would use its own
-  // loading UI, not a host splash).
-  splashStatus(): Promise<void> {
-    return Promise.resolve();
-  }
-  rendererReady(): Promise<void> {
-    return Promise.resolve();
-  }
 
   // #33 Phase 1: shallow listing of the project root's .md/.css files (#42), the
   // web equivalent of the Electron listProjectFiles IPC. `projectDir` is the
@@ -496,8 +495,12 @@ export class WebAdapter implements Platform {
     return { ok: true };
   }
 
-  // Settings (#45) — genuinely implemented on web via localStorage so the
-  // settings store works even outside Electron.
+  // Settings (#45) — a real `localStorage`-backed implementation, but
+  // currently DORMANT: `useSettings()` (settings.svelte.ts) calls
+  // `api.app.getSettings`/`setSettings` (a server route), never
+  // `getPlatform().getSettings()`, so this method has no live caller today.
+  // It becomes reachable once #33 migrates the settings store onto the
+  // platform adapter for the web target.
   getSettings(): Promise<AppSettings> {
     try {
       const raw = globalThis.localStorage?.getItem(SETTINGS_KEY);

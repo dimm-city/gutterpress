@@ -1,18 +1,19 @@
-import { error } from '@sveltejs/kit';
-import { getPrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
-import { jsonRoute } from '../../_lib/handler';
+import { getPrefsHooks, type PrefsHooks } from '../../../../../electron/server-bridge/prefs-hooks';
+import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = jsonRoute(async () => {
-  const hooks = getPrefsHooks();
-  if (!hooks) error(503, 'Prefs hooks not registered');
-  return hooks.readSettings();
+export const GET: RequestHandler = defineRoute<Record<string, never>, PrefsHooks>({
+  hooks: getPrefsHooks,
+  hooksUnavailableMessage: 'Prefs hooks not registered',
+  call: async ({ hooks }) => hooks.readSettings(),
 });
 
-export const POST: RequestHandler = jsonRoute(async (patch: Record<string, unknown>) => {
-  const hooks = getPrefsHooks();
-  if (!hooks) error(503, 'Prefs hooks not registered');
-  const current = await hooks.readSettings();
-  await hooks.writeSettings(hooks.mergeSettings(current, patch));
-  return { ok: true };
+export const POST: RequestHandler = defineRoute<Record<string, unknown>, PrefsHooks>({
+  hooks: getPrefsHooks,
+  hooksUnavailableMessage: 'Prefs hooks not registered',
+  call: async ({ body, hooks }) => {
+    const current = await hooks.readSettings();
+    await hooks.writeSettings(hooks.mergeSettings(current, body));
+    return { ok: true };
+  },
 });

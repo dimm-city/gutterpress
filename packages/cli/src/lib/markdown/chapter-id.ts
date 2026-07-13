@@ -6,7 +6,8 @@
  * duplicate slashes. This single form is used by:
  *
  *   - the build's `.pmd-chapter` `data-chapter-src` tagging
- *     (lib/markdown/index.ts renderChapters)
+ *     (lib/markdown/assemble.ts assembleBookHtml — index.ts's renderChapters
+ *     is now just the thin node:fs wrapper around it)
  *   - the file-watcher's `content-update` broadcast
  *     (preview/file-watcher.ts)
  *   - the preview shell's live-view chapter lookup

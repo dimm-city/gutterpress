@@ -152,8 +152,6 @@ function make(): Harness {
     refreshProblems: () => log.push("refreshProblems"),
     revealSettledPages: () => log.push("reveal"),
     toastSuccess: (m) => log.push(`toast:${m}`),
-    splashStatus: (s, p, sub) => log.push(`splash:${s ?? ""}:${p ?? ""}:${sub ?? ""}`),
-    rendererReady: () => log.push("rendererReady"),
     viewportWidth: () => h.viewportWidth,
     now: () => h.now,
     scheduleMicrotask: (fn) => queueMicrotask(fn),
@@ -187,8 +185,6 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
     "toast:Your book is ready — 12 pages",
     "refreshOutline",
     "refreshProblems",
-    "splash:Ready:100:",
-    "rendererReady",
   ]);
   expect(h.pageNav.totalPages).toBe(12);
   expect(h.log).not.toContain("reveal");
@@ -216,6 +212,34 @@ test("renderingComplete singular page copy for a one-page book", () => {
   const h = make();
   h.ctrl.handleEvent(rc(1));
   expect(h.log).toContain("toast:Your book is ready — 1 page");
+});
+
+// ── renderingComplete: first-render-only toast gate (M3) ─────────────────────
+// The success toast must fire once per project session — not on every
+// watcher-triggered rebuild (500ms auto-save debounce), which would otherwise
+// stack "Your book is ready" toasts nearly permanently on screen.
+
+test("renderingComplete toasts success only on the first render of a session", () => {
+  const h = make();
+  h.ctrl.handleEvent(rc(5));
+  h.ctrl.handleEvent(rc(6)); // watcher-triggered rebuild — must stay ambient
+  h.ctrl.handleEvent(rc(7)); // another rebuild
+  const toasts = h.log.filter((l) => l.startsWith("toast:"));
+  expect(toasts).toEqual(["toast:Your book is ready — 5 pages"]);
+});
+
+test("resetFirstRenderGate re-arms the toast for a newly opened project", () => {
+  const h = make();
+  h.ctrl.handleEvent(rc(5));
+  h.ctrl.handleEvent(rc(6));
+  h.ctrl.resetFirstRenderGate();
+  h.ctrl.handleEvent(rc(9)); // first render of the NEW project session
+  h.ctrl.handleEvent(rc(10)); // rebuild of the new session — still gated
+  const toasts = h.log.filter((l) => l.startsWith("toast:"));
+  expect(toasts).toEqual([
+    "toast:Your book is ready — 5 pages",
+    "toast:Your book is ready — 9 pages",
+  ]);
 });
 
 test("reveal still fires when the numeric zoom call rejects (pages never stranded hidden)", async () => {
@@ -291,13 +315,12 @@ test("page 1 (or no) restore does not schedule a restore", async () => {
 
 // ── pageChanged ──────────────────────────────────────────────────────────────
 
-test("pageChanged during render updates progress + splash sub-status", () => {
+test("pageChanged during render updates the progress page count", () => {
   const h = make();
   h.rendering = true;
   h.ctrl.handleEvent({ name: "pageChanged", detail: { totalPages: 7 } });
   expect(h.log).toContain("setProgress:7");
   expect(h.pageNav.totalPages).toBe(7);
-  expect(h.log).toContain("splash:::Laying out page 7");
 });
 
 test("pageChanged when idle syncs the toolbar page state", () => {
@@ -316,7 +339,6 @@ test("ready flips into rendering, clears outline, and peeks total pages", async 
   expect(h.log).toContain("setRendering:true");
   expect(h.log).toContain("setProgress:0");
   expect(h.log).toContain("resetOutline");
-  expect(h.log).toContain("splash:Rendering pages…:70:");
   await flush();
   expect(h.pageNav.totalPages).toBe(6);
 });

@@ -1,12 +1,18 @@
 import { error } from '@sveltejs/kit';
-import { getDesktopHooks } from '$lib/server/host-hooks.js';
-import { jsonRoute } from '../../_lib/handler';
+import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
+import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { url?: string }) => {
-  if (!body.url) error(400, 'url is required');
-  const hooks = getDesktopHooks();
-  if (!hooks) error(503, 'Desktop hooks not registered');
-  await hooks.openExternal(body.url);
-  return { ok: true };
+export const POST: RequestHandler = defineRoute<{ url: string }, DesktopHooks>({
+  hooks: getDesktopHooks,
+  hooksUnavailableMessage: 'Desktop hooks not registered',
+  validate: (raw) => {
+    const body = raw as { url?: string };
+    if (!body.url) error(400, 'url is required');
+    return { url: body.url };
+  },
+  call: async ({ body, hooks }) => {
+    await hooks.openExternal(body.url);
+    return { ok: true };
+  },
 });

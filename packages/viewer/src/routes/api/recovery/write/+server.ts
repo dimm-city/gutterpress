@@ -1,21 +1,23 @@
 import { error } from '@sveltejs/kit';
-import { getRecoveryHooks } from '../../../../../electron/server-bridge/recovery-hooks';
-import { jsonRoute, requireAbsolute } from '../../_lib/handler';
+import { getRecoveryHooks, type RecoveryHooks } from '../../../../../electron/server-bridge/recovery-hooks';
+import { defineRoute, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: {
-  filePath?: string;
-  content?: string;
-  baseMtimeMs?: number;
-}) => {
-  const { filePath, content, baseMtimeMs } = body;
-  if (!filePath) error(400, 'filePath is required');
-  if (content === undefined) error(400, 'content is required');
-  if (typeof baseMtimeMs !== 'number') error(400, 'baseMtimeMs must be a number');
-  requireAbsolute(filePath, 'recovery:write');
-
-  const hooks = getRecoveryHooks();
-  if (!hooks) error(503, 'Recovery hooks not registered');
-
-  return hooks.write(filePath, content, baseMtimeMs);
+export const POST: RequestHandler = defineRoute<
+  { filePath: string; content: string; baseMtimeMs: number },
+  RecoveryHooks
+>({
+  hooks: getRecoveryHooks,
+  hooksUnavailableMessage: 'Recovery hooks not registered',
+  validate: (raw) => {
+    const body = raw as { filePath?: string; content?: string; baseMtimeMs?: number };
+    if (body.content === undefined) error(400, 'content is required');
+    if (typeof body.baseMtimeMs !== 'number') error(400, 'baseMtimeMs must be a number');
+    return {
+      filePath: requireAbsolute(body.filePath, 'recovery:write'),
+      content: body.content,
+      baseMtimeMs: body.baseMtimeMs,
+    };
+  },
+  call: async ({ body, hooks }) => hooks.write(body.filePath, body.content, body.baseMtimeMs),
 });

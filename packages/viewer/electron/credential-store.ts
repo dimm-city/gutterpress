@@ -16,7 +16,7 @@
  * responses (remote:getConnection returns a redacted status only).
  */
 import { app, safeStorage } from "electron";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 /** Mirrors the lib's HostCredential (kept local; lib ships behind a dyn import). */
@@ -53,23 +53,53 @@ function normalizeHost(host: string): string {
 }
 
 async function readStore(): Promise<StoreFileShape> {
+  let raw: string;
   try {
-    const raw = await readFile(storePath(), "utf8");
+    raw = await readFile(storePath(), "utf8");
+  } catch {
+    // No readable file yet (first run, or removed) — nothing to preserve.
+    return { version: 1, credentials: {} };
+  }
+  try {
     const parsed = JSON.parse(raw) as StoreFileShape;
     if (parsed && typeof parsed === "object" && parsed.credentials) return parsed;
   } catch {
-    /* missing/corrupt → empty; reconnecting recreates the entry */
+    /* falls through to preserve-and-reset below */
   }
+  // The file exists but isn't valid JSON (or isn't shaped like a store).
+  // Preserve it instead of silently resetting to empty — that used to
+  // silently disconnect every configured GitHub/Git-server credential (#34).
+  await preserveCorruptFile(storePath()).catch(() => {});
   return { version: 1, credentials: {} };
+}
+
+async function preserveCorruptFile(target: string): Promise<void> {
+  const corruptPath = `${target}.corrupt-${Date.now()}`;
+  try {
+    await rename(target, corruptPath);
+    console.warn(
+      `[credential-store] ${target} was invalid; preserved as ${corruptPath} instead of being discarded.`,
+    );
+  } catch (renameErr) {
+    console.warn(
+      `[credential-store] ${target} was invalid but could not be preserved (rename failed):`,
+      renameErr,
+    );
+  }
 }
 
 async function writeStore(data: StoreFileShape): Promise<void> {
   await mkdir(app.getPath("userData"), { recursive: true });
-  await writeFile(storePath(), JSON.stringify(data, null, 2), {
+  const target = storePath();
+  const tmp = `${target}.tmp`;
+  // Atomic write (#34): write-then-rename so a crash mid-write can't
+  // truncate the real credentials file.
+  await writeFile(tmp, JSON.stringify(data, null, 2), {
     encoding: "utf8",
     mode: 0o600,
   });
-  await chmod(storePath(), 0o600).catch(() => {});
+  await chmod(tmp, 0o600).catch(() => {});
+  await rename(tmp, target);
 }
 
 // Serialize read-modify-write cycles.
@@ -78,6 +108,45 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   const run = queue.then(fn, fn);
   queue = run.catch(() => undefined);
   return run;
+}
+
+// ── Change notifications ─────────────────────────────────────────────────────
+// The sync state machine's inputs must not change behind its back: connecting
+// or disconnecting a credential changes whether the open project can sync, so
+// main.ts subscribes here to re-diagnose + re-emit + kick a sync immediately.
+// Without this, a writer who finally connected saw NO status change until the
+// next periodic tick (if one was even armed) — the "connect does nothing"
+// dead end.
+type CredentialChangeListener = (host: string) => void;
+const changeListeners = new Set<CredentialChangeListener>();
+
+/** Subscribe to credential set/delete events. Returns an unsubscribe. */
+export function onCredentialChange(listener: CredentialChangeListener): () => void {
+  changeListeners.add(listener);
+  return () => changeListeners.delete(listener);
+}
+
+function notifyCredentialChange(host: string): void {
+  for (const listener of changeListeners) {
+    try {
+      listener(host);
+    } catch (e) {
+      console.warn("[credential-store] change listener failed (non-fatal):", e);
+    }
+  }
+}
+
+// Decrypt failures are expected exactly once per stale entry (keyring backend
+// change, restored profile) — warn once per host so the log shows WHY a
+// previously-connected project stopped syncing, without spamming every tick.
+const decryptWarnedHosts = new Set<string>();
+function warnDecryptFailure(host: string, context: string): void {
+  if (decryptWarnedHosts.has(host)) return;
+  decryptWarnedHosts.add(host);
+  console.warn(
+    `[credential-store] stored credential for "${host}" could not be decrypted (${context}). ` +
+      "The OS keyring likely changed; reconnect to store a fresh credential.",
+  );
 }
 
 export const electronTokenStore = {
@@ -100,7 +169,10 @@ export const electronTokenStore = {
         };
       } catch {
         // Ciphertext from another machine/user profile can't decrypt — treat
-        // as disconnected so the UI offers a clean reconnect.
+        // as disconnected so the UI offers a clean reconnect. Logged (once per
+        // host) so the silent "connected project stopped syncing" mystery has
+        // a diagnosable trail; status()/listRedacted() report it too.
+        warnDecryptFailure(normalizeHost(host), "get");
         return null;
       }
     });
@@ -121,7 +193,9 @@ export const electronTokenStore = {
         createdAt: credential.createdAt,
       };
       await writeStore(data);
-    });
+      // A fresh cipher is readable again — allow future failures to re-warn.
+      decryptWarnedHosts.delete(normalizeHost(host));
+    }).then(() => notifyCredentialChange(normalizeHost(host)));
   },
 
   delete(host: string): Promise<void> {
@@ -129,7 +203,7 @@ export const electronTokenStore = {
       const data = await readStore();
       delete data.credentials[normalizeHost(host)];
       await writeStore(data);
-    });
+    }).then(() => notifyCredentialChange(normalizeHost(host)));
   },
 
   list(): Promise<HostCredential[]> {
@@ -165,6 +239,10 @@ export const electronTokenStore = {
       username?: string;
       label?: string;
       createdAt: number;
+      /** True when the stored ciphertext can no longer be decrypted (keyring
+       *  changed) — the entry LOOKS connected but sync sees no credential.
+       *  The UI should present it as "needs reconnecting". */
+      unreadable?: boolean;
     }>
   > {
     return enqueue(async () => {
@@ -175,16 +253,38 @@ export const electronTokenStore = {
         ...(entry.username ? { username: entry.username } : {}),
         ...(entry.label ? { label: entry.label } : {}),
         createdAt: entry.createdAt,
+        ...(entryDecrypts(entry) ? {} : { unreadable: true as const }),
       }));
     });
   },
 
-  /** Redacted connection status for the renderer — NEVER includes the token. */
-  status(host: string): Promise<{ connected: boolean; username?: string; label?: string }> {
+  /**
+   * Redacted connection status for the renderer — NEVER includes the token.
+   * DECRYPT-VERIFIES the entry: an undecryptable credential (keyring changed)
+   * reports `connected: false` + `needsReconnect: true`. It used to report
+   * plain "connected" from the plaintext entry while `get()` (what sync
+   * actually uses) returned null — the settings panel said "Connected" while
+   * the project silently stopped syncing.
+   */
+  status(host: string): Promise<{
+    connected: boolean;
+    username?: string;
+    label?: string;
+    needsReconnect?: boolean;
+  }> {
     return enqueue(async () => {
       const data = await readStore();
       const entry = data.credentials[normalizeHost(host)];
       if (!entry) return { connected: false };
+      if (!entryDecrypts(entry)) {
+        warnDecryptFailure(normalizeHost(host), "status");
+        return {
+          connected: false,
+          needsReconnect: true,
+          ...(entry.username ? { username: entry.username } : {}),
+          ...(entry.label ? { label: entry.label } : {}),
+        };
+      }
       return {
         connected: true,
         ...(entry.username ? { username: entry.username } : {}),
@@ -193,3 +293,13 @@ export const electronTokenStore = {
     });
   },
 };
+
+/** True when the entry's ciphertext decrypts with the CURRENT keyring. */
+function entryDecrypts(entry: StoredEntry): boolean {
+  try {
+    safeStorage.decryptString(Buffer.from(entry.tokenCipher, "base64"));
+    return true;
+  } catch {
+    return false;
+  }
+}

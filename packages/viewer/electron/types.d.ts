@@ -2,13 +2,6 @@
 // ships real declarations; this file only keeps viewer-specific ambient modules
 // and the window bridge augmentation.
 
-// `?raw` imports (electron-vite/vite) return the file contents as a string. Used
-// for the splash markup, which is baked into the main bundle.
-declare module "*.html?raw" {
-  const content: string;
-  export default content;
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // window.electron — bridge types for the renderer / SvelteKit SPA
 //
@@ -32,11 +25,8 @@ import type {
   RemoteBranch,
   RepoBook,
   CloneProgressEvent,
-  CloneRepositoryArgs,
   ConflictFileInfo,
-  ConflictResolutionChoice,
-  SyncOutcome,
-  ResolveSyncConflictsArgs,
+  ExportProgressEvent,
 } from "./bridge-types";
 
 declare global {
@@ -51,10 +41,10 @@ declare global {
 
   type UpdaterEvent = UpdaterEventPayload;
 
+  // getStatus/check/download migrated to server routes (api.updater.*) —
+  // ARCH review #8: plain request/response, no push stream or
+  // live-BrowserWindow need. applyNow + onEvent stay on the bridge.
   interface ElectronUpdater {
-    getStatus(): Promise<UpdaterStatus>;
-    check(): Promise<UpdaterStatus>;
-    download(): Promise<UpdaterStatus>;
     applyNow(): Promise<{ applied: boolean; version?: string }>;
     onEvent(cb: (event: UpdaterEvent) => void): () => void;
   }
@@ -117,7 +107,7 @@ declare global {
       // File metadata + folder watch (PlatformAdapter, #44)
       watchFolder(dirPath: string, cb: () => void): () => void;
       // getStatus, doctor migrated to server routes (Phase 2C)
-      // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+      // app:getLastProject, app:getViewerPrefs,
       // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
       // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
       // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,
@@ -137,7 +127,8 @@ declare global {
       connectGitHubCancel(): Promise<{ ok: boolean }>;
       // disconnectGitHub, getRemoteConnection, listRemoteRepositories, listRemoteBranches,
       // listRepoBooks — migrated to server routes (Phase 2F).
-      cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
+      // cloneRemoteRepository migrated to server route (api.remote.cloneRepository)
+      // — ARCH review #8: plain request/response, no push stream involved itself.
       onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void;
       // diagnoseProjectRemote, testRemoteAccess, connectGenericHost, disconnectHost,
       // listHostConnections, forgeTokenUrl — migrated to server routes (Phase 2F).
@@ -146,8 +137,9 @@ declare global {
        *  Note: data may carry `recovery`, `guidance`, and `backupZipPath` fields
        *  when state is 'recovering', 'recovered', or 'error' (classified failure). */
       onSyncStatus(cb: (data: unknown) => void): () => void;
-      /** Enable or disable the auto-sync master switch. */
-      setAutoSync(enabled: boolean): Promise<void>;
+      // setAutoSync migrated to server route (api.sync.setAutoSync) — ARCH
+      // review #8: a pure settings write, no push stream or live-BrowserWindow
+      // need.
       // Sync recovery seam (Foundation — §8 / ADR 0004)
       /** Subscribe to risky-repair confirm requests from main. Returns unsubscribe fn. */
       onRecoveryConfirm(cb: (data: unknown) => void): () => void;
@@ -155,8 +147,8 @@ declare global {
       respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
       // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
       // syncChanges — migrated to server route (Phase 2F)
-      // Sync (#15 sync phase, ADR 0006 D5).
-      resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
+      // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)
+      // — ARCH review #8: plain request/response.
       startPreview(args: { input: string }): Promise<{
         url: string;
         port: number;
@@ -187,12 +179,10 @@ declare global {
       }>;
       // doctor migrated to server route (Phase 2C)
       // Event subscriptions
-      onBuildProgress(cb: (data: {
-        exportId: string;
-        state: "started" | "rendering" | "finalizing" | "success" | "canceled" | "error";
-        pages?: number;
-        message?: string;
-      }) => void): () => void;
+      // M29: ExportProgressEvent used to be hand-duplicated here — it is now
+      // the single shared-types.ts type (re-exported via bridge-types.ts),
+      // same as every other payload type in this file.
+      onBuildProgress(cb: (data: ExportProgressEvent) => void): () => void;
       onUrlPreviewBlocked(cb: (data: { url: string; reason: string }) => void): () => void;
       // writeRecovery, clearRecovery, listRecovery — migrated to server routes
       // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.

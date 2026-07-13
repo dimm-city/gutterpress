@@ -142,16 +142,18 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
     typographer: true,
   });
 
-  // Some of these plugins ship as `exports.default = fn` (webpack-style CJS
-  // with `__esModule: true`). Bun's runtime auto-unwraps `{ default: fn }`
-  // to the function in dev mode; the standalone-binary loader does not, so
-  // the import surfaces as `{ default: fn }` and `md.use` blows up with
-  // "plugin.apply is not a function". Unwrap defensively via the shared helper.
+  // Some of these third-party plugins ship as `exports.default = fn`
+  // (webpack-style CJS with `__esModule: true`). Bun's runtime auto-unwraps
+  // `{ default: fn }` to the function in dev mode; the standalone-binary
+  // loader does not, so the import surfaces as `{ default: fn }` and
+  // `md.use` blows up with "plugin.apply is not a function". Unwrap
+  // defensively via the shared helper. `markdown-it-paged.js` is our own
+  // ESM file (§6) with a real `export default`, so it needs no unwrap.
   md.use(unwrapPlugin(markdownItAttrs));
   md.use(unwrapPlugin(markdownItFootnote));
   md.use(unwrapPlugin(markdownItDeflist));
   md.use(unwrapPlugin(markdownItSourceMap));
-  md.use(unwrapPlugin(markdownItPaged));
+  md.use(markdownItPaged);
 
   // Image src normalization (token-level renderer rule).
   registerImageRule(md);

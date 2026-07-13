@@ -38,7 +38,8 @@ This repo is a Bun workspace with two packages:
   electron-vite + asar, commit `c5e75ae`). No afterPack hook; electron-builder
   packages the lib + its transitive deps from the workspace `node_modules` via
   its standard dep walker (puppeteer-core is `asarUnpack`ed; PDF export itself
-  uses Electron's own Chromium via `webContents.printToPDF` — see ADR 0002).
+  uses Electron's own Chromium via `webContents.printToPDF` — see
+  `docs/adr/0002-pdf-rendering-and-pure-js-tooling.md`).
   See [project_viewer_architecture] memory + `packages/viewer/README.md` for the
   full picture.
 
@@ -115,10 +116,15 @@ inside the binary required a compile-time regex plugin to rewrite
 `JSON.parse(readFileSync(new URL("../package.json", import.meta.url)))`
 patterns inside `node_modules` — a hack we are eliminating.
 
-If you need a dev server with live reload, use **`Bun.serve`** with its built-in
-`websocket` upgrade. The historical use case (`packages/cli/src/preview/`) is a
-static file server + a "full-reload" websocket message on file change — which is
-exactly what `Bun.serve` provides natively in ~150 lines without any bundler.
+If you need a dev server with live reload, use **`node:http` + the `ws`
+package** — not `Bun.serve`. The lib runtime must stay Bun-API-free (see the
+Monorepo layout section above: no `Bun.serve`/`Bun.file`) so Electron's bundled
+Node can run it in-process; `Bun.serve` would work under Bun but crash the
+packaged viewer. The actual implementation
+(`packages/cli/src/preview/http-server.ts`) is a `node:http` static file
+server + a `ws` WebSocket server that broadcasts a "full-reload" message on
+file change — Node-compatible, runs under both Bun (dev / compiled binary)
+and Node.js (Electron), with no bundler involved.
 
 ### 2. Lazy-load heavy optional deps
 
@@ -232,13 +238,13 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 > [!ALERT]
 > This is a **non-negotiable core architecture requirement** for the viewer and
 > for **every Electron application started in this org** — it is the gold
-> standard, applied by default. See ADR 0004 (platform abstraction; kept under `.docs-archive/`).
+> standard, applied by default. See `docs/adr/0004-platform-abstraction.md`.
 
 The viewer is an Electron shell hosting a **SvelteKit SPA** (built with
 `@sveltejs/adapter-node`). The SPA is written so it could run unchanged in a
 browser PWA tomorrow. To make that true — and to keep the desktop build correct
-— there is exactly **one seam** between the UI and the host, and it is honoured
-absolutely.
+— the renderer never contains host/Node code; it reaches the host through one
+of two seams, chosen by capability class, and both keep the SPA "PWA-clean."
 
 **Transport.** In production, Electron main starts the adapter-node handler
 (`build/handler.js`) on a local `127.0.0.1` HTTP server and serves the window
@@ -264,40 +270,87 @@ the client bundle.
   `fileURLToPath is not a function` crash in 0.4.0-beta.4.
 - **No `node:*` / `fs` / `path` / `url` / `child_process` / `postcss` imports**
   in the SPA. Node-oriented libraries (postcss included) belong in the host.
-- **All host work goes through the platform adapter.** App code does
-  `import { getPlatform, isDesktop } from "$lib/platform"` and calls
-  `platform.X(...)` — a platform-agnostic, typed, async API. It never touches
-  `window.electron`/`ipcRenderer` directly (only `electron-adapter.ts` may).
 
-**Adding a new host capability.** The default path is a **server route** —
-request/response Node work the SPA reaches over HTTP:
+**Two seams, not one.** The route-first split (server route + `fetch()`) is
+the **default path** and the one most of the app actually uses today: 26+
+files call `src/lib/api.ts` directly (`+page.svelte` alone has 33 `api.*`
+call sites), not through `getPlatform()`. The `Platform`/`HostServices` seam
+(`src/lib/platform/contract.ts` + `ElectronAdapter`/`WebAdapter`, reached via
+`import { getPlatform, isDesktop } from "$lib/platform"`) is real and still
+owns three narrower capability classes a plain route can't cover:
+
+1. **Push streams** the renderer subscribes to (build progress,
+   folder-changed, sync status, updater events) — an `onX(cb) => unsubscribe`
+   shape needs a live event channel, not request/response.
+2. **Calls that must drive a live `BrowserWindow`** — preview/build
+   orchestration, PDF export via `webContents.printToPDF`.
+3. **FSA-divergent fs primitives** — the handful of file operations where the
+   web implementation is a genuinely different algorithm (File System Access
+   API handles) rather than a thin `fetch()` wrapper.
+
+Everything else — status, dialog, theme, plugin, remote/sync, vcs, recovery,
+settings, recents/favorites, and so on — is a server route + a typed
+`api.ts` wrapper, called directly as `api.<ns>.<op>(...)`. Whichever seam a
+capability uses, app code never touches `window.electron`/`ipcRenderer`
+directly (only `electron-adapter.ts` may).
+
+**Adding a new host capability.**
+
+**(A) Default: a server route.** Covers essentially everything (see the list
+above).
 
 1. `src/routes/api/<ns>/<op>/+server.ts` — the real Node work (may `import`
    `@dimm-city/print-md`, `node:*`, postcss, isomorphic-git — it runs in main,
    never in the client bundle)
-2. `src/lib/api` — the typed `fetch("/api/<ns>/<op>")` wrapper the adapter calls
-3. `src/lib/platform/contract.ts` — add it to `HostServices` (define payload
+2. `src/lib/api.ts` — the typed `fetch("/api/<ns>/<op>")` wrapper; components
+   call `api.<ns>.<op>(...)` directly. No `contract.ts` / `HostServices` /
+   adapter changes needed.
+
+**(B) Platform adapter — only for the three capability classes above.**
+
+1. `src/lib/platform/contract.ts` — add it to `HostServices` (define payload
    types **locally**, decoupled from the lib)
-4. `ElectronAdapter` (call through the `api` wrapper) **and** `WebAdapter`
-   (stub: reject / throw / safe no-op until the PWA lands)
+2. `ElectronAdapter` (call through the `api` wrapper, or IPC — next step) and
+   `WebAdapter` (a real implementation, or an explicit reject/no-op if the
+   capability has no web behavior yet — see "Dormant PWA scaffolding" below)
+3. If it's a push stream or must drive a live `BrowserWindow`, also wire the
+   **IPC bridge**: `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a
+   `webContents.send` push channel); `electron/preload.ts` — expose it on
+   `contextBridge`; `electron/types.d.ts` — add it to the `Window.electron`
+   shape; `contract.ts` — add it to `ElectronBridge`
 
-Use the **IPC bridge** only when a plain request/response won't do — a push
-stream, or a call that must drive a live BrowserWindow (preview/build). That
-path adds two more layers:
+**The canonical fix when node code is needed by the UI:** don't bundle it into
+the renderer — run it in the host and expose it as a server route (default) or,
+for the three narrower classes, through `getPlatform()`. Example: CSS
+print-safety linting (`checkCss`) is postcss-based, so it runs host-side (the
+`api/lint/check-css` server route) and the editor's lint gutter calls
+`getPlatform().checkCss(...)` — routed through the adapter here because
+CodeMirror's lint-source contract expects one async function to hand it, not
+because every route needs a `Platform` method; the route itself is still the
+(A) path.
 
-- `electron/main.ts` — `ipcMain.handle("ns:op", …)` (or a `webContents.send`
-  push channel)
-- `electron/preload.ts` — expose it on the `contextBridge` object, and
-  `electron/types.d.ts` — add it to the `Window.electron` shape, and
-  `contract.ts` — add it to `ElectronBridge`
+**Svelte 5 conventions: `$effect` is banned in the SPA.** Enforced by eslint
+(`no-restricted-syntax` in `packages/viewer/eslint.config.*`) — the error
+message lists the sanctioned alternatives (onMount for DOM setup/cleanup,
+event handlers for user-triggered state, `$derived` + `class:` bindings for
+reactive presentation, `{#key}` for identity re-init, `untrack()` for one-time
+reads). For imperative side-effects on settings changes specifically, use the
+settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
+(see `src/lib/settings.svelte.ts`'s header) — every state replacement flows
+through one choke point, so the notify cannot be forgotten by a new setter.
 
-Either way the renderer only ever calls `getPlatform().X(...)`; it never
-touches `window.electron`/`ipcRenderer` directly (only `electron-adapter.ts`
-may). **The canonical fix when node code is needed by the UI:** don't bundle it
-into the renderer — run it in the host and expose a narrow async method. Example:
-CSS print-safety linting (`checkCss`) is postcss-based, so it runs host-side (in
-the `api/lint/check-css` server route) and the editor's lint gutter calls
-`getPlatform().checkCss(...)` (CodeMirror accepts a `Promise` lint source).
+**Dormant PWA scaffolding (`WebAdapter`, kept for #33).** The PWA remains a
+goal, so `WebAdapter` (`src/lib/platform/web-adapter.ts`) intentionally keeps a
+partial, currently-unreachable implementation of several capabilities —
+IndexedDB-backed recents/favorites/viewer-prefs, a `localStorage` settings
+fallback, File System Access primitives — even though today's live settings
+path is `api.app.getSettings`/`setSettings` (a server route, `isDesktop()`-
+gated). This is **dormant scaffolding, not dead code to delete**: it is the
+starting point for the #33 PWA milestone. When #33 lands, expect the relevant
+`api.ts` call sites to migrate to `getPlatform()` so the same UI code serves
+both Electron (`ElectronAdapter` → the existing server routes) and the browser
+(`WebAdapter`'s now-live implementation); until then, `api.ts` is the correct
+call site for those capabilities on the Electron target.
 
 **Verification (must pass before any viewer change is "done"):** the client
 SPA bundle must contain no host code — adapter-node emits the browser assets
@@ -326,7 +379,8 @@ lib's Node code on purpose; §1/§3 govern it. This rule governs the renderer.)
 Why this is the default for new Electron apps: the renderer/host split is the
 only thing that keeps an Electron UI portable to web, testable without a host,
 and free of the "works in `vite dev`, crashes in the packaged app" trap. Build
-the typed adapter seam **first**, before the first feature adds a host call.
+the typed route + wrapper (or, for the three narrower classes, the adapter
+seam) **first**, before the first feature adds a host call.
 
 ## Design-guide / DC-brand work has moved out of this repo
 

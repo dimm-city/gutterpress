@@ -12,6 +12,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import { dialogBehavior } from "$lib/dialog";
+  import { friendlyHostError } from "$lib/errors";
 
   let {
     open = $bindable(false),
@@ -46,7 +47,7 @@
         }
       } catch (e) {
         if (cancelled) return;
-        error = e instanceof Error ? e.message : String(e);
+        error = friendlyHostError(e instanceof Error ? e.message : String(e));
       } finally {
         if (!cancelled) loading = false;
       }
@@ -71,20 +72,20 @@
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
-    class="dialog"
+    class="dlg-shell"
     use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "log-title", focusContainer: true }}
     use:loadLog
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="log-title">
         <Icon name="file-text" size={16} />
         Operation log
       </h2>
       <button
-        class="close"
+        class="dlg-close"
         onclick={close}
         title="Close (Esc)"
         aria-label="Close"
@@ -103,78 +104,27 @@
       {/if}
     </div>
 
-    <footer class="actions">
+    <footer class="dlg-actions">
       {#if logContent}
-        <button class="ghost small" onclick={copyLog}>
+        <button class="dlg-ghost small" onclick={copyLog}>
           Copy log
         </button>
       {/if}
-      <button class="ghost" onclick={close}>Close</button>
+      <button class="dlg-ghost" onclick={close}>Close</button>
     </footer>
   </div>
 {/if}
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
+  @import "$lib/styles/dialog-shell.css";
 
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  .dlg-shell {
     width: min(720px, 94vw);
     max-height: 80vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
-
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-  }
-
-  .dialog-header h2 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+  .dlg-header h2 {
     color: var(--app-text);
   }
-
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
   .dialog-body {
     padding: 16px 18px;
@@ -215,37 +165,4 @@
     user-select: text;
   }
 
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    flex-shrink: 0;
-    padding: 14px 18px;
-    border-top: 1px solid var(--app-border-subtle);
-    background: var(--app-surface);
-  }
-
-  .actions button {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-
-  .ghost {
-    background: transparent;
-    color: var(--app-text-muted);
-    border: 1px solid var(--app-border);
-    cursor: pointer;
-    border-radius: 4px;
-  }
-  .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
-  .ghost:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-
-  .small {
-    padding: 4px 10px;
-    font-size: 11px;
-    border-radius: 5px;
-  }
 </style>

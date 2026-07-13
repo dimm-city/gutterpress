@@ -4,12 +4,24 @@
 //
 // electron/updater.ts imports `app` from "electron" and `autoUpdater` from
 // "electron-updater" at module scope. Neither is a real runtime under
-// `bun test` (the "electron" package's default export outside an actual
-// Electron process is just a path string, so `{ app }` destructures to
-// `undefined`), so both are mocked via `mock.module` BEFORE the dynamic
-// `import()` of updater.ts below. This file runs under `bun test --isolate`
-// (see package.json's `test` script), so the mocked module registry is
-// scoped to this file and cannot leak into other test files.
+// `bun test` (importing the real "electron" package outside an actual
+// Electron process throws while trying to locate/download the Electron
+// binary — see getElectronPath() in node_modules/electron/index.js), so
+// both are mocked via `mock.module` BEFORE the dynamic `import()` of
+// updater.ts below.
+//
+// `--isolate` scopes SOME state per file, but NOT `mock.module("electron", …)`
+// registrations across files that all touch the "electron" specifier —
+// whichever such suite's registration ends up "live" for a given
+// `bun test --isolate` invocation serves every other suite's static
+// `from "electron"` imports too. So this mock (like every other
+// electron-mocking suite: tests/platform/pdf-export.test.ts,
+// tests/platform/sveltekit-host.test.ts, tests/platform/credential-store.test.ts)
+// provides the SAME superset of keys every electron/*.ts production module
+// statically imports from "electron" (app.getPath/isPackaged/getVersion/
+// releaseSingleInstanceLock, protocol, BrowserWindow, safeStorage), not just
+// the ones electron/updater.ts itself needs. Keep this superset in sync with
+// any new `from "electron"` import added to electron/*.ts.
 
 import { test, expect, mock } from "bun:test";
 import { EventEmitter } from "node:events";
@@ -18,9 +30,19 @@ const fakeApp = {
   isPackaged: true,
   getVersion: () => "1.0.0",
   releaseSingleInstanceLock: () => {},
+  getPath: () => "/tmp/print-md-test-userdata",
 };
 
-mock.module("electron", () => ({ app: fakeApp }));
+mock.module("electron", () => ({
+  app: fakeApp,
+  protocol: {},
+  BrowserWindow: class {},
+  safeStorage: {
+    isEncryptionAvailable: () => true,
+    encryptString: (s: string) => Buffer.from(s, "utf8"),
+    decryptString: (b: Buffer) => Buffer.from(b).toString("utf8"),
+  },
+}));
 // Only used to satisfy updater.ts's top-level `const { autoUpdater } =
 // electronUpdater` destructure; every test supplies its own fake via
 // initUpdater's `deps` param instead of touching this.

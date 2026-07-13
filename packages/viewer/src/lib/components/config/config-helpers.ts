@@ -11,6 +11,7 @@ import type {
   ThemeInfo,
   ProjectPluginEntry,
   PluginValidationResult,
+  RecommendedPlugin,
 } from "$lib/api";
 
 /** Stable key for a theme card (kind + id), used for `{#each}` keying + thumbs. */
@@ -39,14 +40,46 @@ spacing preview rendered with this theme&rsquo;s stylesheet.</p>
 
 export interface PluginStatus {
   label: string;
-  kind: "ok" | "error" | "disabled" | "checking";
+  kind: "ok" | "error" | "disabled" | "checking" | "stale";
   detail?: string;
   raw?: string;
+  /** Copyable `npm install <name>` command — only set for a not-installed npm plugin (M33). */
+  installCommand?: string;
+  /** Link to the plugins guide chapter — only set for a not-installed npm plugin (M33). */
+  guideHref?: string;
+}
+
+/** Chapter 6 of the user guide — "how do I install a plugin" (M33). */
+export const PLUGINS_GUIDE_URL =
+  "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/06-plugins.md";
+
+/**
+ * Friendly display name for a configured plugin entry (M33): the recommended
+ * list already carries a plain-language label ("Highlight") for every
+ * built-in feature, fetched in the same `loadPlugins()` round-trip that
+ * populates the configured list — but the configured-list row previously
+ * rendered `entry.ref` (the raw npm id, e.g. "markdown-it-mark") verbatim,
+ * losing that label the moment "Turn on" adds the entry. Look the ref up in
+ * `recommended` and fall back to the raw ref for anything not on that curated
+ * list (manually added npm packages, local files).
+ */
+export function pluginLabel(
+  entry: ProjectPluginEntry,
+  recommended: RecommendedPlugin[],
+): string {
+  const rec = recommended.find((r) => r.name === entry.ref);
+  return rec?.label ?? entry.ref;
 }
 
 /**
  * Status text/icon for one plugin (ported from the retired PluginManager).
  * Pure over its inputs — reads the current validation map + in-flight flag.
+ *
+ * Tri-state fix (M34): `pluginValidating` is true only while a validate
+ * round-trip is in flight. If it's `false` and there's still no result for
+ * this ref, `api.plugin.validate` threw (or never ran) — that must NOT read
+ * the same as "in progress", since it will never resolve on its own. It gets
+ * its own "stale" kind with a distinct label pointing at the fix (Re-check).
  */
 export function pluginStatus(
   entry: ProjectPluginEntry,
@@ -55,16 +88,24 @@ export function pluginStatus(
 ): PluginStatus {
   if (!entry.enabled) return { label: "Disabled", kind: "disabled" };
   const v = validation[entry.ref];
-  if (pluginValidating && !v) return { label: "Checking…", kind: "checking" };
-  if (!v) return { label: "Checking…", kind: "checking" };
+  if (!v) {
+    if (pluginValidating) return { label: "Checking…", kind: "checking" };
+    return {
+      label: "Check failed — click Re-check",
+      kind: "stale",
+      detail: "The last plugin check didn't finish, so this plugin's status is unknown. Click Re-check to try again.",
+    };
+  }
   if (v.ok) return { label: "Loads OK", kind: "ok" };
   const needsInstall = entry.kind === "npm";
   return {
     label: needsInstall ? "Not installed" : "Error",
     kind: "error",
     detail: needsInstall
-      ? "This plugin isn't installed yet, so it's skipped in the preview. Install it in your project, then click Re-check."
+      ? "This plugin isn't installed yet, so it's skipped in the preview. Run the install command below in your project folder, then click Re-check."
       : "This plugin couldn't load. See details below, then click Re-check.",
     raw: v.error,
+    installCommand: needsInstall ? `npm install ${entry.ref}` : undefined,
+    guideHref: needsInstall ? PLUGINS_GUIDE_URL : undefined,
   };
 }

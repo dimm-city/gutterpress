@@ -172,10 +172,14 @@ test("token embedded in the clone URL is stripped, used for auth, and migrated t
 
     await cloneRepository({ url: urlWithCred, dir: dest, tokenStore: store });
 
-    // Credential migrated into the store, keyed by host.
-    const stored = await store.get(u.hostname);
+    // Credential migrated into the store, keyed by the canonical host key —
+    // hostname:port, the SAME key resolveTransport/diagnose derive from the
+    // remote URL. (The old code stored under the bare hostname, dropping the
+    // port, so no reader could ever find the migrated credential again.)
+    const stored = await store.get(u.host);
     expect(stored?.token).toBe("s3cret");
     expect(stored?.username).toBe("alice");
+    expect(await store.get(u.hostname)).toBeNull();
 
     // The recorded remote URL contains NO credentials.
     const source = await detectProjectSource(dest);

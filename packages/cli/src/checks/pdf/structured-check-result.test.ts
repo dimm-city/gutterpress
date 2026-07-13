@@ -14,14 +14,16 @@ import type { CheckContext } from "../types";
 
 // --- Mutable mock state -----------------------------------------------------
 
-let inkPages: Array<{
-  page: number;
-  c: number;
-  m: number;
-  y: number;
-  k: number;
-  tac: number;
-}> = [];
+type InkPage = { page: number; c: number; m: number; y: number; k: number; tac: number };
+
+// Mirrors pdf-parse.ts's InkCoverageResult discriminated union (finding #51):
+// a gs failure must be distinguishable from a legitimately empty result, so
+// the mock — like the real function — returns one shape or the other rather
+// than always succeeding with an array.
+let inkResult: { ok: true; pages: InkPage[] } | { ok: false; error: string } = {
+  ok: true,
+  pages: [],
+};
 
 const inspectState: {
   imagesByPage: Map<number, Array<{ placedW: number; placedH: number }>>;
@@ -34,7 +36,7 @@ const inspectState: {
 };
 
 await mock.module("../../lib/pdf-parse", () => ({
-  getPerPageInkCoverage: async () => inkPages,
+  getPerPageInkCoverage: async () => inkResult,
   readPdfBytes: async () => "",
   parseInkCov: () => [],
 }));
@@ -67,10 +69,13 @@ function makeCtx(): CheckContext {
 describe("ink-coverage emits one CheckResult per finding", () => {
   test("8 offending pages produce a single structured result", async () => {
     // Default limit is maxTac(240) + tolerance(0.5) = 240.5.
-    inkPages = Array.from({ length: 8 }, (_, i) => {
-      const tac = 400 - i * 10;
-      return { page: i + 1, c: tac / 4, m: tac / 4, y: tac / 4, k: tac / 4, tac };
-    });
+    inkResult = {
+      ok: true,
+      pages: Array.from({ length: 8 }, (_, i) => {
+        const tac = 400 - i * 10;
+        return { page: i + 1, c: tac / 4, m: tac / 4, y: tac / 4, k: tac / 4, tac };
+      }),
+    };
 
     const results = await inkCheck.run(makeCtx());
 
@@ -90,9 +95,24 @@ describe("ink-coverage emits one CheckResult per finding", () => {
   });
 
   test("no offending pages produce no results", async () => {
-    inkPages = [{ page: 1, c: 10, m: 10, y: 10, k: 10, tac: 40 }];
+    inkResult = { ok: true, pages: [{ page: 1, c: 10, m: 10, y: 10, k: 10, tac: 40 }] };
     const results = await inkCheck.run(makeCtx());
     expect(results).toHaveLength(0);
+  });
+
+  // Finding #51: a Ghostscript failure must surface as a visible
+  // warning-severity result, not silently pass as "no offending pages".
+  test("a Ghostscript failure surfaces as a warning, not a silent pass", async () => {
+    inkResult = { ok: false, error: "spawn gs ENOENT" };
+    const results = await inkCheck.run(makeCtx());
+
+    expect(results).toHaveLength(1);
+    const [r] = results;
+    expect(r!.severity).toBe("warning");
+    expect(r!.code).toBe("ink-coverage-unmeasured");
+    expect(r!.message).toBe("Ink coverage could not be measured");
+    expect(r!.detail).toContain("spawn gs ENOENT");
+    expect(r!.data?.error).toBe("spawn gs ENOENT");
   });
 });
 

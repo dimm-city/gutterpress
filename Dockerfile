@@ -41,6 +41,53 @@ RUN bun install --frozen-lockfile
 # deps kept external (`--packages=external`), installed in the runtime stage.
 RUN cd packages/cli && bun run build
 
+# Finding #47: freeze the runtime stage's dependency versions to what
+# bun.lock actually resolved for THIS build, instead of leaving them as
+# caret ranges for `npm install` to re-resolve fresh in stage 2. `bun
+# install --frozen-lockfile` above already resolved every dependency exactly
+# per bun.lock; read those resolved versions straight out of the installed
+# node_modules (no bun.lock parsing needed) and emit a pinned package.json
+# for the runtime stage to COPY in. Two builds of the same git tag now
+# install byte-identical dependency versions.
+RUN <<'DOCKER_EOF'
+set -eu
+cat <<'JS_EOF' > /tmp/pin-runtime-deps.mjs
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+const pkg = JSON.parse(readFileSync("packages/cli/package.json", "utf8"));
+// Resolve each dep the way Node would from packages/cli: a workspace install
+// may keep a package's direct deps NESTED under packages/cli/node_modules, or
+// HOIST them to the repo-root node_modules (bun chooses per-dep, and the choice
+// can shift between bun versions). Check the nested path first (it wins at
+// runtime when present), then fall back to the hoisted root — so the pin never
+// ENOENTs on a hoisted dep. Fail loudly if a declared dep is installed nowhere.
+const searchRoots = ["packages/cli/node_modules", "node_modules"];
+const pinned = {};
+for (const dep of Object.keys(pkg.dependencies)) {
+  const depPkgPath = searchRoots
+    .map((root) => join(root, dep, "package.json"))
+    .find((p) => existsSync(p));
+  if (!depPkgPath) {
+    throw new Error(
+      `Cannot pin "${dep}": no installed package.json under ${searchRoots.join(" or ")}`,
+    );
+  }
+  pinned[dep] = JSON.parse(readFileSync(depPkgPath, "utf8")).version;
+}
+writeFileSync(
+  "runtime-package.json",
+  JSON.stringify(
+    { name: pkg.name, version: pkg.version, private: true, type: "module", dependencies: pinned },
+    null,
+    2,
+  ) + "\n",
+);
+JS_EOF
+bun /tmp/pin-runtime-deps.mjs
+rm /tmp/pin-runtime-deps.mjs
+DOCKER_EOF
+
 # ── Stage 2: runtime with all OS + lint dependencies ─────────────────────────
 # node:20-bookworm-slim gives us Node on Debian 12, whose apt has a real
 # `chromium` package (Ubuntu's is a snap, which doesn't work in containers).
@@ -66,13 +113,12 @@ ENV PUPPETEER_SKIP_DOWNLOAD=1 \
 WORKDIR /app
 
 # Install the package's runtime deps. dist/ is built with `--packages=external`,
-# so all `dependencies` (markdown-it*, pagedjs, puppeteer-core, isomorphic-git,
-# markdownlint, postcss, …) are resolved here from a synthesized minimal
-# package.json (just `name`/`version`/`dependencies`, dropping devDependencies).
-COPY --from=builder /src/packages/cli/package.json ./cli-package.json
-RUN node -e "const p=require('./cli-package.json'); require('fs').writeFileSync('./package.json', JSON.stringify({name:p.name,version:p.version,private:true,type:'module',dependencies:p.dependencies},null,2))" \
-    && rm cli-package.json \
-    && npm install --omit=optional --no-package-lock --no-audit --no-fund \
+# so all `dependencies` (markdown-it*, puppeteer-core, isomorphic-git,
+# markdownlint, postcss, …) are resolved here from the pinned minimal
+# package.json the builder stage emitted (name/version/dependencies, exact
+# versions from bun.lock — see finding #47 — dropping devDependencies).
+COPY --from=builder /src/runtime-package.json ./package.json
+RUN npm install --omit=optional --no-package-lock --no-audit --no-fund \
     && npm cache clean --force
 COPY --from=builder /src/packages/cli/dist ./dist
 

@@ -81,7 +81,7 @@ Always provide meaningful alt text. For purely decorative images, use empty alt 
 
 ### Image sizing
 
-Use `markdown-it-attrs` for precise sizing:
+Use `markdown-it-attrs` (bundled — no install step needed) for precise sizing:
 
 ```markdown
 ![Portrait](assets/portrait.jpg){width="300px"}
@@ -89,15 +89,9 @@ Use `markdown-it-attrs` for precise sizing:
 ![Landscape](assets/landscape.jpg){width="80%"}
 ```
 
-Or use the `img-size` plugin shorthand:
+### Common image classes {#common-image-classes}
 
-```markdown
-![Portrait](assets/portrait.jpg =300x400)
-![Landscape](assets/landscape.jpg =800x)
-![Square](assets/square.jpg =x600)
-```
-
-### Common image classes
+Core print-md ships five ready-to-use image/block utility classes — they're plain CSS rules in `PAGED_CSS`, always present, no plugin or theme required. `markdown-it-attrs` (also bundled) is what lets you attach `{.center}` and friends to an image:
 
 ```markdown
 ![Centered](assets/photo.jpg){.center}
@@ -109,18 +103,26 @@ Or use the `img-size` plugin shorthand:
 ![Full width](assets/wide.jpg){.full-width}
 ```
 
-### Full-bleed artwork
+| Class | What it does |
+|-------|--------------|
+| `.center` | Centers a block-level image (`display: block; margin: 0 auto`) |
+| `.float-left` | Floats left with clearance margins, capped at 50% width |
+| `.float-right` | Floats right with clearance margins, capped at 50% width |
+| `.full-width` | Fills the page's content width (`width: 100%`) |
 
-Full-bleed images fill an entire page with no margins:
+### Full-bleed artwork {#full-bleed-artwork}
+
+`.full-bleed` forces the image onto its own page and cancels that page's left/right margins so the image spans the page edge-to-edge horizontally:
 
 ```markdown
 ![Full page art](assets/artwork.jpg){.full-bleed}
 ```
 
-Full-bleed images automatically:
-- Apply the `art` page template (zero margins)
-- Force a page break before the image
-- Extend to the bleed edge (removing headers and footers)
+`.full-bleed` genuinely does two things:
+- **Forces a page break before the image** (`break-before: page`).
+- **Cancels the page's left/right margins** by reading Paged.js's own `--pagedjs-margin-left` / `--pagedjs-margin-right` custom properties (set per page from whatever `@page` rule is active) and applying the matching negative margin, so the image reaches the page's left and right trim edges.
+
+It does **not**: cancel the top/bottom margins, apply a named `art`/`gallery`/etc. `@page` template, remove headers or footers, or add printer bleed overage past the trim edge. If you need true bleed — content that extends past the trim line for a print shop to cut through — design the artwork to the bled dimensions and add that overage via your PDF export/preflight settings; see [Bleed for full-page images](#bleed-for-full-page-images) below.
 
 ### Image galleries
 
@@ -181,7 +183,7 @@ convert input.jpg -resize 2400x output.jpg
 convert input.jpg -quality 85 output.jpg
 ```
 
-### Bleed for full-page images
+### Bleed for full-page images {#bleed-for-full-page-images}
 
 Add 0.125 inches (3.175 mm) to all edges for full-bleed images:
 

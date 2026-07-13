@@ -38,7 +38,7 @@ import { isSeq, Scalar } from "yaml";
 import type { Node } from "yaml";
 
 import { getAssetPath } from "./embedded-assets.ts";
-import { loadManifestDoc, ensureSeq } from "./manifest-doc.ts";
+import { loadManifestDoc, writeManifestDoc, ensureSeq, scalarString } from "./manifest-doc.ts";
 import { slugify, prettify } from "./slug.ts";
 
 /** Folder (relative to the project root) themes are copied into on apply/import. */
@@ -229,14 +229,6 @@ function themeStyleHref(id: string): string {
 /** Match any `themes/<id>/theme.css` style entry; capture the id. */
 const THEME_HREF_RE = new RegExp(`^${THEMES_DIR}/([^/]+)/theme\\.css$`);
 
-function styleHrefOf(item: unknown): string | null {
-  if (item && typeof item === "object" && "value" in (item as object)) {
-    const v = (item as { value: unknown }).value;
-    return typeof v === "string" ? v : null;
-  }
-  return typeof item === "string" ? item : null;
-}
-
 /**
  * Read the project's currently active theme (the theme whose `theme.css` is in
  * the manifest `styles:` list AND whose folder exists under `themes/`). Returns
@@ -247,7 +239,7 @@ export async function getActiveTheme(projectDir: string): Promise<ThemeInfo | nu
   const seq = doc.get("styles", true);
   if (!isSeq(seq)) return null;
   for (const item of seq.items as Node[]) {
-    const href = styleHrefOf(item);
+    const href = scalarString(item);
     if (!href) continue;
     const m = href.match(THEME_HREF_RE);
     if (!m) continue;
@@ -273,14 +265,16 @@ async function setActiveThemeStyle(projectDir: string, id: string): Promise<void
 
   // Drop any existing theme style entry (we keep exactly one active theme).
   const kept = (seq.items as Node[]).filter((item) => {
-    const h = styleHrefOf(item);
+    const h = scalarString(item);
     return !(h && THEME_HREF_RE.test(h));
   });
   seq.items = kept;
   seq.add(new Scalar(href));
 
-  await mkdir(projectDir, { recursive: true });
-  await writeFile(file, doc.toString(), "utf8");
+  // ARCH finding #25: route the write through the shared writeManifestDoc
+  // (manifest-doc.ts) instead of a bespoke mkdir+writeFile pair, so there is
+  // one manifest-write implementation, not two that can silently diverge.
+  await writeManifestDoc(file, doc);
 }
 
 // ── Apply ──────────────────────────────────────────────────────────────────
@@ -290,6 +284,18 @@ async function setActiveThemeStyle(projectDir: string, id: string): Promise<void
  * (built-in themes are copied out of the embedded assets; project themes are
  * already present) and wire the manifest so its `theme.css` is the active
  * stylesheet. Returns the applied {@link ThemeInfo}.
+ *
+ * No-data-loss mandate (UX review M6): a project theme's `theme.css` is the
+ * exact file the Design panel writes token edits into, so re-copying a
+ * built-in over an EXISTING `themes/<id>/` would silently discard every
+ * customization the author made after the first apply. Applying a built-in
+ * therefore never overwrites an existing project theme folder — if one is
+ * already there (customized or not), the built-in is copied into a fresh id
+ * (via the same {@link uniqueThemeId} helper import/folder-import uses) and
+ * THAT becomes active, leaving the original folder untouched. In the normal UI flow the
+ * Appearance grid hides a built-in card once its project copy exists (so this
+ * path isn't reachable by clicking Apply twice); this guard is the
+ * defense-in-depth backstop for any other caller of this function.
  */
 export async function applyTheme(
   projectDir: string,
@@ -299,12 +305,16 @@ export async function applyTheme(
 
   if (target.kind === "builtin") {
     const resolved = await resolveBuiltInTheme(target.id);
-    const destDir = path.join(projectDir, THEMES_DIR, target.id);
+    let destId = target.id;
+    if (existsSync(path.join(projectDir, THEMES_DIR, destId, "theme.css"))) {
+      destId = await uniqueThemeId(projectDir, target.id);
+    }
+    const destDir = path.join(projectDir, THEMES_DIR, destId);
     await mkdir(destDir, { recursive: true });
     // Copy the whole theme folder (css + json + any bundled fonts/assets).
     await cp(resolved.dir, destDir, { recursive: true });
     // The copied theme now lives in the project — surface it as a project theme.
-    info = themeInfo(target.id, "project", await readThemeMeta(path.join(destDir, "theme.json")));
+    info = themeInfo(destId, "project", await readThemeMeta(path.join(destDir, "theme.json")));
   } else {
     const dir = themeDirFor(projectDir, target.id);
     if (!existsSync(path.join(dir, "theme.css"))) {
@@ -504,9 +514,10 @@ export async function removeProjectTheme(projectDir: string, id: string): Promis
   if (isSeq(seq)) {
     const href = themeStyleHref(id);
     const before = seq.items.length;
-    seq.items = (seq.items as Node[]).filter((item) => styleHrefOf(item) !== href);
+    seq.items = (seq.items as Node[]).filter((item) => scalarString(item) !== href);
     if (seq.items.length !== before) {
-      await writeFile(file, doc.toString(), "utf8");
+      // ARCH finding #25: same shared write path as setActiveThemeStyle.
+      await writeManifestDoc(file, doc);
     }
   }
 }

@@ -249,3 +249,74 @@ test("editRawCss forwards the active css path only when one is loaded", async ()
   h.ctrl.editRawCss();
   expect(h.onEditRawCss.calls).toEqual([["/proj/styles/theme.css"]]);
 });
+
+test("a stylesheet switch during a token-write commit never redirects the old sheet's tokens into the new file (finding #10)", async () => {
+  const OLD = "/proj/styles/old.css";
+  const NEW = "/proj/styles/new.css";
+  const NEW_ORIGINAL = ":root {\n  --heading-color: #0000ff;\n}\n";
+  const files = new Map<string, string>([
+    [OLD, ":root {\n  --heading-color: #cc0000;\n}\n"],
+    [NEW, NEW_ORIGINAL],
+  ]);
+  const writes: Array<{ path: string; content: string }> = [];
+
+  // A one-shot gate: the NEXT readFile blocks until released, so we can switch
+  // the active stylesheet while a commit is parked on its read-before-write.
+  let releaseGatedRead: (() => void) | null = null;
+  let armGate = false;
+  const readFile = (path: string): Promise<string> => {
+    const content = files.get(path) ?? "";
+    if (armGate) {
+      armGate = false;
+      return new Promise<string>((resolve) => {
+        releaseGatedRead = () => resolve(content);
+      });
+    }
+    return Promise.resolve(content);
+  };
+  const writeFile = (path: string, content: string): Promise<{ mtimeMs: number }> => {
+    writes.push({ path, content });
+    files.set(path, content);
+    return Promise.resolve({ mtimeMs: 1 });
+  };
+
+  const timer = new FakeTimer();
+  let styles: ProjectStyle[] = [{ path: OLD, displayName: "old.css", active: true }];
+  const ctrl = new DesignSectionController({
+    projectDir: () => "/proj",
+    listStyles: () => Promise.resolve(styles),
+    readFile,
+    writeFile,
+    onError: () => {},
+    onEditRawCss: () => {},
+    debounceMs: 250,
+    setTimer: timer.set,
+    clearTimer: timer.clear,
+  });
+
+  await ctrl.loadDesign(); // cssPath = OLD (this read is ungated)
+  expect(ctrl.cssPath).toBe(OLD);
+  ctrl.setToken(ctrl.colorTokens[0], "#00ff00"); // schedules a pending write on OLD
+
+  // Fire the debounce with the gate armed: commitPendingTokens reads OLD and
+  // parks on the gate, mid read-before-write.
+  armGate = true;
+  timer.fire();
+  await flush();
+  expect(releaseGatedRead).not.toBeNull(); // commit is parked on the read
+
+  // Concurrent stylesheet switch while the commit is parked.
+  styles = [{ path: NEW, displayName: "new.css", active: true }];
+  await ctrl.loadDesign();
+  expect(ctrl.cssPath).toBe(NEW);
+
+  // Release the parked read; the commit's write now runs.
+  releaseGatedRead!();
+  await flush();
+
+  // The write must land on OLD (the captured path), never the newly selected
+  // NEW file — and NEW's content must be exactly what loadDesign parsed.
+  expect(writes.map((w) => w.path)).toEqual([OLD]);
+  expect(files.get(NEW)).toBe(NEW_ORIGINAL);
+  expect(files.get(OLD)).toContain("--heading-color: #00ff00;");
+});

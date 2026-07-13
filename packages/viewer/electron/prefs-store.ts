@@ -2,15 +2,27 @@
 // Viewer prefs (viewer-prefs.json) — session/per-project state persisted
 // separately from durable user settings (app-settings.json, ./settings-store).
 // Holds the last open project, sidebar/panel state, recent/favorite folders,
-// per-project editor/preview state, and the legacy top-level page/mode fields
-// kept ONE version as a migration fallback (#43).
+// and per-project editor/preview state.
+//
+// #30: the pre-#43 top-level `currentPage`/`viewMode` migration-fallback
+// fields (and their `migrateLegacyProjectState` seeding logic) are removed —
+// the one release that carried the fallback has shipped, so every active
+// user's `projectStates` bucket is already populated from ordinary use.
+// `ProjectState.viewMode` (project-state.ts) and `AppSettings.preview.viewMode`
+// (settings-store.ts) are the two remaining, INTENTIONALLY distinct homes:
+// AppSettings is the durable value the UI reads/writes at all times;
+// ProjectState is a per-project snapshot applied only when a project opens,
+// to override the durable value with that project's last-used mode. See the
+// doc comment on `ProjectState` (shared-types.ts) for the full resolution.
 //
 // Phase 5b: extracted (behavior-identical) from electron/main.ts. The
 // ViewerPrefs shape + the prefsPath/readPrefs/writePrefs/existingDirectory
 // read/write path live here behind an injected-fs store factory so they can be
 // unit-tested with fakes (tests/platform/prefs-store). main.ts instantiates the
-// store with the live Electron userData dir + node:fs/promises and the imported
-// migrateLegacyProjectState, and uses the returned closures unchanged.
+// store with the live Electron userData dir + node:fs/promises. Writes are
+// atomic (write `<file>.tmp` then rename) and a parse failure preserves the
+// corrupt file as `<file>.corrupt-<ts>` instead of silently discarding
+// recents/favorites/per-project state (#34).
 // ──────────────────────────────────────────────────────────────────────────
 
 import path from "node:path";
@@ -28,17 +40,6 @@ export interface ViewerPrefs {
   showLandingAtStartup?: boolean;
   /** Chapter-list sidebar open/closed, persisted across sessions (#42). */
   sidebarOpen?: boolean;
-  /**
-   * @deprecated (#43) Pre-per-project global page. Kept ONE version as a
-   * migration fallback (see migrateLegacyProjectState); new writes go to
-   * projectStates[dir].currentPage. Remove in a later release.
-   */
-  currentPage?: number;
-  /**
-   * @deprecated (#43) Pre-per-project global view mode. Kept ONE version as a
-   * migration fallback; new writes go to projectStates[dir].viewMode.
-   */
-  viewMode?: "single" | "two-column";
   recentFolders?: RecentFolder[];
   favorites?: FavoriteFolder[];
   /**
@@ -70,10 +71,10 @@ export interface PrefsStoreDeps {
     writeFile(p: string, data: string, enc: BufferEncoding): Promise<void>;
     mkdir(p: string, opts: unknown): Promise<unknown>;
     stat(p: string): Promise<{ isDirectory(): boolean }>;
+    /** Used for the atomic `<file>.tmp` → `<file>` write and to preserve a
+     * corrupt file as `<file>.corrupt-<ts>` instead of discarding it (#34). */
+    rename(oldPath: string, newPath: string): Promise<void>;
   };
-  migrateLegacyProjectState: (
-    prefs: ViewerPrefs,
-  ) => ProjectStateMap | null | undefined;
 }
 
 export function createPrefsStore(deps: PrefsStoreDeps): {
@@ -88,25 +89,49 @@ export function createPrefsStore(deps: PrefsStoreDeps): {
   }
 
   async function readPrefs(): Promise<ViewerPrefs> {
+    let raw: string;
     try {
-      const prefs = JSON.parse(
-        await deps.fs.readFile(prefsPath(), "utf8"),
-      ) as ViewerPrefs;
-      // #43 one-time migration: seed projectStates from the legacy top-level
-      // currentPage/viewMode so existing users don't lose their saved state.
-      const migrated = deps.migrateLegacyProjectState(prefs);
-      if (migrated && !prefs.projectStates) {
-        prefs.projectStates = migrated;
-      }
-      return prefs;
+      raw = await deps.fs.readFile(prefsPath(), "utf8");
     } catch {
+      // No readable file yet (first run, or removed) — nothing to preserve.
       return {};
+    }
+    try {
+      return JSON.parse(raw) as ViewerPrefs;
+    } catch (err) {
+      // The file exists but isn't valid JSON. Preserve it instead of
+      // silently resetting to {} — that used to discard recents, favorites,
+      // per-project state, and the last-open-project pointer (#34).
+      await preserveCorruptFile(prefsPath(), err).catch(() => {});
+      return {};
+    }
+  }
+
+  async function preserveCorruptFile(target: string, err: unknown): Promise<void> {
+    const corruptPath = `${target}.corrupt-${Date.now()}`;
+    try {
+      await deps.fs.rename(target, corruptPath);
+      console.warn(
+        `[prefs-store] ${target} contained invalid JSON; preserved as ${corruptPath} instead of being discarded.`,
+        err,
+      );
+    } catch (renameErr) {
+      console.warn(
+        `[prefs-store] ${target} contained invalid JSON but could not be preserved (rename failed):`,
+        renameErr,
+      );
     }
   }
 
   async function writeNow(prefs: ViewerPrefs): Promise<void> {
     await deps.fs.mkdir(deps.getUserDataDir(), { recursive: true });
-    await deps.fs.writeFile(prefsPath(), JSON.stringify(prefs, null, 2), "utf8");
+    const target = prefsPath();
+    const tmp = `${target}.tmp`;
+    // Atomic write (#34): see settings-store.ts's writeSettings for the same
+    // pattern and rationale (write-then-rename so a crash mid-write can't
+    // truncate the real file).
+    await deps.fs.writeFile(tmp, JSON.stringify(prefs, null, 2), "utf8");
+    await deps.fs.rename(tmp, target);
   }
 
   // All mutations are serialized on one chain. Several writers share this

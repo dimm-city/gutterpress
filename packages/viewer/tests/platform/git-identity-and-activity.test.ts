@@ -12,8 +12,13 @@ test("settings schema and dialog expose git author name and email", () => {
   expect(shared).toContain("gitIdentity");
   expect(shared).toContain("authorName");
   expect(shared).toContain("authorEmail");
-  expect(contract).toContain("gitIdentity");
-  expect(dialog).toContain("Git identity");
+  // AppSettings (which carries gitIdentity) is imported from shared-types.ts
+  // (#29) rather than hand-duplicated in contract.ts — assert the wiring
+  // instead of the field name literally appearing in this file's source.
+  expect(contract).toContain("AppSettings");
+  expect(contract).toContain("shared-types");
+  // Writer-friendly header (UX follow-up): "Git identity" → plain language.
+  expect(dialog).toContain("Your name on saved versions");
   expect(dialog).toContain("set-git-author-name");
   expect(dialog).toContain("set-git-author-email");
 });
@@ -44,8 +49,10 @@ test("sync status details open an editor-side activity view, not the modal", () 
   expect(page).toContain('editorView = "activity"');
   expect(page).toContain("ProjectActivityView");
   expect(page).not.toContain("OperationLogDialog bind:open");
-  expect(activity).toContain("Operation log");
-  expect(activity).toContain("Version history");
+  // Writer-friendly reframe (UX follow-up): the raw log now lives behind a
+  // "Technical details" disclosure, and the surface is titled "Previous versions".
+  expect(activity).toContain("Technical details");
+  expect(activity).toContain("Previous versions");
   expect(activity).toContain("api.vcs.listSnapshotsPage");
   expect(activity).toContain("api.log.read");
 });

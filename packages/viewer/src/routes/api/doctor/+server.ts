@@ -1,20 +1,22 @@
-import { json } from '@sveltejs/kit';
 import { getDoctorHooks } from '$lib/server/host-hooks.js';
-import { getPrefsHooks } from '../../../../electron/server-bridge/prefs-hooks';
+import { defineRoute, loadLib } from '../_lib/route';
 import type { RequestHandler } from './$types';
+
+interface ToolStatus {
+  id: string;
+  name: string;
+  bin: string;
+  found: boolean;
+  path?: string;
+  version?: string;
+  usedBy: Array<{ feature: string; severity: 'required' | 'optional' }>;
+  installHint: string;
+}
 
 interface SystemDiagnostics {
   libVersion: string;
   platform: { os: string; arch: string; release: string; node: string };
-  tools: Array<{
-    name: string;
-    bin: string;
-    found: boolean;
-    path?: string;
-    version?: string;
-    usedBy: Array<{ feature: string; severity: 'required' | 'optional' }>;
-    installHint: string;
-  }>;
+  tools: ToolStatus[];
   docsUrl: string;
 }
 
@@ -22,30 +24,30 @@ interface DoctorLibModule {
   getSystemDiagnostics: () => Promise<SystemDiagnostics>;
 }
 
-export const GET: RequestHandler = async () => {
-  try {
-    const hooks = getPrefsHooks<DoctorLibModule>();
-    if (!hooks) return new Response('Prefs hooks not registered', { status: 503 });
-    const lib = await hooks.loadLib();
+export const GET: RequestHandler = defineRoute({
+  call: async () => {
+    const lib = (await loadLib()) as unknown as DoctorLibModule;
     const diag = await lib.getSystemDiagnostics();
 
     const doctorHooks = getDoctorHooks();
 
-    const externalTools = diag.tools.filter(
-      (tool) => tool.bin !== 'chrome / chromium / msedge'
-    );
+    // Filter on the stable machine id, not the human-readable `bin` display
+    // string — rewording the label must not silently stop excluding the
+    // bundled-Chromium entry from the "external tools" list (UX L10).
+    const externalTools = diag.tools.filter((tool) => tool.id !== 'chromium');
 
-    return json({
+    return {
       ...diag,
       tools: [
         {
+          id: 'electron-chromium',
           name: 'Chromium (built-in via Electron)',
           bin: 'electron',
           found: true,
           path: 'Bundled with the viewer app',
           version: process.versions.chrome,
           usedBy: [
-            { feature: 'Preview rendering and Save PDF', severity: 'required' },
+            { feature: 'Preview rendering and Save PDF', severity: 'required' as const },
           ],
           installHint: 'No setup required in the viewer app.',
         },
@@ -54,9 +56,6 @@ export const GET: RequestHandler = async () => {
       viewerVersion: doctorHooks ? doctorHooks.getViewerVersion() : 'unknown',
       electronVersion: process.versions.electron,
       chromeVersion: process.versions.chrome,
-    });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return new Response(msg, { status: 500 });
-  }
-};
+    };
+  },
+});

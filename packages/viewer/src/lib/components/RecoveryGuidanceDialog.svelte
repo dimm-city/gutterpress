@@ -11,7 +11,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import OperationLogDialog from "$lib/components/OperationLogDialog.svelte";
   import type { ManualGuidanceInfo } from "$lib/platform/contract";
-  import { trapFocus } from "$lib/a11y";
+  import { dialogBehavior } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -33,7 +33,6 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
   let copyAnnouncement = $state<string>("");
   let logDialogOpen = $state<boolean>(false);
   let viewLogBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -50,7 +49,6 @@
 
   function onDialogMount(_el: HTMLElement) {
     copyAnnouncement = "";
-    queueMicrotask(() => dialogEl?.focus());
   }
 
   function close() {
@@ -81,25 +79,20 @@
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
-    bind:this={dialogEl}
-    class="dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="guidance-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
+    class="dlg-shell"
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "guidance-title", focusContainer: true }}
     use:onDialogMount
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="guidance-title">
         <Icon name="triangle-alert" />
         We couldn't finish syncing
       </h2>
       <button
-        class="close"
+        class="dlg-close"
         onclick={close}
         title="Close (Esc)"
         aria-label="Close"
@@ -108,7 +101,7 @@
 
     <div class="dialog-body">
       <!-- aria-live region for copy confirmation announcement -->
-      <div class="sr-only" role="status" aria-live="polite">
+      <div class="dlg-sr-only" role="status" aria-live="polite">
         {copyAnnouncement}
       </div>
 
@@ -118,7 +111,7 @@
         <!-- Recommended next step — highlighted block -->
         <div class="recommended-step" role="note">
           <p class="step-text">{guidance.recommendedNextStep}</p>
-          <button class="primary" onclick={handlePrimary}>
+          <button class="dlg-primary" onclick={handlePrimary}>
             {guidance.recommendedAction}
           </button>
         </div>
@@ -138,7 +131,7 @@
           <div class="backup-row">
             <Icon name="file-down" size={14} />
             <span class="backup-label">Your backup is saved here</span>
-            <button class="ghost small" onclick={handleShowBackup}>
+            <button class="dlg-ghost small" onclick={handleShowBackup}>
               Show backup
             </button>
           </div>
@@ -146,13 +139,13 @@
 
         {#if supportDetails}
           <div class="copy-details-row">
-            <button class="ghost small" onclick={copyDetails}>
+            <button class="dlg-ghost small" onclick={copyDetails}>
               Copy details for support
             </button>
             {#if logFilePath}
               <button
                 bind:this={viewLogBtn}
-                class="ghost small"
+                class="dlg-ghost small"
                 onclick={() => { logDialogOpen = true; }}
               >
                 View log
@@ -166,7 +159,7 @@
           <div class="copy-details-row">
             <button
               bind:this={viewLogBtn}
-              class="ghost small"
+              class="dlg-ghost small"
               onclick={() => { logDialogOpen = true; }}
             >
               View log
@@ -176,8 +169,8 @@
       {/if}
     </div>
 
-    <footer class="actions">
-      <button class="ghost" onclick={close}>Close</button>
+    <footer class="dlg-actions">
+      <button class="dlg-ghost" onclick={close}>Close</button>
     </footer>
   </div>
 {/if}
@@ -188,73 +181,17 @@
   triggerEl={viewLogBtn}
 />
 
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) close();
-  }}
-/>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
+  @import "$lib/styles/dialog-shell.css";
 
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  .dlg-shell {
     width: min(540px, 94vw);
     max-height: 84vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
-
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-  }
-
-  .dialog-header h2 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+  .dlg-header h2 {
     color: var(--app-text);
   }
-
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
   .dialog-body {
     padding: 16px 18px;
@@ -263,18 +200,6 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 
   .summary {
@@ -358,51 +283,19 @@
     color: var(--app-text-muted);
   }
 
-  /* Pinned action bar */
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    flex-shrink: 0;
-    padding: 14px 18px;
-    border-top: 1px solid var(--app-border-subtle);
-    background: var(--app-surface);
-  }
-
-  .actions button {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-
-  .primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
+  /* The recommended-step CTA lives inline in the body (not the footer), so
+     unlike a normal `.dlg-primary` (styled only via `.dlg-actions button`'s
+     base rule) it needs its own base sizing here too. Gradient fill — see
+     dialog-shell.css's note on the L5 primary-button inconsistency. */
+  .recommended-step .dlg-primary {
     padding: 6px 14px;
     font-size: 13px;
     border-radius: 4px;
     cursor: pointer;
     align-self: flex-start;
+    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
   }
-  .primary:hover:not(:disabled) { background: var(--app-accent-hover); }
-  .primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-
-  .ghost {
-    background: transparent;
-    color: var(--app-text-muted);
-    border: 1px solid var(--app-border);
-    cursor: pointer;
-    border-radius: 4px;
-  }
-  .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
-  .ghost:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-
-  .small {
-    padding: 4px 10px;
-    font-size: 11px;
-    border-radius: 5px;
-  }
+  .recommended-step .dlg-primary:hover:not(:disabled) { background: var(--app-accent-hover); }
 </style>

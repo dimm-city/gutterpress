@@ -1,15 +1,12 @@
-import { error } from '@sveltejs/kit';
-import { getRecoveryHooks } from '../../../../../electron/server-bridge/recovery-hooks';
-import { jsonRoute, requireAbsolute } from '../../_lib/handler';
+import { getRecoveryHooks, type RecoveryHooks } from '../../../../../electron/server-bridge/recovery-hooks';
+import { defineRoute, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { projectDir?: string }) => {
-  const { projectDir } = body;
-  if (!projectDir) error(400, 'projectDir is required');
-  requireAbsolute(projectDir, 'recovery:list');
-
-  const hooks = getRecoveryHooks();
-  if (!hooks) error(503, 'Recovery hooks not registered');
-
-  return hooks.list(projectDir);
+export const POST: RequestHandler = defineRoute<{ projectDir: string }, RecoveryHooks>({
+  hooks: getRecoveryHooks,
+  hooksUnavailableMessage: 'Recovery hooks not registered',
+  validate: (raw) => ({
+    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'recovery:list'),
+  }),
+  call: async ({ body, hooks }) => hooks.list(body.projectDir),
 });

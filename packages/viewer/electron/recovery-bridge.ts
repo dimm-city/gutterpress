@@ -1,6 +1,21 @@
 /**
  * recovery-bridge.ts — Host-side helper for sync recovery.
  *
+ * NAMING MAP (UX review M38): "recovery" names TWO unrelated subsystems in
+ * this codebase, and they must not be confused:
+ *   1. CRASH-DRAFT recovery (`electron/recovery.ts` + its `/api/recovery/*`
+ *      routes + CrashRecoveryDialog.svelte) — an in-editor unsaved-changes
+ *      sidecar. Writer-facing vocabulary: "unsaved changes" only, never
+ *      "recovery".
+ *   2. SYNC-REPAIR recovery (THIS FILE + RecoveryOverlay /
+ *      RecoveryConfirmDialog / RecoveryGuidanceDialog) — git-repair machinery
+ *      for a broken local-git project. Writer-facing vocabulary: "backup" /
+ *      "repair", also never the bare word "recovery" in visible copy.
+ * Internal identifiers (this file's name, `RecoveryContext`, `RecoveryResult`,
+ * the route paths) keep the word "recovery" — renaming them broadly is out of
+ * scope (churn with no writer-facing value); only each domain's writer-facing
+ * dialog copy is disambiguated.
+ *
  * Keeps electron/main.ts diff small by extracting:
  *  1. The pending-confirm resolver map + ConfirmationGate bridge
  *  2. buildRecoveryContext() — resolves RecoveryContext from a projectDir
@@ -243,11 +258,27 @@ export function preExportSyncGateBlockError(gateErr: unknown): Error | null {
 
 const BINARY_EXTENSIONS = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg",
+  ".ico", ".bmp", ".tif", ".tiff",
   ".pdf", ".zip", ".tar", ".gz", ".7z",
   ".ttf", ".otf", ".woff", ".woff2", ".eot",
   ".mp3", ".mp4", ".wav", ".ogg",
   ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 ]);
+
+/**
+ * Canonical binary-file classification (L12 — 2026-07-10 UX review). The ONE
+ * source of truth for "is this conflicted file binary", shared by the
+ * single-file preview below (`getConflictPreviewImpl`) AND the conflict-file
+ * list the auto-sync orchestrator emits (`electron/auto-sync/orchestrator.ts`,
+ * `recovery-emit.ts`). Before this fix, `ConflictChoicesDialog.svelte` kept its
+ * OWN divergent client-side regex — missing `.zip`/`.docx`/`.mp4` (host had
+ * them) and wrongly treating `.ico`/`.bmp`/`.tiff` as binary that the host's
+ * list used to omit (now added above). The host is authoritative; the dialog
+ * no longer guesses.
+ */
+export function isConflictFileBinary(relativePath: string): boolean {
+  return BINARY_EXTENSIONS.has(path.extname(relativePath).toLowerCase());
+}
 
 const PREVIEW_SIZE_CAP = 256 * 1024; // 256 KB
 
@@ -283,9 +314,8 @@ export async function getConflictPreviewImpl(
     throw new Error(`Path traversal rejected: ${relativePath}`);
   }
 
-  // Binary detection by extension
-  const ext = path.extname(relativePath).toLowerCase();
-  if (BINARY_EXTENSIONS.has(ext)) {
+  // Binary detection by extension (single source of truth — isConflictFileBinary above)
+  if (isConflictFileBinary(relativePath)) {
     return { mine: "", theirs: "", kind, isBinary: true };
   }
 

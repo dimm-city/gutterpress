@@ -15,7 +15,7 @@
   import { onMount } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
-  import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/contract";
+  import type { MediaImageEntry, MediaImageDetails } from "$lib/platform/dtos";
   import {
     buildPrintWarnings,
     defaultAltText,
@@ -137,16 +137,28 @@
     };
   });
 
+  // L7: rapid tile clicks each kick off an `api.media.inspect` call; without
+  // a sequence guard an earlier click's response can resolve AFTER a later
+  // click's and overwrite `details`/`selected` with the wrong image's
+  // DPI/print-readiness data. Same pattern `refresh()`'s `loadSeq` already
+  // uses for thumbnail loads — a dedicated counter here since selection and
+  // thumbnail-loading are independent concerns.
+  let selectSeq = 0;
+
   async function select(entry: MediaImageEntry): Promise<void> {
+    const seq = ++selectSeq;
     selected = entry;
     details = null;
     detailsLoading = true;
     try {
-      details = await api.media.inspect(entry.path);
+      const result = await api.media.inspect(entry.path);
+      if (seq !== selectSeq) return;
+      details = result;
     } catch {
+      if (seq !== selectSeq) return;
       details = null;
     } finally {
-      detailsLoading = false;
+      if (seq === selectSeq) detailsLoading = false;
     }
   }
 
@@ -176,22 +188,17 @@
     try {
       const picked = await api.dialog.pickImageFiles();
       if (picked.length === 0) return;
-      // Project convention: an existing images/ dir wins, else assets/
-      // (created on demand) — same destination the editor toolbar uses.
-      const base = dir.replace(/[\\/]+$/, "");
-      const sep = base.includes("\\") ? "\\" : "/";
-      let destName = "assets";
-      try {
-        const entries = await api.fs.listDir(base);
-        if (entries.some((e) => e.isDir && e.name === "images")) destName = "images";
-      } catch {
-        // listDir failure → fall through to assets/
-      }
-      const destDir = base + sep + destName;
+      // Destination policy + path math live in the ONE host-side import
+      // route (UX review M10) — same one the editor toolbar's Insert Image
+      // dialog calls — so this panel does zero path/fs logic of its own.
+      let destName: string | null = null;
       for (const src of picked) {
-        await api.fs.copyFile(src, destDir);
+        const result = await api.media.importImage(dir, src);
+        destName ??= result.src.includes("/") ? result.src.slice(0, result.src.indexOf("/")) : null;
       }
-      notice = `Added ${picked.length} image${picked.length === 1 ? "" : "s"} to ${destName}/.`;
+      notice = destName
+        ? `Added ${picked.length} image${picked.length === 1 ? "" : "s"} to ${destName}/.`
+        : `Added ${picked.length} image${picked.length === 1 ? "" : "s"}.`;
       await refresh();
     } catch (e: unknown) {
       notice = null;

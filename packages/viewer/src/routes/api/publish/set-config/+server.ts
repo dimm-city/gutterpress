@@ -1,6 +1,5 @@
-import { error } from '@sveltejs/kit';
 import { getHooks, handlePublishErrors } from '../_hooks';
-import { jsonRoute, requireAbsolute } from '../../_lib/handler';
+import { defineRoute, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -8,15 +7,18 @@ import type { RequestHandler } from './$types';
  * section (empty string values delete the key). Secrets never travel here —
  * they go through publish:connect into the credential store.
  */
-export const POST: RequestHandler = jsonRoute(
-  async (body: {
+export const POST: RequestHandler = defineRoute<
+  {
     projectDir?: string;
     providerId?: string;
     values?: Record<string, unknown>;
-  }) => {
-    const hooks = getHooks();
-    if (!hooks) error(503, 'Publish hooks not available');
-    return handlePublishErrors('publish:setConfig', async () => {
+  },
+  NonNullable<ReturnType<typeof getHooks>>
+>({
+  hooks: getHooks,
+  hooksUnavailableMessage: 'Publish hooks not available',
+  call: async ({ body, hooks }) =>
+    handlePublishErrors('publish:setConfig', async () => {
       const projectDir = requireAbsolute(body.projectDir, 'publish:setConfig');
       if (!body.providerId || !body.values || typeof body.values !== 'object') {
         throw new Error('publish:setConfig requires { providerId, values }');
@@ -33,6 +35,5 @@ export const POST: RequestHandler = jsonRoute(
         if (v === null || typeof v === 'string' || typeof v === 'number') values[k] = v;
       }
       return lib.setPublishProviderConfig(projectDir, provider.info.id, values);
-    });
-  },
-);
+    }),
+});

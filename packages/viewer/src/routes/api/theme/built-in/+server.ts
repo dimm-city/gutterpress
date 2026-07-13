@@ -1,7 +1,9 @@
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute, loadLib } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = jsonRoute(async () => {
-  const lib = await import('@dimm-city/print-md');
-  return lib.listBuiltInThemes();
+export const GET: RequestHandler = defineRoute({
+  call: async () => {
+    const lib = await loadLib();
+    return lib.listBuiltInThemes();
+  },
 });

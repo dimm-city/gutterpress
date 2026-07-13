@@ -1,63 +1,35 @@
-import { json, error } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { isAbsolute } from 'node:path';
-import { getVcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
+import { error } from '@sveltejs/kit';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
+import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import type { RequestHandler } from './$types';
 
-// Local types — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
-interface SnapshotEntry {
-  id: string;
-  message: string;
-  timestamp: number;
-  author?: string;
-}
-
-interface SnapshotPage {
-  entries: SnapshotEntry[];
-  hasMore: boolean;
-}
-
-interface LibModule {
-  detectProjectSource: (dir: string) => Promise<unknown>;
-  providerFor: (source: unknown) => {
-    listHistoryPage: (dir: string, opts?: { limit?: number; before?: string }) => Promise<SnapshotPage>;
-  };
-}
-
-export const POST: RequestHandler = async ({ request }) => {
-  const body = await request.json().catch(() => ({})) as {
-    projectDir?: unknown;
-    limit?: unknown;
-    before?: unknown;
-  };
-  const projectDir = body.projectDir;
-  if (typeof projectDir !== 'string' || !isAbsolute(projectDir)) {
-    return error(400, 'vcs/list-snapshots-page requires an absolute projectDir');
-  }
-
-  // Validate the continuation cursor before it reaches the lib (it is
-  // used as a git ref); a malformed cursor must never become a ref query.
-  const before = body.before;
-  if (before !== undefined && (typeof before !== 'string' || !/^[0-9a-f]{40}$/i.test(before))) {
-    return error(400, 'vcs/list-snapshots-page requires a valid snapshot id cursor');
-  }
-
-  const limit = body.limit;
-
-  try {
-    const hooks = getVcsHooks<LibModule>();
-    if (!hooks) return error(503, 'VCS hooks not registered');
-    const lib = await hooks.loadLib();
-    const source = await lib.detectProjectSource(projectDir);
-    return json(
-      await lib.providerFor(source).listHistoryPage(projectDir, {
-        ...(typeof limit === 'number' ? { limit } : {}),
-        ...(typeof before === 'string' ? { before } : {}),
-      }),
-    );
-  } catch (e) {
-    if (e && typeof e === 'object' && 'status' in e) throw e;
-    const { status, message } = friendlyVcsError(e, 'listSnapshotsPage', 'vcs/list-snapshots-page');
-    throw error(status, message);
-  }
-};
+export const POST: RequestHandler = defineRoute<{
+  projectDir: string;
+  limit?: number;
+  before?: string;
+}>({
+  validate: (raw) => {
+    const body = raw as { projectDir?: string; limit?: unknown; before?: unknown };
+    const projectDir = requireAbsolute(body.projectDir, 'vcs/list-snapshots-page');
+    // Validate the continuation cursor before it reaches the lib (it is
+    // used as a git ref); a malformed cursor must never become a ref query.
+    const before = body.before;
+    if (before !== undefined && (typeof before !== 'string' || !/^[0-9a-f]{40}$/i.test(before))) {
+      error(400, 'vcs/list-snapshots-page requires a valid snapshot id cursor');
+    }
+    return {
+      projectDir,
+      ...(typeof body.limit === 'number' ? { limit: body.limit } : {}),
+      ...(typeof before === 'string' ? { before } : {}),
+    };
+  },
+  call: async ({ body }) => {
+    const lib = await loadLib();
+    const source = await lib.detectProjectSource(body.projectDir);
+    return lib.providerFor(source).listHistoryPage(body.projectDir, {
+      ...(typeof body.limit === 'number' ? { limit: body.limit } : {}),
+      ...(typeof body.before === 'string' ? { before: body.before } : {}),
+    });
+  },
+  onError: (e) => friendlyVcsError(e, 'listSnapshotsPage', 'vcs/list-snapshots-page'),
+});

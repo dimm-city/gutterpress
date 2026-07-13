@@ -17,6 +17,41 @@ For development use, run from source:
 bun packages/cli/src/cli.ts --version
 ```
 
+## Create Your First Project
+
+The fastest way to start is the built-in scaffolder — it generates a working
+project (manifest, a starter chapter, a real editable stylesheet, and local
+version history) in one command, so you never have to hand-write a manifest
+just to get going:
+
+```bash
+print-md new "My Book"
+```
+
+This creates a `my-book/` folder in the current directory:
+
+```
+my-book/
+├── manifest.yaml       # Pre-filled with your title and author
+├── chapter-01.md       # A starter chapter — replace with your content
+├── styles/
+│   └── book.css        # A real starter stylesheet, ready to edit
+└── assets/              # Images, fonts, diagrams go here
+```
+
+It also runs `git init` and records a "Created project" snapshot by default —
+local version history with no credentials and no remote required. Pass
+`--no-git` to skip that.
+
+Useful flags:
+
+```bash
+print-md new "My Book" --author "Jane Doe"   # record an author
+print-md new "My Book" --dir ~/Books         # choose a parent directory
+print-md new "My Book" --template ttrpg      # book | ttrpg | zine | technical
+print-md new "My Book" --no-git              # skip local version history
+```
+
 ## Basic Workflow
 
 Three commands cover most use cases:
@@ -32,7 +67,11 @@ print-md preview ./my-book
 print-md build ./my-book --out my-book.pdf
 ```
 
-The `preview` command starts a local server at `http://localhost:3000` and reloads when any source file changes. The `build` command produces a PDF in a `dist/` directory next to your project.
+The `preview` command starts a local server — by default at
+`http://localhost:3579` (override with `--port`) — and reloads when any
+source file changes; the terminal always prints the actual URL on startup,
+so that's the source of truth if you've changed the port. The `build`
+command produces a PDF in a `dist/` directory next to your project.
 
 ### Previewing in Different Browsers
 
@@ -40,7 +79,7 @@ The live preview runs in your browser. Safari and Firefox may place page breaks 
 
 ## Project Structure
 
-A Print-md project is a directory with a `manifest.yaml` file and one or more markdown source files:
+A Print-md project is a directory with a `manifest.yaml` file and one or more markdown source files — the same shape `print-md new` just created for you, grown out with more chapters:
 
 ```
 my-book/
@@ -56,9 +95,15 @@ my-book/
 
 Files are processed in the order listed in `manifest.yaml`. If no order is specified, they are processed alphabetically — which is why numeric prefixes (`01-`, `02-`) are the standard convention.
 
-## Manifest Configuration
+## Reference: Manifest Configuration
 
-The `manifest.yaml` file configures the book metadata, page geometry, stylesheets, and source files. Create one in your project directory:
+You don't need to hand-write `manifest.yaml` — `print-md new` already
+generated one for you, pre-filled with your title and author. This section
+is a reference for editing it directly (changing page size, adding
+stylesheets, reordering chapters) or for authors who prefer to build a
+project from scratch instead of the scaffolder.
+
+The `manifest.yaml` file configures the book metadata, page geometry, stylesheets, and source files:
 
 ```yaml
 # Basic metadata
@@ -85,11 +130,9 @@ source:
   assets:
     - styles
     - assets
-
-# Plugins (optional)
-plugins:
-  - ttrpg
 ```
+
+Plugins are optional and most projects don't need any — see Chapter 6, *Plugins*, for the `plugins:` manifest key and the bundled, no-install-required plugins.
 
 ### Page Size Reference
 

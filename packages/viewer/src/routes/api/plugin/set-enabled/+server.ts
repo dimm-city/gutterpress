@@ -1,21 +1,19 @@
 import { error } from '@sveltejs/kit';
-import { isAbsolute } from 'node:path';
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: {
-  projectDir?: string;
-  ref?: string;
-  enabled?: boolean;
-}) => {
-  const { projectDir, ref, enabled } = body;
-  if (!projectDir || !isAbsolute(projectDir)) {
-    error(400, 'plugin/set-enabled requires an absolute projectDir');
-  }
-  if (typeof ref !== 'string') {
-    error(400, 'plugin/set-enabled requires a ref string');
-  }
-  const lib = await import('@dimm-city/print-md');
-  await lib.setPluginEnabled(projectDir, ref, Boolean(enabled));
-  return { ok: true };
+export const POST: RequestHandler = defineRoute<{ projectDir: string; ref: string; enabled: boolean }>({
+  validate: (raw) => {
+    const body = raw as { projectDir?: string; ref?: string; enabled?: boolean };
+    const projectDir = requireAbsolute(body.projectDir, 'plugin/set-enabled');
+    if (typeof body.ref !== 'string') {
+      error(400, 'plugin/set-enabled requires a ref string');
+    }
+    return { projectDir, ref: body.ref, enabled: Boolean(body.enabled) };
+  },
+  call: async ({ body }) => {
+    const lib = await loadLib();
+    await lib.setPluginEnabled(body.projectDir, body.ref, body.enabled);
+    return { ok: true };
+  },
 });

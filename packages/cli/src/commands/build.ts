@@ -6,7 +6,12 @@ import {
   splitOutPath,
   BuildError,
 } from "../index.ts";
-import { parseFormat, parsePdfxFlavor, UsageError } from "../lib/cli-args.ts";
+import {
+  parseFormat,
+  parsePdfxFlavor,
+  rejectExtraPositionals,
+  UsageError,
+} from "../lib/cli-args.ts";
 
 export default defineCommand({
   meta: {
@@ -29,6 +34,8 @@ export default defineCommand({
   },
   async run({ args }) {
     try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "build");
+
       const format = parseFormat(args.format, { default: "pdf" });
       const pdfxFlavor = parsePdfxFlavor(args["pdfx-flavor"], format);
       const { outDir, pdfFileOverride } = splitOutPath(

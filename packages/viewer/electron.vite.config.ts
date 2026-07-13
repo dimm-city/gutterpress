@@ -4,10 +4,12 @@ import { dirname, resolve } from "node:path";
 
 // electron-vite builds the Electron main + preload (ESM — the package is
 // "type": "module"). The renderer is NOT built here: it's a SvelteKit
-// adapter-static SPA built separately by `vite build` into build/, and served
-// by main via the app:// protocol. externalizeDepsPlugin keeps the runtime deps
-// (@dimm-city/print-md and its graph) out of the bundle so electron-builder
-// ships them from node_modules.
+// adapter-node app (server + client bundle) built separately by `vite build`
+// into build/, whose Node handler (build/handler.js) Electron main starts on
+// a local 127.0.0.1 server and serves to the window via the app:// protocol
+// (which proxies each request to that server with fetch — see CLAUDE.md §8).
+// externalizeDepsPlugin keeps the runtime deps (@dimm-city/print-md and its
+// graph) out of the bundle so electron-builder ships them from node_modules.
 const root = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
@@ -16,9 +18,10 @@ export default defineConfig({
     // Bake the GitHub OAuth App client id into the MAIN bundle at build time:
     // `process.env.PRINT_MD_GITHUB_CLIENT_ID` does not exist on end-user
     // machines, so release CI sets it (repo variable → env on the viewer build
-    // step; see ADR 0006 release checklist) and this define replaces the
-    // expression with the literal value. When unset it bakes "" — which
-    // resolveGitHubClientId treats as unset (default-registration fallback).
+    // step; see docs/adr/0006-remote-git-github-integration.md D1) and this
+    // define replaces the expression with the literal value. When unset it
+    // bakes "" — which resolveGitHubClientId treats as unset (default-
+    // registration fallback).
     define: {
       "process.env.PRINT_MD_GITHUB_CLIENT_ID": JSON.stringify(
         process.env.PRINT_MD_GITHUB_CLIENT_ID ?? "",
@@ -48,7 +51,15 @@ export default defineConfig({
       rollupOptions: {
         external: ["electron"],
         input: resolve(root, "electron/preload.ts"),
-        output: { format: "es", entryFileNames: "preload.js" },
+        // MUST be CJS with a .cjs extension: the main window runs with
+        // sandbox: true (2026-07 security hardening, ARCH review #1/#33), and
+        // Electron's sandboxed preload loader cannot execute ESM — an
+        // ES-format preload fails with "Cannot use import statement outside
+        // a module" and the whole window.electron bridge silently disappears
+        // in the packaged app (caught by the packaged-app render gate, not
+        // unit tests). The .cjs extension matters because package.json is
+        // "type": "module".
+        output: { format: "cjs", entryFileNames: "preload.cjs" },
       },
     },
   },

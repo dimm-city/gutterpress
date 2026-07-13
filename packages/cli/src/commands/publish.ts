@@ -7,11 +7,14 @@ import {
   listPublishProviders,
   publishProviderFor,
   publishConnectionStatus,
+  publishCredentialKey,
+  listPublishAccounts,
   runPublish,
   openPath,
   type PublishDeps,
   type RunPublishResult,
 } from "../index.ts";
+import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
 
 /**
  * `print-md publish` (#35) — push a built artifact to a publishing platform,
@@ -90,6 +93,11 @@ export default defineCommand({
         "Store an API key for --provider (from --token, the provider's env var, or piped stdin)",
     },
     disconnect: { type: "boolean", description: "Forget the stored key for --provider" },
+    account: {
+      type: "string",
+      description:
+        "Named-credential label for --connect/--disconnect, so you can keep several accounts per provider (e.g. --account studio). Omit for the default account.",
+    },
     token: {
       type: "string",
       description:
@@ -109,6 +117,16 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    try {
+      rejectExtraPositionals((args as { _: unknown[] })._, 1, "publish");
+    } catch (error) {
+      if (error instanceof UsageError) {
+        log.error(error.message);
+        process.exit(error.exitCode);
+      }
+      throw error;
+    }
+
     const json = !!args.json;
     const store = new FileTokenStore();
     const deps: PublishDeps = {
@@ -121,12 +139,15 @@ export default defineCommand({
       const rows = await Promise.all(
         providers.map(async (p) => {
           const status = await publishConnectionStatus(p, deps);
+          // Saved named accounts (default + named) for a credentialed provider.
+          const accounts = p.credential.required ? await listPublishAccounts(p, deps) : [];
           return {
             id: p.id,
             label: p.label,
             kind: p.kind,
             format: p.format,
             connected: status.connected,
+            accounts,
           };
         }),
       );
@@ -139,6 +160,10 @@ export default defineCommand({
           log.info(
             `${r.id.padEnd(13)} ${r.label.padEnd(22)} ${r.kind.padEnd(6)} ${r.format.padEnd(4)} ${status}`,
           );
+          // List saved accounts so the user can see/reuse named credentials.
+          for (const acc of r.accounts) {
+            log.info(`    • ${acc.account ? acc.account : "(default)"}`);
+          }
         }
       }
       return;
@@ -149,20 +174,22 @@ export default defineCommand({
       log.error(
         "Specify a provider: print-md publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify> (or --list).",
       );
-      process.exit(2);
+      process.exit(EXIT_CODES.USAGE);
     }
     let provider;
     try {
       provider = publishProviderFor(providerId);
     } catch (e) {
       log.error(e instanceof Error ? e.message : String(e));
-      process.exit(2);
+      process.exit(EXIT_CODES.USAGE);
     }
     const projectDir = path.resolve((args.project as string | undefined) ?? ".");
 
+    const account = typeof args.account === "string" ? args.account.trim() : "";
+
     if (args.disconnect) {
-      await store.delete(provider.info.credential.host);
-      log.success(`Disconnected ${provider.info.label}.`);
+      await store.delete(publishCredentialKey(provider.info.credential.host, account));
+      log.success(`Disconnected ${provider.info.label}${account ? ` (${account})` : ""}.`);
       return;
     }
 
@@ -185,7 +212,7 @@ export default defineCommand({
               ? `\nCreate one at: ${provider.info.credential.tokenUrl}`
               : ""),
         );
-        process.exit(2);
+        process.exit(EXIT_CODES.USAGE);
       }
       // Shared verify-before-store flow: the pasted key is checked with the
       // platform first, so a bad paste can't clobber a working credential.
@@ -195,15 +222,18 @@ export default defineCommand({
             projectDir,
             providerId: provider.info.id,
             token,
+            ...(account ? { account } : {}),
             manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
           },
           deps,
         );
       } catch (e) {
         log.error(e instanceof Error ? e.message : String(e));
-        process.exit(1);
+        process.exit(EXIT_CODES.FINDINGS);
       }
-      log.success(`Connected ${provider.info.label}. The key is stored in your user config, not the project.`);
+      log.success(
+        `Connected ${provider.info.label}${account ? ` (${account})` : ""}. The key is stored in your user config, not the project.`,
+      );
       return;
     }
 
@@ -226,6 +256,6 @@ export default defineCommand({
           : result.outcome.url;
       if (target) await openPath(target).catch(() => {});
     }
-    if (!result.ok) process.exit(1);
+    if (!result.ok) process.exit(EXIT_CODES.FINDINGS);
   },
 });

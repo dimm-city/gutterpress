@@ -26,10 +26,49 @@
  * `destroy` and restores focus. `onClose` should flip that flag; the backdrop
  * click handler should call the same function.
  */
-import { trapFocus } from "$lib/a11y";
-
-const FOCUSABLE =
+/**
+ * CSS selector for "things a user can Tab to" — exported so the one
+ * remaining non-modal caller (EditorToolbar's plain-disclosure popups, which
+ * intentionally do NOT use `dialogBehavior` — see its own comments) can reuse
+ * this selector for "focus the first focusable child on open" instead of
+ * hand-rolling its own copy (ARCH #42 found EditorToolbar's image dialog
+ * doing exactly that).
+ */
+export const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/**
+ * Trap keyboard focus inside a dialog element (WCAG 2.1.2).
+ *
+ * The browser does not enforce focus containment for `aria-modal` dialogs on
+ * keyboard-only navigation, so this must be wired to the dialog container's
+ * `onkeydown` event. `dialogBehavior` is the only legitimate caller — every
+ * dialog shell in the app goes through the action now (ARCH #42), so this
+ * stays a private implementation detail of this module rather than a
+ * separately-exported utility other components could hand-wire again.
+ */
+function trapFocus(
+  e: KeyboardEvent,
+  dialogEl: HTMLElement | null | undefined,
+): void {
+  if (e.key !== "Tab" || !dialogEl) return;
+  const items = Array.from(
+    dialogEl.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, summary, textarea, [tabindex]:not([tabindex="-1"])',
+    ),
+  ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
+  if (items.length === 0) return;
+  const first = items[0]!;
+  const last = items[items.length - 1]!;
+  const active = dialogEl.ownerDocument.activeElement as HTMLElement | null;
+  if (e.shiftKey && active === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && active === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
 
 export interface DialogOptions {
   /**
@@ -107,4 +146,65 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
       restore?.focus?.();
     },
   };
+}
+
+/**
+ * Wrap a close handler so it is a no-op while `blocked` is true — the shared
+ * guard behind a dialog's mid-operation dismissal rule (UX review M19): the
+ * backdrop click, the header close button, AND Escape (routed through
+ * `dialogBehavior`'s `onClose`) all funnel through the SAME wrapped function,
+ * so a dialog can't be dismissed by any of the three gestures while e.g. a
+ * create/connect/clone is in flight. Promotes the pattern GitHubDialog
+ * already used ad hoc (`closeBlocked`) so NewProjectWizard and
+ * AdvancedSetupDialog don't each hand-roll their own copy.
+ *
+ * `blocked` is a getter (not a plain boolean) so callers can pass a reactive
+ * accessor (e.g. `() => creating`) and always guard against the CURRENT
+ * value, not the value captured when the dialog opened.
+ */
+export function guardedClose(
+  onClose: () => void,
+  blocked: () => boolean,
+): () => void {
+  return () => {
+    if (!blocked()) onClose();
+  };
+}
+
+/** A keyed set of "armed" (awaiting a confirming second click) ids. */
+export type InlineConfirmState = Readonly<Record<string, true>>;
+
+/**
+ * Two-step inline-confirm state transition for a destructive per-row action
+ * (Disconnect, Delete, …), extracted from the pattern CrashRecoveryDialog
+ * pioneered for its Discard button: the first call arms `key` (the button's
+ * label swaps to "Really …?" in place — no second element appears, so
+ * focus is never lost); a second call while `key` is already armed reports
+ * `confirmed: true` so the caller runs the actual destructive action, and
+ * clears the armed state.
+ *
+ * Pure and state-shape-only — the caller owns the actual `$state` and reacts
+ * to `confirmed`. Kept in `dialog.ts` (not duplicated per-dialog) so
+ * AdvancedSetupDialog's Disconnect (L2) and SnippetPicker's delete (M25)
+ * share one tested implementation.
+ */
+export function requestInlineConfirm(
+  state: InlineConfirmState,
+  key: string,
+): { state: InlineConfirmState; confirmed: boolean } {
+  if (state[key]) {
+    const { [key]: _armed, ...rest } = state;
+    return { state: rest, confirmed: true };
+  }
+  return { state: { ...state, [key]: true }, confirmed: false };
+}
+
+/** Disarm `key` without confirming (e.g. its "Cancel" button, or re-opening the dialog). */
+export function cancelInlineConfirm(
+  state: InlineConfirmState,
+  key: string,
+): InlineConfirmState {
+  if (!state[key]) return state;
+  const { [key]: _armed, ...rest } = state;
+  return rest;
 }

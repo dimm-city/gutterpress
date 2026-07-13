@@ -20,6 +20,21 @@ import { pagedjsPolyfillTag } from "../pagedjs-marker";
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
 
+/**
+ * One author-mistake warning emitted by `markdown-it-paged` (ARCH finding #4).
+ * Mirrors the shape `markdown-it-paged.js`'s `warn()` pushes onto
+ * `env.layoutWarnings` — see that file's header comment for the 8 warning
+ * `type`s (`ambiguous_marker_token`, `section_without_page`, `nested_spread`,
+ * `continue_without_section`, `spread_without_pages`, `spread_eof_close`,
+ * `page_outside_spread`, `implicit_page`).
+ */
+export interface LayoutWarning {
+  line: number;
+  type: string;
+  message: string;
+  marker?: unknown;
+}
+
 export interface AssembleBookHtmlOptions {
   /** Ordered list of project-root-relative `.md` files to concatenate. */
   files: string[];
@@ -37,6 +52,17 @@ export interface AssembleBookHtmlOptions {
    * build output is unaffected.
    */
   wrapChapters?: boolean;
+  /**
+   * ARCH finding #4: per-chapter callback receiving any `env.layoutWarnings`
+   * `markdown-it-paged` computed while rendering `file` (only called when
+   * that chapter produced at least one). `file` is the same canonical
+   * chapter id used for `data-chapter-src`, so a host can attribute a warning
+   * to the exact source file. Additive/optional — omitting it reproduces the
+   * prior throwaway-env behavior exactly, so this cannot change output for
+   * existing callers (e.g. the viewer's WebAdapter, which still gets a plain
+   * `Promise<string>` back).
+   */
+  onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
 }
 
 /**
@@ -59,9 +85,12 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
 
   const md = createMarkdownRenderer(opts.plugins);
 
-  // Source files concatenate directly into the body. @chapter (DC plugin)
-  // owns chapter wrappers and IDs; print-md core does not impose a file-level
-  // wrapper.
+  // Source files concatenate directly into the body. @chapter is a CORE
+  // markdown-it-paged marker (parsed + wrapped + labeled by
+  // `markdown-it-paged.js`'s `openChapter`, not any project-specific plugin —
+  // see CLAUDE.md's "frozen chapter-opener" note) that owns chapter wrappers
+  // and IDs; print-md core itself does not impose a separate file-level
+  // wrapper on top of that.
   let bodyContent = "";
   for (const file of files) {
     // ONE canonical identity per chapter (see chapter-id.ts): the same
@@ -76,7 +105,18 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
       const errorMsg = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to read file ${file}: ${errorMsg}`);
     }
-    const rendered = md.render(content);
+    // Thread a per-chapter env through md.render (ARCH #4): previously this was
+    // a bare `md.render(content)`, so every `env.layoutWarnings` markdown-it-paged
+    // computed landed in markdown-it's own throwaway internal env and was
+    // discarded the instant this call returned. Passing our own env here is the
+    // ONLY change needed to make ~150 lines of already-written, already-tested
+    // author-mistake diagnostics (§6: the plugin still owns computing them)
+    // observable to a caller.
+    const env: { layoutWarnings?: LayoutWarning[] } = {};
+    const rendered = md.render(content, env);
+    if (env.layoutWarnings && env.layoutWarnings.length > 0) {
+      opts.onChapterWarnings?.(chapterId, env.layoutWarnings);
+    }
     if (opts.wrapChapters) {
       const safe = chapterId.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
       bodyContent += `<div class="pmd-chapter" data-chapter-src="${safe}">\n${rendered}\n</div>\n`;

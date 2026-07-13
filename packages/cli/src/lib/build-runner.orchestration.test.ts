@@ -8,8 +8,8 @@ import {
   runBuild,
   resolveIccProfile,
   BuildError,
-  type PdfRenderInput,
 } from "./build-runner.ts";
+import type { PdfRenderInput } from "./pagination.ts";
 import { resolveChromiumExecutable } from "./chromium.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 
@@ -22,11 +22,11 @@ import { getAssetPath } from "./embedded-assets.ts";
  * The HTML build assertion exercises the runtime-pagination fallback
  * (shipRuntimePaginatedHtml): markdown -> book.html + index.html + fingerprint,
  * and the returned BuildRunnerResult shape. That fallback path is only taken
- * when NO Chromium is resolvable, so — mirroring build-runner.render.test.ts's
+ * when NO Chromium is resolvable, so — mirroring pagination.test.ts's
  * `chromium ? test : test.skip` gate, inverted — it runs only when Chromium is
  * absent. When Chromium IS present (e.g. CI's Test job sets
  * PUPPETEER_EXECUTABLE_PATH), runBuild paginates in Chromium instead; that path
- * is covered by build-runner.render.test.ts, and launching a real browser here
+ * is covered by pagination.test.ts, and launching a real browser here
  * would both change the exercised code path and blow the test timeout.
  * The ICC-resolver tests below are pure and always run.
  */
@@ -36,7 +36,7 @@ const htmlFallbackTest = chromium ? test.skip : test;
 if (chromium) {
   // eslint-disable-next-line no-console
   console.warn(
-    "[build-runner.orchestration.test] Chromium resolved — skipping the HTML runtime-pagination fallback assertion (the Chromium path is covered by build-runner.render.test.ts)."
+    "[build-runner.orchestration.test] Chromium resolved — skipping the HTML runtime-pagination fallback assertion (the Chromium path is covered by pagination.test.ts)."
   );
 }
 

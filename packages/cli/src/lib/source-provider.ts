@@ -324,6 +324,29 @@ export async function hasPendingChanges(
 }
 
 /**
+ * True when the working tree has ANY uncommitted change relative to HEAD —
+ * both WORKDIR-vs-STAGE (unstaged edits) AND STAGE-vs-HEAD (staged-but-
+ * uncommitted). This matches `git status --porcelain`'s notion of "dirty".
+ *
+ * Distinct from {@link hasPendingChanges} (WORKDIR-vs-STAGE only, the hot
+ * sync-check path per the sync-simplicity mandate): this is for build
+ * *provenance* — the build fingerprint records whether the tree was clean at
+ * build time, where a `git add`-ed-but-not-committed change must still count
+ * as dirty (the old `git status --porcelain` fingerprint reported it; the
+ * WORKDIR-vs-STAGE-only check silently dropped it).
+ */
+export async function hasUncommittedChanges(
+  dir: string,
+  cache: GitCache = {},
+): Promise<boolean> {
+  if (await hasPendingChanges(dir, cache)) return true;
+  // A HEAD is guaranteed to exist at the fingerprint call site (it resolves
+  // HEAD first); stageMatchesHead returns false for a repo with no commit,
+  // which correctly reads as "dirty" (staged content, nothing committed yet).
+  return !(await stageMatchesHead(dir, cache));
+}
+
+/**
  * True when the INDEX (STAGE) is byte-identical to the tip commit's tree.
  * Deliberately NOT used on the hot sync-check path (that's `hasPendingChanges`
  * / `listWorkdirChanges`, WORKDIR-vs-STAGE only, per the sync-simplicity

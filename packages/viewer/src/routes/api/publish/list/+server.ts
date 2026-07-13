@@ -1,6 +1,5 @@
-import { error } from '@sveltejs/kit';
-import { getHooks, handlePublishErrors } from '../_hooks';
-import { jsonRoute, requireAbsolute } from '../../_lib/handler';
+import { getHooks, handlePublishErrors, type LibPublishProviderInfo } from '../_hooks';
+import { defineRoute, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -8,47 +7,65 @@ import type { RequestHandler } from './$types';
  * declared settings fields) + redacted connection status + the project's
  * non-secret `publish.*` manifest settings.
  */
-export const POST: RequestHandler = jsonRoute(async (body: { projectDir?: string }) => {
-  const hooks = getHooks();
-  if (!hooks) error(503, 'Publish hooks not available');
-  return handlePublishErrors('publish:list', async () => {
-    const projectDir = requireAbsolute(body.projectDir, 'publish:list');
-    const lib = await hooks.loadLib();
-    if (
-      !lib.listPublishProviders ||
-      !lib.readPublishSettings ||
-      !lib.publishConnectionStatus
-    ) {
-      throw new Error('Publishing is not available in this version of the lib');
-    }
-    const settings = await lib.readPublishSettings(projectDir);
-    const cards = await Promise.all(
-      lib.listPublishProviders().map(async (info) => {
-        // One shared definition of "connected" (env var or stored key) — the
-        // same the CLI's --list uses, so the two surfaces can't disagree.
-        const status = await lib.publishConnectionStatus!(info, {
-          tokenStore: hooks.tokenStore,
-        });
-        const raw = settings[info.id] ?? {};
-        const config: Record<string, string> = {};
-        for (const [k, v] of Object.entries(raw)) {
-          if (typeof v === 'string' || typeof v === 'number') config[k] = String(v);
-        }
-        return {
-          id: info.id,
-          label: info.label,
-          kind: info.kind,
-          format: info.format,
-          description: info.description,
-          fields: info.configFields,
-          credentialRequired: info.credential.required,
-          ...(info.credential.tokenUrl ? { tokenUrl: info.credential.tokenUrl } : {}),
-          ...(info.credential.hint ? { hint: info.credential.hint } : {}),
-          connected: status.connected,
-          config,
-        };
-      }),
-    );
-    return cards;
-  });
+export const POST: RequestHandler = defineRoute<
+  { projectDir?: string },
+  NonNullable<ReturnType<typeof getHooks>>
+>({
+  hooks: getHooks,
+  hooksUnavailableMessage: 'Publish hooks not available',
+  call: async ({ body, hooks }) =>
+    handlePublishErrors('publish:list', async () => {
+      const projectDir = requireAbsolute(body.projectDir, 'publish:list');
+      const lib = await hooks.loadLib();
+      if (
+        !lib.listPublishProviders ||
+        !lib.readPublishSettings ||
+        !lib.publishConnectionStatus
+      ) {
+        throw new Error('Publishing is not available in this version of the lib');
+      }
+      const settings = await lib.readPublishSettings(projectDir);
+      const cards = await Promise.all(
+        lib.listPublishProviders().map(async (info: LibPublishProviderInfo) => {
+          const raw = settings[info.id] ?? {};
+          // Book-level selected account (manifest `publish.<id>.credential`);
+          // "" = the default credential. It's a selection reference, NOT a
+          // provider setting, so it's excluded from the rendered config fields.
+          const selectedAccount =
+            typeof raw.credential === 'string' ? raw.credential.trim() : '';
+          const config: Record<string, string> = {};
+          for (const [k, v] of Object.entries(raw)) {
+            if (k === 'credential') continue;
+            if (typeof v === 'string' || typeof v === 'number') config[k] = String(v);
+          }
+          // "connected" (env var or stored key) is evaluated for the SELECTED
+          // account — the same shared definition the CLI's --list uses.
+          const status = await lib.publishConnectionStatus!(
+            info,
+            { tokenStore: hooks.tokenStore, credentialAccount: selectedAccount },
+            selectedAccount,
+          );
+          // Redacted saved credentials for the picker (default + named).
+          const savedAccounts = lib.listPublishAccounts
+            ? await lib.listPublishAccounts(info, { tokenStore: hooks.tokenStore })
+            : [];
+          return {
+            id: info.id,
+            label: info.label,
+            kind: info.kind,
+            format: info.format,
+            description: info.description,
+            fields: info.configFields,
+            credentialRequired: info.credential.required,
+            ...(info.credential.tokenUrl ? { tokenUrl: info.credential.tokenUrl } : {}),
+            ...(info.credential.hint ? { hint: info.credential.hint } : {}),
+            connected: status.connected,
+            config,
+            savedAccounts,
+            selectedAccount,
+          };
+        }),
+      );
+      return cards;
+    }),
 });

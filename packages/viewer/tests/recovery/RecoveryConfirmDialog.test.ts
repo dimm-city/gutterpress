@@ -254,22 +254,41 @@ describe("RecoveryConfirmDialog — accessibility", () => {
     return fs.readFileSync(COMPONENT_PATH, "utf8");
   }
 
-  test("role='dialog' is present on the root dialog element", () => {
+  // M1/#42 (dialog-system consolidation): role="dialog", aria-modal,
+  // aria-labelledby, Escape-to-close, and the focus trap are now owned by
+  // the shared `dialogBehavior` action (`$lib/dialog.ts`, unit-tested there)
+  // instead of being hand-declared/hand-wired per dialog — mirrors the
+  // convention CrashRecoveryDialog.test.ts established for the same
+  // migration ("M12 fix 1").
+
+  test("imports dialogBehavior from $lib/dialog", () => {
     const src = readSource();
     if (!src) return;
-    expect(src).toContain('role="dialog"');
+    expect(src).toMatch(/import\s*\{[^}]*dialogBehavior[^}]*\}\s*from\s*["']\$lib\/dialog["']/);
   });
 
-  test("aria-modal='true' is present", () => {
+  test("wires dialogBehavior with onClose → answer(false) and a labelledBy", () => {
     const src = readSource();
     if (!src) return;
-    expect(src).toContain('aria-modal="true"');
+    expect(src).toMatch(/use:dialogBehavior=\{\{[^}]*onClose:\s*\(\)\s*=>\s*answer\(false\)/s);
+    expect(src).toMatch(/use:dialogBehavior=\{\{[^}]*labelledBy:\s*["']recovery-confirm-title["']/s);
   });
 
-  test("aria-labelledby is present (links title to dialog)", () => {
+  test("role='dialog' / aria-modal are NOT hand-declared (owned by the action instead)", () => {
     const src = readSource();
     if (!src) return;
-    expect(src).toContain("aria-labelledby");
+    expect(src).not.toContain('role="dialog"');
+    expect(src).not.toContain('aria-modal="true"');
+  });
+
+  test("aria-labelledby is present (links title to dialog) — via dialogBehavior's labelledBy option", () => {
+    const src = readSource();
+    if (!src) return;
+    // dialogBehavior sets the aria-labelledby ATTRIBUTE programmatically from
+    // the `labelledBy` option (dialog.test.ts verifies this); this file only
+    // needs to pass it through, pointing at the actual title element's id.
+    expect(src).toMatch(/labelledBy:\s*["']recovery-confirm-title["']/);
+    expect(src).toContain('id="recovery-confirm-title"');
   });
 
   test("aria-live region is present for status announcements", () => {
@@ -278,18 +297,20 @@ describe("RecoveryConfirmDialog — accessibility", () => {
     expect(src).toContain("aria-live");
   });
 
-  test("Escape key handler is present (closes / answers 'Not now')", () => {
+  test("Escape-to-close is delegated to dialogBehavior, not hand-wired here", () => {
     const src = readSource();
     if (!src) return;
-    // Must handle Escape key
-    expect(src).toMatch(/Escape|key.*Esc/);
+    // No local Escape handling — dialogBehavior owns it (and is unit-tested
+    // in tests/platform/dialog.test.ts).
+    expect(src).not.toMatch(/svelte:window/);
+    expect(src).not.toContain("Escape");
   });
 
-  test("focus trap logic is present (Tab key handling)", () => {
+  test("no local focus-trap logic (trapFocus is not hand-wired here anymore)", () => {
     const src = readSource();
     if (!src) return;
-    // Must trap Tab within the dialog
-    expect(src).toMatch(/Tab|trapFocus|focusable/);
+    expect(src).not.toMatch(/trapFocus/);
+    expect(src).not.toMatch(/onkeydown=\{.*=>.*trapFocus/);
   });
 });
 
@@ -321,14 +342,13 @@ describe("RecoveryConfirmDialog — decision flow (source analysis)", () => {
     expect(src).toMatch(/answer\s*\(\s*false\s*\)|approved.*false|false.*approved/);
   });
 
-  test("Escape key calls the 'Not now' path (answer false)", () => {
+  test("Escape key calls the 'Not now' path (answer false), via dialogBehavior's onClose", () => {
     const src = readSource();
     if (!src) return;
-    // Escape handler must call answer(false) or equivalent
-    const escapeSection = src.match(/Escape[\s\S]{0,200}/);
-    expect(escapeSection).not.toBeNull();
-    // Escape block should involve answer(false)
-    expect(src).toMatch(/Escape[\s\S]{0,300}false|false[\s\S]{0,100}Escape/);
+    // Escape is handled by the shared dialogBehavior action (dialog.test.ts
+    // verifies Escape invokes `onClose`); this file just needs to wire
+    // `onClose` to `answer(false)`.
+    expect(src).toMatch(/onClose:\s*\(\)\s*=>\s*answer\(false\)/);
   });
 
   test("backdrop click calls the 'Not now' path", () => {
@@ -398,12 +418,15 @@ describe("RecoveryConfirmDialog — decision flow (source analysis)", () => {
     expect(lc).toMatch(/nothing is lost|safe|saved/);
   });
 
-  test("focus trap: trapFocus is imported from shared a11y util and wired to the dialog", () => {
+  test("focus trap: owned by the shared dialogBehavior action, not hand-wired here (M1/#42)", () => {
     const src = readSource();
     if (!src) return;
-    // Must import the shared trapFocus utility (D1 refactor — no longer inlined)
-    expect(src).toMatch(/import.*trapFocus.*\$lib\/a11y/);
-    // Must wire trapFocus to the dialog container's onkeydown handler
-    expect(src).toMatch(/onkeydown=.*trapFocus/);
+    // D1 inlined a shared `trapFocus` util; the M1/#42 dialog-system
+    // consolidation went one step further and moved the trap (plus the rest
+    // of the a11y contract) into `dialogBehavior`, so this file no longer
+    // imports `trapFocus` or wires an onkeydown handler to it directly.
+    expect(src).not.toMatch(/trapFocus/);
+    expect(src).toMatch(/import\s*\{[^}]*dialogBehavior[^}]*\}\s*from\s*["']\$lib\/dialog["']/);
+    expect(src).toMatch(/use:dialogBehavior=/);
   });
 });

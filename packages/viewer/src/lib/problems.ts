@@ -2,7 +2,7 @@
  * Problems panel helpers (#28). Pure functions over `ProblemEntry[]` so the
  * grouping/labeling logic is unit-testable outside Svelte.
  */
-import type { ProblemEntry } from "$lib/platform/contract";
+import type { ProblemEntry } from "$lib/platform/dtos";
 
 /** One file's worth of problems, ready to render as a panel group. */
 export interface ProblemGroup {
@@ -14,9 +14,23 @@ export interface ProblemGroup {
 }
 
 /**
+ * Synthetic "check id" for the viewer's own missing-shared-asset-folder
+ * finding (M30). This isn't a CLI check — the CLI check registry never sees
+ * it — but it flows through the same `ProblemEntry[]`/`SOURCE_LABELS` pipeline
+ * so it renders as an ordinary (persistent) Problems row instead of the
+ * 5-second auto-dismissing toast it used to be.
+ */
+export const MISSING_ASSETS_SOURCE = "viewer.missing-shared-assets";
+
+/**
  * Plain-language labels for check ids — the audience is non-technical authors,
  * so "source.links.local-refs" reads as "Broken link". Unknown ids fall back
  * to the raw id so new checks are never hidden.
+ *
+ * Coverage against the CLI's registered `source`-category checks is asserted
+ * in `tests/platform/problems.test.ts` (M32) — keyed to the live check
+ * registry (`getChecks({ category: "source" })`), not a hand-copied list, so
+ * a new check can't silently ship without a label here.
  */
 const SOURCE_LABELS: Record<string, string> = {
   "source.links.local-refs": "Broken link",
@@ -25,10 +39,51 @@ const SOURCE_LABELS: Record<string, string> = {
   "source.htmlhint": "HTML check",
   "source.accessibility.alt-text": "Image description",
   "source.accessibility.heading-order": "Heading order",
+  [MISSING_ASSETS_SOURCE]: "Missing assets",
 };
 
 export function friendlySource(checkId: string): string {
   return SOURCE_LABELS[checkId] ?? checkId;
+}
+
+/**
+ * M32: `source.markdownlint` (the one check already fixed for writer-first
+ * copy) emits `"<description> (<code>)"` — the human-readable description
+ * leads, the rule code is a demotable trailing suffix, not the headline.
+ * Splits that suffix out so the Problems panel can render it as secondary
+ * text. Messages with no such trailing "(...)" pass through unchanged with
+ * `code: null` (this covers one established convention, not a general
+ * check-message parser — checks that lead with the code inline, e.g.
+ * "rule: message", are unaffected and render as before).
+ */
+export function splitProblemMessage(message: string): { text: string; code: string | null } {
+  const m = /^(.*\S)\s+\(([A-Za-z0-9][\w./-]*)\)$/.exec(message);
+  if (!m) return { text: message, code: null };
+  return { text: m[1]!, code: m[2]! };
+}
+
+/**
+ * L9 regression fix: in compact mode (viewport < 820px) the Problems panel's
+ * expanded body is presented as a full-viewport overlay that visually covers
+ * the toggle strip which would otherwise collapse it, so ProblemsPanel.svelte
+ * drives closing from two other explicit actions instead — picking a result,
+ * or pressing Escape. The decision logic lives here (not inline in the
+ * component) purely so it is unit-testable rather than only verifiable by
+ * markup inspection.
+ */
+
+/** Selecting a problem in compact mode should also close the overlay so the
+ *  writer lands on the now-unobscured editor. Non-compact mode's panel never
+ *  covers the editor, so selection there leaves the panel state untouched. */
+export function closesPanelOnSelect(compact: boolean): boolean {
+  return compact;
+}
+
+/** Escape closes the panel only when it's the compact overlay AND actually
+ *  open — otherwise it must not interfere with unrelated Escape handling
+ *  elsewhere in the app. */
+export function closesPanelOnEscape(compact: boolean, open: boolean, key: string): boolean {
+  return compact && open && key === "Escape";
 }
 
 /** Errors + warnings (the badge count). Infos are listed but not badged. */

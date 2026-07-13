@@ -151,11 +151,6 @@
     z-index: 10;
   }
 
-  /* Alias so the "pane" keyword appears in source (test 8.5 signal). */
-  .recovery-overlay.pane {
-    position: absolute;
-  }
-
   .content-wrap {
     display: flex;
     flex-direction: column;

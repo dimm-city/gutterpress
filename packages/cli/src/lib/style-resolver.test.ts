@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { listProjectStyles, resolveActiveStyles } from "./style-resolver";
+import { resolveConfig } from "./manifest";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `style-resolver-tests-${Date.now()}`);
 
@@ -185,5 +186,29 @@ describe("resolveActiveStyles (the one resolver the renderer + editor share)", (
     write(dir, "other.css", "");
     const active = (await listProjectStyles(dir)).filter((s) => s.active).map((s) => s.displayName);
     expect(active).toEqual(await resolveActiveStyles(dir, undefined));
+  });
+
+  // ARCH finding #2 — the actual reported bug, reconciled end-to-end: a
+  // styles:-less manifest used to resolve (via resolveConfig -> the DTRPG
+  // preset's `styles: ["css/print.css"]` default) to a stylesheet the CSS
+  // editor's listProjectStyles (reading the raw, unresolved manifest) never
+  // agreed with — the editor showed `styles/book.css` as active while the
+  // renderer would link `css/print.css`. Now that the preset has no `styles`
+  // default, resolveConfig's output feeds resolveActiveStyles the same
+  // "nothing configured" signal listProjectStyles already used, so both
+  // agree on styles/book.css.
+  test("resolveConfig's resolved styles agree with the editor's active set for a styles:-less project (the reported bug)", async () => {
+    const dir = projectDir();
+    write(dir, "styles/book.css", ":root{}");
+
+    const config = resolveConfig({}, {});
+    const rendererStyles = await resolveActiveStyles(dir, config.styles);
+
+    const editorActive = (await listProjectStyles(dir))
+      .filter((s) => s.active)
+      .map((s) => s.displayName);
+
+    expect(rendererStyles).toEqual(["styles/book.css"]);
+    expect(rendererStyles).toEqual(editorActive);
   });
 });

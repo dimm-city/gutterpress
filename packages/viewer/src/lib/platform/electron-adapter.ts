@@ -22,7 +22,6 @@ import type {
   UrlPreviewBlockedEvent,
   UpdaterApi,
   NativeThemeState,
-  ProjectClassification,
   // PrintSafeWarning, ProblemEntry, MediaImageEntry, MediaImageDetails — removed (Phase 2C)
   // TemplateInfo, SnippetEntry — removed (Phase 2D)
   // ProjectPluginEntry, PluginValidationResult, RecommendedPlugin, ThemeInfo, ApplyThemeTarget, ProjectStyle — removed (Phase 2E)
@@ -105,8 +104,20 @@ export class ElectronAdapter implements Platform {
     return bridge().apiVersion;
   }
 
+  // getStatus/check/download (ARCH review #8) go through the server route
+  // client (api.updater.*); applyNow and the onEvent push stream stay on the
+  // bridge — applyNow flushes the live renderer buffer via `mainWindow.
+  // webContents.send` before quitting (a live-BrowserWindow call §8
+  // sanctions), and onEvent is a push subscription.
   get updater(): UpdaterApi {
-    return bridge().updater;
+    const b = bridge();
+    return {
+      getStatus: () => api.updater.getStatus(),
+      check: () => api.updater.check(),
+      download: () => api.updater.download(),
+      applyNow: () => b.updater.applyNow(),
+      onEvent: (cb) => b.updater.onEvent(cb),
+    };
   }
 
   // #49: Electron is the full-capability host — native save paths, OS file
@@ -164,8 +175,10 @@ export class ElectronAdapter implements Platform {
   // disconnectHost, listHostConnections, forgeTokenUrl, syncChanges
   // — migrated to SvelteKit server routes (Phase 2F).
 
+  // ARCH review #8: was IPC despite being a plain request/response — the
+  // clone-progress push (onCloneProgress below) stays on the bridge unchanged.
   cloneRemoteRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }> {
-    return bridge().cloneRemoteRepository(args);
+    return api.remote.cloneRepository(args);
   }
 
   onCloneProgress(cb: (data: CloneProgressEvent) => void): () => void {
@@ -177,8 +190,9 @@ export class ElectronAdapter implements Platform {
     return bridge().onSyncStatus(handler as (data: unknown) => void);
   }
 
-  setAutoSync(enabled: boolean): Promise<void> {
-    return bridge().setAutoSync(enabled);
+  // ARCH review #8: was IPC despite being a pure settings write.
+  async setAutoSync(enabled: boolean): Promise<void> {
+    await api.sync.setAutoSync(enabled);
   }
 
   // ── Sync recovery seam (Foundation — §8 / ADR 0004) ───────────────────────
@@ -195,8 +209,9 @@ export class ElectronAdapter implements Platform {
 
   // syncChanges — migrated to server route (Phase 2F).
 
+  // ARCH review #8: was IPC despite being a plain request/response.
   resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
-    return bridge().resolveSyncConflicts(args);
+    return api.remote.resolveSyncConflicts(args);
   }
 
   // #49: unwrap FolderRef.key → the string `input` the existing IPC expects.

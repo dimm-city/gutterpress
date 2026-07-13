@@ -19,6 +19,7 @@
  */
 import { BrowserWindow } from "electron";
 import { writeFile } from "node:fs/promises";
+import { BuildError } from "@dimm-city/print-md";
 
 export interface ExportProgressEvent {
   exportId: string;
@@ -81,6 +82,73 @@ export function throwIfExportCanceled(session: ExportSession): void {
   }
 }
 
+/** Dependencies of {@link waitForPagedRendered}, injected so the timeout-vs-done
+ * distinction (ARCH review #27) is unit-testable without a real BrowserWindow. */
+export interface WaitForPagedRenderedDeps {
+  /** Reads `window.__PAGED_RENDERED__` + the current `.pagedjs_page` count. */
+  getStatus: () => Promise<{ done: boolean; pages: number }>;
+  /** Injectable clock (epoch ms). */
+  now: () => number;
+  /** Injectable delay between polls. */
+  sleep: (ms: number) => Promise<void>;
+  /** Called each time the rendered page count changes, for progress events. */
+  onProgress: (pages: number) => void;
+  /** Throws (e.g. ExportCanceledError) if the export was canceled meanwhile. */
+  checkCanceled: () => void;
+}
+
+/**
+ * Poll Paged.js's completion flag until it flips true or `timeoutMs` elapses.
+ *
+ * Extracted standalone (no BrowserWindow/webContents) from `electronPdfRenderer`
+ * so it can be driven with fakes in tests. Previously this loop's two exit
+ * conditions — "Paged.js signaled done" and "the deadline passed" — were
+ * indistinguishable to the caller, which fell through to `printToPDF` either
+ * way and wrote a TRUNCATED "successful" PDF on a slow/stuck render (ARCH
+ * review #27). On timeout this now throws a typed, author-friendly
+ * `BuildError` instead of returning, so no caller can mistake "gave up" for
+ * "finished". `BuildError` is what `ExportController.build()` (and the CLI's
+ * own build pipeline) already recognizes and maps to a `BUILD_ERROR`-coded
+ * error — but that `code` does NOT survive the `api:build`
+ * ipcMain.handle/ipcRenderer.invoke boundary (Electron re-wraps the error and
+ * drops custom properties), so the renderer's `friendlyPdfError`
+ * (src/lib/errors.ts) instead recognizes this message by its stable, distinct
+ * "did not finish" phrase and passes it through to the author verbatim. Keep
+ * that phrase in sync with the exact string thrown below.
+ */
+export async function waitForPagedRendered(
+  timeoutMs: number,
+  deps: WaitForPagedRenderedDeps
+): Promise<number> {
+  const deadline = deps.now() + timeoutMs;
+  let lastPages = -1;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const status = await deps.getStatus();
+    if (status.pages !== lastPages) {
+      lastPages = status.pages;
+      deps.onProgress(status.pages);
+    }
+    deps.checkCanceled();
+    if (status.done) return status.pages;
+    if (deps.now() > deadline) {
+      const minutes = Math.max(1, Math.round(timeoutMs / 60_000));
+      // No trailing period: the renderer's friendlyPdfError (src/lib/errors.ts)
+      // matches this message by its "did not finish" phrase (errors.ts:70)
+      // BEFORE the generic `code === "BUILD_ERROR"` branch (errors.ts:73), so
+      // it is returned verbatim via friendlyHostError and is never wrapped as
+      // `PDF generation failed: ... Open Help (?) for setup details.` —
+      // there's no following period to double up. Whether this sentence ends
+      // in a period is purely a stylistic choice for the standalone toast.
+      throw new BuildError(
+        `Rendering did not finish after ${minutes} minute${minutes === 1 ? "" : "s"} — ` +
+        `the export was stopped to avoid an incomplete PDF`
+      );
+    }
+    await deps.sleep(100);
+  }
+}
+
 export async function electronPdfRenderer(input: {
   url: string;
   outPdf: string;
@@ -115,31 +183,23 @@ export async function electronPdfRenderer(input: {
     await wc.executeJavaScript("document.fonts.ready.then(() => true)");
     throwIfExportCanceled(session);
 
-    // Poll until Paged.js signals completion (or the timeout elapses), emitting
-    // a per-page progress event so the UI can show "Rendering page N…" instead
-    // of an opaque spinner during the (inherently slow) Paged.js pagination of
-    // large books.
-    const deadline = Date.now() + input.timeoutMs;
-    let lastPages = -1;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const status = (await wc.executeJavaScript(`(() => ({
-        done: window.__PAGED_RENDERED__ === true,
-        pages: document.querySelectorAll('.pagedjs_page').length
-      }))()`)) as { done: boolean; pages: number };
-      if (status.pages !== lastPages) {
-        lastPages = status.pages;
-        sendExportProgress({
-          exportId: session.id,
-          state: "rendering",
-          pages: status.pages,
-        });
-      }
-      throwIfExportCanceled(session);
-      if (status.done) break;
-      if (Date.now() > deadline) break;
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    // Poll until Paged.js signals completion, emitting a per-page progress
+    // event so the UI can show "Rendering page N…" instead of an opaque
+    // spinner during the (inherently slow) Paged.js pagination of large
+    // books. Throws a typed BuildError instead of returning if the timeout
+    // elapses first — see waitForPagedRendered's doc comment (ARCH #27).
+    const lastPages = await waitForPagedRendered(input.timeoutMs, {
+      getStatus: () =>
+        wc.executeJavaScript(`(() => ({
+          done: window.__PAGED_RENDERED__ === true,
+          pages: document.querySelectorAll('.pagedjs_page').length
+        }))()`) as Promise<{ done: boolean; pages: number }>,
+      now: () => Date.now(),
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      onProgress: (pages) =>
+        sendExportProgress({ exportId: session.id, state: "rendering", pages }),
+      checkCanceled: () => throwIfExportCanceled(session),
+    });
 
     // Pagination done — serializing a large PDF still takes time, so flag it.
     throwIfExportCanceled(session);

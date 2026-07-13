@@ -1,8 +1,12 @@
 /**
  * Shared crash-recovery hooks for recovery:* server routes.
+ *
+ * Storage lives in the single collapsed host object (ARCH review #31,
+ * `./host-services.ts`) — `getRecoveryHooks()` is a thin derived selector
+ * over it.
  */
 
-import { createHostBridge } from './create-host-bridge';
+import { getHostServices } from './host-services';
 
 export interface RecoveryEntry {
   filePath: string;
@@ -17,5 +21,7 @@ export interface RecoveryHooks {
   list(projectDir: string): Promise<RecoveryEntry[]>;
 }
 
-export const { register: registerRecoveryHooks, get: getRecoveryHooks } =
-  createHostBridge<RecoveryHooks>('__printMdRecoveryHooks__');
+/** The live `RecoveryHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
+export function getRecoveryHooks(): RecoveryHooks | null {
+  return getHostServices()?.recovery ?? null;
+}

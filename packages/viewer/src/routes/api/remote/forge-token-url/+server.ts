@@ -1,14 +1,18 @@
-import { error } from '@sveltejs/kit';
-import { getHooks } from '../_hooks';
-import { jsonRoute } from '../../_lib/handler';
+import { getHooks, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
+import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(async (body: { host?: string }) => {
-  const hooks = getHooks();
-  if (!hooks) error(503, 'Remote hooks not available');
+export const POST: RequestHandler = defineRoute<
+  { host?: string },
+  RemoteHooks<LibModule, TokenStore>
+>({
+  hooks: getHooks,
+  hooksUnavailableMessage: 'Remote hooks not available',
   // Pure lookup (no I/O): token-settings deep link for recognized forges.
-  if (typeof body?.host !== 'string' || !body.host.trim()) return null;
-  const lib = await hooks.loadLib();
-  if (!lib.knownForgeTokenUrl) return null;
-  return lib.knownForgeTokenUrl(body.host);
+  call: async ({ body, hooks }) => {
+    if (typeof body?.host !== 'string' || !body.host.trim()) return null;
+    const lib = await hooks.loadLib();
+    if (!lib.knownForgeTokenUrl) return null;
+    return lib.knownForgeTokenUrl(body.host);
+  },
 });

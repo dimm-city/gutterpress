@@ -2,9 +2,11 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { BOOK_HTML_FILENAME } from "../viewer";
 import { canonicalChapterId } from "./chapter-id";
-import { assembleBookHtml } from "./assemble";
+import { assembleBookHtml, type LayoutWarning } from "./assemble";
 import { resolveActiveStyles } from "../style-resolver";
 import type { LoadedPlugin } from "./renderer";
+
+export type { LayoutWarning } from "./assemble";
 
 // Re-export the pure render core so existing callers
 // (`import { createMarkdownRenderer } from "./markdown/index"`) keep working.
@@ -39,6 +41,13 @@ export async function renderChapters(
      * build output is unaffected.
      */
     wrapChapters?: boolean;
+    /**
+     * ARCH finding #4: per-chapter author-mistake warnings computed by
+     * markdown-it-paged (`env.layoutWarnings`), forwarded straight through
+     * from {@link assembleBookHtml}. See that option's docstring — omitting
+     * it is fully backward compatible.
+     */
+    onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
   } = {}
 ): Promise<string> {
   // The SAME resolver the editor uses, so the rendered <link> is always the file
@@ -73,6 +82,7 @@ export async function renderChapters(
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,
     wrapChapters: opts.wrapChapters,
+    onChapterWarnings: opts.onChapterWarnings,
   });
 }
 
@@ -91,6 +101,8 @@ export async function renderChaptersToFile(
     files?: string[] | null;
     plugins?: LoadedPlugin[];
     pluginCss?: string;
+    /** ARCH finding #4 — see {@link renderChapters}'s option of the same name. */
+    onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
   } = {}
 ): Promise<string> {
   await mkdir(outDir, { recursive: true });
@@ -100,6 +112,7 @@ export async function renderChaptersToFile(
     files: opts.files,
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,
+    onChapterWarnings: opts.onChapterWarnings,
   });
   const outFile = join(outDir, BOOK_HTML_FILENAME);
   await writeFile(outFile, html);

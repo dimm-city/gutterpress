@@ -10,7 +10,10 @@
  *
  * RULES:
  *   - Re-export ONLY (no inline type bodies here).
- *   - Import ONLY with `import type` — zero runtime coupling.
+ *   - `import type` / `export type` for everything EXCEPT the one shared
+ *     VALUE below (`DEFAULT_SETTINGS`) — a plain, side-effect-free data
+ *     literal (§8-safe), re-exported as a real value so
+ *     `electron/settings-store.ts` doesn't hand-duplicate it (#29).
  */
 
 export type {
@@ -49,3 +52,6 @@ export type {
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
 } from "../src/lib/platform/shared-types";
+
+// VALUE re-export (see file header) — the canonical settings defaults (#29).
+export { DEFAULT_SETTINGS } from "../src/lib/platform/shared-types";

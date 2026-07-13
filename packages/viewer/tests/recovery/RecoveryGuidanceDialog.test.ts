@@ -110,15 +110,29 @@ describe("RecoveryGuidanceDialog — module exists and is PWA-clean", () => {
 });
 
 describe("RecoveryGuidanceDialog — source structure invariants", () => {
-  test("has role='dialog' and aria-modal='true' in template markup", async () => {
+  // M1/#42 (dialog-system consolidation): role="dialog"/aria-modal/the focus
+  // trap/Escape-to-close are now owned by the shared `dialogBehavior` action
+  // (`$lib/dialog.ts`, unit-tested there) instead of being hand-declared per
+  // dialog — mirrors CrashRecoveryDialog.test.ts's "M12 fix 1" convention.
+  test("imports and wires the shared dialogBehavior action (owns role/aria-modal/focus trap)", async () => {
     const source = await readFile(COMPONENT_PATH, "utf-8");
-    expect(source).toContain('role="dialog"');
-    expect(source).toContain('aria-modal="true"');
+    expect(source).toMatch(/import\s*\{[^}]*dialogBehavior[^}]*\}\s*from\s*["']\$lib\/dialog["']/);
+    expect(source).toMatch(/use:dialogBehavior=\{\{[^}]*onClose:\s*close/s);
   });
 
-  test("has aria-labelledby binding for the dialog title", async () => {
+  test("role='dialog' / aria-modal are NOT hand-declared (owned by the action instead)", async () => {
     const source = await readFile(COMPONENT_PATH, "utf-8");
-    expect(source).toContain("aria-labelledby");
+    expect(source).not.toContain('role="dialog"');
+    expect(source).not.toContain('aria-modal="true"');
+  });
+
+  test("has aria-labelledby binding for the dialog title — via dialogBehavior's labelledBy option", async () => {
+    const source = await readFile(COMPONENT_PATH, "utf-8");
+    // dialogBehavior sets the aria-labelledby ATTRIBUTE programmatically from
+    // the `labelledBy` option; this file only needs to pass it through,
+    // pointing at the actual title element's id.
+    expect(source).toMatch(/labelledBy:\s*["']guidance-title["']/);
+    expect(source).toContain('id="guidance-title"');
   });
 
   test("renders an <h2> (or labelled heading) for the title", async () => {
@@ -216,10 +230,12 @@ describe("RecoveryGuidanceDialog — source structure invariants", () => {
     expect(tokenCount).toBeGreaterThan(0);
   });
 
-  test("Esc handling is present (svelte:window onkeydown or keydown handler)", async () => {
+  test("Esc handling is delegated to dialogBehavior's onClose, not hand-wired here", async () => {
     const source = await readFile(COMPONENT_PATH, "utf-8");
-    // Must handle Escape key somewhere
-    expect(source).toMatch(/Escape|key.*Esc/);
+    // dialogBehavior owns Escape (verified in tests/platform/dialog.test.ts);
+    // this file only needs onClose wired to close().
+    expect(source).not.toMatch(/svelte:window/);
+    expect(source).toMatch(/use:dialogBehavior=\{\{[^}]*onClose:\s*close/s);
   });
 
   test("onPrimary prop is declared and called on primary button click", async () => {
@@ -239,10 +255,12 @@ describe("RecoveryGuidanceDialog — source structure invariants", () => {
     expect(source).toContain("triggerEl");
   });
 
-  test("focus trap pattern is present (tabindex or focusable query)", async () => {
+  test("focus trap is owned by dialogBehavior, not a locally-declared tabindex/query", async () => {
     const source = await readFile(COMPONENT_PATH, "utf-8");
-    // Any reasonable focus trap implementation will mention tabindex or querySelectorAll
-    expect(source).toMatch(/tabindex|querySelectorAll|focusable/);
+    // The action sets tabindex/traps focus programmatically (dialog.ts) —
+    // this file shouldn't hand-declare its own copy.
+    expect(source).not.toMatch(/tabindex=/);
+    expect(source).toMatch(/use:dialogBehavior=/);
   });
 
   test("aria-live region is present for copy confirmation announcement", async () => {

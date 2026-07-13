@@ -1,21 +1,51 @@
 /**
- * Shared CLI argument parsers for the `build` and `preview` commands.
+ * Shared CLI argument parsers for the CLI commands.
  *
  * These are pure and testable: invalid input throws a typed {@link UsageError}
  * (carrying the exit code) rather than calling `process.exit`. The command
  * boundary maps a thrown `UsageError` to `log.error` + `process.exit`, so real
- * invocations keep their historical exit code (2) and messages.
+ * invocations keep their historical exit code (`EXIT_CODES.USAGE`, 2) and
+ * messages. See {@link EXIT_CODES} (re-exported from `./build-error.ts`, the
+ * one place the CLI's exit-code contract is defined) for the full contract.
  */
 import { NETWORK } from "../constants.ts";
 import type { BuildFormat, PdfxFlavor } from "./build-runner.ts";
+import { EXIT_CODES } from "./build-error.ts";
+
+export { EXIT_CODES } from "./build-error.ts";
 
 /** A recoverable "bad CLI usage" error carrying the process exit code. */
 export class UsageError extends Error {
   exitCode: number;
-  constructor(message: string, exitCode = 2) {
+  constructor(message: string, exitCode: number = EXIT_CODES.USAGE) {
     super(message);
     this.name = "UsageError";
     this.exitCode = exitCode;
+  }
+}
+
+/**
+ * Reject CLI positionals beyond the ones a command declares (UX finding M46).
+ *
+ * Citty's parser keeps every raw positional token in `args._` even after
+ * `type: "positional"` args have claimed their share — it shifts values off a
+ * COPY of `_` for each declared positional arg, but never trims the original
+ * array. So a command with one declared positional silently drops a second
+ * one instead of erroring, e.g. `print-md build a b` builds `a` and never
+ * mentions `b`. Call this near the top of a command's `run()`, passing
+ * `(args as { _: unknown[] })._` and how many positionals the command itself
+ * declares, to turn that into a named `UsageError` instead.
+ */
+export function rejectExtraPositionals(
+  positionals: unknown[] | undefined,
+  expectedCount: number,
+  commandName: string
+): void {
+  const extras = (positionals ?? []).slice(expectedCount);
+  if (extras.length > 0) {
+    throw new UsageError(
+      `print-md ${commandName}: unexpected extra argument(s): ${extras.join(" ")}`
+    );
   }
 }
 

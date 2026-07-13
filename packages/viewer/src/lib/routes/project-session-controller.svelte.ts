@@ -8,11 +8,12 @@
  * folder that isn't itself a book can retarget before any content surface
  * opens — see the C2 note below), whose chain never rejects and
  * populates `projectCapabilities`, derives `projectSubPath` (a book's path
- * relative to its repo root; "" when the book IS the repo root), persists the
- * re-detected source hint via ViewerPrefs, re-notifies the History tab, and —
- * only when the project is actually syncable — refreshes the remote
- * diagnosis. The template reads the public rune getters
- * (`projectCapabilities` / `projectSubPath`).
+ * relative to its repo root; "" when the book IS the repo root), and persists
+ * the re-detected source hint via ViewerPrefs. The template reads the public
+ * rune getters (`projectCapabilities` / `projectSubPath`). The remote
+ * diagnosis is deliberately NOT refreshed from here — the lifecycle controller
+ * does it after `currentDir` is assigned, so the SyncController's stale-guard
+ * can actually accept the result (see the NOTE in classify()).
  *
  * Single-owner discipline mirrors `SyncController`
  * (`sync-controller.svelte.ts`) and `PageNavController`
@@ -20,10 +21,9 @@
  * intent methods.
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
- * (§8 / ADR 0004): the host classify round-trip, the ViewerPrefs writer, and the
- * two component fan-out callbacks (`notifyHistoryRefresh` → the LeftPanel;
- * `refreshSyncDiag` → the SyncController). `ProjectCapabilities` is a
- * type-only import — ZERO `node:*` / lib value imports.
+ * (§8 / ADR 0004): the host classify round-trip and the ViewerPrefs writer.
+ * `ProjectCapabilities` is a type-only import — ZERO `node:*` / lib value
+ * imports.
  *
  * NOTE (deferred): the broader open/stop lifecycle and the rest of the session
  * runes (`currentDir` / `sourceMode` / `docTitle` / `currentFolderDisplayName` /
@@ -47,24 +47,10 @@
  */
 
 import type { ProjectCapabilities } from "../platform/contract";
+import type { ProjectClassification, ProjectClassificationBook } from "../platform/dtos";
 
 /** A book (manifest-containing folder) found inside a classified project's repo. */
-export interface ProjectBookEntry {
-  /** Absolute path to the book folder. */
-  path: string;
-  /** Display title — the folder's basename (background-scan convention). */
-  title: string;
-  /** Book's path relative to the repo root, forward-slash form; "" at the repo root. */
-  subPath: string;
-}
-
-/** Loosely-typed host classify result — the api layer returns `unknown` fields. */
-export type ClassifyResult = {
-  source: unknown;
-  capabilities: unknown;
-  repoRoot?: string;
-  books?: ProjectBookEntry[];
-};
+export type ProjectBookEntry = ProjectClassificationBook;
 
 /**
  * Resolve which book is "active" after opening `pickedDir` inside a repo whose
@@ -92,13 +78,9 @@ export function resolveActiveBookDir(
 
 export interface ProjectSessionDeps {
   /** Host round-trip: classify a project folder (source type + capabilities). */
-  classifyProject: (dir: string) => Promise<ClassifyResult>;
+  classifyProject: (dir: string) => Promise<ProjectClassification>;
   /** Persist the re-detected source hint (fire-and-forget on the component side). */
   setViewerPrefs: (prefs: Record<string, unknown>) => Promise<unknown>;
-  /** Re-notify the History tab so it reloads once capabilities are known. */
-  notifyHistoryRefresh: () => void;
-  /** Refresh the remote diagnosis for a syncable project (SyncController). */
-  refreshSyncDiag: (dir: string) => void;
 }
 
 export class ProjectSessionController {
@@ -107,6 +89,15 @@ export class ProjectSessionController {
   projectCapabilities = $state<ProjectCapabilities | null>(null);
   /** The book's path relative to its shared repo ("" for standalone projects). */
   projectSubPath = $state("");
+  /**
+   * Whether the open project's git repo has a configured remote (any protocol),
+   * regardless of whether print-md can auto-sync to it. Distinguishes a project
+   * that HAS an online copy but isn't print-md-synced (SSH remote, or an HTTPS
+   * remote with no stored credential) from a purely local one — so the status
+   * bar's "Online copy" row never wrongly reads "Kept on this computer" when a
+   * remote is in fact configured (user feedback). False for non-git folders.
+   */
+  projectHasRemote = $state(false);
   /** Root of the repo the open folder belongs to; null when there is no repo. */
   repoRoot = $state<string | null>(null);
   /** Books (manifest-containing folders) found inside `repoRoot`; [] when there is no repo. */
@@ -135,6 +126,7 @@ export class ProjectSessionController {
     this.classifyGen++;
     this.projectCapabilities = null;
     this.projectSubPath = "";
+    this.projectHasRemote = false;
     this.repoRoot = null;
     this.books = [];
     this.activeBookDir = null;
@@ -154,30 +146,24 @@ export class ProjectSessionController {
       .classifyProject(dir)
       .then((result) => {
         if (gen !== this.classifyGen) return; // superseded by a newer open
-        const typedResult = result as {
-          source: { type: string; subPath?: string };
-          capabilities: ProjectCapabilities;
-          repoRoot?: string;
-          books?: ProjectBookEntry[];
-        };
-        this.projectCapabilities = typedResult.capabilities;
+        this.projectCapabilities = result.capabilities;
         this.projectSubPath =
-          typedResult.source.type === "local-git-folder" ? (typedResult.source.subPath ?? "") : "";
-        this.repoRoot = typedResult.repoRoot ?? null;
-        this.books = typedResult.books ?? [];
-        this.activeBookDir = resolveActiveBookDir(dir, typedResult.repoRoot, this.books);
-        this.deps
-          .setViewerPrefs({ projectSource: typedResult.source } as Record<string, unknown>)
-          .catch(() => {});
-        // Re-notify so the History tab can load now that canHistory is set. The
-        // earlier notify at folder-open time may have been a no-op because
-        // projectCapabilities was still null.
-        this.deps.notifyHistoryRefresh();
-        // Sync gate (#15 / ADR 0006 D4): the toolbar action appears only when
-        // the diagnosis says the project is actually syncable. Local reads only.
-        if (typedResult.capabilities.canSync) {
-          this.deps.refreshSyncDiag(dir);
-        }
+          result.source.type === "local-git-folder" ? (result.source.subPath ?? "") : "";
+        this.projectHasRemote =
+          result.source.type === "local-git-folder" ? result.source.hasRemote : false;
+        this.repoRoot = result.repoRoot ?? null;
+        this.books = result.books ?? [];
+        this.activeBookDir = resolveActiveBookDir(dir, result.repoRoot, this.books);
+        this.deps.setViewerPrefs({ projectSource: result.source }).catch(() => {});
+        // NOTE: the remote diagnosis (SyncController.refreshSyncDiag) is NOT
+        // fired from here anymore. It used to be, and was silently discarded
+        // on essentially every open: refreshSyncDiag's stale-guard compares
+        // against lifecycle.currentDir, which is only assigned AFTER the
+        // (seconds-long) preview start — while the diagnosis (millisecond fs
+        // reads) resolved first and failed the compare. Worse, it was keyed to
+        // the PICKED dir while currentDir becomes the retargeted activeBookDir.
+        // The lifecycle controller now refreshes it right after currentDir is
+        // assigned, keyed to the same targetDir (see openFolder).
       })
       .catch(() => {
         if (gen !== this.classifyGen) return;

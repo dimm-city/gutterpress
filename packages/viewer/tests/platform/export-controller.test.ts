@@ -22,6 +22,19 @@ interface HarnessOpts {
   activeSession?: ExportSession | null;
   /** conflictLatched flag returned by sync.getState. */
   conflictLatched?: boolean;
+  /**
+   * Fake for the `consumeSavePath` capability check (finding #4). Defaults to
+   * an always-authorize `() => true` so every pre-existing test — none of
+   * which exercises the save-path capability — keeps its prior "the `out` I
+   * passed is always accepted" behavior unchanged.
+   */
+  consumeSavePath?: (absPath: string) => boolean;
+  /**
+   * Flips the (by-then-minted) active session's `canceled` flag while
+   * syncProject is in flight — simulates a Cancel click landing during the
+   * pre-export sync gate (M28).
+   */
+  cancelDuringSync?: boolean;
 }
 
 interface Harness {
@@ -50,6 +63,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     diagnoseProjectRemote: async () => ({ canSync: opts.canSync ?? false }),
     syncProject: async () => {
       counters.sync += 1;
+      if (opts.cancelDuringSync && session) session.canceled = true;
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
     splitOutPath: (tempOutPath: string) => ({ outDir: `${tempOutPath}.dir` }),
@@ -61,23 +75,23 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     BuildError: FakeBuildError,
   } as unknown as LibModule;
 
+  // Fakes the two-method ExportSyncGate surface (isConflictLatched +
+  // latchConflict) that AutoSyncOrchestrator exposes — see finding #7. The
+  // real latchConflict also cancels timers, stamps lastSyncAt, and emits the
+  // conflict status; this fake mirrors just the emit so gate tests can still
+  // assert on it.
   const sync: ExportControllerDeps["sync"] = {
-    getState: (dir: string) =>
-      opts.conflictLatched ? { conflictLatched: latched.has(dir) || opts.conflictLatched } : undefined,
-    getOrCreateState: (dir: string) => {
+    isConflictLatched: (dir) => latched.has(dir) || !!opts.conflictLatched,
+    latchConflict: (dir, files) => {
       latched.add(dir);
-      return { conflictLatched: true };
+      emitted.push({ state: "conflict", projectDir: dir, files, lastSyncAt: null });
     },
-    cancelTimer: () => {},
-    setLastSyncAt: () => {},
   };
 
   const deps: ExportControllerDeps = {
     loadLib: async () => lib,
     tokenStore: {} as ExportControllerDeps["tokenStore"],
-    emit: (p) => emitted.push(p),
     isOnline: () => opts.isOnline ?? true,
-    now: () => 1_700_000_000_000,
     usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
     sync,
@@ -97,6 +111,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     rm: async (p) => {
       removed.push(p);
     },
+    consumeSavePath: opts.consumeSavePath ?? (() => true),
   };
 
   return {
@@ -143,6 +158,41 @@ test("missing input is rejected before any work", async () => {
 test("missing out is rejected", async () => {
   const h = makeHarness();
   await expect(h.controller.build({ input: "/book" })).rejects.toThrow(/Missing 'out'/);
+});
+
+// ── finding #4 (2026-07-13 maintainer review): PDF export accepts arbitrary
+//    output paths — `out` must be a one-time capability the Save dialog
+//    itself registered, not merely any renderer-supplied absolute path ──────
+
+test("an 'out' never issued by the Save dialog is rejected with OUT_NOT_AUTHORIZED, before any work happens", async () => {
+  const h = makeHarness({ consumeSavePath: () => false });
+  const err = await h.controller
+    .build({ input: "/book", out: "/etc/passwd" })
+    .catch((e) => e);
+  expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
+  // No session was minted, no progress emitted, no build/rename attempted —
+  // the check runs before any of that side-effecting work.
+  expect(h.getSession()).toBeNull();
+  expect(h.progress.length).toBe(0);
+  expect(h.runBuildCalls).toBe(0);
+  expect(h.renamed.length).toBe(0);
+});
+
+test("an 'out' the Save dialog registered is consumed exactly once — a replay of the same 'out' is rejected", async () => {
+  const authorized = new Set(["/out/book.pdf"]);
+  const consumeSavePath = (absPath: string) => authorized.delete(absPath);
+  const h = makeHarness({ consumeSavePath });
+
+  const res = await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  expect(res.pdfPath).toBe("/out/book.pdf");
+
+  // Same 'out', no fresh Save dialog round-trip — the capability was already
+  // spent by the first build, so a second attempt (e.g. a script replaying
+  // the same api:build call) must not silently succeed.
+  const err = await h.controller
+    .build({ input: "/book", out: "/out/book.pdf" })
+    .catch((e) => e);
+  expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
 });
 
 test("pdfx without icc is rejected", async () => {
@@ -203,5 +253,59 @@ test("a BuildError from runBuild surfaces as a BUILD_ERROR", async () => {
   expect((err as Error & { code?: string }).code).toBe("BUILD_ERROR");
   expect((err as Error).message).toBe("missing tool X");
   // session cleaned up even on failure
+  expect(h.getSession()).toBeNull();
+});
+
+// ── M28: the exportId is minted and the session registered as active BEFORE
+//    the pre-export sync gate runs, so Cancel is live immediately ───────────
+
+test("mints the exportId and registers the active session before the gate's network work (M28)", async () => {
+  let sessionDuringGate: ExportSession | null | undefined;
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    canSync: true,
+    isOnline: true,
+    syncProject: () => {
+      sessionDuringGate = h.getSession();
+      return { status: "up-to-date" };
+    },
+  });
+  await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  expect(sessionDuringGate).not.toBeNull();
+  expect(sessionDuringGate?.id).toBeTruthy();
+});
+
+test("sends a pre-gate 'started' progress event with a syncing message before any gate work (M28)", async () => {
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    canSync: true,
+    isOnline: true,
+  });
+  await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  // First event: the pre-gate one, minted before isConflictLatched/detectProjectSource
+  // even run. Still `state: "started"` (ExportProgressEvent's union is
+  // unchanged end-to-end) — distinguished by its message.
+  expect(h.progress[0]?.state).toBe("started");
+  expect(h.progress[0]?.message).toMatch(/sync/i);
+  // The real build-start "started" event follows, with no message.
+  const realStarted = h.progress.find((p, i) => i > 0 && p.state === "started");
+  expect(realStarted).toBeDefined();
+  expect(realStarted?.message).toBeUndefined();
+});
+
+test("Cancel during the pre-export sync gate aborts before runBuild (M28)", async () => {
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    canSync: true,
+    isOnline: true,
+    cancelDuringSync: true,
+  });
+  const err = await h.controller
+    .build({ input: "/book", out: "/out/book.pdf" })
+    .catch((e) => e);
+  expect((err as Error & { code?: string }).code).toBe("EXPORT_CANCELED");
+  expect(h.runBuildCalls).toBe(0);
+  expect(h.progress.some((p) => p.state === "canceled")).toBe(true);
+  // Session cleaned up so a subsequent export isn't blocked.
   expect(h.getSession()).toBeNull();
 });

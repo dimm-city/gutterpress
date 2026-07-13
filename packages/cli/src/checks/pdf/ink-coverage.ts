@@ -12,7 +12,25 @@ const check: Check = {
   requiredTools: ["gs"],
   async run(ctx: CheckContext): Promise<CheckResult[]> {
     if (!ctx.pdfPath) return [];
-    const pages = await getPerPageInkCoverage(ctx.pdfPath);
+    const inkResult = await getPerPageInkCoverage(ctx.pdfPath);
+    if (!inkResult.ok) {
+      // Finding #51: a gs failure (crash, corrupt PDF, missing binary, a
+      // Windows PATH mismatch) must never look like "0 pages, all fine" — it
+      // must surface as a distinct, visible warning so the author knows the
+      // book was never actually measured for total ink coverage.
+      return [
+        {
+          checkId: check.id,
+          severity: "warning",
+          message: "Ink coverage could not be measured",
+          file: ctx.pdfPath,
+          detail: `Ghostscript inkcov failed, so total ink coverage (TAC) was not checked: ${inkResult.error}`,
+          code: "ink-coverage-unmeasured",
+          data: { error: inkResult.error },
+        },
+      ];
+    }
+    const pages = inkResult.pages;
     const limit = ctx.config.ink.maxTac + ctx.config.ink.tacTolerance;
     const offending = pages
       .filter((p) => p.tac > limit)

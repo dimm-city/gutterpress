@@ -1,27 +1,9 @@
 <script lang="ts">
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
+  import type { DoctorDiagnostics } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
   import { dialogBehavior } from "$lib/dialog";
-
-  interface ToolStatus {
-    name: string;
-    bin: string;
-    found: boolean;
-    path?: string;
-    version?: string;
-    usedBy: Array<{ feature: string; severity: "required" | "optional" }>;
-    installHint: string;
-  }
-  interface Diagnostics {
-    libVersion: string;
-    viewerVersion: string;
-    electronVersion: string;
-    chromeVersion: string;
-    platform: { os: string; arch: string; release: string; node: string };
-    tools: ToolStatus[];
-    docsUrl: string;
-  }
 
   let {
     open = $bindable(false),
@@ -42,7 +24,7 @@
     updateAvailableVersion?: string | null;
   } = $props();
 
-  let data = $state<Diagnostics | null>(null);
+  let data = $state<DoctorDiagnostics | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);
   let copied = $state(false);
@@ -55,7 +37,7 @@
         error = "Desktop system details are only available in the viewer app.";
         return;
       }
-      data = (await api.doctor()) as Diagnostics;
+      data = await api.doctor();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -134,14 +116,14 @@
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
-  <div class="dialog" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "help-title" }} use:loadOnOpen>
-    <header class="dialog-header">
+  <div class="dlg-shell" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "help-title" }} use:loadOnOpen>
+    <header class="dlg-header">
       <div class="dialog-title-group">
         <h2 id="help-title">About Print MD</h2>
       </div>
-      <button class="close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
+      <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>
 
     <div class="dialog-body">
@@ -149,7 +131,7 @@
         <p class="status">Checking system…</p>
       {:else if error}
         <p class="status error">{error}</p>
-        <button class="primary" onclick={load}>Retry</button>
+        <button class="dlg-primary" onclick={load}>Retry</button>
       {:else if data}
         <section class="version-strip" aria-label="Loaded versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
@@ -163,7 +145,7 @@
             <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
             <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes auto-save, and {modKey}+S or the editor save button saves immediately.</li>
             <li><strong>Keep a history of your work</strong> — click the sync/status pill to see your project's saved history and activity log.</li>
-            <li><strong>Export PDF</strong> — click <em>Save PDF</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
+            <li><strong>Export PDF</strong> — click <em>Export</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
           </ol>
           <p class="gs-note">Don't have a project yet? Visit the <button class="inline-link" onclick={openDocs}>online setup guide</button> to create one.</p>
         </section>
@@ -239,7 +221,7 @@
         <section class="tools">
           <h3>Optional system tools</h3>
           <p class="hint">
-            print-md renders your preview using the built-in browser engine. The standard <strong>Save PDF</strong> feature needs no extra tools. The optional <strong>pre-press PDF export</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
+            print-md renders your preview using the built-in browser engine. The standard <strong>Export</strong> feature needs no extra tools. The optional <strong>pre-press PDF export</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
           </p>
           <ul>
             {#each data.tools as t (t.bin)}
@@ -281,12 +263,12 @@
         </section>
         </details>
 
-        <footer class="actions">
-          <button class="ghost" onclick={copyReport} title="Copy system info to clipboard — useful when asking for support">
+        <footer class="dlg-actions">
+          <button class="dlg-ghost" onclick={copyReport} title="Copy system info to clipboard — useful when asking for support">
             {copied ? "Copied!" : "Copy diagnostic info"}
           </button>
-          <button class="ghost" onclick={openDocs}>View setup guide</button>
-          <button class="primary" onclick={close}>Close</button>
+          <button class="dlg-ghost" onclick={openDocs}>View setup guide</button>
+          <button class="dlg-primary" onclick={close}>Close</button>
         </footer>
       {/if}
     </div>
@@ -294,54 +276,21 @@
 {/if}
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  @import "$lib/styles/dialog-shell.css";
+
+  /* Help/About is the widest dialog (versions, tables, tool lists). */
+  .dlg-shell {
     width: min(720px, 92vw);
     max-height: 88vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
+  /* Footer is the last item INSIDE the scrolling body here, not a pinned
+     sibling — restore its original in-flow spacing (see SettingsDialog for
+     the same note). */
+  .dlg-actions {
+    padding: 16px 0 0;
+    margin-top: 8px;
   }
   .dialog-title-group { display: flex; align-items: baseline; gap: 10px; }
-  .dialog-header h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* WCAG 2.5.8: minimum target size 24x24px */
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .close:hover { color: var(--app-text); background: var(--app-surface-hover); }
   .dialog-body {
     padding: 16px 18px;
     overflow-y: auto;
@@ -504,23 +453,4 @@
     white-space: pre-wrap;
   }
   .install-note { font-size: 11px; color: var(--app-text-muted); margin: 0 0 6px; }
-  .actions {
-    display: flex;
-    gap: 8px;
-    justify-content: flex-end;
-    padding-top: 16px;
-    margin-top: 8px;
-    border-top: 1px solid var(--app-border-subtle);
-  }
-  .actions button {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 4px;
-    cursor: pointer;
-    border: 1px solid transparent;
-  }
-  .actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .actions .primary:hover { background: var(--app-accent-hover); }
-  .actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  .actions .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

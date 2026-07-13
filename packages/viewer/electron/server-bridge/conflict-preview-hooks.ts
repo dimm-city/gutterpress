@@ -1,8 +1,12 @@
 /**
  * Shared conflict-preview hooks for sync:* server routes.
+ *
+ * Storage lives in the single collapsed host object (ARCH review #31,
+ * `./host-services.ts`) — `getConflictPreviewHooks()` is a thin derived
+ * selector over it.
  */
 
-import { createHostBridge } from './create-host-bridge';
+import { getHostServices } from './host-services';
 
 export type ConflictKind = 'both-edited' | 'you-deleted' | 'online-deleted';
 
@@ -21,7 +25,7 @@ export interface ConflictPreviewHooks {
   ): Promise<ConflictPreviewResult>;
 }
 
-export const {
-  register: registerConflictPreviewHooks,
-  get: getConflictPreviewHooks,
-} = createHostBridge<ConflictPreviewHooks>('__printMdConflictPreviewHooks__');
+/** The live `ConflictPreviewHooks` slice of the collapsed host object, or null before `registerHostServices` runs. */
+export function getConflictPreviewHooks(): ConflictPreviewHooks | null {
+  return getHostServices()?.conflictPreview ?? null;
+}

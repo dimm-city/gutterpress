@@ -19,12 +19,12 @@
   import { basenameOf } from "$lib/platform/paths";
   import { friendlyHostError } from "$lib/errors";
   import type {
-    ConflictFileInfo,
-    ConflictPreview,
+    ConflictFileEntry,
     ConflictResolutionChoice,
     SyncOutcome,
   } from "$lib/platform/contract";
-  import { trapFocus } from "$lib/a11y";
+  import type { ConflictPreview } from "$lib/platform/dtos";
+  import { dialogBehavior } from "$lib/dialog";
 
   let {
     open = $bindable(false),
@@ -32,6 +32,21 @@
     files = [],
     localId,
     remoteId,
+    /**
+     * True while the host is still fetching localId/remoteId (M13 — only when
+     * the conflict emit site that opened this dialog couldn't carry them
+     * directly). Disables the primary button with an honest "Getting things
+     * ready…" label instead of a silently-dead one.
+     */
+    pending = false,
+    /**
+     * True when that fallback ids fetch failed (M13). Shows an in-dialog
+     * retry instead of leaving the primary button dead forever with no
+     * explanation.
+     */
+    idsFetchFailed = false,
+    /** Retry the fallback ids fetch (wired to SyncController.retryConflictIds). */
+    onRetryIds,
     /** Called after successful resolution so the parent can refresh the preview. */
     onResolved,
     /** Re-routes to the reconnect flow on the unlikely auth error during resolution. */
@@ -40,9 +55,12 @@
   }: {
     open?: boolean;
     projectDir: string | null;
-    files?: ConflictFileInfo[];
+    files?: ConflictFileEntry[];
     localId?: string | null;
     remoteId?: string | null;
+    pending?: boolean;
+    idsFetchFailed?: boolean;
+    onRetryIds?: () => void;
     onResolved?: (mergedRemoteChanges: boolean) => void;
     onReconnect?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
@@ -61,13 +79,12 @@
    * should add a case here rather than leaving the header hardcoded.
    */
   let errorKind = $state<"conflict" | "connection-setup">("conflict");
-  let dialogEl = $state<HTMLDivElement | undefined>(undefined);
 
   /** Header icon + title as a function of the dialog's current state. */
   const header = $derived(
     phase === "error" && errorKind === "connection-setup"
       ? { icon: "link" as const, title: "Your online connection needs to be set up again" }
-      : { icon: "triangle-alert" as const, title: "Changes happened in two places" },
+      : { icon: "triangle-alert" as const, title: "This project changed in two places" },
   );
 
   /** Track which file disclosures are expanded (path → boolean). */
@@ -87,7 +104,6 @@
         f.kind === "both-edited" ? ("both" as const) : ("mine" as const),
       ]),
     );
-    queueMicrotask(() => dialogEl?.focus());
   }
 
   /** Human-readable label for the file, falling back to the repo-relative path. */
@@ -95,14 +111,15 @@
     // Try to make a chapter-like label from the filename.
     const name = basenameOf(filePath);
     // Strip extension and de-kebab for a readable label ("03-chapter.md" → "03 chapter").
+    // Leading numbers ("03 chapter" → "03 chapter") are kept as-is — only the
+    // extension and separators are normalised.
     return name
       .replace(/\.[^.]+$/, "")
-      .replace(/[-_]/g, " ")
-      .replace(/^\d+\s*/, (m) => m); // keep leading numbers ("03 ")
+      .replace(/[-_]/g, " ");
   }
 
   /** Per-kind explanation shown below the file name. */
-  function kindExplanation(kind: ConflictFileInfo["kind"]): string {
+  function kindExplanation(kind: ConflictFileEntry["kind"]): string {
     switch (kind) {
       case "both-edited":
         return "You and a teammate both changed this file.";
@@ -113,24 +130,27 @@
     }
   }
 
-  /** Whether the file is a binary type (image/font/pdf) — no diff available. */
-  function isBinary(filePath: string): boolean {
-    return /\.(png|jpg|jpeg|gif|webp|svg|avif|ico|bmp|tiff?|woff2?|otf|ttf|eot|pdf)$/i.test(
-      filePath,
-    );
-  }
-
   /**
    * Toggle the "Compare versions" disclosure for a text file.
    * On first expand, lazily fetches the preview via the server route and
    * memoises the result so subsequent toggles don't re-fetch.
+   *
+   * L12: binary detection is the HOST's job, not this component's. When the
+   * conflict payload already carries a definite `isBinary` (from
+   * `electron/recovery-bridge.ts`'s canonical extension list), this component
+   * trusts it outright and never fetches a preview for a binary file. Only
+   * when `isBinary` is unknown (older/other emit sites — see
+   * sync-controller.svelte.ts's ids-fetch fallback) does it still ask the host
+   * via getConflictPreview, whose own response also carries the
+   * authoritative isBinary (used below to render "No preview").
    */
   async function togglePreview(filePath: string) {
     const wasExpanded = previewExpanded[filePath] ?? false;
     previewExpanded = { ...previewExpanded, [filePath]: !wasExpanded };
+    const knownBinary = files.find((f) => f.path === filePath)?.isBinary === true;
 
-    // Only fetch on first expand and only for text (non-binary) files.
-    if (!wasExpanded && !(filePath in previewCache) && !isBinary(filePath) && projectDir) {
+    // Only fetch on first expand and only when not already known to be binary.
+    if (!wasExpanded && !(filePath in previewCache) && !knownBinary && projectDir) {
       previewCache = { ...previewCache, [filePath]: "loading" };
       try {
         const fileEntry = files.find((f) => f.path === filePath);
@@ -194,7 +214,7 @@
         // field can carry raw technical error text that is unhelpful (and
         // often alarming) to the non-technical authors this app targets.
         // Same fixed copy as SyncController.handleForceSync's generic arm.
-        errorMessage = "Sync failed. Check your connection and try again.";
+        errorMessage = "Couldn't update the online copy. Your work is saved on this computer — we'll try again later.";
       }
     } catch (e) {
       phase = "error";
@@ -235,25 +255,20 @@
 </script>
 
 {#if open}
-  <div class="backdrop" onclick={close} role="presentation"></div>
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
 
   <div
-    bind:this={dialogEl}
-    class="dialog"
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="conflict-title"
-    tabindex="-1"
-    onkeydown={(e) => trapFocus(e, dialogEl)}
+    class="dlg-shell"
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "conflict-title", focusContainer: true }}
     use:onDialogMount
   >
-    <header class="dialog-header">
+    <header class="dlg-header">
       <h2 id="conflict-title">
         <Icon name={header.icon} />
         {header.title}
       </h2>
       <button
-        class="close"
+        class="dlg-close"
         onclick={close}
         disabled={phase === "resolving"}
         title="Close (Esc)"
@@ -263,17 +278,37 @@
 
     <div class="dialog-body">
       <!-- Persistent live region for phase announcements -->
-      <div class="sr-only" role="status" aria-live="polite">
+      <div class="dlg-sr-only" role="status" aria-live="polite">
         {#if phase === "resolving"}
           Applying your choices…
         {:else if phase === "error"}
           Something went wrong — {errorMessage ?? ""}
+        {:else if pending}
+          Getting things ready…
+        {:else if idsFetchFailed}
+          We couldn't get things ready to combine your changes. You can try again.
         {/if}
       </div>
 
       {#if phase !== "error"}
+        <!-- M13: the ids-fetch fallback state — only entered when the emit
+             site that opened this dialog couldn't carry localId/remoteId
+             directly. Replaces a silently-disabled primary button with an
+             honest status and, on failure, a retry. -->
+        {#if pending}
+          <div class="ids-status" role="status">
+            <span class="ids-spinner" aria-hidden="true"></span>
+            Getting things ready…
+          </div>
+        {:else if idsFetchFailed}
+          <div class="ids-status ids-status-error" role="alert">
+            <span>We couldn't get things ready to combine your changes.</span>
+            <button class="ids-retry-btn" onclick={() => onRetryIds?.()}>Try again</button>
+          </div>
+        {/if}
+
         <p class="lede">
-          You and a teammate changed some of the same files. A snapshot of
+          You and a teammate changed some of the same files. A copy of
           your work was saved automatically before combining. Choose what to
           do with each file below.
         </p>
@@ -294,7 +329,7 @@
         <ul class="file-list" role="list" aria-label="Files with differences">
           {#each files as file (file.path)}
             {@const label = fileLabel(file.path)}
-            {@const binary = isBinary(file.path)}
+            {@const binary = file.isBinary === true}
             <li class="file-item">
               <div class="file-info">
                 <span class="file-label">{label}</span>
@@ -400,104 +435,43 @@
     <!-- Footer is a PINNED sibling of the scroll region (not inside it), so the
          commit and the safe-escape are always visible no matter how many files
          are listed (three-judge gate finding). -->
-    <footer class="actions">
+    <footer class="dlg-actions">
       {#if phase === "error"}
-        <button class="ghost" onclick={close}>Close</button>
-        <button class="primary" onclick={confirm}>Try again</button>
+        <button class="dlg-ghost" onclick={close}>Close</button>
+        <button class="dlg-primary" onclick={confirm}>Try again</button>
       {:else}
-        <button class="ghost" onclick={close} disabled={phase === "resolving"}>Decide later</button>
+        <button class="dlg-ghost" onclick={close} disabled={phase === "resolving"}>Decide later</button>
         <button
-          class="primary"
+          class="dlg-primary"
           onclick={confirm}
           disabled={phase === "resolving" || files.length === 0 || !localId || !remoteId}
         >
-          {phase === "resolving" ? "Applying choices…" : "Use these choices"}
+          {#if phase === "resolving"}
+            Applying choices…
+          {:else if pending}
+            Getting things ready…
+          {:else}
+            Use these choices
+          {/if}
         </button>
       {/if}
     </footer>
   </div>
 {/if}
 
-<svelte:window
-  onkeydown={(e) => {
-    if (e.key === "Escape" && open) close();
-  }}
-/>
 
 <style>
-  .backdrop {
-    position: fixed;
-    inset: 0;
-    background: var(--app-backdrop);
-    z-index: 1000;
-  }
-  .dialog {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+  @import "$lib/styles/dialog-shell.css";
+
+  .dlg-shell {
     width: min(600px, 94vw);
     max-height: 84vh;
-    background: var(--app-surface);
-    color: var(--app-text-secondary);
-    border-radius: 8px;
-    box-shadow: 0 14px 40px var(--app-shadow-lg);
-    z-index: 1001;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
-  .dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--app-border-subtle);
-    flex-shrink: 0;
-  }
-  .dialog-header h2 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .close {
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    color: var(--app-text-muted);
-    line-height: 1;
-    cursor: pointer;
-    padding: 4px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    min-height: 28px;
-  }
-  .close:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
-  .close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .close:disabled { opacity: 0.4; cursor: default; }
 
   .dialog-body {
     padding: 16px 18px;
     overflow-y: auto;
     flex: 1;
-  }
-
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 
   .lede {
@@ -655,33 +629,64 @@
     line-height: 1.5;
   }
 
-  /* Pinned action bar — sibling of the scroll region, always visible. */
-  .actions {
+  /* M13: "Getting things ready…" / ids-fetch-failed status strip — the
+     honest replacement for a silently-disabled primary button. */
+  .ids-status {
     display: flex;
+    align-items: center;
     gap: 8px;
-    justify-content: flex-end;
-    flex-shrink: 0;
-    padding: 14px 18px;
-    border-top: 1px solid var(--app-border-subtle);
+    margin: 0 0 14px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border-subtle);
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--app-text-secondary);
+  }
+  .ids-status-error {
+    background: var(--app-error-bg);
+    border-color: var(--app-error-border);
+    color: var(--app-error-text);
+    flex-wrap: wrap;
+  }
+  .ids-retry-btn {
+    margin-left: auto;
+    padding: 4px 10px;
+    font-size: 11px;
+    border-radius: 5px;
     background: var(--app-surface);
-  }
-  .actions button {
-    padding: 6px 14px;
-    font-size: 13px;
-    border-radius: 4px;
+    border: 1px solid var(--app-border);
+    color: var(--app-text);
     cursor: pointer;
-    border: 1px solid transparent;
+    white-space: nowrap;
   }
+  .ids-retry-btn:hover { background: var(--app-surface-hover); }
+  .ids-retry-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+
+  .ids-spinner {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid var(--app-border);
+    border-top-color: var(--app-focus-ring);
+    border-radius: 50%;
+    animation: ids-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes ids-spin { to { transform: rotate(360deg); } }
+
+  /* Fallback disabled treatment for body buttons with no dedicated
+     :disabled rule of their own (currently just .banner-btn). */
   button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .primary {
+
+  /* Gradient fill — see dialog-shell.css's note on the L5 primary-button
+     inconsistency (preserved here, not unified). */
+  .dlg-primary {
     background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
     border-color: var(--app-accent-border);
     color: var(--app-accent-text);
   }
-  .primary:hover:not(:disabled) { background: var(--app-accent-hover); }
-  .primary:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
-  .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  .ghost:hover:not(:disabled) { background: var(--app-surface-hover); color: var(--app-text); }
+  .dlg-primary:hover:not(:disabled) { background: var(--app-accent-hover); }
 
   /* "Compare versions" disclosure — text-file preview panes */
   .preview-disclosure {

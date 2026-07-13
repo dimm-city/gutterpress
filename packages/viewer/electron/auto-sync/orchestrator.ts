@@ -25,6 +25,7 @@
 import path from "node:path";
 import {
   decideRunAgainAfterPreflight as decideRunAgainAfterPreflightImpl,
+  isConflictFileBinary,
   type RecoveryResultStatus,
   type RunAgainDecision,
 } from "../recovery-bridge";
@@ -47,8 +48,29 @@ type LibModule = typeof import("@dimm-city/print-md");
 type VersionHistorySettings = NonNullable<Parameters<LibModule["autoSyncDelayMs"]>[0]> &
   NonNullable<Parameters<LibModule["autoSnapshotDelayMs"]>[0]>;
 
-/** Per-project state for the auto-sync orchestrator. Keyed by projectDir. */
-export interface AutoSyncState {
+/** The classification `lib.detectProjectSource` returns. Derived from the lib's
+ *  own signature (like VersionHistorySettings above) so runPreflight/callers
+ *  stay decoupled from a named `ProjectSource` import. */
+type ProjectSourceResult = Awaited<ReturnType<LibModule["detectProjectSource"]>>;
+
+/**
+ * Prompt-pull delay after a project opens or a preflight repair settles —
+ * seconds, NOT coupled to the (much longer) snapshot debounce. Exported so
+ * main.ts's unrelated "local status" re-emit timer uses the same constant
+ * instead of a second module-level copy.
+ */
+export const AUTO_SYNC_OPEN_DELAY_MS = 4_000;
+
+/**
+ * Per-project state for the auto-sync orchestrator. Keyed by projectDir.
+ * NOT exported — external callers (main.ts, ExportController) mutate this
+ * only through the orchestrator's own methods (acquire/release/latchConflict/
+ * unlatch/runPreflight), never by reaching into the bag directly. See finding
+ * #7 (2026-07-10 architecture review): the mutable bag used to be the only
+ * mutation surface, which let three call sites hand-roll the single-flight /
+ * conflict-latch invariants this class exists to own.
+ */
+interface AutoSyncState {
   /** Debounce timer armed on file-change; fires runAutoSync when it expires. */
   debounceTimer: NodeJS.Timeout | null;
   /** Periodic safety-sync interval handle. */
@@ -78,14 +100,31 @@ export interface SyncStatusPayload {
     | "error"
     | "recovering"
     | "recovered"
-    // "local" — a local-git project with no syncable remote. There is no sync,
-    // but version history (auto-snapshots) is active; the pill surfaces a
-    // clickable "Version history on" label that opens the operation log.
-    | "local";
+    // "local" — a local-git project with NO usable remote (none, or SSH-only).
+    // There is no sync, but version history (auto-snapshots) is active; the
+    // pill surfaces a clickable "Previous versions" label.
+    | "local"
+    // "connect" — the repo HAS an HTTPS remote but print-md holds no usable
+    // credential for it. One connect step away from syncing; the renderer
+    // surfaces a Connect action.
+    | "connect";
   /** Absolute path of the project this status applies to. */
   projectDir: string;
-  /** Present (non-empty) only when state === "conflict". */
-  files?: ConflictFileInfo[];
+  /**
+   * Present (non-empty) only when state === "conflict". Each entry carries the
+   * host-authoritative `isBinary` flag (L12 — see `isConflictFileBinary` in
+   * `../recovery-bridge`) so `ConflictChoicesDialog` never has to re-derive it
+   * from the file extension itself.
+   */
+  files?: Array<ConflictFileInfo & { isBinary: boolean }>;
+  /**
+   * Local/remote snapshot ids backing the conflict resolution (M13). Present
+   * only when this emit site can compute them — see the matching doc comment
+   * on `SyncStatus` in `src/lib/platform/contract.ts` (this type must match it
+   * EXACTLY).
+   */
+  localId?: string;
+  remoteId?: string;
   /**
    * ISO-8601 timestamp of the last completed sync attempt (success or failure),
    * or null when none has run in this session.
@@ -206,6 +245,83 @@ export class AutoSyncOrchestrator {
 
   setLastSyncAt(dir: string, iso: string | null): void {
     this.lastSyncAt.set(dir, iso);
+  }
+
+  /** True when `dir` currently has an unresolved conflict latch (auto-sync
+   *  paused pending user resolution). Read-only — the sanctioned replacement
+   *  for callers that used to read `getState(dir)?.conflictLatched` directly. */
+  isConflictLatched(dir: string): boolean {
+    return this.states.get(dir)?.conflictLatched ?? false;
+  }
+
+  // ── External single-flight lock surface ─────────────────────────────────────
+  // `run()` manages its OWN single-flight guard internally (see below) — these
+  // two methods exist so a caller OUTSIDE run() (runPreflight, below) can hold
+  // the exact same lock across a multi-step async flow without reaching into
+  // the state bag. Finding #7 (2026-07-10 architecture review): main.ts used to
+  // hand-roll `syncState.inFlight = true/false` at five separate sites to do
+  // exactly this.
+
+  /** Attempt to acquire the single-flight lock for `dir`. Returns false (doing
+   *  nothing else) if a sync is already in flight — the caller decides what
+   *  "already busy" means for it (run() marks runAgain; runPreflight just
+   *  skips). Never throws. */
+  acquire(dir: string): boolean {
+    const state = this.getOrCreateState(dir);
+    if (state.inFlight) return false;
+    state.inFlight = true;
+    return true;
+  }
+
+  /** Release the single-flight lock for `dir`. No-op if `dir` has no tracked
+   *  state (never creates one just to release it). */
+  release(dir: string): void {
+    const state = this.states.get(dir);
+    if (state) state.inFlight = false;
+  }
+
+  // ── Conflict-latch surface ──────────────────────────────────────────────────
+
+  /**
+   * Latch `dir`'s conflict flag: cancels its timers, stamps `lastSyncAt`, and
+   * emits the `conflict` status to the renderer. The ONE mutation surface for a
+   * conflict detected OUTSIDE `run()` (currently: the pre-export sync safety
+   * gate in ExportController). `run()`'s own conflict/error branches stay
+   * inline — they have follow-up bookkeeping (runAgain, `em.status` reuse) that
+   * is specific to the outcome shape already in hand there.
+   *
+   * `localId`/`remoteId` are optional (M13): the pre-export gate's caller
+   * (`export/controller.ts`) does not currently thread them through this
+   * method, so the ambient pill falls back to the ids-fetch path for that one
+   * emit site (`sync-controller.svelte.ts`'s `conflictPending` state) — this
+   * signature accepts them so a future caller CAN pass them without a
+   * breaking change.
+   */
+  latchConflict(dir: string, files: ConflictFileInfo[], localId?: string, remoteId?: string): void {
+    const state = this.getOrCreateState(dir);
+    state.conflictLatched = true;
+    state.runAgain = false;
+    this.cancelTimer(dir);
+    const at = this.nowIso();
+    this.setLastSyncAt(dir, at);
+    this.deps.emit({
+      state: "conflict",
+      files: files.map((f) => ({ ...f, isBinary: isConflictFileBinary(f.path) })),
+      projectDir: dir,
+      lastSyncAt: at,
+      ...(localId ? { localId } : {}),
+      ...(remoteId ? { remoteId } : {}),
+    });
+  }
+
+  /**
+   * Clear `dir`'s conflict latch (does NOT resume timers — call `schedule()`/
+   * `armInterval()` afterward if the caller wants sync to resume immediately).
+   * No-op if `dir` has no tracked state.
+   */
+  unlatch(dir: string): void {
+    const state = this.states.get(dir);
+    if (state) state.conflictLatched = false;
   }
 
   // ── Timer management ────────────────────────────────────────────────────────
@@ -344,29 +460,60 @@ export class AutoSyncOrchestrator {
     // resolves it. Auto-snapshot keeps running; we just skip network work.
     if (state.conflictLatched) return;
 
-    // Re-check live policy every run so a settings change applies immediately.
-    const [lib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
-
-    // Guard: watched dir may have changed while we awaited the above.
-    if (this.deps.getWatchedDir() !== dir) return;
-
-    // Guard: auto-sync policy (master switch).
-    if (lib.autoSyncDelayMs(settings.versionHistory) === null) return;
-
-    // Guard: only local-git-folder projects sync.
-    const source = await lib.detectProjectSource(dir);
-    if (source.type !== "local-git-folder") return;
-
-    // Guard: canSync = HTTPS remote + stored credential. Local-only projects never
-    // auto-sync (transparent-sync plan §6; ADR 0006 D4). Use the credential-aware
-    // diagnosis — NOT capabilitiesFor().canSync, which is hasRemote-only and would
-    // run syncProject on every trigger for SSH or uncredentialed-HTTPS projects
-    // (each returning auth/error, churning the network unattended). Same gate the
-    // renderer pill is shown on, so host and UI agree.
-    const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: this.deps.tokenStore });
-    if (!diag.canSync) return;
-
+    // Claim the single-flight slot NOW, synchronously, before the first await
+    // below. The guard above only READS state.inFlight; setting it after the
+    // policy awaits (as this used to) was a TOCTOU hole — two triggers that
+    // both entered before either reached the await would both pass the guard
+    // and call syncProject concurrently on the same repo. Every "don't sync
+    // this time" exit between here and the syncProject call must releaseFlight()
+    // so the slot is never stuck true (which would block all future syncs).
     state.inFlight = true;
+    const releaseFlight = (): void => {
+      state.inFlight = false;
+      if (state.runAgain) {
+        state.runAgain = false;
+        void this.run(dir);
+      }
+    };
+
+    // Re-check live policy every run so a settings change applies immediately.
+    // The probes below are wrapped so a THROW from any of them still releases
+    // the single-flight slot: once inFlight is set (above), a rejected
+    // loadLib / readSettings / detectProjectSource / diagnoseProjectRemote that
+    // escaped without releasing would leave inFlight stuck true, and every
+    // future trigger for this project would only ever arm runAgain — wedging
+    // auto-sync until the app restarts.
+    let lib!: LibModule;
+    try {
+      const [loadedLib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
+      lib = loadedLib;
+
+      // Guard: watched dir may have changed while we awaited the above.
+      if (this.deps.getWatchedDir() !== dir) return releaseFlight();
+
+      // Guard: auto-sync policy (master switch).
+      if (lib.autoSyncDelayMs(settings.versionHistory) === null) return releaseFlight();
+
+      // Guard: only local-git-folder projects sync.
+      const source = await lib.detectProjectSource(dir);
+      if (source.type !== "local-git-folder") return releaseFlight();
+
+      // Guard: canSync = HTTPS remote + stored credential. Local-only projects never
+      // auto-sync (transparent-sync plan §6; ADR 0006 D4). Use the credential-aware
+      // diagnosis — NOT capabilitiesFor().canSync, which is hasRemote-only and would
+      // run syncProject on every trigger for SSH or uncredentialed-HTTPS projects
+      // (each returning auth/error, churning the network unattended). Same gate the
+      // renderer pill is shown on, so host and UI agree.
+      const diag = await lib.diagnoseProjectRemote(dir, { tokenStore: this.deps.tokenStore });
+      if (!diag.canSync) return releaseFlight();
+    } catch (probeErr) {
+      // Release the single-flight slot before propagating, so a transient infra
+      // failure in a probe can't permanently wedge this project's auto-sync.
+      releaseFlight();
+      throw probeErr;
+    }
+
+    // Flag already held since the top of the flight section.
     this.deps.emit({ state: "syncing", projectDir: dir, lastSyncAt: this.getLastSyncAt(dir) });
 
     // Compute the operation log path for this project so sync + recovery share
@@ -540,9 +687,14 @@ export class AutoSyncOrchestrator {
         this.cancelTimer(dir);
         this.deps.emit({
           state: "conflict",
-          files: outcome.files,
+          // M13: carry localId/remoteId directly so the renderer never needs a
+          // second network sync just to unlock ConflictChoicesDialog's primary
+          // button. L12: attach the host-authoritative isBinary per file.
+          files: outcome.files.map((f) => ({ ...f, isBinary: isConflictFileBinary(f.path) })),
           projectDir: dir,
           lastSyncAt: completedAt,
+          localId: outcome.localId,
+          remoteId: outcome.remoteId,
         });
         console.warn(`[auto-sync] conflict latched for ${dir} — auto-sync paused until resolved`);
         // Conflict-latch prevents the runAgain path from firing.
@@ -582,6 +734,188 @@ export class AutoSyncOrchestrator {
     if (state.runAgain) {
       state.runAgain = false;
       void this.run(dir);
+    }
+  }
+
+  /**
+   * Arm a one-shot deferred `run(dir)` after `delayMs`, firing only if `dir` is
+   * STILL the watched project when the timer expires (a project switch cancels
+   * the stale run). Unref'd so it never blocks app quit. Private: the only
+   * caller is runPreflight, below — main.ts's own analogous "local status"
+   * re-emit timer is unrelated (no run() call) and stays in main.ts.
+   */
+  private scheduleDeferredSync(dir: string, delayMs: number): void {
+    const t = setTimeout(() => {
+      if (this.deps.getWatchedDir() === dir) void this.run(dir);
+    }, delayMs);
+    if (typeof t.unref === "function") t.unref();
+  }
+
+  // ── Preflight recovery (project-open, before the first sync) ───────────────
+
+  /**
+   * Preflight recovery: before the initial sync, inspect `dir`'s repo for
+   * structural conditions (stale lock, interrupted merge, detached head,
+   * missing git dir). If a recoverable condition is detected, route through
+   * `lib.recover()` BEFORE the first `run()` so the author sees a transparent
+   * repair on open rather than a sync error. No-op for non-git projects (a
+   * deferred sync is scheduled immediately instead).
+   *
+   * CONCURRENCY: acquires the single-flight lock for the duration of
+   * `lib.recover()` so `run()` cannot call `lib.syncProject` concurrently on
+   * the same repo — if `run()` fires while the lock is held (e.g. the periodic
+   * interval), it arms `runAgain` instead, and this method honours (or
+   * intentionally suppresses, per the conflict-latch invariant) that pending
+   * trigger once `recover()` settles (BUG 3 — see decideRunAgainAfterPreflight).
+   * Never throws — every step is wrapped so a failure here can't wedge the
+   * project; a deferred sync is always scheduled as the fallback.
+   *
+   * Formerly a ~140-line IIFE hand-rolled in main.ts's handlePreviewRequest
+   * (finding #7, 2026-07-10 architecture review): the caller took the
+   * single-flight lock itself, released it at four sites, and hand-wrote the
+   * conflict-latch / runAgain bookkeeping this class exists to own.
+   */
+  async runPreflight(dir: string, source: ProjectSourceResult): Promise<void> {
+    // Acquire single-flight lock before any git I/O. Skip preflight entirely
+    // (no runAgain marking — unlike run()'s own guard) if a sync is already in
+    // flight; unusual at open time, but never worth queuing a preflight retry.
+    if (!this.acquire(dir)) return;
+    const state = this.getOrCreateState(dir);
+
+    // Declared outside the try so the catch block can log to the same file even
+    // if a step before ctx-creation throws (guarded: may still be undefined).
+    let plog: ReturnType<LibModule["resolveLogger"]> | undefined;
+
+    try {
+      const lib = await this.deps.loadLib();
+
+      if (source.type !== "local-git-folder") {
+        // Not a git project — release immediately and let the normal initial sync proceed.
+        this.release(dir);
+        this.scheduleDeferredSync(dir, AUTO_SYNC_OPEN_DELAY_MS);
+        return;
+      }
+
+      const health = await lib.inspectRepo({ repoDir: dir });
+      const kind = lib.classifyFromHealth(health) as SyncErrorKind | null;
+      if (kind === null) {
+        // Healthy repo — release lock and schedule the normal initial sync.
+        this.release(dir);
+        this.scheduleDeferredSync(dir, AUTO_SYNC_OPEN_DELAY_MS);
+        return;
+      }
+
+      console.log(
+        `[preflight] structural condition '${kind}' detected for ${dir}; recovering before first sync`,
+      );
+      this.deps.emit({
+        state: "recovering",
+        projectDir: dir,
+        lastSyncAt: this.getLastSyncAt(dir) ?? null,
+        recovery: { phase: "checking", risk: "none" },
+      });
+
+      const preflightLogFile = this.deps.operationLogPath(path.basename(dir));
+      const ctx = await this.deps.buildRecoveryContext(
+        dir,
+        lib,
+        this.deps.tokenStore,
+        undefined,
+        preflightLogFile,
+      );
+
+      // Write the FULL structural diagnosis to the operation log BEFORE
+      // dispatching recover(), so support sees WHY a kind was chosen (which
+      // health signal, repo root vs opened dir, whether local changes
+      // existed) — not just a one-word kind. Same file + format the recovery
+      // subsystem itself writes to.
+      plog = lib.resolveLogger(preflightLogFile, "preflight");
+      plog.info(
+        "detect",
+        "structural condition detected on open",
+        lib.buildPreflightDiagnostics(dir, ctx.repoDir, health, kind),
+      );
+
+      let result: Awaited<ReturnType<LibModule["recover"]>>;
+      try {
+        result = await lib.recover(kind, ctx);
+      } finally {
+        // Always release the single-flight lock when recover() settles.
+        this.release(dir);
+      }
+
+      const now = this.nowIso();
+      this.setLastSyncAt(dir, now);
+
+      // Snapshot the pending auto-sync trigger BEFORE the per-status branches:
+      // run() may have set runAgain while we held the single-flight lock. A
+      // single authoritative decision below (decideRunAgainAfterPreflight)
+      // decides its fate so it is never silently dropped (BUG 3). The latching
+      // branches still clear runAgain themselves for their own emit logic; the
+      // post-chain decision is the one place that may actually re-run it.
+      const pendingRunAgain = state.runAgain;
+
+      // Map recover()'s result → emit payload via the ONE shared mapper (also
+      // used by run()). The preflight surfaces an authless needs_user as a
+      // generic error (its historical else-branch), hence
+      // authlessNeedsUserAs: "error". The follow-up (resume / retry timer /
+      // conflict-latch) is preflight's own and stays here.
+      const em = mapRecoveryResultToEmit(result, {
+        projectDir: dir,
+        lastSyncAt: now,
+        logFile: preflightLogFile,
+        authlessNeedsUserAs: "error",
+      });
+
+      if (em.kind === "recovered") {
+        this.deps.emit(em.status);
+        // The repo is healthy again: clear any conflict-latch and RESUME sync
+        // so the fix isn't left paused. If a trigger was already queued while
+        // we held the lock, decideRunAgainAfterPreflight below will run it
+        // ("run") — so only schedule the deferred sync here when nothing is
+        // queued, to avoid a double-run on the same repo.
+        state.conflictLatched = false;
+        if (!pendingRunAgain) {
+          plog.info("resume", "recovered — scheduling deferred sync", {
+            reason: "no queued trigger",
+          });
+          this.scheduleDeferredSync(dir, AUTO_SYNC_OPEN_DELAY_MS);
+        } else {
+          plog.info("resume", "recovered — honoring queued trigger", {
+            reason: "runAgain pending",
+          });
+        }
+      } else if (em.kind === "retry_later") {
+        this.deps.emit(em.status);
+        // Honor the handler's requested delay (same idiom as the mid-sync
+        // retry_later arm) instead of waiting for the generic periodic timer.
+        this.scheduleDeferredSync(dir, em.retryAfterMs ?? 60_000);
+      } else {
+        // conflict OR error (blocked / failed / needs_user without files) —
+        // latch, stop the periodic timer to avoid churning, and surface.
+        state.conflictLatched = true;
+        state.runAgain = false;
+        this.cancelTimer(dir);
+        this.deps.emit(em.status);
+      }
+
+      // Honour (or intentionally suppress) the pending auto-sync trigger now
+      // that recover() has settled and the lock is released. For non-latching
+      // outcomes (recovered / retry_later) a queued trigger PROCEEDS. For
+      // latching outcomes (conflict/blocked/failed) the latch suppresses it.
+      // Always clear the flag so it can't leak into a later run.
+      const runAgainDecision = this.decideRunAgainAfterPreflight(result.status, pendingRunAgain);
+      state.runAgain = false;
+      if (runAgainDecision === "run") {
+        void this.run(dir);
+      }
+    } catch (err) {
+      // Preflight is non-blocking: always release the lock so the project is
+      // not permanently wedged. Then let the normal initial sync proceed.
+      this.release(dir);
+      console.warn("[preflight] recovery failed (non-fatal):", err);
+      plog?.error("preflight", "recovery failed (non-fatal)", { error: String(err) });
+      this.scheduleDeferredSync(dir, AUTO_SYNC_OPEN_DELAY_MS);
     }
   }
 }

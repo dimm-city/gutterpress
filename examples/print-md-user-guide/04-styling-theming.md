@@ -4,15 +4,24 @@
 
 ## Built-in Themes
 
-Declare themes in `manifest.yaml` using the `styles` key. Built-in theme files are bundled with Print-md and available by name:
+Print-md ships four built-in themes, embedded in the CLI binary and library:
+
+| Theme id | Description |
+|----------|-------------|
+| `clean-book` | A calm, classic book look: serif body, generous margins, restrained accents. |
+| `ttrpg-supplement` | Bold display headings, warm parchment fills, and boxed stat blocks for game books. |
+| `zine` | High-contrast, punchy sans-serif look for short photocopier-friendly zines. |
+| `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
+
+Applying a theme **copies** its `theme.css` (and any bundled fonts/assets) into your project at `themes/<id>/`, so the project carries its own copy with no external path dependency, and wires the matching `styles:` entry into `manifest.yaml` for you. Today that apply/import flow lives in the desktop viewer's Theme panel; the resulting manifest entry looks like:
 
 ```yaml
 styles:
-  - "themes/classic.css"    # Bundled theme
-  - "styles/custom.css"     # Your overrides (layered on top)
+  - "themes/clean-book/theme.css"   # Applied via the viewer's Theme panel
+  - "styles/custom.css"             # Your overrides (layered on top)
 ```
 
-Bundled themes cover common use cases out of the box and define the full token set so you only need to override the tokens you want to change.
+Bundled themes define the full token set (see below) so you only need to override the tokens you want to change. This guide's own project (the one you're reading) does not use a bundled theme — it declares its own `styles/guide.css` directly in `manifest.yaml`.
 
 ## CSS Custom Properties
 
@@ -100,7 +109,7 @@ Copy font files into your project and load with `@font-face`:
 
 ## Custom Page Templates
 
-Named pages let you apply different margins, backgrounds, or decorations to specific page types. Declare them with `@page name` in CSS and apply with `@page name` in markdown.
+Named pages let you apply different margins, backgrounds, or decorations to specific page types, using the CSS Paged Media `page` property together with a named `@page` rule:
 
 ```css
 /* CSS: define the named page */
@@ -111,12 +120,24 @@ Named pages let you apply different margins, backgrounds, or decorations to spec
 }
 ```
 
+Writing `@page gallery` in *markdown* only sets `data-page="gallery"` on the page wrapper (see [Chapter 2, @page — start a new page](./02-writing-content.md)) — by itself it does **not** bind that wrapper to the `@page gallery` CSS rule above. You still need a CSS declaration that assigns the `page` property to something in your markup — the simplest option is to target the `data-page` attribute the marker already gives you:
+
+```css
+[data-page="gallery"] { page: gallery; }
+```
+
 ```markdown
 @page gallery
 
 ## Art Gallery
 
 Images here get the gallery page treatment.
+```
+
+This guide's own cover page (`00-cover.md`) uses the same mechanism with a hand-written class instead of `data-page`:
+
+```css
+.cover-page { page: cover; }
 ```
 
 ## Page Setup CSS
@@ -155,12 +176,12 @@ h1 { string-set: chapter-title content(); }
 
 ### Widow and orphan control
 
-Set minimum lines before a page break. The default in Print-md is 4:
+`orphans`/`widows` control the minimum number of lines that must stay together at the top/bottom of a page break. Core print-md sets **no default** — Paged.js follows the CSS default of 2. This guide's own `guide.css` raises both to 3:
 
 ```css
 body {
-  orphans: 4;
-  widows: 4;
+  orphans: 3;
+  widows: 3;
 }
 ```
 
@@ -186,26 +207,29 @@ Stylesheets are applied in the order listed in `manifest.yaml`. Later files over
 
 ```yaml
 styles:
-  - "themes/classic.css"     # 1. Base theme (loaded first)
-  - "styles/variables.css"   # 2. Token overrides
-  - "styles/custom.css"      # 3. Component customizations
-  - "styles/chapter-art.css" # 4. Chapter-specific rules (last wins)
+  - "themes/clean-book/theme.css" # 1. Base theme (loaded first)
+  - "styles/variables.css"        # 2. Token overrides
+  - "styles/custom.css"           # 3. Component customizations
+  - "styles/chapter-art.css"      # 4. Chapter-specific rules (last wins)
 ```
 
 ## Layout Marker CSS Classes
 
-Each layout marker emits a predictable CSS class that you can style:
+Each layout marker emits a predictable CSS class that you can style. This mirrors [Chapter 2's Layout Directives](./02-writing-content.md#layout-directives) — repeated here as a CSS-focused cheat sheet:
 
 @section
 
-| Marker | Emitted HTML | CSS Class |
-|--------|-------------|-----------|
-| `@page` | `<div class="page">` | `.page` |
-| `@page chapter` | `<div class="page chapter">` | `.page.chapter` |
-| `@section` | `<div class="region">` | `.region` |
+| Marker | Emitted wrapper | CSS selector |
+|--------|-----------------|---------------|
+| `@chapter` | `<div class="chapter">` (+ `data-chapter-label` when given a bare label) | `.chapter` |
 | `@spread` | `<div class="spread">` | `.spread` |
-| `@page-break` | `<div class="md-break">` | `.md-break` |
-| `@column-break` | `<div class="md-column-break">` | `.md-column-break` |
+| `@page` | `<div class="page">` | `.page` |
+| `@page-break` | `<div class="md-page-break">` (no page wrapper) | `.md-page-break` |
+| `@section` | `<div class="section">` | `.section` |
+| `@continue` | `<div class="section pmd-continued">` | `.section.pmd-continued` |
+| `@column-break` | `<div class="md-column-break">` (or a `.col` boundary inside `.col-split`) | `.md-column-break` |
+
+Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.md-page-break`, never `.md-break`.
 
 @end-section
 
@@ -237,10 +261,10 @@ Each layout marker emits a predictable CSS class that you can style:
 
 ### Scoping with chapter IDs
 
-Each chapter gets a `<div class="chapter" id="ch-name">` wrapper when you use `@page` or `@chapter` markers. Use it to scope overrides:
+A `<div class="chapter" id="ch-name">` wrapper comes from `@chapter #ch-name` — **not** from `@page`. `@page #id` produces `<div class="page" id="...">`, which is a different element with a different class; a `.chapter#ch-bestiary` selector will not match anything inside a `@page`-only wrapper. Use `@chapter` when you want the `.chapter` scoping hook:
 
 ```markdown
-@page #ch-bestiary
+@chapter #ch-bestiary
 
 # Bestiary
 ```

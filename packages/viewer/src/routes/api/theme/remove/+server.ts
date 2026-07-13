@@ -1,19 +1,19 @@
 import { error } from '@sveltejs/kit';
-import { isAbsolute } from 'node:path';
-import { jsonRoute } from '../../_lib/handler';
+import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = jsonRoute(
-  async (body: { projectDir?: string; id?: string }) => {
-    const { projectDir, id } = body;
-    if (!projectDir || !isAbsolute(projectDir)) {
-      error(400, 'theme/remove requires an absolute projectDir');
-    }
-    if (typeof id !== 'string' || !id) {
+export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
+  validate: (raw) => {
+    const body = raw as { projectDir?: string; id?: string };
+    const projectDir = requireAbsolute(body.projectDir, 'theme/remove');
+    if (typeof body.id !== 'string' || !body.id) {
       error(400, 'theme/remove requires an id');
     }
-    const lib = await import('@dimm-city/print-md');
-    await lib.removeProjectTheme(projectDir, id);
+    return { projectDir, id: body.id };
+  },
+  call: async ({ body }) => {
+    const lib = await loadLib();
+    await lib.removeProjectTheme(body.projectDir, body.id);
     return { ok: true };
-  }
-);
+  },
+});
