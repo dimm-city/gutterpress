@@ -11,10 +11,6 @@
 import { getHostServices } from './host-services';
 
 export interface AppHooks {
-  /** Drive the splash window status line / progress bar. */
-  updateSplash: (status?: string, progress?: number, sub?: string) => void;
-  /** Reveal the main window and dismiss the splash (idempotent). */
-  showMainWindowAndCloseSplash: () => void;
   /** Set the renderer dirty state for the close gate. */
   setRendererDirty: (isDirty: boolean) => void;
   /** Resolve the pending flush and mark renderer clean. */

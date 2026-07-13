@@ -1,31 +1,20 @@
 /**
- * Regression tests for ARCH review #28 (boot-failure UX) and #58 (splash
- * fallback comment/value mismatch) in electron/main.ts.
+ * Regression tests for ARCH review #28 (boot-failure UX) in electron/main.ts.
  *
  * main.ts is Electron's entry script — it calls `app.whenReady()` and other
  * singleton APIs at module scope, so (matching the existing convention in
- * viewer-ui-regressions.test.ts, e.g. the "splash screen is closable..." and
- * "C2: recents..." cases) these are source-text assertions rather than an
- * executed unit test. That is enough to pin the two behaviors this review
- * package is responsible for:
+ * viewer-ui-regressions.test.ts) these are source-text assertions rather than
+ * an executed unit test:
  *
  *  - #28: if startSvelteKitServer() throws during app.whenReady(), main.ts
  *    must show a plain-language dialog.showErrorBox(...) instead of only
  *    logging to console.error and silently continuing.
- *  - #58: the splash fallback timer's comment must describe what the 15s
- *    timeout actually budgets (revealing the window early, not a
- *    render-completion deadline) instead of the stale "Generous (60s)"
- *    claim that never matched the 15_000 value.
  *
- * Both assertions fail against the HEAD version of main.ts as of commit
- * e0708a3 (confirmed via `git show HEAD:packages/viewer/electron/main.ts`):
- * that revision's catch block is only
- *   console.error("[sk-server] failed to start SvelteKit server:", err);
- *   // Non-fatal: registerAppProtocol will return 503 until skServerPort is set.
- * with no showErrorBox call anywhere in the file, and its splash-fallback
- * comment reads "Generous (60s) so a large book on a slow machine finishes
- * rendering ... rather than being cut off mid-render by the timeout" above a
- * `setTimeout(showMainWindowAndCloseSplash, 15_000)` call.
+ * (This file also used to pin ARCH #58 — the splash fallback timer's
+ * comment/value mismatch. The external splash window has since been REMOVED
+ * outright in favour of the in-window start screen, so those assertions moved
+ * to viewer-ui-regressions.test.ts's "the external splash window is gone"
+ * test, which pins the removal itself.)
  */
 import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -60,35 +49,10 @@ test("ARCH #28: dialog is imported from electron so showErrorBox actually resolv
   expect(main).toMatch(/import\s*\{[^}]*\bdialog\b[^}]*\}\s*from\s*"electron"/);
 });
 
-test("ARCH #58: splash fallback comment is reconciled with the 15s value it documents", () => {
-  const timerIdx = main.indexOf(
-    "splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000);"
-  );
-  expect(timerIdx).toBeGreaterThan(-1);
-
-  // The comment block immediately preceding the timer call.
-  const commentBlock = main.slice(Math.max(0, timerIdx - 1200), timerIdx);
-
-  // The stale claim (an unqualified "Generous (60s)" framing that never
-  // matched the 15_000ms value) must be gone.
-  expect(commentBlock).not.toContain("Generous (60s)");
-  expect(commentBlock).not.toContain("60s)");
-
-  // The reconciled comment explains the 15s window is about revealing the
-  // window early / not stranding the user on the splash — NOT a budget for
-  // finishing a full render — since showInactive() already paints real
-  // compositor frames underneath the splash the whole time.
-  expect(commentBlock).toContain("showInactive");
-  expect(commentBlock).toContain("not a render-completion budget");
-});
-
-test("ARCH #58: the fallback timer still uses 15_000ms, not the stale 60s figure", () => {
-  expect(main).toContain(
-    "splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000);"
-  );
-  expect(main).not.toContain(
-    "splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 60_000);"
-  );
+test("the splash machinery stays deleted (superseded by the in-window start screen)", () => {
+  expect(main).not.toContain("splashFallbackTimer");
+  expect(main).not.toContain("showMainWindowAndCloseSplash");
+  expect(main).not.toContain("createSplashWindow");
 });
 
 test("residual docs-sweep fix: the prod-mode window-load comment describes adapter-node, not adapter-static", () => {

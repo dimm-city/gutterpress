@@ -34,11 +34,9 @@ interface Harness {
     setLandingReady: Spy<[boolean]>;
     setLandingHold: Spy<[boolean]>;
     setLandingContinueDir: Spy<[string | null]>;
-    splashStatus: Spy<[string, number]>;
     setBusy: Spy<[boolean, string]>;
     getViewerProjectState: Spy<[string]>;
     startFolderPreview: Spy<[string, string, unknown]> & { impl?: () => Promise<void> };
-    hasOpenError: Spy<[]> & { value: boolean };
   };
 }
 
@@ -46,7 +44,6 @@ function make(): Harness {
   const isDesktop = Object.assign(spy<[]>(), { value: true });
   const isWorkspaceEngaged = Object.assign(spy<[]>(), { value: false });
   const isSomethingOpen = Object.assign(spy<[]>(), { value: false });
-  const revealWindow = spy<[]>();
   const getViewerPrefs = Object.assign(spy<[]>(), {
     impl: async (): Promise<StartupPrefs> => ({}),
   });
@@ -56,13 +53,11 @@ function make(): Harness {
   const setLandingReady = spy<[boolean]>();
   const setLandingHold = spy<[boolean]>();
   const setLandingContinueDir = spy<[string | null]>();
-  const splashStatus = spy<[string, number]>();
   const setBusy = spy<[boolean, string]>();
   const getViewerProjectState = spy<[string]>();
   const startFolderPreview = Object.assign(spy<[string, string, unknown]>(), {
     impl: async () => {},
   });
-  const hasOpenError = Object.assign(spy<[]>(), { value: false });
 
   const deps: StartupControllerDeps = {
     isDesktop: () => {
@@ -77,7 +72,6 @@ function make(): Harness {
       isSomethingOpen();
       return isSomethingOpen.value;
     },
-    revealWindow: () => revealWindow(),
     getViewerPrefs: () => {
       getViewerPrefs();
       return getViewerPrefs.impl();
@@ -91,7 +85,6 @@ function make(): Harness {
     setLandingReady: (v) => setLandingReady(v),
     setLandingHold: (v) => setLandingHold(v),
     setLandingContinueDir: (v) => setLandingContinueDir(v),
-    splashStatus: (m, p) => splashStatus(m, p),
     setBusy: (b, l) => setBusy(b, l),
     getViewerProjectState: (dir) => {
       getViewerProjectState(dir);
@@ -101,10 +94,6 @@ function make(): Harness {
       startFolderPreview(dir, label, restoreState);
       return startFolderPreview.impl();
     },
-    hasOpenError: () => {
-      hasOpenError();
-      return hasOpenError.value;
-    },
   };
 
   return {
@@ -113,7 +102,6 @@ function make(): Harness {
       isDesktop,
       isWorkspaceEngaged,
       isSomethingOpen,
-      revealWindow,
       getViewerPrefs,
       isLeftPanelPrefsLoaded,
       applyLeftPanelPrefs,
@@ -121,11 +109,9 @@ function make(): Harness {
       setLandingReady,
       setLandingHold,
       setLandingContinueDir,
-      splashStatus,
       setBusy,
       getViewerProjectState,
       startFolderPreview,
-      hasOpenError,
     },
   };
 }
@@ -170,12 +156,11 @@ test("run() sets lastProjectChecked and autoOpeningLastProject synchronously bef
 
 // ── Race branch: something opened while prefs were loading ────────────────────
 
-test("race: something opened while prefs loaded -> reveals once and returns without reading lastProjectDir", async () => {
+test("race: something opened while prefs loaded -> returns without reading lastProjectDir", async () => {
   const { ctrl, deps } = make();
   deps.getViewerPrefs.impl = async () => ({ lastProjectDir: "/proj", showLandingAtStartup: true });
   deps.isSomethingOpen.value = true;
   await ctrl.run();
-  expect(deps.revealWindow.calls.length).toBe(1);
   expect(deps.setLandingContinueDir.calls.length).toBe(0);
   expect(deps.startFolderPreview.calls.length).toBe(0);
   expect(ctrl.autoOpeningLastProject).toBe(false);
@@ -202,92 +187,48 @@ test("does not re-apply left-panel prefs when already loaded", async () => {
 
 // ── No last project ─────────────────────────────────────────────────────────
 
-test("no last project dir -> landing shown (default pref), reveals once, no reopen attempted", async () => {
+test("no last project dir -> landing shown (default pref), no reopen attempted", async () => {
   const { ctrl, deps } = make();
   deps.getViewerPrefs.impl = async () => ({ lastProjectDir: null });
   await ctrl.run();
   expect(deps.setLandingShowPref.calls).toEqual([[true]]);
   expect(deps.setLandingReady.calls).toEqual([[true]]);
   expect(deps.setLandingHold.calls.length).toBe(0); // no dir -> hold not needed
-  expect(deps.revealWindow.calls.length).toBe(1);
   expect(deps.setLandingContinueDir.calls.length).toBe(0);
   expect(deps.startFolderPreview.calls.length).toBe(0);
 });
 
-// ── Landing enabled + last project: hold + reveal BEFORE the reopen awaits ────
+// ── Landing enabled + last project: hold over the pre-render ────────────────
 
-test("landing enabled with a last project: holds the landing, reveals immediately (before startFolderPreview resolves), then reopens behind it", async () => {
+test("landing enabled with a last project: holds the landing, then reopens behind it", async () => {
   const { ctrl, deps } = make();
   deps.getViewerPrefs.impl = async () => ({ lastProjectDir: "/proj", showLandingAtStartup: true });
-  // Reveal must have already happened by the time startFolderPreview is
-  // invoked — it must NOT be deferred until after the reopen resolves (that
-  // would leave the landing sitting uninteractive behind the splash for the
-  // whole reopen).
-  let revealedBeforeReopenStarted = false;
-  deps.startFolderPreview.impl = async () => {
-    revealedBeforeReopenStarted = deps.revealWindow.calls.length === 1;
-  };
   await ctrl.run();
-  expect(revealedBeforeReopenStarted).toBe(true);
   expect(deps.setLandingHold.calls).toEqual([[true]]);
-  expect(deps.revealWindow.calls.length).toBe(1);
   expect(deps.setBusy.calls).toEqual([[true, "Reopening previous folder…"]]);
   expect(deps.setLandingContinueDir.calls).toEqual([["/proj"]]);
   expect(deps.startFolderPreview.calls.length).toBe(1);
   expect(deps.startFolderPreview.calls[0]![0]).toBe("/proj");
   expect(deps.startFolderPreview.calls[0]![1]).toBe("Reopening previous folder…");
-  // Landing enabled: no splashStatus call (that's the landing-off path only).
-  expect(deps.splashStatus.calls.length).toBe(0);
 });
 
-test("landing enabled + reopen fails (openError): does NOT reveal again (already revealed before the reopen)", async () => {
-  const { ctrl, deps } = make();
-  deps.getViewerPrefs.impl = async () => ({ lastProjectDir: "/proj", showLandingAtStartup: true });
-  deps.hasOpenError.value = true;
-  await ctrl.run();
-  // reveal() happened once, at the "showLanding" branch — the openError
-  // branch only fires reveal on the landing-OFF path (see next test), so a
-  // second reveal here would be the double-call the docblock says never
-  // happens today.
-  expect(deps.revealWindow.calls.length).toBe(1);
-});
+// ── Landing disabled (straight into the last project) ───────────────────────
 
-// ── Landing disabled (pre-landing behavior) ────────────────────────────────────
-
-test("landing disabled with a last project: sends splash status, reopens, no reveal on success (render-complete owns it)", async () => {
+test("landing disabled with a last project: reopens without holding the landing", async () => {
   const { ctrl, deps } = make();
   deps.getViewerPrefs.impl = async () => ({ lastProjectDir: "/proj", showLandingAtStartup: false });
   await ctrl.run();
   expect(deps.setLandingHold.calls.length).toBe(0);
-  expect(deps.splashStatus.calls).toEqual([["Opening your project…", 45]]);
   expect(deps.startFolderPreview.calls.length).toBe(1);
-  expect(deps.revealWindow.calls.length).toBe(0);
-});
-
-test("landing disabled + reopen fails (openError): reveals so the window isn't stuck behind the splash", async () => {
-  const { ctrl, deps } = make();
-  deps.getViewerPrefs.impl = async () => ({ lastProjectDir: "/proj", showLandingAtStartup: false });
-  deps.hasOpenError.value = true;
-  await ctrl.run();
-  expect(deps.revealWindow.calls.length).toBe(1);
-});
-
-test("landing disabled + reopen succeeds (no openError): no reveal from this controller", async () => {
-  const { ctrl, deps } = make();
-  deps.getViewerPrefs.impl = async () => ({ lastProjectDir: "/proj", showLandingAtStartup: false });
-  deps.hasOpenError.value = false;
-  await ctrl.run();
-  expect(deps.revealWindow.calls.length).toBe(0);
 });
 
 // ── Prefs read failure ──────────────────────────────────────────────────────
 
-test("prefs read failure: marks landing ready and reveals once", async () => {
+test("prefs read failure: marks landing ready so the start screen is the first surface", async () => {
   const { ctrl, deps } = make();
   deps.getViewerPrefs.impl = () => Promise.reject(new Error("boom"));
   await ctrl.run();
   expect(deps.setLandingReady.calls).toEqual([[true]]);
-  expect(deps.revealWindow.calls.length).toBe(1);
   expect(ctrl.autoOpeningLastProject).toBe(false);
 });
 

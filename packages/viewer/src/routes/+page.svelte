@@ -308,15 +308,38 @@
   // retired no-op history seam (L8 / ARCH #41). Undefined whenever the
   // activity view isn't the current editor-pane view.
   let activityViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
+  // The activity/history view BORROWS the editor pane (it forces editorOpen so
+  // it has a frame to render into). Capture the workspace state it displaced
+  // so closing the history RESTORES it — without this, closing left the pane
+  // stuck open on an editor that had never loaded a module or file ("Loading
+  // content…" forever) and the Edit/Preview toggle buttons out of sync with
+  // the panes actually shown (user feedback).
+  let activityRestore: { editorOpen: boolean; previewHidden: boolean } | null = null;
   function showProjectLog(filePath: string | null): void {
     logFilePath = filePath;
+    if (editorView !== "activity") {
+      activityRestore = { editorOpen, previewHidden };
+    }
     editorView = "activity";
     editorOpen = true;
     previewHidden = false;
   }
   function closeActivityView(): void {
     editorView = "editor";
-    focusEditorWhenReady();
+    const restore = activityRestore;
+    activityRestore = null;
+    if (restore) {
+      editorOpen = restore.editorOpen;
+      previewHidden = restore.previewHidden;
+    }
+    if (editorOpen) {
+      // The pane stays open showing the editor — make sure it actually has
+      // the editor module and a file (the activity view needed neither, so
+      // nothing ever loaded them on this path).
+      loadEditorModule();
+      void ensureEditorFile();
+      focusEditorWhenReady();
+    }
   }
   /** After a successful snapshot restore (H2): reconcile the open editor
    * buffer against disk — same reconciliation the folder watcher runs for any
@@ -458,6 +481,11 @@
       pageNav.pageEditing = false;
       editorOpen = false;
       previewHidden = false;
+      // The editor-pane view mode must reset with the workspace — a project
+      // closed while the history view borrowed the pane would otherwise
+      // reopen the NEXT project's editor pane showing history.
+      editorView = "editor";
+      activityRestore = null;
       buffer?.reset();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
@@ -502,7 +530,7 @@
   );
 
   // ── Start screen (welcome landing) ──────────────────────────────────────────
-  // The in-window layer that replaced both the splash's long "wait for the full
+  // The in-window layer that replaced both the old splash window's "wait for the full
   // render" phase and the old empty-state hero. At launch the previous book
   // starts PRE-RENDERING in the workspace underneath exactly as it always did
   // behind the OS splash — the landing is just an interactive cover (frosted,
@@ -1320,6 +1348,12 @@
 
   function toggleEditor() {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
+    // Manually toggling while the history view borrows the pane exits history
+    // mode — the explicit user action supersedes the restore-on-close state.
+    if (editorView === "activity") {
+      editorView = "editor";
+      activityRestore = null;
+    }
     editorOpen = !editorOpen;
     // On open, move keyboard focus into the editor so Ctrl+E acts as a
     // focus-switch into the editing surface (#38). Closing returns focus to
@@ -1452,10 +1486,6 @@
     isWorkspaceEngaged: () =>
       !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy || lifecycle.openError || lifecycle.urlPreviewError),
     isSomethingOpen: () => !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl),
-    // Reveal the main window / dismiss the splash — idempotent host-side.
-    revealWindow: () => {
-      api.app.rendererReady().catch(() => {});
-    },
     getViewerPrefs: () => api.app.getViewerPrefs(),
     isLeftPanelPrefsLoaded: () => leftPanelPrefsLoaded,
     applyLeftPanelPrefs: (panelPrefs) => {
@@ -1476,16 +1506,12 @@
     setLandingContinueDir: (dir) => {
       landingContinueDir = dir;
     },
-    splashStatus: (message, percent) => {
-      api.app.splashStatus(message, percent).catch(() => {});
-    },
     setBusy: (busy, label) => {
       lifecycle.busy = busy;
       lifecycle.busyLabel = label;
     },
     getViewerProjectState: (dir) => api.app.getViewerProjectState(dir).catch(() => null),
     startFolderPreview: (dir, label, restoreState) => startFolderPreview(dir, label, restoreState),
-    hasOpenError: () => !!lifecycle.openError,
   });
 
   onMount(() => {
@@ -1495,7 +1521,7 @@
   // ----------------------------------------------------------------
   // Preview-frame event router. Owns the post-render settle sequence (view-mode
   // auto-selection, the fit-width-vs-numeric-zoom reveal race, page restore,
-  // outline rebuild, re-lint, splash dismissal) + the preview→editor
+  // outline rebuild, re-lint) + the preview→editor
   // sourceLineChanged follow. Host coupling is injected so the ordering that
   // prevents the visible page JUMP is unit-tested in isolation. Composes
   // pageNav + zoomView rather than duplicating their logic.
@@ -1535,9 +1561,6 @@
     refreshProblems: () => refreshProblems(),
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
-    splashStatus: (status, progress, sub) =>
-      api.app.splashStatus(status, progress, sub).catch(() => {}),
-    rendererReady: () => api.app.rendererReady().catch(() => {}),
     viewportWidth: () => window.innerWidth,
     now: () => Date.now(),
     scheduleMicrotask: (fn) => queueMicrotask(fn),

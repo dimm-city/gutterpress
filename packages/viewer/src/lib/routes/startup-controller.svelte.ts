@@ -6,32 +6,24 @@
  *
  * `startup-landing.ts` already holds the pure predicates (`decideStartupScreen`
  * / `continueStatus` / `shouldReshowLanding`); this controller adds the
- * STATEFUL machine around them — the re-entrancy guards, the prefs round-trip,
- * and the decision of when to reveal the window.
+ * STATEFUL machine around them — the re-entrancy guards and the prefs
+ * round-trip.
  *
- * THE FIX (H5's headline defect): the inline `onMount` had the landing/prefs
- * decision call `revealWindow()` from four different branches (a race-open,
- * an enabled landing, a landing-off reopen that failed, and a prefs-read
- * failure). `revealWindow()` now has exactly ONE call site — the private
- * `reveal()` method below — mirroring how `ProjectLifecycleController`
- * collapsed the divergent hand-rolled workspace resets into the one
- * `resetWorkspace()` every teardown path calls. The four branches still each
- * decide WHETHER to reveal at that point in the flow (they must: the "enabled
- * landing" branch has to reveal the window immediately, before awaiting the
- * pre-render, or the start screen would sit uninteractive behind the splash
- * for the whole reopen — see the comment on that branch) — they just no
- * longer each own a copy of the host call. `reveal()`'s own guard is a
- * defensive invariant (this run's branches are mutually exclusive today, so
- * it is never actually hit) rather than something masking a real double-call.
+ * HISTORY: this controller used to also own "when to reveal the window" —
+ * the external splash window covered the main window at launch, and four
+ * branches here decided when to dismiss it (`revealWindow()`/`reveal()`).
+ * The splash was removed in favour of the in-window start screen
+ * (WelcomeLanding): the window is simply visible from launch, so the whole
+ * reveal seam is gone and this controller only decides what the first
+ * SCREEN is (landing vs. reopened project).
  *
  * Host coupling is injected (§8 / ADR 0004): the prefs round-trip, the
  * left-panel-prefs application, the landing `$state` setters (still owned by
  * `+page.svelte` — they are read by `dismissLanding` / `landingVisible` /
  * `setLandingStartupPref` elsewhere on the page, so moving only their WRITERS
  * here follows the same "own only what's local to this flow" line
- * `ProjectLifecycleController` draws around `resetExtras`), the previous-
- * project reopen pipeline, and the splash/reveal host actions. Zero `node:*` /
- * lib value imports — PWA-clean.
+ * `ProjectLifecycleController` draws around `resetExtras`), and the previous-
+ * project reopen pipeline. Zero `node:*` / lib value imports — PWA-clean.
  */
 
 import { decideStartupScreen } from "./startup-landing";
@@ -59,8 +51,6 @@ export interface StartupControllerDeps {
    * original inline recheck).
    */
   isSomethingOpen: () => boolean;
-  /** Reveal the window / dismiss the splash. Idempotent host-side. */
-  revealWindow: () => void;
   getViewerPrefs: () => Promise<StartupPrefs>;
   /** True once the left-panel prefs have been applied this session. */
   isLeftPanelPrefsLoaded: () => boolean;
@@ -70,8 +60,6 @@ export interface StartupControllerDeps {
   setLandingReady: (ready: boolean) => void;
   setLandingHold: (hold: boolean) => void;
   setLandingContinueDir: (dir: string | null) => void;
-  /** Fire-and-forget splash status update (landing-off reopen path). */
-  splashStatus: (message: string, percent: number) => void;
   setBusy: (busy: boolean, label: string) => void;
   /** Per-project restore-state read, already caught-to-null by the caller. */
   getViewerProjectState: (dir: string) => Promise<PersistedProjectState | null>;
@@ -81,8 +69,6 @@ export interface StartupControllerDeps {
     label: string,
     restoreState: Promise<PersistedProjectState | null>,
   ) => Promise<void>;
-  /** True when the reopen attempt above left `lifecycle.openError` set. */
-  hasOpenError: () => boolean;
 }
 
 export class StartupController {
@@ -92,28 +78,14 @@ export class StartupController {
   lastProjectChecked = $state(false);
 
   private deps: StartupControllerDeps;
-  private revealed = false;
-
   constructor(deps: StartupControllerDeps) {
     this.deps = deps;
   }
 
   /**
-   * revealWindow()'s one call site (see the class-level doc). `revealed`
-   * guards a same-run double-call defensively; today's branches are mutually
-   * exclusive so it is never actually exercised.
-   */
-  private reveal(): void {
-    if (this.revealed) return;
-    this.revealed = true;
-    this.deps.revealWindow();
-  }
-
-  /**
-   * The startup continuation: decide whether to show the landing, whether to
-   * pre-render the last project behind it, and when to reveal the window.
-   * Safe to call from `onMount` on every launch path — the guards make every
-   * call after the first a no-op.
+   * The startup continuation: decide whether to show the landing and whether
+   * to pre-render the last project behind it. Safe to call from `onMount` on
+   * every launch path — the guards make every call after the first a no-op.
    */
   async run(): Promise<void> {
     const d = this.deps;
@@ -138,32 +110,20 @@ export class StartupController {
 
       if (d.isSomethingOpen()) {
         // Something was opened while prefs loaded (rare race) — don't cover
-        // it with the start screen; just reveal the window.
-        this.reveal();
+        // it with the start screen.
         return;
       }
 
       const dir = prefs.lastProjectDir ?? null;
       const { showLanding } = decideStartupScreen({ lastProjectDir: dir, landingEnabled: showPref });
-      if (showLanding) {
-        // Hold the layer open over the pre-render; also dismiss the splash
-        // now — the start screen is interactive immediately. (With no dir
-        // the hold is unnecessary: the empty workspace keeps it visible.)
-        // This reveal must happen HERE, before the reopen below is awaited —
-        // deferring it to a single post-await call site would leave the
-        // landing sitting uninteractive behind the splash for the whole
-        // reopen, defeating the point of the start screen.
-        if (dir) d.setLandingHold(true);
-        this.reveal();
+      if (showLanding && dir) {
+        // Hold the layer open over the pre-render. (With no dir the hold is
+        // unnecessary: the empty workspace keeps it visible.)
+        d.setLandingHold(true);
       }
       if (!dir) return;
 
       d.setLandingContinueDir(dir);
-      if (!showLanding) {
-        // Landing disabled: pre-landing behavior — the splash covers the
-        // render and rendererReady fires on render-complete.
-        d.splashStatus("Opening your project…", 45);
-      }
       // Same pipeline as user-initiated opens, EXCEPT the landing must stay
       // held over the pre-render, so this must not go through
       // openProjectPath (whose first act is dismissLanding). Raise busy and
@@ -177,17 +137,12 @@ export class StartupController {
       // startFolderPreview sets openError but does NOT throw. The start
       // screen returns on its own (landingVisible derived: workspace is
       // empty again) and shows the error alongside recents and create/open
-      // actions — just make sure the window is revealed on the landing-off
-      // path, where render-complete will never fire.
-      if (d.hasOpenError() && !showLanding) {
-        this.reveal();
-      }
+      // actions.
     } catch {
-      // Prefs read failed — reveal the window; with landingReady set and
-      // nothing open, the derived shows the start screen as the first
-      // surface instead of a blank workspace.
+      // Prefs read failed — with landingReady set and nothing open, the
+      // derived shows the start screen as the first surface instead of a
+      // blank workspace.
       d.setLandingReady(true);
-      this.reveal();
     } finally {
       this.autoOpeningLastProject = false;
     }

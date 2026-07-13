@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dir, "../..");
@@ -32,13 +32,40 @@ test("Electron windows and AppImage package carry the app icon", () => {
   expect(builder).toContain("icon.png");
 });
 
-test("splash screen is closable and has a shorter fallback timeout", () => {
-  const splash = read("electron/splash.html");
+test("closing the history view restores the workspace it displaced (no stuck 'Loading content')", () => {
+  const src = read("src/routes/+page.svelte");
+  // The activity/history view BORROWS the editor pane; opening it captures the
+  // displaced editorOpen/previewHidden state…
+  expect(src).toContain("activityRestore = { editorOpen, previewHidden }");
+  // …and closing restores it, loading the editor module + a file whenever the
+  // pane stays open (the activity view needed neither, so the editor used to
+  // come back mounted-but-empty, stuck on "Loading content" until the author
+  // manually toggled Edit — and the toggle buttons read out of sync).
+  const closeIdx = src.indexOf("function closeActivityView()");
+  expect(closeIdx).toBeGreaterThan(-1);
+  const closeBody = src.slice(closeIdx, closeIdx + 900);
+  expect(closeBody).toContain("editorOpen = restore.editorOpen");
+  expect(closeBody).toContain("previewHidden = restore.previewHidden");
+  expect(closeBody).toContain("loadEditorModule()");
+  expect(closeBody).toContain("ensureEditorFile()");
+  // Manually toggling Edit while history is shown exits history mode.
+  const toggleIdx = src.indexOf("function toggleEditor()");
+  const toggleBody = src.slice(toggleIdx, toggleIdx + 700);
+  expect(toggleBody).toContain('editorView === "activity"');
+  // Project teardown resets the borrowed-pane state too.
+  expect(src).toContain('editorView = "editor";\n      activityRestore = null;');
+});
+
+test("the external splash window is gone — the in-window start screen is the launch surface", () => {
   const main = read("electron/main.ts");
-  expect(splash).toContain("splash-close");
-  expect(splash).toContain("window.close()");
-  expect(main).toContain("splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000)");
-  expect(main).not.toContain("splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 60_000)");
+  // No splash window, no splash markup, no reveal machinery…
+  expect(existsSync(path.join(root, "electron/splash.html"))).toBe(false);
+  expect(main).not.toContain("createSplashWindow");
+  expect(main).not.toContain("showMainWindowAndCloseSplash");
+  expect(main).not.toContain("splashFallbackTimer");
+  // …and the main window shows immediately (paged.js needs a visible window
+  // to render at full speed; WelcomeLanding covers the boot).
+  expect(main).toContain("mainWindow.show();");
 });
 
 test("editor toolbar has a save button and usable small-screen overflow", () => {

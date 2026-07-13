@@ -453,14 +453,6 @@ export class WebAdapter implements Platform {
     const key = (await this.store.get(STORE_META, LAST_PROJECT_KEY)) as string | undefined;
     return key ?? null;
   }
-  // No splash window on the web — these are safe no-ops (a PWA would use its own
-  // loading UI, not a host splash).
-  splashStatus(): Promise<void> {
-    return Promise.resolve();
-  }
-  rendererReady(): Promise<void> {
-    return Promise.resolve();
-  }
 
   // #33 Phase 1: shallow listing of the project root's .md/.css files (#42), the
   // web equivalent of the Electron listProjectFiles IPC. `projectDir` is the

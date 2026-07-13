@@ -2,13 +2,6 @@
 // ships real declarations; this file only keeps viewer-specific ambient modules
 // and the window bridge augmentation.
 
-// `?raw` imports (electron-vite/vite) return the file contents as a string. Used
-// for the splash markup, which is baked into the main bundle.
-declare module "*.html?raw" {
-  const content: string;
-  export default content;
-}
-
 // ──────────────────────────────────────────────────────────────────────────
 // window.electron — bridge types for the renderer / SvelteKit SPA
 //
@@ -114,7 +107,7 @@ declare global {
       // File metadata + folder watch (PlatformAdapter, #44)
       watchFolder(dirPath: string, cb: () => void): () => void;
       // getStatus, doctor migrated to server routes (Phase 2C)
-      // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+      // app:getLastProject, app:getViewerPrefs,
       // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
       // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
       // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,

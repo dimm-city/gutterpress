@@ -184,7 +184,7 @@ contextBridge.exposeInMainWorld("electron", {
   },
 
   // getStatus migrated to server route (Phase 2C)
-  // app:getLastProject, app:splashStatus, app:rendererReady, app:getViewerPrefs,
+  // app:getLastProject, app:getViewerPrefs,
   // app:setViewerPrefs, app:getViewerProjectState, app:setViewerProjectState,
   // app:getSettings, app:setSettings, app:getNativeTheme, app:getRecentFolders,
   // app:getFavorites, app:toggleFavorite, app:removeRecent, app:discoverProjects,

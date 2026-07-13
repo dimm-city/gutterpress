@@ -290,11 +290,6 @@ export const api = {
     /** Adopt an existing folder as a print-md project. */
     adoptFolder: (opts: Record<string, unknown>) =>
       post<CreateProjectResult>('/api/app/adopt-folder', opts),
-    /** Push a splash status update (status text, progress 0-100, sub-status). */
-    splashStatus: (status?: string, progress?: number, sub?: string) =>
-      post<{ ok: boolean }>('/api/app/splash-status', { status, progress, sub }),
-    /** Signal that the renderer first screen is ready (closes the splash). */
-    rendererReady: () => post<{ ok: boolean }>('/api/app/renderer-ready', {}),
     /** Push the renderer dirty state to the main process close gate. */
     setDirtyState: (dirty: boolean) => post<{ ok: boolean }>('/api/app/dirty-state', { dirty }),
     // flushDone deleted (ARCH review #8) — this wrapper (and the

@@ -152,8 +152,6 @@ function make(): Harness {
     refreshProblems: () => log.push("refreshProblems"),
     revealSettledPages: () => log.push("reveal"),
     toastSuccess: (m) => log.push(`toast:${m}`),
-    splashStatus: (s, p, sub) => log.push(`splash:${s ?? ""}:${p ?? ""}:${sub ?? ""}`),
-    rendererReady: () => log.push("rendererReady"),
     viewportWidth: () => h.viewportWidth,
     now: () => h.now,
     scheduleMicrotask: (fn) => queueMicrotask(fn),
@@ -187,8 +185,6 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
     "toast:Your book is ready — 12 pages",
     "refreshOutline",
     "refreshProblems",
-    "splash:Ready:100:",
-    "rendererReady",
   ]);
   expect(h.pageNav.totalPages).toBe(12);
   expect(h.log).not.toContain("reveal");
@@ -319,13 +315,12 @@ test("page 1 (or no) restore does not schedule a restore", async () => {
 
 // ── pageChanged ──────────────────────────────────────────────────────────────
 
-test("pageChanged during render updates progress + splash sub-status", () => {
+test("pageChanged during render updates the progress page count", () => {
   const h = make();
   h.rendering = true;
   h.ctrl.handleEvent({ name: "pageChanged", detail: { totalPages: 7 } });
   expect(h.log).toContain("setProgress:7");
   expect(h.pageNav.totalPages).toBe(7);
-  expect(h.log).toContain("splash:::Laying out page 7");
 });
 
 test("pageChanged when idle syncs the toolbar page state", () => {
@@ -344,7 +339,6 @@ test("ready flips into rendering, clears outline, and peeks total pages", async 
   expect(h.log).toContain("setRendering:true");
   expect(h.log).toContain("setProgress:0");
   expect(h.log).toContain("resetOutline");
-  expect(h.log).toContain("splash:Rendering pages…:70:");
   await flush();
   expect(h.pageNav.totalPages).toBe(6);
 });

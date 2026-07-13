@@ -5,7 +5,7 @@
  * It reduces over the four preview-frame events (`renderingComplete`, `ready`,
  * `pageChanged`, `sourceLineChanged`) and drives the post-render *settle
  * sequence*: view-mode auto-selection, the fit-width-vs-numeric-zoom reveal
- * race, page restore, outline rebuild, re-lint, and splash dismissal.
+ * race, page restore, outline rebuild, and re-lint.
  *
  * The ordering of that settle sequence is load-bearing — it is what prevents
  * the visible page JUMP. The pages stay invisible (iframe opacity 0) through
@@ -18,7 +18,7 @@
  * `ZoomViewController`) so this stays testable with fakes and PWA-clean
  * (§8 / ADR 0004): the live preview client, the composed page-nav / zoom-view
  * controllers, the render-phase state sinks, the editor-sync seams, and the
- * splash / toast / outline / lint callbacks. ZERO direct DOM / `node:*` / lib
+ * toast / outline / lint callbacks. ZERO direct DOM / `node:*` / lib
  * value imports — the one lib touch is the pure `$lib/iframe-styles` CSS
  * builders (browser-safe string templates).
  */
@@ -94,8 +94,6 @@ export interface PreviewEventDeps {
   /** Cross-fade the settled pages into view (one animation frame; no timers). */
   revealSettledPages: () => void;
   toastSuccess: (message: string) => void;
-  splashStatus: (status?: string, progress?: number, sub?: string) => void;
-  rendererReady: () => void;
   // ── Environment / clock ──────────────────────────────────────────────────
   viewportWidth: () => number;
   now: () => number;
@@ -211,9 +209,6 @@ export class PreviewEventController {
     // Re-lint the project on every rebuild so the Problems panel tracks the
     // author's edits (#28).
     d.refreshProblems();
-    // First project render done → dismiss the splash and reveal the window.
-    d.splashStatus("Ready", 100);
-    d.rendererReady();
   }
 
   private onSourceLineChanged(detail: PreviewEvent["detail"]): void {
@@ -246,9 +241,6 @@ export class PreviewEventController {
     if (d.getRendering()) {
       d.setRenderProgressPage(detail.totalPages ?? d.getRenderProgressPage());
       d.pageNav.totalPages = detail.totalPages ?? d.pageNav.totalPages;
-      // Live splash sub-status during the (potentially multi-second) render.
-      const pg = detail.totalPages ?? d.getRenderProgressPage();
-      if (pg) d.splashStatus(undefined, undefined, `Laying out page ${pg}`);
     } else {
       d.pageNav.syncPageState(detail);
     }
@@ -261,7 +253,6 @@ export class PreviewEventController {
     // renderingComplete.
     d.setRenderProgressPage(0);
     d.resetOutline();
-    d.splashStatus("Rendering pages…", 70);
     d.client()
       ?.call<number>("getTotalPages")
       .then((count) => {

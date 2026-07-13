@@ -123,14 +123,6 @@ import type {
   ThemeInfo,
   TokenStore as RecoveryTokenStore,
 } from "@dimm-city/print-md";
-// The splash markup ships as a string baked into the main bundle (electron-vite
-// inlines `?raw`), so there is no separate file to resolve at runtime.
-// tsc (moduleResolution: bundler) resolves `./splash.html?raw` to the real
-// `splash.html` file, which it can't type — the `declare module "*.html?raw"`
-// ambient is shadowed by that on-disk file. electron-vite handles the import at
-// build time; the suppression documents the tsc-only gap.
-// @ts-expect-error vite `?raw` string import — resolved by electron-vite, not tsc
-import splashHtml from "./splash.html?raw";
 import {
   recoveryDir as recoveryDirImpl,
   operationLogPath as operationLogPathImpl,
@@ -162,7 +154,7 @@ import {
 // Module directory, ESM-safe. We do NOT rely on electron-vite's injected
 // `__dirname` shim (`const __dirname = import.meta.dirname`): after main.ts was
 // split into sibling modules the shim stopped covering main.ts's own scope,
-// throwing `__dirname is not defined` inside createSplashWindow → appIconPath and
+// throwing `__dirname is not defined` inside appIconPath and
 // aborting startup before any window opened. `fileURLToPath(import.meta.url)` is
 // the canonical, bundler-independent replacement (import.meta.url is always
 // defined in the ESM main bundle; import.meta.dirname is not). Resolves to
@@ -269,93 +261,6 @@ const { readSettings, writeSettings } = createSettingsStore({
 // ──────────────────────────────────────────────────────────────────────────
 
 let mainWindow: BrowserWindow | null = null;
-
-// ── Splash window ──────────────────────────────────────────────────────────
-// A small frameless window shown the instant the app starts, so the user sees
-// branded, animated feedback (with live status) while the main window's SPA
-// boots and the first project renders. The main window stays hidden until the
-// renderer reports its first screen is ready (rendered project OR welcome
-// screen), at which point we show it and close the splash. A fallback timeout
-// guarantees the splash never strands the user if that signal never arrives.
-let splashWindow: BrowserWindow | null = null;
-let mainShown = false;
-let splashFallbackTimer: NodeJS.Timeout | null = null;
-
-function createSplashWindow(): void {
-  splashWindow = new BrowserWindow({
-    width: 460,
-    height: 280,
-    frame: false,
-    resizable: false,
-    movable: true,
-    center: true,
-    alwaysOnTop: true,
-    show: true,
-    backgroundColor: "#1e1e1e",
-    title: "print-md",
-    icon: appIconPath(),
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
-  });
-  void splashWindow.loadURL(
-    "data:text/html;charset=utf-8," + encodeURIComponent(splashHtml),
-  );
-  splashWindow.once("ready-to-show", () => {
-    // Stamp the version into the badge once the DOM exists.
-    splashWindow?.webContents
-      .executeJavaScript(
-        `(function(){var el=document.getElementById('splash-version');` +
-          `if(el)el.textContent=${JSON.stringify("v" + app.getVersion())};})()`,
-      )
-      .catch(() => {});
-  });
-  splashWindow.on("closed", () => {
-    splashWindow = null;
-  });
-}
-
-let lastSubOnlySplashAt = 0;
-/** Drive the splash's status line / progress bar / sub-status from the host. */
-function updateSplash(status?: string, progress?: number, sub?: string): void {
-  // Once the main window is shown the splash is gone (or closing) — don't waste
-  // a cross-process executeJavaScript on it.
-  if (mainShown) return;
-  if (!splashWindow || splashWindow.isDestroyed()) return;
-  // The renderer emits a sub-status per laid-out page (can be 100+). Coalesce
-  // those pure sub-status pings to ~10/sec so render isn't taxed by IPC +
-  // executeJavaScript chatter; meaningful status/progress changes always pass.
-  if (status === undefined && progress === undefined && sub !== undefined) {
-    const now = Date.now();
-    if (now - lastSubOnlySplashAt < 100) return;
-    lastSubOnlySplashAt = now;
-  }
-  const a = status === undefined ? "undefined" : JSON.stringify(status);
-  const b = progress === undefined ? "undefined" : String(Number(progress));
-  const c = sub === undefined ? "undefined" : JSON.stringify(sub);
-  splashWindow.webContents
-    .executeJavaScript(`window.__splashUpdate(${a},${b},${c})`)
-    .catch(() => {});
-}
-
-/** Reveal the main window and dismiss the splash — idempotent. */
-function showMainWindowAndCloseSplash(): void {
-  if (mainShown) return;
-  mainShown = true;
-  if (splashFallbackTimer) {
-    clearTimeout(splashFallbackTimer);
-    splashFallbackTimer = null;
-  }
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    // The window is already visible (showInactive at create time, so it renders
-    // at full speed under the splash). Now bring it forward and give it focus.
-    if (!mainWindow.isVisible()) mainWindow.show();
-    mainWindow.focus();
-  }
-  // Let the main window paint a frame before the splash vanishes, so there's no
-  // dark flash between them.
-  setTimeout(() => {
-    if (splashWindow && !splashWindow.isDestroyed()) splashWindow.close();
-  }, 140);
-}
 
 // ── Unsaved-changes infrastructure (#44) ────────────────────────────────────
 // The recovery sidecar store lives under userData/recovery/; the sync/recovery
@@ -688,12 +593,11 @@ function createWindow() {
     height: 900,
     backgroundColor: "#1e1e1e",
     icon: appIconPath(),
-    // Created hidden, then immediately shown INACTIVE (see mainWindow.showInactive()
-    // after loadURL). It must be VISIBLE during the first render so paged.js's
-    // requestAnimationFrame loop produces frames (a hidden window stalls it on real
-    // hardware). The splash (alwaysOnTop) covers it until the renderer reports the
-    // first screen is ready; showMainWindowAndCloseSplash() then focuses it + closes
-    // the splash (with a fallback timeout so the splash can never strand the user).
+    // Created hidden, then shown right after loadURL is dispatched (below) —
+    // the in-window start screen (WelcomeLanding) is the launch surface; the
+    // old external splash window is gone. The window must be VISIBLE during
+    // the first render so paged.js's requestAnimationFrame loop produces
+    // frames (a hidden window stalls it on real hardware).
     show: false,
     webPreferences: {
       // NOTE: .cjs — a sandboxed preload cannot be ESM (see
@@ -707,12 +611,11 @@ function createWindow() {
       // radius of a renderer compromise in a window that intentionally hosts
       // third-party content in the cross-origin preview iframe.
       sandbox: true,
-      // CRITICAL: the window now starts hidden behind the splash, and the FIRST
-      // project render (paged.js) happens while it's still hidden. Electron
-      // background-throttles hidden/occluded windows — timers and rAF drop to
-      // ~1/sec — which made first-render "super slow" vs. the pre-splash beta
-      // (which showed the window immediately). Disable throttling so layout runs
-      // at full speed even before the window is revealed.
+      // CRITICAL: Electron background-throttles hidden/occluded windows —
+      // timers and rAF drop to ~1/sec — which collapses the first paged.js
+      // render to ~1 page/sec (the "12 pages in 30s" regression) whenever the
+      // window is covered or minimized. Keep throttling off so layout always
+      // runs at full speed.
       backgroundThrottling: false,
     },
   });
@@ -800,13 +703,10 @@ function createWindow() {
       console.error(
         `[renderer] did-fail-load url=${validatedURL} code=${errorCode} desc=${errorDescription}`
       );
-      // Don't strand the user on the splash if the SPA fails to load.
-      showMainWindowAndCloseSplash();
     }
   );
   mainWindow.webContents.on("render-process-gone", (_e, details) => {
     console.error(`[renderer] render-process-gone reason=${details.reason}`);
-    showMainWindowAndCloseSplash();
   });
   mainWindow.webContents.on(
     "console-message",
@@ -839,14 +739,13 @@ function createWindow() {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 
-  // Make the window VISIBLE immediately — but INACTIVE so the splash (alwaysOnTop)
-  // stays on top. This is THE first-render-speed fix: paged.js drives its
-  // pagination loop with requestAnimationFrame, and on real hardware a hidden
-  // window (show:false) produces no compositor frames, so rAF stalls and layout
-  // collapses to ~1 page/sec — the "12 pages in 30s" regression. The pre-splash
-  // build showed the window immediately for exactly this reason; keeping it
-  // visible (just covered/centered under the splash) restores full render speed.
-  mainWindow.showInactive();
+  // Show the window immediately — the in-window start screen (WelcomeLanding)
+  // is the launch surface, and a visible window is THE first-render-speed fix:
+  // paged.js drives its pagination loop with requestAnimationFrame, and on
+  // real hardware a hidden window (show:false) produces no compositor frames,
+  // so rAF stalls and layout collapses to ~1 page/sec — the "12 pages in 30s"
+  // regression.
+  mainWindow.show();
 
   // Push OS theme changes (light↔dark) to the renderer so a "system" theme
   // mode tracks the OS live. Registered after window creation so mainWindow is
@@ -970,8 +869,6 @@ const watchHooksImpl: WatchHooks = {
   getWatchedDir: () => folderWatch.getWatchedDir(),
 };
 const appHooksImpl: AppHooks = {
-  updateSplash,
-  showMainWindowAndCloseSplash,
   setRendererDirty: (isDirty: boolean) => { rendererDirty = !!isDirty; },
   resolveFlush: () => { rendererDirty = false; flushResolve?.(); },
   sendToRenderer: (channel: string, ...args: unknown[]) => {
@@ -1699,18 +1596,21 @@ secureHandle("updater:applyNow", async () => {
 // App lifecycle
 // ──────────────────────────────────────────────────────────────────────────
 
-// ── Never throttle the hidden renderer (THE first-render-speed fix) ─────────
-// The main window starts hidden behind the splash, and the FIRST project render
-// (paged.js) runs while it's hidden. Chromium throttles hidden/occluded windows:
-// once a window has been visible→hidden, background timer throttling clamps the
-// setTimeout()s paged.js yields on between pages, collapsing layout to ~1 page/sec
-// (measured: a hidden window dropped from 490 setTimeout callbacks/2s to 35 — and
-// worse on real hardware with the 1s clamp). That is the "12 pages in 30s" report.
+// ── Never throttle the renderer (THE first-render-speed fix) ────────────────
+// Chromium throttles hidden/occluded windows: once a window has been
+// visible→hidden, background timer throttling clamps the setTimeout()s
+// paged.js yields on between pages, collapsing layout to ~1 page/sec
+// (measured: a hidden window dropped from 490 setTimeout callbacks/2s to 35 —
+// and worse on real hardware with the 1s clamp). That was the "12 pages in
+// 30s" report, back when an external splash window covered the main window at
+// launch. The splash is gone (the in-window start screen is the launch
+// surface), but a covered/minimized window still hits the same clamp mid-
+// render.
 //
 // `backgroundThrottling: false` on the window (set below) fixes it, but these
 // app-level switches make it bulletproof: they globally disable renderer
 // backgrounding, background-timer throttling, and occlusion-driven backgrounding,
-// so NO window — even one fully covered by the splash — can be throttled. Verified:
+// so NO window — even a fully covered one — can be throttled. Verified:
 // with these switches a hidden window stays at 492 callbacks/2s even with
 // backgroundThrottling left at its (throttling) default. Must be set before ready.
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
@@ -1746,10 +1646,6 @@ app.whenReady().then(async () => {
   if (!gotSingleInstanceLock) return;
   slog("app whenReady");
   app.setAppUserModelId?.(APP_USER_MODEL_ID);
-  // Show the splash immediately — branded feedback while everything below runs.
-  createSplashWindow();
-
-  updateSplash("Preparing the interface…", 18);
   // In dev mode (VITE_DEV_SERVER_URL set, app NOT packaged) the SvelteKit dev
   // server is already running externally — skip the local handler.js launch.
   // In prod (or a packaged build where VITE_DEV_SERVER_URL is set by an
@@ -1779,21 +1675,8 @@ app.whenReady().then(async () => {
   }
   registerAppProtocol(skAuthToken);
   registerUrlPreviewHeaderWatch();
-  updateSplash("Loading print-md…", 28);
   createWindow();
   slog("createWindow returned (loadURL dispatched)");
-
-  // Fallback: if the renderer never reports ready (crash, hang, or landing
-  // disabled with nothing calling rendererReady), reveal the window anyway so
-  // the splash can't strand the user. This does NOT cut off a large book's
-  // full render mid-way: createWindow() already called mainWindow.showInactive()
-  // above, so the window has been painting real compositor frames underneath
-  // the (alwaysOnTop) splash the whole time — pagination runs at full speed
-  // regardless of when this timer fires. All this timeout does is stop
-  // waiting for the renderer's own "ready" signal and pull the splash out of
-  // the way early; the page keeps rendering live underneath either way. 15s
-  // is plenty for that — it is not a render-completion budget.
-  splashFallbackTimer = setTimeout(showMainWindowAndCloseSplash, 15_000);
 
   // Background check on every launch (non-blocking, silent — see H1: a
   // network failure here resets to idle instead of latching a user-visible
