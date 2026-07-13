@@ -355,7 +355,15 @@ export {
 export { connectPublishProvider } from "../lib/publish/connect.ts";
 export type { ConnectPublishProviderOptions } from "../lib/publish/connect.ts";
 
-export { publishConnectionStatus } from "../lib/publish/types.ts";
+export {
+  publishConnectionStatus,
+  publishCredentialKey,
+  listPublishAccounts,
+} from "../lib/publish/types.ts";
+export type { PublishSavedAccount } from "../lib/publish/types.ts";
+
+export { PublishSelectionsStore } from "../lib/publish/selections.ts";
+export type { PublishAccountSelection } from "../lib/publish/selections.ts";
 
 export {
   readPublishSettings,

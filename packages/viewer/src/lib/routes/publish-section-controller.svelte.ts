@@ -36,8 +36,9 @@ export interface PublishSectionDeps {
     projectDir: string,
     providerId: string,
     token: string,
+    account?: string,
   ) => Promise<{ connected: boolean; providerId: string }>;
-  disconnect: (providerId: string) => Promise<unknown>;
+  disconnect: (providerId: string, account?: string) => Promise<unknown>;
   run: (
     projectDir: string,
     providerId: string,
@@ -64,6 +65,9 @@ export class PublishSectionController {
   publishResults = $state<Record<string, PublishRunResult>>({});
   publishConfigDrafts = $state<Record<string, Record<string, string>>>({});
   publishTokenDrafts = $state<Record<string, string>>({});
+  // Account-label draft when ADDING a new named credential (the picker's
+  // "Add another account" flow). Empty stores/uses the default credential.
+  publishAccountDrafts = $state<Record<string, string>>({});
   // Explicit artifact path per provider — viewer PDF exports go wherever the
   // author chose in the save dialog, so the manifest-default rarely exists.
   publishArtifactDrafts = $state<Record<string, string>>({});
@@ -96,6 +100,31 @@ export class PublishSectionController {
 
   setPublishTokenDraft = (providerId: string, value: string): void => {
     this.publishTokenDrafts = { ...this.publishTokenDrafts, [providerId]: value };
+  };
+
+  setPublishAccountDraft = (providerId: string, value: string): void => {
+    this.publishAccountDrafts = { ...this.publishAccountDrafts, [providerId]: value };
+  };
+
+  /**
+   * Choose which SAVED credential this book uses for a provider (book-level
+   * selection, written to the manifest's `publish.<id>.credential`). An empty
+   * `account` clears it back to the default credential. Reused automatically —
+   * the account itself lives in the user-scoped store, so nothing is re-entered.
+   */
+  selectCredential = async (providerId: string, account: string): Promise<void> => {
+    const projectDir = this.deps.projectDir();
+    if (!projectDir || this.publishBusyId) return;
+    this.publishBusyId = providerId;
+    this.publishError = null;
+    try {
+      await this.deps.setConfig(projectDir, providerId, { credential: account });
+      await this.loadPublish();
+    } catch (e) {
+      this.publishError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.publishBusyId = null;
+    }
   };
 
   /**
@@ -138,14 +167,21 @@ export class PublishSectionController {
       this.publishError = "Paste an API key first.";
       return;
     }
+    const account = (this.publishAccountDrafts[providerId] ?? "").trim();
     this.publishBusyId = providerId;
     this.publishError = null;
     try {
       // Unsaved settings (e.g. the Shopify store domain) are needed to verify
       // the key — save them first.
       await this.flushPublishDraft(providerId);
-      await this.deps.connect(projectDir, providerId, token);
+      await this.deps.connect(projectDir, providerId, token, account || undefined);
       this.publishTokenDrafts = { ...this.publishTokenDrafts, [providerId]: "" };
+      this.publishAccountDrafts = { ...this.publishAccountDrafts, [providerId]: "" };
+      // A NAMED account just added → make this book use it (book-level
+      // selection). The default (unnamed) credential needs no manifest write.
+      if (account) {
+        await this.deps.setConfig(projectDir, providerId, { credential: account });
+      }
       await this.loadPublish();
       this.deps.onConnected?.();
     } catch (e) {
@@ -158,12 +194,12 @@ export class PublishSectionController {
     }
   };
 
-  disconnectPublish = async (providerId: string): Promise<void> => {
+  disconnectPublish = async (providerId: string, account?: string): Promise<void> => {
     if (this.publishBusyId) return;
     this.publishBusyId = providerId;
     this.publishError = null;
     try {
-      await this.deps.disconnect(providerId);
+      await this.deps.disconnect(providerId, account);
       await this.loadPublish();
     } catch (e) {
       this.publishError = e instanceof Error ? e.message : String(e);

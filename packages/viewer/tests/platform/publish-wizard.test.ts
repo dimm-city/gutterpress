@@ -77,9 +77,18 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
   });
   test("reuses saved connections and lets the author change the key per project", () => {
     expect(wiz).toContain("reusing your saved key");
-    expect(wiz).toContain("Use a different key");
+    expect(wiz).toContain("Remove this key");
     // Guided providers need no key.
     expect(wiz).toContain("No account or key needed");
+  });
+  test("offers a credential picker over saved accounts (named creds) with an add-another option", () => {
+    // A <select> of saved accounts drives book-level selection…
+    expect(wiz).toContain("card.savedAccounts");
+    expect(wiz).toContain("onAccountSelect(card");
+    expect(wiz).toContain("controller.selectCredential(card.id");
+    // …plus an "add another account" path that names + connects a new one.
+    expect(wiz).toContain("Add another account");
+    expect(wiz).toContain("controller.setPublishAccountDraft(card.id");
   });
   test("stays $effect-free (CLAUDE.md §8) — load happens onMount", () => {
     expect(wiz).not.toContain("$effect(");

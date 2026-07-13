@@ -27,16 +27,28 @@ export const POST: RequestHandler = defineRoute<
       const settings = await lib.readPublishSettings(projectDir);
       const cards = await Promise.all(
         lib.listPublishProviders().map(async (info: LibPublishProviderInfo) => {
-          // One shared definition of "connected" (env var or stored key) — the
-          // same the CLI's --list uses, so the two surfaces can't disagree.
-          const status = await lib.publishConnectionStatus!(info, {
-            tokenStore: hooks.tokenStore,
-          });
           const raw = settings[info.id] ?? {};
+          // Book-level selected account (manifest `publish.<id>.credential`);
+          // "" = the default credential. It's a selection reference, NOT a
+          // provider setting, so it's excluded from the rendered config fields.
+          const selectedAccount =
+            typeof raw.credential === 'string' ? raw.credential.trim() : '';
           const config: Record<string, string> = {};
           for (const [k, v] of Object.entries(raw)) {
+            if (k === 'credential') continue;
             if (typeof v === 'string' || typeof v === 'number') config[k] = String(v);
           }
+          // "connected" (env var or stored key) is evaluated for the SELECTED
+          // account — the same shared definition the CLI's --list uses.
+          const status = await lib.publishConnectionStatus!(
+            info,
+            { tokenStore: hooks.tokenStore, credentialAccount: selectedAccount },
+            selectedAccount,
+          );
+          // Redacted saved credentials for the picker (default + named).
+          const savedAccounts = lib.listPublishAccounts
+            ? await lib.listPublishAccounts(info, { tokenStore: hooks.tokenStore })
+            : [];
           return {
             id: info.id,
             label: info.label,
@@ -49,6 +61,8 @@ export const POST: RequestHandler = defineRoute<
             ...(info.credential.hint ? { hint: info.credential.hint } : {}),
             connected: status.connected,
             config,
+            savedAccounts,
+            selectedAccount,
           };
         }),
       );

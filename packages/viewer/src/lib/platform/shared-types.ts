@@ -466,10 +466,31 @@ export interface PublishProviderCard {
   tokenUrl?: string;
   /** Author-facing hint for the connect UI. */
   hint?: string;
-  /** Redacted — a usable credential exists (env var or stored key). */
+  /** Redacted — a usable credential exists (env var or stored key) for the
+   *  effective selected account. */
   connected: boolean;
   /** The provider's non-secret manifest `publish.<id>` settings. */
   config: Record<string, string>;
+  /**
+   * Saved credentials for this provider (redacted — never tokens), so the UI
+   * can offer a picker: the default (unnamed, `account:""`) plus any named
+   * accounts. Reused across every project since the store is user-scoped.
+   */
+  savedAccounts: PublishSavedAccountInfo[];
+  /**
+   * The account label this book currently uses (manifest `publish.<id>.
+   * credential`), or "" for the default credential. Empty when unset.
+   */
+  selectedAccount: string;
+}
+
+/** A saved publishing credential, redacted (no token) — for the picker. */
+export interface PublishSavedAccountInfo {
+  /** Account label; "" is the default (unnamed) credential. */
+  account: string;
+  /** Display name. */
+  label: string;
+  createdAt: number;
 }
 
 /** One publish preflight finding. */

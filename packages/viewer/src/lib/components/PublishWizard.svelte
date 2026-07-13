@@ -40,6 +40,27 @@
   // 0 = choose; 1..N = setup step for selectedCards[i-1]; N+1 = publish.
   let stepIndex = $state(0);
   let selected = $state<Set<string>>(new Set());
+  // Per-provider: is the "add another account" connect form open?
+  let addingAccount = $state<Record<string, boolean>>({});
+
+  const ADD = "__add_account__";
+  function showAddForm(card: PublishProviderCard): boolean {
+    return addingAccount[card.id] === true || card.savedAccounts.length === 0;
+  }
+  function onAccountSelect(card: PublishProviderCard, value: string) {
+    if (value === ADD) {
+      addingAccount = { ...addingAccount, [card.id]: true };
+    } else {
+      addingAccount = { ...addingAccount, [card.id]: false };
+      void controller.selectCredential(card.id, value);
+    }
+  }
+  async function doConnect(card: PublishProviderCard) {
+    await controller.connectPublish(card.id);
+    // Collapse the add form only on success (keep it open, with the error, so
+    // the author can fix the key).
+    if (!controller.publishError) addingAccount = { ...addingAccount, [card.id]: false };
+  }
 
   const cards = $derived(controller.publishCards);
   const selectedCards = $derived(cards.filter((c) => selected.has(c.id)));
@@ -169,15 +190,40 @@
       {/if}
 
       {#if card.credentialRequired}
-        {#if card.connected}
-          <div class="conn-ok">
-            <span><Icon name="circle-check" size={14} /> Connected — reusing your saved key.</span>
-            <button class="dlg-ghost" onclick={() => controller.disconnectPublish(card.id)} disabled={busy}>Use a different key</button>
-          </div>
-        {:else}
+        {#if card.savedAccounts.length > 0}
+          <label class="field" for={`pw-${card.id}-account`}>
+            <span>Account</span>
+            <select
+              id={`pw-${card.id}-account`}
+              value={showAddForm(card) ? ADD : card.selectedAccount}
+              onchange={(e) => onAccountSelect(card, e.currentTarget.value)}
+              disabled={busy}
+            >
+              {#each card.savedAccounts as acc (acc.account)}
+                <option value={acc.account}>{acc.account ? acc.label : "Default account"}</option>
+              {/each}
+              <option value={ADD}>＋ Add another account…</option>
+            </select>
+          </label>
+        {/if}
+
+        {#if showAddForm(card)}
+          <!-- Connect a new (named or default) account. -->
+          {#if card.hint}<span class="field-hint">{card.hint}</span>{/if}
+          {#if card.savedAccounts.length > 0}
+            <label class="field" for={`pw-${card.id}-accname`}>
+              <span>Name this account <em class="optional">(optional — e.g. "Studio")</em></span>
+              <input
+                id={`pw-${card.id}-accname`}
+                type="text"
+                placeholder="Leave blank for your default"
+                value={controller.publishAccountDrafts[card.id] ?? ""}
+                oninput={(e) => controller.setPublishAccountDraft(card.id, e.currentTarget.value)}
+              />
+            </label>
+          {/if}
           <label class="field" for={`pw-${card.id}-key`}>
             <span>API key</span>
-            {#if card.hint}<span class="field-hint">{card.hint}</span>{/if}
             <div class="key-row">
               <input
                 id={`pw-${card.id}-key`}
@@ -185,14 +231,21 @@
                 placeholder="Paste API key"
                 value={controller.publishTokenDrafts[card.id] ?? ""}
                 oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
-                onkeydown={(e) => { if (e.key === "Enter") controller.connectPublish(card.id); }}
+                onkeydown={(e) => { if (e.key === "Enter") doConnect(card); }}
               />
-              <button class="dlg-primary" onclick={() => controller.connectPublish(card.id)} disabled={busy}>Connect</button>
+              <button class="dlg-primary" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
             </div>
             {#if card.tokenUrl}
               <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
             {/if}
           </label>
+        {:else if card.connected}
+          <div class="conn-ok">
+            <span><Icon name="circle-check" size={14} /> Connected — reusing your saved key.</span>
+            <button class="dlg-ghost" onclick={() => controller.disconnectPublish(card.id, card.selectedAccount || undefined)} disabled={busy}>Remove this key</button>
+          </div>
+        {:else}
+          <p class="warn"><Icon name="triangle-alert" size={13} /> This account's key isn't saved yet — add it, or pick another account.</p>
         {/if}
       {:else}
         <p class="muted">No account or key needed — we'll prepare an upload package with step-by-step instructions.</p>
@@ -328,6 +381,17 @@
     width: 100%;
   }
   .field input:focus { outline: none; border-color: var(--app-focus-ring); }
+  .field select {
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    width: 100%;
+  }
+  .field select:focus { outline: none; border-color: var(--app-focus-ring); }
+  .optional { font-style: italic; color: var(--app-text-faint); font-weight: 400; }
   .key-row { display: flex; gap: 8px; }
   .key-row input { flex: 1; min-width: 0; }
   .self-start { align-self: flex-start; }

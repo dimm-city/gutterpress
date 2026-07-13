@@ -9,7 +9,7 @@ import type { RequestHandler } from './$types';
  * credential untouched. Response is redacted — never includes the token.
  */
 export const POST: RequestHandler = defineRoute<
-  { projectDir?: string; providerId?: string; token?: string },
+  { projectDir?: string; providerId?: string; token?: string; account?: string },
   NonNullable<ReturnType<typeof getHooks>>
 >({
   hooks: getHooks,
@@ -24,8 +24,12 @@ export const POST: RequestHandler = defineRoute<
       if (!lib.connectPublishProvider) {
         throw new Error('Publishing is not available in this version of the lib');
       }
+      // An optional account label stores a NAMED credential (under the compound
+      // `<host>#<account>` key) so a user can keep several per provider; empty
+      // stores the default.
+      const account = typeof body.account === 'string' ? body.account.trim() : '';
       return lib.connectPublishProvider(
-        { projectDir, providerId: body.providerId, token: body.token },
+        { projectDir, providerId: body.providerId, token: body.token, ...(account ? { account } : {}) },
         { tokenStore: hooks.tokenStore },
       );
     }),

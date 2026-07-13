@@ -566,18 +566,24 @@ export const api = {
 
     /**
      * Store + verify an API key for a provider. The token travels once, to the
-     * host; the response is redacted and the key never comes back.
+     * host; the response is redacted and the key never comes back. An optional
+     * `account` label stores a NAMED credential (a user can keep several per
+     * provider); empty stores the default.
      */
-    connect: (projectDir: string, providerId: string, token: string) =>
+    connect: (projectDir: string, providerId: string, token: string, account?: string) =>
       post<{ connected: boolean; providerId: string }>('/api/publish/connect', {
         projectDir,
         providerId,
         token,
+        ...(account ? { account } : {}),
       }),
 
-    /** Forget the stored key for a provider. */
-    disconnect: (providerId: string) =>
-      post<{ ok: boolean }>('/api/publish/disconnect', { providerId }),
+    /** Forget a stored key for a provider (the default, or a named `account`). */
+    disconnect: (providerId: string, account?: string) =>
+      post<{ ok: boolean }>('/api/publish/disconnect', {
+        providerId,
+        ...(account ? { account } : {}),
+      }),
 
     /** Write NON-SECRET provider settings into the manifest's publish section. */
     setConfig: (projectDir: string, providerId: string, values: Record<string, string>) =>
