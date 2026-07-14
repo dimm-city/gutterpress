@@ -5,7 +5,45 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing merged since [0.7.1](#071---2026-07-07) yet.
+Nothing merged since [0.8.0-beta.1](#080-beta1---2026-07-13) yet.
+
+## [0.8.0-beta.1] - 2026-07-13
+
+[Full Changelog](https://github.com/dimm-city/print-md/compare/v0.7.1...v0.8.0-beta.1) ·
+[Release notes](https://github.com/dimm-city/print-md/releases/tag/v0.8.0-beta.1)
+
+### Added
+
+- **Writer-focused editing.** Create, rename, copy, and delete files and
+  folders from the project tree; author `@marker` syntax with editor
+  completions; and manage a project's look and styles through a clearer
+  settings flow.
+- **Publishing workflow.** Start publishing from the toolbar, complete a
+  guided wizard, and select, switch, or add saved credentials for each
+  provider. The CLI can now select a saved credential explicitly with
+  `print-md publish --account`.
+- **More visible project controls.** Added a toolbar Save action, a
+  collapsible table of contents, version-history workspace restore, and
+  centralized Connections settings.
+- Build and preview now surface author-facing layout warnings in their logs.
+
+### Changed
+
+- **Sync status overhaul.** One source of truth now drives sync state and
+  guidance, removing misleading status and dead-end recovery paths.
+- The desktop host and CLI build/preview paths were decomposed and hardened,
+  with stronger build, preview, and release verification.
+- Removed the separate startup splash window; startup now stays within the
+  main workspace.
+
+### Fixed
+
+- Protected the preload bridge from remotely loaded content, preventing
+  untrusted pages from reaching desktop capabilities.
+- Prevented editor data loss and corrected errors in saving, configuration,
+  sync-conflict, export, publishing, and table-of-contents flows.
+- `print-md validate --phase` now rejects unknown phase names instead of
+  reporting a successful validation.
 
 ## [0.7.1] - 2026-07-07
 
