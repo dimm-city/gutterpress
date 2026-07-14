@@ -339,18 +339,21 @@ settings store's `onSettingsChange()` channel with `settingsChangeGuard()`
 (see `src/lib/settings.svelte.ts`'s header) — every state replacement flows
 through one choke point, so the notify cannot be forgotten by a new setter.
 
-**Dormant PWA scaffolding (`WebAdapter`, kept for #33).** The PWA remains a
-goal, so `WebAdapter` (`src/lib/platform/web-adapter.ts`) intentionally keeps a
-partial, currently-unreachable implementation of several capabilities —
-IndexedDB-backed recents/favorites/viewer-prefs, a `localStorage` settings
-fallback, File System Access primitives — even though today's live settings
-path is `api.app.getSettings`/`setSettings` (a server route, `isDesktop()`-
-gated). This is **dormant scaffolding, not dead code to delete**: it is the
-starting point for the #33 PWA milestone. When #33 lands, expect the relevant
-`api.ts` call sites to migrate to `getPlatform()` so the same UI code serves
-both Electron (`ElectronAdapter` → the existing server routes) and the browser
-(`WebAdapter`'s now-live implementation); until then, `api.ts` is the correct
-call site for those capabilities on the Electron target.
+**PWA scaffolding (`WebAdapter`, #33 — partially shipped).** Issue #33 closed
+as completed (PR #63): the FSA folder-open path, in-browser preview,
+IndexedDB persistence, and the service worker + manifest offline app shell
+shipped; Phase 6 (Safari/OPFS) was deferred. Normative status and remaining
+work live in `docs/pwa-webadapter-plan.md` ("partially shipped, plan revised
+2026-07-02") — defer to that plan, not this paragraph. `WebAdapter`
+(`src/lib/platform/web-adapter.ts`) is live on the browser target for the
+shipped capabilities; the rest (e.g. the `localStorage` settings fallback —
+today's live settings path is still `api.app.getSettings`/`setSettings`, a
+server route, `isDesktop()`-gated) remains **scaffolding for the remaining
+phases, not dead code to delete**. As migration continues per the plan,
+expect more `api.ts` call sites to move to `getPlatform()` so the same UI
+code serves both Electron (`ElectronAdapter` → the existing server routes)
+and the browser (`WebAdapter`); on the Electron target, `api.ts` remains the
+correct call site for those capabilities.
 
 **Verification (must pass before any viewer change is "done"):** the client
 SPA bundle must contain no host code — adapter-node emits the browser assets
