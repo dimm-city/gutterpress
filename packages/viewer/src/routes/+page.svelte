@@ -172,6 +172,7 @@
   const publishController = new PublishSectionController({
     projectDir: () => lifecycle.currentDir,
     listProviders: (dir) => api.publish.listProviders(dir),
+    preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
     connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
     disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
@@ -3028,7 +3029,16 @@
 {#if publishOpen}
   <!-- Mounted fresh on open so the wizard loads providers in onMount and resets
        to step 1 (no $effect, per CLAUDE.md §8). -->
-  <PublishWizard controller={publishController} onClose={() => (publishOpen = false)} />
+  <PublishWizard
+    controller={publishController}
+    onClose={() => (publishOpen = false)}
+    onNavigate={(entry) => {
+      // A preflight "Go to" — close the modal wizard, then reveal the finding
+      // in the editor via the shared Problems-panel navigation affordance.
+      publishOpen = false;
+      openProblem(entry);
+    }}
+  />
 {/if}
 <AdvancedSetupDialog
   bind:open={advancedSetupOpen}

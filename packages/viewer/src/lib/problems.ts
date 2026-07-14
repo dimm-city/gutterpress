@@ -40,6 +40,17 @@ const SOURCE_LABELS: Record<string, string> = {
   "source.accessibility.alt-text": "Image description",
   "source.accessibility.heading-order": "Heading order",
   [MISSING_ASSETS_SOURCE]: "Missing assets",
+  // Asset-category checks (#105 publish preflight). Kept in the SAME table as
+  // the source checks so `friendlySource` stays the ONE plain-language label
+  // authority — preflight must not maintain a second, drifting label map.
+  "asset.image.file-size": "Image file size",
+  "asset.image.resolution": "Image resolution",
+  "asset.image.color-space": "Image colour space",
+  "asset.image.alpha-channel": "Image transparency",
+  "asset.image.tac-raster": "Image ink coverage",
+  "asset.font.approved-files": "Font files",
+  "asset.font.missing-refs": "Missing font",
+  "asset.font.license": "Font licence",
 };
 
 export function friendlySource(checkId: string): string {
