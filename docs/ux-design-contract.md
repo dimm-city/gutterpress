@@ -398,6 +398,12 @@ The one-size "direct link to published work" success state is wrong for
 Guided providers (KDP review takes up to ~72h); the success state is
 **provider-aware** per the table.
 
+**Placement & gate (decisions on #105, 2026-07-14):** preflight is a **step
+inside the PublishWizard**, shown after destination selection so checks are
+provider-aware. A blocking ❌ **disables Publish by default**; the user may
+explicitly override (**Publish anyway**, with confirmation). Warnings/info
+never block.
+
 **Flow order:** provider selection → provider-aware preflight → publish.
 Provider-specific checks appear only after that provider is selected,
 appended below the shared checks. (The original mock showed a KDP row before
@@ -414,16 +420,15 @@ the header red.)
 │ ⚠️ Table of contents — not generated    │    EBOOK spec and is not used here)
 │ ❌ KDP: ISBN field empty                │   ← [Set…] navigates to the field
 │                                         │
-│ [Fix all auto-fixable]  [Export PDF]    │
+│ [Set ISBN…]            [Publish anyway]  │
 └─────────────────────────────────────────┘
 ```
 
-- Every preflight rule declares `fixable: none | navigate | auto`. `auto`
-  rules state their exact mutation (e.g. ToC → insert the ToC marker after
-  frontmatter); auto-fixes that touch document content apply as a **single
-  undoable edit**. "Fix all" runs `auto` rules only and reports what changed;
-  `navigate` rules (like ISBN) get a Set… button; `none` rules explain
-  themselves.
+- Every preflight rule declares `fixable: none | navigate`. A `navigate` rule
+  (like ISBN) gets a Set…/Go-to button that jumps to the field; a `none` rule
+  explains itself. **There is no auto-fix** — preflight never mutates document
+  content (decision on #105, 2026-07-14; the earlier `auto` class and "Fix
+  all" button were dropped).
 - Severity: error / warning / info; header is red/amber/green accordingly —
   no guessing.
 - Progress: side drawer (not modal) with step indicators and a collapsible
@@ -550,9 +555,9 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
 - Bottom drawer, collapsible, badge with error/warning count
   (`aria-label="3 errors, 2 warnings"`).
 - Click row → jump to location in the editor. PROPOSED: severity filters;
-  Arrow-key row navigation with Enter-to-jump; inline "Fix" on auto-fixable
-  rules (mirroring the preflight taxonomy in §6 — required before any
-  "click-to-fix" quality gate can be measured).
+  Arrow-key row navigation with Enter-to-jump; inline "Go to" navigation on
+  rows (matching §6's navigate-only remediation — no auto-fix — and required
+  before any "navigate-and-resolve" quality gate can be measured).
 - **Existing checks** (source-time): broken local links, print-safety CSS,
   markdownlint, htmlhint, missing image alt text, heading order, missing
   shared assets.
@@ -650,22 +655,23 @@ capability gating via the platform seam.
 
 ## Measurable quality gates
 
-### Measurement prerequisites (blocking)
+### Measurement approach (decided — no telemetry, #108)
 
-The app has **no telemetry, no analytics events, no consent flow, no support
-system** — and this contract's own privacy stance (see Typography: no font
-CDNs) applies with more force to behavioral data. Therefore:
+print-md ships **no telemetry, no analytics events, and no session recording**
+(decision on **#108**, 2026-07-14) — consistent with its local-first, MPL-2.0,
+no-backend posture and the privacy stance behind the no-font-CDN rule. All
+quality gates below are therefore measured **without instrumentation**:
 
-- **No session recording in production, ever** — recording a writing app
-  captures manuscripts. Recordings happen only in consented usability
-  studies.
-- Any in-app metrics require the telemetry/consent decision (**#108**) first
-  (first-run consent, kill switch, published event schema, no content
-  capture, offline queueing, user-inspectable data — or a formal "no
-  telemetry" decision). Until #108 is resolved, every gate below marked
-  *(telemetry)* is **aspirational, not enforceable**.
-- "Support ticket rate" → replaced by GitHub-issue rate / usability-test
-  observation.
+- **Usability tests** (moderated/unmoderated, recruited participants) are the
+  primary instrument for completion rates, time-to-first-PDF, and satisfaction.
+- **GitHub-issue rates** stand in for "support ticket rate".
+- **CI / e2e / unit tests** back the error-rate and performance gates.
+- **No session recording, ever** — recording a writing app would capture
+  manuscripts; recordings occur only inside consented usability studies.
+
+Targets that would require fleet-scale data (sub-0.1% crash rates, NPS cohorts)
+are **aspirational direction, not release-blocking gates**, since there is no
+instrument to evaluate them.
 
 ### Canonical first-PDF metric (single source of truth)
 
@@ -673,14 +679,13 @@ CDNs) applies with more force to behavioral data. Therefore:
   the native save dialog; new user; template project).
 - Completion: **≥85% of new users export within 10 minutes** (≈P85).
 - Regression gate: any release where P50 exceeds 5 minutes.
-- Measured via moderated/unmoderated usability tests until telemetry exists
-  *(telemetry)*.
+- Measured via moderated/unmoderated usability tests (no telemetry — #108).
 
 ### Task completion targets
 
 | Task | Target | Method |
 |---|---|---|
-| First PDF exported | per canonical metric above | usability test *(telemetry later)* |
+| First PDF exported | per canonical metric above | usability test |
 | Apply a theme | 5/5 test participants complete unassisted (n=5 formative; see below) | usability test |
 | First publish (itch.io) | ≥80% unassisted | usability test + GitHub-issue rate |
 | Enable a plugin from "Not installed" using the in-app instructions | ≤2 min | usability test |
@@ -695,9 +700,9 @@ scope to the 2 priority personas (Maya, Kai).
 
 | Error | Target | How measured today |
 |---|---|---|
-| Publish failure (user-caused, preflight-caught) | ≤5% | provider e2e tests + issue reports *(telemetry)* |
+| Publish failure (user-caused, preflight-caught) | ≤5% | provider e2e tests + GitHub-issue reports |
 | Publish failure (app-caused) | ≤1% | same |
-| PDF export crash | 0 in the e2e suite; fleet rate *(telemetry)* | CI gate |
+| PDF export crash | 0 in the e2e suite (fleet rate is aspirational — no telemetry) | CI gate |
 | Data loss | none beyond the last auto-save debounce (500ms) + recovery snapshot (1s) — crash recovery must restore to within 1s of the last edit | recovery test suite |
 
 ### Performance gates
@@ -722,7 +727,7 @@ device class.
 - SUS ≥80; task satisfaction ≥4.0/5 — measured in the quarterly usability
   study (see small-n note). **No in-app day-7 survey** unless it gets its own
   issue, a defined trigger, and a surface in the screen inventory; NPS
-  cohort tracking requires the telemetry prerequisites.
+  cohort tracking is out of scope (no telemetry — #108).
 
 ---
 
@@ -891,8 +896,8 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
   1.1**, IBM Plex Mono derivative, bundle from `iaolo/iA-Fonts`), Lora
   (serif; OFL), Inter (sans; OFL). **All defaults are bundled + subset in the
   app package, same as JetBrains Mono (OFL) for the CSS editor — no runtime
-  font fetching of any kind** (privacy + offline; this is the same standard
-  the telemetry rules follow).
+  font fetching of any kind** (privacy + offline; the same standard behind the
+  no-telemetry decision, #108).
 
 ### Motion principles
 
@@ -982,7 +987,7 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 
 ### Print / publish
 - ✅ Publish wizard + 5 providers + Connections (#35) · ✅ readiness check (#24) · ✅ page navigation (#20) · ✅ export progress a11y (#21)
-- ⏳ Preflight panel over the existing check registry (§6 taxonomy: fixable none/navigate/auto) — **#105**
+- ⏳ Preflight panel (PublishWizard step; block-with-override; fixable none/navigate, no auto-fix) — **#105**
 - ⏳ Theme package format + ZIP import + hover sample preview — **#106**
 - 🆕 Publish progress drawer (push-stream seam) · ❌ publish history — evaluated, not planned
 - ❌ Page thumbnail navigator — evaluated, not planned (pager + TOC cover it)
@@ -990,7 +995,7 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 - ⏳ AI assistant — **#36** (off by default, host-side, §7 constraints)
 
 ### Quality-gate measurement
-- ⏳ Telemetry/consent decision — **#108**; **blocks** every *(telemetry)* gate
+- ✅ Telemetry decision — **#108**: no telemetry; gates measured via usability tests + CI (this section updated to match)
 - ⏳ Benchmark fixtures (`bench/novel-50p`, `bench/zine-24p`) wired into `tests/perf/render-gate.mjs` — **#107**
 - 🆕 Quarterly usability-study protocol (owner, recruitment, 2 priority personas)
 - 🆕 Accessibility audit: axe-core automated + manual NVDA/VoiceOver passes per the matrix
