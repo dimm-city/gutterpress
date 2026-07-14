@@ -1,0 +1,48 @@
+/* =============================================================================
+   Novel — perf-bench theme (theme.css)
+   Text-only prose theme for the re-render latency fixture. A fixed @page size
+   and margin box makes the page count deterministic so the baseline is stable.
+   Deliberately plain: no decorative rules/fills that would add layout cost and
+   contaminate the pagination-latency measurement.
+   ============================================================================= */
+
+:root {
+  --color-ink:  #1c1c1c;
+  --color-page: #ffffff;
+  --font-body:  Georgia, "Times New Roman", serif;
+  --leading:    1.5;
+}
+
+@page {
+  size: 8.5in 11in;
+  margin: 0.9in 0.8in;
+}
+
+body {
+  color: var(--color-ink);
+  background: var(--color-page);
+  font-family: var(--font-body);
+  font-size: 11pt;
+  line-height: var(--leading);
+}
+
+h1 {
+  font-size: 2rem;
+  margin: 0 0 0.6em;
+  break-before: page;
+}
+h1:first-of-type {
+  break-before: avoid;
+}
+
+h2 {
+  font-size: 1.3rem;
+  margin: 1.4em 0 0.4em;
+}
+
+p {
+  margin: 0 0 0.75em;
+  text-align: justify;
+  orphans: 2;
+  widows: 2;
+}

@@ -233,6 +233,11 @@
       "description": "Disable default foundation CSS styles",
       "default": false
     },
+    "themePrevious": {
+      "type": "string",
+      "description": "Id of the theme active before the current one (the 'Revert to previous theme' target, #106). Managed automatically by print-md; not authored by hand.",
+      "examples": ["clean-book", "zine"]
+    },
     "version": {
       "type": "string",
       "description": "Document version number",

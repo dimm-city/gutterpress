@@ -141,6 +141,8 @@ export {
   importThemeFromUrl,
   readThemeCss,
   removeProjectTheme,
+  getPreviousTheme,
+  revertTheme,
   BUILT_IN_THEME_IDS,
   THEMES_DIR,
 } from "../lib/theme-manager.ts";
@@ -151,6 +153,20 @@ export type {
   ApplyThemeTarget,
   BuiltInThemeId,
 } from "../lib/theme-manager.ts";
+
+// ── Theme package import (#106) — .zip / .css importers + pure decision helpers ──
+export {
+  importThemeFromFile,
+  importThemeFromZip,
+  importThemeFromCssText,
+  isUnsafeZipEntryPath,
+  locateThemeRoot,
+  classifyThemeCssFindings,
+  unexpectedThemeFiles,
+  MAX_THEME_ARCHIVE_BYTES,
+  MAX_THEME_UNZIPPED_BYTES,
+} from "../lib/theme-import.ts";
+export type { ThemeImportResult, ThemeImportWarning } from "../lib/theme-import.ts";
 
 // ── Stylesheet resolution (renderer links them; editor edits them — one source) ──
 export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";

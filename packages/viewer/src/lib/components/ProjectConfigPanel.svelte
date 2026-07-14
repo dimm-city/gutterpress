@@ -132,9 +132,12 @@
     listBuiltIn: () => api.theme.listBuiltIn(),
     listProject: (dir) => api.theme.listProject(dir),
     getActive: (dir) => api.theme.getActive(dir),
+    getPrevious: (dir) => api.theme.getPrevious(dir),
     apply: (dir, target) => api.theme.apply(dir, target),
+    revert: (dir) => api.theme.revert(dir),
     remove: (dir, id) => api.theme.remove(dir, id),
     importFromFolder: (dir) => api.theme.importFromFolder(dir),
+    importFromFile: (dir) => api.theme.importFromFile(dir),
     importFromUrl: (dir, url) => api.theme.importFromUrl(dir, url),
     readCss: (dir, source) => api.theme.readCss(dir, source),
     onApplied: (themeId) => {

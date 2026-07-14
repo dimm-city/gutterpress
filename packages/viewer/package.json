@@ -22,7 +22,9 @@
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts'",
     "typecheck": "tsc -p electron/tsconfig.json",
     "test:ui": "node tests/integration/run-ui.mjs",
-    "perf-gate": "node tests/perf/render-gate.mjs"
+    "perf-gate": "node tests/perf/render-gate.mjs",
+    "rerender-gate": "node tests/perf/rerender-latency-gate.mjs",
+    "rerender-baseline": "node tests/perf/rerender-latency-gate.mjs --write-baseline"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.4",

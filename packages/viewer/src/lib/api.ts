@@ -98,6 +98,8 @@ export type {
   RecommendedPlugin,
   ThemeInfo,
   ApplyThemeTarget,
+  ThemeImportResult,
+  ThemeImportWarning,
   ProjectStyle,
   RecoveryEntry,
   ConflictPreview,
@@ -116,6 +118,7 @@ import type {
   RecommendedPlugin,
   ThemeInfo,
   ApplyThemeTarget,
+  ThemeImportResult,
   ProjectStyle,
   RecoveryEntry,
   ConflictPreview,
@@ -412,6 +415,9 @@ export const api = {
     /** Open a native folder picker and import the selected folder as a theme. Resolves null when cancelled. */
     importFromFolder: (projectDir: string) =>
       post<ThemeInfo | null>('/api/theme/import-from-folder', { projectDir }),
+    /** Open a native file picker and import a `.zip` package or bare `.css` as a theme. Resolves null when cancelled (#106). */
+    importFromFile: (projectDir: string) =>
+      post<ThemeImportResult | null>('/api/theme/import-from-file', { projectDir }),
     /** Import a theme from a remote URL (raw CSS or theme folder). */
     importFromUrl: (projectDir: string, url: string) =>
       post<ThemeInfo>('/api/theme/import-from-url', { projectDir, url }),
@@ -421,6 +427,12 @@ export const api = {
     /** Remove a project-local theme by id. */
     remove: (projectDir: string, id: string) =>
       post<{ ok: true }>('/api/theme/remove', { projectDir, id }),
+    /** The theme active before the current one — the "Revert" target — or null (#106). */
+    getPrevious: (projectDir: string) =>
+      post<ThemeInfo | null>('/api/theme/previous', { projectDir }),
+    /** Re-apply the previously active theme (#106). */
+    revert: (projectDir: string) =>
+      post<ThemeInfo>('/api/theme/revert', { projectDir }),
   },
 
   project: {

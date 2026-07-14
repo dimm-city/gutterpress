@@ -1,5 +1,10 @@
 import { test, expect } from "bun:test";
-import { pluginLabel, pluginStatus } from "../../src/lib/components/config/config-helpers";
+import {
+  pluginLabel,
+  pluginStatus,
+  sampleSrcdoc,
+  hoverPreviewSrcdoc,
+} from "../../src/lib/components/config/config-helpers";
 import type {
   ProjectPluginEntry,
   PluginValidationResult,
@@ -14,6 +19,24 @@ const recommended: RecommendedPlugin[] = [
 function entry(overrides: Partial<ProjectPluginEntry> = {}): ProjectPluginEntry {
   return { ref: "markdown-it-mark", kind: "npm", enabled: true, ...overrides };
 }
+
+// ── #106: hover preview renders a fixed 2-page sample, never the document ──────
+
+test("hoverPreviewSrcdoc inlines the theme CSS into a fixed two-page spread", () => {
+  const css = ":root { --accent: #036; }";
+  const doc = hoverPreviewSrcdoc(css);
+  // The theme CSS is inlined inside a <style> block.
+  expect(doc).toContain(css);
+  // It is a FIXED sample spread — two sample pages, not the author's document.
+  expect((doc.match(/pm-sample-page/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  expect(doc).toContain("Chapter One");
+});
+
+test("hoverPreviewSrcdoc is a superset sample of the thumbnail (both self-contained docs)", () => {
+  const css = "h1 { color: red; }";
+  expect(sampleSrcdoc(css).startsWith("<!DOCTYPE html>")).toBe(true);
+  expect(hoverPreviewSrcdoc(css).startsWith("<!DOCTYPE html>")).toBe(true);
+});
 
 // ── M33: friendly label survives past "Turn on" ────────────────────────────
 
