@@ -127,6 +127,11 @@ import type {
   DoctorDiagnostics,
 } from './platform/dtos';
 
+// Publish-preflight row DTO (#105). Pure `$lib` module — type-only here so the
+// client bundle still never value-imports it through the api client.
+export type { PreflightRow } from './preflight';
+import type { PreflightRow } from './preflight';
+
 // ── Genuinely api-local shapes (no canonical twin in the contract) ───────────
 
 export interface TemplateInfo {
@@ -615,6 +620,14 @@ export const api = {
         providerId,
         values,
       }),
+
+    /**
+     * Pre-build publish preflight (#105): run the SOURCE + ASSET checks (no PDF
+     * build) for a project, scoped to the selected destinations. Returns the
+     * plain-language rows the wizard's Preflight step renders + gates on.
+     */
+    preflight: (projectDir: string, providerIds: string[]) =>
+      post<PreflightRow[]>('/api/publish/preflight', { projectDir, providerIds }),
 
     /** Publish (or preflight with dryRun). Long-running; resolves with the result. */
     run: (
