@@ -5,7 +5,26 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing merged since [0.8.0-beta.1](#080-beta1---2026-07-13) yet.
+## [0.8.0-beta.2] - 2026-07-14
+
+### Added
+
+- **Editor layout controls.** The editor/preview split is now a resizable
+  gutter with snap points and keyboard resize (#103), plus a distraction-free
+  focus mode (#104).
+- **Guided publish preflight.** The publish wizard gained a preflight step that
+  surfaces blocking errors and warnings before you publish, with an author
+  override (#105).
+- **Theme package import.** Import a theme from a packaged ZIP, a folder, or a
+  single CSS file, preview it live on hover over a canned sample spread, and
+  revert to the previously applied theme at any time (#106).
+
+### Testing / infra
+
+- Added an **advisory** preview re-render latency gate
+  (`tests/perf/rerender-latency-gate.mjs`) with the `bench/novel-50p` fixture
+  (#107). Its `perf-baseline.json` median is a placeholder until captured with
+  `npm run rerender-baseline`.
 
 ## [0.8.0-beta.1] - 2026-07-13
 
@@ -20,8 +39,10 @@ Nothing merged since [0.8.0-beta.1](#080-beta1---2026-07-13) yet.
   settings flow.
 - **Publishing workflow.** Start publishing from the toolbar, complete a
   guided wizard, and select, switch, or add saved credentials for each
-  provider. The CLI can now select a saved credential explicitly with
-  `print-md publish --account`.
+  provider. The CLI can now target a specific saved credential when connecting
+  or disconnecting a provider with `print-md publish --account` (keep several
+  accounts per provider); publish-time credential selection is driven by the
+  manifest `publish.<id>.credential` or the stored default.
 - **More visible project controls.** Added a toolbar Save action, a
   collapsible table of contents, version-history workspace restore, and
   centralized Connections settings.

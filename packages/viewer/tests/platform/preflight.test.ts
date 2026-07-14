@@ -5,7 +5,6 @@ import {
   worstSeverity,
   preflightHeaderLevel,
   preflightCounts,
-  hasBlockingErrors,
   groupPreflight,
   categoryLabel,
   type PreflightRawResult,
@@ -104,7 +103,7 @@ test("preflightHeaderLevel: red on error, amber on warning, green otherwise", ()
   );
 });
 
-test("preflightCounts + hasBlockingErrors", () => {
+test("preflightCounts", () => {
   const rows = [
     row({ severity: "error" }),
     row({ severity: "error" }),
@@ -112,8 +111,6 @@ test("preflightCounts + hasBlockingErrors", () => {
     row({ severity: "info" }),
   ];
   expect(preflightCounts(rows)).toEqual({ errors: 2, warnings: 1, infos: 1 });
-  expect(hasBlockingErrors(rows)).toBe(true);
-  expect(hasBlockingErrors([row({ severity: "warning" }), row({ severity: "info" })])).toBe(false);
 });
 
 // ── grouping ──────────────────────────────────────────────────────────────────

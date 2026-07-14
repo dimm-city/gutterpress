@@ -140,11 +140,6 @@ export function preflightCounts(rows: PreflightRow[]): PreflightCounts {
   return { errors, warnings, infos };
 }
 
-/** Any blocking error present → the publish gate engages (overridable by the author). */
-export function hasBlockingErrors(rows: PreflightRow[]): boolean {
-  return rows.some((r) => r.severity === "error");
-}
-
 // ── Grouping ─────────────────────────────────────────────────────────────────
 
 export interface PreflightGroup {
