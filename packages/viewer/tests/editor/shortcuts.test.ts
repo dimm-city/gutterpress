@@ -65,6 +65,24 @@ test("Cmd/Ctrl+S (no shift) is NOT a snippet shortcut", () => {
   ).toBe("none");
 });
 
+test("Cmd/Ctrl+Shift+F toggles focus mode (lowercase)", () => {
+  expect(
+    resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "f" }),
+  ).toBe<GlobalShortcutCommand>("focus-mode");
+});
+
+test("Cmd/Ctrl+Shift+F toggles focus mode (uppercase)", () => {
+  expect(
+    resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "F" }),
+  ).toBe("focus-mode");
+});
+
+test("Cmd/Ctrl+F (no shift) is NOT focus mode (browser find left alone)", () => {
+  expect(
+    resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "f" }),
+  ).toBe("none");
+});
+
 test("plain keys without a modifier resolve to none", () => {
   expect(
     resolveGlobalShortcut({ ctrlOrMeta: false, shift: false, key: "e" }),
@@ -153,6 +171,15 @@ test("f / F fit width only without Cmd/Ctrl", () => {
 test("Cmd/Ctrl+F is NOT fit-width (browser find is left alone)", () => {
   expect(
     resolvePreviewNavCommand({ ctrlOrMeta: true, shift: false, key: "f" }),
+  ).toBe("none");
+});
+
+test("Cmd/Ctrl+Shift+F is NOT a preview-nav command (no fit-width collision with focus mode)", () => {
+  expect(
+    resolvePreviewNavCommand({ ctrlOrMeta: true, shift: true, key: "f" }),
+  ).toBe("none");
+  expect(
+    resolvePreviewNavCommand({ ctrlOrMeta: true, shift: true, key: "F" }),
   ).toBe("none");
 });
 
