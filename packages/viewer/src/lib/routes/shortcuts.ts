@@ -9,6 +9,7 @@ export type GlobalShortcutCommand =
   | "toggle-editor"
   | "toggle-left-panel"
   | "snippet"
+  | "focus-mode"
   | "none";
 
 export interface ShortcutInput {
@@ -28,6 +29,9 @@ export function resolveGlobalShortcut(i: ShortcutInput): GlobalShortcutCommand {
   if (i.ctrlOrMeta && (i.key === "e" || i.key === "E")) return "toggle-editor";
   if (i.ctrlOrMeta && i.key === "\\") return "toggle-left-panel";
   if (i.ctrlOrMeta && i.shift && (i.key === "s" || i.key === "S")) return "snippet";
+  // Cmd/Ctrl+Shift+F toggles focus mode. The shift guard keeps plain
+  // Cmd/Ctrl+F (and the preview's bare "f" fit-width) untouched.
+  if (i.ctrlOrMeta && i.shift && (i.key === "f" || i.key === "F")) return "focus-mode";
   return "none";
 }
 

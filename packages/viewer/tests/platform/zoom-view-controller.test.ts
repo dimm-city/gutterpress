@@ -50,6 +50,7 @@ interface Harness {
   client: FakeClient | undefined;
   persistZoom: ReturnType<typeof spy>;
   persistViewMode: ReturnType<typeof spy>;
+  persistSplitRatio: ReturnType<typeof spy>;
   saveViewerPrefs: ReturnType<typeof spy>;
   zoom: string;
   viewMode: "single" | "two-column";
@@ -62,11 +63,13 @@ function make(over: Partial<{ hasClient: boolean }> = {}): Harness {
   const client = over.hasClient === false ? undefined : new FakeClient();
   const persistZoom = spy();
   const persistViewMode = spy();
+  const persistSplitRatio = spy();
   const saveViewerPrefs = spy();
   const h = {
     client,
     persistZoom,
     persistViewMode,
+    persistSplitRatio,
     saveViewerPrefs,
     zoom: "fit-width",
     viewMode: "single" as "single" | "two-column",
@@ -81,6 +84,7 @@ function make(over: Partial<{ hasClient: boolean }> = {}): Harness {
     isNarrow: () => h.isNarrow,
     persistZoom: (v) => persistZoom(v),
     persistViewMode: (m) => persistViewMode(m),
+    persistSplitRatio: (v) => persistSplitRatio(v),
     saveViewerPrefs: (patch) => saveViewerPrefs(patch),
     measureContainerWidth: () => h.containerWidth,
     measureWorkspaceRect: () => h.workspaceRect,
@@ -290,7 +294,43 @@ test("endSplitDrag clears the flag, updates, and persists the final ratio", () =
   expect(h.ctrl.endSplitDrag(700)).toBe(true);
   expect(h.ctrl.draggingSplit).toBe(false);
   expect(h.ctrl.splitPaneRatio).toBe(0.7);
+  // Persists to BOTH the durable settings store and the per-project bucket.
   expect(h.saveViewerPrefs.calls).toEqual([[{ splitPaneRatio: 0.7 }]]);
+  expect(h.persistSplitRatio.calls).toEqual([[0.7]]);
+});
+
+test("endSplitDrag snaps the released ratio to a nearby snap point (#103)", () => {
+  const h = make();
+  h.ctrl.beginSplitDrag(500);
+  // pointer 610/1000 = 0.61 → within 3% of the 0.6 snap point → snaps to 0.6.
+  h.ctrl.endSplitDrag(610);
+  expect(h.ctrl.splitPaneRatio).toBe(0.6);
+  expect(h.saveViewerPrefs.calls).toEqual([[{ splitPaneRatio: 0.6 }]]);
+  expect(h.persistSplitRatio.calls).toEqual([[0.6]]);
+});
+
+test("resetSplitRatio restores the breakpoint default and persists it (#103)", () => {
+  const h = make();
+  h.ctrl.beginSplitDrag(500);
+  h.ctrl.endSplitDrag(700);
+  h.ctrl.resetSplitRatio();
+  expect(h.ctrl.splitPaneRatio).toBe(0.42);
+  expect(h.persistSplitRatio.calls.at(-1)).toEqual([0.42]);
+  expect(h.saveViewerPrefs.calls.at(-1)).toEqual([{ splitPaneRatio: 0.42 }]);
+});
+
+test("nudgeSplit steps the ratio by ~2% per direction and persists (#103)", () => {
+  const h = make();
+  h.ctrl.restoreSplitRatio(0.5);
+  h.ctrl.nudgeSplit(1);
+  expect(h.ctrl.splitPaneRatio).toBe(0.52);
+  h.ctrl.nudgeSplit(-1);
+  expect(h.ctrl.splitPaneRatio).toBe(0.5);
+  expect(h.persistSplitRatio.calls).toEqual([[0.52], [0.5]]);
+  expect(h.saveViewerPrefs.calls).toEqual([
+    [{ splitPaneRatio: 0.52 }],
+    [{ splitPaneRatio: 0.5 }],
+  ]);
 });
 
 test("endSplitDrag returns false when no drag was active", () => {

@@ -128,6 +128,10 @@ export interface ProjectLifecycleDeps {
   zoomView: ProjectLifecycleZoomView;
   /** Seed the settings store's per-project view-mode override on restore. */
   setViewModeSetting: (mode: "single" | "two-column") => void;
+  /** Seed the settings store's split-ratio override on restore (#103) — keeps
+   * the durable default and the just-restored per-project ratio consistent so
+   * the async settings-load can't clobber it. */
+  setSplitRatioSetting: (value: number) => void;
   /** Seed the pending page/view-mode restore consumed by PreviewEventController. */
   setPendingRestore: (viewMode: "single" | "two-column" | null, page: number | null) => void;
   /** Re-arm PreviewEventController's first-render-only success toast gate. */
@@ -379,6 +383,9 @@ export class ProjectLifecycleController {
       d.zoomView.userSetViewMode = !!restoredViewMode;
       if (typeof restored?.splitPaneRatio === "number") {
         d.zoomView.restoreSplitRatio(restored.splitPaneRatio);
+        // Mirror the durable settings value to the per-project ratio so the
+        // async settings load / onSettingsChange sink can't overwrite it.
+        d.setSplitRatioSetting(restored.splitPaneRatio);
       }
       // M30: signal for the #1 cause of wrong fonts/styles.
       d.onMissingSharedAssets(data.missingSharedAssets ?? []);

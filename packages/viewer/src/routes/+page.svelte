@@ -239,6 +239,7 @@
     isNarrow: () => isNarrow,
     persistZoom: (value) => settings.set({ preview: { defaultZoom: value } }),
     persistViewMode: (mode) => settings.set({ preview: { viewMode: mode } }),
+    persistSplitRatio: (value) => settings.set({ preview: { splitRatio: value } }),
     saveViewerPrefs: (patch) => saveViewerPrefs(patch),
     measureContainerWidth: () => {
       const iframe = document.querySelector<HTMLIFrameElement>("iframe");
@@ -442,6 +443,7 @@
     pageNav,
     zoomView,
     setViewModeSetting: (mode) => settings.set({ preview: { viewMode: mode } }),
+    setSplitRatioSetting: (value) => settings.set({ preview: { splitRatio: value } }),
     setPendingRestore: (viewMode, page) => {
       pendingRestoreViewMode = viewMode;
       pendingRestorePage = page;
@@ -886,6 +888,10 @@
   // state now lives inside the buffer.
   let editorOpen = $state(false);
   let previewHidden = $state(false);
+  // Focus mode (#104) — transient editor-only layout. Declared here (before the
+  // split-grid deriveds that read it) so it's initialised ahead of them.
+  let focusMode = $state(false);
+  let focusRestore: { editorOpen: boolean; paneMode: "edit" | "view" } | null = null;
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
@@ -997,12 +1003,12 @@
       (isNarrow ? paneMode === "edit" : editorOpen),
   );
   let splitGridColumns = $derived(
-    editorPaneOpen && !isNarrow && !previewHidden
+    editorPaneOpen && !isNarrow && !previewHidden && !focusMode
       ? splitTemplateColumns(zoomView.splitPaneRatio)
       : "",
   );
   let previewCollapseGridColumns = $derived(
-    editorPaneOpen && !isNarrow && previewHidden
+    editorPaneOpen && !isNarrow && previewHidden && !focusMode
       ? "minmax(0, 1fr) 0 minmax(0, 0)"
       : "",
   );
@@ -1166,10 +1172,17 @@
     (bg) => client?.injectStyles("viewer-canvas", buildViewerStyles(bg)),
     () => !!client,
   );
+  // Split ratio (#103): the durable settings value seeds the controller (which
+  // holds the live $state), so the last-dragged ratio survives restart. The
+  // guard fires only when splitRatio itself changes — an unrelated settings
+  // change won't clobber a per-project ratio applied at project-open, and the
+  // controller's own persist writes this same value back (idempotent).
+  const splitRatioSink = settingsChangeGuard<number>((r) => zoomView.restoreSplitRatio(r));
   onMount(() =>
     onSettingsChange((s) => {
       recoverySink(s.editor.crashRecovery);
       previewBgSink(s.appearance.previewBg);
+      splitRatioSink(s.preview.splitRatio);
     }),
   );
 
@@ -1628,6 +1641,17 @@
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
       if (landingVisible) return;
+      // Cmd/Ctrl+Shift+F toggles focus mode (#104); Esc also exits it.
+      if (command === "focus-mode") {
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+      }
+      if (focusMode && e.key === "Escape") {
+        e.preventDefault();
+        exitFocusMode();
+        return;
+      }
       // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
       if (command === "toggle-editor") {
         e.preventDefault();
@@ -2002,6 +2026,59 @@
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
 
+  // Double-click the splitter → reset to the breakpoint default (#103).
+  function resetSplit() {
+    zoomView.resetSplitRatio();
+  }
+
+  // Keyboard resize (#103, WCAG 2.2 SC 2.5.7): Arrow keys nudge the focused
+  // splitter by ~2% — the non-drag alternative to dragging.
+  function onSplitKeydown(e: KeyboardEvent) {
+    let direction = 0;
+    if (e.key === "ArrowLeft" || e.key === "ArrowUp") direction = -1;
+    else if (e.key === "ArrowRight" || e.key === "ArrowDown") direction = 1;
+    else return;
+    e.preventDefault();
+    zoomView.nudgeSplit(direction);
+  }
+
+  // ── Focus mode (#104) ──────────────────────────────────────────────────────
+  // Transient (never persisted): hides all chrome so only the editor fills the
+  // window. Toggled by Cmd/Ctrl+Shift+F, a menu item, or Esc. The chrome
+  // (toolbar / left panel / status bar / preview) is hidden purely via the
+  // `.shell.focus-mode` CSS class, so leftPanelOpen/previewHidden are untouched
+  // and return automatically on exit; only `editorOpen` must be forced true (the
+  // editor pane only mounts when it is), so we snapshot and restore just that.
+  // (`focusMode`/`focusRestore` are declared up by `editorOpen` so the split-grid
+  // deriveds that read `focusMode` see it initialised.)
+  function enterFocusMode() {
+    if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
+    focusRestore = { editorOpen, paneMode };
+    editorOpen = true;
+    loadEditorModule();
+    void ensureEditorFile();
+    focusEditorWhenReady();
+    // Narrow single-pane layout is left functionally unchanged — focus mode
+    // there just shows the editor tab (setPaneMode also opens/focuses it).
+    if (isNarrow && paneMode !== "edit") setPaneMode("edit");
+    focusMode = true;
+  }
+
+  function exitFocusMode() {
+    if (!focusMode) return;
+    focusMode = false;
+    if (focusRestore) {
+      editorOpen = focusRestore.editorOpen;
+      if (isNarrow && paneMode !== focusRestore.paneMode) setPaneMode(focusRestore.paneMode);
+      focusRestore = null;
+    }
+  }
+
+  function toggleFocusMode() {
+    if (focusMode) exitFocusMode();
+    else enterFocusMode();
+  }
+
   // ── Mobile tab bar (#34): Markdown / CSS / Preview ─────────────────────────
   // The single-column (narrow) layout switches the one visible pane between the
   // markdown editor, the CSS editor, and the preview. Both editor tabs share the
@@ -2224,7 +2301,7 @@
   </div>
 {/if}
 
-<div class="shell">
+<div class="shell" class:focus-mode={focusMode}>
   <header class="toolbar" class:edit-narrow={isNarrow && paneMode === "edit"}>
     <section class="left">
       <!-- Panel toggle — far left, first control in navbar -->
@@ -2567,6 +2644,16 @@
           <Icon name="ellipsis-vertical" />
         </summary>
         <div class="menu-panel menu-panel-right">
+          {#if lifecycle.currentDir && lifecycle.sourceMode === "folder"}
+            <!-- Focus mode (#104): editor-only, chrome hidden. Transient. -->
+            <button
+              class="menu-item"
+              aria-pressed={focusMode}
+              onclick={(e) => { toggleFocusMode(); closeMenu(e); }}
+            >
+              <Icon name="pen-line" /> {focusMode ? "Exit focus mode" : "Focus mode"} ({focusMode ? "Esc" : "Ctrl+Shift+F"})
+            </button>
+          {/if}
           {#if isDesktop()}
             <!-- Advanced setup (#14): Git/remote diagnostics + private servers -->
             <button
@@ -2734,17 +2821,33 @@
           {/if}
         </section>
         {#if !isNarrow && !previewHidden}
-          <button
-            type="button"
+          <!-- Focusable separator (ARIA window-splitter pattern): drag, or
+               Arrow-key resize / double-click reset for the non-drag path
+               (#103, WCAG 2.2 SC 2.5.7). A <div>, not a <button> — a button
+               may not take role="separator". A focusable role="separator" IS
+               interactive per the ARIA spec; the svelte a11y linter doesn't
+               model that pattern (mirrors LeftPanel's resize-handle). -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div
             class="splitter"
             class:dragging={zoomView.draggingSplit}
+            role="separator"
+            aria-orientation="vertical"
+            aria-controls="mobile-panel-editor mobile-panel-preview"
+            tabindex="0"
             aria-label="Resize editor and preview panes"
-            title="Resize editor and preview panes"
+            aria-valuenow={Math.round(zoomView.splitPaneRatio * 100)}
+            aria-valuemin={25}
+            aria-valuemax={75}
+            title="Resize editor and preview panes. Drag or use arrow keys; double-click to reset."
             onpointerdown={startSplitDrag}
             onpointermove={moveSplitDrag}
             onpointerup={stopSplitDrag}
             onpointercancel={stopSplitDrag}
-          ></button>
+            ondblclick={resetSplit}
+            onkeydown={onSplitKeydown}
+          ></div>
         {/if}
       {/if}
       <section
@@ -3126,10 +3229,50 @@
     touch-action: none;
   }
   .splitter:hover,
-  .splitter.dragging,
-  .splitter:focus-visible {
+  .splitter.dragging {
     background: var(--app-focus-ring);
     outline: none;
+  }
+  /* WCAG 2.2 SC 2.4.7: the keyboard-resizable splitter needs a visible focus
+     ring (it's a focusable separator / window splitter). */
+  .splitter:focus-visible {
+    background: var(--app-focus-ring);
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: 1px;
+  }
+
+  /* ── Focus mode (#104) ─────────────────────────────────────────────────────
+     Editor-only: hide every chrome surface so the editor pane fills the window.
+     Purely CSS so leftPanelOpen/previewHidden state is untouched and returns on
+     exit. Scoped to the WIDE layout (min-width:821px, the complement of the
+     `(max-width:820px)` narrow breakpoint) so the ≤820px single-column layout
+     is left functionally unchanged — there focus mode only shows the editor tab
+     (via setPaneMode in JS) and the toolbar's mobile tab bar must stay. */
+  @media (min-width: 821px) {
+    .shell.focus-mode > .toolbar,
+    .shell.focus-mode :global(.status-bar),
+    .shell.focus-mode :global(.left-panel),
+    .shell.focus-mode .splitter,
+    .shell.focus-mode .preview-pane {
+      display: none;
+    }
+    /* LeftPanel is display:none'd above, so drop the negative-margin
+       compensation that assumed its 260px ghost width. */
+    .shell.focus-mode .left-panel-region .main-content {
+      margin-left: 0;
+    }
+    /* Collapse the (now editor-only) split grid to a single column. Higher
+       specificity than `.workspace.editor-open`, and the inline grid style is
+       nulled out while focusMode is on (deriveds gated), so no !important. */
+    .shell.focus-mode .workspace.editor-open {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* Honour reduced motion for the layout shift focus mode triggers. */
+    .left-panel-region .main-content {
+      transition: none;
+    }
   }
   .editor-loading {
     flex: 1;
