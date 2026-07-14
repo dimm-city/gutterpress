@@ -87,8 +87,10 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
   });
 
   test("blocking-error gate disables Publish with an explicit override (#105)", () => {
-    // Errors block; the gate also engages when preflight hasn't run.
-    expect(wiz).toContain("const publishGated = $derived(preflightMissing || preflightBlocks)");
+    // Errors block; the gate also engages when preflight hasn't run OR errored.
+    expect(wiz).toContain(
+      "const publishGated = $derived(preflightMissing || preflightErrored || preflightBlocks)",
+    );
     expect(wiz).toContain("disabled={busy || needsConnect || publishGated}");
     // Warnings/info never block — only error count drives preflightBlocks.
     expect(wiz).toContain('controller.preflightRows.filter((r) => r.severity === "error").length');
@@ -98,6 +100,14 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
     // Navigate rules get a "Go to"; none rules just explain themselves.
     expect(wiz).toContain('row.fixable === "navigate"');
     expect(wiz).toContain("onclick={() => goTo(row)}");
+  });
+  test("a preflight infrastructure failure keeps the gate closed and hides success (#105 hardening)", () => {
+    // The errored run must not read as "all clear": it feeds the gate...
+    expect(wiz).toContain("const preflightErrored = $derived(controller.preflightError !== null)");
+    // ...and suppresses the "No problems found" success branch.
+    expect(wiz).toContain(
+      "controller.preflightRan && !controller.preflightBusy && !controller.preflightError",
+    );
   });
   test("uses the shared dialog form conventions, not config-section classes (#3)", () => {
     expect(wiz).toContain('@import "$lib/styles/dialog-shell.css"');
