@@ -11,6 +11,8 @@ import {
   listProjectThemes,
   removeProjectTheme,
   readThemeCss,
+  getPreviousTheme,
+  revertTheme,
   THEMES_DIR,
 } from "./theme-manager";
 
@@ -364,6 +366,58 @@ describe("theme-manager", () => {
       const themes = await listProjectThemes(dir);
       const found = themes.find((t) => t.id === "my_neat-theme");
       expect(found?.name).toBe("My neat theme");
+    });
+  });
+
+  describe("previous theme + revert (#106)", () => {
+    test("no previous theme is recorded on the first apply", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      expect(await getPreviousTheme(dir)).toBeNull();
+    });
+
+    test("applying a second theme records the first as previous", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      await applyTheme(dir, { kind: "builtin", id: "zine" });
+      const prev = await getPreviousTheme(dir);
+      expect(prev?.id).toBe("clean-book");
+    });
+
+    test("revertTheme re-applies the previous theme and toggles back", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      await applyTheme(dir, { kind: "builtin", id: "zine" });
+
+      const reverted = await revertTheme(dir);
+      expect(reverted.id).toBe("clean-book");
+      expect((await getActiveTheme(dir))?.id).toBe("clean-book");
+      // Revert is a toggle: the previous is now the theme we reverted FROM.
+      expect((await getPreviousTheme(dir))?.id).toBe("zine");
+
+      const back = await revertTheme(dir);
+      expect(back.id).toBe("zine");
+      expect((await getActiveTheme(dir))?.id).toBe("zine");
+    });
+
+    test("revertTheme throws when there is no previous theme", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      await expect(revertTheme(dir)).rejects.toThrow(/no previous theme/i);
+    });
+
+    test("removing the previous theme clears the revert target", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", ""].join("\n"));
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      await applyTheme(dir, { kind: "builtin", id: "zine" });
+      expect((await getPreviousTheme(dir))?.id).toBe("clean-book");
+      await removeProjectTheme(dir, "clean-book");
+      expect(await getPreviousTheme(dir)).toBeNull();
     });
   });
 
