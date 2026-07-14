@@ -108,7 +108,8 @@ print-md/
 │   ├── Live paginated preview                 SHIPPED  (PreviewFrame + paged.js bridge, ADR 0005)
 │   ├── Editor toolbar                         SHIPPED  (EditorToolbar, #31; SnippetPicker, #29)
 │   ├── Page navigation                        SHIPPED  (PageNavController toolbar pager + TOC outline, #20)
-│   └── Page thumbnail navigator               PROPOSED (not yet scoped — file an issue)
+│   └── Page thumbnail navigator               NOT PLANNED (evaluated 2026-07-14 — the
+│                                                        shipped pager + TOC outline cover navigation)
 ├── Problems panel                             SHIPPED  (ProblemsPanel, #28)
 ├── Publish workflow                           SHIPPED  (PublishWizard + Connections, #35; see §6 for
 │                                                        proposed deltas: preflight checklist, history)
@@ -133,9 +134,10 @@ deliberately separated concepts; do not merge them back.
 
 - **Desktop (SHIPPED baseline):** LeftPanel (5 tabs) + toolbar. Right-hand
   preview pane. Global shortcuts: see the Keyboard shortcut map below.
-- **Command palette (PROPOSED — not yet scoped):** if adopted, it must expose
-  all app actions, use `Cmd/Ctrl+Shift+P` (see shortcut map; `Cmd/Ctrl+K` is
-  reserved for insert-link), and be reconciled with the shipped shortcuts.
+- **Command palette — evaluated, not planned (2026-07-14):** menus + the
+  shortcut map cover the app's actions today; revisit only if the action count
+  outgrows them. `Cmd/Ctrl+Shift+P` stays reserved should it return;
+  `Cmd/Ctrl+K` remains reserved for insert-link.
 - **Narrow / mobile (SHIPPED):** ONE breakpoint at **820px**
   (`NARROW_BREAKPOINT`, `mobile-layout.ts`, #34): below it the workspace is a
   single column with a **Markdown / CSS / Preview** tab bar, keyboard-aware
@@ -162,9 +164,9 @@ New bindings must not conflict with this table. (Shipped source:
 | `Cmd/Ctrl+Shift+E` | Export PDF | SHIPPED |
 | `F` (preview focused) | Fit width | SHIPPED |
 | Arrows / Home / End / `+` / `-` (preview) | Page nav / zoom | SHIPPED |
-| `Cmd/Ctrl+K` | Insert link | PROPOSED (reserved; the markdown-editor convention — never the palette) |
-| `Cmd/Ctrl+Shift+P` | Command palette | PROPOSED |
-| `Cmd/Ctrl+Shift+F` | Focus mode | PROPOSED (**not** F11: F11 is OS/Chromium fullscreen on Win/Linux and Show Desktop on macOS) |
+| `Cmd/Ctrl+K` | Insert link | PROPOSED (reserved; the markdown-editor convention) |
+| `Cmd/Ctrl+Shift+P` | Command palette | NOT PLANNED (evaluated 2026-07-14; stays reserved if it returns) |
+| `Cmd/Ctrl+Shift+F` | Focus mode | PROPOSED — **#104** (**not** F11: F11 is OS/Chromium fullscreen on Win/Linux and Show Desktop on macOS) |
 
 ---
 
@@ -195,14 +197,16 @@ Shipped baseline:
 - PDF export via `Cmd/Ctrl+Shift+E` → native save dialog →
   `webContents.printToPDF` (ADR 0002).
 
-Proposed refinements (file issues before implementation):
+Proposed refinements:
 
 - Resizable gutter with snap points **25/50/60/75** (60/40 is the 900–1279px
   default, so it must be a snap point) plus double-click-gutter →
   reset-to-default. Gutter is keyboard-adjustable (Arrow keys when focused)
   — this is also the WCAG 2.2 SC 2.5.7 single-pointer alternative.
+  Tracked in **#103**.
 - Focus mode (`Cmd/Ctrl+Shift+F` / dedicated button): hides all chrome except
   the editor; must compose with the existing pane/panel toggles.
+  Tracked in **#104**.
 - Typora-style seamless WYSIWYG as an opt-in toggle — never the default;
   explicit source/preview is the default because print layout fidelity
   matters.
@@ -308,7 +312,7 @@ the plan wins.**
   collapsed/badged "Advanced" menu grouping until the first successful PDF
   export, tracked per app installation in viewer prefs (userData), after
   which the badge (not the item) disappears. Everything stays reachable via
-  menus (and the palette, if adopted) at all times — hiding would contradict
+  menus at all times — hiding would contradict
   the Dev persona's "no escape hatches" pain point and would **regress
   shipped, ungated features** (#30 plugins, #32 themes).
 - The **Theme selector is core to a good first PDF and is never gated**; only
@@ -335,7 +339,7 @@ switching (markdown-first, not canvas-first); floating panels that lose
 position; modal dialogs for live-editable properties (page size/margins);
 exposing low-level engine concepts to non-technical users.
 
-**Preflight (PROPOSED as a panel; engine is SHIPPED):** the panel is a viewer
+**Preflight (PROPOSED — tracked in #105; engine is SHIPPED):** the panel is a viewer
 UI over the **existing check registry** (`packages/cli/src/checks/`: font
 refs/licensing, broken local refs, heuristics, alt text, heading order,
 print-safety CSS; post-build PDF checks — embedded fonts, page size, ink
@@ -426,10 +430,10 @@ the header red.)
   live log. The progress stream is a **push stream → adapter/IPC seam** (see
   Architectural constraints). Error state shows the exact error, suggests a
   fix, and always preserves the PDF locally.
-- **Publish history (PROPOSED — not in #35; file an issue):** last 10
-  publishes per provider with status/timestamp, stored per project in
-  `<project>/.print-md/publish-history.json`, **gitignored by the default
-  scaffold** (CLAUDE.md §7 snapshot commits capture anything un-ignored).
+- **Publish history — evaluated, not planned (2026-07-14):** a last-N publish
+  log was considered and dropped; provider dashboards and the project's git
+  snapshot history cover the need. If revisited, storage must be per project
+  and gitignored (CLAUDE.md §7 snapshot commits capture anything un-ignored).
 
 ### 7. AI writing assistant
 
@@ -563,7 +567,7 @@ Raw rule-ID columns and rule-ID-first presentation are anti-patterns here.
 ### 11. Theme selector / importer
 
 **Status: SHIPPED baseline** (#32; Config panel → "Look & style") with
-PROPOSED refinements.
+PROPOSED refinements tracked in **#106**.
 
 Shipped: theme grid of built-in + project themes with per-card **rendered
 thumbnail previews**, Apply / Remove, and import **from folder or URL**
@@ -573,7 +577,7 @@ copy**, and the grid dedupes the built-in card once a project copy exists —
 this *is* the "duplicate & edit" model; do not add a second one. Theme tokens
 are surfaced through the DesignSection editor.
 
-Proposed refinements (file issues):
+Proposed refinements (#106):
 
 - **Hover live preview** — renders the theme onto a **canned sample spread
   (2 pages) off-screen**; it never re-paginates the user's document (full
@@ -655,10 +659,11 @@ CDNs) applies with more force to behavioral data. Therefore:
 - **No session recording in production, ever** — recording a writing app
   captures manuscripts. Recordings happen only in consented usability
   studies.
-- Any in-app metrics require a dedicated opt-in telemetry issue first
+- Any in-app metrics require the telemetry/consent decision (**#108**) first
   (first-run consent, kill switch, published event schema, no content
-  capture, offline queueing, user-inspectable data). Until that issue lands,
-  every gate below marked *(telemetry)* is **aspirational, not enforceable**.
+  capture, offline queueing, user-inspectable data — or a formal "no
+  telemetry" decision). Until #108 is resolved, every gate below marked
+  *(telemetry)* is **aspirational, not enforceable**.
 - "Support ticket rate" → replaced by GitHub-issue rate / usability-test
   observation.
 
@@ -698,7 +703,8 @@ scope to the 2 priority personas (Maya, Kai).
 ### Performance gates
 
 Measured against **named, checked-in fixtures** on a named reference machine,
-wired into the existing perf harness (`tests/perf/render-gate.mjs`):
+wired into the existing perf harness (`tests/perf/render-gate.mjs`) — tracked
+in **#107**:
 
 | Metric | Target | Fixture / condition |
 |---|---|---|
@@ -951,7 +957,8 @@ Pickering) · bits-ui accessibility docs.
 ## Implementation checklist (re-baselined at 0.8.0-beta.1)
 
 Legend: ✅ shipped · 🔶 partial · ⏳ open issue · 🆕 proposed, **file an issue
-before implementation** (Primary Goals: unscoped mandated work is prohibited).
+before implementation** (Primary Goals: unscoped mandated work is prohibited)
+· ❌ evaluated, not planned (triaged 2026-07-14).
 
 ### Foundation
 - 🔶 Design token system — DesignSection ships the document layer; 🆕 formalize the app-shell token layer (light + dark, #48)
@@ -963,9 +970,9 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited).
 ### Core editor
 - ✅ Editor (#38) · ✅ CSS language mode (#39) · ✅ Toolbar (#31) · ✅ Snippets (#29)
 - ✅ Synchronized scroll (EditorPreviewSyncController) · 🆕 user toggle to disable
-- 🆕 Resizable gutter with snap points + keyboard adjustment
-- 🆕 Focus mode (`Cmd/Ctrl+Shift+F`)
-- 🆕 Command palette (`Cmd/Ctrl+Shift+P`)
+- ⏳ Resizable gutter with snap points + keyboard adjustment — **#103**
+- ⏳ Focus mode (`Cmd/Ctrl+Shift+F`) — **#104**
+- ❌ Command palette — evaluated, not planned (shortcut stays reserved)
 
 ### Onboarding
 - ✅ Welcome + wizard + templates (#25, #27, WelcomeLanding)
@@ -975,15 +982,16 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited).
 
 ### Print / publish
 - ✅ Publish wizard + 5 providers + Connections (#35) · ✅ readiness check (#24) · ✅ page navigation (#20) · ✅ export progress a11y (#21)
-- 🆕 Preflight panel over the existing check registry (§6 taxonomy: fixable none/navigate/auto)
-- 🆕 Publish progress drawer (push-stream seam) · 🆕 publish history (storage per §6)
-- 🆕 Page thumbnail navigator
+- ⏳ Preflight panel over the existing check registry (§6 taxonomy: fixable none/navigate/auto) — **#105**
+- ⏳ Theme package format + ZIP import + hover sample preview — **#106**
+- 🆕 Publish progress drawer (push-stream seam) · ❌ publish history — evaluated, not planned
+- ❌ Page thumbnail navigator — evaluated, not planned (pager + TOC cover it)
 - ⏳ Visual layout editor — **#37**; blocked on #37 sub-issue scoping (do not schedule as near-term)
 - ⏳ AI assistant — **#36** (off by default, host-side, §7 constraints)
 
 ### Quality-gate measurement
-- 🆕 Telemetry decision issue (opt-in, consent, schema, no content capture) — **blocks** every *(telemetry)* gate
-- 🆕 Benchmark fixtures (`bench/novel-50p`, `bench/zine-24p`) wired into `tests/perf/render-gate.mjs`
+- ⏳ Telemetry/consent decision — **#108**; **blocks** every *(telemetry)* gate
+- ⏳ Benchmark fixtures (`bench/novel-50p`, `bench/zine-24p`) wired into `tests/perf/render-gate.mjs` — **#107**
 - 🆕 Quarterly usability-study protocol (owner, recruitment, 2 priority personas)
 - 🆕 Accessibility audit: axe-core automated + manual NVDA/VoiceOver passes per the matrix
 
