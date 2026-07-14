@@ -58,3 +58,14 @@ jobs:
         working-directory: packages/viewer
         # No DISPLAY on the runner → the gate wraps electron in xvfb-run itself.
         run: node tests/perf/render-gate.mjs
+
+      # Issue #107 v1: preview RE-RENDER latency gate. ADVISORY ONLY — the
+      # script always exits 0 and emits ::notice::/::warning:: annotations, so
+      # it never turns this check red (kept off the required-checks path,
+      # per CLAUDE.md / the perf map). Reuses the app already built above.
+      - name: Run re-render latency gate (advisory)
+        working-directory: packages/viewer
+        # `if: always()` so a hard fail of the throughput gate above still lets
+        # the advisory number get reported; the step itself cannot fail CI.
+        if: always()
+        run: node tests/perf/rerender-latency-gate.mjs

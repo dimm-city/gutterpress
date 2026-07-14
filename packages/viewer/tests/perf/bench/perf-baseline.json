@@ -1,0 +1,7 @@
+{
+  "novel-50p": {
+    "rerenderMs": 0,
+    "measuredAt": "pending",
+    "note": "placeholder — run `npm run rerender-baseline` to capture a real measured median"
+  }
+}
