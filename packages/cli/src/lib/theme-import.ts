@@ -214,25 +214,42 @@ export async function importThemeFromZip(
     throw new Error(`Theme package is too large (max ${mb(MAX_THEME_ARCHIVE_BYTES)}).`);
   }
 
+  // Enforce path-safety and the unzipped-size cap in fflate's `filter`, which
+  // runs per entry BEFORE that entry is decompressed (using the central
+  // directory's `originalSize`). A zip bomb therefore aborts once the running
+  // total crosses the cap instead of fully inflating into memory first — the
+  // post-hoc check it replaced could not prevent the OOM it documented.
   let files: Record<string, Uint8Array>;
+  let total = 0;
+  let unsafePath: string | null = null;
+  let overCap = false;
   try {
-    files = unzipSync(archive);
+    files = unzipSync(archive, {
+      filter: (file) => {
+        if (file.name.endsWith("/")) return false; // directory entry
+        if (unsafePath || overCap) return false; // already rejecting — skip the rest
+        if (isUnsafeZipEntryPath(file.name)) {
+          unsafePath = file.name;
+          return false;
+        }
+        total += file.originalSize;
+        if (total > MAX_THEME_UNZIPPED_BYTES) {
+          overCap = true;
+          return false;
+        }
+        return true;
+      },
+    });
   } catch {
     throw new Error("That file is not a valid .zip package.");
   }
-
-  let total = 0;
-  for (const [name, data] of Object.entries(files)) {
-    if (name.endsWith("/")) continue;
-    if (isUnsafeZipEntryPath(name)) {
-      throw new Error(`The package contains an unsafe path and was rejected: ${name}`);
-    }
-    total += data.length;
-    if (total > MAX_THEME_UNZIPPED_BYTES) {
-      throw new Error(
-        `Theme package expands to more than ${mb(MAX_THEME_UNZIPPED_BYTES)} and was rejected.`,
-      );
-    }
+  if (unsafePath !== null) {
+    throw new Error(`The package contains an unsafe path and was rejected: ${unsafePath}`);
+  }
+  if (overCap) {
+    throw new Error(
+      `Theme package expands to more than ${mb(MAX_THEME_UNZIPPED_BYTES)} and was rejected.`,
+    );
   }
 
   const root = locateThemeRoot(Object.keys(files));
