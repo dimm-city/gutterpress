@@ -582,24 +582,30 @@ copy**, and the grid dedupes the built-in card once a project copy exists —
 this *is* the "duplicate & edit" model; do not add a second one. Theme tokens
 are surfaced through the DesignSection editor.
 
-Proposed refinements (#106):
+Shipped refinements (#106, 0.8.0-beta.1):
 
 - **Hover live preview** — renders the theme onto a **canned sample spread
   (2 pages) off-screen**; it never re-paginates the user's document (full
   re-pagination cannot meet the ≤500ms gate and would storm on hover).
   Full-document re-pagination happens only on Apply, with a progress state.
+  Shipped: `AppearanceSection` renders the sample into a hover-preview iframe
+  via `hoverPreviewSrcdoc`.
 - **Revert instead of timed undo:** applying a theme records the previous
   theme reference; "Revert to previous theme" remains available indefinitely
   (theme application is a config/CSS-reference change, and snapshot commits
   already version project files — a volatile 30-second window is strictly
   weaker). A toast with an inline Undo button may sugar this, but the
-  persistent revert is the mechanism.
+  persistent revert is the mechanism. Shipped: `revertTheme` /
+  `getPreviousTheme` backed by the `themePrevious` manifest key, exposed as
+  `api/theme/revert` and `api/theme/previous`.
 - **ZIP drag-and-drop import**, validated against a defined **theme package
   format**: `theme.css` at root + optional `assets/` + optional `theme.json`
   (name/version); validation order = structure → CSS parses → print-safety
   check passes (note `printsafe/no-remote-urls` fails CDN-referencing themes
   — surface that clearly) → declares at least one `--print-*` token.
-  Failures are errors; extra files are warnings.
+  Failures are errors; extra files are warnings. Shipped:
+  `importThemeFromFile` / `importThemeFromZip`, exposed as
+  `api/theme/import-from-file`.
 
 ---
 
@@ -708,14 +714,17 @@ scope to the 2 priority personas (Maya, Kai).
 ### Performance gates
 
 Measured against **named, checked-in fixtures** on a named reference machine,
-wired into the existing perf harness (`tests/perf/render-gate.mjs`) — tracked
-in **#107**:
+wired into the perf harness — tracked in **#107**. The re-render gate
+(`bench/novel-50p`, ≤300ms preview re-render) shipped in 0.8.0-beta.1 as an
+**advisory** gate in `tests/perf/rerender-latency-gate.mjs`; its
+`perf-baseline.json` median is still a **placeholder** awaiting a real capture
+via `npm run rerender-baseline`. `bench/zine-24p` is **not yet created**.
 
 | Metric | Target | Fixture / condition |
 |---|---|---|
 | Cold launch → editor accepts first keystroke | ≤2s P90 | reference machine (M1 MacBook Air + CI runner) — replaces the undefined "TTI" |
 | Preview re-render after keystroke | ≤300ms | `bench/novel-50p` (text-only) |
-| PDF export | ≤8s | `bench/novel-50p`; image-heavy budget set separately by `bench/zine-24p` |
+| PDF export | ≤8s | `bench/novel-50p`; image-heavy budget (`bench/zine-24p`) not yet created |
 | Theme switch (hover sample-spread render) | ≤500ms | sample spread only — full-document re-apply is exempt above N pages and shows progress |
 
 Mobile/PWA performance targets are set in `docs/pwa-webadapter-plan.md`
@@ -987,8 +996,8 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 
 ### Print / publish
 - ✅ Publish wizard + 5 providers + Connections (#35) · ✅ readiness check (#24) · ✅ page navigation (#20) · ✅ export progress a11y (#21)
-- ⏳ Preflight panel (PublishWizard step; block-with-override; fixable none/navigate, no auto-fix) — **#105**
-- ⏳ Theme package format + ZIP import + hover sample preview — **#106**
+- ✅ Preflight panel (PublishWizard step; block-with-override; fixable none/navigate, no auto-fix) — **#105** (0.8.0-beta.1)
+- ✅ Theme package format + ZIP/CSS import + hover sample preview + revert — **#106** (0.8.0-beta.1)
 - 🆕 Publish progress drawer (push-stream seam) · ❌ publish history — evaluated, not planned
 - ❌ Page thumbnail navigator — evaluated, not planned (pager + TOC cover it)
 - ⏳ Visual layout editor — **#37**; blocked on #37 sub-issue scoping (do not schedule as near-term)
@@ -996,7 +1005,7 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 
 ### Quality-gate measurement
 - ✅ Telemetry decision — **#108**: no telemetry; gates measured via usability tests + CI (this section updated to match)
-- ⏳ Benchmark fixtures (`bench/novel-50p`, `bench/zine-24p`) wired into `tests/perf/render-gate.mjs` — **#107**
+- ⏳ Benchmark fixtures — `bench/novel-50p` + the advisory re-render gate (`tests/perf/rerender-latency-gate.mjs`) shipped in 0.8.0-beta.1; `bench/zine-24p` and a real (non-placeholder) `perf-baseline.json` median remain to be created — **#107**
 - 🆕 Quarterly usability-study protocol (owner, recruitment, 2 priority personas)
 - 🆕 Accessibility audit: axe-core automated + manual NVDA/VoiceOver passes per the matrix
 

@@ -154,18 +154,11 @@ export type {
   BuiltInThemeId,
 } from "../lib/theme-manager.ts";
 
-// ── Theme package import (#106) — .zip / .css importers + pure decision helpers ──
-export {
-  importThemeFromFile,
-  importThemeFromZip,
-  importThemeFromCssText,
-  isUnsafeZipEntryPath,
-  locateThemeRoot,
-  classifyThemeCssFindings,
-  unexpectedThemeFiles,
-  MAX_THEME_ARCHIVE_BYTES,
-  MAX_THEME_UNZIPPED_BYTES,
-} from "../lib/theme-import.ts";
+// ── Theme package import (#106) — .zip / .css importer ──
+// Only importThemeFromFile is part of the public surface (the viewer's
+// import-from-file route). The zip/css sub-importers and pure decision helpers
+// stay module-private (theme-import.ts exports them for its own unit tests).
+export { importThemeFromFile } from "../lib/theme-import.ts";
 export type { ThemeImportResult, ThemeImportWarning } from "../lib/theme-import.ts";
 
 // ── Stylesheet resolution (renderer links them; editor edits them — one source) ──

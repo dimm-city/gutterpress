@@ -25,7 +25,7 @@ This repo is a Bun workspace with two packages:
   In production the Electron main process starts that handler on a local
   `127.0.0.1` server (OS-assigned port) and serves the SPA to the window via a
   custom `app://` protocol handler that proxies every request to the local
-  server with `fetch`. Host capabilities are exposed as ~85
+  server with `fetch`. Host capabilities are exposed as ~100
   `src/routes/api/**/+server.ts` HTTP routes (status, fs, dialog, theme, plugin,
   remote/sync, vcs, recovery, …) — NOT a handful of `ipcMain.handle()`
   endpoints. The `ipcMain`/preload bridge is deliberately narrow: it carries

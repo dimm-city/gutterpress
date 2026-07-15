@@ -114,11 +114,14 @@
     controller.preflightRows.filter((r) => r.severity === "error").length,
   );
   const preflightMissing = $derived(!controller.preflightRan);
+  // An infrastructure failure (route/host error) clears the rows and sets
+  // preflightError; it must NOT read as "all clear", so it keeps the gate closed.
+  const preflightErrored = $derived(controller.preflightError !== null);
   const preflightBlocks = $derived(
     controller.preflightRan && preflightErrorCount > 0 && !publishAnyway,
   );
-  /** Publish actions are disabled while preflight hasn't run or blocks. */
-  const publishGated = $derived(preflightMissing || preflightBlocks);
+  /** Publish actions are disabled while preflight hasn't run, errored, or blocks. */
+  const publishGated = $derived(preflightMissing || preflightErrored || preflightBlocks);
 
   onMount(() => {
     stepIndex = 0;
@@ -341,6 +344,8 @@
               Checking your book…
             {:else if !controller.preflightRan}
               Not checked yet.
+            {:else if controller.preflightError}
+              Couldn’t run the checks — please try Re-run.
             {:else if level === "error"}
               {counts.errors} {counts.errors === 1 ? "problem" : "problems"} to fix before publishing.
             {:else if level === "warning"}
@@ -359,7 +364,7 @@
         <p class="error" role="alert">{controller.preflightError}</p>
       {/if}
 
-      {#if controller.preflightRan && !controller.preflightBusy}
+      {#if controller.preflightRan && !controller.preflightBusy && !controller.preflightError}
         {#if controller.preflightRows.length === 0}
           <p class="success-line"><Icon name="circle-check" size={13} /> No problems found in your content, images, or fonts.</p>
         {:else}

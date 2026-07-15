@@ -12,9 +12,9 @@ const SPLITTER_WIDTH_PX = 6;
 const REFIT_WIDTH_THRESHOLD_PX = 2;
 
 /** Ratios the drag snaps to on release (editor fractions), #103. */
-export const SPLIT_SNAP_POINTS = [0.25, 0.5, 0.6, 0.75] as const;
+const SPLIT_SNAP_POINTS = [0.25, 0.5, 0.6, 0.75] as const;
 /** How close (in ratio) a released drag must be to a snap point to snap. */
-export const SPLIT_SNAP_THRESHOLD = 0.03;
+const SPLIT_SNAP_THRESHOLD = 0.03;
 /** Ratio delta applied per Arrow-key press on the focused splitter (~2%). */
 export const SPLIT_ARROW_STEP = 0.02;
 
