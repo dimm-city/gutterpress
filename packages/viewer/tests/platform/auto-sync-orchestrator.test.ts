@@ -13,6 +13,21 @@ const DIR = "/book";
 /** Wait for pending microtasks/timers to settle. */
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
+/**
+ * Poll until `pred()` holds, bounded by `timeoutMs`. Waits for the observable
+ * effect of the orchestrator's REAL internal timers instead of sleeping a fixed
+ * duration (which is fragile under full-suite concurrency).
+ */
+async function waitFor(pred: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = performance.now();
+  while (!pred()) {
+    if (performance.now() - start > timeoutMs) {
+      throw new Error(`waitFor: condition not met within ${timeoutMs}ms`);
+    }
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 interface Harness {
   orch: AutoSyncOrchestrator;
   emitted: SyncStatusPayload[];
@@ -269,7 +284,7 @@ test("the periodic safety-sync interval refreshes the heartbeat on tick, with no
   // actual periodic tick armInterval schedules, not a separate timer.
   const h = makeHarness({ autoSyncDelayMs: 5 });
   await h.orch.armInterval(DIR);
-  await new Promise((r) => setTimeout(r, 60));
+  await waitFor(() => h.heartbeatCalls.length > 0);
   h.orch.cancelTimer(DIR);
   expect(h.heartbeatCalls.length).toBeGreaterThan(0);
   expect(h.heartbeatCalls.every((d) => d === DIR)).toBe(true);
@@ -521,7 +536,7 @@ test("runPreflight: retry_later emits an offline status and re-arms run() after 
   expect(h.emitted.some((e) => e.state === "offline")).toBe(true);
 
   // The retry timer re-arms run() after retryAfterMs (guarded by getWatchedDir).
-  await new Promise((r) => setTimeout(r, 40));
+  await waitFor(() => h.syncCalls.length > 0);
   expect(h.syncCalls).toEqual([DIR]);
 });
 
