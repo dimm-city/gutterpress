@@ -323,7 +323,7 @@
               onclick={() => toggleToc(node.key)}
               aria-label={isOpen ? `Collapse ${node.entry.text}` : `Expand ${node.entry.text}`}
             >
-              <Icon name={isOpen ? "chevron-down" : "chevron-right"} size={14} />
+              <Icon name={isOpen ? "chevron-down" : "chevron-right"} size={18} />
             </button>
           {:else}
             <span class="toc-twisty toc-twisty-spacer"></span>
@@ -656,7 +656,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
+    width: 28px;
+    min-height: 28px;
     background: transparent;
     border: none;
     border-radius: 4px;

@@ -15,7 +15,7 @@ const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
 describe("Settings — 'Saving & recovery' group with writer-friendly labels", () => {
-  const dialog = read("src/lib/components/SettingsDialog.svelte");
+  const dialog = read("src/lib/components/SettingsView.svelte");
   test("consolidated group + plain-language controls", () => {
     expect(dialog).toContain("Saving &amp; recovery");
     expect(dialog).toContain("Save edits automatically");
@@ -179,5 +179,11 @@ describe("Table of contents — collapsible tree matching the Files panel", () =
     // selectToc adds the node to the expanded set before navigating.
     expect(left).toContain("function selectToc(node: TocNode)");
     expect(left).toContain("onJumpToOutline?.(node.entry)");
+  });
+
+  test("disclosure control has a Files-panel-sized visible target", () => {
+    expect(left).toContain('size={18}');
+    expect(left).toContain('width: 28px');
+    expect(left).toContain('min-height: 28px');
   });
 });

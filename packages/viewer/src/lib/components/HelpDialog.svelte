@@ -285,7 +285,7 @@
     max-height: 88vh;
   }
   /* Footer is the last item INSIDE the scrolling body here, not a pinned
-     sibling — restore its original in-flow spacing (see SettingsDialog for
+     sibling — restore its original in-flow spacing (see SettingsView for
      the same note). */
   .dlg-actions {
     padding: 16px 0 0;

@@ -24,9 +24,12 @@ describe("Toolbar Save button — flush all pending changes beside Export", () =
   });
 });
 
-describe("Settings dialog — tabbed layout", () => {
-  const dlg = read("src/lib/components/SettingsDialog.svelte");
+describe("Settings panel — tabbed layout", () => {
+  const dlg = read("src/lib/components/SettingsView.svelte");
   test("five tabs incl. Connections; sections render per-tab", () => {
+    expect(dlg).toContain('class="settings-view"');
+    expect(dlg).not.toContain('class="dlg-shell"');
+    expect(dlg).not.toContain("dialogBehavior");
     expect(dlg).toContain('role="tablist"');
     for (const label of ['label: "App"', 'label: "Editor"', 'label: "Saving"', 'label: "Connections"', 'label: "Advanced"']) {
       expect(dlg).toContain(label);
@@ -34,6 +37,7 @@ describe("Settings dialog — tabbed layout", () => {
     expect(dlg).toContain('{#if activeTab === "app"}');
     expect(dlg).toContain('{#if activeTab === "connections"}');
     expect(dlg).toContain("<ConnectionsSettings {projectDir} />");
+    expect(dlg).not.toContain("<details class=\"group advanced\">");
   });
   test("the page passes the open project dir through", () => {
     const page = read("src/routes/+page.svelte");

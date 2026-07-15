@@ -27,7 +27,6 @@ const DIALOGS = [
   "ConflictChoicesDialog",
   "RecoveryConfirmDialog",
   "RecoveryGuidanceDialog",
-  "SettingsDialog",
   "HelpDialog",
   "SnippetPicker",
   "OperationLogDialog",

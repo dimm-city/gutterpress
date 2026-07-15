@@ -17,7 +17,7 @@
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
-  import SettingsDialog from "$lib/components/SettingsDialog.svelte";
+  import SettingsView from "$lib/components/SettingsView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
@@ -281,7 +281,7 @@
   // (their old inline defaults #5a5a5a / two-column / fit-width now live in
   // DEFAULT_SETTINGS). Local mutations write back through useSettings().set().
   // bgColor has no toolbar control (that was removed in the toolbar redesign);
-  // it is set via the Settings dialog only.
+  // it is set via the Settings panel only.
   const settings = useSettings();
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
@@ -310,38 +310,48 @@
   // retired no-op history seam (L8 / ARCH #41). Undefined whenever the
   // activity view isn't the current editor-pane view.
   let activityViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
-  // The activity/history view BORROWS the editor pane (it forces editorOpen so
-  // it has a frame to render into). Capture the workspace state it displaced
-  // so closing the history RESTORES it — without this, closing left the pane
-  // stuck open on an editor that had never loaded a module or file ("Loading
-  // content…" forever) and the Edit/Preview toggle buttons out of sync with
-  // the panes actually shown (user feedback).
-  let activityRestore: { editorOpen: boolean; previewHidden: boolean } | null = null;
-  function showProjectLog(filePath: string | null): void {
-    logFilePath = filePath;
-    if (editorView !== "activity") {
-      activityRestore = { editorOpen, previewHidden };
+  // The activity view borrows the editor pane and restores the workspace it
+  // displaces, avoiding an editor left open without a loaded file on close.
+  let paneViewRestore: { editorOpen: boolean; previewHidden: boolean } | null = null;
+  function showActivityView(): void {
+    if (editorView === "editor") {
+      paneViewRestore = { editorOpen, previewHidden };
     }
     editorView = "activity";
     editorOpen = true;
     previewHidden = false;
   }
-  function closeActivityView(): void {
+  function closePaneView(): void {
     editorView = "editor";
-    const restore = activityRestore;
-    activityRestore = null;
+    const restore = paneViewRestore;
+    paneViewRestore = null;
     if (restore) {
       editorOpen = restore.editorOpen;
       previewHidden = restore.previewHidden;
     }
     if (editorOpen) {
-      // The pane stays open showing the editor — make sure it actually has
-      // the editor module and a file (the activity view needed neither, so
-      // nothing ever loaded them on this path).
       loadEditorModule();
       void ensureEditorFile();
       focusEditorWhenReady();
     }
+  }
+  function showProjectLog(filePath: string | null): void {
+    logFilePath = filePath;
+    showActivityView();
+  }
+  function closeActivityView(): void {
+    closePaneView();
+  }
+  function openSettings(): void {
+    settingsOpen = true;
+  }
+  function closeSettings(): void {
+    settingsOpen = false;
+    if (landingVisible) landingRef?.focusLayer();
+  }
+  function toggleSettings(): void {
+    if (settingsOpen) closeSettings();
+    else openSettings();
   }
   /** After a successful snapshot restore (H2): reconcile the open editor
    * buffer against disk — same reconciliation the folder watcher runs for any
@@ -484,11 +494,10 @@
       pageNav.pageEditing = false;
       editorOpen = false;
       previewHidden = false;
-      // The editor-pane view mode must reset with the workspace — a project
-      // closed while the history view borrowed the pane would otherwise
-      // reopen the NEXT project's editor pane showing history.
+      // A project closed while activity borrowed the editor must not reopen the
+      // next project on that stale view.
       editorView = "editor";
-      activityRestore = null;
+      paneViewRestore = null;
       buffer?.reset();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
@@ -918,10 +927,8 @@
 
   // Plugin manager (#30) — opened from the overflow menu (desktop + project).
   // ── Project Configuration view (#PCV) ───────────────────────────────────────
-  // Project configuration is now a left-sidebar tab, not an editor-pane swap.
-  // ARCH #59: the union used to include "config" for the old editor-pane-swap
-  // design, but nothing has assigned it since the move to the sidebar tab —
-  // shrunk to the two values actually reachable.
+  // Project configuration is now a left-sidebar tab; activity is the only
+  // alternate editor-pane view. Settings always owns the full window.
   let editorView = $state<"editor" | "activity">("editor");
 
   /**
@@ -949,6 +956,7 @@
    */
   function openStyleFile(absPath: string) {
     editorView = "editor";
+    paneViewRestore = null;
     editorOpen = true;
     loadEditorModule();
     selectEditorFile(absPath);
@@ -999,9 +1007,10 @@
   // previously the editor only rendered `{#if editorOpen}`, so a persisted
   // paneMode="edit" hid the preview without rendering the editor.
   let editorPaneOpen = $derived(
-    !!lifecycle.currentDir &&
-      lifecycle.sourceMode === "folder" &&
-      (isNarrow ? paneMode === "edit" : editorOpen),
+    editorView === "activity" ||
+      (!!lifecycle.currentDir &&
+        lifecycle.sourceMode === "folder" &&
+        (isNarrow ? paneMode === "edit" : editorOpen)),
   );
   let splitGridColumns = $derived(
     editorPaneOpen && !isNarrow && !previewHidden && !focusMode
@@ -1362,11 +1371,10 @@
 
   function toggleEditor() {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    // Manually toggling while the history view borrows the pane exits history
-    // mode — the explicit user action supersedes the restore-on-close state.
-    if (editorView === "activity") {
+    // Manually toggling while activity borrows the editor exits that view.
+    if (editorView !== "editor") {
       editorView = "editor";
-      activityRestore = null;
+      paneViewRestore = null;
     }
     editorOpen = !editorOpen;
     // On open, move keyboard focus into the editor so Ctrl+E acts as a
@@ -1460,7 +1468,7 @@
 
   // Canvas styles are injected by the renderingComplete handler (which already
   // calls client.injectStyles). View-mode changes from the Settings panel are
-  // handled by the onViewModeChange callback passed to SettingsDialog.
+  // handled by the onViewModeChange callback passed to SettingsView.
 
   onMount(() => {
     api.doctor()
@@ -1631,11 +1639,9 @@
         key: e.key,
       });
       // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
-      // Allowed even over the start screen — the dialog renders outside the
-      // inert workspace, and on first run the landing is the only screen.
       if (command === "settings") {
         e.preventDefault();
-        settingsOpen = !settingsOpen;
+        toggleSettings();
         return;
       }
       // The start screen owns the rest of the keyboard while it's up (its own
@@ -2282,11 +2288,9 @@
   </div>
 {/if}
 
-<!-- inert while the start screen is up: the workspace keeps rendering (the
-     landing scrim is translucent so the preview iframe stays un-throttled)
-     but takes no focus/clicks. Dialogs and toasts live OUTSIDE this subtree
-     so they stay interactive above the landing. -->
-<div class="app-root" inert={landingVisible}>
+<!-- inert while the start screen or full-window Settings view is up: the
+      workspace keeps rendering, but never accepts interaction underneath. -->
+<div class="app-root" inert={landingVisible || settingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -2858,7 +2862,7 @@
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
         aria-hidden={previewHidden}
-        inert={previewHidden || (isNarrow && paneMode === "edit") ? true : undefined}
+        inert={previewHidden || (isNarrow && (paneMode === "edit" || editorView !== "editor")) ? true : undefined}
       >
         {#key lifecycle.previewUrl}
           <PreviewFrame
@@ -2907,8 +2911,6 @@
       </section>
     </div>
   {/if}
-  <!-- No {:else} empty state here — the start screen (WelcomeLanding, mounted
-       after .app-root) is the app's single "nothing open" surface. -->
 
     </div> <!-- /main-content -->
   </div> <!-- /left-panel-region -->
@@ -2953,17 +2955,18 @@
         throw e;
       }
     }}
-    onOpenSettings={() => (settingsOpen = true)}
+    onOpenSettings={openSettings}
     onOpenHelp={() => (helpOpen = true)}
   />
 </div>
 </div>
 
 <!-- Start screen: interactive cover over the (pre-rendering) workspace. Sits
-     outside .app-root so it is never inert; dialogs (top layer) open above it. -->
+     outside .app-root so it is never inert. -->
 <WelcomeLanding
   bind:this={landingRef}
   visible={landingVisible}
+  inactive={settingsOpen}
   continueTitle={landingContinueTitle}
   continueDetail={landingContinueDetail}
   status={landingStatus}
@@ -2986,7 +2989,7 @@
   onNewProject={() => newProjectWizardRef?.show()}
   onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
   onOpenGuide={openSetupGuide}
-  onOpenSettings={() => (settingsOpen = true)}
+  onOpenSettings={openSettings}
   onOpenHelp={() => (helpOpen = true)}
   onWhatsNew={openReleaseNotes}
   onAdopt={() => {
@@ -2996,6 +2999,16 @@
   onUpdateApply={() => updateController.applyNow()}
   onUpdateDownload={() => updateController.download()}
 />
+{#if settingsOpen}
+  <section class="settings-global-view" aria-label="Settings">
+    <SettingsView
+      projectDir={lifecycle.currentDir}
+      onClose={closeSettings}
+      onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
+      onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
+    />
+  </section>
+{/if}
 
 <HelpDialog
   bind:open={helpOpen}
@@ -3006,15 +3019,6 @@
   checkingUpdates={updateController.checking}
   updateReadyVersion={updateController.readyVersion}
   updateAvailableVersion={updateController.availableVersion}
-/>
-<SettingsDialog
-  bind:open={settingsOpen}
-  projectDir={lifecycle.currentDir}
-  onClose={() => {
-    if (landingVisible) landingRef?.focusLayer();
-  }}
-  onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
-  onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
 <GitHubDialog
   bind:open={githubOpen}
@@ -3227,6 +3231,13 @@
   }
   .editor-pane {
     border-right: 1px solid var(--app-border);
+  }
+  .settings-global-view {
+    position: fixed;
+    inset: 0;
+    z-index: 901;
+    display: flex;
+    background: var(--app-bg);
   }
   .splitter {
     width: 6px;
