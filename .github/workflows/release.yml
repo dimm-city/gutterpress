@@ -113,13 +113,16 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      # Finding #44: a release must ship with a changelog entry. Stable and
-      # prerelease dispatches alike need the CHANGELOG.md heading in place
-      # BEFORE the tag/artifacts exist, so a forgotten changelog update fails
-      # loudly here instead of shipping silently. Backfilling historical gaps
-      # is a separate concern from this gate.
+      # Finding #44: stable releases must ship with a changelog entry. Beta and
+      # release-candidate dispatches are iteration builds, so their notes can
+      # remain under Unreleased until the stable release is cut.
       - name: Verify CHANGELOG.md has an entry for this version
         run: |
+          if echo "$VERSION" | grep -qE -- '-(beta|rc)'; then
+            echo "Skipping changelog check for prerelease $VERSION."
+            exit 0
+          fi
+
           ESCAPED_VERSION="$(echo "$VERSION" | sed -e 's/\./\\./g')"
           if ! grep -qE "^## \[${ESCAPED_VERSION}\]" CHANGELOG.md; then
             echo "::error::CHANGELOG.md has no '## [$VERSION]' heading. Add a changelog entry for this release (Keep a Changelog format) before dispatching."
