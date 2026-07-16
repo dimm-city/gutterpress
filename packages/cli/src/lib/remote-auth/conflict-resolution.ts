@@ -16,6 +16,7 @@ import path from "node:path";
 import git from "isomorphic-git";
 import type { MergeDriverCallback } from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
+import { defaultGitHttp } from "./git-http.ts";
 // WHY diff3: this is the SAME tiny (~100-line, zero-dependency) module
 // isomorphic-git's own default merge driver uses, so our "replicate the
 // default auto-merge for undecided files" path behaves identically. It is
@@ -409,7 +410,7 @@ async function pushWithRaceRecovery(params: {
 export async function resolveConflicts(
   options: ResolveConflictsOptions,
 ): Promise<SyncOutcome> {
-  const http = options.httpClient ?? httpNode;
+  const http = options.httpClient ?? defaultGitHttp;
   const logger = resolveLogger(options.logFile, "sync");
   logger.info("resolve", "starting conflict resolution", {
     files: options.resolutions.map((r) => `${r.path}:${r.choice}`),

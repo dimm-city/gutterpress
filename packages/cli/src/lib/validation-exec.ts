@@ -21,11 +21,9 @@ import {
 } from "./validation-profile";
 import type { ResolvedConfig } from "../schema/manifest.types";
 
-// Import check modules to trigger self-registration.
-import "../checks/pdf/index";
-import "../checks/source/index";
-import "../checks/asset/index";
-import "../checks/heuristic/index";
+// Trigger built-in check self-registration (audit B5: one shared entry point,
+// also imported by checks/runner.ts so the registry is never empty).
+import "../checks/register-builtins";
 
 export interface ValidationExecutionArgs {
   manifest?: string;

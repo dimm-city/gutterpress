@@ -151,6 +151,9 @@ export const itchProvider: PublishProvider = {
       {
         env: { BUTLER_API_KEY: resolved.credential.token },
         onOutput: req.deps.onProgress,
+        // Idle timeout (audit B2): butler streams progress continuously during
+        // a healthy upload, so 2min of total silence means the transfer stalled.
+        timeoutMs: 120_000,
       },
     );
     if (result.code !== 0) {

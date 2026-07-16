@@ -15,6 +15,7 @@ import path from "node:path";
 
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
+import { defaultGitHttp } from "./git-http.ts";
 
 import { withRepoLock } from "../source-provider.ts";
 import {
@@ -222,7 +223,7 @@ export async function cloneRepository(
     try {
       await git.clone({
         fs,
-        http: options.httpClient ?? httpNode,
+        http: options.httpClient ?? defaultGitHttp,
         dir,
         url: cleanUrl,
         singleBranch: true,

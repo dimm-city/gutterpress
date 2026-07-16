@@ -114,6 +114,9 @@ export const azureSwaProvider: PublishProvider = {
       {
         env: { SWA_CLI_DEPLOYMENT_TOKEN: resolved.credential.token },
         onOutput: req.deps.onProgress,
+        // Idle timeout (audit B2): the SWA CLI streams deploy progress, so 2min
+        // of total silence means the upload stalled rather than being slow.
+        timeoutMs: 120_000,
       },
     );
     if (result.code !== 0) {

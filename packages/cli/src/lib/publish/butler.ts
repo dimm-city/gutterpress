@@ -21,6 +21,9 @@ import { defaultConfigDir } from "../remote-auth/token-store.ts";
 import { commandExists, defaultCommandRunner } from "./command-runner.ts";
 import type { PublishDeps } from "./types.ts";
 
+/** Timeout for the one-time butler binary download (audit B2). */
+const BUTLER_DOWNLOAD_TIMEOUT_MS = 60_000;
+
 /** broth channel for the running platform; null when unsupported. */
 export function butlerBrothChannel(
   platform: NodeJS.Platform = process.platform,
@@ -87,7 +90,23 @@ export async function ensureButler(deps: PublishDeps): Promise<string> {
 
   deps.onProgress?.("Downloading itch.io's butler upload tool (one-time setup)…");
   const fetchFn = deps.fetch ?? globalThis.fetch;
-  const response = await fetchFn(butlerDownloadUrl(channel));
+  let response: Awaited<ReturnType<typeof fetchFn>>;
+  try {
+    // Bound the one-time download (audit B2): without a signal a stalled CDN
+    // connection hangs the whole publish. 60s is generous for a small binary.
+    response = await fetchFn(butlerDownloadUrl(channel), {
+      signal: AbortSignal.timeout(BUTLER_DOWNLOAD_TIMEOUT_MS),
+    });
+  } catch (e) {
+    const timedOut = e instanceof Error && e.name === "TimeoutError";
+    throw new Error(
+      timedOut
+        ? `Downloading butler from itch.io timed out. ` +
+          `Check your connection, or install butler manually and set BUTLER_PATH.`
+        : `Couldn't download butler from itch.io (${e instanceof Error ? e.message : String(e)}). ` +
+          `Check your connection, or install butler manually and set BUTLER_PATH.`,
+    );
+  }
   if (!response.ok) {
     throw new Error(
       `Couldn't download butler from itch.io (HTTP ${response.status}). ` +

@@ -179,10 +179,20 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
   const run = prev.then(fn, fn);
   // Park the chain tail, swallowing its rejection so the map never holds a
   // rejected promise that would surface as an unhandled rejection.
-  repoQueues.set(
-    key,
-    run.catch(() => undefined),
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
   );
+  repoQueues.set(key, tail);
+  // Reclaim the entry once this tail settles IF nothing newer was chained after
+  // it (audit B4). Without this, `repoQueues` kept one permanent entry per
+  // distinct project dir ever opened for the life of a long-running host. The
+  // identity guard is the same pattern browser-pool.ts uses: a concurrent
+  // withRepoLock for the same key replaces the map value, so `get(key) === tail`
+  // is only true when this was the last queued op.
+  void tail.then(() => {
+    if (repoQueues.get(key) === tail) repoQueues.delete(key);
+  });
   return run;
 }
 

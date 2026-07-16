@@ -62,18 +62,60 @@ export const defaultCommandRunner: CommandRunner = (
     const outLines = lineEmitter(options.onOutput ?? noop);
     const errLines = lineEmitter(options.onOutput ?? noop);
 
+    // Idle-kill timer (audit B2): a stalled butler/swa upload (connection open,
+    // no bytes moving) would otherwise hang publish forever. Mirrors exec.ts's
+    // execCapture: the timer is re-armed on every chunk of output (so a slow
+    // BUT progressing upload is never killed), cleared on settle, and unref'd
+    // so a pending call can't keep the process alive on its own.
+    let settled = false;
+    let idleTimer: NodeJS.Timeout | undefined;
+    const clearIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = undefined;
+    };
+    const armIdle = () => {
+      if (options.timeoutMs === undefined) return;
+      clearIdle();
+      idleTimer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        child.kill("SIGKILL");
+        if (options.onOutput) {
+          outLines.flush();
+          errLines.flush();
+        }
+        reject(
+          new Error(
+            `${cmd} produced no output for ${options.timeoutMs}ms and was stopped`,
+          ),
+        );
+      }, options.timeoutMs);
+      idleTimer.unref();
+    };
+    armIdle();
+
     child.stdout.on("data", (d: Buffer) => {
       const text = d.toString();
       stdout = keepTail(stdout, text);
       if (options.onOutput) outLines.push(text);
+      armIdle();
     });
     child.stderr.on("data", (d: Buffer) => {
       const text = d.toString();
       stderr = keepTail(stderr, text);
       if (options.onOutput) errLines.push(text);
+      armIdle();
     });
-    child.on("error", reject);
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearIdle();
+      reject(err);
+    });
     child.on("exit", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearIdle();
       if (options.onOutput) {
         outLines.flush();
         errLines.flush();

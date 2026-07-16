@@ -1,13 +1,15 @@
 import type {
-  Check,
   CheckCategory,
   CheckContext,
   CheckPhase,
   CheckResult,
   CheckSeverity,
 } from "./types";
-import { getChecks, resolveCheckSelectors } from "./registry";
-import { isCheckEnabled } from "./policy";
+// Self-populate the check registry no matter who reaches runChecks first
+// (audit B5) — this replaces the implicit reliance on validation-exec.ts's
+// side-effect imports running before any caller.
+import "./register-builtins";
+import { selectChecks } from "./policy";
 import type { ResolvedConfig } from "../schema/manifest.types";
 
 export interface RunnerOptions {
@@ -47,35 +49,18 @@ export async function runChecks(
   ctx: CheckContext,
   opts: RunnerOptions = {}
 ): Promise<RunnerReport> {
-  // Get all checks matching the filter. Track selectors that matched no
-  // registered check — a mistyped selector must surface as an error rather
-  // than silently resolving to nothing and reporting a false "PASSED".
-  const unmatchedSelectors: string[] = [];
-  let checks: Check[];
-  if (opts.only && opts.only.length > 0) {
-    const { resolved, unmatched } = resolveCheckSelectors(opts.only);
-    checks = getChecks({ ids: resolved });
-    unmatchedSelectors.push(...unmatched);
-  } else {
-    checks = getChecks({
-      category: opts.category,
-      phase: opts.phase,
-    });
-  }
-
-  // Apply skip filter
-  if (opts.skip && opts.skip.length > 0) {
-    const { resolved, unmatched } = resolveCheckSelectors(opts.skip);
-    const skipSet = new Set(resolved);
-    checks = checks.filter((c) => !skipSet.has(c.id));
-    unmatchedSelectors.push(...unmatched);
-  }
-
-  // Filter by manifest enable/disable
+  // Whole-suite disable wins first (unchanged): a disabled suite reports an
+  // empty green and never surfaces selector errors.
   if (ctx.config.validate.enabled === false) {
     return emptyReport();
   }
-  checks = checks.filter((c) => isCheckEnabled(c, ctx.config));
+
+  // Resolve only/skip selectors + drop manifest-disabled checks via the shared
+  // selector (audit E10 — the same sequence tool probing uses, so the two can't
+  // drift). Mistyped selectors surface as errors below rather than silently
+  // resolving to nothing and reporting a false "PASSED".
+  const { checks: selected, unmatched: unmatchedSelectors } = selectChecks(opts, ctx.config);
+  let checks = selected;
 
   // Filter out checks skipped due to missing tools
   if (opts.skipMissingTools && opts.skipMissingTools.length > 0) {

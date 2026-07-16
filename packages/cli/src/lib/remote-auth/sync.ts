@@ -37,7 +37,7 @@
 import * as fs from "node:fs";
 
 import git from "isomorphic-git";
-import httpNode from "isomorphic-git/http/node";
+import { defaultGitHttp } from "./git-http.ts";
 
 import { gitAuthor, withRepoLock } from "../source-provider.ts";
 import { resolveLogger } from "./operation-log.ts";
@@ -233,7 +233,7 @@ export async function syncProject(
 export async function pullChanges(
   options: SyncProjectOptions,
 ): Promise<PullOutcome> {
-  const http = options.httpClient ?? httpNode;
+  const http = options.httpClient ?? defaultGitHttp;
   // A project is its git repo: pull operates on the enclosing repo root
   // (opening a subfolder syncs the whole repo — that is what Git does).
   const dir = await repoDirFor(options.projectDir);
@@ -355,7 +355,7 @@ export async function pullChanges(
 export async function pushChanges(
   options: SyncProjectOptions,
 ): Promise<PushOutcome> {
-  const http = options.httpClient ?? httpNode;
+  const http = options.httpClient ?? defaultGitHttp;
   const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<PushOutcome> => {
