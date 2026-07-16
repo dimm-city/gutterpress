@@ -3,6 +3,29 @@
 _Scope: `packages/cli` + `packages/viewer`, ~74k lines of non-test source across 453 files._
 _Goal: identify rough spots fixable in a **patch release** — robustness, reliability, maintainability. Not an end-to-end refactor._
 
+> **Remediation status (updated after implementation).** The patch-scoped
+> findings below were applied on branch `claude/codebase-quality-review-l3vk4a`
+> in four commits (CLI reliability; viewer host; SPA hardening/cleanup; CI).
+> **Shipped:** A1–A5, B1–B5, C1, D1–D8, E1–E4, E7, E10, F1–F4 — with new
+> regression tests (git-http idle timeout, command-runner timeout, settings
+> array-guard + atomic update, open-external scheme, shared-types drift,
+> vendored-polyfill drift). All typechecks, both full test suites, and both
+> render-purity gates pass.
+> **Deliberately deferred** (disproportionate to a patch, or unverifiable here):
+> - **E5** (EditorToolbar `createDisclosure`) — low, cosmetic.
+> - **E6** (`finding()` adoption across 22 check modules) — low, pure
+>   passthrough; the four differing literal shapes make a full safe sweep
+>   disproportionate and a partial one worse than none.
+> - **E8 / E9** (recovery-test push-parser + `RecoveryContext` builder dedup) —
+>   broad test-only sweeps across 4–15 files; better as their own change.
+> - **D9** (typing the `LibModule` `Promise<unknown>` seams + `AssertDto`
+>   entries) — low, the most invasive type change; D8's drift-guard already
+>   covers the highest-risk shapes.
+> - **F5** (running the installers in CI) — `install.sh` has no local-binary
+>   hook and the Windows harness needs a Windows runner + release artifact
+>   wired in; needs CI iteration that can't be validated from here.
+> - **G1–G10** — structural, explicitly for a future minor.
+
 ## Method
 
 A three-phase multi-agent audit, followed by a manual validation pass:

@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Sync, clone, push, pull, and publish now time out on a stalled network
+  connection instead of hanging forever (and no longer wedge later operations
+  on the same project).
+- Changing two settings in quick succession no longer risks silently reverting
+  one of them, and a malformed settings write can no longer corrupt a section.
+- Opening an external link now only accepts `http(s)` URLs.
+
+### Changed
+
+- Internal robustness, dead-code removal, and CI hardening from a code-quality
+  audit — see `docs/reviews/code-quality-audit-2026-07-16.md`. No changes to
+  author-facing behavior beyond the fixes above.
+
 ## [0.8.0] - 2026-07-15
 
 [Full Changelog](https://github.com/dimm-city/print-md/compare/v0.7.1...v0.8.0) ·
