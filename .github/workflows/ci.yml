@@ -114,8 +114,15 @@ jobs:
       - name: Run TypeScript compiler (CLI)
         run: bun --cwd packages/cli run typecheck
 
-      - name: Run TypeScript compiler (viewer)
+      - name: Run TypeScript compiler (viewer SPA)
         run: bun --cwd packages/viewer run check
+
+      # audit F1: `check` above is svelte-check (SPA only). The Electron
+      # main/preload TS was never type-checked in CI — its `typecheck` script
+      # existed but nothing ran it, so a type error in electron/main.ts merged
+      # green. Run it too.
+      - name: Run TypeScript compiler (viewer Electron main/preload)
+        run: bun --cwd packages/viewer run typecheck
 
   security-audit:
     name: Security Audit

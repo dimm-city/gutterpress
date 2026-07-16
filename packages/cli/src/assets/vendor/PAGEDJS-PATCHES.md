@@ -6,10 +6,18 @@
 **Applied patches:** PATCH-1, PATCH-2, PATCH-3 (2026-05-17)  
 **Deferred:** PATCH-4 (complex, workaround exists)
 
+**Second copy (MUST stay identical):**
+`packages/viewer/static/vendor/paged.polyfill.js`. The viewer ships its own
+byte-identical copy of this file. A drift guard
+(`packages/cli/src/assets/vendor/paged-polyfill-drift.test.ts`) fails CI if the
+two ever diverge.
+
 To update the vendored copy: replace `paged.polyfill.js` with the new dist
 from `node_modules/pagedjs/dist/paged.polyfill.js` after bumping the version,
-verify each patch below is still needed, and re-apply. File all applied patches
-as GitHub issues at https://github.com/pagedjs/pagedjs/issues before updating.
+verify each patch below is still needed, and re-apply — then copy the SAME
+result to `packages/viewer/static/vendor/paged.polyfill.js` so both stay in
+sync (the drift test enforces this). File all applied patches as GitHub issues
+at https://github.com/pagedjs/pagedjs/issues before updating.
 
 ---
 
