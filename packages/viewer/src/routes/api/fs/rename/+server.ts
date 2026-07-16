@@ -1,8 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { rename, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { getWriteHooks } from '../../../../../electron/server-bridge/write-hooks';
-import { isWithinRoot } from '../../../../../electron/server-bridge/fs-guard';
+import { scheduleAutoWriteEffects } from '../../../../../electron/server-bridge/write-hooks';
 import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import { requireSegment } from '../_shared/validate-segment';
 import type { RequestHandler } from './$types';
@@ -31,14 +30,7 @@ export const POST: RequestHandler = defineRoute<{ path: string; newName: string 
     if (exists) error(409, `"${body.newName}" already exists here.`);
     await rename(body.path, to);
 
-    const hooks = getWriteHooks();
-    if (hooks) {
-      const watchedDir = hooks.getWatchedDir();
-      if (watchedDir && isWithinRoot(to, watchedDir)) {
-        hooks.scheduleAutoSnapshot(watchedDir);
-        hooks.scheduleAutoSync(watchedDir);
-      }
-    }
+    scheduleAutoWriteEffects(to);
 
     return { path: to };
   },

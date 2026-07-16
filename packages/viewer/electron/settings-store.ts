@@ -17,6 +17,14 @@
 import path from "node:path";
 import type { AppSettings } from "./bridge-types";
 import { DEFAULT_SETTINGS } from "./bridge-types";
+// Audit A1 / conf-27: the settings merge lives in exactly ONE place now — the
+// reconciled, array-safe `deepMergeSettings` in the pure (PWA-clean) renderer
+// module. This host store used to carry a THIRD, divergent copy that lacked the
+// `!Array.isArray(value)` guard, so an array-shaped section patch spread into
+// `{0:…,1:…}` and corrupted app-settings.json on the LIVE desktop path (the POST
+// /api/app/settings route runs this copy). `mergeSettings` stays as a thin,
+// same-signature delegator so every caller is unchanged.
+import { deepMergeSettings } from "../src/lib/settings-merge";
 
 export type { AppSettings };
 export { DEFAULT_SETTINGS };
@@ -25,23 +33,8 @@ export type DeepPartialSettings = {
   [K in keyof AppSettings]?: Partial<AppSettings[K]>;
 };
 
-function mergeSettingsSection<K extends keyof AppSettings>(
-  target: AppSettings,
-  base: AppSettings,
-  key: K,
-  value: DeepPartialSettings[K],
-): void {
-  if (value && typeof value === "object") {
-    target[key] = { ...base[key], ...value } as AppSettings[K];
-  }
-}
-
 export function mergeSettings(base: AppSettings, patch: DeepPartialSettings): AppSettings {
-  const out: AppSettings = { ...base };
-  for (const key of Object.keys(patch) as Array<keyof AppSettings>) {
-    mergeSettingsSection(out, base, key, patch[key]);
-  }
-  return out;
+  return deepMergeSettings(base, patch);
 }
 
 export interface SettingsStoreDeps {
@@ -59,6 +52,7 @@ export interface SettingsStoreDeps {
 export function createSettingsStore(deps: SettingsStoreDeps): {
   readSettings(): Promise<AppSettings>;
   writeSettings(s: AppSettings): Promise<void>;
+  updateSettings(patch: DeepPartialSettings): Promise<AppSettings>;
   settingsPath(): string;
 } {
   function settingsPath(): string {
@@ -121,8 +115,8 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
   // the tmp the first is mid-`rename` on (ENOENT / a corrupt merge), and the
   // last full-object writer silently reverts the other's change (lost update).
   let chain: Promise<unknown> = Promise.resolve();
-  function writeSettings(settings: AppSettings): Promise<void> {
-    const run = chain.then(() => writeNow(settings));
+  function enqueue<T>(op: () => Promise<T>): Promise<T> {
+    const run = chain.then(op);
     chain = run.then(
       () => undefined,
       () => undefined,
@@ -130,5 +124,24 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
     return run;
   }
 
-  return { readSettings, writeSettings, settingsPath };
+  function writeSettings(settings: AppSettings): Promise<void> {
+    return enqueue(() => writeNow(settings));
+  }
+
+  /**
+   * Atomic read-modify-write (audit A2 / conf-14): the read, merge, and write
+   * all happen inside ONE queue slot, so two settings patches fired close
+   * together compose instead of the second silently reverting the first. The
+   * POST /api/app/settings route previously did readSettings()+writeSettings()
+   * as two unserialized steps — a lost update. Mirrors prefs-store.updatePrefs.
+   */
+  function updateSettings(patch: DeepPartialSettings): Promise<AppSettings> {
+    return enqueue(async () => {
+      const next = mergeSettings(await readSettings(), patch);
+      await writeNow(next);
+      return next;
+    });
+  }
+
+  return { readSettings, writeSettings, updateSettings, settingsPath };
 }

@@ -2,8 +2,7 @@ import { error } from '@sveltejs/kit';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { gitIdentityArgs } from '$lib/server/settings';
-import { getWriteHooks } from '../../../../../electron/server-bridge/write-hooks';
-import { isWithinRoot } from '../../../../../electron/server-bridge/fs-guard';
+import { scheduleAutoWriteEffects } from '../../../../../electron/server-bridge/write-hooks';
 import { getVcsHooks, type VcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
 import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
@@ -86,14 +85,7 @@ export const POST: RequestHandler = defineRoute<
 
     await rm(body.path, { recursive: true, force: false });
 
-    const writeHooks = getWriteHooks();
-    if (writeHooks) {
-      const watchedDir = writeHooks.getWatchedDir();
-      if (watchedDir && isWithinRoot(body.path, watchedDir)) {
-        writeHooks.scheduleAutoSnapshot(watchedDir);
-        writeHooks.scheduleAutoSync(watchedDir);
-      }
-    }
+    scheduleAutoWriteEffects(body.path);
 
     return { ok: true as const };
   },

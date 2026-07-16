@@ -34,6 +34,13 @@ export interface PrefsHooks<
   updatePrefs: (mutate: (prefs: Prefs) => Prefs) => Promise<Prefs>;
   readSettings: () => Promise<Settings>;
   writeSettings: (settings: Settings) => Promise<void>;
+  /**
+   * Atomic read-merge-write of a settings patch on the store's write queue
+   * (audit A2). Prefer this over readSettings()+mergeSettings()+writeSettings()
+   * for the app/settings POST route — the unserialized triple races concurrent
+   * setting changes and silently drops one.
+   */
+  updateSettings: (patch: Record<string, unknown>) => Promise<Settings>;
   existingDirectory: (dir: string | undefined) => Promise<string | null>;
   readProjectState: (states: ProjectStates, dir: string) => unknown;
   writeProjectState: (states: ProjectStates, dir: string, patch: Record<string, unknown>) => ProjectStates;

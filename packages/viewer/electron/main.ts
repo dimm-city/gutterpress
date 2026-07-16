@@ -251,7 +251,7 @@ const { readPrefs, writePrefs, updatePrefs, existingDirectory } = createPrefsSto
 // rather than discarded (#34).
 // ──────────────────────────────────────────────────────────────────────────
 
-const { readSettings, writeSettings } = createSettingsStore({
+const { readSettings, writeSettings, updateSettings } = createSettingsStore({
   getUserDataDir: () => app.getPath("userData"),
   fs: { readFile, writeFile, mkdir, rename },
 });
@@ -394,7 +394,7 @@ const lastSyncStatusByDir = new Map<string, SyncStatusPayload>();
 /** Emit a sync status event to the renderer, safe to call when no window exists. */
 function emitSyncStatus(payload: SyncStatusPayload): void {
   lastSyncStatusByDir.set(path.resolve(payload.projectDir), payload);
-  mainWindow?.webContents.send("sync:status", payload);
+  safeSend("sync:status", payload);
 }
 
 // ── App-open heartbeat (repair-vs-viewer detection, M2) ──────────────────────
@@ -466,7 +466,7 @@ const folderWatch = new FolderWatcher({
   watch: (dir, options, cb) => watch(dir, options, cb),
   resolve: (p) => path.resolve(p),
   onFolderChanged: (name) =>
-    mainWindow?.webContents.send("fs:folderChanged", { filename: name }),
+    safeSend("fs:folderChanged", { filename: name }),
   onEditSignal: (dir) => {
     // Edit signal: external editors and in-app saves both land here. `dir` is
     // already the normalized (resolved) form, matching folderWatch.getWatchedDir().
@@ -539,6 +539,46 @@ let rendererDirty = false;
 let isQuitting = false;
 let flushResolve: (() => void) | null = null;
 
+/**
+ * Send an IPC push to the renderer only when the window is alive (audit A3).
+ * Background senders used `mainWindow?.` alone, which still throws "Object has
+ * been destroyed" in the narrow window between `webContents.destroy()` and the
+ * `closed` listener nulling `mainWindow`. One guarded choke point replaces the
+ * eight hand-rolled null-only checks.
+ */
+function safeSend(channel: string, ...args: unknown[]): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args);
+  }
+}
+
+/**
+ * Ask the renderer to flush unsaved editor state, resolving when it replies
+ * (`app:flushDone` → {@link flushResolve}) or after `timeoutMs` as a watchdog.
+ * Owns the single `flushResolve` slot so the window close gate and
+ * `updater:applyNow` can no longer clobber each other's pending flush (audit
+ * A4). Resolves immediately when there is nothing to flush or no live window.
+ */
+function requestRendererFlush(timeoutMs = 5000): Promise<void> {
+  if (!rendererDirty || !mainWindow || mainWindow.isDestroyed()) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    let done = false;
+    const settle = () => {
+      if (done) return;
+      done = true;
+      // Identity guard: only clear the slot if it still points at THIS request,
+      // so a newer flush started meanwhile isn't wiped.
+      if (flushResolve === settle) flushResolve = null;
+      resolve();
+    };
+    flushResolve = settle;
+    safeSend("app:flushBeforeClose");
+    setTimeout(settle, timeoutMs);
+  });
+}
+
 function extractHeader(
   headers: Record<string, string | string[] | undefined>,
   name: string
@@ -576,7 +616,7 @@ function registerUrlPreviewHeaderWatch() {
       const csp = extractHeader(details.responseHeaders ?? {}, "content-security-policy");
       const blocksEmbedding = !!xfo || cspFrameAncestorsBlocksEmbedding(csp);
       if (blocksEmbedding) {
-        mainWindow?.webContents.send("url-preview:blocked", {
+        safeSend("url-preview:blocked", {
           url,
           reason:
             "This website does not allow embedded preview inside print-md. Sign-in may have worked, but the site blocks in-app framing for security reasons.",
@@ -751,7 +791,7 @@ function createWindow() {
   // mode tracks the OS live. Registered after window creation so mainWindow is
   // non-null when the event fires; removed on close to avoid a dangling ref.
   const onNativeThemeUpdated = () => {
-    mainWindow?.webContents.send("app:nativeThemeUpdated", {
+    safeSend("app:nativeThemeUpdated", {
       shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
     });
   };
@@ -790,12 +830,11 @@ function createWindow() {
       if (pending) void pending.finally(finish);
       else finish();
     };
-    if (needsFlush) {
-      flushResolve = snapshotThenFinish;
-      win.webContents.send("app:flushBeforeClose");
-    } else {
-      snapshotThenFinish();
-    }
+    // Flush the renderer (if dirty), THEN snapshot, THEN destroy. The shared
+    // requestRendererFlush owns flushResolve and no-ops when not dirty, so it
+    // covers both the needsFlush and snapshot-only cases the old if/else split
+    // by hand — and can't collide with updater:applyNow's flush slot (audit A4).
+    void requestRendererFlush().then(snapshotThenFinish);
     // Watchdog: force the close if the flush/snapshot doesn't complete in time.
     setTimeout(finish, 5000);
   });
@@ -870,15 +909,14 @@ const watchHooksImpl: WatchHooks = {
 };
 const appHooksImpl: AppHooks = {
   setRendererDirty: (isDirty: boolean) => { rendererDirty = !!isDirty; },
-  resolveFlush: () => { rendererDirty = false; flushResolve?.(); },
   sendToRenderer: (channel: string, ...args: unknown[]) => {
-    mainWindow?.webContents.send(channel, ...args);
+    safeSend(channel, ...args);
   },
 };
 // Wire the PDF-export progress sender to the live main window (the export
 // subsystem itself lives in electron/pdf-export.ts).
 initPdfExport({
-  sendProgress: (event) => mainWindow?.webContents.send("build:progress", event),
+  sendProgress: (event) => safeSend("build:progress", event),
 });
 // prefsHooksImpl is built after discoverScanDeps is initialized (below); the
 // single registerHostServices() call that consumes it lives further down
@@ -1092,6 +1130,7 @@ const prefsHooksImpl: PrefsHooks<LibModule, ViewerPrefs, AppSettings, ProjectSta
   updatePrefs,
   readSettings,
   writeSettings,
+  updateSettings,
   existingDirectory,
   readProjectState,
   writeProjectState,
@@ -1186,7 +1225,7 @@ const remoteHooksImpl: RemoteHooks<LibModule> = {
           }
         : {}),
       onProgress: (event: CloneProgressEvent) => {
-        mainWindow?.webContents.send("remote:cloneProgress", event);
+        safeSend("remote:cloneProgress", event);
       },
     });
     // Multi-book repository: the WHOLE repo is cloned once (ADR 0006 D2);
@@ -1568,7 +1607,7 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 // ──────────────────────────────────────────────────────────────────────────
 
 function sendUpdaterEvent(event: UpdaterEventPayload) {
-  mainWindow?.webContents.send("updater:event", event);
+  safeSend("updater:event", event);
 }
 initUpdater(sendUpdaterEvent, {
   readAllowPrerelease: async () => (await readSettings()).updates.includePrereleases,
@@ -1581,15 +1620,10 @@ secureHandle("updater:applyNow", async () => {
   // close-gate flush (up to 5s) still runs. Flushing here keeps that window
   // empty and the data safe; rendererDirty=false afterwards means the close
   // gate won't need a second flush during the quit sequence.
-  if (rendererDirty && mainWindow && !mainWindow.isDestroyed()) {
-    await new Promise<void>((resolve) => {
-      flushResolve = resolve;
-      mainWindow!.webContents.send("app:flushBeforeClose");
-      // Same watchdog budget as the close gate — never block the install.
-      setTimeout(resolve, 5000);
-    });
-    flushResolve = null;
-  }
+  // Shared flush helper (audit A4): owns flushResolve, applies the same 5s
+  // watchdog, and no-ops when nothing is dirty — replacing this hand-rolled
+  // copy that raced the close gate on the one flushResolve slot.
+  await requestRendererFlush();
   if (updaterSupported() && getUpdaterStatus().stagedVersion) cancelAutoSnapshotTimer();
   return installNow();
 });

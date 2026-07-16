@@ -51,7 +51,7 @@ const noop = () => {};
 /** Minimal HostServices with every domain but the one under test stubbed out (cast-checked, like fs-routes-scoping.test.ts). */
 function baseServices(): HostServices {
   return {
-    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, resolveFlush: noop, sendToRenderer: noop },
+    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, sendToRenderer: noop },
     conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
     desktop: {
       showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
@@ -70,6 +70,7 @@ function baseServices(): HostServices {
       updatePrefs: async (mutate: (p: object) => object) => mutate({}),
       readSettings: async () => ({}),
       writeSettings: async () => {},
+      updateSettings: async () => ({}),
       existingDirectory: async () => null,
       readProjectState: () => null,
       writeProjectState: (states: unknown) => states,

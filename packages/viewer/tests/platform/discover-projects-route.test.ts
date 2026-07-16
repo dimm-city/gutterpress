@@ -45,6 +45,7 @@ function servicesWith(prefsOverrides: {
       updatePrefs: async (mutate: (p: object) => object) => mutate({}),
       readSettings: async () => ({}),
       writeSettings: async () => {},
+      updateSettings: async () => ({}),
       existingDirectory: async () => null,
       readProjectState: () => null,
       writeProjectState: (states: unknown) => states,

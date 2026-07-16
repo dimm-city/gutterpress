@@ -14,7 +14,10 @@
  * Pure — no `node:*`/`fs`/`path`/`url`/`postcss` imports — so it stays
  * PWA-clean in the renderer bundle (CLAUDE.md §8).
  */
-import type { AppSettings, DeepPartial } from "./platform";
+// Import from the shared-types leaf, NOT the ./platform value barrel: this pure
+// module is also consumed host-side (electron/settings-store.ts), and pulling
+// the barrel would drag the SPA adapters into the Electron compile graph.
+import type { AppSettings, DeepPartial } from "./platform/shared-types";
 
 /** Section-level merge: spread the patch section over the base section. */
 function mergeSettingsSection<K extends keyof AppSettings>(

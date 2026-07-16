@@ -17,6 +17,7 @@
  * BrowserWindow.
  */
 import { test, expect, mock } from "bun:test";
+import { electronMock } from "../support/electron-mock";
 import { BuildError } from "@dimm-city/print-md";
 
 class FakeWebContents {
@@ -72,20 +73,15 @@ let nextStatusFn: () => { done: boolean; pages: number } = () => ({ done: true, 
 // BrowserWindow, safeStorage) — whichever file's registration is actually
 // live, every other suite's named imports still resolve. Keep this superset
 // in sync with any new `from "electron"` import added to electron/*.ts.
-mock.module("electron", () => ({
-  app: { getPath: () => "/tmp/print-md-test-userdata" },
-  protocol: {},
-  BrowserWindow: class extends FakeBrowserWindow {
-    constructor(opts: unknown) {
-      super(opts, nextStatusFn);
-    }
-  },
-  safeStorage: {
-    isEncryptionAvailable: () => true,
-    encryptString: (s: string) => Buffer.from(s, "utf8"),
-    decryptString: (b: Buffer) => Buffer.from(b).toString("utf8"),
-  },
-}));
+mock.module("electron", () =>
+  electronMock({
+    BrowserWindow: class extends FakeBrowserWindow {
+      constructor(opts: unknown) {
+        super(opts, nextStatusFn);
+      }
+    },
+  }),
+);
 
 const {
   electronPdfRenderer,

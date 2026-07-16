@@ -19,6 +19,7 @@
  * every other electron-mocking suite in this run (see the NOTE there).
  */
 import { test, expect, mock } from "bun:test";
+import { electronMock } from "../support/electron-mock";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -39,18 +40,13 @@ let currentUserDataDir = "";
 // `app.getPath` reads a mutable module-level variable (`currentUserDataDir`)
 // so each test can point it at its own fresh temp dir even though the mock
 // factory itself only runs once.
-mock.module("electron", () => ({
-  app: { getPath: () => currentUserDataDir },
-  protocol: {},
-  BrowserWindow: class {},
-  safeStorage: {
-    isEncryptionAvailable: () => true,
-    // A trivial reversible "encryption" — good enough to prove the store's
-    // read/write/round-trip plumbing without depending on a real OS keyring.
-    encryptString: (s: string) => Buffer.from(s, "utf8"),
-    decryptString: (b: Buffer) => Buffer.from(b).toString("utf8"),
-  },
-}));
+mock.module("electron", () =>
+  // getPath reads a mutable module-level var so each test points it at its own
+  // fresh temp dir even though the factory runs once. safeStorage's reversible
+  // fake "encryption" (shared) proves the store's read/write/round-trip plumbing
+  // without depending on a real OS keyring.
+  electronMock({ app: { getPath: () => currentUserDataDir } }),
+);
 
 const { electronTokenStore } = await import("../../electron/credential-store");
 
