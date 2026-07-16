@@ -631,17 +631,16 @@ export interface ElectronBridge
     | "resolveSyncConflicts"
     | "updater"
   > {
-  openDirectory(): Promise<string | null>;
-  readFile(path: string): Promise<string>;
-  writeFile(path: string, content: string): Promise<FileWriteResult>;
-  listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>>;
+  // audit D3: openDirectory/readFile/writeFile/listDir/statFile were removed
+  // from here — the real preload bridge migrated them to server routes (the
+  // ElectronAdapter's PlatformAdapter methods call api.dialog.*/api.fs.*, never
+  // bridge().*), so the type promised IPC members that don't exist. Matches the
+  // already-pruned electron/types.d.ts.
   // #49: the IPC layer keeps raw path-string semantics — the ElectronAdapter is
   // the translation seam that unwraps FolderRef.key back into the string `input`
   // the existing IPC expects.
   startPreview(args: { input: string } & Omit<PreviewStartArgs, "input">): Promise<PreviewStartResult>;
   build(args: { input: string } & Omit<BuildArgs, "input">): Promise<BuildResult>;
-  /** Raw fs stat IPC behind `PlatformAdapter.statFile` (#44). */
-  statFile(path: string): Promise<FileStat>;
   /**
    * Raw folder-watch IPC behind `PlatformAdapter.watchFolder` (#44). Subscribes
    * to change events for `path` and returns an unsubscribe fn.

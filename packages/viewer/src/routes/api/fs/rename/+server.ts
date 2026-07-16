@@ -9,8 +9,12 @@ import type { RequestHandler } from './$types';
 // FileTree row action "Rename" (UX review M9). Renames WITHIN the same
 // parent directory only (a new name, never a new location) — `newName` is a
 // single segment, not a path, so this can never become a move-to-arbitrary-
-// destination primitive. Fails (409) rather than silently overwriting an
-// existing same-named entry.
+// destination primitive. Returns 409 when a same-named entry already exists at
+// the check point — best-effort, NOT atomic: POSIX rename() replaces the
+// destination with no error, so a file created in the tiny window between the
+// stat() check and rename() can still be clobbered (audit A5). Acceptable for
+// a single-desktop-user tool; POSIX offers no atomic no-clobber rename for
+// directories without extra syscalls.
 export const POST: RequestHandler = defineRoute<{ path: string; newName: string }>({
   validate: async (raw) => {
     const body = raw as { path?: string; newName?: string };

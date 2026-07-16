@@ -138,8 +138,11 @@ function forwardPush<T>(channel: string, cb: (data: T) => void): () => void {
 
 contextBridge.exposeInMainWorld("electron", {
   // ──────────────────────────────────────────────────────────────────────
-  // API version contract. The renderer checks this to refuse running against
-  // a stale shell.
+  // API version contract, exposed for a future renderer-vs-shell version check
+  // (audit D4). NOTE: no renderer code reads this yet — the previous comment
+  // claimed the renderer "checks this to refuse running against a stale shell,"
+  // but that check was never implemented. Kept as the plumbing that check will
+  // use; read it in the renderer before relying on it to gate anything.
   // ──────────────────────────────────────────────────────────────────────
   apiVersion: DESKTOP_API,
 
