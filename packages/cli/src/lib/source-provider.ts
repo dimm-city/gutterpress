@@ -189,11 +189,24 @@ export function withRepoLock<T>(projectDir: string, fn: () => Promise<T>): Promi
   // distinct project dir ever opened for the life of a long-running host. The
   // identity guard is the same pattern browser-pool.ts uses: a concurrent
   // withRepoLock for the same key replaces the map value, so `get(key) === tail`
-  // is only true when this was the last queued op.
+  // is only true when this was the last queued op. A still-queued op holds its
+  // OWN `prev` reference captured above, so deleting the map entry never affects
+  // an op that already enqueued — deletion only happens on a fully-settled,
+  // idle chain, which a new op correctly restarts from `Promise.resolve()`.
   void tail.then(() => {
     if (repoQueues.get(key) === tail) repoQueues.delete(key);
   });
   return run;
+}
+
+/**
+ * Test-only: current number of live per-repo lock queues. Lets tests assert the
+ * B4 reclamation actually happens (the map returns to empty once every queued
+ * op settles) without exporting the map itself. Same test-hook convention as
+ * plugins.ts's `__resetPathPluginCacheForTests`.
+ */
+export function __repoLockQueueSizeForTests(): number {
+  return repoQueues.size;
 }
 
 /**

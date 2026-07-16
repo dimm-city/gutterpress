@@ -732,3 +732,113 @@ test("a clean tree with no stale marker still reports 'no changes'", async () =>
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// ── withRepoLock: FIFO serialization + B4 map reclamation ────────────────────
+// Core git-recovery infrastructure (ADR 0006 D2): isomorphic-git has no repo
+// locking, so every op on a project dir is serialized through this per-repo
+// FIFO queue. These tests are deterministic (no timing races) — they gate on
+// the observable ordering the lock guarantees, plus the audit-B4 reclamation.
+
+import {
+  withRepoLock,
+  __repoLockQueueSizeForTests,
+} from "./source-provider";
+
+/** Flush pending microtasks (the B4 cleanup runs a microtask after a tail settles). */
+async function flushMicrotasks(): Promise<void> {
+  await new Promise((r) => setTimeout(r, 0));
+}
+
+test("withRepoLock runs ops on the same dir strictly in FIFO order (no interleaving)", async () => {
+  const dir = await tempDir();
+  const order: string[] = [];
+  // Each op records enter/exit around an await; without serialization the
+  // enters/exits would interleave. The later-queued op must not enter until
+  // the earlier one has fully exited.
+  const mkOp = (id: string) => async () => {
+    order.push(`enter-${id}`);
+    await new Promise((r) => setTimeout(r, 5));
+    order.push(`exit-${id}`);
+  };
+  const a = withRepoLock(dir, mkOp("a"));
+  const b = withRepoLock(dir, mkOp("b"));
+  const c = withRepoLock(dir, mkOp("c"));
+  await Promise.all([a, b, c]);
+  expect(order).toEqual([
+    "enter-a", "exit-a",
+    "enter-b", "exit-b",
+    "enter-c", "exit-c",
+  ]);
+});
+
+test("withRepoLock lets DIFFERENT dirs run concurrently (independent queues)", async () => {
+  const d1 = await tempDir();
+  const d2 = await tempDir();
+  const order: string[] = [];
+  const first = withRepoLock(d1, async () => {
+    order.push("d1-enter");
+    await new Promise((r) => setTimeout(r, 20));
+    order.push("d1-exit");
+  });
+  // Starts while d1's op is still awaiting — different key, different queue.
+  const second = withRepoLock(d2, async () => {
+    order.push("d2-enter");
+    order.push("d2-exit");
+  });
+  await Promise.all([first, second]);
+  // d2 ran to completion inside d1's await window.
+  expect(order.indexOf("d2-exit")).toBeLessThan(order.indexOf("d1-exit"));
+});
+
+test("withRepoLock: a failing op does not jam the queue for the next op", async () => {
+  const dir = await tempDir();
+  const ran: string[] = [];
+  const failing = withRepoLock(dir, async () => {
+    ran.push("failing");
+    throw new Error("boom");
+  });
+  const next = withRepoLock(dir, async () => {
+    ran.push("next");
+    return "ok";
+  });
+  await expect(failing).rejects.toThrow("boom");
+  await expect(next).resolves.toBe("ok");
+  expect(ran).toEqual(["failing", "next"]);
+});
+
+test("withRepoLock: a still-queued op waits even though the map entry is reclaimed on idle (B4)", async () => {
+  const dir = await tempDir();
+  const order: string[] = [];
+  // Op A parks until we release it, holding the lock.
+  let releaseA: (() => void) | undefined;
+  const a = withRepoLock(dir, async () => {
+    order.push("a-enter");
+    await new Promise<void>((r) => (releaseA = r));
+    order.push("a-exit");
+  });
+  // B enqueues BEHIND A (captures A's tail as its prev) before A releases.
+  const b = withRepoLock(dir, async () => {
+    order.push("b-ran");
+  });
+  // Let A reach its park point.
+  await flushMicrotasks();
+  expect(order).toEqual(["a-enter"]);
+  releaseA!();
+  await Promise.all([a, b]);
+  // B ran only after A exited — serialization held.
+  expect(order).toEqual(["a-enter", "a-exit", "b-ran"]);
+});
+
+test("withRepoLock: the queue map is reclaimed to empty once all ops settle (B4)", async () => {
+  const before = __repoLockQueueSizeForTests();
+  const dirs = await Promise.all([tempDir(), tempDir(), tempDir()]);
+  // Several ops across several dirs.
+  await Promise.all(
+    dirs.map((d) => withRepoLock(d, async () => { await new Promise((r) => setTimeout(r, 1)); })),
+  );
+  // The cleanup runs a microtask after each tail settles — flush it.
+  await flushMicrotasks();
+  // Every entry reclaimed: the map is back to its starting size (no permanent
+  // one-entry-per-dir-ever-opened growth).
+  expect(__repoLockQueueSizeForTests()).toBe(before);
+});
