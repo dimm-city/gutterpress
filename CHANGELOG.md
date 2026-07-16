@@ -5,6 +5,50 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-15
+
+[Full Changelog](https://github.com/dimm-city/print-md/compare/v0.7.1...v0.8.0) ·
+[Release notes](https://github.com/dimm-city/print-md/releases/tag/v0.8.0)
+
+### Added
+
+- **Writer-focused editing.** Create, rename, copy, and delete files and
+  folders from the project tree; author `@marker` syntax with editor
+  completions; resize the editor/preview split; and use focus mode for
+  distraction-free writing.
+- **Guided publishing.** Publish from the toolbar through a wizard with saved
+  credential selection and a preflight step that identifies blocking errors
+  and warnings before publishing.
+- **Theme package import.** Import themes from ZIP packages, folders, or CSS
+  files; preview them before applying; and revert to the previously applied
+  theme.
+- **More visible project controls.** Added a toolbar Save action, a collapsible
+  table of contents, version-history workspace restore, and centralized
+  Connections settings.
+- **Prerelease update opt-in.** Desktop users can enable release-candidate and
+  other prerelease update notifications under Settings → App → Updates.
+- Build and preview now surface author-facing layout warnings in their logs.
+
+### Changed
+
+- **Sync status overhaul.** One source of truth now drives sync state and
+  guidance, removing misleading status and dead-end recovery paths.
+- Replaced the settings dialog with a full-window, tabbed settings view.
+- Removed the separate startup splash window; startup now stays within the
+  main workspace.
+- Decomposed and hardened the desktop host and CLI build, preview, and release
+  paths.
+
+### Fixed
+
+- Protected the preload bridge from remotely loaded content, preventing
+  untrusted pages from reaching desktop capabilities.
+- Prevented editor data loss and corrected errors in saving, configuration,
+  sync-conflict, export, publishing, theme import, and table-of-contents flows.
+- Enforced theme ZIP size limits before decompression.
+- `print-md validate --phase` now rejects unknown phase names instead of
+  reporting a successful validation.
+
 ## [0.8.0-beta.2] - 2026-07-14
 
 ### Added
