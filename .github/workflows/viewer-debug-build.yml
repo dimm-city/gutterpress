@@ -8,9 +8,6 @@ name: Viewer debug build (Windows)
 on:
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     name: Build viewer Windows installer + zip
@@ -18,7 +15,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: ./.github/actions/bun
 
@@ -26,7 +23,7 @@ jobs:
         uses: ./.github/actions/build-viewer-windows-zip
 
       - name: Upload viewer Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: viewer-windows-debug-${{ github.sha }}
           path: |

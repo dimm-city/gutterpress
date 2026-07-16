@@ -103,6 +103,13 @@ export interface AppSettings {
      * shown. Ignored above the responsive breakpoint (split layout). (#responsive)
      */
     paneMode: "edit" | "view";
+    /**
+     * Durable editor/preview split fraction (0.25..0.75, editor share) for the
+     * wide side-by-side layout (#103). The always-read default; the per-project
+     * `ProjectState.splitPaneRatio` snapshot overrides it at project-open, same
+     * as `viewMode` relates to `ProjectState.viewMode` below.
+     */
+    splitRatio: number;
   };
   versionHistory: {
     /**
@@ -163,6 +170,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // takes precedence over this at project-open time.
     viewMode: "two-column",
     paneMode: "view",
+    // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
+    // durable default and the double-click reset target agree (#103).
+    splitRatio: 0.42,
   },
   versionHistory: {
     autoSnapshot: true,

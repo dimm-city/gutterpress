@@ -230,6 +230,25 @@ function themeStyleHref(id: string): string {
 const THEME_HREF_RE = new RegExp(`^${THEMES_DIR}/([^/]+)/theme\\.css$`);
 
 /**
+ * Manifest key holding the id of the theme that was active immediately BEFORE
+ * the current one (#106 "Revert to previous theme"). Stored in the manifest so
+ * the reference is durable/indefinite (no timer), version-controlled with the
+ * project, and readable by both front-ends through this same lib seam — exactly
+ * like the active theme itself (which lives in `styles:`).
+ */
+const THEME_PREVIOUS_KEY = "themePrevious";
+
+/** The theme id recorded as the active theme in a `styles:` seq, or null. */
+function activeThemeIdInSeq(seq: Node[]): string | null {
+  for (const item of seq) {
+    const href = scalarString(item);
+    const m = href ? href.match(THEME_HREF_RE) : null;
+    if (m) return m[1]!;
+  }
+  return null;
+}
+
+/**
  * Read the project's currently active theme (the theme whose `theme.css` is in
  * the manifest `styles:` list AND whose folder exists under `themes/`). Returns
  * `null` when no theme is applied.
@@ -263,6 +282,10 @@ async function setActiveThemeStyle(projectDir: string, id: string): Promise<void
   const seq = ensureSeq(doc, "styles");
   const href = themeStyleHref(id);
 
+  // #106: capture the theme active RIGHT NOW (the one we're about to replace)
+  // so "Revert to previous theme" can re-apply it later.
+  const previousId = activeThemeIdInSeq(seq.items as Node[]);
+
   // Drop any existing theme style entry (we keep exactly one active theme).
   const kept = (seq.items as Node[]).filter((item) => {
     const h = scalarString(item);
@@ -271,10 +294,53 @@ async function setActiveThemeStyle(projectDir: string, id: string): Promise<void
   seq.items = kept;
   seq.add(new Scalar(href));
 
+  // Record / clear the previous-theme reference:
+  //  - a genuinely different theme was active  → remember it (revert target),
+  //  - no theme was active before              → clear it (nothing to revert to),
+  //  - re-applying the already-active theme     → leave the reference untouched.
+  if (previousId === null) {
+    doc.delete(THEME_PREVIOUS_KEY);
+  } else if (previousId !== id) {
+    doc.set(THEME_PREVIOUS_KEY, previousId);
+  }
+
   // ARCH finding #25: route the write through the shared writeManifestDoc
   // (manifest-doc.ts) instead of a bespoke mkdir+writeFile pair, so there is
   // one manifest-write implementation, not two that can silently diverge.
   await writeManifestDoc(file, doc);
+}
+
+/**
+ * Read the project's "previous theme" — the theme active immediately before the
+ * current one (#106). Returns `null` when there is no recorded previous theme,
+ * when its folder no longer exists, or when it is (somehow) already the active
+ * theme. The reference is persisted indefinitely (no timer) in the manifest.
+ */
+export async function getPreviousTheme(projectDir: string): Promise<ThemeInfo | null> {
+  const { doc } = await loadManifestDoc(projectDir);
+  const raw = doc.get(THEME_PREVIOUS_KEY);
+  const id = typeof raw === "string" && raw.trim() ? raw : null;
+  if (!id) return null;
+  const dir = themeDirFor(projectDir, id);
+  if (!existsSync(path.join(dir, "theme.css"))) return null;
+  const active = await getActiveTheme(projectDir);
+  if (active && active.id === id) return null;
+  const meta = await readThemeMeta(path.join(dir, "theme.json"));
+  return themeInfo(id, "project", meta);
+}
+
+/**
+ * Revert to the previously active theme (#106): re-apply the theme recorded by
+ * {@link getPreviousTheme}. Because {@link applyTheme} itself records the
+ * now-current theme as the new "previous", reverting is a toggle — revert again
+ * returns to where you were. Throws when there is no previous theme to revert to.
+ */
+export async function revertTheme(projectDir: string): Promise<ThemeInfo> {
+  const previous = await getPreviousTheme(projectDir);
+  if (!previous) {
+    throw new Error("There is no previous theme to revert to.");
+  }
+  return applyTheme(projectDir, { kind: "project", id: previous.id });
 }
 
 // ── Apply ──────────────────────────────────────────────────────────────────
@@ -510,14 +576,22 @@ export async function removeProjectTheme(projectDir: string, id: string): Promis
     await rm(dir, { recursive: true, force: true });
   }
   const { doc, file } = await loadManifestDoc(projectDir);
+  let changed = false;
   const seq = doc.get("styles", true);
   if (isSeq(seq)) {
     const href = themeStyleHref(id);
     const before = seq.items.length;
     seq.items = (seq.items as Node[]).filter((item) => scalarString(item) !== href);
-    if (seq.items.length !== before) {
-      // ARCH finding #25: same shared write path as setActiveThemeStyle.
-      await writeManifestDoc(file, doc);
-    }
+    if (seq.items.length !== before) changed = true;
+  }
+  // #106: never leave a "Revert to previous theme" target pointing at a theme
+  // we just deleted.
+  if (doc.get(THEME_PREVIOUS_KEY) === id) {
+    doc.delete(THEME_PREVIOUS_KEY);
+    changed = true;
+  }
+  if (changed) {
+    // ARCH finding #25: same shared write path as setActiveThemeStyle.
+    await writeManifestDoc(file, doc);
   }
 }

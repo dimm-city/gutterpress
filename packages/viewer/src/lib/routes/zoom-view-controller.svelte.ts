@@ -22,7 +22,14 @@
  * `node:*` / lib value imports.
  */
 
-import { clampSplitRatio, splitRatioFromDrag } from "$lib/editor/preview-layout";
+import {
+  clampSplitRatio,
+  splitRatioFromDrag,
+  snapSplitRatio,
+  nudgeSplitRatio,
+  DEFAULT_SPLIT_RATIO,
+  SPLIT_ARROW_STEP,
+} from "$lib/editor/preview-layout";
 
 /** Minimal host-command client surface the controller drives. */
 export interface ZoomViewClient {
@@ -42,6 +49,8 @@ export interface ZoomViewDeps {
   persistZoom: (value: string) => void;
   /** Durable settings-store writer for the view mode. */
   persistViewMode: (mode: "single" | "two-column") => void;
+  /** Durable settings-store writer for the split ratio (#103). */
+  persistSplitRatio: (value: number) => void;
   /** Guarded per-project writer (view mode / split ratio). */
   saveViewerPrefs: (patch: { viewMode?: "single" | "two-column"; splitPaneRatio?: number }) => void;
   /** Measured width of the preview container (iframe.clientWidth ?? innerWidth). */
@@ -152,15 +161,50 @@ export class ZoomViewController {
     this.splitPaneRatio = clampSplitRatio(value);
   }
 
+  /**
+   * Double-click reset (#103): return to the breakpoint default and persist.
+   */
+  resetSplitRatio(): void {
+    this.splitPaneRatio = DEFAULT_SPLIT_RATIO;
+    this.persistSplit();
+  }
+
+  /**
+   * Keyboard nudge (#103, WCAG 2.2 SC 2.5.7): move the split by `direction`
+   * steps of ~2% (direction is typically -1 / +1) and persist.
+   */
+  nudgeSplit(direction: number): void {
+    this.splitPaneRatio = nudgeSplitRatio(this.splitPaneRatio, direction * SPLIT_ARROW_STEP);
+    this.persistSplit();
+  }
+
+  /**
+   * Persist the current ratio to BOTH the durable settings store (survives
+   * restart) and the per-project bucket (restores the project's own layout on
+   * reopen) — mirrors how `applyViewMode` writes both sinks. Re-fits a
+   * fit-width preview so the page keeps filling the resized pane.
+   */
+  private persistSplit(): void {
+    this.deps.persistSplitRatio(this.splitPaneRatio);
+    this.deps.saveViewerPrefs({ splitPaneRatio: this.splitPaneRatio });
+    if (this.deps.zoom() === "fit-width") void this.applyFitWidthZoom();
+  }
+
   private updateSplitFromPointer(pointerX: number, persist: boolean): void {
     const rect = this.deps.measureWorkspaceRect();
     if (!rect) return;
-    this.splitPaneRatio = splitRatioFromDrag({
+    const raw = splitRatioFromDrag({
       containerLeft: rect.left,
       containerWidth: rect.width,
       pointerX,
     });
-    if (persist) this.deps.saveViewerPrefs({ splitPaneRatio: this.splitPaneRatio });
-    if (this.deps.zoom() === "fit-width") void this.applyFitWidthZoom();
+    // Snap only on release; free drag stays unsnapped for live feedback.
+    if (persist) {
+      this.splitPaneRatio = snapSplitRatio(raw);
+      this.persistSplit();
+    } else {
+      this.splitPaneRatio = raw;
+      if (this.deps.zoom() === "fit-width") void this.applyFitWidthZoom();
+    }
   }
 }

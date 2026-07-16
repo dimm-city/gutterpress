@@ -141,6 +141,8 @@ export {
   importThemeFromUrl,
   readThemeCss,
   removeProjectTheme,
+  getPreviousTheme,
+  revertTheme,
   BUILT_IN_THEME_IDS,
   THEMES_DIR,
 } from "../lib/theme-manager.ts";
@@ -151,6 +153,13 @@ export type {
   ApplyThemeTarget,
   BuiltInThemeId,
 } from "../lib/theme-manager.ts";
+
+// ── Theme package import (#106) — .zip / .css importer ──
+// Only importThemeFromFile is part of the public surface (the viewer's
+// import-from-file route). The zip/css sub-importers and pure decision helpers
+// stay module-private (theme-import.ts exports them for its own unit tests).
+export { importThemeFromFile } from "../lib/theme-import.ts";
+export type { ThemeImportResult, ThemeImportWarning } from "../lib/theme-import.ts";
 
 // ── Stylesheet resolution (renderer links them; editor edits them — one source) ──
 export { listProjectStyles, resolveActiveStyles } from "../lib/style-resolver.ts";

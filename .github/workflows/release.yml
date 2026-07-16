@@ -25,7 +25,6 @@ concurrency:
 env:
   PUPPETEER_SKIP_DOWNLOAD: 'true'
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # GitHub App client id for the device-flow auth (ADR 0006 D1). Public by
   # design (not a secret). The viewer's electron-vite define bakes it into the
   # packaged main process; the lib also carries it as an in-code default, so
@@ -40,7 +39,7 @@ jobs:
     steps:
       # Test the branch the release is dispatched from (default branch for a
       # stable release, or a release/* branch for a prerelease).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
 
@@ -110,17 +109,20 @@ jobs:
 
       # Check out (and later push the bump commit + tag to) the branch the
       # release was dispatched from — main for stable, release/* for a beta.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.ref_name }}
 
-      # Finding #44: a release must ship with a changelog entry. Stable and
-      # prerelease dispatches alike need the CHANGELOG.md heading in place
-      # BEFORE the tag/artifacts exist, so a forgotten changelog update fails
-      # loudly here instead of shipping silently. Backfilling historical gaps
-      # is a separate concern from this gate.
+      # Finding #44: stable releases must ship with a changelog entry. Beta and
+      # release-candidate dispatches are iteration builds, so their notes can
+      # remain under Unreleased until the stable release is cut.
       - name: Verify CHANGELOG.md has an entry for this version
         run: |
+          if echo "$VERSION" | grep -qE -- '-(beta|rc)'; then
+            echo "Skipping changelog check for prerelease $VERSION."
+            exit 0
+          fi
+
           ESCAPED_VERSION="$(echo "$VERSION" | sed -e 's/\./\\./g')"
           if ! grep -qE "^## \[${ESCAPED_VERSION}\]" CHANGELOG.md; then
             echo "::error::CHANGELOG.md has no '## [$VERSION]' heading. Add a changelog entry for this release (Keep a Changelog format) before dispatching."
@@ -224,7 +226,7 @@ jobs:
             artifact: print-md-cli-windows-x64.exe
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.tag }}
 
@@ -247,7 +249,7 @@ jobs:
           "./${{ matrix.artifact }}" --version
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
@@ -259,7 +261,7 @@ jobs:
     if: ${{ !inputs.skip_viewer }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.tag }}
 
@@ -285,7 +287,7 @@ jobs:
       # latest-linux.yml + .blockmap are the electron-updater feed files —
       # they must ship on the GitHub release next to the AppImage.
       - name: Upload AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: viewer-linux
           path: |
@@ -303,7 +305,7 @@ jobs:
     # electron-builder walks automatically (see electron-builder.yml).
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.tag }}
 
@@ -319,7 +321,7 @@ jobs:
       # latest.yml + the installer .blockmap are the electron-updater feed —
       # they must ship on the GitHub release next to the installer.
       - name: Upload Windows installer and zip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: viewer-windows
           path: |
@@ -335,7 +337,7 @@ jobs:
     if: ${{ !inputs.skip_viewer }}
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.tag }}
 
@@ -358,7 +360,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: viewer-mac
           path: packages/viewer/dist/*.dmg
@@ -391,7 +393,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.tag }}
 
@@ -457,7 +459,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Download Windows binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: print-md-cli-windows-x64.exe
           path: dist/
@@ -501,12 +503,12 @@ jobs:
       # Needed to dispatch docker.yml after the release is created.
       actions: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.version.outputs.tag }}
 
       - name: Download CLI artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: dist/
           merge-multiple: true
@@ -514,7 +516,7 @@ jobs:
 
       - name: Download viewer artifacts
         if: ${{ !inputs.skip_viewer }}
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           path: dist/
           merge-multiple: true

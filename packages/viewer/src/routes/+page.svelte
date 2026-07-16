@@ -17,7 +17,7 @@
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import HelpDialog from "$lib/components/HelpDialog.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
-  import SettingsDialog from "$lib/components/SettingsDialog.svelte";
+  import SettingsView from "$lib/components/SettingsView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
@@ -172,6 +172,7 @@
   const publishController = new PublishSectionController({
     projectDir: () => lifecycle.currentDir,
     listProviders: (dir) => api.publish.listProviders(dir),
+    preflight: (dir, providerIds) => api.publish.preflight(dir, providerIds),
     setConfig: (dir, providerId, values) => api.publish.setConfig(dir, providerId, values),
     connect: (dir, providerId, token, account) => api.publish.connect(dir, providerId, token, account),
     disconnect: (providerId, account) => api.publish.disconnect(providerId, account),
@@ -239,6 +240,7 @@
     isNarrow: () => isNarrow,
     persistZoom: (value) => settings.set({ preview: { defaultZoom: value } }),
     persistViewMode: (mode) => settings.set({ preview: { viewMode: mode } }),
+    persistSplitRatio: (value) => settings.set({ preview: { splitRatio: value } }),
     saveViewerPrefs: (patch) => saveViewerPrefs(patch),
     measureContainerWidth: () => {
       const iframe = document.querySelector<HTMLIFrameElement>("iframe");
@@ -279,7 +281,7 @@
   // (their old inline defaults #5a5a5a / two-column / fit-width now live in
   // DEFAULT_SETTINGS). Local mutations write back through useSettings().set().
   // bgColor has no toolbar control (that was removed in the toolbar redesign);
-  // it is set via the Settings dialog only.
+  // it is set via the Settings panel only.
   const settings = useSettings();
   _loadSettings();
   let zoom = $derived(settings.current.preview.defaultZoom);
@@ -308,38 +310,48 @@
   // retired no-op history seam (L8 / ARCH #41). Undefined whenever the
   // activity view isn't the current editor-pane view.
   let activityViewRef = $state<{ refreshHistory: () => void } | undefined>(undefined);
-  // The activity/history view BORROWS the editor pane (it forces editorOpen so
-  // it has a frame to render into). Capture the workspace state it displaced
-  // so closing the history RESTORES it — without this, closing left the pane
-  // stuck open on an editor that had never loaded a module or file ("Loading
-  // content…" forever) and the Edit/Preview toggle buttons out of sync with
-  // the panes actually shown (user feedback).
-  let activityRestore: { editorOpen: boolean; previewHidden: boolean } | null = null;
-  function showProjectLog(filePath: string | null): void {
-    logFilePath = filePath;
-    if (editorView !== "activity") {
-      activityRestore = { editorOpen, previewHidden };
+  // The activity view borrows the editor pane and restores the workspace it
+  // displaces, avoiding an editor left open without a loaded file on close.
+  let paneViewRestore: { editorOpen: boolean; previewHidden: boolean } | null = null;
+  function showActivityView(): void {
+    if (editorView === "editor") {
+      paneViewRestore = { editorOpen, previewHidden };
     }
     editorView = "activity";
     editorOpen = true;
     previewHidden = false;
   }
-  function closeActivityView(): void {
+  function closePaneView(): void {
     editorView = "editor";
-    const restore = activityRestore;
-    activityRestore = null;
+    const restore = paneViewRestore;
+    paneViewRestore = null;
     if (restore) {
       editorOpen = restore.editorOpen;
       previewHidden = restore.previewHidden;
     }
     if (editorOpen) {
-      // The pane stays open showing the editor — make sure it actually has
-      // the editor module and a file (the activity view needed neither, so
-      // nothing ever loaded them on this path).
       loadEditorModule();
       void ensureEditorFile();
       focusEditorWhenReady();
     }
+  }
+  function showProjectLog(filePath: string | null): void {
+    logFilePath = filePath;
+    showActivityView();
+  }
+  function closeActivityView(): void {
+    closePaneView();
+  }
+  function openSettings(): void {
+    settingsOpen = true;
+  }
+  function closeSettings(): void {
+    settingsOpen = false;
+    if (landingVisible) landingRef?.focusLayer();
+  }
+  function toggleSettings(): void {
+    if (settingsOpen) closeSettings();
+    else openSettings();
   }
   /** After a successful snapshot restore (H2): reconcile the open editor
    * buffer against disk — same reconciliation the folder watcher runs for any
@@ -442,6 +454,7 @@
     pageNav,
     zoomView,
     setViewModeSetting: (mode) => settings.set({ preview: { viewMode: mode } }),
+    setSplitRatioSetting: (value) => settings.set({ preview: { splitRatio: value } }),
     setPendingRestore: (viewMode, page) => {
       pendingRestoreViewMode = viewMode;
       pendingRestorePage = page;
@@ -481,11 +494,10 @@
       pageNav.pageEditing = false;
       editorOpen = false;
       previewHidden = false;
-      // The editor-pane view mode must reset with the workspace — a project
-      // closed while the history view borrowed the pane would otherwise
-      // reopen the NEXT project's editor pane showing history.
+      // A project closed while activity borrowed the editor must not reopen the
+      // next project on that stale view.
       editorView = "editor";
-      activityRestore = null;
+      paneViewRestore = null;
       buffer?.reset();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
@@ -886,6 +898,10 @@
   // state now lives inside the buffer.
   let editorOpen = $state(false);
   let previewHidden = $state(false);
+  // Focus mode (#104) — transient editor-only layout. Declared here (before the
+  // split-grid deriveds that read it) so it's initialised ahead of them.
+  let focusMode = $state(false);
+  let focusRestore: { editorOpen: boolean; paneMode: "edit" | "view" } | null = null;
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
   let editorRef = $state<{
     focus: () => void;
@@ -911,10 +927,8 @@
 
   // Plugin manager (#30) — opened from the overflow menu (desktop + project).
   // ── Project Configuration view (#PCV) ───────────────────────────────────────
-  // Project configuration is now a left-sidebar tab, not an editor-pane swap.
-  // ARCH #59: the union used to include "config" for the old editor-pane-swap
-  // design, but nothing has assigned it since the move to the sidebar tab —
-  // shrunk to the two values actually reachable.
+  // Project configuration is now a left-sidebar tab; activity is the only
+  // alternate editor-pane view. Settings always owns the full window.
   let editorView = $state<"editor" | "activity">("editor");
 
   /**
@@ -942,6 +956,7 @@
    */
   function openStyleFile(absPath: string) {
     editorView = "editor";
+    paneViewRestore = null;
     editorOpen = true;
     loadEditorModule();
     selectEditorFile(absPath);
@@ -992,17 +1007,18 @@
   // previously the editor only rendered `{#if editorOpen}`, so a persisted
   // paneMode="edit" hid the preview without rendering the editor.
   let editorPaneOpen = $derived(
-    !!lifecycle.currentDir &&
-      lifecycle.sourceMode === "folder" &&
-      (isNarrow ? paneMode === "edit" : editorOpen),
+    editorView === "activity" ||
+      (!!lifecycle.currentDir &&
+        lifecycle.sourceMode === "folder" &&
+        (isNarrow ? paneMode === "edit" : editorOpen)),
   );
   let splitGridColumns = $derived(
-    editorPaneOpen && !isNarrow && !previewHidden
+    editorPaneOpen && !isNarrow && !previewHidden && !focusMode
       ? splitTemplateColumns(zoomView.splitPaneRatio)
       : "",
   );
   let previewCollapseGridColumns = $derived(
-    editorPaneOpen && !isNarrow && previewHidden
+    editorPaneOpen && !isNarrow && previewHidden && !focusMode
       ? "minmax(0, 1fr) 0 minmax(0, 0)"
       : "",
   );
@@ -1166,10 +1182,17 @@
     (bg) => client?.injectStyles("viewer-canvas", buildViewerStyles(bg)),
     () => !!client,
   );
+  // Split ratio (#103): the durable settings value seeds the controller (which
+  // holds the live $state), so the last-dragged ratio survives restart. The
+  // guard fires only when splitRatio itself changes — an unrelated settings
+  // change won't clobber a per-project ratio applied at project-open, and the
+  // controller's own persist writes this same value back (idempotent).
+  const splitRatioSink = settingsChangeGuard<number>((r) => zoomView.restoreSplitRatio(r));
   onMount(() =>
     onSettingsChange((s) => {
       recoverySink(s.editor.crashRecovery);
       previewBgSink(s.appearance.previewBg);
+      splitRatioSink(s.preview.splitRatio);
     }),
   );
 
@@ -1348,11 +1371,10 @@
 
   function toggleEditor() {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
-    // Manually toggling while the history view borrows the pane exits history
-    // mode — the explicit user action supersedes the restore-on-close state.
-    if (editorView === "activity") {
+    // Manually toggling while activity borrows the editor exits that view.
+    if (editorView !== "editor") {
       editorView = "editor";
-      activityRestore = null;
+      paneViewRestore = null;
     }
     editorOpen = !editorOpen;
     // On open, move keyboard focus into the editor so Ctrl+E acts as a
@@ -1446,7 +1468,7 @@
 
   // Canvas styles are injected by the renderingComplete handler (which already
   // calls client.injectStyles). View-mode changes from the Settings panel are
-  // handled by the onViewModeChange callback passed to SettingsDialog.
+  // handled by the onViewModeChange callback passed to SettingsView.
 
   onMount(() => {
     api.doctor()
@@ -1617,17 +1639,26 @@
         key: e.key,
       });
       // Cmd/Ctrl+, opens the Settings panel (toggles closed if already open).
-      // Allowed even over the start screen — the dialog renders outside the
-      // inert workspace, and on first run the landing is the only screen.
       if (command === "settings") {
         e.preventDefault();
-        settingsOpen = !settingsOpen;
+        toggleSettings();
         return;
       }
       // The start screen owns the rest of the keyboard while it's up (its own
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
       if (landingVisible) return;
+      // Cmd/Ctrl+Shift+F toggles focus mode (#104); Esc also exits it.
+      if (command === "focus-mode") {
+        e.preventDefault();
+        toggleFocusMode();
+        return;
+      }
+      if (focusMode && e.key === "Escape") {
+        e.preventDefault();
+        exitFocusMode();
+        return;
+      }
       // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
       if (command === "toggle-editor") {
         e.preventDefault();
@@ -2002,6 +2033,59 @@
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
   }
 
+  // Double-click the splitter → reset to the breakpoint default (#103).
+  function resetSplit() {
+    zoomView.resetSplitRatio();
+  }
+
+  // Keyboard resize (#103, WCAG 2.2 SC 2.5.7): Arrow keys nudge the focused
+  // splitter by ~2% — the non-drag alternative to dragging.
+  function onSplitKeydown(e: KeyboardEvent) {
+    let direction = 0;
+    if (e.key === "ArrowLeft" || e.key === "ArrowUp") direction = -1;
+    else if (e.key === "ArrowRight" || e.key === "ArrowDown") direction = 1;
+    else return;
+    e.preventDefault();
+    zoomView.nudgeSplit(direction);
+  }
+
+  // ── Focus mode (#104) ──────────────────────────────────────────────────────
+  // Transient (never persisted): hides all chrome so only the editor fills the
+  // window. Toggled by Cmd/Ctrl+Shift+F, a menu item, or Esc. The chrome
+  // (toolbar / left panel / status bar / preview) is hidden purely via the
+  // `.shell.focus-mode` CSS class, so leftPanelOpen/previewHidden are untouched
+  // and return automatically on exit; only `editorOpen` must be forced true (the
+  // editor pane only mounts when it is), so we snapshot and restore just that.
+  // (`focusMode`/`focusRestore` are declared up by `editorOpen` so the split-grid
+  // deriveds that read `focusMode` see it initialised.)
+  function enterFocusMode() {
+    if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
+    focusRestore = { editorOpen, paneMode };
+    editorOpen = true;
+    loadEditorModule();
+    void ensureEditorFile();
+    focusEditorWhenReady();
+    // Narrow single-pane layout is left functionally unchanged — focus mode
+    // there just shows the editor tab (setPaneMode also opens/focuses it).
+    if (isNarrow && paneMode !== "edit") setPaneMode("edit");
+    focusMode = true;
+  }
+
+  function exitFocusMode() {
+    if (!focusMode) return;
+    focusMode = false;
+    if (focusRestore) {
+      editorOpen = focusRestore.editorOpen;
+      if (isNarrow && paneMode !== focusRestore.paneMode) setPaneMode(focusRestore.paneMode);
+      focusRestore = null;
+    }
+  }
+
+  function toggleFocusMode() {
+    if (focusMode) exitFocusMode();
+    else enterFocusMode();
+  }
+
   // ── Mobile tab bar (#34): Markdown / CSS / Preview ─────────────────────────
   // The single-column (narrow) layout switches the one visible pane between the
   // markdown editor, the CSS editor, and the preview. Both editor tabs share the
@@ -2204,11 +2288,9 @@
   </div>
 {/if}
 
-<!-- inert while the start screen is up: the workspace keeps rendering (the
-     landing scrim is translucent so the preview iframe stays un-throttled)
-     but takes no focus/clicks. Dialogs and toasts live OUTSIDE this subtree
-     so they stay interactive above the landing. -->
-<div class="app-root" inert={landingVisible}>
+<!-- inert while the start screen or full-window Settings view is up: the
+      workspace keeps rendering, but never accepts interaction underneath. -->
+<div class="app-root" inert={landingVisible || settingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -2224,7 +2306,7 @@
   </div>
 {/if}
 
-<div class="shell">
+<div class="shell" class:focus-mode={focusMode}>
   <header class="toolbar" class:edit-narrow={isNarrow && paneMode === "edit"}>
     <section class="left">
       <!-- Panel toggle — far left, first control in navbar -->
@@ -2567,6 +2649,16 @@
           <Icon name="ellipsis-vertical" />
         </summary>
         <div class="menu-panel menu-panel-right">
+          {#if lifecycle.currentDir && lifecycle.sourceMode === "folder"}
+            <!-- Focus mode (#104): editor-only, chrome hidden. Transient. -->
+            <button
+              class="menu-item"
+              aria-pressed={focusMode}
+              onclick={(e) => { toggleFocusMode(); closeMenu(e); }}
+            >
+              <Icon name="pen-line" /> {focusMode ? "Exit focus mode" : "Focus mode"} ({focusMode ? "Esc" : "Ctrl+Shift+F"})
+            </button>
+          {/if}
           {#if isDesktop()}
             <!-- Advanced setup (#14): Git/remote diagnostics + private servers -->
             <button
@@ -2734,17 +2826,33 @@
           {/if}
         </section>
         {#if !isNarrow && !previewHidden}
-          <button
-            type="button"
+          <!-- Focusable separator (ARIA window-splitter pattern): drag, or
+               Arrow-key resize / double-click reset for the non-drag path
+               (#103, WCAG 2.2 SC 2.5.7). A <div>, not a <button> — a button
+               may not take role="separator". A focusable role="separator" IS
+               interactive per the ARIA spec; the svelte a11y linter doesn't
+               model that pattern (mirrors LeftPanel's resize-handle). -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div
             class="splitter"
             class:dragging={zoomView.draggingSplit}
+            role="separator"
+            aria-orientation="vertical"
+            aria-controls="mobile-panel-editor mobile-panel-preview"
+            tabindex="0"
             aria-label="Resize editor and preview panes"
-            title="Resize editor and preview panes"
+            aria-valuenow={Math.round(zoomView.splitPaneRatio * 100)}
+            aria-valuemin={25}
+            aria-valuemax={75}
+            title="Resize editor and preview panes. Drag or use arrow keys; double-click to reset."
             onpointerdown={startSplitDrag}
             onpointermove={moveSplitDrag}
             onpointerup={stopSplitDrag}
             onpointercancel={stopSplitDrag}
-          ></button>
+            ondblclick={resetSplit}
+            onkeydown={onSplitKeydown}
+          ></div>
         {/if}
       {/if}
       <section
@@ -2754,7 +2862,7 @@
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
         aria-hidden={previewHidden}
-        inert={previewHidden || (isNarrow && paneMode === "edit") ? true : undefined}
+        inert={previewHidden || (isNarrow && (paneMode === "edit" || editorView !== "editor")) ? true : undefined}
       >
         {#key lifecycle.previewUrl}
           <PreviewFrame
@@ -2803,8 +2911,6 @@
       </section>
     </div>
   {/if}
-  <!-- No {:else} empty state here — the start screen (WelcomeLanding, mounted
-       after .app-root) is the app's single "nothing open" surface. -->
 
     </div> <!-- /main-content -->
   </div> <!-- /left-panel-region -->
@@ -2849,17 +2955,18 @@
         throw e;
       }
     }}
-    onOpenSettings={() => (settingsOpen = true)}
+    onOpenSettings={openSettings}
     onOpenHelp={() => (helpOpen = true)}
   />
 </div>
 </div>
 
 <!-- Start screen: interactive cover over the (pre-rendering) workspace. Sits
-     outside .app-root so it is never inert; dialogs (top layer) open above it. -->
+     outside .app-root so it is never inert. -->
 <WelcomeLanding
   bind:this={landingRef}
   visible={landingVisible}
+  inactive={settingsOpen}
   continueTitle={landingContinueTitle}
   continueDetail={landingContinueDetail}
   status={landingStatus}
@@ -2882,7 +2989,7 @@
   onNewProject={() => newProjectWizardRef?.show()}
   onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
   onOpenGuide={openSetupGuide}
-  onOpenSettings={() => (settingsOpen = true)}
+  onOpenSettings={openSettings}
   onOpenHelp={() => (helpOpen = true)}
   onWhatsNew={openReleaseNotes}
   onAdopt={() => {
@@ -2892,6 +2999,16 @@
   onUpdateApply={() => updateController.applyNow()}
   onUpdateDownload={() => updateController.download()}
 />
+{#if settingsOpen}
+  <section class="settings-global-view" aria-label="Settings">
+    <SettingsView
+      projectDir={lifecycle.currentDir}
+      onClose={closeSettings}
+      onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
+      onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
+    />
+  </section>
+{/if}
 
 <HelpDialog
   bind:open={helpOpen}
@@ -2902,15 +3019,6 @@
   checkingUpdates={updateController.checking}
   updateReadyVersion={updateController.readyVersion}
   updateAvailableVersion={updateController.availableVersion}
-/>
-<SettingsDialog
-  bind:open={settingsOpen}
-  projectDir={lifecycle.currentDir}
-  onClose={() => {
-    if (landingVisible) landingRef?.focusLayer();
-  }}
-  onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
-  onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
 <GitHubDialog
   bind:open={githubOpen}
@@ -2925,7 +3033,16 @@
 {#if publishOpen}
   <!-- Mounted fresh on open so the wizard loads providers in onMount and resets
        to step 1 (no $effect, per CLAUDE.md §8). -->
-  <PublishWizard controller={publishController} onClose={() => (publishOpen = false)} />
+  <PublishWizard
+    controller={publishController}
+    onClose={() => (publishOpen = false)}
+    onNavigate={(entry) => {
+      // A preflight "Go to" — close the modal wizard, then reveal the finding
+      // in the editor via the shared Problems-panel navigation affordance.
+      publishOpen = false;
+      openProblem(entry);
+    }}
+  />
 {/if}
 <AdvancedSetupDialog
   bind:open={advancedSetupOpen}
@@ -3115,6 +3232,13 @@
   .editor-pane {
     border-right: 1px solid var(--app-border);
   }
+  .settings-global-view {
+    position: fixed;
+    inset: 0;
+    z-index: 901;
+    display: flex;
+    background: var(--app-bg);
+  }
   .splitter {
     width: 6px;
     min-width: 6px;
@@ -3126,10 +3250,50 @@
     touch-action: none;
   }
   .splitter:hover,
-  .splitter.dragging,
-  .splitter:focus-visible {
+  .splitter.dragging {
     background: var(--app-focus-ring);
     outline: none;
+  }
+  /* WCAG 2.2 SC 2.4.7: the keyboard-resizable splitter needs a visible focus
+     ring (it's a focusable separator / window splitter). */
+  .splitter:focus-visible {
+    background: var(--app-focus-ring);
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: 1px;
+  }
+
+  /* ── Focus mode (#104) ─────────────────────────────────────────────────────
+     Editor-only: hide every chrome surface so the editor pane fills the window.
+     Purely CSS so leftPanelOpen/previewHidden state is untouched and returns on
+     exit. Scoped to the WIDE layout (min-width:821px, the complement of the
+     `(max-width:820px)` narrow breakpoint) so the ≤820px single-column layout
+     is left functionally unchanged — there focus mode only shows the editor tab
+     (via setPaneMode in JS) and the toolbar's mobile tab bar must stay. */
+  @media (min-width: 821px) {
+    .shell.focus-mode > .toolbar,
+    .shell.focus-mode :global(.status-bar),
+    .shell.focus-mode :global(.left-panel),
+    .shell.focus-mode .splitter,
+    .shell.focus-mode .preview-pane {
+      display: none;
+    }
+    /* LeftPanel is display:none'd above, so drop the negative-margin
+       compensation that assumed its 260px ghost width. */
+    .shell.focus-mode .left-panel-region .main-content {
+      margin-left: 0;
+    }
+    /* Collapse the (now editor-only) split grid to a single column. Higher
+       specificity than `.workspace.editor-open`, and the inline grid style is
+       nulled out while focusMode is on (deriveds gated), so no !important. */
+    .shell.focus-mode .workspace.editor-open {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* Honour reduced motion for the layout shift focus mode triggers. */
+    .left-panel-region .main-content {
+      transition: none;
+    }
   }
   .editor-loading {
     flex: 1;

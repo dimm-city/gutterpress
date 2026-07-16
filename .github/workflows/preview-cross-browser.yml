@@ -19,7 +19,7 @@ jobs:
     name: Paged.js preview smoke (chromium + firefox + webkit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
@@ -31,7 +31,7 @@ jobs:
         run: bun run build
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('packages/cli/package.json') }}

@@ -45,6 +45,7 @@ interface Harness {
     classify: Spy<[string]>;
     clearSyncDiag: Spy<[]>;
     setViewModeSetting: Spy<[string]>;
+    setSplitRatioSetting: Spy<[number]>;
     setPendingRestore: Spy<[unknown, unknown]>;
     resetFirstRenderGate: Spy<[]>;
     flushBuffer: Spy<[]>;
@@ -81,6 +82,7 @@ function make(): Harness {
   const classify = spy<[string]>();
   const clearSyncDiag = spy<[]>();
   const setViewModeSetting = spy<[string]>();
+  const setSplitRatioSetting = spy<[number]>();
   const setPendingRestore = spy<[unknown, unknown]>();
   const resetFirstRenderGate = spy<[]>();
   const flushBuffer = spy<[]>();
@@ -106,6 +108,7 @@ function make(): Harness {
     classify,
     clearSyncDiag,
     setViewModeSetting,
+    setSplitRatioSetting,
     setPendingRestore,
     resetFirstRenderGate,
     flushBuffer,
@@ -166,6 +169,7 @@ function make(): Harness {
       restoreSplitRatio(ratio: number): void;
     },
     setViewModeSetting: (mode) => setViewModeSetting(mode),
+    setSplitRatioSetting: (value) => setSplitRatioSetting(value),
     setPendingRestore: (viewMode, page) => setPendingRestore(viewMode, page),
     resetFirstRenderGate: () => resetFirstRenderGate(),
     flushBuffer: () => {
@@ -358,6 +362,7 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
     pageNav: { totalPages: 0, currentPage: 1 },
     zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
     setViewModeSetting: () => {},
+    setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     resetFirstRenderGate: () => {},
     flushBuffer: () => {
@@ -420,6 +425,7 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
     pageNav: { totalPages: 0, currentPage: 1 },
     zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
     setViewModeSetting: () => {},
+    setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     resetFirstRenderGate: () => {},
     // ONLY the first invocation (the first open's pre-flush) blocks on
@@ -537,6 +543,7 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
     pageNav: { totalPages: 0, currentPage: 1 },
     zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
     setViewModeSetting: () => {},
+    setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     resetFirstRenderGate: () => {},
     flushBuffer: () => {
@@ -612,6 +619,7 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
     pageNav: { totalPages: 0, currentPage: 1 },
     zoomView: { userSetViewMode: false, restoreSplitRatio: () => {} },
     setViewModeSetting: () => {},
+    setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     resetFirstRenderGate: () => {},
     flushBuffer: () => Promise.resolve(),

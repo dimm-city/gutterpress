@@ -32,28 +32,46 @@ test("Electron windows and AppImage package carry the app icon", () => {
   expect(builder).toContain("icon.png");
 });
 
-test("closing the history view restores the workspace it displaced (no stuck 'Loading content')", () => {
+test("closing activity restores the workspace it displaced (no stuck 'Loading content')", () => {
   const src = read("src/routes/+page.svelte");
-  // The activity/history view BORROWS the editor pane; opening it captures the
-  // displaced editorOpen/previewHidden state…
-  expect(src).toContain("activityRestore = { editorOpen, previewHidden }");
+  // Activity borrows the editor pane and captures the displaced
+  // editorOpen/previewHidden state…
+  expect(src).toContain("paneViewRestore = { editorOpen, previewHidden }");
   // …and closing restores it, loading the editor module + a file whenever the
   // pane stays open (the activity view needed neither, so the editor used to
   // come back mounted-but-empty, stuck on "Loading content" until the author
   // manually toggled Edit — and the toggle buttons read out of sync).
-  const closeIdx = src.indexOf("function closeActivityView()");
+  const closeIdx = src.indexOf("function closePaneView()");
   expect(closeIdx).toBeGreaterThan(-1);
   const closeBody = src.slice(closeIdx, closeIdx + 900);
   expect(closeBody).toContain("editorOpen = restore.editorOpen");
   expect(closeBody).toContain("previewHidden = restore.previewHidden");
   expect(closeBody).toContain("loadEditorModule()");
   expect(closeBody).toContain("ensureEditorFile()");
-  // Manually toggling Edit while history is shown exits history mode.
+  // Manually toggling Edit while activity is shown exits that mode.
   const toggleIdx = src.indexOf("function toggleEditor()");
   const toggleBody = src.slice(toggleIdx, toggleIdx + 700);
-  expect(toggleBody).toContain('editorView === "activity"');
+  expect(toggleBody).toContain('editorView !== "editor"');
   // Project teardown resets the borrowed-pane state too.
-  expect(src).toContain('editorView = "editor";\n      activityRestore = null;');
+  expect(src).toContain('editorView = "editor";\n      paneViewRestore = null;');
+});
+
+test("settings opened from the start screen remains above the landing instead of exposing its pre-rendered workspace", () => {
+  const src = read("src/routes/+page.svelte");
+  expect(src).toContain('inert={landingVisible || settingsOpen}');
+  expect(src).toContain('visible={landingVisible}');
+  expect(src).toContain('inactive={settingsOpen}');
+  expect(src).toContain('{#if settingsOpen}');
+  expect(src).toContain('class="settings-global-view"');
+  expect(src).not.toContain('editorView === "settings"');
+});
+
+test("viewer builds its shared runtime without invoking the CLI entry build", () => {
+  const viewerPackage = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
+  const cliPackage = JSON.parse(read("../cli/package.json")) as { scripts: Record<string, string> };
+  expect(viewerPackage.scripts["build:runtime"]).toBe("bun run --cwd ../cli build:library");
+  expect(viewerPackage.scripts.build).toContain("build:runtime");
+  expect(cliPackage.scripts["build:library"]).not.toContain("src/cli.ts");
 });
 
 test("the external splash window is gone — the in-window start screen is the launch surface", () => {
@@ -255,7 +273,7 @@ test("settings/help live in a bottom-right status toolbar and problems overlay w
   expect(status).toContain("onOpenHelp");
   expect(status).toContain("shell-actions");
   expect(status).toContain("z-index: 300");
-  expect(page).toContain("onOpenSettings={() => (settingsOpen = true)}");
+  expect(page).toContain("onOpenSettings={openSettings}");
   expect(page).toContain("onOpenHelp={() => (helpOpen = true)}");
 });
 

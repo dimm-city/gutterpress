@@ -22,8 +22,16 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import { onMount } from "svelte";
-  import { dialogBehavior } from "$lib/dialog";
+  import { dialogBehavior, requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "$lib/dialog";
   import { friendlyPublishError } from "$lib/errors";
+  import {
+    groupPreflight,
+    preflightHeaderLevel,
+    preflightCounts,
+    categoryLabel,
+    type PreflightRow,
+  } from "$lib/preflight";
+  import type { ProblemEntry } from "$lib/platform/dtos";
   import type { PublishProviderCard } from "$lib/platform/contract";
   import type { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
 
@@ -31,15 +39,25 @@
     controller,
     triggerEl,
     onClose,
+    onNavigate,
   }: {
     controller: PublishSectionController;
     triggerEl?: HTMLButtonElement | undefined;
     onClose?: () => void;
+    /** Reveal a preflight finding in the editor (the "Go to" affordance). The
+     *  parent closes this modal wizard and delegates to the shared
+     *  Problems-panel navigation (`openProblem`). */
+    onNavigate?: (entry: ProblemEntry) => void;
   } = $props();
 
-  // 0 = choose; 1..N = setup step for selectedCards[i-1]; N+1 = publish.
+  // 0 = choose; 1..N = setup step for selectedCards[i-1]; N+1 = preflight;
+  // N+2 = publish.
   let stepIndex = $state(0);
   let selected = $state<Set<string>>(new Set());
+  // Preflight override (#105): the author may publish past blocking errors, but
+  // only after an explicit inline confirmation.
+  let publishAnyway = $state(false);
+  let overrideConfirm = $state<InlineConfirmState>({});
   // Per-provider: is the "add another account" connect form open?
   let addingAccount = $state<Record<string, boolean>>({});
 
@@ -64,9 +82,16 @@
 
   const cards = $derived(controller.publishCards);
   const selectedCards = $derived(cards.filter((c) => selected.has(c.id)));
-  const totalSteps = $derived(selectedCards.length + 2);
+  const totalSteps = $derived(selectedCards.length + 3);
+  // Publish is the strict last index; preflight sits one before it.
   const stepKind = $derived(
-    stepIndex === 0 ? "choose" : stepIndex >= totalSteps - 1 ? "publish" : "setup",
+    stepIndex === 0
+      ? "choose"
+      : stepIndex === totalSteps - 1
+        ? "publish"
+        : stepIndex === totalSteps - 2
+          ? "preflight"
+          : "setup",
   );
   const currentCard = $derived(
     stepKind === "setup" ? (selectedCards[stepIndex - 1] ?? null) : null,
@@ -74,11 +99,29 @@
   const stepLabels = $derived([
     "Choose",
     ...selectedCards.map((c) => c.label),
+    "Preflight",
     "Publish",
   ]);
   const blockedCards = $derived(
     selectedCards.filter((c) => c.credentialRequired && !c.connected),
   );
+
+  // ── Preflight gate (#105) ───────────────────────────────────────────────────
+  // A blocking ERROR disables Publish by default; the author may override with an
+  // explicit confirmation. Warnings/info never block. Not-yet-run also blocks
+  // (the author is prompted to run it).
+  const preflightErrorCount = $derived(
+    controller.preflightRows.filter((r) => r.severity === "error").length,
+  );
+  const preflightMissing = $derived(!controller.preflightRan);
+  // An infrastructure failure (route/host error) clears the rows and sets
+  // preflightError; it must NOT read as "all clear", so it keeps the gate closed.
+  const preflightErrored = $derived(controller.preflightError !== null);
+  const preflightBlocks = $derived(
+    controller.preflightRan && preflightErrorCount > 0 && !publishAnyway,
+  );
+  /** Publish actions are disabled while preflight hasn't run, errored, or blocks. */
+  const publishGated = $derived(preflightMissing || preflightErrored || preflightBlocks);
 
   onMount(() => {
     stepIndex = 0;
@@ -90,10 +133,38 @@
     onClose?.();
   }
   function next() {
-    stepIndex = Math.min(stepIndex + 1, totalSteps - 1);
+    const target = Math.min(stepIndex + 1, totalSteps - 1);
+    stepIndex = target;
+    // Entering the Preflight step runs the checks (no $effect — driven by the
+    // step-change event handler, CLAUDE.md §8).
+    if (target === totalSteps - 2) runPreflightNow();
   }
   function back() {
     stepIndex = Math.max(stepIndex - 1, 0);
+  }
+  function runPreflightNow() {
+    // Re-running invalidates any prior "publish anyway" override.
+    publishAnyway = false;
+    overrideConfirm = cancelInlineConfirm(overrideConfirm, "override");
+    void controller.runPreflight(selectedCards.map((c) => c.id));
+  }
+  function requestPublishAnyway() {
+    const { state, confirmed } = requestInlineConfirm(overrideConfirm, "override");
+    overrideConfirm = state;
+    if (confirmed) publishAnyway = true;
+  }
+  function goTo(row: PreflightRow) {
+    const loc = row.location;
+    if (!loc?.filePath) return;
+    onNavigate?.({
+      filePath: loc.filePath,
+      file: loc.file,
+      line: loc.line,
+      column: loc.column,
+      severity: row.severity,
+      message: row.message,
+      source: row.id,
+    });
   }
   function toggle(id: string) {
     const nextSet = new Set(selected);
@@ -105,6 +176,7 @@
     return controller.publishConfigDrafts[card.id]?.[key] ?? card.config[key] ?? "";
   }
   async function publishAll() {
+    if (publishGated) return; // preflight gate (belt-and-braces with the disabled state)
     for (const card of selectedCards) {
       if (card.credentialRequired && !card.connected) continue;
       await controller.runPublish(card.id, false);
@@ -250,12 +322,112 @@
       {:else}
         <p class="muted">No account or key needed — we'll prepare an upload package with step-by-step instructions.</p>
       {/if}
+    {:else if stepKind === "preflight"}
+      {@const level = preflightHeaderLevel(controller.preflightRows)}
+      {@const counts = preflightCounts(controller.preflightRows)}
+      <p class="lead">A quick readiness check of your content, images, and fonts before you publish.</p>
+
+      <div class="pf-head">
+        <span class={`pf-status pf-${level}`}>
+          <Icon
+            name={controller.preflightBusy
+              ? "refresh-cw"
+              : level === "error"
+                ? "circle-x"
+                : level === "warning"
+                  ? "triangle-alert"
+                  : "circle-check"}
+            size={16}
+          />
+          <span>
+            {#if controller.preflightBusy}
+              Checking your book…
+            {:else if !controller.preflightRan}
+              Not checked yet.
+            {:else if controller.preflightError}
+              Couldn’t run the checks — please try Re-run.
+            {:else if level === "error"}
+              {counts.errors} {counts.errors === 1 ? "problem" : "problems"} to fix before publishing.
+            {:else if level === "warning"}
+              Looks publishable — {counts.warnings} {counts.warnings === 1 ? "thing" : "things"} to review.
+            {:else}
+              All clear — ready to publish.
+            {/if}
+          </span>
+        </span>
+        <button class="dlg-ghost" onclick={runPreflightNow} disabled={controller.preflightBusy}>
+          <Icon name="refresh-cw" size={13} /> Re-run
+        </button>
+      </div>
+
+      {#if controller.preflightError}
+        <p class="error" role="alert">{controller.preflightError}</p>
+      {/if}
+
+      {#if controller.preflightRan && !controller.preflightBusy && !controller.preflightError}
+        {#if controller.preflightRows.length === 0}
+          <p class="success-line"><Icon name="circle-check" size={13} /> No problems found in your content, images, or fonts.</p>
+        {:else}
+          {#each groupPreflight(controller.preflightRows) as group (group.category)}
+            <section class="pf-group">
+              <h3 class="pf-group-title">{categoryLabel(group.category)}</h3>
+              <ul class="pf-list">
+                {#each group.rows as row, i (row.id + "|" + i)}
+                  <li class={`pf-row sev-${row.severity}`}>
+                    <Icon
+                      name={row.severity === "error" ? "circle-x" : row.severity === "warning" ? "triangle-alert" : "info"}
+                      size={13}
+                    />
+                    <div class="pf-body">
+                      <p class="pf-msg">{row.message}</p>
+                      <div class="pf-meta">
+                        <span class="pf-source">{row.label}</span>
+                        {#if row.provider}<span class="pf-provider">{row.provider}</span>{/if}
+                        {#if row.code}<code class="pf-code">{row.code}</code>{/if}
+                        {#if row.location?.file}
+                          <span class="pf-loc">{row.location.file}{#if row.location.line}:{row.location.line}{/if}</span>
+                        {/if}
+                      </div>
+                    </div>
+                    {#if row.fixable === "navigate"}
+                      <button class="dlg-ghost pf-goto" onclick={() => goTo(row)}>Go to</button>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            </section>
+          {/each}
+        {/if}
+      {/if}
+
+      <p class="muted small">
+        <Icon name="info" size={12} /> Print-quality PDF checks (page size, ink coverage, embedded fonts) run automatically when you export — no PDF is built here.
+      </p>
     {:else}
       <!-- Publish step -->
       <p class="lead">
         Publishing uses your project's latest build output. If you've changed the book,
         use <strong>Export</strong> first, then publish.
       </p>
+      {#if preflightMissing}
+        <p class="warn" role="alert">
+          <Icon name="triangle-alert" size={14} />
+          Readiness hasn't run yet. <button class="link" onclick={back}>Go back to check</button> before publishing.
+        </p>
+      {:else if preflightErrorCount > 0}
+        <p class="warn" role="alert">
+          <Icon name="triangle-alert" size={14} />
+          Preflight found {preflightErrorCount} {preflightErrorCount === 1 ? "problem" : "problems"} that
+          {preflightErrorCount === 1 ? "blocks" : "block"} publishing.
+          {#if publishAnyway}
+            <span class="muted">Override on — publishing enabled.</span>
+          {:else}
+            <button class="link" onclick={requestPublishAnyway}>
+              {overrideConfirm["override"] ? "Really publish anyway?" : "Publish anyway"}
+            </button>
+          {/if}
+        </p>
+      {/if}
       {#if blockedCards.length > 0}
         <p class="warn" role="alert">
           <Icon name="triangle-alert" size={14} />
@@ -274,8 +446,14 @@
               <button
                 class="dlg-primary"
                 onclick={() => controller.runPublish(card.id, false)}
-                disabled={busy || needsConnect}
-                title={needsConnect ? "Connect first — this destination needs a key." : undefined}
+                disabled={busy || needsConnect || publishGated}
+                title={needsConnect
+                  ? "Connect first — this destination needs a key."
+                  : preflightMissing
+                    ? "Run the readiness check first."
+                    : preflightBlocks
+                      ? "Preflight found blocking problems — fix them or choose Publish anyway."
+                      : undefined}
               >
                 {#if busy}<Icon name="refresh-cw" size={13} /> Publishing…{:else}Publish{/if}
               </button>
@@ -332,11 +510,13 @@
         <button class="dlg-primary" onclick={next} disabled={selected.size === 0}>Next</button>
       {:else if stepKind === "setup"}
         <button class="dlg-primary" onclick={next}>Next</button>
+      {:else if stepKind === "preflight"}
+        <button class="dlg-primary" onclick={next} disabled={controller.preflightBusy}>Next</button>
       {:else}
         <button
           class="dlg-primary"
           onclick={publishAll}
-          disabled={controller.publishBusyId !== null || selectedCards.every((c) => c.credentialRequired && !c.connected)}
+          disabled={controller.publishBusyId !== null || publishGated || selectedCards.every((c) => c.credentialRequired && !c.connected)}
         >
           Publish to all
         </button>
@@ -433,4 +613,27 @@
   /* In-flow footer inside the scrolling body (matches NewProjectWizard). */
   .dlg-actions { display: flex; align-items: center; gap: 8px; padding: 14px 0 0; margin-top: 4px; }
   .dlg-actions .spacer { flex: 1; }
+
+  /* ── Preflight step (#105) ────────────────────────────────────────────── */
+  .pf-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pf-status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
+  .pf-status.pf-error { color: var(--app-error-text); }
+  .pf-status.pf-warning { color: var(--app-warning-text, #d29922); }
+  .pf-status.pf-ok { color: var(--app-success-text, #3fb950); }
+
+  .pf-group { display: flex; flex-direction: column; gap: 6px; }
+  .pf-group-title { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-faint); font-weight: 600; }
+  .pf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .pf-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
+  .pf-row.sev-error { color: var(--app-error-text); }
+  .pf-row.sev-warning { color: var(--app-warning-text, #d29922); }
+  .pf-row.sev-info { color: var(--app-info-text, var(--app-text-muted)); }
+  .pf-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+  .pf-msg { margin: 0; font-size: 12px; color: var(--app-text); }
+  .pf-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 10px; }
+  .pf-source { padding: 1px 6px; border-radius: 10px; background: var(--app-control-bg, var(--app-surface)); color: var(--app-text-secondary); }
+  .pf-provider { padding: 1px 6px; border-radius: 10px; background: var(--app-surface); border: 1px solid var(--app-border); color: var(--app-text-muted); }
+  .pf-code { font-family: var(--app-mono, monospace); color: var(--app-text-faint); }
+  .pf-loc { color: var(--app-text-faint); }
+  .pf-goto { flex-shrink: 0; align-self: flex-start; font-size: 11px; padding: 4px 8px; }
 </style>

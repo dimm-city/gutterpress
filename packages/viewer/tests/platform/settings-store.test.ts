@@ -38,6 +38,18 @@ test("mergeSettings patches one field in a section, preserving sibling fields", 
   expect(merged.editor.autoSaveDelay).toBe(DEFAULT_SETTINGS.editor.autoSaveDelay);
 });
 
+test("mergeSettings patches preview.splitRatio, preserving sibling preview fields (#103)", () => {
+  const merged = mergeSettings(DEFAULT_SETTINGS, {
+    preview: { splitRatio: 0.3 },
+  } as DeepPartialSettings);
+
+  expect(merged.preview.splitRatio).toBe(0.3);
+  // Sibling preview fields survive the section-level spread.
+  expect(merged.preview.viewMode).toBe(DEFAULT_SETTINGS.preview.viewMode);
+  expect(merged.preview.paneMode).toBe(DEFAULT_SETTINGS.preview.paneMode);
+  expect(merged.preview.defaultZoom).toBe(DEFAULT_SETTINGS.preview.defaultZoom);
+});
+
 test("mergeSettings leaves untouched sections intact", () => {
   const merged = mergeSettings(DEFAULT_SETTINGS, {
     versionHistory: { autoSyncMinutes: 5 },
@@ -178,6 +190,19 @@ test("readSettings deep-merges a stored partial over DEFAULT_SETTINGS", async ()
   // Untouched sections keep their defaults.
   expect(s.editor).toEqual(DEFAULT_SETTINGS.editor);
   expect(s.appearance).toEqual(DEFAULT_SETTINGS.appearance);
+});
+
+test("readSettings fills in preview.splitRatio default for a stored file missing it (#103)", async () => {
+  const { store } = makeStore({
+    readFileImpl: async () =>
+      JSON.stringify({ preview: { viewMode: "single" } }),
+  });
+  const s = await store.readSettings();
+
+  // The stored partial's field is honoured…
+  expect(s.preview.viewMode).toBe("single");
+  // …and the new field a pre-existing file never wrote picks up the default.
+  expect(s.preview.splitRatio).toBe(DEFAULT_SETTINGS.preview.splitRatio);
 });
 
 test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>.tmp, then renames over settingsPath", async () => {

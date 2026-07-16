@@ -26,8 +26,16 @@
  * directly) — ZERO `node:*` / lib value imports.
  */
 
-import type { ThemeInfo, ApplyThemeTarget } from "$lib/platform/dtos";
-import { keyOf, sampleSrcdoc } from "$lib/components/config/config-helpers";
+import type {
+  ThemeInfo,
+  ApplyThemeTarget,
+  ThemeImportResult,
+} from "$lib/platform/dtos";
+import {
+  keyOf,
+  sampleSrcdoc,
+  hoverPreviewSrcdoc,
+} from "$lib/components/config/config-helpers";
 
 export interface AppearanceSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
@@ -35,9 +43,15 @@ export interface AppearanceSectionDeps {
   listBuiltIn: () => Promise<ThemeInfo[]>;
   listProject: (projectDir: string) => Promise<ThemeInfo[]>;
   getActive: (projectDir: string) => Promise<ThemeInfo | null>;
+  /** The "Revert to previous theme" target, or null when there is none (#106). */
+  getPrevious: (projectDir: string) => Promise<ThemeInfo | null>;
   apply: (projectDir: string, target: ApplyThemeTarget) => Promise<ThemeInfo>;
+  /** Re-apply the previously active theme (#106). */
+  revert: (projectDir: string) => Promise<ThemeInfo>;
   remove: (projectDir: string, id: string) => Promise<{ ok: true }>;
   importFromFolder: (projectDir: string) => Promise<ThemeInfo | null>;
+  /** Import a `.zip` package or bare `.css` via the native file picker (#106). Null when cancelled. */
+  importFromFile: (projectDir: string) => Promise<ThemeImportResult | null>;
   importFromUrl: (projectDir: string, url: string) => Promise<ThemeInfo>;
   readCss: (
     projectDir: string | null,
@@ -64,6 +78,21 @@ export class AppearanceSectionController {
   thumbs = $state<Record<string, string>>({});
   /** `keyOf` of the theme card whose Remove is armed for a two-step confirm, or null (M7). */
   removeArmedKey = $state<string | null>(null);
+  /** The revert target — the theme active before the current one, or null (#106). */
+  previousTheme = $state<ThemeInfo | null>(null);
+  /** Non-fatal warnings from the last `.zip`/`.css` import (surfaced, not fatal) (#106). */
+  themeWarnings = $state<string[]>([]);
+  /** `keyOf` of the card being hovered for the enlarged preview, or null (#106). */
+  hoverThemeKey = $state<string | null>(null);
+  /** The enlarged 2-page-spread srcdoc for the hovered theme, or null (#106). */
+  hoverPreview = $state<string | null>(null);
+
+  /**
+   * Raw theme CSS cached per card (populated by `loadThumb`) so the hover
+   * preview can build its enlarged 2-page spread without a second host round
+   * trip. Non-reactive — only read imperatively by `showHoverPreview`.
+   */
+  private rawCssCache: Record<string, string> = {};
 
   private readonly deps: AppearanceSectionDeps;
 
@@ -81,6 +110,7 @@ export class AppearanceSectionController {
         kind: t.kind,
         id: t.id,
       });
+      this.rawCssCache[key] = css;
       this.thumbs = { ...this.thumbs, [key]: sampleSrcdoc(css) };
     } catch {
       this.thumbs = { ...this.thumbs, [key]: "__fallback__" };
@@ -97,14 +127,16 @@ export class AppearanceSectionController {
     // may no longer represent the same theme.
     this.removeArmedKey = null;
     try {
-      const [bi, pt, active] = await Promise.all([
+      const [bi, pt, active, previous] = await Promise.all([
         this.deps.listBuiltIn(),
         this.deps.listProject(projectDir),
         this.deps.getActive(projectDir),
+        this.deps.getPrevious(projectDir),
       ]);
       this.builtIns = bi;
       this.projectThemes = pt;
       this.activeThemeId = active?.id ?? null;
+      this.previousTheme = previous;
       // Thumbnails lazy-load (non-fatal if they fail).
       void Promise.all([...bi, ...pt].map((t) => this.loadThumb(t)));
     } catch (e) {
@@ -118,11 +150,13 @@ export class AppearanceSectionController {
     if (!projectDir || this.themeBusyId) return;
     this.themeBusyId = t.id;
     this.themeError = null;
+    this.themeWarnings = [];
     this.removeArmedKey = null;
     try {
       const target: ApplyThemeTarget = { kind: t.kind, id: t.id };
       const applied = await this.deps.apply(projectDir, target);
       this.activeThemeId = applied.id;
+      this.previousTheme = await this.deps.getPrevious(projectDir);
       this.deps.onApplied?.(applied.id);
       // The styles list + design tokens both depend on the now-active
       // stylesheet — refresh them so the Config view agrees with the
@@ -208,5 +242,85 @@ export class AppearanceSectionController {
     } finally {
       this.themeBusyId = null;
     }
+  };
+
+  /**
+   * #106: import a theme from a `.zip` package or a bare `.css` file via the
+   * native file picker. The host validates (rejects on a parse failure / unsafe
+   * paths / over-cap) and returns non-fatal warnings, which are surfaced without
+   * blocking the import.
+   */
+  importThemeFile = async (): Promise<void> => {
+    const projectDir = this.deps.projectDir();
+    if (!projectDir || this.themeBusyId) return;
+    this.themeError = null;
+    this.themeWarnings = [];
+    this.themeBusyId = "__file__";
+    try {
+      const result = await this.deps.importFromFile(projectDir);
+      if (result) {
+        this.themeWarnings = result.warnings.map((w) => w.message);
+        await this.loadThemes();
+      }
+    } catch (e) {
+      this.themeError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.themeBusyId = null;
+    }
+  };
+
+  /** #106: re-apply the previously active theme (available indefinitely). */
+  revertTheme = async (): Promise<void> => {
+    const projectDir = this.deps.projectDir();
+    if (!projectDir || this.themeBusyId || !this.previousTheme) return;
+    this.themeError = null;
+    this.themeWarnings = [];
+    this.themeBusyId = "__revert__";
+    try {
+      const applied = await this.deps.revert(projectDir);
+      this.activeThemeId = applied.id;
+      this.deps.onApplied?.(applied.id);
+      await this.loadThemes();
+      await this.deps.afterThemeChange?.();
+    } catch (e) {
+      this.themeError = e instanceof Error ? e.message : String(e);
+    } finally {
+      this.themeBusyId = null;
+    }
+  };
+
+  // ── Hover preview (#106) ────────────────────────────────────────────────────
+  //
+  // Reuses the per-card thumbnail mechanism (readCss → inline <style> → sandboxed
+  // <iframe srcdoc>), swapping the sample for a FIXED built-in 2-page spread. It
+  // renders a constant sample, never the author's document, so it structurally
+  // cannot re-paginate the manuscript. The raw CSS is already cached by
+  // `loadThumb`; on a cache miss we fetch it once.
+  showHoverPreview = async (t: ThemeInfo): Promise<void> => {
+    const key = keyOf(t);
+    this.hoverThemeKey = key;
+    const cached = this.rawCssCache[key];
+    if (cached !== undefined) {
+      this.hoverPreview = hoverPreviewSrcdoc(cached);
+      return;
+    }
+    const projectDir = this.deps.projectDir();
+    try {
+      const css = await this.deps.readCss(t.kind === "builtin" ? null : projectDir, {
+        kind: t.kind,
+        id: t.id,
+      });
+      this.rawCssCache[key] = css;
+      // The pointer may have moved on while we were fetching — only paint if
+      // this card is still the hovered one.
+      if (this.hoverThemeKey === key) this.hoverPreview = hoverPreviewSrcdoc(css);
+    } catch {
+      if (this.hoverThemeKey === key) this.hoverPreview = null;
+    }
+  };
+
+  hideHoverPreview = (): void => {
+    this.hoverThemeKey = null;
+    this.hoverPreview = null;
   };
 }

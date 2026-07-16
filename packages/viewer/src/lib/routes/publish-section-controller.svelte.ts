@@ -22,11 +22,17 @@
  */
 
 import type { PublishProviderCard, PublishRunResult } from "$lib/platform/contract";
+import type { PreflightRow } from "$lib/preflight";
 
 export interface PublishSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
   projectDir: () => string | null;
   listProviders: (projectDir: string) => Promise<PublishProviderCard[]>;
+  /**
+   * Publish preflight (#105) — run the pre-build SOURCE + ASSET checks (no PDF
+   * build), scoped to the selected destinations.
+   */
+  preflight: (projectDir: string, providerIds: string[]) => Promise<PreflightRow[]>;
   setConfig: (
     projectDir: string,
     providerId: string,
@@ -71,6 +77,13 @@ export class PublishSectionController {
   // Explicit artifact path per provider — viewer PDF exports go wherever the
   // author chose in the save dialog, so the manifest-default rarely exists.
   publishArtifactDrafts = $state<Record<string, string>>({});
+
+  // ── Preflight (#105) — the wizard's readiness step reads these ──────────────
+  preflightRows = $state<PreflightRow[]>([]);
+  /** True once a preflight run has completed (the gate needs "ran vs not-run"). */
+  preflightRan = $state(false);
+  preflightBusy = $state(false);
+  preflightError = $state<string | null>(null);
 
   private readonly deps: PublishSectionDeps;
 
@@ -243,6 +256,31 @@ export class PublishSectionController {
       }
     } catch (e) {
       this.publishError = e instanceof Error ? e.message : String(e);
+    }
+  };
+
+  /**
+   * Run the pre-build publish preflight (#105) for the selected destinations.
+   * Called on ENTERING the wizard's Preflight step and on manual Re-run — each
+   * call is a fresh run (checks the current on-disk content). Errors surface on
+   * `preflightError` and leave `preflightRan` true so the gate still evaluates.
+   */
+  runPreflight = async (providerIds: string[]): Promise<void> => {
+    const projectDir = this.deps.projectDir();
+    if (!projectDir || this.preflightBusy) return;
+    this.preflightBusy = true;
+    this.preflightError = null;
+    try {
+      this.preflightRows = await this.deps.preflight(projectDir, providerIds);
+      this.preflightRan = true;
+    } catch (e) {
+      this.preflightError = e instanceof Error ? e.message : String(e);
+      // A failed run must not read as "checked, all clear" — keep any prior
+      // rows cleared so the gate treats it as unresolved.
+      this.preflightRows = [];
+      this.preflightRan = true;
+    } finally {
+      this.preflightBusy = false;
     }
   };
 

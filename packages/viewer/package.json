@@ -1,14 +1,15 @@
 {
   "name": "@dimm-city/print-md-viewer",
   "private": true,
-  "version": "0.7.1",
+  "version": "0.8.0-rc.1",
   "type": "module",
   "main": "out/main/main.js",
   "author": "itlackey",
   "description": "Desktop viewer for print-md (Electron + SvelteKit adapter-node app, served via app:// + fetch API routes).",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && node ../../tools/check-render-purity.mjs build/client --strict",
+    "build:runtime": "bun run --cwd ../cli build:library",
+    "build": "npm run build:runtime && vite build && node ../../tools/check-render-purity.mjs build/client --strict",
     "preview": "vite preview",
     "test": "svelte-kit sync && node tests/pagedjs-interface.test.mjs && node tests/preview-bridge.test.mjs && bun test --isolate tests/updater tests/platform tests/recovery tests/editor tests/media",
     "electron:build": "electron-vite build && node --check out/main/main.js && node --check out/preload/preload.cjs",
@@ -22,7 +23,9 @@
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts'",
     "typecheck": "tsc -p electron/tsconfig.json",
     "test:ui": "node tests/integration/run-ui.mjs",
-    "perf-gate": "node tests/perf/render-gate.mjs"
+    "perf-gate": "node tests/perf/render-gate.mjs",
+    "rerender-gate": "node tests/perf/rerender-latency-gate.mjs",
+    "rerender-baseline": "node tests/perf/rerender-latency-gate.mjs --write-baseline"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.4",

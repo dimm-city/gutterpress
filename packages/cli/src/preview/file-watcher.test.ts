@@ -61,6 +61,30 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Wait (bounded) until chokidar finishes its initial scan and is ready to
+ * receive events, instead of assuming a fixed 200ms. Resolves on 'ready' (the
+ * fast path) or after a safety cap so a missed 'ready' can never hang the test.
+ * The watcher is created with ignoreInitial, so 'ready' is the correct signal
+ * that manual emits / real fs events will be handled.
+ */
+function waitForWatcherReady(watcher: ReturnType<typeof createFileWatcher>): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (!done) {
+        done = true;
+        resolve();
+      }
+    };
+    watcher.on("ready", finish);
+    void (async () => {
+      for (let i = 0; i < 300 && !done; i++) await wait(10); // ≤3s safety cap
+      finish();
+    })();
+  });
+}
+
 describe('generateAndWriteHtml', () => {
   let testDir: string;
   let tempDir: string;
@@ -380,7 +404,7 @@ describe('createFileWatcher', () => {
   test('triggers rebuild on markdown file change', async () => {
     const watcher = createFileWatcher(state);
 
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     await writeFile(join(testDir, 'chapter-01.md'), '# Updated Content');
 
@@ -395,7 +419,7 @@ describe('createFileWatcher', () => {
   test('ignores dot files', async () => {
     const watcher = createFileWatcher(state);
 
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     await writeFile(join(testDir, '.hidden'), 'hidden content');
 
@@ -434,7 +458,7 @@ describe('createFileWatcher', () => {
     const calls = attachBroadcastRecorder(state);
     const watcher = createFileWatcher(state);
     state.currentWatcher = watcher;
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     watcher.emit('all', 'change', join(testDir, 'chapter-02.md'));
     await waitForRebuild(state, calls);
@@ -451,7 +475,7 @@ describe('createFileWatcher', () => {
     const calls = attachBroadcastRecorder(state);
     const watcher = createFileWatcher(state);
     state.currentWatcher = watcher;
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     watcher.emit('all', 'change', join(testDir, 'chapter-01.md'));
     watcher.emit('all', 'change', join(testDir, 'chapter-02.md'));
@@ -467,7 +491,7 @@ describe('createFileWatcher', () => {
     const calls = attachBroadcastRecorder(state);
     const watcher = createFileWatcher(state);
     state.currentWatcher = watcher;
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     watcher.emit('all', 'change', join(testDir, 'a.css'));
     watcher.emit('all', 'change', join(testDir, 'b.css'));
@@ -487,7 +511,7 @@ describe('createFileWatcher', () => {
     const calls = attachBroadcastRecorder(state);
     const watcher = createFileWatcher(state);
     state.currentWatcher = watcher;
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     watcher.emit('all', 'change', join(testDir, 'sub', 'chapter-03.md'));
     await waitForRebuild(state, calls);
@@ -504,7 +528,7 @@ describe('createFileWatcher', () => {
     const calls = attachBroadcastRecorder(state);
     const watcher = createFileWatcher(state);
     state.currentWatcher = watcher;
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     watcher.emit('all', 'change', join(testDir, 'sub\\chapter-04.md'));
     await waitForRebuild(state, calls);
@@ -538,7 +562,7 @@ describe('createFileWatcher', () => {
       const calls = attachBroadcastRecorder(state);
       const watcher = createFileWatcher(state);
       state.currentWatcher = watcher;
-      await wait(200);
+      await waitForWatcherReady(watcher);
 
       // First change → debounce fires → rebuild starts and blocks on the gate.
       watcher.emit('all', 'change', join(testDir, 'chapter-01.md'));
@@ -572,7 +596,7 @@ describe('createFileWatcher', () => {
     const calls = attachBroadcastRecorder(state);
     const watcher = createFileWatcher(state);
     state.currentWatcher = watcher;
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     watcher.emit('all', 'unlink', join(testDir, 'chapter-99.md'));
     await waitForRebuild(state, calls);
@@ -586,7 +610,7 @@ describe('createFileWatcher', () => {
 
     const watcher = createFileWatcher(state);
 
-    await wait(200);
+    await waitForWatcherReady(watcher);
 
     await writeFile(join(testDir, 'chapter-01.md'), '# During Rebuild');
 

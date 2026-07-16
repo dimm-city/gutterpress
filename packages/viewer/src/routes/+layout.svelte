@@ -34,7 +34,7 @@
   // The no-flash inline script in app.html has already painted the cached
   // theme synchronously; this refines it with the canonical persisted value
   // and wires up live OS-change tracking. setThemeMode() (called from
-  // SettingsDialog) calls apply() directly, so no reactive tracking is needed
+  // SettingsView) calls apply() directly, so no reactive tracking is needed
   // beyond this initial sync.
   onMount(() => {
     initTheme();

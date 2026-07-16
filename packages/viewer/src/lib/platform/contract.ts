@@ -415,7 +415,7 @@ export interface SyncStatus {
 // (#29) — no more hand-duplicated copy here or in
 // electron/settings-store.ts. Adding a new setting: add the key + default to
 // `DEFAULT_SETTINGS` in shared-types.ts (the ONE place); a matching UI
-// control in SettingsDialog.svelte is the only other change needed.
+// control in SettingsView.svelte is the only other change needed.
 export { DEFAULT_SETTINGS } from "./shared-types";
 
 // DeepPartial, PreviewStartResult, BuildResult, ExportProgressEvent,

@@ -44,7 +44,24 @@
   {#if controller.themeError}
     <p class="error" role="alert">{controller.themeError}</p>
   {/if}
-  <p class="hint">Pick a look — applying copies the theme into your project and wires the manifest.</p>
+  {#if controller.themeWarnings.length > 0}
+    <div class="theme-warnings" role="status">
+      <p class="warn-title">Imported with warnings:</p>
+      <ul>
+        {#each controller.themeWarnings as w (w)}
+          <li>{w}</li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+  <p class="hint">Pick a look — applying copies the theme into your project and wires the manifest. Hover a card to preview a two-page spread.</p>
+  {#if controller.previousTheme}
+    <div class="actions row">
+      <button class="ghost small" onclick={controller.revertTheme} disabled={controller.themeBusyId !== null} title={`Re-apply "${controller.previousTheme.name}"`}>
+        <Icon name="history" size={13} /> Revert to previous theme ({controller.previousTheme.name})
+      </button>
+    </div>
+  {/if}
   <ul class="theme-grid">
     {#each visibleBuiltIns as t (keyOf(t))}
       {@render themeCard(t)}
@@ -54,6 +71,9 @@
     {/each}
   </ul>
   <div class="actions row">
+    <button class="ghost small" onclick={controller.importThemeFile} disabled={controller.themeBusyId !== null} title="Import a theme package (.zip) or a stylesheet (.css)">
+      <Icon name="cloud-upload" size={13} /> Import theme (.zip/.css)…
+    </button>
     <button class="ghost small" onclick={controller.importThemeFolder} disabled={controller.themeBusyId !== null} title="Import a theme from a folder on disk">
       <Icon name="folder" size={13} /> Import from folder…
     </button>
@@ -70,8 +90,27 @@
   </div>
 </div>
 
+<!--
+  #106 hover preview: an enlarged, FIXED two-page sample spread rendered with the
+  hovered theme's CSS (reusing the thumbnail readCss → srcdoc → sandboxed iframe
+  mechanism). It never renders the author's document. pointer-events:none so it
+  can't steal the hover; aria-hidden as it's a decorative enlargement of the card.
+-->
+{#if controller.hoverPreview}
+  <div class="hover-preview" aria-hidden="true">
+    <iframe title="Theme sample spread preview" srcdoc={controller.hoverPreview} sandbox="allow-same-origin"></iframe>
+  </div>
+{/if}
+
 {#snippet themeCard(t: ThemeInfo)}
-  <li class="theme-card" class:active={isActiveTheme(t)}>
+  <li
+    class="theme-card"
+    class:active={isActiveTheme(t)}
+    onmouseenter={() => controller.showHoverPreview(t)}
+    onmouseleave={controller.hideHoverPreview}
+    onfocusin={() => controller.showHoverPreview(t)}
+    onfocusout={controller.hideHoverPreview}
+  >
     <div class="thumb">
       {#if controller.thumbs[keyOf(t)] && controller.thumbs[keyOf(t)] !== "__fallback__"}
         <iframe title={`Preview of ${t.name}`} srcdoc={controller.thumbs[keyOf(t)]} sandbox="allow-same-origin" loading="lazy"></iframe>
@@ -170,7 +209,32 @@
   .danger { background: var(--app-error-bg); border-color: var(--app-error-border); color: var(--app-error-text); }
   .danger:hover:not(:disabled) { background: var(--app-error-border); }
 
+  /* #106: non-fatal import warnings (print-safety, missing metadata, extra files). */
+  .theme-warnings {
+    margin: 0 0 8px; padding: 8px 10px; border-radius: 6px;
+    background: var(--app-warning-bg, var(--app-surface-sunken));
+    border: 1px solid var(--app-warning-border, var(--app-border));
+    color: var(--app-warning-text, var(--app-text));
+  }
+  .theme-warnings .warn-title { margin: 0 0 4px; font-size: 11px; font-weight: 600; }
+  .theme-warnings ul { margin: 0; padding-left: 16px; }
+  .theme-warnings li { font-size: 11px; line-height: 1.4; }
+
+  /* #106: enlarged fixed 2-page sample spread shown while hovering a card. It is
+     a decorative overlay (pointer-events:none) pinned to the viewer's right edge. */
+  .hover-preview {
+    position: fixed; right: 16px; top: 50%; transform: translateY(-50%);
+    width: 360px; max-width: 42vw; aspect-ratio: 3 / 2;
+    z-index: 40; pointer-events: none;
+    border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--app-border-strong); background: var(--app-surface);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  }
+  .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+
   @media (max-width: 480px) {
     .theme-grid { grid-template-columns: 1fr 1fr; }
+    /* On narrow screens the pinned preview would cover the grid — hide it. */
+    .hover-preview { display: none; }
   }
 </style>

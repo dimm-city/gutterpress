@@ -32,6 +32,8 @@
 
   let {
     visible = false,
+    /** A full-window app panel is open above the landing. */
+    inactive = false,
     /** Title for the continue card; null = no previous book (first run). */
     continueTitle = null,
     /** Secondary line under the title (repo · N books, or the folder path). */
@@ -71,6 +73,7 @@
     onUpdateDownload,
   }: {
     visible?: boolean;
+    inactive?: boolean;
     continueTitle?: string | null;
     continueDetail?: string | null;
     status?: ContinueStatus;
@@ -180,6 +183,7 @@
     bind:this={rootEl}
     use:focusOnShow
     tabindex="-1"
+    inert={inactive || undefined}
     aria-label="Start screen"
     onkeydown={onKeydown}
     transition:fade={{ duration: 180 }}

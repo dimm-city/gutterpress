@@ -4,19 +4,14 @@
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { dialogBehavior } from "$lib/dialog";
 
   let {
-    open = $bindable(false),
     onClose,
-    triggerEl,
     projectDir = null,
     onViewModeChange,
     onCrashRecoveryChange,
   }: {
-    open?: boolean;
     onClose?: () => void;
-    triggerEl?: HTMLButtonElement | undefined;
     /** The open project dir (Connections tab: adding a publishing key verifies
      *  against the platform, and some checks read the project's settings). */
     projectDir?: string | null;
@@ -29,14 +24,12 @@
   const settings = useSettings();
 
   function close() {
-    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
-    open = false;
     onClose?.();
   }
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
   // The stacked-sections layout outgrew one scroll (six groups + the new
-  // Connections management), so the dialog is tabbed: each tab renders one
+  // Connections management), so the panel is tabbed: each tab renders one
   // cohesive slice. The active tab persists across opens within a session —
   // reopening lands where the user last was.
   type SettingsTab = "app" | "editor" | "saving" | "connections" | "advanced";
@@ -48,36 +41,60 @@
     { id: "advanced", label: "Advanced" },
   ];
   let activeTab = $state<SettingsTab>("app");
+  let tabEls = $state<Record<SettingsTab, HTMLButtonElement | undefined>>({
+    app: undefined,
+    editor: undefined,
+    saving: undefined,
+    connections: undefined,
+    advanced: undefined,
+  });
+
+  function onTablistKeydown(e: KeyboardEvent) {
+    const ids = TABS.map((tab) => tab.id);
+    const current = ids.indexOf(activeTab);
+    let next: number | undefined;
+    if (e.key === "ArrowRight") next = (current + 1) % ids.length;
+    else if (e.key === "ArrowLeft") next = (current - 1 + ids.length) % ids.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = ids.length - 1;
+    if (next === undefined) return;
+    e.preventDefault();
+    activeTab = ids[next]!;
+    tabEls[activeTab]?.focus();
+  }
 
   // ── Typed setters (one line per control, per the "one-line setting" goal) ──
   const s = $derived(settings.current);
 </script>
 
-{#if open}
-  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
+<div class="settings-view">
+  <header class="settings-header">
+    <h2 id="settings-title">Settings</h2>
+    <button class="settings-close" onclick={close} title="Close settings" aria-label="Close settings"><Icon name="x" size={16} /></button>
+  </header>
+
+  <div class="tab-bar" role="tablist" aria-label="Settings sections" onkeydown={onTablistKeydown} tabindex="-1">
+    {#each TABS as tab (tab.id)}
+      <button
+        id="settings-tab-{tab.id}"
+        role="tab"
+        class="tab"
+        class:active={activeTab === tab.id}
+        aria-selected={activeTab === tab.id}
+        aria-controls="settings-panel"
+        tabindex={activeTab === tab.id ? 0 : -1}
+        bind:this={tabEls[tab.id]}
+        onclick={() => (activeTab = tab.id)}
+      >{tab.label}</button>
+    {/each}
+  </div>
 
   <div
-    class="dlg-shell"
-    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "settings-title" }}
+    id="settings-panel"
+    class="settings-body"
+    role="tabpanel"
+    aria-labelledby="settings-tab-{activeTab}"
   >
-    <header class="dlg-header">
-      <h2 id="settings-title">Settings</h2>
-      <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
-    </header>
-
-    <div class="tab-bar" role="tablist" aria-label="Settings sections">
-      {#each TABS as tab (tab.id)}
-        <button
-          role="tab"
-          class="tab"
-          class:active={activeTab === tab.id}
-          aria-selected={activeTab === tab.id}
-          onclick={() => (activeTab = tab.id)}
-        >{tab.label}</button>
-      {/each}
-    </div>
-
-    <div class="dialog-body">
       <!-- App appearance (light/dark chrome) --------------------------------
            UX review M38: named "Appearance" here, but the config panel also
            used to have its OWN "Appearance" section for the print theme —
@@ -332,25 +349,17 @@
       {#if activeTab === "connections"}
       <!-- Connections — the central place to manage every stored credential:
            GitHub, other Git servers, and publishing accounts (itch.io, Azure,
-           Shopify …). Management lives in its own component; this dialog only
+           Shopify …). Management lives in its own component; this panel only
            hosts it. -->
       <section class="group">
         <ConnectionsSettings {projectDir} />
       </section>
       {/if}
 
-      {#if activeTab === "advanced"}
-      <!-- Advanced (collapsed by default) --------------------------------- -->
-      <!-- Developer-oriented knobs (file-watch polling, log verbosity). Hidden
-           behind a disclosure so a non-technical writer never has to reason
-           about milliseconds or log levels to use the app. -->
-      <details class="group advanced">
-        <summary class="group-head advanced-summary">
-          <h3>Advanced <span class="advanced-hint">— for developers</span></h3>
-        </summary>
-        <div class="advanced-body">
-        <div class="group-head advanced-reset-row">
-          <span></span>
+    {#if activeTab === "advanced"}
+      <section class="group advanced">
+        <div class="group-head">
+          <h3>Advanced <span class="advanced-hint">for developers</span></h3>
           <button class="reset" onclick={() => settings.resetSection("advanced")} title="Reset advanced settings to defaults">Reset</button>
         </div>
         <div class="row">
@@ -378,36 +387,52 @@
             <option value="debug">Debug</option>
           </select>
         </div>
-        </div>
-      </details>
-      {/if}
-
-      <footer class="dlg-actions">
-        <button class="dlg-primary" onclick={close}>Done</button>
-      </footer>
-    </div>
+      </section>
+    {/if}
   </div>
-{/if}
+</div>
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
-
-  /* Settings is the tallest dialog in normal use (many rows); wider + a
-     slightly taller cap than the shared default. */
-  .dlg-shell {
-    width: min(560px, 92vw);
-    max-height: 88vh;
+  .settings-view {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: var(--app-bg);
+    color: var(--app-text-secondary);
   }
-  /* Unlike the "pinned bar" dialogs (ConflictChoicesDialog, OperationLogDialog,
-     …), Settings' footer is the last item INSIDE the scrolling body, not a
-     sibling of it — restore its original in-flow spacing (no side padding,
-     it inherits dialog-body's own 16/18 padding; no flex-shrink, dialog-body
-     here isn't a flex container). */
-  .dlg-actions {
-    padding: 16px 0 0;
-    margin-top: 8px;
+  .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--app-border);
+    background: var(--app-surface-raised);
   }
-  .dialog-body {
+  .settings-header h2 {
+    margin: 0;
+    color: var(--app-text);
+    font-size: 15px;
+  }
+  .settings-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border: 1px solid var(--app-border);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--app-text-muted);
+    cursor: pointer;
+  }
+  .settings-close:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
+  .settings-close:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .settings-body {
+    flex: 1;
+    min-height: 0;
     padding: 16px 18px;
     overflow-y: auto;
   }
@@ -415,9 +440,10 @@
   .tab-bar {
     display: flex;
     gap: 2px;
-    padding: 0 18px;
+    padding: 0 16px;
     border-bottom: 1px solid var(--app-border-subtle);
     flex-shrink: 0;
+    overflow-x: auto;
   }
   .tab {
     background: transparent;
@@ -427,6 +453,7 @@
     font-size: 12.5px;
     padding: 8px 10px;
     cursor: pointer;
+    white-space: nowrap;
   }
   .tab:hover { color: var(--app-text); }
   .tab.active {
@@ -486,7 +513,7 @@
     min-width: 160px;
   }
   /* Reset the native select chrome (Linux GTK ignores `background` otherwise,
-     so the dropdowns rendered as light OS widgets against the dark dialog) and
+     so the dropdowns rendered as light OS widgets against the dark panel) and
      draw a consistent custom chevron. */
   .row select {
     appearance: none;
@@ -505,22 +532,10 @@
     background: none;
     cursor: pointer;
   }
-  /* Advanced disclosure: collapsed by default; summary reads as a section head. */
-  .advanced > .advanced-summary { cursor: pointer; list-style: none; }
-  .advanced > .advanced-summary::-webkit-details-marker { display: none; }
-  .advanced > .advanced-summary::after {
-    content: "▸";
-    margin-left: auto;
-    color: var(--app-text-muted);
-    font-size: 11px;
-  }
-  .advanced[open] > .advanced-summary::after { content: "▾"; }
   .advanced-hint {
     text-transform: none;
     letter-spacing: 0;
     color: var(--app-text-faint);
     font-weight: 400;
   }
-  .advanced-reset-row { border-bottom: none; margin-top: 4px; padding-bottom: 0; }
-  .advanced-body { padding-top: 4px; }
 </style>

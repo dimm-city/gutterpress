@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { PublishSectionController } from "../../src/lib/routes/publish-section-controller.svelte";
 import type { PublishProviderCard, PublishRunResult } from "../../src/lib/platform/contract";
+import type { PreflightRow } from "../../src/lib/preflight";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests (same shim as design-section-controller.test.ts).
@@ -38,6 +39,9 @@ interface Harness {
   connectCalls: Array<{ dir: string; providerId: string; token: string }>;
   runResult: PublishRunResult;
   failConnect: boolean;
+  preflightRows: PreflightRow[];
+  preflightCalls: Array<{ dir: string; providerIds: string[] }>;
+  failPreflight: boolean;
 }
 
 function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }> = {}): Harness {
@@ -54,10 +58,18 @@ function make(over: Partial<{ noProject: boolean; cards: PublishProviderCard[] }
     connectCalls: [],
     runResult: { ok: true, providerId: "itch", issues: [] },
     failConnect: false,
+    preflightRows: [],
+    preflightCalls: [],
+    failPreflight: false,
   } as Harness;
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
     listProviders: () => Promise.resolve(h.cards),
+    preflight: (dir, providerIds) => {
+      h.preflightCalls.push({ dir, providerIds });
+      if (h.failPreflight) return Promise.reject(new Error("preflight boom"));
+      return Promise.resolve(h.preflightRows);
+    },
     setConfig: (dir, providerId, values) => {
       h.setConfigCalls.push({ dir, providerId, values });
       return Promise.resolve({});
@@ -216,6 +228,7 @@ test("runPublish includes the artifact draft path only when set", async () => {
   h.ctrl = new PublishSectionController({
     projectDir: () => h.projectDir,
     listProviders: () => Promise.resolve(h.cards),
+    preflight: () => Promise.resolve([]),
     setConfig: () => Promise.resolve({}),
     connect: () => Promise.resolve({ connected: true, providerId: "itch" }),
     disconnect: () => Promise.resolve({ ok: true }),
@@ -242,4 +255,49 @@ test("pickPublishArtifact uses the PDF picker for a pdf-format card and the dire
   const htmlCard: PublishProviderCard = { ...CARD, id: "pages", format: "html" };
   await h.ctrl.pickPublishArtifact(htmlCard);
   expect(h.ctrl.publishArtifactDrafts.pages).toBe("/picked/dist");
+});
+
+// ── Preflight (#105) ──────────────────────────────────────────────────────────
+
+const PF_ROW = (over: Partial<PreflightRow>): PreflightRow => ({
+  id: "source.markdownlint",
+  category: "source",
+  severity: "warning",
+  label: "Markdown style",
+  message: "msg",
+  code: null,
+  fixable: "none",
+  ...over,
+});
+
+test("runPreflight forwards the selected provider ids and stores the rows + ran flag", async () => {
+  const h = make();
+  h.preflightRows = [PF_ROW({ severity: "error" })];
+  expect(h.ctrl.preflightRan).toBe(false);
+  await h.ctrl.runPreflight(["itch", "kdp"]);
+  expect(h.preflightCalls).toEqual([{ dir: "/proj", providerIds: ["itch", "kdp"] }]);
+  expect(h.ctrl.preflightRows.length).toBe(1);
+  expect(h.ctrl.preflightRan).toBe(true);
+  expect(h.ctrl.preflightBusy).toBe(false);
+  expect(h.ctrl.preflightError).toBeNull();
+});
+
+test("runPreflight is a no-op with no project open", async () => {
+  const h = make({ noProject: true });
+  await h.ctrl.runPreflight(["itch"]);
+  expect(h.preflightCalls).toEqual([]);
+  expect(h.ctrl.preflightRan).toBe(false);
+});
+
+test("runPreflight records the error, clears rows, but still marks ran (so the gate evaluates)", async () => {
+  const h = make();
+  h.preflightRows = [PF_ROW({})];
+  await h.ctrl.runPreflight(["itch"]); // seed some rows first
+  expect(h.ctrl.preflightRows.length).toBe(1);
+  h.failPreflight = true;
+  await h.ctrl.runPreflight(["itch"]);
+  expect(h.ctrl.preflightError).toBe("preflight boom");
+  expect(h.ctrl.preflightRows).toEqual([]);
+  expect(h.ctrl.preflightRan).toBe(true);
+  expect(h.ctrl.preflightBusy).toBe(false);
 });

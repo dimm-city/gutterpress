@@ -26,7 +26,7 @@ BrowserWindow loads app://local/
        • window.electron.* → only push streams + the preview/build pipeline
      Always via getPlatform(); it never touches window.electron directly.
 
-Host capabilities live in ~85 src/routes/api/**/+server.ts routes — status, fs,
+Host capabilities live in ~100 src/routes/api/**/+server.ts routes — status, fs,
 dialog, theme, plugin, remote/sync, vcs, recovery, lint, media, and more. These
 are host Node code (they may import @dimm-city/print-md and node:*) that happens
 to sit under src/routes/; SvelteKit compiles them into build/server, never into
@@ -182,7 +182,7 @@ packages/viewer/
 │   ├── routes/
 │   │   ├── +layout.ts       # ssr=false (client-rendered SPA; not prerendered)
 │   │   ├── +page.svelte     # Toolbar + iframe shell
-│   │   └── api/**/+server.ts # ~85 host routes (run in main via adapter-node)
+│   │   └── api/**/+server.ts # ~100 host routes (run in main via adapter-node)
 │   ├── lib/
 │   │   ├── preview-client.ts       # postMessage wrappers for the iframe bridge
 │   │   ├── iframe-styles.ts        # Injected iframe CSS

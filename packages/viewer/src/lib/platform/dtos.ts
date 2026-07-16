@@ -177,6 +177,23 @@ export type ApplyThemeTarget =
   | { kind: "builtin"; id: string }
   | { kind: "project"; id: string };
 
+// ── Theme package import (#106) ───────────────────────────────────────────────
+//
+// Mirror the lib's theme-import types locally so the SPA never value-imports the
+// lib (§8 / ADR 0004).
+
+/** A non-fatal issue surfaced after a successful `.zip`/`.css` theme import. */
+export interface ThemeImportWarning {
+  code: "print-safety" | "no-theme-json" | "unnamed-theme" | "extra-files";
+  message: string;
+}
+
+/** Outcome of importing a theme from a `.zip` package or a bare `.css` file. */
+export interface ThemeImportResult {
+  theme: ThemeInfo;
+  warnings: ThemeImportWarning[];
+}
+
 // ── Style resolver (CSS editor; audit B2/G1) ──────────────────────────────────
 //
 // Mirrors the lib's `ProjectStyle` (packages/cli/src/lib/style-resolver.ts) —
