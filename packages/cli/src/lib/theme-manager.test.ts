@@ -419,6 +419,12 @@ describe("theme-manager", () => {
       await removeProjectTheme(dir, "clean-book");
       expect(await getPreviousTheme(dir)).toBeNull();
     });
+
+    test("rejects a traversal id stored in themePrevious before reading it", async () => {
+      const dir = projectDir();
+      writeManifest(dir, ["title: Test", 'themePrevious: "../../other"', ""].join("\n"));
+      await expect(getPreviousTheme(dir)).rejects.toThrow(/invalid theme id/i);
+    });
   });
 
   describe("path-traversal hardening (no-data-loss mandate)", () => {

@@ -51,9 +51,9 @@ test("toPreflightRow demotes a trailing rule code out of the message", () => {
   expect(r.code).toBe("MD013/line-length");
 });
 
-// ── fixable derivation from location presence ─────────────────────────────────
+// ── fixable derivation from editable source locations ─────────────────────────
 
-test("fixable = navigate when a filePath is present, none otherwise", () => {
+test("fixable = navigate only for editable source files", () => {
   const withLoc = toPreflightRow(
     raw({ filePath: "/proj/a.md", file: "a.md", line: 12 }),
   );
@@ -68,6 +68,17 @@ test("fixable = navigate when a filePath is present, none otherwise", () => {
   const noLoc = toPreflightRow(raw({}));
   expect(noLoc.fixable).toBe("none");
   expect(noLoc.location).toBeUndefined();
+
+  for (const filePath of ["/proj/image.png", "/proj/fonts/book.woff2", "/proj/assets"]) {
+    const asset = toPreflightRow(raw({ category: "asset", filePath }));
+    expect(asset.fixable).toBe("none");
+    expect(asset.location?.filePath).toBe(filePath);
+  }
+
+  expect(toPreflightRow(raw({ filePath: "/proj/theme.CSS" })).fixable).toBe("navigate");
+  expect(toPreflightRow(raw({ filePath: "/proj/chapter.markdown" })).fixable).toBe("navigate");
+  expect(toPreflightRow(raw({ filePath: "/proj/manifest.yaml" })).fixable).toBe("navigate");
+  expect(toPreflightRow(raw({ filePath: "/proj/notes.txt" })).fixable).toBe("navigate");
 });
 
 test("provider is carried through only when set", () => {

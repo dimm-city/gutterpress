@@ -65,6 +65,8 @@ function make(over: Partial<{ noProject: boolean; builtIns: ThemeInfo[]; project
       h.applyCalls.push({ dir, target });
       if (h.failApply) return Promise.reject(new Error("apply failed"));
       const applied: ThemeInfo = { id: target.id, name: target.id, description: "d", kind: "project" };
+      h.previous = h.active;
+      h.active = applied;
       return Promise.resolve(applied);
     },
     revert: (dir) => {
@@ -142,6 +144,13 @@ test("applyTheme applies, sets activeThemeId, fires onApplied, and refreshes sty
   expect(h.onApplied.calls).toEqual([["classic"]]);
   expect(h.afterThemeChange.calls.length).toBe(1);
   expect(h.ctrl.themeBusyId).toBeNull();
+});
+
+test("applyTheme refreshes the previous-theme revert target immediately", async () => {
+  const h = make();
+  h.active = PROJECT_A;
+  await h.ctrl.applyTheme(BUILTIN_B);
+  expect(h.ctrl.previousTheme).toBe(PROJECT_A);
 });
 
 test("a failed apply surfaces themeError and does NOT fire onApplied/afterThemeChange", async () => {

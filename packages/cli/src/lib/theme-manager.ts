@@ -321,7 +321,7 @@ export async function getPreviousTheme(projectDir: string): Promise<ThemeInfo | 
   const raw = doc.get(THEME_PREVIOUS_KEY);
   const id = typeof raw === "string" && raw.trim() ? raw : null;
   if (!id) return null;
-  const dir = path.join(projectDir, THEMES_DIR, id);
+  const dir = themeDirFor(projectDir, id);
   if (!existsSync(path.join(dir, "theme.css"))) return null;
   const active = await getActiveTheme(projectDir);
   if (active && active.id === id) return null;

@@ -26,14 +26,15 @@ export type PreflightFixable = "none" | "navigate";
 /**
  * The host-resolved check result the route hands the shaper. Path resolution
  * (`node:path`) happens in the route; everything in this module is pure. A
- * present `filePath` (absolute) is what makes a finding navigable.
+ * present `filePath` (absolute) identifies the finding's location; only source
+ * files the text editor supports are navigable.
  */
 export interface PreflightRawResult {
   checkId: string;
   category: string;
   severity: PreflightSeverity;
   message: string;
-  /** Absolute path — present ⇒ navigable ⇒ `fixable: "navigate"`. */
+  /** Absolute path to the finding. */
   filePath?: string;
   /** Project-relative display path (falls back to the basename). */
   file?: string;
@@ -68,10 +69,15 @@ export interface PreflightRow {
   provider?: string;
 }
 
+function isEditableSource(path: string): boolean {
+  return /\.(?:css|md|markdown|yaml|yml|txt)$/i.test(path);
+}
+
 /** Shape one raw registry result into an author-facing row. */
 export function toPreflightRow(raw: PreflightRawResult): PreflightRow {
   const { text, code } = splitProblemMessage(raw.message);
   const hasLocation = Boolean(raw.filePath);
+  const canNavigate = Boolean(raw.filePath && isEditableSource(raw.filePath));
   const location: PreflightLocation | undefined = hasLocation
     ? { filePath: raw.filePath, file: raw.file, line: raw.line, column: raw.column }
     : undefined;
@@ -83,8 +89,7 @@ export function toPreflightRow(raw: PreflightRawResult): PreflightRow {
     message: text,
     code,
     ...(location ? { location } : {}),
-    // fixable is derived purely from the presence of a navigable location.
-    fixable: hasLocation ? "navigate" : "none",
+    fixable: canNavigate ? "navigate" : "none",
     ...(raw.provider ? { provider: raw.provider } : {}),
   };
 }

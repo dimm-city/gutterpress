@@ -156,6 +156,7 @@ export class AppearanceSectionController {
       const target: ApplyThemeTarget = { kind: t.kind, id: t.id };
       const applied = await this.deps.apply(projectDir, target);
       this.activeThemeId = applied.id;
+      this.previousTheme = await this.deps.getPrevious(projectDir);
       this.deps.onApplied?.(applied.id);
       // The styles list + design tokens both depend on the now-active
       // stylesheet — refresh them so the Config view agrees with the
