@@ -205,6 +205,14 @@ test("readSettings fills in preview.splitRatio default for a stored file missing
   expect(s.preview.splitRatio).toBe(DEFAULT_SETTINGS.preview.splitRatio);
 });
 
+test("readSettings defaults prerelease updates off for existing settings files", async () => {
+  const { store } = makeStore({
+    readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }),
+  });
+
+  expect((await store.readSettings()).updates.includePrereleases).toBe(false);
+});
+
 test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>.tmp, then renames over settingsPath", async () => {
   const { store, writes, mkdirs, renames, userDataDir } = makeStore();
   const settings: AppSettings = {

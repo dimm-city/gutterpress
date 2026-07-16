@@ -61,6 +61,7 @@ const {
 class FakeAutoUpdater extends EventEmitter {
   autoDownload = true;
   autoInstallOnAppQuit = false;
+  allowPrerelease = false;
   checkCalls = 0;
   downloadCalls = 0;
   quitAndInstallCalls: Array<[boolean | undefined, boolean | undefined]> = [];
@@ -135,6 +136,29 @@ test("a successful silent check DOES consume the focus-recheck throttle window",
     await checkForUpdates({ silent: true });
 
     expect(shouldBackgroundCheck()).toBe(false);
+  });
+});
+
+test("each check applies the current prerelease update preference", async () => {
+  await withAppImage(async () => {
+    const fake = new FakeAutoUpdater();
+    const valuesAtCheck: boolean[] = [];
+    let includePrereleases = false;
+    fake.checkImpl = async () => {
+      valuesAtCheck.push(fake.allowPrerelease);
+      fake.emit("update-not-available");
+      return null;
+    };
+    initUpdater(() => {}, {
+      autoUpdater: fake,
+      readAllowPrerelease: () => includePrereleases,
+    });
+
+    await checkForUpdates();
+    includePrereleases = true;
+    await checkForUpdates();
+
+    expect(valuesAtCheck).toEqual([false, true]);
   });
 });
 

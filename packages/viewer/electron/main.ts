@@ -1553,9 +1553,9 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 //
 // Active only in a packaged build with no vite dev server, on Windows/Linux
 // (see updaterSupported() in updater.ts; macOS auto-update needs signed
-// builds). electron-updater downloads updates in the background; the
-// renderer shows a "restart to update" banner on the "staged" event and calls
-// updater:applyNow to quit and install.
+// builds). Checks run in the background, but downloads require an explicit
+// user click; the renderer shows a "restart to update" banner on the "staged"
+// event and calls updater:applyNow to quit and install.
 //
 // getStatus/check/download (ARCH review #8) are plain request/response —
 // no push stream, no live-BrowserWindow need — so they're SvelteKit server
@@ -1570,7 +1570,9 @@ secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(
 function sendUpdaterEvent(event: UpdaterEventPayload) {
   mainWindow?.webContents.send("updater:event", event);
 }
-initUpdater(sendUpdaterEvent);
+initUpdater(sendUpdaterEvent, {
+  readAllowPrerelease: async () => (await readSettings()).updates.includePrereleases,
+});
 
 secureHandle("updater:applyNow", async () => {
   // Flush unsaved editor state BEFORE the installer spawns: quitAndInstall

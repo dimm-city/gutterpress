@@ -16,10 +16,9 @@
 // is disabled there until we ship signed/notarized builds — mac users update
 // by downloading the DMG from GitHub Releases.
 //
-// Channels: electron-updater's default behavior — a stable install only sees
-// stable releases; an install whose own version carries a prerelease suffix
-// (e.g. 0.7.0-beta.1) also sees prereleases (allowPrerelease defaults from
-// the current version). No separate channel setting to configure or drift.
+// Prereleases are an explicit user preference. Before every check, main.ts's
+// injected settings reader updates electron-updater's allowPrerelease flag.
+// The default is false, so stable releases remain the normal update stream.
 //
 // Downloads are user-consented: autoDownload is OFF. A check that finds an
 // update stops at phase "available"; the renderer shows a Download
@@ -44,6 +43,7 @@ const { autoUpdater: realAutoUpdater } = electronUpdater;
 export interface AutoUpdaterLike {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
+  allowPrerelease: boolean;
   on(event: "update-available", listener: (info: { version: string }) => void): unknown;
   on(event: "update-not-available", listener: () => void): unknown;
   on(event: "update-downloaded", listener: (info: { version: string }) => void): unknown;
@@ -55,12 +55,13 @@ export interface AutoUpdaterLike {
 
 /** Injectable dependencies — a plain object, not a DI framework (M2). */
 export interface UpdaterDeps {
-  autoUpdater: AutoUpdaterLike;
+  autoUpdater?: AutoUpdaterLike;
+  /** Read at check time so a settings change takes effect without a restart. */
+  readAllowPrerelease?: () => boolean | Promise<boolean>;
 }
 
-const defaultDeps: UpdaterDeps = { autoUpdater: realAutoUpdater as unknown as AutoUpdaterLike };
-
-let activeAutoUpdater: AutoUpdaterLike = defaultDeps.autoUpdater;
+let activeAutoUpdater: AutoUpdaterLike = realAutoUpdater as unknown as AutoUpdaterLike;
+let readAllowPrerelease: () => boolean | Promise<boolean> = () => false;
 
 const MAC_UPDATE_HINT =
   "Automatic updates aren't available on macOS yet — download the latest release from GitHub.";
@@ -152,10 +153,11 @@ export function getStatus(): UpdaterStatus {
  */
 export function initUpdater(
   onEvent: (event: UpdaterEventPayload) => void,
-  deps: UpdaterDeps = defaultDeps,
+  deps: UpdaterDeps = {},
 ): void {
   emitEvent = onEvent;
-  activeAutoUpdater = deps.autoUpdater;
+  activeAutoUpdater = deps.autoUpdater ?? (realAutoUpdater as unknown as AutoUpdaterLike);
+  readAllowPrerelease = deps.readAllowPrerelease ?? (() => false);
   // Downloads are user-consented (M1) — see the module banner comment.
   activeAutoUpdater.autoDownload = false;
   // If the user quits without clicking the banner, install the downloaded
@@ -242,6 +244,7 @@ export async function checkForUpdates(options: { silent?: boolean } = {}): Promi
     }
     lastCheckAt = Date.now();
     checkInFlight = (async () => {
+      activeAutoUpdater.allowPrerelease = await readAllowPrerelease();
       await activeAutoUpdater.checkForUpdates();
       // No update → the "update-not-available" listener already set idle.
       // An update → the "update-available" listener already set "available"

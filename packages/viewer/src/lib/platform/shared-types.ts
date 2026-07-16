@@ -111,6 +111,10 @@ export interface AppSettings {
      */
     splitRatio: number;
   };
+  updates: {
+    /** Include release candidates and other prereleases in desktop update checks. */
+    includePrereleases: boolean;
+  };
   versionHistory: {
     /**
      * Save automatic snapshots while the author works (RC1-3): the host arms a
@@ -173,6 +177,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,
+  },
+  updates: {
+    includePrereleases: false,
   },
   versionHistory: {
     autoSnapshot: true,

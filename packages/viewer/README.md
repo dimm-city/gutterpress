@@ -216,17 +216,16 @@ this standard flow.
 Behavior:
 
 - **Windows (NSIS) and Linux (AppImage):** on launch the app checks the feed
-  in the background, downloads a newer release if present, and shows a
-  "Restart & update" banner. Installing happens on restart (or on quit, via
-  `autoInstallOnAppQuit`).
+  in the background and shows an update banner when a newer release is
+  present. The user chooses when to download it. Installing happens through
+  "Restart & update" (or on quit after download, via `autoInstallOnAppQuit`).
 - **macOS:** auto-update is disabled — Squirrel.Mac requires a code-signed
   app. The manual "Check for updates" button tells mac users to grab the
   latest DMG from GitHub Releases. Enable it later by shipping
   signed/notarized builds (Apple Developer Program) and removing the darwin
   gate in `electron/updater.ts`.
-- **Channels:** electron-updater defaults apply — a stable install only sees
-  stable releases; an install whose own version has a prerelease suffix
-  (e.g. `0.7.0-beta.1`) also sees prereleases.
+- **Prereleases:** stable releases are the default. Users can opt into release
+  candidates and other prereleases under Settings → App → Updates.
 - **Dev:** fully inert (`app.isPackaged` gate in `updaterSupported()`), and
   packaged-but-unsupported platforms degrade to no-ops.
 

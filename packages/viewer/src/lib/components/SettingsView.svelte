@@ -167,6 +167,27 @@
         </div>
       </section>
 
+      {#if isDesktop()}
+      <section class="group">
+        <div class="group-head">
+          <h3>Updates</h3>
+          <button class="reset" onclick={() => settings.resetSection("updates")} title="Reset update settings to defaults">Reset</button>
+        </div>
+        <div class="row row-toggle">
+          <div class="row-label">
+            <label for="set-prerelease-updates">Get prerelease updates</label>
+            <span class="row-hint">Notify me about release candidates before the stable release.</span>
+          </div>
+          <input
+            id="set-prerelease-updates"
+            type="checkbox"
+            checked={s.updates.includePrereleases}
+            onchange={(e) => settings.set({ updates: { includePrereleases: (e.currentTarget as HTMLInputElement).checked } })}
+          />
+        </div>
+      </section>
+      {/if}
+
       {/if}
 
       {#if activeTab === "editor"}
