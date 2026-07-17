@@ -22,6 +22,16 @@ function mainSel(view: EditorView) {
   return view.state.selection.main;
 }
 
+/**
+ * The document offset just after the line the cursor is on — the insertion
+ * point every "insert a block after the current line" action uses (audit E4:
+ * this three-statement idiom was hand-repeated in 8 functions below).
+ */
+function insertionPointAfterCurrentLine(view: EditorView): number {
+  const { from } = mainSel(view);
+  return view.state.doc.lineAt(from).to;
+}
+
 function selectedText(view: EditorView): string {
   const { from, to } = mainSel(view);
   return view.state.doc.sliceString(from, to);
@@ -238,11 +248,9 @@ export function applyHeading(view: EditorView, level: 1 | 2 | 3 | 4): void {
 // ── Horizontal rule ───────────────────────────────────────────────────────────
 
 export function applyHr(view: EditorView): void {
-  const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
-  // Insert after the current line (with a blank line before and after for
-  // correct markdown parsing).
-  const insertAt = line.to;
+  // Insert after the current line (blank line before and after for correct
+  // markdown parsing).
+  const insertAt = insertionPointAfterCurrentLine(view);
   const nl = "\n\n---\n\n";
   view.dispatch({
     changes: { from: insertAt, to: insertAt, insert: nl },
@@ -255,9 +263,7 @@ export function applyHr(view: EditorView): void {
 // Source: packages/cli/src/lib/markdown/markdown-it-paged.js line 13.
 
 export function applyPageBreak(view: EditorView): void {
-  const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
-  const insertAt = line.to;
+  const insertAt = insertionPointAfterCurrentLine(view);
   const insert = "\n\n@page-break\n\n";
   view.dispatch({
     changes: { from: insertAt, to: insertAt, insert },
@@ -269,8 +275,6 @@ export function applyPageBreak(view: EditorView): void {
 
 export function applyTable(view: EditorView, cols: number): void {
   const safeCols = Math.max(1, Math.min(10, cols));
-  const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
 
   const header = Array.from({ length: safeCols }, (_, i) => `Header ${i + 1}`);
   const sep = Array.from({ length: safeCols }, () => "------");
@@ -281,7 +285,7 @@ export function applyTable(view: EditorView, cols: number): void {
   const dataRow = "| " + row.join(" | ") + " |";
 
   const insert = "\n\n" + [headerRow, sepRow, dataRow].join("\n") + "\n\n";
-  const insertAt = line.to;
+  const insertAt = insertionPointAfterCurrentLine(view);
   view.dispatch({
     changes: { from: insertAt, to: insertAt, insert },
     selection: EditorSelection.cursor(insertAt + insert.length),
@@ -300,16 +304,13 @@ export function applyImage(
   width?: string,
   position?: string,
 ): void {
-  const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
-
   const attrs: string[] = [];
   if (width) attrs.push(`width="${width}"`);
   if (position) attrs.push(`.${position}`);
 
   const attrStr = attrs.length > 0 ? `{${attrs.join(" ")}}` : "";
   const snippet = `\n\n![${alt}](${src})${attrStr}\n\n`;
-  const insertAt = line.to;
+  const insertAt = insertionPointAfterCurrentLine(view);
   view.dispatch({
     changes: { from: insertAt, to: insertAt, insert: snippet },
     selection: EditorSelection.cursor(insertAt + snippet.length),
@@ -345,9 +346,7 @@ export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break
  *  `applyChapterCompletion` for the identical fix applied to the completion
  *  source's `@chapter` template. */
 export function applyChapterBlock(view: EditorView): void {
-  const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
-  const insertAt = line.to;
+  const insertAt = insertionPointAfterCurrentLine(view);
   const label = "Chapter Title";
   const prefix = '\n\n@chapter "';
   const suffix = '"';
@@ -363,9 +362,7 @@ export function applyChapterBlock(view: EditorView): void {
  *  them (same shape as the marker-completions.ts inline template, just
  *  block-inserted after the current line instead of typed in place). */
 export function applySectionBlock(view: EditorView): void {
-  const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
-  const insertAt = line.to;
+  const insertAt = insertionPointAfterCurrentLine(view);
   const prefix = "\n\n@section\n";
   const insert = `${prefix}\n@end-section\n\n`;
   const cursorPos = insertAt + prefix.length;
@@ -382,9 +379,7 @@ export function applySectionBlock(view: EditorView): void {
  *  `<div class="col">` renderer path instead (see the plugin's own
  *  "col-split handling" comment), which is what actually breaks reliably. */
 export function applyTwoColumnBlock(view: EditorView): void {
-  const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
-  const insertAt = line.to;
+  const insertAt = insertionPointAfterCurrentLine(view);
   const prefix = "\n\n@section .col-split\n";
   const insert = `${prefix}\n@column-break\n\nRight column content.\n\n@end-section\n\n`;
   const cursorPos = insertAt + prefix.length;
@@ -396,9 +391,7 @@ export function applyTwoColumnBlock(view: EditorView): void {
 
 /** `@spread` with a first nested `@page`, cursor left ready to write. */
 export function applySpreadBlock(view: EditorView): void {
-  const { from } = mainSel(view);
-  const line = view.state.doc.lineAt(from);
-  const insertAt = line.to;
+  const insertAt = insertionPointAfterCurrentLine(view);
   const insert = "\n\n@spread\n\n@page\n\n";
   view.dispatch({
     changes: { from: insertAt, to: insertAt, insert },

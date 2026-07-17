@@ -25,24 +25,11 @@
 
 import { test, expect, mock } from "bun:test";
 import { EventEmitter } from "node:events";
+import { electronMock } from "../support/electron-mock";
 
-const fakeApp = {
-  isPackaged: true,
-  getVersion: () => "1.0.0",
-  releaseSingleInstanceLock: () => {},
-  getPath: () => "/tmp/print-md-test-userdata",
-};
-
-mock.module("electron", () => ({
-  app: fakeApp,
-  protocol: {},
-  BrowserWindow: class {},
-  safeStorage: {
-    isEncryptionAvailable: () => true,
-    encryptString: (s: string) => Buffer.from(s, "utf8"),
-    decryptString: (b: Buffer) => Buffer.from(b).toString("utf8"),
-  },
-}));
+// The default superset already provides isPackaged/getVersion/
+// releaseSingleInstanceLock/getPath exactly as this suite needs.
+mock.module("electron", () => electronMock());
 // Only used to satisfy updater.ts's top-level `const { autoUpdater } =
 // electronUpdater` destructure; every test supplies its own fake via
 // initUpdater's `deps` param instead of touching this.

@@ -10,12 +10,19 @@
  *     need the exact same value and would otherwise hand-duplicate it (e.g.
  *     `DEFAULT_SETTINGS` below). No imports, still, ever.
  *   - All types must be self-contained (no references to external modules).
- *   - Used by BOTH `electron/bridge-types.ts` (host side) and
+ *   - Used by `electron/bridge-types.ts` (host side) and, for most types,
  *     `src/lib/platform/contract.ts` (renderer side).
  *
  * When you add a new IPC payload type, add it here first, then re-export it
  * in `bridge-types.ts` and consume it in `contract.ts`. No more "Keep them
  * in sync manually" comments.
+ *
+ * CAVEAT (audit D8): `ProjectSource` and `ProjectCapabilities` are the two
+ * exceptions — `contract.ts` type-imports those straight from
+ * `@dimm-city/print-md`, NOT from this mirror, so for those two shapes the lib
+ * IS the source of truth and the copy below merely shadows it for the host/
+ * bridge path. `shared-types.type-test.ts` fails `svelte-check` if the mirror
+ * and the lib ever drift apart, so this duplication can't rot silently.
  */
 
 // ── Auto-update (electron-updater — full-app updates from GitHub) ─────────

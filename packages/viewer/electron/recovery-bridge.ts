@@ -116,12 +116,17 @@ export function hostConfirmationGate(
         const requestId = `rcvr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         pendingConfirms.set(requestId, { projectDir, resolve });
 
-        // Send to renderer
-        _mainWindow?.webContents.send("recovery:confirm-request", {
-          requestId,
-          projectDir,
-          confirmation: req,
-        });
+        // Send to renderer. Guard isDestroyed too (review finding): between
+        // webContents.destroy() and the 'closed' handler nulling the ref,
+        // send() throws synchronously — inside this executor that would REJECT
+        // confirmRepair instead of letting the safety timeout default to false.
+        if (_mainWindow && !_mainWindow.isDestroyed()) {
+          _mainWindow.webContents.send("recovery:confirm-request", {
+            requestId,
+            projectDir,
+            confirmation: req,
+          });
+        }
 
         // Safety timeout: if the renderer never answers (crash / dialog bug /
         // missing window-close event), default-safe to false and clear the

@@ -245,8 +245,23 @@ jobs:
       - name: Smoke test binary
         if: ${{ matrix.target == 'bun-linux-x64' }}
         run: |
+          set -euo pipefail
           chmod +x "${{ matrix.artifact }}"
           "./${{ matrix.artifact }}" --version
+          # audit F2: exercise the embedded-assets extraction path — CLAUDE.md
+          # flags it as the fragile part of `bun build --compile`, yet the smoke
+          # test only ran --version. `new` scaffolds from an embedded template,
+          # so a broken extraction fails here instead of shipping. `--dir` is the
+          # (existing) parent save location; the project lands in a slug subdir.
+          mkdir -p /tmp/pmd-smoke
+          "./${{ matrix.artifact }}" new "Smoke Test Book" --dir /tmp/pmd-smoke --template book --no-git
+          echo "Scaffolded files:"
+          find /tmp/pmd-smoke -maxdepth 3 -type f | sort
+          # A scaffolded project must contain at least one markdown file and a
+          # manifest — proof the embedded template extracted, not just that the
+          # binary ran.
+          test -n "$(find /tmp/pmd-smoke -name '*.md' -print -quit)"
+          test -n "$(find /tmp/pmd-smoke -name 'manifest.yaml' -print -quit)"
 
       - name: Upload binary
         uses: actions/upload-artifact@v6
@@ -266,6 +281,14 @@ jobs:
           ref: ${{ needs.version.outputs.tag }}
 
       - uses: ./.github/actions/bun
+
+      # audit F3: pin Node to match the Windows viewer build (which pins 20).
+      # electron-builder runs under node/npm (see dist:* note below), so leaving
+      # this to the runner's ambient default let the three platforms package
+      # under different Node majors.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -342,6 +365,12 @@ jobs:
           ref: ${{ needs.version.outputs.tag }}
 
       - uses: ./.github/actions/bun
+
+      # audit F3: pin Node to match the Windows viewer build (see build-viewer-
+      # linux for rationale) so all three platforms package under the same Node.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

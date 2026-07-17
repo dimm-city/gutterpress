@@ -45,7 +45,7 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
 const noop = () => {};
 function baseServices(): HostServices {
   return {
-    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, resolveFlush: noop, sendToRenderer: noop },
+    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, sendToRenderer: noop },
     conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
     desktop: {
       showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
@@ -63,11 +63,10 @@ function baseServices(): HostServices {
       writePrefs: async () => {},
       updatePrefs: async (mutate: (p: object) => object) => mutate({}),
       readSettings: async () => ({}),
-      writeSettings: async () => {},
+      updateSettings: async () => ({}),
       existingDirectory: async () => null,
       readProjectState: () => null,
       writeProjectState: (states: unknown) => states,
-      mergeSettings: (b: unknown) => b,
       defaultProjectSearchRoots: () => [],
       scanForProjects: async () => [],
       toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),

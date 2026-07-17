@@ -1,8 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { getWriteHooks } from '../../../../../electron/server-bridge/write-hooks';
-import { isWithinRoot } from '../../../../../electron/server-bridge/fs-guard';
+import { scheduleAutoWriteEffects } from '../../../../../electron/server-bridge/write-hooks';
 import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import { requireSegment } from '../_shared/validate-segment';
 import type { RequestHandler } from './$types';
@@ -27,14 +26,7 @@ export const POST: RequestHandler = defineRoute<{ dir: string; name: string }>({
       throw e;
     }
 
-    const hooks = getWriteHooks();
-    if (hooks) {
-      const watchedDir = hooks.getWatchedDir();
-      if (watchedDir && isWithinRoot(target, watchedDir)) {
-        hooks.scheduleAutoSnapshot(watchedDir);
-        hooks.scheduleAutoSync(watchedDir);
-      }
-    }
+    scheduleAutoWriteEffects(target);
 
     return { path: target };
   },

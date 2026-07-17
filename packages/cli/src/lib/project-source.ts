@@ -78,8 +78,15 @@ export type ProjectSource =
 
 /**
  * What the UI may offer for a given source. Derived purely from the source
- * type; no I/O. Drives which user-facing buttons (Enable Version History,
- * Save Snapshot, View History) are shown.
+ * type; no I/O.
+ *
+ * NOTE (audit D5): today the viewer only reads `canSnapshot` (it gates the
+ * StatusBar "Version history" affordance). The other flags —
+ * `canEnableVersionHistory`, `canViewHistory`, `canRestoreSnapshot`, `canRead`,
+ * `canWriteLocal`, `authManagedByApp` — are computed and part of the DTO but
+ * not yet wired to UI gating; they are staging for the version-history feature
+ * (#13). Don't assume a button is driven by one of these until you find its
+ * reader.
  *
  * Deliberately NO `canSync` here: syncability is a credential-aware question
  * only `diagnoseProjectRemote().canSync` (remote-auth/diagnose.ts) can answer.

@@ -32,7 +32,7 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 
 import git from "isomorphic-git";
-import httpNode from "isomorphic-git/http/node";
+import { defaultGitHttp } from "../git-http.ts";
 
 import { onAuthFor } from "../sync.ts";
 import { withBackupGate } from "./failsafe.ts";
@@ -79,7 +79,7 @@ export const recover: RecoverFn = async (ctx, error?) => {
     try {
       await git.clone({
         fs,
-        http: ctx.httpClient ?? httpNode,
+        http: ctx.httpClient ?? defaultGitHttp,
         dir: tempCloneDir,
         url: remoteUrl,
         singleBranch: true,

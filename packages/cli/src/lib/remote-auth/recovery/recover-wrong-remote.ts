@@ -87,7 +87,11 @@ export const recover: RecoverFn = async (ctx, error?): Promise<RecoveryResult> =
   let probeError: unknown = error;
 
   try {
-    const http = ctx.httpClient ?? (await import("isomorphic-git/http/node")).default;
+    // defaultGitHttp (audit B1 / review): this probe was the one call site
+    // still on the bare, timeout-less client — a stalling remote (the exact
+    // condition wrong-remote recovery is most likely to probe) hung recovery
+    // forever.
+    const http = ctx.httpClient ?? (await import("../git-http.ts")).defaultGitHttp;
     const refs = await git.listServerRefs({
       http,
       url: ctx.remoteUrl,

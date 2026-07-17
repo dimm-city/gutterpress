@@ -13,8 +13,6 @@ import { getHostServices } from './host-services';
 export interface AppHooks {
   /** Set the renderer dirty state for the close gate. */
   setRendererDirty: (isDirty: boolean) => void;
-  /** Resolve the pending flush and mark renderer clean. */
-  resolveFlush: () => void;
   /** Send a push event to the main window's renderer. */
   sendToRenderer: (channel: string, ...args: unknown[]) => void;
 }

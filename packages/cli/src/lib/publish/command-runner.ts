@@ -19,6 +19,17 @@ import type { CommandResult, CommandRunner } from "./types.ts";
  */
 const CAPTURE_LIMIT = 64 * 1024;
 
+/**
+ * Default idle budget for provider uploads (audit B2 / review): the value
+ * every publish provider should pass as `timeoutMs` unless it has a reason to
+ * differ, so the next provider can't silently regain hang-forever behavior by
+ * inventing its own number. Idle, not total — the timer re-arms on every
+ * output line, so only total silence kills the child. 5 minutes tolerates
+ * upload CLIs that quiet their progress stream when piped (butler/swa run
+ * with stdio piped, not a TTY).
+ */
+export const PUBLISH_IDLE_TIMEOUT_MS = 300_000;
+
 function keepTail(buffer: string, chunk: string): string {
   const joined = buffer + chunk;
   return joined.length > CAPTURE_LIMIT ? joined.slice(-CAPTURE_LIMIT) : joined;
@@ -62,18 +73,69 @@ export const defaultCommandRunner: CommandRunner = (
     const outLines = lineEmitter(options.onOutput ?? noop);
     const errLines = lineEmitter(options.onOutput ?? noop);
 
+    // Idle-kill timer (audit B2): a stalled butler/swa upload (connection open,
+    // no bytes moving) would otherwise hang publish forever. Mirrors exec.ts's
+    // execCapture: the timer is re-armed on every chunk of output (so a slow
+    // BUT progressing upload is never killed), cleared on settle, and unref'd
+    // so a pending call can't keep the process alive on its own.
+    //
+    // KNOWN LIMIT (review): the SIGKILL reaches the direct child only. A CLI
+    // that delegates the transfer to its own grandchild (the SWA CLI spawns
+    // StaticSitesClient) can leave that grandchild briefly orphaned. The fix —
+    // detached process groups + negative-pid kill — would stop Ctrl+C from
+    // reaching the child in normal CLI use, a worse trade for a rarer case.
+    let settled = false;
+    let idleTimer: NodeJS.Timeout | undefined;
+    const clearIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = undefined;
+    };
+    const armIdle = () => {
+      // Falsy (undefined OR 0) = no timeout. A bare undefined-check would turn
+      // `timeoutMs: 0` — the natural encoding of "disabled" — into an instant
+      // SIGKILL on the first tick (review finding).
+      if (!options.timeoutMs) return;
+      clearIdle();
+      idleTimer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        child.kill("SIGKILL");
+        if (options.onOutput) {
+          outLines.flush();
+          errLines.flush();
+        }
+        reject(
+          new Error(
+            `${cmd} produced no output for ${options.timeoutMs}ms and was stopped`,
+          ),
+        );
+      }, options.timeoutMs);
+      idleTimer.unref();
+    };
+    armIdle();
+
     child.stdout.on("data", (d: Buffer) => {
       const text = d.toString();
       stdout = keepTail(stdout, text);
       if (options.onOutput) outLines.push(text);
+      armIdle();
     });
     child.stderr.on("data", (d: Buffer) => {
       const text = d.toString();
       stderr = keepTail(stderr, text);
       if (options.onOutput) errLines.push(text);
+      armIdle();
     });
-    child.on("error", reject);
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearIdle();
+      reject(err);
+    });
     child.on("exit", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearIdle();
       if (options.onOutput) {
         outLines.flush();
         errLines.flush();

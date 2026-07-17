@@ -3,6 +3,12 @@ import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly
 import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
+// NOTE (audit D7): no SPA action calls api.vcs.enableVersionHistory yet — the
+// "turn a plain local-folder into a versioned project" escape hatch (CLAUDE.md
+// §7) is implemented end-to-end here but not surfaced in the UI. Intentionally
+// retained ahead of the version-history milestone (#13); wire a StatusBar /
+// Settings action to api.vcs.enableVersionHistory when that feature lands.
+
 // Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
 interface LibModule {
   detectProjectSource: (dir: string) => Promise<unknown>;

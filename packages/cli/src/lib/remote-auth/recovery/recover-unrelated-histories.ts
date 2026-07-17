@@ -44,7 +44,7 @@
 import * as fsSync from "node:fs";
 
 import git from "isomorphic-git";
-import httpNode from "isomorphic-git/http/node";
+import { defaultGitHttp } from "../git-http.ts";
 
 import { gitAuthor } from "../../source-provider.ts";
 import { conflictFilesFrom, onAuthFor } from "../sync.ts";
@@ -144,7 +144,7 @@ export const recover: RecoverFn = async (ctx, error?) => {
       await git.fetch({
         fs,
         dir,
-        http: ctx.httpClient ?? httpNode,
+        http: ctx.httpClient ?? defaultGitHttp,
         url: ctx.remoteUrl,
         remote: "origin",
         ref: `refs/remotes/origin/${branch}`,

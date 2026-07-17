@@ -12,8 +12,9 @@ export const POST: RequestHandler = defineRoute<Record<string, unknown>, PrefsHo
   hooks: getPrefsHooks,
   hooksUnavailableMessage: 'Prefs hooks not registered',
   call: async ({ body, hooks }) => {
-    const current = await hooks.readSettings();
-    await hooks.writeSettings(hooks.mergeSettings(current, body));
+    // Atomic read-merge-write (audit A2): a bare readSettings()+writeSettings()
+    // pair here raced concurrent setting changes and silently reverted one.
+    await hooks.updateSettings(body);
     return { ok: true };
   },
 });

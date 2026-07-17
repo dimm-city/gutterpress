@@ -23,6 +23,7 @@ import path from "node:path";
 import { detectProjectSource, type ProjectSource } from "../../project-source.ts";
 import { diagnoseProjectRemote } from "../diagnose.ts";
 import {
+  credentialHostKey,
   extractUrlCredential,
   type HostCredential,
   type TokenStore,
@@ -81,8 +82,15 @@ export async function buildRecoveryContext(
   let credential: HostCredential | undefined;
   if (remoteUrl && tokenStore) {
     try {
-      const host = new URL(remoteUrl).hostname;
-      credential = (await tokenStore.get(host)) ?? undefined;
+      // Deep-analysis fix: use the CANONICAL host key (strips `www.`, keeps an
+      // explicit port), the same derivation every credential writer/reader
+      // shares. `new URL().hostname` dropped the port and kept `www.`, so a
+      // `host:3000` or `www.`-prefixed remote found no credential and recovery
+      // ran UNAUTHENTICATED — GitHub masks private repos as 404 for anonymous
+      // requests, so the highest-stakes structural repairs failed with a
+      // confusing auth/"history can't be restored" error for a connected user.
+      const host = credentialHostKey(remoteUrl);
+      credential = (host ? await tokenStore.get(host) : null) ?? undefined;
     } catch {
       // Malformed URL or missing credential — proceed without one.
     }

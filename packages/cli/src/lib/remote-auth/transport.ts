@@ -47,20 +47,48 @@ export async function repoDirFor(projectDir: string): Promise<string> {
   return projectDir;
 }
 
+/**
+ * True when a stored credential may be transmitted to `url`: over https to
+ * anywhere, or over http ONLY to loopback (a local git daemon or the in-memory
+ * test server). Deep-analysis SECURITY fix: the protocol gates elsewhere accept
+ * http:// too, so without this a repo-scoped account token was sent as cleartext
+ * Basic auth to a remote http host — harvestable by anyone on the path. Loopback
+ * http carries no network exposure, so it stays allowed.
+ */
+export function isCredentialTransmissionSafe(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.protocol === "https:") return true;
+    if (u.protocol === "http:") {
+      const host = u.hostname.toLowerCase();
+      return host === "127.0.0.1" || host === "::1" || host === "localhost";
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function onAuthFor(credential: HostCredential | undefined) {
   if (!credential) return {};
   return {
-    onAuth: () => ({
+    onAuth: (url: string) => {
+      // Never leak the token over cleartext (see isCredentialTransmissionSafe):
+      // a remote http:// URL gets NO credential, so a private repo fails auth
+      // instead of harvesting the user's account token on the wire.
+      if (!isCredentialTransmissionSafe(url)) return {};
       // Same convention as clone.ts: GitHub accepts any username with the
       // token as password (covers OAuth gho_ and legacy ghu_ tokens); plain
       // tokens use the stored username (or the token-as-username convention
       // every smart-HTTPS forge accepts).
-      username:
-        credential.kind === "github-oauth"
-          ? "x-access-token"
-          : credential.username || credential.token,
-      password: credential.token,
-    }),
+      return {
+        username:
+          credential.kind === "github-oauth"
+            ? "x-access-token"
+            : credential.username || credential.token,
+        password: credential.token,
+      };
+    },
   };
 }
 

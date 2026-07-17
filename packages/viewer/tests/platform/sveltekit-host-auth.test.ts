@@ -29,6 +29,7 @@
  * `registerAppProtocol` — see the `skAuthToken` constant in main.ts.
  */
 import { test, expect, mock, afterEach } from "bun:test";
+import { electronMock } from "../support/electron-mock";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -39,20 +40,17 @@ import type { AddressInfo } from "node:net";
 // so registerAppProtocol's registered callback can be captured and invoked
 // directly, the same way Electron itself would invoke it per app:// request.
 let capturedAppHandler: ((req: Request) => Promise<Response>) | null = null;
-mock.module("electron", () => ({
-  app: { getPath: () => "/tmp/print-md-test-userdata" },
-  protocol: {
-    handle: (scheme: string, cb: (req: Request) => Promise<Response>) => {
-      if (scheme === "app") capturedAppHandler = cb;
+mock.module("electron", () =>
+  electronMock({
+    // Real protocol.handle so registerAppProtocol's callback can be captured
+    // and invoked directly, the way Electron would per app:// request.
+    protocol: {
+      handle: (scheme: string, cb: (req: Request) => Promise<Response>) => {
+        if (scheme === "app") capturedAppHandler = cb;
+      },
     },
-  },
-  BrowserWindow: class {},
-  safeStorage: {
-    isEncryptionAvailable: () => true,
-    encryptString: (s: string) => Buffer.from(s, "utf8"),
-    decryptString: (b: Buffer) => Buffer.from(b).toString("utf8"),
-  },
-}));
+  }),
+);
 
 const {
   isAuthorizedRequest,

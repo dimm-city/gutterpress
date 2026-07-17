@@ -52,7 +52,7 @@ test("getHostServices() and every domain accessor return null before registratio
 // One fake per domain field, built once and registered in a single call —
 // mirrors main.ts's real "one registerHostServices() call, once every
 // dependency exists" shape.
-const fakeApp = { updateSplash: () => {}, showMainWindowAndCloseSplash: () => {}, setRendererDirty: () => {}, resolveFlush: () => {}, sendToRenderer: () => {} };
+const fakeApp = { updateSplash: () => {}, showMainWindowAndCloseSplash: () => {}, setRendererDirty: () => {}, sendToRenderer: () => {} };
 const fakeConflictPreview = { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) };
 const fakeDesktop = {
   showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
@@ -71,11 +71,10 @@ const fakePrefs = {
   writePrefs: async () => {},
   updatePrefs: async (mutate: (p: object) => object) => mutate({}),
   readSettings: async () => ({}),
-  writeSettings: async () => {},
+  updateSettings: async () => ({}),
   existingDirectory: async () => null,
   readProjectState: () => null,
   writeProjectState: (states: unknown) => states,
-  mergeSettings: (base: unknown) => base,
   defaultProjectSearchRoots: () => [],
   scanForProjects: async () => [],
   toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),

@@ -33,11 +33,19 @@ export interface PrefsHooks<
    */
   updatePrefs: (mutate: (prefs: Prefs) => Prefs) => Promise<Prefs>;
   readSettings: () => Promise<Settings>;
-  writeSettings: (settings: Settings) => Promise<void>;
+  // writeSettings/mergeSettings were removed from this seam (review finding):
+  // after the app/settings POST route moved to updateSettings, no route
+  // consumed them — and advertising the racy read+merge+write building blocks
+  // here invites reintroducing the exact lost-update audit A2 fixed. The store
+  // still has writeSettings internally; routes get only the atomic op.
+  /**
+   * Atomic read-merge-write of a settings patch on the store's write queue
+   * (audit A2): the only way a route mutates settings.
+   */
+  updateSettings: (patch: Record<string, unknown>) => Promise<Settings>;
   existingDirectory: (dir: string | undefined) => Promise<string | null>;
   readProjectState: (states: ProjectStates, dir: string) => unknown;
   writeProjectState: (states: ProjectStates, dir: string, patch: Record<string, unknown>) => ProjectStates;
-  mergeSettings: (base: Settings, patch: Record<string, unknown>) => Settings;
   defaultProjectSearchRoots: () => string[];
   scanForProjects: (roots: string[], exclude: Set<string>) => Promise<unknown[]>;
   toggleFavoriteFolder: (

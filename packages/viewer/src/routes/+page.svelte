@@ -1369,6 +1369,21 @@
     persistLeftPanelPrefs();
   }
 
+  /**
+   * Open the editor pane: mark it open, lazy-load the editor module, ensure a
+   * file is loaded, and move focus into it. Centralizes the sequence that was
+   * hand-repeated across five call sites (audit E3). `focus` and `ensureFile`
+   * cover the two sites that intentionally differ (togglePreview never steals
+   * focus; the file-tree selection path already has a file).
+   */
+  function openEditorPane(opts: { focus?: boolean; ensureFile?: boolean } = {}) {
+    const { focus = true, ensureFile = true } = opts;
+    editorOpen = true;
+    loadEditorModule();
+    if (ensureFile) void ensureEditorFile();
+    if (focus) focusEditorWhenReady();
+  }
+
   function toggleEditor() {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     // Manually toggling while activity borrows the editor exits that view.
@@ -1381,11 +1396,8 @@
     // focus-switch into the editing surface (#38). Closing returns focus to
     // the document (preview iframe / window) implicitly.
     if (editorOpen) {
-      loadEditorModule();
-      void ensureEditorFile();
-      // Defer until the pane (and CodeMirror view) is mounted. The editor
-      // component is lazy-loaded, so focus may need to wait for it to arrive.
-      focusEditorWhenReady();
+      // Defer focus until the (lazy-loaded) pane + CodeMirror view mount.
+      openEditorPane();
     }
   }
 
@@ -1998,11 +2010,8 @@
     settings.set({ preview: { paneMode: mode } });
     // Switching to the edit pane should open the editor + focus it (folder only).
     if (mode === "edit" && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-      const wasClosed = !editorOpen;
-      editorOpen = true;
-      loadEditorModule();
-      void ensureEditorFile();
-      if (wasClosed) focusEditorWhenReady();
+      // Only steal focus if the editor was previously closed.
+      openEditorPane({ focus: !editorOpen });
     }
   }
 
@@ -2010,9 +2019,8 @@
     if (!lifecycle.previewUrl || isNarrow) return;
     previewHidden = !previewHidden;
     if (previewHidden && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-      editorOpen = true;
-      loadEditorModule();
-      void ensureEditorFile();
+      // Preview was hidden — open the editor but don't yank focus into it.
+      openEditorPane({ focus: false });
     }
   }
 
@@ -2061,10 +2069,7 @@
   function enterFocusMode() {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
     focusRestore = { editorOpen, paneMode };
-    editorOpen = true;
-    loadEditorModule();
-    void ensureEditorFile();
-    focusEditorWhenReady();
+    openEditorPane();
     // Narrow single-pane layout is left functionally unchanged — focus mode
     // there just shows the editor tab (setPaneMode also opens/focuses it).
     if (isNarrow && paneMode !== "edit") setPaneMode("edit");
@@ -2701,9 +2706,8 @@
       onSelectEditorFile={(path) => {
         selectEditorFile(path);
         if (!editorOpen && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-          editorOpen = true;
-          loadEditorModule();
-          focusEditorWhenReady();
+          // A file was just selected in the tree, so no ensureEditorFile needed.
+          openEditorPane({ ensureFile: false });
         }
       }}
       onBeforeRenameOpenFile={onTreeBeforeRename}

@@ -17,6 +17,7 @@
  * note on the same hazard for `app`).
  */
 import { test, expect, mock } from "bun:test";
+import { electronMock } from "../support/electron-mock";
 
 // NOTE: `bun test --isolate` does not fully sandbox `mock.module("electron", …)`
 // registrations between files that all touch the "electron" specifier — other
@@ -28,16 +29,7 @@ import { test, expect, mock } from "bun:test";
 // BrowserWindow, safeStorage) — whichever file's registration is actually
 // live, every other suite's named imports still resolve. Keep this superset
 // in sync with any new `from "electron"` import added to electron/*.ts.
-mock.module("electron", () => ({
-  app: { getPath: () => "/tmp/print-md-test-userdata" },
-  protocol: {},
-  BrowserWindow: class {},
-  safeStorage: {
-    isEncryptionAvailable: () => true,
-    encryptString: (s: string) => Buffer.from(s, "utf8"),
-    decryptString: (b: Buffer) => Buffer.from(b).toString("utf8"),
-  },
-}));
+mock.module("electron", () => electronMock());
 
 const { buildHostErrorPage } = await import("../../electron/sveltekit-host");
 

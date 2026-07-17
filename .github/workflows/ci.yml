@@ -53,10 +53,16 @@ jobs:
         working-directory: packages/cli
         run: bun run build
 
+      # NOTE: never use `bun --cwd <pkg> run <script>` in workflows — on Bun
+      # 1.3.x that form prints `bun run` usage and EXITS 0 without running the
+      # script, so the step passes while doing nothing (review finding: this
+      # made the viewer-build and type-check steps silent no-ops).
+      # `working-directory` + `bun run <script>` is the robust form.
       - name: Build viewer (static SPA + Electron main)
+        working-directory: packages/viewer
         run: |
-          bun --cwd packages/viewer run build
-          bun --cwd packages/viewer run electron:build
+          bun run build
+          bun run electron:build
 
       # Self-test for the guardrail script itself (dependency-free by design):
       # if a refactor breaks its detection regexes, this must fail loudly
@@ -67,9 +73,12 @@ jobs:
       # §8 renderer-purity guardrail: fail if host/node code leaked into the
       # built viewer CLIENT SPA bundle. Scope is build/client/ ONLY —
       # adapter-node's build/server/ + build/handler.js are host Node code by
-      # design (§8).
+      # design (§8). --strict: the build step above just ran, so an absent
+      # build/client means the build silently did nothing — that must FAIL,
+      # not skip (review finding: the non-strict form passed vacuously while
+      # the broken `bun --cwd` build step produced no output at all).
       - name: Check renderer purity (CLAUDE.md §8)
-        run: node tools/check-render-purity.mjs packages/viewer/build/client
+        run: node tools/check-render-purity.mjs packages/viewer/build/client --strict
 
   viewer-test:
     name: Viewer Test
@@ -111,11 +120,34 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Run TypeScript compiler (CLI)
-        run: bun --cwd packages/cli run typecheck
+      # NOTE: `working-directory` + `bun run <script>`, never
+      # `bun --cwd <pkg> run <script>` — on Bun 1.3.x the latter prints usage
+      # and exits 0 WITHOUT running the script. Review finding: every step in
+      # this job used that broken form, so the whole Type Check job was a
+      # silent no-op that always passed.
+      #
+      # svelte-check and the electron tsc resolve @dimm-city/print-md's types
+      # to packages/cli/dist/*.d.ts (gitignored), so build the CLI dist first —
+      # same prerequisite the viewer-test job already documents.
+      - name: Build package dist (types for the viewer checks)
+        working-directory: packages/cli
+        run: bun run build:library
 
-      - name: Run TypeScript compiler (viewer)
-        run: bun --cwd packages/viewer run check
+      - name: Run TypeScript compiler (CLI)
+        working-directory: packages/cli
+        run: bun run typecheck
+
+      - name: Run TypeScript compiler (viewer SPA)
+        working-directory: packages/viewer
+        run: bun run check
+
+      # audit F1: `check` above is svelte-check (SPA only). The Electron
+      # main/preload TS was never type-checked in CI — its `typecheck` script
+      # existed but nothing ran it, so a type error in electron/main.ts merged
+      # green. Run it too.
+      - name: Run TypeScript compiler (viewer Electron main/preload)
+        working-directory: packages/viewer
+        run: bun run typecheck
 
   security-audit:
     name: Security Audit

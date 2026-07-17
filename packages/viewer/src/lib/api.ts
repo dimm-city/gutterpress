@@ -235,14 +235,21 @@ export const api = {
     statFile: (filePath: string) => post<FileStat>('/api/fs/stat-file', { path: filePath }),
     /** List the immediate entries of a directory. Path must be absolute. */
     listDir: (dirPath: string) => post<DirEntry[]>('/api/fs/list-dir', { path: dirPath }),
-    /** Copy a file into a destination directory. Creates destDir if absent. Returns the dest path. */
-    copyFile: (src: string, dest: string) =>
-      post<string>('/api/fs/copy-file', { src, dest }),
+    // copyFile wrapper deleted (audit D2) — the SPA's image-insert flow calls
+    // api.media.importImage, not this. The /api/fs/copy-file ROUTE is retained
+    // deliberately: it still guards the shared picker-capability + fs-guard
+    // path and carries that mechanism's security regression tests.
     // watchFolder/unwatchFolder deleted (ARCH review #8) — the folder watch
     // stays IPC-only (preload.ts / electron-adapter.ts); these client
     // wrappers and their /api/fs/{watch,unwatch}-folder routes had zero
     // callers, the IPC path being the live one.
-    /** List top-level .md and .css files in a project directory. */
+    /**
+     * List top-level .md and .css files in a project directory. No SPA caller
+     * on the Electron target today (audit D6): retained as staging for the PWA
+     * WebAdapter plan's Phase 1 (docs/pwa-webadapter-plan.md lists
+     * listProjectFiles), whose WebAdapter.listProjectFiles is the live browser
+     * implementation.
+     */
     listProjectFiles: (projectDir: string) =>
       post<ProjectFileEntry>('/api/fs/list-project-files', { projectDir }),
 

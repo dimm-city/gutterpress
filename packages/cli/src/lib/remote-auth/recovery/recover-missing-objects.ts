@@ -45,7 +45,7 @@
 
 import * as fs from "node:fs";
 import git from "isomorphic-git";
-import httpNode from "isomorphic-git/http/node";
+import { defaultGitHttp } from "../git-http.ts";
 
 import { onAuthFor } from "../sync.ts";
 import { withBackupGate } from "./failsafe.ts";
@@ -108,7 +108,7 @@ export const recover: RecoverFn = async (ctx, error?) => {
       // ── Safe fetch from remote (read-only — never pushes) ─────────────────
       await git.fetch({
         fs,
-        http: ctx.httpClient ?? httpNode,
+        http: ctx.httpClient ?? defaultGitHttp,
         dir: ctx.repoDir,
         url: ctx.remoteUrl,
         remote: "origin",

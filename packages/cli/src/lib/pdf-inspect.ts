@@ -50,6 +50,50 @@ interface CacheEntry {
 const docCache = new Map<string, CacheEntry>();
 
 /**
+ * Cap on distinct cached documents (audit B3). One validation run touches a
+ * single PDF across ~13 checks (one entry), so this only bounds accumulation
+ * ACROSS runs in a long-lived host (the Electron viewer validating many
+ * projects over a session). Without it, `docCache` grew one never-freed parsed
+ * document per distinct path ever validated. LRU eviction destroys the evicted
+ * document so its decoded pages/fonts/images are released, not just unreferenced.
+ */
+const DOC_CACHE_MAX = 8;
+
+function destroyEntry(entry: CacheEntry): void {
+  entry.doc.then((d) => d.destroy()).catch(() => {});
+}
+
+/**
+ * Grace period before an LRU-evicted document is destroyed (review finding):
+ * a caller that obtained the proxy from `loadPdf` may still be mid-check when
+ * the entry gets evicted by unrelated loads — destroying immediately would
+ * make its in-flight page reads throw "Transport destroyed". Individual
+ * checks complete in seconds; a minute of grace lets them drain while still
+ * bounding memory. (Same-path stale replacement keeps immediate destroy —
+ * that behavior predates the LRU and the superseded doc's file has changed.)
+ */
+const EVICT_DESTROY_GRACE_MS = 60_000;
+
+function destroyEntryAfterGrace(entry: CacheEntry): void {
+  const t = setTimeout(() => destroyEntry(entry), EVICT_DESTROY_GRACE_MS);
+  // Never keep the process alive just to reclaim cache memory.
+  t.unref?.();
+}
+
+/** Evict least-recently-used entries until the cache is within its cap. */
+function evictLru(): void {
+  while (docCache.size > DOC_CACHE_MAX) {
+    // Map iteration order is insertion order; the first key is the LRU one
+    // because `loadPdf` re-inserts on every hit (see below).
+    const oldestKey = docCache.keys().next().value as string | undefined;
+    if (oldestKey === undefined) break;
+    const evicted = docCache.get(oldestKey);
+    docCache.delete(oldestKey);
+    if (evicted) destroyEntryAfterGrace(evicted);
+  }
+}
+
+/**
  * Load (and cache) a PDF as a PDF.js document proxy. Returns null if the file
  * is missing or cannot be parsed at all. Concurrent callers for the same path
  * share one parse.
@@ -64,6 +108,9 @@ export async function loadPdf(path: string): Promise<PDFDocumentProxy | null> {
 
   const hit = docCache.get(path);
   if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+    // Touch: re-insert so this path becomes most-recently-used for the LRU.
+    docCache.delete(path);
+    docCache.set(path, hit);
     try {
       return await hit.doc;
     } catch {
@@ -71,19 +118,33 @@ export async function loadPdf(path: string): Promise<PDFDocumentProxy | null> {
     }
   }
   // Stale entry → free the old document before replacing it.
-  if (hit) hit.doc.then((d) => d.destroy()).catch(() => {});
+  if (hit) destroyEntry(hit);
 
   const docPromise = readFile(path).then((buf) =>
     getDocumentProxy(new Uint8Array(buf))
   );
+  docCache.delete(path);
   docCache.set(path, { mtimeMs: st.mtimeMs, size: st.size, doc: docPromise });
+  evictLru();
 
   try {
     return await docPromise;
   } catch {
-    docCache.delete(path);
+    // Identity guard (review finding): only drop OUR entry — a concurrent
+    // caller may have re-inserted a newer one for this path after an eviction,
+    // and an unguarded delete would silently discard their live document.
+    if (docCache.get(path)?.doc === docPromise) docCache.delete(path);
     return null;
   }
+}
+
+/**
+ * Destroy and drop every cached document. Exposed for tests and for hosts that
+ * want to reclaim memory at a natural boundary (e.g. after a validation run).
+ */
+export function clearPdfCache(): void {
+  for (const entry of docCache.values()) destroyEntry(entry);
+  docCache.clear();
 }
 
 // ---------------------------------------------------------------------------

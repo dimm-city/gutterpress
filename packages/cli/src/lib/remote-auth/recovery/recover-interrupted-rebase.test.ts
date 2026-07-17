@@ -342,8 +342,9 @@ describe("recover interrupted_rebase — runs under the per-repo lock", () => {
     };
 
     // recover() synchronously registers itself in the per-repo queue before it
-    // returns, so a withRepoLock() call issued right after is guaranteed to queue
-    // BEHIND it (same resolved dir → same FIFO chain).
+    // returns (dispatch.recover calls withRepoLock synchronously; the precondition
+    // probe runs INSIDE the lock), so a withRepoLock() call issued right after is
+    // guaranteed to queue BEHIND it (same resolved dir → same FIFO chain).
     const recoveryPromise = dispatchRecover(
       "interrupted_rebase",
       makeCtx(dir, { confirmation: gate }),
@@ -352,11 +353,20 @@ describe("recover interrupted_rebase — runs under the per-repo lock", () => {
       order.push("competing-ran");
     });
 
-    // Give the event loop time; the competing op must NOT have run — recovery
-    // still holds the lock (parked in confirmRepair).
-    await new Promise((r) => setTimeout(r, 30));
+    // Wait until recovery has actually REACHED (and parked in) its confirmation
+    // gate — the moment it holds the lock. Poll the observable condition instead
+    // of a fixed delay: recovery's pre-gate work (the precondition probe + the
+    // safety backup) does real filesystem/git I/O that can exceed any hardcoded
+    // budget on a busy CI runner, which made the old `setTimeout(30)` flaky. The
+    // ORDERING guarantee under test is unaffected by this timing — `competing` is
+    // chained behind the (still-parked) recovery on the same FIFO queue, so it
+    // provably cannot run until recovery releases, no matter how long the wait.
+    const deadline = Date.now() + 5000;
+    while (releaseConfirm === undefined) {
+      if (Date.now() > deadline) throw new Error("recovery never reached its confirmation gate");
+      await new Promise((r) => setTimeout(r, 5));
+    }
     expect(order).toEqual(["recovery-holding-lock"]);
-    expect(releaseConfirm).toBeDefined();
 
     releaseConfirm!();
     const result = await recoveryPromise;

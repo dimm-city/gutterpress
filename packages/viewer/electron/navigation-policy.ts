@@ -95,8 +95,18 @@ export type NavigationDecision =
  */
 export function decideNavigation(url: string, config: OriginPolicyConfig): NavigationDecision {
   if (isTrustedAppUrl(url, config)) return { action: "allow" };
-  if (/^https?:/i.test(url)) return { action: "open-external", url };
+  if (isHttpUrl(url)) return { action: "open-external", url };
   return { action: "deny" };
+}
+
+/**
+ * The app's ONE http(s)-only gate for URLs that leave the app for the OS
+ * (review finding: this policy existed in three drifting copies —
+ * decideNavigation, decideWindowOpen, and the shell/open-external route).
+ * Everything that ends in `shell.openExternal` must pass this.
+ */
+export function isHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
 }
 
 export type WindowOpenDecision =
@@ -114,7 +124,7 @@ export type WindowOpenDecision =
  * are opened in the system browser, everything else is denied.
  */
 export function decideWindowOpen(url: string): WindowOpenDecision {
-  if (/^https?:/i.test(url)) return { action: "open-external", url };
+  if (isHttpUrl(url)) return { action: "open-external", url };
   return { action: "deny" };
 }
 

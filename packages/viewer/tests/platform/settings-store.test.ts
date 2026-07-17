@@ -82,6 +82,18 @@ test("mergeSettings does not mutate the base object", () => {
   expect(DEFAULT_SETTINGS.editor.fontSize).toBe(baseSnapshot.editor.fontSize);
 });
 
+test("mergeSettings ignores an ARRAY-valued section patch (audit A1 array guard)", () => {
+  // The host copy used to lack the `!Array.isArray` guard, so an array-shaped
+  // section patch spread into `{0:…,1:…}` and corrupted the section. The single
+  // reconciled implementation ignores it, leaving the section untouched.
+  const merged = mergeSettings(DEFAULT_SETTINGS, {
+    editor: [1, 2, 3],
+  } as unknown as DeepPartialSettings);
+
+  expect(merged.editor).toEqual(DEFAULT_SETTINGS.editor);
+  expect(Array.isArray(merged.editor)).toBe(false);
+});
+
 // ── createSettingsStore (injected fs + userDataDir) ───────────────────────
 
 interface WriteCall {
@@ -292,4 +304,47 @@ test("writeSettings serializes overlapping writers (no interleaved tmp writes)",
 
   // First write→rename fully completes before the second write begins.
   expect(order).toEqual(["write:1", "rename", "write:2", "rename"]);
+});
+
+// ── updateSettings (atomic read-merge-write, audit A2) ────────────────────
+
+test("updateSettings composes concurrent patches instead of dropping one", async () => {
+  // Two patches to DIFFERENT fields fired back-to-back. A readSettings()+
+  // writeSettings() pair would read the same on-disk snapshot twice and the
+  // second write would revert the first patch. updateSettings runs read-merge-
+  // write inside one queue slot, so both land.
+  // Minimal atomic-write fs fake: writeFile stashes the tmp payload, rename
+  // commits it to `stored` (mirroring the store's write-then-rename protocol).
+  let stored = JSON.stringify(DEFAULT_SETTINGS);
+  let tmpPayload = "";
+  const deps: SettingsStoreDeps = {
+    getUserDataDir: () => "/userdata",
+    fs: {
+      readFile: async () => stored,
+      writeFile: async (p: string, data: string) => {
+        if (p.endsWith(".tmp")) tmpPayload = data;
+      },
+      mkdir: async () => undefined,
+      rename: async () => {
+        stored = tmpPayload;
+      },
+    },
+  };
+
+  const store = createSettingsStore(deps);
+  const [a, b] = await Promise.all([
+    store.updateSettings({ editor: { fontSize: 21 } } as never),
+    store.updateSettings({ preview: { splitRatio: 0.42 } } as never),
+  ]);
+
+  // Both patches survive in the final persisted object.
+  const final = JSON.parse(stored) as AppSettings;
+  expect(final.editor.fontSize).toBe(21);
+  expect(final.preview.splitRatio).toBe(0.42);
+  // The second update's return value reflects both merged patches.
+  expect(b.editor.fontSize).toBe(21);
+  expect(b.preview.splitRatio).toBe(0.42);
+  // The first return value has its own patch (and not yet the second's, since
+  // it committed first).
+  expect(a.editor.fontSize).toBe(21);
 });
