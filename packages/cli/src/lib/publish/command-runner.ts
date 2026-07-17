@@ -78,6 +78,12 @@ export const defaultCommandRunner: CommandRunner = (
     // execCapture: the timer is re-armed on every chunk of output (so a slow
     // BUT progressing upload is never killed), cleared on settle, and unref'd
     // so a pending call can't keep the process alive on its own.
+    //
+    // KNOWN LIMIT (review): the SIGKILL reaches the direct child only. A CLI
+    // that delegates the transfer to its own grandchild (the SWA CLI spawns
+    // StaticSitesClient) can leave that grandchild briefly orphaned. The fix —
+    // detached process groups + negative-pid kill — would stop Ctrl+C from
+    // reaching the child in normal CLI use, a worse trade for a rarer case.
     let settled = false;
     let idleTimer: NodeJS.Timeout | undefined;
     const clearIdle = () => {

@@ -53,7 +53,7 @@ describe("withIdleTimeout", () => {
     expect(classifyTransportFailure(err)).toBe("network_unavailable");
   });
 
-  it("does NOT apply the short idle deadline to a request WITH a body (push upload)", async () => {
+  it("does NOT apply the short idle deadline to a LARGE upload (push pack)", async () => {
     // Review regression guard: isomorphic-git resolves request() only after the
     // whole pack upload for pushes, so the short idle deadline must not govern
     // it — only the long upload backstop does. Simulate an upload that takes
@@ -73,24 +73,45 @@ describe("withIdleTimeout", () => {
     const client = withIdleTimeout(slowUpload, 25 /* idle */, 10_000 /* upload backstop */);
     const res = await client.request({
       url: "http://example.test/git-receive-pack",
-      body: [new Uint8Array([1, 2, 3])],
+      body: [new Uint8Array(512 * 1024)], // > SMALL_BODY_MAX_BYTES → upload path
     } as never);
     expect(res.statusCode).toBe(200);
   });
 
-  it("still bounds a body-carrying request via the upload backstop", async () => {
+  it("still bounds a LARGE upload via the upload backstop", async () => {
     const client = withIdleTimeout(neverResolvingRequest(), 10_000 /* idle */, 25 /* upload */);
     let err: unknown;
     try {
       await client.request({
         url: "http://example.test/git-receive-pack",
-        body: [new Uint8Array([1])],
+        body: [new Uint8Array(512 * 1024)],
       } as never);
     } catch (e) {
       err = e;
     }
     expect(err).toBeInstanceOf(Error);
     expect(classifyTransportFailure(err)).toBe("network_unavailable");
+  });
+
+  it("applies the short idle deadline to a SMALL-body request (pull negotiation stall)", async () => {
+    // Gap-sweep regression guard: a pull's git-upload-pack POST carries a few
+    // KB of want/have lines — a remote that goes silent after receiving it must
+    // fail at the short idle deadline, not wedge the repo lock for the full
+    // upload backstop.
+    const client = withIdleTimeout(neverResolvingRequest(), 25 /* idle */, 3_600_000);
+    const start = Date.now();
+    let err: unknown;
+    try {
+      await client.request({
+        url: "http://example.test/git-upload-pack",
+        body: [new Uint8Array(1024)], // small negotiation body
+      } as never);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(Error);
+    expect(classifyTransportFailure(err)).toBe("network_unavailable");
+    expect(Date.now() - start).toBeLessThan(1000);
   });
 
   it("rejects a response body that stalls mid-read", async () => {

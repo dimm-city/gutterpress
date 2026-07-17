@@ -50,12 +50,21 @@ import httpNode from "isomorphic-git/http/node";
 export const GIT_HTTP_IDLE_TIMEOUT_MS = 60_000;
 
 /**
- * Total backstop for requests that UPLOAD a body (push / fetch negotiation),
- * whose request phase exposes no progress signal (see header). 30 minutes
+ * Total backstop for requests that upload a LARGE body (a push pack), whose
+ * request phase exposes no progress signal (see header). 30 minutes
  * accommodates a multi-GB initial push on a slow uplink while still
  * guaranteeing the per-repo lock can never be wedged forever.
  */
 export const GIT_HTTP_UPLOAD_TIMEOUT_MS = 30 * 60_000;
+
+/**
+ * Bodies at or below this size are "not an upload": they transfer in seconds
+ * even on a very slow uplink (256 KiB ≈ 21s at 100 kbit/s), so the wait for
+ * response headers is server silence, governed by the short idle deadline. A
+ * pull's fetch-negotiation POST (want/have lines) is a few KB; push packs are
+ * MBs+ and get the long backstop.
+ */
+export const SMALL_BODY_MAX_BYTES = 256 * 1024;
 
 function gitTimeoutError(what: string, ms: number): Error {
   // "couldn't reach" + "ETIMEDOUT" both match the network regex in
@@ -105,10 +114,26 @@ export function withIdleTimeout(
           throw e;
         }) as Promise<T>;
 
-      const hasBody = options.body != null;
+      // Which deadline governs the request phase? Only a LARGE upload needs
+      // the long backstop — a pull's fetch-negotiation POST carries just a few
+      // KB of want/have lines that upload instantly, so its wait-for-headers is
+      // exactly the "connected but silent" stall the short idle deadline exists
+      // for (gap-sweep finding: treating every body-carrying request as an
+      // upload let a stalled pull wedge the repo lock for the full backstop).
+      // isomorphic-git always passes bodies as arrays of byte chunks, so small
+      // ones are sizable synchronously; anything unsizable is conservatively
+      // treated as a large upload.
+      const body: unknown = options.body;
+      const smallBody =
+        Array.isArray(body) &&
+        body.reduce(
+          (sum: number, c) => sum + (c && typeof c.byteLength === "number" ? c.byteLength : 0),
+          0,
+        ) <= SMALL_BODY_MAX_BYTES;
+      const isLargeUpload = body != null && !smallBody;
       arm(
-        hasBody ? uploadMs : idleMs,
-        hasBody ? "the upload did not complete" : "the remote did not respond",
+        isLargeUpload ? uploadMs : idleMs,
+        isLargeUpload ? "the upload did not complete" : "the remote did not respond",
       );
       let res: Awaited<ReturnType<typeof http.request>>;
       try {
