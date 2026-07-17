@@ -18,15 +18,18 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { onAuthFor } from "./transport.ts";
+import { isCredentialTransmissionSafe, onAuthFor } from "./transport.ts";
 import type { HostCredential } from "./token-store.ts";
 
 /** Invoke the wired onAuth callback (isomorphic-git passes it the URL). */
-function callOnAuth(result: ReturnType<typeof onAuthFor>) {
-  const onAuth = (result as { onAuth?: () => { username: string; password: string } })
+function callOnAuth(
+  result: ReturnType<typeof onAuthFor>,
+  url = "https://git.example.com/book.git",
+) {
+  const onAuth = (result as { onAuth?: (url: string) => { username?: string; password?: string } })
     .onAuth;
   expect(typeof onAuth).toBe("function");
-  return onAuth!();
+  return onAuth!(url);
 }
 
 describe("onAuthFor", () => {
@@ -75,5 +78,34 @@ describe("onAuthFor", () => {
 
   test("no credential → {} (no onAuth wired)", () => {
     expect(onAuthFor(undefined)).toEqual({});
+  });
+
+  // SECURITY: the token must never be transmitted in cleartext to a remote host.
+  const cred: HostCredential = {
+    host: "git.example.com",
+    kind: "token",
+    token: "s3cret",
+    username: "bob",
+    createdAt: 0,
+  };
+
+  test("remote http:// URL → NO credential (cleartext leak prevented)", () => {
+    expect(callOnAuth(onAuthFor(cred), "http://git.example.com/book.git")).toEqual({});
+  });
+
+  test("loopback http:// URL → credential IS sent (local server / test fixture)", () => {
+    expect(callOnAuth(onAuthFor(cred), "http://127.0.0.1:4321/fixture.git")).toEqual({
+      username: "bob",
+      password: "s3cret",
+    });
+  });
+
+  test("isCredentialTransmissionSafe: https anywhere, http only on loopback", () => {
+    expect(isCredentialTransmissionSafe("https://git.example.com/x.git")).toBe(true);
+    expect(isCredentialTransmissionSafe("http://127.0.0.1:9/x.git")).toBe(true);
+    expect(isCredentialTransmissionSafe("http://localhost/x.git")).toBe(true);
+    expect(isCredentialTransmissionSafe("http://git.example.com/x.git")).toBe(false);
+    expect(isCredentialTransmissionSafe("http://192.168.1.5/x.git")).toBe(false);
+    expect(isCredentialTransmissionSafe("not a url")).toBe(false);
   });
 });

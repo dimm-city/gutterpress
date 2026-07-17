@@ -118,6 +118,32 @@ function defaultSleep(ms: number): Promise<void> {
 }
 
 /**
+ * Structural preflight — never touch the tree of a damaged repo. An interrupted
+ * merge/rebase/cherry-pick, detached HEAD, stale lock, or missing `.git` must be
+ * REPAIRED before any sync work: snapshotBeforeAction would otherwise commit
+ * whatever is on disk (e.g. the literal conflict markers a half-done native-git
+ * merge leaves in tracked files) and push it to every collaborator. Throwing the
+ * typed error routes the caller through the recover() path. `checkLocalChanges:
+ * false` — only the structural flags matter here.
+ *
+ * Shared by syncProject, pullChanges, and pushChanges (deep-analysis fix):
+ * previously ONLY syncProject ran it, so the History tab's Pull/Push buttons —
+ * which call pullChanges/pushChanges directly — could snapshot-and-publish a
+ * structurally broken tree.
+ */
+async function assertNoStructuralDamage(
+  projectDir: string,
+  logger: ReturnType<typeof resolveLogger>,
+): Promise<void> {
+  const health = await inspectRepo({ repoDir: projectDir }, { checkLocalChanges: false });
+  const structural = classifyFromHealth(health);
+  if (structural) {
+    logger.warn("sync", "structural preflight blocked sync", { kind: structural });
+    throw new RepoNeedsRecoveryError(structural);
+  }
+}
+
+/**
  * Snapshot-first sync (ADR 0006 D5) — the composition of {@link pullChanges}
  * then {@link pushChanges}. If someone pushes between our pull and our push,
  * the push reports pull-first and the pair re-runs (their commits merge in on
@@ -133,22 +159,7 @@ export async function syncProject(
   options: SyncProjectOptions,
 ): Promise<SyncOutcome> {
   const logger = resolveLogger(options.logFile, "sync");
-
-  // ── Structural preflight — never touch the tree of a damaged repo ─────────
-  // An interrupted merge/rebase/cherry-pick, detached HEAD, stale lock, or
-  // missing .git must be repaired BEFORE any sync work: the snapshot step
-  // below would otherwise commit whatever is on disk (e.g. the literal
-  // conflict markers a half-done native-git merge leaves in tracked files)
-  // and push it. Throwing a typed error here routes every host through the
-  // same catch → inspectRepo → classifyGitError → recover() path it already
-  // uses for mid-sync failures. checkLocalChanges:false — only the structural
-  // flags matter here, and pull performs the working-tree walk anyway.
-  const health = await inspectRepo({ repoDir: options.projectDir }, { checkLocalChanges: false });
-  const structural = classifyFromHealth(health);
-  if (structural) {
-    logger.warn("sync", "structural preflight blocked sync", { kind: structural });
-    throw new RepoNeedsRecoveryError(structural);
-  }
+  await assertNoStructuralDamage(options.projectDir, logger);
   // Bounded, defaulted retry policy. attempts ≥ 1, backoffMs ≥ 0 (clamped so a
   // caller can never request an unbounded or negative-delay loop).
   const attempts = Math.max(1, options.retry?.attempts ?? DEFAULT_SYNC_RETRY.attempts);
@@ -239,6 +250,10 @@ export async function pullChanges(
   const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<PullOutcome> => {
+    // Structural preflight INSIDE the lock (deep-analysis fix): the History
+    // tab's Pull button calls pullChanges directly, not via syncProject, so it
+    // needs the same "don't snapshot+push a damaged tree" guard.
+    await assertNoStructuralDamage(options.projectDir, resolveLogger(options.logFile, "pull"));
     // One object cache for this pull only — released with it.
     const cache: GitCache = {};
     let snapshotId: string | undefined;
@@ -359,6 +374,11 @@ export async function pushChanges(
   const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<PushOutcome> => {
+    // Structural preflight INSIDE the lock (deep-analysis fix): the History
+    // tab's Push button calls pushChanges directly, so it needs the same guard
+    // syncProject has — otherwise a half-done native-git merge's conflict
+    // markers get snapshotted and published to every collaborator.
+    await assertNoStructuralDamage(options.projectDir, resolveLogger(options.logFile, "push"));
     // One object cache for this push only — released with it.
     const cache: GitCache = {};
     let snapshotId: string | undefined;

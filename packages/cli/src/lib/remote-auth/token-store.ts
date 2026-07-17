@@ -137,11 +137,17 @@ export class FileTokenStore implements TokenStore {
     let raw: string;
     try {
       raw = await readFile(this.filePath, "utf8");
-    } catch {
-      // Missing (or unreadable) file → empty store. A transient read failure
-      // degrades to "not connected" for THIS call but never rewrites the file
-      // by itself — only an explicit set/delete writes.
-      return { version: 1, credentials: {} };
+    } catch (e) {
+      // ENOENT = the store legitimately doesn't exist yet (first run, or after
+      // a full disconnect) → empty store. ANY OTHER read error (EACCES/EIO/
+      // EMFILE) is TRANSIENT (deep-analysis fix): returning empty here would
+      // let a following set()/delete() persist that empty base and silently
+      // WIPE every OTHER host's stored credential. Rethrow so a write aborts;
+      // get()/list() below tolerate the throw as "temporarily unknown".
+      if ((e as NodeJS.ErrnoException)?.code === "ENOENT") {
+        return { version: 1, credentials: {} };
+      }
+      throw e;
     }
     try {
       const parsed = JSON.parse(raw) as StoredFileShape;
@@ -184,8 +190,15 @@ export class FileTokenStore implements TokenStore {
 
   get(host: string): Promise<HostCredential | null> {
     return this.enqueue(async () => {
-      const data = await this.read();
-      return data.credentials[normalizeHost(host)] ?? null;
+      try {
+        const data = await this.read();
+        return data.credentials[normalizeHost(host)] ?? null;
+      } catch {
+        // A transient read failure means "unknown" — report not-connected for
+        // this call WITHOUT writing anything (unlike set/delete, which must
+        // abort rather than persist over an unreadable store).
+        return null;
+      }
     });
   }
 
@@ -207,8 +220,14 @@ export class FileTokenStore implements TokenStore {
 
   list(): Promise<HostCredential[]> {
     return this.enqueue(async () => {
-      const data = await this.read();
-      return Object.values(data.credentials);
+      try {
+        const data = await this.read();
+        return Object.values(data.credentials);
+      } catch {
+        // Transient read failure → show nothing rather than crash the caller;
+        // no write happens, so stored credentials are untouched.
+        return [];
+      }
     });
   }
 }
