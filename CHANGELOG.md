@@ -5,6 +5,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-17
+
+[Full Changelog](https://github.com/dimm-city/print-md/compare/v0.8.0...v0.8.1) ·
+[Release notes](https://github.com/dimm-city/print-md/releases/tag/v0.8.1)
+
 ### Fixed
 
 - Sync, clone, push, pull, and publish now time out on a stalled network
