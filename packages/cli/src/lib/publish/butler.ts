@@ -21,8 +21,9 @@ import { defaultConfigDir } from "../remote-auth/token-store.ts";
 import { commandExists, defaultCommandRunner } from "./command-runner.ts";
 import type { PublishDeps } from "./types.ts";
 
-/** Timeout for the one-time butler binary download (audit B2). */
-const BUTLER_DOWNLOAD_TIMEOUT_MS = 60_000;
+/** Total deadline for the one-time butler binary download (audit B2; a TOTAL
+ * budget, not idle — must cover the full archive on a slow link). */
+const BUTLER_DOWNLOAD_TIMEOUT_MS = 300_000;
 
 /** broth channel for the running platform; null when unsupported. */
 export function butlerBrothChannel(
@@ -90,14 +91,27 @@ export async function ensureButler(deps: PublishDeps): Promise<string> {
 
   deps.onProgress?.("Downloading itch.io's butler upload tool (one-time setup)…");
   const fetchFn = deps.fetch ?? globalThis.fetch;
-  let response: Awaited<ReturnType<typeof fetchFn>>;
+  // Bound the one-time download (audit B2): without a signal a stalled CDN
+  // connection hangs the whole publish. NOTE: AbortSignal.timeout is a TOTAL
+  // deadline that keeps ticking through the body read below (review finding),
+  // so the budget must cover downloading the whole ~25MB archive on a slow
+  // link — 5 minutes ≈ works down to ~0.7 Mbit/s — and the body read must sit
+  // INSIDE the try so a mid-body abort still gets the friendly message.
+  let archive: Uint8Array;
   try {
-    // Bound the one-time download (audit B2): without a signal a stalled CDN
-    // connection hangs the whole publish. 60s is generous for a small binary.
-    response = await fetchFn(butlerDownloadUrl(channel), {
+    const response = await fetchFn(butlerDownloadUrl(channel), {
       signal: AbortSignal.timeout(BUTLER_DOWNLOAD_TIMEOUT_MS),
     });
+    if (!response.ok) {
+      throw new Error(
+        `Couldn't download butler from itch.io (HTTP ${response.status}). ` +
+          `Check your connection, or install butler manually and set BUTLER_PATH.`,
+      );
+    }
+    archive = new Uint8Array(await response.arrayBuffer());
   } catch (e) {
+    // An HTTP-status error built above is already friendly — rethrow as-is.
+    if (e instanceof Error && e.message.includes("BUTLER_PATH")) throw e;
     const timedOut = e instanceof Error && e.name === "TimeoutError";
     throw new Error(
       timedOut
@@ -107,13 +121,6 @@ export async function ensureButler(deps: PublishDeps): Promise<string> {
           `Check your connection, or install butler manually and set BUTLER_PATH.`,
     );
   }
-  if (!response.ok) {
-    throw new Error(
-      `Couldn't download butler from itch.io (HTTP ${response.status}). ` +
-        `Check your connection, or install butler manually and set BUTLER_PATH.`,
-    );
-  }
-  const archive = new Uint8Array(await response.arrayBuffer());
   const files = unzipSync(archive);
 
   await mkdir(cacheDir, { recursive: true });

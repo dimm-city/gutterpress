@@ -1,3 +1,7 @@
+// Self-populate the check registry (audit B5 / review): this module is
+// reachable without ever importing checks/runner (its own bootstrap), and an
+// empty registry here would silently report "no tools needed".
+import "./register-builtins";
 import { selectChecks } from "./policy";
 import { log } from "../utils/logger";
 import { isToolAvailable } from "../lib/tool-probe";

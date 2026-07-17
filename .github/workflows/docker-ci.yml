@@ -34,12 +34,15 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       # Native-arch build only (the release workflow still does multi-arch on
-      # publish); this only needs to prove the Dockerfile still builds. GHA
-      # layer cache keeps unchanged rebuilds fast.
+      # publish); this only needs to prove the Dockerfile still builds.
+      # Cache policy (review finding): PR-scoped GHA caches are write-only
+      # waste — no other ref can read them, and mode=max layer sets are large
+      # enough to evict the shared main-branch cache. So PRs only CONSUME the
+      # cache (cache-from) while pushes to main/develop refresh it (cache-to).
       - name: Build image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max' || '' }}

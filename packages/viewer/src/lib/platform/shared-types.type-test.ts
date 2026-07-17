@@ -33,9 +33,11 @@ export const _mirrorProjectCapabilitiesIsNotAny: IsAny<MirrorProjectCapabilities
   ? never
   : true = true;
 
-// Mutual assignability: the mirror and the lib must be EXACTLY the same shape,
-// not merely overlapping supersets — a field added to one and not the other
-// fails here before it can produce a runtime DTO mismatch.
+// Mutual assignability: a REQUIRED field added to one side and not the other
+// fails here before it can produce a runtime DTO mismatch. KNOWN LIMIT (review
+// finding): assignability alone cannot catch a drift in OPTIONAL properties
+// (missing vs extra optional props are assignable both ways) — the key-set
+// checks below close that hole where the shapes allow it.
 export const _projectSourceMirrorsLib: [LibProjectSource] extends [MirrorProjectSource]
   ? [MirrorProjectSource] extends [LibProjectSource]
     ? true
@@ -46,6 +48,32 @@ export const _projectCapabilitiesMirrorsLib: [LibProjectCapabilities] extends [
   MirrorProjectCapabilities,
 ]
   ? [MirrorProjectCapabilities] extends [LibProjectCapabilities]
+    ? true
+    : never
+  : never = true;
+
+// Exact key sets — catches optional-property drift that mutual assignability
+// misses. For the ProjectSource union, `keyof` distributes over each variant
+// via the mapped-union helper so a new optional field on ANY variant of either
+// side breaks the corresponding check.
+type KeysMatch<A, B> = [Exclude<keyof A, keyof B>] extends [never]
+  ? [Exclude<keyof B, keyof A>] extends [never]
+    ? true
+    : never
+  : never;
+type VariantKeyUnion<T> = T extends unknown ? keyof T : never;
+
+export const _projectCapabilitiesKeysMatch: KeysMatch<
+  LibProjectCapabilities,
+  MirrorProjectCapabilities
+> = true;
+
+export const _projectSourceVariantKeysMatch: [
+  Exclude<VariantKeyUnion<LibProjectSource>, VariantKeyUnion<MirrorProjectSource>>,
+] extends [never]
+  ? [Exclude<VariantKeyUnion<MirrorProjectSource>, VariantKeyUnion<LibProjectSource>>] extends [
+      never,
+    ]
     ? true
     : never
   : never = true;

@@ -19,6 +19,17 @@ import type { CommandResult, CommandRunner } from "./types.ts";
  */
 const CAPTURE_LIMIT = 64 * 1024;
 
+/**
+ * Default idle budget for provider uploads (audit B2 / review): the value
+ * every publish provider should pass as `timeoutMs` unless it has a reason to
+ * differ, so the next provider can't silently regain hang-forever behavior by
+ * inventing its own number. Idle, not total — the timer re-arms on every
+ * output line, so only total silence kills the child. 5 minutes tolerates
+ * upload CLIs that quiet their progress stream when piped (butler/swa run
+ * with stdio piped, not a TTY).
+ */
+export const PUBLISH_IDLE_TIMEOUT_MS = 300_000;
+
 function keepTail(buffer: string, chunk: string): string {
   const joined = buffer + chunk;
   return joined.length > CAPTURE_LIMIT ? joined.slice(-CAPTURE_LIMIT) : joined;
@@ -74,7 +85,10 @@ export const defaultCommandRunner: CommandRunner = (
       idleTimer = undefined;
     };
     const armIdle = () => {
-      if (options.timeoutMs === undefined) return;
+      // Falsy (undefined OR 0) = no timeout. A bare undefined-check would turn
+      // `timeoutMs: 0` — the natural encoding of "disabled" — into an instant
+      // SIGKILL on the first tick (review finding).
+      if (!options.timeoutMs) return;
       clearIdle();
       idleTimer = setTimeout(() => {
         if (settled) return;

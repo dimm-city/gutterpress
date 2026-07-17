@@ -23,7 +23,6 @@ import { fileURLToPath } from "node:url";
 import { scanForProjects, type ScanDeps } from "./discover-projects";
 import {
   createSettingsStore,
-  mergeSettings,
   type AppSettings,
 } from "./settings-store";
 import { createPrefsStore, type ViewerPrefs } from "./prefs-store";
@@ -146,6 +145,7 @@ import {
   APP_ORIGIN,
   decideNavigation,
   decideWindowOpen,
+  isHttpUrl,
   isTrustedIpcSender,
   resolveDevServerUrl,
   type OriginPolicyConfig,
@@ -251,7 +251,7 @@ const { readPrefs, writePrefs, updatePrefs, existingDirectory } = createPrefsSto
 // rather than discarded (#34).
 // ──────────────────────────────────────────────────────────────────────────
 
-const { readSettings, writeSettings, updateSettings } = createSettingsStore({
+const { readSettings, updateSettings } = createSettingsStore({
   getUserDataDir: () => app.getPath("userData"),
   fs: { readFile, writeFile, mkdir, rename },
 });
@@ -553,30 +553,41 @@ function safeSend(channel: string, ...args: unknown[]): void {
 }
 
 /**
- * Ask the renderer to flush unsaved editor state, resolving when it replies
- * (`app:flushDone` → {@link flushResolve}) or after `timeoutMs` as a watchdog.
- * Owns the single `flushResolve` slot so the window close gate and
- * `updater:applyNow` can no longer clobber each other's pending flush (audit
- * A4). Resolves immediately when there is nothing to flush or no live window.
+ * Ask the renderer to flush unsaved editor state. Resolves `true` when the
+ * renderer replied (`app:flushDone` → {@link flushResolve}) or there was
+ * nothing to flush, `false` when the watchdog fired on an unresponsive
+ * renderer — callers that would start follow-up work (the close gate's final
+ * auto-snapshot) must skip it on `false`, matching the pre-helper behavior of
+ * dropping the snapshot rather than starting a git commit microseconds before
+ * the window is force-destroyed.
+ *
+ * Owns the single `flushResolve` slot (audit A4). Overlapping requests
+ * (updater:applyNow racing the window close gate) COALESCE onto one in-flight
+ * flush (review finding): the renderer-side flush is idempotent global state,
+ * and a second slot-overwrite would strand the first caller until its
+ * watchdog and let a late reply settle the wrong request.
  */
-function requestRendererFlush(timeoutMs = 5000): Promise<void> {
+let pendingFlush: Promise<boolean> | null = null;
+function requestRendererFlush(timeoutMs = 5000): Promise<boolean> {
   if (!rendererDirty || !mainWindow || mainWindow.isDestroyed()) {
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
-  return new Promise<void>((resolve) => {
+  if (pendingFlush) return pendingFlush;
+  pendingFlush = new Promise<boolean>((resolve) => {
     let done = false;
-    const settle = () => {
+    const settle = (replied: boolean) => {
       if (done) return;
       done = true;
-      // Identity guard: only clear the slot if it still points at THIS request,
-      // so a newer flush started meanwhile isn't wiped.
-      if (flushResolve === settle) flushResolve = null;
-      resolve();
+      if (flushResolve === onReply) flushResolve = null;
+      pendingFlush = null;
+      resolve(replied);
     };
-    flushResolve = settle;
+    const onReply = () => settle(true);
+    flushResolve = onReply;
     safeSend("app:flushBeforeClose");
-    setTimeout(settle, timeoutMs);
+    setTimeout(() => settle(false), timeoutMs);
   });
+  return pendingFlush;
 }
 
 function extractHeader(
@@ -822,7 +833,8 @@ function createWindow() {
     const finish = () => {
       if (settled) return;
       settled = true;
-      flushResolve = null;
+      // flushResolve is owned by requestRendererFlush (identity-guarded);
+      // nulling it here would wipe an unrelated in-flight flush (review).
       win.destroy();
     };
     const snapshotThenFinish = () => {
@@ -834,7 +846,14 @@ function createWindow() {
     // requestRendererFlush owns flushResolve and no-ops when not dirty, so it
     // covers both the needsFlush and snapshot-only cases the old if/else split
     // by hand — and can't collide with updater:applyNow's flush slot (audit A4).
-    void requestRendererFlush().then(snapshotThenFinish);
+    // On a HUNG renderer (watchdog fired, replied=false) skip the snapshot and
+    // just close: starting a git commit an instant before the outer watchdog
+    // destroys the window would kill it mid-write (review finding) — the old
+    // behavior of dropping the snapshot cleanly is the safe one.
+    void requestRendererFlush().then((replied) => {
+      if (replied) snapshotThenFinish();
+      else finish();
+    });
     // Watchdog: force the close if the flush/snapshot doesn't complete in time.
     setTimeout(finish, 5000);
   });
@@ -1042,6 +1061,13 @@ const desktopHooksImpl: DesktopHooks = {
       : await dialog.showSaveDialog(options as Electron.SaveDialogOptions);
   },
   openExternal: async (url: string) => {
+    // Defense in depth (review finding): every shell.openExternal path must
+    // pass the app's single http(s)-only gate. The route validates too, but a
+    // future host-side caller of this hook must not be able to launch file:/
+    // mailto:/custom-scheme handlers by skipping the route.
+    if (!isHttpUrl(url)) {
+      throw new Error(`openExternal: refusing non-http(s) URL (${url.split(":")[0]}: scheme)`);
+    }
     await shell.openExternal(url);
   },
   showItemInFolder: (filePath: string) => {
@@ -1129,12 +1155,10 @@ const prefsHooksImpl: PrefsHooks<LibModule, ViewerPrefs, AppSettings, ProjectSta
   writePrefs,
   updatePrefs,
   readSettings,
-  writeSettings,
   updateSettings,
   existingDirectory,
   readProjectState,
   writeProjectState,
-  mergeSettings,
   defaultProjectSearchRoots,
   scanForProjects: (roots: string[], exclude: Set<string>) => scanForProjects(roots, exclude, discoverScanDeps),
   toggleFavoriteFolder,
@@ -1438,12 +1462,11 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
     if (typeof enabled !== "boolean") {
       throw new Error("sync:setAutoSync requires a boolean");
     }
-    const current = await readSettings();
-    const updated: AppSettings = {
-      ...current,
-      versionHistory: { ...current.versionHistory, autoSync: enabled },
-    };
-    await writeSettings(updated);
+    // Atomic section patch (review finding): a bare readSettings()+
+    // writeSettings() pair here raced the settings route's updateSettings and
+    // silently reverted whichever change landed first — the exact lost-update
+    // audit A2 fixed one function away.
+    await updateSettings({ versionHistory: { autoSync: enabled } });
 
     // When re-enabling, clear the conflict latch for the open project and arm
     // the periodic timer — the author is explicitly asking to resume sync.

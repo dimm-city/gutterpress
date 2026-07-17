@@ -1,10 +1,9 @@
 /**
- * Idle-timeout wrapper for the isomorphic-git HTTP client (audit B1).
+ * Timeout wrapper for the isomorphic-git HTTP client (audit B1).
  *
  * Every git transport call in this subsystem (`git.fetch`/`git.push`/
  * `git.clone`) is invoked with no timeout: if the TCP connection succeeds but
- * the remote stalls mid-response (a flaky network, a captive portal, a
- * misbehaving proxy) the call never resolves or rejects — sync/pull/push/clone
+ * the remote stalls, the call never resolves or rejects — sync/pull/push/clone
  * hangs forever, and because the operation still holds the per-repo
  * `withRepoLock` FIFO, every subsequent git op for that project wedges too.
  *
@@ -12,15 +11,29 @@
  * guard every fetch with `AbortSignal.timeout`; this brings the same discipline
  * to the git transport, at the one place a default client is chosen.
  *
- * We use an IDLE timeout, not a total-operation deadline: a legitimately large
- * clone/fetch streams for minutes but never stalls for a full minute mid-pack,
- * so a total deadline would kill honest large transfers while an idle deadline
- * only fires when the remote genuinely stops talking. The wrapper races (a) the
- * `request()` call itself — covers "connected but no response headers" — and
- * (b) each read of the streaming response body — covers "headers arrived then
- * the socket went silent". On timeout it throws an error whose message the
- * recovery classifier maps to `network_unavailable` (→ the friendly offline
- * message), exactly like a real ECONNRESET.
+ * Design (review finding: a naive deadline on `request()` is WRONG for pushes):
+ * isomorphic-git passes upload bodies as an ARRAY of buffers, which the node
+ * client collects and sends with Content-Length — `request()` then resolves
+ * only when the response HEADERS arrive, i.e. after the ENTIRE pack upload.
+ * There is no per-chunk progress signal for uploads, so an idle deadline on the
+ * request phase of a push would be a TOTAL cap that kills legitimately slow
+ * large pushes. Therefore:
+ *
+ *  - Body-less requests (the info/refs discovery GET — the classic
+ *    "connected but silent" stall) get the short IDLE deadline.
+ *  - Requests WITH a body (push receive-pack / fetch negotiation POSTs) get a
+ *    LONG total backstop instead: generous enough that no realistic transfer
+ *    hits it, but bounded so a truly dead connection can never wedge the repo
+ *    lock forever.
+ *  - Every response-body chunk read re-arms the short idle deadline, so a
+ *    stall after headers is caught quickly on every request type while a
+ *    slow-but-progressing download streams for as long as it needs.
+ *
+ * One timer serves the whole request (re-armed via `refresh()`; no per-chunk
+ * allocation). On timeout the thrown error's message classifies as offline in
+ * recovery/classify.ts. Known limitation (documented, not fixable at this
+ * layer): isomorphic-git's client accepts no AbortSignal, so an abandoned
+ * timed-out transfer's socket is left to the OS/agent to reap.
  *
  * Test HTTP clients injected via `httpClient`/`ctx.httpClient` are NOT wrapped
  * (they talk to in-memory fixtures that never stall); only the production
@@ -29,13 +42,20 @@
 import httpNode from "isomorphic-git/http/node";
 
 /**
- * Idle timeout for git transport reads. Generous on purpose: a real transfer
- * streams steadily, so a full minute of total silence means the connection is
- * dead, not slow. The phrase "couldn't reach the remote" in the thrown message
- * is load-bearing — `recovery/classify.ts` scans for it to classify the failure
- * as offline.
+ * Idle deadline for silent phases: the wait for response headers on body-less
+ * requests, and the gap between response-body chunks. A healthy transfer
+ * produces SOMETHING within a minute; total silence for 60s means the
+ * connection is dead, not slow.
  */
 export const GIT_HTTP_IDLE_TIMEOUT_MS = 60_000;
+
+/**
+ * Total backstop for requests that UPLOAD a body (push / fetch negotiation),
+ * whose request phase exposes no progress signal (see header). 30 minutes
+ * accommodates a multi-GB initial push on a slow uplink while still
+ * guaranteeing the per-repo lock can never be wedged forever.
+ */
+export const GIT_HTTP_UPLOAD_TIMEOUT_MS = 30 * 60_000;
 
 function gitTimeoutError(what: string, ms: number): Error {
   // "couldn't reach" + "ETIMEDOUT" both match the network regex in
@@ -46,66 +66,107 @@ function gitTimeoutError(what: string, ms: number): Error {
   );
 }
 
-/** Race a promise against an idle deadline, clearing the timer either way. */
-function withDeadline<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(gitTimeoutError(what, ms)), ms);
-  });
-  return Promise.race([promise, deadline]).finally(() => {
-    if (timer) clearTimeout(timer);
-  });
-}
-
-/** Wrap a response body iterator so each chunk read is bounded by an idle timeout. */
-async function* idleGuardedBody(
-  source: AsyncIterableIterator<Uint8Array>,
-  ms: number,
-): AsyncIterableIterator<Uint8Array> {
-  const it = source[Symbol.asyncIterator]();
-  try {
-    for (;;) {
-      const step = await withDeadline(it.next(), ms, "the remote stopped sending data");
-      if (step.done) return;
-      yield step.value;
-    }
-  } finally {
-    // Best-effort release of the abandoned source. Do NOT await — on a stalled
-    // socket `return()` can itself hang; fire-and-forget lets node reclaim it.
-    try {
-      void it.return?.();
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
 /**
- * Return a client that behaves like `http` but aborts a stalled request/read
- * after `timeoutMs` of no progress.
+ * Return a client that behaves like `http` but rejects when the transfer goes
+ * silent (see the header for exactly which phases are guarded and why).
  */
 export function withIdleTimeout(
   http: typeof httpNode,
-  timeoutMs: number = GIT_HTTP_IDLE_TIMEOUT_MS,
+  idleMs: number = GIT_HTTP_IDLE_TIMEOUT_MS,
+  uploadMs: number = GIT_HTTP_UPLOAD_TIMEOUT_MS,
 ): typeof httpNode {
   return {
     async request(options) {
-      const res = await withDeadline(
-        http.request(options),
-        timeoutMs,
-        "the remote did not respond",
+      // One trip-wire per request: a single timer + a single rejection promise,
+      // re-armed with `refresh()` on progress. `tripped` gets a no-op catch so
+      // a trip that fires while no race is pending can never surface as an
+      // unhandled rejection.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let trip!: (e: Error) => void;
+      const tripped = new Promise<never>((_, reject) => {
+        trip = reject;
+      });
+      tripped.catch(() => {});
+
+      const arm = (ms: number, what: string): void => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => trip(gitTimeoutError(what, ms)), ms);
+        timer.unref?.();
+      };
+      const disarm = (): void => {
+        if (timer) clearTimeout(timer);
+        timer = undefined;
+      };
+      /** Race `p` against the trip-wire; if the trip wins, make sure `p`'s own
+       *  eventual rejection is consumed (never an unhandled rejection). */
+      const race = <T>(p: Promise<T>): Promise<T> =>
+        Promise.race([p, tripped]).catch((e) => {
+          p.catch(() => {});
+          throw e;
+        }) as Promise<T>;
+
+      const hasBody = options.body != null;
+      arm(
+        hasBody ? uploadMs : idleMs,
+        hasBody ? "the upload did not complete" : "the remote did not respond",
       );
-      if (!res.body || typeof res.body[Symbol.asyncIterator] !== "function") {
+      let res: Awaited<ReturnType<typeof http.request>>;
+      try {
+        res = await race(http.request(options));
+      } finally {
+        disarm();
+      }
+
+      const rawBody = res.body;
+      if (!rawBody || typeof rawBody[Symbol.asyncIterator] !== "function") {
         return res;
       }
-      return { ...res, body: idleGuardedBody(res.body, timeoutMs) };
+      const source = rawBody[Symbol.asyncIterator]();
+      const guardedBody: AsyncIterableIterator<Uint8Array> = {
+        async next() {
+          // The timer only runs while a chunk read is pending, so a slow
+          // CONSUMER between reads never counts as remote silence.
+          arm(idleMs, "the remote stopped sending data");
+          try {
+            const step = await race(source.next());
+            disarm();
+            return step;
+          } catch (e) {
+            disarm();
+            // Best-effort release of the abandoned source. Do NOT await — on a
+            // stalled socket return() can itself hang; and route any async
+            // rejection into a no-op catch (a bare `void` would leave it
+            // unhandled).
+            try {
+              Promise.resolve(source.return?.()).catch(() => {});
+            } catch {
+              /* ignore synchronous throw */
+            }
+            throw e;
+          }
+        },
+        return(value?: unknown) {
+          disarm();
+          try {
+            return Promise.resolve(
+              source.return?.(value) ?? { done: true as const, value: undefined },
+            ) as Promise<IteratorResult<Uint8Array>>;
+          } catch {
+            return Promise.resolve({ done: true as const, value: undefined });
+          }
+        },
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+      };
+      return { ...res, body: guardedBody };
     },
   };
 }
 
 /**
- * The production default git HTTP client: `httpNode` with an idle timeout.
- * Use this in place of a bare `httpNode` wherever a caller did not inject its
- * own `httpClient`.
+ * The production default git HTTP client: `httpNode` with the timeout policy
+ * above. Use this in place of a bare `httpNode` wherever a caller did not
+ * inject its own `httpClient`.
  */
 export const defaultGitHttp: typeof httpNode = withIdleTimeout(httpNode);

@@ -63,6 +63,23 @@ function destroyEntry(entry: CacheEntry): void {
   entry.doc.then((d) => d.destroy()).catch(() => {});
 }
 
+/**
+ * Grace period before an LRU-evicted document is destroyed (review finding):
+ * a caller that obtained the proxy from `loadPdf` may still be mid-check when
+ * the entry gets evicted by unrelated loads — destroying immediately would
+ * make its in-flight page reads throw "Transport destroyed". Individual
+ * checks complete in seconds; a minute of grace lets them drain while still
+ * bounding memory. (Same-path stale replacement keeps immediate destroy —
+ * that behavior predates the LRU and the superseded doc's file has changed.)
+ */
+const EVICT_DESTROY_GRACE_MS = 60_000;
+
+function destroyEntryAfterGrace(entry: CacheEntry): void {
+  const t = setTimeout(() => destroyEntry(entry), EVICT_DESTROY_GRACE_MS);
+  // Never keep the process alive just to reclaim cache memory.
+  t.unref?.();
+}
+
 /** Evict least-recently-used entries until the cache is within its cap. */
 function evictLru(): void {
   while (docCache.size > DOC_CACHE_MAX) {
@@ -72,7 +89,7 @@ function evictLru(): void {
     if (oldestKey === undefined) break;
     const evicted = docCache.get(oldestKey);
     docCache.delete(oldestKey);
-    if (evicted) destroyEntry(evicted);
+    if (evicted) destroyEntryAfterGrace(evicted);
   }
 }
 
@@ -113,7 +130,10 @@ export async function loadPdf(path: string): Promise<PDFDocumentProxy | null> {
   try {
     return await docPromise;
   } catch {
-    docCache.delete(path);
+    // Identity guard (review finding): only drop OUR entry — a concurrent
+    // caller may have re-inserted a newer one for this path after an eviction,
+    // and an unguarded delete would silently discard their live document.
+    if (docCache.get(path)?.doc === docPromise) docCache.delete(path);
     return null;
   }
 }

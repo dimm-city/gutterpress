@@ -1,17 +1,17 @@
 /**
  * shell/open-external must only ever hand http(s) URLs to the OS (audit C1),
- * matching navigation-policy.ts's http(s)-only gate on the app's other two
- * shell.openExternal paths. The scheme check lives in the route's validate
- * step, so a foreign-scheme URL is rejected before any host hook is reached —
- * this test needs no registered host services.
+ * via the shared isHttpUrl gate it now shares with navigation-policy.ts and
+ * the host-side openExternal hook. The scheme check lives in the route's
+ * validate step, so a foreign-scheme URL is rejected before any host hook is
+ * reached.
  */
 import { beforeEach, expect, test } from "bun:test";
-import { error, isHttpError } from "@sveltejs/kit";
 import {
   registerHostServices,
   type HostServices,
 } from "../../electron/server-bridge/host-services";
 import { POST as openExternalRoute } from "../../src/routes/api/shell/open-external/+server";
+import { caught, request } from "../support/route-test-helpers";
 
 // The scheme check runs in validate, AFTER defineRoute's hooks-availability
 // gate. Register a minimal host whose `desktop` slice exists (openExternal is
@@ -23,24 +23,6 @@ beforeEach(() => {
     desktop: { openExternal: async (url: string) => void openedUrls.push(url) },
   } as unknown as HostServices);
 });
-
-function request(body: unknown): Request {
-  return new Request("http://local.test", {
-    method: "POST",
-    body: JSON.stringify(body),
-    headers: { "content-type": "application/json" },
-  });
-}
-
-async function caught(p: Promise<unknown>): Promise<{ status: number; message: unknown }> {
-  try {
-    await p;
-    throw error(500, "expected the route to reject, but it resolved");
-  } catch (e) {
-    if (!isHttpError(e)) throw e;
-    return { status: e.status, message: (e.body as { message?: unknown }).message };
-  }
-}
 
 function call(url: unknown) {
   return openExternalRoute({ request: request({ url }) } as Parameters<typeof openExternalRoute>[0]);

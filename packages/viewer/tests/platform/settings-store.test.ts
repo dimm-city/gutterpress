@@ -313,31 +313,22 @@ test("updateSettings composes concurrent patches instead of dropping one", async
   // writeSettings() pair would read the same on-disk snapshot twice and the
   // second write would revert the first patch. updateSettings runs read-merge-
   // write inside one queue slot, so both land.
+  // Minimal atomic-write fs fake: writeFile stashes the tmp payload, rename
+  // commits it to `stored` (mirroring the store's write-then-rename protocol).
   let stored = JSON.stringify(DEFAULT_SETTINGS);
+  let tmpPayload = "";
   const deps: SettingsStoreDeps = {
     getUserDataDir: () => "/userdata",
     fs: {
       readFile: async () => stored,
       writeFile: async (p: string, data: string) => {
-        if (p.endsWith(".tmp")) return; // ignore the tmp write; commit on rename
+        if (p.endsWith(".tmp")) tmpPayload = data;
       },
       mkdir: async () => undefined,
-      rename: async (from: string, to: string) => {
-        // The tmp file's contents are what gets committed; capture via a shared
-        // closure by re-reading from the last writeFile. Simpler: intercept in
-        // writeFile below by stashing the tmp payload.
-        void from;
-        void to;
+      rename: async () => {
+        stored = tmpPayload;
       },
     },
-  };
-  // Re-wire writeFile to stash the tmp payload, rename to commit it.
-  let tmpPayload = "";
-  deps.fs.writeFile = async (p: string, data: string) => {
-    if (p.endsWith(".tmp")) tmpPayload = data;
-  };
-  deps.fs.rename = async () => {
-    stored = tmpPayload;
   };
 
   const store = createSettingsStore(deps);
