@@ -14,6 +14,7 @@ const ALL_KINDS: SyncErrorKind[] = [
   "binary_conflict",
   "auth_required",
   "network_unavailable",
+  "insecure_transport",
   "detached_head",
   "stale_lock",
   "corrupt_index",
@@ -199,6 +200,7 @@ describe("recoveryPolicy — serializeRepo (dispatcher-level per-repo lock)", ()
     "binary_conflict",
     "auth_required",
     "network_unavailable",
+    "insecure_transport",
     "wrong_remote_or_branch",
     "unknown",
   ];

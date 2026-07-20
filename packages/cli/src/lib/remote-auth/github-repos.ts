@@ -8,6 +8,7 @@
  * and map failures to author-friendly messages (401 → "reconnect").
  */
 import type { HostCredential } from "./token-store.ts";
+import { withFetchTimeout } from "../fetch-timeout.ts";
 import { githubApiHeaders, OFFLINE_MESSAGE } from "./github-auth.ts";
 import { MANIFEST_FILENAMES } from "../manifest.ts";
 
@@ -46,16 +47,12 @@ async function apiGet(
   url: string,
   token: string,
 ): Promise<Response> {
-  let res: Response;
-  try {
-    res = await fetchImpl(url, {
-      method: "GET",
-      headers: githubApiHeaders(token),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch (cause) {
-    throw new Error(OFFLINE_MESSAGE, { cause });
-  }
+  // Shared deadline + offline mapping (../fetch-timeout.ts).
+  const res = await withFetchTimeout(
+    { timeoutMs: REQUEST_TIMEOUT_MS, offlineMessage: OFFLINE_MESSAGE },
+    (signal) =>
+      fetchImpl(url, { method: "GET", headers: githubApiHeaders(token), signal }),
+  );
   if (res.status === 401 || res.status === 403) {
     throw new Error(RECONNECT_MESSAGE);
   }

@@ -47,6 +47,7 @@ import type {
 // This import WILL FAIL until recover-auth.ts is created — that is the
 // intended red state (TDD Stage 1).
 import { recover } from "./recover-auth.ts";
+import { recover as dispatchRecover } from "./dispatch.ts";
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
@@ -501,6 +502,51 @@ describe("recover-auth — auth_required thin wrapper", () => {
     }
     // Credential should NOT have been cleared when using a good token
     expect(tokenStore.wasCleared).toBe(false);
+  });
+});
+
+// ── insecure_transport must NEVER reach the credential-deleting auth path ─────
+//
+// A stored credential withheld over non-loopback http (onAuthFor throws the
+// typed InsecureTransport error) used to surface as a 401 → "auth" outcome,
+// which routed here and DELETED the credential for the whole host — silently
+// disabling sync for every other project on that host. The classifier now
+// gives it its own kind; dispatching that kind must leave the store untouched
+// and must not tell the user to reconnect (reconnecting cannot fix http).
+
+describe("insecure_transport dispatch — no credential deletion, no reconnect loop", () => {
+  test("token store is untouched and guidance is not reconnect-flavoured", async () => {
+    const tokenStore = makeFakeTokenStore("s3cret-token");
+    const ctx: RecoveryContext = {
+      projectDir: "/nonexistent/project",
+      repoDir: "/nonexistent/project",
+      branch: "main",
+      remoteUrl: "http://git.example.com/owner/repo.git",
+      repoSlug: "fixture",
+      credential: {
+        host: "git.example.com",
+        kind: "token",
+        token: "s3cret-token",
+        createdAt: 0,
+      },
+      tokenStore,
+      confirmation: neverCalledGate,
+    };
+    const err = Object.assign(new Error("credential withheld over cleartext http"), {
+      code: "InsecureTransport",
+    });
+
+    const result = await dispatchRecover("insecure_transport", ctx, err);
+
+    // Nothing was repaired or deleted — the fix is changing the address to
+    // https, which only the user can do.
+    expect(result.status).toBe("failed_no_changes_made");
+    if (result.status === "failed_no_changes_made") {
+      expect(result.guidance.recommendedActionKey).not.toBe("reconnect");
+      expect(result.guidance.recommendedAction).not.toMatch(/reconnect/i);
+    }
+    expect(tokenStore.wasCleared).toBe(false);
+    expect(tokenStore.deletedHosts).toEqual([]);
   });
 });
 

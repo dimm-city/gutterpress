@@ -3,13 +3,15 @@
  * output, resolve with the exit code (callers decide whether non-zero is an
  * error — butler/swa diagnostics live in the captured output).
  *
- * Unlike lib/exec.ts this seam accepts an env override, because publish
- * providers pass secrets (BUTLER_API_KEY, SWA_CLI_DEPLOYMENT_TOKEN) through
- * the environment — NEVER through argv, which is world-readable in process
- * lists. (tool-probe.ts exists for PATH probing but spawns directly; publish
- * needs the injectable-runner seam so tests can fake tool presence.)
+ * A thin adapter over exec.ts's shared {@link spawnCapture} core — the
+ * spawn/buffer/timeout/settle machinery lives THERE, once (arch finding #16;
+ * this file previously kept a drifting mirror of it). What this seam adds:
+ * an env override (publish providers pass secrets — BUTLER_API_KEY,
+ * SWA_CLI_DEPLOYMENT_TOKEN — through the environment, NEVER through argv,
+ * which is world-readable in process lists), per-line output streaming, and
+ * a default idle timeout.
  */
-import { spawn } from "node:child_process";
+import { spawnCapture } from "../exec.ts";
 import type { CommandResult, CommandRunner } from "./types.ts";
 
 /**
@@ -20,20 +22,15 @@ import type { CommandResult, CommandRunner } from "./types.ts";
 const CAPTURE_LIMIT = 64 * 1024;
 
 /**
- * Default idle budget for provider uploads (audit B2 / review): the value
- * every publish provider should pass as `timeoutMs` unless it has a reason to
- * differ, so the next provider can't silently regain hang-forever behavior by
- * inventing its own number. Idle, not total — the timer re-arms on every
- * output line, so only total silence kills the child. 5 minutes tolerates
- * upload CLIs that quiet their progress stream when piped (butler/swa run
- * with stdio piped, not a TTY).
+ * Default idle budget (audit B2 / review): applied BY THE RUNNER whenever
+ * `timeoutMs` is omitted, so no call site (a provider upload, a
+ * `commandExists` probe) can silently regain hang-forever behavior by
+ * forgetting to pass it. `timeoutMs: 0` is the explicit opt-out. Idle, not
+ * total — the timer re-arms on every output chunk, so only total silence
+ * kills the child. 5 minutes tolerates upload CLIs that quiet their progress
+ * stream when piped (butler/swa run with stdio piped, not a TTY).
  */
 export const PUBLISH_IDLE_TIMEOUT_MS = 300_000;
-
-function keepTail(buffer: string, chunk: string): string {
-  const joined = buffer + chunk;
-  return joined.length > CAPTURE_LIMIT ? joined.slice(-CAPTURE_LIMIT) : joined;
-}
 
 /** Per-stream line splitter: \n, \r\n, and bare \r (progress redraws) all flush. */
 function lineEmitter(onOutput: (line: string) => void) {
@@ -53,100 +50,47 @@ function lineEmitter(onOutput: (line: string) => void) {
   return { push, flush };
 }
 
-export const defaultCommandRunner: CommandRunner = (
+// Settling: spawnCapture resolves on 'close' (stdio flushed) rather than
+// 'exit', with a bounded grace (EXIT_FLUSH_GRACE_MS) for a grandchild that
+// holds the pipes open — so output a delegating CLI's grandchild writes as
+// the parent exits (the SWA CLI spawns StaticSitesClient) is captured, not
+// truncated, and a detached daemon can't hang the runner.
+//
+// KNOWN LIMIT (review): the idle-timeout SIGKILL reaches the direct child
+// only; a grandchild can be left briefly orphaned. The fix — detached
+// process groups + negative-pid kill — would stop Ctrl+C from reaching the
+// child in normal CLI use, a worse trade for a rarer case.
+export const defaultCommandRunner: CommandRunner = async (
   cmd,
   args,
   options = {},
 ): Promise<CommandResult> => {
-  return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, {
+  // Each stream gets its own carry buffer — interleaved stdout/stderr
+  // chunks must not be glued into one garbled progress line.
+  const noop = () => {};
+  const outLines = lineEmitter(options.onOutput ?? noop);
+  const errLines = lineEmitter(options.onOutput ?? noop);
+  try {
+    const { code, signal, stdout, stderr } = await spawnCapture(cmd, args, {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
-      stdio: ["ignore", "pipe", "pipe"],
+      timeoutMs: options.timeoutMs ?? PUBLISH_IDLE_TIMEOUT_MS,
+      timeoutMode: "idle",
+      captureLimit: CAPTURE_LIMIT,
+      onChunk: options.onOutput
+        ? (stream, text) => (stream === "stdout" ? outLines : errLines).push(text)
+        : undefined,
     });
-
-    let stdout = "";
-    let stderr = "";
-    // Each stream gets its own carry buffer — interleaved stdout/stderr
-    // chunks must not be glued into one garbled progress line.
-    const noop = () => {};
-    const outLines = lineEmitter(options.onOutput ?? noop);
-    const errLines = lineEmitter(options.onOutput ?? noop);
-
-    // Idle-kill timer (audit B2): a stalled butler/swa upload (connection open,
-    // no bytes moving) would otherwise hang publish forever. Mirrors exec.ts's
-    // execCapture: the timer is re-armed on every chunk of output (so a slow
-    // BUT progressing upload is never killed), cleared on settle, and unref'd
-    // so a pending call can't keep the process alive on its own.
-    //
-    // KNOWN LIMIT (review): the SIGKILL reaches the direct child only. A CLI
-    // that delegates the transfer to its own grandchild (the SWA CLI spawns
-    // StaticSitesClient) can leave that grandchild briefly orphaned. The fix —
-    // detached process groups + negative-pid kill — would stop Ctrl+C from
-    // reaching the child in normal CLI use, a worse trade for a rarer case.
-    let settled = false;
-    let idleTimer: NodeJS.Timeout | undefined;
-    const clearIdle = () => {
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = undefined;
-    };
-    const armIdle = () => {
-      // Falsy (undefined OR 0) = no timeout. A bare undefined-check would turn
-      // `timeoutMs: 0` — the natural encoding of "disabled" — into an instant
-      // SIGKILL on the first tick (review finding).
-      if (!options.timeoutMs) return;
-      clearIdle();
-      idleTimer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        child.kill("SIGKILL");
-        if (options.onOutput) {
-          outLines.flush();
-          errLines.flush();
-        }
-        reject(
-          new Error(
-            `${cmd} produced no output for ${options.timeoutMs}ms and was stopped`,
-          ),
-        );
-      }, options.timeoutMs);
-      idleTimer.unref();
-    };
-    armIdle();
-
-    child.stdout.on("data", (d: Buffer) => {
-      const text = d.toString();
-      stdout = keepTail(stdout, text);
-      if (options.onOutput) outLines.push(text);
-      armIdle();
-    });
-    child.stderr.on("data", (d: Buffer) => {
-      const text = d.toString();
-      stderr = keepTail(stderr, text);
-      if (options.onOutput) errLines.push(text);
-      armIdle();
-    });
-    child.on("error", (err) => {
-      if (settled) return;
-      settled = true;
-      clearIdle();
-      reject(err);
-    });
-    child.on("exit", (code, signal) => {
-      if (settled) return;
-      settled = true;
-      clearIdle();
-      if (options.onOutput) {
-        outLines.flush();
-        errLines.flush();
-      }
-      if (code === null) {
-        reject(new Error(`${cmd} was killed by signal ${signal}`));
-      } else {
-        resolve({ code, stdout, stderr });
-      }
-    });
-  });
+    if (code === null) {
+      throw new Error(`${cmd} was killed by signal ${signal}`);
+    }
+    return { code, stdout, stderr };
+  } finally {
+    if (options.onOutput) {
+      outLines.flush();
+      errLines.flush();
+    }
+  }
 };
 
 /**

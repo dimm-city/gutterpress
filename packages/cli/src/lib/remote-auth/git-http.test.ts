@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import { classifyTransportFailure } from "./recovery/classify.ts";
-import { withIdleTimeout } from "./git-http.ts";
+import { isSmallBody, SMALL_BODY_MAX_BYTES, withIdleTimeout } from "./git-http.ts";
 
 // A fake isomorphic-git http client whose request() and/or body reads can be
 // made to hang, so we can prove the idle-timeout wrapper unblocks them.
@@ -39,7 +39,51 @@ function stallingBodyRequest() {
   } as unknown as Parameters<typeof withIdleTimeout>[0];
 }
 
+describe("isSmallBody", () => {
+  it("array of sizable chunks within the threshold → small", () => {
+    expect(isSmallBody([new Uint8Array(1024), new Uint8Array(2048)])).toBe(true);
+    expect(isSmallBody([])).toBe(true);
+  });
+
+  it("array of sizable chunks over the threshold → not small", () => {
+    expect(isSmallBody([new Uint8Array(SMALL_BODY_MAX_BYTES + 1)])).toBe(false);
+  });
+
+  it("non-array body → not small (conservatively a large upload)", () => {
+    expect(isSmallBody("x")).toBe(false);
+    expect(isSmallBody({ byteLength: 1 })).toBe(false);
+  });
+
+  it("UNSIZABLE chunks → not small, regardless of their true size", () => {
+    // Review finding: chunks without a numeric byteLength were counted as 0
+    // bytes, so an unsizable body classified as SMALL and got the 60s idle
+    // deadline as a TOTAL upload cap — the opposite of the documented
+    // "conservatively treated as a large upload" contract.
+    expect(isSmallBody(["x".repeat(SMALL_BODY_MAX_BYTES * 2)])).toBe(false);
+    expect(isSmallBody([new Uint8Array(16), "not a byte chunk"])).toBe(false);
+  });
+});
+
 describe("withIdleTimeout", () => {
+  it("gives an UNSIZABLE array body the upload backstop, not the idle deadline", async () => {
+    // Companion to the isSmallBody inversion test above, at the request seam:
+    // an unsizable body must be governed by the upload backstop (25ms here),
+    // so this rejects fast; under the inverted classification it would arm
+    // the 10s idle deadline instead and hang far past the test timeout.
+    const client = withIdleTimeout(neverResolvingRequest(), 10_000 /* idle */, 25 /* upload */);
+    let err: unknown;
+    try {
+      await client.request({
+        url: "http://example.test/git-receive-pack",
+        body: ["x".repeat(SMALL_BODY_MAX_BYTES * 2)], // strings: no byteLength
+      } as never);
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain("the upload did not complete");
+  });
+
   it("rejects a body-less request() that never responds, with a network-classified error", async () => {
     const client = withIdleTimeout(neverResolvingRequest(), 25);
     let err: unknown;

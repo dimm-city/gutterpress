@@ -66,6 +66,26 @@ export const GIT_HTTP_UPLOAD_TIMEOUT_MS = 30 * 60_000;
  */
 export const SMALL_BODY_MAX_BYTES = 256 * 1024;
 
+/**
+ * True when `body` is an array of sizable chunks totalling at most
+ * {@link SMALL_BODY_MAX_BYTES}. isomorphic-git always passes bodies as arrays
+ * of byte chunks, so small ones are sizable synchronously. Any chunk WITHOUT
+ * a numeric byteLength makes the body unsizable → NOT small, so it gets the
+ * long upload backstop rather than the idle deadline as a total cap (review
+ * finding: the old reduce counted unsizable chunks as 0 bytes — the exact
+ * opposite of that intent).
+ */
+export function isSmallBody(body: unknown): boolean {
+  if (!Array.isArray(body)) return false;
+  let total = 0;
+  for (const c of body) {
+    const size = (c as { byteLength?: unknown } | null)?.byteLength;
+    if (typeof size !== "number") return false;
+    total += size;
+  }
+  return total <= SMALL_BODY_MAX_BYTES;
+}
+
 function gitTimeoutError(what: string, ms: number): Error {
   // "couldn't reach" + "ETIMEDOUT" both match the network regex in
   // recovery/classify.ts, so this surfaces as the offline message, not a crash.
@@ -120,17 +140,10 @@ export function withIdleTimeout(
       // exactly the "connected but silent" stall the short idle deadline exists
       // for (gap-sweep finding: treating every body-carrying request as an
       // upload let a stalled pull wedge the repo lock for the full backstop).
-      // isomorphic-git always passes bodies as arrays of byte chunks, so small
-      // ones are sizable synchronously; anything unsizable is conservatively
-      // treated as a large upload.
+      // Anything unsizable is conservatively treated as a large upload — see
+      // isSmallBody.
       const body: unknown = options.body;
-      const smallBody =
-        Array.isArray(body) &&
-        body.reduce(
-          (sum: number, c) => sum + (c && typeof c.byteLength === "number" ? c.byteLength : 0),
-          0,
-        ) <= SMALL_BODY_MAX_BYTES;
-      const isLargeUpload = body != null && !smallBody;
+      const isLargeUpload = body != null && !isSmallBody(body);
       arm(
         isLargeUpload ? uploadMs : idleMs,
         isLargeUpload ? "the upload did not complete" : "the remote did not respond",

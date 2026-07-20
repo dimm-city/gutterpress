@@ -74,10 +74,22 @@ function destroyEntry(entry: CacheEntry): void {
  */
 const EVICT_DESTROY_GRACE_MS = 60_000;
 
+/**
+ * Evicted entries still inside their destroy grace. Tracked so `clearPdfCache`
+ * can cancel the timers and destroy them immediately — otherwise validating
+ * many distinct PDFs in quick succession retains up to a minute's worth of
+ * fully-parsed documents BEYOND the DOC_CACHE_MAX cap.
+ */
+const gracePending = new Map<ReturnType<typeof setTimeout>, CacheEntry>();
+
 function destroyEntryAfterGrace(entry: CacheEntry): void {
-  const t = setTimeout(() => destroyEntry(entry), EVICT_DESTROY_GRACE_MS);
+  const t = setTimeout(() => {
+    gracePending.delete(t);
+    destroyEntry(entry);
+  }, EVICT_DESTROY_GRACE_MS);
   // Never keep the process alive just to reclaim cache memory.
   t.unref?.();
+  gracePending.set(t, entry);
 }
 
 /** Evict least-recently-used entries until the cache is within its cap. */
@@ -139,12 +151,24 @@ export async function loadPdf(path: string): Promise<PDFDocumentProxy | null> {
 }
 
 /**
- * Destroy and drop every cached document. Exposed for tests and for hosts that
- * want to reclaim memory at a natural boundary (e.g. after a validation run).
+ * Destroy and drop every cached document, including evicted ones still inside
+ * their destroy grace (their timers are cancelled). Called by the check runner
+ * at the end of every run — the natural boundary where nothing is mid-read —
+ * and exposed for tests.
  */
 export function clearPdfCache(): void {
+  for (const [t, entry] of gracePending) {
+    clearTimeout(t);
+    destroyEntry(entry);
+  }
+  gracePending.clear();
   for (const entry of docCache.values()) destroyEntry(entry);
   docCache.clear();
+}
+
+/** Test-only introspection: evicted documents still awaiting grace destruction. */
+export function pendingGraceDestroyCount(): number {
+  return gracePending.size;
 }
 
 // ---------------------------------------------------------------------------

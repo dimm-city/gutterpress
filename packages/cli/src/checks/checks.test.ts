@@ -22,6 +22,7 @@ import {
 import { runChecks } from "./runner";
 import { formatReport } from "./formatter";
 import { checkToolAvailability, reportMissingTools } from "./tool-check";
+import { loadPdf, clearPdfCache } from "../lib/pdf-inspect";
 import type { RunnerReport } from "./runner";
 import { makeCtx } from "../test-helpers/testkit";
 
@@ -299,6 +300,42 @@ describe("Check Runner", () => {
     });
     expect(report.summary.errors).toBe(1);
     expect(report.errors[0]!.message).toContain("intentional test error");
+  });
+
+  test("completed run leaves the pdf document cache empty", async () => {
+    const { PDFDocument } = await import("pdf-lib");
+    const docu = await PDFDocument.create();
+    docu.addPage([612, 792]);
+    const dir = await mkdtemp(join(tmpdir(), "print-md-runnercache-"));
+    const pdfPath = join(dir, "run.pdf");
+    await writeFile(pdfPath, await docu.save());
+
+    let seen: unknown;
+    const cacheCheck: Check = {
+      id: "test.pdf-cache-check",
+      name: "PDF Cache Check",
+      description: "Loads a PDF through the shared document cache",
+      category: "pdf",
+      phase: "post-build",
+      async run(): Promise<CheckResult[]> {
+        seen = await loadPdf(pdfPath);
+        return [];
+      },
+    };
+    registerCheck(cacheCheck);
+
+    const ctx = makeCtx();
+    await runChecks(ctx, { only: ["test.pdf-cache-check"] });
+
+    // The runner clears the cache at run end (its docblock's "natural
+    // boundary"), so a fresh load re-parses instead of returning the run's
+    // cached (and now destroyed) document.
+    const after = await loadPdf(pdfPath);
+    expect(seen).toBeTruthy();
+    expect(after).not.toBe(seen);
+
+    clearPdfCache();
+    await rm(dir, { recursive: true, force: true });
   });
 });
 

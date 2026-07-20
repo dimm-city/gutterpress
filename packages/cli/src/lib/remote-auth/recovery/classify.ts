@@ -47,6 +47,32 @@ export function isRepoNeedsRecoveryError(e: unknown): e is RepoNeedsRecoveryErro
   return (e as { code?: string })?.code === "RepoNeedsRecovery";
 }
 
+// ── InsecureTransportError ───────────────────────────────────────────────────
+
+/**
+ * Thrown by transport.ts's onAuth when a stored credential EXISTS but the
+ * remote URL fails isCredentialTransmissionSafe (non-loopback http). Loud and
+ * typed on purpose: the old behavior (silently withholding the credential)
+ * surfaced as a 401 → "auth" → "reconnect" loop, and recover-auth then deleted
+ * the credential for the whole host. The `code` string is the STABLE contract
+ * (matchable across dynamic-import boundaries where `instanceof` fails).
+ */
+export class InsecureTransportError extends Error {
+  readonly code = "InsecureTransport";
+  constructor() {
+    super(
+      "This online address isn't secure (http://), so the saved connection wasn't sent. " +
+        "Switch the address to a secure one (https://) to sync with a saved connection.",
+    );
+    this.name = "InsecureTransportError";
+  }
+}
+
+/** Type guard for {@link InsecureTransportError} (matches on the stable code). */
+export function isInsecureTransportError(e: unknown): e is InsecureTransportError {
+  return (e as { code?: string })?.code === "InsecureTransport";
+}
+
 // ── Shared isomorphic-git error decoders (also used by sync.ts) ──────────────
 
 export function isPushRejected(e: unknown): boolean {
@@ -91,7 +117,13 @@ export function isMergeConflictError(
   return (e as { code?: string })?.code === "MergeConflictError";
 }
 
-export function classifyTransportFailure(e: unknown): "auth_required" | "network_unavailable" | null {
+export function classifyTransportFailure(
+  e: unknown,
+): "auth_required" | "network_unavailable" | "insecure_transport" | null {
+  // FIRST: the withheld-cleartext-credential error. It must never fall through
+  // to the auth arm — "reconnect" can't fix an http:// address, and the auth
+  // recovery path deletes the stored credential for the whole host.
+  if (isInsecureTransportError(e)) return "insecure_transport";
   const err = e as { code?: string; data?: { statusCode?: number; prettyDetails?: string }; message?: string };
   if (err?.code === "HttpError") {
     const status = err.data?.statusCode;

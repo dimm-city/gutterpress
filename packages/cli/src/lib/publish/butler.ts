@@ -17,6 +17,7 @@
 import { chmod, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { unzipSync } from "fflate";
+import { FriendlyHttpError, withFetchTimeout } from "../fetch-timeout.ts";
 import { defaultConfigDir } from "../remote-auth/token-store.ts";
 import { commandExists, defaultCommandRunner } from "./command-runner.ts";
 import type { PublishDeps } from "./types.ts";
@@ -91,36 +92,30 @@ export async function ensureButler(deps: PublishDeps): Promise<string> {
 
   deps.onProgress?.("Downloading itch.io's butler upload tool (one-time setup)…");
   const fetchFn = deps.fetch ?? globalThis.fetch;
-  // Bound the one-time download (audit B2): without a signal a stalled CDN
-  // connection hangs the whole publish. NOTE: AbortSignal.timeout is a TOTAL
-  // deadline that keeps ticking through the body read below (review finding),
-  // so the budget must cover downloading the whole ~25MB archive on a slow
-  // link — 5 minutes ≈ works down to ~0.7 Mbit/s — and the body read must sit
-  // INSIDE the try so a mid-body abort still gets the friendly message.
-  let archive: Uint8Array;
-  try {
-    const response = await fetchFn(butlerDownloadUrl(channel), {
-      signal: AbortSignal.timeout(BUTLER_DOWNLOAD_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      throw new Error(
-        `Couldn't download butler from itch.io (HTTP ${response.status}). ` +
-          `Check your connection, or install butler manually and set BUTLER_PATH.`,
-      );
-    }
-    archive = new Uint8Array(await response.arrayBuffer());
-  } catch (e) {
-    // An HTTP-status error built above is already friendly — rethrow as-is.
-    if (e instanceof Error && e.message.includes("BUTLER_PATH")) throw e;
-    const timedOut = e instanceof Error && e.name === "TimeoutError";
-    throw new Error(
-      timedOut
-        ? `Downloading butler from itch.io timed out. ` +
-          `Check your connection, or install butler manually and set BUTLER_PATH.`
-        : `Couldn't download butler from itch.io (${e instanceof Error ? e.message : String(e)}). ` +
-          `Check your connection, or install butler manually and set BUTLER_PATH.`,
-    );
-  }
+  const hint = "Check your connection, or install butler manually and set BUTLER_PATH.";
+  // Bound the one-time download (audit B2): without a deadline a stalled CDN
+  // connection hangs the whole publish. The deadline is TOTAL (fetch-timeout.ts)
+  // and keeps ticking through the body read, so the budget must cover the whole
+  // ~25MB archive on a slow link — 5 minutes ≈ works down to ~0.7 Mbit/s — and
+  // the body read sits inside `run` so a mid-body abort gets the friendly message.
+  const archive = await withFetchTimeout(
+    {
+      timeoutMs: BUTLER_DOWNLOAD_TIMEOUT_MS,
+      timeoutMessage: `Downloading butler from itch.io timed out. ${hint}`,
+      offlineMessage: (e) =>
+        `Couldn't download butler from itch.io (${e instanceof Error ? e.message : String(e)}). ${hint}`,
+    },
+    async (signal) => {
+      const response = await fetchFn(butlerDownloadUrl(channel), { signal });
+      if (!response.ok) {
+        // Already friendly — the marker type keeps it out of the offline wrap.
+        throw new FriendlyHttpError(
+          `Couldn't download butler from itch.io (HTTP ${response.status}). ${hint}`,
+        );
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    },
+  );
   const files = unzipSync(archive);
 
   await mkdir(cacheDir, { recursive: true });

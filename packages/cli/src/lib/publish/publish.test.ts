@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { strToU8, zipSync } from "fflate";
 import { FileTokenStore } from "../remote-auth/token-store";
 import { listPublishProviders, publishProviderFor } from "./registry";
 import { runPublish, resolvePublishRequest } from "./run-publish";
@@ -275,6 +276,73 @@ test("ensureButler honours BUTLER_PATH and PATH lookup before downloading", asyn
     const { runner } = fakeRunner([{ code: 0, stdout: "/usr/bin/butler\n" }]);
     const onPath = await depsFor(dir, { env: {}, runCommand: runner });
     expect(await ensureButler(onPath)).toBe("butler");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureButler downloads, extracts, and caches the binary when nothing is installed", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-butler-"));
+  try {
+    const binName = process.platform === "win32" ? "butler.exe" : "butler";
+    const archive = zipSync({
+      [binName]: strToU8("#!/bin/sh\n"),
+      "lib7z.so": strToU8("companion lib"),
+    });
+    const { runner } = fakeRunner([{ code: 1 }]); // `which butler` misses
+    const fetchImpl = (async () => new Response(archive)) as unknown as typeof fetch;
+    const deps = await depsFor(dir, { env: {}, runCommand: runner, fetch: fetchImpl });
+    const resolved = await ensureButler(deps);
+    expect(resolved).toBe(path.join(dir, ".config", "tools", "butler", binName));
+    expect(await readFile(resolved, "utf8")).toBe("#!/bin/sh\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureButler maps download failures to friendly messages", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-butler-"));
+  const failure = async (fetchImpl: typeof fetch): Promise<Error> => {
+    const deps = await depsFor(dir, {
+      env: {},
+      runCommand: fakeRunner([{ code: 1 }]).runner,
+      fetch: fetchImpl,
+    });
+    return ensureButler(deps).then(
+      () => {
+        throw new Error("expected ensureButler to reject");
+      },
+      (e) => e as Error,
+    );
+  };
+  try {
+    // HTTP status: the already-friendly message is thrown AS-IS, never
+    // re-wrapped in the network-failure mapping (exact match on purpose).
+    const httpErr = await failure(
+      (async () => new Response("nope", { status: 503 })) as unknown as typeof fetch,
+    );
+    expect(httpErr.message).toBe(
+      "Couldn't download butler from itch.io (HTTP 503). " +
+        "Check your connection, or install butler manually and set BUTLER_PATH.",
+    );
+
+    // Deadline fired (AbortSignal.timeout rejects with a TimeoutError).
+    const timeoutErr = await failure((async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    }) as unknown as typeof fetch);
+    expect(timeoutErr.message).toBe(
+      "Downloading butler from itch.io timed out. " +
+        "Check your connection, or install butler manually and set BUTLER_PATH.",
+    );
+
+    // Network-level failure: wrapped with the connection hint.
+    const netErr = await failure((async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch);
+    expect(netErr.message).toBe(
+      "Couldn't download butler from itch.io (fetch failed). " +
+        "Check your connection, or install butler manually and set BUTLER_PATH.",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -10,6 +10,9 @@ import type {
 // side-effect imports running before any caller.
 import "./register-builtins";
 import { selectChecks } from "./policy";
+// Static import is free here: register-builtins above already pulls pdf-inspect
+// (and its eager unpdf import) via the pdf check modules.
+import { clearPdfCache } from "../lib/pdf-inspect";
 import type { ResolvedConfig } from "../schema/manifest.types";
 
 export interface RunnerOptions {
@@ -81,30 +84,38 @@ export async function runChecks(
     });
   }
 
-  for (const check of checks) {
-    try {
-      const results = await check.run(ctx);
+  try {
+    for (const check of checks) {
+      try {
+        const results = await check.run(ctx);
 
-      // Apply severity overrides from config
-      const severityOverride = getCheckSeverityOverride(check.id, ctx.config);
-      if (severityOverride) {
-        for (const r of results) {
-          r.severity = severityOverride;
+        // Apply severity overrides from config
+        const severityOverride = getCheckSeverityOverride(check.id, ctx.config);
+        if (severityOverride) {
+          for (const r of results) {
+            r.severity = severityOverride;
+          }
         }
-      }
 
-      if (results.length === 0) {
-        passed.push(check.id);
-      } else {
-        allResults.push(...results);
+        if (results.length === 0) {
+          passed.push(check.id);
+        } else {
+          allResults.push(...results);
+        }
+      } catch (err) {
+        allResults.push({
+          checkId: check.id,
+          severity: "error",
+          message: `Check "${check.id}" threw: ${err instanceof Error ? err.message : String(err)}`,
+        });
       }
-    } catch (err) {
-      allResults.push({
-        checkId: check.id,
-        severity: "error",
-        message: `Check "${check.id}" threw: ${err instanceof Error ? err.message : String(err)}`,
-      });
     }
+  } finally {
+    // Checks run strictly sequentially above (each `run` awaited), so nothing
+    // is mid-read here. Dropping the parsed-PDF cache at run end is the
+    // natural boundary its docblock prescribes; without it a long-lived host
+    // (the viewer) retains DOC_CACHE_MAX parsed documents indefinitely.
+    clearPdfCache();
   }
 
   const errors = allResults.filter((r) => r.severity === "error");

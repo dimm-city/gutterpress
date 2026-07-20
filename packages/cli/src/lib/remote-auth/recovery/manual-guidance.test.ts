@@ -16,6 +16,9 @@ const EXPECTED: Record<SyncErrorKind, RecoveryActionKey> = {
   binary_conflict: "resolve_conflict",
   auth_required: "reconnect",
   network_unavailable: "sync",
+  // NEVER "reconnect" — reconnecting can't fix an http:// address, and the
+  // reconnect path deletes stored credentials.
+  insecure_transport: "check_connection",
   detached_head: "restore_repo",
   stale_lock: "restore_repo",
   corrupt_index: "restore_repo",

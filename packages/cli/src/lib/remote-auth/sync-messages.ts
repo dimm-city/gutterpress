@@ -15,6 +15,8 @@ export const MSG_OFFLINE =
   "Your changes are saved on this computer. print-md couldn't reach the online repository — try syncing again when you're back online.";
 export const MSG_AUTH =
   "The online repository didn't accept the saved connection. Reconnect and try again.";
+export const MSG_INSECURE_TRANSPORT =
+  "This project's online address isn't secure (http://), so the saved connection wasn't sent. Switch the address to a secure one (https://) to sync.";
 export const MSG_RACE =
   "Someone else synced changes at the same moment. Your work is saved on this computer — please try Sync again.";
 export const MSG_CONFLICT =

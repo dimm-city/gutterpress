@@ -15,6 +15,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   loadPdf,
+  clearPdfCache,
+  pendingGraceDestroyCount,
   getPageSize,
   getOutlineCount,
   getOpPass,
@@ -136,5 +138,61 @@ describe("pdf-inspect (synthetic pdf-lib document)", () => {
 
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });
+  });
+});
+
+// Cache-bounding behavior: LRU eviction defers destruction by a grace period
+// (so a mid-check reader isn't killed), but clearPdfCache — the run-boundary
+// reclaim — must destroy grace-held evicted documents immediately, not leave
+// them (and their timers) alive for up to a minute.
+describe("pdf-inspect cache eviction + clearPdfCache", () => {
+  let dir: string;
+  const paths: string[] = [];
+
+  beforeAll(async () => {
+    const { PDFDocument } = await import("pdf-lib");
+    const docu = await PDFDocument.create();
+    docu.addPage([612, 792]);
+    const bytes = await docu.save();
+    dir = await mkdtemp(join(tmpdir(), "print-md-pdfcache-"));
+    // DOC_CACHE_MAX (8) + 1 distinct paths, so loading them all evicts one.
+    for (let i = 0; i < 9; i++) {
+      const p = join(dir, `doc-${i}.pdf`);
+      await writeFile(p, bytes);
+      paths.push(p);
+    }
+  });
+
+  afterAll(async () => {
+    clearPdfCache();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("clearPdfCache destroys grace-held evicted documents immediately", async () => {
+    clearPdfCache(); // isolate from documents cached by earlier suites
+    const first = (await loadPdf(paths[0]!))!;
+    let destroyed = false;
+    const origDestroy = first.destroy.bind(first);
+    first.destroy = () => {
+      destroyed = true;
+      return origDestroy();
+    };
+
+    // Load the remaining 8 distinct paths → paths[0] becomes the LRU evictee.
+    for (let i = 1; i < paths.length; i++) {
+      expect(await loadPdf(paths[i]!)).toBeTruthy();
+    }
+    await new Promise((r) => setTimeout(r, 20));
+    // Eviction alone must NOT destroy it yet — the grace period protects a
+    // reader that obtained the proxy just before the eviction.
+    expect(destroyed).toBe(false);
+    expect(pendingGraceDestroyCount()).toBe(1);
+
+    // The run-boundary reclaim must cancel the grace timer and destroy the
+    // evicted document too, not only the 8 still in the cache map.
+    clearPdfCache();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(destroyed).toBe(true);
+    expect(pendingGraceDestroyCount()).toBe(0); // no live timers left behind
   });
 });

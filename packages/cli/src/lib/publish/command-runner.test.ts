@@ -1,9 +1,10 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { defaultCommandRunner } from "./command-runner.ts";
+import { EXIT_FLUSH_GRACE_MS } from "../exec.ts";
+import { defaultCommandRunner, PUBLISH_IDLE_TIMEOUT_MS } from "./command-runner.ts";
 
 // A tiny helper to write an executable shell script into a temp dir.
 function writeScript(body: string): string {
@@ -45,10 +46,57 @@ describe("defaultCommandRunner idle timeout (audit B2)", () => {
     expect(lines.filter((l) => l.trim() === "tick").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("has no timeout when timeoutMs is omitted (unchanged default)", async () => {
-    const script = writeScript("echo hi");
+  it("timeoutMs: 0 explicitly disables the idle timeout", async () => {
+    const spy = spyOn(globalThis, "setTimeout");
+    spy.mockClear();
+    try {
+      const script = writeScript("echo hi");
+      const res = await defaultCommandRunner("/bin/sh", [script], { timeoutMs: 0 });
+      expect(res.code).toBe(0);
+      expect(res.stdout).toContain("hi");
+      expect(spy.mock.calls.map((c) => c[1])).not.toContain(PUBLISH_IDLE_TIMEOUT_MS);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("arms the default idle timeout when timeoutMs is omitted", async () => {
+    // Call sites that forget timeoutMs (e.g. commandExists probes) must not
+    // silently regain hang-forever behavior — the runner itself defaults it.
+    const spy = spyOn(globalThis, "setTimeout");
+    spy.mockClear();
+    try {
+      const script = writeScript("echo hi");
+      await defaultCommandRunner("/bin/sh", [script]);
+      const delays = spy.mock.calls.map((c) => c[1]);
+      expect(delays).toContain(PUBLISH_IDLE_TIMEOUT_MS);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("defaultCommandRunner stdio flush (exit vs close)", () => {
+  it("captures output still in the pipe when 'exit' fires (grandchild writes late)", async () => {
+    // The SWA CLI pattern: the direct child exits while a grandchild that
+    // inherited the stdio pipes is still writing. Settling on 'exit' loses
+    // that output; the runner must wait for 'close' (stdio flushed).
+    const script = writeScript("( sleep 0.2; echo late-output ) & exit 0");
     const res = await defaultCommandRunner("/bin/sh", [script]);
     expect(res.code).toBe(0);
-    expect(res.stdout).toContain("hi");
+    expect(res.stdout).toContain("late-output");
+  });
+
+  it("settles a bounded grace after 'exit' when a daemon grandchild holds the pipe", async () => {
+    // The grandchild inherits stdout and sleeps far longer than the grace, so
+    // 'close' won't fire until it dies — the runner must settle on the grace
+    // timer with the recorded exit code rather than hang.
+    const script = writeScript("sleep 10 & exit 7");
+    const start = Date.now();
+    const res = await defaultCommandRunner("/bin/sh", [script]);
+    const elapsed = Date.now() - start;
+    expect(res.code).toBe(7);
+    expect(elapsed).toBeGreaterThanOrEqual(EXIT_FLUSH_GRACE_MS - 100);
+    expect(elapsed).toBeLessThan(8000);
   });
 });

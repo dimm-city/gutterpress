@@ -25,9 +25,10 @@ import {
 } from "./token-store.ts";
 // The single source of truth for git error decoding lives in the recovery
 // classifier — sync.ts consumes it rather than keeping parallel copies.
-import { classifyTransportFailure } from "./recovery/classify.ts";
+import { classifyTransportFailure, InsecureTransportError } from "./recovery/classify.ts";
 import {
   MSG_AUTH,
+  MSG_INSECURE_TRANSPORT,
   MSG_NO_BRANCH,
   MSG_NO_REMOTE,
   MSG_OFFLINE,
@@ -60,8 +61,9 @@ export function isCredentialTransmissionSafe(url: string): boolean {
     const u = new URL(url);
     if (u.protocol === "https:") return true;
     if (u.protocol === "http:") {
+      // WHATWG URL keeps the brackets on IPv6 literals: "[::1]", never "::1".
       const host = u.hostname.toLowerCase();
-      return host === "127.0.0.1" || host === "::1" || host === "localhost";
+      return host === "127.0.0.1" || host === "[::1]" || host === "localhost";
     }
     return false;
   } catch {
@@ -73,10 +75,13 @@ export function onAuthFor(credential: HostCredential | undefined) {
   if (!credential) return {};
   return {
     onAuth: (url: string) => {
-      // Never leak the token over cleartext (see isCredentialTransmissionSafe):
-      // a remote http:// URL gets NO credential, so a private repo fails auth
-      // instead of harvesting the user's account token on the wire.
-      if (!isCredentialTransmissionSafe(url)) return {};
+      // Never leak the token over cleartext (see isCredentialTransmissionSafe).
+      // Throw the typed error LOUDLY: silently withholding the credential made
+      // the server's 401 classify as "auth" → "reconnect" guidance → a forever
+      // loop, and recover-auth then deleted the credential for the whole host.
+      // isomorphic-git only calls onAuth on a real auth challenge, so public
+      // http remotes keep working unauthenticated.
+      if (!isCredentialTransmissionSafe(url)) throw new InsecureTransportError();
       // Same convention as clone.ts: GitHub accepts any username with the
       // token as password (covers OAuth gho_ and legacy ghu_ tokens); plain
       // tokens use the stored username (or the token-as-username convention
@@ -143,7 +148,9 @@ export async function resolveTransport(
  * and {@link PushOutcome} — so one classifier serves all three operations.
  * Decoding delegates to the shared recovery classifier
  * (classifyTransportFailure): auth_required → "auth", network_unavailable →
- * "offline", anything else → the generic "error" arm.
+ * "offline", insecure_transport → "error" with its dedicated message (NEVER
+ * "auth" — reconnecting can't fix an http:// address, and the auth recovery
+ * path deletes the stored credential), anything else → the generic "error" arm.
  */
 export function failureOutcome(
   e: unknown,
@@ -153,6 +160,9 @@ export function failureOutcome(
   const base = snapshotId ? { snapshotId } : {};
   if (kind === "auth_required") return { status: "auth", message: MSG_AUTH, ...base };
   if (kind === "network_unavailable") return { status: "offline", message: MSG_OFFLINE, ...base };
+  if (kind === "insecure_transport") {
+    return { status: "error", message: MSG_INSECURE_TRANSPORT, ...base };
+  }
   return {
     status: "error",
     message:
@@ -223,6 +233,62 @@ export async function currentBranchOrThrow(dir: string): Promise<string> {
   return branch;
 }
 
+/** Resolve `ref` to an oid, or null when the ref does not exist. */
+async function resolveRefOrNull(dir: string, ref: string): Promise<string | null> {
+  try {
+    return await git.resolveRef({ fs, dir, ref });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Run `fn` (a fetch that moves the remote-tracking ref) with a rollback guard
+ * (deep-analysis R15): isomorphic-git updates refs/remotes/<remote>/<branch>
+ * from the ref advertisement BEFORE collecting the packfile, so an abort
+ * mid-transfer (e.g. the defaultGitHttp idle timeout) leaves the ref pointing
+ * at an oid with no local object. That dangling ref poisons the next fetch —
+ * zero `have`s → the server streams the ENTIRE repository (the OOM
+ * fetchRemoteTip's `ref` choice exists to prevent) — and resolving it reports
+ * missing-object "corruption" on a never-corrupt repo.
+ *
+ * If `fn` throws and moved the ref to an oid whose object is MISSING locally,
+ * restore the previous oid (or delete the ref if it didn't exist); if the
+ * object DID land, the pack made it — keep the ref. On success the ref is
+ * never touched. Restoration is best-effort and never masks `fn`'s error.
+ */
+export async function guardTrackingRef<T>(
+  dir: string,
+  ref: string,
+  cache: GitCache,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const before = await resolveRefOrNull(dir, ref);
+  try {
+    return await fn();
+  } catch (e) {
+    try {
+      const after = await resolveRefOrNull(dir, ref);
+      if (after && after !== before) {
+        const landed = await git.readObject({ fs, dir, oid: after, cache }).then(
+          () => true,
+          () => false,
+        );
+        if (!landed) {
+          if (before) {
+            await git.writeRef({ fs, dir, ref, value: before, force: true });
+          } else {
+            await git.deleteRef({ fs, dir, ref });
+          }
+        }
+      }
+    } catch {
+      // Best-effort rollback — the original transport error must surface.
+    }
+    throw e;
+  }
+}
+
 /**
  * Fetch the tracked branch's online tip. Returns `null` when the online
  * repository has no such branch yet (a freshly created empty repo).
@@ -243,18 +309,22 @@ export async function fetchRemoteTip(
     // So `ref` must be the REMOTE-TRACKING ref — by definition the last tip
     // the server gave us, so it always finds the common base and sends only
     // the new commits. `remoteRef` (what we ask FOR) stays the branch.
-    const result = await git.fetch({
-      fs,
-      http,
-      dir,
-      cache,
-      remote: transport.remote,
-      ref: `refs/remotes/${transport.remote}/${branch}`,
-      remoteRef: branch,
-      singleBranch: true,
-      tags: false,
-      ...onAuthFor(transport.credential),
-    });
+    // guardTrackingRef keeps that invariant true across aborted transfers.
+    const trackingRef = `refs/remotes/${transport.remote}/${branch}`;
+    const result = await guardTrackingRef(dir, trackingRef, cache, () =>
+      git.fetch({
+        fs,
+        http,
+        dir,
+        cache,
+        remote: transport.remote,
+        ref: trackingRef,
+        remoteRef: branch,
+        singleBranch: true,
+        tags: false,
+        ...onAuthFor(transport.credential),
+      }),
+    );
     return result.fetchHead ?? null;
   } catch (e) {
     // A brand-new empty repository has no refs to fetch — that's "remote has

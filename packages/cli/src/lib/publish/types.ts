@@ -119,7 +119,8 @@ export type CommandRunner = (
      * Idle-kill budget in ms (audit B2). If the child produces no output and
      * has not exited within this window, it is SIGKILL'd and the run rejects
      * with a timeout error, so a stalled upload can't hang publish forever.
-     * Omitted / undefined = no timeout (unchanged default behavior).
+     * Omitted / undefined = the runner's default (defaultCommandRunner applies
+     * PUBLISH_IDLE_TIMEOUT_MS); 0 = explicitly no timeout.
      */
     timeoutMs?: number;
   },

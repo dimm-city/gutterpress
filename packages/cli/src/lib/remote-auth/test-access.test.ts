@@ -163,3 +163,77 @@ test("non-URL garbage classifies as unknown", async () => {
   expect(result.ok).toBe(false);
   if (!result.ok) expect(result.reason).toBe("unknown");
 });
+
+// ── Insecure transport: the probe must obey the same cleartext gate as sync ──
+//
+// A fake isomorphic-git http client that answers 401 until an Authorization
+// header arrives, then serves a minimal v1 refs advertisement. It records the
+// Authorization header of every request so a token leak is directly visible.
+function makeAuthChallengeClient() {
+  const authHeaders: (string | undefined)[] = [];
+  const oid = "1234567890abcdef1234567890abcdef12345678";
+  const pkt = (s: string) => (s.length + 4).toString(16).padStart(4, "0") + s;
+  const advertisement =
+    pkt("# service=git-upload-pack\n") +
+    "0000" +
+    pkt(`${oid} HEAD\0symref=HEAD:refs/heads/main\n`) +
+    pkt(`${oid} refs/heads/main\n`) +
+    "0000";
+  const client = {
+    async request(config: { url: string; headers?: Record<string, string> }) {
+      const auth = config.headers?.Authorization ?? config.headers?.authorization;
+      authHeaders.push(auth);
+      if (!auth) {
+        return {
+          url: config.url,
+          method: "GET",
+          statusCode: 401,
+          statusMessage: "Unauthorized",
+          headers: {},
+          body: (async function* () {})(),
+        };
+      }
+      return {
+        url: config.url,
+        method: "GET",
+        statusCode: 200,
+        statusMessage: "OK",
+        headers: { "content-type": "application/x-git-upload-pack-advertisement" },
+        body: (async function* () {
+          yield new TextEncoder().encode(advertisement);
+        })(),
+      };
+    },
+  } as unknown as NonNullable<Parameters<typeof testRemoteAccess>[0]["httpClient"]>;
+  return { client, authHeaders };
+}
+
+test("non-loopback http + stored credential: token is NEVER sent, classified insecure-transport", async () => {
+  const { client, authHeaders } = makeAuthChallengeClient();
+  const result = await testRemoteAccess({
+    url: "http://git.example.com/owner/repo.git",
+    credential: CRED,
+    httpClient: client,
+  });
+  // The probe must agree with real sync: no cleartext Basic auth, ever —
+  // reporting "Connected" here while sync withholds the credential lies.
+  expect(authHeaders.filter(Boolean)).toEqual([]);
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.reason).toBe("insecure-transport");
+    expect(result.message).toMatch(/https/i);
+    expect(result.message).not.toContain(CRED.token);
+  }
+});
+
+test("same probe over https still authenticates (Basic auth sent once challenged)", async () => {
+  const { client, authHeaders } = makeAuthChallengeClient();
+  const result = await testRemoteAccess({
+    url: "https://git.example.com/owner/repo.git",
+    credential: CRED,
+    httpClient: client,
+  });
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.defaultBranch).toBe("main");
+  expect(authHeaders.some((h) => h?.startsWith("Basic "))).toBe(true);
+});

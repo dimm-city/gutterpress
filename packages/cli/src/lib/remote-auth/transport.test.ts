@@ -18,8 +18,23 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { isCredentialTransmissionSafe, onAuthFor } from "./transport.ts";
+import * as fs from "node:fs";
+import { rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+import git from "isomorphic-git";
+import httpNode from "isomorphic-git/http/node";
+
+import {
+  failureOutcome,
+  fetchRemoteTip,
+  guardTrackingRef,
+  isCredentialTransmissionSafe,
+  onAuthFor,
+} from "./transport.ts";
+import { createFixtureRepo, startGitServer, tempDir } from "./test-support/git-http-server.ts";
 import type { HostCredential } from "./token-store.ts";
+import type { RemoteTransport } from "./sync-types.ts";
 
 /** Invoke the wired onAuth callback (isomorphic-git passes it the URL). */
 function callOnAuth(
@@ -89,8 +104,11 @@ describe("onAuthFor", () => {
     createdAt: 0,
   };
 
-  test("remote http:// URL → NO credential (cleartext leak prevented)", () => {
-    expect(callOnAuth(onAuthFor(cred), "http://git.example.com/book.git")).toEqual({});
+  test("remote http:// URL → NO credential leaves the process (cleartext leak prevented)", () => {
+    // Loud, not silent: withholding with {} let the server's 401 masquerade as
+    // an auth failure ("reconnect" loop + credential deletion). See the typed
+    // insecure-transport test below for the thrown error's contract.
+    expect(() => callOnAuth(onAuthFor(cred), "http://git.example.com/book.git")).toThrow();
   });
 
   test("loopback http:// URL → credential IS sent (local server / test fixture)", () => {
@@ -107,5 +125,248 @@ describe("onAuthFor", () => {
     expect(isCredentialTransmissionSafe("http://git.example.com/x.git")).toBe(false);
     expect(isCredentialTransmissionSafe("http://192.168.1.5/x.git")).toBe(false);
     expect(isCredentialTransmissionSafe("not a url")).toBe(false);
+  });
+
+  test("isCredentialTransmissionSafe: IPv6 loopback http (WHATWG hostname keeps brackets)", () => {
+    // new URL("http://[::1]:8080/x.git").hostname === "[::1]" — never "::1".
+    expect(isCredentialTransmissionSafe("http://[::1]:8080/x.git")).toBe(true);
+    expect(isCredentialTransmissionSafe("http://[::1]/x.git")).toBe(true);
+    // Non-loopback IPv6 stays unsafe.
+    expect(isCredentialTransmissionSafe("http://[2001:db8::1]/x.git")).toBe(false);
+  });
+
+  test("remote http:// URL with a credential → onAuth throws a typed insecure-transport error", () => {
+    const wired = onAuthFor(cred) as { onAuth: (url: string) => unknown };
+    let thrown: unknown;
+    try {
+      wired.onAuth("http://git.example.com/book.git");
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as { code?: string })?.code).toBe("InsecureTransport");
+    // Author-friendly: points at https, never echoes the token.
+    expect((thrown as Error).message).toMatch(/https/i);
+    expect((thrown as Error).message).not.toContain(cred.token);
+  });
+});
+
+/**
+ * An http client that delivers the git-upload-pack response but ERRORS the
+ * body instead of completing it — the shape a defaultGitHttp idle-timeout trip
+ * takes mid-pack. isomorphic-git 1.38.4 updates refs/remotes/<remote>/<branch>
+ * from the ref advertisement BEFORE the packfile is collected/persisted, so
+ * this reproduces "ref moved, objects never landed" deterministically.
+ */
+function packDroppingClient(inner: typeof httpNode): typeof httpNode {
+  return {
+    async request(options) {
+      const res = await inner.request(options);
+      if (!options.url.endsWith("/git-upload-pack")) return res;
+      const source = (res.body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+      const body: AsyncIterableIterator<Uint8Array> = {
+        async next() {
+          const step = await source.next();
+          if (step.done) {
+            throw new Error(
+              "Git network operation timed out after 60s (the remote stopped sending data); couldn't reach the remote (ETIMEDOUT).",
+            );
+          }
+          return step;
+        },
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+      };
+      return { ...res, body };
+    },
+  };
+}
+
+describe("guardTrackingRef", () => {
+  const REF = "refs/remotes/origin/main";
+  const BOGUS_OID = "a".repeat(40); // never a real object
+
+  /** Local repo with one commit; returns its oid. */
+  async function makeRepo(dir: string): Promise<string> {
+    await git.init({ fs, dir, defaultBranch: "main" });
+    await writeFile(path.join(dir, "a.md"), "one\n");
+    await git.add({ fs, dir, filepath: "a.md" });
+    return git.commit({
+      fs,
+      dir,
+      message: "one",
+      author: { name: "T", email: "t@test.local" },
+    });
+  }
+
+  async function refOrNull(dir: string): Promise<string | null> {
+    return git.resolveRef({ fs, dir, ref: REF }).catch(() => null);
+  }
+
+  async function withRepo(fn: (dir: string, commit: string) => Promise<void>): Promise<void> {
+    const dir = await tempDir("pmd-guard-");
+    try {
+      await fn(dir, await makeRepo(dir));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("fn moves the ref to a MISSING oid and throws → previous oid restored, error rethrown", async () => {
+    await withRepo(async (dir, commit) => {
+      await git.writeRef({ fs, dir, ref: REF, value: commit, force: true });
+      const boom = new Error("transfer aborted");
+      let err: unknown;
+      try {
+        await guardTrackingRef(dir, REF, {}, async () => {
+          await git.writeRef({ fs, dir, ref: REF, value: BOGUS_OID, force: true });
+          throw boom;
+        });
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBe(boom);
+      expect(await refOrNull(dir)).toBe(commit);
+    });
+  });
+
+  test("ref did not exist; fn creates it dangling and throws → ref deleted", async () => {
+    await withRepo(async (dir) => {
+      let err: unknown;
+      try {
+        await guardTrackingRef(dir, REF, {}, async () => {
+          await git.writeRef({ fs, dir, ref: REF, value: BOGUS_OID, force: true });
+          throw new Error("transfer aborted");
+        });
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(Error);
+      expect(await refOrNull(dir)).toBeNull();
+    });
+  });
+
+  test("fn throws without touching the ref → ref untouched", async () => {
+    await withRepo(async (dir, commit) => {
+      await git.writeRef({ fs, dir, ref: REF, value: commit, force: true });
+      await expect(
+        guardTrackingRef(dir, REF, {}, async () => {
+          throw new Error("early failure");
+        }),
+      ).rejects.toThrow("early failure");
+      expect(await refOrNull(dir)).toBe(commit);
+    });
+  });
+
+  test("fn moves the ref to an oid whose object EXISTS and throws → ref kept (pack landed)", async () => {
+    await withRepo(async (dir, first) => {
+      await git.writeRef({ fs, dir, ref: REF, value: first, force: true });
+      await writeFile(path.join(dir, "a.md"), "two\n");
+      await git.add({ fs, dir, filepath: "a.md" });
+      const second = await git.commit({
+        fs,
+        dir,
+        message: "two",
+        author: { name: "T", email: "t@test.local" },
+      });
+      await expect(
+        guardTrackingRef(dir, REF, {}, async () => {
+          await git.writeRef({ fs, dir, ref: REF, value: second, force: true });
+          throw new Error("failed after the pack landed");
+        }),
+      ).rejects.toThrow("failed after the pack landed");
+      expect(await refOrNull(dir)).toBe(second);
+    });
+  });
+
+  test("fn succeeds → ref never touched, result passed through", async () => {
+    await withRepo(async (dir, commit) => {
+      const out = await guardTrackingRef(dir, REF, {}, async () => {
+        await git.writeRef({ fs, dir, ref: REF, value: commit, force: true });
+        return "ok";
+      });
+      expect(out).toBe("ok");
+      expect(await refOrNull(dir)).toBe(commit);
+    });
+  });
+});
+
+describe("fetchRemoteTip — dangling tracking ref after an aborted transfer (R15)", () => {
+  test("a fetch that dies before the pack lands does not leave the tracking ref dangling", async () => {
+    const serverDir = await tempDir("pmd-r15-server-");
+    const localDir = await tempDir("pmd-r15-local-");
+    try {
+      await createFixtureRepo(serverDir);
+      const server = await startGitServer(serverDir);
+      try {
+        // A local repo with its own history that has NEVER fetched: no
+        // refs/remotes/origin/main yet (the common first-sync state).
+        await git.init({ fs, dir: localDir, defaultBranch: "main" });
+        await writeFile(path.join(localDir, "local.md"), "local draft\n");
+        await git.add({ fs, dir: localDir, filepath: "local.md" });
+        await git.commit({
+          fs,
+          dir: localDir,
+          message: "local",
+          author: { name: "Local", email: "local@test.local" },
+        });
+        await git.setConfig({
+          fs,
+          dir: localDir,
+          path: "remote.origin.url",
+          value: server.url,
+        });
+        await git.setConfig({
+          fs,
+          dir: localDir,
+          path: "remote.origin.fetch",
+          value: "+refs/heads/*:refs/remotes/origin/*",
+        });
+
+        const transport: RemoteTransport = {
+          remote: "origin",
+          url: server.url,
+          host: "127.0.0.1",
+        };
+        let err: unknown;
+        try {
+          await fetchRemoteTip(localDir, "main", transport, packDroppingClient(httpNode), {});
+        } catch (e) {
+          err = e;
+        }
+        expect(err).toBeInstanceOf(Error);
+
+        // The ref did not exist before the failed fetch, and the pack never
+        // landed — so it must not exist after either. A leftover ref pointing
+        // at an oid with no local object poisons the NEXT fetch: zero `have`s
+        // → the server streams the entire repository (the OOM fetchRemoteTip's
+        // `ref` choice exists to prevent) and resolving the ref reports
+        // "corruption" on a never-corrupt repo.
+        const after = await git
+          .resolveRef({ fs, dir: localDir, ref: "refs/remotes/origin/main" })
+          .catch(() => null);
+        expect(after).toBeNull();
+      } finally {
+        await server.close();
+      }
+    } finally {
+      await rm(serverDir, { recursive: true, force: true });
+      await rm(localDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("failureOutcome — insecure transport is NOT the auth arm", () => {
+  test("insecure-transport error → status 'error' with the dedicated message", () => {
+    const err = Object.assign(new Error("credential withheld"), {
+      code: "InsecureTransport",
+    });
+    const out = failureOutcome(err);
+    // Never "auth": that message tells the user to reconnect, and recover-auth
+    // deletes the stored credential on it — an https-vs-http problem a
+    // reconnect can never fix.
+    expect(out.status).toBe("error");
+    expect(out.message).toMatch(/https|secure/i);
   });
 });

@@ -12,7 +12,7 @@
  * (never argv). Token source: injected TokenStore (host "azure-swa") or the
  * same env var in CI.
  */
-import { commandExists, defaultCommandRunner, PUBLISH_IDLE_TIMEOUT_MS } from "../command-runner.ts";
+import { commandExists, defaultCommandRunner } from "../command-runner.ts";
 import {
   resolvePublishCredential,
   type PreflightIssue,
@@ -114,9 +114,8 @@ export const azureSwaProvider: PublishProvider = {
       {
         env: { SWA_CLI_DEPLOYMENT_TOKEN: resolved.credential.token },
         onOutput: req.deps.onProgress,
-        // Idle timeout (audit B2): only total output silence kills the deploy.
-        // Shared constant so every provider uses the same, deliberate budget.
-        timeoutMs: PUBLISH_IDLE_TIMEOUT_MS,
+        // Idle timeout (audit B2): the runner defaults timeoutMs to
+        // PUBLISH_IDLE_TIMEOUT_MS — only total output silence kills the deploy.
       },
     );
     if (result.code !== 0) {

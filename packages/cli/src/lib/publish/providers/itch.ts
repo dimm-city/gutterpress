@@ -7,7 +7,7 @@
  * "itch.io") or the BUTLER_API_KEY env var in CI. It is NEVER placed in argv.
  */
 import { ensureButler } from "../butler.ts";
-import { defaultCommandRunner, PUBLISH_IDLE_TIMEOUT_MS } from "../command-runner.ts";
+import { defaultCommandRunner } from "../command-runner.ts";
 import {
   resolvePublishCredential,
   type PreflightIssue,
@@ -151,9 +151,8 @@ export const itchProvider: PublishProvider = {
       {
         env: { BUTLER_API_KEY: resolved.credential.token },
         onOutput: req.deps.onProgress,
-        // Idle timeout (audit B2): only total output silence kills the upload.
-        // Shared constant so every provider uses the same, deliberate budget.
-        timeoutMs: PUBLISH_IDLE_TIMEOUT_MS,
+        // Idle timeout (audit B2): the runner defaults timeoutMs to
+        // PUBLISH_IDLE_TIMEOUT_MS — only total output silence kills the upload.
       },
     );
     if (result.code !== 0) {
