@@ -458,6 +458,18 @@ and provider-agnostic configuration (OpenAI / Anthropic / local Ollama, keys
 in the OS keychain, per-user). This section defers to #36 for all of that;
 divergences below are labeled.
 
+**Product shape (decided 2026-07-20):** the AI feature is a **chat window**.
+Authors converse with an LLM/agent that can **read the project's files** to
+gather context on what they're working on — reads happen host-side; context
+is the current file by default with opt-in full-project context (#36). It is
+*not* an ambient completion surface: **inline ghost-text autocomplete was
+evaluated and removed from the plan entirely** (2026-07-20); any revival
+would be a new proposal against this document. A possible **future
+direction** — explicitly out of scope until it gets its own issue — is
+letting the agent edit files directly, in the style of Claude Code / VS Code
+Copilot (proposed edits surfaced as reviewable diffs); until then the
+no-unaccepted-mutations constraint below stands.
+
 Binding constraints (regardless of final design):
 
 - **Off by default.** AI activates only after the user enables it and
@@ -465,10 +477,12 @@ Binding constraints (regardless of final design):
   points (toolbar button, `/ai`, chat panel) are **hidden**, not greyed out;
   the drawer, if reached, shows a one-card empty state ("Connect a provider
   to enable AI").
-- Provider calls run **host-side** via an `api/ai/*` server route; keys live
-  in host credential storage (reuse the ADR 0006 token layering). The UI
-  discloses plainly that document text is sent to the configured provider.
-  Local Ollama is the offline/no-cloud path (#36).
+- Provider calls run **host-side** via an `api/ai/*` server route, and the
+  file reads that build the agent's context are host-side too — the renderer
+  never assembles provider payloads. Keys live in host credential storage
+  (reuse the ADR 0006 token layering). The UI discloses plainly that
+  document text is sent to the configured provider. Local Ollama is the
+  offline/no-cloud path (#36).
 - AI never modifies text without an explicit accept step.
 
 Interaction sketch:
@@ -479,16 +493,6 @@ Interaction sketch:
 - Key precedence (binding): the slash menu opens only when `/` is typed at
   line start or after whitespace; `Esc` or a non-matching character
   dismisses; `/ai` is an entry in that menu, not a separate parser.
-- **Inline ghost text is out of scope for #36 v1** — resolved 2026-07-20,
-  recorded in #36. It appears nowhere in #36's proposed behaviour or
-  acceptance criteria, and an ambient completion mode is a second AI
-  surface with its own trigger/cancel/latency problem space. If it is ever
-  pursued, it gets its own sub-issue **after** the #36 chat sidebar and
-  selection actions ship, inheriting these constraints: triggers only while
-  enabled, on pause ≥1.5s, never mid-word, never during rapid typing; 50%
-  opacity; subtle gutter indicator while generating; and (binding) **Tab
-  accepts ghost text only while ghost text is visible; otherwise Tab
-  indents.**
 
 ### 8. CSS editor
 
@@ -802,7 +806,7 @@ device class.
 ### Reduced motion
 
 - `prefers-reduced-motion: reduce` disables pane transitions, toolbar
-  slide-ins, ghost-text fades; state changes become instant.
+  slide-ins, and panel fades; state changes become instant.
 
 ### Focus management
 
@@ -1015,7 +1019,7 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 - 🆕 Publish progress drawer (push-stream seam) · ❌ publish history — evaluated, not planned
 - ❌ Page thumbnail navigator — evaluated, not planned (pager + TOC cover it)
 - ⏳ Visual layout editor — **#37**; interaction model resolved (property inspector, §5); blocked on #37 sub-issue scoping (do not schedule as near-term)
-- ⏳ AI assistant — **#36** (off by default, host-side, §7 constraints; ghost text out of v1 scope per §7)
+- ⏳ AI assistant — **#36** (chat window with host-side file-read context; off by default, §7 constraints; no ambient completions — ghost text removed from the plan)
 
 ### Quality-gate measurement
 - ✅ Telemetry decision — **#108**: no telemetry; gates measured via usability tests + CI (this section updated to match)
