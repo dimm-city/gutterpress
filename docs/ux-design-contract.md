@@ -360,12 +360,22 @@ in the markdown source. Templates are plain CSS classes; the markdown file
 remains the single source of truth. **No second sectioning model.**
 
 **Visual layout editor (PROPOSED — #37):** #37 is the tracked spec
-(page-spread canvas; regions map to named `@page` rules/classes; "the CSS
-file remains the source of truth"; sub-issues required before
-implementation). The interaction-model decision — #37's canvas vs the
-click-region property inspector sketched in issue #40 — is reconciled **in
-#37**, not here. Non-negotiables either way: writes target a defined layer
-(e.g. a tool-managed overrides block appended last in the cascade); v1 edits
+(sub-issues required before implementation; "the CSS file remains the
+source of truth"). The interaction-model question — #37's original
+page-spread drag-and-drop canvas vs the click-region property inspector
+sketched in issue #40 — is **resolved (2026-07-20, recorded in #37): v1 is
+the property-inspector model.** Click a region in the live preview → a
+property panel edits token-backed properties and `@page`-mapped geometry
+(page size, margins, running headers, column count). This follows the
+recommendation in #37's own research comment — a drag-and-drop canvas for
+paginated content inherits the full InDesign/TeX reflow problem domain,
+while a property panel covers ~80% of the need at a fraction of the
+complexity (REDUCE-complexity mandate) — and Webflow/Pinegrow precedent:
+every control maps 1:1 to a CSS rule written back to the stylesheet. The
+canvas is **deferred indefinitely**; if ever revisited, it is a later
+evolution of the inspector proposed as a PR against this document.
+Non-negotiables (unchanged): writes target a defined layer (e.g. a
+tool-managed overrides block appended last in the cascade); v1 edits
 only token-backed properties (others shown read-only), so the tool never
 writes raw values; the shipped **DesignSection token editor is the
 baseline** it extends (do not build a second token panel).
@@ -461,20 +471,24 @@ Binding constraints (regardless of final design):
   Local Ollama is the offline/no-cloud path (#36).
 - AI never modifies text without an explicit accept step.
 
-Interaction sketch (to be reconciled in #36):
+Interaction sketch:
 
 - Chat panel (right drawer / bottom sheet on mobile), per-document history,
   "Apply" inserts at cursor or replaces selection. Slash actions align with
   #36's list (`/rewrite`, `/expand`, `/shrink`, `/fix`, …).
-- **Inline ghost text is a proposed extension that appears nowhere in #36**
-  — it requires scoping there (or a sub-issue) before any implementation.
-  If built: triggers only while enabled, on pause ≥1.5s, never mid-word,
-  never during rapid typing; 50% opacity; subtle gutter indicator while
-  generating.
-- Key precedence (binding): **Tab accepts ghost text only while ghost text is
-  visible; otherwise Tab indents.** The slash menu opens only when `/` is
-  typed at line start or after whitespace; `Esc` or a non-matching character
+- Key precedence (binding): the slash menu opens only when `/` is typed at
+  line start or after whitespace; `Esc` or a non-matching character
   dismisses; `/ai` is an entry in that menu, not a separate parser.
+- **Inline ghost text is out of scope for #36 v1** — resolved 2026-07-20,
+  recorded in #36. It appears nowhere in #36's proposed behaviour or
+  acceptance criteria, and an ambient completion mode is a second AI
+  surface with its own trigger/cancel/latency problem space. If it is ever
+  pursued, it gets its own sub-issue **after** the #36 chat sidebar and
+  selection actions ship, inheriting these constraints: triggers only while
+  enabled, on pause ≥1.5s, never mid-word, never during rapid typing; 50%
+  opacity; subtle gutter indicator while generating; and (binding) **Tab
+  accepts ghost text only while ghost text is visible; otherwise Tab
+  indents.**
 
 ### 8. CSS editor
 
@@ -928,7 +942,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Color-only state indication | WCAG / color-blind users | Icon + color + label |
 | Unlabeled icon-only buttons | New users, screen readers, touch | `aria-label` + tooltip (pointer) / long-press label (touch) |
 | Requiring an account or purchase before first export | Abandonment, trust; **there are no accounts or tiers** — MPL-2.0 local-first app | All core features work with no account; provider sign-in only at the moment publish/sync needs it |
-| AI modifying content without accept | Trust violation | Ghost text / explicit apply only; AI off by default (§7) |
+| AI modifying content without accept | Trust violation | Explicit apply/accept only; AI off by default (§7) |
 | Tooltips that vanish on mouse move | Motor-impaired users | ≥300ms hide delay; persists while hovered |
 | Auto-advancing feature tours | Patronizing | On-demand contextual help |
 | Hiding features behind unlock gates | Contradicts escape-hatch principle; regresses shipped UI | Soft emphasis: Advanced badge, never hidden (§4) |
@@ -1000,8 +1014,8 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 - ✅ Theme package format + ZIP/CSS import + hover sample preview + revert — **#106** (0.8.0-beta.1)
 - 🆕 Publish progress drawer (push-stream seam) · ❌ publish history — evaluated, not planned
 - ❌ Page thumbnail navigator — evaluated, not planned (pager + TOC cover it)
-- ⏳ Visual layout editor — **#37**; blocked on #37 sub-issue scoping (do not schedule as near-term)
-- ⏳ AI assistant — **#36** (off by default, host-side, §7 constraints)
+- ⏳ Visual layout editor — **#37**; interaction model resolved (property inspector, §5); blocked on #37 sub-issue scoping (do not schedule as near-term)
+- ⏳ AI assistant — **#36** (off by default, host-side, §7 constraints; ghost text out of v1 scope per §7)
 
 ### Quality-gate measurement
 - ✅ Telemetry decision — **#108**: no telemetry; gates measured via usability tests + CI (this section updated to match)
