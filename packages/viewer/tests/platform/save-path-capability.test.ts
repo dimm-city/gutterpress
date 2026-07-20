@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { createSavePathsService } from "../../electron/server-bridge/picked-files";
+import { makeHostServices } from "../support/host-services-fake";
 import { ExportController, type ExportControllerDeps } from "../../electron/export/controller";
 import { POST as savePdfRoute } from "../../src/routes/api/dialog/save-pdf/+server";
 
@@ -37,45 +38,15 @@ beforeEach(() => {
 
   savePaths = createSavePathsService();
   nextSaveResult = { canceled: true };
-  const noop = () => {};
-  const services = {
-    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, sendToRenderer: noop },
-    conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
-    desktop: {
-      showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
-      showSaveDialog: async () => nextSaveResult,
-      openExternal: async () => {},
-      showItemInFolder: noop,
-      getNativeTheme: () => ({ shouldUseDarkColors: false }),
-      getUserDataPath: () => "/fake",
-    },
-    doctor: { getViewerVersion: () => "0.0.0-test" },
-    fsGuard: { projectRoots: () => [], readOnlyRoots: () => [] },
-    media: { createThumbnail: async () => null },
-    pickedFiles: { register: noop, consume: () => false },
-    prefs: {
-      readPrefs: async () => ({}),
-      writePrefs: async () => {},
-      updatePrefs: async (mutate: (p: object) => object) => mutate({}),
-      readSettings: async () => ({}),
-      updateSettings: async () => ({}),
-      existingDirectory: async () => null,
-      readProjectState: () => null,
-      writeProjectState: (states: unknown) => states,
-      defaultProjectSearchRoots: () => [],
-      scanForProjects: async () => [],
-      toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),
-      removeRecentFolder: () => [],
-      loadLib: async () => ({}),
-    },
-    recovery: { write: async () => ({ ok: true }), clear: async () => ({ ok: true }), list: async () => [] },
-    remote: { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" },
-    savePaths,
-    vcs: { loadLib: async () => ({}), operationLogPath: () => "/fake/log" },
-    watch: { startFolderWatch: noop, stopFolderWatch: noop, getWatchedDir: () => null },
-    write: { scheduleAutoSnapshot: noop, scheduleAutoSync: noop, getWatchedDir: () => null },
-  } as unknown as HostServices;
-  registerHostServices(services);
+  registerHostServices(
+    makeHostServices({
+      desktop: {
+        showSaveDialog: async () => nextSaveResult,
+        getUserDataPath: () => "/fake",
+      },
+      savePaths,
+    }),
+  );
 });
 
 afterEach(() => {

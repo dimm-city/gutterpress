@@ -75,7 +75,6 @@ import {
 } from "./project-state";
 import { electronTokenStore, onCredentialChange } from "./credential-store";
 import {
-  setRecoveryBridgeWindow,
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
@@ -94,6 +93,7 @@ import {
 import { PreviewOpenController, type PreviewHandle } from "./preview/controller";
 import { GitHubDeviceFlow } from "./github-device-flow";
 import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
+import { runCloseGate } from "./close-gate";
 import { FolderWatcher } from "./folder-watch/watcher";
 import type {
   AdoptFolderOptions,
@@ -670,8 +670,6 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
-  // Register the window with recovery-bridge so it can send IPC push events.
-  setRecoveryBridgeWindow(mainWindow);
   mainWindow.once("ready-to-show", () => slog("renderer ready-to-show (first paint)"));
   mainWindow.webContents.on("did-start-loading", () => slog("renderer did-start-loading"));
   mainWindow.webContents.on("dom-ready", () => slog("renderer dom-ready"));
@@ -813,14 +811,18 @@ function createWindow() {
   // renderer to flush, and only destroy the window once it replies. After the
   // flush (the last keystrokes are on disk), any pending auto-snapshot fires
   // before the window is destroyed, so closing the app never drops the final
-  // work burst from version history. A watchdog (5s — flush + commit) ensures
-  // quit is never blocked indefinitely. DELIBERATE POLICY: the snapshot shares
-  // the per-repo FIFO lock, so a sync/restore still in flight at quit time
-  // can consume the whole 5s budget and the final snapshot is then silently
-  // dropped — never blocking quit wins over guaranteeing the last snapshot.
-  // (The edits themselves are flushed to disk regardless; only the history
-  // entry is skipped.) The renderer pushes its dirty state via
-  // `app:setDirtyState`; main never reads renderer memory.
+  // work burst from version history. The orchestration (single owner, per-phase
+  // watchdogs — flush's own 5s budget, then a snapshot backstop armed only once
+  // a commit starts, so a started commit is never destroyed mid-write, R25)
+  // lives in close-gate.ts; quit is never blocked indefinitely. The shared
+  // requestRendererFlush owns flushResolve and no-ops when not dirty, so it
+  // covers both the needsFlush and snapshot-only cases — and can't collide with
+  // updater:applyNow's flush slot (audit A4). DELIBERATE POLICY: a hung
+  // renderer, or a sync/restore holding the per-repo FIFO lock past the
+  // backstop, drops the final snapshot — never blocking quit wins over
+  // guaranteeing the last snapshot (the edits themselves are flushed to disk
+  // regardless; only the history entry is skipped). The renderer pushes its
+  // dirty state via `app:setDirtyState`; main never reads renderer memory.
   mainWindow.on("close", (e) => {
     if (isQuitting || !mainWindow) return;
     const needsFlush = rendererDirty;
@@ -829,33 +831,13 @@ function createWindow() {
     e.preventDefault();
     isQuitting = true;
     const win = mainWindow;
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
+    void runCloseGate({
+      flush: () => requestRendererFlush(),
+      snapshot: () => flushAutoSnapshot(),
       // flushResolve is owned by requestRendererFlush (identity-guarded);
       // nulling it here would wipe an unrelated in-flight flush (review).
-      win.destroy();
-    };
-    const snapshotThenFinish = () => {
-      const pending = flushAutoSnapshot();
-      if (pending) void pending.finally(finish);
-      else finish();
-    };
-    // Flush the renderer (if dirty), THEN snapshot, THEN destroy. The shared
-    // requestRendererFlush owns flushResolve and no-ops when not dirty, so it
-    // covers both the needsFlush and snapshot-only cases the old if/else split
-    // by hand — and can't collide with updater:applyNow's flush slot (audit A4).
-    // On a HUNG renderer (watchdog fired, replied=false) skip the snapshot and
-    // just close: starting a git commit an instant before the outer watchdog
-    // destroys the window would kill it mid-write (review finding) — the old
-    // behavior of dropping the snapshot cleanly is the safe one.
-    void requestRendererFlush().then((replied) => {
-      if (replied) snapshotThenFinish();
-      else finish();
+      finish: () => win.destroy(),
     });
-    // Watchdog: force the close if the flush/snapshot doesn't complete in time.
-    setTimeout(finish, 5000);
   });
 
   mainWindow.on("closed", () => {
@@ -863,7 +845,6 @@ function createWindow() {
     stopFolderWatch();
     // Reject any pending recovery confirm requests so they don't hang.
     rejectAllPendingConfirms();
-    setRecoveryBridgeWindow(null);
     mainWindow = null;
   });
   return mainWindow;

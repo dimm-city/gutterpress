@@ -5,7 +5,6 @@
  *   - hostConfirmationGate
  *   - handleConfirmResponse
  *   - rejectAllPendingConfirms
- *   - setRecoveryBridgeWindow
  *
  * Verifies:
  * 1. confirmRepair sends 'recovery:confirm-request' to the renderer with a requestId
@@ -14,42 +13,42 @@
  * 4. A pending confirm resolves false when rejectAllPendingConfirms is called
  * 5. Only one pending confirm per project at a time (supersede)
  * 6. A non-responding renderer resolves false after timeout (default-safe)
+ * 7. Never-registered hooks (no window yet) degrade to the timeout default
  */
 
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, test, expect, afterEach } from "bun:test";
 import {
   hostConfirmationGate,
   handleConfirmResponse,
   rejectAllPendingConfirms,
-  setRecoveryBridgeWindow,
 } from "../../electron/recovery-bridge";
+import {
+  registerHostServices,
+  type HostServices,
+} from "../../electron/server-bridge/host-services";
 import type { RepairConfirmation } from "@dimm-city/print-md";
 
-// ── Mock BrowserWindow ────────────────────────────────────────────────────────
-// We stub the BrowserWindow so the bridge can send IPC events without Electron.
-// Capture the calls so tests can verify the message payload.
+// ── Fake AppHooks ─────────────────────────────────────────────────────────────
+// The bridge sends renderer pushes through getAppHooks().sendToRenderer (the
+// safeSend seam owned by main.ts). Register fake hooks that capture the calls
+// so tests can verify the message payload.
 
 interface SentMessage {
   channel: string;
   args: unknown[];
 }
 
-function makeWindowMock(): { win: ReturnType<typeof buildMockWin>; sent: SentMessage[] } {
+function registerSendCapture(): SentMessage[] {
   const sent: SentMessage[] = [];
-  const win = buildMockWin(sent);
-  return { win, sent };
-}
-
-function buildMockWin(sent: SentMessage[]) {
-  return {
-    webContents: {
-      send(channel: string, ...args: unknown[]) {
+  registerHostServices({
+    app: {
+      setRendererDirty: () => {},
+      sendToRenderer: (channel: string, ...args: unknown[]) => {
         sent.push({ channel, args });
       },
     },
-    // Minimal BrowserWindow shape — ElectronAdapter tests handle the rest
-    isDestroyed: () => false,
-  };
+  } as unknown as HostServices);
+  return sent;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -75,13 +74,11 @@ describe("hostConfirmationGate bridge (real implementation)", () => {
   afterEach(() => {
     // Clear any pending confirms between tests so state doesn't bleed.
     rejectAllPendingConfirms();
-    setRecoveryBridgeWindow(null);
+    registerHostServices(undefined as unknown as HostServices);
   });
 
   test("confirmRepair sends 'recovery:confirm-request' to the renderer with a requestId", async () => {
-    const { win, sent } = makeWindowMock();
-    // @ts-expect-error minimal mock shape
-    setRecoveryBridgeWindow(win);
+    const sent = registerSendCapture();
 
     const gate = hostConfirmationGate(DIR);
     const req = makeRepairConfirmation();
@@ -104,9 +101,7 @@ describe("hostConfirmationGate bridge (real implementation)", () => {
   });
 
   test("handleConfirmResponse(approved=true) resolves confirmRepair with true", async () => {
-    const { win, sent } = makeWindowMock();
-    // @ts-expect-error minimal mock shape
-    setRecoveryBridgeWindow(win);
+    const sent = registerSendCapture();
 
     const gate = hostConfirmationGate(DIR);
     const promise = gate.confirmRepair(makeRepairConfirmation());
@@ -117,9 +112,7 @@ describe("hostConfirmationGate bridge (real implementation)", () => {
   });
 
   test("handleConfirmResponse(approved=false) resolves confirmRepair with false", async () => {
-    const { win, sent } = makeWindowMock();
-    // @ts-expect-error minimal mock shape
-    setRecoveryBridgeWindow(win);
+    const sent = registerSendCapture();
 
     const gate = hostConfirmationGate(DIR);
     const promise = gate.confirmRepair(makeRepairConfirmation());
@@ -130,9 +123,7 @@ describe("hostConfirmationGate bridge (real implementation)", () => {
   });
 
   test("stale/unknown requestId returns false from handleConfirmResponse (does not resolve pending)", async () => {
-    const { win, sent } = makeWindowMock();
-    // @ts-expect-error minimal mock shape
-    setRecoveryBridgeWindow(win);
+    const sent = registerSendCapture();
 
     const gate = hostConfirmationGate(DIR);
     const promise = gate.confirmRepair(makeRepairConfirmation());
@@ -147,9 +138,7 @@ describe("hostConfirmationGate bridge (real implementation)", () => {
   });
 
   test("rejectAllPendingConfirms resolves all pending with false", async () => {
-    const { win } = makeWindowMock();
-    // @ts-expect-error minimal mock shape
-    setRecoveryBridgeWindow(win);
+    registerSendCapture();
 
     const gate1 = hostConfirmationGate(DIR);
     const gate2 = hostConfirmationGate("/proj/other-book");
@@ -164,9 +153,7 @@ describe("hostConfirmationGate bridge (real implementation)", () => {
   });
 
   test("only one pending confirm per project — new request supersedes the old", async () => {
-    const { win } = makeWindowMock();
-    // @ts-expect-error minimal mock shape
-    setRecoveryBridgeWindow(win);
+    registerSendCapture();
 
     const gate = hostConfirmationGate(DIR);
     const p1 = gate.confirmRepair(makeRepairConfirmation());
@@ -191,9 +178,7 @@ describe("hostConfirmationGate bridge (real implementation)", () => {
   });
 
   test("confirmRepair resolves false after timeout (default-safe, does not wedge inFlight)", async () => {
-    const { win } = makeWindowMock();
-    // @ts-expect-error minimal mock shape
-    setRecoveryBridgeWindow(win);
+    registerSendCapture();
 
     // Use a very short timeout for the test
     const gate = hostConfirmationGate(DIR, 50 /* ms */);
@@ -201,6 +186,15 @@ describe("hostConfirmationGate bridge (real implementation)", () => {
 
     // Do NOT respond — let the timeout fire
     const result = await promise;
+    expect(result).toBe(false);
+  });
+
+  test("never-registered hooks (no window yet) — confirmRepair degrades to the timeout default, no throw", async () => {
+    // No hooks target at all: getAppHooks() is null, the send is skipped.
+    registerHostServices(undefined as unknown as HostServices);
+
+    const gate = hostConfirmationGate(DIR, 50 /* ms */);
+    const result = await gate.confirmRepair(makeRepairConfirmation());
     expect(result).toBe(false);
   });
 });

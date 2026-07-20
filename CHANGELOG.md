@@ -5,6 +5,36 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Connecting or syncing to a plain `http://` remote with a stored credential
+  now fails loudly with a dedicated "insecure connection" message instead of an
+  endless "reconnect" loop — and "Test connection" obeys the same rule, so it
+  can no longer send a token in cleartext (or report Connected while sync
+  fails). Recovery no longer deletes the host's credential in that situation,
+  and IPv6-loopback (`http://[::1]`) daemons receive credentials as documented.
+- A sync interrupted mid-download (network stall + timeout) can no longer
+  strand the remote-tracking branch pointing at data that never arrived — which
+  previously forced a full re-download and a spurious repair pass on the next
+  sync.
+- A transient settings-file read error (e.g. a backup tool briefly holding the
+  file) no longer causes a settings change to silently reset every other
+  setting to defaults.
+- Closing the viewer while a version-history snapshot is being committed no
+  longer risks killing the commit mid-write (which left the project needing
+  repair on next launch).
+- Publish tools that hand output to a helper process no longer risk truncated
+  output, and every publish command now gets the stalled-network timeout by
+  default instead of only where a provider remembered to pass it.
+
+### Changed
+
+- Internal consolidation from a follow-up code review: one shared
+  spawn/timeout core, one fetch-with-timeout helper, one renderer-send guard,
+  one shared HostServices test fixture, fewer redundant sync preflight scans,
+  and the PDF inspection cache is now released at the end of each validation
+  run. No author-facing behavior changes beyond the fixes above.
+
 ## [0.8.1] - 2026-07-17
 
 [Full Changelog](https://github.com/dimm-city/print-md/compare/v0.8.0...v0.8.1) ·

@@ -126,7 +126,7 @@ function makeStore(opts: {
       readFile: opts.readFileImpl
         ? opts.readFileImpl
         : async () => {
-            throw new Error("ENOENT");
+            throw Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
           },
       writeFile: async (p: string, data: string, enc: string) => {
         writes.push({ path: p, data, enc });
@@ -154,7 +154,7 @@ test("settingsPath joins userDataDir with app-settings.json", () => {
 test("readSettings returns DEFAULT_SETTINGS when the file is missing (readFile rejects)", async () => {
   const { store, renames } = makeStore({
     readFileImpl: async () => {
-      throw new Error("ENOENT: no such file");
+      throw Object.assign(new Error("ENOENT: no such file"), { code: "ENOENT" });
     },
   });
   const s = await store.readSettings();
@@ -347,4 +347,51 @@ test("updateSettings composes concurrent patches instead of dropping one", async
   // The first return value has its own patch (and not yet the second's, since
   // it committed first).
   expect(a.editor.fontSize).toBe(21);
+});
+
+// ── transient read errors must not wipe settings (audit G3 parity) ─────────
+// Only ENOENT means "no file yet" (first run). Any OTHER read error (EACCES
+// from an AV/backup tool holding the file, EIO, EMFILE) is transient: if
+// readSettings returned DEFAULT_SETTINGS for it, updateSettings would merge
+// the one-field patch over defaults and rename-write the result — silently
+// wiping every other customized setting. Same standard as FileTokenStore.read.
+
+test("updateSettings rejects WITHOUT writing when readFile fails with a non-ENOENT error", async () => {
+  const { store, writes, renames } = makeStore({
+    readFileImpl: async () => {
+      throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    },
+  });
+
+  await expect(store.updateSettings({ editor: { fontSize: 22 } } as never)).rejects.toThrow(
+    "EACCES",
+  );
+  // Nothing was persisted — no tmp write, no rename (neither atomic-commit
+  // nor corrupt-preserve).
+  expect(writes).toHaveLength(0);
+  expect(renames).toHaveLength(0);
+});
+
+test("readSettings rethrows a non-ENOENT read error instead of masking it as defaults", async () => {
+  const { store } = makeStore({
+    readFileImpl: async () => {
+      throw Object.assign(new Error("EIO: i/o error"), { code: "EIO" });
+    },
+  });
+  await expect(store.readSettings()).rejects.toThrow("EIO");
+});
+
+test("first-run updateSettings (ENOENT) still writes defaults merged with the patch", async () => {
+  // ENOENT is the legitimate no-file-yet case — updateSettings must keep
+  // working: defaults + patch, written atomically.
+  const { store, writes, renames } = makeStore();
+
+  const next = await store.updateSettings({ editor: { fontSize: 22 } } as never);
+
+  expect(next.editor.fontSize).toBe(22);
+  expect(next.preview).toEqual(DEFAULT_SETTINGS.preview);
+  expect(writes).toHaveLength(1);
+  expect(JSON.parse(writes[0]!.data)).toEqual(next);
+  expect(renames).toHaveLength(1);
+  expect(renames[0]!.to).toBe(store.settingsPath());
 });

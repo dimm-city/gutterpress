@@ -14,6 +14,7 @@ import {
   registerHostServices,
   type HostServices,
 } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
 import { POST as discoverProjectsRoute } from "../../src/routes/api/app/discover-projects/+server";
 
 function request(body: unknown = {}): Request {
@@ -34,27 +35,16 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
   }
 }
 
-/** Minimal HostServices — only `prefs` is ever read by this route. */
+/** Only `prefs` is ever read by this route — everything else stays the shared base fake. */
 function servicesWith(prefsOverrides: {
   scanForProjects: (roots: string[], exclude: Set<string>) => Promise<unknown[]>;
 }): HostServices {
-  return {
+  return makeHostServices({
     prefs: {
-      readPrefs: async () => ({}),
-      writePrefs: async () => {},
-      updatePrefs: async (mutate: (p: object) => object) => mutate({}),
-      readSettings: async () => ({}),
-      updateSettings: async () => ({}),
-      existingDirectory: async () => null,
-      readProjectState: () => null,
-      writeProjectState: (states: unknown) => states,
       defaultProjectSearchRoots: () => ["/fake/root"],
       scanForProjects: prefsOverrides.scanForProjects,
-      toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),
-      removeRecentFolder: () => [],
-      loadLib: async () => ({}),
     },
-  } as unknown as HostServices;
+  });
 }
 
 afterEach(() => {

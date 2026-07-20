@@ -6,6 +6,7 @@ import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
 import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
+import { makeHostServices } from "../support/host-services-fake";
 import { POST as readFileRoute } from "../../src/routes/api/fs/read-file/+server";
 import { POST as writeFileRoute } from "../../src/routes/api/fs/write-file/+server";
 import { POST as listDirRoute } from "../../src/routes/api/fs/list-dir/+server";
@@ -113,46 +114,14 @@ beforeEach(async () => {
   await writeFile(path.join(outsideDir, "secret.txt"), "outside content", "utf8");
   await writeFile(path.join(recoveryDir, "snap.md"), "# Recovered", "utf8");
 
-  const fsGuard = { projectRoots: () => [projectDir], readOnlyRoots: () => [recoveryDir] };
-  const noop = () => {};
   pickedFiles = createPickedFilesService();
-  const services = {
-    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, sendToRenderer: noop },
-    conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
-    desktop: {
-      showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
-      showSaveDialog: async () => ({ canceled: true }),
-      openExternal: async () => {},
-      showItemInFolder: noop,
-      getNativeTheme: () => ({ shouldUseDarkColors: false }),
-      getUserDataPath: () => base,
-    },
-    doctor: { getViewerVersion: () => "0.0.0-test" },
-    fsGuard,
-    media: { createThumbnail: async () => null },
-    pickedFiles,
-    prefs: {
-      readPrefs: async () => ({}),
-      writePrefs: async () => {},
-      updatePrefs: async (mutate: (p: object) => object) => mutate({}),
-      readSettings: async () => ({}),
-      updateSettings: async () => ({}),
-      existingDirectory: async () => null,
-      readProjectState: () => null,
-      writeProjectState: (states: unknown) => states,
-      defaultProjectSearchRoots: () => [],
-      scanForProjects: async () => [],
-      toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),
-      removeRecentFolder: () => [],
-      loadLib: async () => ({}),
-    },
-    recovery: { write: async () => ({ ok: true }), clear: async () => ({ ok: true }), list: async () => [] },
-    remote: { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" },
-    vcs: { loadLib: async () => ({}), operationLogPath: () => "/fake/log" },
-    watch: { startFolderWatch: noop, stopFolderWatch: noop, getWatchedDir: () => null },
-    write: { scheduleAutoSnapshot: noop, scheduleAutoSync: noop, getWatchedDir: () => null },
-  } as unknown as HostServices;
-  registerHostServices(services);
+  registerHostServices(
+    makeHostServices({
+      desktop: { getUserDataPath: () => base },
+      fsGuard: { projectRoots: () => [projectDir], readOnlyRoots: () => [recoveryDir] },
+      pickedFiles,
+    }),
+  );
 });
 
 afterEach(async () => {
