@@ -12,7 +12,7 @@ import "./register-builtins";
 import { selectChecks } from "./policy";
 // Static import is free here: register-builtins above already pulls pdf-inspect
 // (and its eager unpdf import) via the pdf check modules.
-import { clearPdfCache } from "../lib/pdf-inspect";
+import { retainPdfCache } from "../lib/pdf-inspect";
 import type { ResolvedConfig } from "../schema/manifest.types";
 
 export interface RunnerOptions {
@@ -84,6 +84,16 @@ export async function runChecks(
     });
   }
 
+  // Retain the shared parsed-PDF cache for this run's duration. runChecks is
+  // a public lib export served by a long-lived host (the viewer), where runs
+  // CAN overlap (a Problems-panel lint run + a publish preflight) — an
+  // unconditional clear here would destroy documents a concurrent run is
+  // mid-read on, making its checks throw "Transport destroyed" on a valid
+  // PDF. release() clears only when the LAST active run finishes; for a lone
+  // run that is still this run's end — the natural boundary the pdf-inspect
+  // docblock prescribes, without which a long-lived host retains
+  // DOC_CACHE_MAX parsed documents indefinitely.
+  const release = retainPdfCache();
   try {
     for (const check of checks) {
       try {
@@ -111,11 +121,7 @@ export async function runChecks(
       }
     }
   } finally {
-    // Checks run strictly sequentially above (each `run` awaited), so nothing
-    // is mid-read here. Dropping the parsed-PDF cache at run end is the
-    // natural boundary its docblock prescribes; without it a long-lived host
-    // (the viewer) retains DOC_CACHE_MAX parsed documents indefinitely.
-    clearPdfCache();
+    release();
   }
 
   const errors = allResults.filter((r) => r.severity === "error");

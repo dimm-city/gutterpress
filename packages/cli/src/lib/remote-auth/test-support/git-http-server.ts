@@ -21,6 +21,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import git from "isomorphic-git";
+import type httpNode from "isomorphic-git/http/node";
+
+type HttpClient = typeof httpNode;
 
 // ── pkt-line helpers ──────────────────────────────────────────────────────────
 
@@ -219,6 +222,14 @@ export async function startGitServer(
       }
 
       if (req.method === "GET" && req.url?.includes("/info/refs")) {
+        // Advertise EVERY refs/heads/* ref like a real upload-pack (the
+        // fetch-abort rollback tests need a multi-branch advertisement so an
+        // aborted singleBranch:false fetch can dangle several tracking refs).
+        const branchLines: Buffer[] = [];
+        for (const name of await git.listBranches({ fs, ...repo })) {
+          const oid = await git.resolveRef({ fs, ...repo, ref: `refs/heads/${name}` });
+          branchLines.push(pkt(`${oid} refs/heads/${name}\n`));
+        }
         res.writeHead(200, {
           "content-type": "application/x-git-upload-pack-advertisement",
         });
@@ -229,7 +240,7 @@ export async function startGitServer(
             pkt(
               `${head} HEAD\0side-band-64k shallow symref=HEAD:refs/heads/${branch} agent=git/test\n`,
             ),
-            pkt(`${head} refs/heads/${branch}\n`),
+            ...branchLines,
             FLUSH,
           ]),
         );
@@ -240,7 +251,10 @@ export async function startGitServer(
         const chunks: Buffer[] = [];
         for await (const chunk of req) chunks.push(chunk as Buffer);
         const lines = parsePktLines(Buffer.concat(chunks));
-        const want = lines.find((l) => l.startsWith("want "))!.split(" ")[1]!;
+        const wants = lines
+          .filter((l) => l.startsWith("want "))
+          .map((l) => l.split(" ")[1]!);
+        const want = wants[0]!;
         const deepen = lines.find((l) => l.startsWith("deepen "));
         const depth = deepen ? parseInt(deepen.split(" ")[1]!, 10) : Infinity;
 
@@ -264,7 +278,13 @@ export async function startGitServer(
           }
         }
 
-        const oids = await collectOids(repo, want, depth, { stopCommits, skipTrees });
+        const oidSet = new Set<string>();
+        for (const w of wants) {
+          for (const oid of await collectOids(repo, w, depth, { stopCommits, skipTrees })) {
+            oidSet.add(oid);
+          }
+        }
+        const oids = [...oidSet];
         const { packfile } = await git.packObjects({ fs, ...repo, oids });
 
         const parts: Buffer[] = [];
@@ -315,6 +335,39 @@ export async function startGitServer(
 
 export async function tempDir(prefix: string): Promise<string> {
   return mkdtemp(path.join(tmpdir(), prefix));
+}
+
+/**
+ * An http client that delivers the git-upload-pack response but ERRORS the
+ * body instead of completing it — the shape a defaultGitHttp idle-timeout trip
+ * takes mid-pack. isomorphic-git 1.38.4 updates refs/remotes/<remote>/* from
+ * the ref advertisement BEFORE the packfile is collected/persisted, so this
+ * reproduces "refs moved, objects never landed" deterministically (the R15
+ * dangling-tracking-ref failure). Shared by the transport and recovery tests.
+ */
+export function packDroppingClient(inner: HttpClient): HttpClient {
+  return {
+    async request(options) {
+      const res = await inner.request(options);
+      if (!options.url.endsWith("/git-upload-pack")) return res;
+      const source = (res.body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+      const body: AsyncIterableIterator<Uint8Array> = {
+        async next() {
+          const step = await source.next();
+          if (step.done) {
+            throw new Error(
+              "Git network operation timed out after 60s (the remote stopped sending data); couldn't reach the remote (ETIMEDOUT).",
+            );
+          }
+          return step;
+        },
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+      };
+      return { ...res, body };
+    },
+  };
 }
 
 // ── receive-pack (push) support ───────────────────────────────────────────────

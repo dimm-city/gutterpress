@@ -337,7 +337,43 @@ describe("theme-manager", () => {
         new Response("not found", { status: 404 })) as unknown as typeof fetch;
       await expect(
         importThemeFromUrl(dir, "https://example.com/missing.css"),
-      ).rejects.toThrow();
+      ).rejects.toThrow(
+        "Failed to fetch https://example.com/missing.css (HTTP 404).",
+      );
+    });
+
+    test("runs each request under an abortable deadline (no hang on a stall)", async () => {
+      const dir = projectDir();
+      // Without a signal wired through fetch, a stalled connection has
+      // NOTHING to abort it — the theme import would hang forever.
+      let seenSignal: unknown;
+      globalThis.fetch = (async (_input: unknown, init?: RequestInit) => {
+        seenSignal = init?.signal;
+        return new Response(":root { --x: 1; }\n", { status: 200 });
+      }) as unknown as typeof fetch;
+      await importThemeFromUrl(dir, "https://example.com/cool.css");
+      expect(seenSignal).toBeInstanceOf(AbortSignal);
+    });
+
+    test("maps a fired deadline and an offline failure to friendly copy", async () => {
+      const dir = projectDir();
+      globalThis.fetch = (async () => {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      }) as unknown as typeof fetch;
+      await expect(
+        importThemeFromUrl(dir, "https://example.com/slow.css"),
+      ).rejects.toThrow(
+        "Fetching https://example.com/slow.css timed out. Check your connection and try again.",
+      );
+
+      globalThis.fetch = (async () => {
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof fetch;
+      await expect(
+        importThemeFromUrl(dir, "https://example.com/gone.css"),
+      ).rejects.toThrow(
+        "Couldn't reach https://example.com/gone.css. Check your connection and try again.",
+      );
     });
   });
 

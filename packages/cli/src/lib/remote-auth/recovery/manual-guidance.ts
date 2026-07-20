@@ -142,8 +142,9 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
   insecure_transport: {
     userSummary:
       "This project's online address isn't secure, so the saved connection can't be used with it.",
+    // "https", never "https://" — the viewer redacts /https?:\/\/\S+/ matches.
     recommendedNextStep:
-      "Change the project's online address to a secure one (starting with https://), then try syncing again.",
+      "Change the project's online address to a secure one (starting with https), then try syncing again.",
     recommendedAction: "Check connection",
     recommendedActionKey: "check_connection",
     safeNextSteps: [

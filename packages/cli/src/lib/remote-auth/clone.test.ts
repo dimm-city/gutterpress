@@ -267,6 +267,57 @@ test("sanitizeCloneFolderName keeps the project dir under the chosen parent", ()
   expect(sanitizeCloneFolderName("   ")).toBe("");
 });
 
+test("non-loopback http + stored credential: clone names the insecure address, never 'try again'", async () => {
+  // Same cleartext gate the sync/test-access paths obey (transport.onAuthFor):
+  // a 401 challenge over non-loopback http makes onAuth throw the typed
+  // InsecureTransportError instead of sending the token. Retrying can never
+  // succeed, so the clone error must name the real cause — not the generic
+  // "couldn't be downloaded… Please try again". Fake isomorphic-git http
+  // client (test-access.test.ts style): always answers 401.
+  const challengeClient = {
+    async request(config: { url: string }) {
+      return {
+        url: config.url,
+        method: "GET",
+        statusCode: 401,
+        statusMessage: "Unauthorized",
+        headers: {},
+        body: (async function* () {})(),
+      };
+    },
+  } as unknown as NonNullable<Parameters<typeof cloneRepository>[0]["httpClient"]>;
+  const remoteCred: HostCredential = {
+    host: "git.example.com",
+    kind: "token",
+    token: "s3cret",
+    createdAt: 0,
+  };
+  const workDir = await tempDir("pmd-insecure-dst-");
+  try {
+    let thrown: unknown;
+    try {
+      await cloneRepository({
+        url: "http://git.example.com/owner/repo.git",
+        dir: path.join(workDir, "book"),
+        credential: remoteCred,
+        httpClient: challengeClient,
+      });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    const message = (thrown as Error).message;
+    expect(message).toMatch(/isn't secure/i);
+    expect(message).not.toMatch(/try again/i);
+    expect(message).not.toContain(remoteCred.token);
+    // The viewer sanitizes displayed messages with /https?:\/\/\S+/g →
+    // "(address hidden)" — no literal scheme tokens allowed in the copy.
+    expect(message).not.toMatch(/https?:\/\/\S+/);
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+});
+
 test("clone into a non-empty folder fails with a friendly message", async () => {
   const workDir = await tempDir("pmd-nonempty-");
   try {

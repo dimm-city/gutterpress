@@ -46,6 +46,16 @@ describe("makeManualGuidance — machine action key", () => {
     });
   }
 
+  // The viewer's Advanced Setup dialog sanitizes displayed messages with
+  // /https?:\/\/\S+/g → "(address hidden)"; a literal "(https://)" in the copy
+  // matches it and renders as broken text. Say "https", never "https://".
+  test("insecure_transport guidance contains no URL-shaped token (viewer sanitizer)", () => {
+    const g = makeManualGuidance(ctx, "insecure_transport");
+    for (const text of [g.userSummary, g.recommendedNextStep, ...(g.safeNextSteps ?? [])]) {
+      expect(text).not.toMatch(/https?:\/\/\S+/);
+    }
+  });
+
   test("backup reassurance is honest — promised only when a backup exists", () => {
     const backupKinds: SyncErrorKind[] = [
       "detached_head",

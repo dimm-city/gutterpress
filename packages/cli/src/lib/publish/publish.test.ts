@@ -547,6 +547,109 @@ test("shopify preflight requires the shop domain; legacy id helper works", async
   }
 });
 
+// ── network deadlines (shared fetch-timeout policy) ─────────────────────────
+
+/** Stub fetch that fails every call with `error` (network/deadline shapes). */
+function fetchThrowing(error: unknown): typeof globalThis.fetch {
+  return (async () => {
+    throw error;
+  }) as unknown as typeof globalThis.fetch;
+}
+
+/** What AbortSignal.timeout rejects with when the deadline fires. */
+function timeoutError(): DOMException {
+  return new DOMException("The operation timed out.", "TimeoutError");
+}
+
+test("itch authenticate runs its api.itch.io check under an abortable deadline", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    // Without a signal wired through fetch, a stalled connection has NOTHING
+    // to abort it — the publish pipeline would hang forever on this call.
+    let seenSignal: unknown;
+    const fetchFn = (async (_url: unknown, init?: RequestInit) => {
+      seenSignal = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const deps = await depsFor(dir, { fetch: fetchFn, env: { BUTLER_API_KEY: "k" } });
+    const req = await requestFor(dir, "itch", deps);
+    const auth = await itchProvider.authenticate(req);
+    expect(auth.ok).toBe(true);
+    expect(seenSignal).toBeInstanceOf(AbortSignal);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("itch authenticate maps a fired deadline and an offline failure to friendly copy", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const authWith = async (fetchFn: typeof globalThis.fetch) => {
+      const deps = await depsFor(dir, { fetch: fetchFn, env: { BUTLER_API_KEY: "k" } });
+      return itchProvider.authenticate(await requestFor(dir, "itch", deps));
+    };
+
+    const timedOut = await authWith(fetchThrowing(timeoutError()));
+    expect(timedOut.ok).toBe(false);
+    expect(timedOut.message).toBe(
+      "itch.io didn't respond in time. Check your connection and try again.",
+    );
+
+    const offline = await authWith(fetchThrowing(new TypeError("fetch failed")));
+    expect(offline.ok).toBe(false);
+    expect(offline.message).toBe(
+      "Couldn't reach itch.io. Check your connection and try again.",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("shopify GraphQL calls run under an abortable deadline", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const { fetch: fetchFn, requests } = shopifyFetch([
+      { body: { data: { shop: { name: "My Store" } } } },
+    ]);
+    const deps = await depsFor(dir, {
+      fetch: fetchFn,
+      env: { SHOPIFY_ADMIN_TOKEN: "shpat_secret" },
+    });
+    const auth = await shopifyProvider.authenticate(await requestFor(dir, "shopify", deps));
+    expect(auth.ok).toBe(true);
+    expect(requests[0]!.init?.signal).toBeInstanceOf(AbortSignal);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("shopify maps a fired deadline and an offline failure to friendly copy", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const authWith = async (fetchFn: typeof globalThis.fetch) => {
+      const deps = await depsFor(dir, {
+        fetch: fetchFn,
+        env: { SHOPIFY_ADMIN_TOKEN: "shpat_secret" },
+      });
+      return shopifyProvider.authenticate(await requestFor(dir, "shopify", deps));
+    };
+
+    const timedOut = await authWith(fetchThrowing(timeoutError()));
+    expect(timedOut.ok).toBe(false);
+    expect(timedOut.message).toBe(
+      "Shopify didn't respond in time. Check your connection and try again.",
+    );
+
+    const offline = await authWith(fetchThrowing(new TypeError("fetch failed")));
+    expect(offline.ok).toBe(false);
+    expect(offline.message).toBe(
+      "Couldn't reach Shopify. Check your connection and try again.",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 // ── connect flow ────────────────────────────────────────────────────────────
 
 test("connectPublishProvider verifies the pasted key and only then stores it", async () => {

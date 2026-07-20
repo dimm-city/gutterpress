@@ -57,8 +57,13 @@ export function isSshRemoteUrl(url: string): boolean {
   return /^[\w.-]+@[\w.][\w.-]*:/.test(trimmed) || /^[\w.-]+@\[/.test(trimmed);
 }
 
-/** Author-friendly messages per failure reason (no URLs, no tokens). */
-const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
+/**
+ * Author-friendly messages per failure reason (no URLs, no tokens — and no
+ * literal scheme tokens like "http://": the viewer's Advanced Setup dialog
+ * redacts anything matching /https?:\/\/\S+/, which would garble the copy).
+ * Exported for the wording guard in test-access.test.ts.
+ */
+export const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
   auth: "The Git server didn't accept the saved connection. Reconnect to this server with a current access token and try again.",
   "not-found":
     "The server answered, but no repository was found at that address. It may have been moved, renamed, or you may no longer have access.",
@@ -67,7 +72,7 @@ const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
   "ssh-unsupported":
     "This project's online address uses SSH (git@…), which print-md can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
   "insecure-transport":
-    "This address isn't secure (http://), so the saved connection wasn't sent. Switch the address to a secure one (https://) to use a saved connection.",
+    "This address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to use a saved connection.",
   tls: "The server's security certificate couldn't be verified. If this is a private server with its own certificate, ask its administrator about trusting it (NODE_EXTRA_CA_CERTS).",
   unknown:
     "The connection test failed unexpectedly. The server may not be a Git server, or it may be temporarily unavailable.",

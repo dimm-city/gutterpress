@@ -243,43 +243,54 @@ async function resolveRefOrNull(dir: string, ref: string): Promise<string | null
 }
 
 /**
- * Run `fn` (a fetch that moves the remote-tracking ref) with a rollback guard
- * (deep-analysis R15): isomorphic-git updates refs/remotes/<remote>/<branch>
- * from the ref advertisement BEFORE collecting the packfile, so an abort
- * mid-transfer (e.g. the defaultGitHttp idle timeout) leaves the ref pointing
- * at an oid with no local object. That dangling ref poisons the next fetch —
+ * Run `fn` (a fetch that moves remote-tracking refs) with a rollback guard
+ * (deep-analysis R15): isomorphic-git updates refs/remotes/<remote>/* from
+ * the ref advertisement BEFORE collecting the packfile, so an abort
+ * mid-transfer (e.g. the defaultGitHttp idle timeout) leaves refs pointing
+ * at oids with no local object. Such a dangling ref poisons the next fetch —
  * zero `have`s → the server streams the ENTIRE repository (the OOM
  * fetchRemoteTip's `ref` choice exists to prevent) — and resolving it reports
  * missing-object "corruption" on a never-corrupt repo.
  *
- * If `fn` throws and moved the ref to an oid whose object is MISSING locally,
- * restore the previous oid (or delete the ref if it didn't exist); if the
- * object DID land, the pack made it — keep the ref. On success the ref is
- * never touched. Restoration is best-effort and never masks `fn`'s error.
+ * `listRefs` names the refs at risk; it runs again after a throw so refs
+ * CREATED by `fn` are covered too. If `fn` throws, every ref that moved to an
+ * oid whose object is MISSING locally is restored to its previous oid (or
+ * deleted if it didn't exist); refs whose objects DID land are kept — the
+ * pack made it. On success no ref is touched. Restoration is best-effort,
+ * per ref, and never masks `fn`'s error.
  */
-export async function guardTrackingRef<T>(
+async function guardRefs<T>(
   dir: string,
-  ref: string,
+  listRefs: () => Promise<string[]>,
   cache: GitCache,
   fn: () => Promise<T>,
 ): Promise<T> {
-  const before = await resolveRefOrNull(dir, ref);
+  const before = new Map<string, string | null>();
+  for (const ref of await listRefs()) {
+    before.set(ref, await resolveRefOrNull(dir, ref));
+  }
   try {
     return await fn();
   } catch (e) {
     try {
-      const after = await resolveRefOrNull(dir, ref);
-      if (after && after !== before) {
-        const landed = await git.readObject({ fs, dir, oid: after, cache }).then(
-          () => true,
-          () => false,
-        );
-        if (!landed) {
-          if (before) {
-            await git.writeRef({ fs, dir, ref, value: before, force: true });
+      const refs = new Set([...before.keys(), ...(await listRefs())]);
+      for (const ref of refs) {
+        try {
+          const prev = before.get(ref) ?? null;
+          const after = await resolveRefOrNull(dir, ref);
+          if (!after || after === prev) continue;
+          const landed = await git.readObject({ fs, dir, oid: after, cache }).then(
+            () => true,
+            () => false,
+          );
+          if (landed) continue;
+          if (prev) {
+            await git.writeRef({ fs, dir, ref, value: prev, force: true });
           } else {
             await git.deleteRef({ fs, dir, ref });
           }
+        } catch {
+          // Best-effort per ref — keep restoring the others.
         }
       }
     } catch {
@@ -287,6 +298,40 @@ export async function guardTrackingRef<T>(
     }
     throw e;
   }
+}
+
+/** Single-ref form of {@link guardRefs} — guards one remote-tracking ref. */
+export async function guardTrackingRef<T>(
+  dir: string,
+  ref: string,
+  cache: GitCache,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return guardRefs(dir, async () => [ref], cache, fn);
+}
+
+/**
+ * All remote-tracking refs for `remote` (full ref names). Excludes the
+ * `HEAD` symref — resolveRef would flatten it to an oid and a "restore"
+ * would overwrite the symref file with that raw oid.
+ */
+async function listRemoteTrackingRefs(dir: string, remote: string): Promise<string[]> {
+  const prefix = `refs/remotes/${remote}`;
+  const names = await git.listRefs({ fs, dir, filepath: prefix });
+  return names.filter((n) => n !== "HEAD").map((n) => `${prefix}/${n}`);
+}
+
+/**
+ * Remote-wide form of {@link guardRefs} for a fetch that may move or create
+ * ANY refs/remotes/<remote>/* ref (e.g. `singleBranch: false`).
+ */
+export async function guardRemoteRefs<T>(
+  dir: string,
+  remote: string,
+  cache: GitCache,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return guardRefs(dir, () => listRemoteTrackingRefs(dir, remote), cache, fn);
 }
 
 /**

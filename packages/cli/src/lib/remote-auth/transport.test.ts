@@ -28,11 +28,17 @@ import httpNode from "isomorphic-git/http/node";
 import {
   failureOutcome,
   fetchRemoteTip,
+  guardRemoteRefs,
   guardTrackingRef,
   isCredentialTransmissionSafe,
   onAuthFor,
 } from "./transport.ts";
-import { createFixtureRepo, startGitServer, tempDir } from "./test-support/git-http-server.ts";
+import {
+  createFixtureRepo,
+  packDroppingClient,
+  startGitServer,
+  tempDir,
+} from "./test-support/git-http-server.ts";
 import type { HostCredential } from "./token-store.ts";
 import type { RemoteTransport } from "./sync-types.ts";
 
@@ -151,38 +157,6 @@ describe("onAuthFor", () => {
   });
 });
 
-/**
- * An http client that delivers the git-upload-pack response but ERRORS the
- * body instead of completing it — the shape a defaultGitHttp idle-timeout trip
- * takes mid-pack. isomorphic-git 1.38.4 updates refs/remotes/<remote>/<branch>
- * from the ref advertisement BEFORE the packfile is collected/persisted, so
- * this reproduces "ref moved, objects never landed" deterministically.
- */
-function packDroppingClient(inner: typeof httpNode): typeof httpNode {
-  return {
-    async request(options) {
-      const res = await inner.request(options);
-      if (!options.url.endsWith("/git-upload-pack")) return res;
-      const source = (res.body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
-      const body: AsyncIterableIterator<Uint8Array> = {
-        async next() {
-          const step = await source.next();
-          if (step.done) {
-            throw new Error(
-              "Git network operation timed out after 60s (the remote stopped sending data); couldn't reach the remote (ETIMEDOUT).",
-            );
-          }
-          return step;
-        },
-        [Symbol.asyncIterator]() {
-          return this;
-        },
-      };
-      return { ...res, body };
-    },
-  };
-}
-
 describe("guardTrackingRef", () => {
   const REF = "refs/remotes/origin/main";
   const BOGUS_OID = "a".repeat(40); // never a real object
@@ -288,6 +262,109 @@ describe("guardTrackingRef", () => {
       });
       expect(out).toBe("ok");
       expect(await refOrNull(dir)).toBe(commit);
+    });
+  });
+});
+
+describe("guardRemoteRefs", () => {
+  // Mirrors the guardTrackingRef suite for the remote-wide form used by the
+  // singleBranch:false recovery fetch: EVERY refs/remotes/origin/* ref is
+  // snapshotted, and refs CREATED by fn are covered too.
+  const MAIN = "refs/remotes/origin/main";
+  const TOPIC = "refs/remotes/origin/topic";
+  const BOGUS_A = "a".repeat(40);
+  const BOGUS_B = "b".repeat(40);
+
+  async function makeRepo(dir: string): Promise<string> {
+    await git.init({ fs, dir, defaultBranch: "main" });
+    await writeFile(path.join(dir, "a.md"), "one\n");
+    await git.add({ fs, dir, filepath: "a.md" });
+    return git.commit({
+      fs,
+      dir,
+      message: "one",
+      author: { name: "T", email: "t@test.local" },
+    });
+  }
+
+  async function refOrNull(dir: string, ref: string): Promise<string | null> {
+    return git.resolveRef({ fs, dir, ref }).catch(() => null);
+  }
+
+  async function withRepo(fn: (dir: string, commit: string) => Promise<void>): Promise<void> {
+    const dir = await tempDir("pmd-guard-multi-");
+    try {
+      await fn(dir, await makeRepo(dir));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("fn dangles several refs (moved + created) and throws → moved restored, created deleted", async () => {
+    await withRepo(async (dir, commit) => {
+      await git.writeRef({ fs, dir, ref: MAIN, value: commit, force: true });
+      const boom = new Error("transfer aborted");
+      let err: unknown;
+      try {
+        await guardRemoteRefs(dir, "origin", {}, async () => {
+          await git.writeRef({ fs, dir, ref: MAIN, value: BOGUS_A, force: true });
+          // TOPIC did not exist before fn — a ref the aborted fetch CREATED.
+          await git.writeRef({ fs, dir, ref: TOPIC, value: BOGUS_B, force: true });
+          throw boom;
+        });
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBe(boom);
+      expect(await refOrNull(dir, MAIN)).toBe(commit);
+      expect(await refOrNull(dir, TOPIC)).toBeNull();
+    });
+  });
+
+  test("ref moved to an oid whose object EXISTS → kept; dangling sibling still rolled back", async () => {
+    await withRepo(async (dir, first) => {
+      await git.writeRef({ fs, dir, ref: MAIN, value: first, force: true });
+      await writeFile(path.join(dir, "a.md"), "two\n");
+      await git.add({ fs, dir, filepath: "a.md" });
+      const second = await git.commit({
+        fs,
+        dir,
+        message: "two",
+        author: { name: "T", email: "t@test.local" },
+      });
+      await expect(
+        guardRemoteRefs(dir, "origin", {}, async () => {
+          await git.writeRef({ fs, dir, ref: MAIN, value: second, force: true });
+          await git.writeRef({ fs, dir, ref: TOPIC, value: BOGUS_A, force: true });
+          throw new Error("failed after the pack landed");
+        }),
+      ).rejects.toThrow("failed after the pack landed");
+      expect(await refOrNull(dir, MAIN)).toBe(second);
+      expect(await refOrNull(dir, TOPIC)).toBeNull();
+    });
+  });
+
+  test("fn throws without touching any ref → refs untouched", async () => {
+    await withRepo(async (dir, commit) => {
+      await git.writeRef({ fs, dir, ref: MAIN, value: commit, force: true });
+      await expect(
+        guardRemoteRefs(dir, "origin", {}, async () => {
+          throw new Error("early failure");
+        }),
+      ).rejects.toThrow("early failure");
+      expect(await refOrNull(dir, MAIN)).toBe(commit);
+    });
+  });
+
+  test("fn succeeds → refs never touched, result passed through", async () => {
+    await withRepo(async (dir) => {
+      const out = await guardRemoteRefs(dir, "origin", {}, async () => {
+        await git.writeRef({ fs, dir, ref: TOPIC, value: BOGUS_A, force: true });
+        return "ok";
+      });
+      expect(out).toBe("ok");
+      // Success path never rolls back — even a dangling ref is left alone.
+      expect(await refOrNull(dir, TOPIC)).toBe(BOGUS_A);
     });
   });
 });

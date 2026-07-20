@@ -15,8 +15,11 @@ export const MSG_OFFLINE =
   "Your changes are saved on this computer. print-md couldn't reach the online repository — try syncing again when you're back online.";
 export const MSG_AUTH =
   "The online repository didn't accept the saved connection. Reconnect and try again.";
+// No literal scheme tokens ("http://") in this copy: the viewer's Advanced
+// Setup dialog redacts anything matching /https?:\/\/\S+/, which would garble
+// the message. Say "https", never "https://".
 export const MSG_INSECURE_TRANSPORT =
-  "This project's online address isn't secure (http://), so the saved connection wasn't sent. Switch the address to a secure one (https://) to sync.";
+  "This project's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to sync.";
 export const MSG_RACE =
   "Someone else synced changes at the same moment. Your work is saved on this computer — please try Sync again.";
 export const MSG_CONFLICT =

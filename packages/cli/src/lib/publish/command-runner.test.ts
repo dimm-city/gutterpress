@@ -77,26 +77,48 @@ describe("defaultCommandRunner idle timeout (audit B2)", () => {
 });
 
 describe("defaultCommandRunner stdio flush (exit vs close)", () => {
+  // Both scripts synchronize on a "$0.started" flag file so the parent shell
+  // only exits after the backgrounded subshell has provably started (and thus
+  // holds the inherited stdout pipe). Without this the test races the fork:
+  // on a cold run 'close' can fire immediately and the test measures nothing.
+
   it("captures output still in the pipe when 'exit' fires (grandchild writes late)", async () => {
     // The SWA CLI pattern: the direct child exits while a grandchild that
     // inherited the stdio pipes is still writing. Settling on 'exit' loses
-    // that output; the runner must wait for 'close' (stdio flushed).
-    const script = writeScript("( sleep 0.2; echo late-output ) & exit 0");
+    // that output; the runner must wait for 'close' (stdio flushed). The
+    // grandchild's 0.05s delay is far inside the 2s flush grace.
+    const script = writeScript(
+      [
+        `sync="$0.started"`,
+        `( : > "$sync"; sleep 0.05; echo late-output ) &`,
+        `while [ ! -e "$sync" ]; do :; done`,
+        `exit 0`,
+      ].join("\n"),
+    );
     const res = await defaultCommandRunner("/bin/sh", [script]);
     expect(res.code).toBe(0);
     expect(res.stdout).toContain("late-output");
   });
 
   it("settles a bounded grace after 'exit' when a daemon grandchild holds the pipe", async () => {
-    // The grandchild inherits stdout and sleeps far longer than the grace, so
-    // 'close' won't fire until it dies — the runner must settle on the grace
-    // timer with the recorded exit code rather than hang.
-    const script = writeScript("sleep 10 & exit 7");
+    // The grandchild inherits stdout, stays silent, and outlives the grace,
+    // so 'close' won't fire until it dies — the runner must settle on the
+    // grace timer with the recorded exit code rather than hang.
+    const script = writeScript(
+      [
+        `sync="$0.started"`,
+        `( : > "$sync"; exec sleep 10 ) &`,
+        `while [ ! -e "$sync" ]; do :; done`,
+        `exit 7`,
+      ].join("\n"),
+    );
     const start = Date.now();
     const res = await defaultCommandRunner("/bin/sh", [script]);
     const elapsed = Date.now() - start;
     expect(res.code).toBe(7);
-    expect(elapsed).toBeGreaterThanOrEqual(EXIT_FLUSH_GRACE_MS - 100);
+    // Wide margins: at least most of one grace-width, well under the 10s
+    // the grandchild would make us wait if we hung until 'close'.
+    expect(elapsed).toBeGreaterThanOrEqual(EXIT_FLUSH_GRACE_MS - 500);
     expect(elapsed).toBeLessThan(8000);
   });
 });

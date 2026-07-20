@@ -56,8 +56,9 @@ const docCache = new Map<string, CacheEntry>();
  * projects over a session). Without it, `docCache` grew one never-freed parsed
  * document per distinct path ever validated. LRU eviction destroys the evicted
  * document so its decoded pages/fonts/images are released, not just unreferenced.
+ * (Exported so tests derive their eviction fixtures from the real cap.)
  */
-const DOC_CACHE_MAX = 8;
+export const DOC_CACHE_MAX = 8;
 
 function destroyEntry(entry: CacheEntry): void {
   entry.doc.then((d) => d.destroy()).catch(() => {});
@@ -151,10 +152,40 @@ export async function loadPdf(path: string): Promise<PDFDocumentProxy | null> {
 }
 
 /**
+ * Count of active retain scopes (see `retainPdfCache`). While non-zero, the
+ * end-of-run reclaim is deferred — some run is still (potentially) mid-read.
+ */
+let activeRetains = 0;
+
+/**
+ * Retain the document cache for the duration of a run. The check runner is a
+ * public lib export served by a long-lived host (the viewer), where two runs
+ * CAN overlap — e.g. a Problems-panel lint run and a publish preflight. An
+ * unconditional `clearPdfCache()` at either run's end would destroy documents
+ * the other run is actively reading (getPage/getOperatorList then throw
+ * "Transport destroyed") and would void the eviction grace protecting its
+ * evicted-but-held documents. So each run holds a scope instead: the returned
+ * release function decrements the count and performs the clear only when the
+ * LAST active scope releases. Release is idempotent — extra calls are no-ops.
+ */
+export function retainPdfCache(): () => void {
+  activeRetains++;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeRetains--;
+    if (activeRetains === 0) clearPdfCache();
+  };
+}
+
+/**
  * Destroy and drop every cached document, including evicted ones still inside
- * their destroy grace (their timers are cancelled). Called by the check runner
- * at the end of every run — the natural boundary where nothing is mid-read —
- * and exposed for tests.
+ * their destroy grace (their timers are cancelled). This is the FORCEFUL,
+ * unconditional reclaim — it ignores active retain scopes, so hosts should
+ * prefer `retainPdfCache()` (which clears when the last overlapping run
+ * releases); the check runner uses that scope. Exposed for tests and for
+ * hosts that know no run is in flight.
  */
 export function clearPdfCache(): void {
   for (const [t, entry] of gracePending) {

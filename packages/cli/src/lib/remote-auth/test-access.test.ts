@@ -5,7 +5,7 @@
 import { test, expect } from "bun:test";
 import { rm } from "node:fs/promises";
 
-import { isSshRemoteUrl, testRemoteAccess } from "./test-access";
+import { FAILURE_MESSAGES, isSshRemoteUrl, testRemoteAccess } from "./test-access";
 import type { HostCredential } from "./token-store";
 import {
   createFixtureRepo,
@@ -224,6 +224,18 @@ test("non-loopback http + stored credential: token is NEVER sent, classified ins
     expect(result.message).toMatch(/https/i);
     expect(result.message).not.toContain(CRED.token);
   }
+});
+
+// The viewer's Advanced Setup dialog sanitizes displayed messages with
+// /https?:\/\/\S+/g → "(address hidden)". A message embedding a literal scheme
+// token — "(http://)" — matches that regex and renders as broken text on
+// exactly the surface these messages were written for. Copy may say "https",
+// never "http://" / "https://".
+test("failure messages contain no URL-shaped token (the viewer sanitizer would redact it)", () => {
+  const offenders = Object.entries(FAILURE_MESSAGES)
+    .filter(([, message]) => /https?:\/\/\S+/.test(message))
+    .map(([reason]) => reason);
+  expect(offenders).toEqual([]);
 });
 
 test("same probe over https still authenticates (Basic auth sent once challenged)", async () => {

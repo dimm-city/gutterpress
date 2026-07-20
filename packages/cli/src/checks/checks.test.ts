@@ -337,6 +337,74 @@ describe("Check Runner", () => {
     clearPdfCache();
     await rm(dir, { recursive: true, force: true });
   });
+
+  test("overlapping runs: one run completing must not destroy the other run's documents", async () => {
+    // runChecks is a public lib export served by a long-lived host (the
+    // viewer), where two runs CAN overlap — e.g. a Problems-panel lint run
+    // and a publish preflight. The completing run's end-of-run cache reclaim
+    // must not destroy PDF documents the still-active run is reading, or that
+    // run reports spurious "Transport destroyed" errors on a valid PDF.
+    const { PDFDocument } = await import("pdf-lib");
+    const docu = await PDFDocument.create();
+    docu.addPage([612, 792]);
+    const dir = await mkdtemp(join(tmpdir(), "print-md-overlap-"));
+    const pdfPath = join(dir, "overlap.pdf");
+    await writeFile(pdfPath, await docu.save());
+
+    // Run B loads a document, signals it, then parks until run A has fully
+    // completed — so A's end-of-run reclaim happens while B holds a live doc.
+    let openGate!: () => void;
+    const gate = new Promise<void>((r) => {
+      openGate = r;
+    });
+    let signalLoaded!: () => void;
+    const loaded = new Promise<void>((r) => {
+      signalLoaded = r;
+    });
+    let pageError: unknown = null;
+    const checkB: Check = {
+      id: "test.overlap-b",
+      name: "Overlap B",
+      description: "Parks mid-check while holding a cached document",
+      category: "pdf",
+      phase: "post-build",
+      async run(): Promise<CheckResult[]> {
+        const doc = (await loadPdf(pdfPath))!;
+        signalLoaded();
+        await gate; // run A completes (and hits its finally) while parked here
+        try {
+          await doc.getPage(1);
+        } catch (err) {
+          pageError = err;
+        }
+        return [];
+      },
+    };
+    const checkA: Check = {
+      id: "test.overlap-a",
+      name: "Overlap A",
+      description: "Completes while run B is parked",
+      category: "pdf",
+      phase: "post-build",
+      async run(): Promise<CheckResult[]> {
+        return [];
+      },
+    };
+    registerCheck(checkB);
+    registerCheck(checkA);
+
+    const ctx = makeCtx();
+    const runB = runChecks(ctx, { only: ["test.overlap-b"] });
+    await loaded; // B now holds a document from the shared cache
+    await runChecks(ctx, { only: ["test.overlap-a"] }); // A runs to completion
+    openGate();
+    await runB;
+
+    expect(pageError).toBeNull();
+
+    clearPdfCache();
+    await rm(dir, { recursive: true, force: true });
+  });
 });
 
 // ---------------------------------------------------------------------------

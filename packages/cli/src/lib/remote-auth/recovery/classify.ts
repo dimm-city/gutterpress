@@ -60,9 +60,12 @@ export function isRepoNeedsRecoveryError(e: unknown): e is RepoNeedsRecoveryErro
 export class InsecureTransportError extends Error {
   readonly code = "InsecureTransport";
   constructor() {
+    // No literal scheme tokens ("http://") in this copy: the viewer redacts
+    // anything matching /https?:\/\/\S+/, which would garble the message.
     super(
-      "This online address isn't secure (http://), so the saved connection wasn't sent. " +
-        "Switch the address to a secure one (https://) to sync with a saved connection.",
+      "This online address isn't secure, so the saved connection wasn't sent — " +
+        "connections are never sent over an insecure address. Switch the address " +
+        "to a secure one (starting with https) to sync with a saved connection.",
     );
     this.name = "InsecureTransportError";
   }

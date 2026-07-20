@@ -9,6 +9,7 @@ import {
   classifyFromHealth,
   classifyTransportFailure,
   isMergeConflictError,
+  InsecureTransportError,
 } from "./classify.ts";
 import type { RepoHealth } from "./types.ts";
 
@@ -390,6 +391,13 @@ describe("classifyTransportFailure / classifyGitError — insecure transport", (
 
   test("classifyGitError routes it to insecure_transport, never auth_required", () => {
     expect(classifyGitError(insecureTransportError(), healthyRepo)).toBe("insecure_transport");
+  });
+
+  // The viewer's Advanced Setup dialog sanitizes displayed messages with
+  // /https?:\/\/\S+/g → "(address hidden)"; a literal "(http://)" in the copy
+  // matches it and renders as broken text. Say "https", never "http://".
+  test("InsecureTransportError's message contains no URL-shaped token (viewer sanitizer)", () => {
+    expect(new InsecureTransportError().message).not.toMatch(/https?:\/\/\S+/);
   });
 });
 

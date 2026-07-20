@@ -155,6 +155,30 @@ test("nothing pending to snapshot: finish immediately after the flush settles", 
   expect(h.clock.armedMs).toEqual([]);
 });
 
+test("rejected flush is treated as a failed flush: snapshot skipped, finish exactly once", async () => {
+  const h = makeHarness();
+  // The flush transport itself blows up (e.g. IPC channel already torn down).
+  h.flush.reject(new Error("ipc dead"));
+  await settle();
+  // Same policy branch as a hung renderer: no buffers-confirmed signal → no commit.
+  expect(h.snapshotCalls).toBe(0);
+  expect(h.finishCalls).toBe(1);
+  expect(h.clock.armedMs).toEqual([]);
+});
+
+test("synchronously throwing snapshot() still finishes exactly once, no timer left armed", async () => {
+  const h = makeHarness({
+    snapshot: () => {
+      throw new Error("scheduler blew up");
+    },
+  });
+  h.flush.resolve(true);
+  await settle();
+  expect(h.snapshotCalls).toBe(1);
+  expect(h.finishCalls).toBe(1);
+  expect(h.clock.armedMs).toEqual([]);
+});
+
 test("rejected snapshot promise still finishes exactly once and clears the backstop", async () => {
   const h = makeHarness();
   h.flush.resolve(true);

@@ -59,25 +59,48 @@ export async function runCloseGate(deps: CloseGateDeps): Promise<void> {
     settled = true;
     deps.finish();
   };
-  const replied = await deps.flush();
-  // DELIBERATE POLICY: on a HUNG renderer (flush watchdog fired) skip the
-  // snapshot and just close — starting a git commit for a renderer that never
-  // confirmed its buffers hit disk would snapshot half-written state; the old
-  // behavior of dropping the snapshot cleanly is the safe one. (The pending
-  // snapshot may also be silently dropped when the per-repo FIFO lock is held
-  // by a sync/restore that outlasts the backstop — never blocking quit wins
-  // over guaranteeing the last snapshot; the edits themselves are already on
-  // disk, only the history entry is skipped.)
-  const pending = replied ? deps.snapshot() : undefined;
-  if (!pending) return finish();
-  // The commit has started: await it. Backstop armed NOW, not at gate start.
-  const backstop = setTimer(finish, SNAPSHOT_BACKSTOP_MS);
+  // The outer try/finally OWNS finish(): whatever the deps do — flush
+  // rejection, snapshot() throwing synchronously, snapshot promise rejecting —
+  // the gate always destroys the window exactly once (main.ts has already
+  // preventDefault()ed the close, so a missed finish() would strand it).
   try {
-    await pending;
-  } catch {
-    // The snapshot runner logs its own failures; the gate only sequences.
+    let replied: boolean;
+    try {
+      replied = await deps.flush();
+    } catch {
+      // A rejected flush (dead IPC channel etc.) gives no buffers-confirmed
+      // signal, same as a hung renderer — take the same policy branch below.
+      replied = false;
+    }
+    // DELIBERATE POLICY: on a FAILED flush (watchdog fired on a hung renderer,
+    // or the flush itself rejected) skip the snapshot and just close — starting
+    // a git commit for a renderer that never confirmed its buffers hit disk
+    // would snapshot half-written state; the old behavior of dropping the
+    // snapshot cleanly is the safe one. (The pending snapshot may also be
+    // silently dropped when the per-repo FIFO lock is held by a sync/restore
+    // that outlasts the backstop — never blocking quit wins over guaranteeing
+    // the last snapshot; the edits themselves are already on disk, only the
+    // history entry is skipped.)
+    let pending: Promise<void> | undefined;
+    if (replied) {
+      try {
+        pending = deps.snapshot();
+      } catch {
+        // A synchronous throw from the scheduler is its own bug to log; the
+        // gate treats it like "nothing pending" and proceeds to finish().
+      }
+    }
+    if (!pending) return;
+    // The commit has started: await it. Backstop armed NOW, not at gate start.
+    const backstop = setTimer(finish, SNAPSHOT_BACKSTOP_MS);
+    try {
+      await pending;
+    } catch {
+      // The snapshot runner logs its own failures; the gate only sequences.
+    } finally {
+      clearTimer(backstop);
+    }
   } finally {
-    clearTimer(backstop);
     finish();
   }
 }

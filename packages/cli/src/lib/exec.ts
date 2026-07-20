@@ -58,8 +58,11 @@ export function run(
  * the pipes, or written by a grandchild that inherited them (the SWA CLI
  * spawns StaticSitesClient). Settling on 'exit' truncates that output, so we
  * settle on 'close' (stdio flushed) — but a detached grandchild can hold the
- * pipes open forever, so 'exit' arms this bounded grace and we settle with
- * whatever has arrived when it expires.
+ * pipes open forever, so 'exit' arms this grace and we settle with whatever
+ * has arrived when it expires. The grace is an IDLE window, re-armed on every
+ * post-exit chunk: a grandchild actively streaming (StaticSitesClient still
+ * printing the deployment URL) is never cut mid-stream, while a silent
+ * daemon holding the pipe still settles one grace-width after exit.
  */
 export const EXIT_FLUSH_GRACE_MS = 2000;
 
@@ -144,32 +147,40 @@ export function spawnCapture(
     };
     armKill();
 
+    const finish = (): void =>
+      settle(() => resolve({ code: exitCode, signal: exitSignal, stdout, stderr }));
+
+    // Post-exit flush grace — an idle window, (re-)armed on 'exit' and on
+    // every chunk that arrives after it: see EXIT_FLUSH_GRACE_MS.
+    const armGrace = (): void => {
+      if (graceTimer) clearTimeout(graceTimer);
+      graceTimer = setTimeout(finish, opts.exitGraceMs ?? EXIT_FLUSH_GRACE_MS);
+      graceTimer.unref();
+    };
+
     const onData = (stream: "stdout" | "stderr") => (d: Buffer) => {
       const text = d.toString();
       if (stream === "stdout") stdout = keepTail(stdout, text, opts.captureLimit);
       else stderr = keepTail(stderr, text, opts.captureLimit);
       opts.onChunk?.(stream, text);
-      if (opts.timeoutMode === "idle" && !exited) armKill();
+      if (exited) armGrace();
+      else if (opts.timeoutMode === "idle") armKill();
     };
     p.stdout.on("data", onData("stdout"));
     p.stderr.on("data", onData("stderr"));
     p.on("error", (err) => settle(() => reject(err)));
-
-    const finish = (): void =>
-      settle(() => resolve({ code: exitCode, signal: exitSignal, stdout, stderr }));
 
     p.on("exit", (code, signal) => {
       exited = true;
       exitCode = code;
       exitSignal = signal;
       // The child is gone — the kill timer's job is done. Wait for 'close'
-      // (stdio flushed) up to a bounded grace: see EXIT_FLUSH_GRACE_MS.
+      // (stdio flushed) up to the idle grace: see EXIT_FLUSH_GRACE_MS.
       if (killTimer) {
         clearTimeout(killTimer);
         killTimer = undefined;
       }
-      graceTimer = setTimeout(finish, opts.exitGraceMs ?? EXIT_FLUSH_GRACE_MS);
-      graceTimer.unref();
+      armGrace();
     });
     p.on("close", finish);
   });

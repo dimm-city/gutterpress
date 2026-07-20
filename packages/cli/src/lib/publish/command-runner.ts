@@ -51,10 +51,11 @@ function lineEmitter(onOutput: (line: string) => void) {
 }
 
 // Settling: spawnCapture resolves on 'close' (stdio flushed) rather than
-// 'exit', with a bounded grace (EXIT_FLUSH_GRACE_MS) for a grandchild that
-// holds the pipes open — so output a delegating CLI's grandchild writes as
-// the parent exits (the SWA CLI spawns StaticSitesClient) is captured, not
-// truncated, and a detached daemon can't hang the runner.
+// 'exit', with an idle grace (EXIT_FLUSH_GRACE_MS, re-armed per chunk) for
+// a grandchild that holds the pipes open — so output a delegating CLI's
+// grandchild streams as/after the parent exits (the SWA CLI spawns
+// StaticSitesClient) is captured, not truncated, and a silent detached
+// daemon can't hang the runner.
 //
 // KNOWN LIMIT (review): the idle-timeout SIGKILL reaches the direct child
 // only; a grandchild can be left briefly orphaned. The fix — detached
