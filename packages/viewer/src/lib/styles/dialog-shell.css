@@ -36,13 +36,11 @@
  * component's template), so the two-class scoped rule naturally wins the
  * cascade over this file's one-class default — no `!important` needed.
  *
- * Out of scope on purpose: `.primary`'s fill has TWO pre-existing visual
- * treatments across the app (a flat `var(--app-focus-ring)` fill on most
- * dialogs vs. a gradient on ConflictChoicesDialog/RecoveryConfirmDialog/
- * RecoveryGuidanceDialog) — a separate, already-filed finding (UX review L5).
- * This extraction preserves BOTH exactly as they were (flat here as the
- * shared default; the three gradient dialogs add a two-line local override),
- * it does not unify them.
+ * Primary-button COLOR is not defined here (UX review L5, resolved): every
+ * `.dlg-primary` button also carries the global `.app-btn-primary` class
+ * (theme.css), which owns the one shared gradient fill, hover brighten, and
+ * focus ring app-wide. `.dlg-primary` remains as the footer-geometry hook
+ * only — do not re-add background/color/border-color rules for it here.
  *
  * Behavior — focus trap, Escape-to-close, ARIA wiring, focus restore — is a
  * SEPARATE concern owned by the `dialogBehavior` action (`$lib/dialog.ts`).
@@ -74,7 +72,7 @@
   position: fixed;
   inset: 0;
   background: var(--app-backdrop);
-  z-index: 1000;
+  z-index: var(--app-z-modal);
 }
 
 .dlg-shell {
@@ -89,7 +87,7 @@
   color: var(--app-text-secondary);
   border-radius: 8px;
   box-shadow: 0 14px 40px var(--app-shadow-lg);
-  z-index: 1001;
+  z-index: calc(var(--app-z-modal) + 1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -176,14 +174,10 @@
 }
 :global(.dlg-actions button:disabled) { opacity: 0.45; cursor: default; }
 
-/* Flat fill — the majority treatment (see the L5 note above for the gradient
-   minority, which each of those three dialogs re-adds locally). border-color
-   is explicit (not inherited from `.dlg-actions button`, which deliberately
-   no longer sets it — see the comment there) so a primary button's border
-   stays invisible against its own fill, matching the pre-migration look. */
-:global(.dlg-primary) { background: var(--app-focus-ring); color: var(--app-text-on-accent); border-color: transparent; }
-:global(.dlg-primary:not(:disabled):hover) { background: var(--app-accent-hover); }
-:global(.dlg-primary:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+/* `.dlg-primary` colors live in theme.css's `.app-btn-primary` (see the L5
+   note above) — every primary button carries both classes. Nothing to define
+   here: geometry comes from `.dlg-actions button`, colors from the shared
+   recipe. */
 
 :global(.dlg-ghost) { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
 :global(.dlg-ghost:not(:disabled):hover) { background: var(--app-surface-hover); color: var(--app-text); }

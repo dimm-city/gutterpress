@@ -145,7 +145,7 @@
   }
 
   .error-msg {
-    color: var(--app-error, #c0392b);
+    color: var(--app-error-text);
   }
 
   .log-pre {
@@ -154,7 +154,7 @@
     background: var(--app-surface-sunken);
     border: 1px solid var(--app-border-subtle);
     border-radius: 6px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--app-font-mono);
     font-size: 12px;
     line-height: 1.5;
     color: var(--app-text-secondary);

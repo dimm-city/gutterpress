@@ -2263,7 +2263,7 @@
 />
 
 <!-- RC3-1: App-level overlay for the initial "Opening folder…" lifecycle.busy state ONLY
-     (no preview pane exists yet). Scoped below the toolbar (z-index:50) and
+     (no preview pane exists yet). Scoped below the toolbar (--app-z-overlay) and
      all dialogs (1000+). This does NOT cover the preview pane or editor during
      layout — that's handled by the pane-scoped overlay inside .preview-pane.
      M2: this is the ONE place a real cancel-and-close is offered — safe here
@@ -3239,7 +3239,7 @@
   .settings-global-view {
     position: fixed;
     inset: 0;
-    z-index: 901;
+    z-index: calc(var(--app-z-sheet) + 1);
     display: flex;
     background: var(--app-bg);
   }
@@ -3304,7 +3304,7 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-size: 13px;
   }
   .preview-pane {
@@ -3325,7 +3325,7 @@
     /* Above the start screen (900): a live export's progress + Cancel must
        stay reachable when the workspace empties and the landing returns.
        Still below dialogs (1000+). */
-    z-index: 950;
+    z-index: calc(var(--app-z-sheet) + 50);
     display: flex;
     align-items: center;
     gap: 10px;
@@ -3394,13 +3394,17 @@
     height: 56px;
     flex-shrink: 0;
     container-type: inline-size;
-    background: linear-gradient(to bottom, var(--app-toolbar-from), var(--app-toolbar-to));
+    background: linear-gradient(
+      to bottom,
+      light-dark(#fafafa, #252525),
+      light-dark(#f0f0f1, #1e1e1e)
+    );
     border-bottom: 1px solid var(--app-border);
     /* Stacking context ABOVE the workspace panes so dropdown menus that hang
        below the toolbar paint over the preview, not behind it. overflow must
        stay visible for the same reason — `overflow: hidden` clips dropdowns. */
     position: relative;
-    z-index: 100;
+    z-index: var(--app-z-toolbar);
     overflow: visible;
   }
 
@@ -3567,7 +3571,7 @@
     position: absolute;
     top: calc(100% + 4px);
     right: 0;
-    z-index: 80;
+    z-index: var(--app-z-menu);
     min-width: 168px;
     display: flex;
     flex-direction: column;
@@ -3638,14 +3642,18 @@
   }
   .page-input:disabled { opacity: 0.4; }
   .page-pill {
-    background: linear-gradient(to bottom, var(--app-pill-from), var(--app-pill-to));
-    border-color: var(--app-pill-border);
-    color: var(--app-pill-text);
+    /* Component-private palette (single consumer — stays out of theme.css
+       per its admission rule); flips with the app theme via color-scheme. */
+    --pill-from: light-dark(#e8edf5, #313740);
+    --pill-to: light-dark(#dde4ef, #262c34);
+    background: linear-gradient(to bottom, var(--pill-from), var(--pill-to));
+    border-color: light-dark(#b3c0d4, #576170);
+    color: light-dark(#1a3055, #eef4ff);
     min-width: 104px;
     text-align: center;
   }
   .page-pill:hover:not(:disabled) {
-    background: linear-gradient(to bottom, var(--app-pill-from), var(--app-pill-to));
+    background: linear-gradient(to bottom, var(--pill-from), var(--pill-to));
     border-color: var(--app-control-hover-border);
   }
 
@@ -3698,7 +3706,7 @@
   /* UX-023: hint below Save PDF when disabled */
   .save-hint {
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     white-space: nowrap;
   }
   .save-warning {
@@ -3772,7 +3780,7 @@
     font-size: 12px;
     cursor: pointer;
   }
-  .update-later:hover { background: var(--app-scrim); }
+  .update-later:hover { background: var(--app-scrim-strong); }
 
   /* ---- Toolbar container queries ----
      @container queries measure the toolbar's own inline size — the correct
@@ -3944,11 +3952,11 @@
   }
 
   /* Save-as-template prompt (#29) */
-  .save-tpl-backdrop { position: fixed; inset: 0; background: var(--app-backdrop); z-index: 1000; }
+  .save-tpl-backdrop { position: fixed; inset: 0; background: var(--app-backdrop); z-index: var(--app-z-modal); }
   .save-tpl-dialog {
     position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
     width: min(420px, 94vw); background: var(--app-surface); color: var(--app-text-secondary);
-    border-radius: 8px; box-shadow: 0 14px 40px var(--app-shadow-lg); z-index: 1001;
+    border-radius: 8px; box-shadow: 0 14px 40px var(--app-shadow-lg); z-index: calc(var(--app-z-modal) + 1);
     padding: 18px; display: flex; flex-direction: column; gap: 12px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }

@@ -755,7 +755,7 @@
     outline-offset: 2px;
   }
   .tb-btn:active {
-    background: var(--app-control-active-bg, rgba(255,255,255,0.16));
+    background: var(--app-control-active-bg);
   }
   .tb-btn-split {
     gap: 1px;
@@ -775,7 +775,7 @@
     border: 1px solid var(--app-border, rgba(255,255,255,0.15));
     border-radius: 4px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    z-index: 400;
+    z-index: var(--app-z-menu);
     padding: 4px;
     display: flex;
     flex-direction: column;
@@ -893,8 +893,8 @@
   .image-dialog-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 500;
+    background: var(--app-backdrop);
+    z-index: var(--app-z-modal);
   }
 
   .image-dialog {
@@ -902,7 +902,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 501;
+    z-index: calc(var(--app-z-modal) + 1);
     background: var(--app-surface, #252526);
     border: 1px solid var(--app-border, rgba(255,255,255,0.15));
     border-radius: 8px;
@@ -930,7 +930,7 @@
   .image-label {
     font-size: 11px;
     font-weight: 600;
-    color: var(--app-text-faint, #9aa5b1);
+    color: var(--app-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -955,7 +955,7 @@
   }
   .image-input[readonly] {
     cursor: default;
-    color: var(--app-text-faint, #9aa5b1);
+    color: var(--app-text-muted);
   }
 
   .image-pick-btn {
@@ -980,7 +980,7 @@
   .image-path-hint {
     margin: 0;
     font-size: 10px;
-    color: var(--app-text-faint, #9aa5b1);
+    color: var(--app-text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -989,7 +989,7 @@
   .image-hint {
     margin: 0;
     font-size: 10px;
-    color: var(--app-text-faint, #9aa5b1);
+    color: var(--app-text-muted);
     line-height: 1.4;
   }
 

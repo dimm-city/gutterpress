@@ -351,11 +351,11 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.09em;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     border-bottom: 1px solid var(--app-border-subtle);
     padding-bottom: 6px;
   }
-  .hint { font-size: 11px; line-height: 1.4; color: var(--app-text-faint); margin: 4px 0 8px; }
+  .hint { font-size: 11px; line-height: 1.4; color: var(--app-text-muted); margin: 4px 0 8px; }
   .hint.muted { font-style: italic; }
   .notice { font-size: 12px; color: var(--app-success-text, #3fb950); margin: 6px 0 0; }
   .error { font-size: 12px; color: var(--app-error-text); margin: 6px 0 0; }
@@ -368,7 +368,7 @@
     font-size: 13px;
   }
   .conn-name { display: inline-flex; align-items: center; gap: 7px; color: var(--app-text-secondary); min-width: 0; }
-  .conn-name.muted { color: var(--app-text-faint); }
+  .conn-name.muted { color: var(--app-text-muted); }
   .badge {
     font-size: 10px;
     padding: 1px 6px;
@@ -398,7 +398,7 @@
     font-size: 11px;
   }
   .code-hint { font-size: 12px; }
-  .user-code { font-family: ui-monospace, monospace; letter-spacing: 0.12em; font-size: 14px; }
+  .user-code { font-family: var(--app-font-mono); letter-spacing: 0.12em; font-size: 14px; }
   .add-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .add-form input, .add-form select {
     flex: 1 1 140px;

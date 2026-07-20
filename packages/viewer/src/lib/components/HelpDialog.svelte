@@ -131,7 +131,7 @@
         <p class="status">Checking system…</p>
       {:else if error}
         <p class="status error">{error}</p>
-        <button class="dlg-primary" onclick={load}>Retry</button>
+        <button class="dlg-primary app-btn-primary" onclick={load}>Retry</button>
       {:else if data}
         <section class="version-strip" aria-label="Loaded versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
@@ -269,7 +269,7 @@
             {copied ? "Copied!" : "Copy diagnostic info"}
           </button>
           <button class="dlg-ghost" onclick={openDocs}>View setup guide</button>
-          <button class="dlg-primary" onclick={close}>Close</button>
+          <button class="dlg-primary app-btn-primary" onclick={close}>Close</button>
         </footer>
       {/if}
     </div>
@@ -297,15 +297,15 @@
     overflow-y: auto;
   }
   .status { margin: 8px 0; }
-  .status.error { color: var(--app-error-text); font-family: ui-monospace, monospace; font-size: 12px; }
+  .status.error { color: var(--app-error-text); font-family: var(--app-font-mono); font-size: 12px; }
 
   /* Getting Started + Work with an Online Copy sections (same treatment) */
   .getting-started, .online-copy { margin-bottom: 18px; }
   .getting-started h3, .online-copy h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
   .steps { margin: 0 0 10px; padding-left: 20px; font-size: 13px; line-height: 1.6; color: var(--app-text-secondary); }
   .steps li { margin-bottom: 6px; }
-  .steps code { font-family: ui-monospace, monospace; color: var(--app-code-text); background: var(--app-code-bg); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
-  .gs-note { margin: 0; font-size: 12px; color: var(--app-text-faint); }
+  .steps code { font-family: var(--app-font-mono); color: light-dark(#2b4a6f, #99aabb); background: light-dark(#e8edf5, #2a3040); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+  .gs-note { margin: 0; font-size: 12px; color: var(--app-text-muted); }
   .inline-link { background: none; border: none; color: var(--app-link); cursor: pointer; font-size: 12px; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
   .inline-link:hover { color: var(--app-link-hover); }
 
@@ -328,12 +328,12 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
 
   /* System info collapsible */
   .system-info { margin-top: 8px; }
-  .system-info > summary { cursor: pointer; font-size: 12px; color: var(--app-text-faint); user-select: none; padding: 6px 0; list-style: none; }
+  .system-info > summary { cursor: pointer; font-size: 12px; color: var(--app-text-muted); user-select: none; padding: 6px 0; list-style: none; }
   .system-info > summary::-webkit-details-marker { display: none; }
   .system-info > summary::before { content: "▶ "; font-size: 10px; }
   .system-info[open] > summary::before { content: "▼ "; }
@@ -342,7 +342,7 @@
   /* Updates section (relocated from toolbar) */
   .updates { margin-bottom: 18px; }
   .updates h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
-  .updates-note { margin: 0 0 10px; font-size: 12px; color: var(--app-text-faint); line-height: 1.5; }
+  .updates-note { margin: 0 0 10px; font-size: 12px; color: var(--app-text-muted); line-height: 1.5; }
   .update-check {
     display: inline-flex;
     align-items: center;
@@ -366,12 +366,12 @@
   .shortcuts table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .shortcuts td { padding: 5px 8px; }
   .shortcuts tr:nth-child(even) td { background: var(--app-surface-raised); }
-  .shortcuts td:last-child { font-family: ui-monospace, monospace; color: var(--app-code-text); }
-  .shortcuts th { text-align: left; padding: 5px 8px; font-size: 11px; text-transform: uppercase; color: var(--app-text-faint); letter-spacing: 0.3px; border-bottom: 1px solid var(--app-border-subtle); }
+  .shortcuts td:last-child { font-family: var(--app-font-mono); color: light-dark(#2b4a6f, #99aabb); }
+  .shortcuts th { text-align: left; padding: 5px 8px; font-size: 11px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.3px; border-bottom: 1px solid var(--app-border-subtle); }
   .versions { font-size: 13px; line-height: 1.7; margin-bottom: 18px; }
   .versions strong { color: var(--app-text-muted); font-weight: 500; min-width: 80px; display: inline-block; }
   .tools h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; color: var(--app-text-muted); letter-spacing: 0.5px; }
-  .tools .hint { font-size: 12px; color: var(--app-text-faint); margin: 0 0 12px; }
+  .tools .hint { font-size: 12px; color: var(--app-text-muted); margin: 0 0 12px; }
   .tools ul { list-style: none; margin: 0; padding: 0; }
   .tools li {
     padding: 10px 12px;
@@ -409,8 +409,8 @@
   }
   .tool-version {
     align-self: start;
-    color: var(--app-text-faint);
-    font-family: ui-monospace, monospace;
+    color: var(--app-text-muted);
+    font-family: var(--app-font-mono);
     font-size: 12px;
     overflow-wrap: anywhere;
     text-align: right;
@@ -427,7 +427,7 @@
       text-align: left;
     }
   }
-  .tool-path { font-family: ui-monospace, monospace; font-size: 11px; color: var(--app-text-faint); margin: 2px 0 4px 24px; word-break: break-all; }
+  .tool-path { font-family: var(--app-font-mono); font-size: 11px; color: var(--app-text-muted); margin: 2px 0 4px 24px; word-break: break-all; }
   .used-by { font-size: 11px; color: var(--app-text-muted); margin: 4px 0 0 24px; line-height: 1.55; }
   .badge {
     display: inline-block;
@@ -449,7 +449,7 @@
     border-radius: 4px;
     margin: 6px 0 0;
     color: var(--app-text-secondary);
-    font-family: ui-monospace, monospace;
+    font-family: var(--app-font-mono);
     font-size: 11px;
     white-space: pre-wrap;
   }

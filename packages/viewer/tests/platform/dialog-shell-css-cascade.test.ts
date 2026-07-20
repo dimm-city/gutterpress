@@ -62,9 +62,21 @@ describe("dialog-shell.css — border-color cascade (FIX ROUND 1 regression guar
     expect(body).not.toMatch(/\bborder-color\s*:/);
   });
 
-  test("`.dlg-primary` supplies its own border-color (transparent, matching its own fill)", () => {
-    const body = ruleBody(readCss(), ":global(.dlg-primary) {");
-    expect(body).toMatch(/border-color\s*:\s*transparent/);
+  test("`.dlg-primary` carries no color rules here — colors come from theme.css's `.app-btn-primary` (L5 convergence)", () => {
+    // The L5 primary-button convergence removed dialog-shell's flat
+    // `.dlg-primary` fill: every primary button now also carries the global
+    // `.app-btn-primary` class, whose recipe (theme.css) supplies the
+    // gradient fill AND its own border-color. Re-adding a `.dlg-primary`
+    // color rule here would re-fork the two treatments.
+    const css = readCss().replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toContain(":global(.dlg-primary)");
+    const themeCss = fs.readFileSync(
+      path.resolve(__dirname, "../../src/lib/theme.css"),
+      "utf-8",
+    );
+    const recipe = ruleBody(themeCss, ".app-btn-primary {");
+    expect(recipe).toMatch(/border-color\s*:\s*var\(--app-accent-border\)/);
+    expect(recipe).toMatch(/linear-gradient/);
   });
 
   test("`.dlg-ghost` supplies its own visible border-color", () => {

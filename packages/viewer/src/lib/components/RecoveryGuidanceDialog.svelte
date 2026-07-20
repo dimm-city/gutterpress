@@ -111,7 +111,7 @@
         <!-- Recommended next step — highlighted block -->
         <div class="recommended-step" role="note">
           <p class="step-text">{guidance.recommendedNextStep}</p>
-          <button class="dlg-primary" onclick={handlePrimary}>
+          <button class="dlg-primary app-btn-primary" onclick={handlePrimary}>
             {guidance.recommendedAction}
           </button>
         </div>
@@ -284,18 +284,17 @@
   }
 
   /* The recommended-step CTA lives inline in the body (not the footer), so
-     unlike a normal `.dlg-primary` (styled only via `.dlg-actions button`'s
-     base rule) it needs its own base sizing here too. Gradient fill — see
-     dialog-shell.css's note on the L5 primary-button inconsistency. */
+     unlike a normal `.dlg-primary` (sized by `.dlg-actions button`'s base
+     rule) it needs its own base sizing here. Colors come from the shared
+     .app-btn-primary recipe (theme.css) — the L5 convergence removed this
+     dialog's local gradient copy. */
   .recommended-step .dlg-primary {
     padding: 6px 14px;
     font-size: 13px;
     border-radius: 4px;
+    border-width: 1px;
+    border-style: solid;
     cursor: pointer;
     align-self: flex-start;
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
   }
-  .recommended-step .dlg-primary:hover:not(:disabled) { background: var(--app-accent-hover); }
 </style>

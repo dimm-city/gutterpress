@@ -162,7 +162,7 @@
   .control.color .swatch { width: 28px; height: 28px; border-radius: 4px; border: 1px solid var(--app-border); }
   .control.size { gap: 4px; }
   .control.size input[type="number"] { width: 64px; padding: 5px 6px; background: var(--app-surface-sunken); border: 1px solid var(--app-border); color: var(--app-text-secondary); border-radius: 4px; font-size: 12px; }
-  .unit { font-size: 11px; color: var(--app-text-faint); }
+  .unit { font-size: 11px; color: var(--app-text-muted); }
   .save-status { font-size: 11px; }
   .save-status.saving { color: var(--app-text-muted); }
   .save-status.saved { color: var(--app-success-text, #3fb950); }

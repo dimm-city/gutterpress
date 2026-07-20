@@ -438,11 +438,11 @@
     <footer class="dlg-actions">
       {#if phase === "error"}
         <button class="dlg-ghost" onclick={close}>Close</button>
-        <button class="dlg-primary" onclick={confirm}>Try again</button>
+        <button class="dlg-primary app-btn-primary" onclick={confirm}>Try again</button>
       {:else}
         <button class="dlg-ghost" onclick={close} disabled={phase === "resolving"}>Decide later</button>
         <button
-          class="dlg-primary"
+          class="dlg-primary app-btn-primary"
           onclick={confirm}
           disabled={phase === "resolving" || files.length === 0 || !localId || !remoteId}
         >
@@ -547,8 +547,8 @@
   }
   .file-path {
     font-size: 11px;
-    color: var(--app-text-faint);
-    font-family: ui-monospace, monospace;
+    color: var(--app-text-muted);
+    font-family: var(--app-font-mono);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -606,10 +606,10 @@
   .choice-btn.recommended:not(.selected) {
     border-color: var(--app-focus-ring);
     color: var(--app-text);
-    background: var(--app-accent-subtle, color-mix(in srgb, var(--app-focus-ring) 14%, transparent));
+    background: var(--app-accent-subtle);
   }
   .choice-btn.recommended:not(.selected):hover:not(:disabled) {
-    background: var(--app-accent-subtle-hover, color-mix(in srgb, var(--app-focus-ring) 22%, transparent));
+    background: color-mix(in srgb, var(--app-focus-ring) 22%, transparent);
   }
   .rec-badge {
     font-size: 10px;
@@ -679,14 +679,8 @@
      :disabled rule of their own (currently just .banner-btn). */
   button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  /* Gradient fill — see dialog-shell.css's note on the L5 primary-button
-     inconsistency (preserved here, not unified). */
-  .dlg-primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
-  }
-  .dlg-primary:hover:not(:disabled) { background: var(--app-accent-hover); }
+  /* Primary-button colors come from the shared .app-btn-primary recipe
+     (theme.css) — the L5 convergence removed this dialog's local copy. */
 
   /* "Compare versions" disclosure — text-file preview panes */
   .preview-disclosure {
@@ -741,7 +735,7 @@
   .pane-content {
     margin: 0;
     padding: 8px;
-    font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+    font-family: var(--app-font-mono);
     font-size: 11px;
     line-height: 1.5;
     overflow-y: auto;
@@ -754,13 +748,13 @@
   .preview-loading {
     margin: 0;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     padding: 4px 0;
   }
   .preview-unavailable {
     margin: 0;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     padding: 4px 0;
   }
 </style>

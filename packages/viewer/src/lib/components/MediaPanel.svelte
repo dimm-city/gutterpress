@@ -378,7 +378,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     cursor: pointer;
     /* WCAG 2.5.8: minimum target size 24×24px */
     min-width: 26px;
@@ -417,7 +417,7 @@
   .media-msg {
     margin: 0;
     padding: 12px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-size: 12px;
     line-height: 1.5;
   }
@@ -467,7 +467,7 @@
        fill (not a hover tint), and the faint placeholder icon inside must
        stay ≥4.5:1 (judge gate round 3: 3.64:1 on #444444 dark). */
     background: var(--app-surface-sunken);
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .tile-thumb img {
     width: 100%;
@@ -519,7 +519,7 @@
     border-radius: 6px;
     /* surface-sunken for the same contrast reason as .tile-thumb above. */
     background: var(--app-surface-sunken);
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .detail-thumb img {
     max-width: 100%;
@@ -536,7 +536,7 @@
   .detail-path {
     margin: 0;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     overflow-wrap: anywhere;
   }
   .detail-meta {
@@ -547,7 +547,7 @@
     font-size: 12px;
   }
   .detail-meta dt {
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .detail-meta dd {
     margin: 0;
@@ -580,7 +580,7 @@
     color: var(--app-success-text, #2e9e5b);
   }
   .warning.info :global(svg) {
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .detail-actions {
     display: flex;
@@ -607,7 +607,7 @@
   .insert-hint {
     margin: 0;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     line-height: 1.4;
   }
 </style>

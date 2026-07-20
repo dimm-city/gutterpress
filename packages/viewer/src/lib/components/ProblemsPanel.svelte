@@ -316,12 +316,12 @@
   }
   .error-count { color: var(--app-error-text); }
   .warning-count { color: var(--app-warning-text); }
-  .strip-status { font-size: 11px; color: var(--app-text-faint); }
+  .strip-status { font-size: 11px; color: var(--app-text-muted); }
   .strip-chevron {
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
 
   /* ── Panel body ──────────────────────────────────────────────────────────── */
@@ -478,7 +478,7 @@
   .entry-line {
     flex: 0 0 auto;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-variant-numeric: tabular-nums;
     align-self: center;
   }
@@ -489,8 +489,8 @@
   .entry-code {
     flex: 0 0 auto;
     font-size: 11px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    color: var(--app-text-faint);
+    font-family: var(--app-font-mono);
+    color: var(--app-text-muted);
     align-self: center;
   }
 

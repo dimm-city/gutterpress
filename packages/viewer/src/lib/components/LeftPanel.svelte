@@ -473,8 +473,8 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: var(--app-scrim-modal);
-    z-index: 199;
+    background: var(--app-backdrop);
+    z-index: calc(var(--app-z-panel) - 1);
   }
   @media screen and (max-width: 820px) {
     .panel-scrim { display: block; }
@@ -496,7 +496,7 @@
     transition: transform 0.18s ease-out;
     /* Panel sits on top of workspace content on narrow screens */
     position: relative;
-    z-index: 200;
+    z-index: var(--app-z-panel);
   }
   /* No transform animation jitter while dragging the resize handle */
   .left-panel.resizing {
@@ -513,7 +513,7 @@
       top: 56px; /* toolbar height */
       left: 0;
       bottom: 0;
-      z-index: 200;
+      z-index: var(--app-z-panel);
       box-shadow: 4px 0 20px var(--app-shadow-md);
     }
   }
@@ -545,7 +545,7 @@
     border-radius: 4px 4px 0 0;
     font-size: 10px;
     font-weight: 500;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     cursor: pointer;
     white-space: nowrap;
     flex: 1 1 0;
@@ -634,7 +634,7 @@
     justify-content: center;
     gap: 10px;
     padding: 24px 16px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     text-align: center;
   }
   .empty-tab p { margin: 0; font-size: 12px; line-height: 1.5; }
@@ -661,7 +661,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     cursor: pointer;
   }
   .toc-twisty:hover { background: var(--app-control-hover-bg); color: var(--app-text); }
@@ -690,6 +690,6 @@
   .toc-item.toc-top { font-weight: 600; color: var(--app-text); }
   .toc-item.toc-sub { color: var(--app-text-muted); }
   .toc-text { overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
-  .toc-page { flex-shrink: 0; font-size: 10px; color: var(--app-text-faint); font-variant-numeric: tabular-nums; }
+  .toc-page { flex-shrink: 0; font-size: 10px; color: var(--app-text-muted); font-variant-numeric: tabular-nums; }
 
 </style>

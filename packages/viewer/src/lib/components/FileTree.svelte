@@ -685,7 +685,7 @@
   .file-tree-msg {
     margin: 0;
     padding: 12px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-size: 12px;
     line-height: 1.5;
   }
@@ -716,7 +716,7 @@
     flex: 0 0 auto;
     width: 13px;
     height: 13px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .file-item {
     display: flex;
@@ -753,7 +753,7 @@
   .file-item.folder :global(svg:first-child) {
     width: 13px;
     height: 13px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .file-name {
     overflow: hidden;
@@ -777,7 +777,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     cursor: pointer;
     /* WCAG 2.5.8: minimum target size 24×24px */
     min-width: 24px;

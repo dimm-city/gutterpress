@@ -124,7 +124,7 @@
         onclick={() => answer(false)}
       >Not now</button>
       <button
-        class="dlg-primary"
+        class="dlg-primary app-btn-primary"
         data-action="continue"
         onclick={() => answer(true)}
       >Continue</button>
@@ -144,7 +144,7 @@
   /* High-risk: a calm-but-distinct accent so it never reads identical to the
      medium dialog (three-judge gate). Amber edge + warning glyph, not alarm. */
   .dlg-shell.high {
-    border-top: 3px solid var(--app-warning, #d9a441);
+    border-top: 3px solid var(--app-warning-text);
   }
 
   .dlg-header {
@@ -155,7 +155,7 @@
   }
 
   .warn-glyph {
-    color: var(--app-warning, #d9a441);
+    color: var(--app-warning-text);
     display: inline-flex;
     align-items: center;
   }
@@ -164,7 +164,7 @@
     margin: 0 0 4px;
     font-size: 12px;
     line-height: 1.5;
-    color: var(--app-text-faint, var(--app-text-muted));
+    color: var(--app-text-muted);
   }
 
   .dialog-body {
@@ -221,12 +221,6 @@
     padding: 6px 16px;
   }
 
-  /* Gradient fill (see dialog-shell.css's note — a pre-existing, separately
-     filed inconsistency (L5), preserved here rather than unified). */
-  .dlg-primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
-  }
-  .dlg-primary:hover:not(:disabled) { background: var(--app-accent-hover); }
+  /* Primary-button colors come from the shared .app-btn-primary recipe
+     (theme.css) — the L5 convergence removed this dialog's local copy. */
 </style>

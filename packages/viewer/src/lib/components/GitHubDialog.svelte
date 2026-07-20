@@ -360,7 +360,7 @@
         {/if}
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={close}>Cancel</button>
-          <button bind:this={connectBtn} class="dlg-primary" onclick={connect} disabled={busy}>
+          <button bind:this={connectBtn} class="dlg-primary app-btn-primary" onclick={connect} disabled={busy}>
             {busy ? "Contacting GitHub…" : "Connect GitHub"}
           </button>
         </footer>
@@ -468,7 +468,7 @@
           <button class="dlg-ghost" onclick={() => (step = "repos")}>Back</button>
           <button class="dlg-ghost" onclick={close}>Cancel</button>
           <button
-            class="dlg-primary"
+            class="dlg-primary app-btn-primary"
             onclick={openProject}
             disabled={!destination || !folderName.trim() || busy}
           >{booksLoading ? "Looking inside…" : "Open project"}</button>
@@ -543,7 +543,7 @@
     flex: 1;
   }
   .hint { font-size: 13px; margin: 0; line-height: 1.5; }
-  .hint.subtle { color: var(--app-text-faint); font-size: 12px; }
+  .hint.subtle { color: var(--app-text-muted); font-size: 12px; }
   .connected-line { display: flex; align-items: center; gap: 8px; }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
   .link-btn {
@@ -556,7 +556,7 @@
     text-decoration: underline;
   }
   .user-code {
-    font-family: ui-monospace, monospace;
+    font-family: var(--app-font-mono);
     font-size: 28px;
     font-weight: 700;
     letter-spacing: 0.15em;
@@ -594,9 +594,9 @@
   .dest-row { display: flex; gap: 8px; align-items: center; }
   .dest-path {
     flex: 1;
-    font-family: ui-monospace, monospace;
+    font-family: var(--app-font-mono);
     font-size: 12px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -641,8 +641,8 @@
   }
   .book-path {
     font-size: 11px;
-    color: var(--app-text-faint);
-    font-family: ui-monospace, monospace;
+    color: var(--app-text-muted);
+    font-family: var(--app-font-mono);
     flex-shrink: 0;
   }
   .badge {
@@ -650,7 +650,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     border: 1px solid var(--app-border);
     border-radius: 4px;
     padding: 1px 6px;

@@ -222,7 +222,7 @@
   .cr-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: var(--app-z-modal);
     background: rgba(0, 0, 0, 0.5);
   }
   /* Dialog is now a sibling of the backdrop (not a child), so the dialog
@@ -234,7 +234,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 1001;
+    z-index: calc(var(--app-z-modal) + 1);
     width: min(520px, calc(100% - 48px));
     max-height: 80vh;
     overflow: auto;
@@ -303,7 +303,7 @@
   }
   .cr-time {
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .cr-item-actions {
     flex: 0 0 auto;
@@ -357,7 +357,7 @@
     background: transparent;
     border: 1px solid var(--app-border);
     border-radius: 5px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-size: 11px;
     cursor: pointer;
     padding: 3px 8px;
@@ -392,7 +392,7 @@
   .cr-pane-label {
     font-size: 10px;
     font-weight: 600;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 4px 8px;
@@ -403,7 +403,7 @@
   .cr-pane-content {
     margin: 0;
     padding: 8px;
-    font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+    font-family: var(--app-font-mono);
     font-size: 11px;
     line-height: 1.5;
     overflow-y: auto;
@@ -418,7 +418,7 @@
   .cr-pane-empty {
     margin: 0;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     padding: 4px 0;
   }
   .cr-pane-empty {

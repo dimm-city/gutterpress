@@ -127,11 +127,11 @@
   .plugin-list li, .rec-list li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
   .plugin-list li.disabled { opacity: 0.6; }
   .plugin-main, .rec-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .plugin-name { font-size: 12px; color: var(--app-text); font-family: ui-monospace, monospace; word-break: break-all; }
+  .plugin-name { font-size: 12px; color: var(--app-text); font-family: var(--app-font-mono); word-break: break-all; }
   .plugin-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; }
   .rec-label { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  .rec-pkg { font-size: 10px; color: var(--app-text-faint); font-family: ui-monospace, monospace; }
-  .added { font-size: 11px; color: var(--app-text-faint); font-style: italic; }
+  .rec-pkg { font-size: 10px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
+  .added { font-size: 11px; color: var(--app-text-muted); font-style: italic; }
 
   .toggle { flex-shrink: 0; width: 36px; height: 20px; border-radius: 10px; background: var(--app-border); border: 1px solid var(--app-border); position: relative; cursor: pointer; padding: 0; }
   .toggle.on { background: var(--app-focus-ring); border-color: var(--app-focus-ring); }

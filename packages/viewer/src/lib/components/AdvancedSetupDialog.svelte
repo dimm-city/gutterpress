@@ -431,7 +431,7 @@
         {/if}
         <div class="connect-actions">
           <button
-            class="dlg-primary"
+            class="dlg-primary app-btn-primary"
             onclick={connectServer}
             disabled={connecting || !serverInput.trim() || !tokenInput.trim()}
           >
@@ -547,11 +547,11 @@
   }
   h4 { margin: 10px 0 0; font-size: 12px; font-weight: 600; color: var(--app-text-muted); }
   .hint { font-size: 13px; margin: 0; line-height: 1.5; }
-  .hint.subtle { color: var(--app-text-faint); font-size: 12px; }
+  .hint.subtle { color: var(--app-text-muted); font-size: 12px; }
   .hint.ok { color: var(--app-text); }
   .hint.guidance { color: var(--app-text); }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
-  .mono { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+  .mono { font-family: var(--app-font-mono); font-size: 12px; word-break: break-all; }
   .link-btn {
     background: none;
     border: 0;
@@ -632,7 +632,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     border: 1px solid var(--app-border);
     border-radius: 4px;
     padding: 1px 6px;

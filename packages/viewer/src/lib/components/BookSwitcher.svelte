@@ -115,7 +115,7 @@
     border: 1px solid var(--app-border);
     border-radius: 6px;
     box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0, 0, 0, 0.12));
-    z-index: 300;
+    z-index: var(--app-z-popover);
   }
   .book-switcher-option {
     display: block;

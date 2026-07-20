@@ -183,7 +183,7 @@
   .reassurance {
     margin: 0;
     font-size: 12px;
-    color: var(--app-text-faint, var(--app-text-muted));
+    color: var(--app-text-muted);
     line-height: 1.5;
   }
 
@@ -213,7 +213,7 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: var(--app-accent-subtle, color-mix(in srgb, var(--app-focus-ring) 14%, transparent));
+    background: var(--app-accent-subtle);
     border: 2px solid var(--app-focus-ring);
     color: var(--app-focus-ring);
     font-size: 18px;

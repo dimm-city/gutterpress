@@ -163,7 +163,10 @@ describe("CrashRecoveryDialog — Compare versions preview (M12 fix 2)", () => {
 
   test("panes use a monospace font", () => {
     const source = readSource();
-    expect(source.includes("monospace") || source.includes("ui-monospace")).toBe(true);
+    // The shared --app-font-mono token (theme.css) or a literal stack both count.
+    expect(
+      source.includes("var(--app-font-mono)") || source.includes("monospace"),
+    ).toBe(true);
   });
 
   test("preview content has a max-height cap (prevents unbounded growth)", () => {

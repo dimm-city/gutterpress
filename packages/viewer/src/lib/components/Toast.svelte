@@ -109,7 +109,7 @@
     position: fixed;
     bottom: 24px;
     right: 24px;
-    z-index: 99999;
+    z-index: var(--app-z-toast);
     display: flex;
     flex-direction: column;
     gap: 10px;

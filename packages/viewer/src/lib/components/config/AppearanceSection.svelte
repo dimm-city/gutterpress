@@ -199,7 +199,7 @@
   .theme-fallback-line.short { width: 46px; }
   .theme-info { display: flex; flex-direction: column; gap: 1px; }
   .theme-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  .theme-author { font-size: 10px; color: var(--app-text-faint); }
+  .theme-author { font-size: 10px; color: var(--app-text-muted); }
   .theme-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   /* Armed Remove confirm (UX review M7): names the theme + warns customizations
      are gone for good, full-width above the Delete/Cancel pair. */

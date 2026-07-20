@@ -497,7 +497,7 @@
     font-size: 10.5px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     letter-spacing: 0.09em;
   }
   .reset {
@@ -521,7 +521,7 @@
   .row label { color: var(--app-text-secondary); }
   .row-toggle { align-items: center; }
   .row-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-faint); }
+  .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-muted); }
   .row input[type="text"],
   .row input[type="number"],
   .row select {
@@ -556,7 +556,7 @@
   .advanced-hint {
     text-transform: none;
     letter-spacing: 0;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-weight: 400;
   }
 </style>

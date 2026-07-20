@@ -356,7 +356,7 @@
     cursor: pointer;
   }
   button.sync-pill.warning:hover {
-    color: var(--app-warning-text-hover, var(--app-text));
+    color: var(--app-text);
     text-decoration: underline;
     text-underline-offset: 2px;
   }

@@ -259,7 +259,7 @@
   .sections { display: flex; flex-direction: column; gap: 16px; padding: 14px 16px 24px; }
   .sections.embedded { padding-top: 12px; }
 
-  .empty { padding: 24px; text-align: center; color: var(--app-text-faint); font-size: 13px; }
+  .empty { padding: 24px; text-align: center; color: var(--app-text-muted); font-size: 13px; }
 
   /* UX review M35 — the merged "Look & style" section. `.block`/`h3` come
      from the shared import above; only the layout gap between its three

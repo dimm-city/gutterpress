@@ -111,7 +111,7 @@ describe("PublishWizard — guided, multi-target, reuses saved connections", () 
   });
   test("uses the shared dialog form conventions, not config-section classes (#3)", () => {
     expect(wiz).toContain('@import "$lib/styles/dialog-shell.css"');
-    expect(wiz).toContain('class="dlg-primary"');
+    expect(wiz).toContain('class="dlg-primary app-btn-primary"');
     expect(wiz).toContain('class="dlg-ghost"');
     expect(wiz).toContain('class="field"');
     expect(wiz).not.toContain("config-section-shared.css");

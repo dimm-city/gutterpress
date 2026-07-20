@@ -14,7 +14,7 @@
    *   visible pixels (the 0.4.1 slow-render regression). No backdrop-filter:
    *   a full-window blur re-composites on every iframe paint for the whole
    *   pre-render, which taxes exactly the machines the pre-render is slow on.
-   * - z-index sits above the toolbar (100) and the app loading overlay (50),
+   * - z-index (--app-z-sheet) sits above the toolbar and the app loading overlay,
    *   below dialogs (1000+) and the export pill (950). Dialogs open above
    *   this layer.
    *
@@ -351,7 +351,7 @@
   .landing {
     position: fixed;
     inset: 0;
-    z-index: 900; /* above toolbar (100) + app overlay (50); below export pill (950) and dialogs (1000+) */
+    z-index: var(--app-z-sheet); /* above --app-z-toolbar + --app-z-overlay; below the export pill (sheet+50) and --app-z-modal */
     background: var(--app-bg);
     overflow-y: auto;
     display: flex;
@@ -394,7 +394,7 @@
   .brand-icon-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .brand-icon { font-size: 18px; }
   .brand-name { font-size: 15px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
-  .brand-version { font-size: 11px; color: var(--app-text-faint); }
+  .brand-version { font-size: 11px; color: var(--app-text-muted); }
 
   .update-chip {
     background: var(--app-success-bg);

@@ -425,7 +425,7 @@
     /* The bar is a flex row; ProblemsPanel sits in the right cluster and
        grows upward when expanded (flex-direction: column-reverse inside). */
     position: relative;
-    z-index: 300;
+    z-index: var(--app-z-popover);
     /* Never cover the preview iframe — normal document flow, no overlap. */
     overflow: visible;
   }
@@ -545,7 +545,7 @@
     border: 1px solid var(--app-border);
     border-radius: 8px;
     box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0,0,0,0.18));
-    z-index: 400;
+    z-index: var(--app-z-menu);
   }
   .summary-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .summary-rows li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -634,7 +634,7 @@
     border: 1px solid var(--app-border);
     border-bottom: none;
     box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0,0,0,0.12));
-    z-index: 300;
+    z-index: var(--app-z-popover);
   }
 
   /* L9: below 820px the "grows upward from the bar" panel has no room to be
@@ -648,7 +648,7 @@
     bottom: 0;
     left: 0;
     max-height: none;
-    z-index: 900;
+    z-index: var(--app-z-sheet);
   }
   .shell-actions {
     display: flex;
