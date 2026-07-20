@@ -25,6 +25,46 @@ test("execCapture rejects with a signal-named message when child is killed by a 
   expect(err!.message).toContain("SIGTERM");
 });
 
+// --- exact error message formats (pins for the spawn-consolidation claim
+// that execCapture's messages are byte-identical to the pre-consolidation
+// copies — asserted with toBe, not toContain, so ANY drift in wording,
+// ordering, separators, or the stderr suffix fails these) -----------------
+
+test("execCapture timeout rejection message is byte-exact: '<cmd> <args> timed out after <ms>ms'", async () => {
+  let err: Error | undefined;
+  try {
+    await execCapture("sh", ["-c", "sleep 5"], { timeoutMs: 100 });
+  } catch (e) {
+    err = e as Error;
+  }
+  expect(err).toBeDefined();
+  expect(err!.message).toBe("sh -c sleep 5 timed out after 100ms");
+});
+
+test("execCapture non-zero-exit rejection message is byte-exact: '<cmd> exited <code>\\n<stderr>'", async () => {
+  let err: Error | undefined;
+  try {
+    await execCapture("sh", ["-c", "echo boom >&2; exit 7"]);
+  } catch (e) {
+    err = e as Error;
+  }
+  expect(err).toBeDefined();
+  expect(err!.message).toBe("sh exited 7\nboom\n");
+});
+
+test("execCapture signal-death rejection message is byte-exact: '<cmd> was killed by signal <sig>\\n<stderr>'", async () => {
+  // SIGKILL cannot be trapped, so code=null / signal="SIGKILL" and an empty
+  // stderr are fully deterministic.
+  let err: Error | undefined;
+  try {
+    await execCapture("sh", ["-c", "kill -KILL $$"]);
+  } catch (e) {
+    err = e as Error;
+  }
+  expect(err).toBeDefined();
+  expect(err!.message).toBe("sh was killed by signal SIGKILL\n");
+});
+
 // --- PATH construction (arch finding #3: exec.ts hardcoded ":" while
 // tool-probe.ts correctly used node:path's `delimiter`) -------------------
 

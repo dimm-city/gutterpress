@@ -2,8 +2,22 @@ import type { Check, CheckCategory, CheckPhase } from "./types";
 
 const checks = new Map<string, Check>();
 
-export function registerCheck(check: Check): void {
+/**
+ * Register a check in the process-global registry.
+ *
+ * Returns an unregister function so temporary registrations (tests, mainly)
+ * can remove themselves — the registry is a module-level Map shared by every
+ * caller in the process, so a leaked throwaway check would silently run in
+ * every later unfiltered `runChecks`. The returned function is idempotent and
+ * only removes the exact check it registered (a later re-registration under
+ * the same id is left untouched). Built-in check modules ignore the return
+ * value; they register once at import and live for the process.
+ */
+export function registerCheck(check: Check): () => void {
   checks.set(check.id, check);
+  return () => {
+    if (checks.get(check.id) === check) checks.delete(check.id);
+  };
 }
 
 export interface CheckFilter {

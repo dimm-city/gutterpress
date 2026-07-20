@@ -12,6 +12,7 @@
  * the key — the stable key "shopify" is, so switching shops re-prompts) or
  * SHOPIFY_ADMIN_TOKEN in CI.
  */
+import { FriendlyHttpError, withFetchTimeout } from "../../fetch-timeout.ts";
 import {
   resolvePublishCredential,
   type PreflightIssue,
@@ -26,6 +27,11 @@ import {
 
 export const SHOPIFY_HOST = "shopify";
 const DEFAULT_API_VERSION = "2026-04";
+
+/** Total deadline per Admin API call (shared fetch-timeout policy — a stalled
+ * connection must not hang the publish pipeline). Covers the body read too;
+ * 30s is generous for one GraphQL query/mutation on a slow store. */
+const SHOPIFY_API_TIMEOUT_MS = 30_000;
 
 /**
  * The Admin API lives on the store's canonical `*.myshopify.com` domain only.
@@ -111,26 +117,43 @@ async function adminGraphQL(
     );
   }
   const fetchFn = req.deps.fetch ?? globalThis.fetch;
-  const response = await fetchFn(
-    `https://${shop}/admin/api/${apiVersion}/graphql.json`,
+  // The whole request — including the body read — runs under the shared
+  // deadline; status errors are already author-friendly (FriendlyHttpError),
+  // so only genuine network failures get the offline/timeout mapping.
+  const payload = await withFetchTimeout(
     {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": resolved.credential.token,
-      },
-      body: JSON.stringify({ query, variables }),
+      timeoutMs: SHOPIFY_API_TIMEOUT_MS,
+      timeoutMessage:
+        "Shopify didn't respond in time. Check your connection and try again.",
+      offlineMessage:
+        "Couldn't reach Shopify. Check your connection and try again.",
+    },
+    async (signal) => {
+      const response = await fetchFn(
+        `https://${shop}/admin/api/${apiVersion}/graphql.json`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": resolved.credential.token,
+          },
+          body: JSON.stringify({ query, variables }),
+          signal,
+        },
+      );
+      if (response.status === 401 || response.status === 403) {
+        throw new FriendlyHttpError(
+          "Shopify rejected the access token. Re-create the custom app token (with write_products scope) and reconnect.",
+        );
+      }
+      if (!response.ok) {
+        throw new FriendlyHttpError(
+          `Shopify API request failed (HTTP ${response.status}).`,
+        );
+      }
+      return (await response.json()) as GraphQLResponse;
     },
   );
-  if (response.status === 401 || response.status === 403) {
-    throw new Error(
-      "Shopify rejected the access token. Re-create the custom app token (with write_products scope) and reconnect.",
-    );
-  }
-  if (!response.ok) {
-    throw new Error(`Shopify API request failed (HTTP ${response.status}).`);
-  }
-  const payload = (await response.json()) as GraphQLResponse;
   if (payload.errors?.length) {
     throw new Error(`Shopify API error: ${payload.errors[0]!.message}`);
   }

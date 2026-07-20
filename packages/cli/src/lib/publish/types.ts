@@ -132,7 +132,7 @@ export type CommandRunner = (
  */
 export interface PublishDeps {
   tokenStore: TokenStore;
-  /** HTTP seam (Shopify, butler download). Defaults to global fetch. */
+  /** HTTP seam (itch.io check, Shopify, butler download). Defaults to global fetch. */
   fetch?: typeof globalThis.fetch;
   /** Child-process seam (butler, swa). Defaults to node spawn. */
   runCommand?: CommandRunner;

@@ -15,6 +15,39 @@ function writeScript(body: string): string {
   return p;
 }
 
+/**
+ * Instrumented setTimeout spy that records, for every timer armed while it
+ * is installed, the callback, the delay, AND the arming call stack — then
+ * passes through to the real setTimeout. `runnerIdleTimers()` filters to
+ * timers that (a) use the exact idle delay and (b) were armed from the
+ * runner's spawn core (armKill in exec.ts), so unrelated code arming a
+ * 300000ms timer while the process-wide spy is installed can neither
+ * false-fail an "arms nothing" assertion nor hand us a foreign callback
+ * to invoke. Tests that rely on the provenance filter must include a
+ * positive control (a call known to arm the timer) so a rename of
+ * armKill/exec.ts fails loudly instead of passing vacuously.
+ */
+function trackTimers() {
+  const original = globalThis.setTimeout;
+  const armed: { cb: () => void; delay: unknown; stack: string }[] = [];
+  const spy = spyOn(globalThis, "setTimeout").mockImplementation(((
+    cb: () => void,
+    delay?: number,
+    ...rest: unknown[]
+  ) => {
+    armed.push({ cb, delay, stack: new Error().stack ?? "" });
+    return (original as (...a: unknown[]) => ReturnType<typeof setTimeout>)(cb, delay, ...rest);
+  }) as unknown as typeof setTimeout);
+  return {
+    armed,
+    runnerIdleTimers: () =>
+      armed.filter(
+        (t) => t.delay === PUBLISH_IDLE_TIMEOUT_MS && /armKill|exec\.ts/.test(t.stack),
+      ),
+    restore: () => spy.mockRestore(),
+  };
+}
+
 describe("defaultCommandRunner idle timeout (audit B2)", () => {
   it("kills a child that produces no output within timeoutMs", async () => {
     // Sleeps far longer than the timeout and prints nothing.
@@ -47,31 +80,87 @@ describe("defaultCommandRunner idle timeout (audit B2)", () => {
   });
 
   it("timeoutMs: 0 explicitly disables the idle timeout", async () => {
-    const spy = spyOn(globalThis, "setTimeout");
-    spy.mockClear();
+    const timers = trackTimers();
     try {
       const script = writeScript("echo hi");
+      // Positive control: an omitted-timeoutMs call must arm the idle timer,
+      // proving the delay+provenance filter actually matches the runner's
+      // timers before we assert its absence below.
+      await defaultCommandRunner("/bin/sh", [script]);
+      expect(timers.runnerIdleTimers().length).toBeGreaterThanOrEqual(1);
+      timers.armed.length = 0;
+
       const res = await defaultCommandRunner("/bin/sh", [script], { timeoutMs: 0 });
       expect(res.code).toBe(0);
       expect(res.stdout).toContain("hi");
-      expect(spy.mock.calls.map((c) => c[1])).not.toContain(PUBLISH_IDLE_TIMEOUT_MS);
+      expect(timers.runnerIdleTimers().length).toBe(0);
     } finally {
-      spy.mockRestore();
+      timers.restore();
     }
   });
 
-  it("arms the default idle timeout when timeoutMs is omitted", async () => {
+  it("default timeout: the armed idle timer, when fired, kills the child and rejects", async () => {
     // Call sites that forget timeoutMs (e.g. commandExists probes) must not
     // silently regain hang-forever behavior — the runner itself defaults it.
-    const spy = spyOn(globalThis, "setTimeout");
-    spy.mockClear();
+    // Asserting only "some timer was armed with the right delay" would stay
+    // green if the timer were inert (cleared immediately / rejection dropped),
+    // so this test fires the armed callback by hand and asserts the real
+    // consequences: the child dies and the runner rejects with the idle
+    // message. The 30s sleep makes an unkilled child observable.
+    const timers = trackTimers();
     try {
-      const script = writeScript("echo hi");
-      await defaultCommandRunner("/bin/sh", [script]);
-      const delays = spy.mock.calls.map((c) => c[1]);
-      expect(delays).toContain(PUBLISH_IDLE_TIMEOUT_MS);
+      const script = writeScript('echo "pid=$$"\nsleep 0.05\necho tick\nsleep 30');
+      let pid = 0;
+      let tickSeen!: () => void;
+      const gotTick = new Promise<void>((r) => {
+        tickSeen = r;
+      });
+      const runner = defaultCommandRunner("/bin/sh", [script], {
+        onOutput: (line) => {
+          const m = /^pid=(\d+)$/.exec(line.trim());
+          if (m) pid = Number(m[1]);
+          if (line.trim() === "tick") tickSeen();
+        },
+      });
+      // Attach both handlers NOW: the manual firing below cannot leave an
+      // unhandled-rejection window, and the promise is awaited exactly once.
+      const settled = runner.then(
+        () => null,
+        (e: unknown) => e as Error,
+      );
+      await gotTick;
+
+      // Idle-mode pin: armed once at spawn, RE-armed with the same delay on
+      // each output chunk — a "total"-mode regression arms exactly once.
+      const idleTimers = timers.runnerIdleTimers();
+      expect(idleTimers.length).toBeGreaterThanOrEqual(2);
+
+      // Fire the currently-armed timer ~300s early. (Firing a stale, already
+      // -cleared arm would be equivalent: settle() is idempotent.)
+      idleTimers[idleTimers.length - 1]!.cb();
+
+      const err = await settled;
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toContain(
+        `produced no output for ${PUBLISH_IDLE_TIMEOUT_MS}ms`,
+      );
+
+      // The kill is real: the shell printed its own pid ($$ === child.pid),
+      // and it must die promptly instead of finishing its 30s sleep.
+      expect(pid).toBeGreaterThan(0);
+      const deadline = Date.now() + 3000;
+      let alive = true;
+      while (alive && Date.now() < deadline) {
+        try {
+          process.kill(pid, 0);
+          await new Promise((r) => setTimeout(r, 20));
+        } catch {
+          alive = false;
+        }
+      }
+      expect(alive).toBe(false);
     } finally {
-      spy.mockRestore();
+      timers.restore();
     }
   });
 });

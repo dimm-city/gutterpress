@@ -6,6 +6,7 @@
  * non-interactive mode). The key comes from the injected TokenStore (host
  * "itch.io") or the BUTLER_API_KEY env var in CI. It is NEVER placed in argv.
  */
+import { withFetchTimeout } from "../../fetch-timeout.ts";
 import { ensureButler } from "../butler.ts";
 import { defaultCommandRunner } from "../command-runner.ts";
 import {
@@ -20,6 +21,10 @@ import {
 
 export const ITCH_HOST = "itch.io";
 const TARGET_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
+/** Total deadline for the api.itch.io credential check (shared fetch-timeout
+ * policy — a stalled connection must not hang the publish pipeline). */
+const ITCH_API_TIMEOUT_MS = 15_000;
 
 const info: PublishProviderInfo = {
   id: "itch",
@@ -79,14 +84,25 @@ export const itchProvider: PublishProvider = {
     const fetchFn = req.deps.fetch ?? globalThis.fetch;
     let response: Response;
     try {
-      response = await fetchFn("https://api.itch.io/profile", {
-        headers: { Authorization: `Bearer ${resolved.credential.token}` },
-      });
-    } catch {
+      response = await withFetchTimeout(
+        {
+          timeoutMs: ITCH_API_TIMEOUT_MS,
+          timeoutMessage:
+            "itch.io didn't respond in time. Check your connection and try again.",
+          offlineMessage:
+            "Couldn't reach itch.io. Check your connection and try again.",
+        },
+        (signal) =>
+          fetchFn("https://api.itch.io/profile", {
+            headers: { Authorization: `Bearer ${resolved.credential.token}` },
+            signal,
+          }),
+      );
+    } catch (e) {
       return {
         ok: false,
         source: resolved.source,
-        message: "Couldn't reach itch.io. Check your connection and try again.",
+        message: e instanceof Error ? e.message : String(e),
       };
     }
     if (response.status === 401 || response.status === 403) {

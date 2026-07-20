@@ -25,7 +25,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   repair on next launch).
 - Publish tools that hand output to a helper process no longer risk truncated
   output, and every publish command now gets the stalled-network timeout by
-  default instead of only where a provider remembered to pass it.
+  default instead of only where a provider remembered to pass it. The itch.io
+  and Shopify API calls (and theme imports from a URL) now time out on a
+  stalled connection too, with the same friendly messages.
+- When background auto-sync fails, the sync status now shows the actual
+  explanation (for example the insecure-address guidance) instead of only a
+  generic error state.
 
 ### Changed
 
