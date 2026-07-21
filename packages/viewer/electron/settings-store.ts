@@ -37,6 +37,28 @@ export function mergeSettings(base: AppSettings, patch: DeepPartialSettings): Ap
   return deepMergeSettings(base, patch);
 }
 
+/**
+ * Legacy-shape migration, applied to the parsed on-disk JSON before the
+ * defaults merge. Pre-0.8.2 files stored `updates.includePrereleases`
+ * (boolean); the schema is now `updates.channel` ("stable" | "beta" |
+ * "alpha"). An old opt-in maps to "beta" — the closest match for what the
+ * toggle meant ("get prereleases before the stable release"). A file that
+ * already has `channel` is left alone, so this cannot fight the new setting.
+ */
+export function migrateLegacySettings(stored: DeepPartialSettings): DeepPartialSettings {
+  const updates = stored.updates as
+    | { channel?: unknown; includePrereleases?: unknown }
+    | undefined;
+  if (updates && updates.channel === undefined && typeof updates.includePrereleases === "boolean") {
+    const { includePrereleases, ...rest } = updates;
+    return {
+      ...stored,
+      updates: { ...rest, channel: includePrereleases ? "beta" : "stable" },
+    } as DeepPartialSettings;
+  }
+  return stored;
+}
+
 export interface SettingsStoreDeps {
   getUserDataDir(): string;
   fs: {
@@ -74,7 +96,7 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
       throw err;
     }
     try {
-      const stored = JSON.parse(raw) as DeepPartialSettings;
+      const stored = migrateLegacySettings(JSON.parse(raw) as DeepPartialSettings);
       return mergeSettings(DEFAULT_SETTINGS, stored);
     } catch (err) {
       // The file exists but isn't valid JSON. Preserve it instead of

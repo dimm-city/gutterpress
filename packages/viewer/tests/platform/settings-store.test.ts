@@ -217,12 +217,34 @@ test("readSettings fills in preview.splitRatio default for a stored file missing
   expect(s.preview.splitRatio).toBe(DEFAULT_SETTINGS.preview.splitRatio);
 });
 
-test("readSettings defaults prerelease updates off for existing settings files", async () => {
+test("readSettings defaults the update channel to stable for existing settings files", async () => {
   const { store } = makeStore({
     readFileImpl: async () => JSON.stringify({ appearance: { theme: "dark" } }),
   });
 
-  expect((await store.readSettings()).updates.includePrereleases).toBe(false);
+  expect((await store.readSettings()).updates.channel).toBe("stable");
+});
+
+test("readSettings migrates the legacy includePrereleases flag to a channel", async () => {
+  // Pre-0.8.2 files stored a boolean opt-in; true maps to the beta channel.
+  const optedIn = makeStore({
+    readFileImpl: async () => JSON.stringify({ updates: { includePrereleases: true } }),
+  });
+  expect((await optedIn.store.readSettings()).updates.channel).toBe("beta");
+
+  const optedOut = makeStore({
+    readFileImpl: async () => JSON.stringify({ updates: { includePrereleases: false } }),
+  });
+  expect((await optedOut.store.readSettings()).updates.channel).toBe("stable");
+});
+
+test("readSettings prefers an explicit channel over a leftover legacy flag", async () => {
+  const { store } = makeStore({
+    readFileImpl: async () =>
+      JSON.stringify({ updates: { channel: "alpha", includePrereleases: false } }),
+  });
+
+  expect((await store.readSettings()).updates.channel).toBe("alpha");
 });
 
 test("writeSettings mkdirs the userDataDir, writes pretty JSON to <settingsPath>.tmp, then renames over settingsPath", async () => {

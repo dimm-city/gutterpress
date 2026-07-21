@@ -4,16 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release (e.g. 1.2.3, or 1.2.3-beta.1 for a prerelease). Stable releases must be dispatched from the default branch; prerelease versions (with a '-') may ALSO be dispatched from a release/* branch. Bumps package.json, builds all artifacts, verifies on Windows, then creates a GitHub release."
+        description: "Version to release: 1.2.3 (stable), 1.2.3-beta.1, or 1.2.3-alpha.1. Only alpha/beta prerelease suffixes are accepted — they are the app's update channels (electron-updater treats anything else, e.g. rc, as a custom channel that strands its users). Stable releases must be dispatched from the default branch; prereleases may ALSO be dispatched from a release/* branch. Bumps package.json, builds all artifacts, verifies on Windows, then creates a GitHub release."
         required: true
         type: string
       skip_npm_publish:
         description: "Skip publishing to npm. Default false — npm publishes via OIDC trusted publishing. Set true only to intentionally hold back the npm release."
-        required: false
-        type: boolean
-        default: false
-      skip_viewer:
-        description: "Skip building the Electron viewer installers. Set true for a RUNTIME release: the UI/engine ship via the npm package + a GitHub release, without rebuilding/redistributing the desktop installers. The CLI binaries are still built and attached."
         required: false
         type: boolean
         default: false
@@ -84,6 +79,12 @@ jobs:
       # version string contains a '-', e.g. 0.4.0-beta.1) may also be cut from a
       # release/* branch, so a release line can ship betas to testers before it
       # merges to the default branch. Anything else is rejected.
+      #
+      # Prerelease suffixes are restricted to -alpha.N / -beta.N: those are the
+      # app's update channels. electron-updater hardcodes alpha/beta as its
+      # known channels — any other suffix (rc included) is a "custom channel"
+      # whose users are only ever offered releases with that exact suffix, so
+      # they'd never see the stable release that follows.
       - name: Validate dispatch branch and version
         env:
           BRANCH: ${{ github.ref_name }}
@@ -94,8 +95,8 @@ jobs:
           VERSION="$(echo "$VERSION" | sed -E 's/^[^0-9]*([0-9])/\1/')"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Invalid version format: $VERSION (expected semver, e.g. 1.2.3 or 1.2.3-beta.1)"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid version: $VERSION (expected 1.2.3, 1.2.3-beta.1, or 1.2.3-alpha.1 — alpha/beta are the only prerelease channels the app's updater recognizes)"
             exit 1
           fi
           if [ "$BRANCH" = "$DEFAULT" ]; then
@@ -113,12 +114,12 @@ jobs:
         with:
           ref: ${{ github.ref_name }}
 
-      # Finding #44: stable releases must ship with a changelog entry. Beta and
-      # release-candidate dispatches are iteration builds, so their notes can
-      # remain under Unreleased until the stable release is cut.
+      # Finding #44: stable releases must ship with a changelog entry.
+      # Alpha/beta dispatches are iteration builds, so their notes can remain
+      # under Unreleased until the stable release is cut.
       - name: Verify CHANGELOG.md has an entry for this version
         run: |
-          if echo "$VERSION" | grep -qE -- '-(beta|rc)'; then
+          if echo "$VERSION" | grep -q -- '-'; then
             echo "Skipping changelog check for prerelease $VERSION."
             exit 0
           fi
@@ -198,7 +199,7 @@ jobs:
 
   # ── 3. Build all artifacts in parallel ────────────────────────────────────
   #
-  # All three jobs fan out from `version` simultaneously:
+  # All four jobs fan out from `version` simultaneously:
   #   build-cli          — 5 CLI binaries via Bun cross-compile (ubuntu)
   #   build-viewer-linux   — Linux AppImage (ubuntu)
   #   build-viewer-windows — Windows installer + portable zip (windows)
@@ -206,6 +207,12 @@ jobs:
   #
   # All artifacts are uploaded as GitHub Actions artifacts and assembled
   # into the GitHub Release in one shot by the `github-release` job.
+  #
+  # The viewer jobs are UNCONDITIONAL: every GitHub release is the viewer's
+  # electron-updater feed, so a release without the installers and the
+  # latest.yml / latest-linux.yml feed files breaks update checks for every
+  # user whose channel resolves to it (this shipped once, as 0.8.2-rc.1 —
+  # the former skip_viewer "RUNTIME release" mode was removed for this).
 
   build-cli:
     name: CLI / ${{ matrix.artifact }}
@@ -273,7 +280,6 @@ jobs:
   build-viewer-linux:
     name: Viewer / Linux AppImage
     needs: version
-    if: ${{ !inputs.skip_viewer }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -322,7 +328,6 @@ jobs:
   build-viewer-windows:
     name: Viewer / Windows installer + zip
     needs: version
-    if: ${{ !inputs.skip_viewer }}
     # electron-builder handles Electron download, exe rename, icon embedding, zip.
     # No afterPack hook: the lib ships as a normal node_modules dependency that
     # electron-builder walks automatically (see electron-builder.yml).
@@ -357,7 +362,6 @@ jobs:
   build-viewer-mac:
     name: Viewer / macOS DMG
     needs: version
-    if: ${{ !inputs.skip_viewer }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -399,24 +403,14 @@ jobs:
   publish-npm:
     name: Publish to npm
     # Finding #48: gate npm on the FULL artifact set, not just build-cli. npm
-    # is the one artifact users install unconditionally (no `if-no-files-found`
-    # opt-out like the GitHub release assets), so it must never publish a
-    # version whose GitHub release could still fail to materialize. This
-    # mirrors the github-release job's own gate below — `always()` +
-    # explicit success/skipped checks — rather than relying on `needs`' default
-    # skip-on-failure, because a plain `needs` skip on skip_viewer's
-    # intentionally-skipped viewer jobs would also (wrongly) skip npm publish.
+    # is the one artifact users install unconditionally, so it must never
+    # publish a version whose GitHub release could still fail to materialize.
+    # Plain `needs` semantics give exactly that: every build job must succeed
+    # or this job is skipped (the viewer jobs are unconditional now, so no
+    # success-or-skipped special-casing is needed anymore).
     needs:
       [version, build-cli, build-viewer-linux, build-viewer-windows, build-viewer-mac, verify-windows]
-    if: |
-      always() &&
-      !inputs.skip_npm_publish &&
-      needs.version.result == 'success' &&
-      needs.build-cli.result == 'success' &&
-      needs.verify-windows.result == 'success' &&
-      (needs.build-viewer-linux.result == 'success' || needs.build-viewer-linux.result == 'skipped') &&
-      (needs.build-viewer-windows.result == 'success' || needs.build-viewer-windows.result == 'skipped') &&
-      (needs.build-viewer-mac.result == 'success' || needs.build-viewer-mac.result == 'skipped')
+    if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -517,14 +511,17 @@ jobs:
       - build-viewer-mac
       - publish-npm
       - verify-windows
+    # `always()` exists ONLY so an intentionally-skipped publish-npm
+    # (skip_npm_publish) doesn't skip the release; every build job must have
+    # actually succeeded.
     if: |
       always() &&
       needs.version.result == 'success' &&
       needs.build-cli.result == 'success' &&
       needs.verify-windows.result == 'success' &&
-      (needs.build-viewer-linux.result == 'success' || needs.build-viewer-linux.result == 'skipped') &&
-      (needs.build-viewer-windows.result == 'success' || needs.build-viewer-windows.result == 'skipped') &&
-      (needs.build-viewer-mac.result == 'success' || needs.build-viewer-mac.result == 'skipped') &&
+      needs.build-viewer-linux.result == 'success' &&
+      needs.build-viewer-windows.result == 'success' &&
+      needs.build-viewer-mac.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
@@ -544,19 +541,54 @@ jobs:
           pattern: "print-md-*"
 
       - name: Download viewer artifacts
-        if: ${{ !inputs.skip_viewer }}
         uses: actions/download-artifact@v6
         with:
           path: dist/
           merge-multiple: true
           pattern: "viewer-*"
 
-      - name: Verify release assets were downloaded
+      # Update-feed integrity gate: every release doubles as the viewer's
+      # electron-updater feed, so a missing feed file or installer must fail
+      # HERE, loudly — not ship as a release that 404s every update check
+      # (the 0.8.2-rc.1 incident). Checks: all named assets exist, the feed
+      # files advertise exactly this release's version, and every artifact a
+      # feed file references is among the assets being uploaded.
+      - name: Verify release assets (update-feed integrity)
         run: |
-          if [ -z "$(ls -A dist)" ]; then
-            echo "No release assets were downloaded into dist/."
-            exit 1
-          fi
+          set -euo pipefail
+          TAG="${{ needs.version.outputs.tag }}"
+          VERSION="${TAG#v}"
+          ls -l dist/
+
+          missing=0
+          for f in \
+            print-md-cli-linux-x64 print-md-cli-linux-arm64 \
+            print-md-cli-macos-x64 print-md-cli-macos-arm64 \
+            print-md-cli-windows-x64.exe \
+            latest.yml latest-linux.yml; do
+            if [ ! -f "dist/$f" ]; then
+              echo "::error::Missing release asset: $f"
+              missing=1
+            fi
+          done
+          # The DMG is the manual macOS download channel (no auto-update yet).
+          ls dist/*.dmg >/dev/null 2>&1 || { echo "::error::Missing macOS DMG"; missing=1; }
+          [ "$missing" -eq 0 ]
+
+          for f in latest.yml latest-linux.yml; do
+            feed_version="$(sed -n 's/^version: *//p' "dist/$f" | head -1)"
+            if [ "$feed_version" != "$VERSION" ]; then
+              echo "::error::dist/$f advertises version '$feed_version' but this release is $VERSION"
+              exit 1
+            fi
+            grep -E '^\s*(- )?(url|path): ' "dist/$f" | sed -E 's/^\s*(- )?(url|path): *//' | sort -u |
+              while read -r ref; do
+                if [ ! -f "dist/$ref" ]; then
+                  echo "::error::dist/$f references '$ref', which is not among the release assets"
+                  exit 1
+                fi
+              done
+          done
 
       - name: Create GitHub release
         run: |

@@ -1614,7 +1614,7 @@ function sendUpdaterEvent(event: UpdaterEventPayload) {
   safeSend("updater:event", event);
 }
 initUpdater(sendUpdaterEvent, {
-  readAllowPrerelease: async () => (await readSettings()).updates.includePrereleases,
+  readUpdateChannel: async () => (await readSettings()).updates.channel,
 });
 
 secureHandle("updater:applyNow", async () => {

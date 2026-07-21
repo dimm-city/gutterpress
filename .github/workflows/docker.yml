@@ -3,15 +3,16 @@ name: Docker image
 # Builds and publishes the print-md CLI container to GitHub Container Registry.
 # Multi-arch (amd64 + arm64) via QEMU/buildx.
 #
-# NORMAL PATH: release.yml's github-release job dispatches this workflow at
-# the release tag after creating the GitHub release. The `release: published`
-# trigger below can only fire for manually-published releases — releases
-# created by release.yml use GITHUB_TOKEN, whose events GitHub suppresses
-# (workflow_dispatch is the documented exception).
+# workflow_dispatch is the ONLY trigger: release.yml's github-release job
+# dispatches this workflow at the release tag after creating the GitHub
+# release (an explicit dispatch because GitHub suppresses workflow-triggering
+# events from anything created with a workflow's own GITHUB_TOKEN). The former
+# `release: published` trigger could only ever fire for a hand-published
+# release, which shouldn't exist — release.yml is the single publish path —
+# so it was removed rather than left as a way to push a container by
+# accident.
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -43,16 +44,17 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/print-md
           tags: |
+            # Semver tags (X.Y.Z + the X.Y moving tag) apply when the run is
+            # at a v* tag ref — release.yml dispatches with `--ref v<version>`.
+            # metadata-action skips the moving tags for prerelease versions.
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            # `latest` for stable versions only: release events that aren't
-            # prereleases, or dispatches for a stable version (no '-' in the
-            # tag) running AT the matching release tag ref — release.yml
-            # dispatches with `--ref v<version> -f tag=<version>`. The ref
-            # match keeps ad-hoc dispatches (e.g. tag "test" from a branch)
-            # from ever overwriting `latest`.
-            type=raw,value=latest,enable=${{ (github.event_name == 'release' && github.event.release.prerelease == false) || (github.event_name == 'workflow_dispatch' && !contains(inputs.tag, '-') && github.ref == format('refs/tags/v{0}', inputs.tag)) }}
-            type=raw,value=${{ inputs.tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            # `latest` for stable versions only: no '-' in the tag, running AT
+            # the matching release tag ref. The ref match keeps ad-hoc
+            # dispatches (e.g. tag "test" from a branch) from ever
+            # overwriting `latest`.
+            type=raw,value=latest,enable=${{ !contains(inputs.tag, '-') && github.ref == format('refs/tags/v{0}', inputs.tag) }}
+            type=raw,value=${{ inputs.tag }}
 
       - uses: docker/build-push-action@v6
         with:

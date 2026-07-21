@@ -27,6 +27,17 @@
 
 // ── Auto-update (electron-updater — full-app updates from GitHub) ─────────
 
+/**
+ * Which release stream desktop update checks follow. Channels are inclusive
+ * downward: "beta" also receives stable releases, "alpha" receives all three.
+ * Release tags carry the channel (`vX.Y.Z-beta.N` / `vX.Y.Z-alpha.N`; no
+ * suffix = stable) — the ONLY prerelease suffixes the release workflow
+ * accepts, because electron-updater hardcodes alpha/beta as its known
+ * channels and treats anything else (e.g. `rc`) as a custom channel that
+ * strands its users.
+ */
+export type UpdateChannel = "stable" | "beta" | "alpha";
+
 export interface UpdaterStatus {
   currentVersion: string | null;
   /** Version downloaded and ready to install on restart. */
@@ -119,8 +130,8 @@ export interface AppSettings {
     splitRatio: number;
   };
   updates: {
-    /** Include release candidates and other prereleases in desktop update checks. */
-    includePrereleases: boolean;
+    /** Release stream for desktop update checks (see UpdateChannel above). */
+    channel: UpdateChannel;
   };
   versionHistory: {
     /**
@@ -186,7 +197,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     splitRatio: 0.42,
   },
   updates: {
-    includePrereleases: false,
+    channel: "stable",
   },
   versionHistory: {
     autoSnapshot: true,

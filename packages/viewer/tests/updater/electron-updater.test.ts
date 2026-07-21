@@ -49,6 +49,7 @@ class FakeAutoUpdater extends EventEmitter {
   autoDownload = true;
   autoInstallOnAppQuit = false;
   allowPrerelease = false;
+  _channel: string | null = null;
   checkCalls = 0;
   downloadCalls = 0;
   quitAndInstallCalls: Array<[boolean | undefined, boolean | undefined]> = [];
@@ -126,26 +127,62 @@ test("a successful silent check DOES consume the focus-recheck throttle window",
   });
 });
 
-test("each check applies the current prerelease update preference", async () => {
+test("each check applies the current update-channel preference", async () => {
   await withAppImage(async () => {
     const fake = new FakeAutoUpdater();
-    const valuesAtCheck: boolean[] = [];
-    let includePrereleases = false;
+    const valuesAtCheck: Array<{ allowPrerelease: boolean; channel: string | null }> = [];
+    let channel: "stable" | "beta" | "alpha" = "stable";
     fake.checkImpl = async () => {
-      valuesAtCheck.push(fake.allowPrerelease);
+      valuesAtCheck.push({ allowPrerelease: fake.allowPrerelease, channel: fake._channel });
       fake.emit("update-not-available");
       return null;
     };
     initUpdater(() => {}, {
       autoUpdater: fake,
-      readAllowPrerelease: () => includePrereleases,
+      readUpdateChannel: () => channel,
     });
 
     await checkForUpdates();
-    includePrereleases = true;
+    channel = "beta";
+    await checkForUpdates();
+    channel = "alpha";
+    await checkForUpdates();
+    // A beta→stable switch must reset the channel to null: electron-updater's
+    // stable path fetches `<channel>.yml` when a channel is set, which the
+    // GitHub provider never publishes — the check would fail with no fallback.
+    channel = "stable";
     await checkForUpdates();
 
-    expect(valuesAtCheck).toEqual([false, true]);
+    expect(valuesAtCheck).toEqual([
+      { allowPrerelease: false, channel: null },
+      { allowPrerelease: true, channel: "beta" },
+      { allowPrerelease: true, channel: "alpha" },
+      { allowPrerelease: false, channel: null },
+    ]);
+  });
+});
+
+test("an unknown stored channel value is treated as stable, never a custom channel", async () => {
+  await withAppImage(async () => {
+    const fake = new FakeAutoUpdater();
+    fake._channel = "beta"; // left over from an earlier beta-channel check
+    let applied: { allowPrerelease: boolean; channel: string | null } | null = null;
+    fake.checkImpl = async () => {
+      applied = { allowPrerelease: fake.allowPrerelease, channel: fake._channel };
+      fake.emit("update-not-available");
+      return null;
+    };
+    initUpdater(() => {}, {
+      autoUpdater: fake,
+      // A hand-edited settings file can hold anything; "rc" as a custom
+      // channel would strand the user (electron-updater only matches it
+      // against identical prerelease ids).
+      readUpdateChannel: () => "rc" as unknown as "stable",
+    });
+
+    await checkForUpdates();
+
+    expect(applied).toEqual({ allowPrerelease: false, channel: null });
   });
 });
 
