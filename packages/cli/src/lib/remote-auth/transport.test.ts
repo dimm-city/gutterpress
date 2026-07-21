@@ -28,6 +28,7 @@ import httpNode from "isomorphic-git/http/node";
 import {
   failureOutcome,
   fetchRemoteTip,
+  guardRefs,
   guardRemoteRefs,
   guardTrackingRef,
   isCredentialTransmissionSafe,
@@ -365,6 +366,87 @@ describe("guardRemoteRefs", () => {
       expect(out).toBe("ok");
       // Success path never rolls back — even a dangling ref is left alone.
       expect(await refOrNull(dir, TOPIC)).toBe(BOGUS_A);
+    });
+  });
+});
+
+describe("guardRefs — a damaged ref store never blocks the guarded fetch (PR #116)", () => {
+  // The recovery handlers run guarded fetches on repos whose ref store may
+  // itself be damaged; a pre-scan failure must not skip the repair fetch.
+  const REF = "refs/remotes/origin/main";
+  const BOGUS = "a".repeat(40);
+
+  async function withEmptyRepo(fn: (dir: string) => Promise<void>): Promise<void> {
+    const dir = await tempDir("pmd-guardrefs-");
+    try {
+      await git.init({ fs, dir, defaultBranch: "main" });
+      await fn(dir);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  test("pre-scan lister throws → fn still runs and its result is returned", async () => {
+    await withEmptyRepo(async (dir) => {
+      let ran = false;
+      const out = await guardRefs(
+        dir,
+        async () => {
+          throw new Error("EIO: ref store unreadable");
+        },
+        {},
+        async () => {
+          ran = true;
+          return "repaired";
+        },
+      );
+      expect(ran).toBe(true);
+      expect(out).toBe("repaired");
+    });
+  });
+
+  test("pre-scan throws, fn creates a dangling ref and throws → post-throw rollback still deletes it", async () => {
+    await withEmptyRepo(async (dir) => {
+      let calls = 0;
+      const flakyLister = async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("EIO: ref store unreadable");
+        return [REF];
+      };
+      const boom = new Error("transfer aborted");
+      let err: unknown;
+      try {
+        await guardRefs(dir, flakyLister, {}, async () => {
+          await git.writeRef({ fs, dir, ref: REF, value: BOGUS, force: true });
+          throw boom;
+        });
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBe(boom);
+      expect(await git.resolveRef({ fs, dir, ref: REF }).catch(() => null)).toBeNull();
+    });
+  });
+
+  test("both listings throw → fn's own error still surfaces unmasked", async () => {
+    await withEmptyRepo(async (dir) => {
+      const boom = new Error("transfer aborted");
+      let err: unknown;
+      try {
+        await guardRefs(
+          dir,
+          async () => {
+            throw new Error("EIO: ref store unreadable");
+          },
+          {},
+          async () => {
+            throw boom;
+          },
+        );
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBe(boom);
     });
   });
 });

@@ -282,13 +282,13 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      # audit F3: pin Node to match the Windows viewer build (which pins 20).
+      # audit F3: pin Node to match the Windows viewer build (which pins 22).
       # electron-builder runs under node/npm (see dist:* note below), so leaving
       # this to the runner's ambient default let the three platforms package
       # under different Node majors.
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -336,7 +336,7 @@ jobs:
 
       # Finding #62: the composite action is the single Windows-viewer
       # packaging path — also used by viewer-debug-build.yml — so the two
-      # never diverge again (it pins node 20, matching the "never bun run"
+      # never diverge again (it pins node 22, matching the "never bun run"
       # electron-builder/npm constraint documented above).
       - name: Build Windows installer and zip
         uses: ./.github/actions/build-viewer-windows-zip
@@ -370,7 +370,7 @@ jobs:
       # linux for rationale) so all three platforms package under the same Node.
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -428,7 +428,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
 
       - uses: ./.github/actions/bun
@@ -440,7 +440,7 @@ jobs:
       # build`, which produces dist/ (bun build + tsc) right before packing.
 
       # OIDC trusted publishing (no long-lived token) requires npm >= 11.5.1;
-      # node 20 ships npm 10.x, so update it. Pinned to a known-good version
+      # node 22 ships npm 10.x, so update it. Pinned to a known-good version
       # rather than `latest` to keep the publish step reproducible.
       - name: Update npm for OIDC trusted publishing
         run: npm install -g npm@11.5.2

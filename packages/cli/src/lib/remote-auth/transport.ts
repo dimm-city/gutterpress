@@ -259,21 +259,26 @@ async function resolveRefOrNull(dir: string, ref: string): Promise<string | null
  * pack made it. On success no ref is touched. Restoration is best-effort,
  * per ref, and never masks `fn`'s error.
  */
-async function guardRefs<T>(
+export async function guardRefs<T>(
   dir: string,
   listRefs: () => Promise<string[]>,
   cache: GitCache,
   fn: () => Promise<T>,
 ): Promise<T> {
+  // Both scans are best-effort: a damaged ref store (fs errors, corrupt
+  // refs) must never block the guarded fetch — the recovery handlers run on
+  // exactly such repos, and skipping `fn` would skip the repair itself. An
+  // empty pre-scan just degrades rollback to delete-if-dangling below.
   const before = new Map<string, string | null>();
-  for (const ref of await listRefs()) {
+  for (const ref of await listRefs().catch(() => [] as string[])) {
     before.set(ref, await resolveRefOrNull(dir, ref));
   }
   try {
     return await fn();
   } catch (e) {
     try {
-      const refs = new Set([...before.keys(), ...(await listRefs())]);
+      const relisted = await listRefs().catch(() => [] as string[]);
+      const refs = new Set([...before.keys(), ...relisted]);
       for (const ref of refs) {
         try {
           const prev = before.get(ref) ?? null;

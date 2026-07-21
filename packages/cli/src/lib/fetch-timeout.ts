@@ -38,11 +38,11 @@ export interface FetchTimeoutOptions {
 }
 
 function composeSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  // AbortSignal.any is guaranteed by the package's node >=22 engine floor
+  // (PR #116 review: a feature-detect fallback here would silently drop the
+  // deadline exactly when a caller supplies a cancellation signal).
   const timeout = AbortSignal.timeout(timeoutMs);
-  if (!signal) return timeout;
-  return typeof AbortSignal.any === "function"
-    ? AbortSignal.any([signal, timeout])
-    : signal; // extremely old runtime: keep the caller's cancellation
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }
 
 /** Run one fetch-shaped operation under the policy described in the header. */

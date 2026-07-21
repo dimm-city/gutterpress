@@ -5,6 +5,14 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The library now requires Node 22+ (the oldest currently supported LTS; the
+  previous `>=18` floor spanned releases without `AbortSignal.any`, where a
+  network deadline could be silently dropped). The release pipeline and
+  Docker image now build and run on Node 22 as well. Users of the standalone
+  CLI binary and the viewer app are unaffected — both ship their own runtime.
+
 ### Fixed
 
 - Connecting or syncing to a plain `http://` remote with a stored credential
@@ -16,7 +24,9 @@ This project follows [Semantic Versioning](https://semver.org/).
 - A sync interrupted mid-download (network stall + timeout) can no longer
   strand the remote-tracking branch pointing at data that never arrived — which
   previously forced a full re-download and a spurious repair pass on the next
-  sync.
+  sync. The interruption guard itself is also tolerant of a damaged ref
+  store, so a broken repository can never be blocked from its own repair
+  fetch.
 - A transient settings-file read error (e.g. a backup tool briefly holding the
   file) no longer causes a settings change to silently reset every other
   setting to defaults.
