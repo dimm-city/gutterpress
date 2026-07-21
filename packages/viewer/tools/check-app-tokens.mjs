@@ -58,6 +58,29 @@ for (const file of walk(srcRoot)) {
 
 let failed = false;
 
+// Fallbacks on app tokens are dead code by construction: theme.css is loaded
+// unconditionally in +layout, and this checker guarantees every referenced
+// token exists — so a `var(--app-x, fallback)` never uses its fallback, but
+// DOES silently mask the phantom-token bug class and duplicates palette
+// values that then drift. (No SPA code renders outside the app document —
+// iframe/srcdoc-injected CSS uses no --app-* tokens; verified 2026-07-20.)
+const fallbacks = [];
+for (const file of walk(srcRoot)) {
+  const source = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, (c) =>
+    c.replace(/[^\n]/g, " ")
+  );
+  source.split("\n").forEach((line, i) => {
+    if (/var\(\s*--app-[a-z0-9-]+\s*,/.test(line)) {
+      fallbacks.push(`${relative(viewerRoot, file)}:${i + 1}`);
+    }
+  });
+}
+if (fallbacks.length) {
+  failed = true;
+  console.error("✖ var(--app-…, fallback) found — app-token fallbacks are dead code that masks missing tokens:");
+  for (const loc of fallbacks) console.error(`    ${loc}`);
+}
+
 const phantoms = [...used.keys()].filter((t) => !defined.has(t)).sort();
 if (phantoms.length) {
   failed = true;

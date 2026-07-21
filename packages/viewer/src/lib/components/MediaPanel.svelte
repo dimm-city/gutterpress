@@ -349,7 +349,7 @@
     height: 100%;
     min-height: 0;
     overflow-y: auto;
-    background: var(--app-surface, var(--app-bg));
+    background: var(--app-surface);
     border-right: 1px solid var(--app-border);
     font-size: 13px;
   }
@@ -574,10 +574,10 @@
     margin-top: 1px;
   }
   .warning.warn :global(svg) {
-    color: var(--app-warning-text, #b58900);
+    color: var(--app-warning-text);
   }
   .warning.ok :global(svg) {
-    color: var(--app-success-text, #2e9e5b);
+    color: var(--app-success-text);
   }
   .warning.info :global(svg) {
     color: var(--app-text-muted);

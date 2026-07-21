@@ -229,8 +229,8 @@
       lineHeight: "1.6",
       overflow: "auto",
     },
-    ".cm-content": { caretColor: "var(--app-accent, #4ea1ff)" },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--app-accent, #4ea1ff)" },
+    ".cm-content": { caretColor: "var(--app-accent)" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--app-accent)" },
     // Selection — explicit in BOTH focused and unfocused states so it reads in
     // light and dark (CodeMirror's built-in selection colour assumes one theme).
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":

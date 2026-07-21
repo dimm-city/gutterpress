@@ -545,7 +545,7 @@
   .muted { color: var(--app-text-muted); font-size: 12px; margin: 0; }
   .muted.small { font-size: 11px; }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
-  .warn { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--app-warning-text, #d29922); }
+  .warn { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--app-warning-text); }
 
   /* Fields match NewProjectWizard / the shared dialog form language. */
   .field { display: flex; flex-direction: column; gap: 6px; }
@@ -587,10 +587,10 @@
   .dest-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 10px; flex-shrink: 0; }
   .badge { padding: 1px 6px; border-radius: 10px; background: var(--app-surface); border: 1px solid var(--app-border); color: var(--app-text-muted); }
   .status { display: inline-flex; align-items: center; gap: 3px; }
-  .status.ok { color: var(--app-success-text, #3fb950); }
+  .status.ok { color: var(--app-success-text); }
   .status.off { color: var(--app-text-muted); }
 
-  .conn-ok { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--app-success-text, #3fb950); }
+  .conn-ok { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--app-success-text); }
   .conn-ok span { display: inline-flex; align-items: center; gap: 6px; }
 
   .pub-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
@@ -599,9 +599,9 @@
   .result { border-top: 1px solid var(--app-border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
   .issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
   .issues .error { color: var(--app-error-text); }
-  .issues .warning { color: var(--app-warning-text, #d29922); }
+  .issues .warning { color: var(--app-warning-text); }
   .issues .info { color: var(--app-text-muted); }
-  .success-line { margin: 0; font-size: 12px; color: var(--app-success-text, #3fb950); display: inline-flex; align-items: center; gap: 4px; }
+  .success-line { margin: 0; font-size: 12px; color: var(--app-success-text); display: inline-flex; align-items: center; gap: 4px; }
   .checklist { margin: 0; padding-left: 18px; font-size: 11px; color: var(--app-text-muted); line-height: 1.5; }
   .result code { font-size: 10px; word-break: break-all; }
 
@@ -618,20 +618,20 @@
   .pf-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .pf-status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
   .pf-status.pf-error { color: var(--app-error-text); }
-  .pf-status.pf-warning { color: var(--app-warning-text, #d29922); }
-  .pf-status.pf-ok { color: var(--app-success-text, #3fb950); }
+  .pf-status.pf-warning { color: var(--app-warning-text); }
+  .pf-status.pf-ok { color: var(--app-success-text); }
 
   .pf-group { display: flex; flex-direction: column; gap: 6px; }
   .pf-group-title { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); font-weight: 600; }
   .pf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .pf-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
   .pf-row.sev-error { color: var(--app-error-text); }
-  .pf-row.sev-warning { color: var(--app-warning-text, #d29922); }
-  .pf-row.sev-info { color: var(--app-info-text, var(--app-text-muted)); }
+  .pf-row.sev-warning { color: var(--app-warning-text); }
+  .pf-row.sev-info { color: var(--app-info-text); }
   .pf-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
   .pf-msg { margin: 0; font-size: 12px; color: var(--app-text); }
   .pf-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 10px; }
-  .pf-source { padding: 1px 6px; border-radius: 10px; background: var(--app-control-bg, var(--app-surface)); color: var(--app-text-secondary); }
+  .pf-source { padding: 1px 6px; border-radius: 10px; background: var(--app-control-bg); color: var(--app-text-secondary); }
   .pf-provider { padding: 1px 6px; border-radius: 10px; background: var(--app-surface); border: 1px solid var(--app-border); color: var(--app-text-muted); }
   .pf-code { font-family: var(--app-font-mono); color: var(--app-text-muted); }
   .pf-loc { color: var(--app-text-muted); }

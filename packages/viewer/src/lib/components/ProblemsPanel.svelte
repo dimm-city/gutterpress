@@ -375,7 +375,7 @@
   }
   .empty-icon {
     display: inline-flex;
-    color: var(--app-success-text, #2e7d32);
+    color: var(--app-success-text);
   }
   /* Neutral (NOT green) — a lint-runner failure is not a validated all-clear. */
   .neutral-icon {

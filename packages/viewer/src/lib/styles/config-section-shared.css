@@ -86,7 +86,7 @@
 
 :global(.config-panel .kind) { color: var(--app-text-muted); }
 :global(.config-panel .status) { display: inline-flex; align-items: center; gap: 3px; font-weight: 500; }
-:global(.config-panel .status.ok) { color: var(--app-success-text, #3fb950); }
+:global(.config-panel .status.ok) { color: var(--app-success-text); }
 :global(.config-panel .status.error) { color: var(--app-error-text); }
 :global(.config-panel .status.checking), :global(.config-panel .status.disabled) { color: var(--app-text-muted); }
 :global(.config-panel .status-detail) { margin: 0; font-size: 11px; color: var(--app-error-text); line-height: 1.35; }

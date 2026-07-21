@@ -357,7 +357,7 @@
   }
   .hint { font-size: 11px; line-height: 1.4; color: var(--app-text-muted); margin: 4px 0 8px; }
   .hint.muted { font-style: italic; }
-  .notice { font-size: 12px; color: var(--app-success-text, #3fb950); margin: 6px 0 0; }
+  .notice { font-size: 12px; color: var(--app-success-text); margin: 6px 0 0; }
   .error { font-size: 12px; color: var(--app-error-text); margin: 6px 0 0; }
   .conn-row {
     display: flex;
@@ -376,7 +376,7 @@
     border: 1px solid var(--app-border);
     color: var(--app-text-muted);
   }
-  .badge.warn { color: var(--app-warning-text, #b45309); border-color: var(--app-warning-text, #b45309); }
+  .badge.warn { color: var(--app-warning-text); border-color: var(--app-warning-text); }
   .confirm-pair { display: inline-flex; gap: 6px; }
   button.ghost, button.danger, button.inline-link {
     background: transparent;

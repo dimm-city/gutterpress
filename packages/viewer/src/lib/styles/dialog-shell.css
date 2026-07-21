@@ -197,10 +197,10 @@
    Mirrors CrashRecoveryDialog's Discard button; used by AdvancedSetupDialog's
    Disconnect (L2) and SnippetPicker's delete (M25). */
 :global(.dlg-danger-armed) {
-  background: var(--app-error-bg, transparent);
-  border-color: var(--app-error-border, var(--app-error-text));
+  background: var(--app-error-bg);
+  border-color: var(--app-error-border);
   color: var(--app-error-text);
 }
 :global(.dlg-danger-armed:hover:not(:disabled)) {
-  background: var(--app-error-bg, var(--app-surface-hover));
+  background: var(--app-error-bg);
 }

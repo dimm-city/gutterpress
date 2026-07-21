@@ -352,7 +352,7 @@
   /* auth / conflict — needs attention: a warning text colour (still no chrome),
      and clickable so the author can act on it. */
   .sync-pill.warning {
-    color: var(--app-warning-text, #b45309);
+    color: var(--app-warning-text);
     cursor: pointer;
   }
   button.sync-pill.warning:hover {
@@ -403,9 +403,9 @@
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .warning-dot { background: var(--app-warning-text, #b45309); }
-  .auth-dot    { background: var(--app-warning-text, #b45309); }
+  .warning-dot { background: var(--app-warning-text); }
+  .auth-dot    { background: var(--app-warning-text); }
   /* "connect" invites rather than warns — accent-colored dot, neutral text. */
-  .connect-dot { background: var(--app-accent, #4a9eff); }
+  .connect-dot { background: var(--app-accent); }
   .sync-pill.invite { cursor: pointer; }
 </style>

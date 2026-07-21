@@ -155,7 +155,7 @@
      row with other controls). */
   .tokens-title { margin: 0; font-size: 11px; font-weight: 600; color: var(--app-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
   .token-row { justify-content: space-between; }
-  .token-row.dirty .token-label { color: var(--app-accent, #4ea1ff); }
+  .token-row.dirty .token-label { color: var(--app-accent); }
   .token-label { flex: 1; font-size: 12px; color: var(--app-text-secondary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .control { display: flex; align-items: center; gap: 6px; }
   .control.color input[type="color"] { width: 28px; height: 28px; padding: 0; border: 1px solid var(--app-border); border-radius: 4px; background: var(--app-control-bg); cursor: pointer; }
@@ -165,5 +165,5 @@
   .unit { font-size: 11px; color: var(--app-text-muted); }
   .save-status { font-size: 11px; }
   .save-status.saving { color: var(--app-text-muted); }
-  .save-status.saved { color: var(--app-success-text, #3fb950); }
+  .save-status.saved { color: var(--app-success-text); }
 </style>

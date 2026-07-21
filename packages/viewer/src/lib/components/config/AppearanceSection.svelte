@@ -212,9 +212,9 @@
   /* #106: non-fatal import warnings (print-safety, missing metadata, extra files). */
   .theme-warnings {
     margin: 0 0 8px; padding: 8px 10px; border-radius: 6px;
-    background: var(--app-warning-bg, var(--app-surface-sunken));
-    border: 1px solid var(--app-warning-border, var(--app-border));
-    color: var(--app-warning-text, var(--app-text));
+    background: var(--app-warning-bg);
+    border: 1px solid var(--app-warning-border);
+    color: var(--app-warning-text);
   }
   .theme-warnings .warn-title { margin: 0 0 4px; font-size: 11px; font-weight: 600; }
   .theme-warnings ul { margin: 0; padding-left: 16px; }
@@ -228,7 +228,7 @@
     z-index: 40; pointer-events: none;
     border-radius: 8px; overflow: hidden;
     border: 1px solid var(--app-border-strong); background: var(--app-surface);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 30px var(--app-shadow-lg);
   }
   .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 

@@ -152,7 +152,7 @@
   /* Distinct from `.status.checking` (M34) — a stalled/failed check, not one
      in flight. A new class (not an override of `.status.error`) so it reads
      as its own state rather than reusing the error color. */
-  .stale-status { color: var(--app-warning-text, #b45309); }
+  .stale-status { color: var(--app-warning-text); }
   .install-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
   .install-cmd {
     font-size: 11px;

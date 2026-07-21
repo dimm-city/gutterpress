@@ -313,14 +313,14 @@
   }
   .snippet-row:hover {
     background: var(--app-surface-hover);
-    border-color: var(--app-accent, var(--app-focus-ring));
+    border-color: var(--app-accent);
   }
   .snippet-row:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .snippet-row-end { display: flex; align-items: center; gap: 8px; color: var(--app-text-muted); }
   /* "Insert" hint stays subtle until hover/focus so the row reads clean at rest. */
   .snippet-insert { font-size: 11px; font-weight: 600; opacity: 0; transition: opacity 0.12s; }
   .snippet-row:hover .snippet-insert,
-  .snippet-row:focus-visible .snippet-insert { opacity: 1; color: var(--app-accent, var(--app-text)); }
+  .snippet-row:focus-visible .snippet-insert { opacity: 1; color: var(--app-accent); }
   .snippet-vars { font-size: 11px; color: var(--app-text-muted); }
   .snippet-del {
     background: transparent; border: 1px solid var(--app-border); border-radius: 6px;

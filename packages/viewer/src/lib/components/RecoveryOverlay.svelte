@@ -160,7 +160,7 @@
     border-radius: 10px;
     background: var(--app-surface);
     border: 1px solid var(--app-border-subtle);
-    box-shadow: 0 8px 28px var(--app-shadow-lg, rgba(0,0,0,0.18));
+    box-shadow: 0 8px 28px var(--app-shadow-lg);
     max-width: 340px;
     text-align: center;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -257,7 +257,7 @@
   }
 
   .show-backup-link:hover {
-    color: var(--app-accent-hover, var(--app-focus-ring));
+    color: var(--app-accent-hover);
   }
 
   .show-backup-link:focus-visible {

@@ -3726,7 +3726,7 @@
     gap: 12px;
     flex-wrap: wrap;
     padding: 8px 14px;
-    background: var(--app-info-bg, var(--app-surface));
+    background: var(--app-info-bg);
     border-bottom: 1px solid var(--app-border);
     font-size: 13px;
     color: var(--app-text);

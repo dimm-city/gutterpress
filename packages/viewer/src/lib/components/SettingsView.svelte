@@ -479,7 +479,7 @@
   .tab:hover { color: var(--app-text); }
   .tab.active {
     color: var(--app-text);
-    border-bottom-color: var(--app-accent, #4a9eff);
+    border-bottom-color: var(--app-accent);
     font-weight: 600;
   }
   .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }

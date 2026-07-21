@@ -223,7 +223,7 @@
     position: fixed;
     inset: 0;
     z-index: var(--app-z-modal);
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--app-backdrop);
   }
   /* Dialog is now a sibling of the backdrop (not a child), so the dialog
      element itself can own the ARIA dialog role/aria-modal via the shared
@@ -238,12 +238,12 @@
     width: min(520px, calc(100% - 48px));
     max-height: 80vh;
     overflow: auto;
-    background: var(--app-surface, var(--app-bg));
+    background: var(--app-surface);
     border: 1px solid var(--app-border);
     border-radius: 12px;
     padding: 20px;
     color: var(--app-text);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 12px 40px var(--app-shadow-lg);
   }
   .cr-head {
     display: flex;
@@ -320,7 +320,7 @@
     padding: 6px 12px;
     border: 1px solid var(--app-border);
     border-radius: 6px;
-    background: var(--app-control-bg, transparent);
+    background: var(--app-control-bg);
     color: var(--app-text);
     font-size: 12px;
     font-weight: 600;
@@ -396,7 +396,7 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 4px 8px;
-    background: var(--app-surface-sunken, var(--app-bg));
+    background: var(--app-surface-sunken);
     border-bottom: 1px solid var(--app-border);
     flex-shrink: 0;
   }
@@ -408,7 +408,7 @@
     line-height: 1.5;
     overflow-y: auto;
     max-height: 200px;
-    background: var(--app-surface-sunken, var(--app-bg));
+    background: var(--app-surface-sunken);
     color: var(--app-text-secondary);
     white-space: pre-wrap;
     word-break: break-word;

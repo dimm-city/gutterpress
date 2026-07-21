@@ -12,7 +12,7 @@
  */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--app-scrollbar-thumb, #84848d) var(--app-scrollbar-track, transparent);
+  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
 }
 
 /**

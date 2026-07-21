@@ -468,11 +468,11 @@
   }
   .status-action:hover:not(:disabled) {
     color: var(--app-text);
-    background: var(--app-surface-hover, rgba(255,255,255,0.06));
+    background: var(--app-surface-hover);
     border-color: var(--app-border-strong);
   }
   .status-action:focus-visible {
-    outline: 2px solid var(--app-accent, #4a9eff);
+    outline: 2px solid var(--app-accent);
     outline-offset: 1px;
   }
   .status-action:disabled {
@@ -496,10 +496,10 @@
   }
   .status-icon-btn:hover:not(:disabled) {
     color: var(--app-text);
-    background: var(--app-surface-hover, rgba(255, 255, 255, 0.06));
+    background: var(--app-surface-hover);
   }
   .status-icon-btn:focus-visible {
-    outline: 2px solid var(--app-accent, #4a9eff);
+    outline: 2px solid var(--app-accent);
     outline-offset: 1px;
   }
   .status-icon-btn:disabled {
@@ -531,8 +531,8 @@
     border-radius: 3px;
     cursor: pointer;
   }
-  .save-indicator:hover { background: var(--app-surface-hover, rgba(255,255,255,0.06)); }
-  .save-indicator:focus-visible { outline: 2px solid var(--app-accent, #4a9eff); outline-offset: 1px; }
+  .save-indicator:hover { background: var(--app-surface-hover); }
+  .save-indicator:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 1px; }
 
   /* Protection summary popover — grows upward from the bar, like ProblemsPanel. */
   .save-summary {
@@ -544,7 +544,7 @@
     background: var(--app-surface-raised);
     border: 1px solid var(--app-border);
     border-radius: 8px;
-    box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0,0,0,0.18));
+    box-shadow: 0 -4px 16px var(--app-shadow-md);
     z-index: var(--app-z-menu);
   }
   .summary-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -562,7 +562,7 @@
     color: var(--app-text-secondary);
     cursor: pointer;
   }
-  .summary-action:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover, rgba(255,255,255,0.06)); }
+  .summary-action:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
   .summary-action:disabled { opacity: 0.6; cursor: default; }
   /* Resting (saved): visible but calm — not faint enough to miss. */
   .save-indicator.saved {
@@ -633,7 +633,7 @@
     background: var(--app-surface-raised);
     border: 1px solid var(--app-border);
     border-bottom: none;
-    box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0,0,0,0.12));
+    box-shadow: 0 -4px 16px var(--app-shadow-md);
     z-index: var(--app-z-popover);
   }
 

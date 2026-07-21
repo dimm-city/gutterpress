@@ -36,9 +36,9 @@
     align-items: center;
     gap: 10px;
     padding: 8px 12px;
-    background: var(--app-warning-bg, #4a3a10);
-    border-bottom: 1px solid var(--app-warning-border, var(--app-border));
-    color: var(--app-warning-text, var(--app-text));
+    background: var(--app-warning-bg);
+    border-bottom: 1px solid var(--app-warning-border);
+    color: var(--app-warning-text);
     font-size: 13px;
     flex: 0 0 auto;
   }
@@ -66,7 +66,7 @@
     padding: 4px 10px;
     border: 1px solid var(--app-border);
     border-radius: 6px;
-    background: var(--app-control-bg, transparent);
+    background: var(--app-control-bg);
     color: var(--app-text);
     font-size: 12px;
     font-weight: 600;

@@ -413,7 +413,7 @@
     background: none;
     border: 0;
     padding: 0;
-    color: var(--app-link, var(--app-accent));
+    color: var(--app-link);
     font: inherit;
     font-size: 12px;
     cursor: pointer;
@@ -421,7 +421,7 @@
     align-items: center;
     gap: 4px;
   }
-  .landing-link:hover { color: var(--app-link-hover, var(--app-accent-bright)); text-decoration: underline; }
+  .landing-link:hover { color: var(--app-link-hover); text-decoration: underline; }
 
   .landing-h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--app-text); letter-spacing: -0.3px; }
   .landing-h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--app-text-secondary); text-transform: uppercase; letter-spacing: 0.6px; }
@@ -432,7 +432,7 @@
     display: flex;
     align-items: center;
     gap: 14px;
-    background: var(--app-surface-raised, var(--app-surface));
+    background: var(--app-surface-raised);
     border: 1px solid var(--app-border);
     border-radius: 12px;
     padding: 16px 18px;
@@ -464,9 +464,9 @@
     color: var(--app-text-secondary);
     margin-top: 2px;
   }
-  .cc-status[data-kind="ready"] { color: var(--app-success-text, var(--app-text-secondary)); }
-  .cc-ready-icon { display: inline-flex; color: var(--app-success-strong, currentColor); }
-  .cc-stalled { color: var(--app-warning-text, var(--app-text-secondary)); }
+  .cc-status[data-kind="ready"] { color: var(--app-success-text); }
+  .cc-ready-icon { display: inline-flex; color: var(--app-success-strong); }
+  .cc-stalled { color: var(--app-warning-text); }
   .cc-spinner {
     width: 12px;
     height: 12px;
@@ -502,7 +502,7 @@
   .book-chip {
     background: var(--app-control-bg);
     border: 1px solid var(--app-control-border);
-    color: var(--app-control-text, var(--app-text));
+    color: var(--app-control-text);
     border-radius: 999px;
     padding: 4px 12px;
     font-size: 12px;
@@ -533,7 +533,7 @@
     flex-direction: column;
     gap: 8px;
   }
-  .error-head { display: flex; align-items: center; gap: 10px; color: var(--app-error-strong, var(--app-error-text)); }
+  .error-head { display: flex; align-items: center; gap: 10px; color: var(--app-error-strong); }
   .error-head .landing-h1 { font-size: 16px; color: var(--app-error-text); }
   .error-body { margin: 0; font-size: 13px; color: var(--app-error-text); line-height: 1.5; }
   .error-hint { margin: 0; font-size: 12px; color: var(--app-text-secondary); line-height: 1.5; }

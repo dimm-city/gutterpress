@@ -587,16 +587,16 @@
   .choice-btn:hover:not(:disabled):not(.selected) {
     background: var(--app-surface-hover);
     color: var(--app-text);
-    border-color: var(--app-border-strong, var(--app-border));
+    border-color: var(--app-border-strong);
   }
   .choice-btn:focus-visible {
     outline: 2px solid var(--app-focus-ring);
     outline-offset: 2px;
   }
   .choice-btn.selected {
-    background: var(--app-accent, var(--app-focus-ring));
-    border-color: var(--app-accent-border, var(--app-focus-ring));
-    color: var(--app-accent-text, #fff);
+    background: var(--app-accent);
+    border-color: var(--app-accent-border);
+    color: var(--app-accent-text);
     font-weight: 600;
   }
   /* "Keep both" is the recommended option. When NOT selected it gets a faint

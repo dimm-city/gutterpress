@@ -642,7 +642,7 @@
     height: 100%;
     min-height: 0;
     overflow-y: auto;
-    background: var(--app-surface, var(--app-bg));
+    background: var(--app-surface);
     border-right: 1px solid var(--app-border);
     font-size: 13px;
   }

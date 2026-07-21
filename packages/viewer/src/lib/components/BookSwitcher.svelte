@@ -90,10 +90,10 @@
   }
   .book-switcher-toggle:hover {
     color: var(--app-text);
-    background: var(--app-surface-hover, rgba(255, 255, 255, 0.06));
+    background: var(--app-surface-hover);
   }
   .book-switcher-toggle:focus-visible {
-    outline: 2px solid var(--app-accent, #4a9eff);
+    outline: 2px solid var(--app-accent);
     outline-offset: 1px;
   }
   .book-switcher-title {
@@ -114,7 +114,7 @@
     background: var(--app-surface-raised);
     border: 1px solid var(--app-border);
     border-radius: 6px;
-    box-shadow: 0 -4px 16px var(--app-shadow-md, rgba(0, 0, 0, 0.12));
+    box-shadow: 0 -4px 16px var(--app-shadow-md);
     z-index: var(--app-z-popover);
   }
   .book-switcher-option {
@@ -133,10 +133,10 @@
     text-overflow: ellipsis;
   }
   .book-switcher-option:hover {
-    background: var(--app-surface-hover, rgba(255, 255, 255, 0.06));
+    background: var(--app-surface-hover);
   }
   .book-switcher-option:focus-visible {
-    outline: 2px solid var(--app-accent, #4a9eff);
+    outline: 2px solid var(--app-accent);
     outline-offset: -2px;
   }
   .book-switcher-option.active {
