@@ -3,7 +3,7 @@
 All notable changes to print-md are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.8.2] - 2026-07-21
 
 ### Changed
 
