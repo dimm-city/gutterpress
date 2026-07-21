@@ -483,6 +483,25 @@ Binding constraints (regardless of final design):
   (reuse the ADR 0006 token layering). The UI discloses plainly that
   document text is sent to the configured provider. Local Ollama is the
   offline/no-cloud path (#36).
+- **Context is allow-listed, never "the whole folder."** A local-first
+  project root routinely holds secrets and noise (`.env`, credential/token
+  files, `.git/`, generated build output under the project's out dir, binary
+  assets). The host context builder MUST therefore, as a binding part of the
+  #36 implementation:
+  - include **only text source the author authored** — markdown/CSS and the
+    manifest — and **exclude** dotfiles/dot-dirs, anything matched by the
+    project's `.gitignore`, the configured build/output directory, files over
+    a size cap, and non-text/binary files;
+  - never read outside the project root (no `../` escape, no absolute paths);
+  - treat "opt-in full-project context" as *all allow-listed files in the
+    project*, not *all files* — the toggle widens scope within the allow-list,
+    it does not disable it.
+- **Consent is per-scope and previewable.** Enabling full-project context is
+  an explicit action separate from enabling AI, and before the first
+  full-project submission the UI shows exactly which files will be sent (a
+  reviewable manifest the author can exclude entries from). Sending document
+  text is disclosed (above); sending *additional* project files requires this
+  distinct, informed opt-in.
 - AI never modifies text without an explicit accept step.
 
 Interaction sketch:

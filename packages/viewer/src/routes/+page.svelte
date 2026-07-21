@@ -3445,10 +3445,13 @@
   .right  { flex: 0 0 auto; }
 
   /* ---- Buttons & inputs ---- */
+  /* Geometry shared by ALL toolbar buttons, including the primary/active
+     variants (they inherit padding/radius/border box from here; only their
+     COLOUR differs). border is split into width/style so a variant's own
+     border-COLOUR isn't clobbered. */
   button {
-    background: var(--app-control-bg);
-    border: 1px solid var(--app-control-border);
-    color: var(--app-control-text);
+    border-width: 1px;
+    border-style: solid;
     padding: 5px 10px;
     border-radius: 6px;
     font-size: 13px;
@@ -3456,7 +3459,18 @@
     cursor: pointer;
     white-space: nowrap;
   }
-  button:hover:not(:disabled) {
+  /* Neutral fill — NON-primary, NON-active buttons only. The exclusion is
+     load-bearing: a bare `button { background }` rule is (0,1,1) once Svelte
+     scopes it, which would beat both the global `.app-btn-primary` recipe
+     (0,1,0) and leave primary buttons rendering as neutral controls (the L5
+     convergence's whole point). `.primary` buttons always carry
+     `.app-btn-primary`, so excluding that class is the precise gate. */
+  button:not(.app-btn-primary):not(.active) {
+    background: var(--app-control-bg);
+    border-color: var(--app-control-border);
+    color: var(--app-control-text);
+  }
+  button:not(.app-btn-primary):not(.active):hover:not(:disabled) {
     background: var(--app-control-hover-bg);
     border-color: var(--app-control-hover-border);
   }
