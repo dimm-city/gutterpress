@@ -265,7 +265,7 @@
 
       <div class="detail-actions">
         <button
-          class="primary insert-btn"
+          class="primary insert-btn app-btn-primary"
           onclick={insertSelected}
           disabled={!canInsert}
           title={canInsert
@@ -300,7 +300,7 @@
       </div>
     </div>
     <div class="media-toolbar">
-      <button class="primary add-btn" onclick={() => void importImages()} disabled={importBusy}>
+      <button class="primary add-btn app-btn-primary" onclick={() => void importImages()} disabled={importBusy}>
         {importBusy ? "Adding…" : "Add images…"}
       </button>
     </div>
@@ -349,7 +349,7 @@
     height: 100%;
     min-height: 0;
     overflow-y: auto;
-    background: var(--app-surface, var(--app-bg));
+    background: var(--app-surface);
     border-right: 1px solid var(--app-border);
     font-size: 13px;
   }
@@ -378,7 +378,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     cursor: pointer;
     /* WCAG 2.5.8: minimum target size 24×24px */
     min-width: 26px;
@@ -401,13 +401,12 @@
     padding: 6px 8px;
     font-size: 12px;
   }
-  /* Accent buttons (no global .primary exists — components own their chrome) */
+  /* Accent buttons — colors come from the shared .app-btn-primary recipe
+     (theme.css); only geometry lives here. */
   .primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border: 1px solid var(--app-accent-border);
+    border-width: 1px;
+    border-style: solid;
     border-radius: 6px;
-    color: var(--app-accent-text);
-    font-weight: 600;
     cursor: pointer;
   }
   .primary:disabled {
@@ -417,7 +416,7 @@
   .media-msg {
     margin: 0;
     padding: 12px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-size: 12px;
     line-height: 1.5;
   }
@@ -467,7 +466,7 @@
        fill (not a hover tint), and the faint placeholder icon inside must
        stay ≥4.5:1 (judge gate round 3: 3.64:1 on #444444 dark). */
     background: var(--app-surface-sunken);
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .tile-thumb img {
     width: 100%;
@@ -519,7 +518,7 @@
     border-radius: 6px;
     /* surface-sunken for the same contrast reason as .tile-thumb above. */
     background: var(--app-surface-sunken);
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .detail-thumb img {
     max-width: 100%;
@@ -536,7 +535,7 @@
   .detail-path {
     margin: 0;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     overflow-wrap: anywhere;
   }
   .detail-meta {
@@ -547,7 +546,7 @@
     font-size: 12px;
   }
   .detail-meta dt {
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .detail-meta dd {
     margin: 0;
@@ -574,13 +573,13 @@
     margin-top: 1px;
   }
   .warning.warn :global(svg) {
-    color: var(--app-warning-text, #b58900);
+    color: var(--app-warning-text);
   }
   .warning.ok :global(svg) {
-    color: var(--app-success-text, #2e9e5b);
+    color: var(--app-success-text);
   }
   .warning.info :global(svg) {
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .detail-actions {
     display: flex;
@@ -607,7 +606,7 @@
   .insert-hint {
     margin: 0;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     line-height: 1.4;
   }
 </style>

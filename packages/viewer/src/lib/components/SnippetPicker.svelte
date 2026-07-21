@@ -259,7 +259,7 @@
         {/if}
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={close}>Close</button>
-          <button class="dlg-primary" onclick={startSave}>Save selection as snippet</button>
+          <button class="dlg-primary app-btn-primary" onclick={startSave}>Save selection as snippet</button>
         </footer>
       {:else if mode === "vars"}
         <p class="muted">Enter values for this snippet, then insert it.</p>
@@ -271,7 +271,7 @@
         {/each}
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={() => (mode = "list")}>Back</button>
-          <button class="dlg-primary" onclick={confirmVars}>Insert</button>
+          <button class="dlg-primary app-btn-primary" onclick={confirmVars}>Insert</button>
         </footer>
       {:else}
         <label class="field">
@@ -284,7 +284,7 @@
         </label>
         <footer class="dlg-actions">
           <button class="dlg-ghost" onclick={() => (mode = "list")}>Back</button>
-          <button class="dlg-primary" onclick={confirmSave}>Save snippet</button>
+          <button class="dlg-primary app-btn-primary" onclick={confirmSave}>Save snippet</button>
         </footer>
       {/if}
     </div>
@@ -312,16 +312,16 @@
     color: var(--app-text); cursor: pointer; font-size: 13px; font-weight: 500;
   }
   .snippet-row:hover {
-    background: var(--app-accent-soft, var(--app-surface-hover));
-    border-color: var(--app-accent, var(--app-focus-ring));
+    background: var(--app-surface-hover);
+    border-color: var(--app-accent);
   }
   .snippet-row:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .snippet-row-end { display: flex; align-items: center; gap: 8px; color: var(--app-text-muted); }
   /* "Insert" hint stays subtle until hover/focus so the row reads clean at rest. */
   .snippet-insert { font-size: 11px; font-weight: 600; opacity: 0; transition: opacity 0.12s; }
   .snippet-row:hover .snippet-insert,
-  .snippet-row:focus-visible .snippet-insert { opacity: 1; color: var(--app-accent, var(--app-text)); }
-  .snippet-vars { font-size: 11px; color: var(--app-text-faint); }
+  .snippet-row:focus-visible .snippet-insert { opacity: 1; color: var(--app-accent); }
+  .snippet-vars { font-size: 11px; color: var(--app-text-muted); }
   .snippet-del {
     background: transparent; border: 1px solid var(--app-border); border-radius: 6px;
     color: var(--app-text-muted); cursor: pointer; padding: 0 8px; min-width: 32px;
@@ -348,13 +348,13 @@
   .snippet-del-cancel:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
-  .optional { font-style: italic; color: var(--app-text-faint); font-weight: 400; }
+  .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .field input[type="text"], .save-body {
     background: var(--app-surface-sunken); border: 1px solid var(--app-border);
     color: var(--app-text-secondary); padding: 8px 10px; border-radius: 6px;
     font-size: 14px; font-family: inherit;
   }
-  .save-body { font-family: ui-monospace, monospace; resize: vertical; }
+  .save-body { font-family: var(--app-font-mono); resize: vertical; }
   .field input:focus, .save-body:focus { outline: none; border-color: var(--app-focus-ring); }
   /* In-flow footer (last item inside the scrolling body, not a pinned
      sibling) — restore the original spacing; the shared default assumes a

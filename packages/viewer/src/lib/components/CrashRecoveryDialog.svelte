@@ -134,7 +134,7 @@
     use:dialogBehavior={{ onClose: onDismiss, labelledBy: "cr-title" }}
   >
     <header class="cr-head">
-      <span class="cr-icon"><Icon name="file-text" /></span>
+      <span class="cr-icon"><Icon name="file-text" size={18} /></span>
       <h2 id="cr-title">Unsaved changes found</h2>
     </header>
     <p class="cr-lede">
@@ -154,21 +154,21 @@
               <span class="cr-time">{when(item.savedAt)}</span>
             </div>
             <div class="cr-item-actions">
-              <button class="cr-btn cr-btn-primary" onclick={() => onRestore(item)}>
+              <button class="cr-btn app-btn-primary" onclick={() => onRestore(item)}>
                 Restore
               </button>
               <!-- Single persistent Discard button (not a pair of separate
                    buttons swapped conditionally) so arming the confirm state
                    never loses focus — only the label/class change in place. -->
               <button
-                class="cr-btn cr-btn-discard"
+                class="cr-btn cr-btn-neutral cr-btn-discard"
                 class:cr-btn-danger={armed}
                 onclick={() => requestDiscard(item)}
               >
                 {armed ? "Really discard? This can't be undone" : "Discard"}
               </button>
               {#if armed}
-                <button class="cr-btn" onclick={(e) => cancelDiscard(item, e)}>Cancel</button>
+                <button class="cr-btn cr-btn-neutral" onclick={(e) => cancelDiscard(item, e)}>Cancel</button>
               {/if}
             </div>
           </div>
@@ -213,7 +213,7 @@
       {/each}
     </ul>
     <footer class="cr-foot">
-      <button class="cr-btn" onclick={onDismiss}>Decide later</button>
+      <button class="cr-btn cr-btn-neutral" onclick={onDismiss}>Decide later</button>
     </footer>
   </div>
 {/if}
@@ -222,8 +222,8 @@
   .cr-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 1000;
-    background: rgba(0, 0, 0, 0.5);
+    z-index: var(--app-z-modal);
+    background: var(--app-backdrop);
   }
   /* Dialog is now a sibling of the backdrop (not a child), so the dialog
      element itself can own the ARIA dialog role/aria-modal via the shared
@@ -234,26 +234,22 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 1001;
+    z-index: calc(var(--app-z-modal) + 1);
     width: min(520px, calc(100% - 48px));
     max-height: 80vh;
     overflow: auto;
-    background: var(--app-surface, var(--app-bg));
+    background: var(--app-surface);
     border: 1px solid var(--app-border);
     border-radius: 12px;
     padding: 20px;
     color: var(--app-text);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 12px 40px var(--app-shadow-lg);
   }
   .cr-head {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-bottom: 8px;
-  }
-  .cr-icon :global(svg) {
-    width: 18px;
-    height: 18px;
   }
   .cr-head h2 {
     margin: 0;
@@ -303,7 +299,7 @@
   }
   .cr-time {
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .cr-item-actions {
     flex: 0 0 auto;
@@ -316,23 +312,24 @@
     display: flex;
     justify-content: flex-end;
   }
+  /* Geometry only — colors come from .cr-btn-neutral, .cr-btn-danger, or the
+     shared .app-btn-primary recipe (theme.css). */
   .cr-btn {
     padding: 6px 12px;
-    border: 1px solid var(--app-border);
+    border-width: 1px;
+    border-style: solid;
     border-radius: 6px;
-    background: var(--app-control-bg, transparent);
-    color: var(--app-text);
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
   }
-  .cr-btn:hover {
-    background: var(--app-control-hover-bg);
+  .cr-btn-neutral {
+    background: var(--app-control-bg);
+    border-color: var(--app-border);
+    color: var(--app-text);
   }
-  .cr-btn-primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
+  .cr-btn-neutral:hover {
+    background: var(--app-control-hover-bg);
   }
   /* Armed "really discard?" confirm button (M12 two-step Discard). */
   .cr-btn-danger {
@@ -357,7 +354,7 @@
     background: transparent;
     border: 1px solid var(--app-border);
     border-radius: 5px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-size: 11px;
     cursor: pointer;
     padding: 3px 8px;
@@ -392,23 +389,23 @@
   .cr-pane-label {
     font-size: 10px;
     font-weight: 600;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 4px 8px;
-    background: var(--app-surface-sunken, var(--app-bg));
+    background: var(--app-surface-sunken);
     border-bottom: 1px solid var(--app-border);
     flex-shrink: 0;
   }
   .cr-pane-content {
     margin: 0;
     padding: 8px;
-    font-family: ui-monospace, "Cascadia Code", "Fira Code", monospace;
+    font-family: var(--app-font-mono);
     font-size: 11px;
     line-height: 1.5;
     overflow-y: auto;
     max-height: 200px;
-    background: var(--app-surface-sunken, var(--app-bg));
+    background: var(--app-surface-sunken);
     color: var(--app-text-secondary);
     white-space: pre-wrap;
     word-break: break-word;
@@ -418,7 +415,7 @@
   .cr-pane-empty {
     margin: 0;
     font-size: 11px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     padding: 4px 0;
   }
   .cr-pane-empty {

@@ -101,7 +101,7 @@
         {#if isPluginConfigured(rec.name)}
           <span class="added"><Icon name="circle-check" size={12} /> On</span>
         {:else}
-          <button class="primary small" onclick={() => controller.addRecommended(rec)} disabled={controller.pluginBusyRef !== null}>Turn on</button>
+          <button class="primary small app-btn-primary" onclick={() => controller.addRecommended(rec)} disabled={controller.pluginBusyRef !== null}>Turn on</button>
         {/if}
       </li>
     {/each}
@@ -111,7 +111,7 @@
     <summary>Advanced: add another plugin</summary>
     <div class="add-row">
       <input class="input" type="text" placeholder="npm package name (e.g. markdown-it-footnote)" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpmPlugin(); }} />
-      <button class="primary small" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>Add</button>
+      <button class="primary small app-btn-primary" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>Add</button>
     </div>
     <button class="ghost small full" onclick={controller.addLocalPlugin} disabled={controller.pluginBusyRef !== null}>
       <Icon name="folder" size={14} /> Import from local file or folder…
@@ -127,15 +127,15 @@
   .plugin-list li, .rec-list li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
   .plugin-list li.disabled { opacity: 0.6; }
   .plugin-main, .rec-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .plugin-name { font-size: 12px; color: var(--app-text); font-family: ui-monospace, monospace; word-break: break-all; }
+  .plugin-name { font-size: 12px; color: var(--app-text); font-family: var(--app-font-mono); word-break: break-all; }
   .plugin-meta { display: flex; align-items: center; gap: 8px; font-size: 11px; }
   .rec-label { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  .rec-pkg { font-size: 10px; color: var(--app-text-faint); font-family: ui-monospace, monospace; }
-  .added { font-size: 11px; color: var(--app-text-faint); font-style: italic; }
+  .rec-pkg { font-size: 10px; color: var(--app-text-muted); font-family: var(--app-font-mono); }
+  .added { font-size: 11px; color: var(--app-text-muted); font-style: italic; }
 
   .toggle { flex-shrink: 0; width: 36px; height: 20px; border-radius: 10px; background: var(--app-border); border: 1px solid var(--app-border); position: relative; cursor: pointer; padding: 0; }
   .toggle.on { background: var(--app-focus-ring); border-color: var(--app-focus-ring); }
-  .toggle .knob { position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+  .toggle .knob { position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 50%; background: var(--app-text-on-accent); transition: transform 0.15s; }
   .toggle.on .knob { transform: translateX(15px); }
   .toggle:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .toggle:disabled { opacity: 0.5; cursor: progress; }
@@ -152,7 +152,7 @@
   /* Distinct from `.status.checking` (M34) — a stalled/failed check, not one
      in flight. A new class (not an override of `.status.error`) so it reads
      as its own state rather than reusing the error color. */
-  .stale-status { color: var(--app-warning-text, #b45309); }
+  .stale-status { color: var(--app-warning-text); }
   .install-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
   .install-cmd {
     font-size: 11px;

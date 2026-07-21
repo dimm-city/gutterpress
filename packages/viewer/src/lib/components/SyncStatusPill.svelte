@@ -370,11 +370,11 @@
   /* auth / conflict — needs attention: a warning text colour (still no chrome),
      and clickable so the author can act on it. */
   .sync-pill.warning {
-    color: var(--app-warning-text, #b45309);
+    color: var(--app-warning-text);
     cursor: pointer;
   }
   button.sync-pill.warning:hover {
-    color: var(--app-warning-text-hover, var(--app-text));
+    color: var(--app-text);
     text-decoration: underline;
     text-underline-offset: 2px;
   }
@@ -401,13 +401,12 @@
     white-space: nowrap;
   }
 
-  /* Thin spinner that matches the SyncDialog's spinner — same animation, slightly
-     smaller to fit the pill. */
+  /* Thin spinner — the shared --app-spinner-* tokens, sized down for the pill. */
   .pill-spinner {
     width: 10px;
     height: 10px;
-    border: 1.5px solid var(--app-border);
-    border-top-color: var(--app-focus-ring);
+    border: 1.5px solid var(--app-spinner-track);
+    border-top-color: var(--app-spinner-head);
     border-radius: 50%;
     animation: pill-spin 0.8s linear infinite;
     flex-shrink: 0;
@@ -421,9 +420,9 @@
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .warning-dot { background: var(--app-warning-text, #b45309); }
-  .auth-dot    { background: var(--app-warning-text, #b45309); }
+  .warning-dot { background: var(--app-warning-text); }
+  .auth-dot    { background: var(--app-warning-text); }
   /* "connect" invites rather than warns — accent-colored dot, neutral text. */
-  .connect-dot { background: var(--app-accent, #4a9eff); }
+  .connect-dot { background: var(--app-accent); }
   .sync-pill.invite { cursor: pointer; }
 </style>

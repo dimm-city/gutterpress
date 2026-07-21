@@ -71,5 +71,5 @@
   }
   .style-list li.active { border-color: var(--app-focus-ring); }
   .style-row { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; cursor: pointer; }
-  .style-name { font-size: 12px; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; }
+  .style-name { font-size: 12px; color: var(--app-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--app-font-mono); }
 </style>

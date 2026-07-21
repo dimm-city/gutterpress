@@ -591,7 +591,7 @@
   </label>
   <div class="image-actions">
     <button class="image-cancel" onclick={cancelTable}>Cancel</button>
-    <button class="image-insert primary" onclick={insertTable}>Insert table</button>
+    <button class="image-insert primary app-btn-primary" onclick={insertTable}>Insert table</button>
   </div>
 </div>
 {/if}
@@ -679,7 +679,7 @@
   <div class="image-actions">
     <button class="image-cancel" onclick={cancelImage}>Cancel</button>
     <button
-      class="image-insert primary"
+      class="image-insert primary app-btn-primary"
       onclick={insertImage}
       disabled={imageBusy || !imageSrc}
     >
@@ -698,8 +698,8 @@
     align-items: center;
     gap: 2px;
     padding: 3px 6px;
-    background: var(--app-surface-raised, var(--app-surface, #252526));
-    border-bottom: 1px solid var(--app-border, rgba(255,255,255,0.08));
+    background: var(--app-surface-raised);
+    border-bottom: 1px solid var(--app-border);
     flex-shrink: 0;
     /* width: 100% is required because container-type:inline-size prevents the
        default flex-child stretch from working — the container containment
@@ -721,7 +721,7 @@
     display: block;
     width: 1px;
     height: 16px;
-    background: var(--app-border, rgba(255,255,255,0.12));
+    background: var(--app-border);
     margin: 0 3px;
     flex-shrink: 0;
   }
@@ -735,7 +735,7 @@
     gap: 2px;
     border: none;
     background: transparent;
-    color: var(--app-text, #d8dee9);
+    color: var(--app-text);
     border-radius: 3px;
     padding: 3px 5px;
     cursor: pointer;
@@ -747,15 +747,15 @@
     min-height: 26px;
   }
   .tb-btn:hover {
-    background: var(--app-control-hover-bg, rgba(255,255,255,0.1));
-    color: var(--app-text, #d8dee9);
+    background: var(--app-control-hover-bg);
+    color: var(--app-text);
   }
   .tb-btn:focus-visible {
-    outline: 2px solid var(--app-focus-ring, #3a6fb5);
+    outline: 2px solid var(--app-focus-ring);
     outline-offset: 2px;
   }
   .tb-btn:active {
-    background: var(--app-control-active-bg, rgba(255,255,255,0.16));
+    background: var(--app-control-active-bg);
   }
   .tb-btn-split {
     gap: 1px;
@@ -771,11 +771,11 @@
     top: calc(100% + 4px);
     left: 0;
     min-width: 120px;
-    background: var(--app-surface, #2d2d2d);
-    border: 1px solid var(--app-border, rgba(255,255,255,0.15));
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
     border-radius: 4px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    z-index: 400;
+    box-shadow: 0 4px 12px var(--app-shadow-md);
+    z-index: var(--app-z-menu);
     padding: 4px;
     display: flex;
     flex-direction: column;
@@ -791,20 +791,20 @@
     border-radius: 3px;
     padding: 5px 8px;
     font-size: 12px;
-    color: var(--app-text, #d8dee9);
+    color: var(--app-text);
     cursor: pointer;
   }
   .popup-item:hover {
-    background: var(--app-control-hover-bg, rgba(255,255,255,0.1));
+    background: var(--app-control-hover-bg);
   }
   .popup-item:focus-visible {
-    outline: 2px solid var(--app-focus-ring, #3a6fb5);
+    outline: 2px solid var(--app-focus-ring);
     outline-offset: 2px;
   }
 
   .popup-hr {
     border: none;
-    border-top: 1px solid var(--app-border, rgba(255,255,255,0.1));
+    border-top: 1px solid var(--app-border);
     margin: 3px 0;
   }
 
@@ -826,16 +826,16 @@
     align-items: center;
     justify-content: space-between;
     font-size: 12px;
-    color: var(--app-text, #d8dee9);
+    color: var(--app-text);
     gap: 8px;
   }
   .popup-input {
     width: 56px;
     padding: 3px 6px;
-    border: 1px solid var(--app-border, rgba(255,255,255,0.15));
+    border: 1px solid var(--app-border);
     border-radius: 3px;
-    background: var(--app-bg, #1e1e1e);
-    color: var(--app-text, #d8dee9);
+    background: var(--app-bg);
+    color: var(--app-text);
     font-size: 12px;
     text-align: right;
   }
@@ -893,8 +893,10 @@
   .image-dialog-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 500;
+    background: var(--app-backdrop);
+    /* Between --app-z-menu and --app-z-sheet: this toolbar-owned mini-dialog
+       must stay BELOW --app-z-modal so real app dialogs always cover it. */
+    z-index: calc(var(--app-z-menu) + 100);
   }
 
   .image-dialog {
@@ -902,11 +904,11 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: 501;
-    background: var(--app-surface, #252526);
-    border: 1px solid var(--app-border, rgba(255,255,255,0.15));
+    z-index: calc(var(--app-z-menu) + 101);
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
     border-radius: 8px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    box-shadow: 0 8px 32px var(--app-shadow-lg);
     padding: 20px 24px;
     width: clamp(300px, 90vw, 460px);
     display: flex;
@@ -918,7 +920,7 @@
     margin: 0;
     font-size: 14px;
     font-weight: 600;
-    color: var(--app-text, #d8dee9);
+    color: var(--app-text);
   }
 
   .image-field {
@@ -930,7 +932,7 @@
   .image-label {
     font-size: 11px;
     font-weight: 600;
-    color: var(--app-text-faint, #9aa5b1);
+    color: var(--app-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
@@ -943,34 +945,34 @@
   .image-input {
     flex: 1;
     padding: 6px 8px;
-    border: 1px solid var(--app-border, rgba(255,255,255,0.15));
+    border: 1px solid var(--app-border);
     border-radius: 4px;
-    background: var(--app-bg, #1e1e1e);
-    color: var(--app-text, #d8dee9);
+    background: var(--app-bg);
+    color: var(--app-text);
     font-size: 12px;
   }
   .image-input:focus {
-    outline: 2px solid var(--app-accent, #4ea1ff);
-    outline-offset: 1px;
+    outline: none;
+    border-color: var(--app-focus-ring);
   }
   .image-input[readonly] {
     cursor: default;
-    color: var(--app-text-faint, #9aa5b1);
+    color: var(--app-text-muted);
   }
 
   .image-pick-btn {
     padding: 6px 12px;
-    border: 1px solid var(--app-border, rgba(255,255,255,0.15));
+    border: 1px solid var(--app-border);
     border-radius: 4px;
-    background: var(--app-control-bg, rgba(255,255,255,0.07));
-    color: var(--app-text, #d8dee9);
+    background: var(--app-control-bg);
+    color: var(--app-text);
     font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
     flex-shrink: 0;
   }
   .image-pick-btn:hover {
-    background: var(--app-control-hover-bg, rgba(255,255,255,0.13));
+    background: var(--app-control-hover-bg);
   }
   .image-pick-btn:disabled {
     opacity: 0.5;
@@ -980,7 +982,7 @@
   .image-path-hint {
     margin: 0;
     font-size: 10px;
-    color: var(--app-text-faint, #9aa5b1);
+    color: var(--app-text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -989,26 +991,27 @@
   .image-hint {
     margin: 0;
     font-size: 10px;
-    color: var(--app-text-faint, #9aa5b1);
+    color: var(--app-text-muted);
     line-height: 1.4;
   }
 
   .image-select {
     padding: 6px 8px;
-    border: 1px solid var(--app-border, rgba(255,255,255,0.15));
+    border: 1px solid var(--app-border);
     border-radius: 4px;
-    background: var(--app-bg, #1e1e1e);
-    color: var(--app-text, #d8dee9);
+    background: var(--app-bg);
+    color: var(--app-text);
     font-size: 12px;
   }
   .image-select:focus {
-    outline: 2px solid var(--app-accent, #4ea1ff);
+    outline: none;
+    border-color: var(--app-focus-ring);
   }
 
   .image-error {
     margin: 0;
     font-size: 12px;
-    color: var(--app-error-text, #b42318);
+    color: var(--app-error-text);
   }
 
   .image-actions {
@@ -1020,29 +1023,25 @@
 
   .image-cancel {
     padding: 7px 14px;
-    border: 1px solid var(--app-border, rgba(255,255,255,0.15));
+    border: 1px solid var(--app-border);
     border-radius: 4px;
     background: transparent;
-    color: var(--app-text, #d8dee9);
+    color: var(--app-text);
     font-size: 12px;
     cursor: pointer;
   }
   .image-cancel:hover {
-    background: var(--app-control-hover-bg, rgba(255,255,255,0.08));
+    background: var(--app-control-hover-bg);
   }
 
+  /* Colors come from the shared .app-btn-primary recipe (theme.css). */
   .image-insert {
     padding: 7px 14px;
-    border: none;
+    border-width: 1px;
+    border-style: solid;
     border-radius: 4px;
-    background: var(--app-accent, #4ea1ff);
-    color: var(--app-accent-text, #ffffff);
     font-size: 12px;
     cursor: pointer;
-    font-weight: 600;
-  }
-  .image-insert:hover:not(:disabled) {
-    opacity: 0.9;
   }
   .image-insert:disabled {
     opacity: 0.45;

@@ -5,7 +5,6 @@
     "": {
       "name": "print-md-monorepo",
       "dependencies": {
-        "cookie": "^2.0.1",
         "js-yaml": "^5.2.1",
         "launch-editor": "^2.14.1",
         "markdown-it": "^14.3.0",
@@ -16,7 +15,7 @@
     },
     "packages/cli": {
       "name": "@dimm-city/print-md",
-      "version": "0.7.1",
+      "version": "0.8.1",
       "bin": {
         "print-md": "./dist/cli.js",
       },
@@ -58,7 +57,7 @@
     },
     "packages/viewer": {
       "name": "@dimm-city/print-md-viewer",
-      "version": "0.7.1",
+      "version": "0.8.1",
       "dependencies": {
         "@codemirror/autocomplete": "^6.18.4",
         "@codemirror/commands": "^6.8.0",
@@ -98,9 +97,11 @@
     },
   },
   "overrides": {
+    "axios": "^1.18.0",
     "cookie": "^0.7.2",
     "form-data": "^4.0.6",
     "shell-quote": "^1.8.5",
+    "tar": "^7.5.20",
     "tmp": "^0.2.6",
     "undici": "^7.28.0",
     "ws": "^8.21.0",
@@ -1638,7 +1639,6 @@
 
     "app-builder-lib/semver": ["semver@7.7.4", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA=="],
 
-
     "app-builder-lib/which": ["which@5.0.0", "", { "dependencies": { "isexe": "^3.1.1" }, "bin": { "node-which": "bin/which.js" } }, "sha512-JEdGzHwwkrbWoGOlIHqQ5gtprKGOenpDHpxE9zVR1bWbOtYRyPPHMe9FaP6x61CmNaTThSkb0DAJte5jD+DmzQ=="],
 
     "axios/https-proxy-agent": ["https-proxy-agent@5.0.1", "", { "dependencies": { "agent-base": "6", "debug": "4" } }, "sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA=="],
@@ -1724,7 +1724,6 @@
     "micromark-util-subtokenize/micromark-util-types": ["micromark-util-types@2.0.1", "", {}, "sha512-534m2WhVTddrcKVepwmVEVnUAmtrx9bfIjNoQHRqfnvdaHQiFytEhJoTgpWJvDEXCO5gLTQh3wYC1PgOJA4NSQ=="],
 
     "node-gyp/env-paths": ["env-paths@2.2.1", "", {}, "sha512-+h1lkLKhZMTYjog1VEpJNG7NZJWcuc2DDk/qsqSTRRCOXiLjeQ1d1/udrUGhqMxUgAlwKNZ0cf2uqan5GLuS2A=="],
-
 
     "node-gyp/tinyglobby": ["tinyglobby@0.2.16", "", { "dependencies": { "fdir": "^6.5.0", "picomatch": "^4.0.4" } }, "sha512-pn99VhoACYR8nFHhxqix+uvsbXineAasWm5ojXoN8xEwK5Kd3/TrhNn1wByuD52UxWRLy8pu+kRMniEi6Eq9Zg=="],
 

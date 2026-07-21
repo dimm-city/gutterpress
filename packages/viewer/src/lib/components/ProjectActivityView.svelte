@@ -177,7 +177,7 @@
                       Cancel
                     </button>
                     <button
-                      class="primary small"
+                      class="primary small app-btn-primary"
                       onclick={() => confirmRestore(entry.id)}
                       disabled={restoringId === entry.id}
                     >
@@ -248,7 +248,8 @@
   .log-details pre { margin-top: 8px; }
   .ghost { align-self: flex-start; background: transparent; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
   .ghost:disabled, .primary:disabled { opacity: 0.6; cursor: default; }
-  .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); border: 1px solid transparent; border-radius: 5px; padding: 5px 10px; cursor: pointer; font-weight: 600; }
+  /* Colors come from the shared .app-btn-primary recipe (theme.css). */
+  .primary { border-width: 1px; border-style: solid; border-radius: 5px; padding: 5px 10px; cursor: pointer; }
   .ghost.small, .primary.small { padding: 4px 8px; font-size: 11px; }
   .close { display: inline-flex; align-items: center; justify-content: center; background: transparent; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 5px; padding: 4px; cursor: pointer; }
 </style>

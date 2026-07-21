@@ -160,7 +160,7 @@
     border-radius: 10px;
     background: var(--app-surface);
     border: 1px solid var(--app-border-subtle);
-    box-shadow: 0 8px 28px var(--app-shadow-lg, rgba(0,0,0,0.18));
+    box-shadow: 0 8px 28px var(--app-shadow-lg);
     max-width: 340px;
     text-align: center;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -183,7 +183,7 @@
   .reassurance {
     margin: 0;
     font-size: 12px;
-    color: var(--app-text-faint, var(--app-text-muted));
+    color: var(--app-text-muted);
     line-height: 1.5;
   }
 
@@ -213,7 +213,7 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: var(--app-accent-subtle, color-mix(in srgb, var(--app-focus-ring) 14%, transparent));
+    background: var(--app-accent-subtle);
     border: 2px solid var(--app-focus-ring);
     color: var(--app-focus-ring);
     font-size: 18px;
@@ -257,7 +257,7 @@
   }
 
   .show-backup-link:hover {
-    color: var(--app-accent-hover, var(--app-focus-ring));
+    color: var(--app-accent-hover);
   }
 
   .show-backup-link:focus-visible {

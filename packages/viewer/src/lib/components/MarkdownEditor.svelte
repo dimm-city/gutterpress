@@ -225,12 +225,12 @@
     },
     ".cm-scroller": {
       fontFamily:
-        "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        "var(--app-font-mono)",
       lineHeight: "1.6",
       overflow: "auto",
     },
-    ".cm-content": { caretColor: "var(--app-accent, #4ea1ff)" },
-    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--app-accent, #4ea1ff)" },
+    ".cm-content": { caretColor: "var(--app-accent)" },
+    ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--app-accent)" },
     // Selection — explicit in BOTH focused and unfocused states so it reads in
     // light and dark (CodeMirror's built-in selection colour assumes one theme).
     "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
@@ -550,7 +550,7 @@
     display: grid;
     place-items: center;
     padding: 24px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-size: 13px;
     text-align: center;
   }
@@ -561,63 +561,39 @@
   }
 
   /* ── CodeMirror syntax palette (consumed by printmdHighlight + editableTheme) ──
-     Tokens flip with the app's [data-theme] so the SAME highlight style is
-     legible in both modes. Dark is the default (covers the no-attr first paint);
-     light overrides below. Tuned for contrast: markers visible-but-subtle, code
-     tokens clearly differentiated, body text high-contrast. */
-  :global(:root),
-  :global([data-theme="dark"]) {
-    --cm-text: #d8dee9;
-    --cm-heading: #c8a8ff;
-    --cm-strong: #f2f4f8;
-    --cm-em: #d8dee9;
-    --cm-link: #5cb3ff;
-    --cm-quote: #9aa5b1;
-    --cm-marker: #8195b5;
-    --cm-code: #f0cf94;
-    --cm-string: #b6dc9c;
-    --cm-number: #ffb88a;
-    --cm-keyword: #c792ea;
-    --cm-comment: #7c8590;
-    --cm-tag: #ff8f8f;
-    --cm-attr: #ffcb6b;
-    --cm-property: #82aaff;
-    --cm-class: #ffcb6b;
-    --cm-function: #82aaff;
-    --cm-punct: #9aa5b1;
-    --cm-invalid: #ff6b6b;
-    --cm-selection: rgba(92, 179, 255, 0.28);
-    --cm-active-line: rgba(255, 255, 255, 0.05);
-    --cm-gutter-bg: var(--app-surface, #252526);
-    --cm-gutter-text: #6b7280;
-    --cm-bracket-bg: rgba(92, 179, 255, 0.18);
-    --cm-bracket-outline: rgba(92, 179, 255, 0.5);
-  }
-  :global([data-theme="light"]) {
-    --cm-text: #1f2328;
-    --cm-heading: #6639ba;
-    --cm-strong: #1f2328;
-    --cm-em: #1f2328;
-    --cm-link: #0969da;
-    --cm-quote: #57606a;
-    --cm-marker: #6e7781;
-    --cm-code: #953800;
-    --cm-string: #0a7d33;
-    --cm-number: #953800;
-    --cm-keyword: #cf222e;
-    --cm-comment: #6e7781;
-    --cm-tag: #116329;
-    --cm-attr: #0550ae;
-    --cm-property: #0550ae;
-    --cm-class: #953800;
-    --cm-function: #8250df;
-    --cm-punct: #57606a;
-    --cm-invalid: #cf222e;
-    --cm-selection: rgba(9, 105, 218, 0.18);
-    --cm-active-line: rgba(27, 31, 36, 0.045);
-    --cm-gutter-bg: var(--app-surface, #f6f8fa);
-    --cm-gutter-text: #8c959f;
-    --cm-bracket-bg: rgba(9, 105, 218, 0.14);
-    --cm-bracket-outline: rgba(9, 105, 218, 0.45);
+     Component-private tokens (this file is their only consumer — theme.css's
+     admission rule keeps them out of the global palette). Each is defined ONCE
+     with light-dark(); the values flip with the app theme because theme.css
+     sets `color-scheme` from [data-theme]. Scoped to .editor-wrap — no
+     :global, no :root leakage; CodeMirror mounts inside .editor-host, and CM6
+     tooltips default to the editor's own DOM, so every consumer resolves the
+     tokens. Tuned for contrast: markers visible-but-subtle, code tokens
+     clearly differentiated, body text high-contrast. */
+  .editor-wrap {
+    --cm-text: light-dark(#1f2328, #d8dee9);
+    --cm-heading: light-dark(#6639ba, #c8a8ff);
+    --cm-strong: light-dark(#1f2328, #f2f4f8);
+    --cm-em: light-dark(#1f2328, #d8dee9);
+    --cm-link: light-dark(#0969da, #5cb3ff);
+    --cm-quote: light-dark(#57606a, #9aa5b1);
+    --cm-marker: light-dark(#6e7781, #8195b5);
+    --cm-code: light-dark(#953800, #f0cf94);
+    --cm-string: light-dark(#0a7d33, #b6dc9c);
+    --cm-number: light-dark(#953800, #ffb88a);
+    --cm-keyword: light-dark(#cf222e, #c792ea);
+    --cm-comment: light-dark(#6e7781, #7c8590);
+    --cm-tag: light-dark(#116329, #ff8f8f);
+    --cm-attr: light-dark(#0550ae, #ffcb6b);
+    --cm-property: light-dark(#0550ae, #82aaff);
+    --cm-class: light-dark(#953800, #ffcb6b);
+    --cm-function: light-dark(#8250df, #82aaff);
+    --cm-punct: light-dark(#57606a, #9aa5b1);
+    --cm-invalid: light-dark(#cf222e, #ff6b6b);
+    --cm-selection: light-dark(rgba(9, 105, 218, 0.18), rgba(92, 179, 255, 0.28));
+    --cm-active-line: light-dark(rgba(27, 31, 36, 0.045), rgba(255, 255, 255, 0.05));
+    --cm-gutter-bg: var(--app-surface);
+    --cm-gutter-text: light-dark(#8c959f, #6b7280);
+    --cm-bracket-bg: light-dark(rgba(9, 105, 218, 0.14), rgba(92, 179, 255, 0.18));
+    --cm-bracket-outline: light-dark(rgba(9, 105, 218, 0.45), rgba(92, 179, 255, 0.5));
   }
 </style>

@@ -136,7 +136,7 @@
           <button class="ghost small" onclick={() => controller.requestRemoveTheme(t)} disabled={controller.themeBusyId !== null} title="Remove this project theme">Remove</button>
         {/if}
       {:else}
-        <button class="primary small" onclick={() => controller.applyTheme(t)} disabled={controller.themeBusyId !== null}>Apply</button>
+        <button class="primary small app-btn-primary" onclick={() => controller.applyTheme(t)} disabled={controller.themeBusyId !== null}>Apply</button>
         {#if t.kind === "project"}
           <button class="ghost icononly" onclick={() => controller.requestRemoveTheme(t)} disabled={controller.themeBusyId !== null} title="Remove" aria-label={`Remove ${t.name}`}>
             <Icon name="trash" size={13} />
@@ -199,7 +199,7 @@
   .theme-fallback-line.short { width: 46px; }
   .theme-info { display: flex; flex-direction: column; gap: 1px; }
   .theme-name { font-size: 12px; font-weight: 600; color: var(--app-text); }
-  .theme-author { font-size: 10px; color: var(--app-text-faint); }
+  .theme-author { font-size: 10px; color: var(--app-text-muted); }
   .theme-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   /* Armed Remove confirm (UX review M7): names the theme + warns customizations
      are gone for good, full-width above the Delete/Cancel pair. */
@@ -212,9 +212,9 @@
   /* #106: non-fatal import warnings (print-safety, missing metadata, extra files). */
   .theme-warnings {
     margin: 0 0 8px; padding: 8px 10px; border-radius: 6px;
-    background: var(--app-warning-bg, var(--app-surface-sunken));
-    border: 1px solid var(--app-warning-border, var(--app-border));
-    color: var(--app-warning-text, var(--app-text));
+    background: var(--app-warning-bg);
+    border: 1px solid var(--app-warning-border);
+    color: var(--app-warning-text);
   }
   .theme-warnings .warn-title { margin: 0 0 4px; font-size: 11px; font-weight: 600; }
   .theme-warnings ul { margin: 0; padding-left: 16px; }
@@ -228,10 +228,12 @@
     z-index: 40; pointer-events: none;
     border-radius: 8px; overflow: hidden;
     border: 1px solid var(--app-border-strong); background: var(--app-surface);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 8px 30px var(--app-shadow-lg);
   }
   .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
+  /* 480px: the hover-preview flyout physically can't fit beside the grid on
+     very narrow panels — component-local, unrelated to the 820px app tier. */
   @media (max-width: 480px) {
     .theme-grid { grid-template-columns: 1fr 1fr; }
     /* On narrow screens the pinned preview would cover the grid — hide it. */

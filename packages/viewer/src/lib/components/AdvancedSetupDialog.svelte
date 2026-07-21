@@ -431,7 +431,7 @@
         {/if}
         <div class="connect-actions">
           <button
-            class="dlg-primary"
+            class="dlg-primary app-btn-primary"
             onclick={connectServer}
             disabled={connecting || !serverInput.trim() || !tokenInput.trim()}
           >
@@ -450,7 +450,7 @@
               <li role="listitem" class="conn-row">
                 <span class="conn-label">
                   {conn.label ?? conn.host}
-                  {#if conn.kind === "github-oauth"}<span class="badge">GitHub</span>{/if}
+                  {#if conn.kind === "github-oauth"}<span class="dlg-badge">GitHub</span>{/if}
                 </span>
                 <!-- Two-step confirm (L2) — a single persistent button whose
                      label/class swap in place, so arming never loses focus. -->
@@ -547,11 +547,11 @@
   }
   h4 { margin: 10px 0 0; font-size: 12px; font-weight: 600; color: var(--app-text-muted); }
   .hint { font-size: 13px; margin: 0; line-height: 1.5; }
-  .hint.subtle { color: var(--app-text-faint); font-size: 12px; }
+  .hint.subtle { color: var(--app-text-muted); font-size: 12px; }
   .hint.ok { color: var(--app-text); }
   .hint.guidance { color: var(--app-text); }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
-  .mono { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+  .mono { font-family: var(--app-font-mono); font-size: 12px; word-break: break-all; }
   .link-btn {
     background: none;
     border: 0;
@@ -627,17 +627,6 @@
     font-size: 13px;
   }
   .conn-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .badge {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--app-text-faint);
-    border: 1px solid var(--app-border);
-    border-radius: 4px;
-    padding: 1px 6px;
-    flex-shrink: 0;
-  }
   .provider-list { margin: 0; font-size: 13px; line-height: 1.5; }
   .provider-list dt { font-weight: 600; color: var(--app-text); margin-top: 8px; }
   .provider-list dt:first-child { margin-top: 0; }

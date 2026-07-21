@@ -337,8 +337,10 @@ describe("ConflictChoicesDialog.svelte source must contain the preview disclosur
 
   test("pane elements use monospace font (var(--app-*) token or font-family)", () => {
     const source = fs.readFileSync(componentPath, "utf-8");
-    // The preview panes must be monospace. Accept CSS var or inline style.
-    const hasMonospace = source.includes("monospace") || source.includes("ui-monospace");
+    // The preview panes must be monospace. Accept the shared --app-font-mono
+    // token (the app-wide mono stack) or a literal monospace stack.
+    const hasMonospace =
+      source.includes("var(--app-font-mono)") || source.includes("monospace");
     expect(hasMonospace).toBe(true);
   });
 

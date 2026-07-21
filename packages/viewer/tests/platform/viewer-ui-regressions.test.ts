@@ -272,7 +272,7 @@ test("settings/help live in a bottom-right status toolbar and problems overlay w
   expect(status).toContain("onOpenSettings");
   expect(status).toContain("onOpenHelp");
   expect(status).toContain("shell-actions");
-  expect(status).toContain("z-index: 300");
+  expect(status).toContain("z-index: var(--app-z-popover)");
   expect(page).toContain("onOpenSettings={openSettings}");
   expect(page).toContain("onOpenHelp={() => (helpOpen = true)}");
 });

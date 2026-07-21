@@ -479,7 +479,7 @@
   .tab:hover { color: var(--app-text); }
   .tab.active {
     color: var(--app-text);
-    border-bottom-color: var(--app-accent, #4a9eff);
+    border-bottom-color: var(--app-accent);
     font-weight: 600;
   }
   .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
@@ -497,7 +497,7 @@
     font-size: 10.5px;
     font-weight: 600;
     text-transform: uppercase;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     letter-spacing: 0.09em;
   }
   .reset {
@@ -521,7 +521,7 @@
   .row label { color: var(--app-text-secondary); }
   .row-toggle { align-items: center; }
   .row-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-faint); }
+  .row-hint { font-size: 11px; line-height: 1.3; color: var(--app-text-muted); }
   .row input[type="text"],
   .row input[type="number"],
   .row select {
@@ -540,6 +540,8 @@
     appearance: none;
     -webkit-appearance: none;
     padding-right: 28px;
+    /* Chevron stroke #8a8a8a is baked into the data URI (var() can't reach
+       inside it) — a mid-grey chosen to stay legible on both themes. */
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
     background-repeat: no-repeat;
     background-position: right 9px center;
@@ -556,7 +558,7 @@
   .advanced-hint {
     text-transform: none;
     letter-spacing: 0;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-weight: 400;
   }
 </style>

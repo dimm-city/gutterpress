@@ -360,12 +360,22 @@ in the markdown source. Templates are plain CSS classes; the markdown file
 remains the single source of truth. **No second sectioning model.**
 
 **Visual layout editor (PROPOSED — #37):** #37 is the tracked spec
-(page-spread canvas; regions map to named `@page` rules/classes; "the CSS
-file remains the source of truth"; sub-issues required before
-implementation). The interaction-model decision — #37's canvas vs the
-click-region property inspector sketched in issue #40 — is reconciled **in
-#37**, not here. Non-negotiables either way: writes target a defined layer
-(e.g. a tool-managed overrides block appended last in the cascade); v1 edits
+(sub-issues required before implementation; "the CSS file remains the
+source of truth"). The interaction-model question — #37's original
+page-spread drag-and-drop canvas vs the click-region property inspector
+sketched in issue #40 — is **resolved (2026-07-20, recorded in #37): v1 is
+the property-inspector model.** Click a region in the live preview → a
+property panel edits token-backed properties and `@page`-mapped geometry
+(page size, margins, running headers, column count). This follows the
+recommendation in #37's own research comment — a drag-and-drop canvas for
+paginated content inherits the full InDesign/TeX reflow problem domain,
+while a property panel covers ~80% of the need at a fraction of the
+complexity (REDUCE-complexity mandate) — and Webflow/Pinegrow precedent:
+every control maps 1:1 to a CSS rule written back to the stylesheet. The
+canvas is **deferred indefinitely**; if ever revisited, it is a later
+evolution of the inspector proposed as a PR against this document.
+Non-negotiables (unchanged): writes target a defined layer (e.g. a
+tool-managed overrides block appended last in the cascade); v1 edits
 only token-backed properties (others shown read-only), so the tool never
 writes raw values; the shipped **DesignSection token editor is the
 baseline** it extends (do not build a second token panel).
@@ -448,6 +458,18 @@ and provider-agnostic configuration (OpenAI / Anthropic / local Ollama, keys
 in the OS keychain, per-user). This section defers to #36 for all of that;
 divergences below are labeled.
 
+**Product shape (decided 2026-07-20):** the AI feature is a **chat window**.
+Authors converse with an LLM/agent that can **read the project's files** to
+gather context on what they're working on — reads happen host-side; context
+is the current file by default with opt-in full-project context (#36). It is
+*not* an ambient completion surface: **inline ghost-text autocomplete was
+evaluated and removed from the plan entirely** (2026-07-20); any revival
+would be a new proposal against this document. A possible **future
+direction** — explicitly out of scope until it gets its own issue — is
+letting the agent edit files directly, in the style of Claude Code / VS Code
+Copilot (proposed edits surfaced as reviewable diffs); until then the
+no-unaccepted-mutations constraint below stands.
+
 Binding constraints (regardless of final design):
 
 - **Off by default.** AI activates only after the user enables it and
@@ -455,25 +477,40 @@ Binding constraints (regardless of final design):
   points (toolbar button, `/ai`, chat panel) are **hidden**, not greyed out;
   the drawer, if reached, shows a one-card empty state ("Connect a provider
   to enable AI").
-- Provider calls run **host-side** via an `api/ai/*` server route; keys live
-  in host credential storage (reuse the ADR 0006 token layering). The UI
-  discloses plainly that document text is sent to the configured provider.
-  Local Ollama is the offline/no-cloud path (#36).
+- Provider calls run **host-side** via an `api/ai/*` server route, and the
+  file reads that build the agent's context are host-side too — the renderer
+  never assembles provider payloads. Keys live in host credential storage
+  (reuse the ADR 0006 token layering). The UI discloses plainly that
+  document text is sent to the configured provider. Local Ollama is the
+  offline/no-cloud path (#36).
+- **Context is allow-listed, never "the whole folder."** A local-first
+  project root routinely holds secrets and noise (`.env`, credential/token
+  files, `.git/`, generated build output under the project's out dir, binary
+  assets). The host context builder MUST therefore, as a binding part of the
+  #36 implementation:
+  - include **only text source the author authored** — markdown/CSS and the
+    manifest — and **exclude** dotfiles/dot-dirs, anything matched by the
+    project's `.gitignore`, the configured build/output directory, files over
+    a size cap, and non-text/binary files;
+  - never read outside the project root (no `../` escape, no absolute paths);
+  - treat "opt-in full-project context" as *all allow-listed files in the
+    project*, not *all files* — the toggle widens scope within the allow-list,
+    it does not disable it.
+- **Consent is per-scope and previewable.** Enabling full-project context is
+  an explicit action separate from enabling AI, and before the first
+  full-project submission the UI shows exactly which files will be sent (a
+  reviewable manifest the author can exclude entries from). Sending document
+  text is disclosed (above); sending *additional* project files requires this
+  distinct, informed opt-in.
 - AI never modifies text without an explicit accept step.
 
-Interaction sketch (to be reconciled in #36):
+Interaction sketch:
 
 - Chat panel (right drawer / bottom sheet on mobile), per-document history,
   "Apply" inserts at cursor or replaces selection. Slash actions align with
   #36's list (`/rewrite`, `/expand`, `/shrink`, `/fix`, …).
-- **Inline ghost text is a proposed extension that appears nowhere in #36**
-  — it requires scoping there (or a sub-issue) before any implementation.
-  If built: triggers only while enabled, on pause ≥1.5s, never mid-word,
-  never during rapid typing; 50% opacity; subtle gutter indicator while
-  generating.
-- Key precedence (binding): **Tab accepts ghost text only while ghost text is
-  visible; otherwise Tab indents.** The slash menu opens only when `/` is
-  typed at line start or after whitespace; `Esc` or a non-matching character
+- Key precedence (binding): the slash menu opens only when `/` is typed at
+  line start or after whitespace; `Esc` or a non-matching character
   dismisses; `/ai` is an entry in that menu, not a separate parser.
 
 ### 8. CSS editor
@@ -788,7 +825,7 @@ device class.
 ### Reduced motion
 
 - `prefers-reduced-motion: reduce` disables pane transitions, toolbar
-  slide-ins, ghost-text fades; state changes become instant.
+  slide-ins, and panel fades; state changes become instant.
 
 ### Focus management
 
@@ -928,7 +965,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Color-only state indication | WCAG / color-blind users | Icon + color + label |
 | Unlabeled icon-only buttons | New users, screen readers, touch | `aria-label` + tooltip (pointer) / long-press label (touch) |
 | Requiring an account or purchase before first export | Abandonment, trust; **there are no accounts or tiers** — MPL-2.0 local-first app | All core features work with no account; provider sign-in only at the moment publish/sync needs it |
-| AI modifying content without accept | Trust violation | Ghost text / explicit apply only; AI off by default (§7) |
+| AI modifying content without accept | Trust violation | Explicit apply/accept only; AI off by default (§7) |
 | Tooltips that vanish on mouse move | Motor-impaired users | ≥300ms hide delay; persists while hovered |
 | Auto-advancing feature tours | Patronizing | On-demand contextual help |
 | Hiding features behind unlock gates | Contradicts escape-hatch principle; regresses shipped UI | Soft emphasis: Advanced badge, never hidden (§4) |
@@ -1000,8 +1037,8 @@ before implementation** (Primary Goals: unscoped mandated work is prohibited)
 - ✅ Theme package format + ZIP/CSS import + hover sample preview + revert — **#106** (0.8.0-beta.1)
 - 🆕 Publish progress drawer (push-stream seam) · ❌ publish history — evaluated, not planned
 - ❌ Page thumbnail navigator — evaluated, not planned (pager + TOC cover it)
-- ⏳ Visual layout editor — **#37**; blocked on #37 sub-issue scoping (do not schedule as near-term)
-- ⏳ AI assistant — **#36** (off by default, host-side, §7 constraints)
+- ⏳ Visual layout editor — **#37**; interaction model resolved (property inspector, §5); blocked on #37 sub-issue scoping (do not schedule as near-term)
+- ⏳ AI assistant — **#36** (chat window with host-side file-read context; off by default, §7 constraints; no ambient completions — ghost text removed from the plan)
 
 ### Quality-gate measurement
 - ✅ Telemetry decision — **#108**: no telemetry; gates measured via usability tests + CI (this section updated to match)

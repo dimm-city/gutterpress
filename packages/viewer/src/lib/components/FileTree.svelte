@@ -394,7 +394,7 @@
   {#if creating && creating.dir === dir}
     <li>
       <div class="tree-row editing" style="padding-left: {8 + depth * 14}px">
-        <Icon name={creating.kind === "folder" ? "folder" : "file-text"} />
+        <Icon name={creating.kind === "folder" ? "folder" : "file-text"} size={creating.kind === "folder" ? 13 : 15} />
         <input
           class="inline-input"
           type="text"
@@ -440,7 +440,7 @@
   <li>
     {#if renaming?.path === entry.path}
       <div class="tree-row editing" style="padding-left: {8 + depth * 14}px">
-        <Icon name={entry.isDir ? "folder" : "file-text"} />
+        <Icon name={entry.isDir ? "folder" : "file-text"} size={entry.isDir ? 13 : 15} />
         <input
           class="inline-input"
           type="text"
@@ -642,7 +642,7 @@
     height: 100%;
     min-height: 0;
     overflow-y: auto;
-    background: var(--app-surface, var(--app-bg));
+    background: var(--app-surface);
     border-right: 1px solid var(--app-border);
     font-size: 13px;
   }
@@ -685,7 +685,7 @@
   .file-tree-msg {
     margin: 0;
     padding: 12px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     font-size: 12px;
     line-height: 1.5;
   }
@@ -716,7 +716,7 @@
     flex: 0 0 auto;
     width: 13px;
     height: 13px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .file-item {
     display: flex;
@@ -747,13 +747,9 @@
   }
   .file-item :global(svg) {
     flex: 0 0 auto;
-    width: 15px;
-    height: 15px;
   }
   .file-item.folder :global(svg:first-child) {
-    width: 13px;
-    height: 13px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
   }
   .file-name {
     overflow: hidden;
@@ -777,7 +773,7 @@
     background: transparent;
     border: none;
     border-radius: 4px;
-    color: var(--app-text-faint);
+    color: var(--app-text-muted);
     cursor: pointer;
     /* WCAG 2.5.8: minimum target size 24×24px */
     min-width: 24px;

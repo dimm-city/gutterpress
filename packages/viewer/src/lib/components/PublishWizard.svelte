@@ -305,7 +305,7 @@
                 oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
                 onkeydown={(e) => { if (e.key === "Enter") doConnect(card); }}
               />
-              <button class="dlg-primary" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
+              <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
             </div>
             {#if card.tokenUrl}
               <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
@@ -444,7 +444,7 @@
             <div class="pub-actions">
               <button class="dlg-ghost" onclick={() => controller.runPublish(card.id, true)} disabled={busy}>Check readiness</button>
               <button
-                class="dlg-primary"
+                class="dlg-primary app-btn-primary dlg-primary-inline"
                 onclick={() => controller.runPublish(card.id, false)}
                 disabled={busy || needsConnect || publishGated}
                 title={needsConnect
@@ -490,7 +490,7 @@
               {:else}
                 <p class="success-line"><Icon name="circle-check" size={13} /> {outcome.detail ?? "Upload package prepared."}</p>
                 <p class="muted small">Package folder: <code>{outcome.packageDir}</code></p>
-                <button class="dlg-primary" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
+                <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
                 <ol class="checklist">{#each outcome.checklist as s, i (i)}<li>{s}</li>{/each}</ol>
               {/if}
             </div>
@@ -507,14 +507,14 @@
       {/if}
       <div class="spacer"></div>
       {#if stepKind === "choose"}
-        <button class="dlg-primary" onclick={next} disabled={selected.size === 0}>Next</button>
+        <button class="dlg-primary app-btn-primary" onclick={next} disabled={selected.size === 0}>Next</button>
       {:else if stepKind === "setup"}
-        <button class="dlg-primary" onclick={next}>Next</button>
+        <button class="dlg-primary app-btn-primary" onclick={next}>Next</button>
       {:else if stepKind === "preflight"}
-        <button class="dlg-primary" onclick={next} disabled={controller.preflightBusy}>Next</button>
+        <button class="dlg-primary app-btn-primary" onclick={next} disabled={controller.preflightBusy}>Next</button>
       {:else}
         <button
-          class="dlg-primary"
+          class="dlg-primary app-btn-primary"
           onclick={publishAll}
           disabled={controller.publishBusyId !== null || publishGated || selectedCards.every((c) => c.credentialRequired && !c.connected)}
         >
@@ -533,7 +533,7 @@
   .dlg-header h2 { color: var(--app-text); }
 
   .steps { list-style: none; display: flex; gap: 4px; margin: 0; padding: 10px 16px; border-bottom: 1px solid var(--app-border-subtle); overflow-x: auto; }
-  .steps li { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--app-text-faint); white-space: nowrap; flex-shrink: 0; }
+  .steps li { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--app-text-muted); white-space: nowrap; flex-shrink: 0; }
   .steps li.current { color: var(--app-text); font-weight: 600; }
   .steps li.done { color: var(--app-text-muted); }
   .step-dot { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--app-border-strong); font-size: 11px; }
@@ -545,12 +545,14 @@
   .muted { color: var(--app-text-muted); font-size: 12px; margin: 0; }
   .muted.small { font-size: 11px; }
   .error { color: var(--app-error-text); font-size: 12px; margin: 0; }
-  .warn { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--app-warning-text, #d29922); }
+  .warn { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--app-warning-text); }
 
   /* Fields match NewProjectWizard / the shared dialog form language. */
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
-  .field-hint { font-weight: 400 !important; color: var(--app-text-faint) !important; font-size: 11px !important; }
+  /* The hint sits OUTSIDE any .field wrapper (it precedes the label), so no
+     higher-specificity label rule competes — no !important needed. */
+  .field-hint { font-weight: 400; color: var(--app-text-muted); font-size: 11px; }
   .field input {
     background: var(--app-surface-sunken);
     border: 1px solid var(--app-border);
@@ -571,8 +573,15 @@
     width: 100%;
   }
   .field select:focus { outline: none; border-color: var(--app-focus-ring); }
-  .optional { font-style: italic; color: var(--app-text-faint); font-weight: 400; }
+  .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .key-row { display: flex; gap: 8px; }
+  /* In-body primary buttons (Connect / Publish / Open upload page) sit outside
+     the .dlg-actions footer, so they restate its geometry; colors come from
+     .app-btn-primary. */
+  .dlg-primary-inline {
+    padding: 6px 14px; font-size: 13px; border-radius: 4px;
+    border-width: 1px; border-style: solid; cursor: pointer;
+  }
   .key-row input { flex: 1; min-width: 0; }
   .self-start { align-self: flex-start; }
 
@@ -583,14 +592,14 @@
   .dest input { margin-top: 2px; flex-shrink: 0; }
   .dest-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
   .dest-name { font-size: 13px; font-weight: 600; color: var(--app-text); }
-  .dest-desc { font-size: 11px; color: var(--app-text-faint); line-height: 1.35; }
+  .dest-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
   .dest-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 10px; flex-shrink: 0; }
   .badge { padding: 1px 6px; border-radius: 10px; background: var(--app-surface); border: 1px solid var(--app-border); color: var(--app-text-muted); }
   .status { display: inline-flex; align-items: center; gap: 3px; }
-  .status.ok { color: var(--app-success-text, #3fb950); }
-  .status.off { color: var(--app-text-faint); }
+  .status.ok { color: var(--app-success-text); }
+  .status.off { color: var(--app-text-muted); }
 
-  .conn-ok { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--app-success-text, #3fb950); }
+  .conn-ok { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--app-success-text); }
   .conn-ok span { display: inline-flex; align-items: center; gap: 6px; }
 
   .pub-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
@@ -599,9 +608,9 @@
   .result { border-top: 1px solid var(--app-border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
   .issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
   .issues .error { color: var(--app-error-text); }
-  .issues .warning { color: var(--app-warning-text, #d29922); }
+  .issues .warning { color: var(--app-warning-text); }
   .issues .info { color: var(--app-text-muted); }
-  .success-line { margin: 0; font-size: 12px; color: var(--app-success-text, #3fb950); display: inline-flex; align-items: center; gap: 4px; }
+  .success-line { margin: 0; font-size: 12px; color: var(--app-success-text); display: inline-flex; align-items: center; gap: 4px; }
   .checklist { margin: 0; padding-left: 18px; font-size: 11px; color: var(--app-text-muted); line-height: 1.5; }
   .result code { font-size: 10px; word-break: break-all; }
 
@@ -618,22 +627,22 @@
   .pf-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .pf-status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
   .pf-status.pf-error { color: var(--app-error-text); }
-  .pf-status.pf-warning { color: var(--app-warning-text, #d29922); }
-  .pf-status.pf-ok { color: var(--app-success-text, #3fb950); }
+  .pf-status.pf-warning { color: var(--app-warning-text); }
+  .pf-status.pf-ok { color: var(--app-success-text); }
 
   .pf-group { display: flex; flex-direction: column; gap: 6px; }
-  .pf-group-title { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-faint); font-weight: 600; }
+  .pf-group-title { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); font-weight: 600; }
   .pf-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .pf-row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 10px; border: 1px solid var(--app-border); border-radius: 6px; background: var(--app-surface-sunken); }
   .pf-row.sev-error { color: var(--app-error-text); }
-  .pf-row.sev-warning { color: var(--app-warning-text, #d29922); }
-  .pf-row.sev-info { color: var(--app-info-text, var(--app-text-muted)); }
+  .pf-row.sev-warning { color: var(--app-warning-text); }
+  .pf-row.sev-info { color: var(--app-info-text); }
   .pf-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
   .pf-msg { margin: 0; font-size: 12px; color: var(--app-text); }
   .pf-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 10px; }
-  .pf-source { padding: 1px 6px; border-radius: 10px; background: var(--app-control-bg, var(--app-surface)); color: var(--app-text-secondary); }
+  .pf-source { padding: 1px 6px; border-radius: 10px; background: var(--app-control-bg); color: var(--app-text-secondary); }
   .pf-provider { padding: 1px 6px; border-radius: 10px; background: var(--app-surface); border: 1px solid var(--app-border); color: var(--app-text-muted); }
-  .pf-code { font-family: var(--app-mono, monospace); color: var(--app-text-faint); }
-  .pf-loc { color: var(--app-text-faint); }
+  .pf-code { font-family: var(--app-font-mono); color: var(--app-text-muted); }
+  .pf-loc { color: var(--app-text-muted); }
   .pf-goto { flex-shrink: 0; align-self: flex-start; font-size: 11px; padding: 4px 8px; }
 </style>

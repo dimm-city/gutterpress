@@ -369,7 +369,7 @@
 
       <footer class="dlg-actions">
         <button class="dlg-ghost" onclick={close} disabled={creating}>Cancel</button>
-        <button class="dlg-primary" onclick={create} disabled={!canCreate}>
+        <button class="dlg-primary app-btn-primary" onclick={create} disabled={!canCreate}>
           {creating ? "Creating…" : "Create book"}
         </button>
       </footer>
@@ -395,7 +395,7 @@
   .lead { margin: 0; font-size: 13px; color: var(--app-text-muted); }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
-  .optional { font-style: italic; color: var(--app-text-faint); font-weight: 400; }
+  .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .field input[type="text"] {
     background: var(--app-surface-sunken);
     border: 1px solid var(--app-border);
@@ -422,8 +422,8 @@
   .template-card.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
   .template-card:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .template-label { font-size: 13px; font-weight: 600; color: var(--app-text); display: flex; align-items: center; gap: 6px; }
-  .template-tag { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-faint); border: 1px solid var(--app-border); border-radius: 3px; padding: 0 4px; }
-  .template-desc { font-size: 11px; color: var(--app-text-faint); line-height: 1.35; }
+  .template-tag { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 3px; padding: 0 4px; }
+  .template-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
   .import-tpl {
     align-self: flex-start; margin-top: 2px; background: transparent;
     border: 1px solid var(--app-border); border-radius: 5px; cursor: pointer;
@@ -470,13 +470,13 @@
   .location-path {
     font-size: 12px;
     color: var(--app-text-secondary);
-    font-family: ui-monospace, monospace;
+    font-family: var(--app-font-mono);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-width: 0;
   }
-  .location-empty { font-size: 12px; color: var(--app-text-faint); font-style: italic; }
+  .location-empty { font-size: 12px; color: var(--app-text-muted); font-style: italic; }
 
   .checkbox {
     display: flex;

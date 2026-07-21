@@ -572,7 +572,7 @@
     padding: 6px 8px;
     border-radius: 5px;
     font-size: 12px;
-    font-family: ui-monospace, monospace;
+    font-family: var(--app-font-mono);
   }
   .location-input:focus {
     outline: 2px solid var(--app-focus-ring);
@@ -648,8 +648,8 @@
     align-items: center;
     gap: 4px;
   }
-  .list-heading-count { font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 10px; color: var(--app-text-faint); }
-  .empty-section-hint { font-size: 11px; color: var(--app-text-faint); margin: 2px 0 0 2px; font-style: italic; }
+  .list-heading-count { font-weight: 500; letter-spacing: 0; text-transform: none; font-size: 10px; color: var(--app-text-muted); }
+  .empty-section-hint { font-size: 11px; color: var(--app-text-muted); margin: 2px 0 0 2px; font-style: italic; }
   .load-error {
     display: flex;
     align-items: center;
@@ -719,10 +719,10 @@
   }
   .list-row.dimmed .row-title { color: var(--app-text-muted); }
   .list-row.dimmed .row-icon { opacity: 0.45; }
-  .row-icon { font-size: 13px; flex-shrink: 0; width: 16px; text-align: center; display: inline-flex; align-items: center; color: var(--app-text-faint); }
+  .row-icon { font-size: 13px; flex-shrink: 0; width: 16px; text-align: center; display: inline-flex; align-items: center; color: var(--app-text-muted); }
   .row-info { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
   .row-title { font-size: 12px; font-weight: 500; color: var(--app-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row-path { font-size: 10px; color: var(--app-text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, monospace; }
+  .row-path { font-size: 10px; color: var(--app-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--app-font-mono); }
   /* Fixed-width status label, laid out OUTSIDE the ellipsis-truncated .row-path span so
      it survives regardless of path length (visual-gate round 1 finding). */
   .not-found-badge {
@@ -753,14 +753,14 @@
   .icon-action {
     background: transparent; border: 0; cursor: pointer;
     min-width: 24px; min-height: 24px; padding: 2px 4px; border-radius: 3px;
-    font-size: 13px; line-height: 1; color: var(--app-text-faint); transition: color 0.1s;
+    font-size: 13px; line-height: 1; color: var(--app-text-muted); transition: color 0.1s;
   }
   .icon-action:hover { background: var(--app-surface-hover); }
   .icon-action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .icon-action.star { color: var(--app-text-faint); }
-  .icon-action.star:hover, .icon-action.star.active { color: var(--app-star); }
+  .icon-action.star { color: var(--app-text-muted); }
+  .icon-action.star:hover, .icon-action.star.active { color: light-dark(#d4a017, #f5c518); }
   .icon-action.remove:hover { color: var(--app-error-text); }
-  .empty-hint { font-size: 12px; color: var(--app-text-faint); margin: 4px 0; text-align: center; }
+  .empty-hint { font-size: 12px; color: var(--app-text-muted); margin: 4px 0; text-align: center; }
   .actions-footer {
     flex-shrink: 0;
     display: flex;
