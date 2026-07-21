@@ -16,9 +16,16 @@
 // is disabled there until we ship signed/notarized builds — mac users update
 // by downloading the DMG from GitHub Releases.
 //
-// Prereleases are an explicit user preference. Before every check, main.ts's
-// injected settings reader updates electron-updater's allowPrerelease flag.
-// The default is false, so stable releases remain the normal update stream.
+// The update stream is an explicit user preference: settings.updates.channel
+// is "stable" (default), "beta", or "alpha". Before every check, main.ts's
+// injected settings reader is consulted and the choice is mapped onto
+// electron-updater's fields (see applyChannel below). Channels are inclusive
+// downward — beta users also receive stable releases, alpha users receive
+// everything — which matches electron-updater's hardcoded channel rules
+// (GitHubProvider.getLatestVersion): alpha/beta are its only recognized
+// prerelease channels, so release tags MUST use -alpha.N / -beta.N suffixes
+// (the release workflow enforces this; an "rc" tag would be a custom channel
+// that strands its users on that channel forever).
 //
 // Downloads are user-consented: autoDownload is OFF. A check that finds an
 // update stops at phase "available"; the renderer shows a Download
@@ -31,7 +38,7 @@
 import { app } from "electron";
 // electron-updater is CJS; default-import + destructure for ESM interop.
 import electronUpdater from "electron-updater";
-import type { UpdaterStatus, UpdaterEventPayload } from "./bridge-types";
+import type { UpdateChannel, UpdaterStatus, UpdaterEventPayload } from "./bridge-types";
 
 const { autoUpdater: realAutoUpdater } = electronUpdater;
 
@@ -39,11 +46,16 @@ const { autoUpdater: realAutoUpdater } = electronUpdater;
  * The slice of electron-updater's AutoUpdater surface this module drives.
  * Typed structurally (not `typeof AutoUpdater`) so a test double only has to
  * implement what's actually used — an EventEmitter plus the two RPCs.
+ *
+ * `_channel` is AppUpdater's private backing field for its `channel`
+ * property, assigned directly (see applyChannel) — so it appears here as a
+ * plain field rather than the getter/setter pair the real class has.
  */
 export interface AutoUpdaterLike {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
   allowPrerelease: boolean;
+  _channel: string | null;
   on(event: "update-available", listener: (info: { version: string }) => void): unknown;
   on(event: "update-not-available", listener: () => void): unknown;
   on(event: "update-downloaded", listener: (info: { version: string }) => void): unknown;
@@ -57,11 +69,42 @@ export interface AutoUpdaterLike {
 export interface UpdaterDeps {
   autoUpdater?: AutoUpdaterLike;
   /** Read at check time so a settings change takes effect without a restart. */
-  readAllowPrerelease?: () => boolean | Promise<boolean>;
+  readUpdateChannel?: () => UpdateChannel | Promise<UpdateChannel>;
 }
 
 let activeAutoUpdater: AutoUpdaterLike = realAutoUpdater as unknown as AutoUpdaterLike;
-let readAllowPrerelease: () => boolean | Promise<boolean> = () => false;
+let readUpdateChannel: () => UpdateChannel | Promise<UpdateChannel> = () => "stable";
+
+/**
+ * Map the user's channel choice onto electron-updater (verified against
+ * 6.8.9's GitHubProvider.getLatestVersion):
+ *
+ * - "stable": allowPrerelease=false. The provider resolves GitHub's
+ *   /releases/latest (which excludes prereleases) and reads latest*.yml
+ *   from that tag. `channel` must be null or the provider would fetch
+ *   `<channel>.yml` — which electron-builder's GitHub provider never
+ *   generates — and fail with no fallback.
+ * - "beta"/"alpha": allowPrerelease=true + `channel` set. The provider walks
+ *   the releases.atom feed and picks the first entry whose tag's prerelease
+ *   id fits the channel: beta accepts beta + stable tags (alpha is
+ *   explicitly excluded for beta users), alpha accepts all three. Without a
+ *   channel it would take the newest entry unconditionally, so a beta user
+ *   would be handed alphas.
+ *
+ * `_channel` (the private backing field) is assigned instead of the public
+ * `channel` setter for two verified reasons: the setter throws when
+ * resetting a non-null channel back to null (so a beta→stable settings
+ * switch would break every later check this session), and it force-flips
+ * allowDowngrade=true as a side effect (we keep downgrades off — a user
+ * leaving the beta channel simply stays put until a newer stable ships).
+ */
+function applyChannel(updater: AutoUpdaterLike, channel: UpdateChannel): void {
+  // Settings come from JSON on disk — a hand-edited/corrupt value must not
+  // reach electron-updater as a custom channel (which would strand the user).
+  const known: UpdateChannel = channel === "beta" || channel === "alpha" ? channel : "stable";
+  updater.allowPrerelease = known !== "stable";
+  updater._channel = known === "stable" ? null : known;
+}
 
 const MAC_UPDATE_HINT =
   "Automatic updates aren't available on macOS yet — download the latest release from GitHub.";
@@ -157,7 +200,7 @@ export function initUpdater(
 ): void {
   emitEvent = onEvent;
   activeAutoUpdater = deps.autoUpdater ?? (realAutoUpdater as unknown as AutoUpdaterLike);
-  readAllowPrerelease = deps.readAllowPrerelease ?? (() => false);
+  readUpdateChannel = deps.readUpdateChannel ?? (() => "stable");
   // Downloads are user-consented (M1) — see the module banner comment.
   activeAutoUpdater.autoDownload = false;
   // If the user quits without clicking the banner, install the downloaded
@@ -244,7 +287,7 @@ export async function checkForUpdates(options: { silent?: boolean } = {}): Promi
     }
     lastCheckAt = Date.now();
     checkInFlight = (async () => {
-      activeAutoUpdater.allowPrerelease = await readAllowPrerelease();
+      applyChannel(activeAutoUpdater, await readUpdateChannel());
       await activeAutoUpdater.checkForUpdates();
       // No update → the "update-not-available" listener already set idle.
       // An update → the "update-available" listener already set "available"

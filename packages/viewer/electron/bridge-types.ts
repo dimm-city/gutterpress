@@ -17,6 +17,7 @@
  */
 
 export type {
+  UpdateChannel,
   UpdaterStatus,
   UpdaterEventPayload,
   ProjectSource,

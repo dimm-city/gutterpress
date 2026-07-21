@@ -173,17 +173,20 @@
           <h3>Updates</h3>
           <button class="reset" onclick={() => settings.resetSection("updates")} title="Reset update settings to defaults">Reset</button>
         </div>
-        <div class="row row-toggle">
+        <div class="row">
           <div class="row-label">
-            <label for="set-prerelease-updates">Get prerelease updates</label>
-            <span class="row-hint">Notify me about release candidates before the stable release.</span>
+            <label for="set-update-channel">Update channel</label>
+            <span class="row-hint">Beta also includes stable releases; Alpha includes everything.</span>
           </div>
-          <input
-            id="set-prerelease-updates"
-            type="checkbox"
-            checked={s.updates.includePrereleases}
-            onchange={(e) => settings.set({ updates: { includePrereleases: (e.currentTarget as HTMLInputElement).checked } })}
-          />
+          <select
+            id="set-update-channel"
+            value={s.updates.channel}
+            onchange={(e) => settings.set({ updates: { channel: (e.currentTarget as HTMLSelectElement).value as "stable" | "beta" | "alpha" } })}
+          >
+            <option value="stable">Stable — recommended</option>
+            <option value="beta">Beta — early releases</option>
+            <option value="alpha">Alpha — experimental builds</option>
+          </select>
         </div>
       </section>
       {/if}

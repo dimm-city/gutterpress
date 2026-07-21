@@ -224,8 +224,13 @@ Behavior:
   latest DMG from GitHub Releases. Enable it later by shipping
   signed/notarized builds (Apple Developer Program) and removing the darwin
   gate in `electron/updater.ts`.
-- **Prereleases:** stable releases are the default. Users can opt into release
-  candidates and other prereleases under Settings → App → Updates.
+- **Update channels:** Settings → App → Updates offers Stable (default), Beta,
+  and Alpha. Channels are inclusive downward — Beta also receives stable
+  releases, Alpha receives everything. Release tags must use `-beta.N` /
+  `-alpha.N` prerelease suffixes (enforced by the release workflow):
+  electron-updater hardcodes alpha/beta as its known channels, and any other
+  suffix (e.g. `rc`) becomes a "custom channel" whose users are only ever
+  offered releases with that exact suffix.
 - **Dev:** fully inert (`app.isPackaged` gate in `updaterSupported()`), and
   packaged-but-unsupported platforms degrade to no-ops.
 

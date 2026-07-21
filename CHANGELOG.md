@@ -7,6 +7,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Desktop update checks now follow an explicit **update channel** — Stable
+  (default), Beta, or Alpha — chosen under Settings → App → Updates, replacing
+  the "Get prerelease updates" toggle. Channels are inclusive downward: Beta
+  also receives stable releases, Alpha receives everything. An existing
+  prerelease opt-in migrates to the Beta channel automatically.
+- The release workflow only accepts `-alpha.N` / `-beta.N` prerelease
+  versions (matching the app's update channels; suffixes like `rc` are
+  "custom channels" to electron-updater and would strand their users), always
+  builds the viewer installers (the `skip_viewer` "RUNTIME release" mode is
+  removed — a release without the updater feed files broke update checks),
+  and verifies the electron-updater feed (`latest.yml` / `latest-linux.yml`
+  present, version-matched, all referenced installers attached) before
+  publishing. The Docker publish workflow now runs only via its explicit
+  dispatch from the release workflow.
+
 - The library now requires Node 22+ (the oldest currently supported LTS; the
   previous `>=18` floor spanned releases without `AbortSignal.any`, where a
   network deadline could be silently dropped). The release pipeline and
