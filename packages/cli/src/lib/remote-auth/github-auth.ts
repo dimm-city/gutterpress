@@ -11,6 +11,7 @@
  * All network calls use injectable `fetch` (testability) with explicit
  * timeouts and author-friendly error mapping. Token values are never logged.
  */
+import { withFetchTimeout } from "../fetch-timeout.ts";
 import type { HostCredential } from "./token-store.ts";
 
 /** What the host UI needs to show the user during the device flow. */
@@ -120,37 +121,27 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Wrap network-level failures in the friendly offline message. */
 /**
- * Combine a caller's cancellation signal WITH the request timeout (deep-analysis
- * fix). The old `signal ?? AbortSignal.timeout(...)` DROPPED the 15s timeout
- * whenever a caller passed a signal — and the viewer's device flow ALWAYS passes
- * one, so no packaged-app auth request had any timeout: a TCP stall left the
- * "Connect GitHub" dialog spinning forever with no error. AbortSignal.any aborts
- * as soon as EITHER fires.
+ * All requests run under the shared deadline + friendly-error policy
+ * (../fetch-timeout.ts): the 15s timeout is COMPOSED with any caller
+ * cancellation signal (the viewer's device flow always passes one — the old
+ * `signal ?? timeout` pattern dropped the timeout entirely, leaving the
+ * "Connect GitHub" dialog spinning forever on a TCP stall), caller aborts
+ * rethrow raw, and everything else maps to {@link OFFLINE_MESSAGE}.
  */
-function withRequestTimeout(signal: AbortSignal | undefined): AbortSignal {
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  if (!signal) return timeout;
-  return typeof AbortSignal.any === "function"
-    ? AbortSignal.any([signal, timeout])
-    : signal; // extremely old runtime: keep the caller's signal (timeout still applies at connect())
-}
-
 async function safeFetch(
   fetchImpl: typeof fetch,
   url: string,
   init: RequestInit,
 ): Promise<Response> {
-  try {
-    return await fetchImpl(url, {
-      ...init,
-      signal: withRequestTimeout(init.signal ?? undefined),
-    });
-  } catch (cause) {
-    if (cause instanceof Error && cause.name === "AbortError") throw cause;
-    throw new Error(OFFLINE_MESSAGE, { cause });
-  }
+  return withFetchTimeout(
+    {
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      signal: init.signal ?? undefined,
+      offlineMessage: OFFLINE_MESSAGE,
+    },
+    (signal) => fetchImpl(url, { ...init, signal }),
+  );
 }
 
 interface DeviceCodeResponse {
@@ -190,7 +181,7 @@ export class GitHubAuthProvider implements RemoteAuthProvider {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ client_id: this.clientId, scope: GITHUB_OAUTH_SCOPE }),
-      signal: withRequestTimeout(signal),
+      signal,
     });
     if (!codeRes.ok) {
       throw new Error(
@@ -225,7 +216,7 @@ export class GitHubAuthProvider implements RemoteAuthProvider {
           device_code: code.device_code,
           grant_type: "urn:ietf:params:oauth:grant-type:device_code",
         }),
-        signal: withRequestTimeout(signal),
+        signal,
       });
       const poll = (await pollRes.json()) as TokenPollResponse;
       if (poll.access_token) {

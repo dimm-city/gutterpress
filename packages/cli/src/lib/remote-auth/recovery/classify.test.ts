@@ -4,7 +4,13 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { classifyGitError, classifyFromHealth, isMergeConflictError } from "./classify.ts";
+import {
+  classifyGitError,
+  classifyFromHealth,
+  classifyTransportFailure,
+  isMergeConflictError,
+  InsecureTransportError,
+} from "./classify.ts";
 import type { RepoHealth } from "./types.ts";
 
 // ── isMergeConflictError — the ONE decoder (also used by sync.ts and by
@@ -362,6 +368,36 @@ describe("classifyGitError — transport errors beat structural health (BUG 1)",
     expect(classifyGitError(new Error("checkout failed"), detachedHealth)).toBe(
       "detached_head",
     );
+  });
+});
+
+// ── Insecure transport: withheld cleartext credential is NOT an auth failure ──
+//
+// onAuthFor throws a typed error (code "InsecureTransport") instead of sending
+// a stored token over non-loopback http. Classifying that as auth_required
+// would loop the user through "reconnect" forever AND let recover-auth delete
+// the credential for the whole host — so it gets its own kind, checked FIRST.
+
+describe("classifyTransportFailure / classifyGitError — insecure transport", () => {
+  function insecureTransportError(): Error {
+    return Object.assign(new Error("credential withheld over cleartext http"), {
+      code: "InsecureTransport",
+    });
+  }
+
+  test("classifyTransportFailure recognizes the typed error first → insecure_transport", () => {
+    expect(classifyTransportFailure(insecureTransportError())).toBe("insecure_transport");
+  });
+
+  test("classifyGitError routes it to insecure_transport, never auth_required", () => {
+    expect(classifyGitError(insecureTransportError(), healthyRepo)).toBe("insecure_transport");
+  });
+
+  // The viewer's Advanced Setup dialog sanitizes displayed messages with
+  // /https?:\/\/\S+/g → "(address hidden)"; a literal "(http://)" in the copy
+  // matches it and renders as broken text. Say "https", never "http://".
+  test("InsecureTransportError's message contains no URL-shaped token (viewer sanitizer)", () => {
+    expect(new InsecureTransportError().message).not.toMatch(/https?:\/\/\S+/);
   });
 });
 

@@ -31,7 +31,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import { readFile } from "node:fs/promises";
-import type { BrowserWindow } from "electron";
+import { getAppHooks } from "./server-bridge/app-hooks";
 import type {
   ConfirmationGate,
   ConflictKind,
@@ -49,13 +49,6 @@ interface PendingConfirm {
 }
 
 const pendingConfirms = new Map<string, PendingConfirm>();
-
-let _mainWindow: BrowserWindow | null = null;
-
-/** Register the main window so recovery-bridge can send IPC push events. */
-export function setRecoveryBridgeWindow(win: BrowserWindow | null): void {
-  _mainWindow = win;
-}
 
 /**
  * Handle the renderer's response to a recovery:confirm-request.
@@ -116,17 +109,15 @@ export function hostConfirmationGate(
         const requestId = `rcvr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         pendingConfirms.set(requestId, { projectDir, resolve });
 
-        // Send to renderer. Guard isDestroyed too (review finding): between
-        // webContents.destroy() and the 'closed' handler nulling the ref,
-        // send() throws synchronously — inside this executor that would REJECT
-        // confirmRepair instead of letting the safety timeout default to false.
-        if (_mainWindow && !_mainWindow.isDestroyed()) {
-          _mainWindow.webContents.send("recovery:confirm-request", {
-            requestId,
-            projectDir,
-            confirmation: req,
-          });
-        }
+        // Send to renderer through the AppHooks seam — main.ts's safeSend owns
+        // the null/destroyed-window guard (ONE choke point). Null hooks (before
+        // registerHostServices runs) skip the send; either way the safety
+        // timeout below still defaults confirmRepair to false.
+        getAppHooks()?.sendToRenderer("recovery:confirm-request", {
+          requestId,
+          projectDir,
+          confirmation: req,
+        });
 
         // Safety timeout: if the renderer never answers (crash / dialog bug /
         // missing window-close event), default-safe to false and clear the

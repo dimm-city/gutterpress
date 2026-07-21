@@ -38,6 +38,7 @@ import { isSeq, Scalar } from "yaml";
 import type { Node } from "yaml";
 
 import { getAssetPath } from "./embedded-assets.ts";
+import { FriendlyHttpError, withFetchTimeout } from "./fetch-timeout.ts";
 import { loadManifestDoc, writeManifestDoc, ensureSeq, scalarString } from "./manifest-doc.ts";
 import { slugify, prettify } from "./slug.ts";
 
@@ -448,6 +449,10 @@ function looksLikeCssUrl(url: string): boolean {
   }
 }
 
+/** Total deadline per theme-import request (shared fetch-timeout policy —
+ * covers the body read too; themes are a single small CSS/JSON file). */
+const THEME_FETCH_TIMEOUT_MS = 30_000;
+
 async function fetchText(url: string): Promise<string> {
   // Only http(s). Bun's global fetch will happily read file:// (and other
   // schemes), which would turn theme-import into an arbitrary local-file read.
@@ -460,11 +465,20 @@ async function fetchText(url: string): Promise<string> {
   if (scheme !== "http:" && scheme !== "https:") {
     throw new Error(`Theme URL must be http(s) — got "${scheme}".`);
   }
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${url} (HTTP ${res.status}).`);
-  }
-  return res.text();
+  return withFetchTimeout(
+    {
+      timeoutMs: THEME_FETCH_TIMEOUT_MS,
+      timeoutMessage: `Fetching ${url} timed out. Check your connection and try again.`,
+      offlineMessage: `Couldn't reach ${url}. Check your connection and try again.`,
+    },
+    async (signal) => {
+      const res = await fetch(url, { signal });
+      if (!res.ok) {
+        throw new FriendlyHttpError(`Failed to fetch ${url} (HTTP ${res.status}).`);
+      }
+      return res.text();
+    },
+  );
 }
 
 /** Reject content that is obviously HTML (a 200 error/SPA page), not CSS. */

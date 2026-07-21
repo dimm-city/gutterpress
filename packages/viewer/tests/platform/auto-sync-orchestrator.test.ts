@@ -333,6 +333,49 @@ test("a successful run emits syncing then synced with a fake-clock timestamp", a
   expect(h.orch.getLastSyncAt(DIR)).toBe(new Date(1_700_000_123_000).toISOString());
 });
 
+// ── Error-outcome message plumbing (code-review) ─────────────────────────────
+// A SyncOutcome "error" always carries an author-language `message` (e.g. the
+// insecure-transport guidance from sync-messages.ts). Ambient auto-sync must
+// forward it on the status emit — otherwise manual sync shows the guidance
+// while auto-sync users only ever see a generic error pill.
+
+const INSECURE_MSG =
+  "This project's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https) to sync.";
+
+test("an 'error' outcome carries the outcome's plain-language message on the emit", async () => {
+  const h = makeHarness({
+    syncProject: () => ({ status: "error", message: INSECURE_MSG }),
+  });
+  await h.orch.run(DIR);
+  await tick();
+
+  const errEmit = h.emitted.find((e) => e.state === "error");
+  expect(errEmit).toBeDefined();
+  expect(errEmit?.message).toBe(INSECURE_MSG);
+});
+
+test("the recover()-path error emit carries the RecoveryResult's message", async () => {
+  // Drive the throw → classify → recover branch to a terminal "blocked" result:
+  // the emitted error status must surface the recovery message, not drop it.
+  const h = makeHarness({
+    syncProject: () => {
+      throw new Error("object abc123 is missing");
+    },
+    classifyGitError: "missing_or_corrupt_objects",
+    recover: () => ({
+      status: "blocked",
+      message: "Sync is blocked — the project's history needs repair.",
+      guidance: { title: "t" },
+    }),
+  });
+  await h.orch.run(DIR);
+  await tick();
+
+  const errEmit = h.emitted.find((e) => e.state === "error");
+  expect(errEmit).toBeDefined();
+  expect(errEmit?.message).toBe("Sync is blocked — the project's history needs repair.");
+});
+
 test("the recover() path emits exactly what the shared mapper produces", async () => {
   // Drive the error → classify → recover branch: syncProject throws, the error
   // classifies to a known kind, and recover() returns a needs_user CONFLICT.

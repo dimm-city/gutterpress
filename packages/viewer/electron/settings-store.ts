@@ -63,9 +63,15 @@ export function createSettingsStore(deps: SettingsStoreDeps): {
     let raw: string;
     try {
       raw = await deps.fs.readFile(settingsPath(), "utf8");
-    } catch {
-      // No readable file yet (first run, or removed) — nothing to preserve.
-      return DEFAULT_SETTINGS;
+    } catch (err) {
+      // ENOENT = no file yet (first run, or removed) — nothing to preserve.
+      // ANY OTHER read error (EACCES from an AV/backup tool holding the file,
+      // EIO, EMFILE) is TRANSIENT: returning defaults here would let
+      // updateSettings merge its patch over DEFAULT_SETTINGS and rename-write
+      // the result, silently wiping every other customized setting. Rethrow so
+      // the write aborts — same standard as FileTokenStore.read (audit G3).
+      if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return DEFAULT_SETTINGS;
+      throw err;
     }
     try {
       const stored = JSON.parse(raw) as DeepPartialSettings;

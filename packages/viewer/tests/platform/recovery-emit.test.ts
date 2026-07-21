@@ -149,6 +149,9 @@ test("blocked maps to an error status with guidance", () => {
   );
   expect(em.kind).toBe("error");
   expect(em.status.state).toBe("error");
+  // The plain-language recovery message rides the payload so the renderer can
+  // show it (the ambient pill's tooltip), not just the guidance dialog.
+  expect(em.status.message).toBe("m");
   expect(em.status.guidance).toBe(guidance);
   expect(em.status.backupZipPath).toBe("/b.zip");
   expect(em.status.logFile).toBe("/logs/book.log");

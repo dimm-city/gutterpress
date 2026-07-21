@@ -264,6 +264,7 @@ export type RemoteAccessFailureReason =
   | "not-found"
   | "unreachable"
   | "ssh-unsupported"
+  | "insecure-transport"
   | "tls"
   | "unknown";
 

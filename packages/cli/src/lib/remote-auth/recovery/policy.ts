@@ -90,6 +90,16 @@ export const recoveryPolicy: Record<SyncErrorKind, RecoveryPolicy> = {
     automate: true, // retry later automatically
     serializeRepo: false,
   },
+  insecure_transport: {
+    risk: "none",
+    createBackup: false,
+    requireConfirmation: false,
+    mayChangeLocalFiles: false,
+    mayChangeGitMetadata: false,
+    mayChangeRemote: false,
+    automate: false, // block with guidance — only the user can change the address to https
+    serializeRepo: false,
+  },
 
   // ── Structural repairs — always backup + confirm ──────────────────────────
   detached_head: {

@@ -24,6 +24,7 @@ import {
   type TokenStore,
 } from "./token-store.ts";
 import { OFFLINE_MESSAGE } from "./github-auth.ts";
+import { isInsecureTransportError } from "./recovery/classify.ts";
 import { onAuthFor } from "./transport.ts";
 
 /** Coarse clone progress for host UIs. */
@@ -150,6 +151,16 @@ async function assertCloneTarget(dir: string): Promise<void> {
 
 /** Map raw transport failures to author-friendly messages (never the token). */
 function friendlyCloneError(e: unknown): Error {
+  // FIRST: the typed withheld-credential error from onAuthFor — an https-vs-
+  // http problem no retry can fix, so it must never fall through to the
+  // generic "try again" arm. (No literal scheme tokens in the copy: the
+  // viewer redacts /https?:\/\/\S+/ matches, which would garble the message.)
+  if (isInsecureTransportError(e)) {
+    return new Error(
+      "That repository address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Use a secure address (starting with https), or a local loopback address for a server on this computer.",
+      { cause: e },
+    );
+  }
   const msg = e instanceof Error ? e.message : String(e);
   if (/401|403|auth|credential/i.test(msg)) {
     return new Error(

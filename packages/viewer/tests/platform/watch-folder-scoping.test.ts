@@ -36,7 +36,8 @@ import { readFile, mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
-import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
 import { POST as readFileRoute } from "../../src/routes/api/fs/read-file/+server";
 
 const main = await readFile(path.resolve(import.meta.dir, "../../electron/main.ts"), "utf8");
@@ -94,48 +95,18 @@ beforeEach(async () => {
   await writeFile(path.join(previewDir, "chapter-01.md"), "# In project", "utf8");
   await writeFile(path.join(watchedOnlyDir, "id_rsa"), "-----BEGIN PRIVATE KEY-----", "utf8");
 
-  const noop = () => {};
-  const services = {
-    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, sendToRenderer: noop },
-    conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
-    desktop: {
-      showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
-      showSaveDialog: async () => ({ canceled: true }),
-      openExternal: async () => {},
-      showItemInFolder: noop,
-      getNativeTheme: () => ({ shouldUseDarkColors: false }),
-      getUserDataPath: () => base,
-    },
-    doctor: { getViewerVersion: () => "0.0.0-test" },
-    // Models the FIXED fsGuardImpl.projectRoots(): only the active preview's
-    // dir, NOT a union with a separately-"watched" dir — proving the route
-    // itself correctly rejects `watchedOnlyDir` once main.ts stops handing it
-    // authorization.
-    fsGuard: { projectRoots: () => [previewDir], readOnlyRoots: () => [] },
-    media: { createThumbnail: async () => null },
-    pickedFiles: { register: noop, consume: () => false },
-    prefs: {
-      readPrefs: async () => ({}),
-      writePrefs: async () => {},
-      updatePrefs: async (mutate: (p: object) => object) => mutate({}),
-      readSettings: async () => ({}),
-      updateSettings: async () => ({}),
-      existingDirectory: async () => null,
-      readProjectState: () => null,
-      writeProjectState: (states: unknown) => states,
-      defaultProjectSearchRoots: () => [],
-      scanForProjects: async () => [],
-      toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),
-      removeRecentFolder: () => [],
-      loadLib: async () => ({}),
-    },
-    recovery: { write: async () => ({ ok: true }), clear: async () => ({ ok: true }), list: async () => [] },
-    remote: { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" },
-    vcs: { loadLib: async () => ({}), operationLogPath: () => "/fake/log" },
-    watch: { startFolderWatch: noop, stopFolderWatch: noop, getWatchedDir: () => watchedOnlyDir },
-    write: { scheduleAutoSnapshot: noop, scheduleAutoSync: noop, getWatchedDir: () => watchedOnlyDir },
-  } as unknown as HostServices;
-  registerHostServices(services);
+  registerHostServices(
+    makeHostServices({
+      desktop: { getUserDataPath: () => base },
+      // Models the FIXED fsGuardImpl.projectRoots(): only the active preview's
+      // dir, NOT a union with a separately-"watched" dir — proving the route
+      // itself correctly rejects `watchedOnlyDir` once main.ts stops handing it
+      // authorization.
+      fsGuard: { projectRoots: () => [previewDir], readOnlyRoots: () => [] },
+      watch: { getWatchedDir: () => watchedOnlyDir },
+      write: { getWatchedDir: () => watchedOnlyDir },
+    }),
+  );
 });
 
 afterEach(async () => {

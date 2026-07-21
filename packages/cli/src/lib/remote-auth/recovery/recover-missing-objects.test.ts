@@ -53,6 +53,7 @@ import { recover } from "./recover-missing-objects.ts";
 // ── Import test-support server helpers ─────────────────────────────────────────
 import {
   createFixtureRepo,
+  packDroppingClient,
   startGitServer,
   tempDir,
   type GitServer,
@@ -957,6 +958,70 @@ describe("recover-missing-objects — authenticated remote (private repo)", () =
 
       // Safety invariant still holds — recovery never pushes.
       expect(spy.pushCalls.length).toBe(0);
+    } finally {
+      await server.close();
+      await rm(serverDir, { recursive: true, force: true });
+      await rm(clientDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── R15 follow-up: aborted fetch must not dangle ANY refs/remotes/origin/* ────
+//
+// This handler fetches with singleBranch:false, so an idle-timeout abort
+// mid-pack can move/create EVERY refs/remotes/origin/* ref to oids whose
+// objects never landed — introducing NEW damage (dangling refs → next sync
+// full-repo re-download + phantom missing-object diagnosis) beyond the
+// original corruption. The guard must restore moved refs, delete created
+// refs whose objects are missing, and KEEP refs whose objects DID land.
+
+describe("recover-missing-objects — aborted fetch leaves no dangling tracking refs (R15)", () => {
+  test("moved refs restored, created dangling refs deleted, refs with local objects kept", async () => {
+    const serverDir = await tempDir("missing-obj-abort-server-");
+    const { head, first } = await createFixtureRepo(serverDir);
+    const server = await startGitServer(serverDir);
+    const clientDir = await tempDir("missing-obj-abort-client-");
+
+    try {
+      // Full clone (wildcard refspec) → client has main's history, and
+      // refs/remotes/origin/main === head.
+      await git.clone({ fs: nodeFs, http: httpNode, dir: clientDir, url: server.url });
+      expect(
+        await git.resolveRef({ fs: nodeFs, dir: clientDir, ref: "refs/remotes/origin/main" }),
+      ).toBe(head);
+
+      // Server moves on: main advances to a commit the client lacks …
+      await writeFile(path.join(serverDir, "chapter-01.md"), "# One\n\nThird draft.\n");
+      await git.add({ fs: nodeFs, dir: serverDir, filepath: "chapter-01.md" });
+      const newMain = await git.commit({
+        fs: nodeFs,
+        dir: serverDir,
+        message: "third",
+        author: AUTHOR,
+      });
+      // … a NEW branch appears at that new commit (client lacks its object) …
+      await git.writeRef({ fs: nodeFs, dir: serverDir, ref: "refs/heads/topic", value: newMain });
+      // … and another NEW branch points at a commit the client already HAS.
+      await git.writeRef({ fs: nodeFs, dir: serverDir, ref: "refs/heads/kept", value: first });
+
+      // The recovery fetch aborts mid-pack (idle-timeout shape): the ref
+      // advertisement was applied but the pack with newMain never landed.
+      const ctx = makeCtx(clientDir, {
+        remoteUrl: server.url,
+        http: packDroppingClient(httpNode),
+      });
+      const result = await recover(ctx, makeMissingObjectsError());
+      expect(result.status).toBe("failed_backup_available");
+
+      const refOrNull = (ref: string) =>
+        git.resolveRef({ fs: nodeFs, dir: clientDir, ref }).catch(() => null);
+
+      // origin/main moved to an oid with no local object → restored.
+      expect(await refOrNull("refs/remotes/origin/main")).toBe(head);
+      // origin/topic was created dangling → deleted.
+      expect(await refOrNull("refs/remotes/origin/topic")).toBeNull();
+      // origin/kept points at an object the client HAS → kept.
+      expect(await refOrNull("refs/remotes/origin/kept")).toBe(first);
     } finally {
       await server.close();
       await rm(serverDir, { recursive: true, force: true });

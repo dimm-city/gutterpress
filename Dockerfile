@@ -91,7 +91,7 @@ DOCKER_EOF
 # ── Stage 2: runtime with all OS + lint dependencies ─────────────────────────
 # node:20-bookworm-slim gives us Node on Debian 12, whose apt has a real
 # `chromium` package (Ubuntu's is a snap, which doesn't work in containers).
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 
 RUN set -eux; \
     apt-get update; \

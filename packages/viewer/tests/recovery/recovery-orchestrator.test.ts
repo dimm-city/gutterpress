@@ -30,9 +30,12 @@ import {
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
-  setRecoveryBridgeWindow,
   preExportSyncGateBlockError,
 } from "../../electron/recovery-bridge";
+import {
+  registerHostServices,
+  type HostServices,
+} from "../../electron/server-bridge/host-services";
 import { classifyFromHealth } from "../../../cli/src/lib/remote-auth/recovery/classify.ts";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -50,22 +53,24 @@ function makeGoodHealth(): RepoHealth {
   };
 }
 
+// The bridge sends renderer pushes through getAppHooks().sendToRenderer (the
+// safeSend seam owned by main.ts) — register fake hooks that capture the calls.
 function makeSentMessages() {
   const msgs: Array<{ channel: string; args: unknown[] }> = [];
-  const win = {
-    webContents: {
-      send(ch: string, ...a: unknown[]) {
+  registerHostServices({
+    app: {
+      setRendererDirty: () => {},
+      sendToRenderer: (ch: string, ...a: unknown[]) => {
         msgs.push({ channel: ch, args: a });
       },
     },
-    isDestroyed: () => false,
-  };
-  return { win, msgs };
+  } as unknown as HostServices);
+  return { msgs };
 }
 
 afterEach(() => {
   rejectAllPendingConfirms();
-  setRecoveryBridgeWindow(null);
+  registerHostServices(undefined as unknown as HostServices);
 });
 
 // ── 1. classifyFromHealth priority chain ──────────────────────────────────────
@@ -217,9 +222,7 @@ describe("hostConfirmationGate + handleConfirmResponse roundtrip (real code)", (
   const DIR = "/proj/test-book";
 
   test("classified kind — emits 'recovery:confirm-request', resolves true on handleConfirmResponse", async () => {
-    const { win, msgs } = makeSentMessages();
-    // @ts-expect-error minimal mock
-    setRecoveryBridgeWindow(win);
+    const { msgs } = makeSentMessages();
 
     const gate = hostConfirmationGate(DIR);
     const promise = gate.confirmRepair({
@@ -241,9 +244,7 @@ describe("hostConfirmationGate + handleConfirmResponse roundtrip (real code)", (
   });
 
   test("recovered — handleConfirmResponse(false) resolves with false (user declined)", async () => {
-    const { win, msgs } = makeSentMessages();
-    // @ts-expect-error minimal mock
-    setRecoveryBridgeWindow(win);
+    const { msgs } = makeSentMessages();
 
     const gate = hostConfirmationGate(DIR);
     const promise = gate.confirmRepair({
@@ -264,9 +265,7 @@ describe("hostConfirmationGate + handleConfirmResponse roundtrip (real code)", (
 
   test("needs_user with files — conflict latch pattern (single-flight inFlight reset)", async () => {
     // Verify the gate properly supersedes stale pending per project
-    const { win, msgs } = makeSentMessages();
-    // @ts-expect-error minimal mock
-    setRecoveryBridgeWindow(win);
+    makeSentMessages();
 
     const gate = hostConfirmationGate(DIR);
     const p1 = gate.confirmRepair({
@@ -306,9 +305,7 @@ describe("hostConfirmationGate + handleConfirmResponse roundtrip (real code)", (
 
 describe("rejectAllPendingConfirms (real code)", () => {
   test("blocked — all pending confirms resolve false when renderer disappears", async () => {
-    const { win } = makeSentMessages();
-    // @ts-expect-error minimal mock
-    setRecoveryBridgeWindow(win);
+    makeSentMessages();
 
     const gate = hostConfirmationGate("/proj/a");
     const gate2 = hostConfirmationGate("/proj/b");
@@ -333,9 +330,7 @@ describe("rejectAllPendingConfirms (real code)", () => {
 
 describe("confirm timeout (real code)", () => {
   test("retry_later — non-responding renderer resolves false after timeout (inFlight safe)", async () => {
-    const { win } = makeSentMessages();
-    // @ts-expect-error minimal mock
-    setRecoveryBridgeWindow(win);
+    makeSentMessages();
 
     const gate = hostConfirmationGate("/proj/timeout-test", 50 /* ms */);
     const promise = gate.confirmRepair({

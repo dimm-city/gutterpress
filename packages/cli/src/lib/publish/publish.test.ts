@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { strToU8, zipSync } from "fflate";
 import { FileTokenStore } from "../remote-auth/token-store";
 import { listPublishProviders, publishProviderFor } from "./registry";
 import { runPublish, resolvePublishRequest } from "./run-publish";
@@ -280,6 +281,73 @@ test("ensureButler honours BUTLER_PATH and PATH lookup before downloading", asyn
   }
 });
 
+test("ensureButler downloads, extracts, and caches the binary when nothing is installed", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-butler-"));
+  try {
+    const binName = process.platform === "win32" ? "butler.exe" : "butler";
+    const archive = zipSync({
+      [binName]: strToU8("#!/bin/sh\n"),
+      "lib7z.so": strToU8("companion lib"),
+    });
+    const { runner } = fakeRunner([{ code: 1 }]); // `which butler` misses
+    const fetchImpl = (async () => new Response(archive)) as unknown as typeof fetch;
+    const deps = await depsFor(dir, { env: {}, runCommand: runner, fetch: fetchImpl });
+    const resolved = await ensureButler(deps);
+    expect(resolved).toBe(path.join(dir, ".config", "tools", "butler", binName));
+    expect(await readFile(resolved, "utf8")).toBe("#!/bin/sh\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ensureButler maps download failures to friendly messages", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-butler-"));
+  const failure = async (fetchImpl: typeof fetch): Promise<Error> => {
+    const deps = await depsFor(dir, {
+      env: {},
+      runCommand: fakeRunner([{ code: 1 }]).runner,
+      fetch: fetchImpl,
+    });
+    return ensureButler(deps).then(
+      () => {
+        throw new Error("expected ensureButler to reject");
+      },
+      (e) => e as Error,
+    );
+  };
+  try {
+    // HTTP status: the already-friendly message is thrown AS-IS, never
+    // re-wrapped in the network-failure mapping (exact match on purpose).
+    const httpErr = await failure(
+      (async () => new Response("nope", { status: 503 })) as unknown as typeof fetch,
+    );
+    expect(httpErr.message).toBe(
+      "Couldn't download butler from itch.io (HTTP 503). " +
+        "Check your connection, or install butler manually and set BUTLER_PATH.",
+    );
+
+    // Deadline fired (AbortSignal.timeout rejects with a TimeoutError).
+    const timeoutErr = await failure((async () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    }) as unknown as typeof fetch);
+    expect(timeoutErr.message).toBe(
+      "Downloading butler from itch.io timed out. " +
+        "Check your connection, or install butler manually and set BUTLER_PATH.",
+    );
+
+    // Network-level failure: wrapped with the connection hint.
+    const netErr = await failure((async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch);
+    expect(netErr.message).toBe(
+      "Couldn't download butler from itch.io (fetch failed). " +
+        "Check your connection, or install butler manually and set BUTLER_PATH.",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 // ── guided providers ────────────────────────────────────────────────────────
 
 test("drivethrurpg upload stages a package with the PDF and LISTING.md", async () => {
@@ -474,6 +542,109 @@ test("shopify preflight requires the shop domain; legacy id helper works", async
     const issues = await shopifyProvider.preflight(req);
     expect(issues.some((i) => i.id === "shopify/shop-missing")).toBe(true);
     expect(shopifyLegacyId("gid://shopify/Product/123")).toBe("123");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ── network deadlines (shared fetch-timeout policy) ─────────────────────────
+
+/** Stub fetch that fails every call with `error` (network/deadline shapes). */
+function fetchThrowing(error: unknown): typeof globalThis.fetch {
+  return (async () => {
+    throw error;
+  }) as unknown as typeof globalThis.fetch;
+}
+
+/** What AbortSignal.timeout rejects with when the deadline fires. */
+function timeoutError(): DOMException {
+  return new DOMException("The operation timed out.", "TimeoutError");
+}
+
+test("itch authenticate runs its api.itch.io check under an abortable deadline", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    // Without a signal wired through fetch, a stalled connection has NOTHING
+    // to abort it — the publish pipeline would hang forever on this call.
+    let seenSignal: unknown;
+    const fetchFn = (async (_url: unknown, init?: RequestInit) => {
+      seenSignal = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof globalThis.fetch;
+    const deps = await depsFor(dir, { fetch: fetchFn, env: { BUTLER_API_KEY: "k" } });
+    const req = await requestFor(dir, "itch", deps);
+    const auth = await itchProvider.authenticate(req);
+    expect(auth.ok).toBe(true);
+    expect(seenSignal).toBeInstanceOf(AbortSignal);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("itch authenticate maps a fired deadline and an offline failure to friendly copy", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const authWith = async (fetchFn: typeof globalThis.fetch) => {
+      const deps = await depsFor(dir, { fetch: fetchFn, env: { BUTLER_API_KEY: "k" } });
+      return itchProvider.authenticate(await requestFor(dir, "itch", deps));
+    };
+
+    const timedOut = await authWith(fetchThrowing(timeoutError()));
+    expect(timedOut.ok).toBe(false);
+    expect(timedOut.message).toBe(
+      "itch.io didn't respond in time. Check your connection and try again.",
+    );
+
+    const offline = await authWith(fetchThrowing(new TypeError("fetch failed")));
+    expect(offline.ok).toBe(false);
+    expect(offline.message).toBe(
+      "Couldn't reach itch.io. Check your connection and try again.",
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("shopify GraphQL calls run under an abortable deadline", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const { fetch: fetchFn, requests } = shopifyFetch([
+      { body: { data: { shop: { name: "My Store" } } } },
+    ]);
+    const deps = await depsFor(dir, {
+      fetch: fetchFn,
+      env: { SHOPIFY_ADMIN_TOKEN: "shpat_secret" },
+    });
+    const auth = await shopifyProvider.authenticate(await requestFor(dir, "shopify", deps));
+    expect(auth.ok).toBe(true);
+    expect(requests[0]!.init?.signal).toBeInstanceOf(AbortSignal);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("shopify maps a fired deadline and an offline failure to friendly copy", async () => {
+  const dir = await tempProject(MANIFEST);
+  try {
+    const authWith = async (fetchFn: typeof globalThis.fetch) => {
+      const deps = await depsFor(dir, {
+        fetch: fetchFn,
+        env: { SHOPIFY_ADMIN_TOKEN: "shpat_secret" },
+      });
+      return shopifyProvider.authenticate(await requestFor(dir, "shopify", deps));
+    };
+
+    const timedOut = await authWith(fetchThrowing(timeoutError()));
+    expect(timedOut.ok).toBe(false);
+    expect(timedOut.message).toBe(
+      "Shopify didn't respond in time. Check your connection and try again.",
+    );
+
+    const offline = await authWith(fetchThrowing(new TypeError("fetch failed")));
+    expect(offline.ok).toBe(false);
+    expect(offline.message).toBe(
+      "Couldn't reach Shopify. Check your connection and try again.",
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

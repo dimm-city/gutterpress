@@ -22,6 +22,7 @@ import httpNode from "isomorphic-git/http/node";
 import { cloneRepository } from "./clone.ts";
 import {
   onlineCopyPath,
+  pullChanges,
   pushChanges,
   syncProject,
   SYNC_SNAPSHOT_MESSAGE,
@@ -1370,6 +1371,32 @@ describe("syncProject — structural preflight", () => {
       // snapshotted into history) and nothing reached the remote.
       expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(localBefore);
       expect(await serverHead(h.serverDir)).toBe(serverBefore);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("pullChanges and pushChanges called DIRECTLY hit the same in-lock preflight", async () => {
+    // The History tab's Pull/Push buttons bypass syncProject, so the guard
+    // lives INSIDE each operation's repo lock — syncProject inherits it from
+    // its first pull rather than running a redundant entry preflight.
+    const h = await setupClone();
+    try {
+      const localBefore = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      await writeFile(path.join(h.projectDir, ".git", "MERGE_HEAD"), `${localBefore}\n`);
+
+      for (const op of [pullChanges, pushChanges]) {
+        let thrown: unknown;
+        try {
+          await op({ projectDir: h.projectDir });
+        } catch (e) {
+          thrown = e;
+        }
+        expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
+        expect((thrown as { kind?: string })?.kind).toBe("interrupted_merge");
+      }
+      // Neither operation snapshotted the damaged tree.
+      expect(await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" })).toBe(localBefore);
     } finally {
       await h.cleanup();
     }
