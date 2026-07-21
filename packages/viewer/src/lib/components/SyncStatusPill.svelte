@@ -62,6 +62,11 @@
   // (SyncStatus.logFile). Retained across status transitions so clicking the
   // pill can always open the log once any sync/recovery has emitted a path.
   let logFilePath = $state<string | null>(null);
+  // The host's plain-language outcome message (SyncStatus.message) — present on
+  // "error" when the failure carries author-facing copy (e.g. the
+  // insecure-transport guidance). Reset on every status so a stale error
+  // message never outlives its state.
+  let statusMessage = $state<string | null>(null);
   /**
    * M40: text for the ALWAYS-rendered visually-hidden live region below,
    * updated on every real state transition (see the onSyncStatus handler).
@@ -81,6 +86,7 @@
     // Reset per-project state so a previous project's log path never leaks.
     logFilePath = null;
     liveMessage = null;
+    statusMessage = null;
     // Only subscribe when running in the desktop host (the WebAdapter stub is a
     // safe no-op but we skip the wiring on the web path for clarity).
     if (!isDesktop() || !projectDir) {
@@ -97,6 +103,7 @@
       conflictFiles = status.files ?? [];
       conflictLocalId = status.localId;
       conflictRemoteId = status.remoteId;
+      statusMessage = status.message ?? null;
       // M40: announce the transition via the persistent live region. `pillText`
       // is a $derived that already reflects the `syncState` assignment above by
       // the time it's read here. Only overwrite on a real (non-hidden) state so
@@ -184,6 +191,15 @@
   });
 
   /**
+   * Hover/tooltip text. When the error state carries the host's plain-language
+   * outcome message (e.g. the insecure-transport guidance), show THAT — the
+   * same detail manual sync surfaces — instead of only the generic pill copy.
+   */
+  let pillTitle = $derived(
+    syncState === "error" && statusMessage ? statusMessage : pillText,
+  );
+
+  /**
    * Full-sentence aria-label so screen-reader users get the reassuring context
    * the terse visible chip omits — and a guaranteed closure signal for recovery
    * even if the overlay was dismissed/auto-cleared (three-judge a11y finding).
@@ -195,7 +211,9 @@
       case "recovered":
         return "A sync problem was fixed. Your work is safe.";
       default:
-        return pillText;
+        // pillTitle === pillText except on "error" with a host message, where
+        // screen-reader users get the same detail the tooltip shows.
+        return pillTitle;
     }
   });
 
@@ -267,7 +285,7 @@
       class:invite={isInvite}
       onclick={handleClick}
       aria-label={ariaLabel}
-      title={pillText}
+      title={pillTitle}
     >
       {#if isActive}
         <span class="pill-spinner" aria-hidden="true"></span>
@@ -293,7 +311,7 @@
       class:active={isActive}
       class:warning={isWarning}
       aria-label={ariaLabel}
-      title={pillText}
+      title={pillTitle}
     >
       {#if isActive}
         <span class="pill-spinner" aria-hidden="true"></span>

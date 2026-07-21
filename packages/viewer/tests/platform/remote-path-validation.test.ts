@@ -19,6 +19,7 @@ import {
   registerHostServices,
   type HostServices,
 } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
 import { POST as remoteSyncRoute } from "../../src/routes/api/remote/sync/+server";
 import { POST as diagnoseProjectRoute } from "../../src/routes/api/remote/diagnose-project/+server";
 
@@ -42,45 +43,9 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
   }
 }
 
-const noop = () => {};
+/** The shared base fake, with remote/sync/updater "not registered" — each test overrides `remote` with the hook it's exercising. */
 function baseServices(): HostServices {
-  return {
-    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, sendToRenderer: noop },
-    conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
-    desktop: {
-      showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
-      showSaveDialog: async () => ({ canceled: true }),
-      openExternal: async () => {},
-      showItemInFolder: noop,
-      getNativeTheme: () => ({ shouldUseDarkColors: false }),
-      getUserDataPath: () => "/fake/userData",
-    },
-    doctor: { getViewerVersion: () => "0.0.0-test" },
-    fsGuard: { projectRoots: () => [], readOnlyRoots: () => [] },
-    media: { createThumbnail: async () => null },
-    prefs: {
-      readPrefs: async () => ({}),
-      writePrefs: async () => {},
-      updatePrefs: async (mutate: (p: object) => object) => mutate({}),
-      readSettings: async () => ({}),
-      updateSettings: async () => ({}),
-      existingDirectory: async () => null,
-      readProjectState: () => null,
-      writeProjectState: (states: unknown) => states,
-      defaultProjectSearchRoots: () => [],
-      scanForProjects: async () => [],
-      toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),
-      removeRecentFolder: () => [],
-      loadLib: async () => ({}),
-    },
-    recovery: { write: async () => ({ ok: true }), clear: async () => ({ ok: true }), list: async () => [] },
-    remote: undefined as never,
-    sync: undefined as never,
-    updater: undefined as never,
-    vcs: { loadLib: async () => ({}), operationLogPath: () => "/fake/log" },
-    watch: { startFolderWatch: noop, stopFolderWatch: noop, getWatchedDir: () => null },
-    write: { scheduleAutoSnapshot: noop, scheduleAutoSync: noop, getWatchedDir: () => null },
-  } as unknown as HostServices;
+  return makeHostServices({ remote: undefined, sync: undefined, updater: undefined });
 }
 
 afterEach(() => {

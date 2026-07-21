@@ -382,6 +382,14 @@ export interface SyncStatus {
    */
   recovery?: RecoveryProgressInfo;
   /**
+   * Plain-language outcome/recovery message — present when `state === "error"`
+   * and the emitting host path has one (a SyncOutcome or RecoveryResult always
+   * carries author-facing copy, e.g. the insecure-transport guidance). Lets
+   * the ambient pill explain WHY sync is paused (tooltip) instead of only the
+   * generic error copy. Absent on the raw throw paths.
+   */
+  message?: string;
+  /**
    * Manual guidance — present when `state === "error"` and the failure was
    * classified (not an unexpected throw). Drives the RecoveryGuidanceDialog.
    */

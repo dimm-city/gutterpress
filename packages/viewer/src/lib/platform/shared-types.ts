@@ -351,7 +351,14 @@ export type RemoteAccessResult =
   | { ok: true; defaultBranch?: string; refCount: number }
   | {
       ok: false;
-      reason: "auth" | "not-found" | "unreachable" | "ssh-unsupported" | "tls" | "unknown";
+      reason:
+        | "auth"
+        | "not-found"
+        | "unreachable"
+        | "ssh-unsupported"
+        | "insecure-transport"
+        | "tls"
+        | "unknown";
       message: string;
     };
 

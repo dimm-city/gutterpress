@@ -52,6 +52,7 @@ import {
   type ConflictResolution,
 } from "../sync.ts";
 import {
+  packDroppingClient,
   startGitServer,
   tempDir,
   type GitServer,
@@ -975,6 +976,36 @@ describe("recover (unrelated_histories)", () => {
         "utf8",
       );
       expect(after).toBe(fix.localFileContent);
+    } finally {
+      await fix.cleanup();
+    }
+  });
+
+  // ── R15: aborted fetch must not leave a dangling tracking ref ───────────────
+
+  test("aborted fetch (idle-timeout mid-pack) leaves no dangling refs/remotes/origin/main", async () => {
+    const fix = await setupCleanMerge();
+    try {
+      // The local repo has NEVER fetched — no refs/remotes/origin/main yet.
+      const before = await git
+        .resolveRef({ fs, dir: fix.localDir, ref: "refs/remotes/origin/main" })
+        .catch(() => null);
+      expect(before).toBeNull();
+
+      const ctx = makeCtx(fix, { httpClient: packDroppingClient(httpNode) });
+      const result = await recover(ctx);
+
+      // The fetch died mid-transfer → the repair fails, backup available.
+      expect(result.status).toBe("failed_backup_available");
+
+      // The tracking ref must NOT be left dangling (R15): the abort moved it
+      // to an oid whose pack never landed, which poisons the next sync (zero
+      // `have`s → full-repo re-download) and makes resolving it report
+      // missing-object "corruption" on a never-corrupt repo.
+      const after = await git
+        .resolveRef({ fs, dir: fix.localDir, ref: "refs/remotes/origin/main" })
+        .catch(() => null);
+      expect(after).toBeNull();
     } finally {
       await fix.cleanup();
     }

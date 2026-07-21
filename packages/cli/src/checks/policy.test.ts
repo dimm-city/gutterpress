@@ -103,16 +103,20 @@ describe("tool-check consumes the shared enable logic (enabledWhen included)", (
       requiredTools: ["__print_md_nonexistent_tool_gated__"],
       enabledWhen: () => false,
     });
-    registerCheck(gated);
+    const unregister = registerCheck(gated);
 
-    const result = await checkToolAvailability(makeConfig(), {
-      only: ["test.gated-tool-check"],
-    });
-    // enabledWhen=false → filtered out before probing → tool never inspected.
-    expect(result.missing).not.toContain(
-      "__print_md_nonexistent_tool_gated__"
-    );
-    expect(result.skippedChecks).not.toContain("test.gated-tool-check");
+    try {
+      const result = await checkToolAvailability(makeConfig(), {
+        only: ["test.gated-tool-check"],
+      });
+      // enabledWhen=false → filtered out before probing → tool never inspected.
+      expect(result.missing).not.toContain(
+        "__print_md_nonexistent_tool_gated__"
+      );
+      expect(result.skippedChecks).not.toContain("test.gated-tool-check");
+    } finally {
+      unregister();
+    }
   });
 
   test("the same check, enabled, IS probed", async () => {
@@ -122,13 +126,17 @@ describe("tool-check consumes the shared enable logic (enabledWhen included)", (
       phase: "pre-build",
       requiredTools: ["__print_md_nonexistent_tool_active__"],
     });
-    registerCheck(active);
+    const unregister = registerCheck(active);
 
-    const result = await checkToolAvailability(makeConfig(), {
-      only: ["test.active-tool-check"],
-    });
-    expect(result.missing).toContain("__print_md_nonexistent_tool_active__");
-    expect(result.skippedChecks).toContain("test.active-tool-check");
+    try {
+      const result = await checkToolAvailability(makeConfig(), {
+        only: ["test.active-tool-check"],
+      });
+      expect(result.missing).toContain("__print_md_nonexistent_tool_active__");
+      expect(result.skippedChecks).toContain("test.active-tool-check");
+    } finally {
+      unregister();
+    }
   });
 });
 

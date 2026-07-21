@@ -139,6 +139,13 @@ export interface SyncStatusPayload {
     risk: "none" | "low" | "medium" | "high";
     message?: string;
   };
+  /**
+   * Plain-language outcome/recovery message — present when state === "error"
+   * and the emitting path has one (a SyncOutcome or RecoveryResult always
+   * carries author-facing copy, e.g. the insecure-transport guidance). Absent
+   * only on the raw throw paths, where the pill's generic copy is correct.
+   */
+  message?: string;
   /** Manual guidance — present when state === "error" and failure was classified. */
   guidance?: object;
   /** Backup zip path — present on "recovered" and classified "error". */
@@ -725,6 +732,10 @@ export class AutoSyncOrchestrator {
           state: "error",
           projectDir: dir,
           lastSyncAt: completedAt,
+          // Forward the outcome's author-language message (e.g. the
+          // insecure-transport guidance) — ambient auto-sync must not show a
+          // generic error pill when manual sync would explain the problem.
+          ...(outcome.message ? { message: outcome.message } : {}),
           ...(outcome.filesChanged ? { filesChanged: true } : {}),
         });
         break;

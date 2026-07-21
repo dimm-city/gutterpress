@@ -188,6 +188,12 @@ async function dispatchToHandler(
     case "network_unavailable":
       result = await recoverNetwork(ctx, error);
       break;
+    case "insecure_transport":
+      // No repair exists — only the user can switch the address to https.
+      // failSafeNoRepair never touches the token store, so (unlike the auth
+      // path) the stored credential is guaranteed to survive.
+      result = failSafeNoRepair(ctx, "insecure_transport", undefined, error);
+      break;
     case "detached_head":
       result = await recoverDetachedHead(ctx, error);
       break;

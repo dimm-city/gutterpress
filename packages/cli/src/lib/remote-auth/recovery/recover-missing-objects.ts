@@ -48,6 +48,7 @@ import git from "isomorphic-git";
 import { defaultGitHttp } from "../git-http.ts";
 
 import { onAuthFor } from "../sync.ts";
+import { guardRemoteRefs } from "../transport.ts";
 import { withBackupGate } from "./failsafe.ts";
 import { verifyRepoReadable } from "./inspect.ts";
 import { makeManualGuidance } from "./manual-guidance.ts";
@@ -106,20 +107,26 @@ export const recover: RecoverFn = async (ctx, error?) => {
       await ctx.faults?.before("fetch");
 
       // ── Safe fetch from remote (read-only — never pushes) ─────────────────
-      await git.fetch({
-        fs,
-        http: ctx.httpClient ?? defaultGitHttp,
-        dir: ctx.repoDir,
-        url: ctx.remoteUrl,
-        remote: "origin",
-        // Fetch all tags and depth=undefined so we get the full history.
-        // This maximises the chance of filling any object-store gaps.
-        tags: false,
-        singleBranch: false,
-        // Reuse sync.ts's credential convention (GitHub OAuth → x-access-token,
-        // plain tokens → username/token), so authenticated/private remotes work.
-        ...onAuthFor(ctx.credential),
-      });
+      // guardRemoteRefs (R15): with singleBranch:false an idle-timeout abort
+      // mid-pack can move/create EVERY refs/remotes/origin/* ref to oids
+      // whose objects never landed — new damage on top of the corruption we
+      // came to repair. Roll back any ref the aborted fetch left dangling.
+      await guardRemoteRefs(ctx.repoDir, "origin", {}, () =>
+        git.fetch({
+          fs,
+          http: ctx.httpClient ?? defaultGitHttp,
+          dir: ctx.repoDir,
+          url: ctx.remoteUrl,
+          remote: "origin",
+          // Fetch all tags and depth=undefined so we get the full history.
+          // This maximises the chance of filling any object-store gaps.
+          tags: false,
+          singleBranch: false,
+          // Reuse sync.ts's credential convention (GitHub OAuth → x-access-token,
+          // plain tokens → username/token), so authenticated/private remotes work.
+          ...onAuthFor(ctx.credential),
+        }),
+      );
 
       // ── Verify the repair actually worked ─────────────────────────────────
       // git.fetch() downloads MISSING objects but NEVER overwrites an

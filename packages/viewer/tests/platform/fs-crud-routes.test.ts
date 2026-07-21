@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { makeHostServices, type HostServicesOverrides } from "../support/host-services-fake";
 import * as printMd from "@dimm-city/print-md";
 import { POST as createFileRoute } from "../../src/routes/api/fs/create-file/+server";
 import { POST as createFolderRoute } from "../../src/routes/api/fs/create-folder/+server";
@@ -50,39 +51,10 @@ let outsideDir: string;
  *  (local-folder) so delete tests that don't care about snapshotting can
  *  ignore it entirely. Individual tests override `vcs.loadLib` for the
  *  snapshot-discipline cases. */
-function baseServices(overrides: Partial<HostServices> = {}): HostServices {
-  const noop = () => {};
-  return {
-    app: { updateSplash: noop, showMainWindowAndCloseSplash: noop, setRendererDirty: noop, sendToRenderer: noop },
-    conflictPreview: { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) },
-    desktop: {
-      showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
-      showSaveDialog: async () => ({ canceled: true }),
-      openExternal: async () => {},
-      showItemInFolder: noop,
-      getNativeTheme: () => ({ shouldUseDarkColors: false }),
-      getUserDataPath: () => tmpdir(),
-    },
-    doctor: { getViewerVersion: () => "0.0.0-test" },
+function baseServices(overrides: HostServicesOverrides = {}): HostServices {
+  return makeHostServices({
+    desktop: { getUserDataPath: () => tmpdir() },
     fsGuard: { projectRoots: () => [projectDir], readOnlyRoots: () => [] },
-    media: { createThumbnail: async () => null },
-    prefs: {
-      readPrefs: async () => ({}),
-      writePrefs: async () => {},
-      updatePrefs: async (mutate: (p: object) => object) => mutate({}),
-      readSettings: async () => ({}),
-      updateSettings: async () => ({}),
-      existingDirectory: async () => null,
-      readProjectState: () => null,
-      writeProjectState: (states: unknown) => states,
-      defaultProjectSearchRoots: () => [],
-      scanForProjects: async () => [],
-      toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),
-      removeRecentFolder: () => [],
-      loadLib: async () => ({}),
-    },
-    recovery: { write: async () => ({ ok: true }), clear: async () => ({ ok: true }), list: async () => [] },
-    remote: { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" },
     vcs: {
       loadLib: async () => ({
         detectProjectSource: async () => ({ type: "local-folder" }),
@@ -90,12 +62,9 @@ function baseServices(overrides: Partial<HostServices> = {}): HostServices {
         providerFor: () => ({ snapshot: async () => ({ id: "fake", message: "", timestamp: 0 }) }),
         isNoChangesError: () => false,
       }),
-      operationLogPath: () => "/fake/log",
     },
-    watch: { startFolderWatch: noop, stopFolderWatch: noop, getWatchedDir: () => null },
-    write: { scheduleAutoSnapshot: noop, scheduleAutoSync: noop, getWatchedDir: () => null },
     ...overrides,
-  } as unknown as HostServices;
+  });
 }
 
 beforeEach(async () => {

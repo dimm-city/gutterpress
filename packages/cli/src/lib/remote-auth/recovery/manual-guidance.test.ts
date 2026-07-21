@@ -16,6 +16,9 @@ const EXPECTED: Record<SyncErrorKind, RecoveryActionKey> = {
   binary_conflict: "resolve_conflict",
   auth_required: "reconnect",
   network_unavailable: "sync",
+  // NEVER "reconnect" — reconnecting can't fix an http:// address, and the
+  // reconnect path deletes stored credentials.
+  insecure_transport: "check_connection",
   detached_head: "restore_repo",
   stale_lock: "restore_repo",
   corrupt_index: "restore_repo",
@@ -42,6 +45,16 @@ describe("makeManualGuidance — machine action key", () => {
       expect(g.recommendedAction.length).toBeGreaterThan(0);
     });
   }
+
+  // The viewer's Advanced Setup dialog sanitizes displayed messages with
+  // /https?:\/\/\S+/g → "(address hidden)"; a literal "(https://)" in the copy
+  // matches it and renders as broken text. Say "https", never "https://".
+  test("insecure_transport guidance contains no URL-shaped token (viewer sanitizer)", () => {
+    const g = makeManualGuidance(ctx, "insecure_transport");
+    for (const text of [g.userSummary, g.recommendedNextStep, ...(g.safeNextSteps ?? [])]) {
+      expect(text).not.toMatch(/https?:\/\/\S+/);
+    }
+  });
 
   test("backup reassurance is honest — promised only when a backup exists", () => {
     const backupKinds: SyncErrorKind[] = [

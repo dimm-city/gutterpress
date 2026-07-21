@@ -137,6 +137,22 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
     ],
   },
 
+  // NOT reconnect-flavoured on purpose: reconnecting can't fix an http://
+  // address, and the reconnect path is what deletes stored credentials.
+  insecure_transport: {
+    userSummary:
+      "This project's online address isn't secure, so the saved connection can't be used with it.",
+    // "https", never "https://" — the viewer redacts /https?:\/\/\S+/ matches.
+    recommendedNextStep:
+      "Change the project's online address to a secure one (starting with https), then try syncing again.",
+    recommendedAction: "Check connection",
+    recommendedActionKey: "check_connection",
+    safeNextSteps: [
+      "Your work is saved on this computer.",
+      "Nothing was sent — your saved connection is never sent over an insecure address.",
+    ],
+  },
+
   detached_head: {
     userSummary:
       "Your project's version history is in an unusual state and can't be synced right now.",

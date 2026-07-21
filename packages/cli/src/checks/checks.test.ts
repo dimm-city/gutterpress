@@ -22,6 +22,7 @@ import {
 import { runChecks } from "./runner";
 import { formatReport } from "./formatter";
 import { checkToolAvailability, reportMissingTools } from "./tool-check";
+import { loadPdf, clearPdfCache } from "../lib/pdf-inspect";
 import type { RunnerReport } from "./runner";
 import { makeCtx } from "../test-helpers/testkit";
 
@@ -154,6 +155,33 @@ describe("Check Registry", () => {
       expect(["pre-build", "post-build"]).toContain(check.phase);
       expect(typeof check.run).toBe("function");
     }
+  });
+
+  test("registerCheck returns an unregister function; double-unregister is a no-op", async () => {
+    const check: Check = {
+      id: "test.registry-seam",
+      name: "Registry Seam",
+      description: "Throwaway check pinning the register/unregister seam",
+      category: "pdf",
+      phase: "post-build",
+      async run(): Promise<CheckResult[]> {
+        return [];
+      },
+    };
+    const unregister = registerCheck(check);
+    try {
+      // Present in an unfiltered run while registered.
+      const report = await runChecks(makeCtx());
+      expect(report.passed).toContain("test.registry-seam");
+    } finally {
+      unregister();
+    }
+    // Absent everywhere after unregister.
+    expect(getCheckById("test.registry-seam")).toBeUndefined();
+    expect(getChecks().some((c) => c.id === "test.registry-seam")).toBe(false);
+    // Double-unregister is a harmless no-op.
+    expect(() => unregister()).not.toThrow();
+    expect(getCheckById("test.registry-seam")).toBeUndefined();
   });
 
   test("total registered check count", () => {
@@ -291,14 +319,129 @@ describe("Check Runner", () => {
         throw new Error("intentional test error");
       },
     };
-    registerCheck(throwingCheck);
+    const unregister = registerCheck(throwingCheck);
 
-    const ctx = makeCtx();
-    const report = await runChecks(ctx, {
-      only: ["test.throwing-check"],
+    try {
+      const ctx = makeCtx();
+      const report = await runChecks(ctx, {
+        only: ["test.throwing-check"],
+      });
+      expect(report.summary.errors).toBe(1);
+      expect(report.errors[0]!.message).toContain("intentional test error");
+    } finally {
+      unregister();
+    }
+  });
+
+  test("completed run leaves the pdf document cache empty", async () => {
+    const { PDFDocument } = await import("pdf-lib");
+    const docu = await PDFDocument.create();
+    docu.addPage([612, 792]);
+    const dir = await mkdtemp(join(tmpdir(), "print-md-runnercache-"));
+    const pdfPath = join(dir, "run.pdf");
+    await writeFile(pdfPath, await docu.save());
+
+    let seen: unknown;
+    const cacheCheck: Check = {
+      id: "test.pdf-cache-check",
+      name: "PDF Cache Check",
+      description: "Loads a PDF through the shared document cache",
+      category: "pdf",
+      phase: "post-build",
+      async run(): Promise<CheckResult[]> {
+        seen = await loadPdf(pdfPath);
+        return [];
+      },
+    };
+    const unregister = registerCheck(cacheCheck);
+
+    try {
+      const ctx = makeCtx();
+      await runChecks(ctx, { only: ["test.pdf-cache-check"] });
+
+      // The runner clears the cache at run end (its docblock's "natural
+      // boundary"), so a fresh load re-parses instead of returning the run's
+      // cached (and now destroyed) document.
+      const after = await loadPdf(pdfPath);
+      expect(seen).toBeTruthy();
+      expect(after).not.toBe(seen);
+    } finally {
+      unregister();
+      clearPdfCache();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("overlapping runs: one run completing must not destroy the other run's documents", async () => {
+    // runChecks is a public lib export served by a long-lived host (the
+    // viewer), where two runs CAN overlap — e.g. a Problems-panel lint run
+    // and a publish preflight. The completing run's end-of-run cache reclaim
+    // must not destroy PDF documents the still-active run is reading, or that
+    // run reports spurious "Transport destroyed" errors on a valid PDF.
+    const { PDFDocument } = await import("pdf-lib");
+    const docu = await PDFDocument.create();
+    docu.addPage([612, 792]);
+    const dir = await mkdtemp(join(tmpdir(), "print-md-overlap-"));
+    const pdfPath = join(dir, "overlap.pdf");
+    await writeFile(pdfPath, await docu.save());
+
+    // Run B loads a document, signals it, then parks until run A has fully
+    // completed — so A's end-of-run reclaim happens while B holds a live doc.
+    let openGate!: () => void;
+    const gate = new Promise<void>((r) => {
+      openGate = r;
     });
-    expect(report.summary.errors).toBe(1);
-    expect(report.errors[0]!.message).toContain("intentional test error");
+    let signalLoaded!: () => void;
+    const loaded = new Promise<void>((r) => {
+      signalLoaded = r;
+    });
+    let pageError: unknown = null;
+    const checkB: Check = {
+      id: "test.overlap-b",
+      name: "Overlap B",
+      description: "Parks mid-check while holding a cached document",
+      category: "pdf",
+      phase: "post-build",
+      async run(): Promise<CheckResult[]> {
+        const doc = (await loadPdf(pdfPath))!;
+        signalLoaded();
+        await gate; // run A completes (and hits its finally) while parked here
+        try {
+          await doc.getPage(1);
+        } catch (err) {
+          pageError = err;
+        }
+        return [];
+      },
+    };
+    const checkA: Check = {
+      id: "test.overlap-a",
+      name: "Overlap A",
+      description: "Completes while run B is parked",
+      category: "pdf",
+      phase: "post-build",
+      async run(): Promise<CheckResult[]> {
+        return [];
+      },
+    };
+    const unregisterB = registerCheck(checkB);
+    const unregisterA = registerCheck(checkA);
+
+    try {
+      const ctx = makeCtx();
+      const runB = runChecks(ctx, { only: ["test.overlap-b"] });
+      await loaded; // B now holds a document from the shared cache
+      await runChecks(ctx, { only: ["test.overlap-a"] }); // A runs to completion
+      openGate();
+      await runB;
+
+      expect(pageError).toBeNull();
+    } finally {
+      unregisterB();
+      unregisterA();
+      clearPdfCache();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -982,15 +1125,19 @@ describe("Tool Check", () => {
       requiredTools: ["__print_md_nonexistent_tool_xyz__"],
       async run() { return []; },
     };
-    registerCheck(fakeCheck);
+    const unregister = registerCheck(fakeCheck);
 
-    const config = makeConfig();
-    const result = await checkToolAvailability(config, {
-      only: ["test.fake-tool-check"],
-    });
+    try {
+      const config = makeConfig();
+      const result = await checkToolAvailability(config, {
+        only: ["test.fake-tool-check"],
+      });
 
-    expect(result.missing).toContain("__print_md_nonexistent_tool_xyz__");
-    expect(result.skippedChecks).toContain("test.fake-tool-check");
+      expect(result.missing).toContain("__print_md_nonexistent_tool_xyz__");
+      expect(result.skippedChecks).toContain("test.fake-tool-check");
+    } finally {
+      unregister();
+    }
   });
 
   test("reportMissingTools does not throw when no tools missing", () => {
@@ -1032,18 +1179,22 @@ describe("Runner skips checks with missing tools", () => {
         }];
       },
     };
-    registerCheck(dummyCheck);
+    const unregister = registerCheck(dummyCheck);
 
-    const ctx = makeCtx();
-    const report = await runChecks(ctx, {
-      only: ["test.tool-skip-check"],
-      skipMissingTools: ["test.tool-skip-check"],
-    });
+    try {
+      const ctx = makeCtx();
+      const report = await runChecks(ctx, {
+        only: ["test.tool-skip-check"],
+        skipMissingTools: ["test.tool-skip-check"],
+      });
 
-    // Check was skipped — no results, no passed (it wasn't even run)
-    expect(report.results).toHaveLength(0);
-    expect(report.passed).toHaveLength(0);
-    expect(report.summary.total).toBe(0);
+      // Check was skipped — no results, no passed (it wasn't even run)
+      expect(report.results).toHaveLength(0);
+      expect(report.passed).toHaveLength(0);
+      expect(report.summary.total).toBe(0);
+    } finally {
+      unregister();
+    }
   });
 });
 
@@ -1277,5 +1428,27 @@ describe("Asset image checks (in-process reader)", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Registry hygiene guard — every throwaway `test.*` check registered above
+// MUST have been unregistered by its own test (try/finally on the function
+// `registerCheck` returns). Without that, any later unfiltered `runChecks`
+// silently executes stale test checks (some closing over deleted temp paths),
+// padding summary counts order-dependently. This describe is deliberately
+// LAST in the file so it sees the aggregate effect of every registration
+// above; keep it last when adding new suites.
+// ---------------------------------------------------------------------------
+
+describe("Registry hygiene", () => {
+  test("an unfiltered run sees no leftover test.* checks", async () => {
+    const report = await runChecks(makeCtx());
+    const executedIds = [
+      ...report.passed,
+      ...report.results.map((r) => r.checkId),
+    ];
+    expect(executedIds.filter((id) => id.startsWith("test."))).toEqual([]);
+    expect(getAllCheckIds().filter((id) => id.startsWith("test."))).toEqual([]);
   });
 });

@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
-import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
+import { registerHostServices, getHostServices } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
 import { getAppHooks } from "../../electron/server-bridge/app-hooks";
 import { getConflictPreviewHooks } from "../../electron/server-bridge/conflict-preview-hooks";
 import { getDesktopHooks, getDoctorHooks } from "../../electron/server-bridge/host-hooks";
@@ -49,59 +50,14 @@ test("getHostServices() and every domain accessor return null before registratio
   expect(getWriteHooks()).toBeNull();
 });
 
-// One fake per domain field, built once and registered in a single call —
-// mirrors main.ts's real "one registerHostServices() call, once every
-// dependency exists" shape.
-const fakeApp = { updateSplash: () => {}, showMainWindowAndCloseSplash: () => {}, setRendererDirty: () => {}, sendToRenderer: () => {} };
-const fakeConflictPreview = { getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }) };
-const fakeDesktop = {
-  showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
-  showSaveDialog: async () => ({ canceled: true }),
-  openExternal: async () => {},
-  showItemInFolder: () => {},
-  getNativeTheme: () => ({ shouldUseDarkColors: false }),
-  getUserDataPath: () => "/fake/userData",
-};
-const fakeDoctor = { getViewerVersion: () => "0.0.0-test" };
-const fakeFsGuard = { projectRoots: () => ["/fake/project"], readOnlyRoots: () => ["/fake/recovery"] };
-const fakeMedia = { createThumbnail: async () => null };
-const fakePickedFiles = { register: () => {}, consume: () => false };
-const fakePrefs = {
-  readPrefs: async () => ({}),
-  writePrefs: async () => {},
-  updatePrefs: async (mutate: (p: object) => object) => mutate({}),
-  readSettings: async () => ({}),
-  updateSettings: async () => ({}),
-  existingDirectory: async () => null,
-  readProjectState: () => null,
-  writeProjectState: (states: unknown) => states,
-  defaultProjectSearchRoots: () => [],
-  scanForProjects: async () => [],
-  toggleFavoriteFolder: (favorites: unknown) => ({ favorites: (favorites as []) ?? [], favorited: false }),
-  removeRecentFolder: () => [],
-  loadLib: async () => ({}),
-};
-const fakeRecovery = { write: async () => ({ ok: true }), clear: async () => ({ ok: true }), list: async () => [] };
-const fakeRemote = { loadLib: async () => ({}), tokenStore: {} as never, GITHUB_HOST: "github.com" };
-const fakeVcs = { loadLib: async () => ({}), operationLogPath: () => "/fake/log" };
-const fakeWatch = { startFolderWatch: () => {}, stopFolderWatch: () => {}, getWatchedDir: () => null };
-const fakeWrite = { scheduleAutoSnapshot: () => {}, scheduleAutoSync: () => {}, getWatchedDir: () => null };
-
-const fakeServices = {
-  app: fakeApp,
-  conflictPreview: fakeConflictPreview,
-  desktop: fakeDesktop,
-  doctor: fakeDoctor,
-  fsGuard: fakeFsGuard,
-  media: fakeMedia,
-  pickedFiles: fakePickedFiles,
-  prefs: fakePrefs,
-  recovery: fakeRecovery,
-  remote: fakeRemote,
-  vcs: fakeVcs,
-  watch: fakeWatch,
-  write: fakeWrite,
-} as unknown as HostServices;
+// One fake per domain field (the shared support builder), built once and
+// registered in a single call — mirrors main.ts's real "one
+// registerHostServices() call, once every dependency exists" shape. The
+// identity assertions below read each domain back off THIS object, so the
+// builder returning fresh per-call sub-objects is exactly what they need.
+const fakeServices = makeHostServices({
+  fsGuard: { projectRoots: () => ["/fake/project"], readOnlyRoots: () => ["/fake/recovery"] },
+});
 
 test("registerHostServices() populates getHostServices() with the exact object reference", () => {
   registerHostServices(fakeServices);
@@ -109,19 +65,19 @@ test("registerHostServices() populates getHostServices() with the exact object r
 });
 
 test("every domain accessor reads its own field off the single registered object", () => {
-  expect(getAppHooks()).toBe(fakeApp as never);
-  expect(getConflictPreviewHooks()).toBe(fakeConflictPreview as never);
-  expect(getDesktopHooks()).toBe(fakeDesktop as never);
-  expect(getDoctorHooks()).toBe(fakeDoctor as never);
-  expect(getFsGuardHooks()).toBe(fakeFsGuard as never);
-  expect(getMediaHooks()).toBe(fakeMedia as never);
-  expect(getPickedFilesHooks()).toBe(fakePickedFiles as never);
-  expect(getPrefsHooks()).toBe(fakePrefs as never);
-  expect(getRecoveryHooks()).toBe(fakeRecovery as never);
-  expect(getRemoteHooks()).toBe(fakeRemote as never);
-  expect(getVcsHooks()).toBe(fakeVcs as never);
-  expect(getWatchHooks()).toBe(fakeWatch as never);
-  expect(getWriteHooks()).toBe(fakeWrite as never);
+  expect(getAppHooks()).toBe(fakeServices.app);
+  expect(getConflictPreviewHooks()).toBe(fakeServices.conflictPreview);
+  expect(getDesktopHooks()).toBe(fakeServices.desktop);
+  expect(getDoctorHooks()).toBe(fakeServices.doctor);
+  expect(getFsGuardHooks()).toBe(fakeServices.fsGuard);
+  expect(getMediaHooks()).toBe(fakeServices.media);
+  expect(getPickedFilesHooks()).toBe(fakeServices.pickedFiles);
+  expect(getPrefsHooks()).toBe(fakeServices.prefs as never);
+  expect(getRecoveryHooks()).toBe(fakeServices.recovery);
+  expect(getRemoteHooks()).toBe(fakeServices.remote as never);
+  expect(getVcsHooks()).toBe(fakeServices.vcs as never);
+  expect(getWatchHooks()).toBe(fakeServices.watch);
+  expect(getWriteHooks()).toBe(fakeServices.write);
 });
 
 test("getPrefsHooks/getRemoteHooks/getVcsHooks keep their generic call-site narrowing after the collapse", () => {
@@ -132,7 +88,21 @@ test("getPrefsHooks/getRemoteHooks/getVcsHooks keep their generic call-site narr
   const prefs = getPrefsHooks<NarrowLib>();
   const remote = getRemoteHooks<NarrowLib, { token: string }>();
   const vcs = getVcsHooks<NarrowLib>();
-  expect(prefs).toBe(fakePrefs as never);
-  expect(remote).toBe(fakeRemote as never);
-  expect(vcs).toBe(fakeVcs as never);
+  expect(prefs).toBe(fakeServices.prefs as never);
+  expect(remote).toBe(fakeServices.remote as never);
+  expect(vcs).toBe(fakeServices.vcs as never);
+});
+
+test("makeHostServices: a partial domain override merges over the base; an explicit undefined un-registers the domain", () => {
+  // Pins the shared builder's override semantics for its 10 consumer suites
+  // (pure function — registers nothing, so this file's ordering constraint
+  // doesn't apply). Deep-ish merge: the overridden member wins, untouched
+  // siblings stay; `undefined` = the 503 "hooks not registered" default.
+  const services = makeHostServices({
+    desktop: { getUserDataPath: () => "/custom" },
+    remote: undefined,
+  });
+  expect(services.desktop.getUserDataPath()).toBe("/custom");
+  expect(services.desktop.getNativeTheme()).toEqual({ shouldUseDarkColors: false });
+  expect(services.remote).toBeUndefined();
 });

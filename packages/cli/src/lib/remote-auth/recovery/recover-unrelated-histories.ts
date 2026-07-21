@@ -48,6 +48,7 @@ import { defaultGitHttp } from "../git-http.ts";
 
 import { gitAuthor } from "../../source-provider.ts";
 import { conflictFilesFrom, onAuthFor } from "../sync.ts";
+import { guardTrackingRef } from "../transport.ts";
 import { resolveLogger, shortOid } from "../operation-log.ts";
 // The single MergeConflictError decoder lives in classify.ts (there must be
 // exactly ONE decoder — see its header); this handler consumes it rather than
@@ -139,20 +140,26 @@ export const recover: RecoverFn = async (ctx, error?) => {
       // objects. Without this, isomorphic-git sends the local branch tip as
       // the `have` line, and the server ships the ENTIRE repo as one pack
       // (multi-GB download → OOM on large repos). See sync.ts:512-518.
+      // guardTrackingRef (R15): an idle-timeout abort mid-pack moves the
+      // tracking ref before the objects land — roll it back so the abort
+      // can't dangle the ref on this object-healthy repo.
       await ctx.faults?.before("fetch");
       logger.info("fetch", "fetching remote", { branch });
-      await git.fetch({
-        fs,
-        dir,
-        http: ctx.httpClient ?? defaultGitHttp,
-        url: ctx.remoteUrl,
-        remote: "origin",
-        ref: `refs/remotes/origin/${branch}`,
-        remoteRef: branch,
-        singleBranch: true,
-        tags: false,
-        ...onAuthFor(ctx.credential),
-      });
+      const trackingRef = `refs/remotes/origin/${branch}`;
+      await guardTrackingRef(dir, trackingRef, cache, () =>
+        git.fetch({
+          fs,
+          dir,
+          http: ctx.httpClient ?? defaultGitHttp,
+          url: ctx.remoteUrl,
+          remote: "origin",
+          ref: trackingRef,
+          remoteRef: branch,
+          singleBranch: true,
+          tags: false,
+          ...onAuthFor(ctx.credential),
+        }),
+      );
 
       // Resolve the remote tip. Try the tracked branch first, then origin/HEAD
       // (some servers don't configure a per-branch tracking ref on fresh

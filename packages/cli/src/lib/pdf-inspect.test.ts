@@ -15,6 +15,10 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   loadPdf,
+  clearPdfCache,
+  retainPdfCache,
+  pendingGraceDestroyCount,
+  DOC_CACHE_MAX,
   getPageSize,
   getOutlineCount,
   getOpPass,
@@ -136,5 +140,122 @@ describe("pdf-inspect (synthetic pdf-lib document)", () => {
 
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });
+  });
+});
+
+// Cache-bounding behavior: LRU eviction defers destruction by a grace period
+// (so a mid-check reader isn't killed), but the reclaim — clearPdfCache
+// directly, or the last retainPdfCache scope releasing — must destroy
+// grace-held evicted documents immediately, not leave them (and their timers)
+// alive for up to a minute.
+describe("pdf-inspect cache eviction + clearPdfCache", () => {
+  let dir: string;
+  const paths: string[] = [];
+
+  beforeAll(async () => {
+    const { PDFDocument } = await import("pdf-lib");
+    const docu = await PDFDocument.create();
+    docu.addPage([612, 792]);
+    const bytes = await docu.save();
+    dir = await mkdtemp(join(tmpdir(), "print-md-pdfcache-"));
+    // DOC_CACHE_MAX + 1 distinct paths, so loading them all evicts exactly one.
+    for (let i = 0; i < DOC_CACHE_MAX + 1; i++) {
+      const p = join(dir, `doc-${i}.pdf`);
+      await writeFile(p, bytes);
+      paths.push(p);
+    }
+  });
+
+  afterAll(async () => {
+    clearPdfCache();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("clearPdfCache destroys grace-held evicted documents immediately", async () => {
+    clearPdfCache(); // isolate from documents cached by earlier suites
+    const first = (await loadPdf(paths[0]!))!;
+    let destroyed = false;
+    const origDestroy = first.destroy.bind(first);
+    first.destroy = () => {
+      destroyed = true;
+      return origDestroy();
+    };
+
+    // Load the remaining 8 distinct paths → paths[0] becomes the LRU evictee.
+    for (let i = 1; i < paths.length; i++) {
+      expect(await loadPdf(paths[i]!)).toBeTruthy();
+    }
+    await new Promise((r) => setTimeout(r, 20));
+    // Eviction alone must NOT destroy it yet — the grace period protects a
+    // reader that obtained the proxy just before the eviction.
+    expect(destroyed).toBe(false);
+    expect(pendingGraceDestroyCount()).toBe(1);
+
+    // The run-boundary reclaim must cancel the grace timer and destroy the
+    // evicted document too, not only the 8 still in the cache map.
+    clearPdfCache();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(destroyed).toBe(true);
+    expect(pendingGraceDestroyCount()).toBe(0); // no live timers left behind
+  });
+
+  // Overlapping-run protection: runChecks is served by a long-lived host (the
+  // viewer) where two runs CAN overlap. Each run holds a retain scope; the
+  // cache (including grace-held evictees) is cleared only when the LAST scope
+  // releases, so one run's end cannot destroy documents the other is reading.
+  test("releasing one of two overlapping retains keeps documents alive; the last release clears cached + grace-held", async () => {
+    clearPdfCache(); // isolate from earlier suites
+    const release1 = retainPdfCache();
+    const release2 = retainPdfCache();
+
+    const first = (await loadPdf(paths[0]!))!;
+    let destroyed = false;
+    const origDestroy = first.destroy.bind(first);
+    first.destroy = () => {
+      destroyed = true;
+      return origDestroy();
+    };
+    // Evict paths[0] into its destroy-grace window.
+    for (let i = 1; i < paths.length; i++) {
+      expect(await loadPdf(paths[i]!)).toBeTruthy();
+    }
+    expect(pendingGraceDestroyCount()).toBe(1);
+
+    // First release: another scope is still active — nothing may be destroyed.
+    release1();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(destroyed).toBe(false);
+    expect(pendingGraceDestroyCount()).toBe(1);
+
+    // Last release: cached + grace-held documents are destroyed, timers gone.
+    release2();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(destroyed).toBe(true);
+    expect(pendingGraceDestroyCount()).toBe(0);
+  });
+
+  test("release is idempotent — a stale release cannot clear a newer scope", async () => {
+    clearPdfCache();
+    const stale = retainPdfCache();
+    stale();
+    stale(); // extra call must be a no-op, not a second decrement
+
+    const active = retainPdfCache();
+    const doc = (await loadPdf(paths[0]!))!;
+    let destroyed = false;
+    const origDestroy = doc.destroy.bind(doc);
+    doc.destroy = () => {
+      destroyed = true;
+      return origDestroy();
+    };
+
+    stale(); // still a no-op while the newer scope is active
+    await new Promise((r) => setTimeout(r, 20));
+    expect(destroyed).toBe(false);
+    expect(await loadPdf(paths[0]!)).toBe(doc);
+
+    active();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(destroyed).toBe(true);
   });
 });

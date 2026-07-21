@@ -74,6 +74,9 @@ function errorStatus(
     state: "error",
     projectDir,
     lastSyncAt,
+    // Every RecoveryResult carries author-language copy — surface it so the
+    // ambient pill can show WHY sync is paused, not just that it is.
+    message: result.message,
     guidance: "guidance" in result ? result.guidance : undefined,
     backupZipPath: "backupZipPath" in result ? result.backupZipPath : undefined,
     logFile,

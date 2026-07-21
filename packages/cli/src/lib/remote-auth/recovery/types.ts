@@ -26,6 +26,7 @@ export type SyncErrorKind =
   | "binary_conflict"
   | "auth_required"
   | "network_unavailable"
+  | "insecure_transport"
   | "detached_head"
   | "stale_lock"
   | "corrupt_index"

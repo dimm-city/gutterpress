@@ -126,10 +126,13 @@ function defaultSleep(ms: number): Promise<void> {
  * typed error routes the caller through the recover() path. `checkLocalChanges:
  * false` — only the structural flags matter here.
  *
- * Shared by syncProject, pullChanges, and pushChanges (deep-analysis fix):
- * previously ONLY syncProject ran it, so the History tab's Pull/Push buttons —
- * which call pullChanges/pushChanges directly — could snapshot-and-publish a
- * structurally broken tree.
+ * Runs INSIDE pullChanges' and pushChanges' repo lock (deep-analysis fix: the
+ * History tab's Pull/Push buttons call them directly, so the guard must live
+ * there, not only in syncProject). syncProject deliberately has NO entry
+ * preflight of its own — its first pull hits this guard before any try/catch,
+ * so the typed error propagates identically, and each inspectRepo (parent-dir
+ * walk + several stat/exists probes) runs once per locked operation instead of
+ * an extra time per ~2-minute auto-sync.
  */
 async function assertNoStructuralDamage(
   projectDir: string,
@@ -159,7 +162,6 @@ export async function syncProject(
   options: SyncProjectOptions,
 ): Promise<SyncOutcome> {
   const logger = resolveLogger(options.logFile, "sync");
-  await assertNoStructuralDamage(options.projectDir, logger);
   // Bounded, defaulted retry policy. attempts ≥ 1, backoffMs ≥ 0 (clamped so a
   // caller can never request an unbounded or negative-delay loop).
   const attempts = Math.max(1, options.retry?.attempts ?? DEFAULT_SYNC_RETRY.attempts);
@@ -250,10 +252,12 @@ export async function pullChanges(
   const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<PullOutcome> => {
+    // One logger per locked operation (preflight + body share it).
+    const logger = resolveLogger(options.logFile, "sync");
     // Structural preflight INSIDE the lock (deep-analysis fix): the History
     // tab's Pull button calls pullChanges directly, not via syncProject, so it
     // needs the same "don't snapshot+push a damaged tree" guard.
-    await assertNoStructuralDamage(options.projectDir, resolveLogger(options.logFile, "pull"));
+    await assertNoStructuralDamage(options.projectDir, logger);
     // One object cache for this pull only — released with it.
     const cache: GitCache = {};
     let snapshotId: string | undefined;
@@ -276,7 +280,6 @@ export async function pullChanges(
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
       const base = snapshotId ? { snapshotId } : {};
 
-      const logger = resolveLogger(options.logFile, "sync");
       logger.info("pull", `branch=${branch} local=${short(localTip)} fetched=${short(remoteTip)}`);
 
       if (!remoteTip || remoteTip === localTip) {
@@ -374,11 +377,13 @@ export async function pushChanges(
   const dir = await repoDirFor(options.projectDir);
 
   return withRepoLock(dir, async (): Promise<PushOutcome> => {
+    // One logger per locked operation (preflight + body share it).
+    const logger = resolveLogger(options.logFile, "sync");
     // Structural preflight INSIDE the lock (deep-analysis fix): the History
-    // tab's Push button calls pushChanges directly, so it needs the same guard
-    // syncProject has — otherwise a half-done native-git merge's conflict
-    // markers get snapshotted and published to every collaborator.
-    await assertNoStructuralDamage(options.projectDir, resolveLogger(options.logFile, "push"));
+    // tab's Push button calls pushChanges directly — otherwise a half-done
+    // native-git merge's conflict markers get snapshotted and published to
+    // every collaborator.
+    await assertNoStructuralDamage(options.projectDir, logger);
     // One object cache for this push only — released with it.
     const cache: GitCache = {};
     let snapshotId: string | undefined;
@@ -400,7 +405,6 @@ export async function pushChanges(
       const localTip = await git.resolveRef({ fs, dir, ref: branch });
       const base = snapshotId ? { snapshotId } : {};
 
-      const logger = resolveLogger(options.logFile, "sync");
       logger.info("push", `branch=${branch} local=${short(localTip)} fetched=${short(remoteTip)} snapshot=${snapshotId ? short(snapshotId) : "none"}`);
 
       if (remoteTip === localTip) {

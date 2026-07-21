@@ -16,6 +16,8 @@
 import git from "isomorphic-git";
 import httpNode from "isomorphic-git/http/node";
 
+import { isInsecureTransportError } from "./recovery/classify.ts";
+import { onAuthFor } from "./transport.ts";
 import { extractUrlCredential, type HostCredential } from "./token-store.ts";
 
 /** Why a remote-access probe failed, in machine-readable form. */
@@ -24,6 +26,7 @@ export type RemoteAccessFailureReason =
   | "not-found"
   | "unreachable"
   | "ssh-unsupported"
+  | "insecure-transport"
   | "tls"
   | "unknown";
 
@@ -54,8 +57,13 @@ export function isSshRemoteUrl(url: string): boolean {
   return /^[\w.-]+@[\w.][\w.-]*:/.test(trimmed) || /^[\w.-]+@\[/.test(trimmed);
 }
 
-/** Author-friendly messages per failure reason (no URLs, no tokens). */
-const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
+/**
+ * Author-friendly messages per failure reason (no URLs, no tokens — and no
+ * literal scheme tokens like "http://": the viewer's Advanced Setup dialog
+ * redacts anything matching /https?:\/\/\S+/, which would garble the copy).
+ * Exported for the wording guard in test-access.test.ts.
+ */
+export const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
   auth: "The Git server didn't accept the saved connection. Reconnect to this server with a current access token and try again.",
   "not-found":
     "The server answered, but no repository was found at that address. It may have been moved, renamed, or you may no longer have access.",
@@ -63,6 +71,8 @@ const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
     "Couldn't reach the Git server. Check your internet connection (and VPN, if this is a private server), then try again.",
   "ssh-unsupported":
     "This project's online address uses SSH (git@…), which print-md can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
+  "insecure-transport":
+    "This address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to use a saved connection.",
   tls: "The server's security certificate couldn't be verified. If this is a private server with its own certificate, ask its administrator about trusting it (NODE_EXTRA_CA_CERTS).",
   unknown:
     "The connection test failed unexpectedly. The server may not be a Git server, or it may be temporarily unavailable.",
@@ -74,6 +84,9 @@ function failure(reason: RemoteAccessFailureReason): RemoteAccessResult {
 
 /** Map a raw transport error to a classified failure. Never echoes the URL. */
 export function classifyRemoteAccessError(e: unknown): RemoteAccessResult {
+  // FIRST: the typed withheld-credential error from onAuthFor — its message
+  // mentions the connection, which the auth regex below would misclassify.
+  if (isInsecureTransportError(e)) return failure("insecure-transport");
   const msg = e instanceof Error ? e.message : String(e);
   // "cancel" maps to auth: the only cancellation in this flow is our own
   // onAuthFailure → { cancel: true } after the server rejected the credential
@@ -142,19 +155,12 @@ export async function testRemoteAccess(
         // symref in capabilities.
         protocolVersion: 1,
         symrefs: true,
-        ...(credential
-          ? {
-              onAuth: () => ({
-                username:
-                  credential.kind === "github-oauth"
-                    ? "x-access-token"
-                    : credential.username || credential.token,
-                password: credential.token,
-              }),
-              // One shot — never loop on a rejected credential.
-              onAuthFailure: () => ({ cancel: true }),
-            }
-          : {}),
+        // Credential → { username, password } via the ONE canonical mapping
+        // (transport.onAuthFor) — including its cleartext gate, so this probe
+        // can never report "Connected" by sending a token real sync withholds.
+        ...onAuthFor(credential),
+        // One shot — never loop on a rejected credential.
+        ...(credential ? { onAuthFailure: () => ({ cancel: true }) } : {}),
       });
       const head = refs.find((r) => r.ref === "HEAD" && r.target);
       const defaultBranch = head?.target?.replace(/^refs\/heads\//, "");
