@@ -100,6 +100,33 @@ describe("AppToolbar — modern responsive layout (no overflow)", () => {
     // can always fit the end region's actions.
     expect(src).toMatch(/\.toolbar-start\s*\{[^}]*min-width:\s*0/);
   });
+
+  test("URL mode pre-pays for the page nav: tighter caps, compact view-mode, no hints, no dead pane toggles", () => {
+    const src = toolbar();
+    // The URL start cluster (title + URL + open-in-browser) is ~2× the folder
+    // cluster; without these the middle track starves and the page nav clips
+    // on ordinary desktop windows.
+    expect(src).toContain('class:url-mode={sourceMode === "url"}');
+    expect(src).toMatch(/\.toolbar\.url-mode \.path\s*\{\s*max-width/);
+    expect(src).toMatch(/\.toolbar\.url-mode \.view-mode-group\s*\{\s*display:\s*none/);
+    expect(src).toMatch(/\.toolbar\.url-mode \.save-hint\s*\{\s*display:\s*none/);
+    // The preview/editor pane toggles never apply to URL sources — they are
+    // not rendered rather than rendered permanently disabled.
+    expect(src).toMatch(/\{#if !isNarrow && sourceMode !== "url"\}/);
+  });
+
+  test("edit-narrow hides the separators along with the view controls (no adjacent double rule)", () => {
+    const src = toolbar();
+    expect(src).toMatch(/\.toolbar\.edit-narrow \.toolbar-sep\s*[,{]/);
+  });
+
+  test("coarse pointers get a small-screen step-down so 44px targets can't clip the actions off a phone", () => {
+    const src = toolbar();
+    const coarseIdx = src.indexOf("@media (pointer: coarse)");
+    expect(coarseIdx).toBeGreaterThan(-1);
+    const coarseBlock = src.slice(coarseIdx);
+    expect(coarseBlock).toMatch(/@container \(max-width: \d+px\)[\s\S]{0,600}?min-width:\s*40px/);
+  });
 });
 
 describe("AppToolbar — primary action order: Publish, Export, Save", () => {
@@ -146,15 +173,24 @@ describe("AppToolbar — page select (replaces the numeric page input)", () => {
     expect(src).not.toContain("commitPageEdit");
   });
 
-  test("renders one option per page with the current page selected", () => {
+  test("renders one option per page, selection driven by the select's VALUE (a property write)", () => {
     const src = toolbar();
     expect(src).toMatch(/\{#each\s+pageNav\.pageOptions\s+as\s+\w+/);
-    expect(src).toMatch(/selected=\{[^}]*pageNav\.currentPage/);
+    // Load-bearing: per-option `selected` attributes are ignored by the
+    // browser once the user has picked an option (the dirty flag), which
+    // froze the display on stale pages. The select's value property is the
+    // only reliable channel.
+    expect(src).toMatch(/<select[\s\S]{0,400}?value=\{pageNav\.currentPage\}/);
+    expect(src).not.toMatch(/<option[^>]*selected=\{/);
   });
 
-  test("changing the select navigates via pageNav.selectPage", () => {
+  test("changing the select navigates via selectPage and re-syncs the DOM so a dropped/failed goto can't desync it", () => {
     const src = toolbar();
-    expect(src).toMatch(/onchange=\{[^}]*pageNav\.selectPage\(/);
+    expect(src).toMatch(/pageNav\.selectPage\(/);
+    // Immediately after issuing the intent, the DOM value snaps back to
+    // currentPage; a successful navigation updates currentPage (and the
+    // value with it), a dropped or rejected one leaves the select truthful.
+    expect(src).toMatch(/el\.value = String\(pageNav\.currentPage\)/);
   });
 });
 

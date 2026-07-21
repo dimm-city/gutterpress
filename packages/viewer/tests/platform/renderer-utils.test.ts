@@ -67,7 +67,7 @@ test("friendlyPdfError scrubs the IPC remote-method prefix off a SYNC_CONFLICT m
 
 test("friendlyPdfError still falls back to the generic message for unrelated errors", () => {
   expect(friendlyPdfError(new Error("spawn ENOENT"))).toBe(
-    "Could not find a required program. Open Help (?) → System tools to check what needs to be installed.",
+    "Could not find a required program. Open Help (?) > System tools to check what needs to be installed.",
   );
 });
 

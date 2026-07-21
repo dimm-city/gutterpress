@@ -72,6 +72,10 @@
 
   // Covers the initial parallel load of all sections.
   let loadingAll = $state(true);
+  // Focus target on open: opening the view makes the whole workspace (and the
+  // toolbar button that opened it) inert, which would drop keyboard focus to
+  // <body> — so the close button takes it, mirroring dialog behavior.
+  let closeBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
   const projectDirAccessor = () => projectDir;
 
@@ -121,7 +125,7 @@
     readCss: (dir, source) => api.theme.readCss(dir, source),
     onApplied: (themeId) => {
       onThemeApplied?.(themeId);
-      toast?.success?.("Theme applied — your preview is updating. Use Design to fine-tune.");
+      toast?.success?.("Theme applied — close Project settings to see it in the preview. Use Design to fine-tune.");
     },
     afterThemeChange: async () => {
       await Promise.all([styles.loadStyles(), design.loadDesign()]);
@@ -141,6 +145,7 @@
 
   // ── Lifecycle: load every section's data on mount ────────────────────────
   onMount(() => {
+    closeBtnEl?.focus();
     let cancelled = false;
     void loadAll().finally(() => {
       if (!cancelled) loadingAll = false;
@@ -201,7 +206,7 @@
 <div class="settings-view" aria-busy={loadingAll}>
   <header class="settings-header">
     <h2 id="project-settings-title">Project settings</h2>
-    <button class="settings-close" onclick={close} title="Close project settings" aria-label="Close project settings"><Icon name="x" size={16} /></button>
+    <button bind:this={closeBtnEl} class="settings-close" onclick={close} title="Close project settings (Esc)" aria-label="Close project settings"><Icon name="x" size={16} /></button>
   </header>
 
   <div class="tab-bar" role="tablist" aria-label="Project settings sections" onkeydown={onTablistKeydown} tabindex="-1">

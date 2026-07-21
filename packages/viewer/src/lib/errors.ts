@@ -77,18 +77,18 @@ export function friendlyPdfError(e: unknown): string {
   if (code === "TOOL_MISSING") {
     const match = msg.match(/Required system tool not found: ([^\n]+)/);
     const tool = match?.[1]?.trim() ?? "a required tool";
-    return `PDF export needs "${tool}" installed. Open Help (?) → System tools to see how to install it.`;
+    return `PDF export needs "${tool}" installed. Open Help (?) > System tools to see how to install it.`;
   }
   if (/chrome|chromium|browser/i.test(msg)) {
     return "PDF export needs a browser (Chrome or Edge) installed. Open Help (?) for setup details.";
   }
   if (/ENOENT|not found/i.test(msg)) {
-    return "Could not find a required program. Open Help (?) → System tools to check what needs to be installed.";
+    return "Could not find a required program. Open Help (?) > System tools to check what needs to be installed.";
   }
   if (/permission|EACCES/i.test(msg)) {
     return "Permission denied saving the PDF. Try saving to a different folder (like your Desktop).";
   }
-  return "PDF export failed. Open Help (?) → System tools to check for issues.";
+  return "PDF export failed. Open Help (?) > System tools to check for issues.";
 }
 
 /**

@@ -195,8 +195,11 @@
   <!-- Dynamic step indicator: Choose → each destination → Publish -->
   <ol class="steps" aria-label="Publishing steps">
     {#each stepLabels as label, i (i)}
-      <li class:done={stepIndex > i} class:current={stepIndex === i}>
-        <span class="step-dot">{#if stepIndex > i}<Icon name="check" size={12} />{:else}{i + 1}{/if}</span>
+      <li class:done={stepIndex > i} class:current={stepIndex === i} aria-current={stepIndex === i ? "step" : undefined}>
+        <!-- The check Icon is aria-hidden (like every Icon); the sr-only text
+             keeps the completed state announced now that the old "✓" text
+             glyph is gone. -->
+        <span class="step-dot">{#if stepIndex > i}<Icon name="check" size={12} /><span class="dlg-sr-only">Completed:</span>{:else}{i + 1}{/if}</span>
         <span class="step-label">{label}</span>
       </li>
     {/each}

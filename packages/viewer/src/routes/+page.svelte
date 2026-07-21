@@ -550,10 +550,13 @@
     lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url",
   );
   // Why-is-Export-disabled notes (UX-023) + the web-target "desktop app" note.
+  // URL mode wins over the no-folder message (currentDir is null there too,
+  // and "Open a folder first" would be misleading while previewing a URL);
+  // the toolbar hides hints entirely in URL mode anyway.
   let exportHints = $derived.by(() => {
     const hints: string[] = [];
-    if (!lifecycle.currentDir && !lifecycle.busy) hints.push("Open a folder first");
-    else if (lifecycle.sourceMode === "url") hints.push("Not available for web previews");
+    if (lifecycle.sourceMode === "url") hints.push("Not available for web previews");
+    else if (!lifecycle.currentDir && !lifecycle.busy) hints.push("Open a folder first");
     if (!canSavePdf) hints.push("PDF export requires the desktop app");
     return hints;
   });
@@ -977,6 +980,11 @@
     editorView = "editor";
     paneViewRestore = null;
     editorOpen = true;
+    // Narrow single-pane layout keys editor visibility off paneMode, not
+    // editorOpen — switch panes too, or the loaded stylesheet stays hidden
+    // behind the preview with no way to reveal it (the Markdown tab would
+    // swap the file away first).
+    if (isNarrow && paneMode !== "edit") setPaneMode("edit");
     loadEditorModule();
     selectEditorFile(absPath);
     focusEditorWhenReady();
@@ -1669,6 +1677,17 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
+      // The full-window Project settings view owns the keyboard while it's up:
+      // the workspace behind it is inert, so acting on it (opening Settings
+      // invisibly BENEATH the view, toggling focus mode, exporting, snippet
+      // picker) would mutate UI the user can't see. Escape closes the view.
+      if (projectSettingsOpen) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeProjectSettings();
+        }
+        return;
+      }
       const command = resolveGlobalShortcut({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
@@ -1680,6 +1699,9 @@
         toggleSettings();
         return;
       }
+      // The app Settings view is equally full-window: beyond its own Ctrl+,
+      // toggle above, workspace shortcuts must not act behind it.
+      if (settingsOpen) return;
       // The start screen owns the rest of the keyboard while it's up (its own
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
@@ -1731,6 +1753,9 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
+      // Never page/zoom the hidden preview behind a full-window settings view
+      // (PageUp/PageDown must scroll the settings body, not the preview).
+      if (settingsOpen || projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: $lib/a11y isEditableTarget.

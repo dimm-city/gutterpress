@@ -55,7 +55,7 @@
   {:else if controller.tokens.length === 0}
     <p class="muted">{controller.cssName} doesn't expose any settings yet. Use “Edit raw CSS” to add <code>:root</code> custom properties.</p>
   {:else}
-    <p class="hint">Editing {controller.cssName} — changes apply live to the preview.</p>
+    <p class="hint">Editing {controller.cssName} — changes are saved as you go and show in the preview when you close Project settings.</p>
     {#if fontTokens.length > 0}
       <h4 class="subhead">Fonts</h4>
       {#each fontTokens as t (t.name)}

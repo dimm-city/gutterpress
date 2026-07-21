@@ -182,7 +182,7 @@
   }
 </script>
 
-<header class="toolbar" class:edit-narrow={hidePreviewControls}>
+<header class="toolbar" class:edit-narrow={hidePreviewControls} class:url-mode={sourceMode === "url"}>
   <div class="toolbar-start">
     <!-- Panel toggle — far left, first control in navbar -->
     <button
@@ -226,18 +226,32 @@
           <Icon name="chevron-left" />
         </button>
         <!-- Page picker: a native select — one option per page, the current
-             page selected. Clicking "3 / 12" drops down the full page list. -->
+             page selected. Clicking "3 / 12" drops down the full page list.
+             The selection is driven through the select's VALUE (a property
+             write), never per-option `selected` attributes: once a user has
+             picked an option the browser marks it dirty and ignores attribute
+             changes, which would freeze the display on stale pages. The
+             onchange handler immediately re-syncs the DOM to currentPage so a
+             dropped/failed navigation (mid-render, client gone, host error)
+             can never leave the select showing a page the preview isn't on —
+             the successful navigation updates currentPage and the value
+             follows. -->
         <select
           class="page-select"
           aria-label="Go to page"
           disabled={rendering || pageNav.totalPages === 0}
-          onchange={(e) => pageNav.selectPage((e.currentTarget as HTMLSelectElement).value)}
+          value={pageNav.currentPage}
+          onchange={(e) => {
+            const el = e.currentTarget as HTMLSelectElement;
+            pageNav.selectPage(el.value);
+            el.value = String(pageNav.currentPage);
+          }}
         >
           {#if pageNav.totalPages === 0}
             <option selected>&mdash; / &mdash;</option>
           {:else}
             {#each pageNav.pageOptions as p (p)}
-              <option value={p} selected={p === pageNav.currentPage}>{p} / {pageNav.totalPages}</option>
+              <option value={p}>{p} / {pageNav.totalPages}</option>
             {/each}
           {/if}
         </select>
@@ -373,7 +387,10 @@
       </div>
     </details>
 
-    {#if !isNarrow}
+    {#if !isNarrow && sourceMode !== "url"}
+      <!-- Pane toggles only exist for folder projects — in URL mode there is
+           no editor, so rendering them permanently disabled is pure noise
+           (and toolbar width the URL-mode start cluster badly needs). -->
       <button
         class="icon-btn"
         class:active={previewHidden}
@@ -758,7 +775,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 200px;
+    max-width: 160px;
     flex-shrink: 1;
   }
   .no-project {
@@ -784,11 +801,15 @@
     flex-shrink: 0;
   }
 
-  /* Hint beside Export when disabled (UX-023) */
+  /* Hint beside Export when disabled (UX-023). Capped so it can never starve
+     the page-nav's middle track. */
   .save-hint {
     font-size: 11px;
     color: var(--app-text-muted);
     white-space: nowrap;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .save-warning {
     color: var(--app-warning-text);
@@ -799,32 +820,52 @@
 
   /* Narrow + editor tab: the preview is hidden, so its controls (page
      navigation, single/spread, zoom) are noise — hide them so the edit
-     toolbar is just Panel · Tabs · Actions. */
+     toolbar is just Panel · Tabs · Actions. The separators go too: with the
+     view controls gone they would render as an adjacent double rule. */
   .toolbar.edit-narrow .toolbar-center,
   .toolbar.edit-narrow .view-mode-group,
   .toolbar.edit-narrow .view-mode-menu,
-  .toolbar.edit-narrow .zoom-menu {
+  .toolbar.edit-narrow .zoom-menu,
+  .toolbar.edit-narrow .toolbar-sep {
     display: none;
   }
 
+  /* URL-mode budget: the start cluster carries title + full URL + the
+     open-in-browser button (~2× the folder cluster), so URL mode pre-pays for
+     the page nav's middle track at EVERY width — tighter title/path caps, the
+     view-mode group always in its compact menu form, and no export hints
+     (Export's own tooltip carries the explanation). Without these the middle
+     track starves and the page nav clips on ordinary desktop windows. */
+  .toolbar.url-mode .doc-title { max-width: 140px; }
+  .toolbar.url-mode .path { max-width: 120px; }
+  .toolbar.url-mode .view-mode-group { display: none; }
+  .toolbar.url-mode details.view-mode-menu { display: inline-block; }
+  .toolbar.url-mode .save-hint { display: none; }
+
   /* ---- Collapse stages (see the header comment for the full table) ---- */
   @container (max-width: 1150px) {
-    /* Swap the inline view-mode buttons for the compact menu button. */
+    /* Swap the inline view-mode buttons for the compact menu button; the
+       export hints yield to the page nav from here down. */
     .view-mode-group { display: none; }
     details.view-mode-menu { display: inline-block; }
+    .save-hint { display: none; }
+    .path { max-width: 140px; }
   }
   @container (max-width: 1000px) {
     /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
     .view-label { display: none; }
     .btn-label { display: none; }
     .doc-title { max-width: 140px; }
-    .path { max-width: 160px; }
+    .path { max-width: 100px; }
   }
   @container (max-width: 900px) {
-    /* Compact page navigation: drop the first/last jump buttons. */
+    /* Compact page navigation: drop the first/last jump buttons; the path
+       (URL mode) yields entirely, and the URL title with it. */
     .nav-first,
     .nav-last { display: none; }
     .page-select { min-width: 64px; }
+    .path { display: none; }
+    .toolbar.url-mode .doc-title { display: none; }
   }
   @container (max-width: 620px) {
     .doc-title,
@@ -861,6 +902,30 @@
     }
     .pane-toggle .seg {
       padding: 8px 12px;
+    }
+    /* Small touch screens: 44px targets don't fit beside the action trio on a
+       320-390px phone — step down to 40px (still well above WCAG 2.5.8's 24px
+       floor) and tighten the cluster gaps so nothing clips off-screen. */
+    @container (max-width: 480px) {
+      .toolbar .icon-btn,
+      .toolbar .icon-text,
+      .toolbar .menu-summary,
+      .toolbar .page-select,
+      .pane-toggle .seg,
+      .toolbar .primary {
+        min-width: 40px;
+        min-height: 40px;
+      }
+      .toolbar .icon-btn,
+      .toolbar .menu-summary {
+        padding: 8px 9px;
+      }
+      .pane-toggle .seg {
+        padding: 6px 9px;
+      }
+      .toolbar-end {
+        gap: 4px;
+      }
     }
   }
 </style>
