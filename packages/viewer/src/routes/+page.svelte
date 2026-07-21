@@ -3571,7 +3571,9 @@
     position: absolute;
     top: calc(100% + 4px);
     right: 0;
-    z-index: var(--app-z-menu);
+    /* Intra-toolbar stacking only: the toolbar (z: var(--app-z-toolbar)) is a
+       stacking context, so this small literal never competes app-wide. */
+    z-index: 80;
     min-width: 168px;
     display: flex;
     flex-direction: column;
@@ -3739,10 +3741,11 @@
     font-size: 12px;
     border-radius: 6px;
     cursor: pointer;
-    border: 1px solid transparent;
+    /* Width/style only — .app-btn-primary / .ghost own border-color. */
+    border-width: 1px;
+    border-style: solid;
   }
-  .adopt-banner-actions .primary { background: var(--app-accent); color: var(--app-accent-text); border-color: var(--app-accent-border); font-weight: 600; }
-  .adopt-banner-actions .primary:hover:not(:disabled) { background: var(--app-accent-hover); }
+  /* Primary colors come from the shared .app-btn-primary recipe (theme.css). */
   .adopt-banner-actions .ghost { background: transparent; color: var(--app-text-secondary); border-color: var(--app-border); }
   .adopt-banner-actions .ghost:hover:not(:disabled) { background: var(--app-control-hover-bg); }
   .adopt-banner-actions button:disabled { opacity: 0.6; cursor: default; }
@@ -3971,10 +3974,9 @@
   .save-tpl-field input:focus { outline: none; border-color: var(--app-focus-ring); }
   .save-tpl-error { color: var(--app-error-text); font-size: 12px; margin: 0; }
   .save-tpl-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .save-tpl-actions button { padding: 7px 16px; font-size: 13px; border-radius: 4px; cursor: pointer; border: 1px solid transparent; }
+  .save-tpl-actions button { padding: 7px 16px; font-size: 13px; border-radius: 4px; cursor: pointer; border-width: 1px; border-style: solid; }
   .save-tpl-actions button:disabled { opacity: 0.45; cursor: default; }
-  .save-tpl-actions .primary { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-  .save-tpl-actions .primary:not(:disabled):hover { background: var(--app-accent-hover); }
+  /* Primary colors come from the shared .app-btn-primary recipe (theme.css). */
   .save-tpl-actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
   .save-tpl-actions .ghost:not(:disabled):hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

@@ -67,13 +67,13 @@
 
 :global(.config-panel button) {
   display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px;
-  font-size: 13px; border-radius: 5px; cursor: pointer; border: 1px solid transparent;
+  font-size: 13px; border-radius: 5px; cursor: pointer; border-width: 1px; border-style: solid;
   font-family: inherit;
 }
 :global(.config-panel button.small) { padding: 5px 10px; font-size: 12px; }
 :global(.config-panel button.icononly) { padding: 5px; }
-:global(.config-panel .primary) { background: var(--app-focus-ring); color: var(--app-text-on-accent); }
-:global(.config-panel .primary:hover:not(:disabled)) { background: var(--app-accent-hover); }
+/* .primary colors come from the shared .app-btn-primary recipe (theme.css) —
+   every config-panel primary button carries both classes. */
 :global(.config-panel .ghost) { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
 :global(.config-panel .ghost:hover:not(:disabled)) { background: var(--app-surface-hover); color: var(--app-text); }
 :global(.config-panel button:disabled) { opacity: 0.5; cursor: not-allowed; }

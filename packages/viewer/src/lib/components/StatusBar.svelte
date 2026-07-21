@@ -472,7 +472,7 @@
     border-color: var(--app-border-strong);
   }
   .status-action:focus-visible {
-    outline: 2px solid var(--app-accent);
+    outline: 2px solid var(--app-focus-ring);
     outline-offset: 1px;
   }
   .status-action:disabled {
@@ -499,7 +499,7 @@
     background: var(--app-surface-hover);
   }
   .status-icon-btn:focus-visible {
-    outline: 2px solid var(--app-accent);
+    outline: 2px solid var(--app-focus-ring);
     outline-offset: 1px;
   }
   .status-icon-btn:disabled {
@@ -532,7 +532,7 @@
     cursor: pointer;
   }
   .save-indicator:hover { background: var(--app-surface-hover); }
-  .save-indicator:focus-visible { outline: 2px solid var(--app-accent); outline-offset: 1px; }
+  .save-indicator:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
 
   /* Protection summary popover — grows upward from the bar, like ProblemsPanel. */
   .save-summary {

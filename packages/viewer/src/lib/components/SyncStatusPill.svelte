@@ -383,13 +383,12 @@
     white-space: nowrap;
   }
 
-  /* Thin spinner that matches the SyncDialog's spinner — same animation, slightly
-     smaller to fit the pill. */
+  /* Thin spinner — the shared --app-spinner-* tokens, sized down for the pill. */
   .pill-spinner {
     width: 10px;
     height: 10px;
-    border: 1.5px solid var(--app-border);
-    border-top-color: var(--app-focus-ring);
+    border: 1.5px solid var(--app-spinner-track);
+    border-top-color: var(--app-spinner-head);
     border-radius: 50%;
     animation: pill-spin 0.8s linear infinite;
     flex-shrink: 0;

@@ -93,7 +93,7 @@
     background: var(--app-surface-hover);
   }
   .book-switcher-toggle:focus-visible {
-    outline: 2px solid var(--app-accent);
+    outline: 2px solid var(--app-focus-ring);
     outline-offset: 1px;
   }
   .book-switcher-title {
@@ -136,7 +136,7 @@
     background: var(--app-surface-hover);
   }
   .book-switcher-option:focus-visible {
-    outline: 2px solid var(--app-accent);
+    outline: 2px solid var(--app-focus-ring);
     outline-offset: -2px;
   }
   .book-switcher-option.active {

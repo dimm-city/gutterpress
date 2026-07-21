@@ -597,6 +597,8 @@
   }
   .startup-toggle input { accent-color: var(--app-accent); cursor: pointer; }
 
+  /* 560px: the landing's card grid wraps on its own content width — a
+     component-local threshold, not the 820px app workspace tier. */
   @media (max-width: 560px) {
     .landing-col { padding-top: 18px; gap: 16px; }
     .continue-card { flex-wrap: wrap; }

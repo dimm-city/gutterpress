@@ -540,6 +540,8 @@
     appearance: none;
     -webkit-appearance: none;
     padding-right: 28px;
+    /* Chevron stroke #8a8a8a is baked into the data URI (var() can't reach
+       inside it) — a mid-grey chosen to stay legible on both themes. */
     background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a8a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
     background-repeat: no-repeat;
     background-position: right 9px center;

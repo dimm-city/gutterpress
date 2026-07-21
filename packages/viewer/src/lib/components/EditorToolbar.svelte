@@ -591,7 +591,7 @@
   </label>
   <div class="image-actions">
     <button class="image-cancel" onclick={cancelTable}>Cancel</button>
-    <button class="image-insert primary" onclick={insertTable}>Insert table</button>
+    <button class="image-insert primary app-btn-primary" onclick={insertTable}>Insert table</button>
   </div>
 </div>
 {/if}
@@ -679,7 +679,7 @@
   <div class="image-actions">
     <button class="image-cancel" onclick={cancelImage}>Cancel</button>
     <button
-      class="image-insert primary"
+      class="image-insert primary app-btn-primary"
       onclick={insertImage}
       disabled={imageBusy || !imageSrc}
     >
@@ -894,7 +894,9 @@
     position: fixed;
     inset: 0;
     background: var(--app-backdrop);
-    z-index: var(--app-z-modal);
+    /* Between --app-z-menu and --app-z-sheet: this toolbar-owned mini-dialog
+       must stay BELOW --app-z-modal so real app dialogs always cover it. */
+    z-index: calc(var(--app-z-menu) + 100);
   }
 
   .image-dialog {
@@ -902,7 +904,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    z-index: calc(var(--app-z-modal) + 1);
+    z-index: calc(var(--app-z-menu) + 101);
     background: var(--app-surface);
     border: 1px solid var(--app-border);
     border-radius: 8px;
@@ -950,8 +952,8 @@
     font-size: 12px;
   }
   .image-input:focus {
-    outline: 2px solid var(--app-accent);
-    outline-offset: 1px;
+    outline: none;
+    border-color: var(--app-focus-ring);
   }
   .image-input[readonly] {
     cursor: default;
@@ -1002,7 +1004,8 @@
     font-size: 12px;
   }
   .image-select:focus {
-    outline: 2px solid var(--app-accent);
+    outline: none;
+    border-color: var(--app-focus-ring);
   }
 
   .image-error {
@@ -1031,18 +1034,14 @@
     background: var(--app-control-hover-bg);
   }
 
+  /* Colors come from the shared .app-btn-primary recipe (theme.css). */
   .image-insert {
     padding: 7px 14px;
-    border: none;
+    border-width: 1px;
+    border-style: solid;
     border-radius: 4px;
-    background: var(--app-accent);
-    color: var(--app-accent-text);
     font-size: 12px;
     cursor: pointer;
-    font-weight: 600;
-  }
-  .image-insert:hover:not(:disabled) {
-    opacity: 0.9;
   }
   .image-insert:disabled {
     opacity: 0.45;

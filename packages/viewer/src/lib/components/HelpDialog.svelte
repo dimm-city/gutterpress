@@ -131,7 +131,7 @@
         <p class="status">Checking system…</p>
       {:else if error}
         <p class="status error">{error}</p>
-        <button class="dlg-primary app-btn-primary" onclick={load}>Retry</button>
+        <button class="dlg-primary app-btn-primary dlg-retry" onclick={load}>Retry</button>
       {:else if data}
         <section class="version-strip" aria-label="Loaded versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
@@ -415,6 +415,14 @@
     overflow-wrap: anywhere;
     text-align: right;
   }
+  /* In-body Retry sits outside the .dlg-actions footer — restate its geometry. */
+  .dlg-retry {
+    padding: 6px 14px; font-size: 13px; border-radius: 4px;
+    border-width: 1px; border-style: solid; cursor: pointer;
+  }
+
+  /* 640px: this dialog's two-column shortcut table collapses well before the
+     app-wide 820px breakpoint — dialog-local layout, not an app tier. */
   @media (max-width: 640px) {
     .version-strip {
       grid-template-columns: 1fr;

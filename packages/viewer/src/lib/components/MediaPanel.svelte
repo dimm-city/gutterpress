@@ -265,7 +265,7 @@
 
       <div class="detail-actions">
         <button
-          class="primary insert-btn"
+          class="primary insert-btn app-btn-primary"
           onclick={insertSelected}
           disabled={!canInsert}
           title={canInsert
@@ -300,7 +300,7 @@
       </div>
     </div>
     <div class="media-toolbar">
-      <button class="primary add-btn" onclick={() => void importImages()} disabled={importBusy}>
+      <button class="primary add-btn app-btn-primary" onclick={() => void importImages()} disabled={importBusy}>
         {importBusy ? "Adding…" : "Add images…"}
       </button>
     </div>
@@ -401,13 +401,12 @@
     padding: 6px 8px;
     font-size: 12px;
   }
-  /* Accent buttons (no global .primary exists — components own their chrome) */
+  /* Accent buttons — colors come from the shared .app-btn-primary recipe
+     (theme.css); only geometry lives here. */
   .primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border: 1px solid var(--app-accent-border);
+    border-width: 1px;
+    border-style: solid;
     border-radius: 6px;
-    color: var(--app-accent-text);
-    font-weight: 600;
     cursor: pointer;
   }
   .primary:disabled {

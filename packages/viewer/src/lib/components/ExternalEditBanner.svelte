@@ -20,13 +20,13 @@
 </script>
 
 <div class="ext-banner" role="alert" aria-live="polite">
-  <span class="ext-icon"><Icon name="refresh-cw" /></span>
+  <span class="ext-icon"><Icon name="refresh-cw" size={15} /></span>
   <span class="ext-msg">
     <strong>{fileName}</strong> was changed outside print-md.
   </span>
   <span class="ext-actions">
-    <button class="ext-btn ext-btn-primary" onclick={onReload}>Reload</button>
-    <button class="ext-btn" onclick={onKeepMine}>Keep mine</button>
+    <button class="ext-btn app-btn-primary" onclick={onReload}>Reload</button>
+    <button class="ext-btn ext-btn-neutral" onclick={onKeepMine}>Keep mine</button>
   </span>
 </div>
 
@@ -46,10 +46,6 @@
     display: inline-flex;
     flex: 0 0 auto;
   }
-  .ext-icon :global(svg) {
-    width: 15px;
-    height: 15px;
-  }
   .ext-msg {
     flex: 1 1 auto;
     min-width: 0;
@@ -62,22 +58,23 @@
     display: flex;
     gap: 6px;
   }
+  /* Geometry only — colors come from .ext-btn-neutral or the shared
+     .app-btn-primary recipe (theme.css). */
   .ext-btn {
     padding: 4px 10px;
-    border: 1px solid var(--app-border);
+    border-width: 1px;
+    border-style: solid;
     border-radius: 6px;
-    background: var(--app-control-bg);
-    color: var(--app-text);
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
   }
-  .ext-btn:hover {
-    background: var(--app-control-hover-bg);
+  .ext-btn-neutral {
+    background: var(--app-control-bg);
+    border-color: var(--app-border);
+    color: var(--app-text);
   }
-  .ext-btn-primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
+  .ext-btn-neutral:hover {
+    background: var(--app-control-hover-bg);
   }
 </style>

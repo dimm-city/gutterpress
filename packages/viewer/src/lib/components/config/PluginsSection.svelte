@@ -101,7 +101,7 @@
         {#if isPluginConfigured(rec.name)}
           <span class="added"><Icon name="circle-check" size={12} /> On</span>
         {:else}
-          <button class="primary small" onclick={() => controller.addRecommended(rec)} disabled={controller.pluginBusyRef !== null}>Turn on</button>
+          <button class="primary small app-btn-primary" onclick={() => controller.addRecommended(rec)} disabled={controller.pluginBusyRef !== null}>Turn on</button>
         {/if}
       </li>
     {/each}
@@ -111,7 +111,7 @@
     <summary>Advanced: add another plugin</summary>
     <div class="add-row">
       <input class="input" type="text" placeholder="npm package name (e.g. markdown-it-footnote)" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpmPlugin(); }} />
-      <button class="primary small" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>Add</button>
+      <button class="primary small app-btn-primary" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>Add</button>
     </div>
     <button class="ghost small full" onclick={controller.addLocalPlugin} disabled={controller.pluginBusyRef !== null}>
       <Icon name="folder" size={14} /> Import from local file or folder…
@@ -135,7 +135,7 @@
 
   .toggle { flex-shrink: 0; width: 36px; height: 20px; border-radius: 10px; background: var(--app-border); border: 1px solid var(--app-border); position: relative; cursor: pointer; padding: 0; }
   .toggle.on { background: var(--app-focus-ring); border-color: var(--app-focus-ring); }
-  .toggle .knob { position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+  .toggle .knob { position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 50%; background: var(--app-text-on-accent); transition: transform 0.15s; }
   .toggle.on .knob { transform: translateX(15px); }
   .toggle:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .toggle:disabled { opacity: 0.5; cursor: progress; }

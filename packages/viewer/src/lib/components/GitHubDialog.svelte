@@ -419,7 +419,7 @@
               <li role="listitem">
                 <button type="button" class="repo-row" onclick={() => chooseRepo(repo)}>
                   <span class="repo-name">{repo.fullName}</span>
-                  {#if repo.private}<span class="badge">Private</span>{/if}
+                  {#if repo.private}<span class="dlg-badge">Private</span>{/if}
                 </button>
               </li>
             {/each}
@@ -643,17 +643,6 @@
     font-size: 11px;
     color: var(--app-text-muted);
     font-family: var(--app-font-mono);
-    flex-shrink: 0;
-  }
-  .badge {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--app-text-muted);
-    border: 1px solid var(--app-border);
-    border-radius: 4px;
-    padding: 1px 6px;
     flex-shrink: 0;
   }
   .progress-track {

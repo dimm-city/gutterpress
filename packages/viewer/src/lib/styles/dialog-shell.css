@@ -136,6 +136,20 @@
 :global(.dlg-close:focus-visible) { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 :global(.dlg-close:disabled) { opacity: 0.4; cursor: default; }
 
+/* Small uppercase context badge used in dialog list rows (e.g. "GitHub",
+   "Private") — was byte-identical in two dialogs before promotion here. */
+:global(.dlg-badge) {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--app-text-muted);
+  border: 1px solid var(--app-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
 :global(.dlg-sr-only) {
   position: absolute;
   width: 1px;

@@ -305,7 +305,7 @@
                 oninput={(e) => controller.setPublishTokenDraft(card.id, e.currentTarget.value)}
                 onkeydown={(e) => { if (e.key === "Enter") doConnect(card); }}
               />
-              <button class="dlg-primary app-btn-primary" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
+              <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => doConnect(card)} disabled={busy}>Connect</button>
             </div>
             {#if card.tokenUrl}
               <button class="link" onclick={() => controller.openPublishUrl(card.tokenUrl!)}>Create an API key <Icon name="external-link" size={12} /></button>
@@ -444,7 +444,7 @@
             <div class="pub-actions">
               <button class="dlg-ghost" onclick={() => controller.runPublish(card.id, true)} disabled={busy}>Check readiness</button>
               <button
-                class="dlg-primary app-btn-primary"
+                class="dlg-primary app-btn-primary dlg-primary-inline"
                 onclick={() => controller.runPublish(card.id, false)}
                 disabled={busy || needsConnect || publishGated}
                 title={needsConnect
@@ -490,7 +490,7 @@
               {:else}
                 <p class="success-line"><Icon name="circle-check" size={13} /> {outcome.detail ?? "Upload package prepared."}</p>
                 <p class="muted small">Package folder: <code>{outcome.packageDir}</code></p>
-                <button class="dlg-primary app-btn-primary" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
+                <button class="dlg-primary app-btn-primary dlg-primary-inline" onclick={() => controller.openPublishUrl(outcome.openUrl)}>Open upload page <Icon name="external-link" size={12} /></button>
                 <ol class="checklist">{#each outcome.checklist as s, i (i)}<li>{s}</li>{/each}</ol>
               {/if}
             </div>
@@ -550,7 +550,9 @@
   /* Fields match NewProjectWizard / the shared dialog form language. */
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
-  .field-hint { font-weight: 400 !important; color: var(--app-text-muted) !important; font-size: 11px !important; }
+  /* The hint sits OUTSIDE any .field wrapper (it precedes the label), so no
+     higher-specificity label rule competes — no !important needed. */
+  .field-hint { font-weight: 400; color: var(--app-text-muted); font-size: 11px; }
   .field input {
     background: var(--app-surface-sunken);
     border: 1px solid var(--app-border);
@@ -573,6 +575,13 @@
   .field select:focus { outline: none; border-color: var(--app-focus-ring); }
   .optional { font-style: italic; color: var(--app-text-muted); font-weight: 400; }
   .key-row { display: flex; gap: 8px; }
+  /* In-body primary buttons (Connect / Publish / Open upload page) sit outside
+     the .dlg-actions footer, so they restate its geometry; colors come from
+     .app-btn-primary. */
+  .dlg-primary-inline {
+    padding: 6px 14px; font-size: 13px; border-radius: 4px;
+    border-width: 1px; border-style: solid; cursor: pointer;
+  }
   .key-row input { flex: 1; min-width: 0; }
   .self-start { align-self: flex-start; }
 

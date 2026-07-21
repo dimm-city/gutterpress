@@ -71,7 +71,7 @@
     ></textarea>
     <span class="hint">One file per line. Leave blank to include all markdown files in the project.</span>
   </label>
-  <button class="primary small" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
+  <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
     {controller.detailsSaving ? "Saving…" : "Save details"}
   </button>
 </section>

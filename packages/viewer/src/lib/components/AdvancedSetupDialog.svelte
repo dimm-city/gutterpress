@@ -450,7 +450,7 @@
               <li role="listitem" class="conn-row">
                 <span class="conn-label">
                   {conn.label ?? conn.host}
-                  {#if conn.kind === "github-oauth"}<span class="badge">GitHub</span>{/if}
+                  {#if conn.kind === "github-oauth"}<span class="dlg-badge">GitHub</span>{/if}
                 </span>
                 <!-- Two-step confirm (L2) — a single persistent button whose
                      label/class swap in place, so arming never loses focus. -->
@@ -627,17 +627,6 @@
     font-size: 13px;
   }
   .conn-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .badge {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--app-text-muted);
-    border: 1px solid var(--app-border);
-    border-radius: 4px;
-    padding: 1px 6px;
-    flex-shrink: 0;
-  }
   .provider-list { margin: 0; font-size: 13px; line-height: 1.5; }
   .provider-list dt { font-weight: 600; color: var(--app-text); margin-top: 8px; }
   .provider-list dt:first-child { margin-top: 0; }

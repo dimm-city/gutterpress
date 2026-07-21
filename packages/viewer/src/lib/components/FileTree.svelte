@@ -394,7 +394,7 @@
   {#if creating && creating.dir === dir}
     <li>
       <div class="tree-row editing" style="padding-left: {8 + depth * 14}px">
-        <Icon name={creating.kind === "folder" ? "folder" : "file-text"} />
+        <Icon name={creating.kind === "folder" ? "folder" : "file-text"} size={creating.kind === "folder" ? 13 : 15} />
         <input
           class="inline-input"
           type="text"
@@ -440,7 +440,7 @@
   <li>
     {#if renaming?.path === entry.path}
       <div class="tree-row editing" style="padding-left: {8 + depth * 14}px">
-        <Icon name={entry.isDir ? "folder" : "file-text"} />
+        <Icon name={entry.isDir ? "folder" : "file-text"} size={entry.isDir ? 13 : 15} />
         <input
           class="inline-input"
           type="text"
@@ -747,12 +747,8 @@
   }
   .file-item :global(svg) {
     flex: 0 0 auto;
-    width: 15px;
-    height: 15px;
   }
   .file-item.folder :global(svg:first-child) {
-    width: 13px;
-    height: 13px;
     color: var(--app-text-muted);
   }
   .file-name {

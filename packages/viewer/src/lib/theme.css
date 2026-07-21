@@ -268,3 +268,25 @@
   outline: 2px solid var(--app-focus-ring);
   outline-offset: 2px;
 }
+
+/**
+ * Reduced motion — ONE global guard (UX contract "Reduced motion": pane
+ * transitions and slide-ins are disabled; state changes become instant).
+ * Neutralizing durations rather than `animation: none` keeps animation-fill
+ * end states and `transitionend`-free logic intact (verified: no component
+ * listens for transitionend/animationend). The `!important` is required to
+ * beat every scoped component rule from this one unscoped block — the
+ * sanctioned exception to the app's no-!important norm. Components may add
+ * finer-grained treatments (e.g. a slowed spinner) in their own
+ * `prefers-reduced-motion` blocks; scoped rules override this cleanly only
+ * by also using `!important`, so prefer designing motion out instead.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

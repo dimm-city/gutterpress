@@ -134,7 +134,7 @@
     use:dialogBehavior={{ onClose: onDismiss, labelledBy: "cr-title" }}
   >
     <header class="cr-head">
-      <span class="cr-icon"><Icon name="file-text" /></span>
+      <span class="cr-icon"><Icon name="file-text" size={18} /></span>
       <h2 id="cr-title">Unsaved changes found</h2>
     </header>
     <p class="cr-lede">
@@ -154,21 +154,21 @@
               <span class="cr-time">{when(item.savedAt)}</span>
             </div>
             <div class="cr-item-actions">
-              <button class="cr-btn cr-btn-primary" onclick={() => onRestore(item)}>
+              <button class="cr-btn app-btn-primary" onclick={() => onRestore(item)}>
                 Restore
               </button>
               <!-- Single persistent Discard button (not a pair of separate
                    buttons swapped conditionally) so arming the confirm state
                    never loses focus — only the label/class change in place. -->
               <button
-                class="cr-btn cr-btn-discard"
+                class="cr-btn cr-btn-neutral cr-btn-discard"
                 class:cr-btn-danger={armed}
                 onclick={() => requestDiscard(item)}
               >
                 {armed ? "Really discard? This can't be undone" : "Discard"}
               </button>
               {#if armed}
-                <button class="cr-btn" onclick={(e) => cancelDiscard(item, e)}>Cancel</button>
+                <button class="cr-btn cr-btn-neutral" onclick={(e) => cancelDiscard(item, e)}>Cancel</button>
               {/if}
             </div>
           </div>
@@ -213,7 +213,7 @@
       {/each}
     </ul>
     <footer class="cr-foot">
-      <button class="cr-btn" onclick={onDismiss}>Decide later</button>
+      <button class="cr-btn cr-btn-neutral" onclick={onDismiss}>Decide later</button>
     </footer>
   </div>
 {/if}
@@ -250,10 +250,6 @@
     align-items: center;
     gap: 10px;
     margin-bottom: 8px;
-  }
-  .cr-icon :global(svg) {
-    width: 18px;
-    height: 18px;
   }
   .cr-head h2 {
     margin: 0;
@@ -316,23 +312,24 @@
     display: flex;
     justify-content: flex-end;
   }
+  /* Geometry only — colors come from .cr-btn-neutral, .cr-btn-danger, or the
+     shared .app-btn-primary recipe (theme.css). */
   .cr-btn {
     padding: 6px 12px;
-    border: 1px solid var(--app-border);
+    border-width: 1px;
+    border-style: solid;
     border-radius: 6px;
-    background: var(--app-control-bg);
-    color: var(--app-text);
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
   }
-  .cr-btn:hover {
-    background: var(--app-control-hover-bg);
+  .cr-btn-neutral {
+    background: var(--app-control-bg);
+    border-color: var(--app-border);
+    color: var(--app-text);
   }
-  .cr-btn-primary {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
+  .cr-btn-neutral:hover {
+    background: var(--app-control-hover-bg);
   }
   /* Armed "really discard?" confirm button (M12 two-step Discard). */
   .cr-btn-danger {

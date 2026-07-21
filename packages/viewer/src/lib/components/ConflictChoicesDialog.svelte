@@ -667,8 +667,8 @@
   .ids-spinner {
     width: 10px;
     height: 10px;
-    border: 1.5px solid var(--app-border);
-    border-top-color: var(--app-focus-ring);
+    border: 1.5px solid var(--app-spinner-track);
+    border-top-color: var(--app-spinner-head);
     border-radius: 50%;
     animation: ids-spin 0.8s linear infinite;
     flex-shrink: 0;

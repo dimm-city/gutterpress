@@ -136,7 +136,7 @@
           <button class="ghost small" onclick={() => controller.requestRemoveTheme(t)} disabled={controller.themeBusyId !== null} title="Remove this project theme">Remove</button>
         {/if}
       {:else}
-        <button class="primary small" onclick={() => controller.applyTheme(t)} disabled={controller.themeBusyId !== null}>Apply</button>
+        <button class="primary small app-btn-primary" onclick={() => controller.applyTheme(t)} disabled={controller.themeBusyId !== null}>Apply</button>
         {#if t.kind === "project"}
           <button class="ghost icononly" onclick={() => controller.requestRemoveTheme(t)} disabled={controller.themeBusyId !== null} title="Remove" aria-label={`Remove ${t.name}`}>
             <Icon name="trash" size={13} />
@@ -232,6 +232,8 @@
   }
   .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
+  /* 480px: the hover-preview flyout physically can't fit beside the grid on
+     very narrow panels — component-local, unrelated to the 820px app tier. */
   @media (max-width: 480px) {
     .theme-grid { grid-template-columns: 1fr 1fr; }
     /* On narrow screens the pinned preview would cover the grid — hide it. */
