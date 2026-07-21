@@ -3,11 +3,15 @@
  * used to live inline in `+page.svelte`.
  *
  * Centralises the paged-preview toolbar surface: the live `currentPage` /
- * `totalPages`, the inline page-number edit state (`pageEditing` /
- * `pageEditValue`), the `restoringSavedState` persist guard, and every intent
- * that drives the host preview client — sync on push events, first/prev/next/
- * last navigation, direct goto, the edit begin/cancel/commit cycle, and the
+ * `totalPages`, the `restoringSavedState` persist guard, and every intent that
+ * drives the host preview client — sync on push events, first/prev/next/last
+ * navigation, direct goto, the page `<select>`'s `selectPage`, and the
  * per-project saved-page restore.
+ *
+ * The old inline page-number edit cycle (`pageEditing`/`pageEditValue` +
+ * begin/cancel/commit) was retired with the toolbar refactor: the toolbar now
+ * renders a native `<select>` with one option per page (`pageOptions`), so the
+ * only "edit" intent left is `selectPage`.
  *
  * Single-owner discipline mirrors `ExportController`
  * (`export/export-controller.svelte.ts`) and `UpdateController`
@@ -16,10 +20,9 @@
  *
  * Host coupling is injected so this stays testable with fakes and PWA-clean
  * (§8 / ADR 0004): the live preview client, the `isRendering` / `viewMode`
- * accessors, the two persist sinks (`savePrefs` = the guarded component
+ * accessors, and the two persist sinks (`savePrefs` = the guarded component
  * writer used by `syncPageState`; `savePageDirect` = the unguarded per-project
- * write used only by `restoreProjectPage`), and an optional `onBeginEdit` hook
- * (the component wires input focus through it). Type-only import of `PageState`
+ * write used only by `restoreProjectPage`). Type-only import of `PageState`
  * — ZERO `node:*` / lib value imports.
  */
 
@@ -41,8 +44,6 @@ export interface PageNavDeps {
   savePrefs: (patch: Partial<PageState>) => void;
   /** Unguarded per-project write — used only on the restore path. */
   savePageDirect: (page: number) => void;
-  /** Fired when an inline page edit begins (component focuses the input). */
-  onBeginEdit?: () => void;
 }
 
 export class PageNavController {
@@ -51,10 +52,6 @@ export class PageNavController {
   currentPage = $state(1);
   /** Total page count of the rendered document (0 before first render). */
   totalPages = $state(0);
-  /** True while the inline page-number input is open. */
-  pageEditing = $state(false);
-  /** The in-progress inline page-number input value. */
-  pageEditValue = $state("1");
   /** Guard set while a saved-page restore round-trip is in flight. */
   restoringSavedState = $state(false);
 
@@ -64,12 +61,18 @@ export class PageNavController {
     this.deps = deps;
   }
 
+  /** Every navigable page, 1..totalPages — the page `<select>`'s options.
+   * Empty before the first render. Reads the `totalPages` rune, so templates
+   * consuming it stay reactive. */
+  get pageOptions(): number[] {
+    return Array.from({ length: this.totalPages }, (_, i) => i + 1);
+  }
+
   /** Fold a host page-state push into the runes and persist the new page. */
   syncPageState(state: PageState | undefined): void {
     if (!state) return;
     this.currentPage = state.currentPage ?? this.currentPage;
     this.totalPages = state.totalPages ?? this.totalPages;
-    if (!this.pageEditing) this.pageEditValue = String(this.currentPage);
     this.deps.savePrefs({ currentPage: this.currentPage });
   }
 
@@ -83,7 +86,6 @@ export class PageNavController {
       .then((state) => {
         this.currentPage = state.currentPage ?? this.currentPage;
         this.totalPages = state.totalPages ?? this.totalPages;
-        if (!this.pageEditing) this.pageEditValue = String(this.currentPage);
         this.deps.savePageDirect(this.currentPage);
       })
       .catch(() => {})
@@ -106,25 +108,14 @@ export class PageNavController {
     this.runPageCommand("goToPage", [n]);
   }
 
-  beginPageEdit(): void {
-    if (this.deps.isRendering()) return;
-    this.pageEditing = true;
-    this.pageEditValue = String(this.currentPage);
-    this.deps.onBeginEdit?.();
-  }
-
-  cancelPageEdit(): void {
-    this.pageEditing = false;
-    this.pageEditValue = String(this.currentPage);
-  }
-
-  commitPageEdit(): void {
-    const next = Number(this.pageEditValue);
-    if (Number.isFinite(next)) {
-      const clamped = Math.max(1, Math.min(this.totalPages || 1, Math.round(next)));
-      this.gotoPage(clamped);
-    }
-    this.pageEditing = false;
+  /** The page `<select>` intent: navigate to the chosen page. Accepts the raw
+   * string value a change event carries; ignores non-numeric input and clamps
+   * into [1, totalPages||1]. */
+  selectPage(value: number | string): void {
+    const next = Number(value);
+    if (!Number.isFinite(next)) return;
+    const clamped = Math.max(1, Math.min(this.totalPages || 1, Math.round(next)));
+    this.gotoPage(clamped);
   }
 
   firstPage(): void {

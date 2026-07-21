@@ -181,7 +181,7 @@
               aria-expanded={expanded}
               onclick={() => togglePreview(item)}
             >
-              <span class="cr-disclosure-arrow" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+              <span class="cr-disclosure-arrow" aria-hidden="true"><Icon name={expanded ? "chevron-down" : "chevron-right"} size={12} /></span>
               Compare versions
             </button>
             {#if expanded}
@@ -366,7 +366,8 @@
     background: var(--app-control-hover-bg);
   }
   .cr-disclosure-arrow {
-    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
   }
   .cr-preview-panes {
     display: flex;

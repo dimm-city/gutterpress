@@ -54,7 +54,6 @@ interface Harness {
   client: FakeClient | undefined;
   savePrefs: ReturnType<typeof spy>;
   savePageDirect: ReturnType<typeof spy>;
-  onBeginEdit: ReturnType<typeof spy>;
   rendering: boolean;
   viewMode: "single" | "two-column";
 }
@@ -63,12 +62,10 @@ function make(over: Partial<{ hasClient: boolean }> = {}): Harness {
   const client = over.hasClient === false ? undefined : new FakeClient();
   const savePrefs = spy();
   const savePageDirect = spy();
-  const onBeginEdit = spy();
   const h = {
     client,
     savePrefs,
     savePageDirect,
-    onBeginEdit,
     rendering: false,
     viewMode: "single" as "single" | "two-column",
   } as Harness;
@@ -78,7 +75,6 @@ function make(over: Partial<{ hasClient: boolean }> = {}): Harness {
     viewMode: () => h.viewMode,
     savePrefs: (patch) => savePrefs(patch),
     savePageDirect: (page) => savePageDirect(page),
-    onBeginEdit: () => onBeginEdit(),
   });
   return h;
 }
@@ -87,10 +83,94 @@ test("initial public rune state matches the +page.svelte defaults", () => {
   const { ctrl } = make();
   expect(ctrl.currentPage).toBe(1);
   expect(ctrl.totalPages).toBe(0);
-  expect(ctrl.pageEditing).toBe(false);
-  expect(ctrl.pageEditValue).toBe("1");
   expect(ctrl.restoringSavedState).toBe(false);
 });
+
+test("the inline page-edit FSM is gone — the page select replaced it", () => {
+  const { ctrl } = make();
+  // The select drives navigation via selectPage(); none of the retired
+  // begin/cancel/commit editing surface may survive.
+  const anyCtrl = ctrl as unknown as Record<string, unknown>;
+  expect(anyCtrl.pageEditing).toBeUndefined();
+  expect(anyCtrl.pageEditValue).toBeUndefined();
+  expect(anyCtrl.beginPageEdit).toBeUndefined();
+  expect(anyCtrl.cancelPageEdit).toBeUndefined();
+  expect(anyCtrl.commitPageEdit).toBeUndefined();
+});
+
+// ── pageOptions (drives the <select> options, one per page) ──────────────────
+
+test("pageOptions is empty before the first render (totalPages = 0)", () => {
+  const { ctrl } = make();
+  expect(ctrl.pageOptions).toEqual([]);
+});
+
+test("pageOptions lists every page 1..totalPages", () => {
+  const h = make();
+  h.ctrl.totalPages = 4;
+  expect(h.ctrl.pageOptions).toEqual([1, 2, 3, 4]);
+});
+
+test("pageOptions tracks totalPages updates from host page-state syncs", () => {
+  const h = make();
+  h.ctrl.syncPageState({ currentPage: 2, totalPages: 3 });
+  expect(h.ctrl.pageOptions).toEqual([1, 2, 3]);
+  h.ctrl.syncPageState({ currentPage: 2, totalPages: 5 });
+  expect(h.ctrl.pageOptions).toEqual([1, 2, 3, 4, 5]);
+});
+
+// ── selectPage (the <select> onchange intent) ────────────────────────────────
+
+test("selectPage navigates to the chosen page", () => {
+  const h = make();
+  h.ctrl.totalPages = 20;
+  h.ctrl.selectPage(7);
+  expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [7] });
+});
+
+test("selectPage accepts the string value a <select> change event carries", () => {
+  const h = make();
+  h.ctrl.totalPages = 20;
+  h.ctrl.selectPage("12");
+  expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [12] });
+});
+
+test("selectPage ignores non-numeric input", () => {
+  const h = make();
+  h.ctrl.totalPages = 20;
+  h.ctrl.selectPage("abc");
+  expect((h.client as FakeClient).calls.length).toBe(0);
+});
+
+test("selectPage clamps above totalPages down to totalPages", () => {
+  const h = make();
+  h.ctrl.totalPages = 42;
+  h.ctrl.selectPage(999);
+  expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [42] });
+});
+
+test("selectPage clamps below 1 up to 1", () => {
+  const h = make();
+  h.ctrl.totalPages = 42;
+  h.ctrl.selectPage(0);
+  expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [1] });
+});
+
+test("selectPage uses totalPages||1 as the ceiling when totalPages is 0", () => {
+  const h = make();
+  h.ctrl.selectPage(5);
+  expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [1] });
+});
+
+test("selectPage no-ops while rendering (runPageCommand guard)", () => {
+  const h = make();
+  h.rendering = true;
+  h.ctrl.totalPages = 10;
+  h.ctrl.selectPage(3);
+  expect((h.client as FakeClient).calls.length).toBe(0);
+});
+
+// ── host command plumbing (unchanged by the select refactor) ─────────────────
 
 test("runPageCommand no-ops when there is no client", async () => {
   const h = make({ hasClient: false });
@@ -138,18 +218,6 @@ test("syncPageState partial merge keeps prior fields", () => {
   expect(h.ctrl.totalPages).toBe(30);
 });
 
-test("syncPageState updates pageEditValue only when NOT editing", () => {
-  const h = make();
-  h.ctrl.syncPageState({ currentPage: 5, totalPages: 10 });
-  expect(h.ctrl.pageEditValue).toBe("5");
-  // While editing, the in-progress input value must not be clobbered.
-  h.ctrl.pageEditing = true;
-  h.ctrl.pageEditValue = "user-typing";
-  h.ctrl.syncPageState({ currentPage: 8 });
-  expect(h.ctrl.currentPage).toBe(8);
-  expect(h.ctrl.pageEditValue).toBe("user-typing");
-});
-
 test("nextPage/prevPage pass viewMode() as the sole arg; firstPage/lastPage pass none", () => {
   const h = make();
   h.viewMode = "two-column";
@@ -167,69 +235,6 @@ test("gotoPage issues goToPage with the requested page number", () => {
   const h = make();
   h.ctrl.gotoPage(3);
   expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [3] });
-});
-
-test("commitPageEdit with non-numeric input does not navigate and ends editing", () => {
-  const h = make();
-  h.ctrl.totalPages = 50;
-  h.ctrl.pageEditing = true;
-  h.ctrl.pageEditValue = "abc";
-  h.ctrl.commitPageEdit();
-  expect((h.client as FakeClient).calls.length).toBe(0);
-  expect(h.ctrl.pageEditing).toBe(false);
-});
-
-test("commitPageEdit clamps above totalPages down to totalPages", () => {
-  const h = make();
-  h.ctrl.totalPages = 42;
-  h.ctrl.pageEditing = true;
-  h.ctrl.pageEditValue = "999";
-  h.ctrl.commitPageEdit();
-  expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [42] });
-  expect(h.ctrl.pageEditing).toBe(false);
-});
-
-test("commitPageEdit clamps below 1 up to 1", () => {
-  const h = make();
-  h.ctrl.totalPages = 42;
-  h.ctrl.pageEditValue = "0";
-  h.ctrl.commitPageEdit();
-  expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [1] });
-});
-
-test("commitPageEdit uses totalPages||1 as the ceiling when totalPages is 0", () => {
-  const h = make();
-  // totalPages defaults to 0 → ceiling is 1.
-  h.ctrl.pageEditValue = "5";
-  h.ctrl.commitPageEdit();
-  expect((h.client as FakeClient).last).toEqual({ cmd: "goToPage", args: [1] });
-});
-
-test("beginPageEdit no-ops while rendering", () => {
-  const h = make();
-  h.rendering = true;
-  h.ctrl.beginPageEdit();
-  expect(h.ctrl.pageEditing).toBe(false);
-  expect(h.onBeginEdit.calls.length).toBe(0);
-});
-
-test("beginPageEdit sets editing state, seeds the value, and fires onBeginEdit", () => {
-  const h = make();
-  h.ctrl.currentPage = 6;
-  h.ctrl.beginPageEdit();
-  expect(h.ctrl.pageEditing).toBe(true);
-  expect(h.ctrl.pageEditValue).toBe("6");
-  expect(h.onBeginEdit.calls.length).toBe(1);
-});
-
-test("cancelPageEdit ends editing and resets the value to the current page", () => {
-  const h = make();
-  h.ctrl.currentPage = 11;
-  h.ctrl.pageEditing = true;
-  h.ctrl.pageEditValue = "garbage";
-  h.ctrl.cancelPageEdit();
-  expect(h.ctrl.pageEditing).toBe(false);
-  expect(h.ctrl.pageEditValue).toBe("11");
 });
 
 test("restoreProjectPage flags restoringSavedState during flight and clears it in finally", async () => {

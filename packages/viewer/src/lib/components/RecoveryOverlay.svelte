@@ -13,6 +13,7 @@
    */
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
+  import Icon from "$lib/components/Icon.svelte";
   import OperationLogDialog from "$lib/components/OperationLogDialog.svelte";
 
   let {
@@ -95,7 +96,7 @@
 
       {:else}
         <!-- recoveryState === "recovered" -->
-        <div class="check-icon" aria-hidden="true">✓</div>
+        <div class="check-icon" aria-hidden="true"><Icon name="check" size={28} /></div>
 
         <h2 class="title">All set</h2>
         <p class="success-body">

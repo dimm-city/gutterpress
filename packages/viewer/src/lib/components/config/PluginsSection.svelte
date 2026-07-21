@@ -73,7 +73,7 @@
                 </button>
               </div>
               {#if st.guideHref}
-                <a class="guide-link" href={st.guideHref} target="_blank" rel="noopener noreferrer">How to install a plugin →</a>
+                <a class="guide-link" href={st.guideHref} target="_blank" rel="noopener noreferrer">How to install a plugin <Icon name="external-link" size={11} /></a>
               {/if}
             {/if}
             {#if st.raw}
@@ -162,5 +162,5 @@
     border-radius: 4px;
     color: var(--app-text);
   }
-  .guide-link { font-size: 11px; margin-top: 2px; }
+  .guide-link { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; margin-top: 2px; }
 </style>

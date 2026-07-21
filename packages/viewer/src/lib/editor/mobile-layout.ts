@@ -47,64 +47,42 @@ export function isNarrowWidth(
 }
 
 /**
- * The three tabs shown in the single-column mobile layout. "markdown" and "css"
- * both surface the editor pane (loading the relevant file); "preview" surfaces
- * the live preview pane.
+ * The two tabs shown in the single-column mobile layout: "markdown" surfaces
+ * the editor pane, "preview" the live preview pane. (A third "css"/style tab
+ * used to sit between them; it was retired with the toolbar refactor —
+ * project styling lives in the full-screen Project settings view now.)
  */
-export type MobileTab = "markdown" | "css" | "preview";
+export type MobileTab = "markdown" | "preview";
 
 /** Ordered tab list — also the order arrow-key navigation cycles through. */
-export const MOBILE_TABS: readonly MobileTab[] = ["markdown", "css", "preview"] as const;
+export const MOBILE_TABS: readonly MobileTab[] = ["markdown", "preview"] as const;
 
 /** Which physical pane a tab maps to. */
 export type WorkspacePane = "editor" | "preview";
 
-/** The editor surface a tab requests (which file class to load), or null when
- * the tab does not drive the editor (preview). */
-export type EditorSurface = "markdown" | "css";
-
 /**
- * Map a mobile tab to the physical pane it shows. Both editor tabs (markdown,
- * css) map to the editor pane; preview maps to the preview pane. This is what
- * lets the three-way tab bar reuse the existing two-pane (editor|preview)
- * workspace + the persisted `paneMode` ("edit" | "view").
+ * Map a mobile tab to the physical pane it shows. This is what lets the tab
+ * bar reuse the existing two-pane (editor|preview) workspace + the persisted
+ * `paneMode` ("edit" | "view").
  */
 export function paneForTab(tab: MobileTab): WorkspacePane {
   return tab === "preview" ? "preview" : "editor";
 }
 
 /**
- * The editor surface a tab requests, or null for the preview tab. Used to
- * decide whether switching tabs should load the project's markdown vs CSS file
- * into the shared editor.
- */
-export function editorSurfaceForTab(tab: MobileTab): EditorSurface | null {
-  if (tab === "markdown") return "markdown";
-  if (tab === "css") return "css";
-  return null;
-}
-
-/**
  * Map a tab to the persisted two-state `paneMode` so the existing setting keeps
- * working: editor tabs → "edit", preview tab → "view". This preserves the
- * persistence contract (`preview.paneMode`) while the UI gains a third tab.
+ * working: the editor tab → "edit", the preview tab → "view".
  */
 export function paneModeForTab(tab: MobileTab): "edit" | "view" {
   return paneForTab(tab) === "preview" ? "view" : "edit";
 }
 
 /**
- * Resolve the active tab from the persisted `paneMode` plus which editor file is
- * open. On reload there is no stored tab — only `paneMode` ("edit"/"view"). When
- * the persisted mode is "view" the Preview tab is active. When it is "edit" the
- * active editor tab is CSS if a CSS file is open, else Markdown.
+ * Resolve the active tab from the persisted `paneMode`. On reload there is no
+ * stored tab — only `paneMode` ("edit"/"view").
  */
-export function tabFromPaneMode(
-  paneMode: "edit" | "view",
-  openFileIsCss: boolean,
-): MobileTab {
-  if (paneMode === "view") return "preview";
-  return openFileIsCss ? "css" : "markdown";
+export function tabFromPaneMode(paneMode: "edit" | "view"): MobileTab {
+  return paneMode === "view" ? "preview" : "markdown";
 }
 
 /**

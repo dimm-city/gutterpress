@@ -105,7 +105,7 @@
       {/if}
 
       <div class="backup-row" role="note">
-        <span class="backup-label">✓ Backup saved</span>
+        <span class="backup-label"><Icon name="check" size={13} /> Backup saved</span>
         {#if request.confirmation.backupZipPath}
           <button
             class="show-backup-btn"
@@ -193,6 +193,9 @@
   }
 
   .backup-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     color: var(--app-text-secondary);
     flex: 1;
   }

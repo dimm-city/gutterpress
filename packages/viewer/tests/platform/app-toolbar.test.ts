@@ -1,0 +1,199 @@
+/**
+ * Source-level tests for AppToolbar.svelte — the main window toolbar extracted
+ * out of +page.svelte (toolbar-refactor).
+ *
+ * Svelte component templates lack a mount/DOM test harness in this repo's
+ * bun:test setup (no JSDOM/Svelte-compile harness is wired up) — these tests
+ * follow the established project convention (NewProjectWizard.test.ts,
+ * ProjectsListBody.test.ts, CrashRecoveryDialog.test.ts, …) of asserting the
+ * source contains the required wiring, rather than exercising a live
+ * component.
+ *
+ * Contract under test:
+ *  1. The toolbar is its own component — +page.svelte renders <AppToolbar>
+ *     instead of carrying ~400 lines of inline toolbar markup + CSS.
+ *  2. Modern responsive layout: a 3-region CSS grid (start / center / end)
+ *     whose center participates in layout (no absolutely-positioned center
+ *     column that overlaps its neighbours = the overflow bug), with a small
+ *     documented set of container-query collapse stages.
+ *  3. Action order: Publish, Export, Save — Save is the right-most button.
+ *  4. The page number control is a native <select> (one option per page,
+ *     current page selected), not a numeric text input.
+ *  5. The small-screen pane switcher has exactly the editor and viewer tabs —
+ *     the defunct style/CSS tab is gone.
+ */
+import { describe, test, expect } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+const root = path.resolve(__dirname, "../..");
+const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf-8");
+
+const toolbar = () => read("src/lib/components/AppToolbar.svelte");
+const page = () => read("src/routes/+page.svelte");
+
+describe("AppToolbar — extraction out of +page.svelte", () => {
+  test("+page.svelte renders the AppToolbar component instead of inline toolbar markup", () => {
+    const src = page();
+    expect(src).toContain('import AppToolbar from "$lib/components/AppToolbar.svelte"');
+    expect(src).toContain("<AppToolbar");
+    // The old inline toolbar shell and its hand-rolled centering hacks are gone.
+    expect(src).not.toContain('<header class="toolbar"');
+    expect(src).not.toContain("toolbar-center-col");
+    expect(src).not.toContain("toolbar-spacer");
+    expect(src).not.toContain('class="page-pill"');
+    expect(src).not.toContain('class="pane-toggle"');
+  });
+
+  test("the toolbar root is a semantic header with container queries enabled", () => {
+    const src = toolbar();
+    expect(src).toContain('<header class="toolbar"');
+    expect(src).toContain("container-type: inline-size");
+  });
+});
+
+describe("AppToolbar — modern responsive layout (no overflow)", () => {
+  test("uses an in-flow 3-column grid: fixed side clusters, center fills the REMAINING space", () => {
+    const src = toolbar();
+    // The load-bearing pattern: `auto minmax(0,1fr) auto`. The page-nav lives
+    // in the middle track, which is exactly the space left over after the
+    // start/end clusters — so it can NEVER paint over them (the failure mode
+    // of both the old absolutely-positioned center column and a naive
+    // `1fr auto 1fr` grid, where an end cluster wider than its track bleeds
+    // across the middle).
+    expect(src).toMatch(/display:\s*grid/);
+    expect(src).toMatch(/grid-template-columns:\s*auto\s+minmax\(0,\s*1fr\)\s+auto/);
+    expect(src).toContain('class="toolbar-start"');
+    expect(src).toContain('class="toolbar-center"');
+    expect(src).toContain('class="toolbar-end"');
+    // The middle track clips instead of overlapping if it ever runs out of
+    // room (the collapse stages are sized so it doesn't).
+    expect(src).toMatch(/\.toolbar-center\s*\{[^}]*overflow-x:\s*clip/);
+  });
+
+  test("the absolute-centering + spacer hacks did not come along", () => {
+    const src = toolbar();
+    expect(src).not.toContain("toolbar-center-col");
+    expect(src).not.toContain("toolbar-spacer");
+    // The center region must not be ripped out of flow.
+    expect(src).not.toMatch(/\.toolbar-center\s*\{[^}]*position:\s*absolute/);
+    expect(src).not.toMatch(/translateX\(-50%\)/);
+  });
+
+  test("collapse stages respond to the toolbar's own width via @container queries", () => {
+    const src = toolbar();
+    const stages = src.match(/@container\s*\(max-width:\s*\d+px\)/g) ?? [];
+    // A handful of documented stages — not the previous 8-step ladder.
+    expect(stages.length).toBeGreaterThanOrEqual(3);
+    expect(stages.length).toBeLessThanOrEqual(5);
+    // No viewport media queries for toolbar-internal collapsing (media queries
+    // may only gate behavior tied to the app layout mode, e.g. touch targets).
+    expect(src).toMatch(/@media\s*\(pointer:\s*coarse\)/);
+  });
+
+  test("overflow can never hide the primary actions: sides clip, controls go icon-only", () => {
+    const src = toolbar();
+    // Label spans hide at a collapse stage instead of overflowing…
+    expect(src).toMatch(/\.view-label\s*\{\s*display:\s*none/);
+    expect(src).toMatch(/\.btn-label\s*\{\s*display:\s*none/);
+    // …and the start region is allowed to shrink (min-width: 0), so the grid
+    // can always fit the end region's actions.
+    expect(src).toMatch(/\.toolbar-start\s*\{[^}]*min-width:\s*0/);
+  });
+});
+
+describe("AppToolbar — primary action order: Publish, Export, Save", () => {
+  test("markup order is Publish, then Export, then Save (Save right-most)", () => {
+    const src = toolbar();
+    const publishIdx = src.indexOf('class="publish-btn');
+    const exportIdx = src.indexOf('class="export-btn');
+    const saveIdx = src.indexOf('class="save-btn');
+    expect(publishIdx).toBeGreaterThan(-1);
+    expect(exportIdx).toBeGreaterThan(publishIdx);
+    expect(saveIdx).toBeGreaterThan(exportIdx);
+  });
+
+  test("the overflow menu sits before the action trio so Save stays the right-most button", () => {
+    const src = toolbar();
+    const moreIdx = src.indexOf('class="menu more-menu"');
+    const publishIdx = src.indexOf('class="publish-btn');
+    const saveIdx = src.indexOf('class="save-btn');
+    expect(moreIdx).toBeGreaterThan(-1);
+    expect(moreIdx).toBeLessThan(publishIdx);
+    // Nothing actionable renders after Save inside the end section.
+    const afterSave = src.slice(saveIdx, src.indexOf("</header>"));
+    expect(afterSave).not.toContain("<details");
+  });
+
+  test("actions keep their intents: onPublish, onExport, onSave", () => {
+    const src = toolbar();
+    expect(src).toMatch(/publish-btn[\s\S]{0,400}?onclick=\{[^}]*onPublish/);
+    expect(src).toMatch(/export-btn[\s\S]{0,400}?onclick=\{[^}]*onExport/);
+    expect(src).toMatch(/save-btn[\s\S]{0,400}?onclick=\{[^}]*onSave/);
+  });
+});
+
+describe("AppToolbar — page select (replaces the numeric page input)", () => {
+  test("the page control is a native select labelled for navigation", () => {
+    const src = toolbar();
+    expect(src).toContain('<select');
+    expect(src).toContain('class="page-select"');
+    expect(src).toMatch(/<select[^>]*aria-label="Go to page"/);
+    // The old inline-edit input + pill pair is gone.
+    expect(src).not.toContain('type="number"');
+    expect(src).not.toContain("page-pill");
+    expect(src).not.toContain("beginPageEdit");
+    expect(src).not.toContain("commitPageEdit");
+  });
+
+  test("renders one option per page with the current page selected", () => {
+    const src = toolbar();
+    expect(src).toMatch(/\{#each\s+pageNav\.pageOptions\s+as\s+\w+/);
+    expect(src).toMatch(/selected=\{[^}]*pageNav\.currentPage/);
+  });
+
+  test("changing the select navigates via pageNav.selectPage", () => {
+    const src = toolbar();
+    expect(src).toMatch(/onchange=\{[^}]*pageNav\.selectPage\(/);
+  });
+});
+
+describe("AppToolbar — small-screen pane switcher (defunct style tab removed)", () => {
+  test("exactly two tabs: editor (markdown) and viewer (preview)", () => {
+    const src = toolbar();
+    expect(src).toContain('id="mobile-tab-markdown"');
+    expect(src).toContain('id="mobile-tab-preview"');
+    expect(src).not.toContain('id="mobile-tab-css"');
+    expect(src).not.toMatch(/selectMobileTab\("css"\)|onSelectMobileTab\("css"\)/);
+  });
+
+  test("keeps the WAI-ARIA tabs pattern (tablist, aria-selected, roving tabindex)", () => {
+    const src = toolbar();
+    expect(src).toContain('role="tablist"');
+    expect(src).toMatch(/aria-selected=\{mobileTab === "markdown"\}/);
+    expect(src).toMatch(/aria-selected=\{mobileTab === "preview"\}/);
+    expect(src).toMatch(/tabindex=\{mobileTab === "markdown" \? 0 : -1\}/);
+  });
+});
+
+describe("AppToolbar — overflow menu", () => {
+  test("hosts the less-common project actions, including the Project settings entry", () => {
+    const src = toolbar();
+    expect(src).toContain("Project settings");
+    expect(src).toMatch(/onOpenProjectSettings/);
+    expect(src).toContain("Focus mode");
+    expect(src).toContain("Advanced setup");
+    expect(src).toContain("Save as template");
+  });
+});
+
+describe("AppToolbar — PWA cleanliness (CLAUDE.md §8)", () => {
+  test("no host/Node value imports in the SPA component", () => {
+    const src = toolbar();
+    expect(src).not.toMatch(/from\s+["']node:/);
+    expect(src).not.toMatch(/from\s+["'](fs|path|url|child_process)["']/);
+    expect(src).not.toMatch(/import\s+\{[^}]*\}\s+from\s+["']@dimm-city\/print-md["']/);
+    expect(src).not.toContain("window.electron");
+    expect(src).not.toContain("ipcRenderer");
+  });
+});

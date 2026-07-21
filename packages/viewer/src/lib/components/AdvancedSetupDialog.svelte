@@ -486,25 +486,25 @@
           </dd>
           <dt>Gitea or Forgejo</dt>
           <dd>
-            Create an access token on your server (Settings → Applications),
+            Create an access token on your server (Settings &gt; Applications),
             then connect the server above. Or clone the repository with your
             usual Git tools and open the folder in print-md.
           </dd>
           <dt>GitLab</dt>
           <dd>
-            Create a personal access token (Preferences → Access tokens) with
+            Create a personal access token (Preferences &gt; Access tokens) with
             read and write access to repositories, then connect the server
             above. Or clone with your usual Git tools and open the folder.
           </dd>
           <dt>Bitbucket</dt>
           <dd>
-            Create an app password (Personal settings → App passwords) with
+            Create an app password (Personal settings &gt; App passwords) with
             repository read and write, then connect bitbucket.org above. Or
             clone with your usual Git tools and open the folder.
           </dd>
           <dt>Azure Repos</dt>
           <dd>
-            Create a personal access token (User settings → Personal access
+            Create a personal access token (User settings &gt; Personal access
             tokens) with Code read &amp; write, then connect dev.azure.com
             above. Or clone with your usual Git tools and open the folder.
           </dd>

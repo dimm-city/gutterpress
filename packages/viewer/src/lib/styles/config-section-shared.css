@@ -1,7 +1,9 @@
 /**
- * Shared "chrome" CSS for ProjectConfigPanel's six section components (UX
+ * Shared "chrome" CSS for ProjectSettingsView's section components (UX
  * review M14 — god-file cleanup, mirrors `dialog-shell.css`'s consolidation
- * for the ten modal dialogs).
+ * for the ten modal dialogs). Historically authored for ProjectConfigPanel,
+ * the retired sidebar embed; the `.config-panel` ancestor class now lives on
+ * ProjectSettingsView's tabpanel body.
  *
  * Every section used to depend on ~150 lines of `.config-panel :global(...)`
  * rules authored in the PARENT (`ProjectConfigPanel.svelte`) — an untyped

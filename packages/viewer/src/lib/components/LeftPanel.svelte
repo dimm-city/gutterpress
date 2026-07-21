@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
-   * LeftPanel — global left panel with 5 tabs.
+   * LeftPanel — global left panel with 4 tabs.
    *
-   * Tabs: Projects, TOC, Files, Media, Config.
+   * Tabs: Projects, TOC, Files, Media. (Project settings used to be a fifth
+   * Config tab; they moved to the full-window ProjectSettingsView.)
    *
    * Architecture notes:
    * - Single DOM tree, CSS transform-based slide (never conditionally mounted/unmounted
@@ -20,13 +21,12 @@
   import FileTree from "$lib/components/FileTree.svelte";
   import MediaPanel from "$lib/components/MediaPanel.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
-  import ProjectConfigPanel from "$lib/components/ProjectConfigPanel.svelte";
   import { isDesktop } from "$lib/platform";
   import { buildTocTree, ancestorKeysForActive, type TocNode } from "$lib/routes/toc-tree";
   import type { OutlineEntry } from "$lib/preview-client";
   import type { ProjectCapabilities } from "$lib/platform/contract";
 
-  export type PanelTab = "projects" | "toc" | "files" | "media" | "config";
+  export type PanelTab = "projects" | "toc" | "files" | "media";
 
   let {
     open = $bindable(false),
@@ -48,7 +48,6 @@
     onBeforeRenameOpenFile,
     onFileRenamed,
     onFileDeleted,
-    onOpenProjectConfig,
     onInsertImage,
     onProjectChosen,
     onOpenUrl,
@@ -78,9 +77,6 @@
     onBeforeRenameOpenFile?: (path: string) => void | Promise<void>;
     onFileRenamed?: (oldPath: string, newPath: string) => void;
     onFileDeleted?: (path: string) => void;
-    /** Open the unified Project Configuration view (#PCV) that subsumes the
-     *  retired Themes/Design/Plugins/Edit-CSS modal managers. */
-    onOpenProjectConfig?: () => void;
     onInsertImage?: (payload: { src: string; alt?: string }) => void;
     onProjectChosen?: (path: string) => void;
     onOpenUrl?: (url: string) => void;
@@ -186,7 +182,6 @@
     { id: "toc", label: "TOC", icon: "list", title: "Table of contents" },
     { id: "files", label: "Files", icon: "files", title: "Project files" },
     { id: "media", label: "Media", icon: "image", title: "Media library" },
-    { id: "config", label: "Config", icon: "settings", title: "Project settings" },
   ];
 
   // ── APG tabs keyboard pattern ─────────────────────────────────────────────
@@ -428,40 +423,6 @@
         onOpenGitHub={isDesktop() ? onOpenGitHub : undefined}
         onNewProject={onNewProject}
       />
-    </div>
-
-    <!-- Config tab -->
-    <div
-      id="panel-content-config"
-      class="tab-panel"
-      class:visible={activeTab === "config"}
-      role="tabpanel"
-      aria-labelledby="panel-tab-config"
-      aria-hidden={activeTab !== "config"}
-    >
-      {#if !projectDir || sourceMode !== "folder"}
-        <div class="empty-tab">
-          <Icon name="settings" size={24} />
-          <p>Open a project folder to configure it.</p>
-        </div>
-      {:else}
-        <!-- Keyed by projectDir (finding #9): ProjectConfigPanel loads every
-             section's data once in onMount and keeps it in in-memory
-             controller state with no reactive re-load on projectDir change.
-             Without this key, switching projects while the Config tab is
-             mounted would leave project A's unsaved drafts (Details/Publish/
-             etc.) resident and writable into project B. Remounting on
-             projectDir change forces onMount to re-run loadAll() for the
-             newly-opened project and discards any stale in-memory state —
-             same pattern as FileTree/MediaPanel above. -->
-        {#key projectDir}
-          <ProjectConfigPanel
-            {projectDir}
-            sidebarEmbedded={true}
-            onEditRawCss={(path) => onSelectEditorFile?.(path)}
-          />
-        {/key}
-      {/if}
     </div>
 
   </div>

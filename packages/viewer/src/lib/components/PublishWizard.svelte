@@ -196,7 +196,7 @@
   <ol class="steps" aria-label="Publishing steps">
     {#each stepLabels as label, i (i)}
       <li class:done={stepIndex > i} class:current={stepIndex === i}>
-        <span class="step-dot">{stepIndex > i ? "✓" : i + 1}</span>
+        <span class="step-dot">{#if stepIndex > i}<Icon name="check" size={12} />{:else}{i + 1}{/if}</span>
         <span class="step-label">{label}</span>
       </li>
     {/each}
@@ -274,7 +274,7 @@
               {#each card.savedAccounts as acc (acc.account)}
                 <option value={acc.account}>{acc.account ? acc.label : "Default account"}</option>
               {/each}
-              <option value={ADD}>＋ Add another account…</option>
+              <option value={ADD}>Add another account…</option>
             </select>
           </label>
         {/if}

@@ -16,11 +16,13 @@ test("ProjectConfigPanel theme thumbnails always render a non-blank fallback", (
 
 test("preview toolbar button toggles preview visibility so the editor can fill the workspace", () => {
   const src = read("src/routes/+page.svelte");
+  const toolbar = read("src/lib/components/AppToolbar.svelte");
   expect(src).toContain("let previewHidden");
   expect(src).toContain("function togglePreview");
   expect(src).toContain("class:preview-hidden={previewHidden}");
-  expect(src).toContain("title={previewHidden ? \"Show preview\" : \"Hide preview\"}");
-  expect(src).not.toContain("Preview only");
+  // The toggle control itself lives in the extracted AppToolbar now.
+  expect(toolbar).toContain("title={previewHidden ? \"Show preview\" : \"Hide preview\"}");
+  expect(toolbar).not.toContain("Preview only");
 });
 
 test("Electron windows and AppImage package carry the app icon", () => {
@@ -58,7 +60,9 @@ test("closing activity restores the workspace it displaced (no stuck 'Loading co
 
 test("settings opened from the start screen remains above the landing instead of exposing its pre-rendered workspace", () => {
   const src = read("src/routes/+page.svelte");
-  expect(src).toContain('inert={landingVisible || settingsOpen}');
+  // Project settings share the same full-window mechanism, so the inert gate
+  // covers both views.
+  expect(src).toContain('inert={landingVisible || settingsOpen || projectSettingsOpen}');
   expect(src).toContain('visible={landingVisible}');
   expect(src).toContain('inactive={settingsOpen}');
   expect(src).toContain('{#if settingsOpen}');
@@ -277,11 +281,11 @@ test("settings/help live in a bottom-right status toolbar and problems overlay w
   expect(page).toContain("onOpenHelp={() => (helpOpen = true)}");
 });
 
-test("left sidebar replaces History with Config and uses icon-only short tabs", () => {
+test("left sidebar has four content tabs (project settings moved to the full-screen view) and icon-only short tabs", () => {
   const src = read("src/lib/components/LeftPanel.svelte");
-  expect(src).toContain('export type PanelTab = "projects" | "toc" | "files" | "media" | "config"');
-  expect(src).toContain("ProjectConfigPanel");
-  expect(src).toContain('id: "config"');
+  expect(src).toContain('export type PanelTab = "projects" | "toc" | "files" | "media"');
+  expect(src).not.toContain("ProjectConfigPanel");
+  expect(src).not.toContain('id: "config"');
   expect(src).not.toContain('id: "history"');
   expect(src).toMatch(/\.tab-label\s*\{\s*display:\s*none;\s*\}/);
   expect(src).toContain("min-height: 32px");

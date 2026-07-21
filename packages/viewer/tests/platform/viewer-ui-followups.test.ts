@@ -26,19 +26,15 @@ test("project activity view has an explicit close action returning to the editor
 test("files tab no longer has configure project button and embedded panels own their own consistent headers", () => {
   const left = read("src/lib/components/LeftPanel.svelte");
   const media = read("src/lib/components/MediaPanel.svelte");
-  const config = read("src/lib/components/ProjectConfigPanel.svelte");
   expect(left).not.toContain("Configure project");
   expect(left).toContain("Projects");
   expect(left).toContain("Table of contents");
   expect(left).toContain("Files");
   expect(left).toContain("sidebarEmbedded={true}");
   expect(media).toContain("sidebarEmbedded");
-  expect(config).toContain("sidebarEmbedded");
   expect(media).not.toContain("{#if !sidebarEmbedded}");
   expect(media).toContain("Media");
   expect(media).toContain("icon-mini");
-  expect(config).not.toContain("{#if !sidebarEmbedded}");
-  expect(config).toContain("Project settings");
 });
 
 test("bottom status uses save icons, slower autosave default, and compact mobile rules", () => {

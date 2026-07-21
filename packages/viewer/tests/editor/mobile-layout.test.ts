@@ -1,8 +1,9 @@
 import { test, expect } from "bun:test";
 import {
   NARROW_BREAKPOINT,
+  MOBILE_TABS,
   isNarrowWidth,
-  editorSurfaceForTab,
+  paneForTab,
   paneModeForTab,
   tabFromPaneMode,
   adjacentTab,
@@ -15,46 +16,45 @@ test("isNarrowWidth mirrors layoutModeFor", () => {
   expect(isNarrowWidth(390)).toBe(true);
   expect(isNarrowWidth(1280)).toBe(false);
   expect(isNarrowWidth(820)).toBe(true);
+  expect(NARROW_BREAKPOINT).toBe(820);
 });
 
-// ── tab → surface / paneMode mapping ─────────────────────────────────────────
+// ── tab model: exactly two tabs (editor + viewer) ─────────────────────────────
+// The defunct "css"/style tab was removed from the small-screen tab bar —
+// project styling now lives in the full-screen Project settings view.
 
-test("editorSurfaceForTab returns the file class for editor tabs, null for preview", () => {
-  expect(editorSurfaceForTab("markdown")).toBe("markdown");
-  expect(editorSurfaceForTab("css")).toBe("css");
-  expect(editorSurfaceForTab("preview")).toBeNull();
+test("the mobile tab bar has exactly the markdown and preview tabs", () => {
+  expect(MOBILE_TABS).toEqual(["markdown", "preview"]);
+  expect(MOBILE_TABS).not.toContain("css");
+});
+
+test("paneForTab maps the editor tab to the editor pane, preview to preview", () => {
+  expect(paneForTab("markdown")).toBe("editor");
+  expect(paneForTab("preview")).toBe("preview");
 });
 
 test("paneModeForTab preserves the persisted two-state contract", () => {
   expect(paneModeForTab("markdown")).toBe("edit");
-  expect(paneModeForTab("css")).toBe("edit");
   expect(paneModeForTab("preview")).toBe("view");
 });
 
 // ── tabFromPaneMode (restore active tab on reload) ────────────────────────────
 
-test("tabFromPaneMode: view mode restores the Preview tab", () => {
-  expect(tabFromPaneMode("view", false)).toBe("preview");
-  expect(tabFromPaneMode("view", true)).toBe("preview");
-});
-
-test("tabFromPaneMode: edit mode picks CSS when a css file is open, else Markdown", () => {
-  expect(tabFromPaneMode("edit", true)).toBe("css");
-  expect(tabFromPaneMode("edit", false)).toBe("markdown");
+test("tabFromPaneMode: view mode restores the Preview tab, edit the Markdown tab", () => {
+  expect(tabFromPaneMode("view")).toBe("preview");
+  expect(tabFromPaneMode("edit")).toBe("markdown");
 });
 
 // ── adjacentTab (arrow-key roving tab navigation) ─────────────────────────────
 
 test("adjacentTab cycles forward with wrap", () => {
-  expect(adjacentTab("markdown", 1)).toBe("css");
-  expect(adjacentTab("css", 1)).toBe("preview");
+  expect(adjacentTab("markdown", 1)).toBe("preview");
   expect(adjacentTab("preview", 1)).toBe("markdown");
 });
 
 test("adjacentTab cycles backward with wrap", () => {
   expect(adjacentTab("markdown", -1)).toBe("preview");
-  expect(adjacentTab("preview", -1)).toBe("css");
-  expect(adjacentTab("css", -1)).toBe("markdown");
+  expect(adjacentTab("preview", -1)).toBe("markdown");
 });
 
 // ── keyboardOffset (visualViewport keyboard handling) ─────────────────────────

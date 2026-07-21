@@ -71,7 +71,7 @@
       ``,
       `Tools:`,
       ...data.tools.map((t) => {
-        const status = t.found ? `✓ ${t.version ?? "(no version)"} @ ${t.path ?? "?"}` : `✗ NOT FOUND`;
+        const status = t.found ? `found ${t.version ?? "(no version)"} @ ${t.path ?? "?"}` : `NOT FOUND`;
         return `  ${t.name} (${t.bin})  —  ${status}`;
       }),
     ];
@@ -189,7 +189,7 @@
               <tr><th>Action</th><th>Keys</th></tr>
             </thead>
             <tbody>
-              <tr><td>Navigate pages</td><td>← → Arrow keys, Page Up/Down</td></tr>
+              <tr><td>Navigate pages</td><td>Left / Right arrow keys, Page Up/Down</td></tr>
               <tr><td>First / Last page</td><td>Home / End</td></tr>
               <tr><td>Zoom in / out</td><td>+ / -</td></tr>
               <tr><td>Fit to width</td><td>F</td></tr>
@@ -204,7 +204,7 @@
         </section>
 
         <details class="system-info">
-          <summary>System info &amp; tool status</summary>
+          <summary><span class="summary-marker" aria-hidden="true"><Icon name="chevron-right" size={11} /></span>System info &amp; tool status</summary>
 
         <section class="versions">
           <div><strong>Viewer:</strong> {data.viewerVersion}</div>
@@ -335,8 +335,10 @@
   .system-info { margin-top: 8px; }
   .system-info > summary { cursor: pointer; font-size: 12px; color: var(--app-text-muted); user-select: none; padding: 6px 0; list-style: none; }
   .system-info > summary::-webkit-details-marker { display: none; }
-  .system-info > summary::before { content: "▶ "; font-size: 10px; }
-  .system-info[open] > summary::before { content: "▼ "; }
+  /* Disclosure marker is an inline SVG chevron that rotates when open (the
+     old "▶"/"▼" content glyphs are banned — see no-glyph-chrome.test.ts). */
+  .summary-marker { display: inline-flex; margin-right: 4px; vertical-align: -1px; transition: transform 0.12s ease-out; }
+  .system-info[open] > summary .summary-marker { transform: rotate(90deg); }
   .system-info > summary:hover { color: var(--app-text-muted); }
 
   /* Updates section (relocated from toolbar) */
