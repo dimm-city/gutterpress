@@ -315,7 +315,11 @@
     padding: 16px 18px;
     overflow-y: auto;
     /* A comfortable reading measure — the sidebar's 260px column was the whole
-       reason this became a full view; unbounded width is just as unfriendly. */
+       reason this became a full view; unbounded width is just as unfriendly.
+       border-box: there is no global reset, and content-box width:100% plus
+       the 18px side padding would overflow the fixed sheet horizontally on
+       windows narrower than ~896px (Codex review, PR #118). */
+    box-sizing: border-box;
     max-width: 860px;
     width: 100%;
     margin: 0 auto;

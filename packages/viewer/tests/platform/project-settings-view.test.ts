@@ -87,6 +87,13 @@ describe("ProjectSettingsView — SettingsView-patterned full view", () => {
     expect(src).toContain("flushPendingTokenWrites()");
   });
 
+  test("the centered body includes its padding in its width (no horizontal overflow in narrow windows)", () => {
+    const src = view();
+    // No global border-box reset exists: width:100% + side padding in
+    // content-box overflows the fixed full-window sheet below ~896px.
+    expect(src).toMatch(/\.settings-body\s*\{[^}]*box-sizing:\s*border-box/);
+  });
+
   test("no CSS-content glyph disclosure markers — the Advanced disclosure uses SVG icons", () => {
     const src = view();
     expect(src).not.toContain('content: "▸"');
