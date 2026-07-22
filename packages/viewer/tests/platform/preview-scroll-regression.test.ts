@@ -1,0 +1,56 @@
+/**
+ * Preview wheel-scroll regression (scroll-dead-preview): the pane-scoped
+ * LoadingOverlay sits over the cross-origin preview iframe whenever
+ * `lifecycle.rendering || lifecycle.renderCompleteOverlay` is true — i.e. for
+ * the WHOLE re-layout after every debounced auto-save, and indefinitely if a
+ * `renderingComplete` is ever lost (paged.js mid-layout crash). Because the
+ * scrim is translucent, the book stays fully visible while every wheel event
+ * is swallowed by the overlay div — "scrolling in the viewer is completely
+ * broken but works in other areas" (proven live: elementFromPoint over the
+ * pane returned the overlay's spinner and wheel deltas were 0 while it was
+ * mounted).
+ *
+ * The overlay is informational chrome (translucent scrim + spinner + Cancel),
+ * not an input barrier: the contract pinned here is that the scrim passes
+ * pointer/wheel input through to the iframe (`pointer-events: none`) while
+ * the interactive card (`.spinner-wrap`, which holds the Cancel button)
+ * restores `pointer-events: auto` so cancelling still works.
+ */
+import { describe, test, expect } from "bun:test";
+import * as fs from "node:fs";
+import * as path from "node:path";
+
+const SRC = path.resolve(__dirname, "../../src");
+const overlaySource = fs.readFileSync(
+  path.join(SRC, "lib/components/LoadingOverlay.svelte"),
+  "utf8",
+);
+
+/** Extract the declaration body of a top-level CSS rule from the component's
+ * <style> block. Naive brace matching is fine — the file has no nested rules
+ * inside these selectors. */
+function ruleBody(source: string, selector: string): string {
+  const style = source.slice(source.indexOf("<style"));
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const m = style.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+  if (!m) throw new Error(`selector ${selector} not found in LoadingOverlay <style>`);
+  return m[1]!;
+}
+
+/** Strip CSS comments so a declaration mentioned in prose can't satisfy the
+ * assertions below. */
+function stripCssComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
+describe("LoadingOverlay never swallows preview scroll (scroll-dead-preview)", () => {
+  test("the scrim passes wheel/pointer input through to the iframe", () => {
+    const body = stripCssComments(ruleBody(overlaySource, ".loading-overlay"));
+    expect(body).toMatch(/pointer-events:\s*none/);
+  });
+
+  test("the spinner card (Cancel button) stays interactive", () => {
+    const body = stripCssComments(ruleBody(overlaySource, ".spinner-wrap"));
+    expect(body).toMatch(/pointer-events:\s*auto/);
+  });
+});
