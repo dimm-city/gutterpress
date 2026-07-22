@@ -233,15 +233,18 @@ await evalJs(`(async () => {
 })()`);
 log("projects panel driven; waiting for initial layout to finish…");
 
-// Same DOM signals as render-gate / +page.svelte's LoadingOverlay.
+// Same DOM signals as render-gate: the "Laying out page" overlay text plus the
+// page select's data-total-pages seam (AppToolbar.svelte) — a select's option
+// text never appears in innerText, so the old "Page X / Y" pill scrape is gone.
 const layoutActive = () =>
   evalJs(`/Laying out page \\d+|Rendering(\\u2026|\\.\\.\\.| complete)/.test(document.body.innerText)`);
 const finishedInfo = () =>
   evalJs(`(() => {
-    const t = document.body.innerText;
-    if (/Laying out page \\d+|Rendering(\\u2026|\\.\\.\\.| complete)/.test(t)) return null;
-    const m = t.match(/Page[\\s\\u00a0]*\\d+ \\/ (\\d+)/);
-    return m ? Number(m[1]) : null;
+    if (/Laying out page \\d+|Rendering(\\u2026|\\.\\.\\.| complete)/.test(document.body.innerText)) return null;
+    const sel = document.querySelector("select.page-select");
+    if (!sel || sel.disabled) return null;
+    const total = Number(sel.dataset.totalPages || 0);
+    return total > 0 ? total : null;
   })()`);
 
 async function waitFinished(capMs, label) {

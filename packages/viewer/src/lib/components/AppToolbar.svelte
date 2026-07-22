@@ -235,11 +235,18 @@
              dropped/failed navigation (mid-render, client gone, host error)
              can never leave the select showing a page the preview isn't on —
              the successful navigation updates currentPage and the value
-             follows. -->
+             follows.
+             data-current-page/data-total-pages are the machine-readable seam
+             the perf gates read (tests/perf/*-gate.mjs): a select's option
+             text never appears in document.body.innerText, so the gates
+             cannot scrape the page indicator the way they did the old text
+             pill. Keep these attributes when changing this control. -->
         <select
           class="page-select"
           aria-label="Go to page"
           disabled={rendering || pageNav.totalPages === 0}
+          data-current-page={pageNav.currentPage}
+          data-total-pages={pageNav.totalPages}
           value={pageNav.currentPage}
           onchange={(e) => {
             const el = e.currentTarget as HTMLSelectElement;

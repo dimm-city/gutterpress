@@ -173,6 +173,15 @@ describe("AppToolbar — page select (replaces the numeric page input)", () => {
     expect(src).not.toContain("commitPageEdit");
   });
 
+  test("carries the machine-readable page seam the perf gates scrape (tests/perf/*-gate.mjs)", () => {
+    const src = toolbar();
+    // A select's option text never appears in document.body.innerText, so the
+    // CI render/rerender gates read these data attributes instead of the old
+    // "Page X / Y" pill text. Removing them breaks the packaged-app CI job.
+    expect(src).toMatch(/data-current-page=\{pageNav\.currentPage\}/);
+    expect(src).toMatch(/data-total-pages=\{pageNav\.totalPages\}/);
+  });
+
   test("renders one option per page, selection driven by the select's VALUE (a property write)", () => {
     const src = toolbar();
     expect(src).toMatch(/\{#each\s+pageNav\.pageOptions\s+as\s+\w+/);
