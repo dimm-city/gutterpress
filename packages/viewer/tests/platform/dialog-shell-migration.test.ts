@@ -22,7 +22,6 @@ const SHARED_CSS_PATH = path.resolve(__dirname, "../../src/lib/styles/dialog-she
 
 const DIALOGS = [
   "NewProjectWizard",
-  "AdvancedSetupDialog",
   "GitHubDialog",
   "ConflictChoicesDialog",
   "RecoveryConfirmDialog",

@@ -69,17 +69,15 @@ describe("ExportDialog — formats and settings", () => {
 });
 
 describe("relocations around the export dialog", () => {
-  test("advanced setup is embedded in SettingsView and every old opener routes to Settings → Connections", () => {
+  test("advanced setup is consolidated into Settings → Connections and every old opener routes there", () => {
     const settings = read("src/lib/components/SettingsView.svelte");
     expect(settings).toMatch(/initialTab\?:/);
-    expect(settings).toContain("<AdvancedSetupDialog embedded");
+    // The former AdvancedSetupDialog content lives inside ConnectionsSettings
+    // now (see settings-connections.test.ts for the consolidation contract).
+    expect(settings).toContain("<ConnectionsSettings {projectDir} />");
     const p = page();
     expect(p).not.toContain("advancedSetupOpen");
     expect(p).toMatch(/openSettings\("connections"\)/);
-    // The dialog component still supports both modes.
-    const adv = read("src/lib/components/AdvancedSetupDialog.svelte");
-    expect(adv).toMatch(/embedded\?: boolean/);
-    expect(adv).toMatch(/\{#snippet setupBody\(\)\}/);
   });
 
   test("the Electron window title mirrors the toolbar document identity", () => {

@@ -45,7 +45,7 @@
 
   // "Choose a book" step (multi-book repositories). Populated after the
   // configure step; loadGen invalidates an in-flight lookup when the user
-  // navigates away (stale-load guard — AdvancedSetupDialog precedent).
+  // navigates away (stale-load guard — the Advanced-setup dialog established the pattern).
   let books = $state<RepoBook[]>([]);
   let booksLoading = $state(false);
   let loadGen = 0;
@@ -355,7 +355,7 @@
               type="button"
               class="link-btn"
               onclick={goAdvancedSetup}
-            >Open Advanced setup</button>
+            >Open Connections settings</button>
           </p>
         {/if}
         <footer class="dlg-actions">
@@ -427,9 +427,9 @@
         {/if}
         {#if onAdvancedSetup}
           <p class="hint subtle">
-            Or paste a repository address in
+            Or connect a different Git server in
             <button type="button" class="link-btn" onclick={goAdvancedSetup}
-            >Advanced setup</button>
+            >Connections settings</button>
           </p>
         {/if}
         <footer class="dlg-actions">

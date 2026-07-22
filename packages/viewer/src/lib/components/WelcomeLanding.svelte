@@ -217,7 +217,7 @@
             </button>
           {/if}
           {#if onOpenSettings}
-            <button type="button" class="brand-icon-btn" onclick={onOpenSettings} title="Settings (Ctrl+,)" aria-label="Settings">
+            <button type="button" class="brand-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
               <Icon name="settings" size={16} />
             </button>
           {/if}

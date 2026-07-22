@@ -60,6 +60,7 @@
   import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
   import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
+  import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -291,7 +292,7 @@
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
   let settingsOpen = $state(false);
-  let settingsInitialTab = $state<"app" | "editor" | "saving" | "connections" | "advanced">("app");
+  let settingsInitialTab = $state<SettingsTab>("app");
   // autoOpeningLastProject/lastProjectChecked (Phase 5 slice 2, UX H5 / ARCH
   // #10) now live on `startup` (StartupController) — see its instantiation
   // below.
@@ -342,9 +343,12 @@
     closePaneView();
   }
   /** Open the app Settings view, optionally landing on a specific tab
-   *  (Advanced setup lives embedded in the Connections tab now). */
-  function openSettings(tab: "app" | "editor" | "saving" | "connections" | "advanced" = "app"): void {
-    settingsInitialTab = tab;
+   *  (the former Advanced setup is consolidated into the Connections tab).
+   *  `tab` is `unknown` on purpose: entry points are click handlers, and an
+   *  `onclick={onOpenSettings}` call site hands the MouseEvent in as `tab` —
+   *  unsanitized, that left NO tab active and an empty settings body. */
+  function openSettings(tab: unknown = "app"): void {
+    settingsInitialTab = sanitizeSettingsTab(tab);
     settingsOpen = true;
   }
   function closeSettings(): void {

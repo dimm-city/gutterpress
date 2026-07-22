@@ -245,7 +245,7 @@ describe("AppToolbar — relocated overflow-menu items stay reachable elsewhere"
     expect(actions).toMatch(/id: "focus-mode"/);
     expect(actions).toContain("Focus mode (Ctrl+Shift+F)");
     const settings = read("src/lib/components/SettingsView.svelte");
-    expect(settings).toContain("<AdvancedSetupDialog embedded");
+    expect(settings).toContain("<ConnectionsSettings {projectDir} />");
     const exportDialog = read("src/lib/components/ExportDialog.svelte");
     expect(exportDialog).toContain("template");
     // +page routes the editor-toolbar action to the focus-mode toggle.
