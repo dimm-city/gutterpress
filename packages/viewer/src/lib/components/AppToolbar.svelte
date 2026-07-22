@@ -27,7 +27,9 @@
    *    without fattening the desktop layout.
    *
    * Primary actions are ordered Publish → Export → Save so Save is always the
-   * right-most button; the overflow menu sits before them.
+   * right-most button. There is no overflow menu: Export opens the export
+   * dialog, project settings is a dedicated button beside the editor toggle,
+   * focus mode lives on the editor toolbar, advanced setup in app Settings.
    *
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
@@ -74,22 +76,14 @@
     canSavePdf,
     exporting,
     exportDisabled,
-    onExport,
+    onOpenExport,
+    exportBtnEl = $bindable(undefined),
     exportHints = [],
     exportWarning = null,
     saving,
     saveDisabled,
     savePending,
     onSave,
-    // ── Overflow menu ────────────────────────────────────────────────────────
-    focusMode,
-    showFocusMode,
-    onToggleFocusMode,
-    showAdvancedSetup,
-    onOpenAdvancedSetup,
-    advancedSetupEl = $bindable(undefined),
-    showSaveAsTemplate,
-    onSaveAsTemplate,
     showProjectSettings,
     onOpenProjectSettings,
   }: {
@@ -131,7 +125,10 @@
     canSavePdf: boolean;
     exporting: boolean;
     exportDisabled: boolean;
-    onExport: () => void;
+    /** Opens the export dialog (format + settings live there, not here). */
+    onOpenExport: () => void;
+    /** The Export button element — the export dialog's focus-restore target. */
+    exportBtnEl?: HTMLButtonElement | undefined;
     /** Why Export is unavailable right now (rendered as quiet notes). */
     exportHints?: string[];
     /** Save-readiness warning (rendered as role="alert"). */
@@ -140,14 +137,6 @@
     saveDisabled: boolean;
     savePending: boolean;
     onSave: () => void;
-    focusMode: boolean;
-    showFocusMode: boolean;
-    onToggleFocusMode: () => void;
-    showAdvancedSetup: boolean;
-    onOpenAdvancedSetup: () => void;
-    advancedSetupEl?: HTMLButtonElement | undefined;
-    showSaveAsTemplate: boolean;
-    onSaveAsTemplate: () => void;
     showProjectSettings: boolean;
     onOpenProjectSettings: () => void;
   } = $props();
@@ -421,6 +410,19 @@
         <Icon name="pen-line" />
       </button>
     {/if}
+    {#if showProjectSettings}
+      <!-- Project settings (manifest) — beside the editor toggle. Rendered on
+           narrow layouts too (the tab bar replaces the pane toggles there,
+           but project settings must stay reachable). -->
+      <button
+        class="icon-btn project-settings-btn"
+        onclick={onOpenProjectSettings}
+        title="Project settings"
+        aria-label="Project settings"
+      >
+        <Icon name="settings" />
+      </button>
+    {/if}
 
     <span class="toolbar-sep" aria-hidden="true"></span>
 
@@ -432,42 +434,10 @@
       <span class="save-hint save-warning" role="alert">{exportWarning}</span>
     {/if}
 
-    <!-- Overflow menu: holds less-common project actions so the toolbar never
-         crowds the primary trio. Sits BEFORE Publish/Export/Save so Save stays
-         the right-most button. -->
-    <details class="menu more-menu">
-      <summary class="icon-btn menu-summary" title="More" aria-label="More options">
-        <Icon name="ellipsis-vertical" />
-      </summary>
-      <div class="menu-panel menu-panel-right">
-        {#if showProjectSettings}
-          <!-- Project settings (manifest): the full-screen view. -->
-          <button class="menu-item" onclick={(e) => { onOpenProjectSettings(); closeMenu(e); }}>
-            <Icon name="settings" /> Project settings
-          </button>
-        {/if}
-        {#if showFocusMode}
-          <!-- Focus mode (#104): editor-only, chrome hidden. Transient. -->
-          <button class="menu-item" aria-pressed={focusMode} onclick={(e) => { onToggleFocusMode(); closeMenu(e); }}>
-            <Icon name="pen-line" /> {focusMode ? "Exit focus mode" : "Focus mode"} ({focusMode ? "Esc" : "Ctrl+Shift+F"})
-          </button>
-        {/if}
-        {#if showAdvancedSetup}
-          <!-- Advanced setup (#14): Git/remote diagnostics + private servers -->
-          <button bind:this={advancedSetupEl} class="menu-item" onclick={(e) => { onOpenAdvancedSetup(); closeMenu(e); }}>
-            <Icon name="link" /> Advanced setup
-          </button>
-        {/if}
-        {#if showSaveAsTemplate}
-          <!-- Save as template (#29): capture this project as a reusable starter -->
-          <button class="menu-item" onclick={(e) => { onSaveAsTemplate(); closeMenu(e); }}>
-            <Icon name="puzzle" /> Save as template&hellip;
-          </button>
-        {/if}
-      </div>
-    </details>
-
-    <!-- Primary actions — Publish, Export, Save (Save right-most). -->
+    <!-- Primary actions — Publish, Export, Save (Save right-most). No
+         overflow menu: focus mode lives on the editor toolbar, advanced setup
+         in the app Settings view, save-as-template in the export dialog, and
+         project settings beside the editor toggle above. -->
     {#if publishVisible}
       <button
         class="publish-btn primary app-btn-primary icon-text"
@@ -479,14 +449,17 @@
         <span class="btn-label">Publish</span>
       </button>
     {/if}
+    <!-- Export opens the export dialog (choose PDF / HTML / template and
+         adjust settings there). Ctrl+Shift+E stays the quick PDF export. -->
     <button
+      bind:this={exportBtnEl}
       class="export-btn primary app-btn-primary icon-text"
-      onclick={onExport}
+      onclick={onOpenExport}
       disabled={exportDisabled}
-      title={canSavePdf ? "Export as PDF (Ctrl+Shift+E)" : "Export as HTML"}
+      title="Export (choose format and settings)"
     >
       <Icon name="file-down" />
-      <span class="btn-label">{exporting ? "Exporting…" : canSavePdf ? "Export" : "Export HTML"}</span>
+      <span class="btn-label">{exporting ? "Exporting…" : "Export"}</span>
     </button>
     <!-- Save: flush all pending editor changes to disk NOW (the same
          force-save the status bar's "Save now" runs). Disabled (with an
@@ -763,6 +736,14 @@
   .page-select:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+  /* The dropdown list is OS/browser-rendered and does NOT inherit the pill
+     styling above — without explicit option colors the popup can pair the
+     pill's light text with a light popup background (or vice versa) and the
+     page list becomes unreadable. */
+  .page-select option {
+    background: var(--app-surface);
+    color: var(--app-text);
   }
 
   /* Panel toggle button — accent fill matching other active toggles. */

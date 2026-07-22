@@ -140,23 +140,36 @@ describe("AppToolbar — primary action order: Publish, Export, Save", () => {
     expect(saveIdx).toBeGreaterThan(exportIdx);
   });
 
-  test("the overflow menu sits before the action trio so Save stays the right-most button", () => {
+  test("there is no overflow menu — Save is the right-most button with nothing after it", () => {
     const src = toolbar();
-    const moreIdx = src.indexOf('class="menu more-menu"');
-    const publishIdx = src.indexOf('class="publish-btn');
+    expect(src).not.toContain("more-menu");
+    expect(src).not.toContain("ellipsis-vertical");
     const saveIdx = src.indexOf('class="save-btn');
-    expect(moreIdx).toBeGreaterThan(-1);
-    expect(moreIdx).toBeLessThan(publishIdx);
-    // Nothing actionable renders after Save inside the end section.
     const afterSave = src.slice(saveIdx, src.indexOf("</header>"));
     expect(afterSave).not.toContain("<details");
+    expect(afterSave.indexOf("<button")).toBe(afterSave.lastIndexOf("<button"));
   });
 
-  test("actions keep their intents: onPublish, onExport, onSave", () => {
+  test("actions keep their intents: onPublish, onOpenExport (the export dialog), onSave", () => {
     const src = toolbar();
     expect(src).toMatch(/publish-btn[\s\S]{0,400}?onclick=\{[^}]*onPublish/);
-    expect(src).toMatch(/export-btn[\s\S]{0,400}?onclick=\{[^}]*onExport/);
+    expect(src).toMatch(/export-btn[\s\S]{0,400}?onclick=\{[^}]*onOpenExport/);
     expect(src).toMatch(/save-btn[\s\S]{0,400}?onclick=\{[^}]*onSave/);
+  });
+
+  test("the Project settings button sits beside the editor toggle (and stays reachable on narrow layouts)", () => {
+    const src = toolbar();
+    const editorToggleIdx = src.indexOf('aria-label="Toggle markdown editor"');
+    const settingsIdx = src.indexOf('class="icon-btn project-settings-btn"');
+    expect(editorToggleIdx).toBeGreaterThan(-1);
+    expect(settingsIdx).toBeGreaterThan(editorToggleIdx);
+    // Before the separator that leads into the primary actions.
+    expect(settingsIdx).toBeLessThan(src.indexOf('class="publish-btn'));
+    // NOT inside the {#if !isNarrow …} block — narrow layouts keep it.
+    const gateIdx = src.indexOf('{#if !isNarrow && sourceMode !== "url"}');
+    const gateEnd = src.indexOf("{/if}", gateIdx);
+    expect(settingsIdx).toBeGreaterThan(gateEnd);
+    expect(src).toMatch(/project-settings-btn[\s\S]{0,200}?onclick=\{onOpenProjectSettings\}/);
   });
 });
 
@@ -201,6 +214,11 @@ describe("AppToolbar — page select (replaces the numeric page input)", () => {
     // value with it), a dropped or rejected one leaves the select truthful.
     expect(src).toMatch(/el\.value = String\(pageNav\.currentPage\)/);
   });
+
+  test("the dropdown options are explicitly styled — the OS popup must never render same-color text on background", () => {
+    const src = toolbar();
+    expect(src).toMatch(/\.page-select option\s*\{[^}]*background:[^}]*color:/s);
+  });
 });
 
 describe("AppToolbar — small-screen pane switcher (defunct style tab removed)", () => {
@@ -221,14 +239,17 @@ describe("AppToolbar — small-screen pane switcher (defunct style tab removed)"
   });
 });
 
-describe("AppToolbar — overflow menu", () => {
-  test("hosts the less-common project actions, including the Project settings entry", () => {
-    const src = toolbar();
-    expect(src).toContain("Project settings");
-    expect(src).toMatch(/onOpenProjectSettings/);
-    expect(src).toContain("Focus mode");
-    expect(src).toContain("Advanced setup");
-    expect(src).toContain("Save as template");
+describe("AppToolbar — relocated overflow-menu items stay reachable elsewhere", () => {
+  test("focus mode is an editor-toolbar item, advanced setup lives in app Settings, template export in the export dialog", () => {
+    const actions = read("src/lib/editor/toolbar-actions.ts");
+    expect(actions).toMatch(/id: "focus-mode"/);
+    expect(actions).toContain("Focus mode (Ctrl+Shift+F)");
+    const settings = read("src/lib/components/SettingsView.svelte");
+    expect(settings).toContain("<AdvancedSetupDialog embedded");
+    const exportDialog = read("src/lib/components/ExportDialog.svelte");
+    expect(exportDialog).toContain("template");
+    // +page routes the editor-toolbar action to the focus-mode toggle.
+    expect(page()).toMatch(/action === "focus-mode"[\s\S]{0,120}?toggleFocusMode\(\)/);
   });
 });
 

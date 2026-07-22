@@ -97,6 +97,7 @@ export interface ExportHostDeps {
   buildPdf: (
     input: { key: string; displayName: string },
     outPath: string,
+    opts?: { validate?: boolean },
   ) => Promise<{ exportId?: string; pdfPath?: string }>;
   buildHtml: (input: { key: string; displayName: string }) => Promise<{ downloadUrl?: string }>;
   cancelExportHost: (exportId: string) => Promise<unknown>;
@@ -313,7 +314,7 @@ export class ExportController {
    * the build, and show the resulting toast. Moved verbatim from
    * `+page.svelte`'s `savePdf()`.
    */
-  async savePdf(): Promise<void> {
+  async savePdf(opts?: { validate?: boolean }): Promise<void> {
     const h = this.requireHost();
     // M27: one guard covering every entry point (toolbar button, both
     // keyboard shortcuts) — previously only the toolbar button's `disabled`
@@ -356,6 +357,7 @@ export class ExportController {
         // #49: the app-facing contract takes a FolderRef (key + displayName).
         { key: inputDir, displayName: h.displayName() ?? basenameOf(inputDir) },
         outPath,
+        { validate: opts?.validate ?? false },
       );
       this.markSuccess(data.exportId);
       const savedPdfPath = data.pdfPath ?? outPath;

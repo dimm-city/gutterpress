@@ -67,6 +67,7 @@
     | "table"
     | "image"
     | "snippet"
+    | "focus-mode"
     | "layout-block";
 
   export type ToolbarPayload =

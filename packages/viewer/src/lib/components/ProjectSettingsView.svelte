@@ -105,6 +105,12 @@
     projectDir: projectDirAccessor,
     readManifest: (dir) => api.manifest.read(dir),
     writeManifest: (dir, updates) => api.manifest.setFields(dir, updates),
+    // The source-files list universe: top-level markdown files (the same set
+    // the render pipeline includes when the manifest lists none).
+    listMarkdownFiles: (dir) =>
+      api.fs
+        .listDir(dir)
+        .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
     onSaved: () => toast?.success?.("Project details saved."),
     onError: (msg) => toast?.error?.(msg),
   });
@@ -243,21 +249,20 @@
       {/if}
 
       {#if activeTab === "look"}
-        <!-- UX review M35: theme grid → design tokens → stylesheet list (behind
-             Advanced), merged under one writer-shaped "Look & style" heading. -->
+        <!-- UX review M35: theme grid → design tokens → stylesheet list,
+             merged under one writer-shaped "Look & style" heading. The
+             stylesheet list is a plain always-visible section — project
+             settings has no collapsible sections. -->
         <section class="block look-style">
           <h3>Look &amp; style</h3>
           <AppearanceSection controller={appearance} />
           <DesignSection controller={design} />
-          <details class="advanced">
-            <summary class="advanced-summary">
-              <span class="advanced-marker" aria-hidden="true"><Icon name="chevron-right" size={11} /></span>
-              Advanced: stylesheets
-            </summary>
+          <div class="advanced">
+            <h4 class="advanced-heading">Stylesheets</h4>
             <div class="advanced-body">
               <StylesSection controller={styles} />
             </div>
-          </details>
+          </div>
         </section>
       {/if}
 
@@ -358,31 +363,21 @@
   .loading { margin: 0; font-size: 13px; color: var(--app-text-muted); }
 
   /* The merged "Look & style" section: the gap between its three panes and
-     the Advanced disclosure chrome are owned here (`<details>`/`<summary>`
-     are literal elements of THIS template). `.block`/`h3` chrome comes from
-     the shared layer. */
+     the stylesheet sub-section chrome are owned here. `.block`/`h3` chrome
+     comes from the shared layer. */
   .settings-body .look-style { gap: 14px; }
   .look-style :global(.look-subsection) { display: flex; flex-direction: column; gap: 8px; }
   .advanced {
     border-top: 1px solid var(--app-border-subtle);
     padding-top: 8px;
   }
-  .advanced-summary {
-    cursor: pointer;
-    list-style: none;
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  .advanced-heading {
+    margin: 0;
     font-size: 11px;
     font-weight: 600;
     color: var(--app-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
-  .advanced-summary::-webkit-details-marker { display: none; }
-  /* SVG disclosure marker rotates when open (no "▸"/"▾" content glyphs —
-     see no-glyph-chrome.test.ts). */
-  .advanced-marker { display: inline-flex; transition: transform 0.12s ease-out; }
-  .advanced[open] > .advanced-summary .advanced-marker { transform: rotate(90deg); }
   .advanced-body { padding-top: 10px; }
 </style>

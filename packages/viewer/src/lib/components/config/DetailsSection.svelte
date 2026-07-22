@@ -15,6 +15,37 @@
   import type { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
 
   let { controller }: { controller: DetailsSectionController } = $props();
+
+  // ── Source-files drag-and-drop reorder (HTML5 DnD; the up/down buttons are
+  //    the keyboard-accessible equivalent). The pure reorder model lives in
+  //    source-files.ts via the controller's moveSourceFile intent. ────────────
+  let dragIndex = $state<number | null>(null);
+  let dropIndex = $state<number | null>(null);
+
+  function onRowDragStart(e: DragEvent, i: number) {
+    dragIndex = i;
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      // Firefox requires data for a drag to start.
+      e.dataTransfer.setData("text/plain", String(i));
+    }
+  }
+  function onRowDragOver(e: DragEvent, i: number) {
+    if (dragIndex === null) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    dropIndex = i;
+  }
+  function onRowDrop(e: DragEvent, i: number) {
+    e.preventDefault();
+    if (dragIndex !== null) controller.moveSourceFile(dragIndex, i);
+    dragIndex = null;
+    dropIndex = null;
+  }
+  function onRowDragEnd() {
+    dragIndex = null;
+    dropIndex = null;
+  }
 </script>
 
 <section class="block">
@@ -61,16 +92,58 @@
       placeholder="book.pdf"
     />
   </label>
-  <label class="field">
+  <div class="field">
     <span class="lbl">Source files</span>
-    <textarea
-      class="input"
-      rows="3"
-      placeholder="chapter-01.md&#10;chapter-02.md&#10;(Leave blank to include all chapter files.)"
-      bind:value={controller.sourceDraft}
-    ></textarea>
-    <span class="hint">One file per line. Leave blank to include all markdown files in the project.</span>
-  </label>
+    {#if controller.sourceFiles.length === 0}
+      <p class="hint">No markdown files found in this project yet.</p>
+    {:else}
+      <ul class="source-list" aria-label="Source files (drag to reorder)">
+        {#each controller.sourceFiles as entry, i (entry.path)}
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <li
+            class="source-row"
+            class:excluded={!entry.included}
+            class:dragging={dragIndex === i}
+            class:drop-target={dropIndex === i && dragIndex !== i}
+            draggable="true"
+            ondragstart={(e) => onRowDragStart(e, i)}
+            ondragover={(e) => onRowDragOver(e, i)}
+            ondrop={(e) => onRowDrop(e, i)}
+            ondragend={onRowDragEnd}
+          >
+            <span class="grip" aria-hidden="true"><Icon name="grip-vertical" size={13} /></span>
+            <input
+              type="checkbox"
+              checked={entry.included}
+              onchange={(e) => controller.setSourceIncluded(i, e.currentTarget.checked)}
+              aria-label={`Include ${entry.path}`}
+            />
+            <span class="source-path" class:mono={true}>{entry.path}</span>
+            {#if entry.missing}
+              <span class="missing" title="This manifest entry has no matching file in the project">missing</span>
+            {/if}
+            <span class="row-move">
+              <button
+                class="ghost icononly"
+                onclick={() => controller.moveSourceFile(i, i - 1)}
+                disabled={i === 0}
+                title="Move up"
+                aria-label={`Move ${entry.path} up`}
+              ><Icon name="chevron-up" size={12} /></button>
+              <button
+                class="ghost icononly"
+                onclick={() => controller.moveSourceFile(i, i + 1)}
+                disabled={i === controller.sourceFiles.length - 1}
+                title="Move down"
+                aria-label={`Move ${entry.path} down`}
+              ><Icon name="chevron-down" size={12} /></button>
+            </span>
+          </li>
+        {/each}
+      </ul>
+      <span class="hint">Drag rows (or use the arrows) to set the chapter order. Unchecked files are left out of the book.</span>
+    {/if}
+  </div>
   <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
     {controller.detailsSaving ? "Saving…" : "Save details"}
   </button>
@@ -83,4 +156,40 @@
   .author-row { display: flex; gap: 4px; align-items: center; }
   .author-row .input { flex: 1; }
   .add { align-self: flex-start; }
+
+  /* ── Source-files DnD list ── */
+  .source-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  .source-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border: 1px solid var(--app-border);
+    border-radius: 6px;
+    background: var(--app-surface-sunken);
+    cursor: grab;
+  }
+  .source-row.dragging { opacity: 0.5; }
+  .source-row.drop-target { border-color: var(--app-accent-border); background: var(--app-accent-subtle); }
+  .source-row.excluded .source-path { color: var(--app-text-muted); text-decoration: line-through; }
+  .grip { display: inline-flex; color: var(--app-text-muted); flex-shrink: 0; }
+  .source-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    color: var(--app-text-secondary);
+  }
+  .source-path.mono { font-family: var(--app-font-mono); }
+  .missing {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--app-warning-text);
+  }
+  .row-move { display: inline-flex; gap: 2px; flex-shrink: 0; }
 </style>

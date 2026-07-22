@@ -38,11 +38,14 @@
 
   let {
     open = $bindable(false),
+    embedded = false,
     projectDir,
     triggerEl,
     onClosed,
   }: {
     open?: boolean;
+    /** Render inline (Settings view) instead of as a modal dialog. */
+    embedded?: boolean;
     projectDir: string | null;
     triggerEl?: HTMLButtonElement | undefined;
     /** Called whenever the dialog closes. Useful for post-close refresh. */
@@ -289,20 +292,7 @@
   }, () => connecting);
 </script>
 
-{#if open}
-  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
-
-  <div
-    class="dlg-shell"
-    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "advanced-setup-title", focusContainer: true }}
-    use:onDialogMount
-  >
-    <header class="dlg-header">
-      <h2 id="advanced-setup-title">Advanced setup</h2>
-      <button class="dlg-close" onclick={close} disabled={connecting} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
-    </header>
-
-    <div class="dialog-body">
+{#snippet setupBody()}
       {#if loadError}
         <p class="error" role="alert">{loadError}</p>
       {/if}
@@ -517,6 +507,29 @@
           </dd>
         </dl>
       </section>
+{/snippet}
+
+{#if embedded}
+  <!-- Embedded mode: rendered inside the app Settings view (Connections tab)
+       with no dialog chrome. The mount action still resets + loads state. -->
+  <div class="dialog-body embedded-body" use:onDialogMount>
+    {@render setupBody()}
+  </div>
+{:else if open}
+  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
+
+  <div
+    class="dlg-shell"
+    use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "advanced-setup-title", focusContainer: true }}
+    use:onDialogMount
+  >
+    <header class="dlg-header">
+      <h2 id="advanced-setup-title">Advanced setup</h2>
+      <button class="dlg-close" onclick={close} disabled={connecting} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
+    </header>
+
+    <div class="dialog-body">
+      {@render setupBody()}
     </div>
   </div>
 {/if}
@@ -528,6 +541,8 @@
     width: min(560px, 92vw);
     max-height: 84vh;
   }
+  /* Embedded (Settings view) mode: no shell — the tab body provides scroll. */
+  .embedded-body { display: flex; flex-direction: column; }
   .dialog-body {
     padding: 16px 18px;
     display: flex;

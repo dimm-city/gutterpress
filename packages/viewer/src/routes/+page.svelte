@@ -21,9 +21,9 @@
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
-  import AdvancedSetupDialog from "$lib/components/AdvancedSetupDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import AppToolbar from "$lib/components/AppToolbar.svelte";
+  import ExportDialog from "$lib/components/ExportDialog.svelte";
   import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
@@ -127,19 +127,18 @@
     sourceMode: () => lifecycle.sourceMode,
     chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
     onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
-    buildPdf: (input, outPath) =>
+    buildPdf: (input, outPath, opts) =>
       getPlatform().build({
         input,
         format: "pdf",
         out: outPath,
-        // Validation is skipped for the quick "Save PDF" action by design —
-        // it's a fast RGB export, not the full preflight. (Most checks now run
-        // in-process and need no system tools; the full validated/PDF-X pipeline
-        // is available via the CLI or the Docker image.) Lint stays ON — the
-        // in-process PostCSS print-safety checks catch real CSS problems before
-        // PDF gen.
-        skipPreValidate: true,
-        skipPostValidate: true,
+        // Validation is skipped by default (the quick Ctrl+Shift+E export and
+        // the dialog's default) — it's a fast RGB export, not the full
+        // preflight. The export dialog's "Run print-safety validation" toggle
+        // opts back in. Lint stays ON either way — the in-process PostCSS
+        // print-safety checks catch real CSS problems before PDF gen.
+        skipPreValidate: !opts?.validate,
+        skipPostValidate: !opts?.validate,
       }),
     buildHtml: (input) => getPlatform().build({ input, format: "html" }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
@@ -292,6 +291,7 @@
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
   let settingsOpen = $state(false);
+  let settingsInitialTab = $state<"app" | "editor" | "saving" | "connections" | "advanced">("app");
   // autoOpeningLastProject/lastProjectChecked (Phase 5 slice 2, UX H5 / ARCH
   // #10) now live on `startup` (StartupController) — see its instantiation
   // below.
@@ -341,11 +341,19 @@
   function closeActivityView(): void {
     closePaneView();
   }
-  function openSettings(): void {
+  /** Open the app Settings view, optionally landing on a specific tab
+   *  (Advanced setup lives embedded in the Connections tab now). */
+  function openSettings(tab: "app" | "editor" | "saving" | "connections" | "advanced" = "app"): void {
+    settingsInitialTab = tab;
     settingsOpen = true;
   }
   function closeSettings(): void {
     settingsOpen = false;
+    // Connections/Advanced setup live inside Settings now — refresh the sync
+    // state on close, mirroring what the old dialogs' onClosed hook did.
+    if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
+      void syncController.refreshSyncDiag(lifecycle.currentDir);
+    }
     if (landingVisible) landingRef?.focusLayer();
   }
   function toggleSettings(): void {
@@ -385,9 +393,6 @@
 
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
-  // Advanced setup (#14): diagnostics + generic "Connect a Git server"
-  let advancedSetupOpen = $state(false);
-  let advancedSetupBtn = $state<HTMLButtonElement | undefined>(undefined);
   // New-project wizard (#25). L4: opening is exclusively via show() below —
   // there is no bindable `open` prop any more (the wizard owns that state).
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
@@ -804,7 +809,7 @@
   // flow — GitHub's device flow, or Advanced Setup for every other server.
   function onSyncReconnect() {
     if (syncController.syncDiag?.provider === "github") githubOpen = true;
-    else advancedSetupOpen = true;
+    else openSettings("connections");
   }
 
   // Route the RecoveryGuidanceDialog's primary button by the guidance's machine
@@ -816,7 +821,7 @@
         onSyncReconnect();
         break;
       case "check_connection":
-        advancedSetupOpen = true;
+        openSettings("connections");
         break;
       case "sync":
         // Retry the sync; handleForceSync also routes conflicts to the chooser.
@@ -846,7 +851,7 @@
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
-  // Called by onClosed on both GitHubDialog and AdvancedSetupDialog.
+  // Called by onClosed on GitHubDialog.
   function onConnectDialogClosed() {
     if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
       void syncController.refreshSyncDiag(lifecycle.currentDir);
@@ -990,40 +995,10 @@
     focusEditorWhenReady();
   }
 
-  // "Save as template" (#29) — capture the open project as a reusable template.
-  let saveTemplateOpen = $state(false);
-  let saveTemplateName = $state("");
-  let saveTemplateBusy = $state(false);
-  let saveTemplateError = $state<string | null>(null);
+  // "Save as template" (#29) now lives in the ExportDialog (Template format).
+  let exportOpen = $state(false);
+  let exportBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
-  function openSaveAsTemplate() {
-    if (!isDesktop() || !lifecycle.currentDir) return;
-    saveTemplateName = "";
-    saveTemplateError = null;
-    saveTemplateOpen = true;
-  }
-
-  async function confirmSaveAsTemplate() {
-    if (!lifecycle.currentDir) return;
-    if (!saveTemplateName.trim()) {
-      saveTemplateError = "Give your template a name.";
-      return;
-    }
-    saveTemplateBusy = true;
-    saveTemplateError = null;
-    try {
-      const tpl = await api.tpl.saveAsTemplate({
-        projectDir: lifecycle.currentDir,
-        name: saveTemplateName.trim(),
-      });
-      saveTemplateOpen = false;
-      toast?.success(`Saved “${tpl.label}” as a template.`);
-    } catch (e) {
-      saveTemplateError = e instanceof Error ? e.message : String(e);
-    } finally {
-      saveTemplateBusy = false;
-    }
-  }
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
   let isNarrow = $state(false);
@@ -2294,6 +2269,18 @@
   </div>
 {/if}
 
+<!-- The Electron window title follows document.title — keep it in step with
+     the toolbar's document identity (folder title / URL doc title). -->
+<svelte:head>
+  <title>{
+    lifecycle.sourceMode === "url" && lifecycle.currentUrl
+      ? (lifecycle.docTitle ?? lifecycle.currentUrl)
+      : lifecycle.currentDir
+        ? displayTitle
+        : "print-md viewer"
+  }</title>
+</svelte:head>
+
 <!-- inert while the start screen or full-window Settings view is up: the
       workspace keeps rendering, but never accepts interaction underneath. -->
 <div class="app-root" inert={landingVisible || settingsOpen || projectSettingsOpen}>
@@ -2349,21 +2336,14 @@
     {canSavePdf}
     exporting={exportController.exporting}
     {exportDisabled}
-    onExport={() => (canSavePdf ? exportController.savePdf() : exportController.exportHtml())}
+    onOpenExport={() => (exportOpen = true)}
+    bind:exportBtnEl
     {exportHints}
     exportWarning={canSavePdf ? lifecycle.saveWarning : null}
     saving={forceSaving}
     saveDisabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
     savePending={!!editorFilePath && editorSavePhase !== "clean"}
     onSave={handleForceSave}
-    {focusMode}
-    showFocusMode={toolbarProjectOpen}
-    onToggleFocusMode={toggleFocusMode}
-    showAdvancedSetup={isDesktop()}
-    onOpenAdvancedSetup={() => (advancedSetupOpen = true)}
-    bind:advancedSetupEl={advancedSetupBtn}
-    showSaveAsTemplate={isDesktop() && !!lifecycle.currentDir}
-    onSaveAsTemplate={openSaveAsTemplate}
     showProjectSettings={toolbarProjectOpen && isDesktop()}
     onOpenProjectSettings={openProjectConfig}
   />
@@ -2472,6 +2452,10 @@
               onAction={(action, payload) => {
                 if (action === "snippet") {
                   openSnippetPicker();
+                  return;
+                }
+                if (action === "focus-mode") {
+                  toggleFocusMode();
                   return;
                 }
                 editorRef?.runToolbarAction(action, payload);
@@ -2686,6 +2670,7 @@
   <section class="settings-global-view" aria-label="Settings">
     <SettingsView
       projectDir={lifecycle.currentDir}
+      initialTab={settingsInitialTab}
       onClose={closeSettings}
       onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
       onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
@@ -2724,7 +2709,7 @@
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
     return openProjectPath(projectDir, "Opening your project…");
   }}
-  onAdvancedSetup={() => (advancedSetupOpen = true)}
+  onAdvancedSetup={() => openSettings("connections")}
   onClosed={onConnectDialogClosed}
   triggerEl={leftPanelToggleBtn}
 />
@@ -2742,12 +2727,6 @@
     }}
   />
 {/if}
-<AdvancedSetupDialog
-  bind:open={advancedSetupOpen}
-  projectDir={lifecycle.sourceMode === "folder" ? lifecycle.currentDir : null}
-  triggerEl={advancedSetupBtn}
-  onClosed={onConnectDialogClosed}
-/>
 <NewProjectWizard
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
@@ -2767,39 +2746,18 @@
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
 />
-<!-- The Project Configuration view (#PCV) replaces the retired PluginManager,
-     ThemeManager, StylePicker, and DesignPanel modal dialogs. It renders inline
-     in the editor pane (above); no modal mount point is needed here. -->
-<!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->
-{#if saveTemplateOpen}
-  <div class="save-tpl-backdrop" role="presentation" onclick={() => (saveTemplateOpen = false)}></div>
-  <div class="save-tpl-dialog" role="dialog" aria-modal="true" aria-labelledby="save-tpl-title">
-    <h2 id="save-tpl-title">Save as template</h2>
-    <p class="save-tpl-lead">
-      Save this project as a reusable starter you can pick when creating a new book.
-    </p>
-    <label class="save-tpl-field">
-      <span>Template name</span>
-      <!-- svelte-ignore a11y_autofocus -->
-      <input
-        type="text"
-        bind:value={saveTemplateName}
-        placeholder="My Template"
-        autocomplete="off"
-        autofocus
-        onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmSaveAsTemplate(); } }}
-      />
-    </label>
-    {#if saveTemplateError}
-      <p class="save-tpl-error" role="alert">{saveTemplateError}</p>
-    {/if}
-    <div class="save-tpl-actions">
-      <button class="ghost" onclick={() => (saveTemplateOpen = false)} disabled={saveTemplateBusy}>Cancel</button>
-      <button class="primary app-btn-primary" onclick={confirmSaveAsTemplate} disabled={saveTemplateBusy}>
-        {saveTemplateBusy ? "Saving…" : "Save template"}
-      </button>
-    </div>
-  </div>
+<!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar
+     Export button. Mounted fresh per open so its state resets. -->
+{#if exportOpen}
+  <ExportDialog
+    projectDir={lifecycle.currentDir}
+    {canSavePdf}
+    {toast}
+    triggerEl={exportBtnEl}
+    onExportPdf={(opts) => void exportController.savePdf(opts)}
+    onExportHtml={() => void exportController.exportHtml()}
+    onClose={() => (exportOpen = false)}
+  />
 {/if}
 <!-- ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
      SyncStatusPill when the auto-sync orchestrator surfaces a conflict.
@@ -3274,29 +3232,4 @@
     }
   }
 
-  /* Save-as-template prompt (#29) */
-  .save-tpl-backdrop { position: fixed; inset: 0; background: var(--app-backdrop); z-index: var(--app-z-modal); }
-  .save-tpl-dialog {
-    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: min(420px, 94vw); background: var(--app-surface); color: var(--app-text-secondary);
-    border-radius: 8px; box-shadow: 0 14px 40px var(--app-shadow-lg); z-index: calc(var(--app-z-modal) + 1);
-    padding: 18px; display: flex; flex-direction: column; gap: 12px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  }
-  .save-tpl-dialog h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .save-tpl-lead { margin: 0; font-size: 13px; color: var(--app-text-muted); }
-  .save-tpl-field { display: flex; flex-direction: column; gap: 6px; }
-  .save-tpl-field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
-  .save-tpl-field input {
-    background: var(--app-surface-sunken); border: 1px solid var(--app-border);
-    color: var(--app-text-secondary); padding: 8px 10px; border-radius: 6px; font-size: 14px;
-  }
-  .save-tpl-field input:focus { outline: none; border-color: var(--app-focus-ring); }
-  .save-tpl-error { color: var(--app-error-text); font-size: 12px; margin: 0; }
-  .save-tpl-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .save-tpl-actions button { padding: 7px 16px; font-size: 13px; border-radius: 4px; cursor: pointer; border-width: 1px; border-style: solid; }
-  .save-tpl-actions button:disabled { opacity: 0.45; cursor: default; }
-  /* Primary colors come from the shared .app-btn-primary recipe (theme.css). */
-  .save-tpl-actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  .save-tpl-actions .ghost:not(:disabled):hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>

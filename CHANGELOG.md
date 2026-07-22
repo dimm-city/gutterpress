@@ -24,6 +24,19 @@ This project follows [Semantic Versioning](https://semver.org/).
   defunct style/CSS tab is gone.
 - Text-character icons (arrows, check marks, disclosure triangles, stars,
   emoji) across the viewer were replaced with proper SVG icons.
+- The toolbar's overflow (⋮) menu is gone: Export now opens an export dialog
+  (choose PDF with an optional print-safety validation pass, standalone HTML,
+  or save the project as a reusable template), Project settings is a dedicated
+  toolbar button beside the editor toggle, Focus mode moved onto the editor
+  toolbar (next to snippets, still Ctrl+Shift+F / Esc), and Advanced setup is
+  merged into Settings → Connections (all its old entry points land there).
+- The page picker's dropdown options are explicitly themed so the list can
+  never render unreadable (same-color text on background), and the desktop
+  window title now mirrors the open book's title.
+- Project settings polish: the manifest's source files are managed with a
+  drag-and-drop list (reorder chapters, include/exclude files) instead of a
+  textarea, and the collapsible "Advanced" disclosures were flattened into
+  always-visible sections.
 
 ## [0.8.2] - 2026-07-21
 

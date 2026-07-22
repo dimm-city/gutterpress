@@ -107,8 +107,9 @@
     {/each}
   </ul>
 
-  <details class="advanced">
-    <summary>Advanced: add another plugin</summary>
+  <!-- Always-visible section (project settings has no collapsible sections). -->
+  <div class="advanced">
+    <h4 class="subhead">Add another plugin</h4>
     <div class="add-row">
       <input class="input" type="text" placeholder="npm package name (e.g. markdown-it-footnote)" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpmPlugin(); }} />
       <button class="primary small app-btn-primary" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>Add</button>
@@ -117,7 +118,7 @@
       <Icon name="folder" size={14} /> Import from local file or folder…
     </button>
     <p class="hint">A plugin added by name must already be installed in your project. Local files are referenced directly.</p>
-  </details>
+  </div>
 </section>
 
 <style>
@@ -140,7 +141,7 @@
   .toggle:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .toggle:disabled { opacity: 0.5; cursor: progress; }
 
-  .advanced > summary { cursor: pointer; user-select: none; font-size: 12px; font-weight: 600; color: var(--app-text-muted); padding: 4px 0; list-style-position: inside; }
+  .advanced { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
   button.full { width: 100%; justify-content: center; }
 
   /* Friendly label (M33) — a new class, own-scoped, so it doesn't have to

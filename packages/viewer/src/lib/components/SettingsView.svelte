@@ -1,6 +1,7 @@
 <script lang="ts">
   import Icon from "$lib/components/Icon.svelte";
   import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
+  import AdvancedSetupDialog from "$lib/components/AdvancedSetupDialog.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -8,6 +9,7 @@
   let {
     onClose,
     projectDir = null,
+    initialTab = "app",
     onViewModeChange,
     onCrashRecoveryChange,
   }: {
@@ -15,6 +17,9 @@
     /** The open project dir (Connections tab: adding a publishing key verifies
      *  against the platform, and some checks read the project's settings). */
     projectDir?: string | null;
+    /** The tab to land on when the view opens (e.g. "connections" from the
+     *  reconnect / advanced-setup entry points). */
+    initialTab?: "app" | "editor" | "saving" | "connections" | "advanced";
     /** Called immediately when the user changes the view mode setting. */
     onViewModeChange?: (mode: "single" | "two-column") => void;
     /** Called immediately when the user toggles crash recovery. */
@@ -40,7 +45,10 @@
     { id: "connections", label: "Connections" },
     { id: "advanced", label: "Advanced" },
   ];
-  let activeTab = $state<SettingsTab>("app");
+  // Mounted fresh per open ({#if settingsOpen}) — the initial value is the
+  // requested landing tab; navigation from there is user-driven.
+  // svelte-ignore state_referenced_locally
+  let activeTab = $state<SettingsTab>(initialTab);
   let tabEls = $state<Record<SettingsTab, HTMLButtonElement | undefined>>({
     app: undefined,
     editor: undefined,
@@ -378,6 +386,17 @@
       <section class="group">
         <ConnectionsSettings {projectDir} />
       </section>
+      {#if isDesktop()}
+      <!-- Advanced setup (#14) — formerly its own modal, merged here: project
+           remote diagnostics, Test Remote Access, and the universal
+           connect-a-Git-server token flow. -->
+      <section class="group">
+        <div class="group-head">
+          <h3>Advanced setup</h3>
+        </div>
+        <AdvancedSetupDialog embedded {projectDir} />
+      </section>
+      {/if}
       {/if}
 
     {#if activeTab === "advanced"}
