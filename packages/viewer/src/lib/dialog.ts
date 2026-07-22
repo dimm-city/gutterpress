@@ -155,8 +155,8 @@ export function dialogBehavior(node: HTMLElement, options: DialogOptions) {
  * `dialogBehavior`'s `onClose`) all funnel through the SAME wrapped function,
  * so a dialog can't be dismissed by any of the three gestures while e.g. a
  * create/connect/clone is in flight. Promotes the pattern GitHubDialog
- * already used ad hoc (`closeBlocked`) so NewProjectWizard and
- * AdvancedSetupDialog don't each hand-roll their own copy.
+ * already used ad hoc (`closeBlocked`) so NewProjectWizard and other
+ * connect-style dialogs don't each hand-roll their own copy.
  *
  * `blocked` is a getter (not a plain boolean) so callers can pass a reactive
  * accessor (e.g. `() => creating`) and always guard against the CURRENT
@@ -185,7 +185,7 @@ export type InlineConfirmState = Readonly<Record<string, true>>;
  *
  * Pure and state-shape-only — the caller owns the actual `$state` and reacts
  * to `confirmed`. Kept in `dialog.ts` (not duplicated per-dialog) so
- * AdvancedSetupDialog's Disconnect (L2) and SnippetPicker's delete (M25)
+ * ConnectionsSettings' Remove (L2) and SnippetPicker's delete (M25)
  * share one tested implementation.
  */
 export function requestInlineConfirm(

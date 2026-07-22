@@ -3,6 +3,41 @@
 All notable changes to print-md are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- The viewer's main toolbar was rebuilt on a modern responsive layout (an
+  in-flow three-column grid with container-query collapse stages, extracted
+  into its own `AppToolbar` component) so controls can no longer overflow or
+  overlap at any window size, from full-screen desktop down to phones. The
+  primary actions are now ordered Publish, Export, Save — with Save as the
+  right-most button.
+- The toolbar's page indicator is now a page picker: clicking "3 / 24" opens
+  a dropdown with an entry for every page and the current page selected,
+  replacing the type-a-number box.
+- Project settings (details, look & style, plugins) moved out of the cramped
+  left-sidebar Config tab into a full-screen view patterned after the app
+  settings, opened from the toolbar's More menu. The left panel now has four
+  tabs: Projects, TOC, Files, and Media.
+- On small screens the pane switcher is just Markdown and Preview — the
+  defunct style/CSS tab is gone.
+- Text-character icons (arrows, check marks, disclosure triangles, stars,
+  emoji) across the viewer were replaced with proper SVG icons.
+- The toolbar's overflow (⋮) menu is gone: Export now opens an export dialog
+  (choose PDF with an optional print-safety validation pass, standalone HTML,
+  or save the project as a reusable template), Project settings is a dedicated
+  toolbar button beside the editor toggle, Focus mode moved onto the editor
+  toolbar (next to snippets, still Ctrl+Shift+F / Esc), and Advanced setup is
+  merged into Settings → Connections (all its old entry points land there).
+- The page picker's dropdown options are explicitly themed so the list can
+  never render unreadable (same-color text on background), and the desktop
+  window title now mirrors the open book's title.
+- Project settings polish: the manifest's source files are managed with a
+  drag-and-drop list (reorder chapters, include/exclude files) instead of a
+  textarea, and the collapsible "Advanced" disclosures were flattened into
+  always-visible sections.
+
 ## [0.8.2] - 2026-07-21
 
 ### Changed

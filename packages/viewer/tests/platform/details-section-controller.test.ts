@@ -21,12 +21,17 @@ interface Harness {
   onError: ReturnType<typeof spy>;
   projectDir: string | null;
   fields: ProjectConfigFields;
+  allFiles: string[];
   readCalls: number;
+  listCalls: number;
   writeCalls: Array<{ dir: string; updates: ProjectConfigFields }>;
   failNextWrite: boolean;
+  failList: boolean;
 }
 
-function make(over: Partial<{ noProject: boolean; fields: ProjectConfigFields }> = {}): Harness {
+function make(
+  over: Partial<{ noProject: boolean; fields: ProjectConfigFields; allFiles: string[] }> = {},
+): Harness {
   const onSaved = spy();
   const onError = spy();
   const h = {
@@ -34,13 +39,16 @@ function make(over: Partial<{ noProject: boolean; fields: ProjectConfigFields }>
     onError,
     projectDir: over.noProject ? null : "/proj",
     fields: over.fields ?? { title: "My Book", authors: ["A", "B"], outputFilename: "book.pdf", sourceFiles: ["a.md", "b.md"] },
+    allFiles: over.allFiles ?? ["a.md", "b.md", "c.md"],
     readCalls: 0,
+    listCalls: 0,
     writeCalls: [],
     failNextWrite: false,
+    failList: false,
   } as Harness;
   h.ctrl = new DetailsSectionController({
     projectDir: () => h.projectDir,
-    readManifest: (dir) => {
+    readManifest: () => {
       h.readCalls++;
       return Promise.resolve(h.fields);
     },
@@ -53,6 +61,11 @@ function make(over: Partial<{ noProject: boolean; fields: ProjectConfigFields }>
       const out = { ...h.fields, ...updates };
       h.fields = out;
       return Promise.resolve(out);
+    },
+    listMarkdownFiles: () => {
+      h.listCalls++;
+      if (h.failList) return Promise.reject(new Error("scan failed"));
+      return Promise.resolve(h.allFiles);
     },
     onSaved: () => onSaved(),
     onError: (m) => onError(m),
@@ -68,17 +81,22 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.titleDraft).toBe("");
   expect(ctrl.outputDraft).toBe("");
   expect(ctrl.authorsDraft).toEqual([]);
-  expect(ctrl.sourceDraft).toBe("");
+  expect(ctrl.sourceFiles).toEqual([]);
 });
 
-test("loadDetails populates fields and drafts from the manifest", async () => {
+test("loadDetails populates fields, drafts, and the source-files list (manifest order first, extras excluded)", async () => {
   const h = make();
   await h.ctrl.loadDetails();
   expect(h.readCalls).toBe(1);
+  expect(h.listCalls).toBe(1);
   expect(h.ctrl.titleDraft).toBe("My Book");
   expect(h.ctrl.outputDraft).toBe("book.pdf");
   expect(h.ctrl.authorsDraft).toEqual(["A", "B"]);
-  expect(h.ctrl.sourceDraft).toBe("a.md\nb.md");
+  expect(h.ctrl.sourceFiles).toEqual([
+    { path: "a.md", included: true },
+    { path: "b.md", included: true },
+    { path: "c.md", included: false },
+  ]);
 });
 
 test("loadDetails no-ops without a project dir", async () => {
@@ -88,13 +106,35 @@ test("loadDetails no-ops without a project dir", async () => {
   expect(h.ctrl.titleDraft).toBe("");
 });
 
-test("loadDetails defaults missing manifest fields to empty drafts", async () => {
-  const h = make({ fields: {} });
+test("loadDetails with a blank manifest includes every file in natural order", async () => {
+  const h = make({ fields: {}, allFiles: ["10-end.md", "2-start.md"] });
   await h.ctrl.loadDetails();
   expect(h.ctrl.titleDraft).toBe("");
-  expect(h.ctrl.outputDraft).toBe("");
-  expect(h.ctrl.authorsDraft).toEqual([]);
-  expect(h.ctrl.sourceDraft).toBe("");
+  expect(h.ctrl.sourceFiles).toEqual([
+    { path: "2-start.md", included: true },
+    { path: "10-end.md", included: true },
+  ]);
+});
+
+test("loadDetails survives a failed file scan: manifest entries stay editable, not flagged missing", async () => {
+  const h = make();
+  h.failList = true;
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.detailsError).toBeNull();
+  expect(h.ctrl.sourceFiles).toEqual([
+    { path: "a.md", included: true },
+    { path: "b.md", included: true },
+  ]);
+});
+
+test("after a failed scan, saving preserves the explicit list — it never collapses to the all-files sentinel", async () => {
+  const h = make();
+  h.failList = true;
+  await h.ctrl.loadDetails();
+  await h.ctrl.saveDetails();
+  // The manifest listed [a.md, b.md] explicitly; with the universe unknown a
+  // null here could silently widen the book to unseen files.
+  expect(h.writeCalls[0]!.updates.sourceFiles).toEqual(["a.md", "b.md"]);
 });
 
 test("addAuthor/setAuthor/removeAuthor mutate the drafts array", () => {
@@ -110,12 +150,21 @@ test("addAuthor/setAuthor/removeAuthor mutate the drafts array", () => {
   expect(h.ctrl.authorsDraft).toEqual(["Grace"]);
 });
 
-test("saveDetails trims authors/source lines and writes the manifest", async () => {
+test("moveSourceFile / setSourceIncluded drive the list model", async () => {
+  const h = make({ fields: {} });
+  await h.ctrl.loadDetails();
+  h.ctrl.moveSourceFile(2, 0);
+  expect(h.ctrl.sourceFiles.map((e) => e.path)).toEqual(["c.md", "a.md", "b.md"]);
+  h.ctrl.setSourceIncluded(1, false);
+  expect(h.ctrl.sourceFiles[1]).toEqual({ path: "a.md", included: false });
+});
+
+test("saveDetails trims authors and writes the ordered included source files", async () => {
   const h = make();
+  await h.ctrl.loadDetails();
   h.ctrl.titleDraft = "  New Title  ";
   h.ctrl.outputDraft = "  out.pdf  ";
   h.ctrl.authorsDraft = ["  Ada ", "", "  Grace"];
-  h.ctrl.sourceDraft = " a.md \n\n b.md \n  ";
   await h.ctrl.saveDetails();
   expect(h.writeCalls.length).toBe(1);
   expect(h.writeCalls[0]).toEqual({
@@ -124,6 +173,7 @@ test("saveDetails trims authors/source lines and writes the manifest", async () 
       title: "New Title",
       authors: ["Ada", "Grace"],
       outputFilename: "out.pdf",
+      // a.md + b.md included (manifest), c.md excluded → explicit list.
       sourceFiles: ["a.md", "b.md"],
     },
   });
@@ -132,11 +182,19 @@ test("saveDetails trims authors/source lines and writes the manifest", async () 
   expect(h.onSaved.calls.length).toBe(1);
 });
 
-test("saveDetails sends null sourceFiles when the draft has no non-blank lines (the 'all chapters' sentinel)", async () => {
-  const h = make();
-  h.ctrl.sourceDraft = "   \n  ";
+test("saveDetails sends null sourceFiles when everything is included in natural order (the 'all chapters' sentinel)", async () => {
+  const h = make({ fields: {} });
+  await h.ctrl.loadDetails();
   await h.ctrl.saveDetails();
-  expect(h.writeCalls[0].updates.sourceFiles).toBeNull();
+  expect(h.writeCalls[0]!.updates.sourceFiles).toBeNull();
+});
+
+test("a reorder is persisted as an explicit ordered list", async () => {
+  const h = make({ fields: {} });
+  await h.ctrl.loadDetails();
+  h.ctrl.moveSourceFile(2, 0);
+  await h.ctrl.saveDetails();
+  expect(h.writeCalls[0]!.updates.sourceFiles).toEqual(["c.md", "a.md", "b.md"]);
 });
 
 test("saveDetails no-ops without a project dir", async () => {

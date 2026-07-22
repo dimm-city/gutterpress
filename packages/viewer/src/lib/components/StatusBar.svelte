@@ -406,7 +406,7 @@
     </div>
   {/if}
   <div class="shell-actions" aria-label="Application actions">
-    <button class="status-icon-btn" onclick={onOpenSettings} title="Settings (Ctrl+,)" aria-label="Settings">
+    <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
       <Icon name="settings" size={14} />
     </button>
     <button class="status-icon-btn" onclick={onOpenHelp} title="Help and about" aria-label="Help and about">

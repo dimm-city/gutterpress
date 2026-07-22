@@ -192,7 +192,7 @@
     <div class="landing-col">
       <header class="brand-row">
         <div class="brand-left">
-          <span class="brand-icon" aria-hidden="true">📖</span>
+          <span class="brand-icon" aria-hidden="true"><Icon name="book-open" size={20} /></span>
           <span class="brand-name">print-md</span>
           {#if version}<span class="brand-version">v{version}</span>{/if}
         </div>
@@ -217,7 +217,7 @@
             </button>
           {/if}
           {#if onOpenSettings}
-            <button type="button" class="brand-icon-btn" onclick={onOpenSettings} title="Settings (Ctrl+,)" aria-label="Settings">
+            <button type="button" class="brand-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
               <Icon name="settings" size={16} />
             </button>
           {/if}
@@ -247,7 +247,7 @@
         <section class="continue-sec" aria-label="Continue where you left off">
           <h1 class="landing-h1">Welcome back</h1>
           <div class="continue-card">
-            <span class="cc-icon" aria-hidden="true">📖</span>
+            <span class="cc-icon" aria-hidden="true"><Icon name="book-open" size={28} /></span>
             <div class="cc-info">
               <span class="cc-title" title={continueTitle}>{continueTitle}</span>
               {#if continueDetail}
@@ -332,7 +332,7 @@
 
       <footer class="landing-foot">
         <button type="button" class="landing-link" onclick={onOpenGuide}>
-          New to print-md? Read the getting-started guide →
+          New to print-md? Read the getting-started guide <Icon name="arrow-right" size={12} />
         </button>
         <label class="startup-toggle">
           <input
@@ -392,7 +392,8 @@
   }
   .brand-icon-btn:hover { color: var(--app-text); background: var(--app-control-hover-bg); }
   .brand-icon-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .brand-icon { font-size: 18px; }
+  /* SVG icon (was an emoji): self-center against the baseline-aligned row. */
+  .brand-icon { display: inline-flex; align-self: center; }
   .brand-name { font-size: 15px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
   .brand-version { font-size: 11px; color: var(--app-text-muted); }
 
@@ -438,7 +439,7 @@
     padding: 16px 18px;
     box-shadow: var(--app-shadow-md);
   }
-  .cc-icon { font-size: 30px; line-height: 1; flex-shrink: 0; }
+  .cc-icon { display: inline-flex; align-items: center; flex-shrink: 0; color: var(--app-text-secondary); }
   .cc-info { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .cc-title {
     font-size: 16px;

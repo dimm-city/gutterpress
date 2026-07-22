@@ -66,7 +66,17 @@
     | "chevron-up"
     | "arrow-down-to-line"
     | "arrow-up-from-line"
-    | "star";
+    | "star"
+    // Glyph-replacement icons (toolbar refactor): SVG stand-ins for the
+    // retired ✓ / → / 📖 / 💡 text glyphs.
+    | "check"
+    | "arrow-right"
+    | "book-open"
+    | "lightbulb"
+    // Editor-toolbar focus mode toggle
+    | "maximize"
+    // Source-files list drag handle
+    | "grip-vertical";
 
   const ICONS: Record<IconName, string> = {
     "folder-open":
@@ -182,6 +192,19 @@
       '<path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/>',
     "star":
       '<path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>',
+    // Glyph-replacement icons — Lucide MIT
+    "check":
+      '<path d="M20 6 9 17l-5-5"/>',
+    "arrow-right":
+      '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+    "book-open":
+      '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+    "lightbulb":
+      '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+    "maximize":
+      '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+    "grip-vertical":
+      '<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>',
   };
 </script>
 

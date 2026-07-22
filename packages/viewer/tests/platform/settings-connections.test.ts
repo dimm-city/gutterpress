@@ -4,23 +4,27 @@
  * component wiring (see publish-wizard.test.ts).
  */
 import { expect, test, describe } from "bun:test";
-import { readFileSync } from "node:fs";
+import * as fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dir, "../..");
-const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
+const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
 
 describe("Toolbar Save button — flush all pending changes beside Export", () => {
   const page = read("src/routes/+page.svelte");
+  const toolbar = read("src/lib/components/AppToolbar.svelte");
   test("wired to the same force-save the status bar uses, disabled when clean", () => {
-    const idx = page.indexOf('class="save-btn icon-text save-now"');
+    // The button markup lives in the extracted AppToolbar; +page wires the
+    // intent (onSave → handleForceSave) and the clean-state disable.
+    const idx = toolbar.indexOf('class="save-btn icon-text"');
     expect(idx).toBeGreaterThan(-1);
-    const btn = page.slice(idx, idx + 700);
-    expect(btn).toContain("onclick={handleForceSave}");
-    expect(btn).toContain('editorSavePhase === "clean"');
+    const btn = toolbar.slice(idx, idx + 700);
+    expect(btn).toContain("onclick={onSave}");
     expect(btn).toContain("All changes saved");
-    // Sits before the Export button in the same toolbar cluster.
-    expect(idx).toBeLessThan(page.indexOf("onclick={() => exportController.savePdf()}"));
+    expect(page).toContain("onSave={handleForceSave}");
+    expect(page).toMatch(/saveDisabled=\{[^}]*editorSavePhase === "clean"/);
+    // Sits after the Export button — Save is the right-most action.
+    expect(idx).toBeGreaterThan(toolbar.indexOf('class="export-btn'));
   });
 });
 
@@ -53,6 +57,17 @@ describe("Connections tab — central credential management", () => {
     expect(conn).toContain("api.publish.providers()");
     expect(conn).toContain("Publishing accounts");
     expect(conn).toContain("Git servers");
+  });
+  test("publishing accounts are the FIRST section (owner request 2026-07-22)", () => {
+    // Compare the section headings' positions in the template.
+    const pub = conn.indexOf("<h4>Publishing accounts</h4>");
+    const gh = conn.indexOf("<h4>GitHub</h4>");
+    const git = conn.indexOf("<h4>Git servers</h4>");
+    expect(pub).toBeGreaterThan(-1);
+    expect(gh).toBeGreaterThan(-1);
+    expect(git).toBeGreaterThan(-1);
+    expect(pub).toBeLessThan(gh);
+    expect(gh).toBeLessThan(git);
   });
   test("classifies publish entries by compound keys and provider hosts", () => {
     expect(conn).toContain('e.host.includes("#")');
@@ -88,6 +103,67 @@ describe("Connections tab — central credential management", () => {
   test("stays $effect-free (CLAUDE.md §8) — load happens onMount", () => {
     expect(conn).not.toContain("$effect(");
     expect(conn).toContain("onMount(");
+  });
+});
+
+describe("Advanced setup consolidated into the Connections tab (owner request 2026-07-22)", () => {
+  const conn = read("src/lib/components/ConnectionsSettings.svelte");
+  const view = read("src/lib/components/SettingsView.svelte");
+
+  test("the AdvancedSetupDialog component is gone — modal path was dead, embedded body duplicated Connections", () => {
+    expect(fs.existsSync(path.join(root, "src/lib/components/AdvancedSetupDialog.svelte"))).toBe(false);
+    expect(view).not.toContain("AdvancedSetupDialog");
+    expect(view).not.toContain("Advanced setup");
+  });
+
+  test("the Connections tab hosts ONE component with no duplicate connect form", () => {
+    // Exactly one connect-a-git-server call site remains, in ConnectionsSettings.
+    expect(conn.split("connectGenericHost").length - 1).toBe(1);
+    expect(view).toContain("<ConnectionsSettings {projectDir} />");
+  });
+
+  test("the token-URL helper moved onto the single Git-server form (debounced forge lookup)", () => {
+    expect(conn).toContain("api.remote");
+    expect(conn).toContain("forgeTokenUrl");
+    expect(conn).toMatch(/setTimeout\([\s\S]{0,200}forgeTokenUrl/);
+  });
+
+  test("the git-server connect stays project-aware: repo-scoped validation + host prefill", () => {
+    // Validate against the open project's repository when the typed host
+    // matches its HTTPS remote (proves repo access, not just reachability)…
+    expect(conn).toMatch(/repoUrl:\s*diag\.remoteUrl/);
+    expect(conn).toContain("sameHost(");
+    // …and pre-fill the server field when the project needs that server.
+    expect(conn).toContain('"https-connect-server"');
+  });
+
+  test("project diagnostics + Test remote access live on in the consolidated tab", () => {
+    expect(conn).toContain("diagnoseProjectRemote");
+    expect(conn).toContain("testRemoteAccess");
+    expect(conn).toContain("<h4>This project</h4>");
+    expect(conn).toContain("Test remote access");
+    // The explicit-click-only contract survives the move: no automatic probe.
+    expect(conn).toMatch(/onclick=\{runRemoteTest\}/);
+  });
+
+  test("provider guidance (how to get a token, SSH limits) survives, once", () => {
+    expect(conn).toContain("Which server do you use?");
+    expect(conn).toContain("SSH addresses (git@");
+  });
+
+  test("no stale references to the removed dialog anywhere in src", () => {
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(svelte|ts)$/.test(entry.name) && fs.readFileSync(full, "utf8").includes("AdvancedSetupDialog")) {
+          hits.push(path.relative(root, full));
+        }
+      }
+    };
+    walk(path.join(root, "src"));
+    expect(hits).toEqual([]);
   });
 });
 

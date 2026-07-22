@@ -71,6 +71,17 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    /* The scrim is informational chrome, not an input barrier: it must NEVER
+       swallow wheel/pointer input meant for the content underneath. In the
+       pane variant the preview iframe below stays fully visible through the
+       translucent scrim, so a user WILL try to scroll it — and the overlay is
+       up for the whole re-layout after every debounced auto-save, and
+       indefinitely if a renderingComplete is ever lost (paged.js mid-layout
+       crash). Blocking here is what made "scrolling in the viewer completely
+       broken while everything else works" (scroll-dead-preview regression;
+       pinned by tests/platform/preview-scroll-regression.test.ts). Only the
+       spinner card below restores pointer-events for its Cancel button. */
+    pointer-events: none;
     /* Default z-index: below the toolbar and all dialogs so the
        overlay never traps interactive UI elements above it. The pane variant
        only needs to be above the iframe (no z-index stacking contest needed
@@ -97,6 +108,9 @@
     flex-direction: column;
     align-items: center;
     gap: 16px;
+    /* Restore interactivity for the card's Cancel button (the scrim itself is
+       pointer-events: none — see .loading-overlay). */
+    pointer-events: auto;
   }
 
   .spinner {

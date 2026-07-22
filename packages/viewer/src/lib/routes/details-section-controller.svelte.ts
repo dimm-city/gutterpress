@@ -22,6 +22,13 @@
  */
 
 import type { ProjectConfigFields } from "$lib/api";
+import {
+  buildSourceList,
+  moveEntry,
+  setIncluded,
+  toManifestFiles,
+  type SourceFileEntry,
+} from "$lib/components/config/source-files";
 
 export interface DetailsSectionDeps {
   /** The open project directory (reactive prop), or null when none is open. */
@@ -33,6 +40,9 @@ export interface DetailsSectionDeps {
     projectDir: string,
     updates: ProjectConfigFields,
   ) => Promise<ProjectConfigFields>;
+  /** List the project's markdown files (project-relative paths) — the
+   *  universe the source-files include/exclude list is built from. */
+  listMarkdownFiles: (projectDir: string) => Promise<string[]>;
   /** Fired after a successful save (the panel wires this to a toast). */
   onSaved?: () => void;
   /** Fired after a load/save failure (the panel wires this to a toast). */
@@ -53,9 +63,17 @@ export class DetailsSectionController {
   outputDraft = $state("");
   /** Editable author-name drafts, one per row. */
   authorsDraft = $state<string[]>([]);
-  /** Editable source-files draft — one path per line, textarea-bound. */
-  sourceDraft = $state("");
+  /** The source-files list: every project markdown file, ordered, each row
+   *  included or excluded (the DnD editor's model — see source-files.ts). */
+  sourceFiles = $state<SourceFileEntry[]>([]);
 
+  /** The markdown files found on disk at load time (toManifestFiles's
+   *  "is this the all-files default?" reference). */
+  private allMarkdownFiles: string[] = [];
+  /** False when the file scan failed — then the list edits only ever produce
+   *  an explicit manifest (never the "all files" null sentinel), so a blind
+   *  save can't silently widen the book to files we couldn't see. */
+  private scanOk = false;
   private readonly deps: DetailsSectionDeps;
 
   constructor(deps: DetailsSectionDeps) {
@@ -68,12 +86,22 @@ export class DetailsSectionController {
     if (!projectDir) return;
     this.detailsError = null;
     try {
-      const f = await this.deps.readManifest(projectDir);
+      const [f, scan] = await Promise.all([
+        this.deps.readManifest(projectDir),
+        this.deps
+          .listMarkdownFiles(projectDir)
+          .then((files) => ({ ok: true, files }))
+          .catch(() => ({ ok: false, files: [] as string[] })),
+      ]);
       this.fields = f;
       this.titleDraft = f.title ?? "";
       this.outputDraft = f.outputFilename ?? "";
       this.authorsDraft = f.authors ?? [];
-      this.sourceDraft = (f.sourceFiles ?? []).join("\n");
+      this.scanOk = scan.ok;
+      // Failed scan: fall back to the manifest's own entries as the universe
+      // so they stay editable without every row being flagged "missing".
+      this.allMarkdownFiles = scan.ok ? scan.files : (f.sourceFiles ?? []);
+      this.sourceFiles = buildSourceList(this.allMarkdownFiles, f.sourceFiles ?? null);
     } catch (e) {
       this.detailsError = e instanceof Error ? e.message : String(e);
     }
@@ -92,19 +120,31 @@ export class DetailsSectionController {
     this.authorsDraft = this.authorsDraft.map((a, idx) => (idx === i ? v : a));
   };
 
+  // ── Source-files intents (DnD reorder + include/exclude) ─────────────────────
+  moveSourceFile = (from: number, to: number): void => {
+    this.sourceFiles = moveEntry(this.sourceFiles, from, to);
+  };
+
+  setSourceIncluded = (i: number, included: boolean): void => {
+    this.sourceFiles = setIncluded(this.sourceFiles, i, included);
+  };
+
   // ── Save ──────────────────────────────────────────────────────────────────
   saveDetails = async (): Promise<void> => {
     const projectDir = this.deps.projectDir();
     if (!projectDir) return;
     const trimmedAuthors = this.authorsDraft.map((a) => a.trim()).filter((a) => a.length > 0);
-    const sourceLines = this.sourceDraft
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
     this.detailsSaving = true;
     this.detailsError = null;
     try {
-      const src = sourceLines.length === 0 ? null : sourceLines;
+      const included = this.sourceFiles.filter((e) => e.included).map((e) => e.path);
+      // Only a successful scan may collapse to the "all files" null sentinel —
+      // without the true universe that collapse could silently widen the book.
+      const src = this.scanOk
+        ? toManifestFiles(this.sourceFiles, this.allMarkdownFiles)
+        : included.length > 0
+          ? included
+          : null;
       const out = await this.deps.writeManifest(projectDir, {
         title: this.titleDraft.trim(),
         authors: trimmedAuthors,

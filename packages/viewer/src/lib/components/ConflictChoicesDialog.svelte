@@ -315,7 +315,7 @@
 
         <!-- "Not sure?" affordance — recommended lossless default (§6.1) -->
         <div class="keep-both-banner" role="note">
-          <span class="banner-icon" aria-hidden="true">💡</span>
+          <span class="banner-icon" aria-hidden="true"><Icon name="lightbulb" size={16} /></span>
           <span>
             <strong>Not sure?</strong> Choose "Keep both" — it's the safest option
             and saves a copy of both versions next to each other.
@@ -348,7 +348,7 @@
                     onclick={() => togglePreview(file.path)}
                     disabled={phase === "resolving"}
                   >
-                    <span class="disclosure-arrow" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+                    <span class="disclosure-arrow" aria-hidden="true"><Icon name={expanded ? "chevron-down" : "chevron-right"} size={12} /></span>
                     Compare versions
                   </button>
                   {#if expanded}
@@ -420,7 +420,7 @@
                 >
                   Keep both
                   {#if choices[file.path] !== "both"}
-                    <span class="rec-badge" aria-label="Recommended">★</span>
+                    <span class="rec-badge" aria-label="Recommended"><Icon name="star" size={12} /></span>
                   {/if}
                 </button>
               </div>
@@ -495,7 +495,7 @@
     line-height: 1.5;
     color: var(--app-text-secondary);
   }
-  .banner-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .banner-icon { display: inline-flex; flex-shrink: 0; margin-top: 1px; }
   .banner-btn {
     flex-shrink: 0;
     margin-left: auto;
@@ -612,7 +612,8 @@
     background: color-mix(in srgb, var(--app-focus-ring) 22%, transparent);
   }
   .rec-badge {
-    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
     opacity: 0.7;
     flex-shrink: 0;
   }
@@ -705,7 +706,7 @@
   .disclosure-btn:hover:not(:disabled) { color: var(--app-text); background: var(--app-surface-hover); }
   .disclosure-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
   .disclosure-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .disclosure-arrow { font-size: 10px; }
+  .disclosure-arrow { display: inline-flex; align-items: center; }
 
   .preview-panes { display: flex; flex-direction: column; gap: 6px; }
   .pane-row {

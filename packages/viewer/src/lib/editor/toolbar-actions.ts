@@ -632,6 +632,19 @@ export const TOOLBAR_ITEMS: ToolbarItemDef[] = [
     group: "insert",
     desktopOnly: true,
   },
+  {
+    // Focus mode lives on the EDITOR toolbar (not the main toolbar): it is an
+    // editing posture, and this bar stays visible inside focus mode so the
+    // same button toggles back out (Esc works too).
+    id: "focus-mode",
+    kind: "action",
+    action: "focus-mode",
+    icon: "maximize",
+    title: "Focus mode (Ctrl+Shift+F)",
+    ariaLabel: "Toggle focus mode",
+    label: "Focus mode",
+    group: "insert",
+  },
 ];
 
 /**

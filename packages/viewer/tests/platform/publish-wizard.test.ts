@@ -16,18 +16,21 @@ const read = (rel: string) => readFileSync(path.join(root, rel), "utf8");
 
 describe("Toolbar Publish button (front-and-centre entry point)", () => {
   const page = read("src/routes/+page.svelte");
-  test("a Publish button sits by Save PDF, uses the global button style, and opens the wizard", () => {
-    const pubIdx = page.indexOf('name="cloud-upload"');
+  const toolbar = read("src/lib/components/AppToolbar.svelte");
+  test("a Publish button leads the primary action trio, uses the global button style, and opens the wizard", () => {
+    // The button markup lives in the extracted AppToolbar; +page wires the
+    // intent (onPublish → publishOpen = true).
+    const pubIdx = toolbar.indexOf('name="cloud-upload"');
     expect(pubIdx).toBeGreaterThan(-1);
     expect(page).toContain("publishOpen = true");
     // The Publish button follows the global primary button style (#5) — the
-    // same class the neighbouring Save PDF button uses.
-    const region = page.slice(Math.max(0, pubIdx - 300), pubIdx);
+    // same class the neighbouring Export button uses.
+    const region = toolbar.slice(Math.max(0, pubIdx - 300), pubIdx);
     expect(region).toContain("app-btn-primary");
-    // Rendered right after the Save PDF / Export HTML block.
-    const savePdfIdx = page.indexOf("exportController.savePdf()");
-    expect(savePdfIdx).toBeGreaterThan(-1);
-    expect(pubIdx).toBeGreaterThan(savePdfIdx);
+    // Publish leads the trio: Publish → Export → Save (Save right-most).
+    const exportIdx = toolbar.indexOf('class="export-btn');
+    expect(exportIdx).toBeGreaterThan(-1);
+    expect(pubIdx).toBeLessThan(exportIdx);
   });
   test("the wizard is mounted (fresh, via {#if}) and wired to the shared controller", () => {
     expect(page).toContain("{#if publishOpen}");
@@ -46,8 +49,10 @@ describe("Toolbar Publish button (front-and-centre entry point)", () => {
 });
 
 describe("Publishing removed from the crammed Project settings section", () => {
-  const panel = read("src/lib/components/ProjectConfigPanel.svelte");
-  test("ProjectConfigPanel no longer renders or constructs the publish section", () => {
+  // ProjectConfigPanel (the retired sidebar embed) became the full-window
+  // ProjectSettingsView — publishing must stay out of it either way.
+  const panel = read("src/lib/components/ProjectSettingsView.svelte");
+  test("ProjectSettingsView does not render or construct the publish section", () => {
     expect(panel).not.toContain("<PublishSection");
     expect(panel).not.toContain("new PublishSectionController(");
     expect(panel).not.toContain("publish.loadPublish()");

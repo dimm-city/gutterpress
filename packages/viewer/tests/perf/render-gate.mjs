@@ -211,12 +211,16 @@ await evalJs(`(async () => {
 log("projects panel driven; waiting for layout to start…");
 
 const layoutPage = () => evalJs(`(document.body.innerText.match(/Laying out page (\\d+)/) || [])[1] ?? null`);
+// Completion signal: the toolbar's page indicator is a native <select>
+// (AppToolbar.svelte) whose option text never appears in innerText — read its
+// data-total-pages seam instead (enabled = render finished, totalPages > 0).
 const finishedInfo = () =>
   evalJs(`(() => {
-    const t = document.body.innerText;
-    if (/Laying out page \\d+/.test(t)) return null;
-    const m = t.match(/Page[\\s\\u00a0]*\\d+ \\/ (\\d+)/);
-    return m ? Number(m[1]) : null;
+    if (/Laying out page \\d+/.test(document.body.innerText)) return null;
+    const sel = document.querySelector("select.page-select");
+    if (!sel || sel.disabled) return null;
+    const total = Number(sel.dataset.totalPages || 0);
+    return total > 0 ? total : null;
   })()`);
 
 // ── 5. wait for layout to begin (or finish before we catch it) ─────────────

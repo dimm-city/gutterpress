@@ -232,11 +232,18 @@
   }
   .hover-preview iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
-  /* 480px: the hover-preview flyout physically can't fit beside the grid on
-     very narrow panels — component-local, unrelated to the 820px app tier. */
+  /* The viewport-pinned flyout needs true free space RIGHT of the settings
+     view's centered 860px column: its left edge (100vw − 376px) crosses the
+     column's right edge ((100vw + 860px) / 2) below ~1620px, where it would
+     cover the very theme cards being hovered (calibrated for the old left-
+     sidebar geometry). Below that, the card's own thumbnail is the preview. */
+  @media (max-width: 1620px) {
+    .hover-preview { display: none; }
+  }
+
+  /* 480px: two-column theme grid on very narrow panels — component-local,
+     unrelated to the 820px app tier. */
   @media (max-width: 480px) {
     .theme-grid { grid-template-columns: 1fr 1fr; }
-    /* On narrow screens the pinned preview would cover the grid — hide it. */
-    .hover-preview { display: none; }
   }
 </style>

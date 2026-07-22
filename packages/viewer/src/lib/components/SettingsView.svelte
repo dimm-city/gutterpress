@@ -4,10 +4,12 @@
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
+  import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
 
   let {
     onClose,
     projectDir = null,
+    initialTab = "app",
     onViewModeChange,
     onCrashRecoveryChange,
   }: {
@@ -15,6 +17,9 @@
     /** The open project dir (Connections tab: adding a publishing key verifies
      *  against the platform, and some checks read the project's settings). */
     projectDir?: string | null;
+    /** The tab to land on when the view opens (e.g. "connections" from the
+     *  reconnect / advanced-setup entry points). */
+    initialTab?: SettingsTab;
     /** Called immediately when the user changes the view mode setting. */
     onViewModeChange?: (mode: "single" | "two-column") => void;
     /** Called immediately when the user toggles crash recovery. */
@@ -32,7 +37,6 @@
   // Connections management), so the panel is tabbed: each tab renders one
   // cohesive slice. The active tab persists across opens within a session —
   // reopening lands where the user last was.
-  type SettingsTab = "app" | "editor" | "saving" | "connections" | "advanced";
   const TABS: Array<{ id: SettingsTab; label: string }> = [
     { id: "app", label: "App" },
     { id: "editor", label: "Editor" },
@@ -40,7 +44,11 @@
     { id: "connections", label: "Connections" },
     { id: "advanced", label: "Advanced" },
   ];
-  let activeTab = $state<SettingsTab>("app");
+  // Mounted fresh per open ({#if settingsOpen}) — the initial value is the
+  // requested landing tab; navigation from there is user-driven. Sanitized:
+  // an unknown value here used to leave NO tab active (empty settings body).
+  // svelte-ignore state_referenced_locally
+  let activeTab = $state<SettingsTab>(sanitizeSettingsTab(initialTab));
   let tabEls = $state<Record<SettingsTab, HTMLButtonElement | undefined>>({
     app: undefined,
     editor: undefined,
@@ -371,10 +379,11 @@
       {/if}
 
       {#if activeTab === "connections"}
-      <!-- Connections — the central place to manage every stored credential:
-           GitHub, other Git servers, and publishing accounts (itch.io, Azure,
-           Shopify …). Management lives in its own component; this panel only
-           hosts it. -->
+      <!-- Connections — the ONE place to manage every stored credential AND
+           this project's sync surface: publishing accounts, GitHub, other Git
+           servers (incl. the former Advanced-setup token flow, diagnostics,
+           and Test Remote Access — consolidated 2026-07-22; the duplicate
+           connect form and connected-servers list it carried are gone). -->
       <section class="group">
         <ConnectionsSettings {projectDir} />
       </section>

@@ -21,8 +21,10 @@
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
   import GitHubDialog from "$lib/components/GitHubDialog.svelte";
   import PublishWizard from "$lib/components/PublishWizard.svelte";
-  import AdvancedSetupDialog from "$lib/components/AdvancedSetupDialog.svelte";
   import Icon from "$lib/components/Icon.svelte";
+  import AppToolbar from "$lib/components/AppToolbar.svelte";
+  import ExportDialog from "$lib/components/ExportDialog.svelte";
+  import ProjectSettingsView from "$lib/components/ProjectSettingsView.svelte";
   import EditorToolbar from "$lib/components/EditorToolbar.svelte";
   import type { ToolbarAction, ToolbarPayload } from "$lib/components/EditorToolbar.svelte";
   import SnippetPicker from "$lib/components/SnippetPicker.svelte";
@@ -51,15 +53,14 @@
     NARROW_BREAKPOINT,
     type MobileTab,
     paneModeForTab,
-    editorSurfaceForTab,
     tabFromPaneMode,
-    adjacentTab,
     keyboardOffset,
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
   import { resolveGlobalShortcut, resolvePreviewNavCommand } from "$lib/routes/shortcuts";
   import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
+  import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -127,19 +128,18 @@
     sourceMode: () => lifecycle.sourceMode,
     chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
     onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
-    buildPdf: (input, outPath) =>
+    buildPdf: (input, outPath, opts) =>
       getPlatform().build({
         input,
         format: "pdf",
         out: outPath,
-        // Validation is skipped for the quick "Save PDF" action by design —
-        // it's a fast RGB export, not the full preflight. (Most checks now run
-        // in-process and need no system tools; the full validated/PDF-X pipeline
-        // is available via the CLI or the Docker image.) Lint stays ON — the
-        // in-process PostCSS print-safety checks catch real CSS problems before
-        // PDF gen.
-        skipPreValidate: true,
-        skipPostValidate: true,
+        // Validation is skipped by default (the quick Ctrl+Shift+E export and
+        // the dialog's default) — it's a fast RGB export, not the full
+        // preflight. The export dialog's "Run print-safety validation" toggle
+        // opts back in. Lint stays ON either way — the in-process PostCSS
+        // print-safety checks catch real CSS problems before PDF gen.
+        skipPreValidate: !opts?.validate,
+        skipPostValidate: !opts?.validate,
       }),
     buildHtml: (input) => getPlatform().build({ input, format: "html" }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
@@ -207,9 +207,9 @@
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
-  let pageEditInput = $state<HTMLInputElement | undefined>(undefined);
-  // Page-navigation FSM (Phase 5): owns currentPage/totalPages/pageEditing/
-  // pageEditValue/restoringSavedState + the host-driven navigation intents.
+  // Page-navigation FSM (Phase 5): owns currentPage/totalPages/
+  // restoringSavedState + the host-driven navigation intents (including the
+  // toolbar page-select's selectPage).
   // Host coupling is injected so the component stays a thin composition root.
   // Explicit type annotation breaks a circular-inference chain with `lifecycle`
   // below: pageNav's deps close over `lifecycle.rendering`/`lifecycle.currentDir`
@@ -227,7 +227,6 @@
         api.app.setViewerProjectState(lifecycle.currentDir, { currentPage: page }).catch(() => {});
       }
     },
-    onBeginEdit: () => queueMicrotask(() => pageEditInput?.focus()),
   });
   // Preview layout FSM: owns zoom / view-mode / fit-width / split-pane-drag
   // state + the intents that drive the host preview. Host coupling (client,
@@ -293,6 +292,7 @@
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
   let settingsOpen = $state(false);
+  let settingsInitialTab = $state<SettingsTab>("app");
   // autoOpeningLastProject/lastProjectChecked (Phase 5 slice 2, UX H5 / ARCH
   // #10) now live on `startup` (StartupController) — see its instantiation
   // below.
@@ -342,11 +342,22 @@
   function closeActivityView(): void {
     closePaneView();
   }
-  function openSettings(): void {
+  /** Open the app Settings view, optionally landing on a specific tab
+   *  (the former Advanced setup is consolidated into the Connections tab).
+   *  `tab` is `unknown` on purpose: entry points are click handlers, and an
+   *  `onclick={onOpenSettings}` call site hands the MouseEvent in as `tab` —
+   *  unsanitized, that left NO tab active and an empty settings body. */
+  function openSettings(tab: unknown = "app"): void {
+    settingsInitialTab = sanitizeSettingsTab(tab);
     settingsOpen = true;
   }
   function closeSettings(): void {
     settingsOpen = false;
+    // Connections/Advanced setup live inside Settings now — refresh the sync
+    // state on close, mirroring what the old dialogs' onClosed hook did.
+    if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
+      void syncController.refreshSyncDiag(lifecycle.currentDir);
+    }
     if (landingVisible) landingRef?.focusLayer();
   }
   function toggleSettings(): void {
@@ -386,9 +397,6 @@
 
   // "Open from GitHub" flow (#15)
   let githubOpen = $state(false);
-  // Advanced setup (#14): diagnostics + generic "Connect a Git server"
-  let advancedSetupOpen = $state(false);
-  let advancedSetupBtn = $state<HTMLButtonElement | undefined>(undefined);
   // New-project wizard (#25). L4: opening is exclusively via show() below —
   // there is no bindable `open` prop any more (the wizard owns that state).
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
@@ -491,7 +499,9 @@
       stopFolderWatch();
       pageNav.totalPages = 0;
       pageNav.currentPage = 1;
-      pageNav.pageEditing = false;
+      // A project closed while its settings view was up must not show that
+      // view over the next project (or the empty workspace).
+      projectSettingsOpen = false;
       editorOpen = false;
       previewHidden = false;
       // A project closed while activity borrowed the editor must not reopen the
@@ -540,6 +550,25 @@
       ? `${lifecycle.docTitle || folderName} — ${basenameOf(projectSession.repoRoot)}`
       : lifecycle.docTitle || folderName,
   );
+
+  // ── Toolbar-facing deriveds ─────────────────────────────────────────────────
+  // AppToolbar is purely presentational: it receives finished booleans/strings,
+  // never lifecycle objects, so its contract stays small and testable.
+  let toolbarProjectOpen = $derived(!!lifecycle.currentDir && lifecycle.sourceMode === "folder");
+  let exportDisabled = $derived(
+    lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url",
+  );
+  // Why-is-Export-disabled notes (UX-023) + the web-target "desktop app" note.
+  // URL mode wins over the no-folder message (currentDir is null there too,
+  // and "Open a folder first" would be misleading while previewing a URL);
+  // the toolbar hides hints entirely in URL mode anyway.
+  let exportHints = $derived.by(() => {
+    const hints: string[] = [];
+    if (lifecycle.sourceMode === "url") hints.push("Not available for web previews");
+    else if (!lifecycle.currentDir && !lifecycle.busy) hints.push("Open a folder first");
+    if (!canSavePdf) hints.push("PDF export requires the desktop app");
+    return hints;
+  });
 
   // ── Start screen (welcome landing) ──────────────────────────────────────────
   // The in-window layer that replaced both the old splash window's "wait for the full
@@ -784,7 +813,7 @@
   // flow — GitHub's device flow, or Advanced Setup for every other server.
   function onSyncReconnect() {
     if (syncController.syncDiag?.provider === "github") githubOpen = true;
-    else advancedSetupOpen = true;
+    else openSettings("connections");
   }
 
   // Route the RecoveryGuidanceDialog's primary button by the guidance's machine
@@ -796,7 +825,7 @@
         onSyncReconnect();
         break;
       case "check_connection":
-        advancedSetupOpen = true;
+        openSettings("connections");
         break;
       case "sync":
         // Retry the sync; handleForceSync also routes conflicts to the chooser.
@@ -826,7 +855,7 @@
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
-  // Called by onClosed on both GitHubDialog and AdvancedSetupDialog.
+  // Called by onClosed on GitHubDialog.
   function onConnectDialogClosed() {
     if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
       void syncController.refreshSyncDiag(lifecycle.currentDir);
@@ -925,17 +954,17 @@
     snippetPickerRef?.show();
   }
 
-  // Plugin manager (#30) — opened from the overflow menu (desktop + project).
-  // ── Project Configuration view (#PCV) ───────────────────────────────────────
-  // Project configuration is now a left-sidebar tab; activity is the only
-  // alternate editor-pane view. Settings always owns the full window.
+  // ── Project settings view (#PCV → full window) ─────────────────────────────
+  // Project settings live in a full-window view patterned after the app
+  // SettingsView (they used to be a left-sidebar Config tab); activity is the
+  // only alternate editor-pane view.
   let editorView = $state<"editor" | "activity">("editor");
+  let projectSettingsOpen = $state(false);
 
   /**
-   * One button → the whole project configuration view. Opens the editor pane
-   * (so the panel has a frame to render into) and switches it to the config
-   * view. Does NOT lazy-load the CodeMirror editor module — the config panel has
-   // no need for it, keeping first-open cheap.
+   * One button → the whole project settings view (manifest details, look &
+   * style, plugins). Full-window like the app settings; the workspace behind
+   * it goes inert and returns untouched on close.
    */
   function openProjectConfig(): void {
     if (!lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
@@ -943,9 +972,11 @@
       toast?.info?.("Project configuration is available in the desktop app for now.");
       return;
     }
-    leftPanelOpen = true;
-    leftPanelTab = "config";
-    persistLeftPanelPrefs();
+    projectSettingsOpen = true;
+  }
+
+  function closeProjectSettings(): void {
+    projectSettingsOpen = false;
   }
 
   /**
@@ -958,45 +989,20 @@
     editorView = "editor";
     paneViewRestore = null;
     editorOpen = true;
+    // Narrow single-pane layout keys editor visibility off paneMode, not
+    // editorOpen — switch panes too, or the loaded stylesheet stays hidden
+    // behind the preview with no way to reveal it (the Markdown tab would
+    // swap the file away first).
+    if (isNarrow && paneMode !== "edit") setPaneMode("edit");
     loadEditorModule();
     selectEditorFile(absPath);
     focusEditorWhenReady();
   }
 
-  // "Save as template" (#29) — capture the open project as a reusable template.
-  let saveTemplateOpen = $state(false);
-  let saveTemplateName = $state("");
-  let saveTemplateBusy = $state(false);
-  let saveTemplateError = $state<string | null>(null);
+  // "Save as template" (#29) now lives in the ExportDialog (Template format).
+  let exportOpen = $state(false);
+  let exportBtnEl = $state<HTMLButtonElement | undefined>(undefined);
 
-  function openSaveAsTemplate() {
-    if (!isDesktop() || !lifecycle.currentDir) return;
-    saveTemplateName = "";
-    saveTemplateError = null;
-    saveTemplateOpen = true;
-  }
-
-  async function confirmSaveAsTemplate() {
-    if (!lifecycle.currentDir) return;
-    if (!saveTemplateName.trim()) {
-      saveTemplateError = "Give your template a name.";
-      return;
-    }
-    saveTemplateBusy = true;
-    saveTemplateError = null;
-    try {
-      const tpl = await api.tpl.saveAsTemplate({
-        projectDir: lifecycle.currentDir,
-        name: saveTemplateName.trim(),
-      });
-      saveTemplateOpen = false;
-      toast?.success(`Saved “${tpl.label}” as a template.`);
-    } catch (e) {
-      saveTemplateError = e instanceof Error ? e.message : String(e);
-    } finally {
-      saveTemplateBusy = false;
-    }
-  }
   // True below the single-pane breakpoint. Assigned by the matchMedia
   // subscription further down; declared here so the derived below can read it.
   let isNarrow = $state(false);
@@ -1524,7 +1530,12 @@
     isLeftPanelPrefsLoaded: () => leftPanelPrefsLoaded,
     applyLeftPanelPrefs: (panelPrefs) => {
       leftPanelPrefsLoaded = true;
-      if (panelPrefs?.activeTab) leftPanelTab = panelPrefs.activeTab as typeof leftPanelTab;
+      // Validate against the live tab set — older sessions may have persisted
+      // the retired "config" tab (project settings are a full view now).
+      const validTabs: PanelTab[] = ["projects", "toc", "files", "media"];
+      if (panelPrefs?.activeTab && (validTabs as string[]).includes(panelPrefs.activeTab)) {
+        leftPanelTab = panelPrefs.activeTab as PanelTab;
+      }
       if (typeof panelPrefs?.width === "number") leftPanelWidth = Math.min(480, Math.max(200, panelPrefs.width));
       leftPanelOpen = panelPrefs?.open ?? false;
     },
@@ -1645,6 +1656,17 @@
   // ----------------------------------------------------------------
   onMount(() => {
     function onGlobalKey(e: KeyboardEvent) {
+      // The full-window Project settings view owns the keyboard while it's up:
+      // the workspace behind it is inert, so acting on it (opening Settings
+      // invisibly BENEATH the view, toggling focus mode, exporting, snippet
+      // picker) would mutate UI the user can't see. Escape closes the view.
+      if (projectSettingsOpen) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeProjectSettings();
+        }
+        return;
+      }
       const command = resolveGlobalShortcut({
         ctrlOrMeta: e.ctrlKey || e.metaKey,
         shift: e.shiftKey,
@@ -1656,6 +1678,9 @@
         toggleSettings();
         return;
       }
+      // The app Settings view is equally full-window: beyond its own Ctrl+,
+      // toggle above, workspace shortcuts must not act behind it.
+      if (settingsOpen) return;
       // The start screen owns the rest of the keyboard while it's up (its own
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
@@ -1707,6 +1732,9 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
+      // Never page/zoom the hidden preview behind a full-window settings view
+      // (PageUp/PageDown must scroll the settings body, not the preview).
+      if (settingsOpen || projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
@@ -1996,16 +2024,6 @@
     };
   }
 
-  // Close the enclosing <details> menu after a menu item is chosen, and return
-  // focus to its summary for keyboard users.
-  function closeMenu(e: Event) {
-    const details = (e.currentTarget as HTMLElement)?.closest("details");
-    if (details) {
-      details.open = false;
-      details.querySelector<HTMLElement>("summary")?.focus();
-    }
-  }
-
   function setPaneMode(mode: "edit" | "view") {
     settings.set({ preview: { paneMode: mode } });
     // Switching to the edit pane should open the editor + focus it (folder only).
@@ -2091,40 +2109,29 @@
     else enterFocusMode();
   }
 
-  // ── Mobile tab bar (#34): Markdown / CSS / Preview ─────────────────────────
+  // ── Mobile tab bar (#34): Markdown / Preview ───────────────────────────────
   // The single-column (narrow) layout switches the one visible pane between the
-  // markdown editor, the CSS editor, and the preview. Both editor tabs share the
-  // existing editor pane (the CSS editing surface is the SAME CodeMirror editor
-  // with a CSS language mode, #39); the tab just loads the relevant file. The
-  // persisted two-state `paneMode` ("edit"/"view") is the source of truth so the
-  // existing restore + wide-screen behaviour is untouched.
+  // editor and the preview. The persisted two-state `paneMode` ("edit"/"view")
+  // is the source of truth so the existing restore + wide-screen behaviour is
+  // untouched. (The defunct CSS/style tab was retired with the toolbar
+  // refactor — project styling lives in the Project settings view.)
   //
-  // M1 (single source of truth): the highlighted editor tab is derived SOLELY
-  // from the open file's extension (`openFileIsCss`) — no parallel
-  // `editorSurface` state that could get stuck on "css" when no CSS file is
-  // actually open. This also covers preview→editor chapter follow + recovery +
-  // ensureEditorFile picking a file on its own.
+  // M1 (single source of truth): whether the shared editor is on a CSS file is
+  // derived SOLELY from the open file's extension (`openFileIsCss`) — no
+  // parallel state that could get stuck on "css" when no CSS file is open.
   let openFileIsCss = $derived(
     !!editorFilePath && /\.css$/i.test(editorFilePath),
   );
-  // Active mobile tab, derived from the persisted paneMode + which file is open.
-  // No new persistence: reload restores via paneMode, then the open file decides
-  // markdown vs css.
-  let mobileTab = $derived<MobileTab>(
-    tabFromPaneMode(paneMode, openFileIsCss),
-  );
+  // Active mobile tab, derived from the persisted paneMode. No new persistence.
+  let mobileTab = $derived<MobileTab>(tabFromPaneMode(paneMode));
 
   /**
    * Switch the visible mobile pane. Preview → view mode; Markdown → edit mode
-   * with the first markdown file loaded; CSS → the unified Project
-   * Configuration view (its Styles section picks a stylesheet; its Design
-   * section fine-tunes tokens) — replacing the retired manifest-aware picker.
+   * with the first markdown file loaded.
    */
   function selectMobileTab(tab: MobileTab) {
-    const mode = paneModeForTab(tab);
-    setPaneMode(mode);
-    const surface = editorSurfaceForTab(tab);
-    if (surface === "markdown") {
+    setPaneMode(paneModeForTab(tab));
+    if (tab === "markdown") {
       // Only swap files if the editor is currently on a CSS file; otherwise keep
       // the author's open chapter (ensureEditorFile is a no-op when one is open).
       if (openFileIsCss) {
@@ -2145,34 +2152,7 @@
         void ensureEditorFile();
       }
       focusEditorWhenReady();
-    } else if (surface === "css") {
-      // The CSS tab now opens the unified Project Configuration view (its
-      // Styles section lets the author pick which stylesheet to edit; the
-      // Design section fine-tunes tokens). The old manifest-aware picker was
-      // retired along with the four modal managers (#PCV).
-      openProjectConfig();
     }
-  }
-
-  /**
-   * Keyboard navigation for the mobile tablist (WAI-ARIA tabs pattern):
-   * Left/Up = previous, Right/Down = next, Home/End = first/last. Activates the
-   * focused tab (automatic activation) and moves focus to its button.
-   */
-  function onMobileTabKeydown(e: KeyboardEvent) {
-    let next: MobileTab | null = null;
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = adjacentTab(mobileTab, 1);
-    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = adjacentTab(mobileTab, -1);
-    else if (e.key === "Home") next = "markdown";
-    else if (e.key === "End") next = "preview";
-    if (!next) return;
-    e.preventDefault();
-    selectMobileTab(next);
-    queueMicrotask(() => {
-      document
-        .querySelector<HTMLButtonElement>(`#mobile-tab-${next}`)
-        ?.focus();
-    });
   }
 
   // ── Virtual-keyboard handling (#34) ────────────────────────────────────────
@@ -2282,7 +2262,7 @@
 {#if exportController.exporting && exportController.pdfProgress}
   <div class="export-pill" role="status" aria-live="polite" aria-atomic="true">
     {#if exportController.state === "success"}
-      <span class="export-success" aria-hidden="true">✓</span>
+      <span class="export-success" aria-hidden="true"><Icon name="check" size={14} /></span>
     {:else}
       <span class="export-spinner" aria-hidden="true"></span>
     {/if}
@@ -2293,9 +2273,21 @@
   </div>
 {/if}
 
+<!-- The Electron window title follows document.title — keep it in step with
+     the toolbar's document identity (folder title / URL doc title). -->
+<svelte:head>
+  <title>{
+    lifecycle.sourceMode === "url" && lifecycle.currentUrl
+      ? (lifecycle.docTitle ?? lifecycle.currentUrl)
+      : lifecycle.currentDir
+        ? displayTitle
+        : "print-md viewer"
+  }</title>
+</svelte:head>
+
 <!-- inert while the start screen or full-window Settings view is up: the
       workspace keeps rendering, but never accepts interaction underneath. -->
-<div class="app-root" inert={landingVisible || settingsOpen}>
+<div class="app-root" inert={landingVisible || settingsOpen || projectSettingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -2312,381 +2304,53 @@
 {/if}
 
 <div class="shell" class:focus-mode={focusMode}>
-  <header class="toolbar" class:edit-narrow={isNarrow && paneMode === "edit"}>
-    <section class="left">
-      <!-- Panel toggle — far left, first control in navbar -->
-      <button
-        bind:this={leftPanelToggleBtn}
-        class="icon-btn panel-toggle-btn"
-        class:active={leftPanelOpen}
-        onclick={toggleLeftPanel}
-        title="Toggle left panel (Ctrl+\)"
-        aria-label="Toggle left panel"
-        aria-pressed={leftPanelOpen}
-        aria-controls="left-panel-region"
-      >
-        <Icon name="panel-left" />
-      </button>
-      {#if lifecycle.sourceMode === "url" && lifecycle.currentUrl}
-        {#if lifecycle.docTitle}
-          <span class="doc-title" title={lifecycle.docTitle}>{lifecycle.docTitle}</span>
-        {/if}
-        <span class="path" title={lifecycle.currentUrl}>{lifecycle.currentUrl}</span>
-        <button class="icon-btn" onclick={openInBrowser} title="Open in browser" aria-label="Open in browser">
-          <Icon name="external-link" />
-        </button>
-      {:else if lifecycle.currentDir}
-        <!-- Folder source: show the title/name; full path is the hover tooltip. -->
-        <span class="doc-title" title={lifecycle.currentDir}>{displayTitle}</span>
-      {:else}
-        <span class="path no-project">print-md</span>
-      {/if}
-    </section>
-
-    <!-- Center column: absolutely positioned so the page-nav group is always
-         truly centered in the toolbar regardless of left/right section widths. -->
-    <div class="toolbar-center-col">
-      <!-- UX-012: center nav only shows when a document is loaded. #34: on narrow
-           viewports it is hidden — the absolutely-centered page-nav group would
-           collide with the right-aligned Markdown/CSS/Preview tab bar at 390px,
-           and the tab bar is the priority control there (the preview still
-           scrolls/swipes for page navigation). -->
-      {#if lifecycle.previewUrl && !isNarrow}
-        <section class="center">
-          <button class="icon-btn" onclick={() => pageNav.firstPage()} disabled={lifecycle.rendering} title="First page (Home)" aria-label="First page">
-            <Icon name="chevrons-left" />
-          </button>
-          <button class="icon-btn" onclick={() => pageNav.prevPage()} disabled={lifecycle.rendering} title="Previous page (Left/PageUp)" aria-label="Previous page">
-            <Icon name="chevron-left" />
-          </button>
-          {#if pageNav.pageEditing}
-            <input
-              bind:this={pageEditInput}
-              type="number"
-              class="page-input"
-              min="1"
-              max={pageNav.totalPages || 1}
-              bind:value={pageNav.pageEditValue}
-              onblur={() => pageNav.commitPageEdit()}
-              onkeydown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  pageNav.commitPageEdit();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  pageNav.cancelPageEdit();
-                }
-              }}
-              aria-label="Go to page"
-            />
-          {:else}
-            <button class="page-pill" onclick={() => pageNav.beginPageEdit()} disabled={lifecycle.rendering} aria-label="Edit current page">
-              <span class="pill-word">Page&nbsp;</span>{pageNav.currentPage} / {pageNav.totalPages || "—"}
-            </button>
-          {/if}
-          <button class="icon-btn" onclick={() => pageNav.nextPage()} disabled={lifecycle.rendering} title="Next page (Right/PageDown)" aria-label="Next page">
-            <Icon name="chevron-right" />
-          </button>
-          <button class="icon-btn" onclick={() => pageNav.lastPage()} disabled={lifecycle.rendering} title="Last page (End)" aria-label="Last page">
-            <Icon name="chevrons-right" />
-          </button>
-        </section>
-      {/if}
-    </div>
-
-    <!-- Flex spacer: pushes .right to the far end. -->
-    <div class="toolbar-spacer" aria-hidden="true"></div>
-
-    <section class="right">
-      <!-- On narrow viewports the layout is single-pane; this radiogroup
-           switches which pane is shown (#responsive). Disabled until a project
-           folder is open. On wide viewports the Edit button lives in the center
-           column (left of the page-nav group) instead. -->
-      {#if isNarrow}
-        <!-- #34: three-tab single-pane switcher (Markdown / CSS / Preview).
-             Real WAI-ARIA tabs: role=tablist + tab, aria-selected, roving
-             tabindex, arrow/Home/End navigation. The tabpanels are the existing
-             editor + preview panes in .workspace below (linked via aria-controls
-             on the active tab). On wide viewports the Edit button in the center
-             column is used instead. -->
-        <div
-          class="pane-toggle"
-          role="tablist"
-          aria-label="Markdown, CSS, or Preview"
-          aria-orientation="horizontal"
-        >
-          <button
-            id="mobile-tab-markdown"
-            role="tab"
-            class="icon-text seg"
-            class:active={mobileTab === "markdown"}
-            onclick={() => selectMobileTab("markdown")}
-            onkeydown={onMobileTabKeydown}
-            disabled={!lifecycle.currentDir || lifecycle.sourceMode === "url"}
-            title="Edit your markdown"
-            aria-label="Markdown"
-            aria-selected={mobileTab === "markdown"}
-            aria-controls="mobile-panel-editor"
-            tabindex={mobileTab === "markdown" ? 0 : -1}
-          >
-            <Icon name="pen-line" /><span class="view-label">Markdown</span>
-          </button>
-          <button
-            id="mobile-tab-css"
-            role="tab"
-            class="icon-text seg"
-            class:active={mobileTab === "css"}
-            onclick={() => selectMobileTab("css")}
-            onkeydown={onMobileTabKeydown}
-            disabled={!lifecycle.currentDir || lifecycle.sourceMode === "url"}
-            title="Edit the project's CSS"
-            aria-label="CSS"
-            aria-selected={mobileTab === "css"}
-            aria-controls="mobile-panel-editor"
-            tabindex={mobileTab === "css" ? 0 : -1}
-          >
-            <Icon name="palette" /><span class="view-label">CSS</span>
-          </button>
-          <button
-            id="mobile-tab-preview"
-            role="tab"
-            class="icon-text seg"
-            class:active={mobileTab === "preview"}
-            onclick={() => selectMobileTab("preview")}
-            onkeydown={onMobileTabKeydown}
-            disabled={!lifecycle.previewUrl}
-            title="Preview your book"
-            aria-label="Preview"
-            aria-selected={mobileTab === "preview"}
-            aria-controls="mobile-panel-preview"
-            tabindex={mobileTab === "preview" ? 0 : -1}
-          >
-            <Icon name="eye" /><span class="view-label">Preview</span>
-          </button>
-        </div>
-      {/if}
-      <!-- UX-039: separator before view mode controls -->
-      <span class="toolbar-sep" aria-hidden="true"></span>
-
-      <!-- View-mode (single/spread): a pair of segmented buttons on wide
-           screens; collapses into a single menu button when space is tight. -->
-      <div class="view-mode-group">
-        <button
-          class="icon-text"
-          class:active={viewMode === "single"}
-          onclick={() => zoomView.applyViewMode("single", true)}
-          disabled={!lifecycle.previewUrl}
-          title="Show one page at a time"
-          aria-label="Single page view"
-          aria-pressed={viewMode === "single"}
-        >
-          <Icon name="rectangle-vertical" /><span class="view-label">Single</span>
-        </button>
-        <button
-          class="icon-text"
-          class:active={viewMode === "two-column"}
-          onclick={() => zoomView.applyViewMode("two-column", true)}
-          disabled={!lifecycle.previewUrl}
-          title="Show two pages side by side, like an open book"
-          aria-label="Two pages side by side"
-          aria-pressed={viewMode === "two-column"}
-        >
-          <Icon name="columns-2" /><span class="view-label">Two-page</span>
-        </button>
-      </div>
-      <details class="menu view-mode-menu">
-        <summary
-          class="icon-btn menu-summary"
-          title="Page view mode"
-          aria-label="Page view mode"
-        >
-          <Icon name={viewMode === "single" ? "rectangle-vertical" : "columns-2"} />
-          <Icon name="chevron-down" size={12} />
-        </summary>
-        <div class="menu-panel">
-          <button
-            aria-pressed={viewMode === "single"}
-            class="menu-item"
-            class:active={viewMode === "single"}
-            onclick={(e) => { zoomView.applyViewMode("single", true); closeMenu(e); }}
-            disabled={!lifecycle.previewUrl}
-          >
-            <Icon name="rectangle-vertical" /> Single page
-          </button>
-          <button
-            aria-pressed={viewMode === "two-column"}
-            class="menu-item"
-            class:active={viewMode === "two-column"}
-            onclick={(e) => { zoomView.applyViewMode("two-column", true); closeMenu(e); }}
-            disabled={!lifecycle.previewUrl}
-          >
-            <Icon name="columns-2" /> Two pages side by side
-          </button>
-        </div>
-      </details>
-
-      <!-- Zoom: always use the compact icon button so the toolbar stays tight. -->
-      <details class="menu zoom-menu">
-        <summary
-          class="icon-btn menu-summary"
-          title="Zoom level"
-          aria-label="Zoom level"
-        >
-          <Icon name="zoom-in" />
-          <Icon name="chevron-down" size={12} />
-        </summary>
-        <div class="menu-panel">
-          {#each [["fit-width", "Fit to width"], ["0.25", "25%"], ["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"], ["2", "200%"]] as [val, label] (val)}
-            <button
-              aria-pressed={zoom === val}
-              class="menu-item"
-              class:active={zoom === val}
-              onclick={(e) => { zoomView.applyZoom(val); closeMenu(e); }}
-              disabled={!lifecycle.previewUrl}
-            >
-              {label}
-            </button>
-          {/each}
-        </div>
-      </details>
-
-      {#if !isNarrow}
-        <button
-          class="icon-btn"
-          class:active={previewHidden}
-          onclick={togglePreview}
-          disabled={!lifecycle.previewUrl || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
-          title={previewHidden ? "Show preview" : "Hide preview"}
-          aria-label={previewHidden ? "Show preview" : "Hide preview"}
-          aria-pressed={previewHidden}
-        >
-          <Icon name="eye" />
-        </button>
-        <button
-          class="icon-btn"
-          class:active={editorOpen}
-          onclick={toggleEditor}
-          disabled={!lifecycle.currentDir || lifecycle.sourceMode === "url"}
-          title="Toggle markdown editor (Ctrl+E)"
-          aria-label="Toggle markdown editor"
-          aria-pressed={editorOpen}
-        >
-          <Icon name="pen-line" />
-        </button>
-      {/if}
-
-      <!-- UX-039: separator before Save PDF -->
-      <span class="toolbar-sep" aria-hidden="true"></span>
-      <!-- Save: flush all pending editor changes to disk NOW (the same
-           force-save the status bar's "Save now" runs). Sits beside Export so
-           the save→export pair reads as one workflow. Disabled (with an
-           "everything saved" tooltip) when there is nothing pending. -->
-      <button
-        class="save-btn icon-text save-now"
-        onclick={handleForceSave}
-        disabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
-        title={!editorFilePath || editorSavePhase === "clean" ? "All changes saved" : "Save pending changes (Ctrl+S)"}
-        aria-label="Save pending changes"
-      >
-        <Icon name="save" />
-        <span class="save-btn-label">{forceSaving ? "Saving…" : "Save"}</span>
-      </button>
-      <!-- #33 Phase 4: PDF export is desktop-only (puppeteer/printToPDF). On the
-           web (capabilities().nativeSavePath === false) the control is replaced
-           with a short "requires the desktop app" note. On desktop
-           (nativeSavePath:true) this is UNCHANGED. -->
-      {#if canSavePdf}
-        <!-- UX-006: Save PDF always visible; icon-only at narrow widths -->
-        <button
-          class="primary app-btn-primary save-btn icon-text"
-          onclick={() => exportController.savePdf()}
-          disabled={lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
-          title="Export as PDF (Ctrl+Shift+E)"
-        >
-          <Icon name="file-down" />
-          <span class="save-btn-label">{exportController.exporting ? "Exporting…" : "Export"}</span>
-        </button>
-        <!-- UX-023: explain why Save PDF is disabled -->
-        {#if !lifecycle.currentDir && !lifecycle.busy}
-          <span class="save-hint">Open a folder first</span>
-        {:else if lifecycle.sourceMode === "url"}
-          <span class="save-hint">Not available for web previews</span>
-        {:else if lifecycle.saveWarning}
-          <span class="save-hint save-warning" role="alert">{lifecycle.saveWarning}</span>
-        {/if}
-      {:else}
-        <!-- #33 Phase 5: PDF is desktop-only; on the web export a standalone
-             book.html instead (build({format:"html"}) → blob downloadUrl). -->
-        <button
-          class="primary app-btn-primary save-btn icon-text"
-          onclick={() => exportController.exportHtml()}
-          disabled={lifecycle.busy || exportController.exporting || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
-          title="Export as HTML"
-        >
-          <Icon name="file-down" />
-          <span class="save-btn-label">{exportController.exporting ? "Exporting…" : "Export HTML"}</span>
-        </button>
-        {#if !lifecycle.currentDir && !lifecycle.busy}
-          <span class="save-hint">Open a folder first</span>
-        {:else if lifecycle.sourceMode === "url"}
-          <span class="save-hint">Not available for web previews</span>
-        {/if}
-        <span class="save-hint" role="note">PDF export requires the desktop app</span>
-      {/if}
-      <!-- Publish: front-and-centre entry to the publishing wizard (desktop
-           only — the publish providers run host-side). Sits right next to
-           Save PDF so authors find it without digging through settings. -->
-      {#if isDesktop()}
-        <button
-          class="primary app-btn-primary save-btn icon-text"
-          onclick={() => (publishOpen = true)}
-          disabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
-          title="Publish your book to itch.io, KDP, Shopify and more"
-        >
-          <Icon name="cloud-upload" />
-          <span class="save-btn-label">Publish</span>
-        </button>
-      {/if}
-      <!-- Overflow menu: holds less-common project actions so the toolbar never
-           crowds page navigation. Settings and Help live in the bottom status bar. -->
-      <details class="menu more-menu">
-        <summary class="icon-btn menu-summary" title="More" aria-label="More options">
-          <Icon name="ellipsis-vertical" />
-        </summary>
-        <div class="menu-panel menu-panel-right">
-          {#if lifecycle.currentDir && lifecycle.sourceMode === "folder"}
-            <!-- Focus mode (#104): editor-only, chrome hidden. Transient. -->
-            <button
-              class="menu-item"
-              aria-pressed={focusMode}
-              onclick={(e) => { toggleFocusMode(); closeMenu(e); }}
-            >
-              <Icon name="pen-line" /> {focusMode ? "Exit focus mode" : "Focus mode"} ({focusMode ? "Esc" : "Ctrl+Shift+F"})
-            </button>
-          {/if}
-          {#if isDesktop()}
-            <!-- Advanced setup (#14): Git/remote diagnostics + private servers -->
-            <button
-              bind:this={advancedSetupBtn}
-              class="menu-item"
-              onclick={(e) => { advancedSetupOpen = true; closeMenu(e); }}
-            >
-              <Icon name="link" /> Advanced setup
-            </button>
-          {/if}
-          {#if isDesktop() && lifecycle.currentDir}
-            <!-- Save as template (#29): capture this project as a reusable starter -->
-            <button
-              class="menu-item"
-              onclick={(e) => { openSaveAsTemplate(); closeMenu(e); }}
-            >
-              <Icon name="puzzle" /> Save as template…
-            </button>
-          {/if}
-        </div>
-      </details>
-    </section>
-  </header>
+  <AppToolbar
+    bind:panelToggleEl={leftPanelToggleBtn}
+    {leftPanelOpen}
+    onToggleLeftPanel={toggleLeftPanel}
+    sourceMode={lifecycle.sourceMode}
+    currentUrl={lifecycle.currentUrl}
+    docTitle={lifecycle.docTitle}
+    folderTitle={lifecycle.currentDir ? displayTitle : null}
+    folderTooltip={lifecycle.currentDir}
+    onOpenInBrowser={openInBrowser}
+    {pageNav}
+    rendering={lifecycle.rendering}
+    showPageNav={!!lifecycle.previewUrl && !isNarrow}
+    {isNarrow}
+    {mobileTab}
+    onSelectMobileTab={selectMobileTab}
+    editorTabDisabled={!toolbarProjectOpen}
+    previewTabDisabled={!lifecycle.previewUrl}
+    hidePreviewControls={isNarrow && paneMode === "edit"}
+    {viewMode}
+    {zoom}
+    previewControlsDisabled={!lifecycle.previewUrl}
+    onApplyViewMode={(mode) => zoomView.applyViewMode(mode, true)}
+    onApplyZoom={(val) => zoomView.applyZoom(val)}
+    {previewHidden}
+    previewToggleDisabled={!lifecycle.previewUrl || !toolbarProjectOpen}
+    onTogglePreview={togglePreview}
+    {editorOpen}
+    editorToggleDisabled={!toolbarProjectOpen}
+    onToggleEditor={toggleEditor}
+    publishVisible={isDesktop()}
+    publishDisabled={lifecycle.busy || !lifecycle.currentDir || lifecycle.sourceMode === "url"}
+    onPublish={() => (publishOpen = true)}
+    {canSavePdf}
+    exporting={exportController.exporting}
+    {exportDisabled}
+    onOpenExport={() => (exportOpen = true)}
+    bind:exportBtnEl
+    {exportHints}
+    exportWarning={canSavePdf ? lifecycle.saveWarning : null}
+    saving={forceSaving}
+    saveDisabled={!editorFilePath || forceSaving || editorSavePhase === "clean"}
+    savePending={!!editorFilePath && editorSavePhase !== "clean"}
+    onSave={handleForceSave}
+    showProjectSettings={toolbarProjectOpen && isDesktop()}
+    onOpenProjectSettings={openProjectConfig}
+  />
 
   <!-- Global left panel — available in both preview and edit modes -->
   <div id="left-panel-region" class="left-panel-region" class:panel-open={leftPanelOpen} style="--left-panel-width: {leftPanelWidth}px">
@@ -2713,7 +2377,6 @@
       onBeforeRenameOpenFile={onTreeBeforeRename}
       onFileRenamed={onTreeFileRenamed}
       onFileDeleted={onTreeFileDeleted}
-      onOpenProjectConfig={openProjectConfig}
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
@@ -2761,7 +2424,7 @@
           class="pane editor-pane"
           id="mobile-panel-editor"
           role={isNarrow ? "tabpanel" : undefined}
-          aria-label={mobileTab === "css" ? "CSS editor" : "Markdown editor"}
+          aria-label={openFileIsCss ? "CSS editor" : "Markdown editor"}
         >
           {#if editorView === "activity"}
             <!-- Remount on project switch so a stale snapshot/log list from a
@@ -2793,6 +2456,10 @@
               onAction={(action, payload) => {
                 if (action === "snippet") {
                   openSnippetPicker();
+                  return;
+                }
+                if (action === "focus-mode") {
+                  toggleFocusMode();
                   return;
                 }
                 editorRef?.runToolbarAction(action, payload);
@@ -3007,10 +2674,26 @@
   <section class="settings-global-view" aria-label="Settings">
     <SettingsView
       projectDir={lifecycle.currentDir}
+      initialTab={settingsInitialTab}
       onClose={closeSettings}
       onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
       onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
     />
+  </section>
+{/if}
+{#if projectSettingsOpen}
+  <!-- Project settings (manifest): full-window like the app settings. Keyed by
+       projectDir so a project switch can never leave stale section state
+       (drafts, theme lists) resident under the new project. -->
+  <section class="settings-global-view" aria-label="Project settings">
+    {#key lifecycle.currentDir}
+      <ProjectSettingsView
+        projectDir={lifecycle.currentDir}
+        {toast}
+        onClose={closeProjectSettings}
+        onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
+      />
+    {/key}
   </section>
 {/if}
 
@@ -3030,7 +2713,7 @@
     invalidateDiscoveredProjects(); // a fresh clone is a new discoverable book
     return openProjectPath(projectDir, "Opening your project…");
   }}
-  onAdvancedSetup={() => (advancedSetupOpen = true)}
+  onAdvancedSetup={() => openSettings("connections")}
   onClosed={onConnectDialogClosed}
   triggerEl={leftPanelToggleBtn}
 />
@@ -3048,12 +2731,6 @@
     }}
   />
 {/if}
-<AdvancedSetupDialog
-  bind:open={advancedSetupOpen}
-  projectDir={lifecycle.sourceMode === "folder" ? lifecycle.currentDir : null}
-  triggerEl={advancedSetupBtn}
-  onClosed={onConnectDialogClosed}
-/>
 <NewProjectWizard
   bind:this={newProjectWizardRef}
   onCreated={(projectDir) => {
@@ -3073,39 +2750,18 @@
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
   onInsert={(text) => editorRef?.insertSnippet(text)}
 />
-<!-- The Project Configuration view (#PCV) replaces the retired PluginManager,
-     ThemeManager, StylePicker, and DesignPanel modal dialogs. It renders inline
-     in the editor pane (above); no modal mount point is needed here. -->
-<!-- Save-as-template name prompt (#29). Minimal modal: name + confirm. -->
-{#if saveTemplateOpen}
-  <div class="save-tpl-backdrop" role="presentation" onclick={() => (saveTemplateOpen = false)}></div>
-  <div class="save-tpl-dialog" role="dialog" aria-modal="true" aria-labelledby="save-tpl-title">
-    <h2 id="save-tpl-title">Save as template</h2>
-    <p class="save-tpl-lead">
-      Save this project as a reusable starter you can pick when creating a new book.
-    </p>
-    <label class="save-tpl-field">
-      <span>Template name</span>
-      <!-- svelte-ignore a11y_autofocus -->
-      <input
-        type="text"
-        bind:value={saveTemplateName}
-        placeholder="My Template"
-        autocomplete="off"
-        autofocus
-        onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmSaveAsTemplate(); } }}
-      />
-    </label>
-    {#if saveTemplateError}
-      <p class="save-tpl-error" role="alert">{saveTemplateError}</p>
-    {/if}
-    <div class="save-tpl-actions">
-      <button class="ghost" onclick={() => (saveTemplateOpen = false)} disabled={saveTemplateBusy}>Cancel</button>
-      <button class="primary app-btn-primary" onclick={confirmSaveAsTemplate} disabled={saveTemplateBusy}>
-        {saveTemplateBusy ? "Saving…" : "Save template"}
-      </button>
-    </div>
-  </div>
+<!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar
+     Export button. Mounted fresh per open so its state resets. -->
+{#if exportOpen}
+  <ExportDialog
+    projectDir={lifecycle.currentDir}
+    {canSavePdf}
+    {toast}
+    triggerEl={exportBtnEl}
+    onExportPdf={(opts) => void exportController.savePdf(opts)}
+    onExportHtml={() => void exportController.exportHtml()}
+    onClose={() => (exportOpen = false)}
+  />
 {/if}
 <!-- ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
      SyncStatusPill when the auto-sync orchestrator surfaces a conflict.
@@ -3274,7 +2930,7 @@
      is left functionally unchanged — there focus mode only shows the editor tab
      (via setPaneMode in JS) and the toolbar's mobile tab bar must stay. */
   @media (min-width: 821px) {
-    .shell.focus-mode > .toolbar,
+    .shell.focus-mode > :global(.toolbar),
     .shell.focus-mode :global(.status-bar),
     .shell.focus-mode :global(.left-panel),
     .shell.focus-mode .splitter,
@@ -3355,11 +3011,10 @@
     text-overflow: ellipsis;
   }
   .export-success {
-    width: 14px;
+    display: inline-flex;
+    align-items: center;
     flex: 0 0 auto;
     color: var(--app-success-text);
-    font-weight: 700;
-    text-align: center;
   }
   .export-cancel {
     background: transparent;
@@ -3377,78 +3032,19 @@
     to { transform: rotate(360deg); }
   }
 
-  /* ---- Toolbar ---- */
-  .toolbar {
-    /* Flex layout: [left] [spacer] [right] with .toolbar-center-col absolutely
-       centered via position:absolute + left:50% + translateX(-50%).
-       This guarantees the page-nav group (+ Edit toggle) is always at the
-       horizontal midpoint of the toolbar regardless of left/right section widths.
-       The single .toolbar-spacer absorbs remaining slack between left and right.
-       container-type: inline-size enables @container queries so toolbar
-       breakpoints respond to toolbar width, not viewport width — the correct
-       tool for a component that may be constrained by surrounding layout. */
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0 12px;
-    height: 56px;
-    flex-shrink: 0;
-    container-type: inline-size;
-    background: linear-gradient(
-      to bottom,
-      light-dark(#fafafa, #252525),
-      light-dark(#f0f0f1, #1e1e1e)
-    );
-    border-bottom: 1px solid var(--app-border);
-    /* Stacking context ABOVE the workspace panes so dropdown menus that hang
-       below the toolbar paint over the preview, not behind it. overflow must
-       stay visible for the same reason — `overflow: hidden` clips dropdowns. */
-    position: relative;
-    z-index: var(--app-z-toolbar);
-    overflow: visible;
-  }
-
-  /* Single flex spacer pushes .right to the far end; the center column is
-     absolutely positioned so it is always mathematically centered. */
-  .toolbar-spacer {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  /* Center column: absolutely centered in the toolbar so the page-nav group
-     is always at 50% regardless of left/right section widths. Contains the
-     Edit toggle (left of nav) and the page-nav section. pointer-events: none
-     on the wrapper prevents the transparent sides from swallowing clicks;
-     each interactive child restores pointer-events. */
-  .toolbar-center-col {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    pointer-events: none;
-  }
-  .toolbar-center-col > *,
-  .toolbar-center-col button,
-  .toolbar-center-col input,
-  .toolbar-center-col .center {
-    pointer-events: auto;
-  }
-
+  /* ---- Toolbar ----
+     The toolbar markup, layout, and responsive collapse rules live in
+     AppToolbar.svelte now (a 3-column grid + container queries). Only the
+     generic button primitives shared by the remaining +page surfaces
+     (banners, dialogs) stay here. */
   section { display: flex; align-items: center; gap: 6px; min-width: 0; }
-  /* .left never shrinks — Open button must always be visible and clickable.
-     doc-title / path inside .left truncate via text-overflow on their own.
-     .right is also fixed-size; the single spacer absorbs slack between them. */
-  .left  { flex: 0 0 auto; overflow: hidden; }
-  .center { flex: 0 0 auto; }
-  .right  { flex: 0 0 auto; }
 
   /* ---- Buttons & inputs ---- */
-  /* Geometry shared by ALL toolbar buttons, including the primary/active
-     variants (they inherit padding/radius/border box from here; only their
-     COLOUR differs). border is split into width/style so a variant's own
-     border-COLOUR isn't clobbered. */
+  /* Geometry shared by ALL +page buttons (banner actions, export pill,
+     save-as-template dialog), including the primary variants (they inherit
+     padding/radius/border box from here; only their COLOUR differs). border
+     is split into width/style so a variant's own border-COLOUR isn't
+     clobbered. */
   button {
     border-width: 1px;
     border-style: solid;
@@ -3480,11 +3076,6 @@
      every `class="primary"` button in this file's template also carries
      `app-btn-primary`, which supplies the color. `.primary` itself is kept as
      a plain semantic marker class with no CSS of its own. */
-  button.active {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
-  }
   button:disabled {
     opacity: 0.4;
     cursor: not-allowed;
@@ -3496,241 +3087,8 @@
     outline-offset: 2px;
   }
 
-  .icon-btn {
-    padding: 5px 8px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  /* Button vocabulary: in the toolbar, secondary controls (nav arrows, settings,
-     help, menu summaries) read as ONE ghost family — transparent until hover —
-     so the filled treatment is reserved for the primary actions (Open, Save PDF)
-     and active toggles (Edit, the selected view-mode segment). This removes the
-     "every control is a box" clutter the design review flagged. */
-  .toolbar .icon-btn:not(.active),
-  .toolbar .menu-summary {
-    background: transparent;
-    border-color: transparent;
-  }
-  .toolbar .icon-btn:not(.active):hover:not(:disabled),
-  .toolbar .menu-summary:hover {
-    background: var(--app-control-hover-bg);
-    border-color: transparent;
-  }
-  /* Combo button: icon + label text side by side */
-  .icon-text {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .icon-text :global(svg) { flex: 0 0 auto; }
-
-  /* UX-014: small text label under/beside view mode icon */
-  .view-label { font-size: 11px; }
-
-  /* Edit/View segmented toggle (narrow single-pane mode) */
-  .pane-toggle {
-    display: inline-flex;
-    gap: 0;
-    background: var(--app-control-bg);
-    border: 1px solid var(--app-control-border);
-    border-radius: 7px;
-    padding: 2px;
-  }
-  .pane-toggle .seg {
-    border-radius: 5px;
-    border: 1px solid transparent;
-    background: transparent;
-  }
-  /* Active segment: filled accent, matching .view-mode-group button.active */
-  .pane-toggle .seg.active {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
-  }
-
-  /* ---- Collapsible dropdown menus (view-mode + zoom) ---- */
-  /* View mode swaps between inline segmented buttons and a menu button. Zoom is
-     always compact and always uses its menu button. */
-  /* Narrow + Edit mode: the preview is hidden, so its controls (page navigation,
-     single/spread, zoom) are noise — hide them so the edit toolbar is just
-     Open / Edit·View / Save / More. The spacers collapse the gap automatically
-     when center is absent. */
-  .toolbar.edit-narrow .toolbar-center-col,
-  .toolbar.edit-narrow .view-mode-group,
-  .toolbar.edit-narrow .view-mode-menu,
-  .toolbar.edit-narrow .zoom-menu {
-    display: none;
-  }
-
-  .menu { position: relative; display: none; }
-  details.zoom-menu { display: inline-block; }
-  /* The "More" overflow menu uses higher specificity (details.more-menu) than
-     the generic `.menu { display: inline-block }` shown at <=980px, so it stays
-     hidden until its own <=620px breakpoint. */
-  details.more-menu { display: none; }
-  .menu-summary {
-    list-style: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    cursor: pointer;
-  }
-  .menu-summary::-webkit-details-marker { display: none; }
-  .menu[open] .menu-summary {
-    background: var(--app-control-hover-bg);
-    border-color: var(--app-control-hover-border);
-  }
-  .menu-panel {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    /* Intra-toolbar stacking only: the toolbar (z: var(--app-z-toolbar)) is a
-       stacking context, so this small literal never competes app-wide. */
-    z-index: 80;
-    min-width: 168px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 4px;
-    background: var(--app-surface-raised);
-    border: 1px solid var(--app-border);
-    border-radius: 8px;
-    box-shadow: 0 6px 20px var(--app-shadow-md);
-  }
-  .menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    padding: 6px 10px;
-    font-size: 13px;
-    white-space: nowrap;
-  }
-  .menu-item:hover:not(:disabled) {
-    background: var(--app-control-hover-bg);
-    border-color: var(--app-control-hover-border);
-  }
-  .menu-item.active {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
-  }
-  /* Page/Spread as a true segmented control: one bordered track, the selected
-     segment filled, the other transparent — so "which mode am I in" is obvious. */
-  .view-mode-group {
-    display: inline-flex;
-    gap: 0;
-    background: var(--app-control-bg);
-    border: 1px solid var(--app-control-border);
-    border-radius: 7px;
-    padding: 2px;
-  }
-  .view-mode-group button {
-    border: 1px solid transparent;
-    background: transparent;
-    border-radius: 5px;
-    padding: 4px 9px;
-  }
-  .view-mode-group button:hover:not(:disabled) {
-    background: var(--app-control-hover-bg);
-    border-color: transparent;
-  }
-  .view-mode-group button.active {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
-  }
-
-  .page-input {
-    background: var(--app-control-bg);
-    border: 1px solid var(--app-control-border);
-    color: var(--app-control-text);
-    padding: 5px 4px;
-    border-radius: 6px;
-    font-size: 13px;
-    width: 52px;
-    text-align: center;
-  }
-  .page-input:disabled { opacity: 0.4; }
-  .page-pill {
-    /* Component-private palette (single consumer — stays out of theme.css
-       per its admission rule); flips with the app theme via color-scheme. */
-    --pill-from: light-dark(#e8edf5, #313740);
-    --pill-to: light-dark(#dde4ef, #262c34);
-    background: linear-gradient(to bottom, var(--pill-from), var(--pill-to));
-    border-color: light-dark(#b3c0d4, #576170);
-    color: light-dark(#1a3055, #eef4ff);
-    min-width: 104px;
-    text-align: center;
-  }
-  .page-pill:hover:not(:disabled) {
-    background: linear-gradient(to bottom, var(--pill-from), var(--pill-to));
-    border-color: var(--app-control-hover-border);
-  }
-
-  /* Panel toggle button — keeps its ghost style as active when panel is open,
-     with the accent fill matching other active toggles (Edit, view mode). */
-  .panel-toggle-btn.active {
-    background: linear-gradient(to bottom, var(--app-accent-hover), var(--app-accent));
-    border-color: var(--app-accent-border);
-    color: var(--app-accent-text);
-  }
-  .panel-toggle-btn.active:hover:not(:disabled) {
-    background: linear-gradient(to bottom, var(--app-accent-bright), var(--app-accent-hover));
-  }
-
-  .doc-title {
-    color: var(--app-text-secondary);
-    font-size: 13px;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 200px;
-    flex-shrink: 1;
-  }
-  .no-project {
-    font-weight: 700;
-    color: var(--app-text-secondary);
-  }
-
-  /* UX-031: muted token for better contrast */
-  .path {
-    color: var(--app-text-muted);
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 260px;
-    flex-shrink: 2;
-  }
-
-  /* UX-039: visual separator between toolbar groups */
-  .toolbar-sep {
-    width: 1px;
-    height: 20px;
-    background: var(--app-border-strong);
-    margin: 0 4px;
-    flex-shrink: 0;
-  }
-
-  /* UX-023: hint below Save PDF when disabled */
-  .save-hint {
-    font-size: 11px;
-    color: var(--app-text-muted);
-    white-space: nowrap;
-  }
-  .save-warning {
-    color: var(--app-warning-text);
-    max-width: 240px;
-    white-space: normal;
-    line-height: 1.35;
-  }
+  /* (Toolbar control styles — icon buttons, menus, segmented groups, page
+     select, titles, separators, hints — moved to AppToolbar.svelte.) */
 
   /* (Empty-state hero styles removed — the WelcomeLanding component is the
      app's single "nothing open" surface and carries its own styles.) */
@@ -3799,72 +3157,6 @@
   }
   .update-later:hover { background: var(--app-scrim-strong); }
 
-  /* ---- Toolbar container queries ----
-     @container queries measure the toolbar's own inline size — the correct
-     tool for a component-level layout. This replaces viewport @media queries
-     which were wrong because toolbar width can differ from viewport width.
-
-     New smaller control set (after workspace restructure): panel-toggle,
-     project-title, page-nav, Edit/View toggle, view-mode, zoom, Save PDF,
-     Settings, Help. No Open, chapter dropdown, Problems, History, or Sync.
-
-     Measured full-set width at 1200px viewport ≈ 1050px (panel-toggle 40 +
-     title 200 + spacers 200 + page-nav 260 + sep 17 + edit 40 + view-mode-group
-     120 + zoom 40 + sep 17 + save-pdf 90 + settings 40 + help 40 = ~1064).
-
-     Collapse stages:
-       1200cqi — collapse view-mode into a dropdown menu
-       1000cqi — trim doc-title / path max-widths
-        850cqi — drop button text labels (icon-only)
-        760cqi — hide doc title, drop Save PDF text label
-        720cqi — fold Settings+Help into "More" menu
-        640cqi — hide path, drop separators
-        580cqi — drop "Page" word
-        520cqi — compact page nav (drop first/last) */
-
-  @container (max-width: 1200px) {
-    /* Swap the inline view-mode buttons for a compact menu button. Zoom is
-       already compact and always visible. */
-    .view-mode-group { display: none; }
-    .menu { display: inline-block; }
-  }
-  @container (max-width: 1000px) {
-    .doc-title { max-width: 140px; }
-    .path { max-width: 180px; }
-  }
-  @container (max-width: 850px) {
-    /* Icon-only buttons: labels drop, aria-label/title keep them accessible. */
-    .view-label { display: none; }
-  }
-  @container (max-width: 760px) {
-    .doc-title { display: none; }
-    .path { max-width: 140px; }
-    /* Hide Save PDF text label, keep button as icon-only */
-    .save-btn-label { display: none; }
-  }
-  @container (max-width: 720px) {
-    details.more-menu { display: inline-block; }
-  }
-  @container (max-width: 640px) {
-    .path { display: none; }
-    .zoom-menu,
-    .view-mode-group,
-    .view-mode-menu,
-    .toolbar-sep {
-      display: none;
-    }
-  }
-  @container (max-width: 580px) {
-    /* Drop the "Page" word from the pill */
-    .pill-word { display: none; }
-  }
-  @container (max-width: 520px) {
-    /* Compact page navigation: drop the first/last jump buttons */
-    .center .icon-btn:first-child,
-    .center .icon-btn:last-child { display: none; }
-    .page-pill { min-width: 56px; }
-  }
-
   /* ---- Small-screen single-pane layout (#responsive) ----
      Below NARROW_QUERY (820px) the editor + preview can't sit side by side.
      The workspace stays a single column and the Edit/View toggle decides which
@@ -3919,34 +3211,10 @@
     }
   }
 
-  /* #34 Touch-optimised toolbar — coarse pointer (phones/tablets) gets ≥44×44px
-     tap targets per WCAG 2.5.5 / Apple HIG, WITHOUT affecting the desktop
-     (mouse) layout. Scoped to (pointer: coarse) so a desktop user with a mouse
-     sees the unchanged compact toolbar. The narrow media query alone is not
-     enough (a desktop window narrowed below 820px must NOT get fat buttons),
-     hence the pointer query. */
+  /* #34 Touch targets on coarse pointers: the editor's own formatting toolbar
+     buttons are finger-driven on a phone (the main toolbar's touch sizing
+     lives in AppToolbar.svelte). */
   @media (pointer: coarse) {
-    .toolbar .icon-btn,
-    .toolbar .icon-text,
-    .toolbar .menu-summary,
-    .pane-toggle .seg,
-    .toolbar .primary {
-      min-width: 44px;
-      min-height: 44px;
-    }
-    /* Generous padding so the larger hit area is comfortable, not cramped. */
-    .toolbar .icon-btn,
-    .toolbar .menu-summary {
-      padding: 10px 12px;
-    }
-    .pane-toggle {
-      padding: 3px;
-    }
-    .pane-toggle .seg {
-      padding: 8px 12px;
-    }
-    /* The editor's own formatting toolbar buttons inherit the touch sizing too,
-       since they're equally finger-driven on a phone. */
     .editor-pane :global(.tb-btn) {
       min-width: 40px;
       min-height: 40px;
@@ -3968,29 +3236,4 @@
     }
   }
 
-  /* Save-as-template prompt (#29) */
-  .save-tpl-backdrop { position: fixed; inset: 0; background: var(--app-backdrop); z-index: var(--app-z-modal); }
-  .save-tpl-dialog {
-    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-    width: min(420px, 94vw); background: var(--app-surface); color: var(--app-text-secondary);
-    border-radius: 8px; box-shadow: 0 14px 40px var(--app-shadow-lg); z-index: calc(var(--app-z-modal) + 1);
-    padding: 18px; display: flex; flex-direction: column; gap: 12px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  }
-  .save-tpl-dialog h2 { margin: 0; font-size: 16px; font-weight: 600; }
-  .save-tpl-lead { margin: 0; font-size: 13px; color: var(--app-text-muted); }
-  .save-tpl-field { display: flex; flex-direction: column; gap: 6px; }
-  .save-tpl-field > span { font-size: 12px; color: var(--app-text-muted); font-weight: 500; }
-  .save-tpl-field input {
-    background: var(--app-surface-sunken); border: 1px solid var(--app-border);
-    color: var(--app-text-secondary); padding: 8px 10px; border-radius: 6px; font-size: 14px;
-  }
-  .save-tpl-field input:focus { outline: none; border-color: var(--app-focus-ring); }
-  .save-tpl-error { color: var(--app-error-text); font-size: 12px; margin: 0; }
-  .save-tpl-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .save-tpl-actions button { padding: 7px 16px; font-size: 13px; border-radius: 4px; cursor: pointer; border-width: 1px; border-style: solid; }
-  .save-tpl-actions button:disabled { opacity: 0.45; cursor: default; }
-  /* Primary colors come from the shared .app-btn-primary recipe (theme.css). */
-  .save-tpl-actions .ghost { background: transparent; color: var(--app-text-muted); border-color: var(--app-border); }
-  .save-tpl-actions .ghost:not(:disabled):hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>
