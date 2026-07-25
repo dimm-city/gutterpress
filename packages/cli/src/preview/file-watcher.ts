@@ -180,6 +180,17 @@ export async function renderPreviewBook(
  * With `pageIsolateChapters` (the incremental preview), each chapter is also
  * page-isolated so the shell can re-paginate and splice a single edited
  * chapter without disturbing the others.
+ *
+ * PAGINATION FIDELITY: that page isolation is a `.pmd-chapter{break-before:page}`
+ * rule injected HERE, in the preview only. `print-md build` emits no such rule
+ * (see assembleBookHtml in lib/markdown/assemble.ts — the build concatenates
+ * source files flat into <body>), so the live preview starts EVERY source file
+ * on a new page while the build breaks only where your CSS or a
+ * markdown-it-paged marker says to. Projects that split one chapter across
+ * several source files will therefore see a higher page count and different
+ * page boundaries in the preview than in the built PDF. The build is
+ * authoritative; set PRINTMD_PREVIEW_INCREMENTAL=0 to preview without the
+ * injected break.
  */
 export function injectPreviewScripts(html: string, pageIsolateChapters: boolean): string {
   const iface =
