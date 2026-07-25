@@ -177,33 +177,38 @@ export async function renderPreviewBook(
  *          serving it from a stable disk path lets the OS file-cache
  *          and Defender hash-cache stay warm across sessions.
  *
- * With `pageIsolateChapters` (the incremental preview), each chapter is also
- * page-isolated so the shell can re-paginate and splice a single edited
- * chapter without disturbing the others.
+ * PAGINATION FIDELITY: this injects NO page-break rule. It used to add
+ * `<style>.pmd-chapter{break-before:page}</style>` whenever the incremental
+ * preview was on (i.e. by default), which started EVERY source file on a new
+ * page in the live view. `print-md build` emits no such rule — assembleBookHtml
+ * in lib/markdown/assemble.ts concatenates source files flat into <body> and
+ * breaks only where project CSS or a markdown-it-paged marker says to — so any
+ * project that splits one chapter across several source files previewed with
+ * different page boundaries than the PDF it built. Preview and build now take
+ * their breaks from exactly the same rules.
  *
- * PAGINATION FIDELITY: that page isolation is a `.pmd-chapter{break-before:page}`
- * rule injected HERE, in the preview only. `print-md build` emits no such rule
- * (see assembleBookHtml in lib/markdown/assemble.ts — the build concatenates
- * source files flat into <body>), so the live preview starts EVERY source file
- * on a new page while the build breaks only where your CSS or a
- * markdown-it-paged marker says to. Projects that split one chapter across
- * several source files will therefore see a higher page count and different
- * page boundaries in the preview than in the built PDF. The build is
- * authoritative; set PRINTMD_PREVIEW_INCREMENTAL=0 to preview without the
- * injected break.
+ * KNOWN RESIDUAL (predates this, was masked by the removed rule): if the first
+ * source file's first element carries `break-before: page` (a `.page` marker,
+ * or an `h1` in most themes), the `.pmd-chapter` wrapper makes Paged.js treat
+ * that break as a real one instead of dropping it at the start of the flow, so
+ * the preview leads with one blank page and every page NUMBER is one higher
+ * than the build's. Page CONTENT and boundaries match; the offset does not.
+ *
+ * The `.pmd-chapter` wrappers stay (see `wrapChapters` in assemble.ts): they are
+ * how the shell locates and splices a single edited chapter, and they carry no
+ * break of their own. Without the forced break, neighbouring chapters routinely
+ * share a page — preview-shell.js already handles that (see `tagPages`,
+ * `pagesFor` and the shared-page branch of `spliceChapter`), at the cost of a
+ * content-correct-but-un-reflowed neighbour page until the next full reload.
  */
-export function injectPreviewScripts(html: string, pageIsolateChapters: boolean): string {
+export function injectPreviewScripts(html: string): string {
   const iface =
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  let output = html.replace(
+  return html.replace(
     pagedjsPolyfillTagRegex(),
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
-  if (pageIsolateChapters && /<\/head>/i.test(output)) {
-    output = output.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
-  }
-  return output;
 }
 
 /**
@@ -230,17 +235,21 @@ export async function generateAndWriteHtml(
   });
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, incremental),
+    injectPreviewScripts(html),
     "utf-8"
   );
 }
 
 /**
  * Render a SINGLE source file as a standalone, paginatable preview document
- * (same CSS/plugins/scripts as the full book, chapter-wrapped + page-isolated).
- * The incremental shell loads this in a hidden iframe, paginates just this
- * chapter, and splices its pages into the live view — so an edit re-paginates
- * one chapter (~hundreds of ms) instead of the whole document (~seconds).
+ * (same CSS/plugins/scripts as the full book, chapter-wrapped). The incremental
+ * shell loads this in a hidden iframe, paginates just this chapter, and splices
+ * its pages into the live view — so an edit re-paginates one chapter
+ * (~hundreds of ms) instead of the whole document (~seconds).
+ *
+ * This document holds exactly ONE chapter, so there is nothing to isolate it
+ * from and no break rule to inject — it paginates on the project's own rules,
+ * same as the full book.
  */
 export async function renderChapterPreviewHtml(
   inputPath: string,
@@ -248,7 +257,7 @@ export async function renderChapterPreviewHtml(
   config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
 ): Promise<string> {
   const html = await renderPreviewBook(inputPath, config, { files: [file], wrapChapters: true });
-  return injectPreviewScripts(html, true);
+  return injectPreviewScripts(html);
 }
 
 /** One changed file, resolved to its temp-dir mirror destination. */

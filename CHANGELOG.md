@@ -3,6 +3,26 @@
 All notable changes to print-md are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- The live preview no longer starts every source file on a new page. It was
+  injecting a `.pmd-chapter{break-before:page}` rule that `print-md build` has
+  no equivalent for, so any project that splits one chapter across several
+  source files previewed with different page boundaries than the PDF it
+  produced. Preview and build now break only where project CSS or a
+  markdown-it-paged marker says to. Measured on a 292-page book whose chapter 2
+  spans nine source files: 227 of 293 preview pages previously carried
+  different content than the build; now every page carries the same content the
+  build puts there.
+  Two caveats: the preview still leads with one blank page when the first
+  source file opens with a forced break (a separate `.pmd-chapter` wrapper
+  artifact that the removed rule used to mask), so preview page *numbers* run
+  one ahead of the build. And chapters that now share a page still splice on
+  edit via the shell's shared-page path, which leaves the shared page's other
+  chapter un-reflowed until the next full reload.
+
 ## [0.8.3] - 2026-07-22
 
 ### Changed
