@@ -209,23 +209,26 @@ describe('injectPreviewScripts', () => {
   const html = `<!doctype html>\n<html><head><title>t</title>\n  ${pagedjsPolyfillTag()}\n</head><body></body></html>`;
 
   test('swaps the polyfill slot for the interface scripts + served polyfill', () => {
-    const out = injectPreviewScripts(html, false);
+    const out = injectPreviewScripts(html);
     expect(out).toContain('/preview/scripts/pagedjs-interface.js');
     expect(out).toContain('/preview/scripts/pagedjs-bridge.js');
     expect(out).toContain('/vendor/paged.polyfill.js');
     expect(out).not.toContain('data-pagedjs-polyfill');
   });
 
-  test('page-isolates chapters only in incremental mode', () => {
-    const isolate = '<style>.pmd-chapter{break-before:page}</style>';
-    expect(injectPreviewScripts(html, true)).toContain(isolate);
-    expect(injectPreviewScripts(html, false)).not.toContain(isolate);
+  // PAGINATION FIDELITY: the preview must not force a page break the build
+  // doesn't have. This used to inject `.pmd-chapter{break-before:page}`, which
+  // started every source file on a new page in the live view only.
+  test('injects no page-break rule — preview paginates like the build', () => {
+    const out = injectPreviewScripts(html);
+    expect(out).not.toContain('break-before');
+    expect(out).not.toContain('.pmd-chapter{');
   });
 });
 
 describe('cssHotSwapPaths', () => {
-  const css = (p: string): ChangedDest => ({ relativePath: p, ext: '.css', event: 'change' });
-  const md = (p: string): ChangedDest => ({ relativePath: p, ext: '.md', event: 'change' });
+  const css = (p: string): ChangedDest => ({ relativePath: p, ext: '.css', event: 'change', mirrored: true });
+  const md = (p: string): ChangedDest => ({ relativePath: p, ext: '.md', event: 'change', mirrored: true });
 
   test('returns every stylesheet path when the whole window is CSS', () => {
     expect(cssHotSwapPaths([css('a.css'), css('sub/b.css')], 2)).toEqual(['a.css', 'sub/b.css']);
@@ -244,10 +247,27 @@ describe('cssHotSwapPaths', () => {
   test('returns null for an empty window', () => {
     expect(cssHotSwapPaths([], 0)).toBeNull();
   });
+
+  test('returns null when a stylesheet was reported but not actually mirrored', () => {
+    // Regression: the copy into the temp dir is fallible (an editor saving via
+    // temp-file+rename can delete the source between the stat and the copy).
+    // That failure is swallowed so it cannot abort the rebuild, but the entry
+    // is still reported. Hot-swapping on it would re-fetch the STALE temp copy
+    // and nothing re-renders afterwards to correct it — unlike markdown, which
+    // re-renders from source. Must degrade to a full update instead.
+    const stale: ChangedDest = {
+      relativePath: 'a.css',
+      ext: '.css',
+      event: 'change',
+      mirrored: false,
+    };
+    expect(cssHotSwapPaths([stale], 1)).toBeNull();
+    expect(cssHotSwapPaths([css('ok.css'), stale], 2)).toBeNull();
+  });
 });
 
 describe('decideBroadcast', () => {
-  const md = (p: string, event = 'change'): ChangedDest => ({ relativePath: p, ext: '.md', event });
+  const md = (p: string, event = 'change'): ChangedDest => ({ relativePath: p, ext: '.md', event, mirrored: true });
 
   test('single surviving markdown change splices its chapter (canonical id)', () => {
     expect(decideBroadcast([md('sub/ch.md')], 1, true)).toEqual({
@@ -266,7 +286,7 @@ describe('decideBroadcast', () => {
   });
 
   test('non-markdown and non-incremental changes full-reload', () => {
-    expect(decideBroadcast([{ relativePath: 'x.txt', ext: '.txt', event: 'change' }], 1, true))
+    expect(decideBroadcast([{ relativePath: 'x.txt', ext: '.txt', event: 'change', mirrored: true }], 1, true))
       .toEqual({ kind: 'full-reload' });
     expect(decideBroadcast([md('a.md')], 1, false)).toEqual({ kind: 'full-reload' });
   });
@@ -291,14 +311,14 @@ describe('mirrorChanges', () => {
 
     const dests = await mirrorChanges([[join(testDir, 'ch.md'), 'change']], testDir, tempDir, []);
 
-    expect(dests).toEqual([{ relativePath: 'ch.md', ext: '.md', event: 'change' }]);
+    expect(dests).toEqual([{ relativePath: 'ch.md', ext: '.md', event: 'change', mirrored: true }]);
     expect(await Bun.file(join(tempDir, 'ch.md')).text()).toBe('# hi');
   });
 
   test('a deleted file appears in the result without being copied', async () => {
     const dests = await mirrorChanges([[join(testDir, 'gone.md'), 'unlink']], testDir, tempDir, []);
 
-    expect(dests).toEqual([{ relativePath: 'gone.md', ext: '.md', event: 'unlink' }]);
+    expect(dests).toEqual([{ relativePath: 'gone.md', ext: '.md', event: 'unlink', mirrored: false }]);
     expect(await Bun.file(join(tempDir, 'gone.md')).exists()).toBe(false);
   });
 
@@ -308,7 +328,7 @@ describe('mirrorChanges', () => {
 
     const dests = await mirrorChanges([[join(testDir, 'themes'), 'addDir']], testDir, tempDir, []);
 
-    expect(dests).toEqual([{ relativePath: 'themes', ext: '', event: 'addDir' }]);
+    expect(dests).toEqual([{ relativePath: 'themes', ext: '', event: 'addDir', mirrored: false }]);
     expect(await Bun.file(join(tempDir, 'themes')).exists()).toBe(false);
   });
 
@@ -333,8 +353,8 @@ describe('mirrorChanges', () => {
     );
 
     expect(dests).toEqual([
-      { relativePath: 'broken.md', ext: '.md', event: 'change' },
-      { relativePath: 'ok.md', ext: '.md', event: 'change' },
+      { relativePath: 'broken.md', ext: '.md', event: 'change', mirrored: false },
+      { relativePath: 'ok.md', ext: '.md', event: 'change', mirrored: true },
     ]);
     expect(await Bun.file(join(tempDir, 'ok.md')).text()).toBe('# ok');
   });
@@ -360,7 +380,7 @@ describe('mirrorChanges', () => {
         tempDir,
         [{ src: shared, destName: '_shared' }]
       );
-      expect(dests).toEqual([{ relativePath: '_shared/core.css', ext: '.css', event: 'change' }]);
+      expect(dests).toEqual([{ relativePath: '_shared/core.css', ext: '.css', event: 'change', mirrored: true }]);
       expect(await Bun.file(join(tempDir, '_shared', 'core.css')).text()).toBe('body{margin:0}');
     } finally {
       await rm(shared, { recursive: true, force: true });

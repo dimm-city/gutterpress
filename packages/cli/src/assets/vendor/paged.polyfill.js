@@ -30075,18 +30075,19 @@
 						} else if (prop.property === "break-before") {
 							let nodeBefore = displayedElementBefore(elements[i], parsed);
 
-							// print-md PATCH-2: always write data-break-before so the chunker can
-							// act on it even when the element is a first child with no preceding
-							// sibling. The CSS spec allows propagation to the container boundary.
-							// We still guard needsPageBreak and data-next-break-before with the
-							// nodeBefore check — those require a real preceding sibling.
-							elements[i].setAttribute("data-break-before", prop.value);
+							// Breaks are only allowed between siblings, not between a box and its container.
+							// If we cannot find a node before we should not break!
+							// https://drafts.csswg.org/css-break-3/#break-propagation
+							// print-md: PATCH-2 was applied here 2026-05-17 and REVERTED 2026-07-25.
+							// It removed this guard so a start-of-flow break would fire; that produced
+							// a spurious leading blank page and fixed no demonstrable bug. See
+							// PAGEDJS-PATCHES.md. This block is now byte-identical to upstream 0.4.3.
 							if (nodeBefore) {
 								if (prop.value === "page" && needsPageBreak(elements[i], nodeBefore)) {
 									// we ignore this explicit page break because an implicit page break is already needed
-									elements[i].removeAttribute("data-break-before");
 									continue;
 								}
+								elements[i].setAttribute("data-break-before", prop.value);
 								nodeBefore.setAttribute("data-next-break-before", prop.value);
 							}
 						} else if (prop.property === "page") {

@@ -95,9 +95,12 @@ export async function initializePreviewDirectories(
   }
 
   // Preview assets (paged.polyfill.js, pagedjs-bridge.js, pagedjs-interface.js,
-  // favicon, manifest.schema.json) are served directly from the process-wide
-  // embedded-assets dir by the HTTP server (see http-server.ts EMBEDDED_PREFIXES),
-  // not copied into the per-project temp dir.
+  // favicon) are served directly from the process-wide embedded-assets dir by
+  // the HTTP server (see http-server.ts EMBEDDED_PREFIXES/EMBEDDED_EXACT), not
+  // copied into the per-project temp dir. manifest.schema.json is embedded too
+  // but is NOT served or read at runtime — it is editor-facing only (authors
+  // reference it via a `# yaml-language-server: $schema=` comment; see
+  // docs/schema-autocomplete.md).
 
   // Copy manifest assets (e.g., ../_shared directories)
   if (inputPath && config?.source?.assets) {

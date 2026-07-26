@@ -177,22 +177,38 @@ export async function renderPreviewBook(
  *          serving it from a stable disk path lets the OS file-cache
  *          and Defender hash-cache stay warm across sessions.
  *
- * With `pageIsolateChapters` (the incremental preview), each chapter is also
- * page-isolated so the shell can re-paginate and splice a single edited
- * chapter without disturbing the others.
+ * PAGINATION FIDELITY: this injects NO page-break rule. It used to add
+ * `<style>.pmd-chapter{break-before:page}</style>` whenever the incremental
+ * preview was on (i.e. by default), which started EVERY source file on a new
+ * page in the live view. `print-md build` emits no such rule — assembleBookHtml
+ * in lib/markdown/assemble.ts concatenates source files flat into <body> and
+ * breaks only where project CSS or a markdown-it-paged marker says to — so any
+ * project that splits one chapter across several source files previewed with
+ * different page boundaries than the PDF it built. Preview and build now take
+ * their breaks from exactly the same rules.
+ *
+ * KNOWN RESIDUAL (predates this, was masked by the removed rule): if the first
+ * source file's first element carries `break-before: page` (a `.page` marker,
+ * or an `h1` in most themes), the `.pmd-chapter` wrapper makes Paged.js treat
+ * that break as a real one instead of dropping it at the start of the flow, so
+ * the preview leads with one blank page and every page NUMBER is one higher
+ * than the build's. Page CONTENT and boundaries match; the offset does not.
+ *
+ * The `.pmd-chapter` wrappers stay (see `wrapChapters` in assemble.ts): they are
+ * how the shell locates and splices a single edited chapter, and they carry no
+ * break of their own. Without the forced break, neighbouring chapters routinely
+ * share a page — preview-shell.js already handles that (see `tagPages`,
+ * `pagesFor` and the shared-page branch of `spliceChapter`), at the cost of a
+ * content-correct-but-un-reflowed neighbour page until the next full reload.
  */
-export function injectPreviewScripts(html: string, pageIsolateChapters: boolean): string {
+export function injectPreviewScripts(html: string): string {
   const iface =
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  let output = html.replace(
+  return html.replace(
     pagedjsPolyfillTagRegex(),
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
-  if (pageIsolateChapters && /<\/head>/i.test(output)) {
-    output = output.replace(/<\/head>/i, '<style>.pmd-chapter{break-before:page}</style>\n</head>');
-  }
-  return output;
 }
 
 /**
@@ -219,17 +235,21 @@ export async function generateAndWriteHtml(
   });
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, incremental),
+    injectPreviewScripts(html),
     "utf-8"
   );
 }
 
 /**
  * Render a SINGLE source file as a standalone, paginatable preview document
- * (same CSS/plugins/scripts as the full book, chapter-wrapped + page-isolated).
- * The incremental shell loads this in a hidden iframe, paginates just this
- * chapter, and splices its pages into the live view — so an edit re-paginates
- * one chapter (~hundreds of ms) instead of the whole document (~seconds).
+ * (same CSS/plugins/scripts as the full book, chapter-wrapped). The incremental
+ * shell loads this in a hidden iframe, paginates just this chapter, and splices
+ * its pages into the live view — so an edit re-paginates one chapter
+ * (~hundreds of ms) instead of the whole document (~seconds).
+ *
+ * This document holds exactly ONE chapter, so there is nothing to isolate it
+ * from and no break rule to inject — it paginates on the project's own rules,
+ * same as the full book.
  */
 export async function renderChapterPreviewHtml(
   inputPath: string,
@@ -237,7 +257,7 @@ export async function renderChapterPreviewHtml(
   config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
 ): Promise<string> {
   const html = await renderPreviewBook(inputPath, config, { files: [file], wrapChapters: true });
-  return injectPreviewScripts(html, true);
+  return injectPreviewScripts(html);
 }
 
 /** One changed file, resolved to its temp-dir mirror destination. */
@@ -248,6 +268,14 @@ export interface ChangedDest {
   ext: string;
   /** The chokidar event that reported the change (change, unlink, …). */
   event: string;
+  /**
+   * Whether the file was actually written into the temp dir on this pass.
+   * False for deletions, directory events, and copies that failed (an editor
+   * saving via temp-file+rename can delete the source between stat and copy).
+   * Only a true mirror is eligible for the CSS hot-swap fast path, which
+   * re-fetches from the temp copy without re-rendering.
+   */
+  mirrored: boolean;
 }
 
 /**
@@ -276,10 +304,22 @@ export async function mirrorChanges(
     // temp-file + rename can delete the file between the stat and the copy.
     // A failed mirror must not abort the rebuild — the re-render below reads
     // from inputPath (the source of truth), so the preview still updates.
+    //
+    // It must still be REPORTED, though — a deletion or a directory event has
+    // no copy to make and yet must reach decideBroadcast() so the preview
+    // re-renders. What it must NOT do is claim the temp copy is current:
+    // cssHotSwapPaths() re-fetches the <link> from the mirror WITHOUT
+    // re-rendering, so a swallowed copy failure on a .css file would hot-swap
+    // the client onto a stale stylesheet with nothing downstream to repair it
+    // (unlike markdown, which re-renders from inputPath). Hence `mirrored`:
+    // reported either way, but only an actually-written file is eligible for
+    // the CSS fast path.
+    let mirrored = false;
     try {
       if (existsSync(changedPath) && statSync(changedPath).isFile()) {
         await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
         await fsp.copyFile(changedPath, dest.destPath);
+        mirrored = true;
         debug(`Updated: ${dest.relativePath}`);
       }
     } catch (err) {
@@ -289,6 +329,7 @@ export async function mirrorChanges(
       relativePath: dest.relativePath,
       ext: path.extname(changedPath).toLowerCase(),
       event: changedEvent,
+      mirrored,
     });
   }
   return dests;
@@ -307,7 +348,10 @@ export function cssHotSwapPaths(dests: ChangedDest[], changeCount: number): stri
   if (
     dests.length === changeCount &&
     dests.length > 0 &&
-    dests.every((d) => d.ext === '.css')
+    // Every stylesheet must have actually landed in the temp dir. Hot-swapping
+    // on a failed mirror would re-fetch a stale <link> and nothing re-renders
+    // afterwards to correct it — degrade to a full update instead.
+    dests.every((d) => d.ext === '.css' && d.mirrored)
   ) {
     return dests.map((d) => d.relativePath);
   }
