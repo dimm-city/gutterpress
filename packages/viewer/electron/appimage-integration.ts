@@ -275,13 +275,19 @@ export class AppImageIntegration {
     // action rewrites it.
     const desktopMatches = desktopContent === renderDesktopEntry(this.paths.appImage);
     const installed = appImageExists && iconExists && desktopMatches;
-    const anyPresent = appImageExists || iconExists || desktopContent !== null;
+    // "Needs repair" keys off the two MENU files only — deliberately NOT the
+    // leftover managed AppImage. `remove()` leaves that binary in place by
+    // design, so counting it would make every successful removal land the UI
+    // in an alarming "something is broken, repair it" state instead of a clean
+    // "add to application menu" offer. A genuine partial or stale install
+    // always leaves an entry or icon behind, so repair detection is unaffected.
+    const menuFilePresent = iconExists || desktopContent !== null;
 
     return {
       supported: true,
       reason: null,
       installed,
-      needsRepair: anyPresent && !installed,
+      needsRepair: menuFilePresent && !installed,
       runningManagedCopy: this.isRunningManagedCopy(),
       paths: this.paths,
     };

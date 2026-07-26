@@ -89,7 +89,9 @@ a menu entry pointing at a missing app.
 — and is idempotent. It never touches other applications' entries and never
 removes the shared XDG directories. The managed AppImage itself is left in
 place (deleting the executable a running process was launched from would
-strand an in-flight update).
+strand an in-flight update); that leftover copy is *not* treated as a broken
+install, so after removing, Settings simply offers **Add to application menu**
+again.
 
 ### Updates
 

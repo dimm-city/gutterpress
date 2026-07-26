@@ -92,7 +92,8 @@ import type {
 
 export type {
   AppImageIntegrationStatus,
-  AppImageIntegrationActionResult,
+  AppImageIntegrationInstallResult,
+  AppImageIntegrationRemoveResult,
   AppImageIntegrationPaths,
   DiscoveredProject,
   PluginKind,
@@ -116,7 +117,8 @@ export type {
 
 import type {
   AppImageIntegrationStatus,
-  AppImageIntegrationActionResult,
+  AppImageIntegrationInstallResult,
+  AppImageIntegrationRemoveResult,
   DiscoveredProject,
   ProjectPluginEntry,
   PluginValidationResult,
@@ -336,11 +338,11 @@ export const api = {
     appImageIntegration: {
       getStatus: () => get<AppImageIntegrationStatus>('/api/app/appimage-integration'),
       install: () =>
-        post<AppImageIntegrationActionResult>('/api/app/appimage-integration', {
+        post<AppImageIntegrationInstallResult>('/api/app/appimage-integration', {
           action: 'install',
         }),
       remove: () =>
-        post<AppImageIntegrationActionResult>('/api/app/appimage-integration', {
+        post<AppImageIntegrationRemoveResult>('/api/app/appimage-integration', {
           action: 'remove',
         }),
     },

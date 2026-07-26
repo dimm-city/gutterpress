@@ -421,10 +421,31 @@ describe("removal", () => {
     await service.remove();
 
     expect(await readFile(service.paths.appImage, "utf8")).toBe("APPIMAGE-BYTES");
-    // Some managed state remains, so status reports "repair needed", not "clean".
+  });
+
+  test("a completed removal reports a CLEAN state, not 'needs repair' (review finding)", async () => {
+    // The leftover managed AppImage must not be mistaken for a broken install:
+    // the user did exactly what they asked for, so Settings has to offer "Add
+    // to application menu" again — not an alarming "Repair menu entry".
+    const service = new AppImageIntegration(env());
+    await service.install();
+    await service.remove();
+
     const status = await service.status();
     expect(status.installed).toBe(false);
-    expect(status.needsRepair).toBe(true);
+    expect(status.needsRepair).toBe(false);
+  });
+
+  test("but a stray desktop entry with no icon still reports 'needs repair'", async () => {
+    const service = new AppImageIntegration(env());
+    await service.install();
+    await rm(service.paths.icon);
+    expect((await service.status()).needsRepair).toBe(true);
+
+    // ...and so does a stray icon with no desktop entry.
+    await service.install();
+    await rm(service.paths.desktopEntry);
+    expect((await service.status()).needsRepair).toBe(true);
   });
 
   test("is idempotent — a second removal is a no-op, not an error", async () => {

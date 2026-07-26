@@ -8,6 +8,7 @@
  */
 import { error } from '@sveltejs/kit';
 import { getAppImageHooks, type AppImageHooks } from '$lib/server/host-hooks.js';
+import { friendlyAppImageError } from '../../../../../electron/server-bridge/friendly-errors';
 import { defineRoute } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
@@ -32,4 +33,9 @@ export const POST: RequestHandler = defineRoute<{ action: Action }, AppImageHook
   },
   call: async ({ body, hooks }) =>
     body.action === 'install' ? hooks.install() : hooks.remove(),
+  // Every realistic failure here is a raw node:fs error (EACCES on a locked-down
+  // home, EROFS, ENOSPC mid-copy). Without this the author would see
+  // "EACCES: permission denied, copyfile '/home/…' -> '/home/…'" in the
+  // Settings panel — see friendly-errors.ts's vcs/remote/publish siblings.
+  onError: (e) => friendlyAppImageError(e, 'app/appimage-integration'),
 });

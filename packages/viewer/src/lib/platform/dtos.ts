@@ -391,13 +391,23 @@ export interface AppImageIntegrationStatus {
   paths: AppImageIntegrationPaths;
 }
 
-/** `POST /api/app/appimage-integration` — the result of an install or remove. */
-export interface AppImageIntegrationActionResult {
+/** Fields both `POST` actions return. */
+interface AppImageIntegrationActionBase {
   ok: true;
+  /** Plain-language outcome, ready to show verbatim. */
   message: string;
+  /** The refreshed status, so the caller never needs a follow-up GET. */
   status: AppImageIntegrationStatus;
-  /** install only — false means "launch from the menu next time to use the managed copy". */
-  runningManagedCopy?: boolean;
-  /** remove only — the managed files actually deleted. */
-  removed?: string[];
+}
+
+/** `POST { action: "install" }` — the result of an install or repair. */
+export interface AppImageIntegrationInstallResult extends AppImageIntegrationActionBase {
+  /** False means "launch it from the menu next time to use the managed copy". */
+  runningManagedCopy: boolean;
+}
+
+/** `POST { action: "remove" }` — the result of a removal. */
+export interface AppImageIntegrationRemoveResult extends AppImageIntegrationActionBase {
+  /** The managed files actually deleted; empty when nothing was installed. */
+  removed: string[];
 }

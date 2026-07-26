@@ -256,8 +256,16 @@
         </div>
         <div class="row">
           <div class="row-label">
-            <label for="appimage-action">Application menu</label>
-            <span class="row-hint">
+            <!-- A plain span, deliberately NOT a label associated with the
+                 action button: a label association click-forwards to its
+                 control, so clicking this row title — which reads as a
+                 heading, not a control — would silently run the install.
+                 That is exactly the surprise this opt-in feature exists to
+                 avoid. A button takes its accessible name from its own
+                 content anyway, so the association bought nothing; the hint
+                 is tied to the button with aria-describedby instead. -->
+            <span class="row-title">Application menu</span>
+            <span class="row-hint" id="appimage-hint">
               {#if appImage.needsRepair}
                 Some of the installed files are missing or out of date — add it again to repair the entry.
               {:else if appImage.installed}
@@ -269,11 +277,11 @@
           </div>
           <div class="row-actions">
             <button
-              id="appimage-action"
               class="action"
+              aria-describedby="appimage-hint"
               disabled={appImageBusy}
               onclick={() => runAppImageAction("install")}
-            >{appImageBusy ? "Working…" : appImage.needsRepair ? "Repair menu entry" : appImage.installed ? "Add again" : "Add to application menu"}</button>
+            >{appImageBusy ? "Working…" : appImage.needsRepair ? "Repair menu entry" : appImage.installed ? "Reinstall" : "Add to application menu"}</button>
             {#if appImage.installed || appImage.needsRepair}
               <button
                 class="action subtle"
@@ -284,7 +292,10 @@
           </div>
         </div>
         {#if appImageNotice}
-          <p class="row-notice">{appImageNotice}</p>
+          <!-- role="status" so the confirmation is announced too — the error
+               path below was already announced via role="alert" (matches
+               ConnectionsSettings.svelte's precedent). -->
+          <p class="row-notice" role="status">{appImageNotice}</p>
         {/if}
         {#if appImageError}
           <p class="row-error" role="alert">{appImageError}</p>
@@ -663,6 +674,9 @@
   /* Desktop integration (#119) — an action row rather than a value row, so it
      gets its own button pair + inline result lines. */
   .row-actions { display: inline-flex; gap: 6px; align-items: center; }
+  /* Matches `.row label`'s look — an action row's title is a span, not a
+     label, so it must not inherit a different colour by accident. */
+  .row-title { color: var(--app-text-secondary); }
   .action {
     background: var(--app-surface-raised);
     border: 1px solid var(--app-control-border);

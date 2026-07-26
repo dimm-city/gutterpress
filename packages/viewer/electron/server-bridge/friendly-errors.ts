@@ -128,3 +128,58 @@ export async function handlePublishErrors<T>(
     );
   }
 }
+
+// ── Linux application-menu integration (#119) ────────────────────────────────
+
+/**
+ * Classify a desktop-integration failure for a NON-TECHNICAL author.
+ *
+ * Unlike the vcs/remote/publish filters above there is no lib message to pass
+ * through: every realistic failure here is a raw `node:fs` error whose
+ * `.message` is an author-hostile `EACCES: permission denied, copyfile
+ * '/home/…' -> '/home/…'`. So this maps the `err.code` to one plain sentence
+ * that says what to do, logs the original in full, and never leaks the raw
+ * string or a full path to the UI.
+ *
+ * The service's own "not supported here" guards throw plain Errors with
+ * already-friendly text ({@link unsupportedMessage}); those pass through, since
+ * they carry no `code`.
+ */
+const APPIMAGE_FS_MESSAGE: Record<string, string> = {
+  EACCES: "print-md doesn't have permission to write to your home folder, so it couldn't add the menu entry.",
+  EPERM: "print-md doesn't have permission to write to your home folder, so it couldn't add the menu entry.",
+  EROFS: "Your home folder is read-only, so print-md couldn't add the menu entry.",
+  ENOSPC: "There isn't enough free disk space to copy the app, so the menu entry wasn't added.",
+  EDQUOT: "You've reached your disk quota, so print-md couldn't copy the app.",
+  ENOENT: "Part of the app is missing, so the menu entry couldn't be added. Try downloading the app again.",
+  EBUSY: "The app file is in use right now, so print-md couldn't update the menu entry. Close any other copies and try again.",
+  EMFILE: "print-md ran out of open files while updating the menu entry. Try again.",
+};
+
+/**
+ * Classify a desktop-integration failure. Logs the full error under
+ * `logLabel`, then returns the HTTP-shaped result the route throws with.
+ */
+export function friendlyAppImageError(
+  e: unknown,
+  logLabel: string,
+): { status: number; message: string } {
+  const msg = e instanceof Error ? e.message : String(e);
+  console.error(`[${logLabel}] failed: ${msg}`);
+  if (e instanceof Error && e.stack) console.error(e.stack);
+
+  const code = (e as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && APPIMAGE_FS_MESSAGE[code]) {
+    return { status: 500, message: APPIMAGE_FS_MESSAGE[code]! };
+  }
+  // The service's own environment guards — plain, already author-safe text
+  // with no fs `code`. A 409 (not 500): the request was well-formed, the
+  // environment just can't do it.
+  if (!code && /only available/i.test(msg)) {
+    return { status: 409, message: msg };
+  }
+  return {
+    status: 500,
+    message: "The application menu entry could not be updated. See the app log for details.",
+  };
+}

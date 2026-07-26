@@ -130,6 +130,58 @@ describe("POST /api/app/appimage-integration", () => {
     const { status } = await caught(actionRoute({ request: request({ action: "install" }) } as never));
     expect(status).toBe(503);
   });
+
+  // Every realistic failure here is a raw node:fs error. A non-technical
+  // author must never see "EACCES: permission denied, copyfile '/home/…'".
+  test("a raw fs error is replaced with plain-language guidance, never leaked verbatim", async () => {
+    const fsError = Object.assign(
+      new Error("EACCES: permission denied, copyfile '/tmp/a.AppImage' -> '/home/w/.local/bin/x.tmp'"),
+      { code: "EACCES" },
+    );
+    registerHostServices(
+      makeHostServices({
+        appImage: { getStatus: async () => supportedStatus, install: async () => { throw fsError; } },
+      }),
+    );
+    const { status, message } = await caught(actionRoute({ request: request({ action: "install" }) } as never));
+    expect(status).toBe(500);
+    expect(message).toBe(
+      "print-md doesn't have permission to write to your home folder, so it couldn't add the menu entry.",
+    );
+    expect(String(message)).not.toContain("EACCES");
+    expect(String(message)).not.toContain("/home/w");
+  });
+
+  test("an unclassifiable failure becomes a terse safe message, not the raw error text", async () => {
+    registerHostServices(
+      makeHostServices({
+        appImage: {
+          getStatus: async () => supportedStatus,
+          remove: async () => { throw new Error("internal detail /home/w/secret-path exploded"); },
+        },
+      }),
+    );
+    const { status, message } = await caught(actionRoute({ request: request({ action: "remove" }) } as never));
+    expect(status).toBe(500);
+    expect(message).toBe("The application menu entry could not be updated. See the app log for details.");
+    expect(String(message)).not.toContain("secret-path");
+  });
+
+  test("the service's own environment guard passes through as a 409 with its friendly text", async () => {
+    registerHostServices(
+      makeHostServices({
+        appImage: {
+          getStatus: async () => supportedStatus,
+          install: async () => {
+            throw new Error("Application-menu integration is only available on Linux.");
+          },
+        },
+      }),
+    );
+    const { status, message } = await caught(actionRoute({ request: request({ action: "install" }) } as never));
+    expect(status).toBe(409);
+    expect(message).toBe("Application-menu integration is only available on Linux.");
+  });
 });
 
 // ── UI wiring (source pins, per the repo convention — see settings-connections.test.ts) ──
@@ -168,5 +220,14 @@ describe("Settings → App — the action is supported-only", () => {
   test("the repair affordance is surfaced when the host reports stale managed files", () => {
     expect(view).toContain("appImage.needsRepair");
     expect(view).toContain("Repair menu entry");
+  });
+
+  test("the row title is NOT a `label for` the action button — that would click-forward into a silent install", () => {
+    // A <label for> synthesizes a click on its control, so labelling the row
+    // heading would run the install when a user clicks what reads as a title.
+    expect(view).not.toMatch(/<label for="appimage/);
+    expect(view).toContain('<span class="row-title">Application menu</span>');
+    // The hint is still tied to the button for assistive tech.
+    expect(view).toContain('aria-describedby="appimage-hint"');
   });
 });
