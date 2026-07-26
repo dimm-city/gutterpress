@@ -2,277 +2,457 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/dimm-city/print-md/manifest.schema.json",
   "title": "print-md Manifest",
-  "description": "Configuration file for print-md markdown-to-PDF converter",
+  "description": "Configuration file for print-md markdown-to-PDF converter. Mirrors the PrintMdManifest interface in packages/cli/src/schema/manifest.types.ts. Every field is optional — an absent field falls back to the resolved preset default (see packages/cli/src/lib/presets.ts).",
   "type": "object",
-  "required": ["title", "authors"],
   "properties": {
     "title": {
       "type": "string",
-      "description": "Document title",
-      "minLength": 1,
+      "description": "Document title. Used for the HTML <title> and PDF metadata.",
+      "default": "Document",
       "examples": ["My Book Title", "Technical Documentation", "Game Module"]
     },
     "authors": {
       "type": "array",
-      "description": "List of document authors",
-      "minItems": 1,
+      "description": "List of document authors.",
+      "default": [],
       "items": {
-        "type": "string",
-        "minLength": 1
+        "type": "string"
       },
       "examples": [
         ["John Doe"],
         ["Jane Smith", "John Doe"]
       ]
     },
-    "description": {
+    "preset": {
       "type": "string",
-      "description": "Document description or summary"
-    },
-    "page": {
-      "type": "object",
-      "description": "Page format configuration",
-      "properties": {
-        "size": {
-          "type": "string",
-          "description": "Page size (e.g., letter, a4, 6x9, or custom like '8.5in 11in')",
-          "default": "letter",
-          "examples": ["letter", "a4", "a5", "legal", "6in 9in", "8.5in 11in"]
-        },
-        "margins": {
-          "type": "object",
-          "description": "Page margins with CSS units",
-          "properties": {
-            "top": {
-              "type": "string",
-              "description": "Top margin (e.g., 0.75in, 2cm)",
-              "examples": ["0.75in", "1in", "2cm"]
-            },
-            "bottom": {
-              "type": "string",
-              "description": "Bottom margin (e.g., 0.75in, 2cm)",
-              "examples": ["0.75in", "1in", "2cm"]
-            },
-            "inside": {
-              "type": "string",
-              "description": "Inside/left margin for two-sided printing",
-              "examples": ["0.875in", "1in", "2.5cm"]
-            },
-            "outside": {
-              "type": "string",
-              "description": "Outside/right margin for two-sided printing",
-              "examples": ["0.625in", "0.75in", "2cm"]
-            },
-            "left": {
-              "type": "string",
-              "description": "Left margin (alternative to inside/outside)",
-              "examples": ["1in", "2.5cm"]
-            },
-            "right": {
-              "type": "string",
-              "description": "Right margin (alternative to inside/outside)",
-              "examples": ["1in", "2.5cm"]
-            }
-          },
-          "anyOf": [
-            {
-              "required": ["top", "bottom", "inside", "outside"]
-            },
-            {
-              "required": ["top", "bottom", "left", "right"]
-            }
-          ]
-        },
-        "bleed": {
-          "type": "string",
-          "description": "Bleed area for print (typically 0.125in)",
-          "examples": ["0.125in", "3mm"]
-        }
-      }
+      "description": "Vendor preset supplying the defaults for every other section (page geometry, ink limits, PDF/X settings, validation checks). Omitting it defaults to \"dtrpg\" for backward compatibility and logs a warning — set it explicitly.",
+      "enum": ["dtrpg", "book"],
+      "examples": ["dtrpg", "book"]
     },
     "styles": {
       "type": "array",
-      "description": "List of CSS files to include (applied in order)",
-      "default": [],
+      "description": "Project-relative CSS files to <link> into the rendered book, applied in order. If omitted, print-md discovers one: styles/book.css, else css/print.css, css/index.css, css/style.css, css/main.css, else the first discovered .css, else none.",
       "items": {
         "type": "string",
         "minLength": 1,
-        "pattern": "^(?!\\.\\.).+\\.css$",
-        "description": "Relative path to CSS file (cannot start with ../)"
+        "description": "Path to a CSS file, relative to the manifest directory."
       },
       "examples": [
-        ["themes/classic.css"],
-        ["themes/modern.css", "custom.css"],
+        ["styles/book.css"],
+        ["css/index.css"],
         ["themes/parchment.css", "styles/override.css"]
-      ]
-    },
-    "files": {
-      "type": "array",
-      "description": "Explicit file ordering (optional - defaults to alphabetical)",
-      "items": {
-        "type": "string",
-        "minLength": 1,
-        "pattern": "^.+\\.md$",
-        "description": "Relative path to markdown file"
-      },
-      "examples": [
-        ["chapter-01.md", "chapter-02.md"],
-        ["frontmatter/title.md", "chapters/intro.md", "appendix.md"]
-      ]
-    },
-    "extensions": {
-      "type": "array",
-      "description": "Markdown extensions to enable (deprecated - use plugins instead)",
-      "items": {
-        "type": "string",
-        "enum": ["ttrpg", "dimmCity", "containers"]
-      },
-      "examples": [
-        ["ttrpg"],
-        ["dimmCity"],
-        ["ttrpg", "dimmCity"]
       ]
     },
     "plugins": {
       "type": "array",
-      "description": "Markdown-it plugins to load (local files, npm packages, or built-in)",
+      "description": "markdown-it plugins to load. Each entry is either a shorthand string or a configuration object. Entries are loaded highest-priority first.",
+      "default": [],
       "items": {
         "oneOf": [
           {
             "type": "string",
             "minLength": 1,
-            "description": "Plugin path/name (shorthand syntax)",
+            "description": "Shorthand. Treated as a local file path when it starts with ./, ../, / or a Windows drive letter, or when it contains a path separator and ends in .js/.mjs/.cjs. Otherwise treated as an npm package name.",
             "examples": [
               "./plugins/my-plugin.js",
-              "ttrpg",
+              "plugins/my-plugin.js",
               "print-md-plugin-callouts"
             ]
           },
           {
             "type": "object",
-            "description": "Plugin configuration object",
+            "description": "Plugin configuration object. Supply either `path` (local file) or `name` (npm package).",
             "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["local", "package", "builtin", "remote"],
-                "description": "Plugin type (auto-detected if omitted)"
-              },
               "path": {
                 "type": "string",
                 "minLength": 1,
-                "pattern": "^(?!\\.\\.).+\\.(m?js|ts)$",
-                "description": "Path to local plugin file (cannot start with ../)"
+                "description": "Path to a local plugin module, relative to the manifest directory.",
+                "examples": ["plugins/dimm-city-plugin.js", "../shared/plugins/callouts.js"]
               },
               "name": {
                 "type": "string",
                 "minLength": 1,
-                "description": "Plugin name (for package/builtin plugins)"
+                "description": "npm package name of the plugin.",
+                "examples": ["print-md-plugin-callouts"]
               },
               "version": {
                 "type": "string",
-                "description": "Plugin version constraint (for package plugins)",
+                "description": "npm version constraint recorded for a package plugin. Stored in the manifest for tooling; plugin resolution itself loads whatever version is installed.",
                 "examples": ["^1.0.0", "~2.1.0", "1.2.3"]
-              },
-              "url": {
-                "type": "string",
-                "format": "uri",
-                "description": "Plugin URL (for remote plugins)"
-              },
-              "integrity": {
-                "type": "string",
-                "description": "Subresource integrity hash (for remote plugins)",
-                "pattern": "^(sha256|sha384|sha512)-[A-Za-z0-9+/=]+$"
-              },
-              "enabled": {
-                "type": "boolean",
-                "default": true,
-                "description": "Whether plugin is enabled"
-              },
-              "options": {
-                "type": "object",
-                "description": "Plugin-specific options",
-                "additionalProperties": true
               },
               "priority": {
                 "type": "integer",
-                "minimum": 0,
-                "maximum": 1000,
+                "description": "Load order. Higher priority loads first.",
                 "default": 100,
-                "description": "Plugin load priority (higher = earlier)"
+                "examples": [100, 200]
+              },
+              "options": {
+                "type": "object",
+                "description": "Plugin-specific options, passed straight through to the plugin.",
+                "default": {},
+                "additionalProperties": true
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Per-project enable flag. Absent or true = active. false keeps the entry in the manifest (so the toggle is reversible) but skips loading it at build and preview time.",
+                "default": true
               }
             }
           }
         ]
       },
       "examples": [
-        ["ttrpg", "./plugins/my-plugin.js"],
+        ["print-md-plugin-callouts", "./plugins/my-plugin.js"],
         [
           {
-            "name": "print-md-plugin-callouts",
-            "version": "^1.0.0",
-            "options": {
-              "types": ["note", "warning"]
-            }
-          }
-        ],
-        [
-          "ttrpg",
-          {
-            "type": "local",
-            "path": "./plugins/custom-syntax.js",
-            "priority": 200,
-            "options": {
-              "strict": true
-            }
+            "path": "plugins/dimm-city-plugin.js",
+            "priority": 100
           }
         ]
       ]
     },
-    "disableDefaultStyles": {
-      "type": "boolean",
-      "description": "Disable default foundation CSS styles",
-      "default": false
-    },
-    "themePrevious": {
-      "type": "string",
-      "description": "Id of the theme active before the current one (the 'Revert to previous theme' target, #106). Managed automatically by print-md; not authored by hand.",
-      "examples": ["clean-book", "zine"]
-    },
-    "version": {
-      "type": "string",
-      "description": "Document version number",
-      "examples": ["1.0.0", "2.1"]
-    },
-    "date": {
-      "type": "string",
-      "description": "Publication or revision date",
-      "examples": ["2025-11-19", "November 19, 2025"]
-    },
-    "pageFormat": {
+    "source": {
       "type": "object",
-      "description": "Page format configuration (alias for 'page')",
+      "description": "Where the book's content comes from.",
       "properties": {
-        "size": {
-          "type": "string",
-          "description": "Page size",
-          "examples": ["letter", "a4"]
+        "files": {
+          "type": ["array", "null"],
+          "description": "Explicit, ordered list of markdown files to concatenate, relative to the manifest directory. Omit or set to null to include every .md file in the directory in alphabetical order.",
+          "default": null,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "examples": [
+            ["chapter-01.md", "chapter-02.md"],
+            ["frontmatter/title.md", "chapters/intro.md", "appendix.md"]
+          ]
         },
-        "margins": {
+        "assets": {
+          "type": "array",
+          "description": "Directories copied alongside the rendered book (css, fonts, images, …). Paths are relative to the manifest directory and may point outside it. Every asset directory is FLATTENED into one output folder, so on a filename clash the LAST entry wins — order matters.",
+          "default": ["css", "fonts", "images", "styles", "assets"],
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "examples": [
+            ["css", "fonts", "images"],
+            ["../shared/css", "../shared/fonts", "css", "images"]
+          ]
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "description": "Where build artifacts are written.",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "description": "Output directory, relative to the manifest directory.",
+          "default": "dist",
+          "examples": ["dist", "build/pdf"]
+        },
+        "filename": {
+          "type": "string",
+          "description": "PDF filename written into the output directory.",
+          "default": "book.pdf",
+          "examples": ["book.pdf", "field-guide.pdf"]
+        },
+        "html": {
+          "type": "string",
+          "deprecated": true,
+          "description": "DEPRECATED and IGNORED. The rendered book HTML is always written as `book.html`. Setting this logs a deprecation warning and has no effect; remove it."
+        }
+      }
+    },
+    "pdfx": {
+      "type": "object",
+      "description": "PDF/X conversion settings, used by `print-md build --format pdfx`.",
+      "properties": {
+        "flavor": {
+          "type": "string",
+          "description": "PDF/X flavor to target.",
+          "enum": ["x1a", "x3"],
+          "default": "x1a"
+        },
+        "icc": {
+          "type": "string",
+          "description": "Path to the ICC output-intent profile, relative to the manifest directory.",
+          "default": "profiles/CGATS21_CRPC1.icc",
+          "examples": ["profiles/CGATS21_CRPC1.icc", ".print-md/profiles/CGATS21_CRPC1.icc"]
+        },
+        "stripAnnotations": {
+          "type": "boolean",
+          "description": "Strip annotations (links, comments) during PDF/X conversion — PDF/X-1a does not permit them.",
+          "default": true
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "description": "Expected page geometry, in POINTS. VALIDATION BOUNDS ONLY — these values do NOT set the trim size. The real PDF page size comes from the CSS `@page` rule in your stylesheet; these numbers are only what the `pdf.print.page-size` check compares the produced PDF against. Set them to the trim size you expect so a CSS mistake gets caught — and note that a bleed-inclusive @page size will legitimately differ from the trim size recorded here.",
+      "properties": {
+        "width": {
+          "type": "number",
+          "description": "Expected page width in points (1in = 72pt). Validation bound only — the CSS @page rule sets the real width. Preset defaults: dtrpg 621, book 432 (6in).",
+          "exclusiveMinimum": 0,
+          "examples": [612, 621, 432]
+        },
+        "height": {
+          "type": "number",
+          "description": "Expected page height in points (1in = 72pt). Validation bound only — the CSS @page rule sets the real height. Preset defaults: dtrpg 810, book 648 (9in).",
+          "exclusiveMinimum": 0,
+          "examples": [792, 810, 648]
+        },
+        "tolerance": {
+          "type": "number",
+          "description": "Allowed deviation, in points, between the expected and the actual page size.",
+          "default": 0.5,
+          "minimum": 0
+        }
+      }
+    },
+    "ink": {
+      "type": "object",
+      "description": "Ink coverage limits used by the `pdf.print.ink-coverage` and `asset.image.tac-raster` checks.",
+      "properties": {
+        "maxTac": {
+          "type": "number",
+          "description": "Maximum total area coverage (TAC), as a percentage summed across C+M+Y+K. 400 is the physical ceiling (100% of each plate), so it effectively disables the cap. Preset defaults: dtrpg 240 (DriveThruRPG's limit), book 400.",
+          "minimum": 0,
+          "examples": [240, 300, 400]
+        },
+        "tacTolerance": {
+          "type": "number",
+          "description": "Allowed percentage of sampled pixels that may exceed `maxTac` before the check fails.",
+          "default": 0.5,
+          "minimum": 0
+        }
+      }
+    },
+    "lint": {
+      "type": "object",
+      "description": "Markdown linting run before the build.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether linting runs.",
+          "default": true
+        },
+        "configPath": {
+          "type": ["string", "null"],
+          "description": "Path to a markdownlint config file, relative to the manifest directory. null uses the built-in defaults.",
+          "default": null
+        }
+      }
+    },
+    "validate": {
+      "type": "object",
+      "description": "Preflight/validation configuration. Individual checks are addressed by id (see `checks`); the sections below supply the thresholds those checks read.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Whether validation runs.",
+          "default": true
+        },
+        "checks": {
           "type": "object",
+          "description": "Per-check overrides, keyed by check id. This is an OPEN dictionary — any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced source.*, asset.*, pdf.* and heuristic.* (e.g. pdf.structure.qpdf, pdf.print.embedded-fonts, pdf.print.pdfx-markers, pdf.print.page-size, asset.image.color-space, source.markdownlint, heuristic.whitespace.text-density). A boolean value is shorthand for enabled/disabled.",
+          "propertyNames": {
+            "description": "A registered check id, e.g. \"pdf.print.embedded-fonts\"."
+          },
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "boolean",
+                "description": "Shorthand for { enabled: <value> }."
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Whether this check runs.",
+                    "default": true
+                  },
+                  "severity": {
+                    "type": "string",
+                    "description": "How a failure of this check is reported.",
+                    "enum": ["error", "warning", "info"]
+                  },
+                  "options": {
+                    "type": "object",
+                    "description": "Check-specific options.",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            ]
+          },
+          "examples": [
+            {
+              "pdf.structure.qpdf": { "enabled": true, "severity": "error" },
+              "pdf.print.pdfx-markers": false
+            }
+          ]
+        },
+        "source": {
+          "type": "object",
+          "description": "Source-linting checks (markdown, generated HTML, CSS). Each entry is a path to that linter's config file, or false to disable the check.",
           "properties": {
-            "top": {"type": "string"},
-            "bottom": {"type": "string"},
-            "left": {"type": "string"},
-            "right": {"type": "string"},
-            "inside": {"type": "string"},
-            "outside": {"type": "string"}
+            "markdownlint": {
+              "description": "Path to a markdownlint config, or false to disable the source.markdownlint check.",
+              "default": null,
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "boolean", "const": false }
+              ]
+            },
+            "htmlhint": {
+              "description": "Path to an htmlhint config, or false to disable the source.htmlhint check.",
+              "default": null,
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "boolean", "const": false }
+              ]
+            },
+            "stylelint": {
+              "description": "Path to a stylelint config, or false to disable the source.stylelint check.",
+              "default": null,
+              "oneOf": [
+                { "type": "string", "minLength": 1 },
+                { "type": "boolean", "const": false }
+              ]
+            },
+            "allowedCallouts": {
+              "type": "array",
+              "deprecated": true,
+              "description": "DEPRECATED and IGNORED (no-op). The `:::name` container syntax this gated was removed 2026-05-17, along with the callout-validation check it configured. Kept only so older manifests still parse; setting it logs a deprecation warning. See docs/migrations/2026-05-removing-container-syntax.md.",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "assets": {
+          "type": "object",
+          "description": "Thresholds for the asset.* checks (images and fonts on disk).",
+          "properties": {
+            "maxImageSize": {
+              "type": "integer",
+              "description": "Maximum image file size in bytes (asset.image.file-size).",
+              "default": 10000000,
+              "minimum": 0
+            },
+            "minImageDpi": {
+              "type": "integer",
+              "description": "Minimum effective image resolution in DPI (asset.image.resolution).",
+              "default": 300,
+              "minimum": 0
+            },
+            "allowedColorSpaces": {
+              "type": "array",
+              "description": "Color spaces images may use (asset.image.color-space). Preset defaults: dtrpg [\"CMYK\", \"Grayscale\"], book [\"RGB\", \"CMYK\", \"Grayscale\"].",
+              "items": { "type": "string" },
+              "examples": [
+                ["CMYK", "Grayscale"],
+                ["RGB", "CMYK", "Grayscale"]
+              ]
+            },
+            "allowAlpha": {
+              "type": "boolean",
+              "description": "Whether images may carry an alpha channel (asset.image.alpha-channel). Preset defaults: dtrpg false (PDF/X forbids transparency), book true."
+            },
+            "approvedFontFiles": {
+              "type": "array",
+              "description": "Allow-list of font files (asset.font.approved-files). Empty means no restriction.",
+              "default": [],
+              "items": { "type": "string" }
+            },
+            "requireFontLicense": {
+              "type": "boolean",
+              "description": "Require a license record for each embedded font (asset.font.license).",
+              "default": false
+            }
+          }
+        },
+        "pdf": {
+          "type": "object",
+          "description": "Thresholds for the pdf.* checks (run against the produced PDF).",
+          "properties": {
+            "requireBookmarks": {
+              "type": "boolean",
+              "description": "Require a PDF outline/bookmark tree (pdf.nav.bookmarks).",
+              "default": false
+            },
+            "requireTocLinks": {
+              "type": "boolean",
+              "description": "Require the table of contents to use real internal links (pdf.nav.toc-links).",
+              "default": false
+            },
+            "minImageResolution": {
+              "type": "integer",
+              "description": "Minimum placed-image resolution in DPI (pdf.print.image-resolution).",
+              "default": 300,
+              "minimum": 0
+            },
+            "forbidTransparency": {
+              "type": "boolean",
+              "description": "Fail on transparency in the PDF (pdf.print.transparency). Preset defaults: dtrpg true (required by PDF/X), book false."
+            },
+            "requireBleed": {
+              "type": "boolean",
+              "description": "Require a bleed box on every page (pdf.print.bleed).",
+              "default": false
+            },
+            "bleedSize": {
+              "type": "number",
+              "description": "Expected bleed, in points (9pt = 0.125in).",
+              "default": 9,
+              "minimum": 0
+            }
+          }
+        },
+        "heuristics": {
+          "type": "object",
+          "description": "Thresholds for the heuristic.* layout-quality checks. These are advisory design heuristics, not hard print requirements.",
+          "properties": {
+            "maxDecorativeLayers": {
+              "type": "integer",
+              "description": "Maximum stacked decorative layers per page (heuristic.decoration.layer-count).",
+              "default": 5,
+              "minimum": 0
+            },
+            "textDensityRange": {
+              "type": "object",
+              "description": "Acceptable characters-per-page range (heuristic.whitespace.text-density).",
+              "properties": {
+                "min": {
+                  "type": "number",
+                  "description": "Minimum characters per page.",
+                  "default": 200,
+                  "minimum": 0
+                },
+                "max": {
+                  "type": "number",
+                  "description": "Maximum characters per page.",
+                  "default": 5000,
+                  "minimum": 0
+                }
+              }
+            },
+            "maxParagraphsPerSection": {
+              "type": "integer",
+              "description": "Maximum paragraphs in one section before it is flagged as under-chunked (heuristic.chunking.section-density).",
+              "default": 10,
+              "minimum": 0
+            }
           }
         }
       }
     },
     "publish": {
       "type": "object",
-      "description": "Publish provider settings. Non-secret configuration only — API keys and tokens are stored in the host credential store, never in this file.",
+      "description": "Publish provider settings, keyed by the same provider id `print-md publish --provider <id>` takes. Non-secret configuration only — API keys and tokens are stored in the host credential store, never in this file.",
       "properties": {
         "itch": {
           "type": "object",
@@ -288,6 +468,10 @@
               "type": "string",
               "description": "butler channel name",
               "default": "pdf"
+            },
+            "credential": {
+              "type": "string",
+              "description": "Label of the saved credential to use when more than one is stored for this provider. Not a secret — just a reference into the host credential store. Empty or absent uses the default credential."
             }
           }
         },
@@ -314,6 +498,10 @@
               "type": "string",
               "description": "Deploy environment",
               "default": "production"
+            },
+            "credential": {
+              "type": "string",
+              "description": "Label of the saved credential to use when more than one is stored for this provider."
             }
           }
         },
@@ -333,66 +521,80 @@
               "type": "string",
               "description": "Admin GraphQL API version",
               "default": "2026-04"
+            },
+            "credential": {
+              "type": "string",
+              "description": "Label of the saved credential to use when more than one is stored for this provider."
             }
           }
         }
       }
+    },
+    "themePrevious": {
+      "type": "string",
+      "description": "Id of the theme active before the current one (the 'Revert to previous theme' target, #106). Managed automatically by print-md; not authored by hand.",
+      "examples": ["clean-book", "zine"]
     }
   },
   "examples": [
     {
       "title": "My Book",
       "authors": ["Author Name"],
-      "description": "A sample book",
-      "page": {
-        "size": "letter",
-        "margins": {
-          "top": "1in",
-          "bottom": "1in",
-          "left": "1in",
-          "right": "1in"
-        }
+      "preset": "book",
+      "styles": ["styles/book.css"],
+      "source": {
+        "files": ["chapter-01.md", "chapter-02.md"],
+        "assets": ["styles", "images"]
       },
-      "styles": ["themes/classic.css"],
-      "files": ["chapter-01.md", "chapter-02.md"]
+      "output": {
+        "dir": "dist",
+        "filename": "my-book.pdf"
+      }
+    },
+    {
+      "title": "TTRPG Supplement",
+      "authors": ["Game Master"],
+      "preset": "dtrpg",
+      "plugins": [
+        {
+          "path": "plugins/dimm-city-plugin.js",
+          "priority": 100
+        }
+      ],
+      "styles": ["css/index.css"],
+      "source": {
+        "files": ["chapter-00.md", "chapter-01.md"],
+        "assets": ["../shared/css", "../shared/fonts", "css", "images"]
+      },
+      "page": {
+        "width": 621,
+        "height": 810,
+        "tolerance": 0.5
+      },
+      "pdfx": {
+        "flavor": "x1a",
+        "icc": ".print-md/profiles/CGATS21_CRPC1.icc"
+      },
+      "ink": {
+        "maxTac": 240
+      }
     },
     {
       "title": "Technical Documentation",
       "authors": ["Tech Team"],
-      "page": {
-        "size": "a4",
-        "margins": {
-          "top": "0.75in",
-          "bottom": "0.75in",
-          "inside": "1in",
-          "outside": "0.75in"
+      "preset": "book",
+      "styles": ["styles/book.css"],
+      "validate": {
+        "enabled": true,
+        "checks": {
+          "pdf.nav.bookmarks": { "enabled": true, "severity": "warning" },
+          "pdf.print.pdfx-markers": false
         },
-        "bleed": "0.125in"
-      },
-      "styles": ["themes/modern.css", "custom.css"],
-      "extensions": []
-    },
-    {
-      "title": "TTRPG Adventure Module",
-      "authors": ["Game Master"],
-      "description": "A D&D 5e adventure for level 3-5 characters",
-      "page": {
-        "size": "letter",
-        "margins": {
-          "top": "0.75in",
-          "bottom": "0.75in",
-          "left": "1in",
-          "right": "1in"
+        "pdf": {
+          "requireBookmarks": true,
+          "requireTocLinks": true
         }
-      },
-      "styles": ["themes/parchment.css", "ttrpg.css"],
-      "files": [
-        "overview.md",
-        "part-1.md",
-        "part-2.md",
-        "appendix.md"
-      ],
-      "extensions": ["ttrpg", "dimmCity"]
+      }
     }
   ]
 }

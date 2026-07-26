@@ -50,6 +50,23 @@ export interface AssembleBookHtmlOptions {
    * data-chapter-src="<file>">`. Used by the incremental live-preview to
    * identify and re-paginate a single chapter on edit. Off by default — the
    * build output is unaffected.
+   *
+   * PAGINATION FIDELITY: the wrapper is an IDENTITY tag, not a layout one — it
+   * carries no break rule, and nothing pairs one with it. The preview used to
+   * inject `.pmd-chapter{break-before:page}` alongside it (see
+   * `injectPreviewScripts` in preview/file-watcher.ts), which made the live
+   * preview start every source file on a new page while the build path below
+   * concatenated them flat. That rule is gone: wrapped and unwrapped output now
+   * take page breaks from the same place — project CSS and markdown-it-paged
+   * markers — and land on the same boundaries. Keep it that way; any styling
+   * hung off `.pmd-chapter` re-opens the split.
+   *
+   * The wrapper is not yet perfectly inert: it is an extra element around the
+   * first chapter's first element, so a `break-before: page` there (a `.page`
+   * marker, or an `h1` in most themes) is honoured instead of dropped as
+   * start-of-flow, and wrapped output leads with one blank page. Boundaries
+   * still match; the page NUMBERS are offset by one. See the KNOWN RESIDUAL
+   * note at `injectPreviewScripts`.
    */
   wrapChapters?: boolean;
   /**

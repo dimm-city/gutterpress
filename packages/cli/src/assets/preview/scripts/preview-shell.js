@@ -69,11 +69,11 @@
   }
 
   // Tag each rendered page with EVERY chapter (data-chapter-src) present on it,
-  // so a single edited chapter's pages can be located and replaced. A page
-  // usually holds one chapter (the preview injects break-before:page on
-  // .pmd-chapter), but project CSS can override that — a chapter starting
-  // mid-page then SHARES its first page with the previous chapter, and tagging
-  // only the first chapter would make the second one unlocatable (every edit
+  // so a single edited chapter's pages can be located and replaced. Chapters
+  // flow into each other exactly as they do in the build — the preview injects
+  // no per-file page break — so a page holding two or more chapters is the
+  // NORMAL case for any project that splits a chapter across source files.
+  // Tagging only the first chapter would make the rest unlocatable (every edit
   // would degrade to a full swap). data-chapter-src keeps the first chapter for
   // compatibility; data-chapter-srcs is the full newline-separated list.
   function tagPages(f) {

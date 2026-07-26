@@ -3,8 +3,20 @@
 **Vendored file:** `paged.polyfill.js`  
 **Source version:** pagedjs@0.4.3  
 **Source repo:** https://github.com/pagedjs/pagedjs  
-**Applied patches:** PATCH-1, PATCH-2, PATCH-3 (2026-05-17)  
+**Applied patches:** PATCH-1 (2026-05-17), PATCH-3 (2026-05-17, partial), PATCH-5 (undated)  
+**Reverted:** PATCH-2 — applied 2026-05-17, **REVERTED 2026-07-25** (caused a regression, fixed nothing)  
 **Deferred:** PATCH-4 (complex, workaround exists)
+
+> **Audit note, 2026-07-25.** The shipped polyfill was diffed against the published
+> npm tarball for `pagedjs@0.4.3` (md5 `28be5336e03f`, byte-identical to
+> `package/dist/paged.polyfill.js`). The real delta is **17 hunks / 72 lines**.
+> Three discrepancies between this document and the code were found and are now
+> corrected below:
+>   1. PATCH-2 was causing a spurious leading blank page — now reverted.
+>   2. PATCH-3 claims three guarded call sites; only two were ever applied.
+>   3. An **undocumented** edit was shipping, self-labelled `PATCH-4` in code,
+>      colliding with the deferred PATCH-4 below. It is now documented as PATCH-5.
+> Verify against the registry tarball, not against this file, when auditing.
 
 **Second copy (MUST stay identical):**
 `packages/viewer/static/vendor/paged.polyfill.js`. The viewer ships its own
@@ -70,11 +82,38 @@ Forwarding it to the page model lets custom `afterPageLayout` handlers
 
 ---
 
-### PATCH-2: `break-before` on first child silently dropped
+### PATCH-2: `break-before` on first child silently dropped — **REVERTED**
 
-**Status:** Applied 2026-05-17  
-**Upstream PR candidate:** YES — aligns with CSS break propagation spec  
-**Lines changed:** `processBreaks()` — restructured `break-before` branch
+**Status:** Applied 2026-05-17. **REVERTED 2026-07-25.**  
+**Upstream PR candidate:** NO — the premise was wrong  
+**Lines changed:** `processBreaks()` — now byte-identical to upstream again
+
+> **Why it was reverted.** This patch caused a spurious **leading blank page**: it made
+> `processBreaks()` write `data-break-before` on the first element of the flow, which
+> upstream deliberately drops. `page-templates.css` puts `break-before: page` on every
+> `.page` div, so the first one produced a hidden extra page — inflating every page
+> *number* by one while leaving every page *boundary* correct.
+>
+> **Its stated bug does not exist.** The patch describes the removed guard as a
+> *sibling* test. It is not: `displayedElementBefore()` walks **ancestors as well as
+> siblings**, so it already returns non-null for any element with preceding content
+> anywhere in the flow. The guard fires only at true start of flow — where there is
+> nothing to break *from*. Across a 292-page book, the only element whose break
+> attributes differed between patched and pristine was the very first one, and build
+> page counts were identical (292) under both. The patch fixed nothing measurable.
+>
+> A "narrower guard" is not possible: `displayedElementBefore(el, parsed)` already *is*
+> the flow-scoped test, so any narrowing collapses into this revert. If a consumer ever
+> genuinely needs to know a start-of-flow break was requested, write a **differently
+> named** attribute in the `else` branch — `needsBreakBefore()` and `shouldBreak()` read
+> only `dataset.breakBefore`, so it would be inert by construction. No consumer needs
+> this today.
+>
+> Do **not** instead "fix" `hasContent()` so empty wrappers stop flipping
+> `hasRenderedContent` — it is consulted on every node of every page and would change
+> layout semantics book-wide for a one-line local cause.
+
+**Original rationale, retained for the record:**
 
 **Bug:** When `break-before` CSS is applied to an element that has no
 preceding displayed sibling (it is the first child of its container),
@@ -149,10 +188,14 @@ console error message.
 div.chapter :is(h2, h3) + p { margin-top: 0; }
 ```
 
-**Three affected call sites:**
-1. `processBreaks()` line ~30037 — iterates CSS break selectors
-2. `NthOfType.processSelectors()` line ~30815 — iterates `:nth-of-type` selectors
-3. `Following.processSelectors()` line ~30870 — iterates following-element selectors
+**Three affected call sites — ONLY TWO WERE ACTUALLY GUARDED:**
+1. `processBreaks()` line ~30037 — iterates CSS break selectors — **GUARDED**
+2. `NthOfType.processSelectors()` line ~30815 — `:nth-of-type` selectors — **GUARDED**
+3. `Following.processSelectors()` line ~30870 — following-element selectors —
+   **NOT GUARDED.** Verified 2026-07-25: no `try`/`catch` exists at this site in the
+   shipped file. `Following.onRule` received the PATCH-5 `splitSelectors` change but
+   never the crash guard. **If the `:is()` + sibling-combinator crash can occur in
+   `Following`, it is still unguarded and will still blank the entire output.**
 
 **Fix applied** (identical pattern at all three sites):
 
@@ -191,6 +234,34 @@ the worst possible failure mode for a print tool. Skipping an unsupported
 selector with a warning is strictly better. Once Paged.js uses a more robust
 selector evaluation path (e.g. post-cssOM migration) this guard becomes a
 no-op.
+
+---
+
+### PATCH-5: paren-aware selector splitting (was shipping UNDOCUMENTED)
+
+**Status:** Applied (date unknown — predates 2026-07-25, found by audit)  
+**Upstream PR candidate:** YES — clear correctness fix  
+**Lines changed:** new `splitSelectors()` helper + 8 call sites
+
+> **This edit was shipping with no entry in this file.** In code it is self-labelled
+> `// print-md PATCH-4:`, which collides with the genuinely-deferred PATCH-4 below
+> (`break-after: column`). The doc said PATCH-4 was not applied; the code said it was.
+> Both statements were true about *different* things. Renumbered to PATCH-5 here; the
+> in-code comment should be renumbered to match.
+
+**Bug:** Paged.js splits multi-selector rules with a naive `selector.split(",")`, which
+also splits *inside* functional pseudo-classes. `:is(h2, h3) + p` becomes the two
+nonsense fragments `:is(h2` and `h3) + p`.
+
+**Fix applied:** a paren/bracket-depth-aware comma splitter inserted immediately above
+`class Breaks extends Handler`, used at 8 call sites: `Breaks.onDeclaration` (×2),
+`NthOfType.onRule`, `Following.onRule`, `RunningHeaders.onDeclaration`,
+`TargetCounters.onContent`, `TargetText.onContent`, `UndisplayedFilter.onDeclaration`.
+
+**Audited scope, 2026-07-25:** none of the 8 call sites is inside `StringSets`, and
+`StringSets` never splits its selector (it stores it raw via `csstree.generate`). This
+edit therefore cannot affect `string-set` behaviour. It also cannot affect
+`break-before`, since `.page { break-before: page }` contains no parentheses.
 
 ---
 

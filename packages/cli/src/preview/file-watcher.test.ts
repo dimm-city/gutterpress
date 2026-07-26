@@ -209,17 +209,20 @@ describe('injectPreviewScripts', () => {
   const html = `<!doctype html>\n<html><head><title>t</title>\n  ${pagedjsPolyfillTag()}\n</head><body></body></html>`;
 
   test('swaps the polyfill slot for the interface scripts + served polyfill', () => {
-    const out = injectPreviewScripts(html, false);
+    const out = injectPreviewScripts(html);
     expect(out).toContain('/preview/scripts/pagedjs-interface.js');
     expect(out).toContain('/preview/scripts/pagedjs-bridge.js');
     expect(out).toContain('/vendor/paged.polyfill.js');
     expect(out).not.toContain('data-pagedjs-polyfill');
   });
 
-  test('page-isolates chapters only in incremental mode', () => {
-    const isolate = '<style>.pmd-chapter{break-before:page}</style>';
-    expect(injectPreviewScripts(html, true)).toContain(isolate);
-    expect(injectPreviewScripts(html, false)).not.toContain(isolate);
+  // PAGINATION FIDELITY: the preview must not force a page break the build
+  // doesn't have. This used to inject `.pmd-chapter{break-before:page}`, which
+  // started every source file on a new page in the live view only.
+  test('injects no page-break rule — preview paginates like the build', () => {
+    const out = injectPreviewScripts(html);
+    expect(out).not.toContain('break-before');
+    expect(out).not.toContain('.pmd-chapter{');
   });
 });
 

@@ -2,6 +2,8 @@
 
 print-md includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
 
+The schema is **editor-facing only**. print-md itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. Wiring the schema into your editor (below) is what turns a typo into visible feedback.
+
 ## Quick Setup
 
 Add this line to the top of your `manifest.yaml`:
@@ -46,17 +48,15 @@ That's it! Your editor will now provide:
 
 ### Local Schema (Offline)
 
-If you prefer to use a local schema file:
+If you prefer to use a local schema file, copy `packages/cli/src/assets/manifest.schema.json` from the print-md repository into your project directory, then point at your copy (the path is resolved relative to the `manifest.yaml` that carries the comment):
 
 ```yaml
-# yaml-language-server: $schema=./packages/cli/src/assets/manifest.schema.json
+# yaml-language-server: $schema=./manifest.schema.json
 
 title: "My Document"
 authors:
   - "Your Name"
 ```
-
-Copy `packages/cli/src/assets/manifest.schema.json` from the print-md repository to your project directory.
 
 ### Global Configuration (VS Code)
 
@@ -172,24 +172,28 @@ When typing property names, you'll see:
 ```yaml
 title: "My Book"
 # Type 'p' and you'll see:
-#   - page (object) - Page format configuration
-#   - pageFormat (object) - Alias for page
+#   - page (object) - Expected page geometry, in points (validation bounds)
+#   - pdfx (object) - PDF/X conversion settings
+#   - plugins (array) - markdown-it plugins to load
+#   - preset (string) - Vendor preset supplying every other default
+#   - publish (object) - Publish provider settings
 ```
 
 ### Validation
 
 The schema validates:
-- **Required fields** - `title` and `authors` must be present
-- **Types** - Strings must be strings, arrays must be arrays
-- **Constraints** - Minimum lengths, allowed values, path formats
-- **Path security** - Prevents `../` in style paths, requires relative paths
+- **Types** - Strings must be strings, arrays must be arrays, `page.width` must be a number
+- **Allowed values** - e.g. `preset` must be `dtrpg` or `book`, `pdfx.flavor` must be `x1a` or `x3`
+- **Structure** - Nested sections (`source`, `output`, `validate`, …) and their property names
+
+Every property is optional: an omitted field falls back to the resolved preset default.
 
 **Example errors:**
 ```yaml
-title: ""  # ❌ Error: Title cannot be empty
 authors: "John Doe"  # ❌ Error: authors must be an array
-styles:
-  - "../evil.css"  # ❌ Error: Cannot reference parent directories
+preset: "a4"  # ❌ Error: must be one of dtrpg, book
+page:
+  width: "6in"  # ❌ Error: must be a number (points, e.g. 432)
 ```
 
 ### Documentation on Hover
@@ -203,133 +207,140 @@ Hover over any property to see:
 
 ## Schema Properties Reference
 
-### Required Properties
+Every property is optional. An omitted field falls back to the default supplied by the resolved `preset`.
 
 #### `title` (string)
-Document title. Must be non-empty.
+Document title, used for the HTML `<title>` and PDF metadata. Defaults to `"Document"`.
 
-**Example:**
 ```yaml
 title: "The Complete Guide to print-md"
 ```
 
 #### `authors` (array of strings)
-List of document authors. At least one required.
+List of document authors.
 
-**Example:**
 ```yaml
 authors:
   - "Jane Smith"
   - "John Doe"
 ```
 
-### Optional Properties
+#### `preset` (string)
+Vendor preset supplying the defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks. One of `dtrpg` or `book`. Omitting it defaults to `dtrpg` and logs a warning, so set it explicitly.
 
-#### `description` (string)
-Document description or summary.
-
-**Example:**
 ```yaml
-description: "A comprehensive guide to creating PDFs from markdown"
-```
-
-#### `page` (object)
-Page format configuration.
-
-**Properties:**
-- `size` (string) - Page size: `letter`, `a4`, `a5`, `legal`, or custom like `8.5in 11in`
-- `margins` (object) - Page margins:
-  - `top` (string) - Top margin with CSS units
-  - `bottom` (string) - Bottom margin
-  - `inside`/`left` (string) - Inside or left margin
-  - `outside`/`right` (string) - Outside or right margin
-- `bleed` (string) - Bleed area for printing (typically `0.125in`)
-
-**Example:**
-```yaml
-page:
-  size: "letter"
-  margins:
-    top: "1in"
-    bottom: "1in"
-    inside: "0.875in"
-    outside: "0.625in"
-  bleed: "0.125in"
+preset: book
 ```
 
 #### `styles` (array of strings)
-List of CSS files to include, applied in order.
+CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, print-md discovers one: `styles/book.css`, then `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, then the first `.css` it finds, then none.
 
-**Rules:**
-- Must be relative paths (not absolute)
-- Cannot use `../` to reference parent directories
-- Must end with `.css`
-
-**Example:**
 ```yaml
 styles:
-  - "themes/classic.css"
-  - "custom-styles.css"
+  - "styles/book.css"
 ```
 
-#### `files` (array of strings)
-Explicit markdown file ordering. If omitted, files are processed alphabetically.
+#### `plugins` (array)
+markdown-it plugins to load, highest `priority` first. Each entry is either a shorthand string or an object.
 
-**Rules:**
-- Must be relative paths
-- Must end with `.md`
+A string is treated as a local file path when it starts with `./`, `../`, `/` or a Windows drive letter, or when it contains a path separator and ends in `.js`/`.mjs`/`.cjs`; otherwise it is an npm package name.
 
-**Example:**
+An object takes `path` (local module) or `name` (npm package), plus optional `version`, `priority` (default `100`), `options`, and `enabled` (set `false` to keep the entry but skip loading it).
+
 ```yaml
-files:
-  - "frontmatter/title.md"
-  - "chapters/01-intro.md"
-  - "chapters/02-getting-started.md"
-  - "appendix/glossary.md"
+plugins:
+  - "print-md-plugin-callouts"
+  - path: "plugins/dimm-city-plugin.js"
+    priority: 100
 ```
 
-#### `extensions` (array of strings)
-Markdown extensions to enable. Empty array enables all extensions.
+#### `source` (object)
+Where the content comes from.
 
-**Allowed values:**
-- `"ttrpg"` - TTRPG directives (stat blocks, dice notation)
-- `"dimmCity"` - Dimm City game syntax
-- `"containers"` - Container syntax
+- `files` (array of strings, or `null`) - Explicit, ordered markdown files relative to the manifest directory. Omit or set `null` to include every `.md` file alphabetically.
+- `assets` (array of strings) - Directories copied alongside the rendered book. May point outside the project. Every asset directory is **flattened into one output folder**, so on a filename clash the last entry wins — order matters. Default: `["css", "fonts", "images", "styles", "assets"]`.
 
-**Example:**
 ```yaml
-extensions:
-  - "ttrpg"
-  - "dimmCity"
+source:
+  files:
+    - "frontmatter/title-page.md"
+    - "chapters/01-introduction.md"
+    - "appendix/glossary.md"
+  assets:
+    - "css"
+    - "fonts"
+    - "images"
 ```
 
-#### `disableDefaultStyles` (boolean)
-Disable default foundation CSS styles. Use this to completely replace print-md's base styles.
+#### `output` (object)
+- `dir` (string) - Output directory relative to the manifest directory. Default `dist`.
+- `filename` (string) - PDF filename. Default `book.pdf`.
+- `html` (string) - **Deprecated and ignored.** The rendered book HTML is always written as `book.html`; setting this only logs a warning.
 
-**Default:** `false`
-
-**Example:**
 ```yaml
-disableDefaultStyles: true
-styles:
-  - "my-complete-theme.css"
+output:
+  dir: dist
+  filename: my-book.pdf
 ```
 
-#### `version` (string)
-Document version number.
+#### `page` (object)
+Expected page geometry, in **points** (1in = 72pt).
 
-**Example:**
+> **These are validation bounds only — they do not set the trim size.** The real PDF page size comes from the `@page` rule in your CSS. `page.width`/`page.height` are what the `pdf.print.page-size` check compares the produced PDF against, so set them to the trim size you expect and a CSS mistake gets caught. A bleed-inclusive `@page` size will legitimately differ from the trim size recorded here.
+
+- `width` / `height` (number) - Expected size in points. Preset defaults: `dtrpg` 621x810, `book` 432x648 (6x9in).
+- `tolerance` (number) - Allowed deviation in points. Default `0.5`.
+
 ```yaml
-version: "1.0.0"
+# US Letter trim: 8.5 x 11in
+page:
+  width: 612
+  height: 792
+  tolerance: 0.5
 ```
 
-#### `date` (string)
-Publication or revision date.
+#### `pdfx` (object)
+PDF/X conversion settings, used by `print-md build --format pdfx`.
 
-**Example:**
+- `flavor` (string) - `x1a` (default) or `x3`.
+- `icc` (string) - Path to the ICC output-intent profile. Default `profiles/CGATS21_CRPC1.icc`.
+- `stripAnnotations` (boolean) - Strip links/comments, which PDF/X-1a forbids. Default `true`.
+
+#### `ink` (object)
+- `maxTac` (number) - Maximum total area coverage, summed across C+M+Y+K. Preset defaults: `dtrpg` 240, `book` 400 (the physical ceiling, i.e. effectively no cap).
+- `tacTolerance` (number) - Percentage of sampled pixels allowed to exceed `maxTac`. Default `0.5`.
+
+#### `lint` (object)
+- `enabled` (boolean) - Default `true`.
+- `configPath` (string or `null`) - markdownlint config path. `null` uses the built-in defaults.
+
+#### `validate` (object)
+Preflight configuration.
+
+- `enabled` (boolean) - Default `true`.
+- `checks` (object) - Per-check overrides keyed by check id. This is an **open dictionary**: any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced `source.*`, `asset.*`, `pdf.*`, `heuristic.*`. A value is either a boolean (shorthand for enabled/disabled) or `{ enabled, severity, options }`, where `severity` is `error`, `warning`, or `info`.
+- `source` (object) - `markdownlint`, `htmlhint`, `stylelint`: a config file path, or `false` to disable that check. `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
+- `assets` (object) - `maxImageSize`, `minImageDpi`, `allowedColorSpaces`, `allowAlpha`, `approvedFontFiles`, `requireFontLicense`.
+- `pdf` (object) - `requireBookmarks`, `requireTocLinks`, `minImageResolution`, `forbidTransparency`, `requireBleed`, `bleedSize` (points).
+- `heuristics` (object) - `maxDecorativeLayers`, `textDensityRange` (`min`/`max`), `maxParagraphsPerSection`.
+
 ```yaml
-date: "2025-11-19"
+validate:
+  enabled: true
+  checks:
+    pdf.nav.bookmarks:
+      enabled: true
+      severity: warning
+    pdf.print.pdfx-markers: false
+  pdf:
+    requireBookmarks: true
 ```
+
+#### `publish` (object)
+Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`), keyed by the same id `print-md publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. See [publishing.md](./publishing.md).
+
+#### `themePrevious` (string)
+Managed automatically by print-md's Theme Manager (the "revert to previous theme" target). Not authored by hand.
 
 ---
 
@@ -341,37 +352,43 @@ date: "2025-11-19"
 title: "The Complete Guide to print-md"
 authors:
   - "Technical Writing Team"
-description: "Comprehensive guide to creating professional PDFs from markdown"
-version: "1.0.0"
-date: "2025-11-19"
+preset: book
 
-page:
-  size: "letter"
-  margins:
-    top: "0.75in"
-    bottom: "0.75in"
-    inside: "1in"
-    outside: "0.75in"
-  bleed: "0.125in"
+plugins:
+  - path: "plugins/callouts.js"
+    priority: 100
 
 styles:
-  - "themes/modern.css"
-  - "custom/typography.css"
-  - "custom/layout.css"
+  - "styles/book.css"
 
-files:
-  - "frontmatter/title-page.md"
-  - "frontmatter/copyright.md"
-  - "frontmatter/table-of-contents.md"
-  - "chapters/01-introduction.md"
-  - "chapters/02-installation.md"
-  - "chapters/03-quick-start.md"
-  - "appendix/glossary.md"
+source:
+  files:
+    - "frontmatter/title-page.md"
+    - "frontmatter/copyright.md"
+    - "chapters/01-introduction.md"
+    - "chapters/02-installation.md"
+    - "appendix/glossary.md"
+  assets:
+    - "styles"
+    - "fonts"
+    - "images"
 
-extensions:
-  - "ttrpg"
+output:
+  dir: dist
+  filename: "print-md-guide.pdf"
 
-disableDefaultStyles: false
+# Validation bounds only — the CSS @page rule sets the real trim size.
+page:
+  width: 432
+  height: 648
+  tolerance: 0.5
+
+validate:
+  enabled: true
+  checks:
+    pdf.nav.bookmarks:
+      enabled: true
+      severity: warning
 ```
 
 ---
@@ -403,16 +420,15 @@ disableDefaultStyles: false
 2. **Verify schema URL is correct:**
    - Must be exactly: `https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json`
 
-3. **Try local schema:**
+3. **Try local schema** (a copy of `manifest.schema.json` next to your `manifest.yaml`):
    ```yaml
-   # yaml-language-server: $schema=./packages/cli/src/assets/manifest.schema.json
+   # yaml-language-server: $schema=./manifest.schema.json
    ```
 
 ### Schema Shows Warnings
 
 Some warnings are informational:
 - "Property 'xyz' is not allowed" - Check spelling or see schema reference
-- "Missing required property" - Add required `title` and `authors` fields
 - "Type mismatch" - Check that strings are quoted, arrays use `-` syntax
 
 ---
@@ -441,7 +457,7 @@ Some warnings are informational:
 
 ## Schema Maintenance
 
-The schema is maintained in sync with print-md's Zod validation schema. When new features are added, the JSON schema is updated to match.
+The schema mirrors the `PrintMdManifest` interface in `packages/cli/src/schema/manifest.types.ts`, with defaults taken from `packages/cli/src/lib/presets.ts`. When either changes, update `manifest.schema.json` to match — nothing enforces this automatically.
 
 **Latest schema:** https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json
 
