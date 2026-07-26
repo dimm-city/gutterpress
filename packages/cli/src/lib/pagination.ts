@@ -309,6 +309,115 @@ export async function paginateAndCapture(
   }
 }
 
+/**
+ * Close a CSS string value that Paged.js deliberately left unterminated.
+ *
+ * Paged.js's StringSets handler writes its string-set results as inline custom
+ * properties with an OPENING quote and NO closing quote (paged.polyfill.js:
+ * `fragment.style.setProperty(\`--pagedjs-string-first-${name}\`, \`"${…}\`)`).
+ * Live that is harmless: `setProperty` parses each value in isolation and the
+ * CSS tokenizer auto-closes a string token at end-of-value. But the moment the
+ * DOM is SERIALIZED, all four of those properties land in ONE `style` attribute
+ * joined by `;` — and on reparse the first unterminated string swallows the
+ * declarations that follow it (`"1; --pagedjs-string-last-guideSection: "`).
+ * The consumer, `content: "C." var(--pagedjs-string-first-guideSection)`, then
+ * becomes invalid at computed-value time and the footer disappears.
+ *
+ * Given the raw property text, return it with a closing `"` appended when the
+ * string token does not terminate. Rules follow CSS Syntax §4.3.5 "consume a
+ * string token": a backslash escapes the next code point, and a backslash at
+ * end-of-input is dropped (it cannot escape the quote we are about to add).
+ * Values that are already terminated — including ones this function has already
+ * fixed — are returned unchanged, so it is idempotent. Values that are not a
+ * quoted string at all are left alone.
+ */
+export function closeUnterminatedCssString(value: string): string {
+  const raw = value.trim();
+  if (!raw.startsWith('"')) return value;
+  let i = 1;
+  while (i < raw.length) {
+    const c = raw[i];
+    if (c === "\\") {
+      // Dangling escape at end-of-value: CSS discards it. Drop it too, or the
+      // closing quote we append would be escaped and the string still open.
+      if (i + 1 >= raw.length) return raw.slice(0, i) + '"';
+      i += 2;
+      continue;
+    }
+    // Already terminated — nothing to do (this is also the idempotent path).
+    if (c === '"') return value;
+    i += 1;
+  }
+  return raw + '"';
+}
+
+/** Inline custom properties written with the unterminated-quote idiom. */
+const PAGEDJS_STRING_PROP_PREFIX = "--pagedjs-string-";
+
+/**
+ * Browser-context script run immediately before `outerHTML` capture: rewrite
+ * every inline `--pagedjs-string-*` custom property so its value is a COMPLETE
+ * quoted string, making the serialized `style` attribute survive a reparse.
+ *
+ * Built as a source string (rather than a `page.evaluate` callback) so the
+ * single source of truth for the quote rule — {@link closeUnterminatedCssString}
+ * — is shipped into the page instead of duplicated there. The function is
+ * self-contained (no module-scope references), so `.toString()` is safe.
+ *
+ * `--pagedjs-string-{first,last,start,first-except}-*` are the ONLY properties
+ * Paged.js writes this way; every other `--pagedjs-*` custom property holds a
+ * length, count or color and needs no fixing (verified against the vendored
+ * polyfill: those four `setProperty` calls are the only ones with a leading
+ * quote).
+ */
+const NORMALIZE_PAGEDJS_STRING_PROPS = `(() => {
+  const closeUnterminatedCssString = ${closeUnterminatedCssString.toString()};
+  const PREFIX = ${JSON.stringify(PAGEDJS_STRING_PROP_PREFIX)};
+  let fixed = 0;
+  for (const el of document.querySelectorAll('[style*="' + PREFIX + '"]')) {
+    const style = el.style;
+    const names = [];
+    for (let i = 0; i < style.length; i++) {
+      const name = style.item(i);
+      if (name.startsWith(PREFIX)) names.push(name);
+    }
+    for (const name of names) {
+      const current = style.getPropertyValue(name);
+      const closed = closeUnterminatedCssString(current);
+      if (closed !== current) {
+        style.setProperty(name, closed, style.getPropertyPriority(name));
+        fixed++;
+      }
+    }
+  }
+  return fixed;
+})()`;
+
+/**
+ * Serialize the paginated DOM to a static HTML document, first repairing the
+ * unterminated Paged.js string custom properties that would otherwise be
+ * corrupted by serialization (see {@link closeUnterminatedCssString}).
+ *
+ * Only touches those custom properties — every other inline style, attribute
+ * and node is untouched — and only ever runs AFTER any `page.pdf()` call, so
+ * the PDF is printed from the untouched live DOM exactly as before.
+ */
+async function serializePaginatedDom(page: Page): Promise<string> {
+  const fixedCount = (await page.evaluate(
+    NORMALIZE_PAGEDJS_STRING_PROPS
+  )) as number;
+  if (fixedCount > 0) {
+    log.info(
+      `Closed ${fixedCount} unterminated Paged.js string custom ${
+        fixedCount === 1 ? "property" : "properties"
+      } before serialization`
+    );
+  }
+  return page.evaluate(
+    () => "<!DOCTYPE html>\n" + document.documentElement.outerHTML
+  );
+}
+
 /** Default renderer: system Chromium via puppeteer-core (pooled + pre-warmable). */
 const puppeteerPdfRenderer: PdfRenderer = async ({
   url,
@@ -349,9 +458,7 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
     // viewer renders the identical artifact the PDF was printed from. Read-only,
     // after page.pdf() — does not perturb the PDF.
     if (captureStaticHtmlTo) {
-      const staticHtml = await page.evaluate(
-        () => "<!DOCTYPE html>\n" + document.documentElement.outerHTML
-      );
+      const staticHtml = await serializePaginatedDom(page);
       await fsp.writeFile(captureStaticHtmlTo, staticHtml, "utf-8");
     }
   } finally {
@@ -386,17 +493,14 @@ export async function paginateToStaticHtml(stagedHtml: string): Promise<string> 
         RENDER_TIMEOUT_MS
       );
 
-      const result = await page.evaluate(() => {
-        const count = document.querySelectorAll(".pagedjs_page").length;
-        return {
-          count,
-          html: "<!DOCTYPE html>\n" + document.documentElement.outerHTML,
-        };
-      });
-      log.info(
-        `Paged.js paginated ${result.count} pages → serialized to static HTML`
+      const html = await serializePaginatedDom(page);
+      const count = await page.evaluate(
+        () => document.querySelectorAll(".pagedjs_page").length
       );
-      return result.html;
+      log.info(
+        `Paged.js paginated ${count} pages → serialized to static HTML`
+      );
+      return html;
     } finally {
       await page.close();
     }
