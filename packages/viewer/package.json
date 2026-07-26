@@ -4,6 +4,7 @@
   "version": "0.8.3",
   "type": "module",
   "main": "out/main/main.js",
+  "desktopName": "city.dimm.print-md-viewer.desktop",
   "author": "itlackey",
   "description": "Desktop viewer for print-md (Electron + SvelteKit adapter-node app, served via app:// + fetch API routes).",
   "scripts": {

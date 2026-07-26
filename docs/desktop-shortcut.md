@@ -1,6 +1,107 @@
 # Desktop Shortcut Documentation
 
-## Overview
+## Two different things, don't mix them up
+
+print-md ships two separate desktop entries, for two separate programs:
+
+| | **Application-menu integration** | **CLI preview shortcut** |
+|---|---|---|
+| What it launches | The **full Electron viewer** (toolbar, editor, page navigation, zoom, folder picker, Save PDF) | The **headless `print-md preview` server** + your default browser |
+| Where it comes from | Opt-in, from inside the app: **Settings → App → Desktop integration** | The `install.sh` / `install.ps1` CLI installers |
+| Platforms | Linux AppImage only (Windows and macOS installers already create their own entries) | Linux and Windows |
+| Documented in | [Linux AppImage application-menu integration](#linux-appimage-application-menu-integration-desktop-app) (below) | [CLI preview shortcut](#cli-preview-shortcut-headless-preview-server) (below) |
+
+If you want the app in your KDE/GNOME menu, you want the **first** one.
+
+## Linux AppImage application-menu integration (desktop app)
+
+The released `print-md-viewer-<version>.AppImage` is a portable executable: it
+runs from wherever you downloaded it, and — like every AppImage — it does not
+register itself with your desktop environment. That is deliberate; a portable
+file should not copy itself into your home directory or edit your desktop
+configuration behind your back.
+
+When you want it in the application menu, turn it on explicitly:
+
+**Settings → App → Desktop integration → Add to application menu**
+
+The action appears **only** in a packaged Linux AppImage build (it is hidden on
+Windows, macOS, in development, and in the browser build). It needs no
+administrator access, no `sudo`, and no extra packages — no
+`update-desktop-database`, `kbuildsycoca6`, or AppImageLauncher. KDE and GNOME
+watch the per-user directories below, so the entry usually appears within a few
+seconds.
+
+### What it installs
+
+| File | Path | Mode |
+|---|---|---|
+| A managed copy of the AppImage | `$HOME/.local/bin/print-md-viewer.AppImage` | `0755` |
+| The XDG desktop entry | `${XDG_DATA_HOME:-$HOME/.local/share}/applications/city.dimm.print-md-viewer.desktop` | `0644` |
+| The application icon | `${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/city.dimm.print-md-viewer.png` | `0644` |
+
+An unset, empty, or relative `XDG_DATA_HOME` is treated as invalid and falls
+back to `$HOME/.local/share` (the Base Directory spec requires an absolute
+path). The managed filename is deliberately distinct from the CLI's
+`~/.local/bin/print-md` binary, so the two never collide.
+
+Because the entry points at the **managed copy**, the menu launcher keeps
+working after you move or delete the file you originally downloaded.
+
+**Desktop entry contents:**
+
+```ini
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=print-md-viewer
+Comment=Write books in Markdown and export print-ready PDFs
+Exec="/home/you/.local/bin/print-md-viewer.AppImage"
+TryExec=/home/you/.local/bin/print-md-viewer.AppImage
+Icon=city.dimm.print-md-viewer
+Terminal=false
+Categories=Office;Publishing;
+StartupNotify=true
+StartupWMClass=city.dimm.print-md-viewer
+```
+
+There is intentionally **no** `%f`/`%F`/`%u`/`%U` field code, no `MimeType`,
+and no protocol handler: the viewer does not process startup arguments today,
+so advertising file or URL associations would register handlers that do
+nothing. (The app's internal `app://` scheme is renderer transport, not an OS
+protocol.)
+
+`StartupWMClass` matches `desktopName` in `packages/viewer/package.json`
+(`city.dimm.print-md-viewer.desktop`), which Electron uses as the Wayland
+application id and the X11 `WM_CLASS`. That is what lets KDE and GNOME group
+the running window under this launcher and show the right icon in the
+taskbar/dock.
+
+### Repair and removal
+
+Running the action again is safe: it repairs stale or missing managed files
+(for example after an upgrade changed the entry's contents). Installation is
+atomic — every file is staged as a temporary sibling and renamed into place,
+with the desktop entry published **last**, so a failed install can never leave
+a menu entry pointing at a missing app.
+
+**Remove from menu** deletes exactly two files — the desktop entry and the icon
+— and is idempotent. It never touches other applications' entries and never
+removes the shared XDG directories. The managed AppImage itself is left in
+place (deleting the executable a running process was launched from would
+strand an in-flight update).
+
+### Updates
+
+`electron-updater` enables Linux updates only when `$APPIMAGE` is set. Once you
+launch the managed copy from the menu, `$APPIMAGE` points at the stable path,
+so the updater replaces that same file and the desktop entry stays valid. The
+first time you run the action from a downloaded AppImage, nothing is restarted
+— the app just tells you to launch it from the menu next time.
+
+## CLI preview shortcut (headless preview server)
+
+### Overview
 
 The print-md installation scripts create a desktop shortcut that starts the
 print-md preview server and opens the rendered book in your default browser.
@@ -14,9 +115,9 @@ page navigation, or folder picker in the browser. For the full interactive
 desktop experience (toolbar, page navigation, zoom, folder picker, PDF export),
 use the **Electron desktop app** (`packages/viewer`) instead of a browser shortcut.
 
-## Platform Support
+### Platform Support
 
-### Windows (install.ps1)
+#### Windows (install.ps1)
 
 **Shortcut Details:**
 - **File**: `Print-md Preview.lnk` (created on Desktop)
@@ -25,7 +126,7 @@ use the **Electron desktop app** (`packages/viewer`) instead of a browser shortc
 - **Icon**: the binary's own embedded icon (`<print-md.exe>,0`)
 - **Description**: "Start Print-md Preview Server"
 
-### Linux (install.sh)
+#### Linux (install.sh)
 
 **Shortcut Details:**
 - **File**: `print-md-preview.desktop` (created in `$XDG_DESKTOP_DIR`, falling back to `~/Desktop`)
@@ -48,21 +149,21 @@ Terminal=true
 StartupNotify=true
 ```
 
-### macOS
+#### macOS
 
 Currently, macOS users install the binary without a shortcut. Desktop shortcuts are not automatically created.
 
 **Future Enhancement**: Add `.app` bundle creation or Automator workflow for macOS.
 
-## User Experience
+### User Experience
 
-### First Launch
+#### First Launch
 1. User runs installation script
 2. Script downloads the standalone print-md binary from GitHub Releases
 3. Script creates desktop shortcut
 4. User sees success message with instructions
 
-### Daily Use
+#### Daily Use
 1. User double-clicks "Print-md Preview" shortcut
 2. Terminal/PowerShell window opens showing server logs
 3. Browser automatically opens to `http://localhost:3579`
@@ -76,21 +177,21 @@ launch the desktop app from the repo:
 bun run viewer:electron
 ```
 
-## Customization
+### Customization
 
 Users can modify the shortcut to:
 - Change the port: `--port 5000`
 - Disable auto-open: replace `--open true` with `--no-open`
 - Point to a specific directory: Add path argument
 
-## Troubleshooting
+### Troubleshooting
 
-### Windows: Shortcut not working
+#### Windows: Shortcut not working
 - Verify print-md is installed: run `print-md --version` in PowerShell
 - Check shortcut properties for correct paths
 - Reinstall with: `.\install.ps1`
 
-### Linux: Desktop file not showing
+#### Linux: Desktop file not showing
 - Verify desktop directory: `echo $XDG_DESKTOP_DIR`
 - Make executable: `chmod +x ~/Desktop/print-md-preview.desktop`
 - Trust the file (GNOME): `gio set ~/Desktop/print-md-preview.desktop metadata::trusted true`

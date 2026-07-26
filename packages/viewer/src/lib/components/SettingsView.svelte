@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
+  import { api, type AppImageIntegrationStatus } from "$lib/api";
 
   let {
     onClose,
@@ -69,6 +71,49 @@
     e.preventDefault();
     activeTab = ids[next]!;
     tabEls[activeTab]?.focus();
+  }
+
+  // ── Linux AppImage application-menu integration (#119) ────────────────────
+  // Opt-in: an AppImage is portable by design, so nothing is copied or
+  // installed until the user presses the button here. The status query is
+  // harmless everywhere (it reports `supported: false` off-Linux, in dev, and
+  // outside an AppImage) — the whole section stays hidden unless supported, so
+  // Windows/macOS/PWA users never see a Linux-only control.
+  let appImage = $state<AppImageIntegrationStatus | null>(null);
+  let appImageBusy = $state(false);
+  let appImageNotice = $state("");
+  let appImageError = $state("");
+
+  onMount(() => {
+    if (!isDesktop()) return;
+    api.app.appImageIntegration
+      .getStatus()
+      .then((status) => {
+        appImage = status;
+      })
+      .catch(() => {
+        // A host that doesn't expose the hooks is simply "not supported here" —
+        // never surface a startup error for an optional desktop nicety.
+        appImage = null;
+      });
+  });
+
+  async function runAppImageAction(action: "install" | "remove") {
+    appImageBusy = true;
+    appImageNotice = "";
+    appImageError = "";
+    try {
+      const result =
+        action === "install"
+          ? await api.app.appImageIntegration.install()
+          : await api.app.appImageIntegration.remove();
+      appImage = result.status;
+      appImageNotice = result.message;
+    } catch (e) {
+      appImageError = e instanceof Error ? e.message : String(e);
+    } finally {
+      appImageBusy = false;
+    }
   }
 
   // ── Typed setters (one line per control, per the "one-line setting" goal) ──
@@ -196,6 +241,54 @@
             <option value="alpha">Alpha — experimental builds</option>
           </select>
         </div>
+      </section>
+      {/if}
+
+      <!-- Desktop integration (Linux AppImage only, #119) -------------------
+           Rendered ONLY when the host reports the environment as supported:
+           packaged Linux AppImage. Windows and macOS installers already create
+           their own menu/dock entries, and a dev or browser run has nothing to
+           install. -->
+      {#if appImage?.supported}
+      <section class="group">
+        <div class="group-head">
+          <h3>Desktop integration</h3>
+        </div>
+        <div class="row">
+          <div class="row-label">
+            <label for="appimage-action">Application menu</label>
+            <span class="row-hint">
+              {#if appImage.needsRepair}
+                Some of the installed files are missing or out of date — add it again to repair the entry.
+              {:else if appImage.installed}
+                print-md viewer is in your application menu, using the copy at {appImage.paths.appImage}.
+              {:else}
+                Add print-md viewer to your application menu so you can launch it like any other app. This copies the app to {appImage.paths.appImage} — no administrator access needed.
+              {/if}
+            </span>
+          </div>
+          <div class="row-actions">
+            <button
+              id="appimage-action"
+              class="action"
+              disabled={appImageBusy}
+              onclick={() => runAppImageAction("install")}
+            >{appImageBusy ? "Working…" : appImage.needsRepair ? "Repair menu entry" : appImage.installed ? "Add again" : "Add to application menu"}</button>
+            {#if appImage.installed || appImage.needsRepair}
+              <button
+                class="action subtle"
+                disabled={appImageBusy}
+                onclick={() => runAppImageAction("remove")}
+              >Remove from menu</button>
+            {/if}
+          </div>
+        </div>
+        {#if appImageNotice}
+          <p class="row-notice">{appImageNotice}</p>
+        {/if}
+        {#if appImageError}
+          <p class="row-error" role="alert">{appImageError}</p>
+        {/if}
       </section>
       {/if}
 
@@ -567,6 +660,25 @@
     background: none;
     cursor: pointer;
   }
+  /* Desktop integration (#119) — an action row rather than a value row, so it
+     gets its own button pair + inline result lines. */
+  .row-actions { display: inline-flex; gap: 6px; align-items: center; }
+  .action {
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-control-border);
+    color: var(--app-text);
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .action:hover:not(:disabled) { background: var(--app-control-hover-bg); }
+  .action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  .action:disabled { opacity: 0.6; cursor: default; }
+  .action.subtle { color: var(--app-text-muted); }
+  .row-notice { font-size: 12px; line-height: 1.4; color: var(--app-success-text); margin: 6px 0 0; }
+  .row-error { font-size: 12px; line-height: 1.4; color: var(--app-error-text); margin: 6px 0 0; }
   .advanced-hint {
     text-transform: none;
     letter-spacing: 0;

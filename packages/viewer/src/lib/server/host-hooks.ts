@@ -1,6 +1,8 @@
 export {
+  getAppImageHooks,
   getDesktopHooks,
   getDoctorHooks,
+  type AppImageHooks,
   type DesktopHooks,
   type DialogFilter,
   type DoctorHooks,

@@ -91,6 +91,9 @@ import type {
 } from './platform/contract';
 
 export type {
+  AppImageIntegrationStatus,
+  AppImageIntegrationActionResult,
+  AppImageIntegrationPaths,
   DiscoveredProject,
   PluginKind,
   ProjectPluginEntry,
@@ -112,6 +115,8 @@ export type {
 } from './platform/dtos';
 
 import type {
+  AppImageIntegrationStatus,
+  AppImageIntegrationActionResult,
   DiscoveredProject,
   ProjectPluginEntry,
   PluginValidationResult,
@@ -320,6 +325,25 @@ export const api = {
       post<CreateProjectResult>('/api/app/adopt-folder', opts),
     /** Push the renderer dirty state to the main process close gate. */
     setDirtyState: (dirty: boolean) => post<{ ok: boolean }>('/api/app/dirty-state', { dirty }),
+
+    /**
+     * Linux AppImage application-menu integration (#119). `status()` is safe to
+     * call on every platform — off-Linux, in dev, or outside an AppImage it
+     * reports `supported: false` with a reason, and the Settings action stays
+     * hidden. Neither action takes a path: the host owns the fixed per-user
+     * destinations.
+     */
+    appImageIntegration: {
+      getStatus: () => get<AppImageIntegrationStatus>('/api/app/appimage-integration'),
+      install: () =>
+        post<AppImageIntegrationActionResult>('/api/app/appimage-integration', {
+          action: 'install',
+        }),
+      remove: () =>
+        post<AppImageIntegrationActionResult>('/api/app/appimage-integration', {
+          action: 'remove',
+        }),
+    },
     // flushDone deleted (ARCH review #8) — this wrapper (and the
     // /api/app/flush-done route) had zero callers: the real flush-before-close
     // reply is fired directly over IPC (preload.ts's onFlushBeforeClose calls
