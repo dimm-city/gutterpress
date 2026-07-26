@@ -50,7 +50,7 @@
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",
     "electron": "^42.1.0",
-    "electron-builder": "^26.0.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^9.0.0",
     "eslint-plugin-svelte": "^2.46.0",
