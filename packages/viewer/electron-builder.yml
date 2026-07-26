@@ -65,9 +65,18 @@ linux:
     - AppImage
   icon: build-resources/icon.png
   category: Office
+  # Derive the AppImage's OWN embedded .desktop basename from package.json's
+  # `desktopName` too (app-builder-lib's LinuxTargetHelper.getDesktopFileName,
+  # consumed by AppImageTarget) — without this it falls back to
+  # `executableName`, leaving the one desktop filename in the pipeline that
+  # ISN'T city.dimm.print-md-viewer.
+  syncDesktopName: true
   desktop:
     entry:
       Categories: Office;Publishing;
+      # electron-builder ≥26 already derives this from `desktopName`; stated
+      # explicitly so the value is greppable next to the integration that must
+      # match it.
       StartupWMClass: city.dimm.print-md-viewer
 
 win:

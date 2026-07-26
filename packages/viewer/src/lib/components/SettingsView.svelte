@@ -99,6 +99,11 @@
   });
 
   async function runAppImageAction(action: "install" | "remove") {
+    // `disabled={appImageBusy}` only takes effect after Svelte flushes, so a
+    // fast double-click can land two calls. Each one is independently atomic,
+    // so the worst case is redundant work — but one in-flight action at a time
+    // keeps the notice/error lines describing the action the user actually sees.
+    if (appImageBusy) return;
     appImageBusy = true;
     appImageNotice = "";
     appImageError = "";
