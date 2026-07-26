@@ -268,6 +268,14 @@ export interface ChangedDest {
   ext: string;
   /** The chokidar event that reported the change (change, unlink, …). */
   event: string;
+  /**
+   * Whether the file was actually written into the temp dir on this pass.
+   * False for deletions, directory events, and copies that failed (an editor
+   * saving via temp-file+rename can delete the source between stat and copy).
+   * Only a true mirror is eligible for the CSS hot-swap fast path, which
+   * re-fetches from the temp copy without re-rendering.
+   */
+  mirrored: boolean;
 }
 
 /**
@@ -296,10 +304,22 @@ export async function mirrorChanges(
     // temp-file + rename can delete the file between the stat and the copy.
     // A failed mirror must not abort the rebuild — the re-render below reads
     // from inputPath (the source of truth), so the preview still updates.
+    //
+    // It must still be REPORTED, though — a deletion or a directory event has
+    // no copy to make and yet must reach decideBroadcast() so the preview
+    // re-renders. What it must NOT do is claim the temp copy is current:
+    // cssHotSwapPaths() re-fetches the <link> from the mirror WITHOUT
+    // re-rendering, so a swallowed copy failure on a .css file would hot-swap
+    // the client onto a stale stylesheet with nothing downstream to repair it
+    // (unlike markdown, which re-renders from inputPath). Hence `mirrored`:
+    // reported either way, but only an actually-written file is eligible for
+    // the CSS fast path.
+    let mirrored = false;
     try {
       if (existsSync(changedPath) && statSync(changedPath).isFile()) {
         await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
         await fsp.copyFile(changedPath, dest.destPath);
+        mirrored = true;
         debug(`Updated: ${dest.relativePath}`);
       }
     } catch (err) {
@@ -309,6 +329,7 @@ export async function mirrorChanges(
       relativePath: dest.relativePath,
       ext: path.extname(changedPath).toLowerCase(),
       event: changedEvent,
+      mirrored,
     });
   }
   return dests;
@@ -327,7 +348,10 @@ export function cssHotSwapPaths(dests: ChangedDest[], changeCount: number): stri
   if (
     dests.length === changeCount &&
     dests.length > 0 &&
-    dests.every((d) => d.ext === '.css')
+    // Every stylesheet must have actually landed in the temp dir. Hot-swapping
+    // on a failed mirror would re-fetch a stale <link> and nothing re-renders
+    // afterwards to correct it — degrade to a full update instead.
+    dests.every((d) => d.ext === '.css' && d.mirrored)
   ) {
     return dests.map((d) => d.relativePath);
   }
