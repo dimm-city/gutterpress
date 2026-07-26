@@ -33,7 +33,7 @@
 import { createHostBridge } from "./create-host-bridge";
 import type { AppHooks } from "./app-hooks";
 import type { ConflictPreviewHooks } from "./conflict-preview-hooks";
-import type { DesktopHooks, DoctorHooks } from "./host-hooks";
+import type { AppImageHooks, DesktopHooks, DoctorHooks } from "./host-hooks";
 import type { FsGuardHooks } from "./fs-guard";
 import type { MediaHooks } from "./media-hooks";
 import type { PickedFilesHooks, SavePathHooks } from "./picked-files";
@@ -62,6 +62,7 @@ export type LibModule = typeof import("@dimm-city/print-md");
  */
 export interface HostServices {
   app: AppHooks;
+  appImage: AppImageHooks;
   conflictPreview: ConflictPreviewHooks;
   desktop: DesktopHooks;
   doctor: DoctorHooks;

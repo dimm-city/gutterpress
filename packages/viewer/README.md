@@ -144,6 +144,31 @@ npm run dist:mac     # → dist/print-md-viewer-<version>-arm64.dmg
 Each `dist:*` script runs the build and electron:build steps automatically
 before packaging.
 
+### Linux
+
+```bash
+npm run dist:linux
+# Output: dist/print-md-viewer-<version>.AppImage
+```
+
+The AppImage is a bare portable executable — there is no installer, so nothing
+in the packaging step can add it to the KDE/GNOME application menu. That is a
+runtime, **opt-in** action instead: **Settings → App → Desktop integration →
+Add to application menu**, implemented in `electron/appimage-integration.ts`
+(status/install/remove hooks → `src/routes/api/app/appimage-integration`). It
+installs a managed copy at `~/.local/bin/print-md-viewer.AppImage`, the icon in
+the user's hicolor theme, and an XDG `.desktop` entry — per-user, no root, no
+`update-desktop-database`/`kbuildsycoca6`/AppImageLauncher required. See
+[docs/desktop-shortcut.md](../../docs/desktop-shortcut.md#linux-appimage-application-menu-integration-desktop-app)
+for the full contract (it is a *different* thing from the CLI installer's
+`print-md preview` browser shortcut).
+
+Three identity keys must stay aligned or KDE/GNOME will not associate the
+running window with its launcher: `appId`/`linux.desktop.entry.StartupWMClass`
+in `electron-builder.yml`, `desktopName` in `package.json`, and the desktop
+filename + icon basename written by `appimage-integration.ts` — all
+`city.dimm.print-md-viewer`.
+
 ### Windows
 
 ```bash
@@ -173,6 +198,7 @@ packages/viewer/
 ├── electron/                # Electron main process (TypeScript)
 │   ├── main.ts              # app lifecycle, protocol.handle("app"), ipcMain handlers
 │   ├── preload.ts           # contextBridge — exposes window.electron
+│   ├── appimage-integration.ts # opt-in Linux application-menu install/repair/remove
 │   └── tsconfig.json
 ├── electron.vite.config.ts  # electron-vite config (main + preload builds)
 ├── out/                     # electron-vite output (ESM, git-ignored)

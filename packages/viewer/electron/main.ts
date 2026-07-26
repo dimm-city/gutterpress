@@ -38,7 +38,8 @@ import type { WatchHooks } from "./server-bridge/watch-hooks";
 import type { AppHooks } from "./server-bridge/app-hooks";
 import type { PrefsHooks } from "./server-bridge/prefs-hooks";
 import type { RecoveryHooks } from "./server-bridge/recovery-hooks";
-import type { DesktopHooks, DoctorHooks } from "./server-bridge/host-hooks";
+import type { AppImageHooks, DesktopHooks, DoctorHooks } from "./server-bridge/host-hooks";
+import { AppImageIntegration } from "./appimage-integration";
 import type { MediaHooks } from "./server-bridge/media-hooks";
 import type { VcsHooks } from "./server-bridge/vcs-hooks";
 import type { RemoteHooks } from "./server-bridge/remote-hooks";
@@ -1153,6 +1154,26 @@ const doctorHooksImpl: DoctorHooks = {
   getViewerVersion: () => app.getVersion(),
 };
 
+// ── Linux AppImage application-menu integration (#119) ───────────────────────
+// Constructed on every platform (the service reports `supported: false` with a
+// reason off-Linux / in dev / outside an AppImage, which is exactly what the
+// Settings UI needs to decide whether to render the action at all). The env
+// snapshot is read ONCE here: the renderer never supplies any of it, so a
+// compromised or buggy client cannot redirect the install anywhere.
+const appImageIntegration = new AppImageIntegration({
+  platform: process.platform,
+  isPackaged: app.isPackaged,
+  appImagePath: process.env.APPIMAGE,
+  home: app.getPath("home"),
+  xdgDataHome: process.env.XDG_DATA_HOME,
+  iconSourcePath: appIconPath(),
+});
+const appImageHooksImpl: AppImageHooks = {
+  getStatus: () => appImageIntegration.status(),
+  install: () => appImageIntegration.install(),
+  remove: () => appImageIntegration.remove(),
+};
+
 // ── Local version history (#13) ──────────────────────────────────────────────
 // Thin pass-throughs to the lib's source-provider operations (isomorphic-git —
 // CLAUDE.md §7: never the system git binary). The renderer drives these through
@@ -1494,6 +1515,7 @@ const updaterHooksImpl: UpdaterHooks = {
 // activePreview, folderWatch, …) already exists.
 registerHostServices({
   app: appHooksImpl,
+  appImage: appImageHooksImpl,
   conflictPreview: conflictPreviewHooksImpl,
   desktop: desktopHooksImpl,
   doctor: doctorHooksImpl,

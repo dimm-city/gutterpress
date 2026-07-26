@@ -52,11 +52,32 @@ publish:
 # Native deps and large optionals are installed via the viewer's package.json
 # dependencies (@dimm-city/print-md → its transitive deps). electron-builder
 # copies them automatically from the workspace node_modules at packaging time.
+#
+# The AppImage is a bare portable executable — it has no installer, so nothing
+# here can put it in the KDE/GNOME application menu. That is opt-in at runtime
+# (Settings → App → Add to application menu, electron/appimage-integration.ts).
+# The keys below are the identity that integration writes into the installed
+# .desktop file, and they MUST stay aligned with it and with package.json's
+# `desktopName` (city.dimm.print-md-viewer.desktop): appId ↔ StartupWMClass ↔
+# desktop filename ↔ icon basename (#119).
 linux:
   target:
     - AppImage
   icon: build-resources/icon.png
   category: Office
+  # Derive the AppImage's OWN embedded .desktop basename from package.json's
+  # `desktopName` too (app-builder-lib's LinuxTargetHelper.getDesktopFileName,
+  # consumed by AppImageTarget) — without this it falls back to
+  # `executableName`, leaving the one desktop filename in the pipeline that
+  # ISN'T city.dimm.print-md-viewer.
+  syncDesktopName: true
+  desktop:
+    entry:
+      Categories: Office;Publishing;
+      # electron-builder ≥26 already derives this from `desktopName`; stated
+      # explicitly so the value is greppable next to the integration that must
+      # match it.
+      StartupWMClass: city.dimm.print-md-viewer
 
 win:
   artifactName: ${productName}-${version}-${os}-${arch}.${ext}

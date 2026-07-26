@@ -28,6 +28,7 @@ import type { PrefsHooks } from "../../electron/server-bridge/prefs-hooks";
 import type { RemoteHooks, TokenStore } from "../../electron/server-bridge/remote-hooks";
 import type { VcsHooks } from "../../electron/server-bridge/vcs-hooks";
 import type { UpdaterStatus } from "../../src/lib/platform/shared-types";
+import type { AppImageStatus } from "../../electron/appimage-integration";
 
 /** `HostServices` with the lib-generic domains at their loose defaults — see the module doc. */
 type FakeHostServices = Omit<HostServices, "prefs" | "remote" | "vcs"> & {
@@ -45,6 +46,19 @@ const noop = () => {};
 const unstubbed = (name: string) => async (): Promise<never> => {
   throw new Error(`makeHostServices: ${name} not stubbed — pass an override`);
 };
+/** The off-Linux default: the AppImage menu action is simply unavailable (#119). */
+const unsupportedAppImageStatus = (): AppImageStatus => ({
+  supported: false,
+  reason: "not-linux",
+  installed: false,
+  needsRepair: false,
+  runningManagedCopy: false,
+  paths: {
+    appImage: "/fake/home/.local/bin/print-md-viewer.AppImage",
+    desktopEntry: "/fake/home/.local/share/applications/city.dimm.print-md-viewer.desktop",
+    icon: "/fake/home/.local/share/icons/hicolor/512x512/apps/city.dimm.print-md-viewer.png",
+  },
+});
 const idleUpdaterStatus = (): UpdaterStatus => ({
   currentVersion: "0.0.0-test",
   stagedVersion: null,
@@ -56,6 +70,11 @@ const idleUpdaterStatus = (): UpdaterStatus => ({
 export function makeHostServices(overrides: HostServicesOverrides = {}): HostServices {
   const base = {
     app: { setRendererDirty: noop, sendToRenderer: noop },
+    appImage: {
+      getStatus: async () => unsupportedAppImageStatus(),
+      install: unstubbed("appImage.install"),
+      remove: unstubbed("appImage.remove"),
+    },
     conflictPreview: {
       getConflictPreview: async () => ({ mine: "", theirs: "", kind: "both-edited" as const, isBinary: false }),
     },

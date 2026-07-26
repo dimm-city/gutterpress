@@ -364,3 +364,50 @@ export interface DoctorDiagnostics {
   tools: DoctorToolStatus[];
   docsUrl: string;
 }
+
+// ── Linux AppImage application-menu integration (#119) ───────────────────────
+//
+// Mirrors `electron/appimage-integration.ts`'s result shapes — declared here so
+// the SPA never imports host code (§8 / ADR 0004), even type-only.
+
+/** The three fixed per-user destinations the integration manages. */
+export interface AppImageIntegrationPaths {
+  appImage: string;
+  desktopEntry: string;
+  icon: string;
+}
+
+/** `GET /api/app/appimage-integration` — supported/installed/repair state. */
+export interface AppImageIntegrationStatus {
+  /** Linux + packaged + running from an AppImage. The Settings action renders only when true. */
+  supported: boolean;
+  /** Why it is unsupported; `null` when supported. */
+  reason: "not-linux" | "not-packaged" | "not-appimage" | null;
+  installed: boolean;
+  /** Managed files exist but are incomplete or stale — installing again repairs them. */
+  needsRepair: boolean;
+  /** The running process is already the managed copy. */
+  runningManagedCopy: boolean;
+  paths: AppImageIntegrationPaths;
+}
+
+/** Fields both `POST` actions return. */
+interface AppImageIntegrationActionBase {
+  ok: true;
+  /** Plain-language outcome, ready to show verbatim. */
+  message: string;
+  /** The refreshed status, so the caller never needs a follow-up GET. */
+  status: AppImageIntegrationStatus;
+}
+
+/** `POST { action: "install" }` — the result of an install or repair. */
+export interface AppImageIntegrationInstallResult extends AppImageIntegrationActionBase {
+  /** False means "launch it from the menu next time to use the managed copy". */
+  runningManagedCopy: boolean;
+}
+
+/** `POST { action: "remove" }` — the result of a removal. */
+export interface AppImageIntegrationRemoveResult extends AppImageIntegrationActionBase {
+  /** The managed files actually deleted; empty when nothing was installed. */
+  removed: string[];
+}
