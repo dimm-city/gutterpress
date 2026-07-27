@@ -2,14 +2,21 @@ title: My Book (part 2)
 authors:
   - Author Name
 
-# The book and the companion design guide (./design-guide/) both consume the
+# The book and the companion design guide (../design-guide/) both consume the
 # same stylesheet, so the guide always documents what the book actually ships.
+#
+# Note the two different paths below. `source.assets` is resolved relative to
+# THIS book's folder, so it needs `../` to reach the shared stylesheet. Assets
+# copied from a parent directory are FLATTENED to their basename in the output,
+# so `../design-guide/styles` lands at `styles/` — and `styles:` must name that
+# flattened destination, not the source path. A `../` in `styles:` would be
+# emitted verbatim into the HTML and escape the output root.
 styles:
-  - ../design-guide/styles/guide.css
+  - styles/guide.css
 
 source:
   assets:
-    - design-guide/styles/
+    - ../design-guide/styles
 
 # Letter (8.5" x 11"). Match this to your design-guide manifest so the guide's
 # screenshots and dimensions reflect the book's real page geometry.

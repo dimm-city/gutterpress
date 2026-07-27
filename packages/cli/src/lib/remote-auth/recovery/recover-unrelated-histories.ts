@@ -135,7 +135,7 @@ export const recover: RecoverFn = async (ctx, error?) => {
 
       // ── 1. Fetch the remote ───────────────────────────────────────────────
       // Uses the same authenticated, single-branch fetch pattern as
-      // transport.ts's fetchRemoteTip (re-exported via sync.ts): `ref` is the
+      // transport.ts's fetchRemoteTip (which sync.ts uses internally): `ref` is the
       // remote-tracking ref (the last tip the server gave us) so the server
       // finds a common base and sends only new objects. Without this,
       // isomorphic-git sends the local branch tip as the `have` line, and the

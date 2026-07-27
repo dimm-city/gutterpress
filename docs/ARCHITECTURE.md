@@ -21,7 +21,7 @@ This document describes the architecture, design decisions, and implementation d
 
 The repo is a Bun workspace with two packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). Standard build: `bun build` (`src/index.ts` + `src/api/index.ts`, `--target=node --packages=external --splitting`), `src/render.ts` as a separate non-split invocation (see `CLAUDE.md` §1), plus `tsc` for `.d.ts`. Also distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). Standard build: `bun build` over `src/index.ts` + `src/api/index.ts` + `src/cli.ts` (`--target=node --packages=external --splitting`), with `src/render.ts` compiled as a SEPARATE non-split invocation so the node-free `/render` subpath never shares a chunk with Node code (enforced by `scripts/check-render-pure.mjs`; see `CLAUDE.md` §8), plus `tsc` for `.d.ts`. Also distributed as a standalone compiled binary via `bun build --compile`.
 - **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Depends on `@dimm-city/print-md` (workspace) and loads its library entry in the Electron main process.
 
 ### Key Features
@@ -269,7 +269,7 @@ Styles are applied in a carefully designed cascade:
 
 ### 3. HTML-to-PDF Build
 
-**Location**: `packages/cli/src/lib/pagination.ts` (`renderHtmlToPdf`, called from `packages/cli/src/commands/build.ts`)
+**Location**: `packages/cli/src/lib/pagination.ts` (`renderHtmlToPdf`, called from `packages/cli/src/lib/build-runner.ts:499`; `commands/build.ts` only calls `runBuild`)
 
 `renderHtmlToPdf` renders HTML to PDF through an injectable `PdfRenderer`. There are no separate format strategy classes; the default renderer drives a pooled puppeteer-core Chromium instance:
 

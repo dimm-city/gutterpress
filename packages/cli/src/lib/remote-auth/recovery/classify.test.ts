@@ -1,8 +1,9 @@
 /**
  * Tests for classify.ts — classifyGitError must cover every SyncErrorKind value
- * (13 in the main table below; interrupted_rebase/interrupted_cherry_pick/
- * interrupted_merge and insecure_transport are covered by their own dedicated
- * describe blocks further down this file).
+ * (13 in the main table below; interrupted_rebase, interrupted_cherry_pick and
+ * insecure_transport have their own describe blocks further down this file.
+ * interrupted_merge's classifier coverage lives in
+ * recover-interrupted-merge.test.ts, so this file covers 16 of the 17.)
  * bun:test only.
  */
 

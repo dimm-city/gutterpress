@@ -226,8 +226,8 @@ The [`with-design-guide`](../examples/with-design-guide/) example is the referen
   that authors opt into from markdown
 - The full markdown-author authoring surface across its numbered chapters
 
-Note that this example predates the `.section.dc-*` / `var(--dc-X, fallback)`
-naming used in the illustrations above, and uses the brand-agnostic
+Note that this example does not use the `.section.dc-*` / `var(--dc-X, fallback)`
+naming from the illustrations above; it uses the brand-agnostic
 `--color-*`/`.callout-*` vocabulary instead. The *shape* of the pattern is the
 same — a token layer, component rules that consume it, and per-book overrides
 that reset the tokens — only the prefix differs.

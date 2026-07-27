@@ -9,11 +9,16 @@ The validation system runs checks at two phases:
 - **Pre-build** — Source, asset, and some heuristic checks run before PDF generation
 - **Post-build** — PDF structural, print compliance, and quality checks run after PDF generation
 
-When using `print-md build --format pdf` or `--format pdfx`, validation is automatically integrated into the pipeline:
+When using `print-md build`, validation is automatically integrated into the
+pipeline:
 
 ```
 lint → validate:pre-build → convert → assets → build → validate:post-build
 ```
+
+The final `validate:post-build` phase runs for `--format pdfx` only — a plain
+`--format pdf` build stops after the build step. Everything before it runs for
+both formats.
 
 ## CLI Usage
 

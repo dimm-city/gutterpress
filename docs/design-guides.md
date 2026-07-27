@@ -42,8 +42,12 @@ my-book/
     └── publish-design-guide.yml  # GitHub Pages deploy
 ```
 
-A working version of this layout lives at
-[`examples/with-design-guide/`](../examples/with-design-guide).
+[`examples/with-design-guide/`](../examples/with-design-guide) is a working
+variation on this layout. It is a MULTI-book project — `book-01/` and `book-02/`
+sit beside `design-guide/` rather than inside a single book — and it keeps the
+shared stylesheet in the guide itself (`design-guide/styles/guide.css`) instead
+of a separate `shared/` directory. The flattening convention described below is
+the same in both shapes.
 
 `print-md` discovers the manifest from whichever directory you point at,
 so `print-md build ./design-guide` and `print-md build .` (the book) both

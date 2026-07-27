@@ -22,7 +22,7 @@ import type { ConflictKind } from "./shared-types";
 // CrashRecoveryController, the /api/recovery/* routes below). `RecoveryEntry`
 // is the live DTO those routes return. `EditorBufferPhase` predates that work
 // and has no importers — EditorBuffer declares its own identical copy of the
-// union locally instead of importing this one. See docs/design/issue-44-plan.md.
+// union locally instead of importing this one.
 
 /** Lifecycle of the in-app editor buffer relative to disk (#44). Unused here —
  *  see the header note above. */

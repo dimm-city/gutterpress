@@ -75,9 +75,11 @@ print-md build field-guide --format pdfx --pdfx-flavor x1a --icc ./profiles/CGAT
 > via the [print-md Docker image](../../../docs/docker.md), which bundles all
 > three tools.
 
-There is no separate "full pipeline" command — `print-md build --format pdf`
-or `--format pdfx` already runs the complete validated pipeline on its own:
-`lint → validate:pre-build → convert → assets → build → validate:post-build`
+There is no separate "full pipeline" command — `print-md build` already runs
+the validated pipeline on its own:
+`lint → validate:pre-build → convert → assets → build → validate:post-build`.
+Note that the final `validate:post-build` phase runs for `--format pdfx` ONLY;
+a plain `--format pdf` build stops after the build step
 (see [User Guide, Chapter 7 — Validation](../../print-md-user-guide/07-validation.md)).
 Skip individual phases with flags on `build` itself:
 
@@ -85,7 +87,7 @@ Skip individual phases with flags on `build` itself:
 |------|-------------|
 | `--skip-lint` | Skip CSS linting |
 | `--skip-pre-validate` | Skip pre-build validation |
-| `--skip-post-validate` | Skip post-build PDF validation (pdf/pdfx only) |
+| `--skip-post-validate` | Skip post-build PDF validation (`--format pdfx` only) |
 
 **Example** — validated PDF/X build:
 

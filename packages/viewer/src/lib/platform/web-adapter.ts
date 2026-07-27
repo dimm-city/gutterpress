@@ -89,7 +89,8 @@ const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
 // #33 Phase 4: same-origin path of the vendored paged.js polyfill the viewer
 // ships in static/vendor/. The service worker precaches it; startPreview
-// rewrites the render core's CDN URL to this so preview works offline.
+// rewrites the render core's src-less marker slot to this so preview works
+// offline.
 const VENDOR_PAGED_POLYFILL_URL = "/vendor/paged.polyfill.js";
 
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
@@ -722,10 +723,11 @@ export class WebAdapter implements Platform {
    *  3. run the PURE `assembleBookHtml` (markdown-it + paged plugin) with an
    *     FSA-backed `readText` — the SAME render core the CLI uses;
    *  4. INLINE the project CSS (a blob-URL doc can't resolve relative `css/*`
-   *     hrefs) and rewrite the CDN paged.js reference to the same-origin copy.
+   *     hrefs) and rewrite the paged.js marker slot to the same-origin copy.
    *
-   * OFFLINE (#33 Phase 4): the pure render core emits the unpkg CDN `<script>`
-   * for paged.js; step 4 rewrites it to the same-origin, vendored
+   * OFFLINE (#33 Phase 4): the pure render core emits a src-less
+   * `data-pagedjs-polyfill` marker slot (never a CDN URL — `pagedjs-marker.ts`,
+   * asserted by its test); step 4 rewrites that slot to the same-origin, vendored
    * `/vendor/paged.polyfill.js` (shipped in the viewer `static/` dir + precached
    * by the service worker). A `blob:` document inherits the creating page's
    * origin, so an absolute-path URL resolves same-origin and is SW-cacheable —
