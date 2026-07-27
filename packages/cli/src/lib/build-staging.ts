@@ -18,12 +18,6 @@ import { getAssetPath } from "./embedded-assets";
  * engine — see `createStaticFileServer`'s `overlays` in `./pagination.ts`.
  */
 
-/** Files this module writes into `outDir`, relative — recorded in the build inventory. */
-export const NAV_SCRIPT_OUTPUTS = [
-  "preview/scripts/pagedjs-interface.js",
-  "preview/scripts/pagedjs-bridge.js",
-];
-
 /**
  * Remove the Paged.js pagination ENGINE from an already-paginated, serialized
  * document so the browser renders the static pages as-is and never re-paginates.
@@ -81,17 +75,15 @@ export function injectNavigationScripts(html: string): string {
 
 /**
  * Turn a raw serialized paginated document into the shippable static viewer
- * `book.html`: copy the navigation toolbar scripts into outDir, strip the
- * pagination engine and the build's ephemeral origin, wire the nav scripts, and
- * write the file. Shared by the HTML format and the PDF unification path.
- *
- * Returns the output-relative paths it wrote, for the build inventory.
+ * `book.html`: copy the navigation toolbar scripts, strip the pagination engine
+ * and the build's ephemeral origin, wire the nav scripts, and write the file.
+ * Shared by the HTML format and the PDF unification path.
  */
 export async function finalizeStaticBook(
   rawSerializedHtml: string,
   htmlFile: string,
   outDir: string
-): Promise<string[]> {
+): Promise<void> {
   await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
   await fsp.copyFile(
     await getAssetPath("preview/scripts/pagedjs-interface.js"),
@@ -108,7 +100,6 @@ export async function finalizeStaticBook(
     ),
     "utf-8"
   );
-  return [...NAV_SCRIPT_OUTPUTS];
 }
 
 /**
@@ -116,13 +107,11 @@ export async function finalizeStaticBook(
  * Paged.js polyfill + nav scripts so the BROWSER paginates at load time (the
  * pre-SSG behavior). Slower at runtime and not pre-paginated, but it works with
  * no Chromium at build.
- *
- * Returns the output-relative paths it wrote, for the build inventory.
  */
 export async function shipRuntimePaginatedHtml(
   htmlFile: string,
   outDir: string
-): Promise<string[]> {
+): Promise<void> {
   await fsp.mkdir(path.join(outDir, "vendor"), { recursive: true });
   await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
   await fsp.copyFile(
@@ -143,7 +132,6 @@ export async function shipRuntimePaginatedHtml(
     '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
   );
   await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
-  return [...NAV_SCRIPT_OUTPUTS, "vendor/paged.polyfill.js"];
 }
 
 /**

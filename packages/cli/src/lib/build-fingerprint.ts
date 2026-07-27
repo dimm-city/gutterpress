@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { mkdir, writeFile, readFile, rm, rmdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import git from "isomorphic-git";
 import { resolveChromiumExecutable } from "./chromium";
@@ -27,26 +27,12 @@ type PdfxFingerprintConfig = {
   stripAnnotations: boolean | null;
 };
 
-/**
- * Per-format inventory of the output-relative paths a build wrote, keyed by
- * build format ("html" | "pdf" | "pdfx") so each format's artifacts accumulate
- * side by side instead of deleting one another.
- */
-export type OutputInventory = Record<string, string[]>;
-
 export type BuildFingerprintInput = {
   command: "build";
   outputDir: string;
   sourceDir?: string;
   args: Record<string, unknown>;
   pdfx: PdfxFingerprintConfig;
-  /**
-   * What this build wrote. Recorded so the NEXT build of the same format can
-   * remove exactly what it previously wrote and no longer does — the mechanism
-   * that lets print-md own its output directory without ever issuing a
-   * wholesale delete that could take a user's files with it.
-   */
-  outputs?: OutputInventory;
 };
 
 const FINGERPRINT_FILENAME = "build-fingerprint.json";
@@ -259,87 +245,9 @@ export async function writeBuildFingerprint(input: BuildFingerprintInput): Promi
     },
     sourceRevision,
     tools,
-    outputs: toJsonValue(input.outputs ?? {}),
   };
 
   await mkdir(outputDir, { recursive: true });
   await writeFile(outPath, stableJsonStringify(payload), "utf8");
   return outPath;
-}
-
-/**
- * Read the previous build's per-format output inventory from `outDir`.
- * Returns `{}` when there is no fingerprint, it is unreadable, or it predates
- * the inventory field — in every case the correct behavior is "prune nothing".
- */
-export async function readPreviousOutputs(outDir: string): Promise<OutputInventory> {
-  try {
-    const raw = await readFile(path.join(path.resolve(outDir), FINGERPRINT_FILENAME), "utf8");
-    const parsed = JSON.parse(raw) as { outputs?: unknown };
-    const outputs = parsed.outputs;
-    if (!outputs || typeof outputs !== "object" || Array.isArray(outputs)) return {};
-    const result: OutputInventory = {};
-    for (const [format, list] of Object.entries(outputs as Record<string, unknown>)) {
-      if (Array.isArray(list) && list.every((v) => typeof v === "string")) {
-        result[format] = list as string[];
-      }
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Delete files this format wrote last time and is not rewriting now.
- *
- * Two guards make an owned output directory safe:
- *  - Only paths recorded in a PREVIOUS print-md inventory are candidates, so a
- *    file print-md never wrote is never deleted.
- *  - A path still claimed by ANOTHER format's inventory is kept, so shared
- *    artifacts (`book.html`, images) survive when only one format rebuilds.
- *
- * Returns how many files were removed. Empty parent directories left behind by
- * a removal are pruned too, so a renamed image folder does not linger.
- */
-export async function pruneStaleOutputs(
-  outDir: string,
-  previous: OutputInventory,
-  format: string,
-  current: string[]
-): Promise<number> {
-  const root = path.resolve(outDir);
-  const keep = new Set(current);
-  for (const [otherFormat, list] of Object.entries(previous)) {
-    if (otherFormat !== format) for (const rel of list) keep.add(rel);
-  }
-
-  const stale = (previous[format] ?? []).filter((rel) => !keep.has(rel));
-  let removed = 0;
-  const touchedDirs = new Set<string>();
-
-  for (const rel of stale) {
-    // Defense in depth: never follow a recorded path outside the output dir.
-    const abs = path.resolve(root, rel);
-    if (abs !== root && !abs.startsWith(root + path.sep)) continue;
-    try {
-      await rm(abs, { force: true });
-      removed++;
-      touchedDirs.add(path.dirname(abs));
-    } catch {
-      // A file already gone is the desired end state; ignore.
-    }
-  }
-
-  // Prune now-empty directories, deepest first.
-  for (const dir of [...touchedDirs].sort((a, b) => b.length - a.length)) {
-    if (dir === root || !dir.startsWith(root + path.sep)) continue;
-    try {
-      await rmdir(dir);
-    } catch {
-      // Not empty (or already gone) — leave it.
-    }
-  }
-
-  return removed;
 }
