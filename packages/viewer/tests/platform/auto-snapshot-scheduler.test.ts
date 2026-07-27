@@ -59,6 +59,8 @@ interface FakeLibOptions {
   isNoChangesError?: (e: unknown) => boolean;
   /** Injected onSnapshotFailed dep (M39 failure-threshold signal). */
   onSnapshotFailed?: (dir: string, consecutiveFailures: number, error: unknown) => void;
+  /** The `gitIdentity` settings slice the scheduler must honour. */
+  gitIdentity?: { authorName?: string; authorEmail?: string };
 }
 
 interface Harness {
@@ -103,7 +105,10 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
 
   const deps: AutoSnapshotDeps = {
     loadLib: async () => lib,
-    readSettings: async () => ({ versionHistory: {} }),
+    readSettings: async () => ({
+      versionHistory: {},
+      ...(opts.gitIdentity ? { gitIdentity: opts.gitIdentity } : {}),
+    }),
     getWatchedDir: () => watched,
     operationLogPath: (slug: string) => `/logs/${slug}.log`,
     setTimer: clock.set,
@@ -144,6 +149,55 @@ test("(c) run() snapshots with message + log path derived from basename", async 
     projectDir: DIR,
     message: AUTO_SNAPSHOT_MESSAGE,
     logFile: "/logs/book.log",
+  });
+});
+
+// ── Configured commit identity ────────────────────────────────────────────────
+//
+// The automatic snapshot must be committed as the author, exactly like the
+// manual "Save a version" path (which goes through gitIdentityArgs() in
+// src/lib/server/settings.ts). Before this was wired, run() called
+// provider.snapshot() with no author fields at all, so every automatic snapshot
+// was silently attributed to the lib's "print-md <noreply@print-md.local>"
+// default while manual saves carried the configured name/email.
+
+test("(c2) run() commits the automatic snapshot with the configured name + email", async () => {
+  const h = makeHarness({
+    gitIdentity: { authorName: "Ada Lovelace", authorEmail: "ada@example.com" },
+  });
+  await h.sched.run(DIR);
+  await settle();
+  expect(h.snapshotCalls[0]).toEqual({
+    projectDir: DIR,
+    message: AUTO_SNAPSHOT_MESSAGE,
+    logFile: "/logs/book.log",
+    authorName: "Ada Lovelace",
+    authorEmail: "ada@example.com",
+  });
+});
+
+test("(c2) blank/whitespace identity fields are omitted, not sent as empty strings", async () => {
+  // Empty means "use the existing repo config, then the print-md default" —
+  // passing "" would override that fallback with a blank author.
+  const h = makeHarness({ gitIdentity: { authorName: "  ", authorEmail: "" } });
+  await h.sched.run(DIR);
+  await settle();
+  expect(h.snapshotCalls[0]).toEqual({
+    projectDir: DIR,
+    message: AUTO_SNAPSHOT_MESSAGE,
+    logFile: "/logs/book.log",
+  });
+});
+
+test("(c2) a partially configured identity passes only the filled-in field", async () => {
+  const h = makeHarness({ gitIdentity: { authorEmail: "ada@example.com" } });
+  await h.sched.run(DIR);
+  await settle();
+  expect(h.snapshotCalls[0]).toEqual({
+    projectDir: DIR,
+    message: AUTO_SNAPSHOT_MESSAGE,
+    logFile: "/logs/book.log",
+    authorEmail: "ada@example.com",
   });
 });
 

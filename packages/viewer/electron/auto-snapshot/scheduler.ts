@@ -24,6 +24,7 @@
  */
 
 import path from "node:path";
+import { gitIdentityFrom, type GitIdentitySettings } from "../git-identity";
 
 type LibModule = typeof import("@dimm-city/print-md");
 
@@ -36,8 +37,12 @@ type VersionHistorySettings = NonNullable<Parameters<LibModule["autoSnapshotDela
 export interface AutoSnapshotDeps {
   /** Lazily load @dimm-city/print-md. Cached by the caller. */
   loadLib: () => Promise<LibModule>;
-  /** Read the live AppSettings (snapshot policy is re-checked on every arm/run). */
-  readSettings: () => Promise<{ versionHistory: unknown }>;
+  /**
+   * Read the live AppSettings. Both the snapshot policy AND the author's
+   * configured commit identity are re-read on every arm/run, so a settings
+   * change applies to the very next automatic snapshot.
+   */
+  readSettings: () => Promise<{ versionHistory: unknown } & GitIdentitySettings>;
   /** The currently watched/open project dir, used to guard against switches. */
   getWatchedDir: () => string | null;
   /** Resolve the operation-log file path for a repo slug (project basename). */
@@ -166,6 +171,11 @@ export class AutoSnapshotScheduler {
         // "Version history" affordance shows it (local-git projects have no
         // remote/sync, but they DO snapshot — those snapshots must be logged).
         logFile: this.deps.operationLogPath(path.basename(dir)),
+        // Attribute the commit to the author, exactly like the manual
+        // "Save a version" route does. Without this, automatic snapshots — the
+        // overwhelming majority of a project's history — were committed as the
+        // lib's "print-md" default while manual saves carried the real name.
+        ...gitIdentityFrom(settings),
       });
       // Success — the safety net is working again; clear any failure streak.
       this.consecutiveFailures = 0;

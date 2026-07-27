@@ -35,6 +35,8 @@ interface HarnessOpts {
    * pre-export sync gate (M28).
    */
   cancelDuringSync?: boolean;
+  /** The author's configured commit identity the pre-export sync gate must pass on. */
+  gitIdentity?: { authorName?: string; authorEmail?: string };
 }
 
 interface Harness {
@@ -47,6 +49,8 @@ interface Harness {
   runBuildCalls: number;
   latched: Set<string>;
   getSession: () => ExportSession | null;
+  /** Args of every fake syncProject() call, in order. */
+  syncArgs: unknown[];
 }
 
 function makeHarness(opts: HarnessOpts = {}): Harness {
@@ -55,14 +59,16 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const renamed: Array<[string, string]> = [];
   const removed: string[] = [];
   const latched = new Set<string>();
+  const syncArgs: unknown[] = [];
   const counters = { sync: 0, build: 0 };
   let session: ExportSession | null = opts.activeSession ?? null;
 
   const lib = {
     detectProjectSource: async () => ({ type: opts.sourceType ?? "local-folder" }),
     diagnoseProjectRemote: async () => ({ canSync: opts.canSync ?? false }),
-    syncProject: async () => {
+    syncProject: async (args: unknown) => {
       counters.sync += 1;
+      syncArgs.push(args);
       if (opts.cancelDuringSync && session) session.canceled = true;
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
@@ -91,6 +97,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const deps: ExportControllerDeps = {
     loadLib: async () => lib,
     tokenStore: {} as ExportControllerDeps["tokenStore"],
+    gitIdentity: async () => opts.gitIdentity ?? {},
     isOnline: () => opts.isOnline ?? true,
     usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
@@ -128,6 +135,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     },
     latched,
     getSession: () => session,
+    syncArgs,
   };
 }
 
@@ -239,6 +247,24 @@ test("a conflict surfacing mid pre-export gate latches, emits, and blocks", asyn
   expect((err as Error & { code?: string }).code).toBe("SYNC_CONFLICT");
   expect(h.emitted.some((e) => e.state === "conflict")).toBe(true);
   expect(h.runBuildCalls).toBe(0);
+});
+
+test("the pre-export sync gate commits with the configured name + email", async () => {
+  // syncProject snapshots-first, so the gate writes a commit. It must carry the
+  // author's identity like the manual "Save a version" path does.
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    canSync: true,
+    isOnline: true,
+    gitIdentity: { authorName: "Ada Lovelace", authorEmail: "ada@example.com" },
+  });
+  await h.controller.build({ input: "/book", out: "/out/book.pdf" });
+  expect(h.syncArgs.length).toBe(1);
+  expect(h.syncArgs[0]).toMatchObject({
+    projectDir: "/book",
+    authorName: "Ada Lovelace",
+    authorEmail: "ada@example.com",
+  });
 });
 
 test("a BuildError from runBuild surfaces as a BUILD_ERROR", async () => {

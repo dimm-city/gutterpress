@@ -35,6 +35,10 @@ interface Harness {
   syncCalls: string[];
   /** Every dir passed to deps.refreshHeartbeat, in call order. */
   heartbeatCalls: string[];
+  /** Full args of every lib.syncProject call, in order. */
+  syncArgs: unknown[];
+  /** Args of every deps.buildRecoveryContext call, in order. */
+  recoveryContextCalls: unknown[][];
   /** Advance the fake clock. */
   setClock: (ms: number) => void;
 }
@@ -56,6 +60,8 @@ interface FakeLibOptions {
   /** When set, diagnoseProjectRemote rejects with this — to exercise the
    *  probe-failure path in run() (code-review: must release the lock). */
   diagnoseThrows?: Error;
+  /** The `gitIdentity` settings slice the orchestrator must honour. */
+  gitIdentity?: { authorName?: string; authorEmail?: string };
 }
 
 /** A minimal local-git-folder ProjectSource for runPreflight tests. */
@@ -70,6 +76,8 @@ const LOCAL_GIT_SOURCE = {
 function makeHarness(opts: FakeLibOptions = {}): Harness {
   const emitted: SyncStatusPayload[] = [];
   const syncCalls: string[] = [];
+  const syncArgs: unknown[] = [];
+  const recoveryContextCalls: unknown[][] = [];
   let clock = 1_700_000_000_000;
 
   const lib = {
@@ -82,8 +90,10 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
       if (opts.diagnoseThrows) throw opts.diagnoseThrows;
       return { canSync: opts.canSync ?? true };
     },
-    syncProject: async ({ projectDir }: { projectDir: string }) => {
+    syncProject: async (args: { projectDir: string }) => {
+      const { projectDir } = args;
       syncCalls.push(projectDir);
+      syncArgs.push(args);
       const r = opts.syncProject
         ? await opts.syncProject(projectDir)
         : { status: "synced" };
@@ -102,12 +112,18 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
   const deps: AutoSyncOrchestratorDeps = {
     loadLib: async () => lib,
     tokenStore: {} as AutoSyncOrchestratorDeps["tokenStore"],
-    readSettings: async () => ({ versionHistory: {} as never }),
+    readSettings: async () => ({
+      versionHistory: {} as never,
+      ...(opts.gitIdentity ? { gitIdentity: opts.gitIdentity } : {}),
+    }),
     emit: (p) => emitted.push(p),
     now: () => clock,
     getWatchedDir: () => DIR,
     operationLogPath: (slug) => `/logs/${slug}.log`,
-    buildRecoveryContext: async () => ({}) as never,
+    buildRecoveryContext: async (...args) => {
+      recoveryContextCalls.push(args);
+      return {} as never;
+    },
     refreshHeartbeat: (dir) => heartbeatCalls.push(dir),
   };
 
@@ -116,6 +132,8 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     emitted,
     syncCalls,
     heartbeatCalls,
+    syncArgs,
+    recoveryContextCalls,
     setClock: (ms) => {
       clock = ms;
     },
@@ -176,6 +194,61 @@ test("a probe failure releases the single-flight lock (code-review: no wedge)", 
   await h.orch.run(DIR);
   expect(h.orch.getState(DIR)?.inFlight).toBe(false);
   expect(h.syncCalls.length).toBe(1);
+});
+
+// ── Configured commit identity ────────────────────────────────────────────────
+//
+// syncProject snapshots-first (and may write a merge commit), so auto-sync is a
+// commit path too: it must carry the author's configured name/email exactly like
+// the manual "Save a version" route. It used to pass neither, so every commit it
+// produced was attributed to the lib's "print-md" default.
+
+test("run() passes the configured name + email to syncProject", async () => {
+  const h = makeHarness({
+    gitIdentity: { authorName: "Ada Lovelace", authorEmail: "ada@example.com" },
+  });
+  await h.orch.run(DIR);
+  await tick();
+  expect(h.syncArgs.length).toBe(1);
+  expect(h.syncArgs[0]).toMatchObject({
+    projectDir: DIR,
+    authorName: "Ada Lovelace",
+    authorEmail: "ada@example.com",
+  });
+});
+
+test("run() omits blank identity fields instead of sending empty strings", async () => {
+  const h = makeHarness({ gitIdentity: { authorName: "  ", authorEmail: "" } });
+  await h.orch.run(DIR);
+  await tick();
+  expect(h.syncArgs[0]).not.toHaveProperty("authorName");
+  expect(h.syncArgs[0]).not.toHaveProperty("authorEmail");
+});
+
+test("run()'s recovery path builds the RecoveryContext with the configured author", async () => {
+  const h = makeHarness({
+    syncProject: () => {
+      throw new Error("index.lock exists");
+    },
+    classifyGitError: "stale_lock",
+    gitIdentity: { authorName: "Ada Lovelace", authorEmail: "ada@example.com" },
+  });
+  await h.orch.run(DIR);
+  await tick();
+  expect(h.recoveryContextCalls.length).toBe(1);
+  // (projectDir, lib, tokenStore, authorName, logFile)
+  expect(h.recoveryContextCalls[0]![3]).toBe("Ada Lovelace");
+});
+
+test("runPreflight builds the RecoveryContext with the configured author", async () => {
+  const h = makeHarness({
+    classifyFromHealth: () => "stale-lock",
+    gitIdentity: { authorName: "Ada Lovelace", authorEmail: "ada@example.com" },
+  });
+  await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE as never);
+  await tick();
+  expect(h.recoveryContextCalls.length).toBe(1);
+  expect(h.recoveryContextCalls[0]![3]).toBe("Ada Lovelace");
 });
 
 test("a 'conflict' outcome latches auto-sync and blocks subsequent runs", async () => {

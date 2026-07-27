@@ -2,6 +2,8 @@ import { test, expect } from "bun:test";
 import { mkdir, mkdtemp, writeFile, readFile, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import fs from "node:fs";
+import git from "isomorphic-git";
 import { detectProjectSource } from "./project-source";
 import {
   providerFor,
@@ -244,6 +246,50 @@ test("automatic snapshot records changes under AUTO_SNAPSHOT_MESSAGE", async () 
     expect(snap.message).toBe("Automatic snapshot");
     const history = await provider.listHistory(dir);
     expect(history[0]!.message).toBe(AUTO_SNAPSHOT_MESSAGE);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("automatic snapshot records the caller-supplied author name AND email", async () => {
+  // The viewer's host-side auto-snapshot scheduler passes the identity the
+  // author configured in Settings; the commit object must carry both fields.
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nAuto draft.\n");
+    await provider.snapshot({
+      projectDir: dir,
+      message: AUTO_SNAPSHOT_MESSAGE,
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.com",
+    });
+    const [head] = await git.log({ fs, dir, depth: 1 });
+    expect(head!.commit.author.name).toBe("Ada Lovelace");
+    expect(head!.commit.author.email).toBe("ada@example.com");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("restoreVersionWithBackup records the supplied identity on the safety snapshot", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    const first = (await provider.listHistory(dir))[0]!;
+    await writeFile(path.join(dir, "chapter-01.md"), "# Unsaved work\n");
+    const result = await restoreVersionWithBackup({
+      projectDir: dir,
+      id: first.id,
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.com",
+    });
+    const backup = (await git.log({ fs, dir, depth: 50 })).find(
+      (c) => c.oid === result.backupId,
+    );
+    expect(backup!.commit.message.trim()).toBe(RESTORE_BACKUP_MESSAGE);
+    expect(backup!.commit.author.name).toBe("Ada Lovelace");
+    expect(backup!.commit.author.email).toBe("ada@example.com");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

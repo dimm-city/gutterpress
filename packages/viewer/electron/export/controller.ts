@@ -25,6 +25,7 @@
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { preExportSyncGateBlockError } from "../recovery-bridge";
+import type { GitIdentityArgs } from "../git-identity";
 import type { ExportProgressEvent, ExportSession } from "../pdf-export";
 import type { ConflictFile, PdfRenderer, TokenStore } from "@dimm-city/print-md";
 
@@ -72,6 +73,12 @@ export interface ExportControllerDeps {
   loadLib: () => Promise<LibModule>;
   /** Credential store passed to lib.diagnoseProjectRemote / lib.syncProject. */
   tokenStore: TokenStore;
+  /**
+   * The author's configured commit identity, read live. The pre-export sync
+   * gate's `lib.syncProject` snapshots-first, so it commits — and that commit
+   * must be attributed to the author like every other commit path.
+   */
+  gitIdentity: () => Promise<GitIdentityArgs>;
   /** Network reachability (Electron net.isOnline in production). */
   isOnline: () => boolean;
   /** True when PRINTMD_VIEWER_PUPPETEER opts out of the Electron PDF renderer. */
@@ -218,6 +225,7 @@ export class ExportController {
           const syncOutcome = await lib.syncProject({
             projectDir: exportDir,
             tokenStore: this.deps.tokenStore,
+            ...(await this.deps.gitIdentity()),
           });
           this.deps.throwIfCanceled(exportSession);
           if (syncOutcome.status === "conflict") {

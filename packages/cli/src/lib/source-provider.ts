@@ -744,7 +744,9 @@ export interface RestoreVersionOptions {
   projectDir: string;
   /** Snapshot id (commit SHA) to restore the working tree to. */
   id: string;
+  /** Identity recorded on the automatic pre-restore safety snapshot. */
   authorName?: string;
+  authorEmail?: string;
 }
 
 /** Result of {@link restoreVersionWithBackup}. */
@@ -790,7 +792,7 @@ export const AUTO_SNAPSHOT_MESSAGE = "Automatic snapshot";
 export async function restoreVersionWithBackup(
   options: RestoreVersionOptions,
 ): Promise<RestoreVersionResult> {
-  const { projectDir, id, authorName } = options;
+  const { projectDir, id, authorName, authorEmail } = options;
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") {
     throw new Error(
@@ -810,6 +812,7 @@ export async function restoreVersionWithBackup(
         projectDir,
         message: RESTORE_BACKUP_MESSAGE,
         authorName,
+        authorEmail,
       });
       backupId = backup.id;
     }

@@ -30,6 +30,7 @@ import {
   type RunAgainDecision,
 } from "../recovery-bridge";
 import { mapRecoveryResultToEmit } from "./recovery-emit";
+import { gitIdentityFrom, type GitIdentityArgs, type GitIdentitySettings } from "../git-identity";
 import type {
   ConflictFile as ConflictFileInfo,
   RecoveryContext,
@@ -162,8 +163,13 @@ export interface AutoSyncOrchestratorDeps {
   loadLib: () => Promise<LibModule>;
   /** Credential store passed straight through to lib.syncProject / diagnosis. */
   tokenStore: TokenStore;
-  /** Read the live AppSettings (auto-sync policy is re-checked on every run). */
-  readSettings: () => Promise<{ versionHistory: VersionHistorySettings }>;
+  /**
+   * Read the live AppSettings. The auto-sync policy AND the author's configured
+   * commit identity are re-checked on every run — `syncProject` snapshots-first
+   * and can write merge commits, so those commits must carry the same identity
+   * a manual "Save a version" does.
+   */
+  readSettings: () => Promise<{ versionHistory: VersionHistorySettings } & GitIdentitySettings>;
   /** Emit a status event to the renderer (safe when no window exists). */
   emit: (payload: SyncStatusPayload) => void;
   /** Injectable clock (epoch ms). Real code passes `Date.now`; tests fake it. */
@@ -491,9 +497,13 @@ export class AutoSyncOrchestrator {
     // future trigger for this project would only ever arm runAgain — wedging
     // auto-sync until the app restarts.
     let lib!: LibModule;
+    // Resolved inside the probe block (settings are read there) but needed by
+    // the syncProject / recovery calls further down, which are outside it.
+    let identity: GitIdentityArgs = {};
     try {
       const [loadedLib, settings] = await Promise.all([this.deps.loadLib(), this.deps.readSettings()]);
       lib = loadedLib;
+      identity = gitIdentityFrom(settings);
 
       // Guard: watched dir may have changed while we awaited the above.
       if (this.deps.getWatchedDir() !== dir) return releaseFlight();
@@ -534,6 +544,9 @@ export class AutoSyncOrchestrator {
         projectDir: dir,
         tokenStore: this.deps.tokenStore,
         logFile,
+        // syncProject snapshots-first and may write a merge commit — both must
+        // be attributed to the author, not the "print-md" default.
+        ...identity,
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -593,7 +606,13 @@ export class AutoSyncOrchestrator {
       // Uses the same lib/tokenStore already in scope.
       let ctx: RecoveryContext;
       try {
-        ctx = await this.deps.buildRecoveryContext(dir, lib, this.deps.tokenStore, undefined, logFile);
+        ctx = await this.deps.buildRecoveryContext(
+          dir,
+          lib,
+          this.deps.tokenStore,
+          identity.authorName,
+          logFile,
+        );
       } catch (ctxErr) {
         console.error(`[auto-sync] buildRecoveryContext failed for ${dir}:`, ctxErr);
         this.deps.emit({ state: "error", projectDir: dir, lastSyncAt: now });
@@ -827,11 +846,14 @@ export class AutoSyncOrchestrator {
       });
 
       const preflightLogFile = this.deps.operationLogPath(path.basename(dir));
+      // Recovery can commit (e.g. a rescue snapshot of local work) — carry the
+      // author's configured identity, same as every other commit path.
+      const preflightIdentity = gitIdentityFrom(await this.deps.readSettings());
       const ctx = await this.deps.buildRecoveryContext(
         dir,
         lib,
         this.deps.tokenStore,
-        undefined,
+        preflightIdentity.authorName,
         preflightLogFile,
       );
 
