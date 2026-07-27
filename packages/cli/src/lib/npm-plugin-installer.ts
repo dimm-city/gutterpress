@@ -604,9 +604,32 @@ async function optionalPackageEntry(
   }
 }
 
+/**
+ * npm's platform gate for a package's `os`/`cpu` field. Mirrors
+ * npm-install-checks' `checkList` so a package that installs under npm is not
+ * rejected here:
+ *
+ *   - a bare string is treated as a one-element list (`"os": "linux"` is legal);
+ *   - the list `["any"]` is UNRESTRICTED — npm special-cases it, and only when
+ *     it is the sole entry. `["any", "!linux"]` still excludes linux, so this
+ *     cannot be a plain "does the list contain 'any'" test;
+ *   - otherwise no negated entry may match, and if any positive entries exist
+ *     one of them must match.
+ *
+ * A list containing non-strings is uninterpretable, so it is treated as
+ * unrestricted rather than guessed at (npm would throw on `entry.charAt`).
+ */
 function platformAllowed(rule: unknown, current: string): boolean {
-  if (!Array.isArray(rule) || rule.some((item) => typeof item !== "string")) return true;
-  const values = rule as string[];
+  let values: string[];
+  if (typeof rule === "string") {
+    values = [rule];
+  } else if (Array.isArray(rule) && rule.every((item) => typeof item === "string")) {
+    values = rule as string[];
+  } else {
+    return true;
+  }
+  if (values.length === 0) return true;
+  if (values.length === 1 && values[0] === "any") return true;
   if (values.includes(`!${current}`)) return false;
   const positives = values.filter((value) => !value.startsWith("!"));
   return positives.length === 0 || positives.includes(current);

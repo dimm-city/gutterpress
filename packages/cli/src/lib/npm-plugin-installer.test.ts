@@ -1620,4 +1620,90 @@ describe("npm plugin installation", () => {
       }
     }
   }, 180_000);
+
+  // npm treats the `os`/`cpu` selector `["any"]` as UNRESTRICTED. The installer
+  // originally turned every selector into a positive allow-list, so a portable
+  // package declaring `os: ["any"]` was rejected on every platform. These pin
+  // npm-install-checks' `checkList` semantics, including the nuance that `any`
+  // is only special when it is the SOLE entry.
+  describe("npm os/cpu platform selectors", () => {
+    const foreignOs = process.platform === "linux" ? "darwin" : "linux";
+    const foreignCpu = process.arch === "x64" ? "arm64" : "x64";
+
+    test('os: ["any"] installs on the current platform', async () => {
+      const dir = await projectDir();
+      const name = "markdown-it-any-os-fixture";
+      const fixture = registryGraphFixture([
+        { name, version: "1.0.0", manifest: { os: ["any"] } },
+      ]);
+
+      await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+
+      expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
+    });
+
+    test('cpu: ["any"] installs on the current architecture', async () => {
+      const dir = await projectDir();
+      const name = "markdown-it-any-cpu-fixture";
+      const fixture = registryGraphFixture([
+        { name, version: "1.0.0", manifest: { cpu: ["any"] } },
+      ]);
+
+      await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+
+      expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
+    });
+
+    // `any` is unrestricted ONLY as a single-element list. With a second entry
+    // npm falls through to the negation rules, so this must still be rejected —
+    // a plain "does the list contain any" check would wrongly accept it.
+    test('os: ["any", "!<current>"] is still rejected on the excluded platform', async () => {
+      const dir = await projectDir();
+      const name = "markdown-it-any-negated-fixture";
+      const fixture = registryGraphFixture([
+        { name, version: "1.0.0", manifest: { os: ["any", `!${process.platform}`] } },
+      ]);
+
+      await expect(addNpmPlugin(dir, name, { fetch: fixture.fetch })).rejects.toThrow(
+        /does not support/,
+      );
+    });
+
+    test("a bare string selector is treated as a one-element list", async () => {
+      const dir = await projectDir();
+      const name = "markdown-it-string-os-fixture";
+      const fixture = registryGraphFixture([
+        { name, version: "1.0.0", manifest: { os: process.platform } },
+      ]);
+
+      await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+
+      expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
+    });
+
+    test("a positive selector for another platform is still rejected", async () => {
+      const dir = await projectDir();
+      const name = "markdown-it-foreign-os-fixture";
+      const fixture = registryGraphFixture([
+        { name, version: "1.0.0", manifest: { os: [foreignOs], cpu: [foreignCpu] } },
+      ]);
+
+      await expect(addNpmPlugin(dir, name, { fetch: fixture.fetch })).rejects.toThrow(
+        /does not support/,
+      );
+    });
+
+    test("a negation-only selector for another platform installs", async () => {
+      const dir = await projectDir();
+      const name = "markdown-it-negated-foreign-fixture";
+      const fixture = registryGraphFixture([
+        { name, version: "1.0.0", manifest: { os: [`!${foreignOs}`] } },
+      ]);
+
+      await addNpmPlugin(dir, name, { fetch: fixture.fetch });
+
+      expect((await validateProjectPlugins(dir))[0]).toMatchObject({ ok: true });
+    });
+  });
+
 });
