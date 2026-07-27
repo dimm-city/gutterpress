@@ -44,11 +44,13 @@ import type {
 import type {
   UpdaterStatus,
   UpdaterEventPayload,
+  UpdaterAvailableAction,
   AppSettings,
   DeepPartial,
   ProjectState,
   ViewerPrefs as SharedViewerPrefs,
   LeftPanelPrefs,
+  LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -76,6 +78,7 @@ import type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
+  MarkdownFileLaunchEvent,
 } from "./shared-types";
 
 export type {
@@ -93,9 +96,11 @@ export type {
 export type {
   UpdaterStatus,
   UpdaterEventPayload,
+  UpdaterAvailableAction,
   AppSettings,
   DeepPartial,
   ProjectState,
+  LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -122,6 +127,7 @@ export type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
+  MarkdownFileLaunchEvent,
 };
 
 /**
@@ -145,10 +151,10 @@ export type UpdaterEvent = UpdaterEventPayload;
 export interface UpdaterApi {
   getStatus(): Promise<UpdaterStatus>;
   check(): Promise<UpdaterStatus>;
-  /** Download the update found by the last check (phase "available"). */
+  /** Download the update, or open its release page for check-only hosts. */
   download(): Promise<UpdaterStatus>;
   /** Quit and install the downloaded update (restart). */
-  applyNow(): Promise<{ applied: boolean; version?: string }>;
+  applyNow(): Promise<{ applied: boolean; version?: string; error?: string }>;
   onEvent(cb: (event: UpdaterEvent) => void): () => void;
 }
 
@@ -486,6 +492,13 @@ export interface HostServices {
   // Native (OS) theme (#48) — push channel kept (main→renderer push, not request/reply)
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void;
 
+  /**
+   * Subscribe to `.md` launches from the desktop shell. Initial paths are
+   * replayed before a `ready` sentinel; later Finder/Explorer launches stream
+   * through the same callback. WebAdapter never emits.
+   */
+  onOpenMarkdownFile(cb: (event: MarkdownFileLaunchEvent) => void): () => void;
+
   // ── Local version history (#13) ───────────────────────────────────────────
   /**
    * Save an explicit snapshot of the project's current state. `message` is
@@ -581,10 +594,10 @@ export interface HostServices {
 
   /**
    * Subscribe to the main process's request to flush before the window closes
-   * (#44). The renderer flushes its buffer then signals completion; main waits
-   * (with a watchdog) before destroying the window. Returns an unsubscribe fn.
+   * (#44). Returning false reports that the buffer did not reach disk; main
+   * records the durable failure marker and still closes after bounded waits.
    */
-  onFlushBeforeClose(cb: () => void): () => void;
+  onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void;
   /**
    * Subscribe to debounced folder-change notifications for the open project
    * (#44), backing external-edit detection. Returns an unsubscribe fn.

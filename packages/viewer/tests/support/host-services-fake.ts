@@ -63,6 +63,7 @@ const idleUpdaterStatus = (): UpdaterStatus => ({
   currentVersion: "0.0.0-test",
   stagedVersion: null,
   availableVersion: null,
+  availableAction: null,
   phase: "idle",
   error: null,
 });
@@ -81,6 +82,7 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
     desktop: {
       showOpenDialog: async () => ({ canceled: true, filePaths: [] as string[] }),
       showSaveDialog: async () => ({ canceled: true }),
+      confirmNpmPluginInstall: async () => false,
       openExternal: async () => {},
       showItemInFolder: noop,
       getNativeTheme: () => ({ shouldUseDarkColors: false }),

@@ -120,14 +120,12 @@ export interface RepoBook {
   name: string;
 }
 
-// Manifest file stems this scan recognizes: the current `manifest.yaml`/`.yml`
-// (single source of truth: MANIFEST_FILENAMES) plus `print-md.yaml`/`.yml` for
-// back-compat with books authored before the manifest was renamed.
-const MANIFEST_NAME_STEMS = [
-  ...new Set(MANIFEST_FILENAMES.map((name) => name.replace(/\.ya?ml$/, ""))),
-  "print-md",
-];
-const MANIFEST_RE = new RegExp(`(^|/)(${MANIFEST_NAME_STEMS.join("|")})\\.ya?ml$`);
+// Match the exported contract exactly: print-md.yaml does not imply print-md.yml.
+const MANIFEST_NAMES = new Set<string>(MANIFEST_FILENAMES);
+
+function isManifestPath(filePath: string): boolean {
+  return MANIFEST_NAMES.has(filePath.slice(filePath.lastIndexOf("/") + 1));
+}
 
 type TreeEntry = { path?: string; type?: string; sha?: string };
 type TreeResponse = { tree?: TreeEntry[]; truncated?: boolean };
@@ -139,8 +137,8 @@ function bookFromManifestPath(manifestPath: string, repo: string): RepoBook {
 
 /**
  * Find the print-md books inside a repository branch: every directory that
- * contains a manifest (`manifest.yaml` / `.yml`, or the legacy `print-md.yaml`
- * / `.yml`) — the repository root counts, with `path: ""`. Uses one
+ * contains a recognized manifest (from `MANIFEST_FILENAMES`) — the repository
+ * root counts, with `path: ""`. Uses one
  * `GET /repos/{owner}/{repo}/git/trees/{branch}
  * ?recursive=1` call; when GitHub truncates the recursive listing (very large
  * repositories) it falls back to scanning the root + each top-level directory
@@ -169,7 +167,7 @@ export async function listRepoBooks(
 
   if (!body.truncated) {
     const books = entries
-      .filter((e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path))
+      .filter((e) => e.type === "blob" && e.path && isManifestPath(e.path))
       .map((e) => bookFromManifestPath(e.path!, repo));
     return dedupeAndSortBooks(books);
   }
@@ -180,7 +178,7 @@ export async function listRepoBooks(
   const rootBody = (await rootRes.json()) as TreeResponse;
   const rootEntries = rootBody.tree ?? [];
   const books: RepoBook[] = rootEntries
-    .filter((e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path))
+    .filter((e) => e.type === "blob" && e.path && isManifestPath(e.path))
     .map((e) => bookFromManifestPath(e.path!, repo));
   const topDirs = rootEntries
     .filter((e) => e.type === "tree" && typeof e.path === "string" && typeof e.sha === "string")
@@ -191,7 +189,7 @@ export async function listRepoBooks(
     const subRes = await apiGet(fetchImpl, treeUrl(dirEntry.sha!, false), credential.token);
     const subBody = (await subRes.json()) as TreeResponse;
     const hasManifest = (subBody.tree ?? []).some(
-      (e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path),
+      (e) => e.type === "blob" && e.path && isManifestPath(e.path),
     );
     if (hasManifest) {
       books.push({ path: dirEntry.path!, name: dirEntry.path! });

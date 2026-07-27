@@ -29,6 +29,7 @@ import path from "node:path";
 import type { ProjectStateMap } from "./project-state";
 import type { RecentFolder, FavoriteFolder } from "./recent-folders";
 import type { ProjectSource } from "@dimm-city/print-md";
+import type { LastFlushFailure } from "./bridge-types";
 
 export interface ViewerPrefs {
   lastProjectDir?: string;
@@ -62,6 +63,8 @@ export interface ViewerPrefs {
     activeTab?: "toc" | "files" | "media" | "projects" | "history";
     width?: number;
   };
+  /** Most recent editor-buffer flush that could not be confirmed on disk. */
+  lastFlushFailed?: LastFlushFailure;
 }
 
 export interface PrefsStoreDeps {

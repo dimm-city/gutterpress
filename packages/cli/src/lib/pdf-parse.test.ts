@@ -12,11 +12,19 @@
  */
 import { test, expect, spyOn, afterEach } from "bun:test";
 import * as execMod from "./exec.ts";
+import * as ghostscriptMod from "./ghostscript.ts";
 import { getPerPageInkCoverage, parseInkCov } from "./pdf-parse.ts";
 
 afterEach(() => {
   (execMod.execCapture as unknown as { mockRestore?: () => void }).mockRestore?.();
+  (ghostscriptMod.resolveGhostscript as unknown as { mockRestore?: () => void }).mockRestore?.();
 });
+
+function resolveWindowsGhostscript(): void {
+  spyOn(ghostscriptMod, "resolveGhostscript").mockResolvedValue(
+    "C:\\Program Files\\gs\\gs10.06.0\\bin\\gswin64c.exe"
+  );
+}
 
 const SAMPLE_INKCOV_OUTPUT =
   "   0.10000   0.20000   0.30000   0.05000 CMYK OK\n" +
@@ -35,7 +43,8 @@ test("parseInkCov extracts CMYK + sum per page from raw gs inkcov output", () =>
 });
 
 test("getPerPageInkCoverage returns ok:true with percentage-scaled pages on success", async () => {
-  spyOn(execMod, "execCapture").mockImplementation(async () => ({
+  resolveWindowsGhostscript();
+  const exec = spyOn(execMod, "execCapture").mockImplementation(async () => ({
     stdout: SAMPLE_INKCOV_OUTPUT,
     stderr: "",
   }));
@@ -49,9 +58,13 @@ test("getPerPageInkCoverage returns ok:true with percentage-scaled pages on succ
   expect(result.pages[0]!.tac).toBeCloseTo(65);
   expect(result.pages[1]).toMatchObject({ page: 2, c: 50, m: 60, y: 70, k: 80 });
   expect(result.pages[1]!.tac).toBeCloseTo(260);
+  expect(exec.mock.calls[0]?.[0]).toBe(
+    "C:\\Program Files\\gs\\gs10.06.0\\bin\\gswin64c.exe"
+  );
 });
 
 test("getPerPageInkCoverage returns ok:false with the error message when gs fails", async () => {
+  resolveWindowsGhostscript();
   spyOn(execMod, "execCapture").mockImplementation(async () => {
     throw new Error("spawn gs ENOENT");
   });
@@ -64,6 +77,7 @@ test("getPerPageInkCoverage returns ok:false with the error message when gs fail
 });
 
 test("getPerPageInkCoverage returns ok:false (not an empty ok:true) when gs exits non-zero", async () => {
+  resolveWindowsGhostscript();
   spyOn(execMod, "execCapture").mockImplementation(async () => {
     throw new Error("gs -sDEVICE=inkcov ... exited 1");
   });

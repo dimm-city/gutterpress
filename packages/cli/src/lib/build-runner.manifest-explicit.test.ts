@@ -9,12 +9,10 @@
  * `resolveBuildContext` (Stage 1 — pure planning, no filesystem writes) is
  * where `opts.manifestPath` reaches `loadManifestWithPath` and where the
  * resulting `manifestDir` feeds `outDir` (see build-runner.output-dir.test.ts
- * for that half of the contract). This file pins the OTHER half: an
+ * for that half of the contract). This file pins the other half: an
  * explicit, nonexistent `--manifest` path must throw a `UsageError` here,
- * before `runBuild` ever creates `outDir` — and the legitimate
- * no-`--manifest`-given case (scanning `inputDir`, which may have no
- * manifest at all) must keep silently using preset defaults exactly as
- * before.
+ * before `runBuild` ever creates `outDir`, and a build whose project scan finds
+ * no manifest must fail with guidance instead of producing an empty book.
  */
 import { test, expect, afterEach } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -78,16 +76,31 @@ test("runBuild rejects with UsageError before creating any output directory when
   expect(await Bun.file(outDir).exists()).toBe(false);
 });
 
-test("resolveBuildContext with NO --manifest given still silently uses preset defaults when the project dir has no manifest file (legitimate default-discovery preserved)", async () => {
+test("resolveBuildContext rejects a build when project discovery finds no manifest", async () => {
   const projNoManifest = await mkdtemp(join(tmpdir(), "pmd-proj-no-manifest-"));
   dirsToClean.push(projNoManifest);
 
-  const ctx = await resolveBuildContext({
-    inputDir: projNoManifest,
-    format: "html",
-    rawArgs: {},
-  });
-
-  expect(ctx.manifestDir).toBe(projNoManifest);
-  expect(ctx.config.title).toBe("Document"); // preset default, no throw
+  await expect(
+    resolveBuildContext({
+      inputDir: projNoManifest,
+      format: "html",
+      rawArgs: {},
+    })
+  ).rejects.toThrow(UsageError);
+  await expect(
+    resolveBuildContext({
+      inputDir: projNoManifest,
+      format: "html",
+      rawArgs: {},
+    })
+  ).rejects.toThrow(
+    `No project manifest found in ${projNoManifest}`
+  );
+  await expect(
+    resolveBuildContext({
+      inputDir: projNoManifest,
+      format: "html",
+      rawArgs: {},
+    })
+  ).rejects.toThrow("print-md build <project-dir>");
 });

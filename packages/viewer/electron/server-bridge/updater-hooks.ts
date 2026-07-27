@@ -22,7 +22,7 @@ export interface UpdaterHooks {
   getStatus(): UpdaterStatus;
   /** User-initiated (non-silent) check — full error reporting. */
   check(): Promise<UpdaterStatus>;
-  /** Download the update found by the last check. */
+  /** Download the update, or open its GitHub page on check-only macOS. */
   download(): Promise<UpdaterStatus>;
 }
 

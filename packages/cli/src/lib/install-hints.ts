@@ -31,7 +31,7 @@ export const INSTALL_HINTS: Record<"chromium" | "gs" | "qpdf", InstallHint> = {
     body:
       "  macOS:   brew install ghostscript\n" +
       "  Ubuntu:  sudo apt install -y ghostscript\n" +
-      "  Windows: https://www.ghostscript.com/releases/gsdnld.html  (or: choco install ghostscript)",
+      "  Windows: https://www.ghostscript.com/releases/gsdnld.html  (standard installs are auto-detected; or: choco install ghostscript)",
   },
   qpdf: {
     label: "qpdf",

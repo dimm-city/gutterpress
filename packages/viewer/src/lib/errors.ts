@@ -16,15 +16,28 @@ export function friendlyHostError(msg: string): string {
   return msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
 }
 
+function isMissingManifestError(msg: string): boolean {
+  return (
+    /\bNo [^\n]*manifest[^\n]* found(?:\s+in\b|[.!]?\s*$)/i.test(msg) ||
+    /manifest not found:/i.test(msg)
+  );
+}
+
 /**
  * Map a raw folder-open error message to plain-language guidance for the welcome
  * screen. Pure string classification — no host coupling.
  */
 export function friendlyFolderError(msg: string): string {
-  if (/manifest|print-md\.yaml|No such file/i.test(msg)) {
-    return "This doesn't look like a print-md project — we couldn't find a manifest.yaml file. Make sure you're opening the right folder.";
+  const yamlPosition = msg.match(
+    /Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i,
+  );
+  if (yamlPosition) {
+    return `The project manifest has invalid YAML at line ${yamlPosition[1]}, column ${yamlPosition[2]}. Fix that entry and try again.`;
   }
-  if (/ENOENT|not found/i.test(msg)) {
+  if (/Invalid YAML in /i.test(msg)) {
+    return "The project manifest has invalid YAML. Fix it and try again.";
+  }
+  if (/ENOENT|No such file|not found/i.test(msg)) {
     return "The folder couldn't be read. Check that it exists and you have permission to open it.";
   }
   if (/permission|EACCES/i.test(msg)) {
@@ -44,6 +57,9 @@ export function friendlyPdfError(e: unknown): string {
   const code = (e as { code?: string } | null)?.code ?? "";
   if (code === "EXPORT_CANCELED") {
     return "";
+  }
+  if (isMissingManifestError(msg)) {
+    return 'PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.';
   }
   // Sync-conflict export blocks throw a deliberately author-friendly message
   // from the host (electron/export/controller.ts) — pass it through (scrubbed

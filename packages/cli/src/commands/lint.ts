@@ -2,26 +2,35 @@ import { defineCommand } from "citty";
 import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { log, runLint } from "../index.ts";
-import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
+import {
+  EXIT_CODES,
+  UsageError,
+  rejectExtraPositionals,
+  rejectUnknownFlags,
+} from "../lib/cli-args.ts";
+import { MANIFEST_FILENAMES } from "../lib/manifest.ts";
+
+const commandArgs = {
+  files: {
+    type: "positional",
+    description: "Project directory with manifest.yaml, or glob pattern for CSS files to lint",
+    required: false,
+  },
+  manifest: {
+    type: "string",
+    description: "Path to manifest.yaml",
+  },
+} as const;
 
 export default defineCommand({
   meta: {
     name: "lint",
     description: "Lint CSS for print-safety issues",
   },
-  args: {
-    files: {
-      type: "positional",
-      description: "Project directory with manifest.yaml, or glob pattern for CSS files to lint",
-      required: false,
-    },
-    manifest: {
-      type: "string",
-      description: "Path to manifest.yaml",
-    },
-  },
-  async run({ args }) {
+  args: commandArgs,
+  async run({ args, rawArgs }) {
     try {
+      rejectUnknownFlags(rawArgs, commandArgs, "lint");
       rejectExtraPositionals((args as { _: unknown[] })._, 1, "lint");
 
       const filesArg = typeof args.files === "string" ? args.files : undefined;
@@ -30,8 +39,7 @@ export default defineCommand({
         filesArg &&
         existsSync(filesArg) &&
         statSync(filesArg).isDirectory() &&
-        (existsSync(join(filesArg, "manifest.yaml")) ||
-          existsSync(join(filesArg, "manifest.yml")));
+        MANIFEST_FILENAMES.some((name) => existsSync(join(filesArg, name)));
 
       const result = await runLint({
         files: filesArgIsManifestDir ? undefined : filesArg,

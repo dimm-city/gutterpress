@@ -43,6 +43,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Check release distribution tooling and metadata
+        run: |
+          node tools/prepare-release-assets.test.mjs
+          node tools/update-package-managers.test.mjs
+          node tools/update-package-managers.mjs --check
+
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
 

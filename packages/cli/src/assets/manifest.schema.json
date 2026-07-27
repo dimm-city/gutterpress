@@ -77,8 +77,14 @@
               },
               "version": {
                 "type": "string",
-                "description": "npm version constraint recorded for a package plugin. Stored in the manifest for tooling; plugin resolution itself loads whatever version is installed.",
-                "examples": ["^1.0.0", "~2.1.0", "1.2.3"]
+                "description": "Exact npm version installed under plugins/npm by print-md. Legacy non-exact values remain informational and use legacy node_modules resolution.",
+                "examples": ["1.2.3", "2.1.0-beta.1"]
+              },
+              "export": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Named module export to use as the markdown-it plugin function when the package has no default export.",
+                "examples": ["full"]
               },
               "priority": {
                 "type": "integer",

@@ -77,6 +77,7 @@
     selectedPath = null,
     onSelectFile,
     onBeforeRename,
+    onBeforeDelete,
     onFileRenamed,
     onFileDeleted,
   }: {
@@ -89,7 +90,9 @@
      * that exact file FIRST — see +page.svelte's `onTreeBeforeRename` for
      * why the ordering (flush-before-rename, not after) matters.
      */
-    onBeforeRename?: (path: string) => void | Promise<void>;
+    onBeforeRename?: (path: string) => boolean | void | Promise<boolean | void>;
+    /** Return false to keep the file/folder when its open buffer did not flush. */
+    onBeforeDelete?: (path: string) => boolean | void | Promise<boolean | void>;
     /** Called after a successful rename with the old and new absolute paths. */
     onFileRenamed?: (oldPath: string, newPath: string) => void;
     /** Called after a successful delete with the deleted absolute path. */
@@ -326,7 +329,7 @@
     renameError = null;
     const { path: oldPath, parentDir, isDir } = renaming;
     try {
-      await onBeforeRename?.(oldPath);
+      if ((await onBeforeRename?.(oldPath)) === false) return;
       const result = await api.fs.renamePath(oldPath, newName);
       renaming = null;
       if (isDir) {
@@ -368,6 +371,7 @@
     deleteBusy = entry.path;
     deleteError = null;
     try {
+      if ((await onBeforeDelete?.(entry.path)) === false) return;
       await api.fs.deletePath(entry.path, projectDir);
       if (entry.isDir) {
         childrenByPath = invalidateSubtree(childrenByPath, entry.path);

@@ -27,6 +27,7 @@ import type {
   CloneProgressEvent,
   ConflictFileInfo,
   ExportProgressEvent,
+  MarkdownFileLaunchEvent,
 } from "./bridge-types";
 
 declare global {
@@ -35,6 +36,7 @@ declare global {
     currentVersion: string | null;
     stagedVersion: string | null;
     availableVersion: string | null;
+    availableAction: "download" | "open-release" | null;
     phase: "idle" | "checking" | "available" | "downloading" | "staged" | "error";
     error: string | null;
   }
@@ -45,7 +47,7 @@ declare global {
   // ARCH review #8: plain request/response, no push stream or
   // live-BrowserWindow need. applyNow + onEvent stay on the bridge.
   interface ElectronUpdater {
-    applyNow(): Promise<{ applied: boolean; version?: string }>;
+    applyNow(): Promise<{ applied: boolean; version?: string; error?: string }>;
     onEvent(cb: (event: UpdaterEvent) => void): () => void;
   }
 
@@ -63,6 +65,7 @@ declare global {
   interface ProjectClassification {
     source: ProjectSource;
     capabilities: ProjectCapabilities;
+    hasManifest: boolean;
   }
 
   // ── Sync recovery seam (Foundation — §8 / ADR 0004) ──────────────────────
@@ -117,6 +120,7 @@ declare global {
       onNativeThemeUpdated(
         cb: (data: { shouldUseDarkColors: boolean }) => void
       ): () => void;
+      onOpenMarkdownFile(cb: (data: MarkdownFileLaunchEvent) => void): () => void;
       // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from ElectronBridge.
       // plugin:*, theme:*, project:listStyles migrated to server routes (Phase 2E) — removed from ElectronBridge.
       // Local version history (#13) — all migrated to SvelteKit server routes (src/routes/api/vcs/*):
@@ -187,7 +191,7 @@ declare global {
       // writeRecovery, clearRecovery, listRecovery — migrated to server routes
       // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
       // app:setDirtyState — migrated to server route (Phase 2B).
-      onFlushBeforeClose(cb: () => void): () => void;
+      onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void;
       onFolderChanged(cb: (data: { filename: string }) => void): () => void;
     };
   }

@@ -42,7 +42,11 @@ import {
   verifyRepoReadable,
 } from "../index.ts";
 import { makeManualGuidance } from "../lib/remote-auth/recovery/manual-guidance.ts";
-import { rejectExtraPositionals, UsageError } from "../lib/cli-args.ts";
+import {
+  rejectExtraPositionals,
+  rejectUnknownFlags,
+  UsageError,
+} from "../lib/cli-args.ts";
 import type {
   ConfirmationGate,
   RecoveryResult,
@@ -105,35 +109,38 @@ function terminalConfirmationGate(autoApprove: boolean): ConfirmationGate {
   };
 }
 
+const commandArgs = {
+  dir: {
+    type: "positional",
+    description: "Project directory (defaults to the current directory)",
+    required: false,
+  },
+  check: {
+    type: "boolean",
+    description: "Diagnose only — never change anything (exit 1 when repair is needed)",
+    default: false,
+  },
+  yes: {
+    type: "boolean",
+    description: "Approve the repair without prompting",
+    default: false,
+  },
+  force: {
+    type: "boolean",
+    description: "Repair even if the print-md app appears to have this project open",
+    default: false,
+  },
+} as const;
+
 export default defineCommand({
   meta: {
     name: "repair",
     description: "Diagnose and repair the project's version history",
   },
-  args: {
-    dir: {
-      type: "positional",
-      description: "Project directory (defaults to the current directory)",
-      required: false,
-    },
-    check: {
-      type: "boolean",
-      description: "Diagnose only — never change anything (exit 1 when repair is needed)",
-      default: false,
-    },
-    yes: {
-      type: "boolean",
-      description: "Approve the repair without prompting",
-      default: false,
-    },
-    force: {
-      type: "boolean",
-      description: "Repair even if the print-md app appears to have this project open",
-      default: false,
-    },
-  },
-  async run({ args }) {
+  args: commandArgs,
+  async run({ args, rawArgs }) {
     try {
+      rejectUnknownFlags(rawArgs, commandArgs, "repair");
       rejectExtraPositionals((args as { _: unknown[] })._, 1, "repair");
     } catch (error) {
       if (error instanceof UsageError) {

@@ -29,6 +29,7 @@ import { constants as FS, existsSync } from "node:fs";
 import path from "node:path";
 
 import { getAssetPath } from "./embedded-assets.ts";
+import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { slugify } from "./slug.ts";
 
 /**
@@ -97,7 +98,7 @@ export interface CreateProjectOptions {
 export interface CreateProjectResult {
   /** Absolute path of the created project directory. */
   projectDir: string;
-  /** Absolute path of the generated `manifest.yaml`. */
+  /** Absolute path of the generated manifest. */
   manifestPath: string;
   /**
    * Absolute path of the sample chapter the viewer should open first, so the
@@ -244,7 +245,7 @@ export async function scaffoldProject(
       const tplManifest = await getAssetPath(`templates/${template}/manifest.yaml`);
       const tplChapter = await getAssetPath(`templates/${template}/chapter-01.md`);
       await mkdir(path.join(projectDir, "assets"), { recursive: true });
-      await copyFile(tplManifest, path.join(projectDir, "manifest.yaml"));
+      await copyFile(tplManifest, path.join(projectDir, MANIFEST_FILENAMES[0]));
       await copyFile(tplChapter, path.join(projectDir, "chapter-01.md"));
       // Scaffold styles/book.css from the template's starter theme so the
       // project opens with a real, fully-editable stylesheet (the manifest
@@ -262,7 +263,9 @@ export async function scaffoldProject(
   }
 
   // 2. FILL IN the copied files (placeholder substitution).
-  const manifestPath = path.join(projectDir, "manifest.yaml");
+  const manifestPath =
+    MANIFEST_FILENAMES.map((name) => path.join(projectDir, name)).find(existsSync) ??
+    path.join(projectDir, MANIFEST_FILENAMES[0]);
   const author = (options.author ?? "").trim() || DEFAULT_AUTHOR;
   const outputPdf = `${slug}.pdf`;
 
@@ -379,7 +382,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
   if (!st.isDirectory()) {
     throw new CreateProjectErrorImpl("scaffold-io", `Not a folder: ${dir}`);
   }
-  if (existsSync(path.join(dir, "manifest.yaml")) || existsSync(path.join(dir, "print-md.yaml"))) {
+  if (MANIFEST_FILENAMES.some((name) => existsSync(path.join(dir, name)))) {
     throw new CreateProjectErrorImpl(
       "target-exists",
       "This folder is already a print-md project.",
@@ -422,7 +425,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
       `source:\n  files:\n${filesYaml}\n` +
       `styles:\n  - styles/book.css\n` +
       `output:\n  filename: "${escapeYamlScalar(slug)}.pdf"\n`;
-    await writeFile(path.join(dir, "manifest.yaml"), manifest, "utf8");
+    await writeFile(path.join(dir, MANIFEST_FILENAMES[0]), manifest, "utf8");
     await mkdir(path.join(dir, "assets"), { recursive: true });
   } catch (e) {
     if (e instanceof CreateProjectErrorImpl) throw e;
@@ -454,7 +457,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
 
   const result: CreateProjectResult = {
     projectDir: dir,
-    manifestPath: path.join(dir, "manifest.yaml"),
+    manifestPath: path.join(dir, MANIFEST_FILENAMES[0]),
     openFile: path.join(dir, mdFiles[0]!),
     versionHistory,
   };

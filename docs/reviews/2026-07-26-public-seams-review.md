@@ -14,6 +14,60 @@ argument parser's runtime internals) are explicitly marked **inferred**.
 The review question: *what will actually go wrong for a non-technical author,
 per operating system and install scenario, based solely on what the code does?*
 
+## Resolution update (2026-07-26)
+
+All findings have been addressed. The original review below is preserved as the
+pre-remediation record, so its file:line references describe the code before the
+fixes and may no longer point at the same statements.
+
+| Finding | Status | Resolution |
+| --- | --- | --- |
+| D1 | **Accepted / mitigated** | Signing remains unaffordable by decision. Releases now publish checksums and put Gatekeeper guidance in the release body; the macOS notifier and package-manager paths reduce the remaining friction. |
+| D2 | **Resolved** | Viewer releases explicitly build both Apple Silicon and Intel DMGs. |
+| D3 | **Resolved** | macOS performs signing-free, channel-aware GitHub release checks and offers a **Download from GitHub** action without invoking the unsigned installer path. |
+| D4 | **Accepted / mitigated** | Windows remains unsigned by decision. The release body explains SmartScreen, checksums are published, and the NSIS installer now keeps a stable basename so its reputation is not reset by each version. |
+| D5 | **Resolved** | Release assets are flattened with collision checks, SHA-256 hashed, and published with `SHA256SUMS.txt`; the hashes are also included in release notes. |
+| D6 | **Accepted / mitigated** | Both Darwin CLI architectures now run on native CI runners. The supported matrix and the Windows ARM64, Linux ARM64 viewer, and musl gaps are explicit; new targets remain demand-driven as recommended. |
+| D7 | **Resolved** | Docker dispatch receives the normalized release version. |
+| D8 | **Accepted / documented** | Git URL npm installs are explicitly unsupported; registry installation and standalone binaries are the supported paths. |
+| D9 | **Resolved** | The repository now provides a Homebrew tap and Scoop bucket with post-release generation and real install validation. Submission-ready winget metadata is generated; publishing it still requires an external `microsoft/winget-pkgs` PR. |
+| C1 | **Resolved** | Every Ghostscript caller uses shared cross-platform resolution with `GHOSTSCRIPT_PATH`, platform command names, and conventional Windows install paths. |
+| C2 | **Resolved** | The Linux-only ICC path was removed. A real Ghostscript integration test verifies valid PDF/X metadata and expected RGB-red to CMYK conversion. |
+| C3 | **Resolved** | YAML parse failures become filename-, line-, and column-aware `UsageError`s. |
+| C4 | **Resolved** | Final builds fail with actionable guidance when no manifest is found; loose-folder live preview remains supported. |
+| C5 | **Resolved** | Explicit manifest paths fail consistently in lint, validate, audit, preflight, build, and publish flows. |
+| C6 | **Resolved** | Implicit preview only accepts no positional or an existing directory; unknown commands receive spelling guidance. |
+| C7 | **Resolved** | Unknown flags and missing option values are rejected across every command, including nested plugin commands, with usage exit code 2. |
+| C8 | **Resolved** | Build and preview retain purpose-specific defaults but print the resolved format first. |
+| C9 | **Accepted / improved** | The system-browser constraint remains. Errors now point non-technical users to the browser-free desktop app, and Vivaldi/Opera discovery was added. |
+| C10 | **Resolved** | `print-md doctor` reports platform, configuration path, external-tool status, paths, and install guidance. |
+| C11 | **Accepted / documented** | The existing macOS config path is retained to avoid orphaning credentials and is now shown by `doctor`. |
+| C12 | **Resolved** | Port probing uses the requested bind host, validates the full port range, and reports environmental bind exhaustion as a pipeline error. |
+| C13 | **Resolved** | A failed automatic PDF open is nonfatal and reports the completed file path. |
+| C14 | **Resolved** | PDF/X and annotation-strip intermediates are staged under the OS temporary build root rather than the output directory. |
+| V1 | **Resolved** | CLI and viewer installs fetch, verify, and vendor an exact complete npm runtime graph without external tooling or package scripts. Whole-tree receipts, bounded extraction, receipt-bound ESM/CommonJS resolution, atomic mutation, project confinement, native confirmation, and named exports are covered by adversarial tests and standalone-binary smokes. Plugins remain explicitly trusted application code, not a sandbox. |
+| V2 | **Resolved** | Failed editor flushes remain dirty, block destructive transitions, create an atomic next-launch marker, and produce bounded in-session warnings. Close and update installation request a direct flush rather than trusting telemetry. |
+| V3 | **Resolved** | `.md` associations, macOS `open-file`, Windows/Linux launch arguments, second-instance handling, nearest-project resolution, and queued startup delivery are implemented. |
+| V4 | **Resolved** | Linux `basic_text` credential storage triggers a persisted one-time native warning when GitHub is first connected. |
+| V5 | **Resolved** | Manifest discovery uses one shared list for `manifest.yaml`, `manifest.yml`, and legacy `print-md.yaml`; malformed-manifest repair copy is distinct from the successful loose-folder setup path, and the unreachable failed-open adoption branch was removed. |
+
+### Verification
+
+- `bun install --frozen-lockfile`
+- `bun test` — 3,971 passed, 1 environment-dependent skip, 0 failed
+- `bun run typecheck`
+- CLI production build and node-free `/render` purity gate
+- Viewer Svelte check, lint/token check, production build, strict renderer-purity gate, and Electron main/preload build
+- Standalone `bun build --compile` smoke: scaffold project, install dependency-bearing `markdown-it-highlightjs@4.3.0`, load it, and build paginated HTML
+- Real Ghostscript 10.06 PDF/X color-conversion integration test
+- `actionlint`, package-manager metadata drift tests, and release-asset/checksum tests
+
+Release CI and physical target systems still provide the final native checks for
+DMG/NSIS installation, Finder/Explorer/AppImage association behavior, and Linux
+keyring backends. Winget availability remains external until its generated
+manifest is accepted upstream. Code signing remains the explicit accepted
+limitation below.
+
 ## Accepted limitation: code signing
 
 > **Decision (2026-07-26): code signing and notarization are not affordable at

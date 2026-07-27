@@ -24,6 +24,154 @@ export class UsageError extends Error {
   }
 }
 
+interface CliArgumentDefinition {
+  type?: "boolean" | "string" | "enum" | "positional";
+  alias?: string | readonly string[];
+}
+
+type CliArgumentDefinitions = Readonly<
+  Record<string, CliArgumentDefinition>
+>;
+
+function camelCaseFlag(name: string): string {
+  return name.replace(/-([a-z0-9])/g, (_, char: string) =>
+    char.toUpperCase()
+  );
+}
+
+function kebabCaseFlag(name: string): string {
+  return name.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
+}
+
+function takesValue(definition: CliArgumentDefinition): boolean {
+  return definition.type === "string" || definition.type === "enum";
+}
+
+/**
+ * Reject option names citty would otherwise retain and silently ignore, and
+ * reject value-taking options whose value is absent.
+ *
+ * This scans raw argv rather than the parsed object so a positional name used
+ * as an option (for example, `build --input`) cannot masquerade as a declared
+ * flag. Citty parses in non-strict mode and turns a valueless string option
+ * into `""`; catching that from raw argv is the only way to distinguish an
+ * omitted option from a typo. A dash-prefixed token is still a legitimate
+ * string value unless it names an option declared by this command.
+ */
+export function rejectUnknownFlags(
+  rawArgs: readonly string[],
+  declared: CliArgumentDefinitions,
+  commandName: string
+): void {
+  const longFlags = new Map<string, CliArgumentDefinition>();
+  const shortFlags = new Map<string, CliArgumentDefinition>();
+
+  for (const [name, definition] of Object.entries(declared)) {
+    if (definition.type === "positional") continue;
+
+    for (const variant of new Set([
+      name,
+      camelCaseFlag(name),
+      kebabCaseFlag(name),
+    ])) {
+      longFlags.set(variant, definition);
+    }
+
+    const aliases = Array.isArray(definition.alias)
+      ? definition.alias
+      : definition.alias
+        ? [definition.alias]
+        : [];
+    for (const alias of aliases) {
+      longFlags.set(alias, definition);
+      if (alias.length === 1) shortFlags.set(alias, definition);
+    }
+    if (name.length === 1) shortFlags.set(name, definition);
+  }
+
+  const reject = (option: string): never => {
+    throw new UsageError(
+      `print-md ${commandName}: unknown option ${option}`
+    );
+  };
+  const missingValue = (option: string): never => {
+    throw new UsageError(
+      `print-md ${commandName}: option ${option} requires a value`
+    );
+  };
+  const isDeclaredOptionBoundary = (token: string): boolean => {
+    if (token === "--" || token === "--help" || token === "-h") return true;
+    if (token.startsWith("--")) {
+      const rawName = token.slice(2).split("=", 1)[0]!;
+      const directDefinition = longFlags.get(rawName);
+      if (directDefinition) return true;
+      if (!rawName.startsWith("no-")) return false;
+      return longFlags.get(rawName.slice(3))?.type === "boolean";
+    }
+    return token.startsWith("-") && token.length > 1 && shortFlags.has(token[1]!);
+  };
+  const consumeValue = (index: number, option: string): number => {
+    const value = rawArgs[index + 1];
+    if (value === undefined || isDeclaredOptionBoundary(value)) {
+      missingValue(option);
+    }
+    return index + 1;
+  };
+
+  for (let i = 0; i < rawArgs.length; i++) {
+    const token = rawArgs[i]!;
+    if (token === "--") break;
+    if (token === "--help" || token === "-h" || token === "-") continue;
+
+    if (token.startsWith("--")) {
+      const equalsAt = token.indexOf("=");
+      const option = equalsAt === -1 ? token : token.slice(0, equalsAt);
+      const rawName = option.slice(2);
+      const directDefinition = longFlags.get(rawName);
+      const negated = !directDefinition && rawName.startsWith("no-");
+      const name = negated ? rawName.slice(3) : rawName;
+      const definition = directDefinition ?? longFlags.get(name);
+
+      if (!definition) throw new UsageError(
+        `print-md ${commandName}: unknown option ${option}`
+      );
+      if (
+        negated &&
+        (definition.type !== "boolean" || equalsAt !== -1)
+      ) reject(option);
+
+      if (!negated && takesValue(definition)) {
+        if (equalsAt === -1) {
+          i = consumeValue(i, option);
+        } else if (token.slice(equalsAt + 1).length === 0) {
+          missingValue(option);
+        }
+      }
+      continue;
+    }
+
+    if (!token.startsWith("-") || token.length === 1) continue;
+
+    const body = token.slice(1);
+    for (let j = 0; j < body.length; j++) {
+      const alias = body[j]!;
+      const definition = shortFlags.get(alias);
+      if (!definition) throw new UsageError(
+        `print-md ${commandName}: unknown option ${token}`
+      );
+      if (takesValue(definition)) {
+        const attached = body.slice(j + 1);
+        if (attached.length === 0) {
+          i = consumeValue(i, `-${alias}`);
+        } else if (attached === "=") {
+          missingValue(`-${alias}`);
+        }
+        break;
+      }
+    }
+  }
+}
+
 /**
  * Reject CLI positionals beyond the ones a command declares (UX finding M46).
  *
@@ -54,7 +202,8 @@ export function parseFormat(
   raw: unknown,
   opts: { default: BuildFormat }
 ): BuildFormat {
-  if (raw === undefined || raw === "") return opts.default;
+  if (raw === undefined) return opts.default;
+  if (raw === "") throw new UsageError("--format requires a value.");
   if (raw === "html" || raw === "pdf" || raw === "pdfx") return raw;
   throw new UsageError(
     `Invalid --format value: "${raw}". Expected "html", "pdf", or "pdfx".`
@@ -66,7 +215,8 @@ export function parsePdfxFlavor(
   raw: unknown,
   format: BuildFormat
 ): PdfxFlavor | undefined {
-  if (raw === undefined || raw === "") return undefined;
+  if (raw === undefined) return undefined;
+  if (raw === "") throw new UsageError("--pdfx-flavor requires a value.");
   if (format !== "pdfx") {
     throw new UsageError(
       `--pdfx-flavor is only valid with --format pdfx (got --format ${format}).`
@@ -80,11 +230,14 @@ export function parsePdfxFlavor(
 
 /** Parse `--port`, defaulting to {@link NETWORK.DEFAULT_PORT} (0 = OS-assigned). */
 export function resolvePort(raw: unknown): number {
-  if (raw === undefined || raw === "") return NETWORK.DEFAULT_PORT;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0) {
+  if (raw === undefined) return NETWORK.DEFAULT_PORT;
+  if (raw === "" || (typeof raw === "string" && raw.trim() === "")) {
+    throw new UsageError("--port requires a value.");
+  }
+  const n = typeof raw === "number" || typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0 || n > 65535) {
     throw new UsageError(
-      `Invalid --port value: "${raw}". Expected a non-negative number (0 = OS-assigned).`
+      `Invalid --port value: "${raw}". Expected an integer from 0 to 65535 (0 = OS-assigned).`
     );
   }
   return n;

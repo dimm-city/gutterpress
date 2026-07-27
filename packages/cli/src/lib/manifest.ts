@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, YAMLParseError } from "yaml";
 import type { PrintMdManifest, ResolvedConfig, PluginConfig, ResolvedPluginConfig } from "../schema/manifest.types";
 import { resolvePreset, warnOnce } from "./presets";
 import { UsageError } from "./cli-args";
@@ -12,10 +12,26 @@ import { UsageError } from "./cli-args";
  * (project scanning, GitHub repo book discovery, …) should consume this
  * instead of hardcoding the names.
  */
-export const MANIFEST_FILENAMES = ["manifest.yaml", "manifest.yml"] as const;
+export const MANIFEST_FILENAMES = [
+  "manifest.yaml",
+  "manifest.yml",
+  "print-md.yaml",
+] as const;
+
+/** True when a directory contains any recognized project manifest file. */
+export function hasProjectManifest(dir: string): boolean {
+  return MANIFEST_FILENAMES.some((name) => {
+    const candidate = resolve(dir, name);
+    try {
+      return statSync(candidate).isFile();
+    } catch {
+      return false;
+    }
+  });
+}
 
 /**
- * Load manifest.yaml from a given path or CWD.
+ * Load a recognized manifest from a given path or CWD.
  * Returns an empty object if the file doesn't exist.
  */
 export async function loadManifest(
@@ -28,8 +44,8 @@ export async function loadManifest(
 }
 
 /**
- * Load manifest.yaml and return both the manifest and the directory it was found in.
- * Returns an empty manifest and the current working directory if no manifest is found —
+ * Load a recognized manifest and return its contents, directory, and resolved path.
+ * Returns an empty manifest, a null path, and the current working directory if none is found —
  * UNLESS `explicit` is set (ARCH finding #12/PR #98): a caller that resolved
  * `pathOrDir` from a user-supplied `--manifest` flag (as opposed to a project
  * directory being scanned for a manifest that may legitimately not exist) must
@@ -44,7 +60,11 @@ export async function loadManifest(
 export async function loadManifestWithPath(
   pathOrDir?: string,
   opts?: { explicit?: boolean }
-): Promise<{ manifest: PrintMdManifest; manifestDir: string }> {
+): Promise<{
+  manifest: PrintMdManifest;
+  manifestDir: string;
+  manifestPath: string | null;
+}> {
   const candidates = pathOrDir
     ? [resolve(pathOrDir), ...MANIFEST_FILENAMES.map((name) => resolve(pathOrDir, name))]
     : MANIFEST_FILENAMES.map((name) => resolve(name));
@@ -52,18 +72,33 @@ export async function loadManifestWithPath(
   for (const p of candidates) {
     if (existsSync(p) && statSync(p).isFile()) {
       const raw = await readFile(p, "utf8");
-      const manifest = (parseYaml(raw) as PrintMdManifest) ?? {};
-      return { manifest, manifestDir: dirname(p) };
+      try {
+        const manifest = (parseYaml(raw) as PrintMdManifest) ?? {};
+        return { manifest, manifestDir: dirname(p), manifestPath: p };
+      } catch (error) {
+        if (!(error instanceof YAMLParseError)) throw error;
+        const position = error.linePos?.[0];
+        const location = position
+          ? ` at line ${position.line}, column ${position.col}`
+          : "";
+        const summary = (error.message.split("\n", 1)[0] ?? error.message).replace(
+          /\s+at line \d+, column \d+:?$/,
+          ""
+        );
+        throw new UsageError(`Invalid YAML in "${p}"${location}: ${summary}`);
+      }
     }
   }
 
-  if (opts?.explicit && pathOrDir) {
-    throw new UsageError(`manifest not found: ${pathOrDir}`);
+  if (opts?.explicit && pathOrDir !== undefined) {
+    throw new UsageError(
+      `manifest not found: ${pathOrDir}. Pass an existing file or a directory containing ${MANIFEST_FILENAMES.join(" or ")}.`
+    );
   }
 
   // If no manifest found, return empty manifest and the input dir or cwd
   const manifestDir = pathOrDir ? resolve(pathOrDir) : resolve('.');
-  return { manifest: {}, manifestDir };
+  return { manifest: {}, manifestDir, manifestPath: null };
 }
 
 /**
@@ -87,7 +122,7 @@ function isFilePath(str: string): boolean {
   // name. Without a JS extension it stays ambiguous with a legitimate scoped
   // package name (`@org/name`), so only slash+extension triggers this (ARCH
   // finding #57 — previously this fell through to npm resolution and
-  // produced a "bun add plugins/my-plugin.js" dead-end that could never work).
+  // produced an npm-package install dead-end that could never work).
   return /[\\/].*\.(m?js|cjs)$/i.test(str);
 }
 
@@ -118,6 +153,8 @@ function normalizePluginConfig(plugin: string | PluginConfig): ResolvedPluginCon
   return {
     path: plugin.path,
     name: plugin.name,
+    ...(plugin.version ? { version: plugin.version } : {}),
+    ...(plugin.export ? { export: plugin.export } : {}),
     priority: plugin.priority ?? 100,
     options: plugin.options ?? {},
   };

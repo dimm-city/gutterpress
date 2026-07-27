@@ -125,6 +125,7 @@ test("runBuild closes the browser exactly once on a successful build, even when 
   const dir = await mkdtemp(join(tmpdir(), "pmd-browser-ok-in-"));
   const outDir = await mkdtemp(join(tmpdir(), "pmd-browser-ok-out-"));
   try {
+    await writeFile(join(dir, "manifest.yaml"), "title: Browser Lifecycle\n", "utf-8");
     await writeFile(join(dir, "chapter-01.md"), "# Hello\n", "utf-8");
 
     const result = await runBuild({

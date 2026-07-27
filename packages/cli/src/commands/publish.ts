@@ -14,7 +14,12 @@ import {
   type PublishDeps,
   type RunPublishResult,
 } from "../index.ts";
-import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
+import {
+  EXIT_CODES,
+  UsageError,
+  rejectExtraPositionals,
+  rejectUnknownFlags,
+} from "../lib/cli-args.ts";
 
 /**
  * `print-md publish` (#35) — push a built artifact to a publishing platform,
@@ -70,54 +75,57 @@ function emitResult(result: RunPublishResult, json: boolean): void {
   }
 }
 
+const commandArgs = {
+  project: {
+    type: "positional",
+    description: "Project directory (default: cwd)",
+    required: false,
+  },
+  provider: {
+    type: "string",
+    description: "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify",
+  },
+  list: { type: "boolean", description: "List providers and connection status" },
+  connect: {
+    type: "boolean",
+    description:
+      "Store an API key for --provider (from --token, the provider's env var, or piped stdin)",
+  },
+  disconnect: { type: "boolean", description: "Forget the stored key for --provider" },
+  account: {
+    type: "string",
+    description:
+      "Named-credential label for --connect/--disconnect, so you can keep several accounts per provider (e.g. --account studio). Omit for the default account.",
+  },
+  token: {
+    type: "string",
+    description:
+      "API key for --connect (prefer piping via stdin or the provider env var to keep it out of shell history)",
+  },
+  file: {
+    type: "string",
+    description:
+      "Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location",
+  },
+  manifest: { type: "string", description: "Path to manifest.yaml" },
+  "dry-run": { type: "boolean", description: "Preflight only; don't contact the platform" },
+  json: { type: "boolean", description: "Machine-readable JSON output (CI)" },
+  open: {
+    type: "boolean",
+    description: "Open the result page / guided upload page in the browser",
+  },
+} as const;
+
 export default defineCommand({
   meta: {
     name: "publish",
     description:
       "Publish the built PDF/HTML to a platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify)",
   },
-  args: {
-    project: {
-      type: "positional",
-      description: "Project directory (default: cwd)",
-      required: false,
-    },
-    provider: {
-      type: "string",
-      description: "Provider id: itch | drivethrurpg | kdp | azure-swa | shopify",
-    },
-    list: { type: "boolean", description: "List providers and connection status" },
-    connect: {
-      type: "boolean",
-      description:
-        "Store an API key for --provider (from --token, the provider's env var, or piped stdin)",
-    },
-    disconnect: { type: "boolean", description: "Forget the stored key for --provider" },
-    account: {
-      type: "string",
-      description:
-        "Named-credential label for --connect/--disconnect, so you can keep several accounts per provider (e.g. --account studio). Omit for the default account.",
-    },
-    token: {
-      type: "string",
-      description:
-        "API key for --connect (prefer piping via stdin or the provider env var to keep it out of shell history)",
-    },
-    file: {
-      type: "string",
-      description:
-        "Artifact to publish (PDF path, or HTML export dir). Default: the manifest's output location",
-    },
-    manifest: { type: "string", description: "Path to manifest.yaml" },
-    "dry-run": { type: "boolean", description: "Preflight only; don't contact the platform" },
-    json: { type: "boolean", description: "Machine-readable JSON output (CI)" },
-    open: {
-      type: "boolean",
-      description: "Open the result page / guided upload page in the browser",
-    },
-  },
-  async run({ args }) {
+  args: commandArgs,
+  async run({ args, rawArgs }) {
     try {
+      rejectUnknownFlags(rawArgs, commandArgs, "publish");
       rejectExtraPositionals((args as { _: unknown[] })._, 1, "publish");
     } catch (error) {
       if (error instanceof UsageError) {
@@ -229,7 +237,7 @@ export default defineCommand({
         );
       } catch (e) {
         log.error(e instanceof Error ? e.message : String(e));
-        process.exit(EXIT_CODES.FINDINGS);
+        process.exit(e instanceof UsageError ? e.exitCode : EXIT_CODES.FINDINGS);
       }
       log.success(
         `Connected ${provider.info.label}${account ? ` (${account})` : ""}. The key is stored in your user config, not the project.`,
@@ -237,16 +245,25 @@ export default defineCommand({
       return;
     }
 
-    const result = await runPublish(
-      {
-        projectDir,
-        providerId: provider.info.id,
-        manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
-        artifactPath: typeof args.file === "string" ? args.file : undefined,
-        dryRun: !!args["dry-run"],
-      },
-      deps,
-    );
+    let result: RunPublishResult;
+    try {
+      result = await runPublish(
+        {
+          projectDir,
+          providerId: provider.info.id,
+          manifestPath: typeof args.manifest === "string" ? args.manifest : undefined,
+          artifactPath: typeof args.file === "string" ? args.file : undefined,
+          dryRun: !!args["dry-run"],
+        },
+        deps,
+      );
+    } catch (e) {
+      if (e instanceof UsageError) {
+        log.error(e.message);
+        process.exit(e.exitCode);
+      }
+      throw e;
+    }
     emitResult(result, json);
 
     if (result.ok && args.open && result.outcome) {

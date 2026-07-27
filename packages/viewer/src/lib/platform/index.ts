@@ -19,6 +19,7 @@ export type {
   UpdaterApi,
   UpdaterStatus,
   UpdaterEvent,
+  UpdaterAvailableAction,
   ViewerPrefs,
   AppSettings,
   DeepPartial,
@@ -31,6 +32,7 @@ export type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
+  MarkdownFileLaunchEvent,
   NativeThemeState,
 } from "./contract";
 

@@ -80,12 +80,18 @@ export class EditorBuffer {
   }
 
   get hasPendingSave(): boolean {
-    return this.phase === "dirty" || this.phase === "saving";
+    return (
+      this.phase === "dirty" ||
+      this.phase === "saving" ||
+      (this.phase === "error" && this.isDirty)
+    );
   }
 
   private opts: EditorBufferOptions;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveInFlight: Promise<void> | null = null;
+  private lastPendingSave = false;
   // Monotonic generation counter for concurrent load() suppression. Only the
   // most recent load's result is applied; earlier stale reads are discarded.
   private loadGen = 0;
@@ -100,10 +106,10 @@ export class EditorBuffer {
 
   /** Set phase and notify the onDirty callback when pending-save state changes. */
   private setPhase(next: EditorBufferPhase): void {
-    const wasPending = this.hasPendingSave;
     this.phase = next;
     const nowPending = this.hasPendingSave;
-    if (wasPending !== nowPending) {
+    if (this.lastPendingSave !== nowPending) {
+      this.lastPendingSave = nowPending;
       this.opts.onDirty?.(nowPending);
     }
   }
@@ -198,7 +204,9 @@ export class EditorBuffer {
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
-      void this.doSave();
+      // Debounced saves report through onError; explicit flush() callers need
+      // the rejection, but a timer has no caller to receive it.
+      void this.doSave().catch(() => {});
     }, this.opts.saveDelayMs ?? 500);
   }
 
@@ -220,7 +228,18 @@ export class EditorBuffer {
     }
   }
 
-  private async doSave(): Promise<void> {
+  private doSave(): Promise<void> {
+    if (this.saveInFlight) return this.saveInFlight;
+    const save = this.performSave();
+    this.saveInFlight = save;
+    const clear = (): void => {
+      if (this.saveInFlight === save) this.saveInFlight = null;
+    };
+    void save.then(clear, clear);
+    return save;
+  }
+
+  private async performSave(): Promise<void> {
     const filePath = this.filePath;
     if (!filePath) return;
     const snapshot = this.content;
@@ -271,21 +290,28 @@ export class EditorBuffer {
       this.opts.onError?.(
         `Save failed: ${e instanceof Error ? e.message : String(e)}`,
       );
+      throw e;
     }
   }
 
   /** Force any pending save to run now and await it (close/navigate flush). */
   async flush(): Promise<void> {
-    if (this.saveTimer) {
-      clearTimeout(this.saveTimer);
-      this.saveTimer = null;
-    }
     if (this.recoveryTimer) {
       clearTimeout(this.recoveryTimer);
       this.recoveryTimer = null;
     }
-    if (this.filePath && this.isDirty) {
+    // A keystroke can land while a write is in flight. Keep flushing snapshots
+    // until the live buffer matches disk; the host watchdog remains the final
+    // bound during quit.
+    while (this.filePath && this.isDirty) {
+      if (this.saveTimer) {
+        clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+      }
       await this.doSave();
+      if (this.externalChange) {
+        throw new Error("The file changed on disk before the edit could be saved.");
+      }
     }
   }
 

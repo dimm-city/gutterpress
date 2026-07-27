@@ -4,6 +4,7 @@
   import type { DoctorDiagnostics } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
   import { dialogBehavior } from "$lib/dialog";
+  import type { UpdaterAvailableAction } from "$lib/platform";
 
   let {
     open = $bindable(false),
@@ -13,6 +14,7 @@
     checkingUpdates = false,
     updateReadyVersion = null,
     updateAvailableVersion = null,
+    updateAvailableAction = null,
   }: {
     open?: boolean;
     onClose?: () => void;
@@ -22,6 +24,7 @@
     checkingUpdates?: boolean;
     updateReadyVersion?: string | null;
     updateAvailableVersion?: string | null;
+    updateAvailableAction?: UpdaterAvailableAction | null;
   } = $props();
 
   let data = $state<DoctorDiagnostics | null>(null);
@@ -68,6 +71,7 @@
       `print-md viewer ${data.viewerVersion}`,
       `lib ${data.libVersion}  ·  electron ${data.electronVersion}  ·  chromium ${data.chromeVersion}  ·  node ${data.platform.node}`,
       `platform: ${osLabel(data.platform.os)} ${data.platform.arch} (${data.platform.release})`,
+      `CLI config directory: ${data.configDir}`,
       ``,
       `Tools:`,
       ...data.tools.map((t) => {
@@ -166,7 +170,7 @@
               {#if updateReadyVersion}
                 An update (v{updateReadyVersion}) is ready to apply — close this dialog and use the banner at the top of the window.
               {:else if updateAvailableVersion}
-                An update (v{updateAvailableVersion}) is available — close this dialog and use the banner at the top of the window to download it.
+                An update (v{updateAvailableVersion}) is available — close this dialog and use the banner at the top of the window to {updateAvailableAction === "open-release" ? "download it from GitHub" : "download it"}.
               {:else}
                 print-md checks for updates automatically. You can also check now.
               {/if}
@@ -217,6 +221,7 @@
             <strong>Platform:</strong>
             {osLabel(data.platform.os)} {data.platform.arch} ({data.platform.release})
           </div>
+          <div><strong>CLI config directory:</strong> <code>{data.configDir}</code></div>
         </section>
 
         <section class="tools">

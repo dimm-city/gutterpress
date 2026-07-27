@@ -1,0 +1,23 @@
+export const previewArgs = {
+  input: { type: "positional", description: "Input markdown directory (defaults to current directory)", required: false },
+  format: { type: "string", description: "Output format: html (default, live HMR) | pdf | pdfx" },
+  port: { type: "string", description: "Port number (default: 3579, html only)" },
+  host: { type: "string", description: "Bind host (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN." },
+  watch: {
+    type: "boolean",
+    default: true,
+    description: "Watch files for changes (html only)",
+    negativeDescription: "Disable file watching (html only)",
+  },
+  open: { type: "boolean", default: true, description: "Automatically open browser/viewer (default: true; use --no-open to skip)" },
+  verbose: { type: "boolean", description: "Enable verbose output" },
+  debug: { type: "boolean", description: "Debug mode (preserve temporary files)" },
+  out: { type: "string", description: "Output directory (pdf|pdfx only)" },
+  "pdfx-flavor": { type: "string", description: "PDF/X flavor (x1a or x3); only with --format pdfx" },
+  icc: { type: "string", description: "Path to ICC profile (required for --format pdfx)" },
+  manifest: { type: "string", description: "Path to manifest.yaml (pdf|pdfx only)" },
+  "strip-annotations": { type: "boolean", description: "Strip PDF annotations for PDF/X compliance (pdfx only)" },
+  "skip-lint": { type: "boolean", description: "Skip CSS linting (pdf|pdfx only)" },
+  "skip-pre-validate": { type: "boolean", description: "Skip pre-build validation (pdf|pdfx only)" },
+  "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation (pdfx only)" },
+} as const;

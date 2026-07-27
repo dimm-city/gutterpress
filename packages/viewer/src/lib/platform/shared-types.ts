@@ -25,18 +25,20 @@
  * and the lib ever drift apart, so this duplication can't rot silently.
  */
 
-// ── Auto-update (electron-updater — full-app updates from GitHub) ─────────
+// ── Desktop updates (electron-updater + macOS check-only notification) ────
 
 /**
- * Which release stream desktop update checks follow. Channels are inclusive
+ * Which release stream electron-updater checks follow. Channels are inclusive
  * downward: "beta" also receives stable releases, "alpha" receives all three.
  * Release tags carry the channel (`vX.Y.Z-beta.N` / `vX.Y.Z-alpha.N`; no
  * suffix = stable) — the ONLY prerelease suffixes the release workflow
  * accepts, because electron-updater hardcodes alpha/beta as its known
  * channels and treats anything else (e.g. `rc`) as a custom channel that
- * strands its users.
+ * strands its users. Unsigned macOS builds apply the same filtering to the
+ * GitHub releases API, then open the selected release for manual installation.
  */
 export type UpdateChannel = "stable" | "beta" | "alpha";
+export type UpdaterAvailableAction = "download" | "open-release";
 
 export interface UpdaterStatus {
   currentVersion: string | null;
@@ -44,12 +46,14 @@ export interface UpdaterStatus {
   stagedVersion: string | null;
   /** Version found by the last check but not yet downloaded (awaiting user consent). */
   availableVersion: string | null;
+  /** What the available-update button does on this host. */
+  availableAction: UpdaterAvailableAction | null;
   phase: "idle" | "checking" | "available" | "downloading" | "staged" | "error";
   error: string | null;
 }
 
 export type UpdaterEventPayload =
-  | { type: "available"; version: string }
+  | { type: "available"; version: string; action: UpdaterAvailableAction }
   | { type: "staged"; version: string }
   | { type: "uptodate"; reason?: string }
   | { type: "error"; message: string };
@@ -247,6 +251,13 @@ export interface ProjectState {
 
 // ── Viewer preferences ────────────────────────────────────────────────────
 
+/** Durable signal that the most recent editor-buffer flush did not complete. */
+export interface LastFlushFailure {
+  failedAt: string;
+  /** Desktop project path, omitted only when the host no longer has project context. */
+  projectDir?: string;
+}
+
 export interface ViewerPrefs {
   lastProjectDir?: string | null;
   /**
@@ -280,6 +291,8 @@ export interface ViewerPrefs {
   projectSource?: ProjectSource;
   /** Global left panel open state + active tab, persisted across sessions. */
   leftPanel?: LeftPanelPrefs;
+  /** Cleared after the next launch has surfaced the failed-flush notice. */
+  lastFlushFailed?: LastFlushFailure;
 }
 
 /** Persisted state of the global left panel (open + active tab). */
@@ -289,6 +302,20 @@ export interface LeftPanelPrefs {
   /** Panel width in px (user-resizable, clamped 200–480). */
   width?: number;
 }
+
+// ── OS file-open events ───────────────────────────────────────────────────
+
+/**
+ * A Markdown file launch resolved by the Electron host. The host walks upward
+ * from the selected file and emits `open` only when it finds a real print-md
+ * manifest; arbitrary Markdown files are reported without being treated as
+ * loose-folder projects. `ready` terminates the initial queued-event replay so
+ * startup can safely fall back to reopening the previous project.
+ */
+export type MarkdownFileLaunchEvent =
+  | { type: "open"; filePath: string; projectDir: string }
+  | { type: "error"; filePath: string; message: string }
+  | { type: "ready" };
 
 // ── Managed GitHub integration (#15, ADR 0006) ────────────────────────────
 //

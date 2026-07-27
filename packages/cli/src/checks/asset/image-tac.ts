@@ -2,6 +2,7 @@ import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
 import { execCapture } from "../../lib/exec";
+import { resolveGhostscript } from "../../lib/ghostscript";
 import { collectImageFiles } from "../../lib/image-inspect";
 import { RASTER_INSPECTABLE_EXTS } from "./extensions";
 
@@ -21,10 +22,19 @@ const check: Check = {
     if (files.length === 0) return [];
 
     const results: CheckResult[] = [];
+    const ghostscript = await resolveGhostscript();
+    if (!ghostscript) {
+      return [
+        inspectionFailed(
+          check.id,
+          "Could not inspect image ink coverage: Ghostscript executable not found"
+        ),
+      ];
+    }
 
     for (const file of files) {
       try {
-        const { stdout } = await execCapture("gs", [
+        const { stdout } = await execCapture(ghostscript, [
           "-q",
           "-dBATCH",
           "-dNOPAUSE",

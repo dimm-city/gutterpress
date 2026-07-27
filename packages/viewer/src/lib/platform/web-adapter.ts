@@ -76,6 +76,7 @@ import type {
   FolderRef,
   FileRef,
   PlatformCapabilities,
+  MarkdownFileLaunchEvent,
 } from "./contract";
 import type {
   RecentFolderEntry,
@@ -914,11 +915,15 @@ export class WebAdapter implements Platform {
     return () => {};
   }
 
+  onOpenMarkdownFile(_cb: (event: MarkdownFileLaunchEvent) => void): () => void {
+    return () => {};
+  }
+
   // writeRecovery, clearRecovery, listRecovery — migrated to server routes
   // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
   // app:setDirtyState — migrated to server route (Phase 2B).
 
-  onFlushBeforeClose(_cb: () => void): () => void {
+  onFlushBeforeClose(_cb: () => boolean | void | Promise<boolean | void>): () => void {
     return () => {};
   }
 

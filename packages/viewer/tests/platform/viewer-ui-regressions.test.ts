@@ -322,6 +322,16 @@ test("C2: the book switcher is wired into the status bar and gated on books.leng
   expect(page).toContain("onSwitchBook={(path) => void switchBook(path)}");
 });
 
+test("V5: setup is offered only after a loose folder opens successfully", () => {
+  const page = read("src/routes/+page.svelte");
+  const landing = read("src/lib/components/WelcomeLanding.svelte");
+  expect(page).toContain("!lifecycle.currentFolderHasManifest");
+  expect(page).toContain("setUpAsBook(lifecycle.currentDir)");
+  expect(page).not.toContain("canAdoptFailedFolder");
+  expect(landing).not.toContain("canAdopt");
+  expect(landing).not.toContain("onAdopt");
+});
+
 test("C2: recents for a repo-backed project key on the repo root, remembering the last active book", () => {
   // The preview-open pipeline (recents upsert included) was extracted from
   // main.ts into electron/preview/controller.ts (ARCH review finding #6) —

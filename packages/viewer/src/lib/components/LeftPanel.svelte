@@ -46,6 +46,7 @@
     onJumpToOutline,
     onSelectEditorFile,
     onBeforeRenameOpenFile,
+    onBeforeDeleteOpenFile,
     onFileRenamed,
     onFileDeleted,
     onInsertImage,
@@ -74,7 +75,8 @@
     /** FileTree row actions (UX review M9): forwarded straight to FileTree's
      *  `onBeforeRename`/`onFileRenamed`/`onFileDeleted` — see +page.svelte's
      *  handlers for why the open-file buffer needs these three hooks. */
-    onBeforeRenameOpenFile?: (path: string) => void | Promise<void>;
+    onBeforeRenameOpenFile?: (path: string) => boolean | void | Promise<boolean | void>;
+    onBeforeDeleteOpenFile?: (path: string) => boolean | void | Promise<boolean | void>;
     onFileRenamed?: (oldPath: string, newPath: string) => void;
     onFileDeleted?: (path: string) => void;
     onInsertImage?: (payload: { src: string; alt?: string }) => void;
@@ -368,6 +370,7 @@
             selectedPath={editorFilePath}
             onSelectFile={onSelectEditorFile}
             onBeforeRename={onBeforeRenameOpenFile}
+            onBeforeDelete={onBeforeDeleteOpenFile}
             {onFileRenamed}
             {onFileDeleted}
           />

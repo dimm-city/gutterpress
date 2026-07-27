@@ -58,6 +58,7 @@ htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint an
     "# Hello\n\nA minimal chapter for the orchestration guard.\n",
     "utf-8"
   );
+  await writeFile(join(inputDir, "manifest.yaml"), "title: Orchestration Guard\n", "utf-8");
 
   const result = await runBuild({
     inputDir,

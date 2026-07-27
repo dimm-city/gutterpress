@@ -561,16 +561,33 @@ export const css = '.my-plugin-class { color: red; }';
 ### Plugin Resolution
 
 Plugins are resolved in this order:
-1. **User's project** (manifest directory `node_modules`)
-2. **print-md's own dependencies**
-3. **Fail fast** — if a plugin can't be found, the build errors with a clear message identifying the plugin and the install command to run
+1. **Receipt-verified project-local package graph** (`plugins/npm/`, selected by manifest `name` + exact `version`)
+2. **User's project** (`node_modules`, for legacy unpinned manifests)
+3. **print-md's own dependencies** (bundled optional features and legacy entries)
+4. **Fail fast** — if a plugin can't be found, the build identifies the manifest entry and points to the explicit installer
 
-print-md does **not** auto-install plugins. The user must install plugins in
-their project directory before running the build. This keeps builds
-reproducible and prevents network access during `print-md build`.
+The loader does **not** install or access the network. Installation is an
+explicit viewer action or `print-md plugin add` command. Registry metadata is
+resolved to an exact root and dependency graph, each tarball integrity is
+verified, and a bounded nested `node_modules` tree is safely vendored before an
+atomic manifest update. A schema-v2 receipt records provenance, dependency
+edges, import/require entries, skipped optional dependencies, and a SHA-256
+whole-tree digest. Before loading, the loader snapshots the vendor tree and
+verifies that private copy, including each package's declared dependency edges
+and export entries. It then copies packages separately into a digest-addressed
+process-local tree with no `node_modules` links. Literal ESM imports and
+CommonJS requires in the reachable module graph are resolved through the
+receipt and rewritten to those private copies; unresolved or nonliteral module
+requests fail closed instead of substituting project or ancestor packages. See
+[ADR 0007](./adr/0007-npm-plugin-vendoring.md).
+
+Plugin modules normally expose a default function. A manifest entry may set
+`export` to explicitly select a named function when a package exposes several
+plugin variants instead.
 
 **Design Rationale**:
 - Manifest-driven plugin declaration keeps configuration explicit
+- Exact versions, complete project-local dependency trees, and receipts make installs reproducible
 - Priority sorting controls plugin load order
 - Fail-fast on missing plugins surfaces misconfiguration immediately rather than silently skipping
 - CSS export support allows plugins to inject styles into rendered output

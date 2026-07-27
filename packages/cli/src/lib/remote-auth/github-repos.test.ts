@@ -112,21 +112,22 @@ function treeResponse(
   });
 }
 
-test("listRepoBooks finds every directory holding a print-md manifest (root counts)", async () => {
+test("listRepoBooks finds canonical and legacy manifests (root counts)", async () => {
   const requested: string[] = [];
   const fetchImpl = (async (url: string | URL | Request) => {
     const u = String(url);
     requested.push(u);
     return treeResponse([
-      { path: "print-md.yaml", type: "blob" },
+      { path: "manifest.yaml", type: "blob" },
       { path: "books", type: "tree" },
       { path: "books/field-guide", type: "tree" },
-      { path: "books/field-guide/print-md.yaml", type: "blob" },
+      { path: "books/field-guide/manifest.yaml", type: "blob" },
       { path: "books/op-manual", type: "tree" },
-      { path: "books/op-manual/print-md.yml", type: "blob" },
+      { path: "books/op-manual/manifest.yml", type: "blob" },
       { path: "books/op-manual/chapter-01.md", type: "blob" },
-      // Similar names that must NOT match.
+      // The persisted legacy filename matches; similar names do not.
       { path: "books/notes/not-print-md.yaml", type: "blob" },
+      { path: "books/notes/print-md.yaml", type: "blob" },
       { path: "books/notes/print-md.yaml.bak", type: "blob" },
     ]);
   }) as unknown as typeof fetch;
@@ -135,36 +136,12 @@ test("listRepoBooks finds every directory holding a print-md manifest (root coun
   expect(books).toEqual([
     { path: "", name: "books" },
     { path: "books/field-guide", name: "field-guide" },
+    { path: "books/notes", name: "notes" },
     { path: "books/op-manual", name: "op-manual" },
   ]);
   // One recursive tree call against the chosen branch.
   expect(requested.length).toBe(1);
   expect(requested[0]).toContain("/repos/octocat/books/git/trees/main?recursive=1");
-});
-
-test("listRepoBooks finds books using the real manifest.yaml/.yml file names", async () => {
-  // The manifest was never actually named `print-md.yaml` in shipped
-  // projects/examples (see packages/cli/src/lib/manifest.ts) — books use
-  // `manifest.yaml`/`manifest.yml`. This must be discoverable too.
-  const fetchImpl = (async () =>
-    treeResponse([
-      { path: "manifest.yaml", type: "blob" },
-      { path: "books", type: "tree" },
-      { path: "books/field-guide", type: "tree" },
-      { path: "books/field-guide/manifest.yaml", type: "blob" },
-      { path: "books/op-manual", type: "tree" },
-      { path: "books/op-manual/manifest.yml", type: "blob" },
-      // Similar names that must NOT match.
-      { path: "books/notes/not-manifest.yaml", type: "blob" },
-      { path: "books/notes/manifest.yaml.bak", type: "blob" },
-    ])) as unknown as typeof fetch;
-
-  const books = await listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl });
-  expect(books).toEqual([
-    { path: "", name: "books" },
-    { path: "books/field-guide", name: "field-guide" },
-    { path: "books/op-manual", name: "op-manual" },
-  ]);
 });
 
 test("listRepoBooks returns [] when no manifest exists anywhere", async () => {
@@ -175,6 +152,17 @@ test("listRepoBooks returns [] when no manifest exists anywhere", async () => {
       { path: "src/index.ts", type: "blob" },
     ])) as unknown as typeof fetch;
   const books = await listRepoBooks(CRED, "octocat", "code", "main", { fetchImpl });
+  expect(books).toEqual([]);
+});
+
+test("listRepoBooks does not infer unsupported print-md.yml", async () => {
+  const fetchImpl = (async () =>
+    treeResponse([
+      { path: "print-md.yml", type: "blob" },
+      { path: "books/unsupported/print-md.yml", type: "blob" },
+    ])) as unknown as typeof fetch;
+
+  const books = await listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl });
   expect(books).toEqual([]);
 });
 
@@ -191,7 +179,7 @@ test("listRepoBooks truncated tree → falls back to root + top-level dir scans"
       // Non-recursive root: a manifest at the root + two top-level dirs.
       return jsonResponse({
         tree: [
-          { path: "print-md.yaml", type: "blob", sha: "a".repeat(40) },
+          { path: "manifest.yaml", type: "blob", sha: "a".repeat(40) },
           { path: "field-guide", type: "tree", sha: "b".repeat(40) },
           { path: "assets", type: "tree", sha: "c".repeat(40) },
         ],
@@ -199,7 +187,7 @@ test("listRepoBooks truncated tree → falls back to root + top-level dir scans"
       });
     }
     if (u.includes(`/git/trees/${"b".repeat(40)}`)) {
-      return treeResponse([{ path: "print-md.yml", type: "blob" }]);
+      return treeResponse([{ path: "manifest.yml", type: "blob" }]);
     }
     if (u.includes(`/git/trees/${"c".repeat(40)}`)) {
       return treeResponse([{ path: "logo.png", type: "blob" }]);

@@ -21,6 +21,8 @@ import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
 import { renderChapterPreviewHtml, incrementalPreviewEnabled } from './file-watcher.ts';
 import { canonicalChapterId } from '../lib/markdown/chapter-id.ts';
+import { resolvePort, UsageError } from '../lib/cli-args.ts';
+import { BuildError } from '../lib/build-error.ts';
 
 /**
  * URL path that upgrades to a WebSocket subscribed to the reload topic.
@@ -179,31 +181,81 @@ export interface PreviewServer {
 }
 
 /**
- * Check if a TCP port is available for binding.
+ * Check if a TCP port is available on the address the preview will bind.
  */
-export async function isPortAvailable(port: number): Promise<boolean> {
+type PortProbeError = Error & { code?: string };
+type PortProbeResult =
+  | { available: true }
+  | { available: false; error: PortProbeError };
+
+function probePort(port: number, host: string): Promise<PortProbeResult> {
   return new Promise((resolve) => {
     const srv = net.createServer();
     srv.unref();
-    // @types/bun's node:net shim omits EventEmitter methods from Server; cast to use .on().
-    (srv as unknown as { on(e: 'error', fn: () => void): void }).on('error', () => resolve(false));
-    srv.listen(port, '127.0.0.1', () => srv.close(() => resolve(true)));
+    let settled = false;
+    const finish = (result: PortProbeResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    // @types/bun's node:net shim omits EventEmitter methods from Server.
+    (srv as unknown as {
+      once(e: 'error', fn: (error: PortProbeError) => void): void;
+    }).once('error', (error) => finish({ available: false, error }));
+    try {
+      srv.listen(port, host, () => {
+        srv.close(() => finish({ available: true }));
+      });
+    } catch (error) {
+      finish({
+        available: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
+    }
   });
+}
+
+export async function isPortAvailable(
+  port: number,
+  host: string = '127.0.0.1',
+): Promise<boolean> {
+  return (await probePort(port, host)).available;
 }
 
 /**
  * Find the next available port starting from `startPort`.
  *
- * @throws {Error} If no available port found after 10 attempts.
+ * @throws {UsageError} If the start port itself is invalid.
+ * @throws {BuildError} If valid ports are exhausted or the host cannot bind.
  */
-export async function findAvailablePort(startPort: number): Promise<number> {
-  let port = startPort;
-  const maxAttempts = 10;
+export async function findAvailablePort(
+  startPort: number,
+  host: string = '127.0.0.1',
+): Promise<number> {
+  const firstPort = resolvePort(startPort);
+  let port = firstPort;
+  const maxAttempts = Math.min(10, 65536 - firstPort);
+  let lastBusyError: PortProbeError | undefined;
   for (let i = 0; i < maxAttempts; i++) {
-    if (await isPortAvailable(port)) return port;
+    const probe = await probePort(port, host);
+    if (probe.available) return port;
+    if (probe.error.code !== 'EADDRINUSE') {
+      throw new BuildError(
+        `Could not bind the preview server to ${host}:${port}: ${probe.error.message}. ` +
+          'Check that --host names an address on this computer and --port is permitted, or omit them to use the defaults.',
+        undefined,
+        { cause: probe.error },
+      );
+    }
+    lastBusyError = probe.error;
     port++;
   }
-  throw new Error(`Could not find an available port after ${maxAttempts} attempts`);
+  throw new BuildError(
+    `Could not find an available port on ${host} from ${firstPort} to ${port - 1}; all are already in use. ` +
+      'Stop another preview server or pass --port with an available port.',
+    undefined,
+    { cause: lastBusyError },
+  );
 }
 
 /**

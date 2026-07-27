@@ -262,7 +262,7 @@ describe("updater server routes", () => {
   });
 
   test("get-status: calls hooks.getStatus and returns its result", async () => {
-    const fakeStatus = { currentVersion: "1.0.0", stagedVersion: null, availableVersion: null, phase: "idle", error: null };
+    const fakeStatus = { currentVersion: "1.0.0", stagedVersion: null, availableVersion: null, availableAction: null, phase: "idle", error: null };
     registerHostServices({
       ...baseServices(),
       updater: { getStatus: () => fakeStatus, check: async () => fakeStatus, download: async () => fakeStatus },
@@ -273,7 +273,7 @@ describe("updater server routes", () => {
 
   test("check: calls hooks.check (the non-silent, user-initiated form)", async () => {
     let calls = 0;
-    const fakeStatus = { currentVersion: "1.0.0", stagedVersion: null, availableVersion: "1.1.0", phase: "available", error: null };
+    const fakeStatus = { currentVersion: "1.0.0", stagedVersion: null, availableVersion: "1.1.0", availableAction: "download" as const, phase: "available", error: null };
     registerHostServices({
       ...baseServices(),
       updater: {
@@ -291,7 +291,7 @@ describe("updater server routes", () => {
   });
 
   test("download: calls hooks.download and returns its result", async () => {
-    const fakeStatus = { currentVersion: "1.0.0", stagedVersion: "1.1.0", availableVersion: null, phase: "staged", error: null };
+    const fakeStatus = { currentVersion: "1.0.0", stagedVersion: "1.1.0", availableVersion: null, availableAction: null, phase: "staged", error: null };
     registerHostServices({
       ...baseServices(),
       updater: { getStatus: () => fakeStatus, check: async () => fakeStatus, download: async () => fakeStatus },

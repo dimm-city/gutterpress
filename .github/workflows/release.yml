@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release: 1.2.3 (stable), 1.2.3-beta.1, or 1.2.3-alpha.1. Only alpha/beta prerelease suffixes are accepted — they are the app's update channels (electron-updater treats anything else, e.g. rc, as a custom channel that strands its users). Stable releases must be dispatched from the default branch; prereleases may ALSO be dispatched from a release/* branch. Bumps package.json, builds all artifacts, verifies on Windows, then creates a GitHub release."
+        description: "Version to release: 1.2.3 (stable), 1.2.3-beta.1, or 1.2.3-alpha.1. Only alpha/beta prerelease suffixes are accepted — they are the app's update channels (electron-updater treats anything else, e.g. rc, as a custom channel that strands its users). Stable releases must be dispatched from the default branch; prereleases may ALSO be dispatched from a release/* branch. Bumps package.json, builds all artifacts, verifies Windows and macOS binaries, then creates a GitHub release."
         required: true
         type: string
       skip_npm_publish:
@@ -62,6 +62,12 @@ jobs:
       - name: Run tests
         run: bun --filter '*' test
 
+      - name: Check release distribution tooling and metadata
+        run: |
+          node tools/prepare-release-assets.test.mjs
+          node tools/update-package-managers.test.mjs
+          node tools/update-package-managers.mjs --check
+
   # ── 2. Version bump & tag ─────────────────────────────────────────────────
   version:
     name: Bump Version & Tag
@@ -71,6 +77,7 @@ jobs:
       contents: write
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
     env:
       VERSION: ${{ inputs.version }}
@@ -187,6 +194,7 @@ jobs:
           git tag "v$VERSION"
           git push origin "v$VERSION"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           # A version with a '-' (e.g. 0.4.0-beta.1) is a prerelease: it marks
           # the GitHub release as a pre-release and publishes npm under `next`,
@@ -203,7 +211,7 @@ jobs:
   #   build-cli          — 5 CLI binaries via Bun cross-compile (ubuntu)
   #   build-viewer-linux   — Linux AppImage (ubuntu)
   #   build-viewer-windows — Windows installer + portable zip (windows)
-  #   build-viewer-mac     — macOS DMG (macos — cannot cross-compile)
+  #   build-viewer-mac     — macOS Intel + Apple Silicon DMGs (macos)
   #
   # All artifacts are uploaded as GitHub Actions artifacts and assembled
   # into the GitHub Release in one shot by the `github-release` job.
@@ -269,6 +277,17 @@ jobs:
           # binary ran.
           test -n "$(find /tmp/pmd-smoke -name '*.md' -print -quit)"
           test -n "$(find /tmp/pmd-smoke -name 'manifest.yaml' -print -quit)"
+          # Exercise the compiled binary's registry installer and direct-entry
+          # loader with a real plugin that imports a runtime dependency.
+          "./${{ matrix.artifact }}" plugin add markdown-it-highlightjs@4.3.0 /tmp/pmd-smoke/smoke-test-book
+          test -f /tmp/pmd-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/.print-md-install.json
+          test -f /tmp/pmd-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/node_modules/markdown-it-highlightjs/node_modules/highlight.js/package.json
+          # Cover the two npm archive/module shapes that have broken the
+          # compiled installer in practice: @types' legacy tar root and a
+          # package whose markdown-it plugin is a named export.
+          "./${{ matrix.artifact }}" plugin add markdown-it-anchor@9.2.1 /tmp/pmd-smoke/smoke-test-book
+          "./${{ matrix.artifact }}" plugin add markdown-it-emoji@3.0.0 /tmp/pmd-smoke/smoke-test-book --export full
+          "./${{ matrix.artifact }}" build /tmp/pmd-smoke/smoke-test-book --format html
 
       - name: Upload binary
         uses: actions/upload-artifact@v6
@@ -386,13 +405,13 @@ jobs:
         run: bun run build
         working-directory: packages/cli
 
-      - name: Build macOS DMG
+      - name: Build macOS Intel and Apple Silicon DMGs
         working-directory: packages/viewer
         run: npm run dist:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Upload DMG
+      - name: Upload DMGs
         uses: actions/upload-artifact@v6
         with:
           name: viewer-mac
@@ -409,7 +428,7 @@ jobs:
     # or this job is skipped (the viewer jobs are unconditional now, so no
     # success-or-skipped special-casing is needed anymore).
     needs:
-      [version, build-cli, build-viewer-linux, build-viewer-windows, build-viewer-mac, verify-windows]
+      [version, build-cli, build-viewer-linux, build-viewer-windows, build-viewer-mac, verify-windows, verify-macos]
     if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
     permissions:
@@ -441,7 +460,7 @@ jobs:
 
       - name: Skip if already published
         env:
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           if npm view "@dimm-city/print-md@$VERSION" version &>/dev/null; then
             echo "Version $VERSION already published — skipping."
@@ -496,6 +515,34 @@ jobs:
             exit 1
           }
 
+  # Cross-compiled Darwin binaries are executed on matching native runners.
+  # Both runner classes are standard and free for this public repository.
+  verify-macos:
+    name: Verify macOS binary / ${{ matrix.arch }}
+    needs: build-cli
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-15-intel
+            artifact: print-md-cli-macos-x64
+          - arch: arm64
+            runner: macos-15
+            artifact: print-md-cli-macos-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Download macOS binary
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+
+      - name: Run --version
+        run: |
+          chmod +x "dist/${{ matrix.artifact }}"
+          "dist/${{ matrix.artifact }}" --version
+
   # ── 6. Create release with ALL artifacts ──────────────────────────────────
   #
   # Waits for every build job before creating the release. Users see a complete
@@ -511,6 +558,7 @@ jobs:
       - build-viewer-mac
       - publish-npm
       - verify-windows
+      - verify-macos
     # `always()` exists ONLY so an intentionally-skipped publish-npm
     # (skip_npm_publish) doesn't skip the release; every build job must have
     # actually succeeded.
@@ -519,6 +567,7 @@ jobs:
       needs.version.result == 'success' &&
       needs.build-cli.result == 'success' &&
       needs.verify-windows.result == 'success' &&
+      needs.verify-macos.result == 'success' &&
       needs.build-viewer-linux.result == 'success' &&
       needs.build-viewer-windows.result == 'success' &&
       needs.build-viewer-mac.result == 'success' &&
@@ -526,7 +575,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      # Needed to dispatch docker.yml after the release is created.
+      # Needed to dispatch Docker and package-manager follow-up workflows.
       actions: write
     steps:
       - uses: actions/checkout@v5
@@ -536,16 +585,21 @@ jobs:
       - name: Download CLI artifacts
         uses: actions/download-artifact@v6
         with:
-          path: dist/
-          merge-multiple: true
+          path: artifact-downloads/
           pattern: "print-md-*"
 
       - name: Download viewer artifacts
         uses: actions/download-artifact@v6
         with:
-          path: dist/
-          merge-multiple: true
+          path: artifact-downloads/
           pattern: "viewer-*"
+
+      # download-artifact creates one directory per workflow artifact. Flatten
+      # the actual files into the release upload directory, reject duplicate
+      # basenames, and hash every file with Node so this works independently of
+      # platform-specific sha256sum/shasum commands.
+      - name: Stage release files and generate SHA-256 checksums
+        run: node tools/prepare-release-assets.mjs artifact-downloads release-assets
 
       # Update-feed integrity gate: every release doubles as the viewer's
       # electron-updater feed, so a missing feed file or installer must fail
@@ -558,37 +612,90 @@ jobs:
           set -euo pipefail
           TAG="${{ needs.version.outputs.tag }}"
           VERSION="${TAG#v}"
-          ls -l dist/
+          ls -l release-assets/
 
           missing=0
           for f in \
             print-md-cli-linux-x64 print-md-cli-linux-arm64 \
             print-md-cli-macos-x64 print-md-cli-macos-arm64 \
             print-md-cli-windows-x64.exe \
-            latest.yml latest-linux.yml; do
-            if [ ! -f "dist/$f" ]; then
+            "print-md-viewer-$VERSION.AppImage" \
+            print-md-viewer-setup-win-x64.exe \
+            "print-md-viewer-$VERSION-win-x64.zip" \
+            "print-md-viewer-$VERSION-arm64.dmg" \
+            "print-md-viewer-$VERSION-x64.dmg" \
+            latest.yml latest-linux.yml SHA256SUMS.txt; do
+            if [ ! -f "release-assets/$f" ]; then
               echo "::error::Missing release asset: $f"
               missing=1
             fi
           done
-          # The DMG is the manual macOS download channel (no auto-update yet).
-          ls dist/*.dmg >/dev/null 2>&1 || { echo "::error::Missing macOS DMG"; missing=1; }
           [ "$missing" -eq 0 ]
 
+          if [ -f "release-assets/print-md-viewer-$VERSION-win-x64.exe" ]; then
+            echo "::error::Windows installer basename regressed to a versioned name"
+            exit 1
+          fi
+          if ! grep -Fq 'print-md-viewer-setup-win-x64.exe' release-assets/latest.yml; then
+            echo "::error::latest.yml does not reference the stable Windows installer basename"
+            exit 1
+          fi
+
           for f in latest.yml latest-linux.yml; do
-            feed_version="$(sed -n 's/^version: *//p' "dist/$f" | head -1)"
+            feed_version="$(sed -n 's/^version: *//p' "release-assets/$f" | head -1)"
             if [ "$feed_version" != "$VERSION" ]; then
-              echo "::error::dist/$f advertises version '$feed_version' but this release is $VERSION"
+              echo "::error::release-assets/$f advertises version '$feed_version' but this release is $VERSION"
               exit 1
             fi
-            grep -E '^\s*(- )?(url|path): ' "dist/$f" | sed -E 's/^\s*(- )?(url|path): *//' | sort -u |
+            grep -E '^\s*(- )?(url|path): ' "release-assets/$f" | sed -E 's/^\s*(- )?(url|path): *//' | sort -u |
               while read -r ref; do
-                if [ ! -f "dist/$ref" ]; then
-                  echo "::error::dist/$f references '$ref', which is not among the release assets"
+                if [ ! -f "release-assets/$ref" ]; then
+                  echo "::error::release-assets/$f references '$ref', which is not among the release assets"
                   exit 1
                 fi
               done
           done
+
+      - name: Prepare supported-platform and unsigned-install guidance
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## Supported downloads
+
+          | Product | Native builds | Known compatibility gaps |
+          | --- | --- | --- |
+          | Desktop viewer | macOS Apple Silicon (ARM64), macOS Intel (x64), Windows x64, Linux x64 AppImage | Accepted until demand justifies new targets: Windows ARM64 uses x64 emulation; there is no Linux ARM64 viewer. |
+          | Standalone CLI | macOS ARM64/x64, Windows x64, Linux ARM64/x64 (glibc) | Accepted until demand justifies new targets: Windows ARM64 uses x64 emulation; Alpine/musl uses the Docker image instead. |
+
+          On Windows, `print-md-viewer-setup-win-x64.exe` is the normal installer and keeps the same basename across releases. `print-md-viewer-<version>-win-x64.zip` is the separate portable extract-and-run build; it is not the installed app's auto-update channel.
+
+          ## Unsigned download notice
+
+          The viewer installers and standalone CLI binaries are intentionally unsigned while code-signing certificates are not affordable. Verify the SHA-256 value below before bypassing an operating-system warning.
+
+          ### macOS Gatekeeper
+
+          Try opening the app once, then open **System Settings > Privacy & Security** and choose **Open Anyway**. For a verified download, the command-line alternative is:
+
+          ```sh
+          xattr -dr com.apple.quarantine "/Applications/print-md-viewer.app"
+          # CLI example:
+          xattr -d com.apple.quarantine /path/to/print-md-cli-macos-arm64
+          ```
+
+          ### Windows SmartScreen
+
+          If Windows shows "Windows protected your PC", choose **More info > Run anyway** after verifying the checksum. This applies to both the viewer installer and standalone CLI executable.
+
+          ## SHA-256 checksums
+
+          The same values are attached as `SHA256SUMS.txt`.
+
+          ```text
+          EOF
+          cat release-assets/SHA256SUMS.txt >> release-notes.md
+          cat >> release-notes.md <<'EOF'
+          ```
+          EOF
 
       - name: Create GitHub release
         run: |
@@ -620,10 +727,27 @@ jobs:
             --repo "$REPO" \
             --title "print-md $TAG" \
             --generate-notes \
+            --notes-file release-notes.md \
+            --verify-tag \
             $PRERELEASE_FLAG \
-            dist/*
+            release-assets/*
         env:
           GH_TOKEN: ${{ github.token }}
+
+      # This repository is itself a usable Homebrew tap and Scoop bucket. A
+      # separate rerunnable workflow updates their hashes from the checksum
+      # attached above. Prereleases never replace stable package-manager data.
+      - name: Update stable package-manager metadata
+        if: ${{ needs.version.outputs.prerelease != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh workflow run package-managers.yml \
+            --repo "${{ github.repository }}" \
+            --ref "$DEFAULT_BRANCH" \
+            -f version="$VERSION"
 
       # docker.yml's `release: published` trigger never fires for releases
       # created with GITHUB_TOKEN (GitHub suppresses those events to prevent
@@ -635,7 +759,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           gh workflow run docker.yml \
             --repo "${{ github.repository }}" \

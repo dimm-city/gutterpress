@@ -111,7 +111,7 @@ export async function startPreviewServer(
   };
 
   // Stage 6: Find available port
-  const availablePort = await findAvailablePort(options.port);
+  const availablePort = await findAvailablePort(options.port, options.host);
   if (availablePort !== options.port) {
     info(`Port ${options.port} is in use, using port ${availablePort} instead`);
   }

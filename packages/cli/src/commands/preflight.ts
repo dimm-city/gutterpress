@@ -7,7 +7,12 @@ import {
   executeValidation,
   type ValidationExecutionResult,
 } from "../index.ts";
-import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
+import {
+  EXIT_CODES,
+  UsageError,
+  rejectExtraPositionals,
+  rejectUnknownFlags,
+} from "../lib/cli-args.ts";
 
 type PreflightStatus = "GO" | "FIX" | "NO-GO";
 
@@ -178,45 +183,47 @@ function defaultReportName(pdfPath: string): string {
   return `${base}.preflight`;
 }
 
+export const preflightArgs = {
+  dir: {
+    type: "positional",
+    description:
+      "Project directory (default: cwd). Sets the pre-build source directory unless --input is also given.",
+    required: false,
+  },
+  pdf: {
+    type: "string",
+    description: "Path to the PDF file to preflight",
+    required: true,
+  },
+  input: {
+    type: "string",
+    description: "Optional source directory for pre-build checks (overrides the positional directory)",
+  },
+  manifest: {
+    type: "string",
+    description: "Path to manifest.yaml",
+  },
+  profile: {
+    type: "string",
+    description: "Validation profile lock (currently: dtrpg)",
+  },
+  "report-dir": {
+    type: "string",
+    description: "Output directory for preflight reports",
+  },
+  name: {
+    type: "string",
+    description: "Base filename for report outputs",
+  },
+} as const;
+
 export default defineCommand({
   meta: {
     name: "preflight",
     description: "Run deterministic print preflight for a built PDF",
   },
-  args: {
-    dir: {
-      type: "positional",
-      description:
-        "Project directory (default: cwd). Sets the pre-build source directory unless --input is also given.",
-      required: false,
-    },
-    pdf: {
-      type: "string",
-      description: "Path to the PDF file to preflight",
-      required: true,
-    },
-    input: {
-      type: "string",
-      description: "Optional source directory for pre-build checks (overrides the positional directory)",
-    },
-    manifest: {
-      type: "string",
-      description: "Path to manifest.yaml",
-    },
-    profile: {
-      type: "string",
-      description: "Validation profile lock (currently: dtrpg)",
-    },
-    "report-dir": {
-      type: "string",
-      description: "Output directory for preflight reports",
-    },
-    name: {
-      type: "string",
-      description: "Base filename for report outputs",
-    },
-  },
-  async run({ args }) {
+  args: preflightArgs,
+  async run({ args, rawArgs }) {
     // M46: `dir` (positional) sets the same source directory `--input` does —
     // an explicit --input still wins.
     const positionalDir = typeof args.dir === "string" ? args.dir : undefined;
@@ -225,6 +232,7 @@ export default defineCommand({
 
     let execution;
     try {
+      rejectUnknownFlags(rawArgs, preflightArgs, "preflight");
       rejectExtraPositionals((args as { _: unknown[] })._, 1, "preflight");
 
       execution = await executeValidation({

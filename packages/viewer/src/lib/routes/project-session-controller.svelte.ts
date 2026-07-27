@@ -104,6 +104,8 @@ export class ProjectSessionController {
   books = $state<ProjectBookEntry[]>([]);
   /** The book the session currently targets, per {@link resolveActiveBookDir}. */
   activeBookDir = $state<string | null>(null);
+  /** Manifest presence for the active target; drives the loose-folder setup banner. */
+  activeBookHasManifest = $state(true);
 
   private deps: ProjectSessionDeps;
 
@@ -130,6 +132,7 @@ export class ProjectSessionController {
     this.repoRoot = null;
     this.books = [];
     this.activeBookDir = null;
+    this.activeBookHasManifest = true;
   }
 
   /**
@@ -154,6 +157,9 @@ export class ProjectSessionController {
         this.repoRoot = result.repoRoot ?? null;
         this.books = result.books ?? [];
         this.activeBookDir = resolveActiveBookDir(dir, result.repoRoot, this.books);
+        this.activeBookHasManifest =
+          this.books.some((book) => book.path === this.activeBookDir) ||
+          (this.activeBookDir === dir && result.hasManifest);
         this.deps.setViewerPrefs({ projectSource: result.source }).catch(() => {});
         // NOTE: the remote diagnosis (SyncController.refreshSyncDiag) is NOT
         // fired from here anymore. It used to be, and was silently discarded

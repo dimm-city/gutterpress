@@ -20,6 +20,16 @@ extraResources:
 extraMetadata:
   main: out/main/main.js
 
+# A chapter opened from Finder/Explorer resolves to its nearest enclosing
+# manifest-bearing project; unrelated Markdown files get a clear explanation
+# instead of being treated as loose projects.
+fileAssociations:
+  - ext: md
+    name: print-md Markdown chapter
+    description: Markdown chapter in a print-md project
+    mimeType: text/markdown
+    role: Editor
+
 # The viewer depends on @dimm-city/print-md via `"workspace:*"`.
 # electron-builder must NOT run `npm install --production` during packaging — npm
 # rejects the `workspace:*` protocol (EUNSUPPORTEDPROTOCOL). We rely on the
@@ -80,6 +90,9 @@ linux:
       StartupWMClass: city.dimm.print-md-viewer
 
 win:
+  # The ZIP remains versioned because it is a portable snapshot. NSIS overrides
+  # this below with one stable installer basename so unsigned SmartScreen
+  # reputation is not discarded solely because the version changed.
   artifactName: ${productName}-${version}-${os}-${arch}.${ext}
   target:
     - target: nsis
@@ -91,6 +104,7 @@ win:
   icon: build-resources/icon.ico
 
 nsis:
+  artifactName: ${productName}-setup-${os}-${arch}.${ext}
   # Windows users should be able to download one file and run it. Keep this as
   # a user-level installer so it works without administrator privileges, while
   # still creating the normal Start Menu/Desktop entry points.
@@ -103,7 +117,13 @@ nsis:
   shortcutName: print-md viewer
 
 mac:
+  artifactName: ${productName}-${version}-${arch}.${ext}
   target:
-    - dmg
+    - target: dmg
+      # Always publish both native variants. macos-latest is ARM64, so relying
+      # on the runner architecture silently drops Intel users.
+      arch:
+        - arm64
+        - x64
   icon: build-resources/icon.png
   category: public.app-category.developer-tools

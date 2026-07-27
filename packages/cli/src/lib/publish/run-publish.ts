@@ -56,6 +56,7 @@ export async function resolvePublishRequest(
   const provider = publishProviderFor(options.providerId);
   const { manifest } = await loadManifestWithPath(
     options.manifestPath ?? options.projectDir,
+    { explicit: options.manifestPath !== undefined },
   );
   const config = resolveConfig({}, manifest);
   // The manifest `publish:` section is keyed by the provider id itself —

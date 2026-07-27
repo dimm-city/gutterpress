@@ -15,9 +15,11 @@ interface Harness {
   recommended: RecommendedPlugin[];
   validation: PluginValidationResult[];
   setEnabledCalls: Array<{ dir: string; ref: string; enabled: boolean }>;
-  addNpmCalls: Array<{ dir: string; name: string }>;
+  addNpmCalls: Array<{ dir: string; name: string; exportName?: string }>;
   failValidate: boolean;
   failAddNpm: boolean;
+  cancelAddNpm: boolean;
+  addNpmWarnings: string[];
 }
 
 function make(over: Partial<{ noProject: boolean; plugins: ProjectPluginEntry[]; recommended: RecommendedPlugin[] }> = {}): Harness {
@@ -30,6 +32,8 @@ function make(over: Partial<{ noProject: boolean; plugins: ProjectPluginEntry[];
     addNpmCalls: [],
     failValidate: false,
     failAddNpm: false,
+    cancelAddNpm: false,
+    addNpmWarnings: [],
   } as Harness;
   h.validation = h.plugins.map((p) => ({ ref: p.ref, kind: p.kind, enabled: p.enabled, ok: true }));
   h.ctrl = new PluginsSectionController({
@@ -45,10 +49,17 @@ function make(over: Partial<{ noProject: boolean; plugins: ProjectPluginEntry[];
       h.plugins = h.plugins.map((p) => (p.ref === ref ? { ...p, enabled } : p));
       return Promise.resolve({ ok: true });
     },
-    addNpm: (dir, name) => {
-      h.addNpmCalls.push({ dir, name });
+    addNpm: (dir, name, exportName) => {
+      h.addNpmCalls.push({ dir, name, ...(exportName ? { exportName } : {}) });
       if (h.failAddNpm) return Promise.reject(new Error("add failed"));
-      const entry: ProjectPluginEntry = { ref: name, kind: "npm", enabled: true };
+      if (h.cancelAddNpm) return Promise.resolve(null);
+      const entry: ProjectPluginEntry = {
+        ref: name,
+        kind: "npm",
+        enabled: true,
+        ...(exportName ? { export: exportName } : {}),
+        ...(h.addNpmWarnings.length ? { warnings: h.addNpmWarnings } : {}),
+      };
       h.plugins = [...h.plugins, entry];
       return Promise.resolve(entry);
     },
@@ -64,8 +75,10 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.recommended).toEqual([]);
   expect(ctrl.pluginValidating).toBe(false);
   expect(ctrl.pluginError).toBeNull();
+  expect(ctrl.pluginNotice).toBeNull();
   expect(ctrl.pluginBusyRef).toBeNull();
   expect(ctrl.npmName).toBe("");
+  expect(ctrl.npmExport).toBe("");
 });
 
 test("loadPlugins populates the configured list, recommended list, and validation map", async () => {
@@ -118,6 +131,22 @@ test("addNpmPlugin trims, adds, clears the draft, and reloads", async () => {
   expect(h.ctrl.plugins.some((p) => p.ref === "markdown-it-footnote")).toBe(true);
 });
 
+test("addNpmPlugin forwards and clears an optional named export", async () => {
+  const h = make({ plugins: [] });
+  h.ctrl.npmName = "markdown-it-emoji@3.0.0";
+  h.ctrl.npmExport = "  full  ";
+
+  await h.ctrl.addNpmPlugin();
+
+  expect(h.addNpmCalls).toEqual([{
+    dir: "/proj",
+    name: "markdown-it-emoji@3.0.0",
+    exportName: "full",
+  }]);
+  expect(h.ctrl.npmName).toBe("");
+  expect(h.ctrl.npmExport).toBe("");
+});
+
 test("a failed addNpmPlugin surfaces pluginError and keeps the busy ref cleared", async () => {
   const h = make({ plugins: [] });
   h.failAddNpm = true;
@@ -125,6 +154,24 @@ test("a failed addNpmPlugin surfaces pluginError and keeps the busy ref cleared"
   await h.ctrl.addNpmPlugin();
   expect(h.ctrl.pluginError).toContain("add failed");
   expect(h.ctrl.pluginBusyRef).toBeNull();
+});
+
+test("cancelling native npm confirmation keeps the draft and does not reload", async () => {
+  const h = make({ plugins: [] });
+  h.cancelAddNpm = true;
+  h.ctrl.npmName = "markdown-it-highlightjs";
+  await h.ctrl.addNpmPlugin();
+  expect(h.ctrl.npmName).toBe("markdown-it-highlightjs");
+  expect(h.ctrl.plugins).toEqual([]);
+  expect(h.ctrl.pluginError).toBeNull();
+});
+
+test("a non-fatal installer warning is surfaced after a successful add", async () => {
+  const h = make({ plugins: [] });
+  h.addNpmWarnings = ["Registry provided legacy SHA-1 integrity."];
+  h.ctrl.npmName = "old-plugin";
+  await h.ctrl.addNpmPlugin();
+  expect(h.ctrl.pluginNotice).toContain("legacy SHA-1");
 });
 
 test("addRecommended adds the recommendation's package name", async () => {

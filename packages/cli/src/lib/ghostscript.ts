@@ -1,6 +1,83 @@
-import { readFile, writeFile, unlink, rename } from "node:fs/promises";
-import { join, dirname, basename, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { readFile, writeFile, unlink, rename, readdir } from "node:fs/promises";
+import { join, basename, resolve } from "node:path";
 import { run } from "./exec";
+import { findTool } from "./tool-probe";
+
+const WINDOWS_GHOSTSCRIPT_NAMES = ["gswin64c", "gswin32c", "gs"];
+const POSIX_GHOSTSCRIPT_NAMES = ["gs"];
+
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const direct = env[name]?.trim();
+  if (direct) return direct;
+  const key = Object.keys(env).find((candidate) => candidate.toLowerCase() === name.toLowerCase());
+  return key ? env[key]?.trim() || undefined : undefined;
+}
+
+async function findWindowsGhostscriptInstall(
+  env: NodeJS.ProcessEnv
+): Promise<string | undefined> {
+  const roots = [
+    envValue(env, "ProgramW6432"),
+    envValue(env, "ProgramFiles"),
+    "C:\\Program Files",
+    envValue(env, "ProgramFiles(x86)"),
+    "C:\\Program Files (x86)",
+  ];
+  const seen = new Set<string>();
+
+  for (const root of roots) {
+    if (!root || seen.has(root.toLowerCase())) continue;
+    seen.add(root.toLowerCase());
+
+    const installRoot = join(root, "gs");
+    let versions;
+    try {
+      versions = (await readdir(installRoot, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory() && /^gs\d/i.test(entry.name))
+        .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }));
+    } catch {
+      continue;
+    }
+
+    for (const version of versions) {
+      for (const executable of ["gswin64c.exe", "gswin32c.exe"]) {
+        const candidate = join(installRoot, version.name, "bin", executable);
+        if (existsSync(candidate)) return candidate;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Resolve the Ghostscript command on every supported platform.
+ *
+ * Resolution order is explicit override, platform-specific PATH names, then
+ * conventional versioned Windows installer directories. The optional
+ * arguments make the Windows branch testable on non-Windows CI; production
+ * callers always use the current platform and environment.
+ */
+export async function resolveGhostscript(
+  targetPlatform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<string | undefined> {
+  const override = envValue(env, "GHOSTSCRIPT_PATH");
+  if (override && existsSync(override)) return override;
+
+  const names = targetPlatform === "win32"
+    ? WINDOWS_GHOSTSCRIPT_NAMES
+    : POSIX_GHOSTSCRIPT_NAMES;
+  for (const name of names) {
+    const found = await findTool(name);
+    if (found) return found;
+  }
+
+  return targetPlatform === "win32"
+    ? findWindowsGhostscriptInstall(env)
+    : undefined;
+}
 
 /**
  * Strip all annotations from a PDF using qpdf.
@@ -10,10 +87,17 @@ import { run } from "./exec";
  * prevents the "Annotation not TrapNet or PrinterMark" warning and keeps
  * the output in strict PDF/X compliance.
  */
-export async function stripAnnotations(pdfPath: string): Promise<void> {
-  const tmp = `${pdfPath}.stripped.pdf`;
-  await run("qpdf", [pdfPath, tmp, "--flatten-annotations=all"]);
-  await rename(tmp, pdfPath);
+export async function stripAnnotations(
+  pdfPath: string,
+  stagingDir: string
+): Promise<void> {
+  const tmp = join(stagingDir, "annotations-stripped.pdf");
+  try {
+    await run("qpdf", [pdfPath, tmp, "--flatten-annotations=all"]);
+    await rename(tmp, pdfPath);
+  } finally {
+    await unlink(tmp).catch(() => {});
+  }
 }
 
 type PdfxFlavor = "x1a" | "x3";
@@ -122,21 +206,11 @@ export async function convertToPdfxCmyk(
     pdfx: PdfxFlavor;
     title?: string;
     maxTac?: number;
+    stagingDir: string;
   }
 ): Promise<void> {
   const iccPath = resolve(config.iccPath);
-  const tmpDef = join(dirname(outPdf), `.pdfx_def_${Date.now()}.ps`);
-  await writeFile(
-    tmpDef,
-    makePdfxDefPs({
-      iccPath,
-      pdfx: config.pdfx,
-      title: config.title ?? basename(outPdf),
-      maxTac: config.maxTac,
-    }),
-    "utf8"
-  );
-
+  const tmpDef = join(config.stagingDir, "pdfx-def.ps");
   const args = [
     "-dSAFER",
     `--permit-file-read=${iccPath}`,
@@ -155,7 +229,8 @@ export async function convertToPdfxCmyk(
     "-sProcessColorModel=DeviceCMYK",
     "-sColorConversionStrategy=CMYK",
     "-dOverrideICC=true",
-    "-sDefaultRGBProfile=/usr/share/color/icc/ghostscript/srgb.icc",
+    // Let Ghostscript resolve its installation-relative built-in sRGB profile;
+    // a distro filesystem path here breaks otherwise valid macOS/Windows installs.
     `-sOutputICCProfile=${iccPath}`,
     `-sOutputFile=${outPdf}`,
     tmpDef,
@@ -163,7 +238,23 @@ export async function convertToPdfxCmyk(
   ];
 
   try {
-    await run("gs", args);
+    await writeFile(
+      tmpDef,
+      makePdfxDefPs({
+        iccPath,
+        pdfx: config.pdfx,
+        title: config.title ?? basename(outPdf),
+        maxTac: config.maxTac,
+      }),
+      "utf8"
+    );
+    const ghostscript = await resolveGhostscript();
+    if (!ghostscript) {
+      throw new Error(
+        "Ghostscript executable not found. Install Ghostscript or set GHOSTSCRIPT_PATH to its command-line executable."
+      );
+    }
+    await run(ghostscript, args);
   } finally {
     await unlink(tmpDef).catch(() => {});
   }

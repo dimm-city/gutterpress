@@ -55,6 +55,12 @@ const PATH_CANDIDATES: string[] = [
   "brave",
   "brave-browser",
   "brave.exe",
+  "vivaldi",
+  "vivaldi-stable",
+  "vivaldi.exe",
+  "opera",
+  "opera-stable",
+  "opera.exe",
 ];
 
 /**
@@ -101,6 +107,8 @@ export async function requireChromiumExecutable(): Promise<string> {
       "",
       "Or point to an existing install:",
       "  CHROMIUM_PATH=/path/to/chrome print-md build ...",
+      "",
+      "The print-md desktop app includes its own browser and needs no separate browser installation.",
     ].join("\n")
   );
 }

@@ -4,7 +4,7 @@
 
 ## Installation
 
-Download the latest release for your platform from GitHub Releases. Print-md ships as a single standalone binary — no Node, no Bun, no `node_modules` required on your machine.
+Download the latest release for your platform from GitHub Releases. Print-md ships as a self-contained desktop app and standalone CLI binaries — no Node, no Bun, or `node_modules` required. The [installation guide](../../docs/installing.md) lists the supported architectures, Homebrew and Scoop commands, checksums, and unsigned-app first-run steps.
 
 ```bash
 # Verify the install

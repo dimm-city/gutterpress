@@ -1,9 +1,8 @@
 /**
  * Plugin manager (#30) — read / write / toggle the project manifest's plugin
- * list, import plugins (local folder/file or npm package name), and validate
+ * list, import plugins (local folder/file or installed npm package), and validate
  * each configured plugin by attempting to LOAD it through the existing lib
- * loader (CLAUDE.md §5: plain markdown-it plugins, fail-fast loader, NO
- * auto-install).
+ * loader (CLAUDE.md §5: plain markdown-it plugins and a fail-fast loader).
  *
  * Storage model (Occam's razor): plugins already live in `manifest.yaml` as a
  * `plugins:` list of strings or objects (see `manifest.types.ts`). The
@@ -14,22 +13,31 @@
  *
  * Manifest editing uses the `yaml` library's Document API so existing comments
  * and formatting round-trip cleanly (the same `yaml` dep `manifest.ts` parses
- * with). This module is host-side (node:fs); the renderer reaches it via IPC.
+ * with). This module is host-side (node:fs); the renderer reaches it through a
+ * thin SvelteKit server route.
  *
- * Bundle-safety (CLAUDE.md §1/§3): no runtime package.json reads, no
- * computed-path dynamic imports, no bundlers. Validation reuses `loadPlugin`
- * from `markdown/plugins.ts`, which already compiles under `bun build --compile`.
+ * Bundle-safety (CLAUDE.md §1/§3): no bundlers or computed-path dynamic
+ * imports. Validation reuses `loadPlugin` from `markdown/plugins.ts`, which
+ * already compiles under `bun build --compile`.
  */
-import { cp, mkdir, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { cp, lstat, mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { isSeq, isMap, isScalar, YAMLMap, YAMLSeq, Scalar } from "yaml";
 import type { Node } from "yaml";
-import { loadPlugin } from "./markdown/plugins";
-import { loadManifestDoc, ensureSeq } from "./manifest-doc";
+import { clearVendoredPluginResolver, loadPlugin } from "./markdown/plugins";
+import { loadManifestDoc, ensureSeq, writeManifestDoc } from "./manifest-doc";
+import {
+  finalizeNpmPluginInstall,
+  installNpmPlugin,
+  rollbackNpmPluginInstall,
+  type NpmPluginInstallOptions,
+} from "./npm-plugin-installer";
+import { parseNpmPluginSpec, PLUGINS_DIR } from "./plugin-vendor";
 import type { ResolvedPluginConfig } from "../schema/manifest.types";
 
 /** Folder (relative to the project root) imported local plugins are copied to. */
-export const PLUGINS_DIR = "plugins";
+export { PLUGINS_DIR } from "./plugin-vendor";
 
 /** How a plugin entry is referenced in the manifest. */
 export type PluginKind = "local" | "npm";
@@ -42,6 +50,39 @@ export interface ProjectPluginEntry {
   kind: PluginKind;
   /** Per-project enable flag. Absent in the manifest defaults to `true`. */
   enabled: boolean;
+  /** Exact installed npm version. Absent for local, built-in, and legacy entries. */
+  version?: string;
+  /** Named module export selected as the plugin function. */
+  export?: string;
+  /** Non-fatal install notices, currently used for legacy SHA-1 registry entries. */
+  warnings?: string[];
+}
+
+interface PluginManagerInstallOptions extends NpmPluginInstallOptions {
+  exportName?: string;
+  __testFailBeforeManifestCommit?: () => void | Promise<void>;
+}
+
+const pluginMutationQueues = new Map<string, Promise<void>>();
+
+/** Serialize all plugin filesystem + manifest mutations for one project. */
+export function withPluginMutationLock<T>(
+  projectDir: string,
+  mutation: () => Promise<T>,
+): Promise<T> {
+  const resolved = path.resolve(projectDir);
+  const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  const previous = pluginMutationQueues.get(key) ?? Promise.resolve();
+  const run = previous.then(mutation, mutation);
+  const tail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  pluginMutationQueues.set(key, tail);
+  void tail.then(() => {
+    if (pluginMutationQueues.get(key) === tail) pluginMutationQueues.delete(key);
+  });
+  return run;
 }
 
 /** Result of attempting to load one configured plugin. */
@@ -168,6 +209,8 @@ export async function listProjectPlugins(
     if (!ref) continue;
     let enabled = true;
     let kind: PluginKind;
+    let version: string | undefined;
+    let exportName: string | undefined;
     if (isMap(item)) {
       const e = item.get("enabled");
       if (e === false) enabled = false;
@@ -175,10 +218,20 @@ export async function listProjectPlugins(
       if (item.has("path")) kind = "local";
       else if (item.has("name")) kind = "npm";
       else kind = refKind(ref);
+      const v = item.get("version");
+      if (kind === "npm" && typeof v === "string") version = v;
+      const x = item.get("export");
+      if (typeof x === "string") exportName = x;
     } else {
       kind = refKind(ref);
     }
-    out.push({ ref, kind, enabled });
+    out.push({
+      ref,
+      kind,
+      enabled,
+      ...(version ? { version } : {}),
+      ...(exportName ? { export: exportName } : {}),
+    });
   }
   return out;
 }
@@ -195,6 +248,14 @@ function indexOfRef(seq: YAMLSeq, ref: string): number {
  * Throws when no entry matches `ref`.
  */
 export async function setPluginEnabled(
+  projectDir: string,
+  ref: string,
+  enabled: boolean,
+): Promise<void> {
+  return withPluginMutationLock(projectDir, () => setPluginEnabledUnlocked(projectDir, ref, enabled));
+}
+
+async function setPluginEnabledUnlocked(
   projectDir: string,
   ref: string,
   enabled: boolean,
@@ -228,7 +289,7 @@ export async function setPluginEnabled(
     map.set("enabled", false);
   }
 
-  await writeFile(file, doc.toString(), "utf8");
+  await writeManifestDoc(file, doc);
 }
 
 /** Append a plugin item (scalar or map) to the manifest's plugins list. */
@@ -241,28 +302,132 @@ async function appendPlugin(
   const seq = ensureSeq(doc, "plugins");
   if (indexOfRef(seq, ref) >= 0) return; // idempotent — already present
   seq.add(item);
-  await mkdir(projectDir, { recursive: true });
-  await writeFile(file, doc.toString(), "utf8");
+  await writeManifestDoc(file, doc);
+}
+
+/** Record an installed npm plugin, preserving existing options/priority/toggle fields. */
+async function recordInstalledNpmPlugin(
+  projectDir: string,
+  name: string,
+  version: string,
+  exportName?: string,
+): Promise<void> {
+  const { doc, file } = await loadManifestDoc(projectDir);
+  const seq = ensureSeq(doc, "plugins");
+  const idx = indexOfRef(seq, name);
+  let map: YAMLMap;
+  if (idx >= 0 && isMap(seq.items[idx])) {
+    map = seq.items[idx] as YAMLMap;
+  } else {
+    map = new YAMLMap(doc.schema);
+    if (idx >= 0) seq.items[idx] = map;
+    else seq.add(map);
+  }
+  map.delete("path");
+  map.set("name", name);
+  map.set("version", version);
+  if (exportName) map.set("export", exportName);
+  else map.delete("export");
+  await writeManifestDoc(file, doc);
 }
 
 /**
- * Add an npm-package plugin by NAME to the manifest. Per §5 this does NOT
- * install anything — it only records the manifest entry. The UI surfaces
- * whether the package resolves via {@link validateProjectPlugins}.
+ * Install an npm markdown-it plugin without an external package manager, then
+ * record its exact version in the manifest. Built-in optional plugins remain
+ * offline: adding one only records its bundled package name.
  */
 export async function addNpmPlugin(
   projectDir: string,
-  packageName: string,
+  packageSpec: string,
+  exportName?: string,
 ): Promise<ProjectPluginEntry> {
-  const name = packageName.trim();
-  if (!name) throw new Error("A package name is required.");
-  if (isLocalRef(name)) {
+  return addNpmPluginWithOptions(projectDir, packageSpec, { exportName });
+}
+
+/** @internal Dependency/fault injection for focused installer tests. */
+export async function addNpmPluginWithOptions(
+  projectDir: string,
+  packageSpec: string,
+  options: PluginManagerInstallOptions = {},
+): Promise<ProjectPluginEntry> {
+  return withPluginMutationLock(projectDir, () => addNpmPluginUnlocked(projectDir, packageSpec, options));
+}
+
+async function addNpmPluginUnlocked(
+  projectDir: string,
+  packageSpec: string,
+  options: PluginManagerInstallOptions,
+): Promise<ProjectPluginEntry> {
+  const input = packageSpec.trim();
+  if (isLocalRef(input)) {
     throw new Error(
-      `"${name}" looks like a path. Use addLocalPlugin to import a local plugin.`,
+      `"${input}" looks like a path. Use addLocalPlugin to import a local plugin.`,
     );
   }
-  await appendPlugin(projectDir, name, new Scalar(name));
-  return { ref: name, kind: "npm", enabled: true };
+  const requested = parseNpmPluginSpec(input);
+  const existing = (await listProjectPlugins(projectDir)).find(
+    (entry) => entry.kind === "npm" && entry.ref === requested.name,
+  );
+  const exportName = options.exportName?.trim() || existing?.export;
+  if (!requested.selector && RECOMMENDED_PLUGINS.some((plugin) => plugin.name === requested.name)) {
+    if (exportName) {
+      throw new Error(`Bundled plugin "${requested.name}" does not need a named export.`);
+    }
+    await appendPlugin(projectDir, requested.name, new Scalar(requested.name));
+    return { ref: requested.name, kind: "npm", enabled: true };
+  }
+
+  const installed = await installNpmPlugin(projectDir, input, options);
+  try {
+    await loadPlugin(
+      {
+        name: installed.name,
+        version: installed.version,
+        ...(exportName ? { export: exportName } : {}),
+        priority: 100,
+        options: {},
+      },
+      projectDir,
+    );
+    await options.__testFailBeforeManifestCommit?.();
+    await recordInstalledNpmPlugin(
+      projectDir,
+      installed.name,
+      installed.version,
+      exportName,
+    );
+  } catch (cause) {
+    try {
+      await rollbackNpmPluginInstall(installed);
+      clearVendoredPluginResolver(projectDir, installed.name, installed.version);
+    } catch (rollbackError) {
+      throw new Error(
+        `Plugin install failed and its previous vendor tree could not be restored: ` +
+          `${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+        { cause },
+      );
+    }
+    throw new Error(
+      `Downloaded ${installed.name}@${installed.version}, but it is not a loadable markdown-it plugin: ` +
+        `${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+  }
+  const warnings = [...installed.warnings];
+  await finalizeNpmPluginInstall(installed).catch((error) => {
+    warnings.push(
+      `The plugin was installed, but an old backup could not be removed: ` +
+        `${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+  return {
+    ref: installed.name,
+    kind: "npm",
+    enabled: true,
+    version: installed.version,
+    ...(exportName ? { export: exportName } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 /**
@@ -272,6 +437,13 @@ export async function addNpmPlugin(
  * entry. Throws when `sourcePath` does not exist.
  */
 export async function addLocalPlugin(
+  projectDir: string,
+  sourcePath: string,
+): Promise<ProjectPluginEntry & { path: string }> {
+  return withPluginMutationLock(projectDir, () => addLocalPluginUnlocked(projectDir, sourcePath));
+}
+
+async function addLocalPluginUnlocked(
   projectDir: string,
   sourcePath: string,
 ): Promise<ProjectPluginEntry & { path: string }> {
@@ -286,16 +458,43 @@ export async function addLocalPlugin(
   const destDir = path.join(projectDir, PLUGINS_DIR);
   await mkdir(destDir, { recursive: true });
   const dest = path.join(destDir, base);
+  const staging = path.join(destDir, `.import-${randomUUID()}`);
+  const backup = path.join(destDir, `.backup-${randomUUID()}`);
+  let hasBackup = false;
 
-  if (info.isDirectory()) {
-    await cp(sourcePath, dest, { recursive: true });
-  } else {
-    await cp(sourcePath, dest);
+  try {
+    if (info.isDirectory()) {
+      await cp(sourcePath, staging, { recursive: true });
+    } else {
+      await cp(sourcePath, staging);
+    }
+    try {
+      await lstat(dest);
+      await rename(dest, backup);
+      hasBackup = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    try {
+      await rename(staging, dest);
+    } catch (error) {
+      if (hasBackup) await rename(backup, dest);
+      throw error;
+    }
+
+    const relPath = `./${PLUGINS_DIR}/${base}`;
+    try {
+      await appendPlugin(projectDir, relPath, new Scalar(relPath));
+    } catch (error) {
+      await rm(dest, { recursive: true, force: true });
+      if (hasBackup) await rename(backup, dest);
+      throw error;
+    }
+    if (hasBackup) await rm(backup, { recursive: true, force: true }).catch(() => {});
+    return { ref: relPath, kind: "local", enabled: true, path: relPath };
+  } finally {
+    await rm(staging, { recursive: true, force: true }).catch(() => {});
   }
-
-  const relPath = `./${PLUGINS_DIR}/${base}`;
-  await appendPlugin(projectDir, relPath, new Scalar(relPath));
-  return { ref: relPath, kind: "local", enabled: true, path: relPath };
 }
 
 /**
@@ -321,8 +520,19 @@ export async function validateProjectPlugins(
     }
     const config: ResolvedPluginConfig =
       entry.kind === "local"
-        ? { path: entry.ref, priority: 100, options: {} }
-        : { name: entry.ref, priority: 100, options: {} };
+        ? {
+            path: entry.ref,
+            ...(entry.export ? { export: entry.export } : {}),
+            priority: 100,
+            options: {},
+          }
+        : {
+            name: entry.ref,
+            ...(entry.version ? { version: entry.version } : {}),
+            ...(entry.export ? { export: entry.export } : {}),
+            priority: 100,
+            options: {},
+          };
     try {
       await loadPlugin(config, projectDir);
       out.push({ ref: entry.ref, kind: entry.kind, enabled: true, ok: true });

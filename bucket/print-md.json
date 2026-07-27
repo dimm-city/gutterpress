@@ -1,0 +1,27 @@
+{
+  "version": "0.8.3",
+  "description": "Convert Markdown and CSS into print-ready PDFs.",
+  "homepage": "https://github.com/dimm-city/print-md",
+  "license": {
+    "identifier": "MPL-2.0",
+    "url": "https://github.com/dimm-city/print-md/blob/v0.8.3/LICENSE"
+  },
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/dimm-city/print-md/releases/download/v0.8.3/print-md-cli-windows-x64.exe#/print-md.exe",
+      "hash": "18e0a5c08745031a277ae0e226cbde80e22983c24bf3f33fb832768ef9311974"
+    }
+  },
+  "bin": "print-md.exe",
+  "notes": "PDF generation requires Chrome, Chromium, Edge, or another supported Chromium browser.",
+  "checkver": {
+    "github": "https://github.com/dimm-city/print-md"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/dimm-city/print-md/releases/download/v$version/print-md-cli-windows-x64.exe#/print-md.exe"
+      }
+    }
+  }
+}

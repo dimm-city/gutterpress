@@ -36,6 +36,7 @@ export {
   loadManifestWithPath,
   resolveConfig,
   MANIFEST_FILENAMES,
+  hasProjectManifest,
 } from "../lib/manifest";
 
 export type {

@@ -5,6 +5,7 @@ import {
   parseFormat,
   parsePdfxFlavor,
   rejectExtraPositionals,
+  rejectUnknownFlags,
   resolvePort,
 } from "./cli-args.ts";
 import { BuildError } from "./build-error.ts";
@@ -12,9 +13,11 @@ import { NETWORK } from "../constants.ts";
 
 // ── parseFormat ──────────────────────────────────────────────────────────────
 
-test("parseFormat returns the supplied default for undefined/empty", () => {
+test("parseFormat returns the supplied default only when omitted", () => {
   expect(parseFormat(undefined, { default: "pdf" })).toBe("pdf");
-  expect(parseFormat("", { default: "html" })).toBe("html");
+  expect(() => parseFormat("", { default: "html" })).toThrow(
+    "--format requires a value"
+  );
 });
 
 test("parseFormat passes through valid formats", () => {
@@ -38,9 +41,11 @@ test("parseFormat throws a UsageError with exitCode 2 on bad input", () => {
 
 // ── parsePdfxFlavor ──────────────────────────────────────────────────────────
 
-test("parsePdfxFlavor returns undefined for undefined/empty", () => {
+test("parsePdfxFlavor returns undefined only when omitted", () => {
   expect(parsePdfxFlavor(undefined, "pdfx")).toBeUndefined();
-  expect(parsePdfxFlavor("", "pdfx")).toBeUndefined();
+  expect(() => parsePdfxFlavor("", "pdfx")).toThrow(
+    "--pdfx-flavor requires a value"
+  );
 });
 
 test("parsePdfxFlavor passes through valid flavors when format is pdfx", () => {
@@ -76,13 +81,15 @@ test("parsePdfxFlavor throws on an invalid flavor value", () => {
 
 // ── resolvePort ──────────────────────────────────────────────────────────────
 
-test("resolvePort defaults to NETWORK.DEFAULT_PORT when undefined/empty", () => {
+test("resolvePort defaults only when omitted", () => {
   expect(resolvePort(undefined)).toBe(NETWORK.DEFAULT_PORT);
-  expect(resolvePort("")).toBe(NETWORK.DEFAULT_PORT);
+  expect(() => resolvePort("")).toThrow("--port requires a value");
 });
 
-test("resolvePort passes through a normal port", () => {
+test("resolvePort accepts the Node port boundaries and a normal port", () => {
+  expect(resolvePort("0")).toBe(0);
   expect(resolvePort("8080")).toBe(8080);
+  expect(resolvePort("65535")).toBe(65535);
 });
 
 // Regression for defect preview-port-zero-falsy: --port 0 (OS-assigned) must
@@ -92,8 +99,8 @@ test("resolvePort('0') and resolvePort(0) yield 0", () => {
   expect(resolvePort(0)).toBe(0);
 });
 
-test("resolvePort throws a UsageError with exitCode 2 on invalid input", () => {
-  for (const bad of ["abc", "-1", "NaN"]) {
+test("resolvePort throws a UsageError with exitCode 2 outside the finite integer Node range", () => {
+  for (const bad of ["abc", "-1", "1.5", "65536", "Infinity", "NaN", null, true]) {
     try {
       resolvePort(bad);
       throw new Error(`expected UsageError for ${bad}`);
@@ -101,7 +108,7 @@ test("resolvePort throws a UsageError with exitCode 2 on invalid input", () => {
       expect(err).toBeInstanceOf(UsageError);
       expect((err as UsageError).exitCode).toBe(2);
       expect((err as UsageError).message).toBe(
-        `Invalid --port value: "${bad}". Expected a non-negative number (0 = OS-assigned).`
+        `Invalid --port value: "${bad}". Expected an integer from 0 to 65535 (0 = OS-assigned).`
       );
     }
   }
@@ -148,4 +155,124 @@ test("rejectExtraPositionals throws a UsageError naming the command on extras", 
     expect((err as UsageError).message).toContain("print-md build");
     expect((err as UsageError).message).toContain("b");
   }
+});
+
+// ── rejectUnknownFlags (C7) ──────────────────────────────────────────────────
+
+const testCommandArgs = {
+  input: { type: "positional" },
+  format: { type: "string" },
+  output: { type: "string", alias: "o" },
+  "dry-run": { type: "boolean" },
+  watch: { type: "boolean", default: true },
+  open: { type: "boolean", default: true },
+  verbose: { type: "boolean", alias: "v" },
+  alpha: { type: "boolean", alias: "a" },
+  beta: { type: "boolean", alias: "b" },
+} as const;
+
+test("rejectUnknownFlags accepts declared flags, aliases, negation, and camel-case spellings", () => {
+  expect(() =>
+    rejectUnknownFlags(
+      [".", "--format=html", "--dryRun", "--no-watch", "--no-open", "-v"],
+      testCommandArgs,
+      "preview"
+    )
+  ).not.toThrow();
+});
+
+test("rejectUnknownFlags rejects an unknown long option as a UsageError", () => {
+  expect(() =>
+    rejectUnknownFlags(
+      [".", "--formt", "html"],
+      testCommandArgs,
+      "build"
+    )
+  ).toThrow(/print-md build: unknown option --formt/);
+});
+
+test("rejectUnknownFlags does not mistake a positional argument name for a flag", () => {
+  expect(() =>
+    rejectUnknownFlags(
+      ["--input", "book"],
+      testCommandArgs,
+      "build"
+    )
+  ).toThrow(/unknown option --input/);
+});
+
+test("rejectUnknownFlags rejects missing long-option values", () => {
+  for (const rawArgs of [
+    ["--format"],
+    ["--format="],
+    ["--format", "--open"],
+    ["--format", "--"],
+  ]) {
+    expect(() =>
+      rejectUnknownFlags(rawArgs, testCommandArgs, "build")
+    ).toThrow(/option --format requires a value/);
+  }
+});
+
+test("rejectUnknownFlags accepts inline, aliased, and dash-prefixed string values", () => {
+  expect(() =>
+    rejectUnknownFlags(
+      [
+        "--format=html",
+        "--output",
+        "-2",
+        "--output",
+        "--draft.pdf",
+        "--output",
+        "-draft.pdf",
+        "--o=inline",
+        "-oattached",
+      ],
+      testCommandArgs,
+      "build"
+    )
+  ).not.toThrow();
+});
+
+test("rejectUnknownFlags treats only declared options as missing-value boundaries", () => {
+  expect(() =>
+    rejectUnknownFlags(["--output", "--dry-run"], testCommandArgs, "build")
+  ).toThrow(/option --output requires a value/);
+  expect(() =>
+    rejectUnknownFlags(["--output", "-v"], testCommandArgs, "build")
+  ).toThrow(/option --output requires a value/);
+  expect(() =>
+    rejectUnknownFlags(["--unknown"], testCommandArgs, "build")
+  ).toThrow(/unknown option --unknown/);
+});
+
+test("rejectUnknownFlags supports grouped short booleans and value aliases", () => {
+  expect(() =>
+    rejectUnknownFlags(["-abv", "-abo", "file.pdf"], testCommandArgs, "build")
+  ).not.toThrow();
+  expect(() =>
+    rejectUnknownFlags(["-abo"], testCommandArgs, "build")
+  ).toThrow(/option -o requires a value/);
+  expect(() =>
+    rejectUnknownFlags(["-o="], testCommandArgs, "build")
+  ).toThrow(/option -o requires a value/);
+});
+
+test("rejectUnknownFlags stops option parsing after --", () => {
+  expect(() =>
+    rejectUnknownFlags(
+      ["--format", "html", "--", "--also-positional"],
+      testCommandArgs,
+      "build"
+    )
+  ).not.toThrow();
+});
+
+test("rejectUnknownFlags rejects unknown short and negated options", () => {
+  expect(() =>
+    rejectUnknownFlags(["-x"], testCommandArgs, "build")
+  ).toThrow(/unknown option -x/);
+  expect(() =>
+    rejectUnknownFlags(["--no-format"], testCommandArgs, "build")
+  ).toThrow(/unknown option --no-format/);
 });
