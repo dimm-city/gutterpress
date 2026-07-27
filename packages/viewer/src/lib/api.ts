@@ -180,18 +180,6 @@ export interface PublishProviderStaticInfo {
 export interface ProjectConfigFields {
   title?: string;
   authors?: string[];
-  /**
-   * STALE — the manifest's `output.filename` this once round-tripped is GONE
-   * (output location is now the `dist/<title-slug>/` convention;
-   * lib/output-paths.ts). The lib's real `ProjectConfigFields`
-   * (manifest-config.ts) dropped this key entirely, so a value sent here is
-   * silently ignored by `/api/manifest/set-fields` — it is NOT written
-   * anywhere. Kept only so this locally-declared mirror type still matches
-   * what `details-section-controller.svelte.ts`'s "Output filename" field
-   * currently reads/writes; removing the dead field/UI together is a
-   * follow-up outside this change's scope.
-   */
-  outputFilename?: string;
   /** `source.files` — null is the deliberate "all chapter files" sentinel. */
   sourceFiles?: string[] | null;
 }

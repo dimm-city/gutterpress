@@ -26,8 +26,6 @@ beforeEach(async () => {
       "title: Old Title",
       "authors:",
       "  - A. Writer",
-      "output:",
-      "  filename: old.pdf",
       "source:",
       "  files:",
       "    - chapter-01.md",
@@ -49,7 +47,6 @@ test("manifest/read route returns project config fields without missing root exp
   expect(await res.json()).toEqual({
     title: "Old Title",
     authors: ["A. Writer"],
-    outputFilename: "old.pdf",
     sourceFiles: ["chapter-01.md"],
   });
 });
@@ -61,7 +58,6 @@ test("manifest/set-fields route writes details and returns the updated fields", 
       updates: {
         title: "New Title",
         authors: ["B. Writer"],
-        outputFilename: "new.pdf",
         sourceFiles: ["intro.md", "chapter-01.md"],
       },
     }),
@@ -70,12 +66,14 @@ test("manifest/set-fields route writes details and returns the updated fields", 
   expect(await res.json()).toEqual({
     title: "New Title",
     authors: ["B. Writer"],
-    outputFilename: "new.pdf",
     sourceFiles: ["intro.md", "chapter-01.md"],
   });
   const yaml = await readFile(path.join(projectDir, "manifest.yaml"), "utf8");
   expect(yaml).toContain("title: New Title");
-  expect(yaml).toContain("filename: new.pdf");
+  expect(yaml).toContain("- intro.md");
+  // Artifact naming is a convention now (lib/output-paths.ts), not a manifest
+  // field — nothing here may write an `output:` block back.
+  expect(yaml).not.toContain("output:");
 });
 
 test("style/set-active route rewrites manifest styles", async () => {
