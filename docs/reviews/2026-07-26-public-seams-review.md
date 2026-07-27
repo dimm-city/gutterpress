@@ -7,9 +7,13 @@ end user touches: the CLI commands, the Electron viewer's UI flows, and the
 release/install pipeline. Documentation claims (README, guides, CLAUDE.md) were
 deliberately ignored; every finding below is grounded in the implemented source,
 with file:line evidence. Findings were gathered by parallel code audits of the
-four surfaces and then individually re-verified against the source. Items that
-could not be verified end-to-end (e.g. behaviors that depend on the `citty`
-argument parser's runtime internals) are explicitly marked **inferred**.
+four surfaces, then put through an adversarial second pass in which independent
+reviewers were tasked with *refuting* each claim against the cited source, and
+anything they flagged was re-checked by a third reviewer before the text was
+changed. That pass rescoped or re-rated fourteen findings and corrected one
+outright factual error; where it settled a question empirically — the pinned
+`citty@0.2.2` parser's handling of undeclared flags, the published v0.8.3
+release assets — the finding says so rather than hedging.
 
 The review question: *what will actually go wrong for a non-technical author,
 per operating system and install scenario, based solely on what the code does?*
@@ -38,7 +42,8 @@ What the limitation concretely causes today:
 No-cost mitigations (recommended regardless of when signing happens):
 
 1. **Publish SHA-256 checksums with every release** (see D5). With unsigned
-   binaries, a checksum file is the only integrity signal users have.
+   binaries, a checksum file is the only integrity signal users have for the
+   CLI binaries and the DMG.
 2. **Put the Gatekeeper workaround in the release body itself** (the
    `gh release create` step can template it): System Settings → Privacy &
    Security → "Open Anyway", or `xattr -d com.apple.quarantine <app>`. Users
@@ -134,18 +139,37 @@ reputation also accrues to a stable, frequently-downloaded unsigned binary
 over time — renaming artifacts per-release resets that, so keep artifact names
 stable.
 
-### D5. No checksums published for any artifact — **High**
+### D5. No checksums published for the CLI binaries, the DMG, or the Windows zip — **High**
 
-**Evidence:** grep of `.github/` for `sha256|checksum|shasum|SHASUMS` returns
-nothing; the `github-release` job (release.yml:504-627) attaches binaries with
-no integrity file.
+**Evidence:** the `github-release` job (release.yml:504-643) generates no
+integrity file of its own — grep of `.github/` for
+`sha256|sha512|checksum|shasum|SHASUMS` returns nothing — and publishes
+everything with a bare `gh release create … dist/*` (release.yml:619-624). Two
+channels are nonetheless covered, by electron-builder rather than by the
+workflow: `electron-builder.yml:47-50` declares the `publish: github` provider,
+so `latest.yml` / `latest-linux.yml` carry a `sha512` for the NSIS installer and
+the AppImage (confirmed on the published v0.8.3 assets), electron-updater
+verifies the download against it, and the release job hard-requires and
+validates both feeds (release.yml:556-590). The npm package is published with
+`--provenance` (release.yml:462, 464). Everything else ships bare: the five
+`print-md-cli-*` binaries, the macOS `.dmg` (there is no `latest-mac.yml` — mac
+auto-update is disabled, see D1/D3), and the Windows portable `.zip`
+(`latest.yml` references only the `.exe`). Neither downloader verifies a hash
+either: `packages/cli/scripts/install.sh:166-174` downloads, `chmod +x`s and
+`mv`s the binary, and its `verify_install` (install.sh:177) only runs
+`--version`; `install.ps1` has no hash check at all.
 
-**Impact:** combined with D1/D4 (unsigned everything), users and downstream
-packagers (brew/winget both *require* hashes) have zero way to verify a
-download. This is the cheapest meaningful trust improvement available.
+**Impact:** seven of the nine downloadable artifacts — the entire CLI
+distribution surface plus the mac viewer and the Windows portable zip — have no
+integrity signal, which combined with D1/D4 (unsigned everything) leaves users
+nothing to check. It also blocks D9: brew/winget/Scoop manifests all *require* a
+hash for the CLI binaries.
 
 **Recommendation:** one step in `github-release`: `sha256sum dist/* >
-SHA256SUMS.txt` and attach it. Print the hashes into the release body too.
+SHA256SUMS.txt` and attach it — covering the two already-hashed viewer artifacts
+too costs nothing and gives users one uniform file instead of a machine-readable
+update feed they have to know to base64-decode. Print the hashes into the
+release body, and add verification to `install.sh` / `install.ps1`.
 
 ### D6. Platform coverage gaps — **Medium**
 
@@ -170,19 +194,33 @@ binaries (free, catches real breakage); add missing targets only as demand
 appears, but *list* the supported matrix in the release body so the gap is a
 statement rather than a surprise.
 
-### D7. Docker image tag can drift from every other artifact's version — **Medium**
+### D7. Docker dispatch passes the raw version, adding a spurious image tag — **Low**
 
-**Evidence:** `release.yml:636-643` — the dispatch into `docker.yml` passes
-`VERSION: ${{ inputs.version }}` (the **raw, unnormalized** input), while the
-tag/package.json/npm all use the normalized version (leading `v` and
-`print-md ` prefixes stripped, release.yml:93-101).
+**Evidence:** `release.yml:634-643` — the dispatch into `docker.yml` passes
+`VERSION: ${{ inputs.version }}` (the **raw, unnormalized** input) as that
+workflow's `tag` input, while the ref it dispatches at is the normalized
+`v<version>` (`--ref "$TAG"`, release.yml:637; tag created at
+release.yml:187-189 from the value normalized at release.yml:93-101).
 
-**Impact:** dispatching a release as `v1.2.3` (a form the workflow explicitly
-accepts and normalizes everywhere else) pushes a GHCR image tagged literally
-`v1.2.3`, diverging from the `1.2.3` npm/CLI/release version.
+**Impact:** smaller than the mismatch suggests. `docker.yml:50-51` derive
+`{{version}}` and `{{major}}.{{minor}}` from the **tag ref**, not from the
+input (metadata-action's `type=semver` is a no-op unless `github.ref` is
+`refs/tags/*`), so a run at `refs/tags/v1.2.3` still publishes `1.2.3` and
+`1.2`, and the action's default `latest=auto` flavor still marks that stable
+semver version `latest`. The raw input reaches only `docker.yml:57`
+(`type=raw,value=${{ inputs.tag }}`), so dispatching a release as `v1.2.3`
+merely *adds* a spurious `v1.2.3` alias next to the correct tags. It also
+falsifies the guard at `docker.yml:56` (`github.ref == format('refs/tags/v{0}',
+inputs.tag)` compares `refs/tags/v1.2.3` against `refs/tags/vv1.2.3`) — but
+that rule is redundant at a tag ref, where `latest=auto` has already set
+`latest`, so nothing is lost.
 
-**Recommendation:** one-line fix — pass `needs.version.outputs.version` (the
-normalized value) instead of `inputs.version`.
+**Recommendation:** pass the normalized version — but note the `version` job
+exposes only `tag` and `prerelease` (release.yml:72-74), so
+`needs.version.outputs.version` would expand to an empty string. Either add a
+`version` output next to release.yml:189 (`echo "version=$VERSION" >>
+"$GITHUB_OUTPUT"`), or strip the leading `v` at the call site:
+`-f tag="${TAG#v}"`.
 
 ### D8. Installing the npm package from git yields a broken CLI — **Low**
 
@@ -199,19 +237,37 @@ declared `bin` target (package.json:28-30) doesn't exist.
 installer's machine — may be undesirable) or explicitly treat git installs as
 unsupported; the monorepo `workspace:*` layout makes them impractical anyway.
 
-### D9. No package-manager distribution — **Medium**
+### D9. No native OS package-manager distribution — **Medium**
 
-**Evidence:** exhaustive search — no Homebrew formula, Scoop manifest, winget
-manifest, install.sh, or Chocolatey package anywhere in the repo.
+**Evidence:** no Homebrew formula, Scoop manifest, winget manifest, or
+Chocolatey package anywhere in the repo — both a tracked-file search
+(`git ls-files | grep -iE "brew|formula|scoop|winget|choco|\.rb$|\.nuspec"`)
+and a filesystem `find` for the same patterns return nothing. The channels that
+*do* exist are npm (`npm install -g @dimm-city/print-md`,
+packages/cli/README.md:23-27, published with `--provenance` at
+release.yml:462/464), Docker/GHCR (docs/docker.md:18), the repo's own
+`curl | bash` / `irm | iex` installers (packages/cli/scripts/install.sh:7,
+install.ps1:7), and direct GitHub Release downloads (README.md:9).
 
-**Impact:** every install is a manual browser download of an unsigned binary —
-the worst possible trust path given D1/D4, and there is no update story for
-the CLI at all (the viewer at least has electron-updater on Windows/Linux).
+**Impact:** Windows and macOS users get no `winget upgrade` / `brew upgrade`
+path and no OS-level provenance. The two shell installers do cover install *and*
+in-place upgrade (install.sh:173 `mv -f "$tmp" "$PRINTMD_BIN"`;
+install.ps1:172-186 backup → rename-aside → `Move-Item -Force`, which also
+handles an in-use `.exe`), with pinning via `PRINTMD_VERSION` (install.sh:10) —
+but they fetch an unsigned binary over HTTPS with **no checksum verification**
+(grep of both scripts for `sha256|shasum|checksum` returns nothing — see D5),
+which is the worst trust path available given D1/D4. Neither README links them
+either (README.md:9-15 and packages/cli/README.md:9-21 both advertise a manual
+release download), so for a user who isn't on npm or Docker the *documented*
+path is still a hand-download.
 
 **Recommendation:** free wins, in order of value: (1) winget manifest —
 free submission, native `winget upgrade` support; (2) Homebrew tap
 (`dimm-city/homebrew-tap`) — solves macOS quarantine for the CLI as a side
-effect; (3) Scoop bucket. All three require D5 (checksums) first.
+effect; (3) Scoop bucket. All three require D5 (checksums) first — which would
+also let the existing `install.sh`/`install.ps1` verify what they download.
+Separately, link the installers from both READMEs; they already work and are
+covered by `packages/cli/src/installer-asset-names.test.ts`.
 
 ---
 
@@ -261,46 +317,98 @@ fixture), or (b) embed an sRGB ICC profile as an embedded asset (the
 `embedded-assets.ts` pattern already exists for exactly this), extract it to
 the temp dir, and pass that path with a matching `--permit-file-read`.
 
-### C3. A YAML syntax error in `manifest.yaml` crashes `build`/`preview`/`lint` with a raw stack trace — **Critical**
+### C3. A YAML syntax error in `manifest.yaml` crashes `build`/`preview`/`lint` at startup with a raw stack trace — **High**
 
 **Evidence:** `lib/manifest.ts:54-55` — `parseYaml(raw)` has no try/catch, so a
 malformed manifest throws `YAMLParseError`. `commands/build.ts:60-65`,
 `commands/preview.ts:102-108`, and `commands/lint.ts:46-52` catch **only**
 `UsageError`/`BuildError` and re-throw everything else; no
 `uncaughtException`/`unhandledRejection` handler exists anywhere in the CLI
-(grep-confirmed). Meanwhile `validate`/`audit`/`preflight` catch broadly
-(`validate.ts:84-87`, `audit.ts:46-49`, `preflight.ts:237-240`) and print a
-clean one-line error. *(Exact terminal rendering depends on citty's `runMain`
-wrapper — inferred, not executed — but there is no in-repo handler either
-way.)*
+(grep-confirmed); and citty's `runMain` catch-all is
+`else console.error(error, "\n"); process.exit(1)` for any non-`CLIError`
+(verified against `citty@0.2.x`'s `dist/index.mjs`) — so what reaches the
+terminal is the full stack. Meanwhile `validate`/`audit`/`preflight` catch
+broadly (`validate.ts:84-87`, `audit.ts:46-49`, `preflight.ts:237-240`) and
+print a clean one-line error.
 
-**Impact:** hand-editing YAML **is the product's core authoring loop**, and
-YAML syntax errors (a stray tab, an unquoted colon in a title) are the single
-most likely mistake the target audience will make. The three commands they run
-most are the three that handle it worst.
+**Impact:** hand-editing YAML is the product's core authoring loop, and YAML
+syntax errors (a stray tab, an unquoted colon in a title) are the single most
+likely mistake the target audience will make. But the blast radius is **CLI
+startup only**, and three limits are worth stating precisely:
+
+- the live-preview edit loop is already tolerant — `preview/file-watcher.ts:471`
+  reloads the manifest inside a try whose catch (`:489-490`) logs "Failed to
+  regenerate preview" and keeps the server up. Partial mitigation only:
+  `utils/logger.ts:63` still `console.error`s the raw error object, and the
+  browser silently keeps the last good render with no in-page signal — but
+  nothing crashes;
+- the desktop viewer never hits this at all —
+  `packages/viewer/electron/preview/controller.ts:144-151` wraps
+  `startPreviewServer` and rethrows "Preview server failed to start: <msg>",
+  which the start screen surfaces as `openError`
+  (`project-lifecycle-controller.svelte.ts:426`);
+- `preview` short-circuits before the parse when there is no input
+  (`preview/lifecycle.ts:142`), so bare `print-md` (`cli.ts:50-51`) never reads
+  a manifest — though that mode only serves the placeholder page (the CLI
+  preview server is headless, no folder picker: `preview/http-server.ts:333-338`),
+  so every real CLI preview does pass a directory.
+
+Not a dead end: `YAMLParseError`'s message carries `at line N, column M` plus a
+code frame, so the diagnostic text survives inside the trace. It is still a
+stack dump — from `/$bunfs/root/...` in the compiled binary — which is exactly
+the output a non-technical author cannot read, and it is gratuitously
+inconsistent with the clean one-liner `validate` prints for the very same file.
 
 **Recommendation:** wrap the parse site once, in `loadManifestWithPath`:
 catch `YAMLParseError` and rethrow as `UsageError` including the filename and
 the parser's line/column (the `yaml` package provides `linePos`). That fixes
-all commands at once and removes the build/validate asymmetry for this class.
+all commands at once, removes the build/validate asymmetry for this class, and
+also upgrades the file-watcher's logged reload failure to a legible message.
 
-### C4. Missing manifest is silent: `build` in the wrong folder quietly builds an empty book — **High**
+### C4. A missing manifest is never reported: `build` in the wrong folder builds the *wrong* book — or dies with a raw `No markdown files found` — **Medium**
 
 **Evidence:** `lib/manifest.ts:60-66` — when no `manifest.yaml`/`.yml` is
 found, the loader returns `{ manifest: {}, manifestDir }` with no output
-unless `explicit` was set. `build` then proceeds with preset defaults and
-writes `dist/book.pdf` (`lib/presets.ts:26-28`, `build-runner.ts:181,465-466`).
+unless `explicit` was set. `build` then proceeds on preset defaults, whose
+`source.files` is `null` (`lib/presets.ts:15`, `:123`), so `renderBook`
+(`build-runner.ts:258-261`) hands `files: null` to `renderChapters`, which
+falls back to a **non-recursive** scan of the input dir
+(`lib/markdown/index.ts:62-67`) and — if that finds nothing — throws a plain
+`Error`, `No markdown files found in <dir>` (`markdown/index.ts:70-71`).
+`commands/build.ts:60-65` catches only `UsageError`/`BuildError`, so that one
+reaches the user through the same unwrapped path as C3. Output paths still
+come from the preset (`lib/presets.ts:26-28`, `build-runner.ts:181,465-466`).
 
-**Impact:** a user who runs `print-md build` in the wrong directory gets a
-successful-looking run and a near-empty PDF, with no indication that their
-actual project was never read. For a non-technical user this reads as "the
-tool ate my book."
+**Impact:** the outcome splits on whether the directory happens to hold
+top-level `.md` files, and **neither branch ever says a manifest was looked
+for and not found**:
 
-**Recommendation:** when no manifest is found and no explicit input was given,
-`build` should fail with "No manifest.yaml found in <dir> — run from your
-project folder or pass the path: print-md build <project-dir>". The live
-preview's no-manifest tolerance (lifecycle.ts:139-145) is correct and should
-stay — the fix belongs in `resolveBuildContext`, not the loader.
+- **No `.md` present** — the build fails loudly and names the directory, but
+  as a raw, unwrapped `Error` (the C3 class of problem, different trigger).
+- **`.md` present** — a book is built from *whatever those files are*, under
+  preset defaults: alphabetical order instead of the manifest's
+  `source.files`, `"Document"` as the title, and none of the manifest's
+  styles or plugins. Because `new` scaffolds chapters at the project root
+  (`lib/project-scaffold.ts:245-248`), a manifest that is missing or
+  mis-named (`print-md.yaml` — see V5) in the author's *own* project quietly
+  yields a mis-ordered, unstyled book rather than an error. A near-empty PDF
+  arises only in the narrow case where the wrong directory holds one stray
+  `.md` (a README).
+
+The signals that do exist — `Build (pdf): <in> -> <out>`
+(`build-runner.ts:600`), `Using all .md files in alphabetical order`
+(`build-runner.ts:242`), and the "No `preset` set in manifest.yaml" notice
+(`lib/presets.ts:249-256`) — fire identically for a legitimately
+manifest-less run, so none of them distinguishes "you are in the wrong
+folder" from "this project has no manifest".
+
+**Recommendation:** unchanged — when no manifest is found and no explicit
+input was given, `build` should fail with "No manifest.yaml found in <dir> —
+run from your project folder or pass the path: print-md build <project-dir>".
+The live preview's no-manifest tolerance (lifecycle.ts:139-145) is correct
+and should stay — the fix belongs in `resolveBuildContext`
+(`build-runner.ts:139-185`), not the loader. It also removes the raw
+`No markdown files found` throw from this path.
 
 ### C5. A typo'd `--manifest` path is silently ignored by `validate`/`audit`/`preflight`/`lint` — **Medium**
 
@@ -332,17 +440,30 @@ actual mistake; nothing suggests the correct spelling.
 positionals). Otherwise print "unknown command 'biuld' — did you mean
 'build'?" (a 10-line closest-match over the 9 command names).
 
-### C7. Unknown flag names are (very likely) silently ignored — **Medium** *(inferred)*
+### C7. Unknown flag names are silently ignored — **Medium**
 
 **Evidence:** no strict-flag rejection exists anywhere in the CLI source;
-commands read only their declared `args.<name>` fields. citty's mri-based
-parser does not reject unknown keys, and the repo already hand-patches a
-sibling citty gap (`rejectExtraPositionals`, `lib/cli-args.ts:27-50`, whose
-doc comment explains citty leaves extra positionals unreported). The existing
-`cli-contract.test.ts` covers bad *values* but never an unknown flag *name*.
+commands read only their declared `args.<name>` fields. citty 0.2.2 (pinned at
+`bun.lock:717`, zero runtime deps) parses through `node:util`'s `parseArgs`
+with `strict: false` (`citty/dist/index.mjs`, `parseRawArgs`), so undeclared
+keys pass through unreported — and nothing downstream inspects them: `rawArgs`
+reaches `build-runner.ts:433,562` as build-receipt metadata only, never as
+validation. The repo already hand-patches a sibling citty gap
+(`rejectExtraPositionals`, `lib/cli-args.ts:27-50`, whose doc comment explains
+citty leaves extra positionals unreported). The existing `cli-contract.test.ts`
+covers bad *values* (`:196-198`, `--format docx`) but never an unknown flag
+*name*.
 
-**Impact:** `--formt html` silently builds the **default PDF** — compounded by
-the divergent defaults (C8). The user's intent is dropped without a word.
+**Impact:** form-dependent, and only one form is genuinely silent.
+`print-md build --formt=html` builds the **default PDF** without a word —
+compounded by the divergent defaults (C8) — and a value-less typo like
+`--verbse` is dropped just as quietly. The space-separated form is *not*
+silent: `parseArgs` types the undeclared `--formt` as a boolean, so `html`
+falls through to `_` and either becomes the input positional
+(`build --formt html` builds `<cwd>/html`) or trips `rejectExtraPositionals`
+(`build . --formt html` → exit 2, "unexpected extra argument(s): html",
+`build.ts:37`). Either way the user's intent is dropped; only the `=` form
+drops it invisibly.
 
 **Recommendation:** extend the existing `rejectExtraPositionals` pattern with a
 `rejectUnknownFlags(args, declared)` helper called from the same 9 call
@@ -350,16 +471,29 @@ sites, and add the missing contract test.
 
 ### C8. `preview` and `build` have different default formats — **Low**
 
-**Evidence:** `preview` defaults to `html` (live server); `build` defaults to
-`pdf` (`build.ts:39`).
+**Evidence:** `preview` defaults to `html` (live server, `preview.ts:58`);
+`build` defaults to `pdf` (`build.ts:39`).
 
-**Impact:** mostly reasonable per-command, but it turns flag typos (C7) into
-wrong-artifact surprises, and users moving between the two commands must
-remember the asymmetry.
+**Impact:** mostly reasonable per-command; the real cost is that users moving
+between the two commands must remember the asymmetry. The wrong-artifact case
+is narrower than it looks: of the C7 typo forms, only the `=` form
+(`--formt=html`) survives parsing quietly — the space-separated form
+(`--formt html`) is coerced to a boolean by citty and its value falls into
+`args._`, where it either trips `rejectExtraPositionals` (`cli-args.ts:39-50`)
+or is mistaken for the input directory. And the surviving case is not silent:
+`runBuild`'s first statement is
+``log.info(`Build (${ctx.format}): ${ctx.inputDir} -> ${ctx.outDir}`)``
+(`build-runner.ts:600`, before mkdir/preflight/gates), and the `log` facade is
+deliberately not level-gated (`utils/logger.ts:112-132`), so `Build (pdf): …`
+always prints first.
 
-**Recommendation:** keep the defaults (they match each command's purpose) but
-make each command's first output line state the resolved format — one log line
-turns a silent surprise into a visible choice.
+**Recommendation:** keep the defaults (they match each command's purpose).
+`build` already states the resolved format on its first output line
+(`build-runner.ts:600`), and `preview --format pdf|pdfx` inherits that line by
+routing through `runBuild`. The only gap left is the live preview, whose
+startup line names the input directory but not the format
+(`server.ts:74-77`) — a one-word change to `Starting HTML preview server
+for: …` makes the resolved format visible on both sides.
 
 ### C9. PDF rendering requires a preinstalled Chromium-family browser — **Medium** *(design constraint, well-handled)*
 
@@ -430,16 +564,23 @@ identical call with `.catch(() => {})`.
 **Recommendation:** wrap in a catch that logs "couldn't open the PDF
 automatically — it's at <path>". The build succeeded; say so.
 
-### C14. PDF/X intermediate files are written into the user's output directory — **Low**
+### C14. The PDF/X Ghostscript definition file is written into the user's output directory — **Low**
 
-**Evidence:** `lib/ghostscript.ts:128` writes `.pdfx_def_<ts>.ps` next to the
-output PDF; `ghostscript.ts:13-17` writes `<pdf>.stripped.pdf` beside the
-target before renaming. Cleanup is best-effort `finally`; a crash mid-window
-strands them in `dist/`, and no startup reaper covers this pattern (unlike the
-preview temp dirs, `preview/lifecycle.ts:47-68`).
+**Evidence:** `lib/ghostscript.ts:128` writes `.pdfx_def_<ts>.ps` into
+`dirname(outPdf)` — the user's real output dir (`build-runner.ts:532` passes
+`path.resolve(pdfFile)`, resolved from `outDir` at `build-runner.ts:465-466`).
+Cleanup is a best-effort `finally` (`ghostscript.ts:167-169`, covered by
+`ghostscript.test.ts:22`), so only a hard kill strands it in `dist/`, and no
+startup reaper covers this pattern (unlike the preview temp dirs,
+`preview/lifecycle.ts:47-68`). Mitigating: it is a dotfile, so a stranded copy
+is invisible rather than visibly littering the output dir.
 
-**Recommendation:** stage both in the existing OS-tmpdir stage root
-(`build-staging.ts:161-163`) instead of the output dir.
+**Recommendation:** stage the `.ps` file in the existing OS-tmpdir stage root
+(`build-staging.ts:161-163`), as the stripped PDF already is — `stripAnnotations`
+(`ghostscript.ts:13-17`) writes `<pdf>.stripped.pdf` beside its input, but its
+only caller (`build-runner.ts:528`) runs in pdfx mode, where `rawPdf` is already
+inside the stage root (`build-runner.ts:480-482`) that is removed in a `finally`
+(`build-runner.ts:573-574`).
 
 ---
 
@@ -449,18 +590,28 @@ preview temp dirs, `preview/lifecycle.ts:47-68`).
 
 **Evidence:** the add-npm route (`src/routes/api/plugin/add-npm/+server.ts` →
 `packages/cli/src/lib/plugin-manager.ts:253-266`) **only writes a manifest
-entry**. Resolution then fails in
-`packages/cli/src/lib/markdown/plugins.ts:70-76` with instructions to run
-`cd <project> && bun add <package>` — auto-install is a deliberate policy
-(plugins.ts:34-36). The diagnostics panel doesn't even probe for Node/npm/bun
-presence (`lib/diagnostics.ts` checks only chromium/gs/qpdf).
+entry** — auto-install is a deliberate policy (plugins.ts:34-36). The entry
+then can't resolve, and the two render paths diverge. The live preview
+degrades (`preview/file-watcher.ts:139-143` supplies `onError`) and the
+Plugins panel shows "Not installed" with a copyable `npm install <pkg>` and a
+guide link (`config-helpers.ts:150-157`, `PluginsSection.svelte:68-77`; the
+loader's `cd <dir> && bun add <pkg>` text, plugins.ts:70-76, sits behind "Show
+details" at :79-81). **Build and PDF export fail-fast** — no `onError` at
+`build-runner.ts:250-253`, by design — so the project stops producing its
+deliverable entirely. The diagnostics panel never probes for Node/npm/bun
+(`lib/diagnostics.ts:65-93` probes gs/qpdf; chromium at :131).
 
-**Impact:** the packaged viewer's premise is "no Bun/Node required" — and its
-own plugin UI ends with "open a terminal, cd, and run bun," a toolchain the
-user was promised they don't need and almost certainly doesn't have. Only the
-four bundled recommended plugins (plugin-manager.ts:85-110) work out of the
-box. The reproducibility rationale is sound; the seam it's exposed through is
-wrong for the audience.
+**Impact:** the packaged viewer's premise is "no Bun/Node required" — and an
+always-visible "Add another plugin" field (`PluginsSection.svelte:110-121`)
+lets a non-technical author write a manifest entry the app can never satisfy.
+Whichever command the panel prints, recovery needs a package manager the
+product promised they don't need and almost certainly don't have; the only
+other way out is knowing to hand-remove the manifest entry. Until one of those
+happens, every PDF export for that project aborts. Only the four bundled
+recommended plugins (plugin-manager.ts:85-110 → `BUILTIN_OPTIONAL_PLUGINS`,
+renderer.ts:109-114) work out of the box, offline, with no install. The
+reproducibility rationale is sound; the seam it's exposed through is wrong for
+the audience.
 
 **Recommendation:** implement in-app install **without any external tool**:
 fetch the package tarball directly from the npm registry
@@ -469,34 +620,61 @@ extract with a pure-JS untar (the repo already uses `fflate` for the butler
 download — the identical pattern), and place it under the project's
 `plugins/` dir, recording the exact version in the manifest. This keeps
 builds reproducible (pinned version, vendored into the project) and stays
-inside the "no external binaries" architecture rule. Interim cheaper option:
-expand the bundled recommended set and label npm plugins "requires a developer
-toolchain" *before* the user adds one, not after.
+inside the "no external binaries" architecture rule. Interim cheaper options:
+expand the bundled recommended set; harden the existing pre-add caveat
+(`PluginsSection.svelte:120`, "A plugin added by name must already be
+installed in your project") into an explicit "requires npm or Bun on your
+machine" warning at the point of entry; and add a one-click "remove this
+entry" action on the failed row, so a stuck export doesn't require editing
+`manifest.yaml` by hand.
 
-### V2. Silent state-save failures and the quit-time flush can drop work with no signal — **Medium**
+### V2. Silent failures on UI-state persistence (not on document saves) — **Low**
 
-**Evidence:** repeated `.catch(() => {})` on persistence calls in
-`src/routes/+page.svelte` (e.g. lines 227, 749, 1167, 1906 — per-project
-state, landing prefs, dirty-state) and on editor-buffer flushes at project
-switch/close (lines 471, 1249, 1287, 2146). The close-gate's documented
-policy (electron/main.ts:818-824) deliberately drops the final snapshot
-rather than blocking quit.
+**Evidence:** unconditional `.catch(() => {})` on the four host-state writes in
+`src/routes/+page.svelte` — 227 (per-project current page), 749
+(landing-at-startup pref), 1167 (`setDirtyState`), 1906 (per-project view
+state). `api.ts`'s `post()` throws on any non-`ok` response
+(`src/lib/api.ts:12-23`), so these swallow real failures. The four
+editor-buffer `.catch(() => {})`s at 471, 1249, 1287, 2146 are **inert**:
+`doSave()` already try/catches into `setPhase("error")` + `onError`
+(`src/lib/editor/buffer-state.svelte.ts:269-273`, wired to `toast?.error` at
+`+page.svelte:1155`) and `flush()` only awaits it
+(`buffer-state.svelte.ts:278-289`), so it never rejects. The actual close
+flush (`+page.svelte:1225`) has no `.catch` at all.
 
-**Impact:** a failed write at exactly the wrong moment loses the last edit
-with zero user-facing indication. "Never block quit" is a defensible policy;
-"never *mention* it" is not, for an audience that can't diagnose loss.
+**Impact:** a failed document save is *not* silent — it raises a "Save
+failed: …" toast plus an `error` phase, and dirty content is separately
+snapshotted for crash recovery (`buffer-state.svelte.ts:205-221`). The
+documented quit policy (`electron/main.ts:821-826`) drops only the
+version-history entry — "the edits themselves are flushed to disk regardless."
+The one defensible work-loss chain is 1167: a silently failed
+`setDirtyState(true)` leaves `rendererDirty` false, so the close gate
+(`electron/main.ts:829-831`, `const needsFlush = rendererDirty`) never
+intercepts the close and the ≤500ms debounced save
+(`buffer-state.svelte.ts:198-202`) dies with the window — inside the 1s
+recovery-snapshot delay, so nothing is offered on next launch either.
 
-**Recommendation:** keep the non-blocking policy, add the signal: persist a
-"last flush failed" marker (the prefs store's atomic-write machinery already
-exists) and surface a one-line notice on next launch ("Your last edit on
-<date> may not have been saved"). For the in-session `.catch(() => {})`
-sites, count failures and show a single non-blocking toast after N.
+**Recommendation:** narrow the fix to the state writes. Make the close gate
+fail safe — retry `setDirtyState` on failure, or default `rendererDirty` to
+true in main and let the renderer clear it — so a dropped dirty-flag push
+can't skip the flush. For the remaining prefs sites, count failures and show a
+single non-blocking toast after N. No change needed to the buffer flush sites
+or to the never-block-quit policy.
 
 ### V3. No file associations or deep links — **Medium**
 
-**Evidence:** grep of `electron/` for `open-file`, `setAsDefaultProtocolClient`,
-`fileAssociations`, second-instance argv handling: zero matches;
-`electron-builder.yml` has no `fileAssociations`/`protocols` block.
+**Evidence:** grep of `electron/` for `open-file`, `open-url`,
+`setAsDefaultProtocolClient`, `fileAssociations`: zero matches;
+`electron-builder.yml` has no `fileAssociations`/`protocols` block. A
+`second-instance` handler *does* exist (electron/main.ts:1697-1702) but it
+takes no arguments — it only restores/shows/focuses the existing window, and
+nothing under `electron/` ever reads `process.argv`. The gap is deliberate and
+documented: electron/appimage-integration.ts:181-185 notes the installed
+desktop entry carries no `%f`/`%F`/`%u`/`%U` field code, no `MimeType` and no
+custom scheme because "the viewer does not process startup argv (its
+`second-instance` handler only focuses the existing window), so advertising
+file or URL handling here would register associations that silently do
+nothing."
 
 **Impact:** double-clicking a project's `manifest.yaml` or a `.md` chapter
 does nothing app-related — the app always opens to last-project/landing.
@@ -520,19 +698,37 @@ basic obfuscation. The code's header documents this; the UI never mentions it.
 (`safeStorage.getSelectedStorageBackend() === "basic_text"`), show a one-time
 notice when the user first connects GitHub. No behavior change needed.
 
-### V5. Dead/misleading error branch for "missing manifest" — **Low**
+### V5. Mis-ordered "not a print-md project" branch, duplicated in the UI — **Low**
 
-**Evidence:** `src/lib/errors.ts:23-34` maps errors matching
+**Evidence:** `src/lib/errors.ts:23-26` maps errors matching
 `/manifest|print-md\.yaml|No such file/i` to "This doesn't look like a
-print-md project…", but the host never throws for a missing manifest (it
-returns the empty manifest, manifest.ts:60-66) — the branch is likely
-unreachable for its intended case. Also, `project-scaffold.ts:382` treats a
-third filename (`print-md.yaml`) as "already a project" that the manifest
-loader (`manifest.ts:15`) never actually loads.
+print-md project…", but a missing manifest never throws — the loader returns
+the empty manifest (`manifest.ts:60-66`). So the branch never fires for its
+intended case, and instead **shadows** the ENOENT branch beneath it
+(`errors.ts:27-29`) for any host error carrying Node's raw "no such file or
+directory" text. That is reachable today: a manifest whose `source.files`
+lists a file that isn't there raises a raw ENOENT at
+`lib/markdown/index.ts:79`, surfaced as
+`electron/preview/controller.ts:150`'s "Preview server failed to start:
+ENOENT: no such file or directory, open '…'" — and the author is told their
+project isn't a print-md project. (The common miss falls through correctly:
+`preview/lifecycle.ts:130` throws `Input path not found: …`, which matches the
+ENOENT branch.) The same regex is duplicated as live UI logic at
+`+page.svelte:539-541`, where it gates the "set it up as a book" CTA on a
+failed open (`+page.svelte:2648,2667`) — this is not dead code, and any change
+must touch both copies. Separately, `print-md.yaml` is a *documented legacy*
+manifest name (`remote-auth/github-repos.ts:123-129`) honoured by
+`project-scaffold.ts:382` but absent from `MANIFEST_FILENAMES`
+(`manifest.ts:15`); that hand-rolled check also omits `manifest.yml`, so a
+`.yml`-only project reads as adoptable and `adoptFolder` writes a second,
+lookup-winning `manifest.yaml` beside it (`project-scaffold.ts:425`).
 
-**Recommendation:** cleanup pass — reconcile the recognized-filename list and
-delete or re-point the dead copy. (If C4's recommendation lands, the branch
-becomes reachable and correct.)
+**Recommendation:** move the manifest branch below the ENOENT/permission
+branches (or narrow it to an explicit "not a print-md project" host code), and
+hoist the shared predicate out of `+page.svelte` into `errors.ts` so the CTA
+and the copy can't drift apart. Encode the legacy `print-md` stem in the
+shared constant alongside `MANIFEST_FILENAMES` and consume it from
+`project-scaffold.ts:382` instead of hardcoding two `.yaml`-only names there.
 
 ---
 
@@ -541,8 +737,19 @@ becomes reachable and correct.)
 For balance, the seams also show deliberate, verified care that should be
 preserved through any remediation:
 
-- **Uniform exit-code contract** (0/1/2/3, `lib/build-error.ts:23-31`) applied
-  across all nine commands.
+- **Exit-code contract defined in one place** (0/1/2/3, `lib/build-error.ts:23-28`)
+  and honored at the exit boundary of all nine commands (`cli.ts:10-21`) — the
+  discipline is worth keeping, but it is not yet uniform *in-pipeline*: three
+  verified deviations, all reaching the user through `print-md build`. CSS
+  findings exit **2** from the build lint gate but **1** from standalone
+  `print-md lint` (`build-runner.ts:202`, conceded as the gate's "historic exit
+  code" at :190-191; only the standalone case is pinned, `cli-contract.test.ts:156`).
+  Missing `gs`/`qpdf` exits **2** although `build-error.ts:14-16` files "missing
+  tool" under PIPELINE=3 (`build-preflight.ts:83-86`). Missing Chromium throws a
+  bare `Error` rather than a `BuildError` (`chromium.ts:95`, via
+  `build-preflight.ts:60`), so `build.ts:61-63` cannot map it — the author gets a
+  raw stack trace and exit **1**. Reconciling these three is small work and
+  restores the property CI scripts are being told to rely on.
 - **No-truncated-PDF policy**: pagination stall detection (60s no-progress)
   and a hard failure instead of shipping a partial PDF
   (`lib/pagination.ts:179-306`).
@@ -553,9 +760,14 @@ preserved through any remediation:
   gracefully, and produces a working project with zero external dependencies
   (`project-scaffold.ts:168-256`).
 - **Viewer state integrity**: atomic write-then-rename with corrupt-file
-  preservation for all stores (`prefs-store.ts`, `settings-store.ts`);
-  save-dialog-authorized PDF write paths preventing arbitrary-file overwrite
-  (`export/controller.ts:130-149`); OS-keychain token encryption.
+  preservation in the settings, prefs, and credential stores
+  (`settings-store.ts:110-137`, `prefs-store.ts:110-135`,
+  `credential-store.ts:76-103`) — the crash-draft store (`recovery.ts:97-103,
+  115-117`) is the exception, still a plain overwrite plus a silent reset on a
+  corrupt index (`recovery.ts:83-95`), and it holds the author's unsaved editor
+  buffers; save-dialog-authorized PDF write paths preventing arbitrary-file
+  overwrite (`export/controller.ts:130-149`); OS-keychain token encryption
+  (V4 covers the basic-obfuscation fallback on keyring-less Linux).
 - **Temp hygiene**: PID-marker orphan reaping and timeout-guarded shutdown so
   a wedged chokidar close can't leak temp dirs (`preview/lifecycle.ts:28-68,
   180-235`).
@@ -569,19 +781,19 @@ preserved through any remediation:
 | # | Finding | Severity | Effort | Notes |
 | --- | --- | --- | --- | --- |
 | 1 | C1 — `gs` name on Windows | Critical | Small | Copy the chromium.ts discovery pattern |
-| 2 | C3 — YAML error stack trace | Critical | Small | One try/catch in the loader |
-| 3 | D5 — publish checksums | High | Trivial | One workflow step; prerequisite for D9 |
+| 2 | D5 — publish checksums | High | Trivial | One workflow step; prerequisite for D9 |
+| 3 | C3 — YAML error stack trace | High | Small | One try/catch in the loader |
 | 4 | C2 — hardcoded ICC path | High | Small | Embed profile or drop the flag |
-| 5 | C4 — silent empty-manifest build | High | Small | Fail with guidance in `resolveBuildContext` |
-| 6 | D2 — Intel mac viewer | High | Small | Explicit `arch` in electron-builder |
-| 7 | D3 — mac update notifier | High | Medium | Check-only, no signing needed |
-| 8 | V1 — plugin install seam | High | Medium | Registry-tarball fetch, pure JS |
-| 9 | C5 — `explicit` inconsistency | Medium | Trivial | Two call sites |
-| 10 | D7 — Docker tag drift | Medium | Trivial | Use normalized version output |
-| 11 | C10 — add `doctor` | Low | Small | Backend already exists; high leverage |
-| 12 | C6/C7 — typo handling | Medium | Small | Guarded fallback + unknown-flag reject |
-| 13 | D9 — winget/brew/scoop | Medium | Medium | Depends on #3 |
-| 14 | V2 — silent save failures | Medium | Small | Marker + next-launch notice |
+| 5 | D2 — Intel mac viewer | High | Small | Explicit `arch` in electron-builder |
+| 6 | D3 — mac update notifier | High | Medium | Check-only, no signing needed |
+| 7 | V1 — plugin install seam | High | Medium | Registry-tarball fetch, pure JS |
+| 8 | C5 — `explicit` inconsistency | Medium | Trivial | Two call sites |
+| 9 | C4 — missing manifest never reported | Medium | Small | Fail with guidance in `resolveBuildContext` |
+| 10 | C6/C7 — typo handling | Medium | Small | Guarded fallback + unknown-flag reject |
+| 11 | D9 — winget/brew/scoop | Medium | Medium | Depends on #2 |
+| 12 | C10 — add `doctor` | Low | Small | Backend already exists; high leverage |
+| 13 | D7 — Docker spurious `v` tag | Low | Trivial | Normalize the dispatched tag input |
+| 14 | V2 — silent UI-state writes | Low | Small | Fail-safe dirty flag; toast after N |
 | 15 | D1/D4 — code signing | — | — | **Accepted limitation**; revisit when funded |
 
 Everything not listed (C8, C11–C14, V3–V5, D6, D8) is tracked above with a
