@@ -15,6 +15,13 @@ outright factual error; where it settled a question empirically — the pinned
 `citty@0.2.2` parser's handling of undeclared flags, the published v0.8.3
 release assets — the finding says so rather than hedging.
 
+That correction pass landed *after* the remediation commit recorded below, so
+the fixes were built against the original wording. It changed severities, scope,
+and evidence — D9 in particular asserted that no install script existed, when
+`packages/cli/scripts/install.sh` and `install.ps1` were already present and
+tracked — but it changed none of the **Recommendations** the fixes were built
+against, so the resolution table and the corrected findings remain consistent.
+
 The review question: *what will actually go wrong for a non-technical author,
 per operating system and install scenario, based solely on what the code does?*
 
