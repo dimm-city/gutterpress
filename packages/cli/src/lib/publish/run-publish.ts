@@ -5,13 +5,16 @@
  * routes) render.
  *
  * The orchestrator does NOT build. Publishing consumes an existing artifact;
- * front-ends that want build-then-publish run `runBuild` first (the CLI's
- * `--build` flag does exactly that). This keeps puppeteer-core out of the
- * publish path (CLAUDE.md §2).
+ * front-ends that want build-then-publish call `runBuild` (build-runner.ts)
+ * themselves first — `print-md publish` has no build flag of its own, and the
+ * viewer's export flow builds via its own Save-PDF pipeline before handing the
+ * chosen path to this module as an explicit `artifactPath`. This keeps
+ * puppeteer-core out of the publish path (CLAUDE.md §2).
  */
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { loadManifestWithPath, resolveConfig } from "../manifest.ts";
+import { artifactName, BOOK_HTML, resolveOutputDir } from "../output-paths.ts";
 import { publishProviderFor } from "./registry.ts";
 import type {
   PreflightIssue,
@@ -54,7 +57,7 @@ export async function resolvePublishRequest(
   deps: PublishDeps,
 ): Promise<PublishRequest> {
   const provider = publishProviderFor(options.providerId);
-  const { manifest } = await loadManifestWithPath(
+  const { manifest, manifestDir } = await loadManifestWithPath(
     options.manifestPath ?? options.projectDir,
     { explicit: options.manifestPath !== undefined },
   );
@@ -79,10 +82,17 @@ export async function resolvePublishRequest(
     ? { ...deps, credentialAccount: effectiveAccount }
     : deps;
 
-  const outDir = path.resolve(options.projectDir, config.output.dir);
+  // Output location is the shared convention (../output-paths.ts), anchored
+  // on the MANIFEST's directory — the same anchor `resolveBuildContext`
+  // (build-runner.ts) uses for the build that actually produced the artifact.
+  // Previously this resolved against `options.projectDir` instead, which
+  // silently disagreed with the build whenever `--manifest` pointed outside
+  // the project positional (e.g. a shared manifest one level up) and left
+  // publish preflight looking for an artifact in the wrong directory.
+  const outDir = resolveOutputDir(manifestDir, config.title);
   const defaultArtifact =
     provider.info.format === "pdf"
-      ? path.join(outDir, config.output.filename)
+      ? path.join(outDir, artifactName(config.title, "pdf"))
       : outDir;
   const artifact: PublishArtifact = {
     path: options.artifactPath
@@ -160,11 +170,23 @@ async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue
   return [];
 }
 
+/** The build fingerprint every build writes into its output dir (build-fingerprint.ts's
+ * private FINGERPRINT_FILENAME — not exported there, so mirrored here as a literal
+ * rather than touching that module for this change). */
+const BUILD_FINGERPRINT_FILENAME = "build-fingerprint.json";
+
 /**
  * The html "artifact" is a whole directory that gets deployed AS-IS, so it
  * must actually contain the site — and the author must know when unrelated
- * build outputs (the sellable PDF, staged publish packages) would go public
- * with it.
+ * build outputs would go public with it.
+ *
+ * Previously this checked a hard-coded two-name list (`book.pdf`, `publish`).
+ * Both the PDF filename and the output directory are conventions now
+ * (`<title-slug>-pdf.pdf` / `-pdfx.pdf`, see ../output-paths.ts) rather than
+ * one fixed name, and `build-fingerprint.json` sits in the same directory
+ * unwarned-about — so the gate scans the directory's own entries for
+ * anything that LOOKS like a stray build artifact (any `*.pdf` file, or the
+ * fingerprint file) instead of matching specific names.
  */
 async function htmlDirIssues(dir: string): Promise<PreflightIssue[]> {
   const issues: PreflightIssue[] = [];
@@ -173,20 +195,18 @@ async function htmlDirIssues(dir: string): Promise<PreflightIssue[]> {
       () => true,
       () => false,
     );
-  if (!(await isThere("book.html"))) {
+  if (!(await isThere(BOOK_HTML))) {
     issues.push({
       severity: "error",
       id: "publish/html-export-missing",
-      message: `${dir} has no book.html — it isn't an HTML export. ${HTML_HINT}`,
+      message: `${dir} has no ${BOOK_HTML} — it isn't an HTML export. ${HTML_HINT}`,
     });
   }
-  const extras = (
-    await Promise.all(
-      ["book.pdf", "publish"].map(async (rel) =>
-        (await isThere(rel)) ? rel : null,
-      ),
-    )
-  ).filter((rel): rel is string => rel !== null);
+
+  const entries = await readdir(dir).catch(() => [] as string[]);
+  const extras = entries.filter(
+    (name) => name.toLowerCase().endsWith(".pdf") || name === BUILD_FINGERPRINT_FILENAME,
+  );
   if (extras.length > 0) {
     issues.push({
       severity: "warning",

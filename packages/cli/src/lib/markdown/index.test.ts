@@ -33,7 +33,7 @@ async function makeProject(): Promise<string> {
   return dir;
 }
 
-test("styles:-less manifest + styles/book.css on disk links book.css in a real build (not the phantom css/print.css)", async () => {
+test("styles:-less manifest + styles/book.css on disk inlines book.css in a real build (not the phantom css/print.css)", async () => {
   const dir = await makeProject();
   // No `styles:` key at all — the exact "hand-written manifest" / "adopted
   // folder" shape the finding calls out.
@@ -54,7 +54,8 @@ test("styles:-less manifest + styles/book.css on disk links book.css in a real b
   });
 
   const html = await readFile(htmlFile, "utf8");
-  expect(html).toContain('<link rel="stylesheet" href="styles/book.css">');
+  // The conventional fallback is what gets INLINED (no <link> is emitted at all).
+  expect(html).toContain("--x: 1");
   expect(html).not.toContain("css/print.css");
 });
 
@@ -72,6 +73,8 @@ test("styles:-less manifest with NO conventional stylesheet on disk emits no pha
   });
 
   const html = await readFile(htmlFile, "utf8");
+  // Nothing is ever <link>ed now — CSS is inlined — and an absent conventional
+  // stylesheet must not conjure a phantom reference to one either.
   expect(html).not.toContain("<link rel=\"stylesheet\"");
   expect(html).not.toContain("css/print.css");
 });
@@ -84,7 +87,9 @@ test("an explicit manifest `styles:` list still wins over styles/book.css", asyn
     "utf8",
   );
   await mkdir(join(dir, "styles"), { recursive: true });
-  await writeFile(join(dir, "styles", "book.css"), ":root{}", "utf8");
+  await writeFile(join(dir, "styles", "book.css"), ":root{--from-book-css:1}", "utf8");
+  await mkdir(join(dir, "my"), { recursive: true });
+  await writeFile(join(dir, "my", "custom.css"), ":root{--from-custom:1}", "utf8");
   await writeFile(join(dir, "01.md"), "# Chapter One\n", "utf8");
 
   const config = resolveConfig({}, { title: "Explicit", styles: ["my/custom.css"] });
@@ -96,8 +101,9 @@ test("an explicit manifest `styles:` list still wins over styles/book.css", asyn
   });
 
   const html = await readFile(htmlFile, "utf8");
-  expect(html).toContain('<link rel="stylesheet" href="my/custom.css">');
-  expect(html).not.toContain("styles/book.css");
+  // The explicit list is what gets INLINED; the conventional fallback is not.
+  expect(html).toContain("--from-custom");
+  expect(html).not.toContain("--from-book-css");
 });
 
 /**

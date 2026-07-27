@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { assembleBookHtml } from "./assemble";
+import { inlineStyles } from "../asset-inline";
 import { renderChapters } from "./index";
 
 /**
@@ -36,11 +37,14 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
       files,
     });
 
-    // Pure path: same inputs, in-memory reader.
+    // Pure path: same inputs, in-memory reader. The node wrapper's ONLY extra
+    // job is reading + inlining the stylesheets, so feeding the pure assembler
+    // that same inlined CSS must reproduce its output byte for byte.
+    const { css: projectCss } = await inlineStyles(dir, ["css/print.css"]);
     const pureHtml = await assembleBookHtml({
       files,
       readText: (rel) => Promise.resolve(FILES[rel] ?? Promise.reject(new Error(`no ${rel}`))),
-      styles: ["css/print.css"],
+      projectCss,
       title: "My Book",
     });
 
@@ -53,7 +57,11 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
     expect(pureHtml).toContain("data-pagedjs-polyfill");
     expect(pureHtml).not.toMatch(/https?:\/\//);
     expect(pureHtml).not.toMatch(/unpkg/);
-    expect(pureHtml).toContain('<link rel="stylesheet" href="css/print.css">');
+    // CSS is INLINED, never <link>ed — that is what makes a stylesheet's
+    // location irrelevant to the output (themes, shared design systems).
+    expect(pureHtml).not.toContain("<link rel=\"stylesheet\"");
+    expect(pureHtml).toContain("<style data-project-css>");
+    expect(pureHtml).toContain("body{}");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -62,6 +70,8 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
 test("assembleBookHtml wrapChapters parity with renderChapters", async () => {
   const dir = await mkdtemp(join(tmpdir(), "pmd-assemble-wrap-"));
   try {
+    await mkdir(join(dir, "css"), { recursive: true });
+    await writeFile(join(dir, "css/print.css"), "body{}", "utf-8");
     for (const [name, body] of Object.entries(FILES)) {
       await writeFile(join(dir, name), body, "utf-8");
     }
@@ -72,10 +82,11 @@ test("assembleBookHtml wrapChapters parity with renderChapters", async () => {
       files,
       wrapChapters: true,
     });
+    const { css: wrapCss } = await inlineStyles(dir, ["css/print.css"]);
     const pureHtml = await assembleBookHtml({
       files,
       readText: (rel) => Promise.resolve(FILES[rel]!),
-      styles: ["css/print.css"],
+      projectCss: wrapCss,
       title: "Doc",
       wrapChapters: true,
     });
@@ -88,6 +99,6 @@ test("assembleBookHtml wrapChapters parity with renderChapters", async () => {
 
 test("assembleBookHtml throws on empty file list", async () => {
   await expect(
-    assembleBookHtml({ files: [], readText: () => Promise.resolve(""), styles: [] }),
+    assembleBookHtml({ files: [], readText: () => Promise.resolve("") }),
   ).rejects.toThrow(/no markdown files/i);
 });

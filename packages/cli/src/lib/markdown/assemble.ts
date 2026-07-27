@@ -15,6 +15,7 @@
 import { PAGED_CSS } from "./markdown-it-paged.js";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
+import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
 import { pagedjsPolyfillTag } from "../pagedjs-marker";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
@@ -40,8 +41,19 @@ export interface AssembleBookHtmlOptions {
   files: string[];
   /** Async reader the assembler uses to fetch each file's contents. */
   readText: ReadText;
-  /** Project-root-relative CSS hrefs to `<link>` (already resolved by the host). */
-  styles: string[];
+  /**
+   * Fully-inlined project CSS (fonts already embedded as `data:` URIs by
+   * `lib/asset-inline.ts`). Emitted as a `<style data-project-css>` block —
+   * NOT as `<link href>`.
+   *
+   * Inlining is what makes a stylesheet's location irrelevant to the output, so
+   * themes (`themes/<id>/theme.css`) and shared design systems
+   * (`../design-guide/styles/guide.css`) need no copying, no flattening and no
+   * destination indirection. It is also what Paged.js does to the document
+   * anyway — it deletes every `<link>`/`<style>` and re-emits the CSS inline —
+   * so a `<link>` never survived the render path to begin with.
+   */
+  projectCss?: string;
   title?: string;
   plugins?: LoadedPlugin[];
   pluginCss?: string;
@@ -80,6 +92,16 @@ export interface AssembleBookHtmlOptions {
    * `Promise<string>` back).
    */
   onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
+  /**
+   * Every image reference the assembled document emits, deduped and in document
+   * order — markdown image tokens (recorded by `registerImageRule`) plus raw
+   * HTML `<img src>` found by scanning the output.
+   *
+   * This is what makes "referenced means shipped" true: the build turns these
+   * into its copy plan (`planImageCopies`), so no author-maintained directory
+   * list can drift from what the book actually uses.
+   */
+  onImageRefs?: (refs: string[]) => void;
 }
 
 /**
@@ -92,7 +114,7 @@ export interface AssembleBookHtmlOptions {
  */
 export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<string> {
   const title = opts.title ?? "Document";
-  const styles = opts.styles;
+  const projectCss = opts.projectCss ?? "";
   const pluginCss = opts.pluginCss ?? "";
   const files = opts.files;
 
@@ -109,6 +131,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // and IDs; print-md core itself does not impose a separate file-level
   // wrapper on top of that.
   let bodyContent = "";
+  const imageRefs = new Set<string>();
   for (const file of files) {
     // ONE canonical identity per chapter (see chapter-id.ts): the same
     // normalized string is used to resolve the file AND as the data-chapter-src
@@ -129,11 +152,12 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     // ONLY change needed to make ~150 lines of already-written, already-tested
     // author-mistake diagnostics (§6: the plugin still owns computing them)
     // observable to a caller.
-    const env: { layoutWarnings?: LayoutWarning[] } = {};
+    const env: { layoutWarnings?: LayoutWarning[] } & ImageRefEnv = {};
     const rendered = md.render(content, env);
     if (env.layoutWarnings && env.layoutWarnings.length > 0) {
       opts.onChapterWarnings?.(chapterId, env.layoutWarnings);
     }
+    for (const ref of env.imageRefs ?? []) imageRefs.add(ref);
     if (opts.wrapChapters) {
       const safe = chapterId.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
       bodyContent += `<div class="pmd-chapter" data-chapter-src="${safe}">\n${rendered}\n</div>\n`;
@@ -142,13 +166,23 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     }
   }
 
+  // Raw HTML <img> (author-written or plugin-emitted) never passes through the
+  // markdown image rule, so scan the assembled body for it too.
+  if (opts.onImageRefs) {
+    for (const ref of collectHtmlImageRefs(bodyContent)) imageRefs.add(ref);
+    opts.onImageRefs([...imageRefs]);
+  }
+
   // Inject markdown-it-paged + user-plugin CSS as a single <style> block.
   // PAGED_CSS is treated identically to user plugin css — the only built-in
   // plugin that ships CSS routes through the same pipeline as user plugins,
   // so the cascade story is uniform.
+  // Cascade order: layout primitives, then plugin CSS, then the author's own
+  // stylesheets last so project rules win at equal specificity.
   const inlineCss = [
     `/* markdown-it-paged */\n${PAGED_CSS.trim()}`,
     pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
+    projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");
 
   return `<!DOCTYPE html>
@@ -157,8 +191,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
-  ${styles.map(s => `<link rel="stylesheet" href="${s}">`).join('\n  ')}
-  <style>\n${inlineCss}\n</style>
+  <style data-project-css>\n${inlineCss}\n</style>
   ${pagedjsPolyfillTag()}
 </head>
 <body>

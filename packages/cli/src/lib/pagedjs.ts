@@ -116,14 +116,14 @@ export const BREAK_INSIDE_HANDLER = `
 
 
 /**
- * Inject the Paged.js polyfill + render-complete marker into an HTML file.
- * Modifies the file in-place.
+ * Inject the Paged.js polyfill + render-complete marker into an HTML STRING.
+ *
+ * Pure so the build can paginate an in-memory copy: the shipped `book.html`
+ * must never carry the polyfill `<script src>` (it is a build-time engine, not
+ * part of the artifact), and the pagination server serves this patched string
+ * as an overlay instead of writing it to disk.
  */
-export async function patchHtmlForPagedjs(
-  htmlPath: string,
-  vendorPath: string
-): Promise<void> {
-  const html = await readFile(htmlPath, "utf8");
+export function patchHtmlStringForPagedjs(html: string, vendorPath: string): string {
   // Detection MUST use only the stable marker/filename regex owned by
   // pagedjs-marker.ts — never a bare `pagedjs` substring test. A document
   // whose body TEXT merely mentions "pagedjs" (e.g. this project's own user
@@ -131,32 +131,29 @@ export async function patchHtmlForPagedjs(
   // previously fell through to a branch that injected the break handler
   // WITHOUT the polyfill script, so Paged.js never loaded and
   // __PAGED_RENDERED__ never fired (see finding #22 / the 60-minute stall).
-  const hasPagedSlot = pagedjsPolyfillTagRegex().test(html);
-
-  let patched = html;
   const inject = `${BREAK_INSIDE_HANDLER}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
 
-  if (hasPagedSlot) {
+  const match = html.match(pagedjsPolyfillTagRegex());
+  if (match) {
     // Paged.js slot already present — replace it (stable marker, or a legacy
     // paged.polyfill src) with handler + local vendor copy so
     // PagedConfig.before is set before execution.
-    const match = patched.match(pagedjsPolyfillTagRegex());
-    if (match) {
-      patched = patched.replace(match[0], inject);
-      await writeFile(htmlPath, patched, "utf8");
-      return;
-    }
-    // Defensive fallback: hasPagedSlot used the same regex, so this should be
-    // unreachable, but if it ever diverges, always fall through to a FULL
-    // injection (handler + polyfill) — never handler-only — so the polyfill
-    // is guaranteed present either way.
+    return html.replace(match[0], inject);
   }
 
-  if (patched.includes("</head>")) {
-    patched = patched.replace("</head>", `${inject}\n</head>`);
-  } else {
-    patched = inject + "\n" + patched;
+  if (html.includes("</head>")) {
+    return html.replace("</head>", `${inject}\n</head>`);
   }
+  return inject + "\n" + html;
+}
 
-  await writeFile(htmlPath, patched, "utf8");
+/**
+ * File-in-place wrapper around {@link patchHtmlStringForPagedjs}.
+ */
+export async function patchHtmlForPagedjs(
+  htmlPath: string,
+  vendorPath: string
+): Promise<void> {
+  const html = await readFile(htmlPath, "utf8");
+  await writeFile(htmlPath, patchHtmlStringForPagedjs(html, vendorPath), "utf8");
 }

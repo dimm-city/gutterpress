@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { strToU8, zipSync } from "fflate";
 import { FileTokenStore } from "../remote-auth/token-store";
+import { artifactName, BOOK_HTML, resolveOutputDir } from "../output-paths";
 import { listPublishProviders, publishProviderFor } from "./registry";
 import { runPublish, resolvePublishRequest } from "./run-publish";
 import { connectPublishProvider } from "./connect";
@@ -74,10 +75,14 @@ async function requestFor(
   return resolvePublishRequest({ projectDir: dir, providerId, artifactPath }, deps);
 }
 
-async function withPdfArtifact(dir: string): Promise<string> {
-  const out = path.join(dir, "dist");
+// Output location is the shared `dist/<title-slug>/` convention
+// (output-paths.ts), so the artifact this writes must match whatever title
+// the caller's manifest declares — "Test Book" (the shared MANIFEST fixture)
+// unless a test's own manifest sets something else.
+async function withPdfArtifact(dir: string, title = "Test Book"): Promise<string> {
+  const out = resolveOutputDir(dir, title);
   await mkdir(out, { recursive: true });
-  const pdf = path.join(out, "book.pdf");
+  const pdf = path.join(out, artifactName(title, "pdf"));
   await writeFile(pdf, "%PDF-1.4 fake");
   return pdf;
 }
@@ -363,11 +368,16 @@ test("drivethrurpg upload stages a package with the PDF and LISTING.md", async (
     expect(result.outcome?.kind).toBe("guided");
     if (result.outcome?.kind !== "guided") throw new Error("unreachable");
     const pkg = result.outcome.packageDir;
-    expect(pkg).toBe(path.join(dir, "dist", "publish", "drivethrurpg"));
+    expect(pkg).toBe(
+      path.join(resolveOutputDir(dir, "Test Book"), "publish", "drivethrurpg"),
+    );
     const listing = await readFile(path.join(pkg, "LISTING.md"), "utf8");
     expect(listing).toContain("Test Book");
     expect(listing).toContain("Tester");
-    const pdf = await readFile(path.join(pkg, "book.pdf"), "utf8");
+    const pdf = await readFile(
+      path.join(pkg, artifactName("Test Book", "pdf")),
+      "utf8",
+    );
     expect(pdf).toContain("%PDF");
     expect(result.outcome.openUrl).toContain("drivethrurpg.com");
     expect(result.outcome.checklist.length).toBeGreaterThan(2);
@@ -381,7 +391,7 @@ test("drivethrurpg opens the existing product page when configured", async () =>
     `title: T\nauthors: [A]\npublish:\n  drivethrurpg:\n    productUrl: https://www.drivethrurpg.com/product/1234\n`,
   );
   try {
-    await withPdfArtifact(dir);
+    await withPdfArtifact(dir, "T");
     const deps = await depsFor(dir);
     const req = await requestFor(dir, "drivethrurpg", deps);
     const outcome = await drivethrurpgProvider.upload(req);
@@ -763,7 +773,7 @@ test("shopify never sends the token to a non-myshopify.com host", async () => {
 test("azure-swa preflight requires book.html and warns about extra dist content", async () => {
   const dir = await tempProject("title: T\nauthors: [A]\n");
   try {
-    const out = path.join(dir, "dist");
+    const out = resolveOutputDir(dir, "T");
     await mkdir(out, { recursive: true });
     const deps = await depsFor(dir, {
       env: { SWA_CLI_DEPLOYMENT_TOKEN: "tok", SWA_CLI_PATH: "/opt/swa" },
@@ -777,19 +787,24 @@ test("azure-swa preflight requires book.html and warns about extra dist content"
     expect(result.ok).toBe(false);
     expect(result.issues.some((i) => i.id === "publish/html-export-missing")).toBe(true);
 
-    // Export present but the sellable PDF sits next to it → warning.
-    await writeFile(path.join(out, "book.html"), "<html></html>");
-    await writeFile(path.join(out, "book.pdf"), "%PDF");
+    // Export present but the sellable PDF and the build fingerprint sit next
+    // to it → warning. Named by convention now (`t-pdf.pdf`, not a fixed
+    // `book.pdf`), which is exactly what the extras gate must still catch by
+    // scanning for `*.pdf` rather than one hard-coded name.
+    await writeFile(path.join(out, BOOK_HTML), "<html></html>");
+    await writeFile(path.join(out, artifactName("T", "pdf")), "%PDF");
+    await writeFile(path.join(out, "build-fingerprint.json"), "{}");
     result = await runPublish(
       { projectDir: dir, providerId: "azure-swa", dryRun: true },
       deps,
     );
     expect(result.ok).toBe(true);
-    expect(
-      result.issues.some(
-        (i) => i.id === "publish/html-dir-extras" && i.severity === "warning",
-      ),
-    ).toBe(true);
+    const extras = result.issues.find(
+      (i) => i.id === "publish/html-dir-extras" && i.severity === "warning",
+    );
+    expect(extras).toBeDefined();
+    expect(extras!.message).toContain(artifactName("T", "pdf"));
+    expect(extras!.message).toContain("build-fingerprint.json");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -798,7 +813,10 @@ test("azure-swa preflight requires book.html and warns about extra dist content"
 test("publish preflight flags a missing manifest title (no 'Document' fallback)", async () => {
   const dir = await tempProject("authors: [A]\n");
   try {
-    await withPdfArtifact(dir);
+    // No title in the manifest → resolveConfig's "Document" placeholder, so
+    // the artifact must sit at THAT slug for resolvePublishRequest to find it
+    // (project.title below stays the raw, unplaceholdered "" on purpose).
+    await withPdfArtifact(dir, "Document");
     const deps = await depsFor(dir);
     const req = await requestFor(dir, "shopify", deps);
     expect(req.project.title).toBe("");

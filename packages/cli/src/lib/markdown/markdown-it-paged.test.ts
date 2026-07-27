@@ -1117,7 +1117,6 @@ describe("author-facing image/block utilities — rendered output (M17)", () => 
     const html = await assembleBookHtml({
       files: ["01-page.md"],
       readText: async () => "![Art](art.jpg){.full-bleed}\n",
-      styles: [],
       title: "Utility class build test",
     });
 

@@ -6,7 +6,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig } from "../lib/manifest";
@@ -85,7 +85,6 @@ describe("Check Registry", () => {
     expect(assetIds).toContain("asset.image.alpha-channel");
     expect(assetIds).toContain("asset.image.tac-raster");
     expect(assetIds).toContain("asset.font.approved-files");
-    expect(assetIds).toContain("asset.font.missing-refs");
     expect(assetIds).toContain("asset.font.license");
   });
 
@@ -748,11 +747,80 @@ describe("Local markdown refs check", () => {
     );
 
     const check = getCheckById("source.links.local-refs")!;
-    const ctx = makeCtx({ markdownFiles: [mainFile] });
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
     const results = await check.run(ctx);
 
     expect(results).toHaveLength(3);
     expect(results.every((r) => r.severity === "error")).toBe(true);
+  });
+
+  // ARCH: local-refs previously called existsSync on the still-percent-encoded
+  // destination, so a correct `![](my%20photo.png)` — the only bracket-less
+  // spelling CommonMark renders for a space in a filename — was reported as
+  // missing and hard-failed `print-md build`. Fixed by decoding (via
+  // lib/asset-inline.ts's `decodeRef`) before the existence probe.
+  test("percent-decodes a space before probing the filesystem", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    await writeFile(join(dir, "my photo.png"), "fake-bytes");
+    const mainFile = join(dir, "main.md");
+    await writeFile(mainFile, "![a photo](my%20photo.png)\n");
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(0);
+  });
+
+  // Same bug, non-ASCII case: `café.png` is authored as `caf%C3%A9.png`.
+  test("percent-decodes a non-ASCII escape before probing the filesystem", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    await writeFile(join(dir, "café.png"), "fake-bytes");
+    const mainFile = join(dir, "main.md");
+    await writeFile(mainFile, "![coffee](caf%C3%A9.png)\n");
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(0);
+  });
+
+  // ARCH: the build resolves an IMAGE ref against the PROJECT ROOT
+  // (planImageCopies, lib/asset-inline.ts — book.html itself sits at the
+  // output root), not against the chapter file's own directory. A chapter one
+  // folder deep referencing a root-relative image was previously checked
+  // against `<chapterDir>/art/cover.png` and reported as missing even though
+  // the build resolves — and finds — it fine.
+  test("resolves an image ref from a subfolder chapter against the project root", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    await mkdir(join(dir, "chapters"), { recursive: true });
+    await mkdir(join(dir, "art"), { recursive: true });
+    await writeFile(join(dir, "art", "cover.png"), "fake-bytes");
+    const chapterFile = join(dir, "chapters", "01-intro.md");
+    await writeFile(chapterFile, "![cover](art/cover.png)\n");
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [chapterFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(0);
+  });
+
+  // Counterpart: a non-image LINK (e.g. chapter-to-chapter) is never touched
+  // by the renderer, so it keeps resolving relative to the LINKING file.
+  test("still resolves a non-image link relative to the linking chapter file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    await mkdir(join(dir, "chapters"), { recursive: true });
+    await writeFile(join(dir, "chapters", "02-next.md"), "# Next\n");
+    const chapterFile = join(dir, "chapters", "01-intro.md");
+    await writeFile(chapterFile, "[next chapter](./02-next.md)\n");
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [chapterFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(0);
   });
 });
 
@@ -794,15 +862,6 @@ describe("Source accessibility checks", () => {
 
     expect(results).toHaveLength(1);
     expect(results[0]!.severity).toBe("warning");
-  });
-});
-
-describe("Missing font refs check", () => {
-  test("returns empty when no cssFiles", async () => {
-    const check = getCheckById("asset.font.missing-refs")!;
-    const ctx = makeCtx({ cssFiles: [] });
-    const results = await check.run(ctx);
-    expect(results).toHaveLength(0);
   });
 });
 
@@ -1037,7 +1096,6 @@ describe("Tool Check", () => {
       "source.accessibility.heading-order",
       "asset.image.file-size",
       "asset.font.approved-files",
-      "asset.font.missing-refs",
       "asset.font.license",
       "heuristic.chunking.section-density",
       // Phase 1 — pure JS

@@ -51,17 +51,12 @@ describe("manifest-config", () => {
           "  files:",
           "    - chapter-01.md",
           "    - chapter-02.md",
-          "  assets:",
-          "    - css",
-          "output:",
-          "  filename: my-book.pdf",
           "",
         ].join("\n"),
       );
       const fields = await readManifestFields(dir);
       expect(fields.title).toBe("My Book");
       expect(fields.authors).toEqual(["Ada Lovelace", "Charles Babbage"]);
-      expect(fields.outputFilename).toBe("my-book.pdf");
       expect(fields.sourceFiles).toEqual(["chapter-01.md", "chapter-02.md"]);
     });
 
@@ -108,24 +103,12 @@ describe("manifest-config", () => {
       expect(onDisk).toContain("- One Author");
     });
 
-    test("updates nested output.filename without touching other output keys", async () => {
+
+    test("updates source.files and leaves sibling keys untouched", async () => {
       const dir = projectDir();
       writeManifest(
         dir,
-        ["output:", "  filename: old.pdf", "  dir: ./out", ""].join("\n"),
-      );
-
-      await setManifestFields(dir, { outputFilename: "new.pdf" });
-      const onDisk = readManifest(dir);
-      expect(onDisk).toContain("filename: new.pdf");
-      expect(onDisk).toContain("dir: ./out");
-    });
-
-    test("updates source.files and preserves source.assets", async () => {
-      const dir = projectDir();
-      writeManifest(
-        dir,
-        ["source:", "  files:", "    - old.md", "  assets:", "    - css", ""].join("\n"),
+        ["preset: book", "source:", "  files:", "    - old.md", ""].join("\n"),
       );
 
       await setManifestFields(dir, { sourceFiles: ["a.md", "b.md"] });
@@ -133,8 +116,7 @@ describe("manifest-config", () => {
       expect(onDisk).toContain("- a.md");
       expect(onDisk).toContain("- b.md");
       expect(onDisk).not.toContain("old.md");
-      expect(onDisk).toContain("assets:");
-      expect(onDisk).toContain("- css");
+      expect(onDisk).toContain("preset: book");
     });
 
     test("passing sourceFiles: null deletes the source.files entry", async () => {
@@ -185,8 +167,8 @@ describe("manifest-config", () => {
     test("returns the post-write field snapshot", async () => {
       const dir = projectDir();
       writeManifest(dir, "");
-      const out = await setManifestFields(dir, { outputFilename: "book.pdf" });
-      expect(out.outputFilename).toBe("book.pdf");
+      const out = await setManifestFields(dir, { title: "Snapshot" });
+      expect(out.title).toBe("Snapshot");
     });
 
     test("accepts .yml when no .yaml exists", async () => {

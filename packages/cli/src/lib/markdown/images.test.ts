@@ -1,29 +1,61 @@
 import { test, expect } from "bun:test";
-import { normalizeImageSrc } from "./images";
+import MarkdownIt from "markdown-it";
+import { registerImageRule, collectHtmlImageRefs, type ImageRefEnv } from "./images";
 
-test("normalizeImageSrc normalizes the intended images/ prefixes", () => {
-  expect(normalizeImageSrc("./images/a.png")).toBe("images/a.png");
-  expect(normalizeImageSrc("/images/a.png")).toBe("images/a.png");
-  expect(normalizeImageSrc("images/a.png")).toBe("images/a.png");
+/** Render `src` through a markdown-it with the rule installed, returning the env. */
+function renderWith(markdown: string): { html: string; env: ImageRefEnv } {
+  const md = new MarkdownIt({ html: true });
+  registerImageRule(md);
+  const env: ImageRefEnv = {};
+  const html = md.render(markdown, env);
+  return { html, env };
+}
+
+test("records every markdown image reference verbatim", () => {
+  const { env } = renderWith("![a](images/a.png)\n\n![b](art/deep/b.jpg)");
+  expect(env.imageRefs).toEqual(["images/a.png", "art/deep/b.jpg"]);
 });
 
-test("normalizeImageSrc normalizes the intended temp/images/ prefixes", () => {
-  expect(normalizeImageSrc("./temp/images/a.png")).toBe("images/a.png");
-  expect(normalizeImageSrc("/temp/images/a.png")).toBe("images/a.png");
-  expect(normalizeImageSrc("temp/images/a.png")).toBe("images/a.png");
+test("emits the src UNCHANGED — no path rewriting", () => {
+  // The old normalizeImageSrc collapsed `temp/images/x` and `./images/x` to
+  // `images/x`. That rewrite had no producer anywhere in the codebase and
+  // silently broke any author with a real `temp/images/` folder, because
+  // nothing ever created the `images/` path it invented.
+  const { html, env } = renderWith("![a](temp/images/a.png)");
+  expect(html).toContain('src="temp/images/a.png"');
+  expect(env.imageRefs).toEqual(["temp/images/a.png"]);
 });
 
-test("normalizeImageSrc leaves a literal hidden '.images' directory unchanged", () => {
-  expect(normalizeImageSrc(".images/icon.png")).toBe(".images/icon.png");
+test("a folder the author actually uses survives untouched", () => {
+  const { env } = renderWith("![a](./images/a.png)\n\n![b](assets/b.png)");
+  expect(env.imageRefs).toEqual(["./images/a.png", "assets/b.png"]);
 });
 
-test("normalizeImageSrc leaves a literal hidden '.temp/images' directory unchanged", () => {
-  expect(normalizeImageSrc(".temp/images/icon.png")).toBe(".temp/images/icon.png");
+test("records remote and data: references too (the build filters them, not the rule)", () => {
+  const { env } = renderWith("![a](https://example.com/a.png)");
+  expect(env.imageRefs).toEqual(["https://example.com/a.png"]);
 });
 
-test("normalizeImageSrc leaves unrelated paths unchanged", () => {
-  expect(normalizeImageSrc("assets/a.png")).toBe("assets/a.png");
-  expect(normalizeImageSrc("https://example.com/img.png")).toBe(
-    "https://example.com/img.png"
+test("no images means no env pollution", () => {
+  const { env } = renderWith("# just a heading");
+  expect(env.imageRefs).toBeUndefined();
+});
+
+test("collectHtmlImageRefs finds raw HTML <img> the markdown rule never sees", () => {
+  // Raw HTML and plugin-emitted markup bypass the markdown image token, so
+  // scanning the assembled body is what keeps "referenced means shipped" true
+  // for every image rather than only the markdown-authored ones.
+  const refs = collectHtmlImageRefs(
+    `<img src="a.png"><img src='b.png'><img class="x" src=c.png >`
   );
+  expect(refs).toEqual(["a.png", "b.png", "c.png"]);
+});
+
+test("collectHtmlImageRefs tolerates attributes before src and self-closing tags", () => {
+  const refs = collectHtmlImageRefs(`<img alt="hi" data-x="1" src="deep/dir/x.webp" />`);
+  expect(refs).toEqual(["deep/dir/x.webp"]);
+});
+
+test("collectHtmlImageRefs returns nothing for markup with no images", () => {
+  expect(collectHtmlImageRefs("<p>text</p>")).toEqual([]);
 });

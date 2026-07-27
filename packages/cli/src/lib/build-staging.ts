@@ -1,21 +1,28 @@
 import path from "node:path";
 import os from "node:os";
 import fsp from "node:fs/promises";
-import { copyAssets, resolveAssetDestName } from "./assets";
-import { patchHtmlForPagedjs } from "./pagedjs";
 import { pagedjsPolyfillTagRegex } from "./pagedjs-marker";
-import { BOOK_HTML_FILENAME } from "./viewer";
 import { getAssetPath } from "./embedded-assets";
 
 /**
- * Staging + HTML string-rewriting (ARCH finding #9, extracted from
- * build-runner.ts): prepares the self-contained working copy of a rendered
- * book that the pagination pass (`./pagination.ts`) reads from, and turns the
- * raw serialized-paginated DOM that pagination produces back into the
- * shippable static viewer HTML (or the runtime-pagination fallback). Neither
- * of these responsibilities touches a browser — they are pure string/fs
- * transforms build-runner.ts's two `OutputStrategy` classes call into.
+ * HTML string-rewriting for the shippable artifact: turns the raw
+ * serialized-paginated DOM that pagination produces into the static viewer HTML
+ * (or the runtime-pagination fallback). Pure string/fs transforms — no browser.
+ *
+ * The former `stagePaginationInput` is GONE. It copied `book.html` plus every
+ * asset directory into a temp dir purely so relative URLs would resolve against
+ * some root, which cost a second full copy of every asset per build and made the
+ * staged tree a second place assets could go missing. `book.html` is now
+ * self-contained (CSS and fonts inlined by `lib/asset-inline.ts`), so the
+ * pagination pass serves `outDir` directly with in-memory overlays for the
+ * engine — see `createStaticFileServer`'s `overlays` in `./pagination.ts`.
  */
+
+/** Files this module writes into `outDir`, relative — recorded in the build inventory. */
+export const NAV_SCRIPT_OUTPUTS = [
+  "preview/scripts/pagedjs-interface.js",
+  "preview/scripts/pagedjs-bridge.js",
+];
 
 /**
  * Remove the Paged.js pagination ENGINE from an already-paginated, serialized
@@ -42,6 +49,24 @@ export function stripPaginationRuntime(html: string): string {
 }
 
 /**
+ * Rewrite the build's ephemeral pagination origin back to document-relative
+ * URLs.
+ *
+ * Paged.js absolutizes every non-`data:` CSS `url()` against the sheet's origin
+ * (`replaceUrls`, paged.polyfill.js), so the serialized document comes back
+ * pointing at `http://127.0.0.1:<port>/…` — a port that dies with the build.
+ * Left alone, a shipped `book.html` references a dead origin for every
+ * content-addressed image.
+ *
+ * The leading slash is stripped along with the origin ON PURPOSE: `book.html`
+ * sits at the artifact root, so `assets/x.png` is correct and `/assets/x.png`
+ * would break any deployment under a subpath (GitHub Pages project sites).
+ */
+export function stripPaginationOrigin(html: string): string {
+  return html.replace(/https?:\/\/127\.0\.0\.1:\d+\//g, "");
+}
+
+/**
  * Inject the navigation-only toolbar scripts (page nav, zoom, view modes) into
  * the static document head. These read the pre-rendered `.pagedjs_page`
  * elements; they do not paginate.
@@ -57,14 +82,16 @@ export function injectNavigationScripts(html: string): string {
 /**
  * Turn a raw serialized paginated document into the shippable static viewer
  * `book.html`: copy the navigation toolbar scripts into outDir, strip the
- * pagination engine, wire the nav scripts, and write the file. Shared by the
- * HTML format and the PDF unification path.
+ * pagination engine and the build's ephemeral origin, wire the nav scripts, and
+ * write the file. Shared by the HTML format and the PDF unification path.
+ *
+ * Returns the output-relative paths it wrote, for the build inventory.
  */
 export async function finalizeStaticBook(
   rawSerializedHtml: string,
   htmlFile: string,
   outDir: string
-): Promise<void> {
+): Promise<string[]> {
   await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
   await fsp.copyFile(
     await getAssetPath("preview/scripts/pagedjs-interface.js"),
@@ -76,21 +103,26 @@ export async function finalizeStaticBook(
   );
   await fsp.writeFile(
     htmlFile,
-    injectNavigationScripts(stripPaginationRuntime(rawSerializedHtml)),
+    injectNavigationScripts(
+      stripPaginationOrigin(stripPaginationRuntime(rawSerializedHtml))
+    ),
     "utf-8"
   );
+  return [...NAV_SCRIPT_OUTPUTS];
 }
 
 /**
  * Fallback for `--format html` when no headless browser is available: ship the
  * Paged.js polyfill + nav scripts so the BROWSER paginates at load time (the
  * pre-SSG behavior). Slower at runtime and not pre-paginated, but it works with
- * no Chromium at build. Mirrors the historic HTML output exactly.
+ * no Chromium at build.
+ *
+ * Returns the output-relative paths it wrote, for the build inventory.
  */
 export async function shipRuntimePaginatedHtml(
   htmlFile: string,
   outDir: string
-): Promise<void> {
+): Promise<string[]> {
   await fsp.mkdir(path.join(outDir, "vendor"), { recursive: true });
   await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
   await fsp.copyFile(
@@ -111,52 +143,15 @@ export async function shipRuntimePaginatedHtml(
     '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
   );
   await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
+  return [...NAV_SCRIPT_OUTPUTS, "vendor/paged.polyfill.js"];
 }
 
 /**
- * Stage a self-contained working copy of the rendered `htmlFile` (book.html)
- * plus its flattened assets and the vendored Paged.js polyfill into `stageDir`,
- * then patch the staged HTML to load that polyfill. Both pagination passes —
- * the static-HTML `--format html` pass and the PDF render pass — need the
- * identical staged input on a local HTTP origin, so they share this sequence.
- * `stageDir` is wiped and recreated first. Returns the path to the staged book.
- */
-export async function stagePaginationInput(
-  htmlFile: string,
-  outDir: string,
-  assetDirs: string[],
-  stageDir: string
-): Promise<string> {
-  await fsp.rm(stageDir, { recursive: true, force: true });
-  await fsp.mkdir(stageDir, { recursive: true });
-  const stagedHtml = path.join(stageDir, BOOK_HTML_FILENAME);
-  await fsp.copyFile(htmlFile, stagedHtml);
-  if (assetDirs.length > 0) {
-    const flattenedAssetDirs = Array.from(
-      new Set(assetDirs.map(resolveAssetDestName))
-    );
-    await copyAssets(outDir, stageDir, flattenedAssetDirs);
-  }
-  // Vendor paged.js from embedded assets (works in compiled binary without node_modules)
-  await fsp.mkdir(path.join(stageDir, "vendor"), { recursive: true });
-  await fsp.copyFile(
-    await getAssetPath("vendor/paged.polyfill.js"),
-    path.join(stageDir, "vendor/paged.polyfill.js")
-  );
-  // Inject the break-inside handler + polyfill so pagination AND its cleanup
-  // (ghost-card dedupe, orphan-page hide) run during the pagination pass.
-  await patchHtmlForPagedjs(stagedHtml, "./vendor/paged.polyfill.js");
-  return stagedHtml;
-}
-
-/**
- * Create a unique scratch directory for a build's pagination staging under the
- * OS temp dir (mirrors the mkdtemp pattern in lib/embedded-assets.ts). Staging
- * must NOT be resolved against process.cwd(): runBuild is exported and called by
- * the viewer host, so writing scratch dirs into cwd is a hidden side effect that
- * pollutes the caller's directory and breaks concurrent builds (each build now
- * gets its own isolated stage root). Callers must remove the returned directory
- * in a finally block.
+ * Create a unique scratch directory under the OS temp dir. Now used ONLY for
+ * PDF/X intermediates (`raw.pdf`, Ghostscript work files) — never for staging
+ * assets. Must not be resolved against `process.cwd()`: `runBuild` is exported
+ * and called by the viewer host, so writing scratch dirs into the caller's
+ * directory is a hidden side effect. Callers remove it in a `finally`.
  */
 export async function createStageRoot(): Promise<string> {
   return fsp.mkdtemp(path.join(os.tmpdir(), "print-md-stage-"));

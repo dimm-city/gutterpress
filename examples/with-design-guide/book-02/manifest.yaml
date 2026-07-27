@@ -5,18 +5,13 @@ authors:
 # The book and the companion design guide (../design-guide/) both consume the
 # same stylesheet, so the guide always documents what the book actually ships.
 #
-# Note the two different paths below. `source.assets` is resolved relative to
-# THIS book's folder, so it needs `../` to reach the shared stylesheet. Assets
-# copied from a parent directory are FLATTENED to their basename in the output,
-# so `../design-guide/styles` lands at `styles/` — and `styles:` must name that
-# flattened destination, not the source path. A `../` in `styles:` would be
-# emitted verbatim into the HTML and escape the output root.
+# `styles:` names the stylesheet's REAL path. print-md READS a stylesheet and
+# inlines it into the book, so a shared stylesheet needs no copying, no asset
+# list, and no "name the flattened destination instead of the source" rule.
+# Fonts and images the stylesheet references resolve relative to the stylesheet
+# itself and travel with it automatically.
 styles:
-  - styles/guide.css
-
-source:
-  assets:
-    - ../design-guide/styles
+  - ../design-guide/styles/guide.css
 
 # Letter (8.5" x 11"). Match this to your design-guide manifest so the guide's
 # screenshots and dimensions reflect the book's real page geometry.

@@ -5,11 +5,6 @@ authors:
 styles:
   - styles/main.css
 
-source:
-  assets:
-    - styles
-    - images
-    - fonts
 
 # Page dimensions (DTRPG standard)
 page:

@@ -6,7 +6,6 @@
  */
 
 import { watch, type FSWatcher } from 'chokidar';
-import { existsSync, statSync } from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'path';
 import { info, debug, warn, error as logError } from '../utils/logger';
@@ -15,7 +14,6 @@ import { renderChapters } from '../lib/markdown/index';
 import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
-import { resolveAssetDestName } from '../lib/assets';
 import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
@@ -23,67 +21,33 @@ import { pagedjsPolyfillTagRegex } from '../lib/pagedjs-marker';
 import type { ResolvedPluginConfig } from '../schema/manifest.types';
 
 /**
- * Build the list of asset roots that live outside the input path and need
- * their own file watcher (e.g. a `../_shared` directory shared across books).
- *
- * Each entry maps an absolute source root on disk to the basename used as its
- * directory inside the temp dir — matching the layout produced by
- * `copyAssets` at startup.
- */
-function resolveExternalAssetRoots(
-  inputPath: string,
-  assets: string[] | undefined | null
-): { src: string; destName: string }[] {
-  if (!assets || assets.length === 0) return [];
-  const inputResolved = path.resolve(inputPath);
-  const roots: { src: string; destName: string }[] = [];
-  for (const assetPath of assets) {
-    const src = path.resolve(path.join(inputPath, assetPath));
-    if (!existsSync(src)) continue;
-    // Skip assets that live inside inputPath — already covered by the main watcher.
-    if (src === inputResolved || src.startsWith(inputResolved + path.sep)) continue;
-    roots.push({ src, destName: resolveAssetDestName(assetPath) });
-  }
-  return roots;
-}
-
-/**
- * Find which watch root a changed file belongs to and compute the
- * corresponding destination path inside the temp dir.
+ * Resolve a changed file's canonical, forward-slash path relative to the
+ * project root, or `null` if the file isn't under it. There is exactly ONE
+ * watch root now (the project directory — see `createFileWatcher` below):
+ * the old external-asset-root concept (a sibling `../_shared` directory
+ * mirrored under its own name in the temp dir) went away with `copyAssets`
+ * and the manifest's `source.assets` field it depended on, since a project
+ * is served straight from disk (see http-server.ts) and there is no longer
+ * a destination path to mirror INTO.
  *
  * `relativePath` is normalized to FORWARD slashes regardless of platform —
- * it is broadcast to clients (CSS hot-swap hrefs, content-update chapter
- * splices) and compared against the SPA's forward-slash chapter paths, so
+ * it is broadcast to clients (content-update chapter splices, CSS hot-swap
+ * paths) and compared against the SPA's forward-slash chapter paths, so
  * Windows `path.sep` backslashes must never leak into it.
  *
- * Exported for the chapter-identity contract tests: the `content-update`
- * broadcast derived from this value MUST equal the `data-chapter-src` the
- * build writes for the same file (see lib/markdown/chapter-id.ts).
+ * Exported for the chapter-identity contract test
+ * (lib/markdown/chapter-id.test.ts): the `content-update` broadcast derived
+ * from this value MUST equal the `data-chapter-src` the build writes for the
+ * same file (see lib/markdown/chapter-id.ts).
  */
-export function resolveDestinationForChange(
+export function describeChange(
   filePath: string,
-  inputPath: string,
-  tempDir: string,
-  externalRoots: { src: string; destName: string }[]
-): { destPath: string; relativePath: string } | null {
-  if (filePath === inputPath || filePath.startsWith(inputPath + path.sep)) {
-    const relativePath = path.relative(inputPath, filePath);
-    return {
-      destPath: path.join(tempDir, relativePath),
-      relativePath: relativePath.replace(/\\/g, "/"),
-    };
+  inputResolved: string
+): { relativePath: string } | null {
+  if (filePath !== inputResolved && !filePath.startsWith(inputResolved + path.sep)) {
+    return null;
   }
-  for (const root of externalRoots) {
-    if (filePath === root.src || filePath.startsWith(root.src + path.sep)) {
-      const relInRoot = path.relative(root.src, filePath);
-      const relativePath = path.join(root.destName, relInRoot);
-      return {
-        destPath: path.join(tempDir, relativePath),
-        relativePath: relativePath.replace(/\\/g, "/"),
-      };
-    }
-  }
-  return null;
+  return { relativePath: path.relative(inputResolved, filePath).replace(/\\/g, "/") };
 }
 
 /**
@@ -260,100 +224,80 @@ export async function renderChapterPreviewHtml(
   return injectPreviewScripts(html);
 }
 
-/** One changed file, resolved to its temp-dir mirror destination. */
-export interface ChangedDest {
-  /** Forward-slash path relative to the temp dir (broadcast to clients). */
+/**
+ * One changed file, described relative to the project root — NOT a temp-dir
+ * mirror destination. Since the project is served in place (http-server.ts
+ * reads straight from `state.currentInputPath`), a change needs no copy step
+ * and therefore carries no "did the copy actually land" flag the way the old
+ * `ChangedDest.mirrored` did; the file described here IS the served file.
+ */
+export interface ChangedFile {
+  /** Forward-slash path relative to the project root (broadcast to clients). */
   relativePath: string;
-  /** Lower-cased extension of the changed source file (e.g. ".css"). */
+  /** Lower-cased extension of the changed file (e.g. ".css"). */
   ext: string;
   /** The chokidar event that reported the change (change, unlink, …). */
   event: string;
-  /**
-   * Whether the file was actually written into the temp dir on this pass.
-   * False for deletions, directory events, and copies that failed (an editor
-   * saving via temp-file+rename can delete the source between stat and copy).
-   * Only a true mirror is eligible for the CSS hot-swap fast path, which
-   * re-fetches from the temp copy without re-rendering.
-   */
-  mirrored: boolean;
 }
 
 /**
- * Mirror every changed file into the temp directory — handles files inside
- * the input path and files inside any external asset root. Deleted files are
- * NOT copied (book.html is re-rendered from inputPath, the source of truth)
- * but still appear in the returned list so the broadcast decision sees them.
+ * Describe every changed file relative to the project root. Pure and
+ * synchronous — no fs access at all — because with serve-in-place there is
+ * nothing to copy: `book.html` is re-rendered straight from the project
+ * (the source of truth) and every other path is served directly from it, so
+ * this step is now just naming the change for the broadcast decision below,
+ * not moving any bytes. A change that doesn't resolve under `inputResolved`
+ * is dropped (defensively — there is exactly one watch root today, see
+ * `createFileWatcher`) rather than broadcast with a meaningless path.
  */
-export async function mirrorChanges(
+export function describeChanges(
   changes: [filePath: string, event: string][],
-  inputResolved: string,
-  tempDir: string,
-  externalRoots: { src: string; destName: string }[]
-): Promise<ChangedDest[]> {
-  const dests: ChangedDest[] = [];
-  for (const [changedPath, changedEvent] of changes) {
-    const dest = resolveDestinationForChange(changedPath, inputResolved, tempDir, externalRoots);
-    if (!dest) continue;
-    // A watch event can fire for a DIRECTORY (e.g. applying a theme
-    // creates `themes/<id>/`, bumping the parent dir's mtime). copyFile
-    // throws EISDIR on a directory, which previously aborted the entire
-    // rebuild and froze the live preview. The contained file gets its own
-    // event and is mirrored on its own; skip the directory itself.
-    //
-    // The whole probe+copy is also fallible AS A UNIT: editors that save via
-    // temp-file + rename can delete the file between the stat and the copy.
-    // A failed mirror must not abort the rebuild — the re-render below reads
-    // from inputPath (the source of truth), so the preview still updates.
-    //
-    // It must still be REPORTED, though — a deletion or a directory event has
-    // no copy to make and yet must reach decideBroadcast() so the preview
-    // re-renders. What it must NOT do is claim the temp copy is current:
-    // cssHotSwapPaths() re-fetches the <link> from the mirror WITHOUT
-    // re-rendering, so a swallowed copy failure on a .css file would hot-swap
-    // the client onto a stale stylesheet with nothing downstream to repair it
-    // (unlike markdown, which re-renders from inputPath). Hence `mirrored`:
-    // reported either way, but only an actually-written file is eligible for
-    // the CSS fast path.
-    let mirrored = false;
-    try {
-      if (existsSync(changedPath) && statSync(changedPath).isFile()) {
-        await fsp.mkdir(path.dirname(dest.destPath), { recursive: true });
-        await fsp.copyFile(changedPath, dest.destPath);
-        mirrored = true;
-        debug(`Updated: ${dest.relativePath}`);
-      }
-    } catch (err) {
-      debug(`Mirror skipped for ${dest.relativePath}: ${err}`);
-    }
-    dests.push({
-      relativePath: dest.relativePath,
+  inputResolved: string
+): ChangedFile[] {
+  const files: ChangedFile[] = [];
+  for (const [changedPath, event] of changes) {
+    const described = describeChange(changedPath, inputResolved);
+    if (!described) continue;
+    files.push({
+      relativePath: described.relativePath,
       ext: path.extname(changedPath).toLowerCase(),
-      event: changedEvent,
-      mirrored,
+      event,
     });
   }
-  return dests;
+  return files;
 }
 
 /**
  * CSS hot-swap fast path: a stylesheet edit doesn't change content flow, so
- * the client can re-fetch JUST those <link>s — no markdown re-render, no
- * re-pagination, no reload. Scroll position is preserved and the new styles
- * apply on the next frame. Returns the stylesheet paths to hot-swap, or null
- * unless EVERY change in the window resolved to a stylesheet.
+ * the client can re-fetch JUST that file (over HTTP, from wherever it
+ * actually lives — serve-in-place means the project's own CSS files are
+ * already reachable at their authored relative path, see http-server.ts) —
+ * no re-pagination, no reload. Scroll position is preserved and the new
+ * styles apply on the next frame. Returns the stylesheet paths to hot-swap,
+ * or null unless EVERY change in the window resolved to a still-existing
+ * stylesheet.
+ *
+ * A DELETED stylesheet is excluded on purpose: appending a fresh `<link>` to
+ * a path that now 404s would leave the live view broken with nothing
+ * downstream to correct it (unlike a deleted markdown chapter, which
+ * full-reloads from a freshly re-rendered book.html). That case — and any
+ * mixed window — falls through to `decideBroadcast`'s full-reload path below.
+ *
+ * NOTE: book.html's own `<style data-project-css>` block is re-rendered
+ * unconditionally by the caller regardless of this fast path (CSS is now
+ * INLINED there, unlike the old copied-CSS-file model where book.html never
+ * needed to change for a pure style edit) — this function only decides
+ * whether the LIVE view can skip a reload while that happens.
  * (Geometry-affecting CSS like @page size won't re-flow page boxes until a
  * content change triggers a full rebuild — acceptable for live tweaks.)
  */
-export function cssHotSwapPaths(dests: ChangedDest[], changeCount: number): string[] | null {
+export function cssHotSwapPaths(changedFiles: ChangedFile[], changeCount: number): string[] | null {
   if (
-    dests.length === changeCount &&
-    dests.length > 0 &&
-    // Every stylesheet must have actually landed in the temp dir. Hot-swapping
-    // on a failed mirror would re-fetch a stale <link> and nothing re-renders
-    // afterwards to correct it — degrade to a full update instead.
-    dests.every((d) => d.ext === '.css' && d.mirrored)
+    changedFiles.length === changeCount &&
+    changedFiles.length > 0 &&
+    changedFiles.every((f) => f.ext === '.css' && f.event !== 'unlink')
   ) {
-    return dests.map((d) => d.relativePath);
+    return changedFiles.map((f) => f.relativePath);
   }
   return null;
 }
@@ -375,7 +319,7 @@ export type BroadcastDecision =
  * or the shell can't find the chapter and degrades to a full swap.
  */
 export function decideBroadcast(
-  dests: ChangedDest[],
+  dests: ChangedFile[],
   changeCount: number,
   incremental: boolean
 ): BroadcastDecision {
@@ -398,29 +342,59 @@ export function decideBroadcast(
 }
 
 /**
- * Create and configure a file watcher for the input directory.
+ * Chokidar 5's `ignored` matcher (regex or function) is tested against the
+ * fully-qualified, forward-slash-normalized ABSOLUTE path — never a path
+ * relative to whatever root was passed to `watch()` (see chokidar's internal
+ * `matchPatterns`/`normalizePath`, which run before any matcher, function or
+ * regex, ever sees the string). The previous `ignored: /(^|[\/\\])\../`
+ * therefore matched a dot segment ANYWHERE in that absolute path — including
+ * every ANCESTOR directory of the project, not just the project's own dot
+ * files/dirs. A project rooted under a dot-prefixed parent (e.g.
+ * `~/.local/share/print-md/books/mybook`, or any `~/.config/...` tree) had
+ * every single path rejected by this rule, which silently disabled the
+ * watcher entirely — no error, just a preview that never picked up an edit.
  *
- * Watches the project's input path AND any manifest-declared asset roots
- * that live outside it (e.g. a sibling `../_shared` directory). Without the
- * external roots, edits to shared CSS like `_shared/css/core/05-components.css`
- * are never mirrored into the temp dir and the preview server never broadcasts
- * a reload.
+ * The fix: strip the (normalized) watch root off the front of the path
+ * first, and apply the dotfile rule only to what's left — i.e. to the
+ * PROJECT's own files/dirs, regardless of which ancestor directories the
+ * project itself happens to live under.
+ */
+function isDotPathUnderRoot(candidatePath: string, root: string): boolean {
+  const normalizedRoot = root.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedPath = candidatePath.replace(/\\/g, "/");
+  let rel: string;
+  if (normalizedPath === normalizedRoot) {
+    rel = "";
+  } else if (normalizedPath.startsWith(normalizedRoot + "/")) {
+    rel = normalizedPath.slice(normalizedRoot.length + 1);
+  } else {
+    // Not under the root at all — shouldn't happen (chokidar only calls this
+    // for paths under what we asked it to watch), but never silently ignore
+    // something we can't place relative to the root.
+    rel = normalizedPath;
+  }
+  if (rel === "") return false;
+  return rel.split("/").some((segment) => segment.startsWith("."));
+}
+
+/**
+ * Create and configure a file watcher for the project's input directory.
+ *
+ * Watches ONLY the project directory. The old external-asset-root watching
+ * (a sibling `../_shared` directory mirrored under its own name in the temp
+ * dir) went away with `copyAssets` and the manifest's `source.assets` field
+ * it depended on — there is no longer a place to declare a shared directory
+ * outside the project, and nothing to mirror it INTO even if there were
+ * (serve-in-place means the project's own files need no mirroring either;
+ * see http-server.ts).
  */
 export function createFileWatcher(state: ServerState): FSWatcher {
   const inputResolved = path.resolve(state.currentInputPath);
-  const externalRoots = resolveExternalAssetRoots(
-    state.currentInputPath,
-    state.config?.source?.assets
-  );
-  for (const root of externalRoots) {
-    debug(`Also watching external asset root: ${root.src} -> ${root.destName}/`);
-  }
 
-  const watchTargets = [inputResolved, ...externalRoots.map((r) => r.src)];
-  const watcher = watch(watchTargets, {
+  const watcher = watch(inputResolved, {
     persistent: true,
     ignoreInitial: true,
-    ignored: /(^|[\/\\])\../, // Ignore dot files
+    ignored: (candidatePath: string) => isDotPathUnderRoot(candidatePath, inputResolved),
     awaitWriteFinish: {
       stabilityThreshold: 100,
       pollInterval: 50,

@@ -4,7 +4,8 @@ import fsp from "node:fs/promises";
 import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPluginsWithCss } from "./markdown/plugins";
-import { copyAssets } from "./assets";
+import { planImageCopies, type AssetCopy } from "./asset-inline";
+import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
 import { prewarmBrowser, closeBrowser } from "./browser-pool";
 import {
@@ -12,7 +13,12 @@ import {
   stampCreator,
   stripAnnotations,
 } from "./ghostscript";
-import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
+import {
+  writeBuildFingerprint,
+  readPreviousOutputs,
+  pruneStaleOutputs,
+  type BuildFingerprintInput,
+} from "./build-fingerprint";
 import { getAssetPath } from "./embedded-assets";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
@@ -23,7 +29,6 @@ import { preflightBuildTools, computeGates, type Gates } from "./build-preflight
 import {
   finalizeStaticBook,
   shipRuntimePaginatedHtml,
-  stagePaginationInput,
   createStageRoot,
 } from "./build-staging";
 import {
@@ -78,6 +83,13 @@ export interface BuildRunnerOptions {
    */
   keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
+}
+
+/** What {@link renderBook} produced: the book document + its full output inventory. */
+export interface RenderedBook {
+  htmlFile: string;
+  /** Output-relative paths this stage wrote, for the build inventory. */
+  outputs: string[];
 }
 
 export interface BuildRunnerResult {
@@ -170,21 +182,19 @@ export async function resolveBuildContext(
   const config = resolveConfig(
     {
       title: opts.title,
-      output: opts.outDir ? { dir: opts.outDir } : undefined,
       pdfx: pdfxConfigOverride,
     },
     manifest
   );
 
-  // An explicit --out is already resolved (against the CWD, by splitOutPath
-  // in commands/build.ts) before it reaches here — pass it through unchanged.
-  // Otherwise, config.output.dir (relative by default, e.g. "dist") must
-  // resolve against the PROJECT being built (manifestDir), not the command's
-  // CWD — see maintainer P1 (PR #98): building multiple absolute-path projects
-  // from one CWD collided on a single shared <cwd>/dist. An absolute
-  // config.output.dir stays absolute (path.resolve ignores the base in that
-  // case).
-  const outDir = opts.outDir ?? path.resolve(manifestDir, config.output.dir);
+  // An explicit --out is already resolved (against the CWD, by splitOutPath in
+  // commands/build.ts) before it reaches here — pass it through unchanged.
+  // Otherwise the location is a CONVENTION, not configuration:
+  // `<manifestDir>/dist/<title-slug>/`. Anchoring on the manifest dir keeps
+  // multiple projects built from one CWD apart, and the per-book slug keeps
+  // multiple books in ONE tree apart — the case a single shared `dist` could
+  // never handle no matter how `output.dir` was configured.
+  const outDir = opts.outDir ?? resolveOutputDir(manifestDir, config.title);
   const gates = computeGates(format, opts, config);
 
   return { opts, format, inputDir, outDir, manifestDir, config, gates };
@@ -239,7 +249,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * Exported (not just for the pipeline) so this stage is unit-testable
  * without driving the full `runBuild` pagination/PDF machinery.
  */
-export async function renderBook(ctx: BuildContext): Promise<string> {
+export async function renderBook(ctx: BuildContext): Promise<RenderedBook> {
   const { config, manifestDir, inputDir, outDir } = ctx;
 
   if (config.source.files && config.source.files.length > 0) {
@@ -261,6 +271,13 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     log.success(`Loaded ${plugins.length} plugin(s)`);
   }
 
+  // The render reports every asset the book actually references: image `src`
+  // values (markdown tokens + raw HTML) and any CSS image too large to inline.
+  // That report IS the copy plan — there is no separate author-maintained list
+  // that could drift from it, which is what made assets silently go missing.
+  const imageRefs: string[] = [];
+  const cssAssets: AssetCopy[] = [];
+
   const htmlFile = await renderChaptersToFile(inputDir, outDir, {
     title: config.title,
     styles: config.styles,
@@ -272,26 +289,63 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
         log.warn(`  ${file}, line ${w.line}: ${w.message}`);
       }
     },
+    onImageRefs: (refs) => imageRefs.push(...refs),
+    onCssAssets: (copies) => cssAssets.push(...copies),
+    onStyleWarnings: (warnings) => {
+      for (const w of warnings) log.warn(`  ${w}`);
+    },
   });
   log.success(`Wrote ${htmlFile}`);
 
-  const assetDirs = config.source.assets;
-  if (assetDirs.length > 0) {
-    log.info("Copying assets");
-    await copyAssets(inputDir, outDir, assetDirs, {
-      onCopy: (assetPath) => log.info(`  Copied ${assetPath}/`),
-      onSkip: (assetPath, srcPath) =>
-        log.warn(`  ${assetPath}/ not found at ${srcPath} (skipping)`),
-      onCollision: ({ destName, fileName, winnerAsset, loserAsset }) =>
-        log.warn(
-          `  Asset collision: "${winnerAsset}/${fileName}" overwrites "${loserAsset}/${fileName}" ` +
-            `(both flatten to ${destName}/${fileName}). Last entry wins — rename the file or reorder ` +
-            `manifest assets if this is not intended.`
-        ),
-    });
+  const { copies: imageCopies, errors } = await planImageCopies(inputDir, imageRefs);
+  if (errors.length > 0) {
+    throw new BuildError(
+      `Cannot resolve ${errors.length} image reference(s):\n` +
+        errors.map((e) => `  - ${e}`).join("\n"),
+      1
+    );
   }
 
-  return htmlFile;
+  const copies = [...cssAssets, ...imageCopies];
+  if (copies.length > 0) {
+    log.info(`Copying ${copies.length} referenced asset(s)`);
+    await copyReferencedAssets(copies, outDir);
+  }
+
+  return {
+    htmlFile,
+    outputs: [BOOK_HTML, ...copies.map((c) => c.to)],
+  };
+}
+
+/**
+ * Copy the planned assets into `outDir`, preserving each one's output-relative
+ * path. Parallel because these are independent file copies and a book's image
+ * set is routinely in the hundreds — the old serial `copyDir` walked every
+ * asset directory one `copyFile` at a time.
+ */
+async function copyReferencedAssets(
+  copies: AssetCopy[],
+  outDir: string
+): Promise<void> {
+  const dirs = new Set(
+    copies.map((c) => path.dirname(path.resolve(outDir, c.to)))
+  );
+  await Promise.all([...dirs].map((d) => fsp.mkdir(d, { recursive: true })));
+  await Promise.all(
+    copies.map(async (c) => {
+      const dest = path.resolve(outDir, c.to);
+      try {
+        await fsp.copyFile(c.from, dest);
+      } catch (err) {
+        throw new BuildError(
+          `Could not copy asset ${c.from} → ${c.to}: ` +
+            (err instanceof Error ? err.message : String(err)),
+          1
+        );
+      }
+    })
+  );
 }
 
 /**
@@ -347,9 +401,24 @@ async function finalizeBuild(
   ctx: BuildContext,
   fingerprint: BuildFingerprintInput,
   wroteMessage: string,
-  paths: { htmlPath: string; pdfPath: string | null }
+  paths: { htmlPath: string; pdfPath: string | null },
+  outputs: string[]
 ): Promise<BuildRunnerResult> {
-  const fingerprintPath = await writeBuildFingerprint(fingerprint);
+  // Inventory-based cleaning: remove what THIS format wrote last time and is
+  // not rewriting now. Scoped per format so `build pdf` then `build html`
+  // accumulate side by side instead of deleting each other, and scoped to
+  // recorded paths so a file print-md never wrote can never be deleted — which
+  // is what makes an owned outDir safe without a wholesale `rm -rf`.
+  const previous = await readPreviousOutputs(ctx.outDir);
+  const removed = await pruneStaleOutputs(ctx.outDir, previous, ctx.format, outputs);
+  if (removed > 0) {
+    log.info(`Removed ${removed} stale output${removed === 1 ? "" : "s"}`);
+  }
+
+  const fingerprintPath = await writeBuildFingerprint({
+    ...fingerprint,
+    outputs: { ...previous, [ctx.format]: [...new Set(outputs)].sort() },
+  });
   log.success(wroteMessage);
   log.info(`Fingerprint: ${fingerprintPath}`);
   return {
@@ -367,7 +436,7 @@ async function finalizeBuild(
  * and hands it the resolved context + the rendered book.
  */
 interface OutputStrategy {
-  finish(ctx: BuildContext, htmlFile: string): Promise<BuildRunnerResult>;
+  finish(ctx: BuildContext, book: RenderedBook): Promise<BuildRunnerResult>;
 }
 
 /**
@@ -382,10 +451,11 @@ interface OutputStrategy {
 class HtmlOutput implements OutputStrategy {
   async finish(
     ctx: BuildContext,
-    htmlFile: string
+    book: RenderedBook
   ): Promise<BuildRunnerResult> {
     const { outDir, inputDir, config, opts } = ctx;
-    const assetDirs = config.source.assets;
+    const { htmlFile } = book;
+    const outputs = [...book.outputs];
 
     const chromium = await resolveChromiumExecutable();
     if (!chromium) {
@@ -396,39 +466,25 @@ class HtmlOutput implements OutputStrategy {
           "paginate on load). Install Chromium or set CHROMIUM_PATH for " +
           "pre-paginated static output."
       );
-      await shipRuntimePaginatedHtml(htmlFile, outDir);
+      outputs.push(...(await shipRuntimePaginatedHtml(htmlFile, outDir)));
     } else {
-      // Stage a working copy for the build-time pagination pass (assets +
-      // polyfill) under the OS temp dir — never in the caller's cwd. Cleaned up
-      // in finally so it does not leak on the error path either.
-      const htmlStage = await createStageRoot();
-      try {
-        const stagedBook = await stagePaginationInput(
-          htmlFile,
-          outDir,
-          assetDirs,
-          htmlStage
-        );
-
-        log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
-        const paginated = await paginateToStaticHtml(stagedBook);
-        await finalizeStaticBook(paginated, htmlFile, outDir);
-      } finally {
-        await fsp.rm(htmlStage, { recursive: true, force: true });
-      }
+      // No staging copy: book.html is self-contained (CSS + fonts inlined) and
+      // its images already sit in outDir, so the pagination pass serves outDir
+      // itself with the engine supplied as in-memory overlays.
+      log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
+      const paginated = await paginateToStaticHtml(htmlFile);
+      outputs.push(...(await finalizeStaticBook(paginated, htmlFile, outDir)));
     }
 
-    // Write a minimal index.html that redirects to book.html so static hosts
-    // (Azure SWA, GitHub Pages, etc.) have a default entry point. This is not
-    // the viewer chrome — the Electron viewer loads book.html directly by name.
-    const indexPath = path.join(outDir, "index.html");
-    if (!fs.existsSync(indexPath)) {
-      await fsp.writeFile(
-        indexPath,
-        `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=book.html"><title>print-md</title></head><body></body></html>\n`,
-        "utf-8"
-      );
-    }
+    // A minimal index.html redirects to book.html so static hosts (Azure SWA,
+    // GitHub Pages, etc.) have a default entry point. This is not the viewer
+    // chrome — the Electron viewer loads book.html directly by name.
+    await fsp.writeFile(
+      path.join(outDir, "index.html"),
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=book.html"><title>print-md</title></head><body></body></html>\n`,
+      "utf-8"
+    );
+    outputs.push("index.html");
 
     return finalizeBuild(
       ctx,
@@ -444,8 +500,9 @@ class HtmlOutput implements OutputStrategy {
           stripAnnotations: null,
         },
       },
-      `Wrote: ${path.join(outDir, "book.html")}`,
-      { htmlPath: htmlFile, pdfPath: null }
+      `Wrote: ${path.join(outDir, BOOK_HTML)}`,
+      { htmlPath: htmlFile, pdfPath: null },
+      outputs
     );
   }
 }
@@ -460,29 +517,26 @@ class HtmlOutput implements OutputStrategy {
 class PdfOutput implements OutputStrategy {
   async finish(
     ctx: BuildContext,
-    htmlFile: string
+    book: RenderedBook
   ): Promise<BuildRunnerResult> {
     const { outDir, inputDir, config, opts, format, manifestDir, gates } = ctx;
-    const assetDirs = config.source.assets;
+    const { htmlFile } = book;
+    const outputs = [...book.outputs];
 
     const pdfxMode: PdfxFlavor | undefined =
       format === "pdfx" ? (opts.pdfxFlavor ?? config.pdfx.flavor) : undefined;
 
-    const pdfFile =
-      opts.pdfFileOverride ?? path.join(outDir, config.output.filename);
+    // Artifact name is a convention: `<title-slug>-<format>.pdf`. The format is
+    // part of the NAME because the extension cannot distinguish a plain PDF
+    // from a PDF/X one — previously both formats shared one configured
+    // filename, so building both left only the last one on disk.
+    const pdfName = artifactName(config.title, pdfxMode ? "pdfx" : "pdf");
+    const pdfFile = opts.pdfFileOverride ?? path.join(outDir, pdfName);
 
-    // Stage build directory under the OS temp dir — never in the caller's cwd
-    // (runBuild is exported and driven by the viewer host). Cleaned up in finally
-    // so it does not leak on the success path OR any error/throw below.
+    // Scratch dir under the OS temp dir, for PDF/X intermediates only — never
+    // for staging assets. Removed in a finally so it cannot leak.
     const stage = await createStageRoot();
     try {
-      const stagedHtml = await stagePaginationInput(
-        htmlFile,
-        outDir,
-        assetDirs,
-        stage
-      );
-
       const rawPdf = pdfxMode
         ? path.join(stage, "raw.pdf")
         : path.resolve(pdfFile);
@@ -490,20 +544,21 @@ class PdfOutput implements OutputStrategy {
       await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
       // PDF unification: the default renderer prints the PDF and, from the SAME
       // pagination pass, serializes the static viewer book.html — so the on-screen
-      // pages and the PDF come from one paginated artifact. The PDF call itself is
-      // unchanged, so the PDF is pixel-identical to the pre-SSG pipeline. Injected
-      // renderers (e.g. the Electron viewer) print only.
+      // pages and the PDF come from one paginated artifact. Injected renderers
+      // (e.g. the Electron viewer) print only.
       const staticHtmlRaw = opts.pdfRenderer
         ? undefined
         : path.join(stage, "book-static-raw.html");
-      await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer, staticHtmlRaw);
+      await renderHtmlToPdf(htmlFile, rawPdf, opts.pdfRenderer, staticHtmlRaw);
       if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
-        await finalizeStaticBook(
-          await fsp.readFile(staticHtmlRaw, "utf-8"),
-          htmlFile,
-          outDir
+        outputs.push(
+          ...(await finalizeStaticBook(
+            await fsp.readFile(staticHtmlRaw, "utf-8"),
+            htmlFile,
+            outDir
+          ))
         );
-        log.success(`Wrote static viewer: ${path.join(outDir, "book.html")}`);
+        log.success(`Wrote static viewer: ${path.join(outDir, BOOK_HTML)}`);
       }
 
       if (!pdfxMode) {
@@ -544,6 +599,13 @@ class PdfOutput implements OutputStrategy {
         });
       }
 
+      // Only an in-outDir artifact belongs in the inventory; an explicit --out
+      // to some other directory is the caller's file to manage, not ours.
+      const pdfRel = path.relative(outDir, path.resolve(pdfFile));
+      if (!pdfRel.startsWith("..") && !path.isAbsolute(pdfRel)) {
+        outputs.push(pdfRel.split(path.sep).join("/"));
+      }
+
       // Post-build validation (pdfx only)
       if (gates.postValidate) {
         log.info("Post-build validation");
@@ -575,7 +637,8 @@ class PdfOutput implements OutputStrategy {
           },
         },
         `Wrote: ${pdfFile}`,
-        { htmlPath: htmlFile, pdfPath: pdfFile }
+        { htmlPath: htmlFile, pdfPath: pdfFile },
+        outputs
       );
     } finally {
       await fsp.rm(stage, { recursive: true, force: true });
@@ -629,11 +692,11 @@ export async function runBuild(
   try {
     await runQualityGates(ctx);
 
-    const htmlFile = await renderBook(ctx);
+    const book = await renderBook(ctx);
 
     const strategy: OutputStrategy =
       ctx.format === "html" ? new HtmlOutput() : new PdfOutput();
-    return await strategy.finish(ctx, htmlFile);
+    return await strategy.finish(ctx, book);
   } finally {
     if (!opts.keepBrowserAlive) await closeBrowser();
   }

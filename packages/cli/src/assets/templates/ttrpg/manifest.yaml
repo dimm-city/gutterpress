@@ -7,5 +7,3 @@ source:
 styles:
   - styles/book.css
 preset: dtrpg
-output:
-  filename: "{{OUTPUT_PDF}}"

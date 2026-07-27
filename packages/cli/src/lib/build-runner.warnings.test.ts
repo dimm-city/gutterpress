@@ -53,7 +53,7 @@ test("renderBook logs a clearly attributed warning for a chapter with a marker m
     outDir: join(dir, "dist"),
     rawArgs: {},
   });
-  const htmlFile = await renderBook(ctx);
+  const { htmlFile } = await renderBook(ctx);
 
   expect(htmlFile).toContain("book.html");
 
