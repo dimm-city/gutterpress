@@ -389,3 +389,192 @@ the method rather than as a compliment to it: verifiers narrowed scope on 24 of
 the surviving findings (recorded as PARTIALLY_TRUE above, with the corrected
 scope), but only one claim was rejected outright. Treat the HIGH severities —
 which carry executed repros — with more confidence than the LOWs.
+
+---
+
+## 9. Amendment — independent review of this analysis and its recommendations
+
+A second look at the document above, questioning its fix list and asking what
+design decisions produce the symptom catalog. Claims here were verified against
+the code directly; one was tested by execution.
+
+### 9.1 Corrections to the analysis
+
+**(a) No fix item addresses finding #5 — and item 1 falsely claims to.**
+Fix item 1 says its existence check "turns 5, 19, 32 into caught errors". It
+cannot catch #5: the dead-origin URLs live as CSS `url()` inside the serialized
+`<style data-pagedjs-inserted-styles>` block, which a `<link href>`/`<img src>`
+resolution check never inspects — and the referenced *files* exist in `outDir`;
+it is the *URLs* that are wrong. The original list therefore ships no fix at all
+for one of its own HIGH findings.
+
+**(b) Fix item 3 is a half-measure that recreates the bug one level down.**
+Copying the stylesheet file without its `url()` closure converts "unstyled PDF"
+into "styled PDF with silently missing fonts and backgrounds" — the same silent
+class, now harder to notice. Either copy the closure or don't bother.
+
+**(c) Fix item 6 points the wrong way.** "Stage from `inputDir` instead of
+`outDir`" keeps the copy, the flatten round-trip, and the staleness class alive.
+The stage itself is the redundant artifact (see R2 below); delete it, don't
+re-point it.
+
+**(d) The `.git`-publish finding (#10) mis-states the preview's behavior —
+verified by execution.** Its claim that "the preview mirror hides
+`.git`/`node_modules`, so the author has no local signal" is wrong for exactly
+the `../shared` case it describes: external asset entries are copied by the
+**exclude-less `copyDir`** (`lifecycle.ts:106` → `assets.ts:101`), not by
+`copyDirectory`. Running `initializePreviewDirectories` against a project with
+`assets: [styles, ../shared]` where `shared/` contains `.git/` and `.env`
+produces a preview temp dir containing `shared/.git`, `shared/.env`, **and the
+project's own `.env`** (the 8-name exclude list has no dotfile rule). The
+preview server then serves all of these over localhost HTTP —
+`http://127.0.0.1:3579/.env` answers 200 to any local process. The publish leak
+is real; the "no local signal" framing was backwards, and the preview's own
+serving of secrets is an unrecorded (localhost-scoped) sub-finding.
+
+**(e) The §7 refutation has an unstated corollary.** If the polyfill
+force-loads every declared `@font-face` before layout, then
+`pagination.ts:215`'s own `document.fonts.ready` await is dead weight and can be
+deleted — a small simplification the correction stopped short of drawing.
+
+**(f) "71 confirmed findings" overstates the defect surface.** They are
+observation points of about five design decisions (§9.2). The count — and the
+severity tables — invite whack-a-mole patching, and fix items 1, 2, 7, 8
+partially embody that: they add *detectors for divergence* between subsystems
+instead of removing the divergence. A fix list that closes with "add a check,
+add a listener, fix the checks, share the resolver with the checks" is treating
+the symptom layer.
+
+### 9.2 Root causes — the design decisions the symptoms bubble up from
+
+**R1. Declaration over reference.** `source.assets` asks the author to maintain,
+by hand, a parallel declaration of what the book references — while the renderer
+is the component that *knows* what the book references, because it emits every
+href. Any two independently-maintained descriptions of the same fact drift, and
+here every drift is silent because neither side checks the other. This single
+decision accounts for ~20 findings: the entire §3.1 class, all four `themes/`
+findings, `normalizeImageSrc`'s vestigial rewrite (#44), `media:importImage`'s
+mismatch (#50), and the styles-dropping merge hazard (#3, #28).
+
+**R2. Copying to assemble a root, instead of composing a root at serve time.**
+Three tree copies exist for one purpose — making relative URLs resolve against
+some root: `inputDir→outDir`, `outDir→stage`, `inputDir→previewTemp`. They use
+two copier implementations with different exclusion/symlink semantics, and the
+path mapping they share is re-derived four times (`assets.ts`, `file-watcher.ts`,
+`validation-exec.ts`, `server.ts`). The preview server already proves the
+alternative in-tree: `/vendor/*` and `/preview/scripts/*` are **virtual
+overlays** served from the embedded dir with no copy (`http-server.ts:337`). The
+pagination stage is a full-tree materialization of what a ~20-line route table
+expresses. Every copy is also a staleness boundary and an I/O bill (#4, #16,
+#21, #22, #23, #56 are all this).
+
+**R3. `outDir` is jointly owned and has no lifecycle.** It is simultaneously the
+build workspace, the deliverable, and possibly a directory containing user
+files — so it can never be safely cleaned, so it is never cleaned (#6, #9, #21),
+so publish uploads history (#10, #53) and the fingerprint is permanently dirty
+(#34).
+
+**R4. `splitOutPath` conflates the artifact's destination with the build's
+workspace.** The Save-folder spray (#7, #25, #34, #35, #52) is entirely this
+conflation — and `BuildRunnerOptions` already has the decoupled shape
+(`outDir` + `pdfFileOverride`); the viewer just derives one from the other.
+
+**R5. Validation re-derives instead of consuming.** Every §6.1 finding is a
+check reimplementing resolution the build already does, differently: wrong
+frame (`local-refs`), regex CSS parsing (`missing-font-refs`), `resolve` vs
+`join` (`validation-exec`), platform-divergent `nocase` (glob). A checker that
+does not share the implementation it checks will always disagree with it.
+
+### 9.3 The simplified design
+
+The goal cases — themes, shared styles + book overrides, and free placement of
+images/fonts — all fall out of two structural moves plus three small ones.
+
+**1. One resolver: references → copy plan** (retires R1). The emitter and the
+copier become the same pass. After rendering, walk `book.html`'s
+`src`/`href`/`srcset` attributes and the active stylesheets' `url()`/`@import`
+closure (the postcss infrastructure exists in `printsafe.ts`; `missing-font-refs`
+is a broken regex re-implementation of exactly this walk). Copy precisely those
+files. In-project references keep their relative paths unchanged. External
+(`../`) files map **structure-preservingly** under a reserved prefix —
+`../design-guide/styles/global.css` → `_up/design-guide/styles/global.css` — so
+relative `url()` *within* a shared tree keeps resolving with **zero CSS
+rewriting**; only the `<link href>` the emitter itself writes changes, and the
+emitter owns that line. Unresolvable references fail the build loudly. The
+invariant *referenced ⊆ copied* holds by construction, not by a check.
+
+This deletes: basename flattening, `fallbackSrc`, collision detection,
+`normalizeImageSrc` (vestigial anyway), and — as author-facing concepts —
+flattening rules and the asset list itself. `source.assets` survives only as an
+optional *additive* extras list for dynamically-referenced files, no longer
+load-bearing, so the replace-vs-extend merge hazard stops mattering. And the
+use cases resolve directly: themes ship because they are referenced; book
+overrides work because structure-preserving mapping keeps intra-tree `url()`
+valid (today's basename flattening *breaks* `url(../fonts/x)` across the
+flattened boundary); "where do fonts go" becomes "wherever you referenced
+them", deleting the three contradictory documentation answers (#27-docs).
+
+**2. One static server with overlays; delete the stage** (retires R2).
+Pagination serves `outDir` directly, with two overlay routes: an **in-memory**
+patched `book.html` (`patchHtmlForPagedjs` is already a string transform wrapped
+in file I/O) and `/vendor/paged.polyfill.js` from the embedded dir — exactly the
+overlay pattern the preview server already uses. `stagePaginationInput`'s asset
+copy disappears; the pdfx scratch `mkdtemp` remains for `raw.pdf`
+intermediates only. The preview flips the same way: serve the **sources in
+place** from `inputDir`, with the temp dir holding only generated `book.html`,
+plus the same external-path mounts the resolver defines — so preview and build
+resolve through one mapping *by construction*, closing the divergence class
+(#19, #29, #37) at the root instead of detecting it. This deletes the
+whole-tree preview copy, `mirrorChanges` and its no-unlink staleness (#21, #22),
+the restart bleed (#23), the watcher/copier exclude mismatch (#56), roughly half
+of preview startup I/O (#23-perf) — and stops serving `.env` (§9.1d), because a
+route table serves what the resolver names, not whatever is on disk.
+
+**3. `outDir` becomes fully owned** (retires R3): clean it on build, guarded —
+refuse to clean a non-empty directory that lacks a print-md
+`build-fingerprint.json`. The guard makes cleaning safe *and* is defense in
+depth against workspace-conflation accidents.
+
+**4. Viewer export: workspace ≠ save path** (retires R4). The controller passes
+`outDir` = a temp workspace (or the project's own `dist`) and
+`pdfFileOverride` = the chosen save path. One-file change in
+`export/controller.ts`, zero lib changes — the highest value-per-line fix
+available in either list.
+
+**5. `finalizeStaticBook` strips the ephemeral origin** — string-replace
+`http://127.0.0.1:<port>/` with `""` in the serialized HTML before writing.
+~3 lines; the only fix for #5, which the original list omitted. Needed under
+design 2 as well, since the origin stays ephemeral.
+
+**Kept from the original list:** the `requestfailed`/`console` listener (still
+the net for *remote*-font failures, which no copy plan can guarantee), the
+scaffolded `.gitignore` (#33/#34), the chokidar ignore fix (match the
+watch-root-relative path, not the absolute path — #4-critique), and the
+percent-decode/comment-strip check repairs as interim patches until move 1
+subsumes those checks entirely (the resolver *is* the missing-refs check, done
+right, in one place).
+
+**Dropped from the original list:** item 1 (a symptom detector; keep at most as
+a transitional assert until move 1 lands), item 3 (half-measure, §9.1b),
+item 6 (wrong direction, §9.1c).
+
+### 9.4 Sequencing and net complexity
+
+Cheap and independent first, structural second:
+
+| Order | Move | Retires |
+|---|---|---|
+| 1 | Viewer workspace split (move 4) | #7, #25, #34, #35, #52 |
+| 2 | Origin strip in `finalizeStaticBook` (move 5) | #5 |
+| 3 | `.gitignore` scaffold + chokidar ignore fix | #33, #34, #20-critique |
+| 4 | Server overlays, delete stage + preview mirror (move 2) | #4, #16-part, #21, #22, #23, #24, #56, §9.1d |
+| 5 | Reference resolver (move 1) | §3.1 entire, themes ×4, #11, #13, #15-part, #44, #50, and the checks it subsumes (#36-41 largely) |
+| 6 | Owned `outDir` with guarded clean (move 3) | #6, #9, #10-part, #21-rest, #53 |
+
+Moves 1-2 are net *deletions*: they remove the flatten/fallback/collision half
+of `assets.ts`, most of `build-staging.ts`, `mirrorChanges`, `normalizeImageSrc`,
+and the regex half of `missing-font-refs`, while adding one resolver module and
+one route table — implementations of things four subsystems currently
+approximate independently and disagree about. That is the direction CLAUDE.md's
+prime directive points: the robust pipeline here is the one with fewer moving
+parts, not more checks watching the existing ones.
