@@ -185,6 +185,7 @@ export interface AutoSyncOrchestratorDeps {
     tokenStore: TokenStore,
     authorName?: string,
     logFile?: string,
+    authorEmail?: string,
   ) => Promise<RecoveryContext>;
   /**
    * Best-effort: refresh the app-open heartbeat (repair-vs-viewer detection,
@@ -612,6 +613,7 @@ export class AutoSyncOrchestrator {
           this.deps.tokenStore,
           identity.authorName,
           logFile,
+          identity.authorEmail,
         );
       } catch (ctxErr) {
         console.error(`[auto-sync] buildRecoveryContext failed for ${dir}:`, ctxErr);
@@ -855,6 +857,7 @@ export class AutoSyncOrchestrator {
         this.deps.tokenStore,
         preflightIdentity.authorName,
         preflightLogFile,
+        preflightIdentity.authorEmail,
       );
 
       // Write the FULL structural diagnosis to the operation log BEFORE

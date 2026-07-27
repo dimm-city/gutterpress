@@ -58,6 +58,7 @@ export function syncOptionsFrom(ctx: RecoveryContext) {
     credential: ctx.credential,
     tokenStore: ctx.tokenStore,
     authorName: ctx.authorName,
+    authorEmail: ctx.authorEmail,
     httpClient: ctx.httpClient,
   };
 }

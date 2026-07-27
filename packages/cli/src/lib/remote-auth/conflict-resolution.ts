@@ -26,7 +26,7 @@ import { defaultGitHttp } from "./git-http.ts";
 import diff3Merge from "diff3";
 
 import {
-  gitAuthor,
+  resolveGitAuthor,
   hasPendingChanges,
   snapshotWorkingTreeUnlocked,
   withRepoLock,
@@ -443,7 +443,7 @@ export async function resolveConflicts(
     try {
       const branch = await currentBranchOrThrow(dir);
       const transport = await resolveTransport(dir, options);
-      const author = gitAuthor(options.authorName, options.authorEmail);
+      const author = await resolveGitAuthor(dir, options.authorName, options.authorEmail);
 
       // Verify both ids are REAL commit objects in this repo before doing any
       // work (BUG 5). A well-formed-but-garbage hex id passes the regex above

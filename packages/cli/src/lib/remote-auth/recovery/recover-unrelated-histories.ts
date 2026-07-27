@@ -46,7 +46,7 @@ import * as fsSync from "node:fs";
 import git from "isomorphic-git";
 import { defaultGitHttp } from "../git-http.ts";
 
-import { gitAuthor } from "../../source-provider.ts";
+import { resolveGitAuthor } from "../../source-provider.ts";
 import { conflictFilesFrom, onAuthFor } from "../sync.ts";
 import { guardTrackingRef } from "../transport.ts";
 import { resolveLogger, shortOid } from "../operation-log.ts";
@@ -118,7 +118,7 @@ export const recover: RecoverFn = async (ctx, error?) => {
 
       const dir = ctx.repoDir;
       const branch = ctx.branch || "main";
-      const author = gitAuthor(ctx.authorName);
+      const author = await resolveGitAuthor(dir, ctx.authorName, ctx.authorEmail);
       const logger = resolveLogger(ctx.logFile, "recovery");
       // Per-operation object cache (released when the handler returns — never
       // pin packfile buffers across calls, same rule as sync.ts).

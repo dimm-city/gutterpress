@@ -13,6 +13,7 @@ import {
   RESTORE_BACKUP_MESSAGE,
   AUTO_SNAPSHOT_MESSAGE,
   isNoChangesError,
+  resolveGitAuthor,
 } from "./source-provider";
 
 async function tempDir(): Promise<string> {
@@ -267,6 +268,59 @@ test("automatic snapshot records the caller-supplied author name AND email", asy
     const [head] = await git.log({ fs, dir, depth: 1 });
     expect(head!.commit.author.name).toBe("Ada Lovelace");
     expect(head!.commit.author.email).toBe("ada@example.com");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a partially configured identity falls back to repo config per field", async () => {
+  // The viewer omits a blank Settings field so the repo's own config can fill
+  // it. resolveGitAuthor is the ONE rule every commit path uses, so a name from
+  // Settings pairs with the repo's email rather than the print-md default —
+  // and, critically, the merge commit of a sync resolves it the SAME way the
+  // preliminary snapshot does (they used to disagree).
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await git.setConfig({ fs, dir, path: "user.name", value: "Repo Name" });
+    await git.setConfig({ fs, dir, path: "user.email", value: "repo@example.com" });
+
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nName only.\n");
+    await provider.snapshot({
+      projectDir: dir,
+      message: AUTO_SNAPSHOT_MESSAGE,
+      authorName: "Ada Lovelace", // email deliberately omitted
+    });
+    const [head] = await git.log({ fs, dir, depth: 1 });
+    expect(head!.commit.author.name).toBe("Ada Lovelace");
+    expect(head!.commit.author.email).toBe("repo@example.com");
+    expect(head!.commit.author.email).not.toBe("noreply@print-md.local");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveGitAuthor falls back per field: option → repo config → print-md default", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir);
+    await git.setConfig({ fs, dir, path: "user.name", value: "Repo Name" });
+    await git.setConfig({ fs, dir, path: "user.email", value: "repo@example.com" });
+
+    // Nothing supplied → repo config wins over the print-md default.
+    expect(await resolveGitAuthor(dir)).toEqual({
+      name: "Repo Name",
+      email: "repo@example.com",
+    });
+    // Per-field override: the supplied field wins, the other stays repo config.
+    expect(await resolveGitAuthor(dir, "Ada Lovelace")).toEqual({
+      name: "Ada Lovelace",
+      email: "repo@example.com",
+    });
+    expect(await resolveGitAuthor(dir, undefined, "ada@example.com")).toEqual({
+      name: "Repo Name",
+      email: "ada@example.com",
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

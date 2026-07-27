@@ -262,6 +262,9 @@ export interface RecoveryContext {
   httpClient?: typeof httpNode;
   /** The user's display name for snapshot commits. */
   authorName?: string;
+  /** The user's email for snapshot commits. Paired with `authorName` — a
+   *  recovery commit must carry the SAME identity a normal snapshot does. */
+  authorEmail?: string;
   /** Gate the host must satisfy before a risky repair starts. */
   confirmation: ConfirmationGate;
   /** Fault injection hooks (tests only — omit in production). */

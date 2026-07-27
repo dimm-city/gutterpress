@@ -39,7 +39,7 @@ import * as fs from "node:fs";
 import git from "isomorphic-git";
 import { defaultGitHttp } from "./git-http.ts";
 
-import { gitAuthor, withRepoLock } from "../source-provider.ts";
+import { resolveGitAuthor, withRepoLock } from "../source-provider.ts";
 import { resolveLogger } from "./operation-log.ts";
 import {
   classifyFromHealth,
@@ -298,7 +298,7 @@ export async function pullChanges(
           cache,
           ours: branch,
           theirs: remoteTip,
-          author: gitAuthor(options.authorName, options.authorEmail),
+          author: await resolveGitAuthor(dir, options.authorName, options.authorEmail),
           message: "Combined your changes with the online version",
         });
       } catch (e) {

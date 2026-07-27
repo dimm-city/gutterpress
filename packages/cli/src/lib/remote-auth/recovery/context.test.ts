@@ -211,7 +211,7 @@ describe("buildRecoveryContext — branch, credential, slug", () => {
     }
   });
 
-  test("threads authorName, logFile, and the host's confirmation gate through", async () => {
+  test("threads authorName, authorEmail, logFile, and the host's confirmation gate through", async () => {
     const root = await tempDir();
     try {
       const repo = path.join(root, "proj");
@@ -222,9 +222,14 @@ describe("buildRecoveryContext — branch, credential, slug", () => {
         projectDir: repo,
         confirmation: GATE,
         authorName: "Ada",
+        // Recovery handlers commit (rescue snapshots, merge commits), so the
+        // context must carry the FULL identity — a name paired with the
+        // print-md default email is not the author's identity.
+        authorEmail: "ada@example.com",
         logFile: "/tmp/op.log",
       });
       expect(ctx.authorName).toBe("Ada");
+      expect(ctx.authorEmail).toBe("ada@example.com");
       expect(ctx.logFile).toBe("/tmp/op.log");
       expect(ctx.confirmation).toBe(GATE);
     } finally {
