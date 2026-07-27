@@ -852,3 +852,41 @@ Result: canonical artifacts at `dist/book.html` / `dist/book.pdf`, one less
 constant. The manifest an author sees is now: `title`, `authors`,
 `source.files`, `styles`, `plugins`, page/ink/pdfx print geometry, and
 validation settings — nothing about plumbing.
+
+### 9.8 Refinement: output collisions and inventory-based cleaning
+
+Maintainer follow-up on §9.7: if every build writes to `dist/`, don't builds
+overwrite each other's output?
+
+Mostly no — and the one real collision predates the proposal. One manifest is
+one book with its own `dist/`, so multiple books never share an output dir;
+`book.html` and `book.pdf` are distinct names; and a rebuild overwriting the
+same format's previous artifact is the purpose of a build. The genuine
+collision is `pdf` vs `pdfx`: both flow through the same
+`pdfFile = pdfFileOverride ?? join(outDir, config.output.filename)`
+(`build-runner.ts:472`) and there is only ONE `filename` field — so
+`--format pdf` followed by `--format pdfx` overwrites `dist/book.pdf`
+**today, with the field present**. The field never solved the problem it
+appears to address. Fix it with per-format canonical defaults, not
+configuration: **`book.pdf`** (digital) and **`book-pdfx.pdf`** (print-ready)
+— serving the real DTRPG workflow of shipping both.
+
+The question also exposed a flaw in §9.6's "owned outDir, clean it": a
+wholesale clean would make `build pdf` → `build html` delete the PDF. The
+refinement is simpler, not more complex — **no wholesale clean exists**. The
+build already knows its complete output set (§9.6) and already writes a
+fingerprint; record the written-file inventory in it, and each build deletes
+only files listed in the *previous* inventory that it is not rewriting.
+Consequences:
+
+- Staleness still dies (#6/#9): orphaned images/CSS are in the old inventory
+  and get removed.
+- `book.pdf`, `book-pdfx.pdf`, and `book.html` accumulate side by side, each
+  refreshed by its own format's builds — multi-artifact publishing works.
+- User files are never touched: only paths a prior print-md build recorded are
+  ever deleted. This retires §9.6's "refuse to clean a non-empty dir without a
+  fingerprint" guard — there is no wholesale delete left to guard.
+
+`--out` remains the per-invocation escape for CI staging and one-offs.
+`output.dir`/`output.filename` stay deleted: the collision concern they seemed
+to answer is answered by per-format names and inventory cleaning instead.
