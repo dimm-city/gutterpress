@@ -5,8 +5,10 @@
  * dependency. Lists every repository the user can access (`GET /user/repos`,
  * the OAuth `repo`-scope model — ADR 0006 D1 amendment 2026-06-10), the
  * branches of a chosen repository, and (via the Git Trees API) the print-md
- * book projects inside a repo. All calls paginate, time out explicitly, and
- * map failures to author-friendly messages (401 → "reconnect").
+ * book projects inside a repo. The two REST listings paginate; the Git Trees
+ * call is a single request that handles the API's `truncated` flag instead. All
+ * three time out explicitly and map failures to author-friendly messages
+ * (401 → "reconnect").
  */
 import type { HostCredential } from "./token-store.ts";
 import { withFetchTimeout } from "../fetch-timeout.ts";

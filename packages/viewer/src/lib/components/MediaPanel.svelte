@@ -9,7 +9,7 @@
    *
    * Host work — listing, thumbnails (generated AND cached host-side so
    * multi-MB originals never reach the renderer), inspection, and file
-   * copies — goes through `api.media.*`/`api.dialog.*` server routes, the
+   * copies — goes through `api.media.*`/`api.dialog.*`/`api.shell.*` server routes, the
    * default seam (CLAUDE.md §8); `getPlatform().onFolderChanged` is used only
    * for the live folder-changed push stream, one of the seam's narrower
    * classes. Renderer-side thumbnail state is bounded (THUMB_LIMIT) so a huge
