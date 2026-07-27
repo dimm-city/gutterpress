@@ -1,30 +1,18 @@
 /**
- * Asset inlining — the SINGLE place that turns a project's stylesheets into a
- * self-contained `<style>` block and computes the image copy plan.
+ * Asset inlining — turns a project's stylesheets into a self-contained
+ * `<style>` block and computes the image copy plan.
  *
- * This replaces the old "declare directories in `source.assets`, copy them
- * wholesale, hope the references line up" model. The renderer already knows
- * every file the book references, because it emits every reference; this module
- * makes that knowledge load-bearing:
+ * A `styles:` entry is a path to READ, not a file to ship: its text (plus any
+ * local `@import` closure) is inlined, so a stylesheet's location is irrelevant
+ * to the output and themes/shared design systems need no copying. Fonts become
+ * `data:` URIs — which is what guarantees the byte-identical face reaches
+ * Chromium, and therefore the PDF. Small images inline; large ones are copied.
  *
- *   - **CSS is read, not shipped.** A `styles:` entry is a path to READ. Its
- *     text (plus any local `@import` closure) is inlined into `book.html`, so
- *     the stylesheet's own location is irrelevant to the output — which is what
- *     makes themes (`themes/<id>/theme.css`) and shared design systems
- *     (`../design-guide/styles/guide.css`) work with no copying, no flattening
- *     and no destination indirection.
- *   - **Fonts become `data:` URIs.** Verified end-to-end: Chromium's PDF writer
- *     embeds a subset of the actual font program delivered by a data URI (the
- *     `AAAAAA+` subset tag), so PDF/X font-embedding is satisfied exactly as it
- *     was by an HTTP-served font. A missing font file is now a BUILD ERROR at
- *     read time instead of a silent 404 during pagination that fell back to a
- *     system face and still passed `pdf.print.embedded-fonts`.
- *   - **Images are planned, not guessed.** Small ones inline; large ones (page
- *     art) are content-addressed into `assets/` so two different files can never
- *     collide on a basename.
+ * A missing stylesheet or font is a build error here, at read time, rather than
+ * a 404 during pagination that Paged.js parsed as CSS or silently replaced with
+ * a system face.
  *
- * Bundle-safe (CLAUDE.md §1/§3): postcss only — no bundler, no runtime
- * `package.json` reads, no computed-path dynamic imports.
+ * Bundle-safe (CLAUDE.md §1/§3): postcss only.
  */
 
 import { createHash } from "node:crypto";
@@ -36,12 +24,7 @@ import { BuildError } from "./build-error";
 /** Font files always inline — they are small and must be in the PDF. */
 const FONT_EXTS = new Set([".woff2", ".woff", ".ttf", ".otf"]);
 
-/**
- * Images at or below this size are inlined as `data:` URIs; larger ones are
- * copied and content-addressed. 512 KB keeps icons/textures in the document
- * (no extra requests, no missing-file class) while full-bleed page art — which
- * would bloat `book.html` and blow past base64's 33% overhead — stays a file.
- */
+/** Inline images up to this size; copy larger ones (full-bleed page art). */
 export const IMAGE_INLINE_MAX_BYTES = 512 * 1024;
 
 /** Where content-addressed (too-large-to-inline) CSS images are written. */
@@ -92,20 +75,14 @@ function isNonFileUrl(url: string): boolean {
   );
 }
 
-/**
- * Strip a URL's query string and fragment for filesystem resolution, keeping
- * them off the resolved path. `fonts/x.woff2?v=2#iefix` — the classic
- * "bulletproof @font-face" spelling — must resolve to `fonts/x.woff2`, which is
- * exactly what the old regex-based `missing-font-refs` check got wrong.
- */
+/** `fonts/x.woff2?v=2#iefix` must resolve to `fonts/x.woff2`. */
 function stripUrlSuffix(url: string): string {
   return url.replace(/[?#].*$/, "");
 }
 
 /**
- * Decode percent-escapes so a CSS/markdown reference to `my%20photo.png`
- * resolves to the real file `my photo.png`. Falls back to the raw string when
- * the value is not valid percent-encoding (a literal `%` in a filename).
+ * Decode percent-escapes so `my%20photo.png` resolves to `my photo.png`.
+ * Falls back to the raw string for a literal `%` in a filename.
  */
 export function decodeRef(ref: string): string {
   try {
@@ -150,10 +127,9 @@ function contentHash(bytes: Buffer): string {
 }
 
 /**
- * Rewrite every `url(...)` token in a declaration value, preserving the rest of
- * the value verbatim (multi-`src` `@font-face` blocks, `image-set()`, layered
- * backgrounds). Quotes are re-applied so a data URI containing `)` cannot
- * terminate the token early.
+ * Rewrite every `url(...)` in a declaration value, preserving the rest verbatim
+ * (multi-`src` `@font-face`, `image-set()`, layered backgrounds). Quotes are
+ * re-applied so a data URI containing `)` cannot terminate the token early.
  */
 async function rewriteUrls(
   value: string,
@@ -249,8 +225,7 @@ async function inlineOne(
       const absAsset = path.resolve(cssDir, relPath);
       const ext = path.extname(absAsset).toLowerCase();
 
-      // Fonts ALWAYS inline: guarantees the byte-identical face reaches
-      // Chromium, which is what guarantees PDF/X embedding.
+      // Fonts always inline — see the header note on PDF/X embedding.
       if (FONT_EXTS.has(ext)) {
         const bytes = await readOrThrow(absAsset, "font file", abs);
         return dataUri(bytes, ext);
@@ -261,13 +236,10 @@ async function inlineOne(
         return dataUri(bytes, ext);
       }
 
-      // Too large to inline. An image INSIDE the project keeps its own
-      // project-relative path — the same destination `planImageCopies` gives a
-      // markdown reference to the same file, so a file used by both CSS and
-      // markdown is copied once rather than twice under two different names.
-      // Only an image from OUTSIDE the project (a shared design system) has no
-      // representable relative path, and is content-addressed instead — which
-      // also makes same-basename files from different trees collision-proof.
+      // An in-project image keeps its project-relative path, so a file used by
+      // both CSS and markdown lands in one place instead of two. An image from
+      // outside the project has no representable relative path, so it is
+      // content-addressed (which also makes same-basename files collision-proof).
       const projectRel = path.relative(projectDir, absAsset);
       const dest =
         projectRel && !projectRel.startsWith("..") && !path.isAbsolute(projectRel)
@@ -282,12 +254,8 @@ async function inlineOne(
 }
 
 /**
- * Inline the project's active stylesheets into one CSS string.
- *
- * `stylePaths` are project-relative (as returned by `resolveActiveStyles`) and
- * are inlined IN ORDER, so the manifest's `styles:` list keeps its cascade
- * semantics — which is what makes "theme + book override" work: list the theme
- * first, the override second.
+ * Inline the active stylesheets into one CSS string, IN ORDER — the manifest's
+ * `styles:` list is the cascade order (theme first, override second).
  */
 export async function inlineStyles(
   projectDir: string,
@@ -314,12 +282,10 @@ export async function inlineStyles(
 }
 
 /**
- * Turn the image references the renderer recorded into a copy plan.
- *
- * Markdown images keep their authored relative path in the output, so a project
- * folder structure the author understands is the structure that ships. A `../`
- * reference is rejected: it cannot be represented under the output root, and
- * silently relocating it is exactly the class of surprise this redesign removes.
+ * Turn the renderer's recorded image references into a copy plan. Images keep
+ * their authored relative path, so the author's folder layout is what ships.
+ * A `../` reference is rejected rather than silently relocated — it has no
+ * representable path under the output root.
  */
 export async function planImageCopies(
   projectDir: string,
