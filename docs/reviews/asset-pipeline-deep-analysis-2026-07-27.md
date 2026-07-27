@@ -578,3 +578,104 @@ one route table — implementations of things four subsystems currently
 approximate independently and disagree about. That is the direction CLAUDE.md's
 prime directive points: the robust pipeline here is the one with fewer moving
 parts, not more checks watching the existing ones.
+
+### 9.5 Stress test — does the design actually hold for themes, shared assets, and overrides?
+
+Question posed after §9.3: is the resolver design *sure* to support the three
+use cases, and what are its drawbacks? Answer, verified against the repo's own
+examples rather than asserted: **yes on all three, with one self-correction,
+one breaking change that needs a compat shim, and a short list of honest costs.**
+
+**Self-correction first.** §9.3 claimed basename flattening "breaks
+`url(../fonts/x)` across the flattened boundary". Too strong: flattening maps
+`../dg/styles`→`styles/` and `../dg/fonts`→`fonts/`, so **sibling**
+relationships survive and sibling-level `url(../fonts/x)` keeps working. What
+flattening actually breaks is (a) *nested* external layouts —
+`../dg/assets/fonts` flattens to its basename `fonts/`, detaching it from its
+tree — (b) same-basename collisions (the documented last-wins), and (c) the
+authoring indirection: `styles:` must name the flattened *destination* while
+`source.assets` names the source. `examples/with-design-guide/book-01/manifest.yaml`
+spends a 9-line comment teaching exactly this, and that indirection is what
+blinds lint/validation (#36: `styles/guide.css` does not exist in the source
+tree, so `cssFiles` is `[]`).
+
+**The use cases, traced concretely:**
+
+- **Themes.** `applyTheme` writes `styles: [..., themes/<id>/theme.css]`; the
+  resolver copies the file because it is referenced, and its `url()` closure
+  (bundled fonts/images) with it, structure preserved. The four themes findings
+  retire with no preset change. Theme metadata (`theme.json`, previews) is
+  unreferenced and correctly *not* shipped.
+- **Shared assets.** The example's shared tree is self-contained
+  (`guide.css` → `url("../fonts/…")`). Under the resolver:
+  `styles: [../design-guide/styles/guide.css]` (the *real* path — the
+  indirection dies), file lands at `_up/design-guide/styles/guide.css`, the
+  `../fonts/` refs resolve to `_up/design-guide/fonts/` and the walk copies
+  them. Note today's example, with the `@font-face` block uncommented, would
+  NOT ship its fonts — `../design-guide/fonts` is absent from
+  `source.assets`. The resolver ships them with zero configuration. External
+  refs in **HTML** (`![](../design-guide/art/x.png)`) must be rewritten to the
+  `_up/` location too — the walker owns every emitted ref, so this is in
+  scope, but it means the rewrite set is "external refs in HTML attrs + the
+  emitted `<link>`s", not the `<link>`s alone.
+- **Overrides.** Cascade order = manifest `styles:` order, emitted as-is.
+  Override sheets in the mainline pattern set custom properties and override
+  rules; they do not `url()` into the shared tree — no example in the repo
+  does. The one genuinely unsupported edge: a *project* stylesheet referencing
+  `url(../../design-guide/…)` **across** the boundary would need its CSS
+  rewritten (`_up/` lives at a different relative depth). Ship with the
+  documented rule "reference shared assets from shared CSS" and add a postcss
+  rewrite later only if real projects hit it. So §9.3's "zero CSS rewriting"
+  holds *intra-tree* (the mainline), not universally.
+
+**Drawbacks, honestly stated:**
+
+1. **One real breaking change.** Every project following the documented
+   shared-assets pattern has a `styles:` entry naming the flattened
+   destination — a path that does not exist in its source tree. A fail-loud
+   resolver breaks those projects at upgrade. Required mitigation: a compat
+   shim — when a `styles:` entry does not resolve in-source but matches
+   `<flattened-dest-of-an-assets-entry>/<rest>`, resolve it to the source file
+   and emit a deprecation warning naming the direct path to write. Cheap,
+   precise, removable in a later major.
+2. **The silent class narrows; it does not vanish.** A ref carrier the walker
+   does not know (`srcset`, `poster`, inline `style=`, SVG-internal `href`)
+   is the new silent gap. The repo's examples use none of these today, and the
+   walker should cover the common set anyway — but this is why the
+   `requestfailed` listener must land *with* the resolver, not after it. The
+   guarantee is the pair: the resolver makes misses near-impossible, the
+   listener makes the impossible loud. Neither alone suffices.
+3. **Fail-loud needs a policy, and it is a product decision.** A dangling
+   image ref hard-failing the build can be hostile to exactly the non-technical
+   authors the project serves (commented-out chapter, still-referenced art).
+   Sensible default: unresolvable *stylesheet* = error (silent unstyled output
+   is the worst outcome in this document); unresolvable *image/font* = loud
+   warning listing the file, build continues. Preview always warns.
+4. **Unreferenced-but-wanted files stop shipping.** Anything relying on
+   incidental wholesale copying (extra downloads dropped in `assets/`,
+   deploy files) needs the additive `source.assets` escape hatch — which
+   therefore must stay, as pass-through verbatim copying for in-project dirs.
+   Behavior change to document, not to engineer around.
+5. **Guarded clean vs. the implicit user-files contract.** `index.html` is
+   written "only if absent" (`build-runner.ts:425`) — evidence someone
+   anticipated user-owned files living in `outDir`. Owned-outDir breaks that
+   contract; the sanctioned replacement is a source-side file (e.g. a project
+   `index.html` the resolver ships), and the change must be called out.
+6. **`_up/` appears in deployed URLs** for shared assets. Cosmetic, mildly
+   ugly, reveals layout. Acceptable; a vanity mapping is possible later.
+7. **The stage's one real virtue dies with it.** The stage copy was a frozen
+   snapshot; serving `outDir` live means a concurrent writer can produce torn
+   pagination input. Today's pipeline is already unlocked and racy
+   (finding: no outDir lock), so this is a marginal regression at worst, and
+   the honest fix is the lock, not the copy.
+8. **Origin-strip detail that must not be gotten wrong.** Stripping
+   `http://127.0.0.1:<port>/` must yield **document-relative** paths
+   (`css/fonts/x.woff2`), not root-relative (`/css/…`) — `book.html` sits at
+   the artifact root, and root-relative URLs break subpath deployments
+   (GitHub Pages project sites). Strip origin *and* the leading slash.
+
+Net verdict: the three use cases are not merely supported — each is *stronger*
+than under the current design (themes ship, nested shared trees work, the
+flattened-destination indirection and its lint blindness disappear). The costs
+are one compat shim, one policy decision, and the discipline of shipping the
+resolver and the pagination listener together.
