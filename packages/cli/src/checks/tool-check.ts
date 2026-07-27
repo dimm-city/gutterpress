@@ -5,6 +5,7 @@ import "./register-builtins";
 import { selectChecks } from "./policy";
 import { log } from "../utils/logger";
 import { isToolAvailable } from "../lib/tool-probe";
+import { resolveGhostscript } from "../lib/ghostscript";
 import type { ResolvedConfig } from "../schema/manifest.types";
 import type { RunnerOptions } from "./runner";
 
@@ -62,7 +63,9 @@ export async function checkToolAvailability(
   const results = await Promise.all(
     toolNames.map(async (tool) => ({
       tool,
-      found: await isToolAvailable(tool),
+      found: tool === "gs"
+        ? !!(await resolveGhostscript())
+        : await isToolAvailable(tool),
     }))
   );
 

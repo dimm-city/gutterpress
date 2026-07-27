@@ -6,6 +6,7 @@ interface ProjectSourceLibModule {
   detectProjectSource: (path: string) => Promise<unknown>;
   capabilitiesFor: (source: unknown) => unknown;
   repoSubPath: (repoRoot: string, folderPath: string) => string;
+  hasProjectManifest: (folderPath: string) => boolean;
 }
 
 /** A book found inside the classified project's repo (C1: repo-root sessions). */
@@ -29,6 +30,7 @@ export const POST: RequestHandler = defineRoute<
     const lib = await hooks.loadLib();
     const source = await lib.detectProjectSource(folderPath);
     const capabilities = lib.capabilitiesFor(source);
+    const hasManifest = lib.hasProjectManifest(folderPath);
 
     // C1 (repo-root sessions): a `local-git-folder` source's `repoRoot` may hold
     // several books (folders directly containing a manifest). Reuse the same
@@ -49,6 +51,6 @@ export const POST: RequestHandler = defineRoute<
         .sort((a, b) => (a.subPath < b.subPath ? -1 : a.subPath > b.subPath ? 1 : 0));
     }
 
-    return { source, capabilities, repoRoot, books };
+    return { source, capabilities, hasManifest, repoRoot, books };
   },
 });

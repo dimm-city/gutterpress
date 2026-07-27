@@ -27,6 +27,7 @@
  */
 
 import { decideStartupScreen } from "./startup-landing";
+import type { LastFlushFailure } from "../platform/contract";
 import type { PersistedProjectState } from "./page-types";
 
 /** The subset of persisted `ViewerPrefs` this flow reads. */
@@ -34,6 +35,7 @@ export interface StartupPrefs {
   leftPanel?: { open?: boolean; activeTab?: string; width?: number };
   showLandingAtStartup?: boolean;
   lastProjectDir?: string | null;
+  lastFlushFailed?: LastFlushFailure;
 }
 
 export interface StartupControllerDeps {
@@ -46,12 +48,16 @@ export interface StartupControllerDeps {
   isWorkspaceEngaged: () => boolean;
   /**
    * Race recheck after the prefs round-trip resolves: true when a preview,
-   * folder, or URL is already open (a narrower check than
-   * `isWorkspaceEngaged` — busy/error alone don't count here, matching the
-   * original inline recheck).
+   * folder, or URL is open, or another open intent is already busy. Errors
+   * alone do not count. Including busy keeps an OS file launch that arrives
+   * during the prefs read from being superseded by the previous project.
    */
   isSomethingOpen: () => boolean;
   getViewerPrefs: () => Promise<StartupPrefs>;
+  /** Surface the prior-session warning; false means no notice surface was ready. */
+  showLastFlushFailure: (marker: LastFlushFailure) => boolean;
+  /** Race-safe acknowledgement: the host clears only this exact marker. */
+  acknowledgeFlushFailure: (failedAt: string) => Promise<unknown>;
   /** True once the left-panel prefs have been applied this session. */
   isLeftPanelPrefsLoaded: () => boolean;
   /** Apply the loaded left-panel prefs exactly once. */
@@ -68,7 +74,7 @@ export interface StartupControllerDeps {
     dir: string,
     label: string,
     restoreState: Promise<PersistedProjectState | null>,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 }
 
 export class StartupController {
@@ -86,8 +92,11 @@ export class StartupController {
    * The startup continuation: decide whether to show the landing and whether
    * to pre-render the last project behind it. Safe to call from `onMount` on
    * every launch path — the guards make every call after the first a no-op.
+   * File-association launches pass `false`: startup preferences/notices still
+   * initialize, but the previously-open project must not compete with the
+   * chapter the OS asked the app to open.
    */
-  async run(): Promise<void> {
+  async run(reopenLastProject = true): Promise<void> {
     const d = this.deps;
     if (!d.isDesktop()) return;
     if (this.lastProjectChecked) return;
@@ -98,6 +107,11 @@ export class StartupController {
     this.lastProjectChecked = true;
     try {
       const prefs = await d.getViewerPrefs();
+      if (prefs.lastFlushFailed && d.showLastFlushFailure(prefs.lastFlushFailed)) {
+        // Showing the persistent notice is the acknowledgement point. If the
+        // atomic clear fails, retaining the marker and showing it again is safer.
+        void d.acknowledgeFlushFailure(prefs.lastFlushFailed.failedAt).catch(() => {});
+      }
       // Load persisted left panel state — including the open flag, which
       // applies on every launch path (the landing covers it until entry).
       if (!d.isLeftPanelPrefsLoaded()) {
@@ -113,6 +127,7 @@ export class StartupController {
         // it with the start screen.
         return;
       }
+      if (!reopenLastProject) return;
 
       const dir = prefs.lastProjectDir ?? null;
       const { showLanding } = decideStartupScreen({ lastProjectDir: dir, landingEnabled: showPref });

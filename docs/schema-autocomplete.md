@@ -245,11 +245,12 @@ markdown-it plugins to load, highest `priority` first. Each entry is either a sh
 
 A string is treated as a local file path when it starts with `./`, `../`, `/` or a Windows drive letter, or when it contains a path separator and ends in `.js`/`.mjs`/`.cjs`; otherwise it is an npm package name.
 
-An object takes `path` (local module) or `name` (npm package), plus optional `version`, `priority` (default `100`), `options`, and `enabled` (set `false` to keep the entry but skip loading it).
+An object takes `path` (local module) or `name` (npm package), plus optional `version`, `priority` (default `100`), `options`, and `enabled` (set `false` to keep the entry but skip loading it). The explicit npm installer records an exact `version` and vendors a receipt-backed runtime dependency tree under `plugins/npm/`; builds verify and resolve pinned entries there without network access.
 
 ```yaml
 plugins:
-  - "print-md-plugin-callouts"
+  - name: "print-md-plugin-callouts"
+    version: "1.2.3"
   - path: "plugins/dimm-city-plugin.js"
     priority: 100
 ```
@@ -319,7 +320,7 @@ Preflight configuration.
 
 - `enabled` (boolean) - Default `true`.
 - `checks` (object) - Per-check overrides keyed by check id. This is an **open dictionary**: any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced `source.*`, `asset.*`, `pdf.*`, `heuristic.*`. A value is either a boolean (shorthand for enabled/disabled) or `{ enabled, severity, options }`, where `severity` is `error`, `warning`, or `info`.
-- `source` (object) - `markdownlint`, `htmlhint`, `stylelint`: a config file path, or `false` to disable that check. `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
+- `source` (object) - `markdownlint`, `htmlhint`: a config file path, or `false` to disable that check. `stylelint`: `false` disables the `source.stylelint` check; any other value leaves it enabled — the key is kept only for manifest back-compat, the check itself runs the same postcss-based print-safety rules as `checkCss` and does not read a stylelint config. `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
 - `assets` (object) - `maxImageSize`, `minImageDpi`, `allowedColorSpaces`, `allowAlpha`, `approvedFontFiles`, `requireFontLicense`.
 - `pdf` (object) - `requireBookmarks`, `requireTocLinks`, `minImageResolution`, `forbidTransparency`, `requireBleed`, `bleedSize` (points).
 - `heuristics` (object) - `maxDecorativeLayers`, `textDensityRange` (`min`/`max`), `maxParagraphsPerSection`.

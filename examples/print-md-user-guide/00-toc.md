@@ -11,7 +11,7 @@
 <li><a href="#ch-styling">Styling & Theming</a> — CSS variables, custom themes, fonts, page templates, cascade order</li>
 <li><a href="#ch-ttrpg">TTRPG Extensions</a> — Stat blocks, dice notation, cross-references, trait callouts, challenge ratings</li>
 <li><a href="#ch-plugins">Plugins</a> — Adding, installing, writing, and loading order for markdown-it plugins</li>
-<li><a href="#ch-validation">Validation & Best Practices</a> — 31 print checks, CLI usage, file organization, production workflow</li>
+<li><a href="#ch-validation">Validation & Best Practices</a> — 33 print checks, CLI usage, file organization, production workflow</li>
 <li><a href="#ch-system">System Setup</a> — Required external tools, per-platform install, troubleshooting</li>
 <li><a href="#ch-publishing">Publishing</a> — Sending your finished book to itch.io, DriveThruRPG, Amazon KDP, Azure, or Shopify</li>
 </ol>

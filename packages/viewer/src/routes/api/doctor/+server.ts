@@ -17,6 +17,7 @@ interface SystemDiagnostics {
   libVersion: string;
   platform: { os: string; arch: string; release: string; node: string };
   tools: ToolStatus[];
+  configDir: string;
   docsUrl: string;
 }
 

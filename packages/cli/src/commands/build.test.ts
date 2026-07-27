@@ -26,6 +26,7 @@ import { stubProcessExit } from "../test-helpers/testkit.ts";
 
 let runBuildSpy: ReturnType<typeof spyOn> | undefined;
 let exitSpy: ReturnType<typeof stubProcessExit> | undefined;
+let consoleLogSpy: ReturnType<typeof spyOn> | undefined;
 
 function stubExit(): void {
   exitSpy = stubProcessExit();
@@ -42,8 +43,10 @@ function stubRunBuild(
 afterEach(() => {
   runBuildSpy?.mockRestore();
   exitSpy?.mockRestore();
+  consoleLogSpy?.mockRestore();
   runBuildSpy = undefined;
   exitSpy = undefined;
+  consoleLogSpy = undefined;
 });
 
 describe("build command — citty arg parsing → runBuild dispatch", () => {
@@ -75,6 +78,18 @@ describe("build command — citty arg parsing → runBuild dispatch", () => {
 
     expect(captured?.inputDir).toBe(path.resolve("."));
     expect(captured?.format).toBe("pdf"); // documented default
+  });
+
+  test("resolved format is the command's first output line", async () => {
+    const lines: string[] = [];
+    consoleLogSpy = spyOn(console, "log").mockImplementation((...args) => {
+      lines.push(args.join(" "));
+    });
+    stubRunBuild(async () => ({ pdfPath: null, htmlPath: undefined }));
+
+    await runCommand(buildCommand, { rawArgs: [] });
+
+    expect(lines[0]).toContain("Format: pdf");
   });
 
   test("--out ending in .pdf splits into outDir + pdfFileOverride (splitOutPath wiring)", async () => {

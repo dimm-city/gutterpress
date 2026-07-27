@@ -1,7 +1,7 @@
 /**
  * Shared asset copying utilities
  *
- * Provides consistent asset handling across build, assets, and preview commands.
+ * Provides consistent asset handling across the build and preview paths.
  * Handles relative paths like "../_shared" correctly.
  */
 

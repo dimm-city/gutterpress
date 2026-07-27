@@ -30,5 +30,4 @@ All fonts must be fully embedded in the PDF. The `pdf.print.embedded-fonts` chec
 
 Total Area Coverage (TAC) measures the combined ink density on a page. Most print vendors require TAC below 300-340%. The `pdf.print.ink-coverage` check uses Ghostscript to measure this.
 
-> [!note]
-> High ink coverage can cause paper curling, slow drying, and ink smearing. Keep decorative elements in check.
+> **Note:** High ink coverage can cause paper curling, slow drying, and ink smearing. Keep decorative elements in check.

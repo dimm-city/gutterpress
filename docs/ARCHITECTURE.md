@@ -21,7 +21,7 @@ This document describes the architecture, design decisions, and implementation d
 
 The repo is a Bun workspace with two packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). Standard build: `bun build` (3 entrypoints, `--packages=external`) + `tsc` for `.d.ts`. Also distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). Standard build: `bun build` over `src/index.ts` + `src/api/index.ts` + `src/cli.ts` (`--target=node --packages=external --splitting`), with `src/render.ts` compiled as a SEPARATE non-split invocation so the node-free `/render` subpath never shares a chunk with Node code (enforced by `scripts/check-render-pure.mjs`; see `CLAUDE.md` §8), plus `tsc` for `.d.ts`. Also distributed as a standalone compiled binary via `bun build --compile`.
 - **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Depends on `@dimm-city/print-md` (workspace) and loads its library entry in the Electron main process.
 
 ### Key Features
@@ -72,12 +72,17 @@ packages/cli/src/
 ├── types.ts                # Central type definitions
 ├── constants.ts            # Application constants
 ├── commands/               # CLI command implementations (thin citty wrappers)
+│   ├── new.ts              # Scaffold a project from a built-in template
 │   ├── build.ts            # Unified pipeline: html | pdf | pdfx
 │   ├── preview.ts          # Headless preview server launcher
+│   ├── publish.ts          # Push built output to distribution platforms
 │   ├── validate.ts         # Print validation
 │   ├── lint.ts             # CSS linting
 │   ├── audit.ts            # Asset-only validation
-│   └── preflight.ts        # Structured CI preflight payload
+│   ├── preflight.ts        # Structured CI preflight payload
+│   ├── repair.ts           # Diagnose/repair a project's local version history
+│   ├── doctor.ts           # Check system tools used by print-md
+│   └── plugin.ts           # Manage project markdown-it plugins
 ├── checks/                 # Validation check system
 │   ├── types.ts            # Check interfaces
 │   ├── registry.ts         # Self-registration + getChecks()
@@ -106,12 +111,11 @@ packages/cli/src/
 ├── schema/
 │   └── manifest.types.ts   # PrintMdManifest + ResolvedConfig
 ├── preview/                # Preview server modules
-│   ├── routes.ts           # API route handlers
-│   ├── server-context.ts   # Server context
-│   ├── http-server.ts      # node:http + ws WebSocket dev server
-│   ├── file-watcher.ts     # File change detection
-│   ├── api-middleware.ts   # API middleware
-│   └── lifecycle.ts        # Server lifecycle
+│   ├── http-server.ts      # node:http + ws WebSocket dev server (static
+│   │                       #   files, the inlined /api/status route, HMR)
+│   ├── server-context.ts   # Server state shape
+│   ├── file-watcher.ts     # File change detection + incremental rebuild
+│   └── lifecycle.ts        # Server startup/shutdown, orphan temp-dir cleanup
 ├── utils/                  # Shared utilities
 │   ├── file-utils.ts       # File operations
 │   └── logger.ts           # Leveled logger + command-facing log facade
@@ -265,37 +269,46 @@ Styles are applied in a carefully designed cascade:
 
 ### 3. HTML-to-PDF Build
 
-**Location**: `packages/cli/src/commands/build.ts`
+**Location**: `packages/cli/src/lib/pagination.ts` (`renderHtmlToPdf`, called from `packages/cli/src/lib/build-runner.ts:499`; `commands/build.ts` only calls `runBuild`)
 
-The build command renders HTML to PDF directly via puppeteer-core driving a system/bundled Chromium. There are no separate format strategy classes; the build pipeline is a single linear flow:
+`renderHtmlToPdf` renders HTML to PDF through an injectable `PdfRenderer`. There are no separate format strategy classes; the default renderer drives a pooled puppeteer-core Chromium instance:
 
 ```typescript
-async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
+export async function renderHtmlToPdf(
+  inputHtml: string,
+  outPdf: string,
+  renderer: PdfRenderer = puppeteerPdfRenderer,
+  captureStaticHtmlTo?: string
+) {
   // 1. Serve the staged HTML + assets via a local node:http static file
-  //    server on a random port (build-runner.ts's createStaticFileServer)
-  const { port, close } = await createStaticFileServer(stageDir, htmlFilename);
+  //    server on a random port (pagination.ts's createStaticFileServer)
+  const server = await createStaticFileServer(stageDir, htmlFilename);
 
-  // 2. Launch Chromium via puppeteer-core (or, in the packaged Electron
-  //    viewer, an injected renderer backed by webContents.printToPDF —
-  //    see docs/adr/0002-pdf-rendering-and-pure-js-tooling.md)
-  const browser = await puppeteer.launch({ headless: true, executablePath });
-  const page = await browser.newPage();
-
-  // 3. Navigate to HTML page, wait for Paged.js render
-  await page.goto(`http://127.0.0.1:${port}/${htmlFilename}`, { waitUntil: "networkidle0" });
-  await page.waitForFunction(() => (window as any).__PAGED_RENDERED__ === true);
-
-  // 4. Generate PDF
-  await page.pdf({ path: outPdf, printBackground: true, preferCSSPageSize: true });
-  await browser.close();
-  await close();
+  // 2. Default renderer drives a pooled puppeteer-core Chromium instance
+  //    (browser-pool.ts's getBrowser — reused across renders; only the page
+  //    closes after each one). The packaged Electron viewer injects a
+  //    different PdfRenderer backed by webContents.printToPDF instead — see
+  //    docs/adr/0002-pdf-rendering-and-pure-js-tooling.md.
+  await renderer({ url: `http://127.0.0.1:${server.port}/${htmlFilename}`, outPdf, timeoutMs, captureStaticHtmlTo });
 }
+
+// Inside the default renderer: navigate, wait for Paged.js to finish
+// paginating, then print at the paginated page's own computed size.
+await paginateAndCapture(page, url, timeoutMs);
+await page.pdf({
+  path: outPdf,
+  printBackground: true,
+  width: pagedInfo.width ?? "8.625in",
+  height: pagedInfo.height ?? "11.25in",
+  margin: { top: "0", right: "0", bottom: "0", left: "0" },
+});
 ```
 
 **Optional PDF/X conversion**: When `--format pdfx` is specified, the build command runs Ghostscript (`packages/cli/src/lib/ghostscript.ts`) to convert the Chromium PDF to CMYK PDF/X-1a or PDF/X-3, with optional annotation stripping for compliance.
 
 **Design Rationale**:
-- Direct puppeteer-core rendering eliminates subprocess overhead
+- A pooled, injectable `PdfRenderer` lets the CLI and the packaged Electron
+  viewer share one render path while using different Chromium sources
 - A `node:http` local file server avoids file:// protocol issues, and stays
   Node-compatible so the same renderer path runs inside Electron
 - Ghostscript post-processing handles CMYK conversion separately from rendering
@@ -304,11 +317,10 @@ async function renderHtmlToPdf(inputHtml: string, outPdf: string) {
 
 ### Node-compatible HTTP + WebSocket
 
-**Location**: `packages/cli/src/preview/http-server.ts`, `packages/cli/src/preview/api-middleware.ts`,
-`packages/cli/src/preview/routes.ts`
+**Location**: `packages/cli/src/preview/http-server.ts`
 
 Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`
-for live reload) that handles static files, the `/api/*` route table, and a
+for live reload) that handles static files, the one `/api/status` route, and a
 `/__print-md-hmr` WebSocket for full-reload broadcasts. It deliberately does
 **not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
 Electron viewer can run it in-process on Electron's bundled Node (see
@@ -322,8 +334,9 @@ User Browser / Electron Viewer → http://127.0.0.1:{port}
 http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
     ├─→ /__print-md-hmr  WebSocket upgrade → broadcastReload()
     │    (subscribers receive {type:"full-reload"} on file change)
-    ├─→ /api/*           handleApiRequest (api-middleware.ts → routes.ts)
-    │    └─→ GET  /api/status            (handleStatus — reports hasInput + currentPath)
+    ├─→ GET /api/status  inlined handler — reports hasInput + currentPath
+    │    (the only API route; a separate route-table module was removed as
+    │    unneeded scaffolding for one hard-coded endpoint)
     └─→ /*               readFile (node:fs/promises) from state.tempDir
          ("/" redirects to book.html; HTML responses get a tiny inline
           HMR client injected before </body>; `..` traversal returns 404)
@@ -392,27 +405,23 @@ function createFileWatcher(state: ServerState): FSWatcher {
 
 ### Client Connection Tracking
 
-**Auto-shutdown feature**:
+**Location**: `packages/cli/src/preview/http-server.ts`, `packages/cli/src/preview/lifecycle.ts`
 
-```typescript
-const connectedClients = new Set<string>();
-const AUTO_SHUTDOWN_DELAY = 5000; // 5 seconds
-
-function checkForAutoShutdown() {
-  if (connectedClients.size === 0) {
-    setTimeout(() => {
-      if (connectedClients.size === 0) {
-        shutdown();
-      }
-    }, AUTO_SHUTDOWN_DELAY);
-  }
-}
-```
+The WebSocket server keeps a `Set<WebSocket>` of connected HMR clients purely
+to broadcast reload messages and `terminate()` them on shutdown — there is no
+idle-timeout auto-shutdown. Instead, `lifecycle.ts` writes the process PID to
+`<tempDir>/.print-md.pid` on startup and, on the *next* preview startup, walks
+the shared temp-dir base and removes any leftover dir whose recorded PID is no
+longer alive — cleanup for orphaned temp dirs left by a previous run that
+didn't shut down cleanly (crash, SIGKILL, terminal hangup), not a live
+connection-count timer.
 
 **Design Rationale**:
-- Prevents resource leaks from abandoned servers
-- Graceful shutdown with delay
-- Cancels if client reconnects
+- Orphan-dir cleanup runs at the next startup rather than a background timer —
+  simpler, and it can't shut down a preview that's still in active use
+- A PID liveness check avoids deleting a temp dir a still-running instance owns
+- Graceful shutdown has its own per-step timeout so a wedged watcher/server
+  close can't block process exit indefinitely
 
 ## Configuration System
 
@@ -506,7 +515,7 @@ export function resolveConfig(
 **Design Rationale**:
 - No separate validation step needed; YAML parsing + TypeScript types handle structure
 - Preset defaults ensure every field has a value even with empty manifests
-- Preview static-file serving performs its own path containment check (`resolveStaticPath` in `packages/cli/src/preview/http-server.ts`)
+- Preview static-file serving performs its own path containment check (`resolveStaticPath` in `packages/cli/src/lib/static-serve.ts`, used by `packages/cli/src/preview/http-server.ts`)
 
 ## Extension System
 
@@ -561,16 +570,33 @@ export const css = '.my-plugin-class { color: red; }';
 ### Plugin Resolution
 
 Plugins are resolved in this order:
-1. **User's project** (manifest directory `node_modules`)
-2. **print-md's own dependencies**
-3. **Fail fast** — if a plugin can't be found, the build errors with a clear message identifying the plugin and the install command to run
+1. **Receipt-verified project-local package graph** (`plugins/npm/`, selected by manifest `name` + exact `version`)
+2. **User's project** (`node_modules`, for legacy unpinned manifests)
+3. **print-md's own dependencies** (bundled optional features and legacy entries)
+4. **Fail fast** — if a plugin can't be found, the build identifies the manifest entry and points to the explicit installer
 
-print-md does **not** auto-install plugins. The user must install plugins in
-their project directory before running the build. This keeps builds
-reproducible and prevents network access during `print-md build`.
+The loader does **not** install or access the network. Installation is an
+explicit viewer action or `print-md plugin add` command. Registry metadata is
+resolved to an exact root and dependency graph, each tarball integrity is
+verified, and a bounded nested `node_modules` tree is safely vendored before an
+atomic manifest update. A schema-v2 receipt records provenance, dependency
+edges, import/require entries, skipped optional dependencies, and a SHA-256
+whole-tree digest. Before loading, the loader snapshots the vendor tree and
+verifies that private copy, including each package's declared dependency edges
+and export entries. It then copies packages separately into a digest-addressed
+process-local tree with no `node_modules` links. Literal ESM imports and
+CommonJS requires in the reachable module graph are resolved through the
+receipt and rewritten to those private copies; unresolved or nonliteral module
+requests fail closed instead of substituting project or ancestor packages. See
+[ADR 0007](./adr/0007-npm-plugin-vendoring.md).
+
+Plugin modules normally expose a default function. A manifest entry may set
+`export` to explicitly select a named function when a package exposes several
+plugin variants instead.
 
 **Design Rationale**:
 - Manifest-driven plugin declaration keeps configuration explicit
+- Exact versions, complete project-local dependency trees, and receipts make installs reproducible
 - Priority sorting controls plugin load order
 - Fail-fast on missing plugins surfaces misconfiguration immediately rather than silently skipping
 - CSS export support allows plugins to inject styles into rendered output
@@ -681,19 +707,27 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
 
 ### Path Validation
 
-All user-provided paths are validated:
+Static-file serving paths are confined to their root directory by shared
+guards in `packages/cli/src/lib/static-serve.ts`, which return `null` (turned
+into a 403/404 by the caller) rather than throwing:
 
 ```typescript
-export function validateSafePath(targetPath: string, basePath: string): boolean {
-  const resolvedTarget = path.resolve(normalizedBase, normalizedTarget);
-  const resolvedBase = path.resolve(normalizedBase);
-
-  if (!resolvedTarget.startsWith(resolvedBase + path.sep)) {
-    throw new Error('Path traversal attempt detected');
+export function resolveWithinRoot(relPath: string, root: string): string | null {
+  const resolvedRoot = path.resolve(root);
+  const candidate = path.resolve(
+    resolvedRoot,
+    "." + (relPath.startsWith("/") ? relPath : "/" + relPath)
+  );
+  if (candidate !== resolvedRoot && !candidate.startsWith(resolvedRoot + path.sep)) {
+    return null;
   }
-  return true;
+  return candidate;
 }
 ```
+
+`resolveStaticPath` decodes a URL pathname and delegates to
+`resolveWithinRoot`; both the preview server (`preview/http-server.ts`) and
+the build-time pagination/PDF static servers (`lib/pagination.ts`) use it.
 
 ### Input Sanitization
 
@@ -713,9 +747,11 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 ### Preview Performance
 
 - **Debouncing**: File changes debounced (100ms) to prevent excessive rebuilds
-- **Full-Reload over WebSocket**: every file change publishes one `full-reload`
+- **Full-Reload over WebSocket**: file changes publish a `full-reload`
   message; clients refresh and receive freshly-rendered HTML
-- **Connection Tracking**: Auto-shutdown prevents resource leaks
+- **Orphan cleanup**: leftover preview temp dirs from a run that didn't shut
+  down cleanly are removed on the next startup via a PID-liveness check, not
+  an idle-connection timer
 
 ## Testing Strategy
 
@@ -739,5 +775,5 @@ export function validateSafePath(targetPath: string, basePath: string): boolean 
 
 ---
 
-**Last Updated**: 2026-07-01
-**Version**: 0.7.1-beta.1 (packages/cli + packages/viewer)
+**Last Updated**: 2026-07-27
+**Version**: 0.8.3 (packages/cli + packages/viewer)

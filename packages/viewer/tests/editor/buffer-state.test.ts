@@ -74,7 +74,7 @@ test("flush refuses to overwrite disk content that changed after the buffer load
   platform.externalWrite("/book/chapter.md", "remote text from pull");
 
   buffer.edit("old local text plus stale edit");
-  await buffer.flush();
+  await expect(buffer.flush()).rejects.toThrow(/changed on disk/);
 
   expect(platform.getContent("/book/chapter.md")).toBe("remote text from pull");
   expect(buffer.externalChange).toEqual({
@@ -93,7 +93,7 @@ test("keepMine is the explicit override after a stale-save conflict", async () =
   platform.externalWrite("/book/chapter.md", "remote text from pull");
 
   buffer.edit("author intentionally keeps local text");
-  await buffer.flush();
+  await expect(buffer.flush()).rejects.toThrow(/changed on disk/);
   expect(platform.getContent("/book/chapter.md")).toBe("remote text from pull");
 
   buffer.keepMine();
@@ -175,7 +175,7 @@ test("acceptExternal (the reloadExternal conflict-banner path) fires the same on
   await buffer.load("/book/chapter.md");
   platform.externalWrite("/book/chapter.md", "remote text from pull");
   buffer.edit("dirty local edit that conflicts");
-  await buffer.flush();
+  await expect(buffer.flush()).rejects.toThrow(/changed on disk/);
   expect(buffer.externalChange).not.toBeNull();
 
   buffer.acceptExternal();
@@ -209,7 +209,7 @@ test("flush reports a conflict instead of recreating a file deleted by a pull", 
   platform.externalDelete("/book/chapter.md");
 
   buffer.edit("stale edit after remote deletion");
-  await buffer.flush();
+  await expect(buffer.flush()).rejects.toThrow(/changed on disk/);
 
   await expect(platform.readFile("/book/chapter.md")).rejects.toThrow(/missing test file/);
   expect(buffer.externalChange).toEqual({
@@ -240,7 +240,7 @@ test("flush reports a conflict when the file disappears between save stat and re
   await buffer.load("/book/chapter.md");
   buffer.edit("stale edit after remote deletion");
   platform.deleteOnNextRead = true;
-  await buffer.flush();
+  await expect(buffer.flush()).rejects.toThrow(/changed on disk/);
 
   await expect(platform.readFile("/book/chapter.md")).rejects.toThrow(/missing test file/);
   expect(buffer.externalChange).toEqual({
@@ -288,6 +288,62 @@ test("an in-flight save for an old file does not mutate a newly loaded file", as
   expect(buffer.phase).toBe("clean");
 });
 
+test("flush serializes behind an in-flight autosave and persists the latest edit", async () => {
+  class SlowFirstWritePlatform extends MemoryPlatform {
+    writes: string[] = [];
+    firstWriteStarted: Promise<void>;
+    private markFirstWriteStarted!: () => void;
+    releaseFirstWrite: (() => void) | null = null;
+
+    constructor(initial: Record<string, string>) {
+      super(initial);
+      this.firstWriteStarted = new Promise((resolve) => {
+        this.markFirstWriteStarted = resolve;
+      });
+    }
+
+    async writeFile(path: string, content: string): Promise<FileWriteResult> {
+      this.writes.push(content);
+      if (this.writes.length === 1) {
+        this.markFirstWriteStarted();
+        await new Promise<void>((resolve) => {
+          this.releaseFirstWrite = resolve;
+        });
+      }
+      return super.writeFile(path, content);
+    }
+  }
+
+  const platform = new SlowFirstWritePlatform({ "/book/chapter.md": "original" });
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    saveDelayMs: 0,
+    recoveryEnabled: false,
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("first edit");
+  await platform.firstWriteStarted;
+
+  buffer.edit("latest edit");
+  let flushed = false;
+  const flush = buffer.flush().then(() => {
+    flushed = true;
+  });
+  await Bun.sleep(5);
+  const flushedBeforeFirstWriteFinished = flushed;
+  const writesBeforeFirstWriteFinished = [...platform.writes];
+
+  platform.releaseFirstWrite?.();
+  await flush;
+
+  expect(flushedBeforeFirstWriteFinished).toBe(false);
+  expect(writesBeforeFirstWriteFinished).toEqual(["first edit"]);
+  expect(platform.writes).toEqual(["first edit", "latest edit"]);
+  expect(platform.getContent("/book/chapter.md")).toBe("latest edit");
+  expect(buffer.phase).toBe("clean");
+});
+
 test("an in-flight crash-recovery restore does not mutate a newly loaded file", async () => {
   class SlowReadPlatform extends MemoryPlatform {
     releaseRead: (() => void) | null = null;
@@ -320,4 +376,36 @@ test("an in-flight crash-recovery restore does not mutate a newly loaded file", 
   expect(buffer.content).toBe("b original");
   expect(buffer.diskContent).toBe("b original");
   expect(buffer.phase).toBe("clean");
+});
+
+test("a failed disk write rejects flush and remains dirty for the close gate", async () => {
+  class FailingWritePlatform extends MemoryPlatform {
+    async writeFile(): Promise<FileWriteResult> {
+      throw new Error("disk full");
+    }
+  }
+
+  const platform = new FailingWritePlatform({ "/book/chapter.md": "original" });
+  const dirty: boolean[] = [];
+  const errors: string[] = [];
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    saveDelayMs: 10_000,
+    recoveryEnabled: false,
+    onDirty: (pending) => dirty.push(pending),
+    onError: (message) => errors.push(message),
+  });
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("unsaved edit");
+  await expect(buffer.flush()).rejects.toThrow("disk full");
+
+  expect(buffer.phase).toBe("error");
+  expect(buffer.isDirty).toBe(true);
+  expect(buffer.hasPendingSave).toBe(true);
+  expect(dirty).toEqual([true]);
+  expect(errors).toEqual(["Save failed: disk full"]);
+
+  buffer.reset();
+  expect(dirty).toEqual([true, false]);
 });

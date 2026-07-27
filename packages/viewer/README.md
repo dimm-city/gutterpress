@@ -24,7 +24,8 @@ BrowserWindow loads app://local/
   └─ renderer (Svelte SPA) reaches the host two ways:
        • fetch("/api/…")   → src/routes/api/**/+server.ts host routes (the bulk)
        • window.electron.* → only push streams + the preview/build pipeline
-     Always via getPlatform(); it never touches window.electron directly.
+     Components call typed api.* wrappers for routes and getPlatform() for the
+     narrow adapter surface; only electron-adapter.ts touches window.electron.
 
 Host capabilities live in ~100 src/routes/api/**/+server.ts routes — status, fs,
 dialog, theme, plugin, remote/sync, vcs, recovery, lint, media, and more. These
@@ -52,33 +53,18 @@ removed:
 
 ### Dev (this package)
 
-- **Bun** (or **Node 20+**) for installing workspace deps and running tests
+- **Bun** for workspace installation, tests, and the shared library build
+- **Node 20+** for the Node-based build/check scripts invoked by package scripts
 
 ### End users (packaged viewer)
 
-- **A Chromium-based browser must be installed on the user's machine** for
-  the Save PDF feature. The lib uses `puppeteer-core`, which has no bundled
-  Chromium and never downloads one (despite what older versions of this
-  README claimed). The lib probes a hard-coded list of paths — see
-  `packages/cli/src/lib/chromium.ts` — and accepts a `CHROMIUM_PATH` or
-  `PUPPETEER_EXECUTABLE_PATH` env-var override.
+- **No separate browser or runtime is required.** Save PDF uses Electron's own
+  bundled Chromium through `webContents.printToPDF`; the packaged viewer does
+  not use the CLI's `puppeteer-core` browser discovery path.
 
-  Recognized today (as of 0.2.0):
-  - **Windows:** Google Chrome in default locations OR Microsoft Edge in
-    default locations (auto-detected).
-  - **macOS:** Chrome, Chromium (Homebrew), or Microsoft Edge in
-    `/Applications`.
-  - **Linux:** `google-chrome[-stable]`, `chromium`, `chromium-browser`, or
-    Snap-installed Chromium.
-
-  For any other browser or non-default install location, set `CHROMIUM_PATH`
-  to point at it.
-
-- **Ghostscript is OPTIONAL for plain Save PDF.** As of 0.2.0, the lib's
-  `/Creator` metadata stamp via Ghostscript is best-effort — if `gs` isn't
-  installed, the PDF still saves and a warning is logged. (Earlier
-  versions failed hard.) Ghostscript IS required for the PDF/X format
-  (CMYK conversion) and recommended to silence the warning.
+- **Ghostscript is not used for plain Save PDF.** Electron creates the PDF and
+  the lib stamps `/Creator` metadata in-process with `pdf-lib`. Ghostscript is
+  required only for the optional PDF/X format (CMYK conversion and ink checks).
 
   - Windows: https://www.ghostscript.com/ → AGPL release
   - macOS: `brew install ghostscript`
@@ -137,8 +123,8 @@ npm run electron:build
 
 # 3. Package as platform installer (electron-builder)
 npm run dist:linux   # → dist/print-md-viewer-<version>.AppImage
-npm run dist:win     # → dist/print-md-viewer-<version>-win-x64.exe + portable .zip
-npm run dist:mac     # → dist/print-md-viewer-<version>-arm64.dmg
+npm run dist:win     # → stable-named setup .exe + versioned portable .zip
+npm run dist:mac     # → dist/print-md-viewer-<version>-{arm64,x64}.dmg
 ```
 
 Each `dist:*` script runs the build and electron:build steps automatically
@@ -173,23 +159,29 @@ filename + icon basename written by `appimage-integration.ts` — all
 
 ```bash
 npm run dist:win
-# Output: dist/print-md-viewer-<version>-win-x64.exe and dist/print-md-viewer-<version>-win-x64.zip
+# Installer: dist/print-md-viewer-setup-win-x64.exe
+# Portable:  dist/print-md-viewer-<version>-win-x64.zip
 ```
 
 For normal users, download and run the `.exe` installer. It installs per-user
 without requiring administrator privileges and creates Start Menu/Desktop
-shortcuts. The `.zip` remains available as a portable/manual fallback.
+shortcuts. Its basename stays stable across releases to avoid resetting an
+unsigned download's SmartScreen reputation solely because its name changed.
+The versioned `.zip` remains a portable extract-and-run fallback; it does not
+register an uninstaller and is not the installed app's auto-update channel.
 
 ### macOS
 
 ```bash
 npm run dist:mac
-# Output: dist/print-md-viewer-<version>-arm64.dmg
+# Output: dist/print-md-viewer-<version>-arm64.dmg and
+#         dist/print-md-viewer-<version>-x64.dmg
 ```
 
-Code-signing and notarization require macOS credentials configured in the
-environment. For unsigned local testing, set
-`CSC_IDENTITY_AUTO_DISCOVERY=false`.
+Both Apple Silicon and Intel DMGs are built explicitly. Release builds remain
+unsigned and unnotarized under the accepted no-signing policy; the release
+notes and [installation guide](../../docs/installing.md) provide Gatekeeper
+instructions. For unsigned local testing, set `CSC_IDENTITY_AUTO_DISCOVERY=false`.
 
 ## Project structure
 
@@ -220,7 +212,7 @@ packages/viewer/
 ├── static/                  # Static assets served from app:// root (favicon)
 ├── build/                   # SvelteKit adapter-node output (git-ignored):
 │                            #   handler.js + server/ (host) + client/ (SPA)
-├── tests/integration/       # Playwright-driven end-to-end tests
+├── tests/                   # Bun unit/contract tests + Playwright integration tests
 ├── electron-builder.yml     # Packaging config (Linux AppImage, Windows installer/zip, macOS dmg)
 ├── svelte.config.js         # adapter-node (out: build), paths.relative
 └── package.json
@@ -245,11 +237,10 @@ Behavior:
   in the background and shows an update banner when a newer release is
   present. The user chooses when to download it. Installing happens through
   "Restart & update" (or on quit after download, via `autoInstallOnAppQuit`).
-- **macOS:** auto-update is disabled — Squirrel.Mac requires a code-signed
-  app. The manual "Check for updates" button tells mac users to grab the
-  latest DMG from GitHub Releases. Enable it later by shipping
-  signed/notarized builds (Apple Developer Program) and removing the darwin
-  gate in `electron/updater.ts`.
+- **macOS:** automatic installation is disabled because Squirrel.Mac requires
+  a code-signed app. Checks still run against GitHub Releases using the selected
+  Stable/Beta/Alpha channel. The update banner opens that exact release so the
+  user can download its DMG manually.
 - **Update channels:** Settings → App → Updates offers Stable (default), Beta,
   and Alpha. Channels are inclusive downward — Beta also receives stable
   releases, Alpha receives everything. Release tags must use `-beta.N` /
@@ -260,10 +251,11 @@ Behavior:
 - **Dev:** fully inert (`app.isPackaged` gate in `updaterSupported()`), and
   packaged-but-unsupported platforms degrade to no-ops.
 
-The wiring lives in `electron/updater.ts` (~140 lines) plus three
-`ipcMain.handle` calls in `main.ts` (`updater:getStatus`, `updater:check`,
-`updater:applyNow`). The renderer talks to it through the platform adapter
-(`getPlatform().updater`) and never touches electron-updater directly.
+The engine lives in `electron/updater.ts`. Status, check, and download are
+ordinary SvelteKit API routes; only Restart & Update and updater push events use
+the preload bridge because applying an update must flush the live BrowserWindow
+before quitting. The renderer reaches both through `getPlatform().updater` and
+never touches electron-updater directly.
 
 
 ## Architecture notes

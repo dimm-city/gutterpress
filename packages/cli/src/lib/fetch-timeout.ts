@@ -19,12 +19,14 @@
  * remote-auth/git-http.ts — because that client accepts no AbortSignal.)
  */
 
-/**
- * Thrown by `run` for failures whose message is already author-friendly
- * (e.g. one built from a non-OK HTTP status) — {@link withFetchTimeout}
- * rethrows it untouched instead of applying the offline mapping.
- */
-export class FriendlyHttpError extends Error {}
+/** An operation error that already has its final classification and message. */
+export class FetchPassthroughError extends Error {}
+
+/** An author-friendly HTTP status error that should not be remapped. */
+export class FriendlyHttpError extends FetchPassthroughError {}
+
+/** A timeout, DNS, TLS, or socket failure that an optional download may skip. */
+export class FetchUnavailableError extends Error {}
 
 export interface FetchTimeoutOptions {
   /** TOTAL deadline in ms, covering everything `run` does with the signal. */
@@ -37,12 +39,18 @@ export interface FetchTimeoutOptions {
   offlineMessage: string | ((cause: unknown) => string);
 }
 
-function composeSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+function composeSignal(
+  signal: AbortSignal | undefined,
+  timeoutMs: number,
+): { signal: AbortSignal; timeout: AbortSignal } {
   // AbortSignal.any is guaranteed by the package's node >=22 engine floor
   // (PR #116 review: a feature-detect fallback here would silently drop the
   // deadline exactly when a caller supplies a cancellation signal).
   const timeout = AbortSignal.timeout(timeoutMs);
-  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+  return {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    timeout,
+  };
 }
 
 /** Run one fetch-shaped operation under the policy described in the header. */
@@ -50,16 +58,23 @@ export async function withFetchTimeout<T>(
   options: FetchTimeoutOptions,
   run: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
+  const composed = composeSignal(options.signal, options.timeoutMs);
   try {
-    return await run(composeSignal(options.signal, options.timeoutMs));
+    return await run(composed.signal);
   } catch (cause) {
-    if (cause instanceof FriendlyHttpError) throw cause;
-    if (cause instanceof Error && cause.name === "AbortError") throw cause;
+    if (cause instanceof FetchPassthroughError) throw cause;
+    if (options.signal?.aborted) throw cause;
     const offline =
       typeof options.offlineMessage === "function"
         ? options.offlineMessage(cause)
         : options.offlineMessage;
-    const timedOut = cause instanceof Error && cause.name === "TimeoutError";
-    throw new Error(timedOut ? (options.timeoutMessage ?? offline) : offline, { cause });
+    const timedOut =
+      composed.timeout.aborted ||
+      (cause instanceof Error && cause.name === "TimeoutError");
+    if (cause instanceof Error && cause.name === "AbortError" && !timedOut) throw cause;
+    throw new FetchUnavailableError(
+      timedOut ? (options.timeoutMessage ?? offline) : offline,
+      { cause },
+    );
   }
 }

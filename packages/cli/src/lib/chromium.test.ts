@@ -260,6 +260,12 @@ describe("resolveChromiumExecutable — PATH probe fallback", () => {
       "brave",
       "brave-browser",
       "brave.exe",
+      "vivaldi",
+      "vivaldi-stable",
+      "vivaldi.exe",
+      "opera",
+      "opera-stable",
+      "opera.exe",
     ]);
   });
 });
@@ -304,6 +310,7 @@ describe("requireChromiumExecutable — error message quality", () => {
       // Sourced from the single INSTALL_HINTS registry (ARCH finding #15) —
       // not a hand-copied duplicate that could drift.
       expect(message).toContain(INSTALL_HINTS.chromium.body);
+      expect(message).toContain("desktop app includes its own browser");
       expect(message).not.toContain("undefined");
     }
   });

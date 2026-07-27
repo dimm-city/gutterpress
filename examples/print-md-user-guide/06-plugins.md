@@ -1,6 +1,6 @@
 # Plugins {#ch-plugins}
 
-<div class="lede">Print-md uses standard markdown-it plugins. Any plugin published to npm with the signature <code>(md, options) =&gt; void</code> will work — there is no Print-md-specific plugin API to learn.</div>
+<div class="lede">Print-md uses standard markdown-it plugins. Pure-JavaScript plugins published to npm with the signature <code>(md, options) =&gt; void</code> work without a Print-md-specific plugin API.</div>
 
 ## Adding a Plugin
 
@@ -8,8 +8,9 @@ Plugins are declared in `manifest.yaml` under the `plugins` key:
 
 ```yaml
 plugins:
-  # npm package (must be installed in the project)
-  - markdown-it-emoji
+  # npm package installed and pinned by print-md
+  - name: markdown-it-highlightjs
+    version: 4.3.0
 
   # local file (relative to manifest)
   - ./plugins/my-plugin.js
@@ -36,7 +37,8 @@ A bare string is treated as either a **file path** or an **npm package name**:
 |-------|------|---------|-------------|
 | `path` | string | — | Local file path. Mutually exclusive with `name`. |
 | `name` | string | — | npm package name. Mutually exclusive with `path`. |
-| `version` | string | — | Informational — print-md does not pin or install versions. |
+| `version` | string | — | Exact version of a project-local npm plugin installed by print-md. |
+| `export` | string | — | Named module export to use when the package has no default plugin export. |
 | `options` | object | `{}` | Passed as the second argument to the plugin function. |
 | `priority` | number | `100` | Higher loads first. Built-in plugins always run before user plugins. |
 
@@ -44,15 +46,47 @@ A bare string is treated as either a **file path** or an **npm package name**:
 
 ## Installing npm Plugins
 
-Print-md does **not** auto-install plugins. Install them in your project directory before building:
+Install an npm plugin from the desktop app under **Project settings → Plugins →
+Install npm plugin**, or with the standalone CLI:
 
 ```bash
-bun add markdown-it-emoji
-# or
-npm install markdown-it-emoji
+print-md plugin add markdown-it-highlightjs ./my-book
+# Request an exact version instead of npm's latest tag:
+print-md plugin add markdown-it-highlightjs@4.3.0 ./my-book
+# Select a named plugin export when the package has no default export:
+print-md plugin add markdown-it-emoji@3.0.0 ./my-book --export full
 ```
 
-This is intentional: builds are reproducible and don't perform network access during `print-md build`. If a plugin cannot be resolved, you will see a clear error pointing you to the install command.
+Print-md resolves the npm registry metadata to exact versions, verifies each
+registry integrity hash, and vendors the plugin's complete runtime dependency
+tree under the project's `plugins/npm/` folder. A receipt records the package
+graph and a hash of every file. Print-md records `{ name, version }` in
+`manifest.yaml`, so the vendored graph travels with the project and later
+builds do not access the network. Explicit reinstall always downloads fresh
+bytes rather than trusting the existing folder.
+
+No Bun, npm, Node.js installation, or package lifecycle script is used.
+Pure-JavaScript packages with normal registry dependencies are supported.
+Packages that require install/build scripts, native addon compilation, bundled
+`node_modules`, or Git/file/workspace dependency selectors are not. Optional
+dependencies may be skipped when unavailable or incompatible with the current
+platform; required dependencies and required peers must install successfully.
+
+Most plugins use a default export. When a package exposes multiple named plugin
+functions instead, select one in the desktop app's optional **export** field or
+with `--export`. Print-md records that choice in the manifest, for example:
+
+```yaml
+plugins:
+  - name: markdown-it-emoji
+    version: 3.0.0
+    export: full
+```
+
+Only install packages you trust. Plugins and their dependencies are not
+sandboxed: they run in-process with the app's full filesystem and network
+privileges. The desktop app shows this warning in a native confirmation before
+downloading a third-party plugin.
 
 ## Writing a Plugin
 
@@ -185,8 +219,9 @@ Print-md **fails the build** on plugin errors. Silent skipping was the previous 
 | Error | Fix |
 |-------|-----|
 | `Plugin file not found: ...` | Check the `path` is correct and the file exists |
-| `Plugin "foo" not found. Install it ...` | Run `bun add foo` in your project directory |
-| `Plugin "foo" does not export a valid plugin function` | Ensure the default export is a function |
+| `Plugin "foo" not found` | Install it from Project settings → Plugins, or run `print-md plugin add foo` |
+| `Vendored plugin "foo@1.2.3" is missing` | Reinstall that exact version; make sure `plugins/npm/` travels with the project |
+| `Plugin "foo" does not export a valid plugin function` | Ensure the default export is a function, or select its named function with `export` |
 | `Plugin manifest entry must specify ...` | Each entry needs either `path` or `name` |
 
 @end-section

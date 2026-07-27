@@ -117,7 +117,7 @@ export type WindowOpenDecision =
  * Decide what should happen for a `window.open()` / `target="_blank"`
  * request (`setWindowOpenHandler`). No in-app popup flow is required by any
  * current feature — the GitHub device-flow connect and every external link
- * already go through `shell.openExternal` (see AdvancedSetupDialog,
+ * already go through `shell.openExternal` (see ConnectionsSettings,
  * GitHubDialog, HelpDialog, +page.svelte). The simplest safe policy is to
  * never grant a popup its own BrowserWindow (so there is nothing that could
  * inherit, or need to be stripped of, the preload bridge): http(s) requests

@@ -46,6 +46,10 @@ class MemoryPlatform implements Partial<Platform> {
     this.files.set(newPath, { content: file.content, mtimeMs: this.tick() });
   }
 
+  externalDelete(filePath: string): void {
+    this.files.delete(filePath);
+  }
+
   async readFile(p: string): Promise<string> {
     return this.getContent(p);
   }
@@ -78,11 +82,18 @@ function makeBuffer(platform: MemoryPlatform): EditorBuffer {
 
 /** Mirrors +page.svelte's `selectEditorFile` closely enough for this test:
  *  flush a pending save on the CURRENT file first, then load the new path. */
-async function selectEditorFile(buffer: EditorBuffer, path: string): Promise<void> {
-  if (buffer.filePath === path) return;
+async function selectEditorFile(buffer: EditorBuffer, path: string): Promise<boolean> {
+  if (buffer.filePath === path) return true;
   const wasPending = buffer.hasPendingSave;
-  if (buffer.filePath && wasPending) await buffer.flush().catch(() => {});
+  if (buffer.filePath && wasPending) {
+    try {
+      await buffer.flush();
+    } catch {
+      return false;
+    }
+  }
   await buffer.load(path);
+  return true;
 }
 
 test("renaming the open file: flush-before-rename, then reload at the new path — no ghost file, no lost edits", async () => {
@@ -182,17 +193,50 @@ test("deleting the open file: the buffer is reset, not left pointing at a missin
   expect(buffer.hasPendingSave).toBe(false);
 });
 
-test("deleting the open file while dirty does not silently write the buffer back to the deleted path", async () => {
+test("deleting the dirty open file flushes before delete, then resets the buffer", async () => {
   const platform = new MemoryPlatform({ "/book/chapter-01.md": "saved text" });
   const buffer = makeBuffer(platform);
   await buffer.load("/book/chapter-01.md");
   buffer.edit("saved text + unsaved edit");
   expect(buffer.hasPendingSave).toBe(true);
 
-  buffer.reset(); // onTreeFileDeleted's fix — no flush-then-recreate here.
+  await buffer.flush();
+  expect(platform.getContent("/book/chapter-01.md")).toBe("saved text + unsaved edit");
+  platform.externalDelete("/book/chapter-01.md");
+  buffer.reset();
 
   expect(buffer.filePath).toBeNull();
   expect(buffer.hasPendingSave).toBe(false);
+  expect(platform.has("/book/chapter-01.md")).toBe(false);
+});
+
+test("a failed pre-delete flush preserves the dirty file buffer for retry", async () => {
+  class FailingWritePlatform extends MemoryPlatform {
+    override async writeFile(): Promise<FileWriteResult> {
+      throw new Error("disk full");
+    }
+  }
+  const platform = new FailingWritePlatform({ "/book/chapter-01.md": "saved text" });
+  const buffer = makeBuffer(platform);
+  await buffer.load("/book/chapter-01.md");
+  buffer.edit("saved text + unsaved edit");
+
+  let flushed = true;
+  try {
+    await buffer.flush();
+  } catch {
+    flushed = false;
+  }
+  if (flushed) {
+    platform.externalDelete("/book/chapter-01.md");
+    buffer.reset();
+  }
+
+  expect(flushed).toBe(false);
+  expect(buffer.filePath).toBe("/book/chapter-01.md");
+  expect(buffer.content).toBe("saved text + unsaved edit");
+  expect(buffer.hasPendingSave).toBe(true);
+  expect(platform.getContent("/book/chapter-01.md")).toBe("saved text");
 });
 
 // ── Wiring check ──────────────────────────────────────────────────────────
@@ -206,9 +250,10 @@ test("+page.svelte defines and wires the FileTree open-file rename/delete handle
   const root = path.resolve(import.meta.dir, "../..");
   const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
   expect(page).toContain("function onTreeBeforeRename");
+  expect(page).toContain("function onTreeBeforeDelete");
   expect(page).toContain("function onTreeFileRenamed");
   expect(page).toContain("function onTreeFileDeleted");
-  expect(page).toContain("buffer.flush()");
+  expect(page).toContain("flushEditorBuffer(buffer)");
   expect(page).toContain("selectEditorFile(newPath");
   expect(page).toContain("buffer?.reset()");
   // The rename/delete handlers must treat a renamed/deleted DIRECTORY as
@@ -217,6 +262,7 @@ test("+page.svelte defines and wires the FileTree open-file rename/delete handle
   expect(page).toContain("isPathAtOrUnder(editorFilePath, oldPath)");
   expect(page).toContain("isPathAtOrUnder(editorFilePath, path)");
   expect(page).toContain("onBeforeRenameOpenFile={onTreeBeforeRename}");
+  expect(page).toContain("onBeforeDeleteOpenFile={onTreeBeforeDelete}");
   expect(page).toContain("onFileRenamed={onTreeFileRenamed}");
   expect(page).toContain("onFileDeleted={onTreeFileDeleted}");
 });

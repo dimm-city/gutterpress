@@ -91,15 +91,7 @@ export interface PluginStatus {
   kind: "ok" | "error" | "disabled" | "checking" | "stale";
   detail?: string;
   raw?: string;
-  /** Copyable `npm install <name>` command — only set for a not-installed npm plugin (M33). */
-  installCommand?: string;
-  /** Link to the plugins guide chapter — only set for a not-installed npm plugin (M33). */
-  guideHref?: string;
 }
-
-/** Chapter 6 of the user guide — "how do I install a plugin" (M33). */
-export const PLUGINS_GUIDE_URL =
-  "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/06-plugins.md";
 
 /**
  * Friendly display name for a configured plugin entry (M33): the recommended
@@ -145,15 +137,19 @@ export function pluginStatus(
     };
   }
   if (v.ok) return { label: "Loads OK", kind: "ok" };
-  const needsInstall = entry.kind === "npm";
+  const raw = v.error ?? "Unknown plugin load error";
+  const needsInstall =
+    entry.kind === "npm" &&
+    (/\bnot found\b/i.test(raw) || /vendored plugin .*\bis missing\b/i.test(raw));
+  const installSpec = `${entry.ref}${entry.version ? `@${entry.version}` : ""}`;
   return {
-    label: needsInstall ? "Not installed" : "Error",
+    label: needsInstall ? "Needs install" : "Error",
     kind: "error",
     detail: needsInstall
-      ? "This plugin isn't installed yet, so it's skipped in the preview. Run the install command below in your project folder, then click Re-check."
-      : "This plugin couldn't load. See details below, then click Re-check.",
-    raw: v.error,
-    installCommand: needsInstall ? `npm install ${entry.ref}` : undefined,
-    guideHref: needsInstall ? PLUGINS_GUIDE_URL : undefined,
+      ? `This project's vendored copy is missing. Enter ${installSpec} under Install npm plugin below, then click Re-check.`
+      : entry.kind === "npm"
+        ? "This installed npm plugin couldn't load. See details below, then reinstall it or click Re-check."
+        : "This plugin couldn't load. See details below, then click Re-check.",
+    raw,
   };
 }

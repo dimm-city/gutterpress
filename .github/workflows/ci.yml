@@ -24,6 +24,15 @@ jobs:
         with:
           chrome-version: stable
 
+      # The PDF/X tests self-skip when their external tool is absent
+      # (ghostscript.integration.test.ts uses `ghostscript ? test : test.skip`),
+      # so without these the suite reports green while never exercising real
+      # PDF/X color conversion at all.
+      - name: Install PDF tooling (Ghostscript, qpdf)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ghostscript qpdf
+
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun
 
@@ -42,6 +51,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      - name: Check release distribution tooling and metadata
+        run: |
+          node tools/prepare-release-assets.test.mjs
+          node tools/update-package-managers.test.mjs
+          node tools/update-package-managers.mjs --check
 
       - name: Setup Bun (cached)
         uses: ./.github/actions/bun

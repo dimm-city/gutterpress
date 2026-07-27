@@ -63,7 +63,7 @@ import {
   shouldBackgroundCheck,
   getStatus as getUpdaterStatus,
 } from "./updater";
-import type { UpdaterEventPayload } from "./bridge-types";
+import type { MarkdownFileLaunchEvent, UpdaterEventPayload } from "./bridge-types";
 import {
   removeRecentFolder,
   toggleFavoriteFolder,
@@ -74,7 +74,12 @@ import {
   writeProjectState,
   type ProjectStateMap,
 } from "./project-state";
-import { electronTokenStore, onCredentialChange } from "./credential-store";
+import {
+  electronTokenStore,
+  markLinuxBasicTextStorageNoticeShown,
+  onCredentialChange,
+  shouldShowLinuxBasicTextStorageNotice,
+} from "./credential-store";
 import {
   handleConfirmResponse,
   rejectAllPendingConfirms,
@@ -93,8 +98,15 @@ import {
 } from "./export/controller";
 import { PreviewOpenController, type PreviewHandle } from "./preview/controller";
 import { GitHubDeviceFlow } from "./github-device-flow";
+import {
+  MarkdownFileLaunchQueue,
+  isMarkdownFilePath,
+  markdownFilePathsFromArgv,
+  resolveMarkdownFileLaunch,
+} from "./markdown-file-launch";
 import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
-import { runCloseGate } from "./close-gate";
+import { RendererFlushSession, runCloseGate } from "./close-gate";
+import { createLastFlushFailure } from "../src/lib/persistence-failures";
 import { FolderWatcher } from "./folder-watch/watcher";
 import type {
   AdoptFolderOptions,
@@ -262,6 +274,7 @@ const { readSettings, updateSettings } = createSettingsStore({
 // ──────────────────────────────────────────────────────────────────────────
 
 let mainWindow: BrowserWindow | null = null;
+let appShellReady = false;
 
 // ── Unsaved-changes infrastructure (#44) ────────────────────────────────────
 // The recovery sidecar store lives under userData/recovery/; the sync/recovery
@@ -533,12 +546,12 @@ onCredentialChange((host) => {
   })();
 });
 
-// Renderer pushes its pending-save state here so the window `close` gate can
-// flush before quitting. `flushResolve` is set while main awaits the renderer's
-// flush; the watchdog forces the close if the renderer never answers.
-let rendererDirty = false;
-let isQuitting = false;
-let flushResolve: (() => void) | null = null;
+// Each BrowserWindow owns its own renderer-flush state. The active pointer is
+// used only by the route/IPC seams; close handlers capture their own session so
+// a macOS close -> activate -> new-window cycle cannot inherit stale gate state.
+let activeRendererFlush:
+  | { window: BrowserWindow; session: RendererFlushSession }
+  | null = null;
 
 /**
  * Send an IPC push to the renderer only when the window is alive (audit A3).
@@ -553,42 +566,10 @@ function safeSend(channel: string, ...args: unknown[]): void {
   }
 }
 
-/**
- * Ask the renderer to flush unsaved editor state. Resolves `true` when the
- * renderer replied (`app:flushDone` → {@link flushResolve}) or there was
- * nothing to flush, `false` when the watchdog fired on an unresponsive
- * renderer — callers that would start follow-up work (the close gate's final
- * auto-snapshot) must skip it on `false`, matching the pre-helper behavior of
- * dropping the snapshot rather than starting a git commit microseconds before
- * the window is force-destroyed.
- *
- * Owns the single `flushResolve` slot (audit A4). Overlapping requests
- * (updater:applyNow racing the window close gate) COALESCE onto one in-flight
- * flush (review finding): the renderer-side flush is idempotent global state,
- * and a second slot-overwrite would strand the first caller until its
- * watchdog and let a late reply settle the wrong request.
- */
-let pendingFlush: Promise<boolean> | null = null;
-function requestRendererFlush(timeoutMs = 5000): Promise<boolean> {
-  if (!rendererDirty || !mainWindow || mainWindow.isDestroyed()) {
-    return Promise.resolve(true);
-  }
-  if (pendingFlush) return pendingFlush;
-  pendingFlush = new Promise<boolean>((resolve) => {
-    let done = false;
-    const settle = (replied: boolean) => {
-      if (done) return;
-      done = true;
-      if (flushResolve === onReply) flushResolve = null;
-      pendingFlush = null;
-      resolve(replied);
-    };
-    const onReply = () => settle(true);
-    flushResolve = onReply;
-    safeSend("app:flushBeforeClose");
-    setTimeout(() => settle(false), timeoutMs);
-  });
-  return pendingFlush;
+function recordLastFlushFailure(): Promise<void> {
+  const projectDir = activePreview?.inputPath ?? folderWatch.getWatchedDir();
+  const marker = createLastFlushFailure(projectDir);
+  return updatePrefs((prefs) => ({ ...prefs, lastFlushFailed: marker })).then(() => undefined);
 }
 
 function extractHeader(
@@ -640,7 +621,7 @@ function registerUrlPreviewHeaderWatch() {
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1400,
     height: 900,
     backgroundColor: "#1e1e1e",
@@ -671,10 +652,28 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+  mainWindow = win;
+  const flushSession = new RendererFlushSession({
+    isAlive: () => !win.isDestroyed(),
+    sendFlushRequest: () => win.webContents.send("app:flushBeforeClose"),
+  });
+  activeRendererFlush = { window: win, session: flushSession };
   mainWindow.once("ready-to-show", () => slog("renderer ready-to-show (first paint)"));
   mainWindow.webContents.on("did-start-loading", () => slog("renderer did-start-loading"));
-  mainWindow.webContents.on("dom-ready", () => slog("renderer dom-ready"));
-  mainWindow.webContents.on("did-finish-load", () => slog("renderer did-finish-load"));
+  mainWindow.webContents.on("did-start-navigation", (_event, _url, _isInPlace, isMainFrame) => {
+    if (isMainFrame) {
+      flushSession.reset();
+      markdownFileLaunchQueue.suspend();
+    }
+  });
+  mainWindow.webContents.on("dom-ready", () => {
+    flushSession.markRendererLoaded();
+    slog("renderer dom-ready");
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    flushSession.markRendererLoaded();
+    slog("renderer did-finish-load");
+  });
   mainWindow.setMenuBarVisibility(false);
 
   // H1: re-check for updates when the window regains focus, throttled (no
@@ -708,8 +707,8 @@ function createWindow() {
 
   // ARCH review finding #1: no flow in this app actually needs an in-app
   // popup window — GitHub device-flow connect and every external link
-  // already go through `shell.openExternal` (see AdvancedSetupDialog,
-  // GitHubDialog, HelpDialog, ProjectConfigPanel, +page.svelte; a grep for
+  // already go through `shell.openExternal` (see ConnectionsSettings,
+  // GitHubDialog, HelpDialog, +page.svelte; a grep for
   // `window.open`/`target="_blank"` across src/ and electron/ has zero
   // hits). The previous handler granted `window.open`/`target="_blank"`
   // requests a full BrowserWindow for ANY https URL — and because
@@ -808,47 +807,52 @@ function createWindow() {
   nativeTheme.on("updated", onNativeThemeUpdated);
 
   // ── Unsaved-changes close gate (#44) + final auto-snapshot (RC1-3) ────────
-  // If the renderer has a pending auto-save, intercept the first close, ask the
-  // renderer to flush, and only destroy the window once it replies. After the
+  // Once the renderer has loaded, always intercept the first close and ask it
+  // to flush. The dirty-state POST is best-effort UI telemetry, not a safety
+  // decision: it may fail while a live editor still holds unsaved text. After the
   // flush (the last keystrokes are on disk), any pending auto-snapshot fires
   // before the window is destroyed, so closing the app never drops the final
   // work burst from version history. The orchestration (single owner, per-phase
   // watchdogs — flush's own 5s budget, then a snapshot backstop armed only once
   // a commit starts, so a started commit is never destroyed mid-write, R25)
-  // lives in close-gate.ts; quit is never blocked indefinitely. The shared
-  // requestRendererFlush owns flushResolve and no-ops when not dirty, so it
-  // covers both the needsFlush and snapshot-only cases — and can't collide with
-  // updater:applyNow's flush slot (audit A4). DELIBERATE POLICY: a hung
+  // lives in close-gate.ts; quit is never blocked indefinitely. The per-window
+  // RendererFlushSession coalesces close/update requests and prevents a late
+  // reply from one window settling another. DELIBERATE POLICY: a hung
   // renderer, or a sync/restore holding the per-repo FIFO lock past the
   // backstop, drops the final snapshot — never blocking quit wins over
-  // guaranteeing the last snapshot (the edits themselves are flushed to disk
-  // regardless; only the history entry is skipped). The renderer pushes its
-  // dirty state via `app:setDirtyState`; main never reads renderer memory.
-  mainWindow.on("close", (e) => {
-    if (isQuitting || !mainWindow) return;
-    const needsFlush = rendererDirty;
+  // guaranteeing the last snapshot. A failed editor flush is recorded in the
+  // atomic prefs store for the next-launch warning; that marker write has its
+  // own short backstop, so signaling the failure still cannot strand quit.
+  let closeGateStarted = false;
+  win.on("close", (e) => {
+    if (closeGateStarted) {
+      e.preventDefault();
+      return;
+    }
+    const needsFlush = flushSession.mayHaveEditorSession;
     const needsSnapshot = autoSnapshot.hasPending();
     if (!needsFlush && !needsSnapshot) return;
     e.preventDefault();
-    isQuitting = true;
-    const win = mainWindow;
+    closeGateStarted = true;
     void runCloseGate({
-      flush: () => requestRendererFlush(),
+      flush: () => flushSession.request(),
+      recordFlushFailure: () => recordLastFlushFailure(),
       snapshot: () => flushAutoSnapshot(),
-      // flushResolve is owned by requestRendererFlush (identity-guarded);
-      // nulling it here would wipe an unrelated in-flight flush (review).
       finish: () => win.destroy(),
     });
   });
 
-  mainWindow.on("closed", () => {
+  win.on("closed", () => {
     nativeTheme.removeListener("updated", onNativeThemeUpdated);
+    markdownFileLaunchQueue.suspend();
+    flushSession.reset();
+    if (activeRendererFlush?.session === flushSession) activeRendererFlush = null;
     stopFolderWatch();
     // Reject any pending recovery confirm requests so they don't hang.
     rejectAllPendingConfirms();
-    mainWindow = null;
+    if (mainWindow === win) mainWindow = null;
   });
-  return mainWindow;
+  return win;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -909,7 +913,9 @@ const watchHooksImpl: WatchHooks = {
   getWatchedDir: () => folderWatch.getWatchedDir(),
 };
 const appHooksImpl: AppHooks = {
-  setRendererDirty: (isDirty: boolean) => { rendererDirty = !!isDirty; },
+  setRendererDirty: (isDirty: boolean) => {
+    activeRendererFlush?.session.setReportedDirtyState(!!isDirty);
+  },
   sendToRenderer: (channel: string, ...args: unknown[]) => {
     safeSend(channel, ...args);
   },
@@ -1024,9 +1030,10 @@ const recoveryHooksImpl: RecoveryHooks = {
 // ── Unsaved-changes close gate (#44) ────────────────────────────────────────
 // app:flushDone kept as IPC: the preload's onFlushBeforeClose fires it from
 // within the renderer via ipcRenderer.invoke — cannot route through fetch.
-secureHandle("app:flushDone", async (): Promise<void> => {
-  rendererDirty = false;
-  flushResolve?.();
+secureHandle("app:flushDone", async (event, flushed: boolean): Promise<void> => {
+  const active = activeRendererFlush;
+  if (!active || active.window.webContents !== event.sender) return;
+  active.session.resolve(flushed === true);
 });
 
 const desktopHooksImpl: DesktopHooks = {
@@ -1041,6 +1048,24 @@ const desktopHooksImpl: DesktopHooks = {
     return win
       ? await dialog.showSaveDialog(win, options as Electron.SaveDialogOptions)
       : await dialog.showSaveDialog(options as Electron.SaveDialogOptions);
+  },
+  confirmNpmPluginInstall: async (packageName) => {
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+    const options: Electron.MessageBoxOptions = {
+      type: 'warning',
+      title: 'Install npm plugin?',
+      message: `Install ${packageName}?`,
+      detail:
+        'npm plugins are third-party code. This plugin and its dependencies will run with the app\'s full filesystem and network privileges. Only install packages you trust.',
+      buttons: ['Cancel', 'Install plugin'],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    };
+    const result = win
+      ? await dialog.showMessageBox(win, options)
+      : await dialog.showMessageBox(options);
+    return result.response === 1;
   },
   openExternal: async (url: string) => {
     // Defense in depth (review finding): every shell.openExternal path must
@@ -1335,8 +1360,43 @@ const githubDeviceFlow = new GitHubDeviceFlow({
   clientId: () => process.env.PRINT_MD_GITHUB_CLIENT_ID ?? "",
 });
 
+async function showLinuxCredentialStorageNoticeOnce(): Promise<void> {
+  if (!(await shouldShowLinuxBasicTextStorageNotice())) return;
+  const options: Electron.MessageBoxOptions = {
+    type: "warning",
+    title: "GitHub sign-in protection",
+    message: "Your Linux desktop keyring isn't available",
+    detail:
+      "print-md can still connect to GitHub, but this computer can only lightly protect the saved sign-in. " +
+      "The credentials file is private to your user account, but anyone with access to that account could recover it. " +
+      "Set up or unlock your desktop keyring for stronger protection.",
+    buttons: ["Continue"],
+    defaultId: 0,
+  };
+  try {
+    if (mainWindow) await dialog.showMessageBox(mainWindow, options);
+    else await dialog.showMessageBox(options);
+  } catch (e) {
+    // A notification failure must never block or cancel the device flow.
+    console.warn("[credential-store] could not show the Linux protection notice:", e);
+    return;
+  }
+  try {
+    await markLinuxBasicTextStorageNoticeShown();
+  } catch (e) {
+    console.warn(
+      "[credential-store] could not remember the Linux credential-protection notice; it may be shown again:",
+      e,
+    );
+  }
+}
+
 secureHandle("remote:connectGitHubStart", () =>
-  handleRemoteErrors("remote:connectGitHubStart", () => githubDeviceFlow.start()),
+  handleRemoteErrors("remote:connectGitHubStart", async () => {
+    const info = await githubDeviceFlow.start();
+    await showLinuxCredentialStorageNoticeOnce();
+    return info;
+  }),
 );
 
 secureHandle("remote:connectGitHubWait", () =>
@@ -1614,13 +1674,13 @@ const exportController = new ExportController({
 secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));
 
 // ──────────────────────────────────────────────────────────────────────────
-// Auto-updater wiring (electron-updater — full-app updates from GitHub)
+// Desktop updater wiring (electron-updater + macOS check-only notifier)
 //
-// Active only in a packaged build with no vite dev server, on Windows/Linux
-// (see updaterSupported() in updater.ts; macOS auto-update needs signed
-// builds). Checks run in the background, but downloads require an explicit
-// user click; the renderer shows a "restart to update" banner on the "staged"
-// event and calls updater:applyNow to quit and install.
+// Active only in a packaged build with no vite dev server. Windows/Linux
+// AppImages use electron-updater; unsigned macOS builds use a check-only
+// GitHub request and open the release page instead of staging an installer.
+// Downloads require an explicit user click; installable platforms show a
+// "restart to update" banner after staging.
 //
 // getStatus/check/download (ARCH review #8) are plain request/response —
 // no push stream, no live-BrowserWindow need — so they're SvelteKit server
@@ -1637,22 +1697,23 @@ function sendUpdaterEvent(event: UpdaterEventPayload) {
 }
 initUpdater(sendUpdaterEvent, {
   readUpdateChannel: async () => (await readSettings()).updates.channel,
+  openExternal: (url) => shell.openExternal(url),
+  prepareToInstall: async () => {
+    const active = activeRendererFlush;
+    if (!active) return false;
+    const flushed = await active.session.request();
+    if (!flushed) {
+      await recordLastFlushFailure().catch((err) => {
+        console.warn("[updater] could not record the failed pre-install flush:", err);
+      });
+      return false;
+    }
+    cancelAutoSnapshotTimer();
+    return true;
+  },
 });
 
-secureHandle("updater:applyNow", async () => {
-  // Flush unsaved editor state BEFORE the installer spawns: quitAndInstall
-  // launches the NSIS installer (Windows) synchronously and only then quits,
-  // so the installer would otherwise sit waiting on process exit while the
-  // close-gate flush (up to 5s) still runs. Flushing here keeps that window
-  // empty and the data safe; rendererDirty=false afterwards means the close
-  // gate won't need a second flush during the quit sequence.
-  // Shared flush helper (audit A4): owns flushResolve, applies the same 5s
-  // watchdog, and no-ops when nothing is dirty — replacing this hand-rolled
-  // copy that raced the close gate on the one flushResolve slot.
-  await requestRendererFlush();
-  if (updaterSupported() && getUpdaterStatus().stagedVersion) cancelAutoSnapshotTimer();
-  return installNow();
-});
+secureHandle("updater:applyNow", () => installNow());
 
 // ──────────────────────────────────────────────────────────────────────────
 // App lifecycle
@@ -1679,6 +1740,30 @@ app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-background-timer-throttling");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 
+// ── OS `.md` launches ───────────────────────────────────────────────────────
+// File associations can arrive before app.whenReady(), before a BrowserWindow
+// exists, or before the SPA has installed its push listener. Keep raw paths in
+// this host-side queue and replay them only after preload's explicit ready
+// handshake. Resolution deliberately requires the nearest manifest-bearing
+// ancestor; opening an unrelated Markdown file never turns its folder into a
+// loose print-md project.
+const markdownFileLaunchQueue = new MarkdownFileLaunchQueue({
+  resolve: resolveMarkdownFileLaunch,
+  emit: (event: MarkdownFileLaunchEvent) => safeSend("app:openMarkdownFile", event),
+});
+
+secureHandle("app:openMarkdownFileReady", async () => {
+  await markdownFileLaunchQueue.markConsumerReady();
+  return { ok: true };
+});
+
+function focusMainWindow(): void {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
 // ── Single-instance lock (THE launch-speed fix) ─────────────────────────────
 // A second instance pointed at the same userData dir contends with the first
 // for the profile's leveldb/singleton locks — which stalls the new window's
@@ -1694,11 +1779,30 @@ if (!gotSingleInstanceLock) {
   // second window that would fight the first for the profile.
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
+  // macOS delivers Finder launches through `open-file`, including during app
+  // startup, so this listener must be installed before app.whenReady().
+  app.on("open-file", (event, filePath) => {
+    if (!isMarkdownFilePath(filePath)) return;
+    event.preventDefault();
+    markdownFileLaunchQueue.enqueue(filePath);
+    if (!mainWindow && appShellReady) createWindow();
+    focusMainWindow();
+  });
+
+  // Windows/Linux put an associated file in argv on the first process. macOS
+  // uses open-file instead, so excluding it avoids handling one Finder launch
+  // through two OS surfaces.
+  if (process.platform !== "darwin") {
+    markdownFileLaunchQueue.enqueueMany(
+      markdownFilePathsFromArgv(process.argv, process.cwd()),
+    );
+  }
+
+  app.on("second-instance", (_event, commandLine, workingDirectory) => {
+    markdownFileLaunchQueue.enqueueMany(
+      markdownFilePathsFromArgv(commandLine, workingDirectory || process.cwd()),
+    );
+    focusMainWindow();
   });
 }
 
@@ -1738,6 +1842,7 @@ app.whenReady().then(async () => {
   registerAppProtocol(skAuthToken);
   registerUrlPreviewHeaderWatch();
   createWindow();
+  appShellReady = true;
   slog("createWindow returned (loadURL dispatched)");
 
   // Background check on every launch (non-blocking, silent — see H1: a
@@ -1752,7 +1857,7 @@ app.whenReady().then(async () => {
   // One-time cleanup of the deleted hot-swap updater's userData store
   // (web-runtime/ bundle versions + pointer files) left behind by pre-0.7
   // builds. App-generated cache only; best-effort. Not gated on
-  // updaterSupported() — macOS installs (which never enable auto-update)
+  // updaterSupported() — macOS installs (which never enable installation)
   // still carry this pre-0.7 leftover and deserve the same cleanup (L5).
   rm(path.join(app.getPath("userData"), "web-runtime"), {
     recursive: true,

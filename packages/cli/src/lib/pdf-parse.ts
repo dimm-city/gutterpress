@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { execCapture } from "./exec";
+import { resolveGhostscript } from "./ghostscript";
 
 /**
  * Read a PDF as a latin1 string for literal ASCII-marker scanning.
@@ -74,7 +75,13 @@ export async function getPerPageInkCoverage(
   pdfPath: string
 ): Promise<InkCoverageResult> {
   try {
-    const { stdout } = await execCapture("gs", [
+    const ghostscript = await resolveGhostscript();
+    if (!ghostscript) {
+      throw new Error(
+        "Ghostscript executable not found. Install Ghostscript or set GHOSTSCRIPT_PATH."
+      );
+    }
+    const { stdout } = await execCapture(ghostscript, [
       "-q",
       "-dBATCH",
       "-dNOPAUSE",

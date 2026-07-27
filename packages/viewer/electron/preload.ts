@@ -15,6 +15,7 @@ import type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
+  MarkdownFileLaunchEvent,
 } from "./bridge-types";
 /**
  * Integer IPC-surface contract version shared between the Electron shell and
@@ -27,8 +28,10 @@ import type {
  * sync:setAutoSync, remote:cloneRepository, remote:resolveSyncConflicts —
  * migrated to SvelteKit server routes (plain request/response, no push
  * stream or live-BrowserWindow need).
+ * 4 -> 5 (public seams V3): added the `.md` launch ready handshake; the file
+ * events themselves are a main→renderer push stream.
  */
-const DESKTOP_API = 4;
+const DESKTOP_API = 5;
 
 /**
  * Bridge exposed to the SvelteKit renderer as window.electron.
@@ -147,7 +150,7 @@ contextBridge.exposeInMainWorld("electron", {
   apiVersion: DESKTOP_API,
 
   // ──────────────────────────────────────────────────────────────────────
-  // Auto-update surface (electron-updater — full-app updates from GitHub)
+  // Desktop update surface (electron-updater + macOS check-only notifier)
   // getStatus/check/download migrated to server routes (api.updater.*) —
   // ARCH review #8: plain request/response, no push stream or
   // live-BrowserWindow need. applyNow stays IPC: it flushes the live
@@ -155,7 +158,7 @@ contextBridge.exposeInMainWorld("electron", {
   // quitting — a live-BrowserWindow call §8 sanctions.
   // ──────────────────────────────────────────────────────────────────────
   updater: {
-    applyNow: (): Promise<{ applied: boolean; version?: string }> =>
+    applyNow: (): Promise<{ applied: boolean; version?: string; error?: string }> =>
       ipcRenderer.invoke("updater:applyNow"),
     /** Subscribe to updater events from main. Returns an unsubscribe fn. */
     onEvent: (cb: (data: UpdaterEventPayload) => void): (() => void) =>
@@ -199,6 +202,26 @@ contextBridge.exposeInMainWorld("electron", {
   onNativeThemeUpdated: (
     cb: (data: { shouldUseDarkColors: boolean }) => void
   ): (() => void) => forwardPush("app:nativeThemeUpdated", cb),
+
+  /**
+   * Subscribe before telling main the UI is ready, so startup/second-instance
+   * paths queued before hydration cannot be lost between load and onMount.
+   */
+  onOpenMarkdownFile: (
+    cb: (data: MarkdownFileLaunchEvent) => void,
+  ): (() => void) => {
+    const off = forwardPush("app:openMarkdownFile", cb);
+    void ipcRenderer.invoke("app:openMarkdownFileReady").catch((err) => {
+      console.warn("[preload] Markdown file-launch handshake failed:", err);
+      // Do not strand the SPA behind its startup gate if main is unavailable.
+      try {
+        cb({ type: "ready" });
+      } catch {
+        /* renderer callback failed; forwardPush applies the same containment */
+      }
+    });
+    return off;
+  },
 
   // tpl:* and snip:* migrated to server routes (Phase 2D) — removed from contextBridge.
 
@@ -282,18 +305,25 @@ contextBridge.exposeInMainWorld("electron", {
   // app:setDirtyState — migrated to server route (Phase 2B).
   /**
    * Subscribe to main's request to flush before the window closes (#44). The
-   * renderer flushes, then calls `app:flushDone` (sent by the buffer store).
+   * renderer flushes, then calls `app:flushDone` with the actual outcome.
    * Returns an unsubscribe fn.
    */
-  onFlushBeforeClose: (cb: () => void): (() => void) =>
+  onFlushBeforeClose: (
+    cb: () => boolean | void | Promise<boolean | void>,
+  ): (() => void) =>
     forwardPush("app:flushBeforeClose", () => {
       // The renderer flushes its buffer, then signals completion so main can
-      // destroy the window. Signal even if the cb throws so quit never hangs.
+      // destroy the window. Signal failure even if the callback throws so quit
+      // never hangs and main can persist the next-launch warning.
+      let flushed = false;
       void Promise.resolve()
         .then(() => cb())
+        .then((result) => {
+          flushed = result !== false;
+        })
         .catch(() => {})
         .finally(() => {
-          void ipcRenderer.invoke("app:flushDone");
+          void ipcRenderer.invoke("app:flushDone", flushed);
         });
     }),
   /**

@@ -67,6 +67,9 @@ See the [Print-md User Guide](../examples/print-md-user-guide/) for all topics:
 **Use the CLI from a terminal or CI**
 → [CLI README](../packages/cli/README.md)
 
+**Install the viewer or CLI, verify a download, or check platform support**
+→ [Installation and supported platforms](./installing.md)
+
 **Develop on the viewer or the lib**
 → [Viewer README](../packages/viewer/README.md) · [Architecture](ARCHITECTURE.md)
 
@@ -129,6 +132,7 @@ docs/
 ├── ARCHITECTURE.md                        # Technical architecture (developers)
 ├── best-practices.md                      # Extended reference for best practices
 ├── contextual-cascade-principle.md        # ★ Recommended CSS architecture pattern
+├── installing.md                           # Install channels, platform support, unsigned-app guidance
 ├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── migrations/                            # Migration guides
 │   └── 2026-05-removing-container-syntax.md

@@ -6,7 +6,7 @@
   import { ExportController } from "$lib/export/export-controller.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
-  import type { RecoveryConfirmRequest } from "$lib/platform/contract";
+  import type { MarkdownFileLaunchEvent, RecoveryConfirmRequest } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import { MISSING_ASSETS_SOURCE, problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
@@ -66,6 +66,10 @@
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
   import { continueStatus, shouldReshowLanding } from "$lib/routes/startup-landing";
   import { friendlyFolderError, friendlyPdfError, friendlyHostError } from "$lib/errors";
+  import {
+    PersistenceFailureNotifier,
+    formatLastFlushFailureNotice,
+  } from "$lib/persistence-failures";
   import { UpdateController } from "$lib/update/update-controller.svelte";
   import type {
     DiagnosticsTool,
@@ -79,12 +83,25 @@
   // existing writer-appropriate copy for the same gate ("Creating a project
   // needs the desktop app.").
   const DESKTOP_APP_REQUIRED = "This needs the desktop app to continue.";
+  const persistenceFailures = new PersistenceFailureNotifier();
+
+  function reportIgnoredPersistenceFailure(): void {
+    persistenceFailures.recordFailure(() => {
+      if (!toast) return false;
+      toast.warning("Some changes aren't being saved reliably. Use Save before closing your book.", 6000);
+      return true;
+    });
+  }
+
+  function trackPersistence(promise: Promise<unknown>): void {
+    void promise.catch(() => reportIgnoredPersistenceFailure());
+  }
 
   // Per-screen state
   // Session-identity / open-lifecycle state (previewUrl/currentDir/
   // currentFolderDisplayName/currentUrl/sourceMode/docTitle/busy/busyLabel/
   // rendering/renderProgressPage/renderCompleteOverlay/openError/
-  // failedOpenDir/urlPreviewError/saveWarning/currentFolderHasManifest/
+  // urlPreviewError/saveWarning/currentFolderHasManifest/
   // adoptBannerDismissed/adopting) now lives on the ProjectLifecycleController
   // (Phase 5d, UX H5 / ARCH #10) — see its instantiation below. The template
   // reads the public rune getters (`lifecycle.previewUrl` etc.) and calls the
@@ -224,7 +241,7 @@
     savePrefs: (patch) => saveViewerPrefs(patch),
     savePageDirect: (page) => {
       if (lifecycle.currentDir) {
-        api.app.setViewerProjectState(lifecycle.currentDir, { currentPage: page }).catch(() => {});
+        trackPersistence(api.app.setViewerProjectState(lifecycle.currentDir, { currentPage: page }));
       }
     },
   });
@@ -377,14 +394,14 @@
   // offer a non-blocking "set it up as a book" affordance. Default true (on the
   // controller) so the banner stays hidden until a check proves the manifest is
   // absent.
-  // NOTE: showAdoptBanner / canAdoptFailedFolder read lifecycle.* directly (not
-  // through a closure), so — like `folderName` above — they are declared AFTER
+  // NOTE: showAdoptBanner reads lifecycle.* directly (not through a closure),
+  // so — like `folderName` above — it is declared AFTER
   // `lifecycle` further down, right after its instantiation.
 
   /** Turn an existing folder into a print-md book (manifest + book.css + git),
-   *  then (re)open it. Used by both the error CTA and the no-manifest banner.
+   *  then (re)open it. Used by the successful-open no-manifest banner.
    *  Epoch/busy management moved to ProjectLifecycleController (Phase 5d). */
-  function setUpAsBook(dir: string): Promise<void> {
+  function setUpAsBook(dir: string): Promise<boolean> {
     return lifecycle.setUpAsBook(dir);
   }
 
@@ -452,7 +469,6 @@
     startPreviewHost: (input) => getPlatform().startPreview({ input }),
     stopPreviewHost: () => getPlatform().stopPreview(),
     adoptFolder: (dir) => api.app.adoptFolder({ dir }),
-    listDir: (dir) => api.fs.listDir(dir),
     invalidateDiscoveredProjects: () => invalidateDiscoveredProjects(),
     projectSession,
     clearSyncDiag: () => {
@@ -468,7 +484,7 @@
       pendingRestorePage = page;
     },
     resetFirstRenderGate: () => previewEvents.resetFirstRenderGate(),
-    flushBuffer: () => buffer?.flush().catch(() => {}) ?? Promise.resolve(),
+    flushBuffer: () => flushEditorBuffer(),
     resetBuffer: () => buffer?.reset(),
     ensureEditorFile: () => void ensureEditorFile(),
     startFolderWatch: (dir) => startFolderWatch(dir),
@@ -535,11 +551,6 @@
       !lifecycle.currentFolderHasManifest &&
       !lifecycle.adoptBannerDismissed,
   );
-  // The rarer case: an open that genuinely FAILED with "not a project".
-  let canAdoptFailedFolder = $derived(
-    !!lifecycle.failedOpenDir && !!lifecycle.openError && /manifest|print-md\.yaml|No such file/i.test(lifecycle.openError),
-  );
-
   // C2 (book switcher): the toolbar label shows the active book's own title by
   // default (unchanged from before repo-root sessions). In a multi-book repo the
   // book title leads and is suffixed with the repo's folder name so the author
@@ -685,7 +696,7 @@
    * user-intent time (last click wins, never last-fetch-resolves wins) and
    * `lifecycle.busy` covers the whole span with no dead gap.
    */
-  function openProjectPath(path: string, label = "Opening your book…"): Promise<void> {
+  function openProjectPath(path: string, label = "Opening your book…"): Promise<boolean> {
     dismissLanding(false); // no-op when the start screen is hidden
     lifecycle.busy = true;
     lifecycle.busyLabel = label;
@@ -708,12 +719,12 @@
    */
   async function pickAndOpenFolder(
     options: { showBusyOverlay?: boolean; label?: string } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!isDesktop()) {
       toast?.error(DESKTOP_APP_REQUIRED);
-      return;
+      return false;
     }
-    if (folderPickerOpen) return;
+    if (folderPickerOpen) return false;
     folderPickerOpen = true;
     const { showBusyOverlay = false, label = "Opening your book…" } = options;
     if (showBusyOverlay) {
@@ -723,9 +734,9 @@
     let handedOff = false;
     try {
       const pathStr = await api.dialog.openDirectory().catch(() => null);
-      if (!pathStr) return; // cancelled — stay where we were
+      if (!pathStr) return false; // cancelled — stay where we were
       handedOff = true;
-      await openProjectPath(pathStr, label);
+      return await openProjectPath(pathStr, label);
     } finally {
       folderPickerOpen = false;
       if (showBusyOverlay && !handedOff) {
@@ -735,8 +746,8 @@
     }
   }
 
-  function browseFromLanding(): Promise<void> {
-    return pickAndOpenFolder();
+  async function browseFromLanding(): Promise<void> {
+    await pickAndOpenFolder();
   }
 
   const RELEASE_NOTES_URL = "https://github.com/dimm-city/print-md/releases";
@@ -746,7 +757,7 @@
 
   function setLandingStartupPref(show: boolean) {
     landingShowPref = show;
-    api.app.setViewerPrefs({ showLandingAtStartup: show }).catch(() => {});
+    trackPersistence(api.app.setViewerPrefs({ showLandingAtStartup: show }));
   }
 
   // ── Recovery UI state (transparent sync recovery) ────────────────────────────
@@ -985,7 +996,8 @@
    * section AND from its Styles section's per-row "Edit" button — both routes
    * flip `editorView` back to "editor" so the author lands on the file.
    */
-  function openStyleFile(absPath: string) {
+  async function openStyleFile(absPath: string): Promise<void> {
+    if (!(await selectEditorFile(absPath))) return;
     editorView = "editor";
     paneViewRestore = null;
     editorOpen = true;
@@ -995,7 +1007,6 @@
     // swap the file away first).
     if (isNarrow && paneMode !== "edit") setPaneMode("edit");
     loadEditorModule();
-    selectEditorFile(absPath);
     focusEditorWhenReady();
   }
 
@@ -1160,16 +1171,37 @@
         // behind buffer.content. Runs before the auto-reload toast below.
         onContentReplaced: (_filePath, content) => editorRef?.updateContent(content),
         onAutoReloaded: () => toast?.info?.("Reloaded from disk"),
-        // Push pending-save state to main so the window close gate can flush
-        // before quitting (#44). Called whenever hasPendingSave changes.
+        // Best-effort host hint for diagnostics. Close safety does not trust
+        // this fallible fetch; main always requests a direct renderer flush.
         onDirty: (pending) => {
           if (isDesktop()) {
-            api.app.setDirtyState(pending).catch(() => {});
+            trackPersistence(api.app.setDirtyState(pending));
           }
         },
       });
     }
     return buffer;
+  }
+
+  /** Flush before replacing/resetting an edit buffer. A false result is a hard
+   * navigation stop; close uses the host gate's direct marker write because the
+   * renderer may be hung or already gone. */
+  async function flushEditorBuffer(
+    target: EditorBuffer | null = buffer,
+    recordMarker = true,
+  ): Promise<boolean> {
+    if (!target) return true;
+    const projectDir = lifecycle.currentDir;
+    try {
+      await target.flush();
+      return true;
+    } catch {
+      reportIgnoredPersistenceFailure();
+      if (recordMarker) {
+        void api.app.recordFlushFailure(projectDir).catch(() => {});
+      }
+      return false;
+    }
   }
 
   // ARCH #61: imperative settings side-effects go through the store's single
@@ -1222,7 +1254,7 @@
   // closing, flush the buffer. The preload wrapper signals main when done.
   onMount(() => {
     if (!isDesktop()) return;
-    const off = getPlatform().onFlushBeforeClose(() => buffer?.flush() ?? Promise.resolve());
+    const off = getPlatform().onFlushBeforeClose(() => flushEditorBuffer(buffer, false));
     return () => off?.();
   });
 
@@ -1238,19 +1270,41 @@
    * already superseded this call — in that case `buf.filePath` now names the
    * OTHER, more recent path, and this call must not push its stale result.
    */
-  function selectEditorFile(path: string) {
-    if (!isDesktop()) return;
+  let editorFileSelectionEpoch = 0;
+  let editorFileSelectionsInFlight = 0;
+
+  async function selectEditorFile(path: string): Promise<boolean> {
+    if (!isDesktop()) return false;
     const buf = ensureBuffer();
-    if (buf.filePath === path) return;
-    const wasPending = buf.hasPendingSave;
-    void (async () => {
+    const epoch = ++editorFileSelectionEpoch;
+    const supersedingAnotherSelection = editorFileSelectionsInFlight > 0;
+    editorFileSelectionsInFlight++;
+    try {
+      if (buf.filePath === path) {
+        // If another load already left the flush phase, reloading the current
+        // path increments EditorBuffer's load generation and cancels it. Do not
+        // reload a dirty buffer; the older selection will see this epoch and
+        // stop immediately after its flush instead.
+        if (supersedingAnotherSelection && !buf.hasPendingSave) {
+          await buf.load(path);
+          if (epoch !== editorFileSelectionEpoch) return false;
+          if (buf.filePath === path) editorRef?.switchFile(buf.filePath, buf.content);
+        }
+        return true;
+      }
+      const wasPending = buf.hasPendingSave;
       if (buf.filePath && wasPending) {
         toast?.info?.("Saving…");
-        await buf.flush().catch(() => {});
+        if (!(await flushEditorBuffer(buf))) return false;
+        if (epoch !== editorFileSelectionEpoch) return false;
       }
       await buf.load(path);
+      if (epoch !== editorFileSelectionEpoch) return false;
       if (buf.filePath === path) editorRef?.switchFile(buf.filePath, buf.content);
-    })();
+      return buf.filePath === path;
+    } finally {
+      editorFileSelectionsInFlight--;
+    }
   }
 
   /**
@@ -1282,10 +1336,18 @@
    * buffer under neither name. `flush()` is a no-op when the buffer isn't
    * dirty, so it's safe to await unconditionally.
    */
-  async function onTreeBeforeRename(path: string): Promise<void> {
+  async function onTreeBeforeRename(path: string): Promise<boolean> {
     if (buffer && buffer.filePath && isPathAtOrUnder(buffer.filePath, path)) {
-      await buffer.flush().catch(() => {});
+      return flushEditorBuffer(buffer);
     }
+    return true;
+  }
+
+  async function onTreeBeforeDelete(path: string): Promise<boolean> {
+    if (buffer && buffer.filePath && isPathAtOrUnder(buffer.filePath, path)) {
+      return flushEditorBuffer(buffer);
+    }
+    return true;
   }
 
   /**
@@ -1365,9 +1427,9 @@
   // ── Persist left panel state on change ────────────────────────────────────
   function persistLeftPanelPrefs() {
     if (!leftPanelPrefsLoaded) return;
-    api.app
-      .setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>)
-      .catch(() => {});
+    trackPersistence(
+      api.app.setViewerPrefs({ leftPanel: { open: leftPanelOpen, activeTab: leftPanelTab, width: leftPanelWidth } } as Record<string, unknown>),
+    );
   }
 
   function toggleLeftPanel() {
@@ -1427,7 +1489,7 @@
   // closes/switches.
   let missingAssetProblems = $state<ProblemEntry[]>([]);
   let allProblems = $derived([...missingAssetProblems, ...problems]);
-  let problemBadge = $derived(problemCounts(allProblems).badge); // used for ProblemsPanel (informational)
+  let problemBadge = $derived(problemCounts(allProblems).badge);
 
   function refreshProblems() {
     if (!isDesktop() || !lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
@@ -1525,8 +1587,15 @@
     isDesktop: () => isDesktop(),
     isWorkspaceEngaged: () =>
       !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy || lifecycle.openError || lifecycle.urlPreviewError),
-    isSomethingOpen: () => !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl),
+    isSomethingOpen: () =>
+      !!(lifecycle.previewUrl || lifecycle.currentDir || lifecycle.currentUrl || lifecycle.busy),
     getViewerPrefs: () => api.app.getViewerPrefs(),
+    showLastFlushFailure: (marker) => {
+      if (!toast) return false;
+      toast.warning(formatLastFlushFailureNotice(marker), 0);
+      return true;
+    },
+    acknowledgeFlushFailure: (failedAt) => api.app.acknowledgeFlushFailure(failedAt),
     isLeftPanelPrefsLoaded: () => leftPanelPrefsLoaded,
     applyLeftPanelPrefs: (panelPrefs) => {
       leftPanelPrefsLoaded = true;
@@ -1559,8 +1628,75 @@
     startFolderPreview: (dir, label, restoreState) => startFolderPreview(dir, label, restoreState),
   });
 
+  let markdownFileLaunchGeneration = 0;
+
+  /** Route an OS-opened chapter through the same project and editor flows as UI clicks. */
+  function handleMarkdownFileLaunch(
+    event: MarkdownFileLaunchEvent,
+    generation: number,
+  ): void {
+    if (event.type === "ready") return;
+    if (generation !== markdownFileLaunchGeneration) return;
+    // File launches replace the normal startup decision, so make the landing
+    // available as a fallback if resolution/opening fails.
+    landingReady = true;
+
+    if (event.type === "error") {
+      toast?.error(event.message);
+      return;
+    }
+
+    void (async () => {
+      const opened = await openProjectPath(
+        event.projectDir,
+        `Opening ${basenameOf(event.filePath)}…`,
+      );
+      if (
+        !opened ||
+        generation !== markdownFileLaunchGeneration ||
+        lifecycle.currentDir !== event.projectDir ||
+        lifecycle.openError
+      ) {
+        return;
+      }
+
+      if (!(await selectEditorFile(event.filePath))) return;
+      if (generation !== markdownFileLaunchGeneration) return;
+      editorView = "editor";
+      paneViewRestore = null;
+      if (isNarrow && paneMode !== "edit") setPaneMode("edit");
+      else openEditorPane({ ensureFile: false });
+    })();
+  }
+
   onMount(() => {
-    void startup.run();
+    if (!isDesktop()) {
+      void startup.run();
+      return;
+    }
+
+    // Main replays every path queued before hydration, then emits `ready`.
+    // Only fall back to last-project startup when that replay was empty, so a
+    // double-clicked chapter always wins over the previous-session project.
+    let initialFileLaunchSeen = false;
+    let initialFileLaunchSetup: Promise<void> | null = null;
+    let initialReplayComplete = false;
+    const off = getPlatform().onOpenMarkdownFile((event) => {
+      if (event.type === "ready") {
+        initialReplayComplete = true;
+        if (!initialFileLaunchSeen) void startup.run();
+        return;
+      }
+      initialFileLaunchSeen = true;
+      const generation = ++markdownFileLaunchGeneration;
+      if (initialReplayComplete) {
+        handleMarkdownFileLaunch(event, generation);
+        return;
+      }
+      initialFileLaunchSetup ??= startup.run(false);
+      void initialFileLaunchSetup.then(() => handleMarkdownFileLaunch(event, generation));
+    });
+    return () => off?.();
   });
 
   // ----------------------------------------------------------------
@@ -1833,7 +1969,7 @@
       | null
       | Promise<PersistedProjectState | null> = null,
     displayName: string | null = null,
-  ): Promise<void> {
+  ): Promise<boolean> {
     return lifecycle.startFolderPreview(dir, label, restoreState, displayName);
   }
 
@@ -1850,13 +1986,13 @@
     await lifecycle.startFolderPreview(path, "Switching book…");
   }
 
-  function openFolder(): Promise<void> {
-    return pickAndOpenFolder({ showBusyOverlay: true, label: "Starting preview…" });
+  async function openFolder(): Promise<void> {
+    await pickAndOpenFolder({ showBusyOverlay: true, label: "Starting preview…" });
   }
 
   /** Load a URL preview. Reset/epoch-supersede logic now lives on ProjectLifecycleController. */
   function openUrl(url: string) {
-    lifecycle.openUrl(url);
+    void lifecycle.openUrl(url);
   }
 
   function openInBrowser() {
@@ -1903,7 +2039,7 @@
     // Per-project state (#43): write to the folder-keyed bucket so this never
     // overwrites another project's saved page/view. The main process also
     // updates lastProjectDir, so reopening lands on this project.
-    api.app.setViewerProjectState(lifecycle.currentDir, patch as Record<string, unknown>).catch(() => {});
+    trackPersistence(api.app.setViewerProjectState(lifecycle.currentDir, patch as Record<string, unknown>));
   }
 
   // ── Document outline + editor↔preview sync (UX-013, ADR 0005) ─────────────
@@ -2129,30 +2265,30 @@
    * Switch the visible mobile pane. Preview → view mode; Markdown → edit mode
    * with the first markdown file loaded.
    */
-  function selectMobileTab(tab: MobileTab) {
-    setPaneMode(paneModeForTab(tab));
+  async function selectMobileTab(tab: MobileTab): Promise<void> {
     if (tab === "markdown") {
       // Only swap files if the editor is currently on a CSS file; otherwise keep
       // the author's open chapter (ensureEditorFile is a no-op when one is open).
       if (openFileIsCss) {
-        void (async () => {
-          const buf = ensureBuffer();
-          // B1 (data-loss fix): flush any pending debounced CSS save BEFORE
-          // resetting the buffer — reset() only cancels the timer + clears
-          // content, so without this an edit made inside the autosave window
-          // is silently dropped when switching to Markdown.
-          if (buf.filePath && buf.hasPendingSave) {
-            toast?.info?.("Saving…");
-            await buf.flush().catch(() => {});
-          }
-          buf.reset();
-          await ensureEditorFile();
-        })();
+        const buf = ensureBuffer();
+        // B1 (data-loss fix): flush any pending debounced CSS save BEFORE
+        // resetting the buffer — reset() only cancels the timer + clears
+        // content, so without this an edit made inside the autosave window
+        // is silently dropped when switching to Markdown.
+        if (buf.filePath && buf.hasPendingSave) {
+          toast?.info?.("Saving…");
+          if (!(await flushEditorBuffer(buf))) return;
+        }
+        buf.reset();
+        await ensureEditorFile();
       } else {
         void ensureEditorFile();
       }
+      setPaneMode(paneModeForTab(tab));
       focusEditorWhenReady();
+      return;
     }
+    setPaneMode(paneModeForTab(tab));
   }
 
   // ── Virtual-keyboard handling (#34) ────────────────────────────────────────
@@ -2296,7 +2432,9 @@
     {:else}
       <span class="update-banner-msg">Update available (v{updateController.availableVersion})</span>
       <button class="update-apply" onclick={() => updateController.download()} disabled={updateController.downloading}>
-        {updateController.downloading ? "Downloading…" : "Download"}
+        {updateController.downloading
+          ? updateController.availableAction === "open-release" ? "Opening…" : "Downloading…"
+          : updateController.availableAction === "open-release" ? "Download from GitHub" : "Download"}
       </button>
     {/if}
     <button class="update-later" onclick={() => updateController.dismissBanner()}>Later</button>
@@ -2375,6 +2513,7 @@
         }
       }}
       onBeforeRenameOpenFile={onTreeBeforeRename}
+      onBeforeDeleteOpenFile={onTreeBeforeDelete}
       onFileRenamed={onTreeFileRenamed}
       onFileDeleted={onTreeFileDeleted}
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
@@ -2645,12 +2784,11 @@
   booksDisabled={lifecycle.busy}
   errorTitle={landingErrorTitle}
   errorBody={landingErrorBody}
-  canAdopt={canAdoptFailedFolder}
-  adopting={lifecycle.adopting}
   version={appVersion}
   showAtStartup={landingShowPref}
   updateReadyVersion={updateController.readyVersion}
   updateAvailableVersion={updateController.availableVersion}
+  updateAvailableAction={updateController.availableAction}
   updateDownloading={updateController.downloading}
   onContinue={() => dismissLanding()}
   onOpenPath={(path) => void openProjectPath(path)}
@@ -2663,9 +2801,6 @@
   onOpenSettings={openSettings}
   onOpenHelp={() => (helpOpen = true)}
   onWhatsNew={openReleaseNotes}
-  onAdopt={() => {
-    if (lifecycle.failedOpenDir) void setUpAsBook(lifecycle.failedOpenDir);
-  }}
   onToggleShowAtStartup={setLandingStartupPref}
   onUpdateApply={() => updateController.applyNow()}
   onUpdateDownload={() => updateController.download()}
@@ -2706,6 +2841,7 @@
   checkingUpdates={updateController.checking}
   updateReadyVersion={updateController.readyVersion}
   updateAvailableVersion={updateController.availableVersion}
+  updateAvailableAction={updateController.availableAction}
 />
 <GitHubDialog
   bind:open={githubOpen}

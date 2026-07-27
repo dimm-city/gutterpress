@@ -22,8 +22,12 @@ export type PageState = {
 };
 
 // Per-project editor/preview state (#43), keyed by folder path in the main
-// process. currentPage/viewMode are live; the rest are dead schema for the
-// forthcoming in-app editor (#38) / chapter list (#42).
+// process. currentPage/viewMode/splitPaneRatio are live (mirrors the
+// canonical `ProjectState` in platform/shared-types.ts); lastChapter/
+// sidebarOpen/cursorLine/editorScroll are dead schema — declared for the
+// in-app editor (#38) / chapter list (#42), which shipped without ever
+// consuming them (the canonical ProjectState dropped them under #30; this
+// legacy duplicate still carries them so old persisted JSON keeps parsing).
 export type PersistedProjectState = {
   currentPage?: number;
   viewMode?: "single" | "two-column";

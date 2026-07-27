@@ -26,6 +26,7 @@ const spy = <A extends unknown[] = unknown[]>(): Spy<A> => {
 type ClassifyResult = {
   source: unknown;
   capabilities: unknown;
+  hasManifest: boolean;
   repoRoot?: string;
   books?: ProjectBookEntry[];
 };
@@ -52,7 +53,7 @@ function makeCaps(over: Partial<Record<string, boolean>> = {}) {
 function makeHarness(): Harness {
   const classify = Object.assign(
     spy<[string]>(),
-    { next: { source: {}, capabilities: makeCaps() } as ClassifyResult, reject: false },
+    { next: { source: {}, capabilities: makeCaps(), hasManifest: true } as ClassifyResult, reject: false },
   );
   const classifyProject = (dir: string): Promise<ClassifyResult> => {
     classify(dir);
@@ -78,6 +79,7 @@ test("reset clears all capability session state", () => {
   ctrl.repoRoot = "/repo";
   ctrl.books = [{ path: "/repo/one", title: "one", subPath: "one" }];
   ctrl.activeBookDir = "/repo/one";
+  ctrl.activeBookHasManifest = false;
 
   ctrl.reset();
 
@@ -86,13 +88,14 @@ test("reset clears all capability session state", () => {
   expect(ctrl.repoRoot).toBeNull();
   expect(ctrl.books).toEqual([]);
   expect(ctrl.activeBookDir).toBeNull();
+  expect(ctrl.activeBookHasManifest).toBe(true);
 });
 
 test("classify: local-git-folder subfolder populates subPath + persists source", async () => {
   const h = makeHarness();
   const source = { type: "local-git-folder", subPath: "books/one" };
   const caps = makeCaps();
-  h.classify.next = { source, capabilities: caps };
+  h.classify.next = { source, capabilities: caps, hasManifest: true };
 
   h.ctrl.classify("/proj");
   await flush();
@@ -105,7 +108,11 @@ test("classify: local-git-folder subfolder populates subPath + persists source",
 
 test("classify: local-git-folder repo root has an empty subPath", async () => {
   const h = makeHarness();
-  h.classify.next = { source: { type: "local-git-folder" }, capabilities: makeCaps() };
+  h.classify.next = {
+    source: { type: "local-git-folder" },
+    capabilities: makeCaps(),
+    hasManifest: true,
+  };
 
   h.ctrl.classify("/proj");
   await flush();
@@ -118,6 +125,7 @@ test("classify: local-folder → subPath stays empty regardless of any subPath f
   h.classify.next = {
     source: { type: "local-folder", subPath: "ignored" },
     capabilities: makeCaps(),
+    hasManifest: true,
   };
 
   h.ctrl.classify("/proj");
@@ -128,7 +136,11 @@ test("classify: local-folder → subPath stays empty regardless of any subPath f
 
 test("classify: no repoRoot in the result → repoRoot/books/activeBookDir stay empty, picked dir active", async () => {
   const h = makeHarness();
-  h.classify.next = { source: { type: "local-folder" }, capabilities: makeCaps() };
+  h.classify.next = {
+    source: { type: "local-folder" },
+    capabilities: makeCaps(),
+    hasManifest: true,
+  };
 
   h.ctrl.classify("/proj");
   await flush();
@@ -138,11 +150,42 @@ test("classify: no repoRoot in the result → repoRoot/books/activeBookDir stay 
   expect(h.ctrl.activeBookDir).toBe("/proj");
 });
 
+test("classify records manifest absence for a loose local folder", async () => {
+  const h = makeHarness();
+  h.classify.next = {
+    source: { type: "local-folder" },
+    capabilities: makeCaps(),
+    hasManifest: false,
+  };
+
+  await h.ctrl.classify("/loose");
+
+  expect(h.ctrl.activeBookDir).toBe("/loose");
+  expect(h.ctrl.activeBookHasManifest).toBe(false);
+});
+
+test("a repo-discovered active book is manifest-bearing even when the picked repo root is loose", async () => {
+  const h = makeHarness();
+  h.classify.next = {
+    source: { type: "local-git-folder" },
+    capabilities: makeCaps(),
+    hasManifest: false,
+    repoRoot: "/repo",
+    books: [{ path: "/repo/book", title: "book", subPath: "book" }],
+  };
+
+  await h.ctrl.classify("/repo");
+
+  expect(h.ctrl.activeBookDir).toBe("/repo/book");
+  expect(h.ctrl.activeBookHasManifest).toBe(true);
+});
+
 test("classify: repoRoot with zero books behaves as today (no redirect)", async () => {
   const h = makeHarness();
   h.classify.next = {
     source: { type: "local-git-folder" },
     capabilities: makeCaps(),
+    hasManifest: true,
     repoRoot: "/repo",
     books: [],
   };
@@ -161,6 +204,7 @@ test("classify: single book in the repo is always active", async () => {
   h.classify.next = {
     source: { type: "local-git-folder" },
     capabilities: makeCaps(),
+    hasManifest: true,
     repoRoot: "/repo",
     books,
   };
@@ -181,6 +225,7 @@ test("classify: multiple books, picked folder IS a book → that book stays acti
   h.classify.next = {
     source: { type: "local-git-folder" },
     capabilities: makeCaps(),
+    hasManifest: true,
     repoRoot: "/repo",
     books,
   };
@@ -200,6 +245,7 @@ test("classify: multiple books, bare repo root picked → first book alphabetica
   h.classify.next = {
     source: { type: "local-git-folder" },
     capabilities: makeCaps(),
+    hasManifest: true,
     repoRoot: "/repo",
     books,
   };
@@ -214,7 +260,11 @@ test("classify: multiple books, bare repo root picked → first book alphabetica
 
 test("classify returns a promise that resolves once the classification settles", async () => {
   const h = makeHarness();
-  h.classify.next = { source: { type: "local-folder" }, capabilities: makeCaps() };
+  h.classify.next = {
+    source: { type: "local-folder" },
+    capabilities: makeCaps(),
+    hasManifest: true,
+  };
 
   const result = h.ctrl.classify("/proj");
   expect(result).toBeInstanceOf(Promise);
@@ -234,6 +284,7 @@ test("classify: switching to a sibling book (re-classify at its path) keeps repo
   h.classify.next = {
     source: { type: "local-git-folder" },
     capabilities: makeCaps(),
+    hasManifest: true,
     repoRoot: "/repo",
     books,
   };

@@ -2,7 +2,12 @@ import { defineCommand } from "citty";
 import { resolve } from "node:path";
 import { scaffoldProject, BUILT_IN_TEMPLATE_IDS } from "../index.ts";
 import type { CreateProjectError, ProjectTemplateId } from "../index.ts";
-import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.ts";
+import {
+  EXIT_CODES,
+  UsageError,
+  rejectExtraPositionals,
+  rejectUnknownFlags,
+} from "../lib/cli-args.ts";
 
 /**
  * `print-md new` — scaffold a new project from an embedded starter template.
@@ -12,41 +17,44 @@ import { EXIT_CODES, UsageError, rejectExtraPositionals } from "../lib/cli-args.
  *
  *   print-md new "My First Book" --author "Jane" --dir ~/Books [--no-git]
  */
+export const newArgs = {
+  name: {
+    type: "positional",
+    description: "Project name (becomes the title and folder name)",
+    required: true,
+  },
+  author: {
+    type: "string",
+    description: "Author name to record in the project",
+  },
+  dir: {
+    type: "string",
+    description: "Parent directory to create the project in (default: current directory)",
+  },
+  folder: {
+    type: "string",
+    description: "Folder name to create (default: a slug of the project name)",
+  },
+  template: {
+    type: "string",
+    description: `Starter template: ${BUILT_IN_TEMPLATE_IDS.join(", ")} (default: book)`,
+  },
+  git: {
+    type: "boolean",
+    description: "Initialise local version history (default: true; use --no-git to skip)",
+    default: true,
+  },
+} as const;
+
 export default defineCommand({
   meta: {
     name: "new",
     description: "Create a new print-md project from a starter template",
   },
-  args: {
-    name: {
-      type: "positional",
-      description: "Project name (becomes the title and folder name)",
-      required: true,
-    },
-    author: {
-      type: "string",
-      description: "Author name to record in the project",
-    },
-    dir: {
-      type: "string",
-      description: "Parent directory to create the project in (default: current directory)",
-    },
-    folder: {
-      type: "string",
-      description: "Folder name to create (default: a slug of the project name)",
-    },
-    template: {
-      type: "string",
-      description: `Starter template: ${BUILT_IN_TEMPLATE_IDS.join(", ")} (default: book)`,
-    },
-    git: {
-      type: "boolean",
-      description: "Initialise local version history (default: true; use --no-git to skip)",
-      default: true,
-    },
-  },
-  async run({ args }) {
+  args: newArgs,
+  async run({ args, rawArgs }) {
     try {
+      rejectUnknownFlags(rawArgs, newArgs, "new");
       rejectExtraPositionals((args as { _: unknown[] })._, 1, "new");
     } catch (error) {
       if (error instanceof UsageError) {

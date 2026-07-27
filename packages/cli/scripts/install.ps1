@@ -27,6 +27,15 @@ $RequestedVersion = $env:PRINTMD_VERSION
 $DefaultPrefix = Join-Path $env:LOCALAPPDATA "Programs\print-md"
 $InstallPrefix = if ($env:PRINTMD_PREFIX) { $env:PRINTMD_PREFIX } else { $DefaultPrefix }
 
+# Name of the published checksum manifest. Written by
+# tools/prepare-release-assets.mjs as `<sha256>  <asset name>` lines.
+$ChecksumAsset = "SHA256SUMS.txt"
+
+# Set by Test-Checksum to the reason verification was skipped, and empty when
+# the download was actually verified. Main reads it to repeat the warning at
+# the end of the run.
+$script:Unverified = ""
+
 # ---- output helpers --------------------------------------------------------
 
 function Write-Success { param([string]$Message) Write-Host "[OK] $Message" -ForegroundColor Green }
@@ -145,10 +154,94 @@ function Get-AssetUrl {
     return $asset.url
 }
 
+# Like Get-AssetUrl but returns $null instead of throwing when the release has
+# no such asset. Used for the checksum manifest, whose absence is tolerated.
+function Get-OptionalAssetUrl {
+    param($Release, [string]$AssetName)
+    $asset = $Release.assets | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1
+    if (-not $asset) { return $null }
+    return $asset.url
+}
+
+# ---- checksum verification -------------------------------------------------
+
+# Fetch a release asset as text. GitHub returns raw bytes for the octet-stream
+# Accept header, so decode when Invoke-WebRequest hands back a byte array.
+function Get-GhText {
+    param([string]$Url)
+    $response = Invoke-WebRequest -Uri $Url `
+                                  -Headers (New-GhHeaders "application/octet-stream") `
+                                  -UseBasicParsing
+    if ($response.Content -is [byte[]]) {
+        return [System.Text.Encoding]::UTF8.GetString($response.Content)
+    }
+    return [string]$response.Content
+}
+
+# Verify a downloaded file against the release's published SHA256SUMS.txt.
+#
+# Policy: verification is the default, and a MISMATCH is always fatal — a file
+# whose hash disagrees with the release manifest is never installed. When the
+# hash is simply unavailable (the release predates SHA256SUMS.txt, or the
+# manifest doesn't list this asset) we warn and continue, so installing an
+# older release still works. Every skip records its reason in
+# $script:Unverified, which Main reprints at the end of the run where it
+# cannot scroll by unnoticed.
+function Test-Checksum {
+    param($Release, [string]$AssetName, [string]$FilePath)
+
+    $script:Unverified = ""
+    Write-Step "Verifying download..."
+
+    $checksumUrl = Get-OptionalAssetUrl -Release $Release -AssetName $ChecksumAsset
+    if (-not $checksumUrl) {
+        $script:Unverified = "release $($Release.tag_name) does not publish $ChecksumAsset"
+        Write-Info "This release publishes no $ChecksumAsset - cannot verify."
+        return
+    }
+
+    try {
+        $sums = Get-GhText -Url $checksumUrl
+    } catch {
+        $script:Unverified = "could not download $ChecksumAsset"
+        Write-Info "Could not download $ChecksumAsset - cannot verify."
+        return
+    }
+
+    # Lines are `<sha256>  <asset name>`.
+    $expected = $null
+    foreach ($line in ($sums -split "`r?`n")) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed) { continue }
+        $parts = $trimmed -split '\s+', 2
+        if ($parts.Count -eq 2 -and $parts[1].Trim() -eq $AssetName) {
+            $expected = $parts[0].Trim()
+            break
+        }
+    }
+
+    if (-not $expected) {
+        $script:Unverified = "$ChecksumAsset does not list $AssetName"
+        Write-Info "$AssetName is not listed in $ChecksumAsset - cannot verify."
+        return
+    }
+
+    $actual = (Get-FileHash -Path $FilePath -Algorithm SHA256).Hash
+
+    if ($actual.ToLowerInvariant() -ne $expected.ToLowerInvariant()) {
+        throw ("Checksum mismatch for $AssetName.`n" +
+               "  expected: $expected`n" +
+               "  actual:   $actual`n" +
+               "Refusing to install: the download is corrupt or has been tampered with.")
+    }
+
+    Write-Success "Checksum verified against $ChecksumAsset"
+}
+
 # ---- install steps ---------------------------------------------------------
 
 function Install-Binary {
-    param([string]$Url, [string]$Tag, [string]$AssetName)
+    param($Release, [string]$Url, [string]$Tag, [string]$AssetName)
 
     Write-Step "Downloading print-md $Tag (windows-x64)..."
 
@@ -163,6 +256,15 @@ function Install-Binary {
     } catch {
         if (Test-Path $tempPath) { Remove-Item $tempPath -Force -ErrorAction SilentlyContinue }
         throw "Failed to download binary: $_"
+    }
+
+    # Verify before the binary is ever moved into place, so a mismatched
+    # download is discarded rather than installed.
+    try {
+        Test-Checksum -Release $Release -AssetName $AssetName -FilePath $tempPath
+    } catch {
+        if (Test-Path $tempPath) { Remove-Item $tempPath -Force -ErrorAction SilentlyContinue }
+        throw
     }
 
     # Windows refuses to delete an executable that is currently running (e.g.
@@ -365,7 +467,7 @@ function Main {
 
         $assetUrl = Get-AssetUrl -Release $release -AssetName $assetName
 
-        Install-Binary -Url $assetUrl -Tag $tag -AssetName $assetName
+        Install-Binary -Release $release -Url $assetUrl -Tag $tag -AssetName $assetName
     }
     Test-Install
     Add-ToUserPath -Dir $InstallPrefix
@@ -385,6 +487,18 @@ function Main {
     Write-Host ""
     Write-Info "Double-click 'Print-md Preview' on your desktop to start the viewer."
     Write-Host ""
+
+    # Last thing on screen, so an unverified install cannot be missed.
+    if ($script:Unverified) {
+        Write-Err "WARNING: this download was NOT verified against a checksum."
+        Write-Info "Reason: $($script:Unverified)"
+        Write-Info "print-md binaries are unsigned, so nothing has confirmed this file's"
+        Write-Info "integrity. To check it by hand, compare the SHA256 of"
+        Write-Info "  $($script:PrintMdBin)"
+        Write-Info "against the release page:"
+        Write-Info "  https://github.com/$Repo/releases/tag/$tag"
+        Write-Host ""
+    }
 }
 
 Main

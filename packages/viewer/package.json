@@ -19,7 +19,7 @@
     "dist": "npm run build && npm run electron:build && electron-builder --config electron-builder.yml --publish never",
     "dist:linux": "npm run dist -- --linux AppImage",
     "dist:win": "npm run dist -- --win nsis zip",
-    "dist:mac": "npm run dist -- --mac dmg",
+    "dist:mac": "npm run dist -- --mac --arm64 --x64",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint 'src/**/*.svelte' 'src/**/*.svelte.ts' && node tools/check-app-tokens.mjs",
     "typecheck": "tsc -p electron/tsconfig.json",
@@ -40,13 +40,15 @@
     "@codemirror/view": "^6.36.2",
     "@dimm-city/print-md": "workspace:*",
     "@lezer/highlight": "^1.2.3",
-    "electron-updater": "^6.6.2"
+    "electron-updater": "^6.6.2",
+    "semver": "~7.7.3"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.5.7",
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.1",
     "@typescript-eslint/parser": "^8.62.0",
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3",

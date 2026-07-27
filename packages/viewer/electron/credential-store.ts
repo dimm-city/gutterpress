@@ -42,6 +42,9 @@ interface StoredEntry {
 interface StoreFileShape {
   version: 1;
   credentials: Record<string, StoredEntry>;
+  notices?: {
+    linuxBasicTextStorageShown?: boolean;
+  };
 }
 
 function storePath(): string {
@@ -56,9 +59,14 @@ async function readStore(): Promise<StoreFileShape> {
   let raw: string;
   try {
     raw = await readFile(storePath(), "utf8");
-  } catch {
-    // No readable file yet (first run, or removed) — nothing to preserve.
-    return { version: 1, credentials: {} };
+  } catch (err) {
+    // Only a genuinely absent file is an empty first-run store. Permission,
+    // descriptor, and I/O failures must abort the read-modify-write cycle or a
+    // later set() could replace still-existing credentials with a partial file.
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+      return { version: 1, credentials: {} };
+    }
+    throw err;
   }
   try {
     const parsed = JSON.parse(raw) as StoreFileShape;
@@ -108,6 +116,47 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   const run = queue.then(fn, fn);
   queue = run.catch(() => undefined);
   return run;
+}
+
+/** Pure backend classification kept separate so non-Linux behavior is testable. */
+export function isLinuxBasicTextStorage(platform: string, backend: string): boolean {
+  return platform === "linux" && backend === "basic_text";
+}
+
+/** True only for Electron's keyring-less Linux fallback. Host-side only. */
+export function usesLinuxBasicTextStorage(): boolean {
+  if (process.platform !== "linux") return false;
+  try {
+    return isLinuxBasicTextStorage(
+      process.platform,
+      safeStorage.getSelectedStorageBackend(),
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Whether the one-time weaker-storage warning still needs to be shown. */
+export function shouldShowLinuxBasicTextStorageNotice(): Promise<boolean> {
+  if (!usesLinuxBasicTextStorage()) return Promise.resolve(false);
+  return enqueue(async () => {
+    const data = await readStore();
+    return !data.notices?.linuxBasicTextStorageShown;
+  });
+}
+
+/** Persist the warning only after the native dialog completed successfully. */
+export function markLinuxBasicTextStorageNoticeShown(): Promise<void> {
+  if (!usesLinuxBasicTextStorage()) return Promise.resolve();
+  return enqueue(async () => {
+    const data = await readStore();
+    if (data.notices?.linuxBasicTextStorageShown) return;
+    data.notices = {
+      ...data.notices,
+      linuxBasicTextStorageShown: true,
+    };
+    await writeStore(data);
+  });
 }
 
 // ── Change notifications ─────────────────────────────────────────────────────

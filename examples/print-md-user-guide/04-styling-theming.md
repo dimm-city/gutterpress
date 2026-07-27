@@ -280,7 +280,7 @@ Run the preview and open browser DevTools:
 
 ```bash
 print-md preview ./my-book
-# Open http://localhost:3000 in Chrome
+# Open http://localhost:3579 in Chrome
 # Right-click → Inspect to view computed styles
 ```
 

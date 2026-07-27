@@ -552,16 +552,21 @@ that rule.
 The model (binding, from CLAUDE.md §5):
 
 - Plugins are **plain markdown-it npm packages** declared in the project
-  manifest. There is no plugin API, no registry, no auto-install, no sandbox.
+  manifest. There is no custom plugin API, hosted print-md registry, or sandbox.
+  Explicit install resolves the public npm registry and vendors an exact
+  version plus its runtime dependency tree; the build/preview loader itself
+  never installs or accesses the network. The desktop host confines the target
+  to the open project and requires a native confirmation that says third-party
+  code receives full filesystem and network privileges.
 - Build/export/validate **fail fast** on any plugin load error, identifying
   the offending manifest entry — a final artifact never silently omits
   author-configured formatting. Live preview **degrades and reports loudly**
   ("Not installed" badge + fix instructions); every skip is surfaced.
 
 Shipped UI (the baseline to refine, not replace): configured-plugin list with
-enable/disable toggle, "Re-check" validation, curated markdown-it
-recommendations, add by npm name or local path, and the "Not installed" state
-with a copyable install command.
+enable/disable toggle, "Re-check" validation, curated bundled markdown-it
+recommendations, verified/pinned npm install, local import, and an actionable
+missing-vendor state.
 
 Refinements (PROPOSED): link each plugin to its npm page for
 author/version/last-published metadata; surface load errors inline.
@@ -578,8 +583,6 @@ ADR-level proposal and a CLAUDE.md §5 amendment):
   / snippets" — none of those are plugin types (themes = CSS #32, publish
   providers = built-in lib modules #35, lint = built-in printsafe, AI =
   settings-configured #36, snippets = project folder #29);
-- in-app install (the loader deliberately does not install; the "plugin
-  install time" quality gate is deleted with it — see Quality Gates).
 
 ### 10. Problems panel
 
@@ -975,7 +978,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Raw Paged.js / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (CLAUDE.md §3) | Extend `printsafe.ts` |
-| A print-md-specific plugin API, plugin sandbox/permissions UI, or in-app plugin installer | Contradicts CLAUDE.md §5 | §9's manifest model; ADR first if this ever changes |
+| A print-md-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts CLAUDE.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
 | Settings with >30 items in a flat list | Overwhelming | Shipped tab structure (§4) |
 
 ---

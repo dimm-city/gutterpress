@@ -10,7 +10,7 @@
    * "All changes saved" at rest, never blank), so both pieces of status are
    * readable at a glance — not sporadic or hard to see.
    *
-   * PWA-clean: all host work via getPlatform() (CLAUDE.md §8 / ADR 0004).
+   * PWA-clean: all host work via api.* routes (CLAUDE.md §8 / ADR 0004).
    * No node: builtins or @dimm-city/print-md value imports.
    */
   import SyncStatusPill from "$lib/components/SyncStatusPill.svelte";

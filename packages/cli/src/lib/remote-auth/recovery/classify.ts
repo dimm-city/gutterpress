@@ -204,7 +204,7 @@ function isUnrelatedHistories(e: unknown): boolean {
 // WRONG outcome of `missing_git_dir` (whose handler would try to CLONE and
 // talk about "setting up a remote" when the repo and its remote already exist
 // — only the ref store is damaged). NOTE on NotFoundError ambiguity: a
-// TRANSPORT 404 also surfaces as NotFoundError, but sync.ts's fetchRemoteTip
+// TRANSPORT 404 also surfaces as NotFoundError, but transport.ts's fetchRemoteTip
 // rewrites those to an HttpError(401) BEFORE they reach this classifier, so a
 // raw NotFoundError here is a LOCAL ref-resolution failure — classify it
 // structurally, never as auth.

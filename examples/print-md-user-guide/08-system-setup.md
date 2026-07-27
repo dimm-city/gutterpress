@@ -18,7 +18,23 @@
 > labels, text density, structure, image color/alpha, and markdown/HTML/CSS
 > linting all run **in-process** — no Poppler, ImageMagick, `markdownlint-cli2`,
 > `htmlhint`, or stylelint to install (see ADR 0002). A plain RGB `build` needs
-> only a browser; the three print tools above exist solely to enable PDF/X.
+> only a browser; Ghostscript and qpdf exist solely to enable PDF/X checks and
+> conversion.
+
+## Check your setup: `print-md doctor`
+
+Before installing anything, run `print-md doctor` to see exactly what
+print-md already found on your machine:
+
+```bash
+print-md doctor
+```
+
+It prints the print-md version, your OS/architecture, the CLI config
+directory, and a table of every optional tool — found or missing, its
+resolved path, which features use it, and (for anything missing) the exact
+install command for your platform. Run it again after installing a tool to
+confirm it was picked up.
 
 ## Easiest path: Docker (the whole PDF/X pipeline, nothing to install)
 
@@ -104,20 +120,25 @@ browser to render PDFs.
 
 1. The `CHROMIUM_PATH` or `PUPPETEER_EXECUTABLE_PATH` environment variable (either works; `CHROMIUM_PATH` is checked first)
 2. Standard install locations for Chrome, Chromium, Edge, and Brave on your OS (the paths installed by the commands above)
-3. A `PATH` probe (`which` / `where.exe`) for `google-chrome`, `chromium`, `chrome`, `msedge`, `brave`, and their platform-specific variants
+3. A `PATH` probe (`which` / `where.exe`) for Chrome, Chromium, Edge, Brave, Vivaldi, Opera, and their platform-specific variants
 
-**Fix:** install Chrome, Chromium, Edge, or Brave normally (step 1 above), or
+**Fix:** install Chrome, Chromium, Edge, Brave, Vivaldi, or Opera normally, or
 set `CHROMIUM_PATH=/path/to/your/browser` if it's in a non-standard location.
+The print-md desktop app includes its own browser and needs no separate browser
+installation.
 
 ### Ghostscript — recommended for PDF/X
 
 Used for CMYK conversion, ICC profiles, TAC validation, and PDF/X-1a compliance. Required if building with `--format pdfx`.
 
-```
-error: spawn gs ENOENT
-```
+Print-md checks `GHOSTSCRIPT_PATH` first, then the command names available on
+`PATH` (`gs` on macOS/Linux; `gswin64c`, `gswin32c`, or `gs` on Windows).
+On Windows it also detects versioned installs under the conventional
+`Program Files\gs\gs*\bin` directories, so the standard installer works
+without a hand-made `gs` alias.
 
-**Fix:** Install Ghostscript and ensure `gs` is on `PATH`.
+**Fix:** Install Ghostscript normally, or set `GHOSTSCRIPT_PATH` to its
+command-line executable when it lives in a non-standard location.
 
 ### qpdf — PDF/X only
 
@@ -186,23 +207,29 @@ including from the standalone binary.
 |----------|--------|
 | `CHROMIUM_PATH` | Override browser binary location (checked first) |
 | `PUPPETEER_EXECUTABLE_PATH` | Alternative browser override (same priority as `CHROMIUM_PATH`) |
+| `GHOSTSCRIPT_PATH` | Override Ghostscript command-line executable location (checked first) |
+| `PRINT_MD_CONFIG_DIR` | Override the CLI config and credential directory |
 
-Ghostscript and `qpdf` have no path-override environment variable — print-md
-spawns them as bare `gs` and `qpdf` and relies on your shell's `PATH`. If
-either is installed in a non-standard location, add it to `PATH` rather than
-trying to point print-md at it directly.
+`qpdf` has no path-override environment variable; add a non-standard install
+to `PATH`.
+
+The CLI config directory is `%APPDATA%\print-md` on Windows and
+`$XDG_CONFIG_HOME/print-md` (or `~/.config/print-md`) on macOS and Linux.
+Diagnostics report this existing location; print-md does not move credentials
+when reporting it.
 
 ### Manifest tool paths
 
 There is no manifest key for overriding tool binary paths — no `tools:`
 block, no `chromePath`/`ghostscriptPath` options. Use the environment
-variables above (Chromium) or `PATH` (Ghostscript, qpdf) instead.
+variables above (Chromium and Ghostscript) or `PATH` instead.
 
 ## Troubleshooting
 
-### `spawn gs ENOENT`
+### `Ghostscript executable not found`
 
-Ghostscript is not installed or not on `PATH`. Install it and verify:
+Ghostscript was not found in the locations above. Install it, set
+`GHOSTSCRIPT_PATH`, or verify the command is on `PATH`:
 
 ```bash
 gs --version
@@ -210,10 +237,11 @@ gs --version
 
 ### `No Chrome / Chromium / Edge binary found`
 
-No browser was found. Install Chrome, Chromium, Edge, or Brave, or set
+No browser was found. Install Chrome, Chromium, Edge, Brave, Vivaldi, or Opera, or set
 `CHROMIUM_PATH` (or `PUPPETEER_EXECUTABLE_PATH`) to an existing binary.
 puppeteer-core cannot download one for you — see "Chrome / Chromium —
-required for PDF" above.
+required for PDF" above. Alternatively, use the desktop app, which includes
+its own browser.
 
 ### `spawn qpdf ENOENT` during PDF/X build
 
@@ -228,8 +256,8 @@ install the relevant tool to enable them.
 ### A specific check still fails after installing its tool
 
 Restart the terminal to pick up the updated `PATH`. If the tool is in a
-non-standard location, set `CHROMIUM_PATH` (Chromium) or add it to `PATH`
-(Ghostscript, qpdf — they have no path-override variable).
+non-standard location, set `CHROMIUM_PATH` (Chromium), set `GHOSTSCRIPT_PATH`
+(Ghostscript), or add qpdf to `PATH`.
 
 ## Roadmap
 

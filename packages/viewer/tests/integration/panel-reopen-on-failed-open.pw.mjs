@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Regression test: after `startFolderPreview` throws (bad path, no manifest,
- * etc.), a project-browsing surface MUST be visible so the user can try again.
+ * Regression test: after `startFolderPreview` throws (bad path, host startup
+ * failure, etc.), a project-browsing surface MUST be visible so the user can
+ * try again.
  *
  * The bug (beta.6 regression): the old `autoOpenPanel` `$effect` was removed
  * without replacement. When the user tried to open a folder that failed (e.g.,
- * a path with no print-md manifest), `currentDir` stayed null but no browsing
+ * a nonexistent path), `currentDir` stayed null but no browsing
  * UI auto-opened — the user was left with a blank welcome screen and no path
  * to try again.
  *
@@ -20,7 +21,7 @@
  *   1. Opens the app with a clean userData (no last project) — a browsing
  *      surface with `.projects-body` shows on startup.
  *   2. Enters a nonexistent path via the location input and presses Enter.
- *   3. Waits for the error to surface (openError, failedOpenDir state).
+ *   3. Waits for the error to surface (`openError` state).
  *   4. Asserts `.projects-body` is visible again after the failed open.
  *
  * Usage:

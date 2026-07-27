@@ -18,6 +18,15 @@ GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 PRINTMD_VERSION="${PRINTMD_VERSION:-}"
 PRINTMD_PREFIX="${PRINTMD_PREFIX:-$HOME/.local/bin}"
 
+# Name of the published checksum manifest. Written by
+# tools/prepare-release-assets.mjs as `<sha256>  <asset name>` lines.
+PRINTMD_CHECKSUM_ASSET="SHA256SUMS.txt"
+
+# Set by verify_checksum() to the reason verification was skipped, and empty
+# when the download was actually verified. main() reads it to repeat the
+# warning at the end of the run.
+PRINTMD_UNVERIFIED=""
+
 # ---- output helpers --------------------------------------------------------
 
 print_success() { printf '\033[0;32m[OK]\033[0m %s\n' "$1"; }
@@ -123,35 +132,118 @@ fetch_release() {
     fi
 }
 
-# Find the download URL for our platform's asset by parsing the release JSON.
-# Uses python3 if available (cleaner) or grep otherwise.
-resolve_asset_url() {
+# Print the API download URL for a named asset in the resolved release JSON,
+# or nothing when the release has no such asset. Uses python3 if available
+# (cleaner) or grep otherwise. Callers decide whether "absent" is fatal.
+asset_url_by_name() {
+    local name="$1"
     if command -v python3 >/dev/null 2>&1; then
-        PRINTMD_ASSET_URL="$(printf '%s' "$PRINTMD_RELEASE_JSON" \
+        printf '%s' "$PRINTMD_RELEASE_JSON" \
             | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-asset_name = '$PRINTMD_ASSET'
+asset_name = sys.argv[1]
 for a in data.get('assets', []):
     if a.get('name') == asset_name:
         print(a.get('url', ''))
         break
-")"
+" "$name"
     else
         # Locate the asset block whose "name" matches and pull its API "url".
-        PRINTMD_ASSET_URL="$(printf '%s' "$PRINTMD_RELEASE_JSON" \
+        printf '%s' "$PRINTMD_RELEASE_JSON" \
             | tr '\n' ' ' \
-            | grep -oE '\{[^{}]*"name"[^{}]*"'"$PRINTMD_ASSET"'"[^{}]*\}' \
+            | grep -oE '\{[^{}]*"name"[^{}]*"'"$name"'"[^{}]*\}' \
             | head -1 \
             | grep -oE '"url"[[:space:]]*:[[:space:]]*"[^"]*"' \
             | head -1 \
-            | sed -E 's/.*"url"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
+            | sed -E 's/.*"url"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/'
     fi
+}
+
+# Find the download URL for our platform's asset. Missing asset is fatal.
+resolve_asset_url() {
+    PRINTMD_ASSET_URL="$(asset_url_by_name "$PRINTMD_ASSET")"
 
     if [ -z "$PRINTMD_ASSET_URL" ]; then
         print_error "Release $PRINTMD_TAG has no asset named $PRINTMD_ASSET"
         return 1
     fi
+}
+
+# ---- checksum verification -------------------------------------------------
+
+to_lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Print the sha256 of a file using whichever tool this system has, or fail.
+sha256_of_file() {
+    local file="$1"
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" | awk '{print $1}'
+    elif command -v openssl >/dev/null 2>&1; then
+        openssl dgst -sha256 "$file" | awk '{print $NF}'
+    else
+        return 1
+    fi
+}
+
+# Verify a downloaded file against the release's published SHA256SUMS.txt.
+#
+# Policy: verification is the default, and a MISMATCH is always fatal — a file
+# whose hash disagrees with the release manifest is never installed. When the
+# hash is simply unavailable (the release predates SHA256SUMS.txt, the manifest
+# doesn't list this asset, or the machine has no sha256 tool) we warn and
+# continue, so installing an older release still works. Every skip records its
+# reason in PRINTMD_UNVERIFIED, which main() reprints at the end of the run
+# where it cannot scroll by unnoticed.
+verify_checksum() {
+    local file="$1"
+    PRINTMD_UNVERIFIED=""
+
+    print_step "Verifying download..."
+
+    local checksum_url
+    checksum_url="$(asset_url_by_name "$PRINTMD_CHECKSUM_ASSET")"
+    if [ -z "$checksum_url" ]; then
+        PRINTMD_UNVERIFIED="release $PRINTMD_TAG does not publish $PRINTMD_CHECKSUM_ASSET"
+        print_info "This release publishes no $PRINTMD_CHECKSUM_ASSET — cannot verify."
+        return 0
+    fi
+
+    local sums
+    if ! sums="$(gh_curl application/octet-stream "$checksum_url" 2>/dev/null)"; then
+        PRINTMD_UNVERIFIED="could not download $PRINTMD_CHECKSUM_ASSET"
+        print_info "Could not download $PRINTMD_CHECKSUM_ASSET — cannot verify."
+        return 0
+    fi
+
+    # Lines are `<sha256>  <asset name>`; awk splits on whitespace.
+    local expected
+    expected="$(printf '%s\n' "$sums" \
+        | awk -v want="$PRINTMD_ASSET" '$2 == want { print $1; exit }')"
+    if [ -z "$expected" ]; then
+        PRINTMD_UNVERIFIED="$PRINTMD_CHECKSUM_ASSET does not list $PRINTMD_ASSET"
+        print_info "$PRINTMD_ASSET is not listed in $PRINTMD_CHECKSUM_ASSET — cannot verify."
+        return 0
+    fi
+
+    local actual
+    if ! actual="$(sha256_of_file "$file")"; then
+        PRINTMD_UNVERIFIED="no sha256 tool found (need sha256sum, shasum, or openssl)"
+        print_info "No sha256 tool on this system — cannot verify."
+        return 0
+    fi
+
+    if [ "$(to_lower "$actual")" != "$(to_lower "$expected")" ]; then
+        print_error "Checksum mismatch for $PRINTMD_ASSET"
+        print_error "  expected: $expected"
+        print_error "  actual:   $actual"
+        print_error "Refusing to install: the download is corrupt or has been tampered with."
+        return 1
+    fi
+
+    print_success "Checksum verified against $PRINTMD_CHECKSUM_ASSET"
 }
 
 # ---- install steps ---------------------------------------------------------
@@ -166,6 +258,13 @@ install_binary() {
     if ! gh_download application/octet-stream -o "$tmp" "$PRINTMD_ASSET_URL"; then
         rm -f "$tmp"
         print_error "Failed to download binary"
+        return 1
+    fi
+
+    # Verify before the binary is ever moved into place or made executable, so
+    # a mismatched download is discarded rather than installed.
+    if ! verify_checksum "$tmp"; then
+        rm -f "$tmp"
         return 1
     fi
 
@@ -391,6 +490,18 @@ main() {
         print_info "Get started: print-md --help"
     fi
     echo ""
+
+    # Last thing on screen, so an unverified install cannot be missed.
+    if [ -n "$PRINTMD_UNVERIFIED" ]; then
+        print_error "WARNING: this download was NOT verified against a checksum."
+        print_info "Reason: $PRINTMD_UNVERIFIED"
+        print_info "print-md binaries are unsigned, so nothing has confirmed this file's"
+        print_info "integrity. To check it by hand, compare the sha256 of"
+        print_info "  $PRINTMD_BIN"
+        print_info "against the release page:"
+        print_info "  https://github.com/${REPO}/releases/tag/${PRINTMD_TAG}"
+        echo ""
+    fi
 }
 
 main "$@"

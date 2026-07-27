@@ -1,6 +1,6 @@
 # Validation & Best Practices {#ch-validation}
 
-<div class="lede">Print-md's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 31 built-in checks, CLI usage, and production workflow recommendations.</div>
+<div class="lede">Print-md's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 33 built-in checks, CLI usage, and production workflow recommendations.</div>
 
 ## Validation Overview
 
@@ -9,11 +9,16 @@ The validation system runs checks at two phases:
 - **Pre-build** — Source, asset, and some heuristic checks run before PDF generation
 - **Post-build** — PDF structural, print compliance, and quality checks run after PDF generation
 
-When using `print-md build --format pdf` or `--format pdfx`, validation is automatically integrated into the pipeline:
+When using `print-md build`, validation is automatically integrated into the
+pipeline:
 
 ```
 lint → validate:pre-build → convert → assets → build → validate:post-build
 ```
+
+The final `validate:post-build` phase runs for `--format pdfx` only — a plain
+`--format pdf` build stops after the build step. Everything before it runs for
+both formats.
 
 ## CLI Usage
 

@@ -1,11 +1,14 @@
 /**
  * GitHub repo discovery (#15, ADR 0006 D3 layer 4).
  *
- * Plain `fetch` against 2 REST endpoints — deliberately no `@octokit`
+ * Plain `fetch` against the GitHub REST API — deliberately no `@octokit`
  * dependency. Lists every repository the user can access (`GET /user/repos`,
- * the OAuth `repo`-scope model — ADR 0006 D1 amendment 2026-06-10), plus the
- * branches of a chosen repository. All calls paginate, time out explicitly,
- * and map failures to author-friendly messages (401 → "reconnect").
+ * the OAuth `repo`-scope model — ADR 0006 D1 amendment 2026-06-10), the
+ * branches of a chosen repository, and (via the Git Trees API) the print-md
+ * book projects inside a repo. The two REST listings paginate; the Git Trees
+ * call is a single request that handles the API's `truncated` flag instead. All
+ * three time out explicitly and map failures to author-friendly messages
+ * (401 → "reconnect").
  */
 import type { HostCredential } from "./token-store.ts";
 import { withFetchTimeout } from "../fetch-timeout.ts";
@@ -120,14 +123,12 @@ export interface RepoBook {
   name: string;
 }
 
-// Manifest file stems this scan recognizes: the current `manifest.yaml`/`.yml`
-// (single source of truth: MANIFEST_FILENAMES) plus `print-md.yaml`/`.yml` for
-// back-compat with books authored before the manifest was renamed.
-const MANIFEST_NAME_STEMS = [
-  ...new Set(MANIFEST_FILENAMES.map((name) => name.replace(/\.ya?ml$/, ""))),
-  "print-md",
-];
-const MANIFEST_RE = new RegExp(`(^|/)(${MANIFEST_NAME_STEMS.join("|")})\\.ya?ml$`);
+// Match the exported contract exactly: print-md.yaml does not imply print-md.yml.
+const MANIFEST_NAMES = new Set<string>(MANIFEST_FILENAMES);
+
+function isManifestPath(filePath: string): boolean {
+  return MANIFEST_NAMES.has(filePath.slice(filePath.lastIndexOf("/") + 1));
+}
 
 type TreeEntry = { path?: string; type?: string; sha?: string };
 type TreeResponse = { tree?: TreeEntry[]; truncated?: boolean };
@@ -139,8 +140,8 @@ function bookFromManifestPath(manifestPath: string, repo: string): RepoBook {
 
 /**
  * Find the print-md books inside a repository branch: every directory that
- * contains a manifest (`manifest.yaml` / `.yml`, or the legacy `print-md.yaml`
- * / `.yml`) — the repository root counts, with `path: ""`. Uses one
+ * contains a recognized manifest (from `MANIFEST_FILENAMES`) — the repository
+ * root counts, with `path: ""`. Uses one
  * `GET /repos/{owner}/{repo}/git/trees/{branch}
  * ?recursive=1` call; when GitHub truncates the recursive listing (very large
  * repositories) it falls back to scanning the root + each top-level directory
@@ -169,7 +170,7 @@ export async function listRepoBooks(
 
   if (!body.truncated) {
     const books = entries
-      .filter((e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path))
+      .filter((e) => e.type === "blob" && e.path && isManifestPath(e.path))
       .map((e) => bookFromManifestPath(e.path!, repo));
     return dedupeAndSortBooks(books);
   }
@@ -180,7 +181,7 @@ export async function listRepoBooks(
   const rootBody = (await rootRes.json()) as TreeResponse;
   const rootEntries = rootBody.tree ?? [];
   const books: RepoBook[] = rootEntries
-    .filter((e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path))
+    .filter((e) => e.type === "blob" && e.path && isManifestPath(e.path))
     .map((e) => bookFromManifestPath(e.path!, repo));
   const topDirs = rootEntries
     .filter((e) => e.type === "tree" && typeof e.path === "string" && typeof e.sha === "string")
@@ -191,7 +192,7 @@ export async function listRepoBooks(
     const subRes = await apiGet(fetchImpl, treeUrl(dirEntry.sha!, false), credential.token);
     const subBody = (await subRes.json()) as TreeResponse;
     const hasManifest = (subBody.tree ?? []).some(
-      (e) => e.type === "blob" && e.path && MANIFEST_RE.test(e.path),
+      (e) => e.type === "blob" && e.path && isManifestPath(e.path),
     );
     if (hasManifest) {
       books.push({ path: dirEntry.path!, name: dirEntry.path! });

@@ -2,7 +2,11 @@ import { test, expect, describe, afterEach } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveConfig, loadManifestWithPath } from "./manifest";
+import {
+  MANIFEST_FILENAMES,
+  resolveConfig,
+  loadManifestWithPath,
+} from "./manifest";
 import { UsageError } from "./cli-args";
 import { DTRPG_PRESET, BOOK_PRESET, resetWarnOnce } from "./presets";
 
@@ -11,7 +15,7 @@ import { DTRPG_PRESET, BOOK_PRESET, resetWarnOnce } from "./presets";
 // implementation only checked the prefixes — so a bare relative path like
 // `plugins/my-plugin.js` (a very natural thing for a non-technical author to
 // write, omitting the `./`) was silently treated as an npm package name,
-// producing a "bun add plugins/my-plugin.js" dead-end that can never
+// producing an npm-package install dead-end that can never
 // resolve. These tests pin isFilePath's behavior (exercised indirectly via
 // resolveConfig's plugin-string normalization, since isFilePath itself is
 // private) against its own documented contract.
@@ -53,6 +57,15 @@ test("a scoped npm package name (has a separator but no JS-extension suffix) is 
   const [a] = pluginsOf(["@my-org/print-md-plugin"]);
   expect(a!.name).toBe("@my-org/print-md-plugin");
   expect(a!.path).toBeUndefined();
+});
+
+test("an exact npm plugin version and named export survive manifest normalization", () => {
+  const [plugin] = resolveConfig({}, {
+    plugins: [{ name: "markdown-it-emoji", version: "3.0.0", export: "full" }],
+  }).plugins;
+  expect(plugin!.name).toBe("markdown-it-emoji");
+  expect(plugin!.version).toBe("3.0.0");
+  expect(plugin!.export).toBe("full");
 });
 
 test(".cjs extension with a separator is also recognized as a file path", () => {
@@ -256,8 +269,8 @@ describe("resolveConfig deprecation warnings (finding #24)", () => {
 
 // ── ARCH finding #12 (PR #98, maintainer HIGH) — an EXPLICIT --manifest path
 // that doesn't exist is a user error (typo) and must fail loudly, unlike the
-// legitimate "no --manifest given, scan the project dir" case, which must
-// keep silently falling back to defaults ─────────────────────────────────────
+// legitimate "no --manifest given, scan the project dir" case, which remains
+// available to tolerant callers such as live preview ─────────────────────────
 describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
   const dirsToClean: string[] = [];
 
@@ -302,10 +315,40 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
     const manifestPath = join(dir, "manifest.yaml");
     await Bun.write(manifestPath, "title: Explicit And Present\n");
 
-    const { manifest, manifestDir } = await loadManifestWithPath(manifestPath, {
+    const { manifest, manifestDir, manifestPath: loadedPath } = await loadManifestWithPath(manifestPath, {
       explicit: true,
     });
     expect(manifest.title).toBe("Explicit And Present");
     expect(manifestDir).toBe(dir);
+    expect(loadedPath).toBe(manifestPath);
+  });
+
+  test("malformed YAML throws a clean UsageError naming the manifest and parser position", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pmd-manifest-invalid-yaml-"));
+    dirsToClean.push(dir);
+    const manifestPath = join(dir, "manifest.yaml");
+    await Bun.write(manifestPath, "title: Broken\nsource:\n\tfiles:\n");
+
+    await expect(loadManifestWithPath(dir)).rejects.toThrow(UsageError);
+    await expect(loadManifestWithPath(dir)).rejects.toThrow(
+      `Invalid YAML in "${manifestPath}" at line 3, column 1: Tabs are not allowed as indentation`
+    );
+  });
+
+  test("automatic discovery recognizes canonical and persisted legacy manifest filenames", async () => {
+    expect([...MANIFEST_FILENAMES]).toEqual([
+      "manifest.yaml",
+      "manifest.yml",
+      "print-md.yaml",
+    ]);
+
+    const dir = await mkdtemp(join(tmpdir(), "pmd-manifest-noncanonical-"));
+    dirsToClean.push(dir);
+    const legacyPath = join(dir, "print-md.yaml");
+    await Bun.write(legacyPath, "title: Legacy Project\n");
+
+    const loaded = await loadManifestWithPath(dir);
+    expect(loaded.manifest.title).toBe("Legacy Project");
+    expect(loaded.manifestPath).toBe(legacyPath);
   });
 });

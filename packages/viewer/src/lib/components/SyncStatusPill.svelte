@@ -13,7 +13,8 @@
    *
    * No Git jargon in any string (transparent-sync plan §5.1, copy discipline).
    * No counts (§3.5 — counts require history walks).
-   * PWA-clean: all host work via getPlatform() (CLAUDE.md §8 / ADR 0004).
+   * PWA-clean: host work via getPlatform().onSyncStatus() (the push-stream
+   * seam) plus an api.sync.getStatus() seed fetch (CLAUDE.md §8 / ADR 0004).
    */
   import { onMount } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";

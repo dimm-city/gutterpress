@@ -196,6 +196,17 @@ describe("initializeConfiguration", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("a non-empty input directory without a manifest keeps preview's default config", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-no-manifest-"));
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Loose chapter\n", "utf-8");
+      const config = await initializeConfiguration(dir);
+      expect(config).toEqual(resolveConfig({}, {}));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ── restartPreview ───────────────────────────────────────────────────────────

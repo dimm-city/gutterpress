@@ -199,6 +199,323 @@ describe("M47: exit-code contract (0 clean / 1 findings / 2 usage / 3 pipeline)"
   }, 30000);
 });
 
+// ── C6/C7: command and option typo handling ──────────────────────────────────
+
+describe("C6: implicit preview only applies to directories or no command", () => {
+  test("a typoed command is rejected with a useful suggestion", () => {
+    const { exitCode, stderr } = runCli(["biuld"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain('Unknown command "biuld"');
+    expect(stderr).toContain('Did you mean "build"?');
+    expect(stderr).not.toContain("Input directory does not exist");
+  });
+
+  test("a nonexistent path is rejected as an unknown command", () => {
+    const missing = path.join(process.cwd(), "definitely-not-a-print-md-directory");
+    const { exitCode, stderr } = runCli([missing]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain(`Unknown command "${missing}"`);
+  });
+
+  test("an existing directory still uses the path-as-preview convenience", async () => {
+    const dir = await makeProjectDir();
+    try {
+      const { exitCode, stderr } = runCli([dir, "--format", "docx"]);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain("Invalid --format value");
+      expect(stderr).not.toContain("Unknown command");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("preview flags without a positional still use the normal preview default", () => {
+    const { exitCode, stderr } = runCli(["--format", "docx"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("Invalid --format value");
+    expect(stderr).not.toContain("Unknown command");
+  });
+
+  test("a typo after implicit preview flags is still treated as an unknown command", () => {
+    const { exitCode, stderr } = runCli(["--format", "html", "biuld"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain('Unknown command "biuld"');
+    expect(stderr).toContain('Did you mean "build"?');
+    expect(stderr).not.toContain("Input directory does not exist");
+  });
+});
+
+describe("C7: every command rejects unknown flags", () => {
+  const invocations: Array<[string, string[]]> = [
+    ["new", ["new", "My Book"]],
+    ["preview", ["preview"]],
+    ["build", ["build"]],
+    ["publish", ["publish"]],
+    ["lint", ["lint"]],
+    ["validate", ["validate"]],
+    ["audit", ["audit"]],
+    ["preflight", ["preflight", "--pdf", "missing.pdf"]],
+    ["repair", ["repair"]],
+    ["doctor", ["doctor"]],
+    ["plugin parent", ["plugin"]],
+    ["plugin add", ["plugin", "add", "markdown-it-footnote"]],
+  ];
+
+  test.each(invocations)("%s rejects an unknown option with exit 2", (_name, args) => {
+    const { exitCode, stderr } = runCli([...args, "--definitely-unknown"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("unknown option --definitely-unknown");
+  });
+
+  test("a typoed string flag is reported before its value becomes an extra positional", () => {
+    const { exitCode, stderr } = runCli(["build", ".", "--formt", "html"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("unknown option --formt");
+    expect(stderr).not.toContain("unexpected extra argument");
+  });
+
+  test.each([
+    ["root long help", ["--help"]],
+    ["root short help", ["-h"]],
+    ["root long version", ["--version"]],
+    ["root short version", ["-v"]],
+    ["command help", ["build", "--help"]],
+  ])("standard %s behavior remains successful", (_label, args) => {
+    const { exitCode } = runCli(args);
+    expect(exitCode).toBe(0);
+  });
+
+  test("root help registers the doctor command", () => {
+    const { exitCode, stdout } = runCli(["--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("doctor");
+  });
+});
+
+describe("strict value-option handling", () => {
+  const invocations: Array<[string, string[]]> = [
+    ["implicit preview", ["--format"]],
+    ["new", ["new", "My Book", "--author"]],
+    ["preview", ["preview", "--port"]],
+    ["build", ["build", "--title"]],
+    ["publish", ["publish", "--provider"]],
+    ["lint", ["lint", "--manifest"]],
+    ["validate", ["validate", "--input"]],
+    ["audit", ["audit", "--only"]],
+    ["preflight", ["preflight", "--pdf"]],
+  ];
+
+  test.each(invocations)("%s rejects a missing option value with exit 2", (_name, args) => {
+    const { exitCode, stderr } = runCli(args);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("requires a value");
+    expect(stderr).not.toContain("UsageError:");
+  });
+
+  test("an empty --flag=value form is also rejected", () => {
+    const { exitCode, stderr } = runCli(["build", "--format="]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("option --format requires a value");
+  });
+
+  test("a following option is not consumed as the missing value", () => {
+    const { exitCode, stderr } = runCli(["preview", "--format", "--no-open"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("option --format requires a value");
+  });
+
+  test("negative numeric tokens remain values for command-specific validation", () => {
+    const { exitCode, stderr } = runCli(["preview", "--port", "-1", "--no-open"]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain('Invalid --port value: "-1"');
+    expect(stderr).not.toContain("option --port requires a value");
+  });
+});
+
+describe("plugin add usage errors", () => {
+  test("an invalid package spec exits 2 instead of reporting a pipeline failure", () => {
+    const { exitCode, stderr } = runCli(["plugin", "add", "markdown-it-highlightjs@"]);
+
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("missing a selector");
+  });
+
+  test("a nonexistent project target exits 2 and is not created", async () => {
+    const parent = await makeTempDir("print-md-cli-plugin-target-");
+    const missing = path.join(parent, "typoed-project");
+    try {
+      const { exitCode, stderr } = runCli([
+        "plugin",
+        "add",
+        "markdown-it-highlightjs@4.3.0",
+        missing,
+      ]);
+
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain(`Project directory does not exist: ${missing}`);
+      expect(fs.existsSync(missing)).toBe(false);
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parse-time usage errors keep the documented exit code", () => {
+  test("bare plugin shows its subcommand help and exits successfully", () => {
+    const { exitCode, stdout, stderr } = runCli(["plugin"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Manage project markdown-it plugins");
+    expect(stdout).toContain("add");
+    expect(stderr).toBe("");
+  });
+
+  test.each([
+    ["plugin --", ["plugin", "--"]],
+    ["plugin -- add", ["plugin", "--", "add"]],
+    ["plugin -", ["plugin", "-"]],
+  ] as Array<[string, string[]]>)(
+    "%s exits 2 instead of falling through to Citty exit 1",
+    (_label, args) => {
+      const { exitCode, stderr } = runCli(args);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain("expected a subcommand before");
+      expect(stderr).not.toContain("No command specified");
+    },
+  );
+
+  test("invalid port input remains usage exit 2", () => {
+    const { exitCode, stderr } = runCli([
+      "preview",
+      "--port",
+      "65536",
+      "--no-open",
+    ]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("Expected an integer from 0 to 65535");
+  });
+
+  test("an unavailable preview bind host is pipeline exit 3 with actionable guidance", () => {
+    const { exitCode, stderr } = runCli([
+      "preview",
+      "--host",
+      "192.0.2.1",
+      "--port",
+      "0",
+      "--no-open",
+    ]);
+    expect(exitCode).toBe(3);
+    expect(stderr).toContain("Could not bind the preview server");
+    expect(stderr).toContain("--host");
+    expect(stderr).not.toContain("BuildError:");
+  }, 30000);
+
+  test.each([
+    ["unknown plugin subcommand", ["plugin", "unknown"], "unknown command"],
+    ["missing plugin package", ["plugin", "add", "--export", "named"], "PACKAGE"],
+    ["missing new project name", ["new", "--no-git"], "NAME"],
+    ["missing preflight PDF", ["preflight", "."], "--pdf"],
+  ] as Array<[string, string[], string]>)(
+    "%s exits 2 without a raw parser error",
+    (_label, args, expected) => {
+      const { exitCode, stderr } = runCli(args);
+      expect(exitCode).toBe(2);
+      expect(stderr).toContain(expected);
+      expect(stderr).not.toContain("CLIError");
+    },
+  );
+
+  test("a dash-prefixed string token is preserved as an option value", async () => {
+    const dir = await makeTempDir("print-md-cli-dash-value-");
+    try {
+      const { exitCode, stderr } = runCli([
+        "new",
+        "Dash Value",
+        "--author",
+        "--draft",
+        "--dir",
+        dir,
+        "--no-git",
+      ]);
+      expect(exitCode).toBe(0);
+      expect(stderr).toBe("");
+      const manifest = await fs.promises.readFile(
+        path.join(dir, "dash-value", "manifest.yaml"),
+        "utf8",
+      );
+      expect(manifest).toContain("--draft");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 30000);
+});
+
+describe("explicit manifest public seams", () => {
+  test("live HTML preview rejects --manifest instead of silently ignoring it", () => {
+    const { exitCode, stderr } = runCli([
+      "preview",
+      "--manifest",
+      "custom.yaml",
+      "--no-open",
+    ]);
+    expect(exitCode).toBe(2);
+    expect(stderr).toContain("--manifest is only supported by preview --format pdf or pdfx");
+  });
+
+  test.each(["normal", "connect"] as const)(
+    "publish %s reports a missing explicit manifest as clean usage error",
+    async (mode) => {
+      const dir = await makeProjectDir();
+      try {
+        const missing = path.join(dir, "missing.yaml");
+        const args = [
+          "publish",
+          dir,
+          "--provider",
+          mode === "connect" ? "itch" : "kdp",
+          "--manifest",
+          missing,
+        ];
+        if (mode === "connect") args.push("--connect", "--token", "test-token");
+
+        const { exitCode, stderr } = runCli(args);
+        expect(exitCode).toBe(2);
+        expect(stderr).toContain(`manifest not found: ${missing}`);
+        expect(stderr).not.toContain("UsageError:");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    30000,
+  );
+
+  test.each(["normal", "connect"] as const)(
+    "publish %s reports malformed explicit YAML as clean usage error",
+    async (mode) => {
+      const dir = await makeProjectDir("title: Broken\nsource:\n\tfiles:\n");
+      try {
+        const manifest = path.join(dir, "manifest.yaml");
+        const args = [
+          "publish",
+          dir,
+          "--provider",
+          mode === "connect" ? "itch" : "kdp",
+          "--manifest",
+          manifest,
+        ];
+        if (mode === "connect") args.push("--connect", "--token", "test-token");
+
+        const { exitCode, stderr } = runCli(args);
+        expect(exitCode).toBe(2);
+        expect(stderr).toContain(`Invalid YAML in "${manifest}"`);
+        expect(stderr).not.toContain("UsageError:");
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    30000,
+  );
+});
+
 // ── M48: unknown preset errors; book preset is available ───────────────────
 
 describe("M48: unknown preset errors instead of silently falling back to dtrpg", () => {

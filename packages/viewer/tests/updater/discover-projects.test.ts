@@ -58,6 +58,15 @@ describe("scanForProjects", () => {
     expect(res).toEqual([{ path: "/proj", title: "proj" }]);
   });
 
+  test("detects the persisted print-md.yaml legacy filename", async () => {
+    const deps = makeDeps({ "/legacy": [] }, new Set());
+    deps.fileExists = async (filePath) => filePath === "/legacy/print-md.yaml";
+
+    const res = await scanForProjects(["/legacy"], [], deps);
+
+    expect(res).toEqual([{ path: "/legacy", title: "legacy" }]);
+  });
+
   test("excludes paths already in recents/favorites", async () => {
     const deps = makeDeps(
       { "/root": ["a", "b"], "/root/a": [], "/root/b": [] },

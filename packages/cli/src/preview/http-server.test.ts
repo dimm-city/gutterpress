@@ -19,6 +19,8 @@ import {
   createPreviewServer,
   type PreviewServer,
 } from './http-server';
+import { UsageError } from '../lib/cli-args';
+import { BuildError, EXIT_CODES } from '../lib/build-error';
 import { resolveConfig } from '../lib/manifest';
 import type { ServerState } from './server-context';
 import type { PreviewServerOptions } from '../types';
@@ -132,14 +134,54 @@ describe('findAvailablePort', () => {
     }
   });
 
-  test('throws error if no ports available after max attempts', async () => {
+  test('classifies valid-port exhaustion as a pipeline BuildError', async () => {
     // findAvailablePort probes base..base+9 (10 attempts); occupy all of them.
     const { base, servers } = reserveContiguousPorts(10);
     try {
-      await expect(findAvailablePort(base)).rejects.toThrow(/Could not find an available port/);
+      try {
+        await findAvailablePort(base);
+        throw new Error('expected findAvailablePort to reject');
+      } catch (error) {
+        expect(error).toBeInstanceOf(BuildError);
+        expect((error as BuildError).exitCode).toBe(EXIT_CODES.PIPELINE);
+        expect((error as Error).message).toContain('all are already in use');
+        expect((error as Error).message).toContain('--port');
+        expect((error as Error).cause).toBeInstanceOf(Error);
+        expect(((error as Error).cause as Error & { code?: string }).code).toBe('EADDRINUSE');
+      }
     } finally {
       await stopAll(servers);
     }
+  });
+
+  test('classifies an unavailable bind host as an actionable pipeline BuildError', async () => {
+    // TEST-NET-1 is not a local interface, so binding it must fail. The old
+    // loopback-only probe incorrectly returned port 0 as available here.
+    try {
+      await findAvailablePort(0, '192.0.2.1');
+      throw new Error('expected findAvailablePort to reject');
+    } catch (error) {
+      expect(error).toBeInstanceOf(BuildError);
+      expect((error as BuildError).exitCode).toBe(EXIT_CODES.PIPELINE);
+      expect((error as Error).message).toContain('Could not bind the preview server');
+      expect((error as Error).message).toContain('192.0.2.1:0');
+      expect((error as Error).message).toContain('--host');
+      expect((error as Error).cause).toBeInstanceOf(Error);
+    }
+  });
+
+  test('stops cleanly at 65535 instead of probing an invalid overflow port', async () => {
+    try {
+      await findAvailablePort(65535, '192.0.2.1');
+      throw new Error('expected findAvailablePort to reject');
+    } catch (error) {
+      expect(error).toBeInstanceOf(BuildError);
+      expect((error as Error).message).not.toContain('ERR_SOCKET_BAD_PORT');
+    }
+  });
+
+  test('rejects an out-of-range starting port as a UsageError', async () => {
+    await expect(findAvailablePort(65536)).rejects.toBeInstanceOf(UsageError);
   });
 });
 

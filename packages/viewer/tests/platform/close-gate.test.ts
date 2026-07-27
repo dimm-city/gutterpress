@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import {
   runCloseGate,
+  FLUSH_FAILURE_MARKER_BACKSTOP_MS,
+  RendererFlushSession,
   SNAPSHOT_BACKSTOP_MS,
   type CloseGateDeps,
 } from "../../electron/close-gate";
@@ -63,6 +65,7 @@ function deferred<T>() {
 interface HarnessOpts {
   /** Return value of deps.snapshot(); default is a deferred promise. */
   snapshot?: () => Promise<void> | undefined;
+  recordFlushFailure?: () => Promise<void>;
 }
 
 function makeHarness(opts: HarnessOpts = {}) {
@@ -70,9 +73,18 @@ function makeHarness(opts: HarnessOpts = {}) {
   const flush = deferred<boolean>();
   const snap = deferred<void>();
   let snapshotCalls = 0;
+  let recordFlushFailureCalls = 0;
   let finishCalls = 0;
   const deps: CloseGateDeps = {
     flush: () => flush.promise,
+    ...(opts.recordFlushFailure
+      ? {
+          recordFlushFailure: () => {
+            recordFlushFailureCalls++;
+            return opts.recordFlushFailure!();
+          },
+        }
+      : {}),
     snapshot: () => {
       snapshotCalls++;
       return opts.snapshot ? opts.snapshot() : snap.promise;
@@ -91,11 +103,91 @@ function makeHarness(opts: HarnessOpts = {}) {
     get snapshotCalls() {
       return snapshotCalls;
     },
+    get recordFlushFailureCalls() {
+      return recordFlushFailureCalls;
+    },
     get finishCalls() {
       return finishCalls;
     },
   };
 }
+
+test("a loaded renderer is flushed even when the cached dirty report is false", async () => {
+  const clock = new FakeClock();
+  let sends = 0;
+  const session = new RendererFlushSession({
+    isAlive: () => true,
+    sendFlushRequest: () => {
+      sends++;
+    },
+    setTimer: clock.set,
+    clearTimer: clock.clear,
+  });
+  session.markRendererLoaded();
+  session.setReportedDirtyState(false);
+
+  const pending = session.request();
+  expect(sends).toBe(1);
+  session.resolve(true);
+
+  expect(await pending).toBe(true);
+  expect(session.lastReportedDirtyState).toBe(false);
+  expect(clock.armedMs).toEqual([]);
+});
+
+test("renderer flush requests coalesce without letting a late reply cross window sessions", async () => {
+  const clock = new FakeClock();
+  let firstSends = 0;
+  let secondSends = 0;
+  const first = new RendererFlushSession({
+    isAlive: () => true,
+    sendFlushRequest: () => {
+      firstSends++;
+    },
+    setTimer: clock.set,
+    clearTimer: clock.clear,
+  });
+  const second = new RendererFlushSession({
+    isAlive: () => true,
+    sendFlushRequest: () => {
+      secondSends++;
+    },
+    setTimer: clock.set,
+    clearTimer: clock.clear,
+  });
+  first.markRendererLoaded();
+  second.markRendererLoaded();
+
+  const firstRequest = first.request();
+  expect(first.request()).toBe(firstRequest);
+  first.reset();
+  const secondRequest = second.request();
+  first.resolve(true); // late reply from the closed first window
+  second.resolve(true);
+
+  expect(await firstRequest).toBe(false);
+  expect(await secondRequest).toBe(true);
+  expect(firstSends).toBe(1);
+  expect(secondSends).toBe(1);
+  expect(clock.armedMs).toEqual([]);
+});
+
+test("a renderer flush session times out false so quit remains nonblocking", async () => {
+  const clock = new FakeClock();
+  const session = new RendererFlushSession({
+    isAlive: () => true,
+    sendFlushRequest: () => {},
+    setTimer: clock.set,
+    clearTimer: clock.clear,
+  });
+  session.markRendererLoaded();
+
+  const pending = session.request(5000);
+  await clock.advance(5000);
+
+  expect(await pending).toBe(false);
+  expect(clock.armedMs).toEqual([]);
+});
 
 // R25 (the two-racing-timers bug): the old shape armed an outer 5s destroy
 // watchdog at the same instant as the flush's own 5s watchdog and never
@@ -164,6 +256,35 @@ test("rejected flush is treated as a failed flush: snapshot skipped, finish exac
   expect(h.snapshotCalls).toBe(0);
   expect(h.finishCalls).toBe(1);
   expect(h.clock.armedMs).toEqual([]);
+});
+
+test("failed flush persists its marker before finishing", async () => {
+  const marker = deferred<void>();
+  const h = makeHarness({ recordFlushFailure: () => marker.promise });
+  h.flush.resolve(false);
+  await settle();
+
+  expect(h.recordFlushFailureCalls).toBe(1);
+  expect(h.snapshotCalls).toBe(0);
+  expect(h.finishCalls).toBe(0);
+
+  marker.resolve();
+  await settle();
+  expect(h.finishCalls).toBe(1);
+  expect(h.clock.armedMs).toEqual([]);
+});
+
+test("a hung failure-marker write cannot block quit", async () => {
+  const h = makeHarness({ recordFlushFailure: () => new Promise<never>(() => {}) });
+  h.flush.resolve(false);
+  await settle();
+
+  expect(h.recordFlushFailureCalls).toBe(1);
+  expect(h.clock.armedMs).toEqual([FLUSH_FAILURE_MARKER_BACKSTOP_MS]);
+  expect(h.finishCalls).toBe(0);
+
+  await h.clock.advance(FLUSH_FAILURE_MARKER_BACKSTOP_MS);
+  expect(h.finishCalls).toBe(1);
 });
 
 test("synchronously throwing snapshot() still finishes exactly once, no timer left armed", async () => {

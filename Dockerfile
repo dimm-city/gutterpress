@@ -19,7 +19,7 @@
 #
 # Usage (entrypoint forwards all args to print-md):
 #   docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/print-md \
-#       run my-book --out dist/my-book.pdf --format pdfx
+#       build my-book --out dist/my-book.pdf --format pdfx
 #
 # Mount your project at /work; outputs land back on the host. Pass
 # `-u "$(id -u):$(id -g)"` so generated files are owned by you, not root.

@@ -76,6 +76,7 @@ import type {
   FolderRef,
   FileRef,
   PlatformCapabilities,
+  MarkdownFileLaunchEvent,
 } from "./contract";
 import type {
   RecentFolderEntry,
@@ -88,7 +89,8 @@ const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
 // #33 Phase 4: same-origin path of the vendored paged.js polyfill the viewer
 // ships in static/vendor/. The service worker precaches it; startPreview
-// rewrites the render core's CDN URL to this so preview works offline.
+// rewrites the render core's src-less marker slot to this so preview works
+// offline.
 const VENDOR_PAGED_POLYFILL_URL = "/vendor/paged.polyfill.js";
 
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
@@ -709,38 +711,6 @@ export class WebAdapter implements Platform {
   private lastPreviewUrl: string | null = null;
 
   /**
-   * Render the opened project's markdown to a paginated `book.html` ENTIRELY in
-   * the browser and hand back a `blob:` object URL for the existing preview
-   * iframe — the web analogue of the Electron localhost preview server.
-   *
-   * Pipeline (plan §2):
-   *  1. resolve the root FileSystemDirectoryHandle from `input.key`;
-   *  2. list the project's `.md`/`.css` (FSA), read them via `web-fs`;
-   *  3. run the PURE `assembleBookHtml` (markdown-it + paged plugin) with an
-   *     FSA-backed `readText` — the SAME render core the CLI uses;
-   *  4. INLINE the project CSS into the document (a blob-URL doc can't resolve
-   *     relative `css/*` hrefs), wrap it in a Blob, and return its object URL.
-   *
-   * Paged.js then paginates in the iframe's own browser context exactly as on
-   * desktop — `+page.svelte` needs no change (it just points the iframe at the
-   * returned `url`).
-   *
-   * OFFLINE (#33 Phase 4): the pure render core emits the unpkg CDN `<script>`
-   * for paged.js; this adapter REWRITES it to the same-origin, vendored
-   * `/vendor/paged.polyfill.js` (shipped in the viewer `static/` dir + precached
-   * by the service worker). A `blob:` document inherits the creating page's
-   * origin, so an absolute-path URL resolves same-origin and is SW-cacheable —
-   * which makes the in-browser preview work fully offline once the shell is
-   * cached.
-   *
-   * KNOWN PHASE-2 GAPS (tracked for later phases — intentionally not silent):
-   *  - MANIFEST: chapters are listed in alphabetical order (listProjectFiles),
-   *    matching the CLI's no-manifest fallback. A project `manifest.yaml` with a
-   *    custom `source.files` order or `plugins` is NOT yet parsed here, so such
-   *    projects can preview in a different order than the CLI build. A later
-   *    phase will parse the manifest (the `yaml` dep is browser-safe).
-   */
-  /**
    * Render the opened project's markdown to a complete, standalone `book.html`
    * STRING — the shared core behind both `startPreview` (Blob URL for the
    * iframe) and `build({format:"html"})` (Blob URL for a download). Keeping ONE
@@ -753,7 +723,23 @@ export class WebAdapter implements Platform {
    *  3. run the PURE `assembleBookHtml` (markdown-it + paged plugin) with an
    *     FSA-backed `readText` — the SAME render core the CLI uses;
    *  4. INLINE the project CSS (a blob-URL doc can't resolve relative `css/*`
-   *     hrefs) and rewrite the CDN paged.js reference to the same-origin copy.
+   *     hrefs) and rewrite the paged.js marker slot to the same-origin copy.
+   *
+   * OFFLINE (#33 Phase 4): the pure render core emits a src-less
+   * `data-pagedjs-polyfill` marker slot (never a CDN URL — `pagedjs-marker.ts`,
+   * asserted by its test); step 4 rewrites that slot to the same-origin, vendored
+   * `/vendor/paged.polyfill.js` (shipped in the viewer `static/` dir + precached
+   * by the service worker). A `blob:` document inherits the creating page's
+   * origin, so an absolute-path URL resolves same-origin and is SW-cacheable —
+   * which is what makes the in-browser preview work fully offline once the
+   * shell is cached.
+   *
+   * KNOWN PHASE-2 GAP (tracked for later phases — intentionally not silent):
+   * chapters are listed in alphabetical order (`listProjectFiles`), matching
+   * the CLI's no-manifest fallback. A project `manifest.yaml` with a custom
+   * `source.files` order or `plugins` is NOT yet parsed here, so such projects
+   * can preview in a different order than the CLI build. A later phase will
+   * parse the manifest (the `yaml` dep is browser-safe).
    *
    * Throws (rejects, via the `async` callers) when the folder has no `.md`.
    */
@@ -914,11 +900,15 @@ export class WebAdapter implements Platform {
     return () => {};
   }
 
+  onOpenMarkdownFile(_cb: (event: MarkdownFileLaunchEvent) => void): () => void {
+    return () => {};
+  }
+
   // writeRecovery, clearRecovery, listRecovery — migrated to server routes
   // (src/routes/api/recovery/*) via globalThis hooks registered in main.ts.
   // app:setDirtyState — migrated to server route (Phase 2B).
 
-  onFlushBeforeClose(_cb: () => void): () => void {
+  onFlushBeforeClose(_cb: () => boolean | void | Promise<boolean | void>): () => void {
     return () => {};
   }
 

@@ -2,7 +2,7 @@
  * Tests for failsafe.ts — withBackupGate invariants and failSafeNoRepair.
  *
  * WHY: withBackupGate() is the single enforcement point for the recovery
- * subsystem's most critical safety guarantees (CLAUDE.md invariant 5):
+ * subsystem's most critical safety guarantees:
  *   (a) backup creation fails => status failed_no_changes_made, ZERO write/git
  *       ops afterward (risky callback never called)
  *   (b) confirmation DENIED => status blocked, no-op (risky callback never

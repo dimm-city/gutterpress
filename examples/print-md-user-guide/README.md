@@ -35,7 +35,8 @@ print-md-user-guide/
 ├── 05-ttrpg-extensions.md # Stat blocks, dice, cross-refs, traits, CR
 ├── 06-plugins.md          # Adding, writing, and loading plugins
 ├── 07-validation.md       # Validation system, CLI, best practices
-└── 08-system-setup.md     # External tools, install, troubleshooting
+├── 08-system-setup.md     # External tools, install, troubleshooting
+└── 09-publishing.md       # Sending your book to itch.io, DriveThruRPG, KDP, Azure, Shopify
 ```
 
 ## Chapters

@@ -17,7 +17,9 @@ export interface LintRunnerResult {
 
 export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerResult> {
   const { glob } = await import("glob");
-  const { manifest, manifestDir } = await loadManifestWithPath(opts.manifest);
+  const { manifest, manifestDir } = await loadManifestWithPath(opts.manifest, {
+    explicit: opts.manifest !== undefined,
+  });
   // resolveConfig still runs so manifest loading/validation behaves consistently.
   resolveConfig({}, manifest);
 

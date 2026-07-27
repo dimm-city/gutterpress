@@ -34,6 +34,9 @@ import { getWriteHooks } from "../../electron/server-bridge/write-hooks";
 // before the one register call every later test relies on.
 
 test("getHostServices() and every domain accessor return null before registration", () => {
+  // Route suites share this process-global seam, so establish the state this
+  // assertion is specifically testing instead of depending on file order.
+  registerHostServices(undefined as never);
   expect(getHostServices()).toBeNull();
   expect(getAppHooks()).toBeNull();
   expect(getConflictPreviewHooks()).toBeNull();

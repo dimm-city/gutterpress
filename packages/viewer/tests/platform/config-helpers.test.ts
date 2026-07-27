@@ -93,26 +93,25 @@ test("pluginStatus: ok result reads Loads OK", () => {
   expect(st).toEqual({ label: "Loads OK", kind: "ok" });
 });
 
-test("pluginStatus: failed npm plugin gets a copyable install command and a guide link", () => {
+test("pluginStatus: missing npm plugin points to the in-app installer", () => {
   const validation: Record<string, PluginValidationResult> = {
     "markdown-it-footnote": {
       ref: "markdown-it-footnote",
       kind: "npm",
       enabled: true,
       ok: false,
-      error: "Cannot find module 'markdown-it-footnote'",
+      error: 'Plugin "markdown-it-footnote" not found.',
     },
   };
   const st = pluginStatus(entry({ ref: "markdown-it-footnote" }), validation, false);
-  expect(st.label).toBe("Not installed");
+  expect(st.label).toBe("Needs install");
   expect(st.kind).toBe("error");
-  expect(st.installCommand).toBe("npm install markdown-it-footnote");
-  expect(st.guideHref).toMatch(/^https:\/\//);
-  expect(st.guideHref).toContain("06-plugins.md");
-  expect(st.raw).toBe("Cannot find module 'markdown-it-footnote'");
+  expect(st.detail).toContain("Install npm plugin");
+  expect(st.detail).toContain("markdown-it-footnote");
+  expect(st.raw).toContain("not found");
 });
 
-test("pluginStatus: failed local plugin gets no install command (it isn't an npm package)", () => {
+test("pluginStatus: failed local plugin remains a generic load error", () => {
   const validation: Record<string, PluginValidationResult> = {
     "./plugins/broken.js": {
       ref: "./plugins/broken.js",
@@ -128,6 +127,5 @@ test("pluginStatus: failed local plugin gets no install command (it isn't an npm
     false,
   );
   expect(st.label).toBe("Error");
-  expect(st.installCommand).toBeUndefined();
-  expect(st.guideHref).toBeUndefined();
+  expect(st.detail).toContain("couldn't load");
 });

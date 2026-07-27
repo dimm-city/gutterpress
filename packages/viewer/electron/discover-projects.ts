@@ -1,8 +1,8 @@
 // ──────────────────────────────────────────────────────────────────────────
 // discover-projects.ts — shallow background scan for print-md projects (#27).
 //
-// A folder is a print-md project candidate if it directly contains
-// `manifest.yaml` or `manifest.yml`. We do a breadth-first scan of the
+// A folder is a print-md project candidate if it directly contains a filename
+// from the lib's `MANIFEST_FILENAMES`. We do a breadth-first scan of the
 // configured search roots, capped at depth ≤ 3 and a small result limit, so
 // the scan stays cheap even across large home directories.
 //

@@ -11,6 +11,7 @@ import {
   __resetPathPluginCacheForTests,
 } from "./plugins";
 import type { ResolvedPluginConfig } from "../../schema/manifest.types";
+import { vendoredNpmPluginRoot, VENDOR_RECEIPT_FILE } from "../plugin-vendor";
 
 const TMP_ROOT = join(process.cwd(), ".tmp", `plugin-tests-${Date.now()}`);
 
@@ -89,6 +90,40 @@ describe("plugin loader", () => {
       ).rejects.toThrow(/does not export a valid plugin function/);
     });
 
+    test("loads an explicitly selected named plugin export", async () => {
+      fixture(
+        "named-export.mjs",
+        `export function full(md) { md.__namedExport = 'full'; }
+         export function light(md) { md.__namedExport = 'light'; }
+        `,
+      );
+
+      const loaded = await loadPlugin(
+        cfg({ path: "named-export.mjs", export: "full" }),
+        TMP_ROOT,
+      );
+      const md = new MarkdownIt();
+      applyPlugins(md, [loaded]);
+
+      expect((md as MarkdownIt & { __namedExport?: string }).__namedExport).toBe("full");
+    });
+
+    test("reports available functions when a selected named export is missing", async () => {
+      fixture(
+        "missing-named-export.mjs",
+        `export function full() {}
+         export function light() {}
+        `,
+      );
+
+      await expect(
+        loadPlugin(
+          cfg({ path: "missing-named-export.mjs", export: "bare" }),
+          TMP_ROOT,
+        ),
+      ).rejects.toThrow(/named "bare".*full, light/);
+    });
+
     test("throws when neither path nor name is set", async () => {
       await expect(loadPlugin(cfg({}), TMP_ROOT)).rejects.toThrow(
         /must specify either `path` or `name`/
@@ -123,16 +158,59 @@ describe("plugin loader", () => {
       expect(typeof loaded.plugin).toBe("function");
     });
 
+    test("keeps legacy informational version ranges on node_modules resolution", async () => {
+      const loaded = await loadPlugin(
+        cfg({ name: "markdown-it-footnote", version: "^4.0.0" }),
+        TMP_ROOT,
+      );
+      expect(typeof loaded.plugin).toBe("function");
+    });
+
+    test("keeps legacy exact versions on node_modules resolution when no receipt exists", async () => {
+      const name = "legacy-exact-plugin-fixture";
+      const packageDir = join(TMP_ROOT, "node_modules", name);
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(
+        join(packageDir, "package.json"),
+        JSON.stringify({ name, version: "1.2.3", type: "module", exports: "./index.js" }),
+      );
+      writeFileSync(join(packageDir, "index.js"), "export default function plugin() {}\n");
+
+      const loaded = await loadPlugin(cfg({ name, version: "1.2.3" }), TMP_ROOT);
+      expect(typeof loaded.plugin).toBe("function");
+    });
+
+    test("does not fall back when a pinned vendor marker is present but invalid", async () => {
+      const name = "invalid-receipt-plugin-fixture";
+      const packageDir = join(TMP_ROOT, "node_modules", name);
+      mkdirSync(packageDir, { recursive: true });
+      writeFileSync(
+        join(packageDir, "package.json"),
+        JSON.stringify({ name, version: "1.2.3", type: "module", exports: "./index.js" }),
+      );
+      writeFileSync(join(packageDir, "index.js"), "export default function plugin() {}\n");
+      const installRoot = vendoredNpmPluginRoot(TMP_ROOT, name, "1.2.3");
+      mkdirSync(installRoot, { recursive: true });
+      writeFileSync(
+        join(installRoot, VENDOR_RECEIPT_FILE),
+        JSON.stringify({ schemaVersion: 1 }),
+      );
+
+      await expect(loadPlugin(cfg({ name, version: "1.2.3" }), TMP_ROOT)).rejects.toThrow(
+        /unsupported vendor receipt schema|failed verification/i,
+      );
+    });
+
     test("throws clear error when package not found", async () => {
       await expect(
         loadPlugin(cfg({ name: "this-package-does-not-exist-xyz" }), TMP_ROOT)
       ).rejects.toThrow(/not found/);
     });
 
-    test("error message includes install hint", async () => {
+    test("error message points to the built-in installer, not an external tool", async () => {
       await expect(
         loadPlugin(cfg({ name: "this-package-does-not-exist-xyz" }), TMP_ROOT)
-      ).rejects.toThrow(/bun add this-package-does-not-exist-xyz/);
+      ).rejects.toThrow(/Project settings > Plugins > Install npm plugin/);
     });
 
     // ARCH finding #57 near-miss: a bare filename with a JS extension but no

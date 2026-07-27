@@ -174,16 +174,30 @@ Reasons:
      TypeScript plugin authors. Types only — zero runtime coupling.
 
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
-missing npm packages, and has two load modes via `loadPlugins(configs, baseDir,
-onError?)`:
+or access the network. Installation is an explicit shared-lib action
+(`addNpmPlugin`, used by the viewer route and `print-md plugin add`) that resolves
+the public npm registry to an exact version graph, verifies every tarball,
+safely vendors a complete nested dependency tree under the project, writes a
+whole-tree schema-v2 receipt, load-tests it, and only then atomically records
+`{ name, version, export? }` in the manifest (`export` explicitly selects a
+named plugin function for packages without a default export). Reinstall always
+fetches fresh bytes.
+Package scripts, bundled `node_modules`, native build steps, and non-registry
+dependency selectors are intentionally unsupported. Receipt-backed loads verify
+the full tree from a private snapshot, then rewrite reachable literal ESM and
+CommonJS package requests to receipt-approved private copies; unresolved or
+nonliteral requests fail closed, and an invalid marker never falls back to a
+global cache. Full rationale and optional/peer semantics:
+[`docs/adr/0007-npm-plugin-vendoring.md`](./docs/adr/0007-npm-plugin-vendoring.md).
+The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 
   - **Fail-fast (no `onError`)** — build/export/validate. Any load error aborts
     the whole operation with a message identifying the offending manifest entry.
     A final artifact must never silently omit author-configured formatting.
   - **Degrade-and-report (`onError` supplied)** — the LIVE PREVIEW only. A plugin
-    the author enabled but hasn't installed yet is skipped, `onError` fires
-    (the preview `warn`s; the viewer Plugins panel already shows it as "Not
-    installed" with fix instructions), and the rest of the document still
+    whose vendored copy is missing or cannot load is skipped, `onError` fires
+    (the preview `warn`s; the viewer Plugins panel shows "Needs install" or the
+    load error with fix instructions), and the rest of the document still
     renders. This is NOT the silent-skip that the loader deliberately removed —
     every skip is surfaced loudly. Rationale: one uninstalled plugin must not
     blank a non-technical author's entire preview.

@@ -1,0 +1,12 @@
+{
+  "version": "0.8.3",
+  "windowsViewerInstaller": "print-md-viewer-0.8.3-win-x64.exe",
+  "assets": {
+    "print-md-cli-linux-arm64": "eba400637839c49a2ad8f08f9497b5b5630bce449087dd0cdd2a6312c30ac9fa",
+    "print-md-cli-linux-x64": "646fa3a58b447d832cad7df6e1975febc425d8af3eb3b1ae876e74ecbf7f94d4",
+    "print-md-cli-macos-arm64": "1bb1b67b4c9d7212a676da26eb4ef3bebfe675022ad9bd60c4af9c73eef4ccca",
+    "print-md-cli-macos-x64": "5a16e11eaa06e03cf54ce0af7d15a7245385d65f7de9560e0d01c1feabb68471",
+    "print-md-cli-windows-x64.exe": "18e0a5c08745031a277ae0e226cbde80e22983c24bf3f33fb832768ef9311974",
+    "print-md-viewer-0.8.3-win-x64.exe": "6976488cf78400055b1a8f4cd5a84a0bd0eec5a403331d2a7fcd1ef8729be35c"
+  }
+}

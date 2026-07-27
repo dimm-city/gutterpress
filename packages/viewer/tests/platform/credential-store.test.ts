@@ -19,8 +19,11 @@
  * every other electron-mocking suite in this run (see the NOTE there).
  */
 import { test, expect, mock } from "bun:test";
-import { electronMock } from "../support/electron-mock";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  electronMock,
+  setFakeSelectedStorageBackend,
+} from "../support/electron-mock";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -48,7 +51,12 @@ mock.module("electron", () =>
   electronMock({ app: { getPath: () => currentUserDataDir } }),
 );
 
-const { electronTokenStore } = await import("../../electron/credential-store");
+const {
+  electronTokenStore,
+  isLinuxBasicTextStorage,
+  markLinuxBasicTextStorageNoticeShown,
+  shouldShowLinuxBasicTextStorageNotice,
+} = await import("../../electron/credential-store");
 
 async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(path.join(tmpdir(), "print-md-credstore-"));
@@ -178,4 +186,46 @@ test("after a corrupt read, a subsequent set() recreates a valid store (recovery
     const entries = await readdir(dir);
     expect(entries.filter((f) => f.startsWith(`${STORE_FILE}.corrupt-`))).toHaveLength(1);
   });
+});
+
+test("a non-ENOENT credential-store read error is propagated instead of treated as empty", async () => {
+  await withTempDir(async (dir) => {
+    // A directory at the file path produces EISDIR on the supported Linux test
+    // host and models an existing store that cannot be read as a file.
+    await mkdir(path.join(dir, STORE_FILE));
+
+    await expect(electronTokenStore.list()).rejects.toMatchObject({ code: "EISDIR" });
+  });
+});
+
+test("basic_text is classified as weaker storage only on Linux", () => {
+  expect(isLinuxBasicTextStorage("linux", "basic_text")).toBe(true);
+  expect(isLinuxBasicTextStorage("linux", "gnome_libsecret")).toBe(false);
+  expect(isLinuxBasicTextStorage("darwin", "basic_text")).toBe(false);
+  expect(isLinuxBasicTextStorage("win32", "basic_text")).toBe(false);
+});
+
+test("the Linux basic_text notice is persisted only when explicitly marked after display", async () => {
+  if (process.platform !== "linux") return;
+  setFakeSelectedStorageBackend("basic_text");
+  try {
+    await withTempDir(async (dir) => {
+      expect(await shouldShowLinuxBasicTextStorageNotice()).toBe(true);
+      await expect(readFile(path.join(dir, STORE_FILE), "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+
+      await markLinuxBasicTextStorageNoticeShown();
+      expect(await shouldShowLinuxBasicTextStorageNotice()).toBe(false);
+
+      const raw = await readFile(path.join(dir, STORE_FILE), "utf8");
+      expect(JSON.parse(raw)).toEqual({
+        version: 1,
+        credentials: {},
+        notices: { linuxBasicTextStorageShown: true },
+      });
+    });
+  } finally {
+    setFakeSelectedStorageBackend("gnome_libsecret");
+  }
 });

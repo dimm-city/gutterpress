@@ -61,6 +61,7 @@ export type {
   PublishOutcomeInfo,
   PublishRunResult,
   ViewerPrefs,
+  LastFlushFailure,
   ProjectState,
   CreateProjectResult,
 } from './platform/contract';
@@ -86,6 +87,7 @@ import type {
   PublishProviderCard,
   PublishRunResult,
   ViewerPrefs,
+  LastFlushFailure,
   ProjectState,
   CreateProjectResult,
 } from './platform/contract';
@@ -325,8 +327,14 @@ export const api = {
     /** Adopt an existing folder as a print-md project. */
     adoptFolder: (opts: Record<string, unknown>) =>
       post<CreateProjectResult>('/api/app/adopt-folder', opts),
-    /** Push the renderer dirty state to the main process close gate. */
+    /** Push a best-effort dirty-state hint; close still requests a direct flush. */
     setDirtyState: (dirty: boolean) => post<{ ok: boolean }>('/api/app/dirty-state', { dirty }),
+    /** Persist a failed editor-buffer flush marker in the atomic viewer prefs store. */
+    recordFlushFailure: (projectDir: string | null) =>
+      post<LastFlushFailure>('/api/app/flush-failure', { action: 'record', projectDir }),
+    /** Clear exactly the marker that was surfaced, without racing a newer failure. */
+    acknowledgeFlushFailure: (failedAt: string) =>
+      post<{ acknowledged: boolean }>('/api/app/flush-failure', { action: 'acknowledge', failedAt }),
 
     /**
      * Linux AppImage application-menu integration (#119). `status()` is safe to
@@ -420,9 +428,13 @@ export const api = {
     /** Enable or disable a configured plugin by ref. */
     setEnabled: (projectDir: string, ref: string, enabled: boolean) =>
       post<{ ok: boolean }>('/api/plugin/set-enabled', { projectDir, ref, enabled }),
-    /** Add an npm package as a plugin entry in the manifest. */
-    addNpm: (projectDir: string, packageName: string) =>
-      post<ProjectPluginEntry>('/api/plugin/add-npm', { projectDir, packageName }),
+    /** Download, verify, vendor, and pin an npm plugin (built-ins only need configuring). */
+    addNpm: (projectDir: string, packageName: string, exportName?: string) =>
+      post<ProjectPluginEntry | null>('/api/plugin/add-npm', {
+        projectDir,
+        packageName,
+        ...(exportName ? { exportName } : {}),
+      }),
     /** Open a native file picker and import the chosen file/folder as a local plugin. Resolves null when cancelled. */
     addLocal: (projectDir: string) =>
       post<ProjectPluginEntry | null>('/api/plugin/add-local', { projectDir }),
@@ -618,7 +630,7 @@ export const api = {
   },
 
   /**
-   * Auto-update surface (ARCH review #8 — getStatus/check/download were IPC
+   * Desktop update surface (ARCH review #8 — getStatus/check/download were IPC
    * despite being plain request/response; applyNow and the onEvent push
    * stream stay on the bridge — see electron-adapter.ts's `updater` getter).
    */

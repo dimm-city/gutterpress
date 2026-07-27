@@ -24,7 +24,7 @@
  * state that must stay page-local (the Problems panel, the editor pane/
  * buffer, the folder watcher, pageNav's counters, and the crash-recovery scan
  * state) — a single registered callback, not a hand-list. Fields that are
- * genuinely NOT part of "workspace reset" (`openError` / `failedOpenDir` /
+ * genuinely NOT part of "workspace reset" (`openError` /
  * `urlPreviewError` / `saveWarning` / `busy` / `busyLabel`) are deliberately
  * left OUT of `resetWorkspace()` — they are set explicitly by whichever flow
  * needs them, exactly as before; unifying them here would blur error-display
@@ -43,12 +43,11 @@
  *
  * NOTE (slice 1 of 2, per the H5 fix roadmap): `savePdf` / `exportHtml` /
  * `cancelExport` (→ `ExportController`) and the crash-recovery scan block
- * (→ a future `CrashRecoveryController`) are NOT moved here — this slice is
- * scoped to the open/reset lifecycle only. `resetExtras` still reaches into
- * the crash-recovery scan fields (`recoveryScanDir` / `recoveryItems` /
- * `pendingRecoveryScanDir`) because they are part of the reset-divergence bug
- * this slice fixes, even though the scan *trigger* functions stay page-local
- * for now.
+ * (→ `CrashRecoveryController`, added in Phase 5 slice 2) are NOT moved
+ * here — this slice is scoped to the open/reset lifecycle only. `resetExtras`
+ * still reaches into the crash-recovery reset (`crashRecovery.reset()`) and
+ * `pendingRecoveryScanDir` because they are part of the reset-divergence bug
+ * this slice fixes, even though the scan *trigger* functions stay page-local.
  */
 
 import { basenameOf } from "../platform/paths";
@@ -73,6 +72,7 @@ export interface ProjectLifecycleProjectSession {
   repoRoot: string | null;
   books: ProjectBookEntry[];
   activeBookDir: string | null;
+  activeBookHasManifest: boolean;
   /** Read after classify() resolves — gates the post-open diagnosis refresh. */
   projectCapabilities: { canSnapshot: boolean } | null;
   reset(): void;
@@ -104,8 +104,6 @@ export interface ProjectLifecycleDeps {
   stopPreviewHost: () => Promise<unknown>;
   /** Host round-trip: scaffold manifest/book.css/git for a loose folder. */
   adoptFolder: (dir: string) => Promise<unknown>;
-  /** List a folder's entries (used to detect a missing manifest). */
-  listDir: (dir: string) => Promise<{ name: string }[]>;
   /** Invalidate the cached discovered-projects list after adopting a folder. */
   invalidateDiscoveredProjects: () => void;
   /** The composed classification controller (reset + fired on every open). */
@@ -136,8 +134,8 @@ export interface ProjectLifecycleDeps {
   setPendingRestore: (viewMode: "single" | "two-column" | null, page: number | null) => void;
   /** Re-arm PreviewEventController's first-render-only success toast gate. */
   resetFirstRenderGate: () => void;
-  /** Flush the editor buffer's pending save (no-op if there is no buffer). */
-  flushBuffer: () => Promise<void>;
+  /** Flush the editor buffer's pending save; false means the transition must stop. */
+  flushBuffer: () => Promise<boolean>;
   /** Reset the editor buffer's in-memory state (no-op if there is no buffer). */
   resetBuffer: () => void;
   /** Fire-and-forget: preload the first file into the editor buffer. */
@@ -163,7 +161,7 @@ export interface ProjectLifecycleDeps {
    * the Problems panel (`problems`/`problemsError`/`missingAssetProblems`/
    * `problemsOpen`), the editor pane (`editorOpen`/`previewHidden`), the
    * editor buffer, the folder watcher, `pageNav`'s counters + edit mode, and
-   * the crash-recovery scan state (`recoveryScanDir`/`recoveryItems`/
+   * the crash-recovery scan state (`crashRecovery.reset()` and
    * `pendingRecoveryScanDir`). Called once from `resetWorkspace()` so every
    * teardown path clears the SAME set — the fix for the divergent hand-rolled
    * resets (H5 / M2).
@@ -186,11 +184,9 @@ export class ProjectLifecycleController {
   renderProgressPage = $state(0);
   renderCompleteOverlay = $state(false);
   openError = $state<string | null>(null);
-  /** The folder a failed open was attempted on, so the caller can offer to adopt it. */
-  failedOpenDir = $state<string | null>(null);
   urlPreviewError = $state<string | null>(null);
   saveWarning = $state<string | null>(null);
-  /** Default true (banner hidden) until a listing proves the manifest is absent. */
+  /** Default true (banner hidden) until host classification proves the manifest is absent. */
   currentFolderHasManifest = $state(true);
   adoptBannerDismissed = $state(false);
   adopting = $state(false);
@@ -215,7 +211,7 @@ export class ProjectLifecycleController {
    * the session-identity state this controller owns, then delegates to the
    * single injected `resetExtras()` for the page-local state that used to be
    * hand-listed differently at each call site. Deliberately does NOT touch
-   * `openError`/`failedOpenDir`/`urlPreviewError`/`saveWarning`/`busy`/
+   * `openError`/`urlPreviewError`/`saveWarning`/`busy`/
    * `busyLabel` — those are error/busy signals each flow sets explicitly, not
    * "workspace" state, and were never part of the divergence bug.
    */
@@ -247,35 +243,36 @@ export class ProjectLifecycleController {
       | Promise<PersistedProjectState | null> = null,
     displayName: string | null = null,
     epoch = ++this.folderOpenEpoch,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const d = this.deps;
     const superseded = () => epoch !== this.folderOpenEpoch;
-    // Tracks whether the outgoing project's buffer has already been flushed
-    // (below, before startPreviewHost) so the catch block's own defensive
-    // flush doesn't redundantly re-flush an already-clean buffer.
-    let outgoingBufferFlushed = false;
-    this.openError = null;
-    this.failedOpenDir = null;
-    this.urlPreviewError = null;
-    this.saveWarning = null;
-    this.renderCompleteOverlay = false;
     this.busy = true;
     this.busyLabel = label;
-    // M3: a new project/document session is starting — re-arm the first-render
-    // success toast so this session's initial render still gets one.
-    d.resetFirstRenderGate();
     try {
       if (!d.isDesktop()) {
         d.toast()?.error(d.desktopRequiredMessage);
-        return;
+        return false;
       }
+      // Flush before classification resets the current ProjectSession. The
+      // dirty-state POST to main is only best-effort; this direct result is the
+      // authority for whether replacing the workspace is safe.
+      const flushed = await d.flushBuffer();
+      if (superseded()) return false;
+      if (!flushed) return false;
+      this.openError = null;
+      this.urlPreviewError = null;
+      this.saveWarning = null;
+      this.renderCompleteOverlay = false;
+      // M3: a new project/document session is starting — re-arm the first-render
+      // success toast so this session's initial render still gets one.
+      d.resetFirstRenderGate();
       // C2 (book switcher): classify the PICKED folder first, before any
       // content pipeline opens — see ProjectSessionController's C2 note.
       const previousRepoRoot = d.projectSession.repoRoot;
       d.projectSession.reset();
       d.clearSyncDiag();
       await d.projectSession.classify(dir);
-      if (superseded()) return;
+      if (superseded()) return false;
       const targetDir = d.projectSession.activeBookDir ?? dir;
       // One quiet notice when the tracked "project" turns out to be a whole
       // repo rather than just the folder the author picked. Once per repo per
@@ -296,10 +293,9 @@ export class ProjectLifecycleController {
         targetDir === dir
           ? (displayName ?? basenameOf(targetDir))
           : (d.projectSession.books.find((b) => b.path === targetDir)?.title ?? basenameOf(targetDir));
-      // New folder: flush + clear any file selected from a previous project so
-      // the editor pane doesn't point at a stale path (#44 — flush first so a
-      // pending save in the prior project isn't dropped on project switch).
-      // MUST happen BEFORE startPreviewHost below (#7 fix): the host derives
+      // New folder: clear any file selected from the previous project now that
+      // its flush has succeeded, so the editor does not point at a stale path.
+      // The flush MUST happen BEFORE startPreviewHost below (#7 fix): the host derives
       // its fs-route authorization root SOLELY from the active preview
       // (electron/server-bridge/fs-guard.ts's `projectRoots()`), and
       // establishes the NEW project as that root the instant `startPreviewHost`
@@ -309,15 +305,10 @@ export class ProjectLifecycleController {
       // the new root, get rejected 403, and the buffer would still be reset,
       // silently discarding the edit with no disk write.
       if (this.currentDir !== targetDir) {
-        await d.flushBuffer();
-        outgoingBufferFlushed = true;
-        // Check BEFORE reset: a superseded call resuming from the flush must
-        // not wipe the buffer the winning open has already populated.
-        if (superseded()) return;
         d.resetBuffer();
       }
       const data = await d.startPreviewHost({ key: targetDir, displayName: targetDisplayName });
-      if (superseded()) return;
+      if (superseded()) return false;
       this.sourceMode = "folder";
       this.currentDir = targetDir;
       this.currentFolderDisplayName = targetDisplayName;
@@ -333,23 +324,10 @@ export class ProjectLifecycleController {
       if (d.projectSession.projectCapabilities?.canSnapshot) {
         d.refreshSyncDiag(targetDir);
       }
-      // Detect a "loose" folder (no manifest) so the caller can offer to set
-      // it up as a book. Default true (banner hidden) until the listing
-      // proves it's absent.
-      this.currentFolderHasManifest = true;
+      // Classification uses the lib's one recognized-filename list. A loose
+      // folder still opens successfully, then gets the non-blocking setup banner.
+      this.currentFolderHasManifest = d.projectSession.activeBookHasManifest;
       this.adoptBannerDismissed = false;
-      void d
-        .listDir(targetDir)
-        .then((entries) => {
-          // Detached continuation — guard it, or a superseded open's result
-          // could flip the adopt banner on/off for the WRONG project.
-          if (superseded()) return;
-          this.currentFolderHasManifest = entries.some((e) => /^manifest\.ya?ml$/i.test(e.name));
-        })
-        .catch(() => {
-          if (superseded()) return;
-          this.currentFolderHasManifest = true;
-        });
       // Clear stale problems/log-path from the previous project immediately so
       // the badge/panel/activity view don't show the old project's data while
       // the new one renders.
@@ -360,7 +338,7 @@ export class ProjectLifecycleController {
       // Force iframe remount by nulling first; reset overlay for the new iframe.
       this.previewUrl = null;
       await Promise.resolve();
-      if (superseded()) return;
+      if (superseded()) return false;
       this.previewUrl = data.url;
       this.rendering = true;
       this.renderProgressPage = 0;
@@ -369,7 +347,7 @@ export class ProjectLifecycleController {
       // The restore-state fetch was started at intent time and has been
       // overlapping classify/startPreview — settle it here where it's needed.
       const restored = restoreState ? await restoreState : null;
-      if (superseded()) return;
+      if (superseded()) return false;
       const restoredViewMode = restored?.viewMode;
       d.setPendingRestore(
         restoredViewMode ?? null,
@@ -395,28 +373,11 @@ export class ProjectLifecycleController {
       else d.scanForRecovery(targetDir);
       // Start watching for external edits.
       d.startFolderWatch(targetDir);
+      return true;
     } catch (e) {
       // A superseded open must not clear the newer open's state or surface
       // its own stale error.
-      if (superseded()) return;
-      // Flush any pending edit from the PREVIOUSLY open project before
-      // tearing its state down — mirrors stopPreview's flush-before-reset
-      // (#44). Without this, a user who edits project A and then, within the
-      // ~500ms debounce window, opens a folder B whose classify/startPreview
-      // throws would have folder A's still-pending save silently dropped by
-      // resetExtras()'s buffer.reset() (cancelTimers + clear in-memory
-      // content), with no disk write and no recovery snapshot. Skipped when
-      // the try block already flushed it above (#7 fix) — e.g. startPreviewHost
-      // itself is what threw — so a clean buffer isn't redundantly re-flushed;
-      // this is still reached when classify() (before the pre-flush point)
-      // is what threw.
-      if (!outgoingBufferFlushed) {
-        await d.flushBuffer();
-        // Re-check: a supersession landing DURING the flush (the user opened
-        // yet another folder while this failed open was flushing) must not
-        // let this stale catch clobber the winning open's state.
-        if (superseded()) return;
-      }
+      if (superseded()) return false;
       // H5 fix: route through the SAME resetWorkspace() the other two
       // teardown paths use, instead of a narrower hand-list — this is what
       // now also clears Problems/pageNav/the editor pane/the buffer/the
@@ -424,11 +385,10 @@ export class ProjectLifecycleController {
       // closing the exact divergence the review flagged.
       this.resetWorkspace();
       this.openError = e instanceof Error ? e.message : String(e);
-      // Remember the folder so the caller can offer to set it up as a book.
-      this.failedOpenDir = dir;
       // The start screen re-appears on its own (landingVisible derived: the
       // workspace is empty again) and shows the error alongside recents and
       // create/open actions.
+      return false;
     } finally {
       if (!superseded()) {
         this.busy = false;
@@ -443,10 +403,12 @@ export class ProjectLifecycleController {
    * already-running open is superseded, and so an open the user starts DURING
    * the adopt supersedes us (re-checked before touching shared state below).
    */
-  async setUpAsBook(dir: string): Promise<void> {
+  async setUpAsBook(dir: string): Promise<boolean> {
     const d = this.deps;
-    if (!dir || !d.isDesktop()) return;
+    if (!dir || !d.isDesktop()) return false;
     const epoch = ++this.folderOpenEpoch;
+    const flushed = await d.flushBuffer();
+    if (epoch !== this.folderOpenEpoch || !flushed) return false;
     d.dismissLanding(false);
     this.adopting = true;
     this.busy = true;
@@ -454,17 +416,17 @@ export class ProjectLifecycleController {
     try {
       await d.adoptFolder(dir);
       d.invalidateDiscoveredProjects();
-      if (epoch !== this.folderOpenEpoch) return; // user opened something else meanwhile
+      if (epoch !== this.folderOpenEpoch) return false; // user opened something else meanwhile
       this.openError = null;
-      this.failedOpenDir = null;
       this.adoptBannerDismissed = true;
-      await this.startFolderPreview(dir, "Setting up your book…", null, null, epoch);
+      return await this.startFolderPreview(dir, "Setting up your book…", null, null, epoch);
     } catch (e) {
       // Never stomp a newer open's error state with a stale adopt failure.
-      if (epoch !== this.folderOpenEpoch) return;
+      if (epoch !== this.folderOpenEpoch) return false;
       this.openError = e instanceof Error ? e.message : String(e);
       // A failed adopt leaves the workspace empty — the start screen returns
       // on its own (landingVisible derived) and surfaces the error.
+      return false;
     } finally {
       this.adopting = false;
       if (epoch === this.folderOpenEpoch && !this.previewUrl) {
@@ -482,9 +444,13 @@ export class ProjectLifecycleController {
    * can't resolve later and silently replace this preview with the old book.
    * The superseded open's `finally` no longer owns busy, so clear it here.
    */
-  openUrl(url: string): void {
+  async openUrl(url: string): Promise<boolean> {
     const d = this.deps;
-    this.folderOpenEpoch++;
+    const epoch = ++this.folderOpenEpoch;
+    // A URL is another project-switch target. Flush before resetWorkspace()
+    // clears the old folder's buffer, exactly as folder-to-folder switching does.
+    const flushed = await d.flushBuffer();
+    if (epoch !== this.folderOpenEpoch || !flushed) return false;
     this.busy = false;
     this.busyLabel = "";
     d.dismissLanding(false);
@@ -492,33 +458,37 @@ export class ProjectLifecycleController {
     this.urlPreviewError = null;
     this.saveWarning = null;
     // H5 fix: the SAME resetWorkspace() stopPreview/the catch use — this is
-    // what now also clears recoveryScanDir/recoveryItems/previewHidden/
-    // pageNav.pageEditing here, closing the exact divergence the review
-    // flagged (openUrl used to miss them).
+    // what now also clears the crash-recovery scan state/previewHidden/
+    // pageNav's counters here, closing the exact divergence the review
+    // flagged (openUrl used to miss them; pageEditing itself was later
+    // retired entirely with the toolbar refactor — see PageNavController).
     this.resetWorkspace();
     this.sourceMode = "url";
     this.currentUrl = url;
     // Force iframe remount by nulling first.
     this.previewUrl = null;
     queueMicrotask(() => {
+      if (epoch !== this.folderOpenEpoch) return;
       this.previewUrl = url;
       this.rendering = false;
       this.renderProgressPage = 0;
       d.pageNav.totalPages = 0;
       d.pageNav.currentPage = 1;
     });
+    return true;
   }
 
   /** Flush any pending edit, tear down the host preview, then reset the workspace. */
-  async stopPreview(): Promise<void> {
+  async stopPreview(): Promise<boolean> {
     const d = this.deps;
     // Flush any pending edit before tearing down so closing the project never
     // drops an in-flight auto-save (#44).
-    await d.flushBuffer();
+    if (!(await d.flushBuffer())) return false;
     await d.stopPreviewHost().catch(() => {});
     this.resetWorkspace();
     // The start screen is the app's empty state — it returns on its own now
     // that the workspace is empty (landingVisible derived).
+    return true;
   }
 
   /**

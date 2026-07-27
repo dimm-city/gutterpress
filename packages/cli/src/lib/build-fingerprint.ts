@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import git from "isomorphic-git";
 import { resolveChromiumExecutable } from "./chromium";
+import { resolveGhostscript } from "./ghostscript";
 import { execCapture } from "./exec";
 import { detectProjectSource } from "./project-source";
 import { hasUncommittedChanges } from "./source-provider";
@@ -171,9 +172,12 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
   // window. gs/qpdf are CLI tools and print+exit safely. (See the same fix in
   // diagnostics.ts.)
   const chromiumPath = await resolveChromiumExecutable();
+  const ghostscriptPath = await resolveGhostscript();
 
   const [gsVersion, qpdfVersion] = await Promise.all([
-    getFirstLineVersion("gs", ["--version"]),
+    ghostscriptPath
+      ? getFirstLineVersion(ghostscriptPath, ["--version"])
+      : Promise.resolve(null),
     getFirstLineVersion("qpdf", ["--version"]),
   ]);
 

@@ -12,9 +12,11 @@
  *
  * Safety invariants (from the spec):
  *   - detached_head, corrupt_index, missing_git_dir, missing_or_corrupt_objects,
- *     unrelated_histories, wrong_remote_or_branch → always backup + confirm
+ *     unrelated_histories → always backup + confirm
  *   - auth_required, network_unavailable, non_fast_forward → no backup needed,
  *     no confirmation required (they are thin delegates to sync.ts)
+ *   - wrong_remote_or_branch → no repair attempted (pure block with guidance),
+ *     so no backup is needed either
  */
 
 import type { RecoveryRisk, SyncErrorKind } from "./types.ts";

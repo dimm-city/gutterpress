@@ -11,6 +11,8 @@
  *   - packages/cli/src/lib/chromium.ts — PATH-fallback for Chromium when the
  *     fixed-path scan misses non-default installs (Scoop, Chocolatey, Brave,
  *     Vivaldi, Arc, portable installs).
+ *   - packages/cli/src/lib/ghostscript.ts — PATH tier of the shared
+ *     cross-platform Ghostscript resolver.
  *   - packages/cli/src/lib/build-runner.ts — pre-flight check at the top of
  *     runBuild so a missing tool becomes an actionable error in 50ms instead
  *     of a confusing ENOENT 90 seconds into the pipeline.

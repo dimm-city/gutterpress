@@ -35,8 +35,7 @@ All validation settings live in the `validate` section of `manifest.yaml`. You c
 - Point to external linter configs (markdownlint, htmlhint)
 - Set thresholds for image size, DPI, text density, and more
 
-> [!tip]
-> Run `print-md validate --format json` to get machine-readable output for CI pipelines.
+> **Tip:** Run `print-md validate --format json` to get machine-readable output for CI pipelines.
 
 ## Filtering Checks
 
@@ -53,7 +52,6 @@ print-md validate --pdf dist/book.pdf --only pdf.print.page-size
 print-md validate --input . --skip source.stylelint
 ```
 
-> [!note]
-> Almost all validation runs in-process — no tools to install. Only the PDF/X
+> **Note:** Almost all validation runs in-process — no tools to install. Only the PDF/X
 > checks need `qpdf` and ink-coverage needs Ghostscript (`gs`); install those, or
 > use the Docker image, only when producing PDF/X.

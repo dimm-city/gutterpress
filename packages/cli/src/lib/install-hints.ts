@@ -3,7 +3,7 @@
  * author actually reads when a build fails because gs/qpdf/Chromium isn't
  * installed.
  *
- * This is the single source of truth. `build-runner.ts` (preflight error),
+ * This is the single source of truth. `build-preflight.ts` (preflight error),
  * `diagnostics.ts` (viewer Help/About dialog + `print-md doctor`), and
  * `chromium.ts` (`requireChromiumExecutable`'s thrown error) all import
  * from here instead of hand-copying the per-platform install commands —
@@ -31,7 +31,7 @@ export const INSTALL_HINTS: Record<"chromium" | "gs" | "qpdf", InstallHint> = {
     body:
       "  macOS:   brew install ghostscript\n" +
       "  Ubuntu:  sudo apt install -y ghostscript\n" +
-      "  Windows: https://www.ghostscript.com/releases/gsdnld.html  (or: choco install ghostscript)",
+      "  Windows: https://www.ghostscript.com/releases/gsdnld.html  (standard installs are auto-detected; or: choco install ghostscript)",
   },
   qpdf: {
     label: "qpdf",
