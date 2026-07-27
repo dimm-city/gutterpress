@@ -163,6 +163,43 @@ test("runPublish fails preflight when the artifact is missing", async () => {
   }
 });
 
+test("resolvePublishRequest anchors the default artifact on the MANIFEST's directory, not the project positional", async () => {
+  // `--manifest` pointing OUTSIDE the project positional (a manifest shared
+  // one level up, say) must resolve the default artifact the same place
+  // `resolveBuildContext` (build-runner.ts) resolved the BUILD's output —
+  // the manifest's own directory — not the unrelated `projectDir` the CLI
+  // positional happened to be. Previously it used `projectDir`, so this
+  // divergence made a perfectly-built artifact invisible to publish.
+  const projectDir = await mkdtemp(path.join(tmpdir(), "pmd-publish-project-"));
+  const manifestDir = await mkdtemp(path.join(tmpdir(), "pmd-publish-manifest-"));
+  try {
+    const manifestPath = path.join(manifestDir, "manifest.yaml");
+    await writeFile(manifestPath, "title: Elsewhere Book\nauthors: [A]\n", "utf8");
+    await withPdfArtifact(manifestDir, "Elsewhere Book");
+
+    const deps = await depsFor(projectDir);
+    const req = await resolvePublishRequest(
+      { projectDir, providerId: "drivethrurpg", manifestPath },
+      deps,
+    );
+    expect(req.artifact.path).toBe(
+      path.join(
+        resolveOutputDir(manifestDir, "Elsewhere Book"),
+        artifactName("Elsewhere Book", "pdf"),
+      ),
+    );
+
+    const result = await runPublish(
+      { projectDir, providerId: "drivethrurpg", manifestPath, dryRun: true },
+      deps,
+    );
+    expect(result.ok).toBe(true);
+  } finally {
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(manifestDir, { recursive: true, force: true });
+  }
+});
+
 test("runPublish --dry-run stops after a passing preflight", async () => {
   const dir = await tempProject(MANIFEST);
   try {

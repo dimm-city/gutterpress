@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
+import { resolveOutputDir } from "./output-paths";
 import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./viewer";
 import { UsageError } from "./cli-args";
@@ -212,6 +214,12 @@ export async function executeValidation(
   let assetDirs: string[] | undefined;
   let htmlPath: string | undefined;
 
+  // Output location is the shared convention (./output-paths.ts), anchored on
+  // the MANIFEST's directory — the same anchor `resolveBuildContext`
+  // (build-runner.ts) uses, so a validation run looks for `book.html` exactly
+  // where a build of the same manifest would have written it.
+  const outDir = resolveOutputDir(manifestDir, config.title);
+
   if (inputDir) {
     const { glob } = await import("glob");
     // A manifest may omit source.files / styles (auto-discover everything).
@@ -234,9 +242,13 @@ export async function executeValidation(
         ignore: ["**/node_modules/**", "**/*.min.css"],
       }
     );
-    assetDirs = config.source.assets.map((assetDir) => resolve(inputDir, assetDir));
+    // The project root, wholesale. Excluding node_modules/.git/dist happens at
+    // the GLOB level (ASSET_SCAN_IGNORE_GLOBS, checks/asset/extensions.ts), not
+    // by choosing which directories to scan — picking directories silently
+    // dropped every file sitting at the project root, and scanned nothing at
+    // all for a project whose only subdirectory was `dist`.
+    assetDirs = [inputDir];
 
-    const outDir = resolve(config.output.dir);
     const possibleHtml = join(outDir, BOOK_HTML_FILENAME);
     if (existsSync(possibleHtml)) {
       htmlPath = possibleHtml;
@@ -246,7 +258,7 @@ export async function executeValidation(
   const context: CheckContext = {
     config,
     inputDir: inputDir ?? process.cwd(),
-    outputDir: resolve(config.output.dir),
+    outputDir: outDir,
     pdfPath,
     htmlPath,
     markdownFiles,

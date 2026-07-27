@@ -1,6 +1,6 @@
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { FONT_EXTS } from "./extensions";
+import { ASSET_SCAN_IGNORE_GLOBS, FONT_EXTS } from "./extensions";
 
 const check: Check = {
   id: "asset.font.approved-files",
@@ -21,6 +21,7 @@ const check: Check = {
       const matches = await glob(`**/*.{${FONT_EXTS.join(",")}}`, {
         cwd: dir,
         absolute: true,
+        ignore: [...ASSET_SCAN_IGNORE_GLOBS],
       });
       allFonts.push(...matches);
     }
@@ -34,6 +35,7 @@ const check: Check = {
         const matches = await glob(pattern, {
           cwd: dir,
           absolute: true,
+          ignore: [...ASSET_SCAN_IGNORE_GLOBS],
         });
         for (const m of matches) approvedFonts.add(m);
       }

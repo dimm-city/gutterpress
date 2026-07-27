@@ -17,11 +17,12 @@
  * files, which rely on the REAL registry.
  */
 import { describe, test, expect, spyOn, afterEach } from "bun:test";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { executeValidation, executeAndReport } from "./validation-exec";
 import { UsageError } from "./cli-args";
+import { resolveOutputDir } from "./output-paths";
 import * as toolCheckMod from "../checks/tool-check";
 import * as runnerMod from "../checks/runner";
 import * as formatterMod from "../checks/formatter";
@@ -37,6 +38,8 @@ import "../checks/pdf/index";
 import "../checks/source/index";
 import "../checks/asset/index";
 import "../checks/heuristic/index";
+import { collectImageFiles } from "./image-inspect";
+import { ASSET_SCAN_IGNORE_GLOBS, FONT_EXTS } from "../checks/asset/extensions";
 
 function emptyToolResult(overrides: Partial<ToolCheckResult> = {}): ToolCheckResult {
   return {
@@ -291,15 +294,12 @@ describe("executeValidation phase auto-detection", () => {
 describe("executeValidation context derived from --input", () => {
   test("detects book.html in the resolved output dir and includes it as context.htmlPath", async () => {
     const dir = await makeDir("pmd-vexec-html-in-");
-    const outDir = await makeDir("pmd-vexec-html-out-");
     try {
-      // Absolute output.dir sidesteps any cwd-relative ambiguity in resolve().
-      await writeFile(
-        path.join(dir, "manifest.yaml"),
-        `output:\n  dir: "${outDir.replace(/\\/g, "\\\\")}"\n`,
-        "utf-8"
-      );
+      // No manifest — title defaults to "Document" (manifest.ts), so the
+      // convention output dir (output-paths.ts) is `dist/document/`.
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      const outDir = resolveOutputDir(dir, "Document");
+      await mkdir(outDir, { recursive: true });
       await writeFile(path.join(outDir, "book.html"), "<html></html>", "utf-8");
       stubCheckExecution();
 
@@ -311,19 +311,12 @@ describe("executeValidation context derived from --input", () => {
       );
     } finally {
       await rm(dir, { recursive: true, force: true });
-      await rm(outDir, { recursive: true, force: true });
     }
   });
 
   test("no book.html in the output dir leaves context.htmlPath undefined", async () => {
     const dir = await makeDir("pmd-vexec-no-html-in-");
-    const outDir = await makeDir("pmd-vexec-no-html-out-");
     try {
-      await writeFile(
-        path.join(dir, "manifest.yaml"),
-        `output:\n  dir: "${outDir.replace(/\\/g, "\\\\")}"\n`,
-        "utf-8"
-      );
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       stubCheckExecution();
 
@@ -332,7 +325,45 @@ describe("executeValidation context derived from --input", () => {
       expect(execution.context.htmlPath).toBeUndefined();
     } finally {
       await rm(dir, { recursive: true, force: true });
-      await rm(outDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── assetDirs derivation (no more `source.assets` config list) ─────────────
+
+describe("executeValidation assetDirs derivation", () => {
+  test("a clean project (no node_modules/.git/dist) scans the root wholesale", async () => {
+    const dir = await makeDir("pmd-vexec-assets-clean-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      await mkdir(path.join(dir, "images"), { recursive: true });
+      await writeFile(path.join(dir, "images", "cover.png"), "fake", "utf-8");
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      expect(execution.context.assetDirs).toEqual([dir]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a project with node_modules/.git/dist STILL scans the root wholesale", async () => {
+    // The directory list must never shrink: pruning happens at the glob level
+    // (ASSET_SCAN_IGNORE_GLOBS), so root-level files stay covered after a build.
+    const dir = await makeDir("pmd-vexec-assets-dirty-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      await writeFile(path.join(dir, "cover.png"), "fake", "utf-8");
+      await mkdir(path.join(dir, "node_modules", "some-plugin"), { recursive: true });
+      await mkdir(path.join(dir, "dist"), { recursive: true });
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      expect(execution.context.assetDirs).toEqual([dir]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });
@@ -406,5 +437,87 @@ describe("executeAndReport", () => {
 
     expect(formatReportSpy).toHaveBeenCalledTimes(1);
     expect(formatReportSpy!.mock.calls[0]![1]).toBe("json");
+  });
+});
+
+/**
+ * Regression: asset scanning must not lose coverage once a build has run.
+ *
+ * A previous implementation swapped the project root for its subdirectories
+ * whenever an ignored directory (`dist`, `node_modules`, `.git`) existed. That
+ * silently dropped every file sitting AT the root, and for a project whose only
+ * subdirectory was `dist` it produced an empty directory list — so asset
+ * validation became a no-op the moment the author ran their first build. A
+ * too-low-DPI cover would then sail through to the print shop unreported.
+ *
+ * Exclusion now happens at the glob level, so the directory list never shrinks.
+ */
+describe("asset scan coverage survives a build (root files + dist present)", () => {
+  test("a root-level image is still scanned when dist/ exists", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pmd-assetscan-"));
+    try {
+      await mkdir(path.join(dir, "dist"), { recursive: true });
+      await writeFile(path.join(dir, "cover.png"), "x");
+      await writeFile(path.join(dir, "dist", "built.png"), "x");
+
+      const found = await collectImageFiles([dir], ["png", "jpg"]);
+
+      expect(found.some((f) => f.endsWith("cover.png"))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("the build's own copies under dist/ are NOT reported as author assets", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pmd-assetscan-dist-"));
+    try {
+      await mkdir(path.join(dir, "dist"), { recursive: true });
+      await writeFile(path.join(dir, "dist", "built.png"), "x");
+
+      const found = await collectImageFiles([dir], ["png", "jpg"]);
+
+      expect(found).toHaveLength(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("node_modules and .git are excluded but sibling project dirs are kept", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pmd-assetscan-ig-"));
+    try {
+      await mkdir(path.join(dir, "node_modules", "pkg"), { recursive: true });
+      await mkdir(path.join(dir, ".git"), { recursive: true });
+      await mkdir(path.join(dir, "images"), { recursive: true });
+      await writeFile(path.join(dir, "node_modules", "pkg", "dep.png"), "x");
+      await writeFile(path.join(dir, ".git", "hook.png"), "x");
+      await writeFile(path.join(dir, "images", "real.png"), "x");
+
+      const found = await collectImageFiles([dir], ["png", "jpg"]);
+
+      expect(found.map((f) => f.split("/").pop())).toEqual(["real.png"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a root-level FONT is still scanned when dist/ exists", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "pmd-assetscan-font-"));
+    try {
+      await mkdir(path.join(dir, "dist"), { recursive: true });
+      await writeFile(path.join(dir, "body.woff2"), "x");
+      await writeFile(path.join(dir, "dist", "copied.woff2"), "x");
+
+      const { glob } = await import("glob");
+      const found = await glob(`**/*.{${FONT_EXTS.join(",")}}`, {
+        cwd: dir,
+        absolute: true,
+        ignore: [...ASSET_SCAN_IGNORE_GLOBS],
+      });
+
+      expect(found.some((f) => f.endsWith("body.woff2"))).toBe(true);
+      expect(found.some((f) => f.includes("/dist/"))).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -39,3 +39,22 @@ export const ALL_IMAGE_EXTS = [
 
 /** Font file extensions shared by the approved-fonts and font-license checks. */
 export const FONT_EXTS = ["woff", "woff2", "otf", "ttf", "eot"] as const;
+
+/**
+ * Directories no asset scan should ever descend into, as glob patterns.
+ *
+ * ONE list, applied at the GLOB level by every asset scan (images and fonts
+ * alike). Doing the exclusion here rather than by choosing which directories
+ * to hand the scanner is what keeps root-level files covered: a previous
+ * approach swapped the project root for its subdirectories whenever an ignored
+ * directory existed, which silently dropped every file sitting at the root —
+ * and scanned NOTHING at all for a project whose only subdirectory was `dist`.
+ *
+ * `dist` is excluded because it holds the build's own copies of the author's
+ * assets; scanning it would double-report every image against itself.
+ */
+export const ASSET_SCAN_IGNORE_GLOBS = [
+  "**/node_modules/**",
+  "**/.git/**",
+  "**/dist/**",
+] as const;
