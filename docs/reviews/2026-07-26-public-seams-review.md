@@ -39,6 +39,16 @@ regenerated from that release's published `SHA256SUMS.txt` by the
 additionally requires a manual PR to `microsoft/winget-pkgs`, which no
 repository-scoped token can submit.
 
+**What has not executed yet.** The dual-architecture mac build, the
+`macos-15-intel` verification runner, and `package-managers.yml` were all
+introduced by the remediation commit on this branch, and `release.yml` is
+`workflow_dispatch`-only with no run on this branch — so none of them has been
+exercised even once. Their configuration is correct by inspection, and D2's
+failure mode is at least fail-closed (the release job hard-requires both the
+`-arm64.dmg` and `-x64.dmg` assets, so a failed x64 build aborts the release
+rather than silently shipping arm64-only). Treat D2, D6, and D9's validation
+jobs as implemented-but-unproven until the first release run.
+
 | Finding | Status | Resolution |
 | --- | --- | --- |
 | D1 | **Accepted / mitigated** | Signing remains unaffordable by decision. Releases now publish checksums and put Gatekeeper guidance in the release body; the macOS notifier and package-manager paths reduce the remaining friction. |
@@ -49,7 +59,7 @@ repository-scoped token can submit.
 | D6 | **Accepted / mitigated** | Both Darwin CLI architectures now run on native CI runners. The supported matrix and the Windows ARM64, Linux ARM64 viewer, and musl gaps are explicit; new targets remain demand-driven as recommended. |
 | D7 | **Resolved** | Docker dispatch receives the normalized release version. |
 | D8 | **Accepted / documented** | Git URL npm installs are explicitly unsupported; registry installation and standalone binaries are the supported paths. |
-| D9 | **Resolved** | The repository now provides a Homebrew tap and Scoop bucket with post-release generation and real install validation. Submission-ready winget metadata is generated; publishing it still requires an external `microsoft/winget-pkgs` PR. |
+| D9 | **Resolved** | The repository now provides a Homebrew tap and Scoop bucket with post-release generation and real install validation — `package-managers.yml` performs genuine `brew install` / `scoop install` runs and executes the installed binary, not a metadata lint. Submission-ready winget metadata is generated; publishing it still requires an external `microsoft/winget-pkgs` PR. Note that these validation jobs have **never run**: the workflow exists only on this branch, so GitHub has not registered it and it has zero runs. `release.yml:747-750` dispatches it automatically after the next stable release. |
 | C1 | **Resolved** | Every Ghostscript caller uses shared cross-platform resolution with `GHOSTSCRIPT_PATH`, platform command names, and conventional Windows install paths. |
 | C2 | **Resolved** | The Linux-only ICC path was removed. A real Ghostscript integration test verifies valid PDF/X metadata and expected RGB-red to CMYK conversion. |
 | C3 | **Resolved** | YAML parse failures become filename-, line-, and column-aware `UsageError`s. |
@@ -78,7 +88,11 @@ repository-scoped token can submit.
 - CLI production build and node-free `/render` purity gate
 - Viewer Svelte check, lint/token check, production build, strict renderer-purity gate, and Electron main/preload build
 - Standalone `bun build --compile` smoke: scaffold project, install dependency-bearing `markdown-it-highlightjs@4.3.0`, load it, and build paginated HTML
-- Real Ghostscript 10.06 PDF/X color-conversion integration test
+- Real Ghostscript PDF/X color-conversion integration test. This test self-skips
+  when Ghostscript is absent (`ghostscript ? test : test.skip`), and CI had no
+  Ghostscript install step — so it passed locally while silently no-opping on
+  every CI run. `ci.yml`'s `test` job now installs Ghostscript and qpdf, so the
+  RGB-to-CMYK assertion actually executes there.
 - `actionlint`, package-manager metadata drift tests, and release-asset/checksum tests
 - Installer checksum verification: `packages/cli/scripts/check-install-checksum.sh`
   sources `install.sh` and exercises `verify_checksum` against a matching hash,
