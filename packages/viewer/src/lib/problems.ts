@@ -49,7 +49,6 @@ const SOURCE_LABELS: Record<string, string> = {
   "asset.image.alpha-channel": "Image transparency",
   "asset.image.tac-raster": "Image ink coverage",
   "asset.font.approved-files": "Font files",
-  "asset.font.missing-refs": "Missing font",
   "asset.font.license": "Font licence",
 };
 
