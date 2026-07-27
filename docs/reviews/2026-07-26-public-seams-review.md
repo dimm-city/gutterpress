@@ -27,9 +27,18 @@ per operating system and install scenario, based solely on what the code does?*
 
 ## Resolution update (2026-07-26)
 
-All findings have been addressed. The original review below is preserved as the
+Every finding has been addressed except the installer half of D5, which remains
+open (see its row below). The original review below is preserved as the
 pre-remediation record, so its file:line references describe the code before the
 fixes and may no longer point at the same statements.
+
+Two things in the table depend on a release actually being cut: the distribution
+fixes (checksums, both macOS architectures, the stable NSIS basename) only reach
+users on the next `release.yml` run, and the Homebrew/Scoop metadata is
+regenerated from that release's published `SHA256SUMS.txt` by the
+`package-managers.yml` dispatch (`release.yml:747-750`). Winget availability
+additionally requires a manual PR to `microsoft/winget-pkgs`, which no
+repository-scoped token can submit.
 
 | Finding | Status | Resolution |
 | --- | --- | --- |
