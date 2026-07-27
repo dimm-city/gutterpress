@@ -104,32 +104,29 @@ describe("validateInputPath", () => {
 // ── initializePreviewDirectories ────────────────────────────────────────────
 
 describe("initializePreviewDirectories", () => {
-  test("creates a temp dir, writes a PID file, and copies input content", async () => {
-    const inputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-input-"));
+  test("creates a temp dir holding ONLY the PID file — no source copy (serve-in-place)", async () => {
+    // A real project with content exists on disk here, but is deliberately
+    // never passed to initializePreviewDirectories — the function no longer
+    // takes an inputPath/config at all. Serve-in-place means the temp dir is
+    // never a mirror of the project: http-server.ts reads project files
+    // straight from the project directory for every non-book.html request,
+    // so the ONLY things print-md itself ever writes into the temp dir are
+    // book.html (written later by generateAndWriteHtml) and the PID marker.
+    const projectDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-input-"));
     let tempDir: string | undefined;
     try {
-      await writeFile(path.join(inputDir, "chapter-01.md"), "# Hello\n", "utf-8");
+      await writeFile(path.join(projectDir, "chapter-01.md"), "# Hello\n", "utf-8");
 
-      tempDir = await initializePreviewDirectories(inputDir);
+      tempDir = await initializePreviewDirectories();
 
       expect(tempDir.startsWith(TEMP_DIR_BASE)).toBe(true);
-      const pidRaw = await readFile(path.join(tempDir, PID_FILE_NAME), "utf-8");
-      expect(pidRaw.trim()).toBe(String(process.pid));
-      const copied = await readFile(path.join(tempDir, "chapter-01.md"), "utf-8");
-      expect(copied).toBe("# Hello\n");
-    } finally {
-      await rm(inputDir, { recursive: true, force: true });
-      if (tempDir) await rm(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  test("no-input mode creates a temp dir with only the PID file — no source copy", async () => {
-    const tempDir = await initializePreviewDirectories("");
-    try {
       const entries = await readdir(tempDir);
       expect(entries).toEqual([PID_FILE_NAME]);
+      const pidRaw = await readFile(path.join(tempDir, PID_FILE_NAME), "utf-8");
+      expect(pidRaw.trim()).toBe(String(process.pid));
     } finally {
-      await rm(tempDir, { recursive: true, force: true });
+      await rm(projectDir, { recursive: true, force: true });
+      if (tempDir) await rm(tempDir, { recursive: true, force: true });
     }
   });
 
@@ -143,7 +140,7 @@ describe("initializePreviewDirectories", () => {
 
     let tempDir: string | undefined;
     try {
-      tempDir = await initializePreviewDirectories("");
+      tempDir = await initializePreviewDirectories();
 
       const stillThere = await stat(deadDir).then(
         () => true,
@@ -164,7 +161,7 @@ describe("initializePreviewDirectories", () => {
 
     let tempDir: string | undefined;
     try {
-      tempDir = await initializePreviewDirectories("");
+      tempDir = await initializePreviewDirectories();
 
       const stillThere = await stat(aliveDir).then(
         () => true,

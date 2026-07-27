@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { canonicalChapterId } from "./chapter-id";
 import { renderChapters } from "./index";
-import { resolveDestinationForChange } from "../../preview/file-watcher";
+import { describeChange } from "../../preview/file-watcher";
 
 describe("canonicalChapterId", () => {
   test("passes through an already-canonical id", () => {
@@ -71,11 +71,9 @@ describe("canonicalChapterId", () => {
 
 describe("identity contract: build tag === watcher broadcast", () => {
   let inputDir: string;
-  let tempDir: string;
 
   beforeEach(async () => {
     inputDir = await mkdtemp(path.join(tmpdir(), "pmd-id-input-"));
-    tempDir = await mkdtemp(path.join(tmpdir(), "pmd-id-temp-"));
     await mkdir(path.join(inputDir, "chapters"), { recursive: true });
     await writeFile(path.join(inputDir, "root.md"), "# Root\n");
     await writeFile(path.join(inputDir, "chapters", "03-the-players.md"), "# Players\n");
@@ -83,7 +81,6 @@ describe("identity contract: build tag === watcher broadcast", () => {
 
   afterEach(async () => {
     await rm(inputDir, { recursive: true, force: true });
-    await rm(tempDir, { recursive: true, force: true });
   });
 
   /** Extract data-chapter-src values from rendered HTML, in order. */
@@ -93,7 +90,7 @@ describe("identity contract: build tag === watcher broadcast", () => {
 
   /** What the file-watcher would broadcast for an edit to `absFile`. */
   function broadcastFor(absFile: string): string {
-    const dest = resolveDestinationForChange(absFile, path.resolve(inputDir), tempDir, []);
+    const dest = describeChange(absFile, path.resolve(inputDir));
     expect(dest).not.toBeNull();
     return canonicalChapterId(dest!.relativePath);
   }

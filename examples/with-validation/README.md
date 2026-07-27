@@ -19,10 +19,10 @@ Demonstrates print-md's validation system with all four check categories configu
 print-md validate --input .
 
 # Post-build checks (requires a built PDF)
-print-md validate --pdf dist/book.pdf
+print-md validate --pdf dist/validation-example/validation-example-pdf.pdf
 
 # All checks together
-print-md validate --input . --pdf dist/book.pdf
+print-md validate --input . --pdf dist/validation-example/validation-example-pdf.pdf
 
 # Full validated PDF/X pipeline (includes validation at both phases)
 print-md build . --format pdfx
@@ -36,11 +36,11 @@ print-md validate --input . --format json
 ```bash
 # By category
 print-md validate --input . --category source
-print-md validate --pdf dist/book.pdf --category pdf,heuristic
+print-md validate --pdf dist/validation-example/validation-example-pdf.pdf --category pdf,heuristic
 
 # By check ID
 print-md validate --input . --only source.markdownlint
-print-md validate --pdf dist/book.pdf --skip pdf.structure.qpdf
+print-md validate --pdf dist/validation-example/validation-example-pdf.pdf --skip pdf.structure.qpdf
 
 # By phase
 print-md validate --input . --phase pre-build

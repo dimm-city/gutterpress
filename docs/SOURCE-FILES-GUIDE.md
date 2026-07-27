@@ -17,10 +17,6 @@ source:
     - chapter-01.md
     - chapter-02.md
     - appendix.md
-  assets:
-    - css
-    - fonts
-    - images
 ```
 
 **Behavior**: Only these files are included, in this exact order.
@@ -30,11 +26,7 @@ source:
 Omit `source.files` or set it to `null`:
 
 ```yaml
-source:
-  assets:
-    - css
-    - fonts
-    - images
+source: {}
 ```
 
 **Behavior**: All `.md` files in the directory are included in alphabetical order.
@@ -77,14 +69,12 @@ source:
     - 02-chapter-one.md
     - 03-chapter-two.md
     - 04-conclusion.md
-  assets:
-    - images
-
-output:
-  dir: dist
-  filename: novel.pdf
-  html: novel.html
 ```
+
+Output isn't configured here: every build writes to `dist/<title-slug>/` next to
+the manifest (`novel.pdf` becomes `dist/novel/novel-pdf.pdf`), and images are
+copied automatically because the markdown references them — there's no
+`assets:` list to keep in sync.
 
 ### Example 2: Complex Structure with Subdirectories
 
@@ -101,11 +91,6 @@ source:
     - chapters/03-advanced.md
     - appendix/glossary.md
     - appendix/index.md
-  assets:
-    - css
-    - fonts
-    - images
-    - icons
 ```
 
 ### Example 3: Conditional Chapters
@@ -122,9 +107,6 @@ source:
     - # - optional-rules.md
     - # - advanced-combat.md
     - appendix.md
-  assets:
-    - css
-    - images
 ```
 
 ## Common Patterns

@@ -79,6 +79,13 @@ Use at most 2–3 callouts per page — overuse reduces impact. Match the type t
 
 Always provide meaningful alt text. For purely decorative images, use empty alt text — leave the brackets empty: `![]`.
 
+**Where images live:** put the image file inside your project folder and
+reference it with a path relative to the manifest — print-md copies exactly
+the images your markdown (or CSS) references, keeping your own folder
+structure in the output. There's no directory to declare. A reference that
+points outside the project (`../shared/logo.png`) fails the build with a
+message telling you to copy the file in instead.
+
 ### Image sizing
 
 Use `markdown-it-attrs` (bundled — no install step needed) for precise sizing:

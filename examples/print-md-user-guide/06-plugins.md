@@ -153,7 +153,7 @@ export const css = `
 `;
 ```
 
-Print-md collects all plugin CSS exports and injects them as a single `<style>` block in `book.html`, **after** user stylesheets. Use CSS custom properties from the theme to stay consistent.
+Print-md collects all plugin CSS exports and injects them into the single `<style>` block in `book.html`, **before** your own stylesheets — so your project CSS wins at equal specificity and you can always override a plugin's styling. Use CSS custom properties from the theme to stay consistent.
 
 ## Built-in Plugins
 

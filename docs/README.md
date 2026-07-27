@@ -90,8 +90,8 @@ print-md build ./my-book --format pdfx
 # Validate source files
 print-md validate --input ./my-book
 
-# Validate a built PDF
-print-md validate --pdf dist/book.pdf
+# Validate a built PDF (dist/<title-slug>/<title-slug>-pdf.pdf)
+print-md validate --pdf dist/my-book/my-book-pdf.pdf
 ```
 
 ### Common Directives

@@ -62,7 +62,6 @@ test("preview reports its resolved default format before starting the server", a
     port: 3579,
     host: "127.0.0.1",
     inputPath: "",
-    missingSharedAssets: [],
     stop: async () => {},
     restart: async () => {},
   });
@@ -81,7 +80,6 @@ test("preview --no-watch passes noWatch: true to startPreviewServer", async () =
     port: 3579,
     host: "127.0.0.1",
     inputPath: "",
-    missingSharedAssets: [],
     stop: async () => {},
     restart: async () => {},
   });

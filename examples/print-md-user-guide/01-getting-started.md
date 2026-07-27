@@ -127,9 +127,6 @@ source:
   files:
     - "01-introduction.md"
     - "02-chapter-two.md"
-  assets:
-    - styles
-    - assets
 ```
 
 Plugins are optional and most projects don't need any — see Chapter 6, *Plugins*, for the `plugins:` manifest key and the bundled, no-install-required plugins.
@@ -174,6 +171,13 @@ my-book/
 └── styles/
     └── custom.css
 ```
+
+This layout is a suggestion, not a requirement — put images and fonts
+wherever makes sense for your project. An image referenced from markdown or
+HTML just needs to live somewhere inside the project folder; a font (or
+image) referenced from CSS resolves relative to that CSS file, wherever it
+lives, and print-md embeds it into the book automatically. See
+[Chapter 4 — Font Loading](./04-styling-theming.md#font-loading).
 
 ### Naming Conventions
 

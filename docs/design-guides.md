@@ -46,8 +46,8 @@ my-book/
 variation on this layout. It is a MULTI-book project — `book-01/` and `book-02/`
 sit beside `design-guide/` rather than inside a single book — and it keeps the
 shared stylesheet in the guide itself (`design-guide/styles/guide.css`) instead
-of a separate `shared/` directory. The flattening convention described below is
-the same in both shapes.
+of a separate `shared/` directory. The style-sharing approach described below
+is the same in both shapes.
 
 `print-md` discovers the manifest from whichever directory you point at,
 so `print-md build ./design-guide` and `print-md build .` (the book) both
@@ -56,23 +56,26 @@ work, each finding its own `manifest.yaml`.
 ## Sharing styles, plugins, and assets
 
 The point of the guide is fidelity to the book. Have both manifests
-reference the same CSS files via the shared directory:
+reference the same CSS file directly — no copying, no shared asset
+directory:
 
 ```yaml
 # design-guide/manifest.yaml
 styles:
   - shared/styles/main.css   # ← same file the book uses
   - styles/guide.css          # ← guide-only chrome (swatches, labels)
-source:
-  assets:
-    - ../shared               # copies shared/ into the output dir
-    - styles
 ```
 
-print-md flattens any `..` parents in `source.assets` to a single basename
-in the output, so the `styles` paths above reference the flattened
-location (`shared/styles/main.css`), not the manifest-relative source
-path. Apply the same convention to the book's manifest.
+A `styles:` entry is a path print-md *reads*, not a file it ships — the
+stylesheet's text is inlined into `book.html` at render time, so its real
+location on disk is irrelevant to the output. That's what lets the guide and
+the book both point straight at `shared/styles/main.css` with a plain
+manifest-relative path — no asset list, no copied `shared/` folder, and no
+"name the destination instead of the source" rule to remember. Any fonts or
+images that stylesheet references (via `url(...)`) resolve relative to the
+stylesheet itself and are embedded or copied automatically; only images an
+author references directly from *markdown* must live inside that project's
+own folder. Apply the same `styles:` path to the book's manifest.
 
 If the book uses plugins, list the same `plugins:` entries in both
 manifests so the guide demonstrates the real markdown extensions.
@@ -115,13 +118,19 @@ Produces a complete deployable directory:
 
 ```text
 _site/
-├── book.html               ← the rendered guide content (Paged.js pagination)
-├── preview/                ← pagedjs-interface.js and pagedjs-bridge.js
-│   └── scripts/
-├── vendor/                 ← paged.polyfill.js
-├── shared/                 ← copied from your manifest's assets
-└── styles/
+├── book.html               ← the rendered guide, CSS + fonts inlined (pre-paginated)
+├── index.html              ← redirects to book.html, for hosts that need a default entry point
+└── preview/
+    └── scripts/            ← pagedjs-interface.js and pagedjs-bridge.js (page nav, zoom, toolbar)
 ```
+
+There's no `shared/` or `styles/` in the output: your stylesheets are read and
+inlined straight into `book.html`, not copied. Any images the guide actually
+references travel with it too, at the relative path you authored them at (or
+under `assets/` for a CSS-referenced image that lives outside the project).
+`vendor/paged.polyfill.js` only appears as a fallback when no Chromium is
+available at build time — the browser paginates at load instead of shipping
+pre-paginated pages.
 
 Open `_site/book.html` directly in a browser to view the paginated guide.
 The toolbar UI lives in the print-md Electron desktop app (`packages/viewer`)
@@ -160,8 +169,10 @@ To also publish a downloadable PDF next to the guide, run:
 print-md build ./design-guide --format pdf --out ./_site
 ```
 
-`book.pdf` is dropped into `_site/` alongside the viewer files. Link to
-it from `00-overview.md` so readers can grab the print-ready version.
+The PDF — named `<title-slug>-pdf.pdf` (a slug of the manifest `title`, e.g.
+`your-book-title-design-guide-pdf.pdf`) — is dropped into `_site/` alongside
+the viewer files. Link to it from `00-overview.md` so readers can grab the
+print-ready version.
 
 For a fully validated PDF/X (CMYK, embedded fonts, post-build checks),
 use:

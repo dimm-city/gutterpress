@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdtemp, rm, writeFile, mkdir as mkdirp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -14,10 +14,11 @@ import {
   startFileWatcher,
   stopFileWatcher,
   injectPreviewScripts,
-  mirrorChanges,
+  describeChanges,
   cssHotSwapPaths,
   decideBroadcast,
-  type ChangedDest,
+  isDotPathUnderRoot,
+  type ChangedFile,
 } from './file-watcher';
 import { pagedjsPolyfillTag } from '../lib/pagedjs-marker';
 import { resolveConfig } from '../lib/manifest';
@@ -227,8 +228,8 @@ describe('injectPreviewScripts', () => {
 });
 
 describe('cssHotSwapPaths', () => {
-  const css = (p: string): ChangedDest => ({ relativePath: p, ext: '.css', event: 'change', mirrored: true });
-  const md = (p: string): ChangedDest => ({ relativePath: p, ext: '.md', event: 'change', mirrored: true });
+  const css = (p: string, event = 'change'): ChangedFile => ({ relativePath: p, ext: '.css', event });
+  const md = (p: string): ChangedFile => ({ relativePath: p, ext: '.md', event: 'change' });
 
   test('returns every stylesheet path when the whole window is CSS', () => {
     expect(cssHotSwapPaths([css('a.css'), css('sub/b.css')], 2)).toEqual(['a.css', 'sub/b.css']);
@@ -239,7 +240,7 @@ describe('cssHotSwapPaths', () => {
   });
 
   test('returns null when a change resolved to no destination (count mismatch)', () => {
-    // A change outside every watch root is dropped by mirrorChanges — the
+    // A change outside the watch root is dropped by describeChanges — the
     // fast path must not fire when it cannot account for every change.
     expect(cssHotSwapPaths([css('a.css')], 2)).toBeNull();
   });
@@ -248,26 +249,21 @@ describe('cssHotSwapPaths', () => {
     expect(cssHotSwapPaths([], 0)).toBeNull();
   });
 
-  test('returns null when a stylesheet was reported but not actually mirrored', () => {
-    // Regression: the copy into the temp dir is fallible (an editor saving via
-    // temp-file+rename can delete the source between the stat and the copy).
-    // That failure is swallowed so it cannot abort the rebuild, but the entry
-    // is still reported. Hot-swapping on it would re-fetch the STALE temp copy
-    // and nothing re-renders afterwards to correct it — unlike markdown, which
-    // re-renders from source. Must degrade to a full update instead.
-    const stale: ChangedDest = {
-      relativePath: 'a.css',
-      ext: '.css',
-      event: 'change',
-      mirrored: false,
-    };
-    expect(cssHotSwapPaths([stale], 1)).toBeNull();
-    expect(cssHotSwapPaths([css('ok.css'), stale], 2)).toBeNull();
+  test('returns null when the stylesheet was deleted, not edited', () => {
+    // Serve-in-place means the changed file IS the served file — there is no
+    // copy step left to fail independently of the edit (see the old
+    // `mirrored` flag this replaces). The one way a hot-swap can still go
+    // stale is a DELETE: appending a fresh <link> to a path that now 404s
+    // would break the live view with nothing downstream to repair it. That
+    // must fall through to a full reload instead.
+    const deleted: ChangedFile = { relativePath: 'a.css', ext: '.css', event: 'unlink' };
+    expect(cssHotSwapPaths([deleted], 1)).toBeNull();
+    expect(cssHotSwapPaths([css('ok.css'), deleted], 2)).toBeNull();
   });
 });
 
 describe('decideBroadcast', () => {
-  const md = (p: string, event = 'change'): ChangedDest => ({ relativePath: p, ext: '.md', event, mirrored: true });
+  const md = (p: string, event = 'change'): ChangedFile => ({ relativePath: p, ext: '.md', event });
 
   test('single surviving markdown change splices its chapter (canonical id)', () => {
     expect(decideBroadcast([md('sub/ch.md')], 1, true)).toEqual({
@@ -286,105 +282,90 @@ describe('decideBroadcast', () => {
   });
 
   test('non-markdown and non-incremental changes full-reload', () => {
-    expect(decideBroadcast([{ relativePath: 'x.txt', ext: '.txt', event: 'change', mirrored: true }], 1, true))
+    expect(decideBroadcast([{ relativePath: 'x.txt', ext: '.txt', event: 'change' }], 1, true))
       .toEqual({ kind: 'full-reload' });
     expect(decideBroadcast([md('a.md')], 1, false)).toEqual({ kind: 'full-reload' });
   });
 });
 
-describe('mirrorChanges', () => {
-  let testDir: string;
-  let tempDir: string;
+describe('describeChanges', () => {
+  // describeChanges is pure and synchronous — no fs access at all (see its
+  // doc comment: serve-in-place means there is nothing left to copy), so
+  // these tests use synthetic paths instead of real directories on disk.
+  const root = join(tmpdir(), 'print-md-describe-changes-fixture', 'project');
 
-  beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+  test('describes a changed file relative to the project root', () => {
+    const files = describeChanges([[join(root, 'ch.md'), 'change']], root);
+    expect(files).toEqual([{ relativePath: 'ch.md', ext: '.md', event: 'change' }]);
   });
 
-  afterEach(async () => {
-    await rm(testDir, { recursive: true, force: true });
-    await rm(tempDir, { recursive: true, force: true });
+  test('a deleted file is still described — no fs existence check, the event alone says so', () => {
+    const files = describeChanges([[join(root, 'gone.md'), 'unlink']], root);
+    expect(files).toEqual([{ relativePath: 'gone.md', ext: '.md', event: 'unlink' }]);
   });
 
-  test('copies a changed file into the temp dir and reports its dest', async () => {
-    await writeFile(join(testDir, 'ch.md'), '# hi');
-
-    const dests = await mirrorChanges([[join(testDir, 'ch.md'), 'change']], testDir, tempDir, []);
-
-    expect(dests).toEqual([{ relativePath: 'ch.md', ext: '.md', event: 'change', mirrored: true }]);
-    expect(await Bun.file(join(tempDir, 'ch.md')).text()).toBe('# hi');
+  test('a directory event is described with an empty extension', () => {
+    const files = describeChanges([[join(root, 'themes'), 'addDir']], root);
+    expect(files).toEqual([{ relativePath: 'themes', ext: '', event: 'addDir' }]);
   });
 
-  test('a deleted file appears in the result without being copied', async () => {
-    const dests = await mirrorChanges([[join(testDir, 'gone.md'), 'unlink']], testDir, tempDir, []);
-
-    expect(dests).toEqual([{ relativePath: 'gone.md', ext: '.md', event: 'unlink', mirrored: false }]);
-    expect(await Bun.file(join(tempDir, 'gone.md')).exists()).toBe(false);
+  test('a subdirectory path is described relative to the root, forward-slashed', () => {
+    const files = describeChanges([[join(root, 'sub', 'ch.md'), 'change']], root);
+    expect(files).toEqual([{ relativePath: 'sub/ch.md', ext: '.md', event: 'change' }]);
   });
 
-  test('a directory event is reported but the directory is not copied', async () => {
-    const { mkdir } = await import('fs/promises');
-    await mkdir(join(testDir, 'themes'), { recursive: true });
-
-    const dests = await mirrorChanges([[join(testDir, 'themes'), 'addDir']], testDir, tempDir, []);
-
-    expect(dests).toEqual([{ relativePath: 'themes', ext: '', event: 'addDir', mirrored: false }]);
-    expect(await Bun.file(join(tempDir, 'themes')).exists()).toBe(false);
+  test('a change outside the watch root is dropped', () => {
+    // There is exactly one watch root now (the project directory — the old
+    // external-asset-root concept is gone with `source.assets`), so anything
+    // outside it can't be named relative to the project and must be dropped
+    // rather than broadcast with a meaningless path.
+    const files = describeChanges([['/somewhere/else/x.css', 'change']], root);
+    expect(files).toEqual([]);
   });
 
-  test('a failing copy is skipped without aborting the rest of the mirror', async () => {
-    // Editors that save via temp-file + rename can delete a file between the
-    // stat probe and the copy. Simulate a deterministic copy failure (dest is
-    // a directory → EISDIR): mirrorChanges must resolve, keep the entry, and
-    // still mirror the other changed files in the same window.
-    const { mkdir } = await import('fs/promises');
-    await writeFile(join(testDir, 'broken.md'), '# broken');
-    await writeFile(join(testDir, 'ok.md'), '# ok');
-    await mkdir(join(tempDir, 'broken.md'), { recursive: true });
-
-    const dests = await mirrorChanges(
+  test('describes every change in a multi-file window, in order', () => {
+    const files = describeChanges(
       [
-        [join(testDir, 'broken.md'), 'change'],
-        [join(testDir, 'ok.md'), 'change'],
+        [join(root, 'a.md'), 'change'],
+        [join(root, 'b.css'), 'change'],
       ],
-      testDir,
-      tempDir,
-      []
+      root
     );
-
-    expect(dests).toEqual([
-      { relativePath: 'broken.md', ext: '.md', event: 'change', mirrored: false },
-      { relativePath: 'ok.md', ext: '.md', event: 'change', mirrored: true },
+    expect(files).toEqual([
+      { relativePath: 'a.md', ext: '.md', event: 'change' },
+      { relativePath: 'b.css', ext: '.css', event: 'change' },
     ]);
-    expect(await Bun.file(join(tempDir, 'ok.md')).text()).toBe('# ok');
+  });
+});
+
+describe('isDotPathUnderRoot', () => {
+  const root = '/home/user/project';
+
+  test('ignores a dotfile directly under the root', () => {
+    expect(isDotPathUnderRoot(join(root, '.env'), root)).toBe(true);
   });
 
-  test('a change outside every watch root is dropped', async () => {
-    const outside = await mkdtemp(join(tmpdir(), 'print-md-test-outside-'));
-    try {
-      await writeFile(join(outside, 'x.css'), 'body{}');
-      const dests = await mirrorChanges([[join(outside, 'x.css'), 'change']], testDir, tempDir, []);
-      expect(dests).toEqual([]);
-    } finally {
-      await rm(outside, { recursive: true, force: true });
-    }
+  test('ignores anything under a dot-directory in the project', () => {
+    expect(isDotPathUnderRoot(join(root, '.git', 'config'), root)).toBe(true);
   });
 
-  test('external asset root changes mirror under their dest name', async () => {
-    const shared = await mkdtemp(join(tmpdir(), 'print-md-test-shared-'));
-    try {
-      await writeFile(join(shared, 'core.css'), 'body{margin:0}');
-      const dests = await mirrorChanges(
-        [[join(shared, 'core.css'), 'change']],
-        testDir,
-        tempDir,
-        [{ src: shared, destName: '_shared' }]
-      );
-      expect(dests).toEqual([{ relativePath: '_shared/core.css', ext: '.css', event: 'change', mirrored: true }]);
-      expect(await Bun.file(join(tempDir, '_shared', 'core.css')).text()).toBe('body{margin:0}');
-    } finally {
-      await rm(shared, { recursive: true, force: true });
-    }
+  test('does not ignore an ordinary project file', () => {
+    expect(isDotPathUnderRoot(join(root, 'chapter-01.md'), root)).toBe(false);
+  });
+
+  test('does not ignore the root itself', () => {
+    expect(isDotPathUnderRoot(root, root)).toBe(false);
+  });
+
+  test('does not ignore a project file merely because an ANCESTOR of the root has a dot prefix', () => {
+    // This is the exact chokidar bug isDotPathUnderRoot fixes: chokidar tests
+    // its `ignored` matcher against the WHOLE absolute path, so the old
+    // `/(^|[\/\\])\../ ` regex matched a dot-prefixed ancestor like ".local"
+    // here just as readily as a real project dotfile — silently disabling
+    // the watcher for every file in the project.
+    const dotAncestorRoot = '/home/user/.local/share/print-md/books/mybook';
+    expect(isDotPathUnderRoot(join(dotAncestorRoot, 'chapter-01.md'), dotAncestorRoot)).toBe(false);
+    expect(isDotPathUnderRoot(join(dotAncestorRoot, '.env'), dotAncestorRoot)).toBe(true);
   });
 });
 
@@ -451,6 +432,39 @@ describe('createFileWatcher', () => {
 
     await watcher.close();
   }, 10000);
+
+  test('a project rooted under a dot-ancestor directory still receives change events', async () => {
+    // Regression for the chokidar `ignored`-matcher bug isDotPathUnderRoot
+    // fixes (see its doc comment in file-watcher.ts): the OLD regex tested
+    // the FULL absolute path, so a dot-prefixed ANCESTOR directory (e.g.
+    // `~/.local/share/print-md/books/mybook`) matched the dotfile rule just
+    // like a real project dotfile would — silently disabling the watcher for
+    // every file in the project, with no error anywhere. Root a real project
+    // explicitly under a dot directory and prove an edit still reaches the
+    // watcher and produces a broadcast.
+    const dotAncestorBase = await mkdtemp(join(tmpdir(), 'print-md-test-dotroot-'));
+    const dotProjectDir = join(dotAncestorBase, '.hidden-parent', 'book');
+    await mkdirp(dotProjectDir, { recursive: true });
+    await writeFile(join(dotProjectDir, 'chapter-01.md'), '# Initial');
+    const dotTempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    const dotState = createTestServerState(dotProjectDir, dotTempDir);
+
+    const calls = attachBroadcastRecorder(dotState);
+    const watcher = createFileWatcher(dotState);
+    dotState.currentWatcher = watcher;
+    try {
+      await waitForWatcherReady(watcher);
+
+      await writeFile(join(dotProjectDir, 'chapter-01.md'), '# Updated under a dot ancestor');
+      await waitForRebuild(dotState, calls);
+
+      expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
+    } finally {
+      await watcher.close();
+      await rm(dotAncestorBase, { recursive: true, force: true });
+      await rm(dotTempDir, { recursive: true, force: true });
+    }
+  }, 30000);
 
   /** Mock preview server that records every broadcast. */
   function attachBroadcastRecorder(s: ServerState) {

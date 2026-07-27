@@ -11,7 +11,7 @@ Print-md validation runs automatically during the build pipeline, or you can inv
 print-md validate --input .
 
 # Validate a built PDF (post-build)
-print-md validate --pdf dist/book.pdf
+print-md validate --pdf dist/validation-example/validation-example-pdf.pdf
 
 # Full validated PDF/X pipeline (validates at both phases)
 print-md build . --format pdfx
@@ -43,10 +43,10 @@ Target specific categories or individual checks:
 
 ```bash
 # Only PDF checks
-print-md validate --pdf dist/book.pdf --category pdf
+print-md validate --pdf dist/validation-example/validation-example-pdf.pdf --category pdf
 
 # Only a single check
-print-md validate --pdf dist/book.pdf --only pdf.print.page-size
+print-md validate --pdf dist/validation-example/validation-example-pdf.pdf --only pdf.print.page-size
 
 # Skip specific checks
 print-md validate --input . --skip source.stylelint

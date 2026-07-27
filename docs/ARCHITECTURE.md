@@ -101,12 +101,13 @@ packages/cli/src/
 │   ├── ghostscript.ts      # PDF/X CMYK conversion
 │   ├── chromium.ts         # Chromium executable resolution
 │   ├── pagedjs.ts          # Paged.js HTML patching
-│   ├── assets.ts           # Asset handling
+│   ├── asset-inline.ts     # Inlines CSS/fonts, plans image copies from references
+│   ├── output-paths.ts     # dist/<title-slug>/ + <slug>-<format> artifact naming
 │   ├── logger.ts           # Colored console output
 │   └── markdown/           # Markdown processing
 │       ├── index.ts        # Main renderer (createMarkdownRenderer)
 │       ├── plugins.ts      # Plugin loader
-│       ├── images.ts       # Image path processing
+│       ├── images.ts       # Records every image reference the render emits
 │       └── markdown-it-paged.js  # Inlined paged layout plugin
 ├── schema/
 │   └── manifest.types.ts   # PrintMdManifest + ResolvedConfig
@@ -135,8 +136,10 @@ Pipeline Orchestrator (run.ts — 6 steps)
     │
     ├── 1. CSS Linting (print-safety / postcss)
     ├── 2. Pre-build Validation (source + asset checks)
-    ├── 3. Markdown → HTML Conversion
-    ├── 4. Asset Copying (css, fonts, images)
+    ├── 3. Markdown → HTML Conversion (records every image reference as it renders)
+    ├── 4. Asset Inlining + Copying (lib/asset-inline.ts: stylesheets read and
+    │      inlined, fonts embedded as data: URIs, referenced images copied —
+    │      nothing is copied that the book doesn't actually reference)
     ├── 5. HTML → PDF Build (Chromium + Paged.js)
     └── 6. Post-build Validation (PDF + heuristic checks)
     ↓
@@ -250,39 +253,51 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
 
 #### CSS Cascade
 
-Styles are applied in a carefully designed cascade:
+All CSS ships as ONE inlined `<style data-project-css>` block in `book.html` —
+never a `<link>` — in a fixed cascade order (`markdown/assemble.ts`):
 
-1. **Default Styles** (inlined) - Foundation layer
-   - Bundled CSS from `packages/cli/src/assets/core/`
-   - Can be disabled with `disableDefaultStyles: true`
-
-2. **User Styles** (inlined with resolved @imports)
-   - Two-tier resolution:
-     - Check bundled themes (`packages/cli/src/assets/themes/`)
-     - Fall back to user directory
-   - All `@import` statements resolved and inlined
+1. **Layout primitives** - `PAGED_CSS`, exported by `markdown-it-paged.js`
+   (page/section/spread mechanics). Always present.
+2. **Plugin CSS** - the `css` export of any loaded markdown-it plugin, in
+   plugin order.
+3. **Project CSS** - the manifest's `styles:` list, resolved and inlined last
+   (so project rules win at equal specificity) by `lib/asset-inline.ts`: each
+   file is *read*, not linked — local `@import`s are followed and inlined in
+   place, and every CSS `url()` resolves relative to the stylesheet that
+   references it. Fonts become `data:` URIs; small images inline; images too
+   large to inline **and** outside the project are content-addressed under
+   `assets/`. Because a stylesheet's own location no longer affects the
+   output, a `styles:` entry can point anywhere — a bundled theme
+   (`themes/<id>/theme.css`), a project stylesheet, or a shared design system
+   in a sibling directory (`../design-guide/styles/guide.css`) — with no
+   copying and no destination indirection.
 
 **Design Rationale**:
-- Self-contained HTML output (no external dependencies)
-- Predictable cascade order
-- Supports both bundled themes and custom CSS
+- Self-contained HTML output (no external dependencies, no `<link>` that can 404)
+- Predictable cascade order: layout, then plugins, then the author's own styles
+- A missing stylesheet or font is a build error naming the file, instead of a
+  silent 404 during pagination that Paged.js parsed as CSS and shipped unstyled
 
 ### 3. HTML-to-PDF Build
 
-**Location**: `packages/cli/src/lib/pagination.ts` (`renderHtmlToPdf`, called from `packages/cli/src/lib/build-runner.ts:499`; `commands/build.ts` only calls `runBuild`)
+**Location**: `packages/cli/src/lib/pagination.ts` (`renderHtmlToPdf`, called from `packages/cli/src/lib/build-runner.ts:552`; `commands/build.ts` only calls `runBuild`)
 
 `renderHtmlToPdf` renders HTML to PDF through an injectable `PdfRenderer`. There are no separate format strategy classes; the default renderer drives a pooled puppeteer-core Chromium instance:
 
 ```typescript
 export async function renderHtmlToPdf(
-  inputHtml: string,
+  htmlFile: string,
   outPdf: string,
   renderer: PdfRenderer = puppeteerPdfRenderer,
   captureStaticHtmlTo?: string
 ) {
-  // 1. Serve the staged HTML + assets via a local node:http static file
-  //    server on a random port (pagination.ts's createStaticFileServer)
-  const server = await createStaticFileServer(stageDir, htmlFilename);
+  // 1. Serve outDir DIRECTLY — book.html is already self-contained (CSS and
+  //    fonts inlined by lib/asset-inline.ts) and its images already sit in
+  //    outDir, so there is no second staging copy to build first. The
+  //    pagination engine itself is supplied as an in-memory overlay
+  //    (pagination.ts's createStaticFileServer), never written to disk.
+  const outDir = path.dirname(path.resolve(htmlFile));
+  const server = await createStaticFileServer(outDir, path.basename(htmlFile), overlays);
 
   // 2. Default renderer drives a pooled puppeteer-core Chromium instance
   //    (browser-pool.ts's getBrowser — reused across renders; only the page
@@ -444,16 +459,13 @@ source:
     - intro.md
     - chapter-01.md
     - chapter-02.md
-  assets:                   # Directories to copy as assets
-    - css
-    - fonts
-    - images
 
-# Output configuration
-output:
-  dir: dist
-  filename: book.pdf
-  html: book.html
+# No `output:` block — every build writes to `<manifestDir>/dist/<title-slug>/`,
+# and artifacts are named `<title-slug>-<format>.<ext>` (lib/output-paths.ts).
+# `--out <path>` overrides this per invocation. There is also no `source.assets`
+# list: CSS is read and inlined (fonts embedded as data: URIs), and images are
+# copied because the book's own markdown/CSS references them, not because a
+# directory was declared (lib/asset-inline.ts).
 
 # Page dimensions
 page:

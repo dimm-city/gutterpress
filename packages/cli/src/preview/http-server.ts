@@ -275,9 +275,11 @@ function injectHmrClient(html: string): string {
  * 'no-store' — the preview server binds a NEW port every launch, so any disk
  * caching keys per-origin and accumulates a fresh copy of every asset on each
  * run (this grew a user's HTTP cache to ~1.5 GB and made launch take ~10s as
- * Chromium indexed it). Live preview content changes on every edit anyway, so
- * nothing in `state.tempDir` should ever be written to the HTTP disk cache —
- * every tempDir caller below relies on the 'no-store' default. The one
+ * Chromium indexed it). Live preview content changes on every edit anyway —
+ * `state.tempDir`'s book.html on every rebuild, and any project file served
+ * in place under `state.currentInputPath` whenever the author edits it — so
+ * neither should ever be written to the HTTP disk cache; every caller below
+ * serving one of those two roots relies on the 'no-store' default. The one
  * override is the embedded-assets route just below, which passes a long
  * cache value: those files are content-fixed per binary build (not per
  * project), so caching them across reloads within one preview session is
@@ -358,7 +360,41 @@ function matchesEmbedded(urlPathname: string): boolean {
 }
 
 /**
- * Create and start a preview HTTP+WebSocket server bound to `state.tempDir`.
+ * True if any path segment of `urlPathname` is a dotfile/dot-directory (e.g.
+ * `/.env`, `/.git/config`, `/foo/.hidden/bar`).
+ *
+ * SERVE-IN-PLACE (see the static-file fallback below) means requests are now
+ * resolved directly against the project directory instead of a throwaway
+ * copy of it — the old whole-tree `copyDirectory` this replaces happened to
+ * leak the project's `.env` and an external `.git` into the served temp dir
+ * too, but nobody could reach them without knowing the temp dir's random
+ * name. Serving the REAL project tree removes that obscurity, so this guard
+ * is the one thing standing between a request and the project's actual
+ * secrets. It runs on the decoded path so a percent-encoded segment (e.g.
+ * `%2e%2e`) can't spell a dot past a naive string check; a percent-encoding
+ * that fails to decode is refused rather than guessed at.
+ */
+function isDotfileRequest(urlPathname: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(urlPathname);
+  } catch {
+    return true;
+  }
+  return decoded.split('/').some((segment) => segment.startsWith('.'));
+}
+
+/**
+ * Create and start a preview HTTP+WebSocket server.
+ *
+ * `book.html` — the one file print-md generates — is served from
+ * `state.tempDir`. Everything else a served page can ask for (an `<img src>`
+ * at its authored project-relative path, or any other project file) is
+ * served DIRECTLY from `state.currentInputPath`, the real project directory,
+ * not a copy of it — see lifecycle.ts's `initializePreviewDirectories` for
+ * why. This is what makes preview asset resolution identical to the build's
+ * BY CONSTRUCTION: both resolve a reference against the same real project
+ * tree, so a path that works in one works in the other.
  */
 export async function createPreviewServer(
   state: ServerState,
@@ -461,8 +497,9 @@ export async function createPreviewServer(
       // URL parser does NOT dot-segment-normalize query params, so an
       // unguarded `../../etc/passwd` reaches renderChapterPreviewHtml verbatim
       // and gets read/rendered from outside the project. Confine it to the
-      // served project root the same way the static route confines
-      // `url.pathname` to `state.tempDir` via resolveStaticPath.
+      // served project root the same way the static route's serve-in-place
+      // branch (below) confines `url.pathname` to `state.currentInputPath`
+      // via resolveStaticPath.
       //
       // The guard MUST run on `canonicalChapterId(file)`, not the raw `file`:
       // the actual read sink (assembleBookHtml, via renderChapterPreviewHtml
@@ -502,11 +539,37 @@ export async function createPreviewServer(
       return;
     }
 
-    // 4. Static file fallback.
+    // 4. Static file fallback: book.html vs the project root.
     // Treat bare "/" as book.html — the desktop app (packages/viewer) wraps
     // book.html in its own iframe-based toolbar.
+    //
+    // book.html is the ONE file print-md generates (CSS + fonts are inlined
+    // into it at render time — see asset-inline.ts), so it is the only path
+    // served out of `state.tempDir`. Every other path is served DIRECTLY from
+    // the project directory (`state.currentInputPath`) — an `<img src>` at its
+    // authored project-relative path, or any other project file a served page
+    // asks for. Serving the project in place (instead of copying the whole
+    // tree into tempDir at startup) is what makes preview asset resolution
+    // identical to the build's BY CONSTRUCTION: both read straight off the
+    // real project tree, so nothing can drift between "works in preview" and
+    // "shipped in the PDF".
+    //
+    // Serving the project root for the first time means its OWN dotfiles are
+    // now in the request path too (the old whole-tree copy leaked `.env` and
+    // an external `.git` into a throwaway dir; this reads the real thing), so
+    // `isDotfileRequest` is a hard requirement here, not a nicety — a request
+    // for `/.env` or anything under a dot-directory must 404, never read
+    // through. No-input mode (`state.currentInputPath === ''`) has no project
+    // to serve from either, so every non-book.html path 404s there too.
     const pathname = url.pathname === '/' ? '/book.html' : url.pathname;
-    const absPath = resolveStaticPath(pathname, state.tempDir);
+    const servingProjectRoot = pathname !== '/book.html';
+    if (servingProjectRoot && (!state.currentInputPath || isDotfileRequest(pathname))) {
+      res.writeHead(404);
+      res.end('Not Found');
+      return;
+    }
+    const staticRoot = servingProjectRoot ? state.currentInputPath : state.tempDir;
+    const absPath = resolveStaticPath(pathname, staticRoot);
     if (!absPath) {
       res.writeHead(404);
       res.end('Not Found');

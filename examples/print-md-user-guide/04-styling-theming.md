@@ -79,33 +79,35 @@ The fastest approach is a single CSS file with three sections:
 
 ## Font Loading
 
-### Web fonts (from a URL)
+Download the font into your project and load it with `@font-face` — this is
+the only supported path. A remote `@import url("https://fonts.googleapis...")`
+or a remote `@font-face src: url(...)` is a **build error**, not a warning:
+print-md's print-safety linter rejects any remote URL in CSS, because a font
+fetched from the network at print time is a dependency the build can't
+guarantee is still there (or unchanged) the next time someone builds this
+book — offline, in CI, or a year from now. A downloaded, embedded font is
+guaranteed to be the one that ships.
 
-```css
-@import url("https://fonts.googleapis.com/css2?family=Lato:wght@400;700");
-
-:root {
-  --font-display: "Lato", sans-serif;
-}
-```
-
-> **Print note:** Fonts loaded from URLs require network access during the build. For offline builds or reproducible CI, use local fonts instead.
-
-### Local fonts
-
-Copy font files into your project and load with `@font-face`:
+Put the font file anywhere in your project — there's no required location.
+`url(...)` in `@font-face` resolves relative to the **stylesheet that
+contains it**, not the manifest or project root, and print-md embeds the font
+into `book.html` automatically:
 
 ```css
 @font-face {
   font-family: "MyFont";
-  src: url("../fonts/my-font-regular.woff2") format("woff2"),
-       url("../fonts/my-font-regular.ttf") format("truetype");
+  src: url("fonts/my-font-regular.woff2") format("woff2"),
+       url("fonts/my-font-regular.ttf") format("truetype");
   font-weight: 400;
   font-style: normal;
 }
 
 :root { --font-body: "MyFont", serif; }
 ```
+
+If the path doesn't resolve, the build fails immediately with the missing
+file's name — instead of silently falling back to a system font that still
+passes PDF validation, which is what used to happen.
 
 ## Custom Page Templates
 

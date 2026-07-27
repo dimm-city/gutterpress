@@ -258,13 +258,18 @@ print-md build ./my-book --out final.pdf
 
 ### Font Issues
 
-**Problem:** Fonts don't appear in final PDF
+**Problem:** Build fails with a "Missing font file" error
+
+A `@font-face` `url()` that doesn't resolve is now a build error naming the
+missing file — put the font anywhere in your project and point to it with a
+path relative to the CSS file that loads it.
 
 **Solutions:**
+- Double-check the path in `url(...)` — it's relative to the **stylesheet**,
+  not the manifest or project root
+- Confirm the font file is actually inside your project folder
 - Verify fonts are licensed for embedding
-- Check font file formats (WOFF2, WOFF, TTF)
-- Use web-safe fallback fonts
-- Test font embedding in PDF viewer
+- Check font file formats (WOFF2, WOFF, TTF, OTF)
 
 ### Color Shift
 
@@ -336,16 +341,18 @@ print-md build ./my-book --out final.pdf
 
 ## Version Control
 
-Use Git for version control:
+Use Git for version control. `print-md new` already scaffolds a `.gitignore`
+containing `dist/` (every build's output — HTML, PDF, and PDF/X artifacts all
+land under `dist/<title-slug>/`), so a project it created needs no manual
+`.gitignore` setup. For a project started another way:
 
 ```bash
 # Initialize repository
 git init
 
 # .gitignore
-echo "*.pdf" >> .gitignore
+echo "dist/" >> .gitignore
 echo "node_modules/" >> .gitignore
-echo ".print-md-cache/" >> .gitignore
 
 # Commit source files
 git add .

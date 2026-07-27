@@ -359,7 +359,7 @@ export function decideBroadcast(
  * PROJECT's own files/dirs, regardless of which ancestor directories the
  * project itself happens to live under.
  */
-function isDotPathUnderRoot(candidatePath: string, root: string): boolean {
+export function isDotPathUnderRoot(candidatePath: string, root: string): boolean {
   const normalizedRoot = root.replace(/\\/g, "/").replace(/\/+$/, "");
   const normalizedPath = candidatePath.replace(/\\/g, "/");
   let rel: string;
@@ -428,10 +428,28 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       try {
         info('Regenerating preview...');
 
-        const dests = await mirrorChanges(changes, inputResolved, state.tempDir, externalRoots);
+        const changedFiles = describeChanges(changes, inputResolved);
 
-        // Stylesheet-only burst → hot-swap the re-copied <link>s and stop.
-        const cssPaths = cssHotSwapPaths(dests, changes.length);
+        // Re-render book.html UNCONDITIONALLY, before deciding how to notify
+        // clients. This runs even for a CSS-only burst, which the old
+        // mirror-based version deliberately skipped (it returned right after
+        // the hot-swap broadcast below) — that was correct there because CSS
+        // was a copied file `book.html` merely <link>ed to, so a style edit
+        // never touched book.html itself. Now CSS is INLINED into book.html's
+        // `<style data-project-css>` block at render time (asset-inline.ts),
+        // so skipping the re-render would leave the persisted book.html
+        // holding stale styles until some LATER markdown edit happened to
+        // force one. Re-rendering here keeps a hard reload or a fresh
+        // `/__chapter` splice always current, independent of the fast paths
+        // below (which only affect how the LIVE view is notified).
+        const manifest = await loadManifest(state.currentInputPath);
+        const updatedConfig = resolveConfig({}, manifest);
+        state.config = updatedConfig;
+        await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
+
+        // Stylesheet-only burst → hot-swap the live view immediately (no
+        // reload, no re-pagination); book.html above is already current.
+        const cssPaths = cssHotSwapPaths(changedFiles, changes.length);
         if (cssPaths) {
           for (const p of cssPaths) {
             state.previewServer?.broadcastCssUpdate(p);
@@ -440,14 +458,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
           return;
         }
 
-        // Content change: re-render markdown + regenerate book.html (keeps fresh
-        // loads correct) then update the live view.
-        const manifest = await loadManifest(state.currentInputPath);
-        const updatedConfig = resolveConfig({}, manifest);
-        state.config = updatedConfig;
-        await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
-
-        const decision = decideBroadcast(dests, changes.length, incrementalPreviewEnabled());
+        const decision = decideBroadcast(changedFiles, changes.length, incrementalPreviewEnabled());
         if (decision.kind === 'chapter-splice') {
           state.previewServer?.broadcastContentUpdate(decision.chapterId);
           info(`Chapter updated: ${decision.relativePath}`);
