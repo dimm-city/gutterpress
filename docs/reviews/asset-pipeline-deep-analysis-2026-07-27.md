@@ -890,3 +890,57 @@ Consequences:
 `--out` remains the per-invocation escape for CI staging and one-offs.
 `output.dir`/`output.filename` stay deleted: the collision concern they seemed
 to answer is answered by per-format names and inventory cleaning instead.
+
+### 9.9 Final output model: slug-based convention (supersedes §9.7/§9.8's naming)
+
+Maintainer correction to §9.8: multi-book trees are the norm, not the edge —
+`examples/with-design-guide` alone is three manifests in one tree — and flat
+canonical names (`book.pdf`) make every book's output look identical. The fix
+is a *convention* that encodes book identity, not a config field and not a
+flat name:
+
+- **Output directory:** `<manifestDir>/dist/<slugify(title, "book")>/` — every
+  book owns a subdirectory named by its title slug. Single-book projects get a
+  self-describing `dist/my-book/`; multiple manifests anchored in one place
+  separate automatically; nothing is configurable and nothing needs to be.
+- **Artifact names:** `<slug>-<format>.<ext>` — `dragon-heist-pdf.pdf`,
+  `dragon-heist-pdfx.pdf`. The format lives in the name because the extension
+  cannot distinguish pdf from pdfx, and a uniform rule beats a clever one. The
+  HTML deliverable is the folder itself (a site: `book.html` + images +
+  scripts + `index.html`); the internal `book.html` filename stays canonical —
+  it is load-bearing plumbing (the viewer and `index.html` redirect load it by
+  name), not an artifact name.
+- **`slugify` already exists** (`lib/slug.ts` — NFKD-normalizing, bundle-safe,
+  fallback parameter, already used for project folders and theme ids). The
+  convention introduces zero new machinery.
+
+This supersedes two of my earlier positions, both weaker than the convention:
+
+1. §9.7's "naming belongs at the edges" — backwards. The convention puts the
+   name in the *middle*, and every edge inherits it: the Save dialog's default
+   filename, the publish upload, and a plain file browse all see
+   `dragon-heist-pdfx.pdf` with no derivation logic anywhere. The
+   shop-facing name is right by default, which is the DTRPG workflow answered
+   by convention instead of by a dialog.
+2. §9.8's "multiple books never share a dist" — true only for the layouts I
+   considered. The convention makes the claim unnecessary rather than
+   defending it.
+
+Interactions, all favorable:
+
+- **Inventory cleaning (§9.8) scopes per book subdirectory** — a build can
+  only ever delete recorded files inside `dist/<its-own-slug>/`, making the
+  no-wholesale-delete property structural.
+- **`.gitignore` scaffold stays exactly `dist/`.**
+- **Publish** resolves its artifact as `dist/<slug>/` (html) or
+  `dist/<slug>/<slug>-<format>.pdf` (pdf providers) via the same slug call —
+  still convention, still zero config, and the extras-probe finally names the
+  right file.
+- **`--out`** remains the per-invocation escape hatch, unchanged.
+
+Known edges, accepted: renaming a book's title starts a fresh
+`dist/<new-slug>/` and orphans the old one (the inventory cleaner deliberately
+never crosses book directories — manual removal, predictable); two manifests
+with identical titles anchored in the same directory would share a slug —
+an authoring error to document, not engineer around; an all-symbol title slugs
+to the `"book"` fallback.
