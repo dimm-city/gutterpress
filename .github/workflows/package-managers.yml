@@ -1,0 +1,177 @@
+name: Package manager metadata
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Stable release version whose published SHA256SUMS.txt should update Homebrew, Scoop, and winget metadata"
+        required: true
+        type: string
+
+concurrency:
+  group: package-manager-metadata
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    name: Generate metadata from release checksums
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Validate stable release and branch
+        env:
+          VERSION: ${{ inputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Package-manager metadata only tracks stable versions; got '$VERSION'."
+            exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
+            echo "::error::Dispatch this workflow from the default branch ($DEFAULT_BRANCH), not $GITHUB_REF_NAME."
+            exit 1
+          fi
+
+      - name: Download published checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/print-md-package-managers"
+          gh release download "v$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern SHA256SUMS.txt \
+            --dir "$RUNNER_TEMP/print-md-package-managers"
+
+      - name: Generate Homebrew, Scoop, and winget metadata
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node tools/update-package-managers.mjs \
+            --update "$VERSION" "$RUNNER_TEMP/print-md-package-managers/SHA256SUMS.txt"
+
+      - name: Verify generated metadata
+        run: node tools/update-package-managers.mjs --check
+
+      - name: Upload generated metadata for install tests
+        uses: actions/upload-artifact@v6
+        with:
+          name: package-manager-metadata
+          path: |
+            Formula/
+            bucket/
+            packaging/
+          if-no-files-found: error
+          retention-days: 1
+
+  validate-homebrew:
+    name: Install with Homebrew
+    needs: generate
+    runs-on: macos-15
+    steps:
+      - name: Download generated metadata
+        uses: actions/download-artifact@v6
+        with:
+          name: package-manager-metadata
+          path: .
+
+      # Build a local throwaway Git tap around the generated formula, register
+      # it through `brew tap`, then let real Homebrew download, hash, install,
+      # link, test, and execute the release binary.
+      - name: Install and execute through Homebrew
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          TAP_SOURCE="$RUNNER_TEMP/print-md-homebrew-tap"
+          mkdir -p "$TAP_SOURCE/Formula"
+          cp Formula/print-md.rb "$TAP_SOURCE/Formula/print-md.rb"
+          git -C "$TAP_SOURCE" init --quiet
+          git -C "$TAP_SOURCE" -c user.name=package-test -c user.email=package-test@example.invalid add Formula/print-md.rb
+          git -C "$TAP_SOURCE" -c user.name=package-test -c user.email=package-test@example.invalid commit --quiet -m "test formula"
+          brew tap dimm-city/print-md "$TAP_SOURCE"
+          brew install dimm-city/print-md/print-md
+          brew test dimm-city/print-md/print-md
+          test "$(print-md --version)" = "$VERSION"
+
+  validate-scoop:
+    name: Install with Scoop
+    needs: generate
+    runs-on: windows-latest
+    steps:
+      - name: Download generated metadata
+        uses: actions/download-artifact@v6
+        with:
+          name: package-manager-metadata
+          path: .
+
+      # Pin the official Scoop bootstrap script. Register a throwaway Git
+      # bucket containing the generated manifest, then let real Scoop perform
+      # the download, SHA-256 verification, install, shim, and execution.
+      - name: Install and execute through Scoop
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $PSNativeCommandUseErrorActionPreference = $true
+          $ProgressPreference = "SilentlyContinue"
+          Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          Invoke-RestMethod -Uri "https://raw.githubusercontent.com/ScoopInstaller/Install/b0ee913725139b816f9178163af0aecdba07a7ed/install.ps1" | Invoke-Expression
+
+          $bucketRepo = Join-Path $env:RUNNER_TEMP "print-md-scoop-bucket"
+          New-Item -ItemType Directory -Path (Join-Path $bucketRepo "bucket") -Force | Out-Null
+          Copy-Item "bucket/print-md.json" (Join-Path $bucketRepo "bucket/print-md.json")
+          git -C $bucketRepo init --quiet
+          git -C $bucketRepo -c user.name=package-test -c user.email=package-test@example.invalid add bucket/print-md.json
+          git -C $bucketRepo -c user.name=package-test -c user.email=package-test@example.invalid commit --quiet -m "test manifest"
+          scoop bucket add print-md $bucketRepo
+          scoop install print-md/print-md
+          if ($LASTEXITCODE -ne 0) { throw "scoop install failed with exit code $LASTEXITCODE" }
+          $actual = (& print-md --version | Out-String).Trim()
+          if ($actual -ne $env:VERSION) {
+            throw "Scoop installed print-md $actual; expected $env:VERSION"
+          }
+
+  commit:
+    name: Commit validated metadata
+    needs: [generate, validate-homebrew, validate-scoop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Download validated metadata
+        uses: actions/download-artifact@v6
+        with:
+          name: package-manager-metadata
+          path: .
+
+      - name: Recheck downloaded metadata
+        run: node tools/update-package-managers.mjs --check
+
+      - name: Commit metadata to the default branch
+        env:
+          VERSION: ${{ inputs.version }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A Formula bucket packaging
+          if git diff --cached --quiet; then
+            echo "Package-manager metadata already points at $VERSION."
+            exit 0
+          fi
+          git commit -m "chore: update package managers for $VERSION"
+          git push origin "HEAD:$DEFAULT_BRANCH"

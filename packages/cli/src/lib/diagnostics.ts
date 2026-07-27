@@ -13,10 +13,12 @@
 
 import { platform, arch, release } from "node:os";
 import { resolveChromiumExecutable } from "./chromium";
+import { resolveGhostscript } from "./ghostscript";
 import { findTool, isToolAvailable } from "./tool-probe";
 import { execCapture } from "./exec";
 import { INSTALL_HINTS as CANONICAL_INSTALL_HINTS, fullInstallHint } from "./install-hints";
 import { PACKAGE_VERSION } from "./version";
+import { defaultConfigDir } from "./remote-auth/token-store";
 
 export interface ToolStatus {
   /**
@@ -52,13 +54,15 @@ export interface SystemDiagnostics {
   libVersion: string;
   platform: { os: string; arch: string; release: string; node: string };
   tools: ToolStatus[];
+  /** Existing CLI config/credential directory; reporting it never relocates data. */
+  configDir: string;
   /** Path to the docs page with deeper info. */
   docsUrl: string;
 }
 
 const INSTALL_HINTS: Record<keyof typeof CANONICAL_INSTALL_HINTS, string> = {
   chromium: `${fullInstallHint("chromium")}\nOr set CHROMIUM_PATH=/path/to/chrome`,
-  gs: fullInstallHint("gs"),
+  gs: `${fullInstallHint("gs")}\nOr set GHOSTSCRIPT_PATH=/path/to/ghostscript`,
   qpdf: fullInstallHint("qpdf"),
 };
 
@@ -75,7 +79,6 @@ const TOOLS_TO_PROBE: Array<{
     name: "Ghostscript",
     hintKey: "gs",
     usedBy: [
-      { feature: "PDF /Creator metadata stamp", severity: "optional" },
       { feature: "PDF/X CMYK conversion (build --format pdfx)", severity: "required" },
       { feature: "validate: pdf.print.ink-coverage, asset.image-tac", severity: "optional" },
     ],
@@ -141,8 +144,21 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
     installHint: INSTALL_HINTS.chromium!,
   };
 
+  const ghostscriptPath = await resolveGhostscript();
   const tools: ToolStatus[] = await Promise.all(
     TOOLS_TO_PROBE.map(async (t): Promise<ToolStatus> => {
+      if (t.id === "gs") {
+        return {
+          id: t.id,
+          name: t.name,
+          bin: t.bin,
+          found: !!ghostscriptPath,
+          path: ghostscriptPath,
+          version: ghostscriptPath ? await getVersion(ghostscriptPath) : undefined,
+          usedBy: t.usedBy,
+          installHint: INSTALL_HINTS[t.hintKey]!,
+        };
+      }
       const [path, available] = await Promise.all([
         findTool(t.bin),
         isToolAvailable(t.bin),
@@ -171,6 +187,7 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
       node: process.versions.node,
     },
     tools: [chromium, ...tools],
+    configDir: defaultConfigDir(),
     docsUrl: "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md",
   };
 }

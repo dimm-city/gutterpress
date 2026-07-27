@@ -11,7 +11,7 @@
 import { getHostServices } from './host-services';
 
 export interface AppHooks {
-  /** Set the renderer dirty state for the close gate. */
+  /** Record the renderer's best-effort dirty-state hint (never a close safety gate). */
   setRendererDirty: (isDirty: boolean) => void;
   /** Send a push event to the main window's renderer. */
   sendToRenderer: (channel: string, ...args: unknown[]) => void;

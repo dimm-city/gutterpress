@@ -69,6 +69,13 @@ describe("manifest-doc", () => {
       expect(file).toBe(join(dir, "manifest.yml"));
       expect(doc.get("title")).toBe("Y");
     });
+
+    test("propagates manifest read errors instead of treating them as an absent file", async () => {
+      const dir = projectDir();
+      mkdirSync(join(dir, "manifest.yaml"));
+
+      await expect(loadManifestDoc(dir)).rejects.toThrow();
+    });
   });
 
   describe("ensureSeq", () => {

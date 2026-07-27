@@ -17,6 +17,7 @@ function makeBridge() {
     apiVersion: 1,
     updater: { getStatus: rec("updater.getStatus", Promise.resolve({})) },
     onNativeThemeUpdated: rec("onNativeThemeUpdated", () => {}),
+    onOpenMarkdownFile: rec("onOpenMarkdownFile", () => {}),
     startPreview: rec("startPreview", Promise.resolve({ url: "x" })),
     stopPreview: rec("stopPreview", Promise.resolve({ stopped: true })),
     cancelExport: rec("cancelExport", Promise.resolve({ canceled: true })),
@@ -149,6 +150,17 @@ test("ElectronAdapter delegates onNativeThemeUpdated 1:1 to the bridge", async (
   expect(methods).toContain("onNativeThemeUpdated");
 });
 
+test("ElectronAdapter delegates Markdown file-launch events 1:1 to the bridge", () => {
+  const { bridge, calls } = makeBridge();
+  // @ts-expect-error test global
+  globalThis.window = { electron: bridge };
+  const p = new ElectronAdapter();
+
+  const unsub = p.onOpenMarkdownFile(() => {});
+  expect(typeof unsub).toBe("function");
+  expect(calls.map((c) => c.method)).toContain("onOpenMarkdownFile");
+});
+
 test("WebAdapter.onNativeThemeUpdated subscribes to matchMedia changes", async () => {
   const listeners: Array<(e: { matches: boolean }) => void> = [];
   // @ts-expect-error test global
@@ -207,6 +219,7 @@ test("WebAdapter: primitives throw, host methods reject, subscriptions are no-op
   // Subscriptions must return a callable unsubscribe (the app stores it).
   expect(typeof p.onBuildProgress(() => {})).toBe("function");
   expect(typeof p.onUrlPreviewBlocked(() => {})).toBe("function");
+  expect(typeof p.onOpenMarkdownFile(() => {})).toBe("function");
   // #44 unsaved-changes surface subscriptions are no-ops on web.
   expect(typeof p.onFlushBeforeClose(() => {})).toBe("function");
   expect(typeof p.onFolderChanged(() => {})).toBe("function");
@@ -593,4 +606,3 @@ test("WebAdapter.build({format:'html'}) throws when the project has no markdown 
     globalThis.window = undefined;
   }
 });
-

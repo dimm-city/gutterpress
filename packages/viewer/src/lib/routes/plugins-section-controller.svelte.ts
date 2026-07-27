@@ -6,7 +6,7 @@
  *
  * Centralises the configured `plugins` list, the per-ref `validation` map,
  * the curated `recommended` built-ins, the validating/busy/error flags, and
- * the advanced add-by-name draft (`npmName`).
+ * the advanced install-by-name draft (`npmName`).
  *
  * Single-owner discipline mirrors `DesignSectionController`
  * (`design-section-controller.svelte.ts`): the component reads the public
@@ -32,7 +32,11 @@ export interface PluginsSectionDeps {
   recommended: () => Promise<RecommendedPlugin[]>;
   validate: (projectDir: string) => Promise<PluginValidationResult[]>;
   setEnabled: (projectDir: string, ref: string, enabled: boolean) => Promise<unknown>;
-  addNpm: (projectDir: string, packageName: string) => Promise<ProjectPluginEntry>;
+  addNpm: (
+    projectDir: string,
+    packageName: string,
+    exportName?: string,
+  ) => Promise<ProjectPluginEntry | null>;
   addLocal: (projectDir: string) => Promise<ProjectPluginEntry | null>;
 }
 
@@ -43,9 +47,12 @@ export class PluginsSectionController {
   recommended = $state<RecommendedPlugin[]>([]);
   pluginValidating = $state(false);
   pluginError = $state<string | null>(null);
+  pluginNotice = $state<string | null>(null);
   pluginBusyRef = $state<string | null>(null);
-  /** Advanced "add by npm name" draft — bound directly from the template. */
+  /** "Install npm plugin" package spec draft — bound directly from the template. */
   npmName = $state("");
+  /** Optional named module export for packages without a default plugin export. */
+  npmExport = $state("");
 
   private readonly deps: PluginsSectionDeps;
 
@@ -105,16 +112,21 @@ export class PluginsSectionController {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.pluginBusyRef) return;
     const name = this.npmName.trim();
+    const exportName = this.npmExport.trim() || undefined;
     if (!name) {
-      this.pluginError = "Enter an npm package name (e.g. markdown-it-footnote).";
+      this.pluginError = "Enter an npm package name (e.g. markdown-it-highlightjs).";
       return;
     }
     this.pluginError = null;
+    this.pluginNotice = null;
     this.pluginBusyRef = name;
     try {
-      await this.deps.addNpm(projectDir, name);
+      const added = await this.deps.addNpm(projectDir, name, exportName);
+      if (!added) return;
       this.npmName = "";
+      this.npmExport = "";
       await this.loadPlugins();
+      if (added.warnings?.length) this.pluginNotice = added.warnings.join(" ");
     } catch (e) {
       this.pluginError = e instanceof Error ? e.message : String(e);
     } finally {
@@ -126,6 +138,7 @@ export class PluginsSectionController {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.pluginBusyRef) return;
     this.pluginError = null;
+    this.pluginNotice = null;
     this.pluginBusyRef = "__local__";
     try {
       const added = await this.deps.addLocal(projectDir);
@@ -141,10 +154,11 @@ export class PluginsSectionController {
     const projectDir = this.deps.projectDir();
     if (!projectDir || this.pluginBusyRef) return;
     this.pluginError = null;
+    this.pluginNotice = null;
     this.pluginBusyRef = rec.name;
     try {
-      await this.deps.addNpm(projectDir, rec.name);
-      await this.loadPlugins();
+      const added = await this.deps.addNpm(projectDir, rec.name);
+      if (added) await this.loadPlugins();
     } catch (e) {
       this.pluginError = e instanceof Error ? e.message : String(e);
     } finally {

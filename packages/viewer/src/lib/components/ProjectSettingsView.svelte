@@ -145,7 +145,7 @@
     recommended: () => api.plugin.recommended(),
     validate: (dir) => api.plugin.validate(dir),
     setEnabled: (dir, ref, enabled) => api.plugin.setEnabled(dir, ref, enabled),
-    addNpm: (dir, name) => api.plugin.addNpm(dir, name),
+    addNpm: (dir, name, exportName) => api.plugin.addNpm(dir, name, exportName),
     addLocal: (dir) => api.plugin.addLocal(dir),
   });
 

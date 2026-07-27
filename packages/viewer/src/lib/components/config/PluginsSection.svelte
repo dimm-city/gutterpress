@@ -1,14 +1,12 @@
 <script lang="ts">
   /**
    * Plugins section of ProjectConfigPanel — the configured list + toggle +
-   * validate, the recommended built-in features, and the advanced
-   * add-by-name/local-path controls. All state and `api.plugin.*` calls live
+   * validate, the recommended built-in features, and the npm/local install
+   * controls. All state and `api.plugin.*` calls live
    * in `PluginsSectionController` (passed as the single `controller` prop, per
    * the design-controller pattern — see M14); this child renders the
    * controller's rune fields and calls its intent methods. `pluginStatus` is a
-   * pure helper. `copiedRef` (copy-to-clipboard feedback) is purely local,
-   * ephemeral UI state with no host coupling — it stays in this component
-   * rather than the controller.
+   * pure helper.
    */
   import Icon from "$lib/components/Icon.svelte";
   import { pluginStatus, pluginLabel } from "./config-helpers";
@@ -18,18 +16,6 @@
 
   function isPluginConfigured(name: string): boolean {
     return controller.plugins.some((p) => p.ref === name);
-  }
-
-  // Copy-to-clipboard feedback for the "Not installed" install command (M33).
-  // Keyed by ref so copying one row's command doesn't flash "Copied!" on another.
-  let copiedRef = $state<string | null>(null);
-  function copyInstallCommand(ref: string, command: string): void {
-    navigator.clipboard.writeText(command).then(() => {
-      copiedRef = ref;
-      setTimeout(() => {
-        if (copiedRef === ref) copiedRef = null;
-      }, 1500);
-    }).catch(() => {});
   }
 </script>
 
@@ -43,6 +29,9 @@
   {#if controller.pluginError}
     <p class="error" role="alert">{controller.pluginError}</p>
   {/if}
+  {#if controller.pluginNotice}
+    <p class="notice" role="status">{controller.pluginNotice}</p>
+  {/if}
   {#if controller.plugins.length === 0}
     <p class="muted">No plugins configured yet. Pick a feature below, or add one via Advanced.</p>
   {:else}
@@ -55,7 +44,7 @@
             <span class="plugin-label">{label}</span>
             {#if label !== entry.ref}<span class="plugin-name">{entry.ref}</span>{/if}
             <span class="plugin-meta">
-              <span class="kind">{entry.kind === "local" ? "local file" : "npm"}</span>
+              <span class="kind">{entry.kind === "local" ? "local file" : entry.version ? `npm ${entry.version}` : "npm"}</span>
               <span class={`status ${st.kind}`} class:stale-status={st.kind === "stale"}>
                 {#if st.kind === "ok"}<Icon name="circle-check" size={12} />
                 {:else if st.kind === "error"}<Icon name="triangle-alert" size={12} />
@@ -65,17 +54,6 @@
               </span>
             </span>
             {#if st.detail}<p class="status-detail">{st.detail}</p>{/if}
-            {#if st.installCommand}
-              <div class="install-row">
-                <code class="install-cmd">{st.installCommand}</code>
-                <button type="button" class="ghost small" onclick={() => copyInstallCommand(entry.ref, st.installCommand ?? "")}>
-                  {copiedRef === entry.ref ? "Copied!" : "Copy"}
-                </button>
-              </div>
-              {#if st.guideHref}
-                <a class="guide-link" href={st.guideHref} target="_blank" rel="noopener noreferrer">How to install a plugin <Icon name="external-link" size={11} /></a>
-              {/if}
-            {/if}
             {#if st.raw}
               <details class="status-raw"><summary>Show details</summary><pre>{st.raw}</pre></details>
             {/if}
@@ -109,15 +87,18 @@
 
   <!-- Always-visible section (project settings has no collapsible sections). -->
   <div class="advanced">
-    <h4 class="subhead">Add another plugin</h4>
+    <h4 class="subhead">Install npm plugin</h4>
     <div class="add-row">
-      <input class="input" type="text" placeholder="npm package name (e.g. markdown-it-footnote)" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpmPlugin(); }} />
-      <button class="primary small app-btn-primary" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>Add</button>
+      <input class="input" type="text" aria-label="npm package name or exact version" placeholder="markdown-it-highlightjs or markdown-it-highlightjs@4.3.0" bind:value={controller.npmName} onkeydown={(e) => { if (e.key === "Enter") controller.addNpmPlugin(); }} />
+      <input class="input export-input" type="text" aria-label="named plugin export (optional)" placeholder="export (optional)" bind:value={controller.npmExport} onkeydown={(e) => { if (e.key === "Enter") controller.addNpmPlugin(); }} />
+      <button class="primary small app-btn-primary" onclick={controller.addNpmPlugin} disabled={controller.pluginBusyRef !== null}>{controller.pluginBusyRef === controller.npmName.trim() ? "Installing…" : "Install"}</button>
     </div>
+    <p class="hint">Downloads from npm, verifies the registry hash, stores the package under <code>plugins/npm</code>, and pins the exact version in the manifest. For packages such as <code>markdown-it-emoji</code> that expose named plugin functions, enter the export name (for example <code>full</code>). Package install scripts are never run.</p>
+    <p class="hint">Only install packages you trust. Plugins and their dependencies run with the app's full filesystem and network privileges.</p>
     <button class="ghost small full" onclick={controller.addLocalPlugin} disabled={controller.pluginBusyRef !== null}>
       <Icon name="folder" size={14} /> Import from local file or folder…
     </button>
-    <p class="hint">A plugin added by name must already be installed in your project. Local files are referenced directly.</p>
+    <p class="hint">Local files and folders are copied into this project's <code>plugins</code> folder.</p>
   </div>
 </section>
 
@@ -142,6 +123,8 @@
   .toggle:disabled { opacity: 0.5; cursor: progress; }
 
   .advanced { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+  .export-input { max-width: 130px; }
+  .notice { color: var(--app-warning-text); font-size: 12px; margin: 4px 0; }
   button.full { width: 100%; justify-content: center; }
 
   /* Friendly label (M33) — a new class, own-scoped, so it doesn't have to
@@ -154,14 +137,4 @@
      in flight. A new class (not an override of `.status.error`) so it reads
      as its own state rather than reusing the error color. */
   .stale-status { color: var(--app-warning-text); }
-  .install-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
-  .install-cmd {
-    font-size: 11px;
-    padding: 2px 6px;
-    background: var(--app-control-bg);
-    border: 1px solid var(--app-border);
-    border-radius: 4px;
-    color: var(--app-text);
-  }
-  .guide-link { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; margin-top: 2px; }
 </style>

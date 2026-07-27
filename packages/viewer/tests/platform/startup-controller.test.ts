@@ -4,6 +4,7 @@ import {
   type StartupControllerDeps,
   type StartupPrefs,
 } from "../../src/lib/routes/startup-controller.svelte";
+import type { LastFlushFailure } from "../../src/lib/platform/contract";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -28,6 +29,8 @@ interface Harness {
     isSomethingOpen: Spy<[]> & { value: boolean };
     revealWindow: Spy<[]>;
     getViewerPrefs: Spy<[]> & { impl: () => Promise<StartupPrefs> };
+    showLastFlushFailure: Spy<[LastFlushFailure]> & { value: boolean };
+    acknowledgeFlushFailure: Spy<[string]>;
     isLeftPanelPrefsLoaded: Spy<[]> & { value: boolean };
     applyLeftPanelPrefs: Spy<[StartupPrefs["leftPanel"]]>;
     setLandingShowPref: Spy<[boolean]>;
@@ -36,7 +39,7 @@ interface Harness {
     setLandingContinueDir: Spy<[string | null]>;
     setBusy: Spy<[boolean, string]>;
     getViewerProjectState: Spy<[string]>;
-    startFolderPreview: Spy<[string, string, unknown]> & { impl?: () => Promise<void> };
+    startFolderPreview: Spy<[string, string, unknown]> & { impl?: () => Promise<boolean> };
   };
 }
 
@@ -48,6 +51,8 @@ function make(): Harness {
     impl: async (): Promise<StartupPrefs> => ({}),
   });
   const isLeftPanelPrefsLoaded = Object.assign(spy<[]>(), { value: false });
+  const showLastFlushFailure = Object.assign(spy<[LastFlushFailure]>(), { value: true });
+  const acknowledgeFlushFailure = spy<[string]>();
   const applyLeftPanelPrefs = spy<[StartupPrefs["leftPanel"]]>();
   const setLandingShowPref = spy<[boolean]>();
   const setLandingReady = spy<[boolean]>();
@@ -56,7 +61,7 @@ function make(): Harness {
   const setBusy = spy<[boolean, string]>();
   const getViewerProjectState = spy<[string]>();
   const startFolderPreview = Object.assign(spy<[string, string, unknown]>(), {
-    impl: async () => {},
+    impl: async () => true,
   });
 
   const deps: StartupControllerDeps = {
@@ -75,6 +80,14 @@ function make(): Harness {
     getViewerPrefs: () => {
       getViewerPrefs();
       return getViewerPrefs.impl();
+    },
+    showLastFlushFailure: (marker) => {
+      showLastFlushFailure(marker);
+      return showLastFlushFailure.value;
+    },
+    acknowledgeFlushFailure: (failedAt) => {
+      acknowledgeFlushFailure(failedAt);
+      return Promise.resolve();
     },
     isLeftPanelPrefsLoaded: () => {
       isLeftPanelPrefsLoaded();
@@ -103,6 +116,8 @@ function make(): Harness {
       isWorkspaceEngaged,
       isSomethingOpen,
       getViewerPrefs,
+      showLastFlushFailure,
+      acknowledgeFlushFailure,
       isLeftPanelPrefsLoaded,
       applyLeftPanelPrefs,
       setLandingShowPref,
@@ -185,6 +200,33 @@ test("does not re-apply left-panel prefs when already loaded", async () => {
   expect(deps.applyLeftPanelPrefs.calls.length).toBe(0);
 });
 
+test("surfaces and acknowledges the previous session's flush marker", async () => {
+  const { ctrl, deps } = make();
+  const marker = {
+    projectDir: "/books/field-guide",
+    failedAt: "2026-07-26T14:30:00.000Z",
+  };
+  deps.getViewerPrefs.impl = async () => ({ lastFlushFailed: marker });
+
+  await ctrl.run();
+  await Promise.resolve();
+
+  expect(deps.showLastFlushFailure.calls).toEqual([[marker]]);
+  expect(deps.acknowledgeFlushFailure.calls).toEqual([[marker.failedAt]]);
+});
+
+test("keeps the marker when no launch notice surface is ready", async () => {
+  const { ctrl, deps } = make();
+  const marker = { failedAt: "2026-07-26T14:30:00.000Z" };
+  deps.getViewerPrefs.impl = async () => ({ lastFlushFailed: marker });
+  deps.showLastFlushFailure.value = false;
+
+  await ctrl.run();
+
+  expect(deps.showLastFlushFailure.calls).toEqual([[marker]]);
+  expect(deps.acknowledgeFlushFailure.calls).toHaveLength(0);
+});
+
 // ── No last project ─────────────────────────────────────────────────────────
 
 test("no last project dir -> landing shown (default pref), no reopen attempted", async () => {
@@ -220,6 +262,23 @@ test("landing disabled with a last project: reopens without holding the landing"
   await ctrl.run();
   expect(deps.setLandingHold.calls.length).toBe(0);
   expect(deps.startFolderPreview.calls.length).toBe(1);
+});
+
+test("file-association startup initializes preferences without reopening the last project", async () => {
+  const { ctrl, deps } = make();
+  deps.getViewerPrefs.impl = async () => ({
+    lastProjectDir: "/previous",
+    showLandingAtStartup: false,
+    leftPanel: { open: true, activeTab: "files" },
+  });
+
+  await ctrl.run(false);
+
+  expect(deps.applyLeftPanelPrefs.calls).toEqual([[
+    { open: true, activeTab: "files" },
+  ]]);
+  expect(deps.setLandingReady.calls).toEqual([[true]]);
+  expect(deps.startFolderPreview.calls).toEqual([]);
 });
 
 // ── Prefs read failure ──────────────────────────────────────────────────────

@@ -60,6 +60,8 @@ export interface ProjectClassificationBook {
 export interface ProjectClassification {
   source: ProjectSource;
   capabilities: ProjectCapabilities;
+  /** Whether the folder passed to classification contains a recognized manifest. */
+  hasManifest: boolean;
   /** Repo root, present when `source.type === "local-git-folder"` (C1). */
   repoRoot?: string;
   /** Sibling books inside `repoRoot`, sorted by `subPath` (C1). */
@@ -128,6 +130,12 @@ export interface ProjectPluginEntry {
   kind: PluginKind;
   /** Per-project enable flag (manifest `enabled: false` = disabled). */
   enabled: boolean;
+  /** Exact project-local npm version; absent for local, built-in, and legacy entries. */
+  version?: string;
+  /** Named module export selected as the plugin function. */
+  export?: string;
+  /** Non-fatal notices emitted while installing this plugin. */
+  warnings?: string[];
 }
 
 /** Result of load-testing one configured plugin. */
@@ -141,7 +149,7 @@ export interface PluginValidationResult {
   error?: string;
 }
 
-/** A curated, informational plugin recommendation (NOT auto-installed). */
+/** A curated plugin recommendation bundled with print-md. */
 export interface RecommendedPlugin {
   name: string;
   /** Short plain-language feature name (the row title; `name` is demoted). */
@@ -362,6 +370,7 @@ export interface DoctorDiagnostics {
   chromeVersion: string;
   platform: { os: string; arch: string; release: string; node: string };
   tools: DoctorToolStatus[];
+  configDir: string;
   docsUrl: string;
 }
 

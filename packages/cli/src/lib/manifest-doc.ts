@@ -13,17 +13,19 @@
  * no computed dynamic imports, no bundlers.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { parseDocument, isSeq, YAMLSeq } from "yaml";
 import type { Document } from "yaml";
+import { MANIFEST_FILENAMES } from "./manifest";
 
 /** Resolve `manifest.yaml`/`.yml` inside a project dir; prefers an existing file. */
 export function resolveManifestPath(projectDir: string): string {
-  const yaml = path.join(projectDir, "manifest.yaml");
-  const yml = path.join(projectDir, "manifest.yml");
-  if (!existsSync(yaml) && existsSync(yml)) return yml;
-  return yaml;
+  const existing = MANIFEST_FILENAMES.find((name) =>
+    existsSync(path.join(projectDir, name))
+  );
+  return path.join(projectDir, existing ?? MANIFEST_FILENAMES[0]);
 }
 
 /** Load the manifest as a yaml Document (empty doc when absent). */
@@ -34,19 +36,37 @@ export async function loadManifestDoc(
   let text = "";
   try {
     text = await readFile(file, "utf8");
-  } catch {
-    text = "";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   return { doc: parseDocument(text), file };
 }
 
-/** Write the doc back, creating the project dir if needed. */
+/** Atomically write the doc back, creating the project dir if needed. */
 export async function writeManifestDoc(
   file: string,
   doc: Document.Parsed,
 ): Promise<void> {
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, doc.toString(), "utf8");
+  const dir = path.dirname(file);
+  await mkdir(dir, { recursive: true });
+  const temporary = path.join(dir, `.${path.basename(file)}.tmp-${process.pid}-${randomUUID()}`);
+  try {
+    const handle = await open(temporary, "wx", 0o666);
+    try {
+      await handle.writeFile(doc.toString(), "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(temporary, file);
+    const directory = await open(dir, "r").catch(() => null);
+    if (directory) {
+      await directory.sync().catch(() => {});
+      await directory.close();
+    }
+  } finally {
+    await rm(temporary, { force: true });
+  }
 }
 
 /** The named sequence node, creating (and attaching) an empty one if missing. */

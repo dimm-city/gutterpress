@@ -178,13 +178,11 @@ export function escapeExecArgument(argument: string): string {
 /**
  * The exact desktop entry we install.
  *
- * Deliberately carries NO `%f`/`%F`/`%u`/`%U` field code, no `MimeType`, and
- * no custom scheme: the viewer does not process startup argv (its
- * `second-instance` handler only focuses the existing window), so advertising
- * file or URL handling here would register associations that silently do
- * nothing. `StartupWMClass` matches package.json's `desktopName`-derived
- * application id so KDE/GNOME group the running window under this launcher on
- * both X11 and Wayland.
+ * Advertises one local Markdown file (`%f`, `text/markdown`) now that the
+ * viewer resolves initial and second-instance argv to a manifest-bearing
+ * print-md project. `StartupWMClass` matches package.json's `desktopName`-
+ * derived application id so KDE/GNOME group the running window under this
+ * launcher on both X11 and Wayland.
  */
 export function renderDesktopEntry(appImagePath: string): string {
   return [
@@ -193,11 +191,12 @@ export function renderDesktopEntry(appImagePath: string): string {
     "Type=Application",
     "Name=print-md-viewer",
     "Comment=Write books in Markdown and export print-ready PDFs",
-    `Exec=${escapeExecArgument(appImagePath)}`,
+    `Exec=${escapeExecArgument(appImagePath)} %f`,
     `TryExec=${escapeValue(appImagePath)}`,
     `Icon=${APP_ID}`,
     "Terminal=false",
     "Categories=Office;Publishing;",
+    "MimeType=text/markdown;",
     "StartupNotify=true",
     `StartupWMClass=${APP_ID}`,
     "",

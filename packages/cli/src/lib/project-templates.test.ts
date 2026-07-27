@@ -92,6 +92,54 @@ test("saveProjectAsTemplate captures an existing project as a reusable template"
   }
 });
 
+test("custom templates preserve and scaffold the recognized manifest.yml name", async () => {
+  const project = await tmp("pmd-template-yml-source-");
+  const templatesRoot = await tmp("pmd-template-yml-saved-");
+  const parent = await tmp("pmd-template-yml-output-");
+  try {
+    await writeFile(
+      path.join(project, "manifest.yml"),
+      [
+        "title: Original",
+        "authors:",
+        "  - Writer",
+        "source:",
+        "  files:",
+        "    - chapter.md",
+        "output:",
+        "  filename: original.pdf",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeFile(path.join(project, "chapter.md"), "# {{TITLE}}\n", "utf8");
+
+    const saved = await saveProjectAsTemplate({
+      projectDir: project,
+      name: "Yml Template",
+      templatesRoot,
+    });
+    expect(await readFile(path.join(saved.dir!, "manifest.yml"), "utf8")).toContain(
+      "{{TITLE}}",
+    );
+
+    const created = await scaffoldProject({
+      name: "Created From Yml",
+      parentDir: parent,
+      templateDir: saved.dir,
+      versionHistory: "none",
+    });
+    expect(created.manifestPath).toBe(path.join(created.projectDir, "manifest.yml"));
+    expect(await readFile(created.manifestPath, "utf8")).toContain(
+      'title: "Created From Yml"',
+    );
+  } finally {
+    await rm(project, { recursive: true, force: true });
+    await rm(templatesRoot, { recursive: true, force: true });
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
 test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source list item", async () => {
   // Regression: a manifest that lists `source.files` BEFORE `authors` must not
   // get its first source filename rewritten to {{AUTHOR}} (the re-tokeniser is

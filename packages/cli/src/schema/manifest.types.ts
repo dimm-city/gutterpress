@@ -3,7 +3,10 @@ export type CheckSeverity = "error" | "warning" | "info";
 export interface PluginConfig {
   path?: string;
   name?: string;
+  /** Exact project-local npm version. Legacy ranges remain informational. */
   version?: string;
+  /** Named module export to use when the package has no default plugin export. */
+  export?: string;
   priority?: number;
   options?: Record<string, unknown>;
   /**
@@ -146,6 +149,10 @@ export interface PrintMdManifest {
 export interface ResolvedPluginConfig {
   path?: string;
   name?: string;
+  /** Exact version for a project-local vendored npm plugin. */
+  version?: string;
+  /** Named module export selected as the plugin function. */
+  export?: string;
   priority: number;
   options: Record<string, unknown>;
 }

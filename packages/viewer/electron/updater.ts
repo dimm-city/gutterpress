@@ -1,5 +1,5 @@
 // ──────────────────────────────────────────────────────────────────────────
-// updater.ts — full-app auto-update via electron-updater (main process only)
+// updater.ts — desktop update checks and installs (main process only)
 //
 // Replaces the former custom web-UI hot-swap engine (signed zip manifests,
 // version pointers, health gate + rollback watchdog). Updates now ship as
@@ -8,37 +8,46 @@
 // electron-builder.yml declares a `publish` provider), downloads the new
 // installer on demand, and installs it on restart.
 //
-// Platform support: Windows (NSIS) and Linux AppImage (AppImageUpdater
+// Install support: Windows (NSIS) and Linux AppImage (AppImageUpdater
 // requires the app to actually be running from an .appimage — a Linux
-// install that isn't packaged as an AppImage is treated as unsupported, same
-// as macOS, rather than letting AppImageUpdater throw). macOS auto-update
-// requires a code-signed app (Squirrel.Mac refuses unsigned bundles), so it
-// is disabled there until we ship signed/notarized builds — mac users update
-// by downloading the DMG from GitHub Releases.
+// install that isn't packaged as an AppImage is treated as unsupported rather
+// than letting AppImageUpdater throw). macOS installs remain deliberately
+// disabled because Squirrel.Mac refuses unsigned bundles. Packaged macOS builds
+// instead perform a signing-free check against GitHub's latest release and
+// open that release page when the author chooses to download it.
 //
-// The update stream is an explicit user preference: settings.updates.channel
-// is "stable" (default), "beta", or "alpha". Before every check, main.ts's
-// injected settings reader is consulted and the choice is mapped onto
-// electron-updater's fields (see applyChannel below). Channels are inclusive
-// downward — beta users also receive stable releases, alpha users receive
-// everything — which matches electron-updater's hardcoded channel rules
+// On installable platforms, the update stream is an explicit user preference:
+// settings.updates.channel is "stable" (default), "beta", or "alpha". Before
+// each electron-updater check, main.ts's injected settings reader is consulted
+// and the choice is mapped onto electron-updater's fields (see applyChannel
+// below). Channels are inclusive downward — beta users also receive stable
+// releases, alpha users receive everything — which matches its hardcoded rules
 // (GitHubProvider.getLatestVersion): alpha/beta are its only recognized
 // prerelease channels, so release tags MUST use -alpha.N / -beta.N suffixes
 // (the release workflow enforces this; an "rc" tag would be a custom channel
-// that strands its users on that channel forever).
+// that strands its users on that channel forever). The signing-free macOS path
+// applies the same channel rules to GitHub's releases API.
 //
 // Downloads are user-consented: autoDownload is OFF. A check that finds an
-// update stops at phase "available"; the renderer shows a Download
-// affordance, and only an explicit download() call fetches the installer
-// (phase "downloading" -> "staged"). This avoids silently pulling 100+MB on
-// a metered connection. autoInstallOnAppQuit stays on so a staged update the
-// user never clicked "Restart & update" for still applies on quit.
+// update stops at phase "available"; only an explicit download() call fetches
+// the installer (phase "downloading" -> "staged") or, on macOS, opens the
+// release page. This avoids silently pulling 100+MB on a metered connection.
+// autoInstallOnAppQuit stays on for installable platforms so a staged update
+// the user never clicked "Restart & update" for still applies on quit.
 // ──────────────────────────────────────────────────────────────────────────
 
-import { app } from "electron";
+import { app, autoUpdater as nativeAutoUpdater } from "electron";
 // electron-updater is CJS; default-import + destructure for ESM interop.
 import electronUpdater from "electron-updater";
-import type { UpdateChannel, UpdaterStatus, UpdaterEventPayload } from "./bridge-types";
+import semverClean from "semver/functions/clean.js";
+import semverGt from "semver/functions/gt.js";
+import semverPrerelease from "semver/functions/prerelease.js";
+import type {
+  UpdateChannel,
+  UpdaterAvailableAction,
+  UpdaterStatus,
+  UpdaterEventPayload,
+} from "./bridge-types";
 
 const { autoUpdater: realAutoUpdater } = electronUpdater;
 
@@ -60,6 +69,7 @@ export interface AutoUpdaterLike {
   on(event: "update-not-available", listener: () => void): unknown;
   on(event: "update-downloaded", listener: (info: { version: string }) => void): unknown;
   on(event: "error", listener: (err: unknown) => void): unknown;
+  removeListener(event: "error", listener: (err: unknown) => void): unknown;
   checkForUpdates(): Promise<{ downloadPromise?: Promise<unknown> } | null>;
   downloadUpdate(): Promise<unknown>;
   quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
@@ -70,10 +80,34 @@ export interface UpdaterDeps {
   autoUpdater?: AutoUpdaterLike;
   /** Read at check time so a settings change takes effect without a restart. */
   readUpdateChannel?: () => UpdateChannel | Promise<UpdateChannel>;
+  /** Test seam; production always uses the process platform. */
+  platform?: NodeJS.Platform;
+  /** Test seam for the unauthenticated GitHub latest-release request. */
+  fetch?: (
+    url: string,
+    init: { headers: Record<string, string>; signal: AbortSignal },
+  ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+  /** Opens the manual macOS download page in the system browser. */
+  openExternal?: (url: string) => Promise<unknown>;
+  /** Live-renderer safety gate run immediately before releasing the lock/installing. */
+  prepareToInstall?: () => Promise<boolean>;
+  /** Test seam for the bounded wait for electron-updater's install-start signal. */
+  installStartTimeoutMs?: number;
 }
 
 let activeAutoUpdater: AutoUpdaterLike = realAutoUpdater as unknown as AutoUpdaterLike;
 let readUpdateChannel: () => UpdateChannel | Promise<UpdateChannel> = () => "stable";
+let activePlatform: NodeJS.Platform = process.platform;
+let fetchRelease: NonNullable<UpdaterDeps["fetch"]> = (url, init) => fetch(url, init);
+let openExternal: NonNullable<UpdaterDeps["openExternal"]> = async () => {
+  throw new Error("No external-link handler is registered");
+};
+let prepareToInstall: NonNullable<UpdaterDeps["prepareToInstall"]> = async () => false;
+let installStartTimeoutMs = 5_000;
+
+function normalizeUpdateChannel(channel: unknown): UpdateChannel {
+  return channel === "beta" || channel === "alpha" ? channel : "stable";
+}
 
 /**
  * Map the user's channel choice onto electron-updater (verified against
@@ -101,29 +135,54 @@ let readUpdateChannel: () => UpdateChannel | Promise<UpdateChannel> = () => "sta
 function applyChannel(updater: AutoUpdaterLike, channel: UpdateChannel): void {
   // Settings come from JSON on disk — a hand-edited/corrupt value must not
   // reach electron-updater as a custom channel (which would strand the user).
-  const known: UpdateChannel = channel === "beta" || channel === "alpha" ? channel : "stable";
+  const known = normalizeUpdateChannel(channel);
   updater.allowPrerelease = known !== "stable";
   updater._channel = known === "stable" ? null : known;
 }
 
-const MAC_UPDATE_HINT =
-  "Automatic updates aren't available on macOS yet — download the latest release from GitHub.";
 const LINUX_UPDATE_HINT =
   "Automatic updates aren't available for this install — download the latest release from GitHub.";
+const GITHUB_LATEST_RELEASE_API =
+  "https://api.github.com/repos/dimm-city/print-md/releases/latest";
+const GITHUB_RELEASES_API =
+  "https://api.github.com/repos/dimm-city/print-md/releases?per_page=100";
+const GITHUB_LATEST_RELEASE_PAGE =
+  "https://github.com/dimm-city/print-md/releases/latest";
+const GITHUB_RELEASE_TAG_PAGE =
+  "https://github.com/dimm-city/print-md/releases/tag/";
+const GITHUB_RATE_LIMIT_MESSAGE =
+  "Update checks are temporarily limited by GitHub. Try again later.";
+const GITHUB_RELEASE_TIMEOUT_MS = 30_000;
 
 const NETWORK_ERROR_PATTERN =
-  /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|net::ERR_|getaddrinfo|network error|NetworkError|fetch failed|net::/i;
+  /ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENETUNREACH|EAI_AGAIN|AbortError|TimeoutError|timed out|timeout|net::ERR_|getaddrinfo|network error|NetworkError|fetch failed|net::/i;
+const MISSING_INSTALLER_PATTERN = /No update filepath|ENOENT|not found|no longer available/i;
 
 function isNetworkError(message: string): boolean {
   return NETWORK_ERROR_PATTERN.test(message);
 }
+
+function isMissingInstallerError(message: string): boolean {
+  return MISSING_INSTALLER_PATTERN.test(message);
+}
+
+class GitHubRateLimitError extends Error {}
 
 /**
  * Map a raw electron-updater/Node error string to a message a non-technical
  * author can act on. The raw string is never shown to the user — callers
  * that want it for diagnostics log it themselves (main-process log only).
  */
-function friendlyMessage(raw: string, op: "check" | "download"): string {
+function friendlyMessage(raw: string, op: "check" | "download" | "install"): string {
+  if (op === "install") {
+    if (isMissingInstallerError(raw)) {
+      return "The downloaded update is no longer available. Check for updates and download it again.";
+    }
+    if (/EACCES|EPERM|permission/i.test(raw)) {
+      return "The update installer could not start because this account does not have permission.";
+    }
+    return "The update installer could not start. Try Restart & Update again.";
+  }
   const verb = op === "download" ? "download the update" : "check for updates";
   if (isNetworkError(raw)) {
     return `Couldn't ${verb}. Check your internet connection and try again.`;
@@ -134,17 +193,20 @@ function friendlyMessage(raw: string, op: "check" | "download"): string {
 }
 
 /**
- * Auto-update is active only in a packaged build with no vite dev server and
- * on a platform whose artifact format electron-updater can update unsigned:
- * Windows, or Linux when actually running as an AppImage (AppImageUpdater
- * throws on a non-AppImage Linux install, e.g. a raw unpacked dir or a distro
- * package — those are unsupported, not a bug to surface).
+ * Update checking is active only in a packaged build with no vite dev server.
+ * Windows and Linux AppImages use electron-updater; macOS uses the check-only
+ * GitHub path. A non-AppImage Linux install remains unsupported because
+ * AppImageUpdater throws there.
  */
 export function updaterSupported(): boolean {
   if (!app.isPackaged || process.env.VITE_DEV_SERVER_URL) return false;
-  if (process.platform === "darwin") return false;
-  if (process.platform === "linux" && !process.env.APPIMAGE) return false;
+  if (activePlatform === "linux" && !process.env.APPIMAGE) return false;
   return true;
+}
+
+/** True only where electron-updater may download and install an unsigned build. */
+function autoUpdaterSupported(): boolean {
+  return updaterSupported() && activePlatform !== "darwin";
 }
 
 // In-memory status mirror for the renderer's getStatus() polling. The
@@ -156,6 +218,9 @@ let phase: UpdaterStatus["phase"] = "idle";
 let lastError: string | null = null;
 let downloadedVersion: string | null = null;
 let availableVersion: string | null = null;
+let availableAction: UpdaterAvailableAction | null = null;
+let availableReleaseUrl: string | null = null;
+let updateStateGeneration = 0;
 
 let emitEvent: (event: UpdaterEventPayload) => void = () => {};
 let checkInFlight: Promise<void> | null = null;
@@ -163,14 +228,14 @@ let checkInFlight: Promise<void> | null = null;
 // checkForUpdates() during the in-flight run cares about seeing the result —
 // see checkForUpdates() for the sharing rationale.
 let checkInFlightSilent = true;
+interface InstallResult {
+  applied: boolean;
+  version?: string;
+  error?: string;
+}
 let downloadInFlight: Promise<void> | null = null;
-// Read by the "error" listener to decide whether a failure should latch a
-// user-visible error (H1): a silent background check that fails offline must
-// not strand the app in phase "error" for the rest of the session.
-let currentOperationSilent = false;
-// Which operation the shared "error" listener should attribute a failure to
-// — check and download errors need different user-facing wording.
-let currentOperation: "check" | "download" = "check";
+let installInFlight: Promise<InstallResult> | null = null;
+let installStartedVersion: string | null = null;
 let lastCheckAt = 0;
 
 export function getStatus(): UpdaterStatus {
@@ -178,9 +243,201 @@ export function getStatus(): UpdaterStatus {
     currentVersion: app.getVersion(),
     stagedVersion: downloadedVersion,
     availableVersion,
+    availableAction,
     phase,
     error: lastError,
   };
+}
+
+function markAvailable(
+  version: string,
+  action: UpdaterAvailableAction,
+  releaseUrl: string | null = null,
+): void {
+  phase = "available";
+  availableVersion = version;
+  availableAction = action;
+  availableReleaseUrl = releaseUrl;
+  lastError = null;
+  updateStateGeneration++;
+  emitEvent({ type: "available", version, action });
+}
+
+function markUpToDate(): void {
+  phase = downloadedVersion ? "staged" : "idle";
+  availableVersion = null;
+  availableAction = null;
+  availableReleaseUrl = null;
+  lastError = null;
+  updateStateGeneration++;
+  emitEvent({ type: "uptodate" });
+}
+
+function markAvailableActionFailed(message: string): void {
+  lastError = message;
+  phase = availableVersion && availableAction ? "available" : "error";
+}
+
+function markInstallFailed(message: string): void {
+  lastError = message;
+  if (downloadedVersion) phase = "staged";
+  else if (availableVersion && availableAction) phase = "available";
+  else phase = "error";
+}
+
+function markStagedUpdateMissing(version: string, message: string): void {
+  downloadedVersion = null;
+  installStartedVersion = null;
+  availableVersion = version;
+  availableAction = "download";
+  availableReleaseUrl = null;
+  phase = "available";
+  lastError = message;
+  updateStateGeneration++;
+  emitEvent({ type: "available", version, action: "download" });
+}
+
+interface ActionableUpdateState {
+  phase: "available" | "staged";
+  downloadedVersion: string | null;
+  availableVersion: string | null;
+  availableAction: UpdaterAvailableAction | null;
+  availableReleaseUrl: string | null;
+  error: string | null;
+}
+
+interface CheckRestorePoint {
+  generation: number;
+  actionableState: ActionableUpdateState | null;
+}
+
+function captureActionableUpdateState(): ActionableUpdateState | null {
+  if (downloadedVersion) {
+    return {
+      phase: "staged",
+      downloadedVersion,
+      availableVersion,
+      availableAction,
+      availableReleaseUrl,
+      error: lastError,
+    };
+  }
+  if (availableVersion && availableAction) {
+    return {
+      phase: "available",
+      downloadedVersion,
+      availableVersion,
+      availableAction,
+      availableReleaseUrl,
+      error: lastError,
+    };
+  }
+  return null;
+}
+
+function restoreActionableUpdateState(
+  state: ActionableUpdateState,
+  error: string | null,
+): void {
+  phase = state.phase;
+  downloadedVersion = state.downloadedVersion;
+  availableVersion = state.availableVersion;
+  availableAction = state.availableAction;
+  availableReleaseUrl = state.availableReleaseUrl;
+  lastError = error;
+}
+
+function captureCheckRestorePoint(): CheckRestorePoint {
+  return {
+    generation: updateStateGeneration,
+    actionableState: captureActionableUpdateState(),
+  };
+}
+
+function checkRestorePointStillCurrent(point: CheckRestorePoint): boolean {
+  if (updateStateGeneration !== point.generation) return false;
+  const state = point.actionableState;
+  if (!state) {
+    return (
+      downloadedVersion === null &&
+      availableVersion === null &&
+      availableAction === null &&
+      availableReleaseUrl === null
+    );
+  }
+  return (
+    downloadedVersion === state.downloadedVersion &&
+    availableVersion === state.availableVersion &&
+    availableAction === state.availableAction &&
+    availableReleaseUrl === state.availableReleaseUrl
+  );
+}
+
+interface GitHubReleaseRecord {
+  tag_name?: unknown;
+  draft?: unknown;
+}
+
+function releaseAllowedOnChannel(version: string, channel: UpdateChannel): boolean {
+  const prerelease = semverPrerelease(version);
+  if (!prerelease) return true;
+  const id = String(prerelease[0] ?? "").toLowerCase();
+  if (channel === "beta") return id === "beta";
+  if (channel === "alpha") return id === "alpha" || id === "beta";
+  return false;
+}
+
+async function checkMacLatestRelease(channel: UpdateChannel): Promise<void> {
+  const endpoint = channel === "stable" ? GITHUB_LATEST_RELEASE_API : GITHUB_RELEASES_API;
+  const response = await fetchRelease(endpoint, {
+    signal: AbortSignal.timeout(GITHUB_RELEASE_TIMEOUT_MS),
+    headers: {
+      Accept: "application/vnd.github+json",
+      "User-Agent": `print-md-viewer/${app.getVersion()}`,
+      "X-GitHub-Api-Version": "2022-11-28",
+    },
+  });
+  if (!response.ok) {
+    if (response.status === 403 || response.status === 429) {
+      throw new GitHubRateLimitError(`GitHub releases returned ${response.status}`);
+    }
+    throw new Error(`GitHub releases returned ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const releases: GitHubReleaseRecord[] = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object"
+      ? [payload as GitHubReleaseRecord]
+      : [];
+  let latestVersion: string | null = null;
+  let latestTag: string | null = null;
+  for (const release of releases) {
+    if (release.draft === true || typeof release.tag_name !== "string") continue;
+    const version = semverClean(release.tag_name);
+    if (!version || !releaseAllowedOnChannel(version, channel)) continue;
+    if (!latestVersion || semverGt(version, latestVersion)) {
+      latestVersion = version;
+      latestTag = release.tag_name;
+    }
+  }
+  const currentVersion = semverClean(app.getVersion());
+  if (!currentVersion) {
+    throw new Error("The current app version is invalid");
+  }
+  if (!latestVersion || !latestTag) {
+    markUpToDate();
+    return;
+  }
+  if (semverGt(latestVersion, currentVersion)) {
+    markAvailable(
+      latestVersion,
+      "open-release",
+      `${GITHUB_RELEASE_TAG_PAGE}${encodeURIComponent(latestTag)}`,
+    );
+  } else {
+    markUpToDate();
+  }
 }
 
 /**
@@ -201,43 +458,53 @@ export function initUpdater(
   emitEvent = onEvent;
   activeAutoUpdater = deps.autoUpdater ?? (realAutoUpdater as unknown as AutoUpdaterLike);
   readUpdateChannel = deps.readUpdateChannel ?? (() => "stable");
+  activePlatform = deps.platform ?? process.platform;
+  fetchRelease = deps.fetch ?? ((url, init) => fetch(url, init));
+  openExternal = deps.openExternal ?? (async () => {
+    throw new Error("No external-link handler is registered");
+  });
+  prepareToInstall = deps.prepareToInstall ?? (async () => false);
+  installStartTimeoutMs = deps.installStartTimeoutMs ?? 5_000;
+  phase = "idle";
+  lastError = null;
+  downloadedVersion = null;
+  availableVersion = null;
+  availableAction = null;
+  availableReleaseUrl = null;
+  updateStateGeneration = 0;
+  checkInFlight = null;
+  downloadInFlight = null;
+  installInFlight = null;
+  installStartedVersion = null;
+  lastCheckAt = 0;
+  // Never initialize electron-updater on unsigned macOS builds. The custom
+  // GitHub check above is intentionally check-only and cannot stage/install.
+  if (!autoUpdaterSupported()) return;
   // Downloads are user-consented (M1) — see the module banner comment.
   activeAutoUpdater.autoDownload = false;
   // If the user quits without clicking the banner, install the downloaded
   // update on the way out rather than re-downloading next launch.
   activeAutoUpdater.autoInstallOnAppQuit = true;
   activeAutoUpdater.on("update-available", (info) => {
-    phase = "available";
-    availableVersion = info.version;
-    emitEvent({ type: "available", version: info.version });
+    markAvailable(info.version, "download");
   });
   activeAutoUpdater.on("update-not-available", () => {
-    phase = "idle";
-    availableVersion = null;
-    emitEvent({ type: "uptodate" });
+    markUpToDate();
   });
   activeAutoUpdater.on("update-downloaded", (info) => {
     phase = "staged";
     downloadedVersion = info.version;
     availableVersion = null;
+    availableAction = null;
+    availableReleaseUrl = null;
+    updateStateGeneration++;
     emitEvent({ type: "staged", version: info.version });
   });
+  // Calls may overlap, so this permanent listener cannot safely attribute an
+  // error. Operation-scoped handlers below own all failure state transitions.
   activeAutoUpdater.on("error", (err) => {
     const raw = err instanceof Error ? err.message : String(err);
     console.error("[updater] electron-updater error:", raw);
-    if (currentOperationSilent && isNetworkError(raw)) {
-      // H1: a silent background check that failed because the user is
-      // offline is not an error worth latching — try again next time
-      // (launch, or the throttled focus re-check in main.ts). Also release
-      // the focus-recheck throttle: a failed check must not consume the
-      // window, or coming back online within it would never retry.
-      phase = "idle";
-      lastError = null;
-      lastCheckAt = 0;
-      return;
-    }
-    phase = "error";
-    lastError = friendlyMessage(raw, currentOperation);
   });
 }
 
@@ -267,10 +534,7 @@ export async function checkForUpdates(options: { silent?: boolean } = {}): Promi
     // up to date". Silent (background) checks never reach here — main.ts
     // only calls checkForUpdates() from a spot gated on updaterSupported().
     if (!silent && app.isPackaged) {
-      if (process.platform === "darwin") {
-        phase = "error";
-        lastError = MAC_UPDATE_HINT;
-      } else if (process.platform === "linux" && !process.env.APPIMAGE) {
+      if (activePlatform === "linux" && !process.env.APPIMAGE) {
         phase = "error";
         lastError = LINUX_UPDATE_HINT;
       }
@@ -278,34 +542,62 @@ export async function checkForUpdates(options: { silent?: boolean } = {}): Promi
     return getStatus();
   }
   if (!checkInFlight) {
+    const restorePoint = captureCheckRestorePoint();
     checkInFlightSilent = silent;
-    currentOperationSilent = silent;
-    currentOperation = "check";
     if (!silent) {
       phase = "checking";
       lastError = null;
     }
     lastCheckAt = Date.now();
     checkInFlight = (async () => {
-      applyChannel(activeAutoUpdater, await readUpdateChannel());
-      await activeAutoUpdater.checkForUpdates();
+      const channel = normalizeUpdateChannel(await readUpdateChannel());
+      if (activePlatform === "darwin") {
+        await checkMacLatestRelease(channel);
+      } else {
+        applyChannel(activeAutoUpdater, channel);
+        await activeAutoUpdater.checkForUpdates();
+      }
       // No update → the "update-not-available" listener already set idle.
       // An update → the "update-available" listener already set "available"
       // (download is user-triggered, not started here).
     })()
       .catch((err) => {
-        // The "error" listener above already recorded phase/lastError for
-        // emitter-reported failures; this also catches pre-emitter throws
-        // (e.g. checkForUpdates() itself rejecting).
+        // The permanent error listener is deliberately log-only. This
+        // operation-scoped handler owns every check failure state transition.
         const raw = err instanceof Error ? err.message : String(err);
-        if (checkInFlightSilent && isNetworkError(raw)) {
-          phase = "idle";
-          lastError = null;
-          // Release the focus-recheck throttle — see the "error" listener.
+        let checkError: string | null;
+        let failedPhase: "idle" | "error";
+        if (err instanceof GitHubRateLimitError) {
+          if (checkInFlightSilent) {
+            // Keep the completed-check timestamp so focus events do not hammer
+            // an already rate-limited endpoint.
+            failedPhase = "idle";
+            checkError = null;
+          } else {
+            failedPhase = "error";
+            checkError = GITHUB_RATE_LIMIT_MESSAGE;
+          }
+        } else if (checkInFlightSilent && isNetworkError(raw)) {
+          failedPhase = "idle";
+          checkError = null;
+          // A failed background check must allow an immediate retry.
           lastCheckAt = 0;
         } else {
-          phase = "error";
-          lastError = friendlyMessage(raw, "check");
+          failedPhase = "error";
+          checkError = friendlyMessage(raw, "check");
+        }
+        // A successful updater event that arrived after this check began is
+        // authoritative. Never roll a newer available/staged transition back
+        // to the state captured by the now-failed check.
+        if (!checkRestorePointStillCurrent(restorePoint)) return;
+        if (restorePoint.actionableState) {
+          restoreActionableUpdateState(
+            restorePoint.actionableState,
+            checkError ?? restorePoint.actionableState.error,
+          );
+        } else {
+          phase = failedPhase;
+          lastError = checkError;
         }
       })
       .finally(() => {
@@ -315,23 +607,39 @@ export async function checkForUpdates(options: { silent?: boolean } = {}): Promi
     // A non-silent caller joined an in-flight (possibly silent) run —
     // upgrade so its error handling reports honestly.
     checkInFlightSilent = false;
-    currentOperationSilent = false;
   }
   await checkInFlight;
   return getStatus();
 }
 
 /**
- * Download the update found by the last check (phase "available"). Always
- * treated as a user-initiated (non-silent) operation — a download is only
- * ever started by an explicit click. Single-flight guarded like
- * checkForUpdates(). Never throws.
+ * Act on the update found by the last check (phase "available"): download it
+ * on installable platforms, or open GitHub on check-only macOS. Always
+ * user-initiated and single-flight guarded like checkForUpdates(). Never throws.
  */
 export async function download(): Promise<UpdaterStatus> {
   if (!updaterSupported() || phase !== "available") return getStatus();
+  if (activePlatform === "darwin") {
+    if (!downloadInFlight) {
+      lastError = null;
+      downloadInFlight = openExternal(availableReleaseUrl ?? GITHUB_LATEST_RELEASE_PAGE)
+        .then(() => {})
+        .catch((err) => {
+          const raw = err instanceof Error ? err.message : String(err);
+          console.error("[updater] opening GitHub release failed:", raw);
+          markAvailableActionFailed(
+            "Couldn't open the GitHub release page. Visit github.com/dimm-city/print-md/releases/latest in your browser.",
+          );
+        })
+        .finally(() => {
+          downloadInFlight = null;
+        });
+    }
+    await downloadInFlight;
+    return getStatus();
+  }
+  if (!autoUpdaterSupported()) return getStatus();
   if (!downloadInFlight) {
-    currentOperationSilent = false;
-    currentOperation = "download";
     phase = "downloading";
     lastError = null;
     downloadInFlight = activeAutoUpdater
@@ -342,8 +650,7 @@ export async function download(): Promise<UpdaterStatus> {
       .catch((err) => {
         const raw = err instanceof Error ? err.message : String(err);
         console.error("[updater] download failed:", raw);
-        phase = "error";
-        lastError = friendlyMessage(raw, "download");
+        markAvailableActionFailed(friendlyMessage(raw, "download"));
       })
       .finally(() => {
         downloadInFlight = null;
@@ -362,23 +669,132 @@ export function shouldBackgroundCheck(throttleMs = 4 * 60 * 60 * 1000): boolean 
   return Date.now() - lastCheckAt >= throttleMs;
 }
 
+type InstallStartOutcome =
+  | { started: true }
+  | { started: false; error: unknown };
+
+function observeInstallStart(): {
+  promise: Promise<InstallStartOutcome>;
+  armTimeout(): void;
+  fail(error: unknown): void;
+} {
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let resolveOutcome!: (outcome: InstallStartOutcome) => void;
+  const promise = new Promise<InstallStartOutcome>((resolve) => {
+    resolveOutcome = resolve;
+  });
+  const finish = (outcome: InstallStartOutcome) => {
+    if (settled) return;
+    settled = true;
+    if (timer) clearTimeout(timer);
+    activeAutoUpdater.removeListener("error", onError);
+    nativeAutoUpdater.removeListener("before-quit-for-update", onStarted);
+    resolveOutcome(outcome);
+  };
+  const onError = (error: unknown) => finish({ started: false, error });
+  const onStarted = () => finish({ started: true });
+  activeAutoUpdater.on("error", onError);
+  nativeAutoUpdater.once("before-quit-for-update", onStarted);
+  return {
+    promise,
+    armTimeout: () => {
+      if (settled || timer) return;
+      timer = setTimeout(
+        () => finish({ started: false, error: new Error("The updater did not begin quitting") }),
+        installStartTimeoutMs,
+      );
+    },
+    fail: (error) => finish({ started: false, error }),
+  };
+}
+
+function reacquireSingleInstanceLock(): boolean {
+  try {
+    const reacquired = app.requestSingleInstanceLock();
+    if (!reacquired) {
+      console.error("[updater] installer did not start and the single-instance lock could not be reacquired");
+    }
+    return reacquired;
+  } catch (err) {
+    console.error("[updater] failed to reacquire the single-instance lock:", err);
+    return false;
+  }
+}
+
+async function runInstallAttempt(version: string): Promise<InstallResult> {
+  let prepared = false;
+  try {
+    prepared = await prepareToInstall();
+  } catch (err) {
+    console.error("[updater] pre-install flush failed:", err);
+  }
+  if (!prepared) {
+    return {
+      applied: false,
+      error: "Your changes could not be saved. The update was not installed; fix the save problem and try Restart & Update again.",
+    };
+  }
+
+  lastError = null;
+  const observation = observeInstallStart();
+  let lockReleased = false;
+  try {
+    // AppImageUpdater can spawn the replacement synchronously inside install(),
+    // while this process is still alive. Release immediately before the void
+    // API call, then restore the lock on every path without a start signal.
+    app.releaseSingleInstanceLock();
+    lockReleased = true;
+    activeAutoUpdater.quitAndInstall(false, true);
+    // Listen before quitAndInstall(), but do not start the clock until its
+    // synchronous installer work returns. A success it queued for the next
+    // event-loop phase must beat a timeout that starts only now.
+    observation.armTimeout();
+  } catch (err) {
+    observation.fail(err);
+  }
+
+  const outcome = await observation.promise;
+  if (!outcome.started) {
+    const lockReacquired = !lockReleased || reacquireSingleInstanceLock();
+    const raw = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+    const message = friendlyMessage(raw, "install");
+    if (isMissingInstallerError(raw)) markStagedUpdateMissing(version, message);
+    else markInstallFailed(message);
+    console.error("[updater] installer did not start:", raw);
+    if (!lockReacquired) {
+      // A replacement/second process became primary while the installer call
+      // held no lock. This process already flushed author work; bow out rather
+      // than continue as an unprotected second primary.
+      activeAutoUpdater.autoInstallOnAppQuit = false;
+      app.quit();
+    }
+    return { applied: false, error: message };
+  }
+
+  installStartedVersion = version;
+  phase = "staged";
+  lastError = null;
+  return { applied: true, version };
+}
+
 /**
  * Quit and install the downloaded update. Only meaningful after an
- * "update-downloaded" event (stagedVersion set).
+ * "update-downloaded" event (stagedVersion set). electron-updater's API is
+ * deliberately void, so success is the native before-quit-for-update signal,
+ * not return from quitAndInstall(). Concurrent calls share one attempt.
  */
-export function installNow(): { applied: boolean; version?: string } {
-  if (!updaterSupported() || !downloadedVersion) return { applied: false };
-  const version = downloadedVersion;
-  // Release the single-instance lock BEFORE quitAndInstall: on Linux,
-  // AppImageUpdater spawns the NEW AppImage synchronously inside install(),
-  // while this process is still alive and holding the lock — without this
-  // release the relaunched instance loses the lock race and quits, leaving
-  // the user with no window (update applied, app closed).
-  app.releaseSingleInstanceLock();
-  // isSilent=false keeps the NSIS UI defaults; isForceRunAfter=true relaunches
-  // the app when the install completes. quitAndInstall calls app.quit(), so
-  // the unsaved-changes close gate in main.ts still runs (unlike the old
-  // app.exit(0) path, which skipped it).
-  activeAutoUpdater.quitAndInstall(false, true);
-  return { applied: true, version };
+export function installNow(): Promise<InstallResult> {
+  if (installInFlight) return installInFlight;
+  if (installStartedVersion) {
+    return Promise.resolve({ applied: true, version: installStartedVersion });
+  }
+  if (!autoUpdaterSupported() || !downloadedVersion) {
+    return Promise.resolve({ applied: false });
+  }
+  const promise = runInstallAttempt(downloadedVersion).finally(() => {
+    if (installInFlight === promise) installInFlight = null;
+  });
+  installInFlight = promise;
+  return promise;
 }

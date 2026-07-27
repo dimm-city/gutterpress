@@ -40,7 +40,6 @@ interface Harness {
     startPreviewHost: Spy<[{ key: string; displayName: string }]>;
     stopPreviewHost: Spy<[]>;
     adoptFolder: Spy<[string]>;
-    listDir: Spy<[string]>;
     invalidateDiscoveredProjects: Spy<[]>;
     classify: Spy<[string]>;
     clearSyncDiag: Spy<[]>;
@@ -69,6 +68,9 @@ interface Harness {
       displayName: string;
     }) => Promise<{ url: string; title: string | null; missingSharedAssets?: string[] }>;
     classifyImpl?: (dir: string) => Promise<void>;
+    flushResult: boolean;
+    activeBookHasManifest: boolean;
+    flushImpl?: () => Promise<boolean>;
   };
 }
 
@@ -77,7 +79,6 @@ function make(): Harness {
   const startPreviewHost = spy<[{ key: string; displayName: string }]>();
   const stopPreviewHost = spy<[]>();
   const adoptFolder = spy<[string]>();
-  const listDir = spy<[string]>();
   const invalidateDiscoveredProjects = spy<[]>();
   const classify = spy<[string]>();
   const clearSyncDiag = spy<[]>();
@@ -103,7 +104,6 @@ function make(): Harness {
     startPreviewHost,
     stopPreviewHost,
     adoptFolder,
-    listDir,
     invalidateDiscoveredProjects,
     classify,
     clearSyncDiag,
@@ -127,12 +127,17 @@ function make(): Harness {
     pageNav: { totalPages: 0, currentPage: 1 },
     zoomView: { userSetViewMode: false, restoreSplitRatio: spy<[number]>() },
     startPreviewResult: { url: "preview://book", title: "My Book" },
+    flushResult: true,
+    activeBookHasManifest: true,
   };
 
   const projectSession = {
     repoRoot: null as string | null,
     books: [] as { path: string; title: string }[],
     activeBookDir: null as string | null,
+    get activeBookHasManifest() {
+      return state.activeBookHasManifest;
+    },
     reset: () => {},
     classify: (dir: string) => {
       classify(dir);
@@ -157,10 +162,6 @@ function make(): Harness {
       adoptFolder(dir);
       return Promise.resolve();
     },
-    listDir: (dir) => {
-      listDir(dir);
-      return Promise.resolve([]);
-    },
     invalidateDiscoveredProjects: () => invalidateDiscoveredProjects(),
     projectSession,
     clearSyncDiag: () => clearSyncDiag(),
@@ -174,7 +175,7 @@ function make(): Harness {
     resetFirstRenderGate: () => resetFirstRenderGate(),
     flushBuffer: () => {
       flushBuffer();
-      return Promise.resolve();
+      return state.flushImpl ? state.flushImpl() : Promise.resolve(state.flushResult);
     },
     resetBuffer: () => resetBuffer(),
     ensureEditorFile: () => ensureEditorFile(),
@@ -212,7 +213,6 @@ test("initial public rune state matches the +page.svelte defaults", () => {
   expect(ctrl.renderProgressPage).toBe(0);
   expect(ctrl.renderCompleteOverlay).toBe(false);
   expect(ctrl.openError).toBeNull();
-  expect(ctrl.failedOpenDir).toBeNull();
   expect(ctrl.urlPreviewError).toBeNull();
   expect(ctrl.saveWarning).toBeNull();
   expect(ctrl.currentFolderHasManifest).toBe(true);
@@ -242,6 +242,16 @@ test("startFolderPreview: happy path opens the folder and starts the watcher", a
   expect(deps.resetFirstRenderGate.calls.length).toBe(1);
 });
 
+test("startFolderPreview retains the successful-open setup banner for a loose folder", async () => {
+  const { ctrl, deps } = make();
+  deps.activeBookHasManifest = false;
+
+  await ctrl.startFolderPreview("/loose");
+
+  expect(ctrl.currentDir).toBe("/loose");
+  expect(ctrl.currentFolderHasManifest).toBe(false);
+});
+
 test("startFolderPreview: defers the crash-recovery scan while the landing is visible", async () => {
   const { ctrl, deps } = make();
   deps.landingVisible = true;
@@ -250,6 +260,26 @@ test("startFolderPreview: defers the crash-recovery scan while the landing is vi
 
   expect(deps.setPendingRecoveryScanDir.calls).toEqual([["/proj"]]);
   expect(deps.scanForRecovery.calls.length).toBe(0);
+});
+
+test("a failed pre-navigation flush preserves the open project and never starts the replacement", async () => {
+  const { ctrl, deps } = make();
+  ctrl.currentDir = "/current";
+  ctrl.previewUrl = "preview://current";
+  ctrl.docTitle = "Current";
+  deps.flushResult = false;
+
+  const opened = await ctrl.startFolderPreview("/replacement");
+
+  expect(opened).toBe(false);
+  expect(ctrl.currentDir).toBe("/current");
+  expect(ctrl.previewUrl).toBe("preview://current");
+  expect(ctrl.docTitle).toBe("Current");
+  expect(ctrl.busy).toBe(false);
+  expect(deps.classify.calls).toHaveLength(0);
+  expect(deps.startPreviewHost.calls).toHaveLength(0);
+  expect(deps.resetBuffer.calls).toHaveLength(0);
+  expect(deps.resetExtras.calls).toHaveLength(0);
 });
 
 // ── Rapid double-open (epoch supersede) ──────────────────────────────────────
@@ -301,9 +331,10 @@ test("open-then-cancel: cancelOpen supersedes the in-flight open and tears the w
   expect(ctrl.currentDir).toBeNull();
   expect(ctrl.previewUrl).toBeNull();
   expect(deps.startFolderWatch.calls.length).toBe(0);
-  // cancelOpen routes through stopPreview, which flushes + stops the host
+  // The open intent and cancel teardown each verify the buffer before replacing
+  // state; both are harmless no-ops when no editor exists.
   // preview + calls the SAME resetExtras() as every other teardown path.
-  expect(deps.flushBuffer.calls.length).toBe(1);
+  expect(deps.flushBuffer.calls.length).toBe(2);
   expect(deps.stopPreviewHost.calls.length).toBe(1);
   expect(deps.resetExtras.calls.length).toBe(1);
 });
@@ -312,18 +343,17 @@ test("open-then-cancel: cancelOpen supersedes the in-flight open and tears the w
 
 test("failed open: the catch path resets the FULL workspace via resetExtras (H5 fix), not a narrower hand-list", async () => {
   const { ctrl, deps } = make();
-  deps.startPreviewImpl = () => Promise.reject(new Error("no manifest found"));
+  deps.startPreviewImpl = () => Promise.reject(new Error("preview failed"));
 
   await ctrl.startFolderPreview("/broken");
   await flush();
 
   expect(ctrl.currentDir).toBeNull();
   expect(ctrl.previewUrl).toBeNull();
-  expect(ctrl.openError).toBe("no manifest found");
-  expect(ctrl.failedOpenDir).toBe("/broken");
+  expect(ctrl.openError).toBe("preview failed");
   expect(ctrl.busy).toBe(false);
   // Before the fix, only previewUrl/currentDir/currentUrl/currentFolderDisplayName/
-  // docTitle/rendering/openError/failedOpenDir/pendingRecoveryScanDir were
+  // docTitle/rendering/openError/pendingRecoveryScanDir were
   // cleared on this path — Problems/pageNav/the editor pane/the buffer/the
   // folder watcher were left stale. The unified resetWorkspace() now always
   // calls resetExtras(), closing that gap.
@@ -343,18 +373,17 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
   const ctrl = new ProjectLifecycleController({
     isDesktop: () => true,
     desktopRequiredMessage: "needs desktop",
-    // Reject BEFORE the mid-pipeline flush inside the try (the try's own
-    // flush only runs once startPreviewHost has resolved) — isolates the
-    // catch's own flush call.
-    startPreviewHost: () => Promise.reject(new Error("no manifest found")),
+    // The intent-boundary flush runs first; a later host-open rejection must
+    // reset only after that successful flush.
+    startPreviewHost: () => Promise.reject(new Error("preview failed")),
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: () => Promise.resolve(),
-    listDir: () => Promise.resolve([]),
     invalidateDiscoveredProjects: () => {},
     projectSession: {
       repoRoot: null,
       books: [],
       activeBookDir: null,
+      activeBookHasManifest: true,
       reset: () => {},
       classify: () => Promise.resolve(),
     },
@@ -367,7 +396,7 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
     resetFirstRenderGate: () => {},
     flushBuffer: () => {
       order.push("flush");
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
     resetBuffer: () => {},
     ensureEditorFile: () => {},
@@ -386,8 +415,7 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
   await flush();
 
   expect(order).toEqual(["flush", "resetExtras"]);
-  expect(ctrl.openError).toBe("no manifest found");
-  expect(ctrl.failedOpenDir).toBe("/broken");
+  expect(ctrl.openError).toBe("preview failed");
 });
 
 test("a supersession landing DURING the outgoing-buffer pre-flush (before startPreviewHost) must not clobber the winning open's state", async () => {
@@ -398,7 +426,7 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
   // open is still parked awaiting its pre-flush, the stale first open's
   // re-check (right after the flush) must bail — it must never reach
   // startPreviewHost, reset a buffer, or touch the winner's state.
-  const flushGate = deferred<void>();
+  const flushGate = deferred<boolean>();
   const resetExtras = spy<[]>();
   const resetBuffer = spy<[]>();
   let startCall = 0;
@@ -412,12 +440,12 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
     },
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: () => Promise.resolve(),
-    listDir: () => Promise.resolve([]),
     invalidateDiscoveredProjects: () => {},
     projectSession: {
       repoRoot: null,
       books: [],
       activeBookDir: null,
+      activeBookHasManifest: true,
       reset: () => {},
       classify: () => Promise.resolve(),
     },
@@ -435,7 +463,7 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
     // open's timing.
     flushBuffer: () => {
       flushCall++;
-      return flushCall === 1 ? flushGate.promise : Promise.resolve();
+      return flushCall === 1 ? flushGate.promise : Promise.resolve(true);
     },
     resetBuffer: () => resetBuffer(),
     ensureEditorFile: () => {},
@@ -451,9 +479,8 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
   });
 
   const first = ctrl.startFolderPreview("/first");
-  // Let the first open run past classify and into the pre-flush block, where
-  // it is now parked awaiting flushGate — BEFORE it has ever reached
-  // startPreviewHost, exactly the ordering the #7 fix requires.
+  // Let the first open enter the intent-boundary flush, before classify or
+  // startPreviewHost can mutate either project session.
   await flush();
   expect(startCall).toBe(0);
 
@@ -463,7 +490,7 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
   expect(ctrl.currentDir).toBe("/second");
 
   // Now let the stale first open's flush resolve.
-  flushGate.resolve();
+  flushGate.resolve(true);
   await first;
   await flush();
 
@@ -475,7 +502,6 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
   expect(resetBuffer.calls.length).toBe(1); // only /second's reset
   expect(ctrl.currentDir).toBe("/second");
   expect(ctrl.openError).toBeNull();
-  expect(ctrl.failedOpenDir).toBeNull();
   expect(resetExtras.calls.length).toBe(0);
 });
 
@@ -530,12 +556,12 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
     },
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: () => Promise.resolve(),
-    listDir: () => Promise.resolve([]),
     invalidateDiscoveredProjects: () => {},
     projectSession: {
       repoRoot: null,
       books: [],
       activeBookDir: null,
+      activeBookHasManifest: true,
       reset: () => {},
       classify: () => Promise.resolve(),
     },
@@ -552,6 +578,7 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
       // completing on a later microtask, not synchronously.
       return Promise.resolve().then(() => {
         order.push("flush-end");
+        return true;
       });
     },
     resetBuffer: () => order.push("resetBuffer"),
@@ -606,12 +633,12 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
       adoptFolder(dir);
       return Promise.reject(new Error("disk full"));
     },
-    listDir: () => Promise.resolve([]),
     invalidateDiscoveredProjects: () => {},
     projectSession: {
       repoRoot: null,
       books: [],
       activeBookDir: null,
+      activeBookHasManifest: true,
       reset: () => {},
       classify: () => Promise.resolve(),
     },
@@ -622,7 +649,7 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
     resetFirstRenderGate: () => {},
-    flushBuffer: () => Promise.resolve(),
+    flushBuffer: () => Promise.resolve(true),
     resetBuffer: () => {},
     ensureEditorFile: () => {},
     startFolderWatch: () => {},
@@ -653,7 +680,7 @@ test("openUrl: supersedes an in-flight folder open and resets via the SAME reset
   deps.classifyImpl = () => classifyGate.promise;
 
   const openPromise = ctrl.startFolderPreview("/proj");
-  ctrl.openUrl("https://example.com");
+  await ctrl.openUrl("https://example.com");
   await flush();
 
   expect(ctrl.sourceMode).toBe("url");
@@ -663,6 +690,7 @@ test("openUrl: supersedes an in-flight folder open and resets via the SAME reset
   // recoveryScanDir/recoveryItems/previewHidden/pageNav.pageEditing). It now
   // calls the identical resetExtras() every other teardown path calls.
   expect(deps.resetExtras.calls.length).toBe(1);
+  expect(deps.flushBuffer.calls.length).toBe(2);
 
   // The superseded folder open resolves late — must not clobber the URL preview.
   classifyGate.resolve();
@@ -676,6 +704,21 @@ test("openUrl: supersedes an in-flight folder open and resets via the SAME reset
   expect(ctrl.rendering).toBe(false);
   expect(deps.pageNav.totalPages).toBe(0);
   expect(deps.pageNav.currentPage).toBe(1);
+});
+
+test("openUrl preserves the folder workspace when its buffer cannot flush", async () => {
+  const { ctrl, deps } = make();
+  ctrl.currentDir = "/proj";
+  ctrl.previewUrl = "preview://proj";
+  ctrl.docTitle = "Project";
+  deps.flushResult = false;
+
+  expect(await ctrl.openUrl("https://example.com")).toBe(false);
+  expect(ctrl.currentDir).toBe("/proj");
+  expect(ctrl.previewUrl).toBe("preview://proj");
+  expect(ctrl.docTitle).toBe("Project");
+  expect(ctrl.sourceMode).toBe("folder");
+  expect(deps.resetExtras.calls).toHaveLength(0);
 });
 
 // ── stopPreview ───────────────────────────────────────────────────────────────
@@ -697,13 +740,26 @@ test("stopPreview: flushes the buffer, stops the host preview, and resets via re
   expect(ctrl.rendering).toBe(false);
 });
 
+test("stopPreview leaves the project and host preview open when flush fails", async () => {
+  const { ctrl, deps } = make();
+  ctrl.currentDir = "/proj";
+  ctrl.previewUrl = "preview://proj";
+  deps.flushResult = false;
+
+  expect(await ctrl.stopPreview()).toBe(false);
+  expect(ctrl.currentDir).toBe("/proj");
+  expect(ctrl.previewUrl).toBe("preview://proj");
+  expect(deps.stopPreviewHost.calls).toHaveLength(0);
+  expect(deps.resetExtras.calls).toHaveLength(0);
+});
+
 test("all three teardown paths (stopPreview, openUrl, failed-open catch) call the identical resetExtras hook", async () => {
   const { ctrl: a, deps: depsA } = make();
   await a.stopPreview();
   expect(depsA.resetExtras.calls.length).toBe(1);
 
   const { ctrl: b, deps: depsB } = make();
-  b.openUrl("https://example.com");
+  await b.openUrl("https://example.com");
   expect(depsB.resetExtras.calls.length).toBe(1);
 
   const { ctrl: c, deps: depsC } = make();

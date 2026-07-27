@@ -1,5 +1,9 @@
 import { test, expect } from "bun:test";
-import { friendlyHostError, friendlyPdfError } from "../../src/lib/errors";
+import {
+  friendlyFolderError,
+  friendlyHostError,
+  friendlyPdfError,
+} from "../../src/lib/errors";
 import { relativeTime } from "../../src/lib/format";
 
 // friendlyHostError is the single shared scrub of Electron's IPC error prefix
@@ -24,6 +28,19 @@ test("friendlyHostError leaves a plain message untouched", () => {
   expect(friendlyHostError("nothing to commit")).toBe("nothing to commit");
   expect(friendlyHostError("")).toBe("");
 });
+
+test.each(["manifest.yaml", "print-md.yaml"])(
+  "friendlyFolderError gives repair guidance for malformed %s",
+  (manifestName) => {
+    expect(
+      friendlyFolderError(
+        `Preview server failed to start: Invalid YAML in "/books/example/${manifestName}" at line 3, column 1: Tabs are not allowed as indentation`,
+      ),
+    ).toBe(
+      "The project manifest has invalid YAML at line 3, column 1. Fix that entry and try again.",
+    );
+  },
+);
 
 // friendlyPdfError(SYNC_CONFLICT) — the host (electron/export/controller.ts)
 // throws a deliberately author-friendly message for a blocked export; the
@@ -68,6 +85,16 @@ test("friendlyPdfError scrubs the IPC remote-method prefix off a SYNC_CONFLICT m
 test("friendlyPdfError still falls back to the generic message for unrelated errors", () => {
   expect(friendlyPdfError(new Error("spawn ENOENT"))).toBe(
     "Could not find a required program. Open Help (?) > System tools to check what needs to be installed.",
+  );
+});
+
+test("friendlyPdfError directs a loose preview folder to the existing setup action", () => {
+  expect(
+    friendlyPdfError(
+      new Error("No manifest.yaml or manifest.yml found in /books/example."),
+    ),
+  ).toBe(
+    'PDF export needs manifest.yaml. Choose "Set up as a book" first, then try again.',
   );
 });
 

@@ -10,11 +10,18 @@ print-md is a desktop application (with a CLI for power users) that turns a fold
 
 | Platform | Download (from the latest release) | What to do |
 |---|---|---|
-| **Windows** | `print-md-viewer-<version>-win-x64.exe` | Download and run the installer. Use the `.zip` only if you need a portable copy. |
-| **macOS** | `print-md-viewer-<version>-arm64.dmg` | Open the disk image, drag the app to Applications |
+| **Windows** | `print-md-viewer-setup-win-x64.exe` | Download and run the stable-named installer. The versioned `.zip` is a separate portable extract-and-run copy. |
+| **macOS Apple Silicon** | `print-md-viewer-<version>-arm64.dmg` | Open the disk image, then drag the app to Applications. |
+| **macOS Intel** | `print-md-viewer-<version>-x64.dmg` | Open the disk image, then drag the app to Applications. |
 | **Linux** | `print-md-viewer-<version>.AppImage` | `chmod +x` the file, then double-click or run it. To get it in your KDE/GNOME application menu, open **Settings → App → Desktop integration → Add to application menu** — see [Desktop integration](./docs/desktop-shortcut.md#linux-appimage-application-menu-integration-desktop-app). |
 
 The desktop app is fully self-contained — no Bun, Node, Chromium, or other runtime to install. **Save PDF** renders through Electron's own bundled Chromium (`webContents.printToPDF`), so there's nothing extra to set up. (The separate `print-md` CLI, for scripting and CI, does need a Chromium-based browser on the machine it runs on — see [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) if you're using that instead.)
+
+The downloads are currently unsigned. Each new release includes SHA-256
+checksums plus macOS Gatekeeper and Windows SmartScreen instructions. See the
+[installation and supported-platform guide](./docs/installing.md) for package
+manager installs, architecture gaps, checksum verification, and first-run
+guidance.
 
 ## Your first book
 
@@ -47,6 +54,7 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | **Structure your CSS like a pro** — the recommended pattern for variant assignment | [Contextual Cascade Principle](./docs/contextual-cascade-principle.md) |
 | Write TTRPG/game content (stat blocks, dice notation, read-aloud boxes) — no plugin required | [User Guide: Chapter 5 — TTRPG Extensions](./examples/print-md-user-guide/05-ttrpg-extensions.md) |
 | **Use the CLI** for scripting, CI builds, or batch work | [CLI README](./packages/cli/README.md) |
+| **Install or verify a download** | [Installation and supported platforms](./docs/installing.md) |
 | **Run the whole pipeline in Docker** (all print tools pre-installed) | [Docker guide](./docs/docker.md) |
 | Add custom markdown plugins | [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md) |
 | Validate output for print production (TAC, ICC, PDF/X) | [User Guide: Chapter 7 — Validation](./examples/print-md-user-guide/07-validation.md) |

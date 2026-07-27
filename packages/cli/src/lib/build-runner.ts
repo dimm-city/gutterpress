@@ -1,7 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import { loadManifestWithPath, resolveConfig } from "./manifest";
+import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPluginsWithCss } from "./markdown/plugins";
 import { copyAssets } from "./assets";
@@ -18,6 +18,7 @@ import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
 import { BuildError } from "./build-error";
+import { UsageError } from "./cli-args";
 import { preflightBuildTools, computeGates, type Gates } from "./build-preflight";
 import {
   finalizeStaticBook,
@@ -142,15 +143,20 @@ export async function resolveBuildContext(
   const { format } = opts;
   const inputDir = path.resolve(opts.inputDir);
 
-  // ARCH finding #12 (PR #98, maintainer HIGH): an explicit --manifest that
-  // doesn't exist is a user error (typo) and must fail loudly rather than
-  // silently falling back to the "no manifest configured" default — that
-  // fallback is only legitimate when no --manifest was given at all (scanning
-  // inputDir for a manifest that may reasonably not exist).
-  const { manifest, manifestDir } = await loadManifestWithPath(
+  // An explicit --manifest typo is rejected by the loader. Discovery remains
+  // tolerant there for preview and other callers, but a final build requires a
+  // real manifest so running from the wrong folder cannot produce an empty book.
+  const { manifest, manifestDir, manifestPath } = await loadManifestWithPath(
     opts.manifestPath ?? inputDir,
     { explicit: opts.manifestPath !== undefined }
   );
+  if (manifestPath === null) {
+    throw new UsageError(
+      `No project manifest found in ${inputDir}. Looked for ${MANIFEST_FILENAMES.join(" or ")}. ` +
+        "Run from your project folder or pass that folder with `print-md build <project-dir>`. " +
+        "For a custom manifest filename, pass `--manifest <path>`."
+    );
+  }
 
   const pdfxConfigOverride =
     format === "pdfx"
@@ -525,7 +531,7 @@ class PdfOutput implements OutputStrategy {
         shouldStripAnnotations = shouldStrip;
         if (shouldStrip) {
           log.info("Stripping annotations for PDF/X compliance");
-          await stripAnnotations(rawPdf);
+          await stripAnnotations(rawPdf, stage);
         }
 
         log.info(`Converting to CMYK PDF/X (${pdfxMode})`);
@@ -534,6 +540,7 @@ class PdfOutput implements OutputStrategy {
           pdfx: pdfxMode,
           title: config.title,
           maxTac: config.ink.maxTac,
+          stagingDir: stage,
         });
       }
 

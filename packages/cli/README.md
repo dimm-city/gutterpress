@@ -20,17 +20,45 @@ Download for your platform from the [latest release](https://github.com/dimm-cit
 
 Move the binary somewhere on your `PATH`, mark it executable (`chmod +x`), and you're done.
 
+Every new GitHub release includes `SHA256SUMS.txt`. Verify the hash for your
+download before running it, especially when bypassing Gatekeeper or
+SmartScreen. See the [installation guide](../../docs/installing.md) for
+commands and the complete supported-platform matrix.
+
+### From Homebrew (macOS and Linux)
+
+```sh
+brew tap dimm-city/print-md https://github.com/dimm-city/print-md.git
+brew install dimm-city/print-md/print-md
+```
+
+### From Scoop (Windows x64)
+
+```powershell
+scoop bucket add print-md https://github.com/dimm-city/print-md.git
+scoop install print-md/print-md
+```
+
 ### From npm
 
 ```sh
 npm install -g @dimm-city/print-md
 ```
 
+Node.js 22 or newer is required for the npm install.
+
+Installing with an npm git URL is intentionally unsupported. This repository
+is a Bun monorepo, its generated `dist/` is not committed, and the repository
+root is not the published CLI package. Use one of the installs above, or clone
+the repository and run `bun install` when contributing to print-md itself.
+
 ## System requirements
 
 The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md) for the full per-feature requirements matrix.
 
-The short version: you almost certainly want **Ghostscript** installed for PDF output, and **Chrome** / **Chromium** / **Edge** for the actual render.
+The short version: CLI PDF rendering needs a Chromium-based browser. Optional
+PDF/X output additionally needs **Ghostscript** and **qpdf**; the desktop app
+uses its bundled browser for standard PDF export.
 
 ## Quick start
 
@@ -73,7 +101,7 @@ See [User Guide: Chapter 1 — Getting Started](https://github.com/dimm-city/pri
 
 ## Manifest
 
-`manifest.yaml` is where you control everything that isn't authored in markdown — book title, the page-size preset, custom styles, plugin loading, validation rules, PDF/X configuration. The schema lives in [`docs/schema-autocomplete.md`](https://github.com/dimm-city/print-md/blob/main/docs/schema-autocomplete.md) for YAML autocomplete in editors.
+`manifest.yaml` is where you control everything that isn't authored in markdown — book title, the page-size preset, custom styles, plugin loading, validation rules, PDF/X configuration. It is the canonical filename for new projects; existing projects named `manifest.yml` or `print-md.yaml` are also recognized. The schema lives in [`docs/schema-autocomplete.md`](https://github.com/dimm-city/print-md/blob/main/docs/schema-autocomplete.md) for YAML autocomplete in editors.
 
 Minimal example:
 
@@ -98,12 +126,13 @@ The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`.
 
 ## Commands
 
-print-md has 9 subcommands. `new`, `preview`, `build`, and `publish` are the
+print-md has 11 subcommands. `new`, `preview`, `build`, and `publish` are the
 primary author commands; `lint`, `validate`, `audit`, and `preflight` are
-CI / advanced checks; `repair` is the version-history escape hatch. Every
-command also accepts `--help` for the authoritative, always-current flag
-list (`print-md <command> --help`) — this section is regenerated from the
-same source.
+CI / advanced checks; `repair` is the version-history escape hatch; and
+`doctor` reports system readiness. `plugin` manages project plugins. Every
+command also accepts `--help` for the authoritative, always-current flag list
+(`print-md <command> --help`) — this section is regenerated from the same
+source.
 
 ### `print-md new`
 
@@ -122,7 +151,7 @@ print-md new <name> [options]
 
 ### `print-md preview`
 
-Live HTML preview server by default (serves `book.html`, triggers full-reload via WebSocket on file change — pure JS rendering, no external tools). Pass `--format pdf` or `--format pdfx` for a one-shot build-and-open instead of the live server.
+Live HTML preview server by default (serves `book.html`, triggers full-reload via WebSocket on file change — pure JS rendering, no external tools). Pass `--format pdf` or `--format pdfx` for a one-shot build-and-open instead of the live server. `--manifest` applies only to those one-shot PDF/PDF-X modes; live HTML preview discovers the project manifest from its input directory.
 
 ```sh
 print-md preview [input-dir] [options]
@@ -138,7 +167,7 @@ print-md preview [input-dir] [options]
   --out <dir>             Output directory                              (pdf|pdfx only)
   --pdfx-flavor <flavor>  PDF/X flavor: x1a | x3                        (pdfx only)
   --icc <path>            Path to ICC profile (required for --format pdfx)
-  --manifest <path>       Path to manifest.yaml
+  --manifest <path>       Path to manifest.yaml                          (pdf|pdfx only)
   --strip-annotations     Strip PDF annotations for PDF/X compliance    (pdfx only)
   --skip-lint             Skip CSS linting                              (pdf|pdfx only)
   --skip-pre-validate     Skip pre-build validation                     (pdf|pdfx only)
@@ -270,6 +299,37 @@ print-md repair [dir]
   --force     Repair even if the print-md app appears to have this project open
 ```
 
+### `print-md doctor`
+
+Report the print-md version, platform and config paths, and whether each external tool is available. Missing tools include the features that use them and platform-specific installation guidance.
+
+```sh
+print-md doctor
+```
+
+### `print-md plugin`
+
+Manage project markdown-it plugins.
+
+```sh
+print-md plugin
+
+  --help    Show plugin subcommands
+```
+
+#### `print-md plugin add`
+
+Download a markdown-it package and its runtime dependencies directly from npm,
+verify their registry hashes, vendor the complete graph into the project, and
+pin the exact root version. This does not invoke npm, Bun, Node.js tooling, or
+package install scripts.
+
+```sh
+print-md plugin add markdown-it-highlightjs ./my-book
+print-md plugin add markdown-it-highlightjs@4.3.0 ./my-book
+print-md plugin add markdown-it-emoji@3.0.0 ./my-book --export full
+```
+
 ## Exit codes
 
 Every command follows the same exit-code contract, so CI can branch on the result without parsing output:
@@ -281,16 +341,21 @@ Every command follows the same exit-code contract, so CI can branch on the resul
 | `2` | Usage — the invocation itself was wrong: a bad flag, positional argument, preset, or value. |
 | `3` | Pipeline — the build/render/export pipeline itself failed for a reason unrelated to usage or findings (I/O error, missing tool, renderer crash). |
 
-This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `repair`, `publish`, and `new`.
+This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight`, `audit`, `repair`, `publish`, `plugin`, `new`, and `doctor`.
 
 ## Plugins
 
-print-md uses [markdown-it](https://github.com/markdown-it/markdown-it) under the hood, so any plugin that follows the `(md, options) => void` signature works out of the box. Load them in `manifest.yaml`:
+print-md uses [markdown-it](https://github.com/markdown-it/markdown-it) under the hood, so pure-JavaScript plugins that follow the `(md, options) => void` signature work without a print-md-specific API. Load them in `manifest.yaml`:
 
 ```yaml
 plugins:
-  # npm package
-  - markdown-it-attrs
+  # npm package installed by `print-md plugin add markdown-it-highlightjs`
+  - name: markdown-it-highlightjs
+    version: 4.3.0
+  # package whose plugin function is a named export
+  - name: markdown-it-emoji
+    version: 3.0.0
+    export: full
   # local file
   - ./plugins/my-custom-plugin.js
   # with options
@@ -301,6 +366,17 @@ plugins:
   - name: markdown-it-anchor
     priority: 10
 ```
+
+Pinned npm packages and their runtime dependencies live under `plugins/npm/`,
+with a receipt that records the exact graph and hashes the complete tree. They
+travel with the project and builds never fetch from the registry. Install/build
+scripts, native addon compilation, bundled `node_modules`, and non-registry
+dependency selectors are intentionally unsupported. Only install packages you
+trust: plugins run unsandboxed with the process's full filesystem and network
+privileges.
+
+Use the manifest `export` field, or `plugin add --export <name>`, for packages
+that expose a named plugin function instead of a default export.
 
 See [User Guide: Chapter 6 — Plugins](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/06-plugins.md) for authoring custom plugins.
 
@@ -322,8 +398,8 @@ The binary is self-contained except for the system tools described in [User Guid
 
 ## Troubleshooting
 
-- **`spawn gs ENOENT`** — Ghostscript not installed. Plain `--format pdf` keeps working (only loses the `/Creator` metadata stamp). PDF/X builds genuinely need it. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md).
-- **`No Chrome or Chromium binary found`** — install Chrome/Chromium/Edge, or set `CHROMIUM_PATH=/path/to/chrome` in your environment.
+- **`Ghostscript executable not found`** — Ghostscript is required only for PDF/X and ink-coverage checks. Standard Windows installs are auto-detected; for a non-standard install, set `GHOSTSCRIPT_PATH` to the full path of `gs`, `gswin64c.exe`, or `gswin32c.exe`. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md).
+- **`No Chrome or Chromium binary found`** — install a Chromium-based browser or set `CHROMIUM_PATH=/path/to/chrome`. The desktop app includes its own browser and needs no separate browser install.
 - **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
 - **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.
 

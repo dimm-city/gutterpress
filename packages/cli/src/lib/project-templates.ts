@@ -23,6 +23,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 
 import type { ProjectTemplateId } from "./project-scaffold.ts";
+import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { slugify, prettify } from "./slug.ts";
 
 /** The built-in templates shipped as embedded assets. */
@@ -146,7 +147,10 @@ export async function saveProjectAsTemplate(
   // Re-tokenise the manifest so the template is reusable: replace the concrete
   // title/authors/output filename with the {{...}} placeholders the scaffolder
   // fills back in. Best-effort — a project may have an unusual manifest.
-  await retokeniseManifest(path.join(dir, "manifest.yaml"));
+  const manifestName = MANIFEST_FILENAMES.find((name) =>
+    entries.some((entry) => entry.name === name)
+  );
+  if (manifestName) await retokeniseManifest(path.join(dir, manifestName));
 
   // Write a metadata sidecar so the label survives even if the id is renamed.
   await writeFile(

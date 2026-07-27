@@ -144,7 +144,8 @@ export async function executeValidation(
 ): Promise<ValidationExecutionResult> {
   const manifestPath = typeof args.manifest === "string" ? args.manifest : undefined;
   const { manifest, manifestDir } = await loadManifestWithPath(
-    manifestPath ?? args.input ?? undefined
+    manifestPath ?? args.input ?? undefined,
+    { explicit: manifestPath !== undefined }
   );
 
   const profile = parseProfile(typeof args.profile === "string" ? args.profile : undefined);

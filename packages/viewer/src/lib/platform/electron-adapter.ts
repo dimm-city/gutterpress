@@ -39,6 +39,7 @@ import type {
   RecoveryConfirmRequest,
   FolderRef,
   PlatformCapabilities,
+  MarkdownFileLaunchEvent,
 } from "./contract";
 import { basenameOf } from "./paths";
 import { api } from "$lib/api";
@@ -142,6 +143,10 @@ export class ElectronAdapter implements Platform {
 
   onNativeThemeUpdated(cb: (state: NativeThemeState) => void): () => void {
     return bridge().onNativeThemeUpdated(cb);
+  }
+
+  onOpenMarkdownFile(cb: (event: MarkdownFileLaunchEvent) => void): () => void {
+    return bridge().onOpenMarkdownFile(cb);
   }
 
   // getRecentFolders, getFavorites, toggleFavorite, removeRecent,
@@ -249,7 +254,7 @@ export class ElectronAdapter implements Platform {
 
   // setDirtyState — migrated to server route (Phase 2B)
 
-  onFlushBeforeClose(cb: () => void): () => void {
+  onFlushBeforeClose(cb: () => boolean | void | Promise<boolean | void>): () => void {
     return bridge().onFlushBeforeClose(cb);
   }
 

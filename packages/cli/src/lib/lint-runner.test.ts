@@ -15,6 +15,7 @@ import { describe, test, expect } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { UsageError } from './cli-args';
 
 describe('lint-runner lazy glob import', () => {
   test('importing the module does not throw (glob is not eagerly loaded)', async () => {
@@ -37,5 +38,15 @@ describe('lint-runner lazy glob import', () => {
     } finally {
       await rm(tmpDir, { recursive: true, force: true });
     }
+  });
+
+  test('runLint rejects an explicit missing manifest path', async () => {
+    const { runLint } = await import('./lint-runner');
+    const missing = join(tmpdir(), `pmd-lint-missing-manifest-${Date.now()}.yaml`);
+
+    await expect(runLint({ manifest: missing })).rejects.toThrow(UsageError);
+    await expect(runLint({ manifest: missing })).rejects.toThrow(
+      `manifest not found: ${missing}`
+    );
   });
 });

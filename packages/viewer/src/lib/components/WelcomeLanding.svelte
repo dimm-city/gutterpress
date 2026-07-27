@@ -29,6 +29,7 @@
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
+  import type { UpdaterAvailableAction } from "$lib/platform";
 
   let {
     visible = false,
@@ -47,14 +48,13 @@
     /** Error card (replaces the continue card / hero when set). */
     errorTitle = null,
     errorBody = null,
-    canAdopt = false,
-    adopting = false,
     version = null,
     showAtStartup = true,
     /** Auto-updater state — the workspace banner is inert under this layer,
      *  so the landing carries its own compact update affordance. */
     updateReadyVersion = null,
     updateAvailableVersion = null,
+    updateAvailableAction = null,
     updateDownloading = false,
     onContinue,
     onOpenPath,
@@ -67,7 +67,6 @@
     onOpenSettings,
     onOpenHelp,
     onWhatsNew,
-    onAdopt,
     onToggleShowAtStartup,
     onUpdateApply,
     onUpdateDownload,
@@ -81,12 +80,11 @@
     booksDisabled?: boolean;
     errorTitle?: string | null;
     errorBody?: string | null;
-    canAdopt?: boolean;
-    adopting?: boolean;
     version?: string | null;
     showAtStartup?: boolean;
     updateReadyVersion?: string | null;
     updateAvailableVersion?: string | null;
+    updateAvailableAction?: UpdaterAvailableAction | null;
     updateDownloading?: boolean;
     onContinue?: () => void;
     onOpenPath?: (path: string) => void;
@@ -99,7 +97,6 @@
     onOpenSettings?: () => void;
     onOpenHelp?: () => void;
     onWhatsNew?: () => void;
-    onAdopt?: () => void;
     onToggleShowAtStartup?: (show: boolean) => void;
     onUpdateApply?: () => void;
     onUpdateDownload?: () => void;
@@ -203,7 +200,9 @@
             </button>
           {:else if updateAvailableVersion && onUpdateDownload}
             <button type="button" class="update-chip" onclick={onUpdateDownload} disabled={updateDownloading}>
-              {updateDownloading ? "Downloading update…" : `Update available (v${updateAvailableVersion}) — Download`}
+              {updateDownloading
+                ? updateAvailableAction === "open-release" ? "Opening GitHub…" : "Downloading update…"
+                : `Update available (v${updateAvailableVersion}) — ${updateAvailableAction === "open-release" ? "Download from GitHub" : "Download"}`}
             </button>
           {/if}
           {#if onWhatsNew}
@@ -231,17 +230,7 @@
             <h1 class="landing-h1">{errorTitle}</h1>
           </div>
           {#if errorBody}<p class="error-body">{errorBody}</p>{/if}
-          {#if canAdopt && onAdopt}
-            <p class="error-hint">
-              It's a regular folder — want to turn it into a print-md book? We'll use any
-              Markdown already inside it.
-            </p>
-            <button type="button" class="btn-primary app-btn-primary" onclick={onAdopt} disabled={adopting}>
-              {adopting ? "Setting up…" : "Set up this folder as a book"}
-            </button>
-          {:else}
-            <p class="error-hint">Pick a book below, or open it from its new location.</p>
-          {/if}
+          <p class="error-hint">Pick a book below, or open it from its new location.</p>
         </section>
       {:else if continueTitle}
         <section class="continue-sec" aria-label="Continue where you left off">
@@ -538,7 +527,6 @@
   .error-head .landing-h1 { font-size: 16px; color: var(--app-error-text); }
   .error-body { margin: 0; font-size: 13px; color: var(--app-error-text); line-height: 1.5; }
   .error-hint { margin: 0; font-size: 12px; color: var(--app-text-secondary); line-height: 1.5; }
-  .error-card .btn-primary { align-self: flex-start; }
 
   /* ── Quick actions ─────────────────────────────────────────────────── */
   .quick-actions {

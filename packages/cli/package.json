@@ -59,9 +59,11 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
+    "acorn": "8.16.0",
     "chokidar": "^5.0.0",
     "citty": "^0.2.0",
     "diff3": "0.0.3",
+    "es-module-lexer": "2.0.0",
     "fflate": "0.8.3",
     "glob": "^13.0.0",
     "htmlhint": "^1.9.2",
@@ -79,6 +81,9 @@
     "pdf-lib": "^1.17.1",
     "postcss": "^8.5.18",
     "puppeteer-core": "^25.0.4",
+    "resolve.exports": "2.0.3",
+    "semver": "7.8.0",
+    "tar": "7.5.20",
     "unpdf": "^1.6.2",
     "ws": "^8.21.0",
     "yaml": "^2.8.2"
@@ -87,6 +92,7 @@
     "@types/bun": "latest",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^22.0.0",
+    "@types/semver": "^7.7.1",
     "@types/ws": "^8.5.13",
     "pagedjs": "^0.4.3",
     "playwright": "^1.60.0",

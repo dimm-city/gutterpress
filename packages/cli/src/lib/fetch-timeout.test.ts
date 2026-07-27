@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { FriendlyHttpError, withFetchTimeout } from "./fetch-timeout";
+import { FetchUnavailableError, FriendlyHttpError, withFetchTimeout } from "./fetch-timeout";
 
 /** A fetch stand-in that never resolves until its signal aborts. */
 function hang(signal: AbortSignal): Promise<never> {
@@ -31,6 +31,7 @@ test("deadline fires with the friendly timeout message EVEN when a caller signal
     ),
   );
   expect(err.message).toBe("took too long");
+  expect(err).toBeInstanceOf(FetchUnavailableError);
 });
 
 test("deadline without a timeoutMessage falls back to the offline mapping", async () => {
@@ -61,6 +62,7 @@ test("network-level failure maps to the offline message with the cause attached"
   );
   expect(err.message).toBe("offline");
   expect(err.cause).toBe(boom);
+  expect(err).toBeInstanceOf(FetchUnavailableError);
 });
 
 test("offlineMessage can be built from the cause", async () => {

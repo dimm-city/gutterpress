@@ -58,6 +58,7 @@ test("runBuild (pdf) leaves no .print-md-stage* dir in cwd and still writes the 
     "# Hello\n\nA minimal chapter for the staging guard.\n",
     "utf-8"
   );
+  await writeFile(join(inputDir, "manifest.yaml"), "title: Staging Guard\n", "utf-8");
 
   process.chdir(workCwd);
 

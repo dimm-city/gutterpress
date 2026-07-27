@@ -1,5 +1,6 @@
 import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
 import { isToolAvailable } from "./tool-probe";
+import { resolveGhostscript } from "./ghostscript";
 import { INSTALL_HINTS as CANONICAL_INSTALL_HINTS } from "./install-hints";
 import { BuildError } from "./build-error";
 import { log } from "../utils/logger";
@@ -63,7 +64,7 @@ export async function preflightBuildTools(
   // Ghostscript:
   //   - plain pdf  -> none (the /Creator stamp now uses pdf-lib, in-process)
   //   - pdfx       -> CMYK conversion, REQUIRED
-  if (format === "pdfx" && !(await isToolAvailable("gs"))) {
+  if (format === "pdfx" && !(await resolveGhostscript())) {
     missing.push({ name: "gs (Ghostscript)", installHint: INSTALL_HINTS.gs });
   }
 
@@ -81,7 +82,7 @@ export async function preflightBuildTools(
     .map((m) => `  • ${m.name}\n${m.installHint}`)
     .join("\n\n");
   throw new BuildError(
-    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set CHROMIUM_PATH / system PATH so print-md can find them. See the User Guide Chapter 8 (System Setup) at examples/print-md-user-guide/08-system-setup.md for the full per-feature matrix.`,
+    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set GHOSTSCRIPT_PATH, CHROMIUM_PATH, or system PATH so print-md can find them. See the User Guide Chapter 8 (System Setup) at examples/print-md-user-guide/08-system-setup.md for the full per-feature matrix.`,
     2
   );
 }

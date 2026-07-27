@@ -246,6 +246,22 @@ test("adoptFolder: refuses a folder that is already a project", async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+test("adoptFolder: recognizes manifest.yml as an existing project", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-existing-yml-"));
+  await writeFile(path.join(dir, "manifest.yml"), "title: x\n", "utf8");
+  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(/already a print-md project/i);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("adoptFolder: recognizes persisted print-md.yaml projects", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-legacy-"));
+  await writeFile(path.join(dir, "print-md.yaml"), "title: legacy\n", "utf8");
+  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(
+    /already a print-md project/i
+  );
+  await rm(dir, { recursive: true, force: true });
+});
+
 test("adoptFolder: never overwrites an existing styles/book.css", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-css-"));
   await writeFile(path.join(dir, "doc.md"), "# Doc\n", "utf8");

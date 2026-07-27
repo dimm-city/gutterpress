@@ -245,11 +245,12 @@ markdown-it plugins to load, highest `priority` first. Each entry is either a sh
 
 A string is treated as a local file path when it starts with `./`, `../`, `/` or a Windows drive letter, or when it contains a path separator and ends in `.js`/`.mjs`/`.cjs`; otherwise it is an npm package name.
 
-An object takes `path` (local module) or `name` (npm package), plus optional `version`, `priority` (default `100`), `options`, and `enabled` (set `false` to keep the entry but skip loading it).
+An object takes `path` (local module) or `name` (npm package), plus optional `version`, `priority` (default `100`), `options`, and `enabled` (set `false` to keep the entry but skip loading it). The explicit npm installer records an exact `version` and vendors a receipt-backed runtime dependency tree under `plugins/npm/`; builds verify and resolve pinned entries there without network access.
 
 ```yaml
 plugins:
-  - "print-md-plugin-callouts"
+  - name: "print-md-plugin-callouts"
+    version: "1.2.3"
   - path: "plugins/dimm-city-plugin.js"
     priority: 100
 ```

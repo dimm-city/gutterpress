@@ -18,6 +18,7 @@
 
 export type {
   UpdateChannel,
+  UpdaterAvailableAction,
   UpdaterStatus,
   UpdaterEventPayload,
   ProjectSource,
@@ -27,6 +28,7 @@ export type {
   DeepPartialSettings,
   ProjectState,
   ViewerPrefs,
+  LastFlushFailure,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -52,6 +54,7 @@ export type {
   BuildResult,
   ExportProgressEvent,
   UrlPreviewBlockedEvent,
+  MarkdownFileLaunchEvent,
 } from "../src/lib/platform/shared-types";
 
 // VALUE re-export (see file header) — the canonical settings defaults (#29).

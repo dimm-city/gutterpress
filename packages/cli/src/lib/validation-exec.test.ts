@@ -125,6 +125,17 @@ describe("executeValidation manifest resolution", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("an explicit missing --manifest used by validate/audit/preflight fails before checks run", async () => {
+    const missing = path.join(tmpdir(), `pmd-vexec-missing-manifest-${Date.now()}.yaml`);
+    stubCheckExecution();
+
+    await expect(executeValidation({ manifest: missing })).rejects.toThrow(UsageError);
+    await expect(executeValidation({ manifest: missing })).rejects.toThrow(
+      `manifest not found: ${missing}`
+    );
+    expect(runChecksSpy).not.toHaveBeenCalled();
+  });
 });
 
 // ── --pdf existence guard ────────────────────────────────────────────────────

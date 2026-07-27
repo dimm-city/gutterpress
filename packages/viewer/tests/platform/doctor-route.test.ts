@@ -32,7 +32,7 @@ test("doctor route reports exactly one Chromium-flavored tool entry (the bundled
   expect(bins).toContain('qpdf');
 });
 
-test("doctor route response includes viewerVersion/libVersion/docsUrl fields", async () => {
+test("doctor route response includes versions, docs, and the existing config directory", async () => {
   // electronVersion/chromeVersion come from `process.versions.{electron,chrome}`,
   // which are only populated inside a real Electron process — undefined (and thus
   // absent after JSON serialization) under plain `bun test`. That's environment-
@@ -42,5 +42,7 @@ test("doctor route response includes viewerVersion/libVersion/docsUrl fields", a
   expect(body).toHaveProperty('viewerVersion');
   expect(body.viewerVersion).toBe('unknown'); // getDoctorHooks() isn't registered in tests
   expect(body).toHaveProperty('libVersion');
+  expect(body).toHaveProperty('configDir');
+  expect(body.configDir).toContain('print-md');
   expect(body).toHaveProperty('docsUrl');
 });

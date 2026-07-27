@@ -45,8 +45,12 @@ export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
  */
 export class BuildError extends Error {
   exitCode: number;
-  constructor(message: string, exitCode: number = EXIT_CODES.PIPELINE) {
-    super(message);
+  constructor(
+    message: string,
+    exitCode: number = EXIT_CODES.PIPELINE,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.name = "BuildError";
     this.exitCode = exitCode;
   }

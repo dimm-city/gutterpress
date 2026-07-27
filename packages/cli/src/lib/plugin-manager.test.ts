@@ -114,11 +114,11 @@ describe("plugin-manager", () => {
       const dir = projectDir();
       writeManifest(dir, ["title: Test", ""].join("\n"));
 
-      await addNpmPlugin(dir, "markdown-it-footnote");
+      await addNpmPlugin(dir, "markdown-it-mark");
 
       const list = await listProjectPlugins(dir);
       expect(list).toHaveLength(1);
-      expect(list[0]!.ref).toBe("markdown-it-footnote");
+      expect(list[0]!.ref).toBe("markdown-it-mark");
       expect(list[0]!.kind).toBe("npm");
       expect(list[0]!.enabled).toBe(true);
     });
@@ -133,10 +133,10 @@ describe("plugin-manager", () => {
 
     test("is idempotent — adding the same npm plugin twice does not duplicate", async () => {
       const dir = projectDir();
-      await addNpmPlugin(dir, "markdown-it-footnote");
-      await addNpmPlugin(dir, "markdown-it-footnote");
+      await addNpmPlugin(dir, "markdown-it-mark");
+      await addNpmPlugin(dir, "markdown-it-mark");
       const list = await listProjectPlugins(dir);
-      expect(list.filter((p) => p.ref === "markdown-it-footnote")).toHaveLength(1);
+      expect(list.filter((p) => p.ref === "markdown-it-mark")).toHaveLength(1);
     });
   });
 
@@ -194,6 +194,32 @@ describe("plugin-manager", () => {
       expect(results[0]!.ref).toBe("./plugins/good.mjs");
       expect(results[0]!.ok).toBe(true);
       expect(results[0]!.error).toBeUndefined();
+    });
+
+    test("validates a local plugin that selects a named export", async () => {
+      const dir = projectDir();
+      mkdirSync(join(dir, "plugins"), { recursive: true });
+      writeFileSync(
+        join(dir, "plugins", "named.mjs"),
+        "export function full(md) { md._ok = true; }\n",
+        "utf8",
+      );
+      writeManifest(
+        dir,
+        [
+          "plugins:",
+          "  - path: ./plugins/named.mjs",
+          "    export: full",
+          "",
+        ].join("\n"),
+      );
+
+      expect(await validateProjectPlugins(dir)).toEqual([{
+        ref: "./plugins/named.mjs",
+        kind: "local",
+        enabled: true,
+        ok: true,
+      }]);
     });
 
     test("reports a missing local plugin as ok=false with an error (does not throw)", async () => {

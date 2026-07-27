@@ -115,11 +115,12 @@ describe("desktop entry", () => {
         "Type=Application",
         "Name=print-md-viewer",
         "Comment=Write books in Markdown and export print-ready PDFs",
-        'Exec="/home/w/.local/bin/print-md-viewer.AppImage"',
+        'Exec="/home/w/.local/bin/print-md-viewer.AppImage" %f',
         "TryExec=/home/w/.local/bin/print-md-viewer.AppImage",
         "Icon=city.dimm.print-md-viewer",
         "Terminal=false",
         "Categories=Office;Publishing;",
+        "MimeType=text/markdown;",
         "StartupNotify=true",
         "StartupWMClass=city.dimm.print-md-viewer",
         "",
@@ -133,9 +134,10 @@ describe("desktop entry", () => {
     expect(execLine).toContain("/home/w/.local/bin/");
   });
 
-  test("claims no file/URL handling: no field codes, no MimeType, no scheme", () => {
-    expect(entry).not.toMatch(/%[fFuU]/);
-    expect(entry).not.toContain("MimeType");
+  test("advertises one local Markdown file and no URL/custom-scheme handling", () => {
+    expect(entry).toContain(" %f");
+    expect(entry).not.toMatch(/%[FuU]/);
+    expect(entry).toContain("MimeType=text/markdown;");
     expect(entry).not.toContain("x-scheme-handler");
     expect(entry).not.toContain("app://");
   });
@@ -237,7 +239,7 @@ describe("install", () => {
     const service = new AppImageIntegration(env());
     await service.install();
     const entry = await readFile(service.paths.desktopEntry, "utf8");
-    expect(entry).toContain(`Exec="${service.paths.appImage}"`);
+    expect(entry).toContain(`Exec="${service.paths.appImage}" %f`);
     expect(entry).not.toContain(sourceAppImage);
   });
 

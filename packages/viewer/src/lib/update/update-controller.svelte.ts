@@ -8,9 +8,9 @@
  *
  * Single-owner discipline mirrors `ExportController`
  * (`export/export-controller.svelte.ts`): the component reads the public rune
- * getters (`readyVersion`, `availableVersion`, `bannerDismissed`, `checking`,
- * `downloading`) and calls the intent methods (`init`, `check`, `download`,
- * `applyNow`, `dismissBanner`).
+ * getters (`readyVersion`, `availableVersion`, `availableAction`,
+ * `bannerDismissed`, `checking`, `downloading`) and calls the intent methods
+ * (`init`, `check`, `download`, `applyNow`, `dismissBanner`).
  *
  * PWA-clean (§8 / ADR 0004): pure UI state driven through the platform adapter
  * (`getPlatform()` / `isDesktop()`), ZERO `node:*` imports and no lib value
@@ -19,6 +19,11 @@
  */
 
 import { getPlatform, isDesktop } from "$lib/platform";
+import type {
+  UpdaterAvailableAction,
+  UpdaterEvent,
+  UpdaterStatus,
+} from "$lib/platform";
 
 /** Minimal toast surface used for update feedback; injected by the component. */
 export interface UpdateToastSink {
@@ -32,6 +37,8 @@ export class UpdateController {
   readyVersion = $state<string | null>(null);
   /** Non-null when a check found an update but it hasn't been downloaded yet. */
   availableVersion = $state<string | null>(null);
+  /** Host-specific action for the available update (download vs GitHub page). */
+  availableAction = $state<UpdaterAvailableAction | null>(null);
   /** True once the user dismisses the current banner. */
   bannerDismissed = $state(false);
   /** True while a manual "Check for updates" is in flight. */
@@ -63,13 +70,21 @@ export class UpdateController {
     // update was found or downloaded during a previous run.
     platform.updater
       .getStatus()
-      .then((status: { stagedVersion: string | null; availableVersion: string | null }) => {
+      .then((status: UpdaterStatus) => {
         if (status.stagedVersion) {
           this.readyVersion = status.stagedVersion;
+          this.availableVersion = null;
+          this.availableAction = null;
           this.bannerDismissed = false;
         } else if (status.availableVersion) {
+          this.readyVersion = null;
           this.availableVersion = status.availableVersion;
+          this.availableAction = status.availableAction;
           this.bannerDismissed = false;
+        } else {
+          this.readyVersion = null;
+          this.availableVersion = null;
+          this.availableAction = null;
         }
       })
       .catch(() => {});
@@ -82,14 +97,22 @@ export class UpdateController {
     // toast on every launch and would double-toast during a manual check
     // (which drives its own feedback from the IPC return value in
     // check()).
-    const off = platform.updater.onEvent((event: { type: string; version?: string }) => {
+    const off = platform.updater.onEvent((event: UpdaterEvent) => {
       if (event.type === "available") {
-        this.availableVersion = event.version ?? null;
+        this.readyVersion = null;
+        this.availableVersion = event.version;
+        this.availableAction = event.action;
         this.bannerDismissed = false;
       } else if (event.type === "staged") {
-        this.readyVersion = event.version ?? null;
+        this.readyVersion = event.version;
         this.availableVersion = null;
+        this.availableAction = null;
         this.bannerDismissed = false;
+      } else if (event.type === "uptodate") {
+        // A newer check can invalidate a previously advertised download. Keep
+        // a staged installer truthful, but clear stale not-yet-downloaded UI.
+        this.availableVersion = null;
+        this.availableAction = null;
       }
     });
 
@@ -101,25 +124,39 @@ export class UpdateController {
     this.checking = true;
     this.toast()?.info?.("Checking for updates…");
     try {
-      const status: {
-        phase: string;
-        stagedVersion: string | null;
-        availableVersion: string | null;
-        error: string | null;
-      } = await getPlatform().updater.check();
+      const status = await getPlatform().updater.check();
       if (status.stagedVersion) {
-        // An update was already downloaded + staged — the banner appears; no toast.
+        // Preserve the staged action even when this re-check itself failed.
         this.readyVersion = status.stagedVersion;
+        this.availableVersion = null;
+        this.availableAction = null;
         this.bannerDismissed = false;
       } else if (status.phase === "available") {
-        // Found, not downloaded yet — the Download banner appears; tell the
-        // author explicitly so a manual check reads as "found something" and
-        // not "nothing happened" (M1: downloads are consented, never silent).
+        // Preserve the available action even when this re-check itself failed.
+        this.readyVersion = null;
         this.availableVersion = status.availableVersion;
+        this.availableAction = status.availableAction;
         this.bannerDismissed = false;
-        this.toast()?.info?.(`Update available (v${status.availableVersion}) — use the banner to download it.`);
       } else if (status.phase === "error") {
-        this.toast()?.error?.(status.error ?? "Update check failed.");
+        // No actionable update existed before the failed check.
+      } else {
+        this.readyVersion = null;
+        this.availableVersion = null;
+        this.availableAction = null;
+      }
+
+      if (status.error) {
+        this.toast()?.error?.(status.error);
+      } else if (status.stagedVersion) {
+        // The restart banner is sufficient feedback.
+      } else if (status.phase === "available") {
+        const instruction =
+          status.availableAction === "open-release"
+            ? "use the banner to download it from GitHub."
+            : "use the banner to download it.";
+        this.toast()?.info?.(`Update available (v${status.availableVersion}) — ${instruction}`);
+      } else if (status.phase === "error") {
+        this.toast()?.error?.("Update check failed.");
       } else {
         this.toast()?.info?.("You're up to date.");
       }
@@ -132,15 +169,24 @@ export class UpdateController {
 
   async download(): Promise<void> {
     if (!isDesktop()) return;
+    const action = this.availableAction;
     this.downloading = true;
     try {
-      const status: { phase: string; stagedVersion: string | null; error: string | null } =
-        await getPlatform().updater.download();
+      const status = await getPlatform().updater.download();
       if (status.stagedVersion) {
         this.readyVersion = status.stagedVersion;
         this.availableVersion = null;
-      } else if (status.phase === "error") {
-        this.toast()?.error?.(status.error ?? "Update download failed.");
+        this.availableAction = null;
+      } else {
+        // A failed action returns to phase "available" so the same banner can
+        // be retried; mirror the host's retained target before reporting it.
+        this.availableVersion = status.availableVersion;
+        this.availableAction = status.availableAction;
+      }
+      if (status.error) {
+        this.toast()?.error?.(status.error);
+      } else if (!status.stagedVersion && action === "open-release") {
+        this.toast()?.info?.("Opened the latest release on GitHub.");
       }
     } catch (e) {
       this.toast()?.error?.(e instanceof Error ? e.message : "Update download failed.");
@@ -151,14 +197,34 @@ export class UpdateController {
 
   async applyNow(): Promise<void> {
     if (!isDesktop()) return;
+    const platform = getPlatform();
     try {
-      const result = await getPlatform().updater.applyNow();
+      const result = await platform.updater.applyNow();
       // On success main quits, installs the update, and relaunches — this
-      // code never runs. A resolved { applied: false } means the staged
-      // update vanished (state drift); say so instead of silently no-oping.
+      // code never runs. On failure, reconcile whether the staged action is
+      // still retryable before reporting the host's actionable error.
       if (!result.applied) {
-        this.readyVersion = null;
-        this.toast()?.error?.("The update could not be applied — try checking for updates again.");
+        // Generic installer failures remain staged and retryable. A missing
+        // installer is invalidated host-side into an available/download action;
+        // mirror the authoritative status so the stale Restart banner clears.
+        try {
+          const status = await platform.updater.getStatus();
+          if (status.stagedVersion) {
+            this.readyVersion = status.stagedVersion;
+            this.availableVersion = null;
+            this.availableAction = null;
+          } else {
+            this.readyVersion = null;
+            this.availableVersion = status.availableVersion;
+            this.availableAction = status.availableAction;
+            if (status.availableVersion) this.bannerDismissed = false;
+          }
+        } catch {
+          // Keep the last truthful banner if the follow-up status read fails.
+        }
+        this.toast()?.error?.(
+          result.error ?? "The update could not be applied — try checking for updates again.",
+        );
       }
     } catch (e) {
       this.toast()?.error?.(e instanceof Error ? e.message : "Could not apply update.");

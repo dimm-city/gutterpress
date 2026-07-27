@@ -39,6 +39,8 @@ export interface DesktopHooks {
     canceled: boolean;
     filePath?: string;
   }>;
+  /** Native trust gate shown before downloading and executing an npm plugin. */
+  confirmNpmPluginInstall: (packageName: string) => Promise<boolean>;
   openExternal: (url: string) => Promise<void>;
   showItemInFolder: (filePath: string) => void;
   getNativeTheme: () => { shouldUseDarkColors: boolean };

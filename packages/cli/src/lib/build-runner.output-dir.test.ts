@@ -42,6 +42,8 @@ test("resolveBuildContext resolves a relative output.dir against the project's m
   // root while neither project's dist lived under that repo.
   const repoCwd = await mkdtemp(join(tmpdir(), "pmd-repo-cwd-"));
   dirsToClean.push(projA, projB, repoCwd);
+  await Bun.write(join(projA, "manifest.yaml"), "title: Project A\n");
+  await Bun.write(join(projB, "manifest.yaml"), "title: Project B\n");
 
   process.chdir(repoCwd);
 
@@ -70,6 +72,7 @@ test("resolveBuildContext preserves an explicit --out exactly (no re-resolution 
   const projA = await mkdtemp(join(tmpdir(), "pmd-proj-explicit-"));
   const repoCwd = await mkdtemp(join(tmpdir(), "pmd-repo-cwd2-"));
   dirsToClean.push(projA, repoCwd);
+  await Bun.write(join(projA, "manifest.yaml"), "title: Project A\n");
 
   process.chdir(repoCwd);
 
