@@ -37,7 +37,7 @@ fixes and may no longer point at the same statements.
 | D2 | **Resolved** | Viewer releases explicitly build both Apple Silicon and Intel DMGs. |
 | D3 | **Resolved** | macOS performs signing-free, channel-aware GitHub release checks and offers a **Download from GitHub** action without invoking the unsigned installer path. |
 | D4 | **Accepted / mitigated** | Windows remains unsigned by decision. The release body explains SmartScreen, checksums are published, and the NSIS installer now keeps a stable basename so its reputation is not reset by each version. |
-| D5 | **Resolved** | Release assets are flattened with collision checks, SHA-256 hashed, and published with `SHA256SUMS.txt`; the hashes are also included in release notes. |
+| D5 | **Partially resolved** | Release assets are flattened with collision checks, SHA-256 hashed, and published with `SHA256SUMS.txt`; the hashes are also included in release notes. **Still open:** neither `install.sh` nor `install.ps1` verifies its download against those hashes (`install.sh:166-185` moves the binary into place and only runs `--version`; `install.ps1:161-199` likewise), so the documented pipe-to-shell path still executes an unverified, unsigned artifact. Publishing the hashes made verification possible; nothing consumes them yet. |
 | D6 | **Accepted / mitigated** | Both Darwin CLI architectures now run on native CI runners. The supported matrix and the Windows ARM64, Linux ARM64 viewer, and musl gaps are explicit; new targets remain demand-driven as recommended. |
 | D7 | **Resolved** | Docker dispatch receives the normalized release version. |
 | D8 | **Accepted / documented** | Git URL npm installs are explicitly unsupported; registry installation and standalone binaries are the supported paths. |
@@ -95,8 +95,13 @@ What the limitation concretely causes today:
   notarized. The release workflow explicitly disables identity discovery
   (`CSC_IDENTITY_AUTO_DISCOVERY: false`, `.github/workflows/release.yml:393`)
   and no notarization step exists anywhere in `.github/`.
-- **macOS auto-update is disabled entirely** (`packages/viewer/electron/updater.ts:145`)
+- **macOS auto-*installation* is disabled** (`packages/viewer/electron/updater.ts:145`)
   because Squirrel.Mac refuses unsigned bundles — a direct, correct consequence.
+  Update *checking* is not disabled: packaged macOS builds run
+  `checkMacLatestRelease()` and surface an `open-release` action
+  (`updater.ts:390,435,555`), so users learn a new version exists and are sent to
+  the download. Only unattended download-and-install through electron-updater
+  remains off — see D3.
 - **Windows SmartScreen** shows "Windows protected your PC" for the unsigned
   NSIS installer and the unsigned CLI `.exe`.
 
