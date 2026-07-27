@@ -78,6 +78,14 @@ Releases produced by the current release workflow attach `SHA256SUMS.txt` and
 also print the same hashes in the release notes. Compare the line for the file
 you downloaded before bypassing an operating-system security warning.
 
+The `install.sh` and `install.ps1` scripts do this for you: each fetches
+`SHA256SUMS.txt` and checks the download against it *before* installing, and
+refuses to install a file whose hash does not match. Releases published before
+`SHA256SUMS.txt` existed have no hashes to check, so installing one of those
+(`PRINTMD_VERSION=<older tag>`) still works but ends with an explicit warning
+that the download was not verified. Manual downloads are unchecked — use the
+commands below.
+
 ```sh
 # Linux
 sha256sum print-md-cli-linux-x64

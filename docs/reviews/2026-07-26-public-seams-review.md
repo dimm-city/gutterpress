@@ -27,8 +27,7 @@ per operating system and install scenario, based solely on what the code does?*
 
 ## Resolution update (2026-07-26)
 
-Every finding has been addressed except the installer half of D5, which remains
-open (see its row below). The original review below is preserved as the
+Every finding has been addressed. The original review below is preserved as the
 pre-remediation record, so its file:line references describe the code before the
 fixes and may no longer point at the same statements.
 
@@ -46,7 +45,7 @@ repository-scoped token can submit.
 | D2 | **Resolved** | Viewer releases explicitly build both Apple Silicon and Intel DMGs. |
 | D3 | **Resolved** | macOS performs signing-free, channel-aware GitHub release checks and offers a **Download from GitHub** action without invoking the unsigned installer path. |
 | D4 | **Accepted / mitigated** | Windows remains unsigned by decision. The release body explains SmartScreen, checksums are published, and the NSIS installer now keeps a stable basename so its reputation is not reset by each version. |
-| D5 | **Partially resolved** | Release assets are flattened with collision checks, SHA-256 hashed, and published with `SHA256SUMS.txt`; the hashes are also included in release notes. **Still open:** neither `install.sh` nor `install.ps1` verifies its download against those hashes (`install.sh:166-185` moves the binary into place and only runs `--version`; `install.ps1:161-199` likewise), so the documented pipe-to-shell path still executes an unverified, unsigned artifact. Publishing the hashes made verification possible; nothing consumes them yet. |
+| D5 | **Resolved** | Release assets are flattened with collision checks, SHA-256 hashed, and published with `SHA256SUMS.txt`; the hashes are also included in release notes. Both installers now consume them: `install.sh` (`verify_checksum`) and `install.ps1` (`Test-Checksum`) fetch the manifest and hash the download *before* it is moved into place, so a mismatched file is deleted rather than installed. Because releases published before `SHA256SUMS.txt` existed have no hashes to check against, an unavailable hash warns loudly and continues rather than breaking `PRINTMD_VERSION=<older>` installs — a mismatch is always fatal, only absence is tolerated, and the reason is reprinted at the end of the run. |
 | D6 | **Accepted / mitigated** | Both Darwin CLI architectures now run on native CI runners. The supported matrix and the Windows ARM64, Linux ARM64 viewer, and musl gaps are explicit; new targets remain demand-driven as recommended. |
 | D7 | **Resolved** | Docker dispatch receives the normalized release version. |
 | D8 | **Accepted / documented** | Git URL npm installs are explicitly unsupported; registry installation and standalone binaries are the supported paths. |
@@ -81,6 +80,13 @@ repository-scoped token can submit.
 - Standalone `bun build --compile` smoke: scaffold project, install dependency-bearing `markdown-it-highlightjs@4.3.0`, load it, and build paginated HTML
 - Real Ghostscript 10.06 PDF/X color-conversion integration test
 - `actionlint`, package-manager metadata drift tests, and release-asset/checksum tests
+- Installer checksum verification: `packages/cli/scripts/check-install-checksum.sh`
+  sources `install.sh` and exercises `verify_checksum` against a matching hash,
+  a mismatched hash, a missing manifest, an unlisted asset, a failed manifest
+  fetch, an uppercase hash, and a multi-row manifest; `installer-checksum.test.ts`
+  runs it and adds the `install.ps1` contract assertions (no PowerShell runtime
+  exists on the Linux runner, so its behavior is covered statically here and by
+  the real Scoop install in `package-managers.yml`)
 
 Release CI and physical target systems still provide the final native checks for
 DMG/NSIS installation, Finder/Explorer/AppImage association behavior, and Linux
