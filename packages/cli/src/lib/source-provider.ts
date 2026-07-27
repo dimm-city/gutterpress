@@ -231,7 +231,18 @@ export async function readGitAuthor(dir: string): Promise<{ name?: string; email
   };
 }
 
-async function resolveGitAuthor(dir: string, name?: string, email?: string): Promise<{ name: string; email: string }> {
+/**
+ * Resolve the author for a commit in `dir`, PER FIELD: caller-supplied →
+ * existing repo config (`user.name` / `user.email`) → the print-md default.
+ *
+ * This is the ONE author-resolution rule for every commit print-md writes —
+ * snapshots, merge commits, conflict resolutions, and recovery rescue commits
+ * alike. Do NOT call `gitAuthor` directly at a commit site: it skips the repo
+ * config, so a partially configured identity (say a name in Settings, an email
+ * in `.git/config`) would produce one identity for the snapshot and a
+ * different, defaulted one for the merge commit of the SAME sync.
+ */
+export async function resolveGitAuthor(dir: string, name?: string, email?: string): Promise<{ name: string; email: string }> {
   const existing = await readGitAuthor(dir);
   return gitAuthor(name || existing.name, email || existing.email);
 }
@@ -744,7 +755,9 @@ export interface RestoreVersionOptions {
   projectDir: string;
   /** Snapshot id (commit SHA) to restore the working tree to. */
   id: string;
+  /** Identity recorded on the automatic pre-restore safety snapshot. */
   authorName?: string;
+  authorEmail?: string;
 }
 
 /** Result of {@link restoreVersionWithBackup}. */
@@ -790,7 +803,7 @@ export const AUTO_SNAPSHOT_MESSAGE = "Automatic snapshot";
 export async function restoreVersionWithBackup(
   options: RestoreVersionOptions,
 ): Promise<RestoreVersionResult> {
-  const { projectDir, id, authorName } = options;
+  const { projectDir, id, authorName, authorEmail } = options;
   const source = await detectProjectSource(projectDir);
   if (source.type !== "local-git-folder") {
     throw new Error(
@@ -810,6 +823,7 @@ export async function restoreVersionWithBackup(
         projectDir,
         message: RESTORE_BACKUP_MESSAGE,
         authorName,
+        authorEmail,
       });
       backupId = backup.id;
     }

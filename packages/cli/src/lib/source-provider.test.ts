@@ -2,6 +2,8 @@ import { test, expect } from "bun:test";
 import { mkdir, mkdtemp, writeFile, readFile, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import fs from "node:fs";
+import git from "isomorphic-git";
 import { detectProjectSource } from "./project-source";
 import {
   providerFor,
@@ -11,6 +13,7 @@ import {
   RESTORE_BACKUP_MESSAGE,
   AUTO_SNAPSHOT_MESSAGE,
   isNoChangesError,
+  resolveGitAuthor,
 } from "./source-provider";
 
 async function tempDir(): Promise<string> {
@@ -244,6 +247,103 @@ test("automatic snapshot records changes under AUTO_SNAPSHOT_MESSAGE", async () 
     expect(snap.message).toBe("Automatic snapshot");
     const history = await provider.listHistory(dir);
     expect(history[0]!.message).toBe(AUTO_SNAPSHOT_MESSAGE);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("automatic snapshot records the caller-supplied author name AND email", async () => {
+  // The viewer's host-side auto-snapshot scheduler passes the identity the
+  // author configured in Settings; the commit object must carry both fields.
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nAuto draft.\n");
+    await provider.snapshot({
+      projectDir: dir,
+      message: AUTO_SNAPSHOT_MESSAGE,
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.com",
+    });
+    const [head] = await git.log({ fs, dir, depth: 1 });
+    expect(head!.commit.author.name).toBe("Ada Lovelace");
+    expect(head!.commit.author.email).toBe("ada@example.com");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a partially configured identity falls back to repo config per field", async () => {
+  // The viewer omits a blank Settings field so the repo's own config can fill
+  // it. resolveGitAuthor is the ONE rule every commit path uses, so a name from
+  // Settings pairs with the repo's email rather than the print-md default —
+  // and, critically, the merge commit of a sync resolves it the SAME way the
+  // preliminary snapshot does (they used to disagree).
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    await git.setConfig({ fs, dir, path: "user.name", value: "Repo Name" });
+    await git.setConfig({ fs, dir, path: "user.email", value: "repo@example.com" });
+
+    await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nName only.\n");
+    await provider.snapshot({
+      projectDir: dir,
+      message: AUTO_SNAPSHOT_MESSAGE,
+      authorName: "Ada Lovelace", // email deliberately omitted
+    });
+    const [head] = await git.log({ fs, dir, depth: 1 });
+    expect(head!.commit.author.name).toBe("Ada Lovelace");
+    expect(head!.commit.author.email).toBe("repo@example.com");
+    expect(head!.commit.author.email).not.toBe("noreply@print-md.local");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveGitAuthor falls back per field: option → repo config → print-md default", async () => {
+  const dir = await tempDir();
+  try {
+    await initProject(dir);
+    await git.setConfig({ fs, dir, path: "user.name", value: "Repo Name" });
+    await git.setConfig({ fs, dir, path: "user.email", value: "repo@example.com" });
+
+    // Nothing supplied → repo config wins over the print-md default.
+    expect(await resolveGitAuthor(dir)).toEqual({
+      name: "Repo Name",
+      email: "repo@example.com",
+    });
+    // Per-field override: the supplied field wins, the other stays repo config.
+    expect(await resolveGitAuthor(dir, "Ada Lovelace")).toEqual({
+      name: "Ada Lovelace",
+      email: "repo@example.com",
+    });
+    expect(await resolveGitAuthor(dir, undefined, "ada@example.com")).toEqual({
+      name: "Repo Name",
+      email: "ada@example.com",
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("restoreVersionWithBackup records the supplied identity on the safety snapshot", async () => {
+  const dir = await tempDir();
+  try {
+    const provider = await initProject(dir);
+    const first = (await provider.listHistory(dir))[0]!;
+    await writeFile(path.join(dir, "chapter-01.md"), "# Unsaved work\n");
+    const result = await restoreVersionWithBackup({
+      projectDir: dir,
+      id: first.id,
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.com",
+    });
+    const backup = (await git.log({ fs, dir, depth: 50 })).find(
+      (c) => c.oid === result.backupId,
+    );
+    expect(backup!.commit.message.trim()).toBe(RESTORE_BACKUP_MESSAGE);
+    expect(backup!.commit.author.name).toBe("Ada Lovelace");
+    expect(backup!.commit.author.email).toBe("ada@example.com");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

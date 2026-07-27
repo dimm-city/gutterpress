@@ -3,7 +3,7 @@
  * RecoveryResult translator used by the five thin recovery handlers.
  *
  * These pin:
- *   1. syncOptionsFrom(ctx) copies exactly the five sync fields.
+ *   1. syncOptionsFrom(ctx) copies exactly the six sync fields.
  *   2. The DEFAULT outcome map (documented in the module header).
  *   3. Overrides win over the default for their status.
  *   4. An unknown/future status routes to the error builder (override first).
@@ -33,6 +33,7 @@ function makeCtx(overrides: Partial<RecoveryContext> = {}): RecoveryContext {
     credential: { host: "github.com", token: "tok" } as any,
     tokenStore: { get: async () => null } as any,
     authorName: "Alice",
+    authorEmail: "alice@example.com",
     httpClient: {} as any,
     confirmation: { confirmRepair: async () => true },
     ...overrides,
@@ -40,18 +41,23 @@ function makeCtx(overrides: Partial<RecoveryContext> = {}): RecoveryContext {
 }
 
 describe("syncOptionsFrom", () => {
-  test("copies exactly the five sync fields from the context", () => {
+  test("copies exactly the six sync fields from the context", () => {
     const ctx = makeCtx();
     const opts = syncOptionsFrom(ctx);
+    // authorEmail rides along with authorName: a recovery-driven sync
+    // snapshots-first, and that commit must carry the author's FULL identity
+    // rather than their name paired with the print-md default email.
     expect(opts).toEqual({
       projectDir: ctx.projectDir,
       credential: ctx.credential,
       tokenStore: ctx.tokenStore,
       authorName: ctx.authorName,
+      authorEmail: ctx.authorEmail,
       httpClient: ctx.httpClient,
     });
     // No stray keys (e.g. repoDir/branch/confirmation) leak into sync options.
     expect(Object.keys(opts).sort()).toEqual([
+      "authorEmail",
       "authorName",
       "credential",
       "httpClient",

@@ -155,12 +155,14 @@ export async function buildRecoveryContext(
   tokenStore: TokenStore,
   authorName?: string,
   logFile?: string,
+  authorEmail?: string,
 ): Promise<RecoveryContext> {
   return lib.buildRecoveryContext({
     projectDir,
     confirmation: hostConfirmationGate(projectDir),
     tokenStore,
     authorName,
+    authorEmail,
     logFile,
   });
 }

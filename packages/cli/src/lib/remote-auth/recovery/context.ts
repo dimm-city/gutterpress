@@ -45,6 +45,8 @@ export interface BuildRecoveryContextOptions {
   tokenStore?: TokenStore;
   /** Display name for snapshot commits created during recovery. */
   authorName?: string;
+  /** Email for snapshot commits created during recovery. */
+  authorEmail?: string;
   /** Operation-log file shared with the sync path. */
   logFile?: string;
   /**
@@ -61,7 +63,7 @@ export interface BuildRecoveryContextOptions {
 export async function buildRecoveryContext(
   options: BuildRecoveryContextOptions,
 ): Promise<RecoveryContext> {
-  const { projectDir, confirmation, tokenStore, authorName, logFile } = options;
+  const { projectDir, confirmation, tokenStore, authorName, authorEmail, logFile } = options;
   const classify = options.classify ?? detectProjectSource;
   const diagnose = options.diagnose ?? diagnoseProjectRemote;
 
@@ -113,6 +115,7 @@ export async function buildRecoveryContext(
     credential,
     tokenStore,
     authorName,
+    authorEmail,
     confirmation,
     ...(logFile ? { logFile } : {}),
   };

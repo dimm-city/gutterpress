@@ -105,6 +105,7 @@ import {
   resolveMarkdownFileLaunch,
 } from "./markdown-file-launch";
 import { AutoSnapshotScheduler } from "./auto-snapshot/scheduler";
+import { gitIdentityFrom } from "./git-identity";
 import { RendererFlushSession, runCloseGate } from "./close-gate";
 import { createLastFlushFailure } from "../src/lib/persistence-failures";
 import { FolderWatcher } from "./folder-watch/watcher";
@@ -1654,6 +1655,7 @@ secureHandle("api:cancelExport", async (_e, exportId: string) => {
 const exportController = new ExportController({
   loadLib,
   tokenStore: electronTokenStore,
+  gitIdentity: async () => gitIdentityFrom(await readSettings()),
   isOnline: () => net.isOnline(),
   usePuppeteer: () => !!process.env.PRINTMD_VIEWER_PUPPETEER,
   pdfRenderer: electronPdfRenderer,

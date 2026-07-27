@@ -2,6 +2,7 @@ import { DEFAULT_SETTINGS } from "$lib/platform/contract";
 import type { AppSettings, DeepPartial } from "$lib/platform/contract";
 import { deepMergeSettings } from "$lib/settings-merge";
 import { getPrefsHooks } from '../../../electron/server-bridge/prefs-hooks';
+import { gitIdentityFrom, type GitIdentityArgs } from '../../../electron/git-identity';
 
 export async function readAppSettings(): Promise<AppSettings> {
   try {
@@ -13,12 +14,12 @@ export async function readAppSettings(): Promise<AppSettings> {
   }
 }
 
-export async function gitIdentityArgs(): Promise<{ authorName?: string; authorEmail?: string }> {
-  const settings = await readAppSettings();
-  const authorName = settings.gitIdentity.authorName.trim();
-  const authorEmail = settings.gitIdentity.authorEmail.trim();
-  return {
-    ...(authorName ? { authorName } : {}),
-    ...(authorEmail ? { authorEmail } : {}),
-  };
+/**
+ * The author's configured commit identity, for the route-side (user-initiated)
+ * commit paths. Shares `gitIdentityFrom` with the host-side automatic commit
+ * paths (auto-snapshot, auto-sync, export gate) so manual and automatic commits
+ * can never again disagree about who the author is.
+ */
+export async function gitIdentityArgs(): Promise<GitIdentityArgs> {
+  return gitIdentityFrom(await readAppSettings());
 }

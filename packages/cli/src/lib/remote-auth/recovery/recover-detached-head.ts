@@ -56,7 +56,7 @@ import * as fsSync from "node:fs";
 
 import git from "isomorphic-git";
 
-import { gitAuthor, hasPendingChanges, listWorkdirChanges, stageChanges } from "../../source-provider.ts";
+import { resolveGitAuthor, hasPendingChanges, listWorkdirChanges, stageChanges } from "../../source-provider.ts";
 import { withBackupGate } from "./failsafe.ts";
 import type { RecoveryContext, RecoveryResult, StillAppliesFn } from "./types.ts";
 
@@ -245,7 +245,7 @@ export async function recover(
 ): Promise<RecoveryResult> {
   const dir = ctx.repoDir;
   const nowFn = ctx.now ?? (() => Date.now());
-  const author = gitAuthor(ctx.authorName);
+  const author = await resolveGitAuthor(dir, ctx.authorName, ctx.authorEmail);
 
   // ── Determine working tree state ──────────────────────────────────────────
   let hasChanges = false;

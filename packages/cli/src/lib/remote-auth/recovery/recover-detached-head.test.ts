@@ -947,6 +947,36 @@ describe("recover detached_head — BUG 2: forced checkout survives a dirty tree
     expect(await currentBranch(dir)).toBe("main");
   });
 
+  test("the rescue snapshot commit carries the context's full identity", async () => {
+    // Recovery commits are automatic commits: they must record the author's
+    // configured name AND email, resolved by the same per-field rule snapshots
+    // use (option -> repo config -> print-md default). Before this was wired,
+    // ctx.authorEmail did not exist and every rescue commit was attributed to
+    // print-md <noreply@print-md.local>.
+    const dir = await makeTempDir("dh-rescue-identity-");
+    const sha = await initRepo(dir);
+    await detachHead(dir, sha);
+    await writeFile(
+      path.join(dir, "chapter-01.md"),
+      "# Chapter One\n\nA substantially longer edited body to make the tree dirty.\n",
+    );
+
+    const ctx = makeLocalCtx(dir, {
+      confirmation: { confirmRepair: async () => true },
+      authorName: "Ada Lovelace",
+      authorEmail: "ada@example.com",
+    });
+    await recover(ctx);
+
+    const branches = await listBranches(dir);
+    const recBranch = branches.find((b) => b.startsWith("recovery/detached-head-"));
+    expect(recBranch).toBeDefined();
+    const recSha = await git.resolveRef({ fs, dir, ref: `refs/heads/${recBranch}` });
+    const { commit } = await git.readCommit({ fs, dir, oid: recSha });
+    expect(commit.author.name).toBe("Ada Lovelace");
+    expect(commit.author.email).toBe("ada@example.com");
+  });
+
   test("Case C: the rescue branch holds the prior (edited) state", async () => {
     const dir = await makeTempDir("dh-bug2-rescue-state-");
     const sha = await initRepo(dir);
