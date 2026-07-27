@@ -206,7 +206,7 @@ URLs are not even stably wrong.
 
 | # | Severity | Defect |
 |---|---|---|
-| 25 | **MEDIUM** | `document.fonts.ready` is awaited **once, before Paged.js runs** (`pagination.ts:215`), never after. Offline/CI: a remote `@import` fails DNS fast, `networkidle0` is satisfied, `fonts.ready` resolves with a `FontFace` in `status:"error"`, and the PDF silently uses a fallback. Chromium embeds whatever it *actually used*, so `pdf.print.embedded-fonts` validates clean on the substituted font. |
+| 25 | **MEDIUM** | A font whose fetch **fails** is silent end-to-end. Offline/CI: a remote `@import` fails DNS fast, `networkidle0` is satisfied, `fonts.ready` resolves with a `FontFace` in `status:"error"`, Paged.js swallows the failure with a `console.warn` nobody listens to, and the PDF uses a fallback. Chromium embeds whatever it *actually used*, so `pdf.print.embedded-fonts` validates clean on the substituted font. **Note the ordering is NOT the defect** — see the correction in §7. |
 | 26 | **MEDIUM** | No built-in theme uses `@font-face` — all four rely on system family names (`"Impact"`, `"Trajan Pro"`), so identical input yields **different PDFs on Linux CI vs. a designer's Mac**. |
 | 27 | **MEDIUM** | The docs disagree on where fonts go: `packages/cli/README.md:96` says top-level `fonts/`; `01-getting-started.md:172` says `assets/fonts/`; the `@font-face` example at `04-styling-theming.md:101` uses `url("../fonts/…")` from `styles/`, which only resolves for the README layout. |
 | 28 | **MEDIUM** | `printsafe`'s `no-remote-urls` treats `@import url(https://fonts.googleapis.com/…)` as a **build-breaking error** — while `04-styling-theming.md:85` documents that exact line as the web-font recipe. And `@import "https://…"` without `url()` isn't flagged at all (`extractUrls` only matches `url(...)`). |
@@ -271,6 +271,121 @@ CLAUDE.md's "reduce complexity unless justified":
 6. **Clean or reconcile `outDir`** (or stage from `inputDir` instead of `outDir`).
    Retires 6 and the staleness half of 21.
 
+7. **Fix the checks that hard-fail correct projects** (§6.1 #37-41). These are
+   worse than the silent gaps: a percent-encoded filename, a commented-out
+   `@font-face`, or a chapter in a subfolder each abort a build that would
+   otherwise produce correct output. Percent-decode before `existsSync`, strip
+   comments before regex-scanning CSS, and resolve refs in the frame the renderer
+   actually uses (project root, not the markdown file's directory).
+8. **Make `resolveActiveStyles` the single input to lint/validation too** (§6.1
+   #36). Today `validation-exec` and `lint-runner` re-resolve `styles:` their own
+   way and silently inspect nothing when it misses — a false green on the gate
+   that is supposed to catch exactly this.
+
 Items 1-3 all point the same direction: the reference emitter and the copier need
 one shared source of truth about "what files does this book need", rather than a
-hand-maintained directory list that authors are expected to keep in sync.
+hand-maintained directory list that authors are expected to keep in sync. Items
+7-8 say the same thing about the validation layer — it currently re-derives the
+asset mapping a third and fourth time, and disagrees with the build both ways.
+
+---
+
+## 6. Second pass — the remaining 42 candidates
+
+The first pass verified the top 30 of 72 candidates. A second adversarial pass
+covered the other 42; 41 survived, 1 was refuted (§7). Most re-derived findings
+already above (`themes/`, preview↔build divergence, and the Save-folder spray
+were each independently rediscovered by 3-5 different readers — a useful
+consistency signal). The genuinely new material:
+
+### 6.1 The validation gates are themselves broken
+
+This is the most consequential new cluster: the checks that *appear* to guard the
+copy gap mostly cannot, and several hard-fail correct projects.
+
+| # | Severity | Defect |
+|---|---|---|
+| 35 | **HIGH** | **No check ever reads `outDir`.** `ctx.outputDir` is consumed by zero checks; the only check touching `book.html` is htmlhint (syntax rules only); `paginateAndCapture` registers no `requestfailed`/`pageerror` listener. `local-refs` and `missing-font-refs` both resolve against the **source tree**, so they structurally cannot catch a missing *output* asset. |
+| 36 | **MEDIUM** | **Lint and validation go blind on shared stylesheets.** `validation-exec.ts:227` and `lint-runner.ts:30` resolve `styles:` against `manifestDir` with no fallback. When `styles:` names the *flattened* asset destination (the only spelling that works — see #39), the path doesn't exist there, `cssFiles` is `[]`, and stylelint + `missing-font-refs` return zero results while `runLint` reports `ok:true` with "No CSS files found to lint". Both build gates report green on a stylesheet **nothing inspected**. Reproducible in-repo against `examples/with-design-guide/book-01`. |
+| 37 | **MEDIUM** | `missing-font-refs` regex-scans raw CSS with **no comment stripping**, so an `@font-face` block inside `/* … */` is treated as live and emits `severity:"error"` — aborting `build --format pdf`. A commented-out font template is a normal authoring state. |
+| 38 | **MEDIUM** | `missing-font-refs` URL extraction is broken four ways: `[^}]*src:` backtracks to the **last** `src:` in a block (so the first declaration of the standard two-`src:` pattern is never checked); `[^'")\s]+` can't match a quoted filename with spaces (a genuinely missing file **passes**); no `decodeURIComponent`, so a correct `url("Source%20Sans%20Pro.ttf")` **hard-fails the build**; and `//host/f.woff2` is mis-diagnosed as a missing local file. The only test is `returns empty when no cssFiles`. |
+| 39 | **MEDIUM** | `local-refs` never percent-decodes, so `![](images/my%20photo.png)` — the only bracket-less spelling CommonMark actually renders — **hard-fails the build with exit 1** although the file exists and is served correctly (`resolveStaticPath` *does* decode). The only spelling satisfying both renderer and checker is the undocumented `![](<images/my photo.png>)`. Also breaks any non-ASCII escape (`caf%C3%A9.png`). |
+| 40 | **MEDIUM** | A chapter in a subfolder **cannot satisfy both** the renderer and `local-refs`: the renderer resolves against the project root (book.html sits at the stage root), the check against the markdown file's directory. The frame the user guide teaches is reported as an error. |
+| 41 | **MEDIUM** | `approvedFontFiles` patterns are globbed with `cwd` = each already-resolved asset dir, so the project-rooted pattern documented in `examples/with-validation/manifest.yaml:53` matches zero files and flags every font as unapproved. The working form is the counter-intuitive `**/*.{woff2,otf,ttf}`. |
+| 42 | **LOW** | `pdf.print.embedded-fonts` — and six other format-agnostic post-build checks — never run for `--format pdf`, only `pdfx` (phase gate at `build-preflight.ts:112`). Documented and intentional, but it means the font-substitution failure in #25 has no post-build net on the format most people use. |
+
+### 6.2 Cross-platform
+
+| # | Severity | Defect |
+|---|---|---|
+| 43 | **MEDIUM** | **`glob`'s `nocase` defaults to `true` on darwin/win32 and `false` elsewhere.** `collectImageFiles` passes a lowercase-only brace glob without setting it, so `Cover.PNG` is silently skipped by every image check on Linux CI and flagged on a designer's Mac. Verified by execution. No test anywhere uses a case-mismatched filename. |
+
+### 6.3 `temp/images/` is vestigial
+
+| # | Severity | Defect |
+|---|---|---|
+| 44 | **MEDIUM** | `normalizeImageSrc`'s `temp/images/` → `images/` rewrite has **zero producers** anywhere in the codebase or in git history. For an author who keeps art in `temp/images/`, the HTML points at `images/<file>` which no code path creates — missing in both preview and build, and `local-refs` passes because it validates the raw *pre-rewrite* ref. The obvious fix (adding `temp` to `source.assets`) **does not help**: the file lands at `dist/temp/images/wip.png` while the HTML still requests `images/wip.png`. Verified by running the real build. |
+
+### 6.4 Embedded-asset extraction
+
+| # | Severity | Defect |
+|---|---|---|
+| 45 | **MEDIUM** | The extracted **4.77 MB** temp dir is never cleaned up — one leak per process, forever. Every `build`/`new`/`preview`/viewer launch abandons a fresh tree (3.7 MB of it the CMYK ICC, extracted unconditionally regardless of which key was requested). Observed 40 such dirs on this checkout. Every *other* temp dir in the repo has cleanup — `createStageRoot` via `finally`, the plugin vendor dir via `process.on("exit")`, the preview dir via both a PID reaper and explicit removal — which makes this a consistency gap, not a design decision. |
+| 46 | **LOW** | `getAssetsDir` re-checks and re-assigns `extractPromise` **after** an `await`, so K concurrent callers hitting the sentinel-miss branch each start their own extraction → K dirs, K−1 leaked. Cold start is correctly single-flighted; the test covers only the sequential case. |
+| 47 | **LOW** | The cache is validated by a **single sentinel file**; `getAssetPath` does no per-asset check. Partial loss of the 23 files is invisible and surfaces downstream as a raw `ENOENT` from `project-scaffold`. |
+| 48 | **LOW** | `dist/` ships **two independent copies** of the whole 418 KB lib graph (`package.json:51-52` builds `src/cli.ts` as a second `--splitting` invocation into the same dir), so every module-level singleton — `extractPromise` included — exists twice. Latent only: no shipping consumer can trigger it today. `docs/ARCHITECTURE.md:24` still describes the pre-regression single-invocation build. |
+| 49 | **LOW** | Built-in themes **structurally cannot bundle fonts or preview images** — `EMBEDDED_ASSETS` is a hand-written literal map with no directory-level embedding, so `applyTheme`'s "copy the WHOLE folder" always copies a 2-file folder, contradicting `theme-manager.ts`'s own docstring. |
+
+### 6.5 Viewer and publish
+
+| # | Severity | Defect |
+|---|---|---|
+| 50 | **MEDIUM** | **`media:importImage` picks its destination from disk state** (`images/` if present, else `assets/`) with zero reference to `source.assets` — the only list the build copies. Two of the repo's own examples are already in this state: `print-md-user-guide` (`assets: [styles]`) and `with-validation` (lists `images` but has no `images/` dir, so the route falls back to the unlisted `assets/`). Renders in preview, vanishes from the export, no diagnostic. |
+| 51 | **MEDIUM** | On the PWA target, `renderBookHtml` inlines project CSS to work around the blob-URL base problem but does nothing for other assets — every `<img src>` and every CSS-referenced font/background is **unresolvable** in both in-browser preview and HTML export. No `<base>` tag, no service-worker scope for project assets. This is an unimplemented half of an explicit plan requirement (`docs/pwa-webadapter-plan.md:237-243` prescribes inlining CSS *and* rewriting `<img src>`). No test exercises `renderBookHtml` at all. |
+| 52 | **MEDIUM** | Viewer PDF export's un-finalized `book.html` is concretely broken, not merely unfinished: it keeps the srcless `<script data-pagedjs-polyfill>` slot and gets no nav scripts, so opening it yields one unpaginated scroll. No `index.html` either. |
+| 53 | **MEDIUM** | Publish's extras warning is a hard-coded two-name list (`book.pdf`, `publish`), so an author-set `output.filename` and `build-fingerprint.json` are uploaded unwarned. |
+| 54 | **LOW** | Publish resolves a relative `output.dir` against `projectDir` while the build resolves it against `manifestDir` — they disagree whenever `--manifest` points outside the project positional. CLI-only; nothing covers the divergent case. `run-publish.ts:8-9` also documents a `--build` flag that does not exist. |
+| 55 | **MEDIUM** | Desktop Export→HTML is offered unconditionally in the dialog but always fails with a PDF-specific error. |
+
+### 6.6 Preview watcher
+
+| # | Severity | Defect |
+|---|---|---|
+| 56 | **MEDIUM** | **The watcher's ignore set does not match the copier's exclude set.** The watcher filters only dotfiles; the copier excludes `node_modules, .git, .claude, .opencode, .reviews, .references, .build, dist`. So everything the copier skips (except dot-prefixed names) is fully watched and mirrored — `dist/`, `node_modules/`, `plugins/npm/` — reload-storming the preview on every build. |
+
+---
+
+## 7. Correction
+
+One first-pass finding was **refuted**, and it changes a conclusion, so it is
+recorded rather than quietly dropped:
+
+> ~~`document.fonts.ready` is awaited before pagination, so fonts first used in
+> Paged.js-generated content (e.g. an `@page` margin box) are never waited for.~~
+
+**Not a defect.** The vendored polyfill force-loads and awaits **every declared**
+`@font-face` before laying out any page: `Chunker.flow()` calls
+`await this.loadFonts()` (`paged.polyfill.js:2918`) immediately before
+`this.render(...)`, and `loadFonts()` calls `FontFace.load()` on every entry of
+`document.fonts` irrespective of usage. The Polisher has already inserted the
+processed `@font-face` rules into `<head>` by that point. So a font used only in
+a margin box is fetched and awaited before the first margin box exists, and no
+fallback-then-correct-face split can occur. print-md's own `fonts.ready` await
+(`pagination.ts:215`) is redundant belt-and-braces, **not** the load-bearing
+guard.
+
+The real font gap is narrower and stands as §3.6 #25: a fetch that *fails* is
+swallowed by Paged.js with a `console.warn` that nothing listens to. Which is,
+again, finding #2 in the fix list — attach a listener.
+
+---
+
+## 8. Coverage note
+
+72 candidate defects were raised across the 9 dimensions; all 72 were
+adversarially verified. 71 survived (30 first pass, 41 second), 1 was refuted.
+A 30/71 → 71/72 survival rate is high enough to be worth flagging as a caveat on
+the method rather than as a compliment to it: verifiers narrowed scope on 24 of
+the surviving findings (recorded as PARTIALLY_TRUE above, with the corrected
+scope), but only one claim was rejected outright. Treat the HIGH severities —
+which carry executed repros — with more confidence than the LOWs.
