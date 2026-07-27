@@ -679,3 +679,104 @@ than under the current design (themes ship, nested shared trees work, the
 flattened-destination indirection and its lint blindness disappear). The costs
 are one compat shim, one policy decision, and the discipline of shipping the
 resolver and the pagination listener together.
+
+### 9.6 Final design — stop shipping a file tree (supersedes §9.3's resolver)
+
+Constraint update from the maintainer: there are no external users; breaking
+existing projects is acceptable. That removes the compat shim, the migration
+policy, and every "escape hatch" §9.3 and §9.5 carried. With those gone, a
+second look shows §9.3's resolver was still over-engineered — it preserved the
+assumption that the output must be a *tree of loose files mirroring the source
+tree*, and spent its machinery (`_up/` mapping, additive `source.assets`,
+per-type failure policy) managing that assumption's consequences.
+
+Drop the assumption. The codebase has already voted for the alternative,
+three times:
+
+- `assemble.ts:149-161` inlines `PAGED_CSS` + plugin CSS into a `<style>` block.
+- `WebAdapter.renderBookHtml` (`web-adapter.ts:757-804`) inlines project CSS as
+  `<style data-project-css>` — the repo's newest render path already solved
+  "CSS by reference doesn't survive relocation" this way.
+- Paged.js itself deletes every `<link>`/`<style>` and re-emits everything
+  inlined (`removeStyles`, `paged.polyfill.js:33160`; re-inserted at `:27573`)
+  — **a `<link>` tag never survives the Chromium path today anyway**, and
+  `replaceUrls` skips `data:` URIs (`:26600`), so embedded fonts pass through
+  pagination and serialization untouched.
+
+**The output contract: `book.html` + the images it references (+ nav scripts
+for the HTML format). Nothing else exists, and nothing is configurable.**
+
+1. **CSS is always inlined at render time.** `resolveActiveStyles` (unchanged —
+   already the single source of truth shared with the viewer's editor) names
+   real files; the renderer reads them and emits one `<style data-project-css>`
+   block after the paged-plugin block, exactly as WebAdapter does. `<link>`
+   emission is deleted. A `styles:` entry is a path to *read*, not a file to
+   *ship* — so `../design-guide/styles/guide.css` and `themes/<id>/theme.css`
+   need no output mapping, no flattening, no `_up/`, no destination
+   indirection. Shared styles, themes, and override cascades (entries inlined
+   in order) all reduce to "read these files in order."
+2. **Fonts become `data:` URIs during the inline pass.** One postcss transform
+   resolves each `url()` against the CSS file's own location; font files are
+   base64-embedded. A missing font is a **file-read error at build time** —
+   loud, named, and earlier than any browser could report it. Pagination
+   becomes deterministic: the font is in the document before Chromium
+   launches, killing the entire silent-fallback class (#25) without a
+   listener. Remote `url()`s stay untouched (printsafe already errors on them
+   for print work).
+3. **Images are copied from references, recorded by the render itself.** The
+   markdown image rule (the hook `normalizeImageSrc` squats on today) records
+   every emitted `src`; a scan of the assembled HTML catches raw `<img>`;
+   the postcss pass records CSS `url()` images, inlining small ones
+   (≤ ~512 KB) and content-addressing large ones (full-bleed page art) into
+   the output with a rewritten URL — one rule, no configuration, no
+   collisions. Markdown image srcs must live inside the project; a `../` ref
+   is a build error naming the file ("copy it into your project" — the
+   viewer's import-image already does exactly this). In-project refs keep
+   their relative paths verbatim.
+4. **`source.assets` is deleted.** The field, its five-dir preset default, the
+   wholesale-replace merge hazard, `resolveAssetDestName`, `fallbackSrc`, the
+   collision detection, and `copyAssets` itself all go. A manifest that still
+   has the field gets one clear error telling the author to remove it.
+5. **The stage is deleted.** `book.html` is self-contained except for recorded
+   images, so pagination serves `outDir` directly with two overlay routes —
+   in-memory patched `book.html` and the embedded `/vendor/paged.polyfill.js`
+   — the exact pattern the preview server already uses for `/vendor/*`.
+6. **Preview runs the identical render** (same inlined document) and serves
+   images from the project in place; the temp dir holds only generated
+   `book.html`. The whole-tree copy, `mirrorChanges`, and the append-only
+   mirror staleness all go. A CSS edit re-runs the inline pass and swaps the
+   style block — the watcher's existing CSS fast path, retargeted.
+7. **`outDir` is owned.** The build now knows its complete output set, so a
+   fingerprint-guarded clean is trivial and publish uploads only what the
+   build wrote.
+8. **Unchanged from §9.3/§9.4:** the viewer workspace/save-path split, the
+   ~3-line origin strip (still needed for copied image URLs), the scaffolded
+   `.gitignore`, the chokidar ignore fix, and the `requestfailed` listener —
+   now a cheap net for the single remaining external class (remote URLs).
+
+What the author manages: **nothing**. The manifest keeps `title`, `source.files`,
+`styles`, `output`. "Reference it and it ships" is the entire mental model —
+which is what "non-technical writers publish print materials" always required.
+
+What this deletes outright: `copyAssets`/`assets.ts`, most of
+`build-staging.ts`, the preview mirror machinery, `normalizeImageSrc`,
+`missing-font-refs` (the inliner *is* that check, done correctly), the
+flattened-destination authoring rule and its 9-line manifest comment, the §9.3
+resolver's mapping scheme, and both §9.5 mitigations (compat shim, failure
+policy matrix — image misses are loud build diagnostics; style/font misses are
+build errors, full stop).
+
+Honest costs, all small: `book.html` grows by the embedded fonts (~1-3 MB
+typical; the size threshold handles pathological faces); CSS-edit preview
+latency becomes a re-render + style-block swap instead of a `<link>` swap
+(tens of ms for typical books); `../` markdown images are unsupported by rule
+rather than by accident; and remote URLs remain the one class no build-time
+copy can guarantee — policed by printsafe, netted by the listener.
+
+Scope check against "no ground-up rewrite": markdown rendering, pagination,
+PDF generation, publish providers, the viewer's platform seams, and
+`resolveActiveStyles` are all untouched. The changes are one postcss inline
+pass (new, ~150 lines, replacing ~4× that in deleted machinery), deletions in
+`build-runner`/`build-staging`/`preview`, and route-table serving that the
+preview server already demonstrates. Every subsystem this touches gets
+smaller.
