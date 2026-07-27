@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { existsSync, readdirSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   ExportController,
   type ExportControllerDeps,
@@ -51,6 +54,9 @@ interface Harness {
   getSession: () => ExportSession | null;
   /** Args of every fake syncProject() call, in order. */
   syncArgs: unknown[];
+  /** Args of every fake runBuild() call, in order — lets tests assert on the
+   * resolved `outDir`/`pdfFileOverride` (the workspace/destination split). */
+  buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null }>;
 }
 
 function makeHarness(opts: HarnessOpts = {}): Harness {
@@ -60,6 +66,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const removed: string[] = [];
   const latched = new Set<string>();
   const syncArgs: unknown[] = [];
+  const buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null }> = [];
   const counters = { sync: 0, build: 0 };
   let session: ExportSession | null = opts.activeSession ?? null;
 
@@ -72,9 +79,9 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       if (opts.cancelDuringSync && session) session.canceled = true;
       return opts.syncProject ? opts.syncProject() : { status: "up-to-date" };
     },
-    splitOutPath: (tempOutPath: string) => ({ outDir: `${tempOutPath}.dir` }),
-    runBuild: async () => {
+    runBuild: async (buildOpts: { outDir?: string; pdfFileOverride?: string | null }) => {
       counters.build += 1;
+      buildArgs.push(buildOpts);
       const r = opts.runBuild ? opts.runBuild() : { outDir: "/out", htmlPath: "/out/x.html", fingerprintPath: "/out/fp.json" };
       return r;
     },
@@ -136,6 +143,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     latched,
     getSession: () => session,
     syncArgs,
+    buildArgs,
   };
 }
 
@@ -153,6 +161,53 @@ test("happy path builds, renames temp→out, emits started+success, clears sessi
   expect(h.getSession()).toBeNull();
   // temp file is cleaned up
   expect(h.removed.length).toBe(1);
+});
+
+// ── workspace/destination split (bug fix) ───────────────────────────────────
+// Previously `outDir` (where `runBuild` writes book.html, assets, and
+// build-fingerprint.json) was derived from the SAME folder as the user's
+// chosen Save path via `lib.splitOutPath`, so a PDF export silently dropped
+// the whole build workspace next to it (e.g. onto the Desktop), overwriting
+// same-named files. `outDir` must now be an OS-temp workspace, decoupled from
+// the Save folder, cleaned up once the export settles; only the PDF
+// (`pdfFileOverride`, which sits next to the chosen destination for an
+// atomic same-filesystem rename) may end up in the folder the user picked.
+test("the build workspace is a temp dir decoupled from the Save folder, and is cleaned up", async () => {
+  const h = makeHarness();
+  await h.controller.build({ input: "/book", format: "pdf", out: "/Users/author/Desktop/MyBook.pdf" });
+
+  expect(h.buildArgs.length).toBe(1);
+  const { outDir, pdfFileOverride } = h.buildArgs[0]!;
+  expect(outDir).toBeTruthy();
+  expect(outDir).not.toBe("/Users/author/Desktop");
+  expect(path.dirname(outDir!)).not.toBe("/Users/author/Desktop");
+  // The PDF itself still lands next to the chosen destination.
+  expect(pdfFileOverride).toBeTruthy();
+  expect(path.dirname(pdfFileOverride!)).toBe("/Users/author/Desktop");
+  // The workspace is temp scratch space — removed once the export settles.
+  expect(existsSync(outDir!)).toBe(false);
+});
+
+test("the workspace is still cleaned up when the pre-export sync gate hard-blocks", async () => {
+  // The gate throws before runBuild ever runs, so `buildArgs` never captures
+  // the workspace path — assert cleanup indirectly instead, by checking no
+  // `print-md-export-*` temp dir this run created is left behind afterward.
+  // This is exactly the path an earlier version of the fix got wrong: the
+  // mkdtemp'd workspace was created BEFORE the sync gate, and the gate's own
+  // early `throw` (SYNC_CONFLICT) exited past a `finally` that only wrapped
+  // the build step, leaking the workspace on every hard-blocked export.
+  const before = new Set(
+    readdirSync(os.tmpdir()).filter((n) => n.startsWith("print-md-export-")),
+  );
+  const h = makeHarness({ conflictLatched: true });
+  const err = await h.controller
+    .build({ input: "/book", out: "/out/book.pdf" })
+    .catch((e) => e);
+
+  expect((err as Error & { code?: string }).code).toBe("SYNC_CONFLICT");
+  expect(h.runBuildCalls).toBe(0);
+  const after = readdirSync(os.tmpdir()).filter((n) => n.startsWith("print-md-export-"));
+  expect(after.filter((n) => !before.has(n))).toEqual([]);
 });
 
 test("missing input is rejected before any work", async () => {

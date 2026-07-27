@@ -23,6 +23,8 @@
  */
 
 import path from "node:path";
+import os from "node:os";
+import fsp from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { preExportSyncGateBlockError } from "../recovery-bridge";
 import type { GitIdentityArgs } from "../git-identity";
@@ -166,7 +168,22 @@ export class ExportController {
     // Cancel immediately — and label the pill "Syncing latest changes…" for
     // as long as the gate takes.
     const tempOutPath = `${requestedOutPath}.print-md.tmp.pdf`;
-    const { outDir, pdfFileOverride } = lib.splitOutPath(tempOutPath, format);
+    // WORKSPACE vs DESTINATION split (bug fix). `runBuild` writes book.html,
+    // build-fingerprint.json, and every asset the book references into
+    // `outDir` — that used to be derived from `path.dirname(tempOutPath)` via
+    // `lib.splitOutPath`, i.e. the SAME folder the author picked in the native
+    // Save dialog (their Desktop, say). So exporting a PDF silently dropped
+    // the whole build workspace into that folder too, overwriting any
+    // same-named files already there. A fresh OS-temp directory is the
+    // workspace instead; only the PDF (`pdfFileOverride`) still lands next to
+    // the chosen destination — same filesystem as `requestedOutPath`, so the
+    // atomic rename below can't hit a cross-device error — and the workspace
+    // is removed in the outer `finally`, alongside the temp PDF, regardless of
+    // which path below the export exits through (including the sync gate's
+    // own early throws).
+    const workspaceDir = await fsp.mkdtemp(path.join(os.tmpdir(), "print-md-export-"));
+    const outDir = workspaceDir;
+    const pdfFileOverride = path.resolve(tempOutPath);
     const exportSession: ExportSession = {
       id: randomUUID(),
       canceled: false,
@@ -181,163 +198,169 @@ export class ExportController {
       message: "Syncing latest changes…",
     });
 
-    // ── PDF-export safety gate (transparent-sync plan §5.3) ──────────────────
-    // Before building, check the open project's sync state and act accordingly:
-    //   synced / up-to-date  → proceed immediately.
-    //   dirty + online       → sync first (so the PDF includes teammate changes).
-    //   offline              → proceed but warn (renderer receives a message).
-    //   conflict-latched     → block and return a typed error (author must resolve).
-    // Only runs when the exported dir is the currently open project and auto-sync
-    // is configured (canSync + credential). Local-only projects skip the gate.
-    // path.resolve() normalises the export dir to match the autoSyncStates key,
-    // which is always normalised at assignment time in startFolderWatch.
-    const exportDir = path.resolve(args.input);
-    // Use exportDir (already path.resolve'd) as the canonical key into the
-    // orchestrator's state map so both the hard-block read and the mid-gate
-    // conflict latch below use the same key — regardless of whether exportDir
-    // happens to equal watchedDir.
-    if (this.deps.sync.isConflictLatched(exportDir)) {
-      // Hard block: the author MUST resolve before a PDF can be trusted.
-      this.deps.setActiveExportSession(null);
-      const err = new Error(
-        "Cannot save a PDF while there are unresolved changes from two places. " +
-        "Resolve the conflict first, then try again.",
-      );
-      (err as Error & { code?: string }).code = "SYNC_CONFLICT";
-      throw err;
-    }
-    // Attempt a pre-export sync when online + canSync. Its only hard effect is
-    // the conflict BLOCK below (a PDF must not be built over an unresolved
-    // conflict); every other outcome is soft — the PDF uses local content,
-    // which is always valid and fully snapshotted. Gate errors are non-fatal.
     try {
-      const exportSource = await lib.detectProjectSource(exportDir);
-      this.deps.throwIfCanceled(exportSession);
-      if (exportSource.type === "local-git-folder") {
-        // Credential-aware gate (ADR 0006 D4) — NOT capabilitiesFor().canSync,
-        // which is hasRemote-only and would attempt a pre-export syncProject
-        // (returning auth) for SSH or uncredentialed-HTTPS projects on every export.
-        const exportDiag = await lib.diagnoseProjectRemote(exportDir, {
-          tokenStore: this.deps.tokenStore,
-        });
+      // ── PDF-export safety gate (transparent-sync plan §5.3) ────────────────
+      // Before building, check the open project's sync state and act accordingly:
+      //   synced / up-to-date  → proceed immediately.
+      //   dirty + online       → sync first (so the PDF includes teammate changes).
+      //   offline              → proceed but warn (renderer receives a message).
+      //   conflict-latched     → block and return a typed error (author must resolve).
+      // Only runs when the exported dir is the currently open project and auto-sync
+      // is configured (canSync + credential). Local-only projects skip the gate.
+      // path.resolve() normalises the export dir to match the autoSyncStates key,
+      // which is always normalised at assignment time in startFolderWatch.
+      const exportDir = path.resolve(args.input);
+      // Use exportDir (already path.resolve'd) as the canonical key into the
+      // orchestrator's state map so both the hard-block read and the mid-gate
+      // conflict latch below use the same key — regardless of whether exportDir
+      // happens to equal watchedDir.
+      if (this.deps.sync.isConflictLatched(exportDir)) {
+        // Hard block: the author MUST resolve before a PDF can be trusted.
+        this.deps.setActiveExportSession(null);
+        const err = new Error(
+          "Cannot save a PDF while there are unresolved changes from two places. " +
+          "Resolve the conflict first, then try again.",
+        );
+        (err as Error & { code?: string }).code = "SYNC_CONFLICT";
+        throw err;
+      }
+      // Attempt a pre-export sync when online + canSync. Its only hard effect is
+      // the conflict BLOCK below (a PDF must not be built over an unresolved
+      // conflict); every other outcome is soft — the PDF uses local content,
+      // which is always valid and fully snapshotted. Gate errors are non-fatal.
+      try {
+        const exportSource = await lib.detectProjectSource(exportDir);
         this.deps.throwIfCanceled(exportSession);
-        if (exportDiag.canSync && this.deps.isOnline()) {
-          const syncOutcome = await lib.syncProject({
-            projectDir: exportDir,
+        if (exportSource.type === "local-git-folder") {
+          // Credential-aware gate (ADR 0006 D4) — NOT capabilitiesFor().canSync,
+          // which is hasRemote-only and would attempt a pre-export syncProject
+          // (returning auth) for SSH or uncredentialed-HTTPS projects on every export.
+          const exportDiag = await lib.diagnoseProjectRemote(exportDir, {
             tokenStore: this.deps.tokenStore,
-            ...(await this.deps.gitIdentity()),
           });
           this.deps.throwIfCanceled(exportSession);
-          if (syncOutcome.status === "conflict") {
-            // A conflict surfaced mid-export-gate: latch (cancels timers,
-            // stamps lastSyncAt, and emits the conflict status) and block.
-            this.deps.sync.latchConflict(exportDir, syncOutcome.files);
-            const conflictErr = new Error(
-              "Changes happened in two places. Resolve the conflict first, then save the PDF.",
-            );
-            (conflictErr as Error & { code?: string }).code = "SYNC_CONFLICT";
-            throw conflictErr;
+          if (exportDiag.canSync && this.deps.isOnline()) {
+            const syncOutcome = await lib.syncProject({
+              projectDir: exportDir,
+              tokenStore: this.deps.tokenStore,
+              ...(await this.deps.gitIdentity()),
+            });
+            this.deps.throwIfCanceled(exportSession);
+            if (syncOutcome.status === "conflict") {
+              // A conflict surfaced mid-export-gate: latch (cancels timers,
+              // stamps lastSyncAt, and emits the conflict status) and block.
+              this.deps.sync.latchConflict(exportDir, syncOutcome.files);
+              const conflictErr = new Error(
+                "Changes happened in two places. Resolve the conflict first, then save the PDF.",
+              );
+              (conflictErr as Error & { code?: string }).code = "SYNC_CONFLICT";
+              throw conflictErr;
+            }
+            // synced / up-to-date / offline / auth / error → export proceeds with
+            // local content (the ambient pill already reflects the sync state).
           }
-          // synced / up-to-date / offline / auth / error → export proceeds with
-          // local content (the ambient pill already reflects the sync state).
         }
+      } catch (gateErr) {
+        // M28: a Cancel click during the gate — the exportId now exists this
+        // early, so Cancel can fire mid-sync. Honour it the same way the
+        // post-build cancel path does, rather than falling into the "swallow
+        // non-fatal gate errors" branch below.
+        if (exportSession.canceled || this.deps.isExportCanceledError(gateErr)) {
+          this.deps.setActiveExportSession(null);
+          this.deps.sendProgress({ exportId: exportSession.id, state: "canceled" });
+          const err = new Error("PDF export canceled");
+          (err as Error & { code?: string }).code = "EXPORT_CANCELED";
+          throw err;
+        }
+        // Re-throw conflict blocks; swallow all other gate errors (non-fatal for export).
+        const blockErr = preExportSyncGateBlockError(gateErr);
+        if (blockErr) {
+          this.deps.setActiveExportSession(null);
+          throw blockErr;
+        }
+        const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
+        console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
       }
-    } catch (gateErr) {
-      // M28: a Cancel click during the gate — the exportId now exists this
-      // early, so Cancel can fire mid-sync. Honour it the same way the
-      // post-build cancel path does, rather than falling into the "swallow
-      // non-fatal gate errors" branch below.
-      if (exportSession.canceled || this.deps.isExportCanceledError(gateErr)) {
-        this.deps.setActiveExportSession(null);
-        this.deps.sendProgress({ exportId: exportSession.id, state: "canceled" });
-        const err = new Error("PDF export canceled");
-        (err as Error & { code?: string }).code = "EXPORT_CANCELED";
-        throw err;
-      }
-      // Re-throw conflict blocks; swallow all other gate errors (non-fatal for export).
-      const blockErr = preExportSyncGateBlockError(gateErr);
-      if (blockErr) {
-        this.deps.setActiveExportSession(null);
-        throw blockErr;
-      }
-      const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
-      console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
-    }
-    // ── end PDF-export safety gate ────────────────────────────────────────────
+      // ── end PDF-export safety gate ──────────────────────────────────────────
 
-    try {
-      this.deps.throwIfCanceled(exportSession);
-      this.deps.sendProgress({ exportId: exportSession.id, state: "started" });
-      const result = await lib.runBuild({
-        inputDir: args.input,
-        format,
-        outDir,
-        pdfFileOverride,
-        title: args.title,
-        pdfxFlavor: args.pdfxFlavor as never,
-        iccPath: args.icc,
-        manifestPath: args.manifest,
-        stripAnnotations: args.stripAnnotations,
-        skipLint: args.skipLint,
-        skipPreValidate: args.skipPreValidate,
-        skipPostValidate: args.skipPostValidate,
-        // Render with Electron's own Chromium unless explicitly opted out.
-        pdfRenderer: this.deps.usePuppeteer() ? undefined : this.deps.pdfRenderer,
-        rawArgs: { input: args.input, format, out: args.out },
-      });
-      this.deps.throwIfCanceled(exportSession);
-      await this.deps.rename(exportSession.tempOutPath, exportSession.outPath);
-      this.deps.sendProgress({
-        exportId: exportSession.id,
-        state: "success",
-        message: exportSession.outPath,
-      });
-      return {
-        exportId: exportSession.id,
-        outDir: result.outDir,
-        htmlPath: result.htmlPath,
-        pdfPath: exportSession.outPath,
-        fingerprintPath: result.fingerprintPath,
-      };
-    } catch (e: unknown) {
-      if (exportSession.canceled || this.deps.isExportCanceledError(e)) {
-        this.deps.sendProgress({ exportId: exportSession.id, state: "canceled" });
-        const err = new Error("PDF export canceled");
-        (err as Error & { code?: string }).code = "EXPORT_CANCELED";
-        throw err;
+      try {
+        this.deps.throwIfCanceled(exportSession);
+        this.deps.sendProgress({ exportId: exportSession.id, state: "started" });
+        const result = await lib.runBuild({
+          inputDir: args.input,
+          format,
+          outDir,
+          pdfFileOverride,
+          title: args.title,
+          pdfxFlavor: args.pdfxFlavor as never,
+          iccPath: args.icc,
+          manifestPath: args.manifest,
+          stripAnnotations: args.stripAnnotations,
+          skipLint: args.skipLint,
+          skipPreValidate: args.skipPreValidate,
+          skipPostValidate: args.skipPostValidate,
+          // Render with Electron's own Chromium unless explicitly opted out.
+          pdfRenderer: this.deps.usePuppeteer() ? undefined : this.deps.pdfRenderer,
+          rawArgs: { input: args.input, format, out: args.out },
+        });
+        this.deps.throwIfCanceled(exportSession);
+        await this.deps.rename(exportSession.tempOutPath, exportSession.outPath);
+        this.deps.sendProgress({
+          exportId: exportSession.id,
+          state: "success",
+          message: exportSession.outPath,
+        });
+        return {
+          exportId: exportSession.id,
+          outDir: result.outDir,
+          htmlPath: result.htmlPath,
+          pdfPath: exportSession.outPath,
+          fingerprintPath: result.fingerprintPath,
+        };
+      } catch (e: unknown) {
+        if (exportSession.canceled || this.deps.isExportCanceledError(e)) {
+          this.deps.sendProgress({ exportId: exportSession.id, state: "canceled" });
+          const err = new Error("PDF export canceled");
+          (err as Error & { code?: string }).code = "EXPORT_CANCELED";
+          throw err;
+        }
+        // BuildError carries actionable multi-line text from the lib's
+        // preflightBuildTools / requireChromiumExecutable — preserve it.
+        if (e instanceof lib.BuildError) {
+          const err = new Error(e.message);
+          (err as Error & { code?: string }).code = "BUILD_ERROR";
+          throw err;
+        }
+        // Generic spawn ENOENT: wrap with a friendlier message identifying
+        // the missing tool. (Preflight should have caught this earlier, but
+        // some downstream tools — e.g. when a tool exists but errors out —
+        // can still surface raw ENOENT here.)
+        if (e instanceof Error && (e as Error & { code?: string }).code === "ENOENT") {
+          const syscall = (e as Error & { syscall?: string }).syscall ?? "";
+          const failedPath = (e as Error & { path?: string }).path ?? "";
+          const tool = failedPath || syscall.replace(/^spawn /, "");
+          const err = new Error(
+            `Required system tool not found: ${tool}\n\n` +
+            `Install it and re-run. See User Guide Chapter 8 (examples/print-md-user-guide/08-system-setup.md) for per-platform instructions.\n\n` +
+            `Underlying error: ${e.message}`
+          );
+          (err as Error & { code?: string }).code = "TOOL_MISSING";
+          throw err;
+        }
+        this.deps.sendProgress({
+          exportId: exportSession.id,
+          state: "error",
+          message: e instanceof Error ? e.message : String(e),
+        });
+        throw e;
+      } finally {
+        this.deps.setActiveExportSession(null);
+        await this.deps.rm(exportSession.tempOutPath).catch(() => {});
       }
-      // BuildError carries actionable multi-line text from the lib's
-      // preflightBuildTools / requireChromiumExecutable — preserve it.
-      if (e instanceof lib.BuildError) {
-        const err = new Error(e.message);
-        (err as Error & { code?: string }).code = "BUILD_ERROR";
-        throw err;
-      }
-      // Generic spawn ENOENT: wrap with a friendlier message identifying
-      // the missing tool. (Preflight should have caught this earlier, but
-      // some downstream tools — e.g. when a tool exists but errors out —
-      // can still surface raw ENOENT here.)
-      if (e instanceof Error && (e as Error & { code?: string }).code === "ENOENT") {
-        const syscall = (e as Error & { syscall?: string }).syscall ?? "";
-        const failedPath = (e as Error & { path?: string }).path ?? "";
-        const tool = failedPath || syscall.replace(/^spawn /, "");
-        const err = new Error(
-          `Required system tool not found: ${tool}\n\n` +
-          `Install it and re-run. See User Guide Chapter 8 (examples/print-md-user-guide/08-system-setup.md) for per-platform instructions.\n\n` +
-          `Underlying error: ${e.message}`
-        );
-        (err as Error & { code?: string }).code = "TOOL_MISSING";
-        throw err;
-      }
-      this.deps.sendProgress({
-        exportId: exportSession.id,
-        state: "error",
-        message: e instanceof Error ? e.message : String(e),
-      });
-      throw e;
     } finally {
-      this.deps.setActiveExportSession(null);
-      await this.deps.rm(exportSession.tempOutPath).catch(() => {});
+      // The workspace is scratch space — only the PDF (renamed into place
+      // above) may survive in the author's chosen folder.
+      await fsp.rm(workspaceDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 }
