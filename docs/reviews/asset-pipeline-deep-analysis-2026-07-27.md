@@ -780,3 +780,75 @@ pass (new, ~150 lines, replacing ~4× that in deleted machinery), deletions in
 `build-runner`/`build-staging`/`preview`, and route-table serving that the
 preview server already demonstrates. Every subsystem this touches gets
 smaller.
+
+### 9.7 Verification: inlined fonts and PDF/X embedding; verdict on `output`
+
+**Question 1 — do data-URI fonts embed in the PDF?** Print shops (DriveThruRPG)
+require PDF/X with embedded fonts; the §9.6 design must not break that or push
+the complexity into the PDF/X stage.
+
+**Verified empirically, not argued.** A test project whose only font is a
+`@font-face` with a `data:font/ttf;base64,…` src (Liberation Serif, 512 KB)
+was built through the real pipeline (`runBuild`, `--format pdf`, headless
+Chromium + Paged.js). Inspecting the output with the repo's own
+`pdf-inspect.ts` — the same code `pdf.print.embedded-fonts` runs, at error
+severity, in the dtrpg preset:
+
+```
+FONTS IN PDF:
+  name=AAAAAA+LiberationSerif embedded=true
+  name=AAAAAA+LiberationSerif embedded=true
+```
+
+The `AAAAAA+` prefix is the PDF subset tag: Chromium's Skia backend embedded a
+**subset of the actual font program delivered by the data URI** — not a
+fallback face. This is the expected mechanics: Skia embeds from the in-memory
+typeface Chromium rendered with; the transport that loaded it (data: URI vs.
+HTTP fetch from the stage server) is invisible to the PDF writer.
+
+**Why the PDF/X leg cannot be affected.** `convertToPdfxCmyk` takes the
+Chromium PDF as input — the artifact verified above. The inlining change alters
+only how font bytes travel *into* Chromium; by the time `rawPdf` exists the
+change is unobservable, so the Ghostscript PDF/X stage runs byte-identical
+inputs through untouched code. (PDF/X conversion also *requires* embedded
+fonts and fails rather than stripping them.) No complexity moves downstream —
+the downstream cannot even detect the difference.
+
+The DTRPG failure mode actually **improves**: today a font that 404s during
+pagination silently falls back, the *fallback* gets embedded, and
+`embedded-fonts` passes — the author ships a validated PDF in the wrong
+typeface (§3.6 #25). Under inlining that state is unreachable: a missing font
+file is a build error before Chromium launches. The `embedded-fonts` check
+remains as the final gate, but can no longer be satisfied by the wrong font.
+(Fonts whose license bits forbid embedding behave identically under either
+transport — the existing `font-license` check remains the right home for that
+concern.)
+
+**Question 2 — is `output` in the manifest truly useful?** No. Delete the
+whole block. Field by field:
+
+- **`output.dir`** (default `"dist"`) parameterizes something three other
+  subsystems assume is constant: `DEFAULT_EXCLUDE_DIRS` hardcodes the literal
+  `'dist'` (§6 finding — set `build/pdf` and the preview mirrors the previous
+  build into itself), publish resolves it against a *different* base than the
+  build (#54), and the `.gitignore` scaffold would have to chase the resolved
+  value. A configurable output dir is configuration for configuration's sake:
+  fix it at `<project>/dist` and every divergence becomes correct by
+  definition. Per-invocation placement (CI, one-offs) keeps the existing
+  `--out` flag — an *invocation* concern, which is where it belongs.
+- **`output.filename`** (default `"book.pdf"`) parameterizes the artifact name
+  — but naming already lives at the edges where it matters: the viewer's Save
+  dialog names interactively, CLI `--out my-book.pdf` names per invocation,
+  and a publish provider can derive the upload's display name from `title` at
+  upload time (the only place a shop-facing filename is real). Deleting it
+  also turns publish's hardcoded `book.pdf` extras-probe (#53) from wrong into
+  correct, and deletes the scaffold's `{{OUTPUT_PDF}}` substitution.
+- **`output.html`** is already deprecated and ignored; delete the parsing and
+  the once-per-process warning that exists only to say so.
+
+Result: canonical artifacts at `dist/book.html` / `dist/book.pdf`, one less
+`mergeShape` branch, and every consumer that re-derives output naming today
+(build, publish, viewer, preview excludes, `.gitignore`) collapses to a
+constant. The manifest an author sees is now: `title`, `authors`,
+`source.files`, `styles`, `plugins`, page/ink/pdfx print geometry, and
+validation settings — nothing about plumbing.
