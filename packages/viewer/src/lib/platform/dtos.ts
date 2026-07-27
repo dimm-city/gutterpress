@@ -18,10 +18,14 @@ import type { ConflictKind } from "./shared-types";
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
-// Phase-0 type stub only — no implementation in this pass. See
-// docs/design/issue-44-plan.md.
+// #44 has since shipped in full (EditorBuffer in editor/buffer-state.svelte.ts,
+// CrashRecoveryController, the /api/recovery/* routes below). `RecoveryEntry`
+// is the live DTO those routes return. `EditorBufferPhase` predates that work
+// and has no importers — EditorBuffer declares its own identical copy of the
+// union locally instead of importing this one. See docs/design/issue-44-plan.md.
 
-/** Lifecycle of the in-app editor buffer relative to disk (#44). */
+/** Lifecycle of the in-app editor buffer relative to disk (#44). Unused here —
+ *  see the header note above. */
 export type EditorBufferPhase = "clean" | "dirty" | "saving" | "error";
 
 /**

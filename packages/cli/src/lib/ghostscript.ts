@@ -229,8 +229,11 @@ export async function convertToPdfxCmyk(
     "-sProcessColorModel=DeviceCMYK",
     "-sColorConversionStrategy=CMYK",
     "-dOverrideICC=true",
-    // Let Ghostscript resolve its installation-relative built-in sRGB profile;
-    // a distro filesystem path here breaks otherwise valid macOS/Windows installs.
+    // No -sDefaultRGBProfile override: a hardcoded distro path (e.g. Linux's
+    // /usr/share/color/icc/ghostscript/srgb.icc) breaks otherwise valid
+    // macOS/Windows installs, so Ghostscript resolves its own built-in sRGB
+    // profile instead. -sOutputICCProfile below is unrelated — it sets the
+    // PDF/X output intent profile, always the caller-supplied iccPath.
     `-sOutputICCProfile=${iccPath}`,
     `-sOutputFile=${outPdf}`,
     tmpDef,

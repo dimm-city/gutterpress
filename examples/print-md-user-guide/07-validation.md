@@ -1,6 +1,6 @@
 # Validation & Best Practices {#ch-validation}
 
-<div class="lede">Print-md's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 31 built-in checks, CLI usage, and production workflow recommendations.</div>
+<div class="lede">Print-md's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 33 built-in checks, CLI usage, and production workflow recommendations.</div>
 
 ## Validation Overview
 

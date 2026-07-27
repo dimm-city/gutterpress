@@ -43,12 +43,11 @@
  *
  * NOTE (slice 1 of 2, per the H5 fix roadmap): `savePdf` / `exportHtml` /
  * `cancelExport` (→ `ExportController`) and the crash-recovery scan block
- * (→ a future `CrashRecoveryController`) are NOT moved here — this slice is
- * scoped to the open/reset lifecycle only. `resetExtras` still reaches into
- * the crash-recovery scan fields (`recoveryScanDir` / `recoveryItems` /
- * `pendingRecoveryScanDir`) because they are part of the reset-divergence bug
- * this slice fixes, even though the scan *trigger* functions stay page-local
- * for now.
+ * (→ `CrashRecoveryController`, added in Phase 5 slice 2) are NOT moved
+ * here — this slice is scoped to the open/reset lifecycle only. `resetExtras`
+ * still reaches into the crash-recovery reset (`crashRecovery.reset()`) and
+ * `pendingRecoveryScanDir` because they are part of the reset-divergence bug
+ * this slice fixes, even though the scan *trigger* functions stay page-local.
  */
 
 import { basenameOf } from "../platform/paths";
@@ -162,7 +161,7 @@ export interface ProjectLifecycleDeps {
    * the Problems panel (`problems`/`problemsError`/`missingAssetProblems`/
    * `problemsOpen`), the editor pane (`editorOpen`/`previewHidden`), the
    * editor buffer, the folder watcher, `pageNav`'s counters + edit mode, and
-   * the crash-recovery scan state (`recoveryScanDir`/`recoveryItems`/
+   * the crash-recovery scan state (`crashRecovery.reset()` and
    * `pendingRecoveryScanDir`). Called once from `resetWorkspace()` so every
    * teardown path clears the SAME set — the fix for the divergent hand-rolled
    * resets (H5 / M2).
@@ -459,9 +458,10 @@ export class ProjectLifecycleController {
     this.urlPreviewError = null;
     this.saveWarning = null;
     // H5 fix: the SAME resetWorkspace() stopPreview/the catch use — this is
-    // what now also clears recoveryScanDir/recoveryItems/previewHidden/
-    // pageNav.pageEditing here, closing the exact divergence the review
-    // flagged (openUrl used to miss them).
+    // what now also clears the crash-recovery scan state/previewHidden/
+    // pageNav's counters here, closing the exact divergence the review
+    // flagged (openUrl used to miss them; pageEditing itself was later
+    // retired entirely with the toolbar refactor — see PageNavController).
     this.resetWorkspace();
     this.sourceMode = "url";
     this.currentUrl = url;

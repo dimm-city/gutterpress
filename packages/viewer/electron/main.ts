@@ -707,8 +707,8 @@ function createWindow() {
 
   // ARCH review finding #1: no flow in this app actually needs an in-app
   // popup window — GitHub device-flow connect and every external link
-  // already go through `shell.openExternal` (see AdvancedSetupDialog,
-  // GitHubDialog, HelpDialog, ProjectConfigPanel, +page.svelte; a grep for
+  // already go through `shell.openExternal` (see ConnectionsSettings,
+  // GitHubDialog, HelpDialog, ProjectSettingsView, +page.svelte; a grep for
   // `window.open`/`target="_blank"` across src/ and electron/ has zero
   // hits). The previous handler granted `window.open`/`target="_blank"`
   // requests a full BrowserWindow for ANY https URL — and because

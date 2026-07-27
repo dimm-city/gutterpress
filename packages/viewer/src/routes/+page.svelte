@@ -1489,7 +1489,7 @@
   // closes/switches.
   let missingAssetProblems = $state<ProblemEntry[]>([]);
   let allProblems = $derived([...missingAssetProblems, ...problems]);
-  let problemBadge = $derived(problemCounts(allProblems).badge); // used for ProblemsPanel (informational)
+  let problemBadge = $derived(problemCounts(allProblems).badge);
 
   function refreshProblems() {
     if (!isDesktop() || !lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;

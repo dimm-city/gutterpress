@@ -611,14 +611,17 @@ export interface HostServices {
  * `openFolder` is overridden here (#49) to return a host-neutral `FolderRef`
  * instead of the lib `PlatformAdapter`'s raw `string` path — so the renderer
  * never assumes path-string semantics. The adapter is the translation seam
- * (Electron wraps the picker's path; the future PWA will return an FSA handle
- * ref). Every other `PlatformAdapter` primitive is inherited unchanged.
+ * (Electron wraps the picker's path; the WebAdapter already returns an FSA
+ * handle-registry ref today — see web-adapter.ts — though it is dormant/
+ * unreachable until the #33 PWA milestone wires it up). Every other
+ * `PlatformAdapter` primitive is inherited unchanged.
  */
 export interface Platform extends Omit<PlatformAdapter, "openFolder">, HostServices {
   /**
    * Open a native folder picker. Resolves with a {@link FolderRef} (key +
    * precomputed displayName), or null when the user cancels. The Electron
-   * adapter wraps the chosen absolute path; the Web adapter is a 0.6.0 stub.
+   * adapter wraps the chosen absolute path; the Web adapter genuinely opens
+   * the FSA directory picker (see web-adapter.ts) — dormant, not a stub.
    */
   openFolder(): Promise<FolderRef | null>;
 

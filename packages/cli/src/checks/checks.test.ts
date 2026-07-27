@@ -1201,7 +1201,7 @@ describe("Runner skips checks with missing tools", () => {
 // ---------------------------------------------------------------------------
 // In-process replacements for grep / markdownlint-cli2 / htmlhint (Phase 1).
 // These run with NO external tools — previously they required tools on PATH and
-// silently skipped. See docs/phase-1-os-dependency-removal-plan.md.
+// silently skipped.
 // ---------------------------------------------------------------------------
 
 describe("In-process source/PDF checks (no external tools)", () => {
@@ -1219,7 +1219,8 @@ describe("In-process source/PDF checks (no external tools)", () => {
       expect(md018!.severity).toBe("warning");
       expect(md018!.file).toBe(mdFile);
       expect(md018!.line).toBe(1);
-      // message mirrors cli2 text format: "rule/alias description"
+      // M32: message leads with the human-readable description; the rule
+      // name is a parenthesized suffix (see markdownlint.ts).
       expect(md018!.message).toContain("no-missing-space-atx");
     } finally {
       await rm(dir, { recursive: true, force: true });

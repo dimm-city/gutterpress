@@ -10,7 +10,7 @@
    * state, the debounced read-modify-write token machinery, and `api.fs.*`
    * calls live in `DesignSectionController` (passed as the single `controller`
    * prop — this was the first section to get the controller extraction; see
-   * M14 for the other five). `toHex` is a pure browser-only helper (§8-clean).
+   * M14 for the other four). `toHex` is a pure browser-only helper (§8-clean).
    * The Fonts list is derived locally from the controller's full `tokens`
    * field rather than a separate `fontTokens` getter — one less thing to keep
    * wired, and it can never silently go stale.

@@ -1,6 +1,6 @@
 /**
  * System diagnostics — surfaces tool availability + versions for the
- * viewer's Help/About dialog and the (planned) `print-md doctor` CLI.
+ * viewer's Help/About dialog and the `print-md doctor` CLI command.
  *
  * Reuses `resolveChromiumExecutable`, `findTool`, and `isToolAvailable` for
  * tool detection. Install-hint copy lives in `./install-hints.ts` — the

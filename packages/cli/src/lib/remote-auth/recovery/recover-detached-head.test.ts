@@ -11,7 +11,7 @@
  *           → backup+confirm; YES → commit to recovery branch, checkout main, status "recovered"
  *           → DENY → status "blocked", local files AND remote HEAD unchanged
  *
- * Safety invariants (CLAUDE.md rule 5) asserted throughout:
+ * Safety invariants asserted throughout:
  *   - NEVER force-push (push is never called with force:true)
  *   - Remote HEAD unchanged when result is blocked/failed/denied
  *   - /tmp zip backup created and verified readable BEFORE any risky op

@@ -219,12 +219,21 @@ See the [design-guide example](../examples/with-design-guide/design-guide/) for 
 
 The [`with-design-guide`](../examples/with-design-guide/) example is the reference implementation of this pattern. It demonstrates:
 
-- A layered stylesheet (`design-guide/styles/guide.css`) defining components via `var(--dc-X, fallback)` patterns
-- Multiple section components keyed off `.section.dc-*` classes
+- A layered stylesheet (`design-guide/styles/guide.css`) built on a
+  custom-property token layer (`--color-*`, `--font-*`, `--fs-*`) that the
+  component rules consume
+- Named component classes (`.callout`, `.callout-note`, `.cover-*`, `.chapter-*`)
+  that authors opt into from markdown
 - The full markdown-author authoring surface across its numbered chapters
 
+Note that this example predates the `.section.dc-*` / `var(--dc-X, fallback)`
+naming used in the illustrations above, and uses the brand-agnostic
+`--color-*`/`.callout-*` vocabulary instead. The *shape* of the pattern is the
+same — a token layer, component rules that consume it, and per-book overrides
+that reset the tokens — only the prefix differs.
+
 Files to study:
-- [`design-guide/styles/guide.css`](../examples/with-design-guide/design-guide/styles/guide.css) — components and their `var(--dc-X, fallback)` patterns
+- [`design-guide/styles/guide.css`](../examples/with-design-guide/design-guide/styles/guide.css) — the token layer and the component rules that consume it
 - [`design-guide/03-components.md`](../examples/with-design-guide/design-guide/03-components.md) — markdown demonstrating the component authoring patterns
 - [`design-guide/06-markdown-reference.md`](../examples/with-design-guide/design-guide/06-markdown-reference.md) — the full author-facing markdown surface
 

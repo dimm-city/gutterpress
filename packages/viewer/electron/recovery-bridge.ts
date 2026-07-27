@@ -287,7 +287,8 @@ export interface ConflictPreviewResult {
 
 /**
  * Read the working-tree copy and the online-sidecar copy of a conflicted file.
- * Used by the `sync:getConflictPreview` IPC handler in main.ts.
+ * Used by the `sync:getConflictPreview` server route (via `conflictPreviewHooksImpl`
+ * in main.ts — see src/routes/api/sync/get-conflict-preview).
  *
  * @param projectDir  Absolute path to the project directory
  * @param relativePath  Relative path within the project (no `..` allowed)

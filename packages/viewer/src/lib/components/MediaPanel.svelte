@@ -7,10 +7,13 @@
    * print-readiness notes), insert-at-cursor, drag-to-editor, and an
    * "Add images…" importer.
    *
-   * Host work happens through getPlatform() only (CLAUDE.md §8): listing,
-   * thumbnails (generated AND cached host-side so multi-MB originals never
-   * reach the renderer), inspection, and file copies. Renderer-side thumbnail
-   * state is bounded (THUMB_LIMIT) so a huge project can't balloon memory.
+   * Host work — listing, thumbnails (generated AND cached host-side so
+   * multi-MB originals never reach the renderer), inspection, and file
+   * copies — goes through `api.media.*`/`api.dialog.*` server routes, the
+   * default seam (CLAUDE.md §8); `getPlatform().onFolderChanged` is used only
+   * for the live folder-changed push stream, one of the seam's narrower
+   * classes. Renderer-side thumbnail state is bounded (THUMB_LIMIT) so a huge
+   * project can't balloon memory.
    */
   import { onMount } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";

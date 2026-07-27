@@ -320,7 +320,7 @@ Preflight configuration.
 
 - `enabled` (boolean) - Default `true`.
 - `checks` (object) - Per-check overrides keyed by check id. This is an **open dictionary**: any registered check id may appear, including ids contributed by plugins. Built-in ids are namespaced `source.*`, `asset.*`, `pdf.*`, `heuristic.*`. A value is either a boolean (shorthand for enabled/disabled) or `{ enabled, severity, options }`, where `severity` is `error`, `warning`, or `info`.
-- `source` (object) - `markdownlint`, `htmlhint`, `stylelint`: a config file path, or `false` to disable that check. `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
+- `source` (object) - `markdownlint`, `htmlhint`: a config file path, or `false` to disable that check. `stylelint`: `false` disables the `source.stylelint` check; any other value leaves it enabled — the key is kept only for manifest back-compat, the check itself runs the same postcss-based print-safety rules as `checkCss` and does not read a stylelint config. `allowedCallouts` is **deprecated and ignored** — the `:::` container syntax it gated was removed.
 - `assets` (object) - `maxImageSize`, `minImageDpi`, `allowedColorSpaces`, `allowAlpha`, `approvedFontFiles`, `requireFontLicense`.
 - `pdf` (object) - `requireBookmarks`, `requireTocLinks`, `minImageResolution`, `forbidTransparency`, `requireBleed`, `bleedSize` (points).
 - `heuristics` (object) - `maxDecorativeLayers`, `textDensityRange` (`min`/`max`), `maxParagraphsPerSection`.

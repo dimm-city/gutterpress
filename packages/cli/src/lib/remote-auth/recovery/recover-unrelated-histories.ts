@@ -134,12 +134,13 @@ export const recover: RecoverFn = async (ctx, error?) => {
       });
 
       // ── 1. Fetch the remote ───────────────────────────────────────────────
-      // Uses the same authenticated, single-branch fetch pattern as sync.ts's
-      // fetchRemoteTip: `ref` is the remote-tracking ref (the last tip the
-      // server gave us) so the server finds a common base and sends only new
-      // objects. Without this, isomorphic-git sends the local branch tip as
-      // the `have` line, and the server ships the ENTIRE repo as one pack
-      // (multi-GB download → OOM on large repos). See sync.ts:512-518.
+      // Uses the same authenticated, single-branch fetch pattern as
+      // transport.ts's fetchRemoteTip (re-exported via sync.ts): `ref` is the
+      // remote-tracking ref (the last tip the server gave us) so the server
+      // finds a common base and sends only new objects. Without this,
+      // isomorphic-git sends the local branch tip as the `have` line, and the
+      // server ships the ENTIRE repo as one pack (multi-GB download → OOM on
+      // large repos). See transport.ts's fetchRemoteTip.
       // guardTrackingRef (R15): an idle-timeout abort mid-pack moves the
       // tracking ref before the objects land — roll it back so the abort
       // can't dangle the ref on this object-healthy repo.

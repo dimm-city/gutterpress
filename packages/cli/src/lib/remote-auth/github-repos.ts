@@ -1,11 +1,12 @@
 /**
  * GitHub repo discovery (#15, ADR 0006 D3 layer 4).
  *
- * Plain `fetch` against 2 REST endpoints — deliberately no `@octokit`
+ * Plain `fetch` against the GitHub REST API — deliberately no `@octokit`
  * dependency. Lists every repository the user can access (`GET /user/repos`,
- * the OAuth `repo`-scope model — ADR 0006 D1 amendment 2026-06-10), plus the
- * branches of a chosen repository. All calls paginate, time out explicitly,
- * and map failures to author-friendly messages (401 → "reconnect").
+ * the OAuth `repo`-scope model — ADR 0006 D1 amendment 2026-06-10), the
+ * branches of a chosen repository, and (via the Git Trees API) the print-md
+ * book projects inside a repo. All calls paginate, time out explicitly, and
+ * map failures to author-friendly messages (401 → "reconnect").
  */
 import type { HostCredential } from "./token-store.ts";
 import { withFetchTimeout } from "../fetch-timeout.ts";

@@ -2,7 +2,7 @@
 
 # Print-md CLI Reference {#cli-reference}
 
-<div class="lede">Commands for authoring, building, and publishing — updated for print-md v2.0.0. The design guide itself is a first-class output target alongside the book.</div>
+<div class="lede">Commands for authoring, building, and publishing. The design guide itself is a first-class output target alongside the book.</div>
 
 ---
 
@@ -31,7 +31,7 @@ print-md preview field-guide --port 3579 --open false
 print-md preview design-guide --port 3580 --open false
 ```
 
-The preview opens at `http://localhost:PORT/` (root) — not `/preview.html` as in pre-v2 versions.
+The preview opens at `http://localhost:PORT/` (root).
 
 <div class="callout-note">
 <span class="callout-label">Note</span>
@@ -40,7 +40,7 @@ If the port is in use, print-md automatically increments to the next available p
 
 ### print-md build
 
-Produces output from a manifest directory. Use `--format html` for a deployable static site; `--format pdf` (default) for a Chromium-rendered PDF.
+Produces output from a manifest directory. Use `--format html` for a deployable static site; `--format pdf` (default) for a Chromium-rendered PDF; `--format pdfx` for a validated CMYK PDF/X.
 
 **Syntax** — `print-md build [INPUT] [OPTIONS]`
 
@@ -48,13 +48,13 @@ Produces output from a manifest directory. Use `--format html` for a deployable 
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--format` | `pdf` | Output format: `html` or `pdf` |
+| `--format` | `pdf` | Output format: `html`, `pdf`, or `pdfx` |
 | `--out` | — | Output directory (or `.pdf` path for pdf format) |
 | `--title` | manifest | Overrides the document title |
-| `--pdfx` | — | PDF/X flavor: `x1a` or `x3` (pdf only) |
-| `--icc` | — | ICC profile path (required with `--pdfx`) |
+| `--pdfx-flavor` | — | PDF/X flavor: `x1a` or `x3` (`--format pdfx` only) |
+| `--icc` | — | ICC profile path (required with `--format pdfx`) |
 | `--manifest` | — | Override manifest.yaml path |
-| `--strip-annotations` | auto | Strip PDF annotations (default when `--pdfx` is set) |
+| `--strip-annotations` | auto | Strip PDF annotations (default when `--format pdfx` is set) |
 
 **Examples**:
 
@@ -66,7 +66,7 @@ print-md build design-guide --format html --out ./_site
 print-md build field-guide --format pdf --out ./field-guide.pdf
 
 # PDF/X (CMYK, embedded fonts)
-print-md build field-guide --format pdf --pdfx x1a --icc ./profiles/CGATS21_CRPC1.icc
+print-md build field-guide --format pdfx --pdfx-flavor x1a --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
 > Plain `--format pdf` needs only a Chromium-based browser. **PDF/X (CMYK)
@@ -75,30 +75,23 @@ print-md build field-guide --format pdf --pdfx x1a --icc ./profiles/CGATS21_CRPC
 > via the [print-md Docker image](../../../docs/docker.md), which bundles all
 > three tools.
 
-### print-md run
+There is no separate "full pipeline" command — `print-md build --format pdf`
+or `--format pdfx` already runs the complete validated pipeline on its own:
+`lint → validate:pre-build → convert → assets → build → validate:post-build`
+(see [User Guide, Chapter 7 — Validation](../../print-md-user-guide/07-validation.md)).
+Skip individual phases with flags on `build` itself:
 
-The full validated PDF pipeline: `lint → validate:pre → build → validate:post`. Use this for print-ready PDF production, not for HTML output or the design guide.
+| Flag | Description |
+|------|-------------|
+| `--skip-lint` | Skip CSS linting |
+| `--skip-pre-validate` | Skip pre-build validation |
+| `--skip-post-validate` | Skip post-build PDF validation (pdf/pdfx only) |
 
-**Syntax** — `print-md run --input [DIR] [OPTIONS]`
-
-Note: `--input` is a required named flag (not positional), unlike `build`.
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--input` | required | Input directory |
-| `--out` | — | Output directory |
-| `--pdfx` | — | PDF/X flavor: `x1a` or `x3` |
-| `--icc` | — | ICC profile path |
-| `--manifest` | — | Override manifest path |
-| `--skip-lint` | — | Skip CSS linting |
-| `--skip-validate` | — | Skip post-build PDF validation |
-| `--skip-pre-validate` | — | Skip pre-build validation |
-
-**Example**:
+**Example** — validated PDF/X build:
 
 ```
-print-md run --input field-guide/ --out .print-md/build/field-guide-print-pdf \
-  --pdfx x1a --icc .print-md/profiles/CGATS21_CRPC1.icc
+print-md build field-guide --format pdfx --out .print-md/build/field-guide-print-pdf \
+  --pdfx-flavor x1a --icc .print-md/profiles/CGATS21_CRPC1.icc
 ```
 
 ### print-md lint / validate / audit / preflight
@@ -114,7 +107,7 @@ print-md run --input field-guide/ --out .print-md/build/field-guide-print-pdf \
 
 ## Design Guide as Static Site {#publishing}
 
-The design guide is a first-class output target in print-md v2.0.0. `build --format html` produces a complete deployable directory with the same viewer chrome as the preview server — toolbar, page nav, zoom, print button — but with no backing server.
+The design guide is a first-class output target, the same as any book project. `build --format html` produces a complete deployable directory with the same viewer chrome as the preview server — toolbar, page nav, zoom, print button — but with no backing server.
 
 ### Build the static site
 
@@ -177,8 +170,8 @@ print-md build design-guide --format html --out ./_site
 # Add the PDF into the same output dir
 print-md build design-guide --format pdf --out ./_site
 
-# Or use run for a validated PDF/X:
-print-md run --input design-guide --out ./_site
+# Or build a fully validated PDF/X:
+print-md build design-guide --format pdfx --out ./_site --pdfx-flavor x1a --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
 Link to it from `00-toc.md`: `[Download PDF](book.pdf){.download}`.

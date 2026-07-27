@@ -21,6 +21,21 @@
 > only a browser; Ghostscript and qpdf exist solely to enable PDF/X checks and
 > conversion.
 
+## Check your setup: `print-md doctor`
+
+Before installing anything, run `print-md doctor` to see exactly what
+print-md already found on your machine:
+
+```bash
+print-md doctor
+```
+
+It prints the print-md version, your OS/architecture, the CLI config
+directory, and a table of every optional tool — found or missing, its
+resolved path, which features use it, and (for anything missing) the exact
+install command for your platform. Run it again after installing a tool to
+confirm it was picked up.
+
 ## Easiest path: Docker (the whole PDF/X pipeline, nothing to install)
 
 If you want a complete, validated, print-ready **PDF/X** without installing

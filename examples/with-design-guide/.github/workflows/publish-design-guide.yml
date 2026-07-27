@@ -1,7 +1,7 @@
 # Publish the companion design guide as a static site.
 #
-# Triggers on changes under design-guide/ or shared/ — the two paths whose
-# content the guide depends on. Builds the static site with
+# Triggers on changes under design-guide/ — the path whose content the guide
+# depends on. Builds the static site with
 # `print-md build --format html`, which produces a directory containing the
 # print-md viewer (index.html) wrapping the rendered book HTML
 # (book.html), the viewer scripts and styles, and the user assets.
@@ -26,7 +26,6 @@ on:
     branches: [main]
     paths:
       - "design-guide/**"
-      - "shared/**"
       - ".github/workflows/publish-design-guide.yml"
   workflow_dispatch:
 

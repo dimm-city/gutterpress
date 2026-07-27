@@ -41,9 +41,9 @@ const INSTALL_HINTS: Record<"gs" | "qpdf", string> = {
  *
  * Chromium is REQUIRED for any non-html format and surfaces the same
  * install-instructions error from requireChromiumExecutable() if missing.
- * Ghostscript is REQUIRED for pdfx (CMYK conversion); for plain pdf it
- * only adds /Creator metadata — best-effort downstream — so we warn but
- * don't block.
+ * Ghostscript is REQUIRED for pdfx (CMYK conversion) only — plain pdf's
+ * /Creator metadata is stamped via pdf-lib in-process (see ghostscript.ts's
+ * stampCreator) and needs no system tool at all.
  * qpdf is REQUIRED for pdfx + stripAnnotations (default true).
  */
 export async function preflightBuildTools(

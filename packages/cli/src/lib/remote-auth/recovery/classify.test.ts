@@ -1,5 +1,8 @@
 /**
- * Tests for classify.ts — classifyGitError must cover all 13 SyncErrorKind values.
+ * Tests for classify.ts — classifyGitError must cover every SyncErrorKind value
+ * (13 in the main table below; interrupted_rebase/interrupted_cherry_pick/
+ * interrupted_merge and insecure_transport are covered by their own dedicated
+ * describe blocks further down this file).
  * bun:test only.
  */
 
@@ -183,7 +186,7 @@ function packedRefsError(): Error {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe("classifyGitError — all 13 SyncErrorKind values", () => {
+describe("classifyGitError — 13 of the SyncErrorKind values", () => {
   test("non_fast_forward — PushRejectedError", () => {
     expect(classifyGitError(pushRejectedError(), healthyRepo)).toBe("non_fast_forward");
   });

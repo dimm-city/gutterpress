@@ -186,16 +186,14 @@ Use `@spread` to group content into a logical two-page spread — the left and r
 
 @page .left-page
 
-Left page content goes here. Use `---{.column-break}` for columns within a page.
+Left page content goes here. Use `@column-break` for columns within a page.
 
 @page .right-page
 
 Right page content goes here. Both pages render side-by-side in the preview.
-
-@end-section
 ```
 
-The `@spread` marker emits `<div class="spread">`. The `@page` markers inside it emit `<div class="page">` children. Use `@break` after the spread to return to normal single-page flow. CSS targets the spread with `.spread.intro-spread` and individual pages with `.spread .page.left-page`.
+The `@spread` marker emits `<div class="spread">`. The `@page` markers inside it emit `<div class="page">` children. There is no dedicated "close spread" marker — a spread stays open until the next `@spread`, the next `@chapter`, or the end of the file, whichever comes first. Start a new `@chapter` (or `@spread`) when you're ready to leave two-page-spread mode. CSS targets the spread with `.spread.intro-spread` and individual pages with `.spread .page.left-page`.
 
 ---
 
