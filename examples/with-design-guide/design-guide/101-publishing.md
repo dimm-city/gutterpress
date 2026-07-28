@@ -109,7 +109,11 @@ print-md build field-guide --format pdfx --out .print-md/build/field-guide-print
 
 ## Design Guide as Static Site {#publishing}
 
-The design guide is a first-class output target, the same as any book project. `build --format html` produces a complete deployable directory — no backing server, no toolbar chrome. `book.html` is a plain, self-contained, pre-paginated document: your stylesheets and any embedded fonts are inlined directly into it, so there's nothing else to serve alongside it except the images it references.
+The design guide is a first-class output target, the same as any book project.
+`build --format html` produces a complete deployable directory with no backing
+server or toolbar chrome. `book.html` is pre-paginated with stylesheets and fonts
+inlined; serve it together with the generated navigation scripts and any copied
+images in the output directory.
 
 ### Build the static site
 

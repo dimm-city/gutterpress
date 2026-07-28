@@ -51,13 +51,9 @@ export const STATIC_MIME: Record<string, string> = {
  *
  * Shared by {@link resolveStaticPath} (which decodes a URL pathname first)
  * AND by callers that already hold a decoded string with no pathname
- * semantics to strip — e.g. the preview server's `/__chapter?file=` query
- * param. Query-string values are NOT dot-segment-normalized by the WHATWG
- * URL parser the way `url.pathname` is (see static-serve.test.ts's
- * end-to-end block for why that matters), so any route reading a raw query
- * param as a filesystem-relative path MUST run it through this guard itself
- * — it cannot rely on the URL parser to have already stripped `..` the way
- * a pathname-based route can.
+ * semantics to strip. Query-string values are NOT dot-segment-normalized by
+ * the WHATWG URL parser the way `url.pathname` is, so any route reading a raw
+ * query value as a filesystem-relative path must run it through this guard.
  */
 export function resolveWithinRoot(relPath: string, root: string): string | null {
   const resolvedRoot = path.resolve(root);

@@ -16,11 +16,10 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
-import { STATIC_MIME, resolveStaticPath, resolveWithinRoot } from '../lib/static-serve.ts';
+import { STATIC_MIME, resolveStaticPath } from '../lib/static-serve.ts';
 import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
-import { renderChapterPreviewHtml, incrementalPreviewEnabled } from './file-watcher.ts';
-import { canonicalChapterId } from '../lib/markdown/chapter-id.ts';
+import { incrementalPreviewEnabled } from './file-watcher.ts';
 import { resolvePort, UsageError } from '../lib/cli-args.ts';
 import { BuildError } from '../lib/build-error.ts';
 
@@ -40,7 +39,7 @@ const HMR_CLIENT_SNIPPET = `
     // with ?pmdshell=1 and owns HMR (it swaps frames + syncs scroll), so we stay
     // inert. We must NOT bail merely because we're framed — other hosts (the
     // Electron viewer's SPA) embed book.html directly and rely on this HMR client
-    // for CSS hot-swap, scroll-anchor, and reload.
+    // for scroll-anchor and reload.
     if (/[?&]pmdshell=1/.test(location.search)) return;
     var ANCHOR_KEY = 'pmd-scroll-anchor';
 
@@ -63,7 +62,12 @@ const HMR_CLIENT_SNIPPET = `
         }
       }
       if (!best) return null;
-      return { line: best.getAttribute('data-source-line'), offset: best.getBoundingClientRect().top };
+      var chapter = best.closest && best.closest('[data-chapter-src]');
+      return {
+        chapter: chapter ? chapter.getAttribute('data-chapter-src') : null,
+        line: best.getAttribute('data-source-line'),
+        offset: best.getBoundingClientRect().top
+      };
     }
 
     // After a content reload, put the same source line back at the same viewport
@@ -76,7 +80,17 @@ const HMR_CLIENT_SNIPPET = `
       var a; try { a = JSON.parse(raw); } catch (_) { return; }
       var tries = 0;
       (function attempt() {
-        var el = document.querySelector('[data-source-line="' + a.line + '"]');
+        var blocks = document.querySelectorAll('[data-source-line]');
+        var el = null;
+        for (var i = 0; i < blocks.length; i++) {
+          var chapter = blocks[i].closest && blocks[i].closest('[data-chapter-src]');
+          var chapterId = chapter ? chapter.getAttribute('data-chapter-src') : null;
+          if ((!a.chapter || chapterId === a.chapter) &&
+              blocks[i].getAttribute('data-source-line') === String(a.line)) {
+            el = blocks[i];
+            break;
+          }
+        }
         if (el) {
           window.scrollBy(0, el.getBoundingClientRect().top - a.offset);
           return;
@@ -111,37 +125,17 @@ const HMR_CLIENT_SNIPPET = `
         location.reload();
         return;
       }
-      // CSS hot-swap: Paged.js inlines the user CSS and REMOVES the original
-      // <link> during pagination, so there is usually no <link> left to bump.
-      // Instead we (re)inject a fresh <link> for the edited stylesheet, appended
-      // LAST so its rules win the cascade over Paged.js's stale inlined copy.
-      // No reload, no re-pagination — scroll position is preserved and the new
-      // styles apply on the next frame. (Geometry/@page changes won't re-flow
-      // page boxes until a content edit triggers a full rebuild.)
-      if (msg.type === 'css-update' && msg.path) {
-        var id = 'pmd-hot-' + msg.path.replace(/[^a-z0-9]/gi, '_');
-        var prev = document.getElementById(id);
-        if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
-        var link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.id = id;
-        link.href = msg.path + '?t=' + Date.now();
-        (document.head || document.documentElement).appendChild(link);
-        window.dispatchEvent(new CustomEvent('pmd:css-updated', { detail: { path: msg.path } }));
-        return;
-      }
     };
   })();
 </script>
 `;
 
 /**
- * Preview shell (opt-in via PRINTMD_PREVIEW_SHELL=1). Hosts book.html in an
- * iframe and double-buffers content reloads: on a markdown edit it paginates a
- * SECOND hidden iframe, waits for it to finish, then swaps it in atomically and
- * restores the scroll anchor — so the visible page never flickers or rebuilds in
- * view. CSS edits are forwarded into the active frame (instant hot-swap). This is
- * the same iframe pattern the Electron viewer uses, converging the two.
+ * Preview shell (enabled by default; legacy opt-out is
+ * PRINTMD_PREVIEW_INCREMENTAL=0). Hosts book.html in an iframe and
+ * double-buffers every reload: paginate a second hidden full document, then
+ * swap it in atomically and restore the scroll anchor. The visible page never
+ * flickers through an unpaginated state.
  */
 const SHELL_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>print-md preview</title>
@@ -166,18 +160,6 @@ export interface PreviewServer {
    * client. Safe to call after `close()` (no-op).
    */
   broadcastReload(): void;
-  /**
-   * Broadcast a `{ type: "css-update", path }` message so clients re-fetch just
-   * that stylesheet (no reload / re-pagination). `path` is the stylesheet's
-   * served path relative to the temp dir (e.g. "styles/guide.css").
-   */
-  broadcastCssUpdate(stylesheetPath: string): void;
-  /**
-   * Broadcast a `{ type: "content-update", file }` message so the incremental
-   * shell re-paginates and splices just that chapter (instead of reloading the
-   * whole document). `file` matches the `data-chapter-src` wrapper attribute.
-   */
-  broadcastContentUpdate(file: string): void;
 }
 
 /**
@@ -470,69 +452,7 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3a. Shell diagnostics: the preview shell reports incremental-splice
-    // degradations/fallbacks here so the server log carries the REASON a full
-    // re-render happened — bug reports otherwise only show the symptom.
-    if (url.pathname === '/__log' && req.method === 'POST') {
-      let body = '';
-      // Cap accumulation at 2KB but keep draining — destroying the request
-      // mid-stream would leave the client with a dangling response (and can
-      // surface as an unhandled socket error). Oversized bodies are truncated.
-      req.on('data', (chunk) => { if (body.length < 2048) body += chunk; });
-      req.on('end', () => {
-        if (body) info(`[preview-shell] ${body.slice(0, 1024)}`);
-        res.writeHead(204);
-        res.end();
-      });
-      return;
-    }
-
-    // 3b. Incremental: render a single chapter for the shell to splice.
-    if (url.pathname === '/__chapter') {
-      const file = url.searchParams.get('file');
-      if (!file || !state.currentInputPath) {
-        res.writeHead(400); res.end('Bad Request'); return;
-      }
-      // `file` is a raw query-string value — unlike `url.pathname`, the WHATWG
-      // URL parser does NOT dot-segment-normalize query params, so an
-      // unguarded `../../etc/passwd` reaches renderChapterPreviewHtml verbatim
-      // and gets read/rendered from outside the project. Confine it to the
-      // served project root the same way the static route's serve-in-place
-      // branch (below) confines `url.pathname` to `state.currentInputPath`
-      // via resolveStaticPath.
-      //
-      // The guard MUST run on `canonicalChapterId(file)`, not the raw `file`:
-      // the actual read sink (assembleBookHtml, via renderChapterPreviewHtml
-      // -> renderPreviewBook) resolves `canonicalChapterId(file)`, which
-      // converts `\` to `/` before joining against the project root. On
-      // POSIX, `path.resolve` treats `\` as a literal filename character, so
-      // checking the raw string lets `..\\..\\secret.md` pass containment
-      // while the sink's canonicalized form (`../../secret.md`) escapes the
-      // root — a guard/sink mismatch. Guarding the canonicalized string
-      // closes that gap because it's the exact string the sink reads.
-      if (!resolveWithinRoot(canonicalChapterId(file), state.currentInputPath)) {
-        res.writeHead(400); res.end('Bad Request'); return;
-      }
-      try {
-        // ARCH finding #53: ServerState.config is already a ResolvedConfig —
-        // it satisfies renderChapterPreviewHtml's (now correctly typed)
-        // config param structurally, so the ad-hoc cast + `|| {}` fallback
-        // (config is never null/undefined on ServerState) were both dead.
-        const chapterHtml = await renderChapterPreviewHtml(
-          state.currentInputPath,
-          file,
-          state.config
-        );
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-        res.end(chapterHtml);
-      } catch (e) {
-        res.writeHead(500); res.end(String(e));
-      }
-      return;
-    }
-
-    // 3c. Preview shell: serve the double-buffering / incremental shell at "/".
-    // DEFAULT ON (incremental). Opt out with PRINTMD_PREVIEW_INCREMENTAL=0.
+    // 3. Preview shell: serve the double-buffered full-reload shell at "/".
     if (url.pathname === '/' && incrementalPreviewEnabled()) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(SHELL_HTML);
@@ -609,7 +529,7 @@ export async function createPreviewServer(
 
   let stopped = false;
 
-  // Single fan-out helper: the three broadcast* methods only differ by payload.
+  // Single fan-out helper for reload notifications.
   const broadcast = (payload: Record<string, unknown>): void => {
     if (stopped) return;
     const message = JSON.stringify(payload);
@@ -636,12 +556,6 @@ export async function createPreviewServer(
     },
     broadcastReload() {
       broadcast({ type: 'full-reload' });
-    },
-    broadcastCssUpdate(stylesheetPath: string) {
-      broadcast({ type: 'css-update', path: stylesheetPath });
-    },
-    broadcastContentUpdate(file: string) {
-      broadcast({ type: 'content-update', file });
     },
   };
 }

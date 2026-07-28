@@ -1,0 +1,4 @@
+title: Implicit Fixture
+preset: book
+styles:
+  - styles/book.css

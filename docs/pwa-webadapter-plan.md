@@ -243,9 +243,9 @@ inputs from FSA instead of `node:fs`. The simplest, §8-compliant home for it is
 >   `/__project__/<relpath>` against the open FSA handle, and serve the iframe
 >   from that scope. Cleaner for large asset sets; deferred.
 
-**`markdown-it-source-map`** and the incremental per-chapter splice are
-preview-perf niceties; v1 can full-render (books are small). Keep the
-incremental path desktop-only initially.
+**`markdown-it-source-map`** is a preview/source-inspection enhancement. Both
+desktop and web previews use correctness-first full-document rendering; there is
+no per-chapter page splice to reproduce in the WebAdapter.
 
 ---
 

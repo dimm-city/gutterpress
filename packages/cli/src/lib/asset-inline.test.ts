@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   inlineStyles,
   planImageCopies,
+  collectStyleDependencies,
   decodeRef,
   IMAGE_INLINE_MAX_BYTES,
 } from "./asset-inline";
@@ -258,5 +259,81 @@ describe("inlineStyles — url() parsing", () => {
 
     const { css } = await inlineStyles(dir, ["styles/book.css"]);
     expect(css).toContain("data:image/png;base64,");
+  });
+});
+
+describe("collectStyleDependencies", () => {
+  test("reports the stylesheet, its @import closure, and its url() targets", async () => {
+    await put("fonts/body.woff2", "font");
+    await put("images/ornament.png", "png");
+    await put("styles/palette.css", ":root { --accent: red }");
+    await put(
+      "styles/book.css",
+      `@import "./palette.css";
+       @font-face { font-family: B; src: url("../fonts/body.woff2") }
+       .rule { background: url('../images/ornament.png') }`,
+    );
+
+    const deps = await collectStyleDependencies(dir, ["styles/book.css"]);
+
+    expect(deps.sort()).toEqual(
+      [
+        path.join(dir, "styles/book.css"),
+        path.join(dir, "styles/palette.css"),
+        path.join(dir, "fonts/body.woff2"),
+        path.join(dir, "images/ornament.png"),
+      ].sort(),
+    );
+  });
+
+  test("resolves each url() against its OWN stylesheet, not the project root", async () => {
+    // The same trap inlineOne guards: an imported sheet's relative refs are
+    // relative to the importer's directory, not the entry stylesheet's.
+    await put("shared/fonts/x.woff2", "font");
+    await put("shared/css/theme.css", '@font-face{src:url("../fonts/x.woff2")}');
+    await put("styles/book.css", '@import "../shared/css/theme.css";');
+
+    const deps = await collectStyleDependencies(dir, ["styles/book.css"]);
+
+    expect(deps).toContain(path.join(dir, "shared/fonts/x.woff2"));
+  });
+
+  test("ignores remote and data: references", async () => {
+    await put(
+      "styles/book.css",
+      `@import url("https://cdn.example.com/reset.css");
+       .a { background: url(https://cdn.example.com/bg.png) }
+       .b { background: url(data:image/png;base64,AAAA) }`,
+    );
+
+    expect(await collectStyleDependencies(dir, ["styles/book.css"])).toEqual([
+      path.join(dir, "styles/book.css"),
+    ]);
+  });
+
+  test("survives a missing, unreadable, or unparseable stylesheet", async () => {
+    await put("styles/broken.css", "body { color: ");
+    // Never throws — a watcher that throws stops watching everything.
+    expect(await collectStyleDependencies(dir, ["styles/missing.css"])).toEqual([
+      path.join(dir, "styles/missing.css"),
+    ]);
+    expect(await collectStyleDependencies(dir, ["styles/broken.css"])).toEqual([
+      path.join(dir, "styles/broken.css"),
+    ]);
+  });
+
+  test("terminates on a self-importing stylesheet", async () => {
+    await put("styles/loop.css", '@import "./loop.css";');
+    expect(await collectStyleDependencies(dir, ["styles/loop.css"])).toEqual([
+      path.join(dir, "styles/loop.css"),
+    ]);
+  });
+
+  test("records a reference whose target does not exist", async () => {
+    // The path is still worth watching: creating the file is the fix, and the
+    // watcher should notice when it appears.
+    await put("styles/book.css", '@font-face{src:url("../fonts/absent.woff2")}');
+    const deps = await collectStyleDependencies(dir, ["styles/book.css"]);
+    expect(deps).toContain(path.join(dir, "fonts/absent.woff2"));
   });
 });

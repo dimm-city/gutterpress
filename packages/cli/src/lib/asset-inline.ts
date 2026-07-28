@@ -63,6 +63,23 @@ export interface InlineStylesResult {
   warnings: string[];
 }
 
+/**
+ * The `url(...)` token grammar — ONE definition, shared by the rewrite pass and
+ * the dependency scan so the two can never disagree about what a reference is.
+ * Each quoted branch is delimited ONLY by its own quote, so `url("Figure
+ * (1).png")` and `url("author's-photo.png")` both parse; the unquoted branch
+ * stops at whitespace or the closing paren, per the CSS grammar.
+ *
+ * Safe to share despite the `g` flag: `String.prototype.matchAll` species-
+ * constructs its own regex, so `lastIndex` is never carried between callers.
+ */
+const URL_TOKEN_RE = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'"()\s]*))\s*\)/gi;
+
+/** Every `url(...)` target in a declaration value, in order, unquoted. */
+function extractCssUrls(value: string): string[] {
+  return [...value.matchAll(URL_TOKEN_RE)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
+}
+
 /** A URL that is not a local file reference and must be left exactly as-is. */
 function isNonFileUrl(url: string): boolean {
   const lower = url.trim().toLowerCase();
@@ -135,11 +152,7 @@ async function rewriteUrls(
   value: string,
   rewrite: (url: string) => Promise<string | null>
 ): Promise<string> {
-  // Each quoted branch is delimited ONLY by its own quote, so
-  // `url("Figure (1).png")` and `url("author's-photo.png")` both parse; the
-  // unquoted branch stops at whitespace or the closing paren, per the CSS grammar.
-  const re = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'"()\s]*))\s*\)/gi;
-  const matches = [...value.matchAll(re)];
+  const matches = [...value.matchAll(URL_TOKEN_RE)];
   if (matches.length === 0) return value;
 
   let out = "";
@@ -326,6 +339,79 @@ export async function inlineStyles(
     copies: [...copies.values()],
     warnings,
   };
+}
+
+/**
+ * Every file the active stylesheets READ: the stylesheets themselves, their
+ * local `@import` closure, and every local `url()` target (fonts, images).
+ * Absolute paths, deduped, in no particular order.
+ *
+ * This is {@link inlineStyles}'s traversal with the work removed — it resolves
+ * the same references but never reads an asset's bytes, base64-encodes a font,
+ * or plans a copy, so it is cheap enough to re-run whenever the manifest might
+ * have changed. It is deliberately TOTAL: an unreadable stylesheet, an
+ * unparseable one, and a `url()` pointing at a file that does not exist are all
+ * skipped silently. The build reports those properly (as errors, with
+ * locations); a watcher must not throw or it stops watching everything.
+ *
+ * Used by the preview watcher to follow a book's dependencies out of its own
+ * folder — a shared theme's `url("../../fonts/Publisher.woff2")` is a file an
+ * external design tool can replace WITHOUT touching any CSS, and until it is
+ * watched, that edit leaves the "authoritative" preview stale with nothing to
+ * correct it.
+ */
+export async function collectStyleDependencies(
+  projectDir: string,
+  stylePaths: string[]
+): Promise<string[]> {
+  const found = new Set<string>();
+  const visited = new Set<string>();
+
+  async function walk(cssPath: string): Promise<void> {
+    const abs = path.resolve(cssPath);
+    // Guards `@import` cycles, exactly as `inlineOne`'s `seen` does.
+    if (visited.has(abs)) return;
+    visited.add(abs);
+    found.add(abs);
+
+    let source: string;
+    try {
+      source = await readFile(abs, "utf-8");
+    } catch {
+      return; // Missing stylesheet — the build names it; keep watching the rest.
+    }
+
+    let root: postcss.Root;
+    try {
+      root = postcss.parse(source, { from: abs });
+    } catch {
+      return; // Mid-edit CSS is routinely unparseable; the next save re-walks.
+    }
+
+    const cssDir = path.dirname(abs);
+
+    root.walkDecls((decl) => {
+      if (!decl.value.includes("url(")) return;
+      for (const raw of extractCssUrls(decl.value)) {
+        if (!raw || isNonFileUrl(raw)) continue;
+        found.add(path.resolve(cssDir, stripUrlSuffix(decodeRef(raw))));
+      }
+    });
+
+    const imports: string[] = [];
+    root.walkAtRules("import", (node) => {
+      const target = importTarget(node);
+      if (target) imports.push(target);
+    });
+    for (const target of imports) {
+      await walk(path.resolve(cssDir, stripUrlSuffix(decodeRef(target))));
+    }
+  }
+
+  for (const rel of stylePaths) {
+    await walk(path.resolve(projectDir, rel));
+  }
+  return [...found];
 }
 
 /**

@@ -56,8 +56,6 @@ function makeStubServer(): PreviewServer & {
     broadcastReload() {
       stub.broadcastReloadCalls++;
     },
-    broadcastCssUpdate() {},
-    broadcastContentUpdate() {},
   };
   return stub;
 }
@@ -68,6 +66,7 @@ function makeState(overrides: Partial<ServerState> = {}): ServerState {
     currentWatcher: null,
     rebuildTimer: null,
     isRebuilding: false,
+    rebuildPromise: null,
     previewServer: null,
     isShuttingDown: false,
     tempDir: "",
@@ -269,6 +268,52 @@ describe("restartPreview", () => {
     }
   });
 
+  test("waits for an active rebuild before switching projects", async () => {
+    const oldInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-old-"));
+    const newInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-new-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-temp-"));
+    try {
+      await writeFile(path.join(oldInputDir, "chapter-01.md"), "# Old\n", "utf-8");
+      await writeFile(path.join(newInputDir, "chapter-01.md"), "# New\n", "utf-8");
+
+      let finishRebuild!: () => void;
+      const activeRebuild = new Promise<void>((resolve) => {
+        finishRebuild = resolve;
+      });
+      let closeCalls = 0;
+      const state = makeState({
+        currentInputPath: oldInputDir,
+        tempDir,
+        previewServer: makeStubServer(),
+        currentWatcher: {
+          close: mock(async () => { closeCalls++; }),
+        } as unknown as ServerState["currentWatcher"],
+        rebuildPromise: activeRebuild,
+        isRebuilding: true,
+        options: makeOptions({ noWatch: true }),
+      });
+
+      const restarting = restartPreview(newInputDir, state);
+
+      expect(state.currentInputPath).toBe(oldInputDir);
+      // Closing starts immediately so no new events can queue while the old
+      // render drains; the project path still cannot switch until it finishes.
+      expect(closeCalls).toBe(1);
+
+      finishRebuild();
+      await restarting;
+
+      expect(closeCalls).toBe(1);
+      expect(state.currentInputPath).toBe(newInputDir);
+      const html = await readFile(path.join(tempDir, "book.html"), "utf-8");
+      expect(html).toContain("New");
+    } finally {
+      await rm(oldInputDir, { recursive: true, force: true });
+      await rm(newInputDir, { recursive: true, force: true });
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test("updates state.config from the new directory's manifest", async () => {
     const oldInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-old-"));
     const newInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-new-"));
@@ -367,8 +412,6 @@ describe("shutdownServer", () => {
       port: 3000,
       close: () => new Promise<void>(() => {}), // never resolves
       broadcastReload() {},
-      broadcastCssUpdate() {},
-      broadcastContentUpdate() {},
     };
     const state = makeState({ tempDir, previewServer: hangingServer });
 

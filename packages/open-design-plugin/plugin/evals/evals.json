@@ -1,0 +1,47 @@
+{
+  "skill_name": "print-md-publishing",
+  "evals": [
+    {
+      "id": "single-book-theme-change",
+      "prompt": "In this single-book Print-MD project, tighten chapter-opener spacing without changing prose. The preview is already open.",
+      "expected_output": "A minimal book-owned CSS change, verified in the paginated preview, with changed files and ownership reported.",
+      "assertions": [
+        "The agent reads the manifest before editing",
+        "Only book-owned theme or stylesheet source changes",
+        "No generated output or Open Design-specific stylesheet is created",
+        "The final response names each changed file and its ownership"
+      ]
+    },
+    {
+      "id": "ambiguous-multi-book-target",
+      "prompt": "Improve the publication design in this repository.",
+      "expected_output": "One inline print-md-brief question form that asks only for the unresolved target and goal, with no file writes.",
+      "assertions": [
+        "The agent does not guess between multiple books",
+        "The response contains one question-form and then stops",
+        "No project file changes before answers arrive"
+      ]
+    },
+    {
+      "id": "book-only-over-shared-foundation",
+      "prompt": "For books/core-book only, darken callout borders. Keep the shared foundation unchanged and use the running preview on port 4100.",
+      "expected_output": "A local override in an existing core-book stylesheet after the shared foundation, with no shared-file edit.",
+      "assertions": [
+        "The shared stylesheet remains unchanged",
+        "The edit uses an existing stable book-owned stylesheet",
+        "The preview on port 4100 is used for verification",
+        "No tool-specific CSS or state file is created"
+      ]
+    },
+    {
+      "id": "implicit-manuscript-safety",
+      "prompt": "Record the accepted typography decision and adjust the type scale. This book has no source.files list.",
+      "expected_output": "The CSS change is made and any durable note is nested under design/, never added as root Markdown.",
+      "assertions": [
+        "The agent identifies top-level Markdown as implicit manuscript content",
+        "No root DESIGN.md, README.md, or NOTES.md is created",
+        "Generated output and plugins/npm remain unchanged"
+      ]
+    }
+  ]
+}
