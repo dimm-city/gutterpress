@@ -1,0 +1,9 @@
+{
+  "name": "@dimm-city/print-md-open-design-plugin",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test"
+  }
+}

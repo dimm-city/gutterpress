@@ -91,13 +91,9 @@
 
   function blocksInChapter(chapter) {
     if (!chapter) return sourcedBlocks();
-    try {
-      return Array.from(
-        document.querySelectorAll('[data-chapter-src="' + chapter + '"] [data-source-line]')
-      );
-    } catch (_e) {
-      return sourcedBlocks();
-    }
+    return sourcedBlocks().filter(function (block) {
+      return chapterOf(block) === chapter;
+    });
   }
 
   // The block straddling the top of the viewport (greatest top still at/above a
@@ -236,10 +232,8 @@
       }));
     },
     // Re-read the page list and recompute the current page from the scroll
-    // position, then notify. The incremental preview shell calls this after it
-    // splices a chapter's pages into the live DOM (Paged.js does NOT re-run, so
-    // the cached page list and counters would otherwise go stale — freezing the
-    // toolbar's page number and breaking scroll sync).
+    // position, then notify. Hosts may call this after replacing paginated DOM
+    // so cached page counters and scroll synchronization stay current.
     refresh: function () {
       refreshPages();
       currentPage = detectVisiblePage();

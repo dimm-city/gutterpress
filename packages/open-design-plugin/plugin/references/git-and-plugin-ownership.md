@@ -1,7 +1,8 @@
 # Git scope and plugin ownership
 
 Who owns which file, what version control captures, and how this plugin's own
-package is distributed. Verified against Print-MD `main`, 2026-07-28.
+package is distributed. Verified against the Print-MD source that ships this
+package, 2026-07-28.
 
 ## Print-MD's Git scope is the whole repository
 
@@ -95,6 +96,12 @@ Reinstall after every package change during development, and after any pull that
 touched the package. Bump the package version whenever the workflow contract,
 inputs, capabilities, or ownership rules change, so a stale installed copy is
 identifiable.
+
+Version 0.2.0 is not published in the Open Design marketplace. Use a trusted
+local install; do not assume `od plugin install print-md-publishing` resolves.
+Open Design 0.16.1 also cannot persistently grant an explicit pipeline's derived
+`pipeline:*` capability to a restricted direct-GitHub/URL install, so that is
+not a supported team distribution path for this version.
 
 ## What Git will not capture
 

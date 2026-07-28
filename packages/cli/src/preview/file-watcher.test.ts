@@ -5,21 +5,20 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test';
-import { mkdtemp, rm, writeFile, mkdir as mkdirp } from 'fs/promises';
+import { mkdtemp, rm, writeFile, mkdir as mkdirp, symlink } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { join, parse } from 'path';
 import {
   generateAndWriteHtml,
   createFileWatcher,
   startFileWatcher,
   stopFileWatcher,
   injectPreviewScripts,
-  describeChanges,
   externalWatchTargets,
-  decideBroadcast,
+  externalWatchRoots,
+  isExternalWatchCandidate,
   isDotPathUnderRoot,
   isIgnoredWatchPath,
-  type ChangedFile,
 } from './file-watcher';
 import { pagedjsPolyfillTag } from '../lib/pagedjs-marker';
 import { resolveConfig } from '../lib/manifest';
@@ -157,6 +156,23 @@ describe('generateAndWriteHtml', () => {
     expect(content).toContain('Chapter 2');
   }, 60000);
 
+  test('keeps chapter source metadata when the legacy preview shell is disabled', async () => {
+    await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
+    await writeFile(join(testDir, 'chapter-02.md'), '# Chapter 2');
+    const previous = process.env.PRINTMD_PREVIEW_INCREMENTAL;
+    process.env.PRINTMD_PREVIEW_INCREMENTAL = '0';
+    try {
+      await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, {}));
+    } finally {
+      if (previous === undefined) delete process.env.PRINTMD_PREVIEW_INCREMENTAL;
+      else process.env.PRINTMD_PREVIEW_INCREMENTAL = previous;
+    }
+
+    const content = await Bun.file(join(tempDir, 'book.html')).text();
+    expect(content).toContain('data-chapter-src="chapter-01.md"');
+    expect(content).toContain('data-chapter-src="chapter-02.md"');
+  }, 60000);
+
   // ARCH finding #4 — preview terminal surfacing. Before this fix, the
   // preview's renderPreviewBook() (shared by generateAndWriteHtml AND the
   // incremental per-chapter splice) called renderChapters() with no way to
@@ -218,13 +234,13 @@ describe('injectPreviewScripts', () => {
     expect(out).not.toContain('data-pagedjs-polyfill');
   });
 
-  // PAGINATION FIDELITY: the preview must not force a page break the build
-  // doesn't have. This used to inject `.pmd-chapter{break-before:page}`, which
-  // started every source file on a new page in the live view only.
-  test('injects no page-break rule — preview paginates like the build', () => {
+  // PAGINATION FIDELITY: chapter metadata lives on existing blocks. The preview
+  // must inject neither a forced break nor a wrapper-related selector rule.
+  test('injects no preview-only chapter layout CSS', () => {
     const out = injectPreviewScripts(html);
     expect(out).not.toContain('break-before');
-    expect(out).not.toContain('.pmd-chapter{');
+    expect(out).not.toContain('.pmd-chapter');
+    expect(out).not.toContain('data-preview-chapter-wrappers');
   });
 });
 
@@ -257,6 +273,30 @@ describe('externalWatchTargets', () => {
           join(repo, 'shared', 'plugins', 'components.js'),
         ].sort(),
       );
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('watches both an authored external symlink and its current referent', async () => {
+    if (process.platform === 'win32') return;
+    const repo = await mkdtemp(join(tmpdir(), 'pmd-shared-link-'));
+    try {
+      const book = join(repo, 'book');
+      const shared = join(repo, 'shared');
+      const target = join(shared, 'theme-v1.css');
+      const link = join(shared, 'theme.css');
+      await mkdirp(book, { recursive: true });
+      await mkdirp(shared, { recursive: true });
+      await writeFile(target, 'body{}');
+      await symlink(target, link);
+
+      const targets = await externalWatchTargets(book, {
+        styles: ['../shared/theme.css'],
+      });
+
+      expect(targets).toContain(link);
+      expect(targets).toContain(target);
     } finally {
       await rm(repo, { recursive: true, force: true });
     }
@@ -366,79 +406,28 @@ describe('isIgnoredWatchPath', () => {
   });
 });
 
-describe('decideBroadcast', () => {
-  const md = (p: string, event = 'change'): ChangedFile => ({ relativePath: p, ext: '.md', event });
-
-  test('single surviving markdown change splices its chapter (canonical id)', () => {
-    expect(decideBroadcast([md('sub/ch.md')], 1, true)).toEqual({
-      kind: 'chapter-splice',
-      chapterId: 'sub/ch.md',
-      relativePath: 'sub/ch.md',
-    });
+describe('external watch roots', () => {
+  test('allows only an exact target and its ancestors', () => {
+    const target = join(tmpdir(), 'repo', 'shared', 'styles', 'book.css');
+    expect(isExternalWatchCandidate(target, [target])).toBe(true);
+    expect(isExternalWatchCandidate(join(tmpdir(), 'repo', 'shared'), [target])).toBe(true);
+    expect(isExternalWatchCandidate(join(tmpdir(), 'repo', '.git'), [target])).toBe(false);
+    expect(isExternalWatchCandidate(join(tmpdir(), 'repo', 'shared', 'other.css'), [target])).toBe(false);
   });
 
-  test('multi-file windows always full-reload', () => {
-    expect(decideBroadcast([md('a.md'), md('b.md')], 2, true)).toEqual({ kind: 'full-reload' });
+  test('treats a filesystem root as an ancestor of its target', () => {
+    const root = parse(tmpdir()).root;
+    expect(isExternalWatchCandidate(root, [join(root, 'missing', 'shared.css')])).toBe(true);
   });
 
-  test('a deleted markdown file full-reloads, never splices', () => {
-    expect(decideBroadcast([md('a.md', 'unlink')], 1, true)).toEqual({ kind: 'full-reload' });
-  });
-
-  test('non-markdown and non-incremental changes full-reload', () => {
-    expect(decideBroadcast([{ relativePath: 'x.txt', ext: '.txt', event: 'change' }], 1, true))
-      .toEqual({ kind: 'full-reload' });
-    expect(decideBroadcast([md('a.md')], 1, false)).toEqual({ kind: 'full-reload' });
-  });
-});
-
-describe('describeChanges', () => {
-  // describeChanges is pure and synchronous — no fs access at all (see its
-  // doc comment: serve-in-place means there is nothing left to copy), so
-  // these tests use synthetic paths instead of real directories on disk.
-  const root = join(tmpdir(), 'print-md-describe-changes-fixture', 'project');
-
-  test('describes a changed file relative to the project root', () => {
-    const files = describeChanges([[join(root, 'ch.md'), 'change']], root);
-    expect(files).toEqual([{ relativePath: 'ch.md', ext: '.md', event: 'change' }]);
-  });
-
-  test('a deleted file is still described — no fs existence check, the event alone says so', () => {
-    const files = describeChanges([[join(root, 'gone.md'), 'unlink']], root);
-    expect(files).toEqual([{ relativePath: 'gone.md', ext: '.md', event: 'unlink' }]);
-  });
-
-  test('a directory event is described with an empty extension', () => {
-    const files = describeChanges([[join(root, 'themes'), 'addDir']], root);
-    expect(files).toEqual([{ relativePath: 'themes', ext: '', event: 'addDir' }]);
-  });
-
-  test('a subdirectory path is described relative to the root, forward-slashed', () => {
-    const files = describeChanges([[join(root, 'sub', 'ch.md'), 'change']], root);
-    expect(files).toEqual([{ relativePath: 'sub/ch.md', ext: '.md', event: 'change' }]);
-  });
-
-  test('a change outside the watch root is dropped', () => {
-    // There is exactly one watch root now (the project directory — the old
-    // external-asset-root concept is gone with `source.assets`), so anything
-    // outside it can't be named relative to the project and must be dropped
-    // rather than broadcast with a meaningless path.
-    const files = describeChanges([['/somewhere/else/x.css', 'change']], root);
-    expect(files).toEqual([]);
-  });
-
-  test('describes every change in a multi-file window, in order', () => {
-    const files = describeChanges(
-      [
-        [join(root, 'a.md'), 'change'],
-        [join(root, 'b.css'), 'change'],
-      ],
-      root
-    );
-    expect(files).toEqual([
-      { relativePath: 'a.md', ext: '.md', event: 'change' },
-      { relativePath: 'b.css', ext: '.css', event: 'change' },
-    ]);
+  test('uses the nearest existing ancestor when the target hierarchy is missing', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'pmd-watch-root-'));
+    try {
+      const missing = join(repo, 'shared', 'styles', 'book.css');
+      expect(await externalWatchRoots([missing])).toEqual([repo]);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
   });
 });
 
@@ -562,7 +551,7 @@ describe('createFileWatcher', () => {
       await writeFile(join(dotProjectDir, 'chapter-01.md'), '# Updated under a dot ancestor');
       await waitForRebuild(dotState, calls);
 
-      expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
+      expect(calls).toEqual([{ type: 'full-reload' }]);
     } finally {
       await watcher.close();
       await rm(dotAncestorBase, { recursive: true, force: true });
@@ -577,7 +566,6 @@ describe('createFileWatcher', () => {
       port: 0,
       async close() {},
       broadcastReload() { calls.push({ type: 'full-reload' }); },
-      broadcastContentUpdate(f: string) { calls.push({ type: 'content-update', arg: f }); },
     } as any;
     return calls;
   }
@@ -590,7 +578,7 @@ describe('createFileWatcher', () => {
     }
   }
 
-  test('single markdown change broadcasts a content-update splice', async () => {
+  test('single markdown change performs a full-document reload', async () => {
     await writeFile(join(testDir, 'chapter-02.md'), '# Two');
     const calls = attachBroadcastRecorder(state);
     const watcher = createFileWatcher(state);
@@ -600,7 +588,7 @@ describe('createFileWatcher', () => {
     watcher.emit('all', 'change', join(testDir, 'chapter-02.md'));
     await waitForRebuild(state, calls);
 
-    expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-02.md' }]);
+    expect(calls).toEqual([{ type: 'full-reload' }]);
     await watcher.close();
   }, 30000);
 
@@ -723,42 +711,48 @@ describe('createFileWatcher', () => {
     }
   }, 30000);
 
-  test('broadcast chapter paths use forward slashes (never backslashes)', async () => {
-    // A chapter in a subdirectory must broadcast as "sub/file.md" so the SPA's
-    // forward-slash editorChapter comparison matches on every platform.
-    const { mkdir } = await import('fs/promises');
-    await mkdir(join(testDir, 'sub'), { recursive: true });
-    await writeFile(join(testDir, 'sub', 'chapter-03.md'), '# Three');
-    const calls = attachBroadcastRecorder(state);
-    const watcher = createFileWatcher(state);
-    state.currentWatcher = watcher;
-    await waitForWatcherReady(watcher);
+  test('recovers when a manifest declares a shared stylesheet before that file exists', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'print-md-test-late-shared-'));
+    const book = join(repo, 'books', 'core-book');
+    const sharedDir = join(repo, 'shared', 'styles');
+    const sharedCss = join(sharedDir, 'late.css');
+    const manifestPath = join(book, 'manifest.yaml');
+    await mkdirp(book, { recursive: true });
+    await writeFile(join(book, 'chapter-01.md'), '# One');
+    await writeFile(manifestPath, 'title: Core Book\n');
+    const lateTempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    const lateState = createTestServerState(book, lateTempDir);
 
-    watcher.emit('all', 'change', join(testDir, 'sub', 'chapter-03.md'));
-    await waitForRebuild(state, calls);
+    const calls = attachBroadcastRecorder(lateState);
+    const watcher = createFileWatcher(lateState);
+    lateState.currentWatcher = watcher;
+    try {
+      await waitForWatcherReady(watcher);
+      await writeFile(
+        manifestPath,
+        'title: Core Book\nstyles:\n  - ../../shared/styles/late.css\n',
+      );
 
-    expect(calls).toEqual([{ type: 'content-update', arg: 'sub/chapter-03.md' }]);
-    expect(calls[0]!.arg).not.toMatch(/\\/);
-    await watcher.close();
-  }, 30000);
+      // The manifest rebuild fails because late.css is missing, but the updated
+      // config and its missing external target must already be under watch.
+      for (let i = 0; i < 400; i++) {
+        await wait(25);
+        if (lateState.config.styles?.includes('../../shared/styles/late.css') && !lateState.isRebuilding) break;
+      }
+      expect(lateState.config.styles).toContain('../../shared/styles/late.css');
+      expect(calls).toEqual([]);
 
-  test('backslash separators in the relative path are normalized in the broadcast', async () => {
-    // Windows can't be emulated here, so simulate a path whose relative part
-    // contains a literal backslash separator: the emitted value must come out
-    // with forward slashes and no backslash at all.
-    const calls = attachBroadcastRecorder(state);
-    const watcher = createFileWatcher(state);
-    state.currentWatcher = watcher;
-    await waitForWatcherReady(watcher);
+      await mkdirp(sharedDir, { recursive: true });
+      await writeFile(sharedCss, 'body { color: blue }');
+      await waitForRebuild(lateState, calls);
 
-    watcher.emit('all', 'change', join(testDir, 'sub\\chapter-04.md'));
-    await waitForRebuild(state, calls);
-
-    expect(calls.length).toBe(1);
-    expect(calls[0]!.type).toBe('content-update');
-    expect(calls[0]!.arg).toBe('sub/chapter-04.md');
-    expect(calls[0]!.arg).not.toMatch(/\\/);
-    await watcher.close();
+      expect(calls).toEqual([{ type: 'full-reload' }]);
+      expect(await Bun.file(join(lateTempDir, 'book.html')).text()).toContain('color: blue');
+    } finally {
+      await watcher.close();
+      await rm(repo, { recursive: true, force: true });
+      await rm(lateTempDir, { recursive: true, force: true });
+    }
   }, 30000);
 
   test('a change arriving during an in-flight rebuild triggers a follow-up rebuild without a new fs event', async () => {
@@ -805,7 +799,7 @@ describe('createFileWatcher', () => {
         if (calls.length >= 2 && !state.isRebuilding) break;
       }
       expect(calls.length).toBe(2);
-      expect(calls[1]).toEqual({ type: 'content-update', arg: 'chapter-02.md' });
+      expect(calls[1]).toEqual({ type: 'full-reload' });
       await watcher.close();
     } finally {
       // Restore the real module for the remaining tests.

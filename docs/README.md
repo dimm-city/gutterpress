@@ -140,6 +140,7 @@ docs/
 ├── publishing.md                          # Publishing built output to platforms
 ├── schema-autocomplete.md                 # manifest.yaml JSON Schema / editor autocomplete
 ├── design-guides.md                       # Companion design-guide projects
+├── open-design/                           # Open Design workflow and plugin guides
 ├── desktop-shortcut.md                    # OS desktop shortcuts for the viewer
 ├── reviews/                               # Point-in-time critical review reports
 └── [remaining files are point-in-time audits/plans, kept for history — not

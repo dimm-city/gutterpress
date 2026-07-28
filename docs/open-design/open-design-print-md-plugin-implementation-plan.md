@@ -1,127 +1,121 @@
 # Open Design Plugin for Print-MD
 
-## Complete implementation plan
+## Implementation and release plan
 
-**Audience:** developers building and maintaining the Open Design workflow plugin  
-**Purpose:** provide the files, contracts, workflow rules, test fixtures, and release steps needed to build an Open Design plugin that safely edits existing Print-MD publications.  
-**Verified against:** Print-MD `main` at `06403ab`, July 28, 2026, and Open Design `main` at [`fac1013`](https://github.com/nexu-io/open-design/commit/fac10139c0138a5700c128079e23c3e7a622516c).
+**Audience:** maintainers of the Print-MD Publishing Open Design plugin
 
-> **Revision note (2026-07-28).** The Print-MD contracts in §4.8, §7, §8, §10,
-> and §14 were re-verified against the source. Two changed materially since the
-> original draft: `source.assets` staging was removed (shared design now
-> composes by reference — see
-> [`docs/reviews/asset-pipeline-deep-analysis-2026-07-27.md`](../reviews/asset-pipeline-deep-analysis-2026-07-27.md)),
-> and the preview now repaginates after a stylesheet edit instead of hot-swapping
-> a `<link>`. The skill text and reference outlines below reflect the current
-> behavior. The Open Design contracts (§4.1–§4.7, §12, §13, §18) are as
-> described in the original draft and have not been re-verified here.
+**Status:** version 0.2.0 is implemented and locally testable; marketplace
+publication is not complete.
 
-## 1. Architectural decision
+**Verified against:** this Print-MD branch on July 28, 2026, Open Design 0.16.1
+from local commit `4bf9b72`, and current Open Design `main` at
+[`a7e2059`](https://github.com/nexu-io/open-design/commit/a7e205939d441d29d64e616d6f5ec89c53bb711a).
 
-Build a normal Open Design agent-workflow plugin. Do not add integration code to Print-MD.
+## 1. Decision
+
+The integration is a normal static Open Design plugin. Print-MD contains no
+Open Design runtime code.
 
 ```text
 Print-MD Publishing plugin
-    ├── supplies inputs and workflow instructions to Open Design
-    ├── uses Open Design's existing project file tools
-    ├── edits the imported Git repository directly
-    ├── treats the running Print-MD preview as authoritative
-    └── stores no Open Design-specific state in the book
+    -> supplies a constrained agent workflow
+    -> edits the imported repository directly
+    -> treats Print-MD source as durable state
+    -> verifies against the running paginated preview
 
 Print-MD
-    ├── remains unaware of Open Design
-    ├── renders ordinary Markdown, CSS, themes, assets, and plugins
-    └── owns pagination, preview, validation, and final output
+    -> remains the renderer
+    -> watches ordinary project dependencies
+    -> owns pagination, validation, and output
 ```
 
-An Open Design v1 plugin is not a long-running UI extension. It is a static package. `SKILL.md` is the portable agent contract; `open-design.json` adds Open Design metadata, inputs, capabilities, context, and pipeline stages. Open Design applies that package to an agent run, and the agent performs the file edits.
-
-The minimum viable plugin therefore needs no custom JavaScript, React surface, MCP server, or Print-MD API.
+The installable package consists of `SKILL.md`, `open-design.json`, reference
+documents, behavioral evals, a README, changelog, and license. It has no
+JavaScript runtime, custom UI, MCP server, or Print-MD API.
 
 ## 2. Goals
 
 The plugin must:
 
-1. Work on a local folder imported into Open Design without copying or converting the publication.
-2. Detect all current Print-MD manifest names.
-3. Support a book opened directly or a book nested inside a multi-book repository.
-4. Distinguish shared changes from book-local changes.
-5. Preserve Print-MD's existing `themes/`, `styles/`, asset, plugin, and manifest behavior.
-6. Keep Markdown semantic and avoid generated HTML as source.
-7. Use the running Print-MD preview for visual verification.
-8. Reuse Print-MD's existing source-line and chapter metadata.
-9. Respect theme, layout, and content edit scopes.
-10. Avoid Print-MD-managed npm plugin files.
-11. Support team distribution through Git, GitHub, and the Open Design registry.
-12. Require no Open Design-specific change to Print-MD.
+1. Refine an existing Print-MD project in place.
+2. Work for a single book or a book nested in a multi-book repository.
+3. distinguish book-owned work from shared-foundation work.
+4. Preserve manifest, manuscript, theme, cascade, asset, plugin, and Git
+   conventions.
+5. Keep Markdown semantic and generated HTML disposable.
+6. Default to the narrowest safe edit and ownership scope.
+7. Use a real completed Paged.js render for visual verification.
+8. Remain portable as an Agent Skill while adding Open Design metadata.
 
-## 3. Non-goals for the first release
+The first release does not start Print-MD, execute Git, install packages, add a
+remote write API, create tool-specific project state, or modify files beneath
+`plugins/npm/`.
 
-Do not:
+## 3. Current Open Design behavior
 
-- start, stop, or supervise the Print-MD preview process;
-- add a Print-MD MCP server;
-- add custom React or GenUI components;
-- save serialized HTTP-preview DOM back into the repository;
-- create token JSON, tool-specific CSS, or project state files;
-- install or update Print-MD;
-- modify Print-MD-managed files beneath `plugins/npm/`;
-- commit, branch, push, open pull requests, or resolve Git conflicts;
-- request shell, subprocess, network, MCP, or connector capabilities; or
-- introduce another source-map format.
+### Imported projects
 
-These boundaries keep the plugin portable, reviewable, and within Open Design's stable static-plugin contract.
+An imported folder retains its real path as the project `baseDir`; Open Design
+does not make a shadow copy. Project file operations are confined to that
+imported root. Hidden path segments are unavailable through the project file
+surface, so durable guidance belongs in `design/`, not `.design/`.
 
-## 4. Current platform behavior to design around
+### Package shape
 
-### 4.1 Open Design project folders
-
-When an existing local folder is imported, Open Design stores the real folder as `metadata.baseDir` and reads and writes it directly. It does not create a shadow copy of the project.
-
-For imported folders:
-
-- hidden path segments are rejected by the project file API;
-- dot-directories are omitted from project listings;
-- paths are confined to the imported root; and
-- the user remains responsible for Git/version control.
-
-Use a visible repository directory such as `design/`, not `.design/`, for durable notes and plugin source.
-
-### 4.2 Open Design plugin packaging
-
-A plugin package is accepted when it contains a supported descriptor. This implementation deliberately ships both canonical files:
+The package ships both portable and Open Design descriptors:
 
 ```text
 SKILL.md
 open-design.json
 ```
 
-`SKILL.md` remains usable by other Agent Skills consumers. `open-design.json` is additive and Open Design-specific.
+Open Design copies a local installation into its user registry. Reinstall after
+the tracked package changes. The installer rejects symlinks and traversal and
+limits a package to 50 MiB.
 
-The current installer supports:
+### Existing-project inputs
+
+Open Design 0.16.1's existing-project composer does not render `od.inputs`.
+`PluginsSection.applyById()` applies with an empty input map and only seeds
+schema defaults into the brief. Required fields without defaults fail before a
+run starts; defaults are frozen into the snapshot as authoritative values.
+
+Version 0.2.0 therefore declares no apply-time inputs and has no unresolved
+`{{placeholder}}` values. `SKILL.md` resolves five runtime values from the latest
+message, submitted form answers, repository facts, and Browser context:
+
+- target book;
+- concrete goal;
+- edit scope (`theme`, `layout`, or `content`);
+- change ownership (`book-only` or `shared-foundation`); and
+- preview URL.
+
+Safe defaults are theme-only, book-only work. If a required value remains
+ambiguous, the agent emits one inline
+`<question-form id="print-md-brief">` containing only unresolved fields and
+stops before writing. Inline question forms are the current host's supported
+clarification path; answers return as the next user message.
+
+### Pipeline
+
+The manifest keeps a short explicit pipeline:
 
 ```text
-./local/folder
-/absolute/local/folder
-github:owner/repo[@ref][/subpath]
-https://...tar.gz
-https://...tgz
+inspect -> edit -> verify
 ```
 
-The installer:
+It uses only `file-read`, `todo-write`, `file-edit`, and `file-write`. This is
+intentional. Omitting the pipeline inherits Open Design's general
+`tune-collab` scenario, including direction picking, `patch-edit`, repeated
+critique theater, and handoff state that do not fit an in-place publication
+edit.
 
-- copies local packages into Open Design's user plugin registry;
-- rejects symlinks and path traversal;
-- limits the copied tree to 50 MiB by default; and
-- replaces an existing installation of the same plugin ID by default.
+Open Design's atom workers do not enforce the full workflow by themselves;
+`SKILL.md` is the behavioral contract.
 
-Because local installation is a copy, editing the Git-tracked package does not update the installed copy. Reinstall during development and after pulling a changed team package.
+### Trust
 
-### 4.3 Open Design trust and capabilities
-
-Local plugin installs default to trusted. Non-local sources may begin restricted. Restricted plugins receive only prompt injection until the user grants additional capabilities.
-
-This plugin requires:
+The manifest declares only:
 
 ```text
 prompt:inject
@@ -129,93 +123,96 @@ fs:read
 fs:write
 ```
 
-Declaring a pipeline also causes Open Design to account for pipeline capability internally. Do not request broader capabilities in the first release.
+An explicit pipeline also derives `pipeline:*`. Trusted local installs receive
+the required capabilities plus Open Design's broader trusted defaults
+(`connector:*`, `mcp:*`, and `genui:*`). The package defines no facility that
+uses those host-default grants. In Open Design 0.16.1, restricted
+direct-GitHub/URL installs cannot persistently grant `pipeline:*`; a per-run
+grant works, and an official/trusted marketplace install will work after
+publication. Version 0.2.0 therefore supports trusted local installation and
+does not advertise remote installation as stable.
 
-### 4.4 Skills and staged references
+Capabilities control plugin-owned facilities, not every operating-system tool
+available to the selected coding agent. Path, shell, Git, ownership, and
+generated-output restrictions remain explicit workflow policy.
 
-The plugin must declare its local `SKILL.md` through both:
+### Browser context
 
-```text
-compat.agentSkills
-od.context.skills
+Opening an external Print-MD preview tab automatically adds URL and title to the
+run context. Open Design 0.16.1 does not expose arbitrary element annotation
+controls for an external HTTP page or guarantee selector, opening HTML,
+computed-style, or ancestor metadata. Browser Use automation is agent/backend
+dependent.
+
+The plugin therefore treats visual selection as best effort:
+
+1. Use Browser automation only when the current run exposes it.
+2. When DOM inspection is available, use `data-source-line`,
+   `data-chapter-src`, stable IDs, and semantic classes as hints.
+3. Confirm every hint against Markdown, the manifest, and active CSS.
+4. Otherwise use the user's description or screenshot and ask one focused
+   question when the target is still ambiguous.
+5. Never persist preview DOM.
+
+### Current host limitation
+
+Open Design 0.16.1's existing-project plugin picker can display a plugin chip
+without persisting a snapshot ID or sending a fallback `pluginId` on the next
+run. A manifest cannot repair this transport bug. Until Open Design fixes it,
+the reliable path is:
+
+```bash
+od plugin run print-md-publishing \
+  --project <project-id> \
+  --message "In books/core-book, refine chapter openers. Keep it theme-only and book-only. The preview is http://localhost:3579/." \
+  --follow
 ```
 
-The first preserves Agent Skills compatibility. The second activates Open Design's current local-skill loader.
+## 4. Print-MD contract
 
-Open Design stages the active skill directory and its side files under `.od-skills/` for the run. The skill should read its bundled `references/` from the staged skill location advertised by Open Design. `.od-skills/` is generated state and must never become the source of truth.
+The skill and references pin these current rules:
 
-### 4.5 Inputs and query templates
+- Manifest lookup order is `manifest.yaml`, `manifest.yml`, then
+  `print-md.yaml`.
+- Non-empty `source.files` is authoritative. Otherwise only top-level `.md`
+  files render, alphabetically.
+- Root `DESIGN.md`, `README.md`, or `NOTES.md` is manuscript under implicit
+  discovery; nested `design/` guidance is not.
+- `styles:` entries are source paths to read in listed cascade order. They may
+  point outside the book.
+- A first local theme application defaults to the front of `styles`; replacing
+  an active local theme preserves its existing index. Do not reorder a valid
+  cascade merely to force the theme first.
+- CSS `url()` resolves from the stylesheet containing it. Fonts embed; images
+  embed or copy by size.
+- Markdown images must resolve inside the book.
+- `source.assets` and `output` were removed and now fail validation/build.
+- Authored plugins are editable source only within the resolved scope. Managed
+  npm plugin trees beneath `plugins/npm/` are never hand-edited.
+- `book.html`, `dist/**`, preview temp files, `.od-skills/**`, and `.git/**` are
+  never edited.
 
-Open Design currently supports input fields of type:
+The preview rebuilds and full-reloads the complete document after every watched
+source change. External stylesheet dependency closure and authored plugin entry
+paths are watched. Manifest watch targets are synchronized before rendering, so
+creation of a newly declared missing shared file can recover a failed preview.
 
-```text
-string
-text
-select
-number
-boolean
-file
-```
+The recursive in-book watcher remains conservative: unrelated non-dot files can
+trigger a rebuild. Documentation must not claim `design/` or `dist/` is ignored.
 
-`od.useCase.query` may contain `{{inputName}}` placeholders. Open Design hydrates those from input defaults and user values in its plugin workflow.
-
-### 4.6 Pipelines and atoms
-
-A pipeline consists of ordered stages with atom IDs. This plugin uses existing first-party atoms only:
-
-```text
-file-read
-todo-write
-file-edit
-file-write
-```
-
-A short explicit pipeline is preferable to inheriting Open Design's broader default `tune-collab` flow. The plugin needs inspection, constrained source editing, and verification—not a generic design-generation or critique theater.
-
-### 4.7 Browser behavior
-
-Open Design's Browser can open a Print-MD preview URL, inspect rendered elements, collect selector/text/HTML/computed-style context, and attach comments to the agent run.
-
-Direct DOM tuning is durable only for eligible local project HTML. A Print-MD preview is an HTTP page generated from Markdown and CSS, so DOM edits are temporary. The plugin must always persist changes in Print-MD source files.
-
-### 4.8 Current Print-MD behavior
-
-The plugin must understand these current contracts:
-
-- manifests: `manifest.yaml`, `manifest.yml`, `print-md.yaml`;
-- explicit `source.files`, otherwise alphabetically sorted **top-level** `.md`
-  files (never recursive — a `chapters/` folder requires an explicit list);
-- one active `themes/<id>/theme.css` entry, listed first in the cascade;
-- ordered `manifest.styles`, where **an entry is a path to READ, not a file to
-  ship**: it may point outside the book (`../../shared/styles/x.css`), it is
-  inlined into `book.html`, and its `url()`s resolve relative to itself, so its
-  fonts and images travel with it;
-- **no `source.assets` and no `output`** — both were removed and a manifest
-  that still carries either fails the build with a message naming the field;
-  assets are discovered from what the book references and output goes to
-  `dist/<title-slug>/`;
-- a Markdown image reference must resolve **inside** the book; `../` or absolute
-  refs are build errors (CSS `url()` has no such restriction);
-- authored local plugins resolved relative to the manifest, including paths
-  outside the book;
-- npm plugins managed beneath the book's `plugins/npm/` tree by `print-md plugin add`;
-- source metadata emitted as `data-source-line` and `data-chapter-src`; and
-- a stylesheet edit triggers a full rebuild and a complete Paged.js
-  repagination — including an edit to a shared stylesheet the manifest names —
-  so the visible preview is always a real pagination, not a restyled stale one.
-
-## 5. Plugin repository and package layout
-
-Maintain the canonical plugin separately from Print-MD application packages.
+## 5. Source layout
 
 ```text
 packages/open-design-plugin/
+├── package.json
+├── plugin.test.ts
 ├── plugin/
 │   ├── SKILL.md
 │   ├── open-design.json
 │   ├── README.md
-│   ├── LICENSE
 │   ├── CHANGELOG.md
+│   ├── LICENSE
+│   ├── evals/evals.json
 │   └── references/
 │       ├── project-contract.md
 │       ├── themes-styles-assets.md
@@ -227,744 +224,141 @@ packages/open-design-plugin/
 │   ├── simple-implicit/
 │   ├── themed-book/
 │   └── multi-book-repo/
-└── docs/
-    └── release-checklist.md
+└── docs/release-checklist.md
 ```
 
-**Shipped so far (2026-07-28):** `packages/open-design-plugin/plugin/` — the
-installable package with `SKILL.md`, `open-design.json`, the five reference
-files, `README.md`, `LICENSE`, and `CHANGELOG.md`. The `test-fixtures/` books
-(§14) and `docs/release-checklist.md` are still to come; §15's package-schema
-assertions cannot run here either, because the `od` CLI is not available in this
-repository's toolchain.
+`plugin/` is the only installable/packable directory. Fixtures, tests, and
+release records stay outside it.
 
-During development:
+The canonical contracts are the files themselves:
 
-```bash
-od plugin install ./plugin
-```
+- [`open-design.json`](../../packages/open-design-plugin/plugin/open-design.json)
+- [`SKILL.md`](../../packages/open-design-plugin/plugin/SKILL.md)
 
-A publication team may vendor only the installable package at:
+Do not duplicate their full contents into this document; contract tests keep
+the package metadata, references, evals, and fixture behavior aligned.
 
-```text
-design/open-design/plugins/print-md-publishing/
-```
-
-Do not put test fixtures, PDFs, large fonts, or publication images inside the installable package. Keep it well below the 50 MiB installer cap.
-
-## 6. Exact `open-design.json`
-
-Use this initial manifest:
-
-```json
-{
-  "$schema": "https://open-design.ai/schemas/plugin.v1.json",
-  "specVersion": "1.0.0",
-  "name": "print-md-publishing",
-  "title": "Print-MD Publishing",
-  "version": "0.1.0",
-  "description": "Design and refine an existing Print-MD publication in place while preserving its paged-media, theme, asset, plugin, and Git conventions.",
-  "license": "MPL-2.0",
-  "author": {
-    "name": "Dimm City"
-  },
-  "tags": [
-    "publishing",
-    "print",
-    "markdown",
-    "paged-media",
-    "tune-collab"
-  ],
-  "compat": {
-    "agentSkills": [
-      {
-        "path": "./SKILL.md"
-      }
-    ]
-  },
-  "od": {
-    "kind": "skill",
-    "taskKind": "tune-collab",
-    "scenario": "publishing",
-    "useCase": {
-      "query": "Refine the Print-MD publication at {{bookPath}}. Goal: {{goal}}. Edit scope: {{editScope}}. Change ownership: {{changeScope}}. Treat {{previewUrl}} as the authoritative paginated preview."
-    },
-    "context": {
-      "skills": [
-        {
-          "path": "./SKILL.md"
-        }
-      ],
-      "atoms": [
-        "file-read",
-        "todo-write",
-        "file-edit",
-        "file-write"
-      ]
-    },
-    "pipeline": {
-      "stages": [
-        {
-          "id": "inspect",
-          "atoms": [
-            "file-read",
-            "todo-write"
-          ]
-        },
-        {
-          "id": "edit",
-          "atoms": [
-            "file-edit",
-            "file-write"
-          ]
-        },
-        {
-          "id": "verify",
-          "atoms": [
-            "file-read"
-          ]
-        }
-      ]
-    },
-    "inputs": [
-      {
-        "name": "bookPath",
-        "label": "Book path",
-        "type": "string",
-        "required": true,
-        "default": ".",
-        "placeholder": "books/core-book"
-      },
-      {
-        "name": "goal",
-        "label": "What should change?",
-        "type": "text",
-        "required": true,
-        "placeholder": "Refine chapter openers and reduce their page-space cost."
-      },
-      {
-        "name": "editScope",
-        "label": "Edit scope",
-        "type": "select",
-        "required": true,
-        "default": "theme",
-        "options": [
-          "theme",
-          "layout",
-          "content"
-        ]
-      },
-      {
-        "name": "changeScope",
-        "label": "Change ownership",
-        "type": "select",
-        "required": true,
-        "default": "book-only",
-        "options": [
-          "book-only",
-          "shared-foundation"
-        ]
-      },
-      {
-        "name": "previewUrl",
-        "label": "Print-MD preview URL",
-        "type": "string",
-        "required": false,
-        "default": "http://localhost:3579/",
-        "placeholder": "http://localhost:3579/"
-      }
-    ],
-    "capabilities": [
-      "prompt:inject",
-      "fs:read",
-      "fs:write"
-    ]
-  }
-}
-```
-
-### Manifest rationale
-
-- `od.kind: skill` identifies a reusable workflow rather than a built-in Open Design core scenario.
-- `taskKind: tune-collab` matches editing an existing publication.
-- No `mode` is declared, avoiding prototype, deck, or generated-document assumptions.
-- The plugin declares a short pipeline instead of inheriting a heavier default collaboration pipeline.
-- The pipeline uses only implemented first-party file/planning atoms.
-- No MCP, connector, network, shell, custom component, or media capability is requested.
-- `compat.agentSkills` and `od.context.skills` intentionally point to the same file, matching Open Design's current template pattern.
-- `license` is **MPL-2.0**, matching the repository the package is maintained in (this doc originally specified MIT; the shipped package must not claim a licence the repository does not grant). Revisit only if the package moves to its own repository under a different licence.
-
-## 7. Exact `SKILL.md`
-
-Use the following as the initial workflow contract:
-
-```markdown
----
-name: print-md-publishing
-description: Design and refine an existing Print-MD paged publication without converting it into a web application or editing generated output.
-triggers:
-  - print-md
-  - paged publication
-  - book theme
-  - print layout
-  - markdown to PDF
----
-
-# Print-MD Publishing
-
-You are editing an existing Print-MD publication in place. Print-MD remains the
-renderer. The running Print-MD preview is the visual and pagination authority.
-
-Use the plugin inputs as authoritative. Do not ask the user to repeat them.
-Read the companion files in the staged skill's `references/` directory before
-changing the project.
-
-## Non-negotiable rules
-
-- Do not create a new web application, `index.html`, React project, or replacement renderer.
-- Do not edit generated `book.html`, `dist/`, preview temp files, or `.od-skills/`.
-- Do not create Open Design-specific CSS, token JSON, manifest fields, or state files.
-- Do not edit Print-MD-managed files beneath `plugins/npm/`.
-- Preserve semantic Markdown and existing Print-MD layout markers.
-- Prefer the smallest stable change in an existing theme, stylesheet, component, manifest, or authored local plugin.
-- Use one active `themes/<id>/theme.css`; extend it through later ordinary styles.
-- Treat direct DOM tuning on the HTTP preview as temporary context, never as the durable edit.
-- Reject a `bookPath` that is absolute or escapes the imported project root.
-
-## Workflow
-
-### 1. Resolve the target book
-
-1. Resolve `bookPath` beneath the imported Open Design project root.
-2. Find the first existing manifest in this order: `manifest.yaml`, `manifest.yml`, `print-md.yaml`.
-3. Stop without writing when no manifest exists at the exact target path.
-4. Read the manifest before scanning or editing project files.
-5. If `source.files` is absent or empty, remember that every top-level `.md` file in the book is manuscript content.
-
-### 2. Inspect the publication contract
-
-Read and summarize:
-
-- explicit or implicit manuscript files;
-- the ordered `styles` list and which entries are shared (a path escaping the
-  book) versus book-local, with the active `themes/<id>/theme.css` first;
-- page, preset, PDF/X, and validation constraints relevant to the request;
-- authored local plugins and Print-MD-managed npm plugins;
-- repository-level and book-level design guidance; and
-- which stylesheet actually owns the rule you intend to change.
-
-Every `styles` entry names a real file at that exact path — there is no staging
-or flattening, so nothing has to be reverse-mapped. Read each entry to see
-whether the declaration you want already exists in a shared file (changing it
-affects every book that lists it) or only in the book's own stylesheet.
-
-### 3. Enforce ownership and edit scope
-
-Follow `changeScope`:
-
-- `shared-foundation`: edit a shared source only when the treatment is intended for multiple books.
-- `book-only`: edit only files owned by the target book. Do not modify shared foundations.
-
-Follow `editScope`:
-
-- `theme`: CSS, theme-owned fonts/images, and design guidance only.
-- `layout`: theme scope plus semantic layout markers, manifest style configuration, and authored local plugin source when necessary.
-- `content`: layout scope plus manuscript prose and structure.
-
-Never broaden either scope silently.
-
-### 4. Implement the smallest stable change
-
-Use this preference order:
-
-1. Existing CSS custom property in the owning stylesheet.
-2. Existing reusable component rule.
-3. New reusable semantic component rule in an existing stable stylesheet.
-4. Stable book-specific rule in the existing local stylesheet.
-5. Semantic Markdown marker/class change when layout scope permits it.
-6. Authored Print-MD plugin change only when the behavior cannot be expressed in CSS or semantic Markdown.
-
-Do not add a tool-specific override stylesheet. Integrate the accepted result
-into the file that should own it permanently.
-
-### 5. Verify
-
-- Re-read every changed source file.
-- Confirm no generated output or managed npm plugin file changed.
-- Inspect the Print-MD preview at `previewUrl` when one was provided.
-- Use existing `data-source-line`, `data-chapter-src`, IDs, classes, and semantic structure to relate preview elements to source.
-- After typography, page geometry, columns, spacing, font, image-size, or break-rule changes, confirm the preview finished a complete Paged.js pagination. Current Print-MD repaginates on every stylesheet edit; reload the Browser tab if the page count or boundaries look stale.
-- Report the files changed, their shared or book-local ownership, and any remaining preview limitation.
-```
-
-## 8. Companion reference files
-
-Keep these files concise. They are durable domain guidance, not copies of the Print-MD source tree.
-
-### `references/project-contract.md`
-
-Include:
-
-- recognized manifest names and path base;
-- explicit versus implicit `source.files` behavior;
-- the risk of root control Markdown under implicit discovery;
-- fixed generated `book.html` ownership;
-- stylesheet fallback order when `styles` is omitted;
-- CSS `@page` as actual page geometry versus manifest page values as validation expectations;
-- the fixed `dist/<title-slug>/` output location, which must never be edited;
-- `source.assets` and `output` as removed fields that now fail the build; and
-- the rule that the exact target `bookPath` is authoritative.
-
-### `references/themes-styles-assets.md`
-
-Include:
-
-- `themes/<id>/theme.css` and optional `theme.json`;
-- one-active-theme behavior, and the theme's position at the front of `styles:`;
-- `styles/book.css` and the absence of required special CSS filenames;
-- the ordered manifest stylesheet cascade: paged primitives, plugin CSS, then
-  `styles:` in listed order, so project CSS wins at equal specificity;
-- a `styles:` entry as a path to READ — shared foundations are referenced, not
-  copied, and may live above the book root;
-- `url()` resolution relative to the stylesheet that contains it, with fonts
-  always embedded and images embedded or copied by size;
-- the in-book rule for Markdown image references;
-- direct plugin/profile paths; and
-- authored local plugins versus managed `plugins/npm/` packages.
-
-### `references/semantic-layout.md`
-
-Include the stable Print-MD authoring surface:
-
-- `@chapter`, `@page`, `@section`, `@continue`, `@spread`, page breaks, and column breaks;
-- semantic section components;
-- chapter/page/section selector ownership;
-- CSS custom properties for reusable variants;
-- Contextual Cascade guidance;
-- raw presentational HTML as a last resort rather than the default; and
-- prohibition on selectors tied to generated `.pagedjs_*` structure or page ordinal.
-
-### `references/preview-and-source-maps.md`
-
-Include:
-
-- default preview port (3579) and user-supplied ports;
-- Print-MD preview as pagination authority;
-- `data-source-line` and `data-chapter-src` reuse;
-- nearest source-bearing ancestor inspection;
-- why an HTTP-preview DOM edit is transient;
-- repagination on every stylesheet edit, including a declared shared
-  stylesheet outside the book; and
-- when a manual Browser reload is still worth doing.
-
-### `references/git-and-plugin-ownership.md`
-
-Include:
-
-- whole-repository Git scope for nested books;
-- shared versus book-local ownership;
-- visible `design/` storage;
-- `.od-skills/` as ignored staging;
-- local Open Design install-copy behavior;
-- reinstall-after-pull workflow;
-- committing Print-MD-managed npm plugin closures; and
-- no expectation that Git captures Open Design conversation history.
-
-## 9. Project discovery algorithm
-
-The first release implements discovery through agent instructions rather than executable plugin code.
-
-```text
-repoRoot = Open Design imported-folder root
-bookRoot = normalize(repoRoot + input.bookPath)
-
-reject when:
-  bookRoot is outside repoRoot
-  input.bookPath is absolute
-
-manifest = first existing of:
-  bookRoot/manifest.yaml
-  bookRoot/manifest.yml
-  bookRoot/print-md.yaml
-
-if manifest missing:
-  fail without writing
-
-parse manifest
-
-manuscriptFiles =
-  source.files when non-empty
-  otherwise top-level *.md under bookRoot sorted alphabetically
-
-activeStyles =
-  manifest.styles when non-empty
-  otherwise Print-MD fallback discovery
-
-for each style entry:
-  the entry IS the source path, resolved against bookRoot
-  an entry that escapes bookRoot is a shared foundation file
-  its url() references resolve against that file's own directory
-```
-
-Do not recursively search the repository and guess among multiple books when `bookPath` is supplied. Inputs are authoritative. A later UI enhancement may list candidate books before application, but it is not required for the plugin.
-
-## 10. File ownership rules
-
-### Theme scope may write
-
-```text
-bookRoot/themes/**
-bookRoot/styles/**
-bookRoot/fonts/**
-bookRoot/images/**
-bookRoot/design/**
-shared equivalents when changeScope = shared-foundation
-```
-
-It may update a manifest only when necessary to reference an existing/new stylesheet, theme asset, font, or image and the change remains design-only.
-
-### Layout scope additionally may write
-
-```text
-manuscript Markdown layout markers/classes
-manifest styles/page-related configuration
-authored local Print-MD plugin source
-```
-
-### Content scope additionally may write
-
-```text
-manuscript prose and document structure
-```
-
-### Never write
-
-```text
-book.html
-dist/**
-other generated output
-.od-skills/**
-plugins/npm/**
-.git/**
-Open Design application data
-files outside the imported repository root
-```
-
-Never REINTRODUCE a removed manifest field either: adding `source.assets` or
-`output` back to a manifest breaks the build outright.
-
-## 11. Visual selection workflow
-
-1. The user opens `previewUrl` in an Open Design Browser tab.
-2. The user selects or comments on the rendered element.
-3. Open Design supplies selector, text, opening HTML, computed style, and comment context.
-4. The agent inspects the selected node and nearest source-bearing ancestors.
-5. It uses `data-source-line`, `data-chapter-src`, semantic IDs/classes, the manifest, and active CSS to identify likely ownership.
-6. It edits Print-MD source files, never the serialized preview DOM.
-7. It waits for or forces a complete Print-MD pagination before judging layout.
-
-Do not create a plugin-specific source database. A useful future Open Design contribution would add nearest existing `data-source-line` and `data-chapter-src` values directly to Browser selection attachments. That enhancement requires no Print-MD protocol change.
-
-## 12. Security and trust
-
-The declared capabilities are intentionally narrow:
-
-```text
-prompt:inject
-fs:read
-fs:write
-pipeline:*   # derived because a pipeline is declared
-```
-
-Local installations default to trusted and receive the plugin's required capabilities. Remote or registry installations may remain restricted until the user grants file access.
-
-Do not request:
-
-```text
-bash
-subprocess
-network
-mcp:*
-connector:*
-genui:custom-component
-```
-
-The plugin should not silently execute Print-MD, project scripts, Git commands, package managers, or network requests.
-
-## 13. Development workflow
-
-### Scaffold
-
-```bash
-od plugin scaffold \
-  --id print-md-publishing \
-  --title "Print-MD Publishing" \
-  --out ./plugin-work
-```
-
-Move or adapt the generated package into `plugin/` and replace the starter files with the contracts above.
-
-### Validate without the daemon
-
-```bash
-od plugin validate ./plugin --no-daemon
-```
-
-This checks package shape, descriptors, paths, and schema without depending on a running Open Design daemon.
-
-### Validate with the daemon
-
-```bash
-od plugin validate ./plugin
-```
-
-Use this during integration testing so current registry-bound atom and reference checks also run.
-
-### Install and inspect
-
-```bash
-od plugin install ./plugin
-od plugin info print-md-publishing --json
-od plugin doctor print-md-publishing
-```
-
-Reinstall after every package change because local install copies the package.
-
-### Pack
-
-```bash
-od plugin pack ./plugin
-```
-
-The resulting archive must contain the package-root files directly, contain no symlinks, and remain below the installer size limit.
-
-## 14. Test fixtures
-
-### `simple-explicit/`
-
-A small book with explicit `source.files`, root-level `DESIGN.md`, `styles/book.css`, and no theme. Verify the plugin does not invent additional CSS layers.
-
-### `simple-implicit/`
-
-A book with implicit manuscript discovery and `design/DESIGN.md`. Add a fixture-only root `README.md` to prove the plugin detects the top-level Markdown risk rather than creating another root control file.
-
-### `themed-book/`
-
-A project-local theme package plus later `styles/book.css`. Verify one active theme remains and local stable styles retain final authority.
-
-### `multi-book-repo/`
-
-A repository with:
-
-```text
-shared/themes
-shared/styles
-shared/fonts
-shared/images
-shared/plugins
-books/core-book
-books/supplement
-```
-
-Verify `bookPath`, shared/book ownership, reference-based shared composition, and sibling-book isolation.
-
-## 15. Test matrix
+## 6. Test coverage
 
 ### Static package tests
 
-- `open-design.json` parses as JSON and against the current plugin schema.
-- Plugin ID and version are valid.
-- Every declared input type is supported.
-- Every declared atom exists.
-- `SKILL.md` is reachable through `od.context.skills`.
-- All reference files are included.
-- No unsupported capability is declared.
-- Pack/unpack and local install succeed.
-- Package contains no symlink and is below 50 MiB.
+`plugin.test.ts` verifies:
 
-### Print-MD compatibility tests
+- plugin ID, spec and package versions;
+- `refine` classification and Open Design engine floor;
+- absence of unusable apply-time inputs and unresolved query placeholders;
+- exact capabilities, pipeline stages, and atoms;
+- local skill/reference reachability;
+- no symlinks and package size below 50 MiB; and
+- behavioral eval shape.
 
-1. `manifest.yaml`
-2. `manifest.yml`
-3. `print-md.yaml`
-4. explicit manuscript source list
-5. implicit top-level manuscript discovery
-6. styles-only book
-7. project-local theme
-8. shared theme and local style extension
-9. book stylesheet shadowing a shared declaration through cascade order
-10. authored shared Print-MD plugin
-11. authored local Print-MD plugin
-12. managed npm Print-MD plugin tree
-13. companion design guide
-14. Windows-style source path entries
-15. custom preview port
+### Compatibility fixtures
 
-### Behavioral assertions
+- `simple-explicit`: explicit source list plus safe root `DESIGN.md`.
+- `simple-implicit`: root `README.md` intentionally renders while nested
+  `design/DESIGN.md` does not.
+- `themed-book`: theme then book-local cascade.
+- `multi-book-repo`: nested book, sibling isolation, shared theme/import/font,
+  shared components, local override, and shared authored plugin entry.
 
-For every agent-run fixture, assert:
+The tests render the fixtures through Print-MD's actual manifest, manuscript,
+CSS inlining, and external-watch resolvers.
 
-- no generated `book.html` changed;
-- no Open Design-specific stylesheet/state file was created;
-- no `plugins/npm/` file changed;
-- only files allowed by `editScope` changed;
-- only ownership allowed by `changeScope` changed;
-- manuscript source membership did not accidentally expand;
-- one active theme remained;
-- shared/local cascade precedence was respected;
-- the final preview reflected the source edit after complete pagination; and
-- the final response named every changed file and its owner.
+### Behavioral evals
 
-### Trust tests
+`plugin/evals/evals.json` covers:
 
-- Local install can read/write after normal trusted installation.
-- GitHub/registry install remains unable to write while restricted.
-- Granting the declared file capabilities enables the same workflow.
-- The plugin never requests shell, subprocess, network, MCP, or connector access.
+- a focused single-book theme change;
+- an ambiguous multi-book request that must ask before writing;
+- a book-only override over a shared foundation; and
+- implicit manuscript safety for durable design notes.
 
-### Browser/source tests
+These evals are review contracts. A deterministic Open Design agent-eval runner
+is not currently shipped in this repository.
 
-- Select a heading carrying `data-source-line`.
-- Select content cloned or split by Paged.js.
-- Select a component with a stable semantic class.
-- Confirm the agent edits the source file rather than preview HTML.
-- Confirm a pagination-affecting CSS change is evaluated only after complete pagination.
+### Open Design validation
 
-## 16. Suggested automated test harness
-
-The plugin itself contains no executable runtime, so test behavior at three layers:
-
-1. **Schema/package layer** — run `od plugin validate`, `od plugin pack`, and install/doctor commands in CI.
-2. **Prompt contract layer** — run representative agent sessions against copied fixtures with a fake or deterministic model and compare allowed file diffs.
-3. **End-to-end layer** — run Print-MD preview on fixture books, open the URL through Open Design's Browser test harness, attach a selection/comment, execute the plugin, and verify source and rendered output.
-
-Keep fixture repositories outside the installable `plugin/` directory.
-
-## 17. Versioning
-
-- Start at `0.1.0` while validating against current main branches.
-- Record the minimum tested Open Design release in `README.md` once a released version boundary is known.
-- Add `od.engineRequirements.od` only when that release floor is deliberate and testable.
-- Bump the plugin version whenever the package contents or workflow contract change.
-- Treat changes to inputs, capabilities, edit scopes, or ownership rules as user-visible compatibility changes.
-- Keep the team-vendored package and published package version aligned when both are distributed.
-
-## 18. Distribution options
-
-### Team-local Git package
-
-Store the package under `design/open-design/plugins/` and install it locally. This is simplest for private teams and local installs default to trusted.
-
-### GitHub source
-
-Publish the canonical repository and install a tagged package subpath:
+Use the current Open Design CLI:
 
 ```bash
-od plugin install github:dimm-city/print-md-publishing-plugin@v0.1.0/plugin
-```
-
-Remote installs retain provenance and may require explicit trust before file writes.
-
-### Open Design registry
-
-Validate, pack, authenticate, and publish:
-
-```bash
-od plugin validate ./plugin --no-daemon
-od plugin pack ./plugin
-od plugin login
-od plugin whoami --json
-od plugin publish print-md-publishing \
-  --to open-design \
-  --repo https://github.com/dimm-city/print-md-publishing-plugin
-```
-
-After registry review:
-
-```bash
-od marketplace refresh official
-od plugin install print-md-publishing
+od plugin validate ./plugin --no-daemon --json
+od plugin pack ./plugin --out /tmp/print-md-publishing-0.2.0.tgz --json
+od plugin install ./plugin
 od plugin info print-md-publishing --json
+od plugin doctor print-md-publishing --json
 ```
 
-## 19. Implementation phases
+On systems where `od` resolves to coreutils, invoke Open Design's CLI by its
+absolute path. The local development checkout exposes
+`node apps/daemon/bin/od.mjs`.
 
-### Phase 1 — minimum usable package
+## 7. Release status
 
-1. Scaffold the package.
-2. Add the exact manifest and skill above.
-3. Add the five concise reference files.
-4. Validate, install, doctor, and pack locally.
-5. Test against `simple-explicit`, `simple-implicit`, and `themed-book`.
-6. Document manual Print-MD preview startup and the current hard-reload requirement.
+Version 0.2.0 is a trusted-local release candidate. It must not be described as
+published until all of the following are true:
 
-### Phase 2 — repository/team coverage
+1. The canonical public source URL exists at a tagged revision.
+2. Validation, pack, isolated install, info, apply, and doctor checks pass.
+3. A real imported-project run completes against at least the explicit,
+   implicit, themed, and multi-book fixtures.
+4. Open Design's existing-project snapshot transport is fixed or the supported
+   CLI-only limitation is accepted for that release.
+5. Restricted pipeline capability handling is fixed, or the package is listed
+   through an official/trusted marketplace.
+6. Marketplace review merges and bare-name installation is verified.
 
-1. Add shared/local overlay guidance and the multi-book fixture.
-2. Test repository-root Open Design projects with nested `bookPath` values.
-3. Add authored-plugin and managed-npm-plugin protections.
-4. Add install-copy/reinstall documentation and CI.
+Until then, do not document:
 
-### Phase 3 — visual-selection hardening
+```bash
+od plugin install print-md-publishing
+```
 
-1. Test Browser selections against real Paged.js output.
-2. Refine nearest-source instructions for cloned and split fragments.
-3. Contribute an optional Open Design Browser improvement that includes nearest existing source metadata in selection attachments.
-4. Do not change Print-MD's source-map format.
+The detailed gate is
+[`packages/open-design-plugin/docs/release-checklist.md`](../../packages/open-design-plugin/docs/release-checklist.md).
 
-### Phase 4 — release
+## 8. Acceptance criteria
 
-1. Add marketplace copy and an optional static poster/preview.
-2. Run the full fixture and trust matrix.
-3. Pack and integrity-check the package.
-4. Publish the canonical GitHub repository.
-5. Submit to the Open Design registry.
+The plugin implementation is complete when:
 
-## 20. Acceptance criteria
+- current Open Design validates and packs it;
+- its package contract and all Print-MD fixtures pass in CI;
+- attaching it never fails for missing apply-time inputs;
+- the injected skill can execute safely without resolving companion-file paths;
+- a clear request proceeds without redundant questions;
+- an ambiguous target produces one structured form and no writes;
+- edits stay within the resolved book, edit scope, and ownership;
+- generated output and managed npm plugin files remain unchanged;
+- every watched source change is judged only after complete pagination;
+- Browser/source mapping claims remain conditional on context actually supplied
+  to the run; and
+- Print-MD has no Open Design-specific runtime behavior.
 
-The plugin is complete when:
+Marketplace publication is a separate release milestone and is not implied by
+implementation completion.
 
-- it validates, installs, and doctors through current Open Design tooling;
-- it edits an imported Print-MD repository directly;
-- it supports all current Print-MD manifest names;
-- it safely handles explicit and implicit manuscript discovery;
-- it edits existing stable themes, styles, components, Markdown, and authored plugins rather than creating tool-specific overrides;
-- it respects shared versus book-local ownership;
-- it never edits generated output or Print-MD-managed npm plugin files;
-- it uses the running Print-MD preview as pagination authority;
-- it reuses existing source metadata for visual selection;
-- it works in a multi-book Git repository;
-- its Git-tracked source can be reinstalled reproducibly by every contributor; and
-- Print-MD contains no Open Design-specific application code.
-
-## 21. Research basis
+## 9. Research basis
 
 ### Open Design
 
-- [Plugin specification](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/docs/plugins-spec.md)
-- [Plugin manifest schema](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/packages/contracts/src/plugins/manifest.ts)
-- [Plugin template](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/plugins/spec/templates/open-design.template.json)
-- [Plugin apply implementation](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/daemon/src/plugins/apply.ts)
-- [Plugin trust and capability model](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/daemon/src/plugins/trust.ts)
-- [Plugin installer and source syntax](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/daemon/src/plugins/installer.ts)
-- [Skill protocol and resource staging](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/docs/skills-protocol.md)
-- [First-party atom catalog](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/docs/atoms.md)
-- [Plugin publishing workflow](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/docs/publishing-a-plugin.md)
-- [Direct-folder import](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/daemon/src/import-export-routes.ts)
-- [Imported-folder file handling](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/daemon/src/projects.ts)
-- [Browser inspection behavior](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/web/src/components/DesignBrowserPanel.tsx)
+- [Compact plugin specification](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/plugins/spec/SPEC.md)
+- [Manifest schema](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/packages/contracts/src/plugins/manifest.ts)
+- [Apply implementation](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/daemon/src/plugins/apply.ts)
+- [Snapshot resolver](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/daemon/src/plugins/resolve-snapshot.ts)
+- [Trust model](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/daemon/src/plugins/trust.ts)
+- [Existing-project plugin UI](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/web/src/components/PluginsSection.tsx)
+- [Question-form skill](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/plugins/_official/atoms/discovery-question-form/SKILL.md)
+- [Registry publishing](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/plugins/spec/PUBLISHING-REGISTRIES.md)
+
+The canonical `$schema` URL currently returns 404 even though official templates
+use it. Keep the canonical URI in `open-design.json`; validate against the
+runtime schema until the hosted URL is repaired.
 
 ### Print-MD
 
-- [Current CLI and manifest behavior](../../packages/cli/README.md)
 - [Manifest resolver](../../packages/cli/src/lib/manifest.ts)
-- [Manuscript file resolution](../../packages/cli/src/lib/markdown/index.ts)
-- [Stylesheet resolution](../../packages/cli/src/lib/style-resolver.ts)
-- [CSS/font/image inlining](../../packages/cli/src/lib/asset-inline.ts)
-- [Book HTML assembly and cascade order](../../packages/cli/src/lib/markdown/assemble.ts)
+- [Manuscript resolver](../../packages/cli/src/lib/markdown/index.ts)
+- [Book assembler](../../packages/cli/src/lib/markdown/assemble.ts)
 - [Theme manager](../../packages/cli/src/lib/theme-manager.ts)
-- [Plugin command](../../packages/cli/src/commands/plugin.ts)
-- [npm plugin vendoring](../adr/0007-npm-plugin-vendoring.md)
+- [CSS dependency collector](../../packages/cli/src/lib/asset-inline.ts)
 - [Preview watcher](../../packages/cli/src/preview/file-watcher.ts)
-- [Git repository detection](../../packages/cli/src/lib/project-source.ts)
-- [Compatibility plan for filesystem design tools](./print-md-open-design-implementation-plan.md)
+- [Preview shell](../../packages/cli/src/assets/preview/scripts/preview-shell.js)

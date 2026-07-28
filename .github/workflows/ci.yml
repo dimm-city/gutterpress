@@ -46,6 +46,10 @@ jobs:
       - name: Run tests
         run: bun --filter @dimm-city/print-md test
 
+      - name: Test Open Design plugin contract
+        working-directory: packages/open-design-plugin
+        run: bun test
+
   build:
     name: Build
     runs-on: ubuntu-latest

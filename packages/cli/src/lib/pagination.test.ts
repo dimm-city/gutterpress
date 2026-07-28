@@ -8,6 +8,7 @@ import { getAssetPath } from "./embedded-assets.ts";
 import { closeBrowser } from "./browser-pool.ts";
 import { patchHtmlForPagedjs } from "./pagedjs.ts";
 import { paginateToStaticHtml, renderHtmlToPdf } from "./pagination.ts";
+import { renderChapters } from "./markdown/index.ts";
 
 /**
  * Render smoke-test (issue #52 guard): drives the REAL Chromium render path —
@@ -94,6 +95,62 @@ testIf(
     }
   },
   RENDER_TEST_TIMEOUT_MS
+);
+
+testIf(
+  "preview chapter metadata preserves structural-selector pagination",
+  async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pmd-wrapper-fidelity-"));
+    try {
+      await writeFile(join(dir, "a.md"), "# First\n\nAlpha.\n", "utf8");
+      await writeFile(join(dir, "b.md"), "# Second\n\nBeta.\n", "utf8");
+      await writeFile(
+        join(dir, "book.css"),
+        "@page{size:4in 6in;margin:.5in} p + h1{break-before:page}\n",
+        "utf8",
+      );
+      await mkdir(join(dir, "vendor"), { recursive: true });
+      await copyFile(
+        await getAssetPath("vendor/paged.polyfill.js"),
+        join(dir, "vendor/paged.polyfill.js"),
+      );
+
+      const files = ["a.md", "b.md"];
+      const buildPath = join(dir, "build.html");
+      const previewPath = join(dir, "preview.html");
+      await writeFile(
+        buildPath,
+        await renderChapters(dir, { files, styles: ["book.css"] }),
+        "utf8",
+      );
+      const annotated = await renderChapters(dir, {
+        files,
+        styles: ["book.css"],
+        wrapChapters: true,
+      });
+      await writeFile(previewPath, annotated, "utf8");
+      await patchHtmlForPagedjs(buildPath, "./vendor/paged.polyfill.js");
+      await patchHtmlForPagedjs(previewPath, "./vendor/paged.polyfill.js");
+
+      const [buildHtml, previewHtml] = await Promise.all([
+        paginateToStaticHtml(buildPath),
+        paginateToStaticHtml(previewPath),
+      ]);
+      const pageStarts = (html: string) =>
+        [...html.matchAll(/<div class="pagedjs_page(?:\s[^"]*)?"/g)].map((match) => match.index!);
+      const buildPages = pageStarts(buildHtml);
+      const previewPages = pageStarts(previewHtml);
+
+      expect(previewPages.length).toBe(buildPages.length);
+      expect(previewPages.filter((start) => start < previewHtml.lastIndexOf("First")).length).toBe(1);
+      expect(previewHtml).toContain('data-chapter-src="a.md"');
+      expect(previewHtml).toContain('data-chapter-src="b.md"');
+      expect(previewHtml).not.toContain('class="pmd-chapter"');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS,
 );
 
 testIf(

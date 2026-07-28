@@ -57,6 +57,7 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | **Install or verify a download** | [Installation and supported platforms](./docs/installing.md) |
 | **Run the whole pipeline in Docker** (all print tools pre-installed) | [Docker guide](./docs/docker.md) |
 | Add custom markdown plugins | [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md) |
+| Refine a publication with Open Design | [Using Open Design with Print-MD](./docs/open-design/using-open-design-with-print-md.md) |
 | Validate output for print production (TAC, ICC, PDF/X) | [User Guide: Chapter 7 — Validation](./examples/print-md-user-guide/07-validation.md) |
 | Set up system tools (Chromium, Ghostscript, qpdf, etc) | [User Guide: Chapter 8 — System Setup](./examples/print-md-user-guide/08-system-setup.md) |
 | Develop / contribute to print-md itself | [CONTRIBUTING](./CONTRIBUTING.md) · [Architecture](./docs/ARCHITECTURE.md) |

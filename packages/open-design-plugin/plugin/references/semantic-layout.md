@@ -1,7 +1,8 @@
 # Semantic layout
 
 The stable Print-MD authoring surface, and the CSS habits that survive
-pagination. Verified against Print-MD `main`, 2026-07-28.
+pagination. Verified against the Print-MD source that ships this package,
+2026-07-28.
 
 ## Markers
 

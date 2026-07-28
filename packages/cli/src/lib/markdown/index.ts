@@ -59,12 +59,7 @@ export async function renderChapters(
     files?: string[] | null;
     plugins?: LoadedPlugin[];
     pluginCss?: string;
-    /**
-     * Wrap each source file's output in `<div class="pmd-chapter"
-     * data-chapter-src="<file>">`. Used by the incremental live-preview to
-     * identify and re-paginate a single chapter on edit. Off by default — the
-     * build output is unaffected.
-     */
+    /** Add chapter identity to source-mapped blocks for preview inspection. */
     wrapChapters?: boolean;
     /**
      * ARCH finding #4: per-chapter author-mistake warnings computed by

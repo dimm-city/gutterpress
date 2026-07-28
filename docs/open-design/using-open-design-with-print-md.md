@@ -2,14 +2,21 @@
 
 Open Design can refine a Print-MD publication directly because both applications work with ordinary files. Open Design edits the repository; Print-MD renders the authoritative paginated preview. There is no conversion step and no Open Design-specific Print-MD project format.
 
-This guide assumes the **Print-MD Publishing** plugin is available in Open Design. The generic Print-MD preview improvements it relies on — theme cascade position, repagination after a stylesheet edit, and watching declared shared files — are in `main` as of 2026-07-28.
+This guide uses release candidate 0.2.0 of the **Print-MD Publishing** plugin,
+Open Design 0.16.1, and the unreleased Print-MD source on this branch as of
+2026-07-28. Published Print-MD 0.8.3 does not contain the required preview
+corrections. Open Design records but does not enforce the plugin's declared
+`>=0.16.1` engine floor, so verify the CLI version manually.
 
 ## Install the Open Design plugin
 
-Install the published plugin once:
+The plugin is not yet listed in the Open Design marketplace. Install it from a
+Print-MD checkout:
 
 ```bash
-od plugin install print-md-publishing
+od plugin validate ./packages/open-design-plugin/plugin --no-daemon
+od plugin install ./packages/open-design-plugin/plugin
+od plugin doctor print-md-publishing
 ```
 
 For a team-maintained copy stored in the repository:
@@ -20,6 +27,10 @@ od plugin install ./design/open-design/plugins/print-md-publishing
 ```
 
 Open Design copies a locally installed plugin into its own registry. Reinstall it after pulling a changed plugin version from Git.
+
+On Linux, `/usr/bin/od` may be the unrelated coreutils octal-dump command. If
+`od plugin --help` does not show Open Design commands, use the absolute CLI path
+shown by the Open Design desktop app's integration setup.
 
 ## Open the right folders
 
@@ -95,13 +106,22 @@ Print-MD prints the actual local URL, normally:
 http://localhost:3579/
 ```
 
-Open that URL in an Open Design Browser tab. The Print-MD preview is authoritative for page size, pagination, columns, running content, page breaks, and print layout.
+Open that URL in an Open Design Browser tab. The preview uses Print-MD's real
+Markdown, CSS, and Paged.js pipeline, so it is the visual authority while
+editing. Wait for pagination to complete and confirm page-critical work with a
+normal Print-MD build before final delivery.
 
-When Open Design changes active CSS, fonts, images, page rules, or manuscript structure, Print-MD rebuilds and completes a fresh Paged.js pagination before replacing the visible preview. This applies to a shared stylesheet outside the book too, as long as the book's manifest names it.
+When Open Design changes active CSS, fonts, images, page rules, or manuscript
+structure, Print-MD rebuilds before replacing the visible preview. Stylesheet
+and Markdown changes both take the full-document pagination path so a changed
+boundary can reflow every following page. Declared shared CSS dependencies are
+watched too.
 
 ## Apply the Print-MD Publishing plugin
 
-Apply the plugin to the Open Design project bound to the repository. Supply:
+Apply the plugin to the Open Design project bound to the repository and put the
+working brief in the same message. Include these values when they are not
+obvious:
 
 - **Book path** — `.` for a single book or a path such as `books/core-book`
 - **Goal** — the design change to make
@@ -109,7 +129,32 @@ Apply the plugin to the Open Design project bound to the repository. Supply:
 - **Change ownership** — book-only or shared foundation
 - **Preview URL** — the running Print-MD URL
 
-The plugin reads the book manifest, source list, active theme, ordered styles, plugins, print constraints, and tracked design guidance before it changes anything.
+Open Design 0.16.1 intentionally does not render plugin input fields in an
+existing project's composer. The plugin therefore resolves these values from
+the message, project, and active Browser tab. It defaults to theme-only,
+book-only edits; when a safety-relevant value remains ambiguous, it asks once in
+an inline form and makes no edits until the answer arrives.
+
+Open Design 0.16.1 also has an existing-project picker bug that can display the
+plugin chip without attaching its snapshot to the next run. The reliable
+invocation until that host bug is fixed is:
+
+```bash
+od project list
+od plugin run print-md-publishing \
+  --project <project-id> \
+  --message "In books/core-book, refine chapter openers. Keep it theme-only and book-only. The preview is http://localhost:3579/." \
+  --follow
+```
+
+The CLI run does not attach an open Browser tab or collect inline form answers.
+Put the book path, goal, edit scope, ownership, and preview URL in `--message`
+when they matter. If the agent still emits a clarification form, it stops
+without writing; answer from the project chat or start a follow-up run with the
+resolved brief.
+
+The plugin reads the book manifest, source list, active theme, ordered styles,
+plugins, print constraints, and tracked design guidance before changing files.
 
 ## Choose the edit scope
 
@@ -143,7 +188,7 @@ Open Design may edit prose and manuscript structure as well as design files. Use
 
 Print-MD keeps two different CSS locations:
 
-- `themes/<id>/` is a selectable theme package containing `theme.css`, optional `theme.json`, and optional theme-owned assets.
+- `themes/<id>/` is a selectable theme package containing `theme.css`, optional `theme.json`, and optional theme-owned assets. Built-in, folder, and zip imports copy complete packages; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets.
 - `styles/` contains ordinary publication CSS such as `book.css` and reusable component rules.
 
 A small project may use only:
@@ -186,7 +231,11 @@ shared/themes/publisher/theme.css
   └── url("../../fonts/Publisher.woff2")   → embedded in the book
 ```
 
-Fonts are always embedded as data URIs. Images under about 512 KB are embedded; larger ones are copied next to `book.html`.
+Fonts are always embedded as data URIs. Images under about 512 KB are embedded;
+larger ones are copied into the generated output tree. An HTML build is a bundle:
+besides `book.html`, it includes navigation scripts, `index.html`, a fingerprint,
+copied assets, and, when Chromium is unavailable at build time, the Paged.js
+runtime fallback.
 
 There is no asset list, no flattening, and no collision rule. To shadow a shared decision, list the book's own stylesheet later — the cascade does the rest.
 
@@ -233,7 +282,13 @@ unchanged.
 
 ## Use visual selection correctly
 
-Select or comment on an element in the Open Design Browser preview. The plugin uses the selection context together with Print-MD's existing `data-source-line`, `data-chapter-src`, IDs, semantic classes, and manifest configuration to identify likely Markdown and CSS ownership.
+Opening the preview in an Open Design Browser tab supplies URL and title context.
+Open Design 0.16.1 does not attach arbitrary element comments or ancestor
+metadata from an external HTTP page. When the selected agent exposes Browser
+Use automation, it can inspect Print-MD's existing `data-source-line`,
+`data-chapter-src`, IDs, and semantic classes. Otherwise, describe or attach a
+screenshot of the visual target and let the plugin confirm ownership from
+source.
 
 The Browser page is generated output. Direct DOM tuning against the HTTP preview is temporary. Durable changes always go into:
 
@@ -310,7 +365,9 @@ Use `print-md doctor` when diagnosing missing external tools or installation pro
 - Put cross-book work in `shared/`; put book-only work in the book folder.
 - Reference shared CSS directly from `styles:` — nothing needs copying.
 - Keep prose images inside the book that uses them.
-- Keep one active theme, listed first, and extend it through later ordinary styles.
+- Keep one active local theme. A first application defaults to the front;
+  replacement preserves its existing cascade position. Do not reorder a valid
+  stylesheet list merely to force the theme first.
 - Let Print-MD manage registry-installed packages under `plugins/npm/`.
 - Never edit generated `book.html` or build output.
 - Use the Print-MD preview as the final authority for pagination.

@@ -4,7 +4,8 @@
 
 **Audience:** Print-MD maintainers and contributors  
 **Purpose:** Make ordinary Print-MD projects work smoothly with Open Design and similar filesystem-based tools without coupling Print-MD to any external application.  
-**Verified against:** Print-MD `main` at `06403ab`, July 28, 2026. Every contract below was re-read from the source on that date.
+**Verified against:** this Print-MD branch on July 28, 2026. Every contract below
+was re-read from the source on that date.
 
 > **Revision note (2026-07-28).** This document was originally written against
 > `719173c`, when a book shipped as a staged file tree assembled from a
@@ -57,7 +58,13 @@ This creates an important interoperability rule:
 
 ### The output contract
 
-A build produces `book.html` plus the images it references — nothing else, and nothing configurable. `book.html` is self-contained: every active stylesheet is inlined into a single `<style data-project-css>` block, fonts become `data:` URIs, and small images become data URIs too.
+A build's output is format-dependent and not configurable through the manifest.
+An HTML build is a generated bundle rooted at `book.html`: active stylesheets
+are inlined into one `<style data-project-css>` block, fonts and small images
+become data URIs, and larger images are copied. The bundle also contains
+navigation scripts, `index.html`, a build fingerprint, and, when Chromium is
+unavailable at build time, the Paged.js runtime fallback. A one-file PDF target
+delivers only the requested PDF.
 
 Two consequences matter to a design tool:
 
@@ -66,7 +73,7 @@ Two consequences matter to a design tool:
 
 ### Themes
 
-A project theme remains a self-contained package:
+A project theme may be a self-contained package:
 
 ```text
 themes/<id>/
@@ -77,7 +84,12 @@ themes/<id>/
 └── ...                     # anything referenced by theme.css
 ```
 
-Applying or importing a theme copies the complete package into the book and records `themes/<id>/theme.css` in `manifest.styles`. The Theme panel discovers project themes by scanning `themes/`. This behavior should not change.
+Applying a built-in theme or importing a local folder/zip copies the complete
+package into the book and records `themes/<id>/theme.css` in
+`manifest.styles`. Bare CSS and URL imports create only `theme.css` plus
+metadata; URL imports deliberately do not fetch referenced assets. The Theme
+panel discovers project themes by scanning `themes/`. This behavior should not
+change.
 
 The theme manager treats any `themes/<id>/theme.css` entry as the active theme and keeps one such entry active at a time.
 
@@ -140,7 +152,11 @@ The managed `plugins/npm/` tree is book-local reproducible runtime content. It s
 
 ### Existing source metadata
 
-Print-MD already emits `data-source-line` through `markdown-it-source-map`. The live preview also wraps source chapters with `data-chapter-src` (`assembleBookHtml`'s `wrapChapters`). These are the source-location primitives to preserve and reuse. Do not create another source-map format for design tools.
+Print-MD already emits `data-source-line` through `markdown-it-source-map`. The
+live preview adds `data-chapter-src` to those same source-mapped blocks without
+changing the document tree (`assembleBookHtml`'s historical `wrapChapters`
+option). These are the source-location primitives to preserve and reuse. Do not
+create another source-map format for design tools.
 
 ### Git scope
 
@@ -248,7 +264,12 @@ The emitted order is:
 
 (`assembleBookHtml`, `packages/cli/src/lib/markdown/assemble.ts`.) Project CSS is last, so it is authoritative at equal specificity.
 
-Use one active theme, listed first. Later ordinary styles extend it. Accepted design-tool changes belong in the stable shared theme, reusable component stylesheet, local theme, local book stylesheet, semantic Markdown, or authored plugin — not in a tool-specific override file.
+Use one active local theme. A first application defaults to the front of the
+list; replacing an active theme preserves its established cascade position.
+Later ordinary styles may extend it. Accepted design-tool changes belong in the
+stable shared theme, reusable component stylesheet, local theme, local book
+stylesheet, semantic Markdown, or authored plugin - not in a tool-specific
+override file.
 
 ### Shared themes and the Theme panel
 
@@ -301,20 +322,24 @@ The watcher had exactly one root — the book folder — so editing a shared sty
 
 `externalWatchTargets` (`packages/cli/src/preview/file-watcher.ts`) now watches everything the book reads from outside its own folder. For plugins that is the authored `plugins[].path` entries; for CSS it is the full **dependency closure**, not just the declared entry — `collectStyleDependencies` (`packages/cli/src/lib/asset-inline.ts`) follows each active stylesheet's `@import` chain and every local `url()` it references, because a shared theme's font or ornament is a file a design tool can replace without touching one line of CSS. The closure is computed from all active stylesheets, including in-book ones (a local sheet can reference a shared face just as easily); only results landing outside the book are added, since the project root already covers the rest.
 
-Watching is per-file, never per-directory, so the set stays exact. It is re-synced after every rebuild, so a manifest edit that adds or drops a shared entry takes effect without restarting the preview.
+External watching is per-file, never per-directory, so the shared set stays
+exact. It is re-synced from a changed manifest before rendering, which means a
+newly declared missing shared file remains watched and its later creation can
+recover a failed preview without a restart. Inside the book, the existing root
+watch remains recursive and may rebuild for unrelated non-dot files.
 
 | Change | Action |
 |---|---|
-| Markdown listed in `source.files` | Rebuild; splice that chapter |
-| Top-level Markdown under implicit discovery | Rebuild; splice that chapter |
+| Markdown listed in `source.files` | Rebuild and full-document repaginate |
+| Top-level Markdown under implicit discovery | Rebuild and full-document repaginate |
 | Any stylesheet, local or declared-shared | Rebuild and repaginate |
 | Font or image referenced by the book, local or shared | Rebuild |
 | Manifest | Reload configuration, re-sync watch targets, rebuild |
 | Configured authored local plugin, local or declared-shared | Reload plugin and rebuild |
 | Managed npm package changed by `plugin add` | Reload as required |
 | Multi-file burst (restore, sync merge) | One rebuild, full reload |
-| `design/` notes, references, or Open Design package source | Ignored unless the book declares it |
-| Dot directories, output, and tool caches | Ignored |
+| Unrelated non-dot files inside the book, including `design/` or `dist/` | May trigger a conservative rebuild |
+| Dot directories and dotfiles | Ignored |
 
 ### 7. Reuse source metadata
 
@@ -371,7 +396,9 @@ Do not add:
 ## Acceptance criteria
 
 - Existing `themes/<id>/theme.css` projects continue to work unchanged.
-- Applied/imported themes remain project-local self-contained packages, and keep their cascade position when switched.
+- Applied built-in and imported folder/zip themes remain project-local packages,
+  and keep their cascade position when switched; CSS/URL imports remain
+  intentionally stylesheet-only.
 - All three current manifest names work.
 - Root control Markdown is never created automatically in a book that uses implicit manuscript discovery.
 - A starter project may continue using only `styles/book.css`.
@@ -385,7 +412,9 @@ Do not add:
 
 ## Research basis
 
-Paths are current as of `06403ab`; the asset pipeline this document originally described (`packages/cli/src/lib/assets.ts`) no longer exists.
+Paths are current as of this branch on 2026-07-28; the asset pipeline this
+document originally described (`packages/cli/src/lib/assets.ts`) no longer
+exists.
 
 - [Manifest lookup and resolution](../../packages/cli/src/lib/manifest.ts)
 - [Manuscript file resolution](../../packages/cli/src/lib/markdown/index.ts)

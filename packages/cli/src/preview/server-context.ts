@@ -19,6 +19,8 @@ export interface ServerState {
   rebuildTimer: NodeJS.Timeout | null;
   /** Is currently rebuilding? (prevents overlapping builds) */
   isRebuilding: boolean;
+  /** Active rebuild, awaited before a project restart closes its watcher. */
+  rebuildPromise?: Promise<void> | null;
   /** node:http + `ws` preview HTTP/WebSocket server instance */
   previewServer: PreviewServer | null;
   /** Is server shutting down? (prevents multiple shutdown calls) */
@@ -45,6 +47,7 @@ export function createServerState(
     currentWatcher: null,
     rebuildTimer: null,
     isRebuilding: false,
+    rebuildPromise: null,
     previewServer: null,
     isShuttingDown: false,
     tempDir,

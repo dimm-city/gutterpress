@@ -1,19 +1,14 @@
 /**
- * Chapter identity contract tests.
- *
- * The incremental live-preview splice works ONLY if the `data-chapter-src`
- * the build writes and the `content-update` string the file-watcher
- * broadcasts are the SAME string for the same source file. These tests pin
- * that contract for every manifest spelling that previously diverged
- * (`./`-prefixed entries, backslashes, duplicate slashes, subdirectories).
+ * Chapter identity contract tests. Preview source metadata exposes canonical
+ * `data-chapter-src` values for source inspection and chapter-scoped scroll
+ * restoration, regardless of manifest spelling.
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { canonicalChapterId } from "./chapter-id";
 import { renderChapters } from "./index";
-import { describeChange } from "../../preview/file-watcher";
 
 describe("canonicalChapterId", () => {
   test("passes through an already-canonical id", () => {
@@ -39,37 +34,9 @@ describe("canonicalChapterId", () => {
     expect(canonicalChapterId("chapter-02 1 Augmerc.md")).toBe("chapter-02 1 Augmerc.md");
   });
 
-  test("stays in lockstep with preview-shell's inline normId copy", async () => {
-    const previewShell = await readFile(
-      new URL("../../assets/preview/scripts/preview-shell.js", import.meta.url),
-      "utf8",
-    );
-    const match = previewShell.match(/function normId\(s\) \{([\s\S]*?)\n  \}/);
-    expect(match).not.toBeNull();
-
-    const previewNormId = new Function(
-      "s",
-      match![1]!,
-    ) as (input: string) => string;
-    const fixtures = [
-      "",
-      "chapter-03.md",
-      "./chapters/03.md",
-      "././a.md",
-      "chapters\\03.md",
-      ".\\chapters\\03.md",
-      "chapters//03.md",
-      "chapters//nested\\03 the players.md",
-      "chapter-02 1 Augmerc.md",
-    ];
-
-    for (const fixture of fixtures) {
-      expect(previewNormId(fixture)).toBe(canonicalChapterId(fixture));
-    }
-  });
 });
 
-describe("identity contract: build tag === watcher broadcast", () => {
+describe("identity contract: preview tags are canonical", () => {
   let inputDir: string;
 
   beforeEach(async () => {
@@ -83,21 +50,14 @@ describe("identity contract: build tag === watcher broadcast", () => {
     await rm(inputDir, { recursive: true, force: true });
   });
 
-  /** Extract data-chapter-src values from rendered HTML, in order. */
+  /** Extract unique data-chapter-src values from rendered HTML, in order. */
   function tagsOf(html: string): string[] {
-    return [...html.matchAll(/data-chapter-src="([^"]*)"/g)].map((m) => m[1]!);
-  }
-
-  /** What the file-watcher would broadcast for an edit to `absFile`. */
-  function broadcastFor(absFile: string): string {
-    const dest = describeChange(absFile, path.resolve(inputDir));
-    expect(dest).not.toBeNull();
-    return canonicalChapterId(dest!.relativePath);
+    return [...new Set([...html.matchAll(/data-chapter-src="([^"]*)"/g)].map((m) => m[1]!))];
   }
 
   test("root file listed as bare basename", async () => {
     const html = await renderChapters(inputDir, { files: ["root.md"], wrapChapters: true });
-    expect(tagsOf(html)).toEqual([broadcastFor(path.join(inputDir, "root.md"))]);
+    expect(tagsOf(html)).toEqual(["root.md"]);
   });
 
   test("subdirectory chapter listed plainly", async () => {
@@ -105,9 +65,7 @@ describe("identity contract: build tag === watcher broadcast", () => {
       files: ["chapters/03-the-players.md"],
       wrapChapters: true,
     });
-    expect(tagsOf(html)).toEqual([
-      broadcastFor(path.join(inputDir, "chapters", "03-the-players.md")),
-    ]);
+    expect(tagsOf(html)).toEqual(["chapters/03-the-players.md"]);
   });
 
   test("./-prefixed manifest entry (the v0.5.0-rc.2 splice regression)", async () => {
@@ -115,9 +73,7 @@ describe("identity contract: build tag === watcher broadcast", () => {
       files: ["./chapters/03-the-players.md"],
       wrapChapters: true,
     });
-    expect(tagsOf(html)).toEqual([
-      broadcastFor(path.join(inputDir, "chapters", "03-the-players.md")),
-    ]);
+    expect(tagsOf(html)).toEqual(["chapters/03-the-players.md"]);
     expect(tagsOf(html)[0]).toBe("chapters/03-the-players.md");
   });
 
@@ -126,14 +82,12 @@ describe("identity contract: build tag === watcher broadcast", () => {
       files: ["chapters\\03-the-players.md"],
       wrapChapters: true,
     });
-    expect(tagsOf(html)).toEqual([
-      broadcastFor(path.join(inputDir, "chapters", "03-the-players.md")),
-    ]);
+    expect(tagsOf(html)).toEqual(["chapters/03-the-players.md"]);
   });
 
   test("discovery mode (no files key) tags root files canonically", async () => {
     const html = await renderChapters(inputDir, { files: null, wrapChapters: true });
-    expect(tagsOf(html)).toEqual([broadcastFor(path.join(inputDir, "root.md"))]);
+    expect(tagsOf(html)).toEqual(["root.md"]);
   });
 
   test("content-root layout: every manifest spelling collapses to one id", () => {

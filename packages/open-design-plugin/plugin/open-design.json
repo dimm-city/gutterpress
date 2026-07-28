@@ -3,17 +3,20 @@
   "specVersion": "1.0.0",
   "name": "print-md-publishing",
   "title": "Print-MD Publishing",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Design and refine an existing Print-MD publication in place while preserving its paged-media, theme, asset, plugin, and Git conventions.",
   "license": "MPL-2.0",
+  "homepage": "https://github.com/dimm-city/print-md",
   "author": {
-    "name": "Dimm City"
+    "name": "Dimm City",
+    "url": "https://github.com/dimm-city"
   },
   "tags": [
     "publishing",
     "print",
     "markdown",
     "paged-media",
+    "refine",
     "tune-collab"
   ],
   "compat": {
@@ -26,9 +29,13 @@
   "od": {
     "kind": "skill",
     "taskKind": "tune-collab",
+    "mode": "refine",
     "scenario": "publishing",
+    "engineRequirements": {
+      "od": ">=0.16.1"
+    },
     "useCase": {
-      "query": "Refine the Print-MD publication at {{bookPath}}. Goal: {{goal}}. Edit scope: {{editScope}}. Change ownership: {{changeScope}}. Treat {{previewUrl}} as the authoritative paginated preview."
+      "query": "Refine the existing Print-MD publication in place. Use my message as the goal. Resolve the target book, permitted edit scope, change ownership, and active preview from the imported project; ask one focused clarification form before writing only when a safe value cannot be inferred."
     },
     "context": {
       "skills": [
@@ -67,54 +74,6 @@
         }
       ]
     },
-    "inputs": [
-      {
-        "name": "bookPath",
-        "label": "Book path",
-        "type": "string",
-        "required": true,
-        "default": ".",
-        "placeholder": "books/core-book"
-      },
-      {
-        "name": "goal",
-        "label": "What should change?",
-        "type": "text",
-        "required": true,
-        "placeholder": "Refine chapter openers and reduce their page-space cost."
-      },
-      {
-        "name": "editScope",
-        "label": "Edit scope",
-        "type": "select",
-        "required": true,
-        "default": "theme",
-        "options": [
-          "theme",
-          "layout",
-          "content"
-        ]
-      },
-      {
-        "name": "changeScope",
-        "label": "Change ownership",
-        "type": "select",
-        "required": true,
-        "default": "book-only",
-        "options": [
-          "book-only",
-          "shared-foundation"
-        ]
-      },
-      {
-        "name": "previewUrl",
-        "label": "Print-MD preview URL",
-        "type": "string",
-        "required": false,
-        "default": "http://localhost:3579/",
-        "placeholder": "http://localhost:3579/"
-      }
-    ],
     "capabilities": [
       "prompt:inject",
       "fs:read",

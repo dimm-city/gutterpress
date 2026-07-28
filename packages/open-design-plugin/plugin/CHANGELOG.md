@@ -6,7 +6,25 @@ The version in `open-design.json` is bumped whenever the package contents or
 the workflow contract change. Changes to inputs, capabilities, edit scopes, or
 ownership rules are user-visible compatibility changes.
 
-## 0.1.0 — 2026-07-28
+## 0.2.0 - 2026-07-28
+
+- Replaced apply-time inputs with a conversation-first runtime brief because
+  Open Design 0.16.1 no longer renders plugin input forms in existing projects.
+- Added one structured inline clarification form for genuinely ambiguous book,
+  goal, scope, ownership, or preview decisions.
+- Classified the package in Open Design's `refine` lane and recorded the tested
+  Open Design floor.
+- Corrected theme cascade, Browser-context, preview-pagination, trust, and
+  distribution guidance to match current Open Design and Print-MD behavior.
+- Made the injected skill self-contained because Open Design stages companion
+  files without exposing a stable package-relative path to the agent.
+- Documented the CLI run's lack of Browser/form UI, the unenforced Open Design
+  engine declaration, the unreleased Print-MD floor, output bundles, and
+  stylesheet-only URL theme imports.
+- Added package contract tests, compatibility fixtures, behavioral evals, and a
+  release checklist.
+
+## 0.1.0 - 2026-07-28
 
 Initial package.
 
@@ -21,7 +39,8 @@ Initial package.
   reference-based shared composition, semantic layout markers, the preview /
   source-metadata loop, and Git scope with plugin ownership.
 
-Verified against Print-MD `main` at 2026-07-28, which includes:
+Verified against the Print-MD source that shipped the package on 2026-07-28,
+which includes:
 
 - shared design composed **by reference** — a `styles:` entry is a path to read,
   so `source.assets` staging and flattening no longer exist (and a manifest

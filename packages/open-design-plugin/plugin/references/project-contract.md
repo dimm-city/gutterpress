@@ -1,7 +1,7 @@
 # Project contract
 
 What Print-MD treats as a project, what it renders, and what it owns.
-Verified against Print-MD `main`, 2026-07-28.
+Verified against the Print-MD source that ships this package, 2026-07-28.
 
 ## Manifest
 
@@ -78,13 +78,16 @@ are already editing for another reason.
 ## Output — never edit
 
 ```text
-book.html            # generated; a self-contained document
-dist/**              # dist/<title-slug>/ — the whole build output
+book.html            # generated entry document
+dist/**              # dist/<title-slug>/ — the whole generated output bundle
 ```
 
-`book.html` is generated from Markdown plus the inlined stylesheets. It is not
-source. Saving a serialized preview DOM back over any source file destroys the
-authoring model.
+`book.html` contains the rendered Markdown, inlined stylesheets, and embedded
+fonts, but a complete HTML build may also contain copied large images,
+navigation scripts, `index.html`, a build fingerprint, and the Paged.js runtime
+fallback. Treat the output directory as one bundle. None of it is source;
+saving a serialized preview DOM back over any source file destroys the authoring
+model.
 
 ## Commands the user runs (you do not run them)
 

@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type MarkdownIt from "markdown-it";
 
 import { assembleBookHtml } from "./assemble";
 import { inlineStyles } from "../asset-inline";
@@ -92,9 +93,30 @@ test("assembleBookHtml wrapChapters parity with renderChapters", async () => {
     });
     expect(pureHtml).toBe(nodeHtml);
     expect(pureHtml).toContain('data-chapter-src="01-intro.md"');
+    expect(pureHtml).not.toContain('class="pmd-chapter"');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("chapter metadata preserves plugins that wrap md.render", async () => {
+  const html = await assembleBookHtml({
+    files: ["chapter.md"],
+    readText: () => Promise.resolve("# Heading\n"),
+    plugins: [{
+      name: "wrap-render",
+      options: {},
+      plugin(md: MarkdownIt) {
+        const render = md.render.bind(md);
+        md.render = (source, env) =>
+          `<section data-plugin-render>${render(source, env)}</section>`;
+      },
+    }],
+    wrapChapters: true,
+  });
+
+  expect(html).toContain("<section data-plugin-render>");
+  expect(html).toContain('data-chapter-src="chapter.md"');
 });
 
 test("assembleBookHtml throws on empty file list", async () => {

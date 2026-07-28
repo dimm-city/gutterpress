@@ -2,7 +2,8 @@
 
 **Audience:** teams producing one or more Print-MD books with Open Design  
 **Goal:** keep publication source, reusable assets, design decisions, and Open Design workflows synchronized through Git with little or no Print-MD change.  
-**Verified against:** Print-MD `main` at `06403ab`, July 28, 2026, and Open Design `main` at [`fac1013`](https://github.com/nexu-io/open-design/commit/fac10139c0138a5700c128079e23c3e7a622516c).
+**Verified against:** this Print-MD branch on July 28, 2026, and Open Design
+`main` at [`a7e2059`](https://github.com/nexu-io/open-design/commit/a7e205939d441d29d64e616d6f5ec89c53bb711a).
 
 > **Revision note (2026-07-28).** The shared-asset section was rewritten: the
 > `source.assets` staging pipeline it described was removed from Print-MD (see
@@ -129,8 +130,10 @@ beside `book.html`. There is no asset list, no basename flattening, and no
 collision rule to remember — to shadow a shared decision, list the book's own
 stylesheet later and let the cascade settle it.
 
-Use one active theme, listed first. Extend it through ordinary styles, or copy
-it into the book (`themes/<id>/`) when that book should own and diverge from it.
+Use one active local theme. Its first application defaults to the front, while
+replacement preserves the established cascade position. Keep intentional
+extension styles later in the list, or copy a shared theme into the book
+(`themes/<id>/`) when that book should own and diverge from it.
 
 **One standing rule:** an image used in **Markdown prose** must live inside the
 book folder — a `../` or absolute reference is a build error. Shared art
@@ -194,7 +197,10 @@ od plugin doctor print-md-publishing
 
 Local installation copies the package into Open Design's daemon-managed registry. Editing or pulling the Git-tracked source does not mutate the installed copy. Reinstall after the package changes.
 
-For a separately published plugin, contributors may install by registry name or `github:` source. The team repository remains authoritative only when it vendors the package source.
+Version 0.2.0 is not yet in the marketplace. Keep the team-vendored package as
+the source of truth and use trusted local installs. Open Design 0.16.1 cannot
+persistently grant the explicit pipeline's derived `pipeline:*` capability to a
+restricted direct-GitHub/URL install.
 
 ## What Print-MD Git captures
 
@@ -219,7 +225,9 @@ Do not expect Git to capture Open Design conversation history, installed plugin 
 2. Open/import the repository root in Open Design.
 3. Open the target book in Print-MD.
 4. Start the Print-MD preview and open its URL in an Open Design Browser tab.
-5. Apply the Print-MD Publishing plugin and select the target book, edit scope, and shared/book ownership.
+5. Apply the Print-MD Publishing plugin and state the target book, goal, edit
+   scope, and shared/book ownership in the message. Use `od plugin run` as
+   documented in the user guide on Open Design 0.16.1.
 6. Integrate accepted changes into stable themes, styles, semantic Markdown, or authored plugins.
 7. Record durable decisions in `DESIGN.md` or `design/notes/`.
 8. Commit and sync the whole repository.
@@ -250,7 +258,7 @@ but Git collaboration uses the existing architecture.
 - [Print-MD npm plugin vendoring](../adr/0007-npm-plugin-vendoring.md)
 - [Print-MD CSS/font/image inlining](../../packages/cli/src/lib/asset-inline.ts)
 - [Print-MD preview file watching](../../packages/cli/src/preview/file-watcher.ts)
-- [Open Design direct-folder import](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/daemon/src/import-export-routes.ts)
-- [Open Design imported-folder file restrictions](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/daemon/src/projects.ts)
-- [Open Design skill staging](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/docs/skills-protocol.md)
-- [Open Design plugin installer](https://github.com/nexu-io/open-design/blob/fac10139c0138a5700c128079e23c3e7a622516c/apps/daemon/src/plugins/installer.ts)
+- [Open Design direct-folder import](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/daemon/src/import-export-routes.ts)
+- [Open Design imported-folder file restrictions](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/daemon/src/projects.ts)
+- [Open Design skill staging](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/docs/skills-protocol.md)
+- [Open Design plugin installer](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/daemon/src/plugins/installer.ts)

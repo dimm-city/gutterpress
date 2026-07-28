@@ -1,8 +1,8 @@
 # Preview and source metadata
 
 How to read the running Print-MD preview, and how to get from a rendered
-element back to the file that produced it. Verified against Print-MD `main`,
-2026-07-28.
+element back to the file that produced it. Verified against the Print-MD source
+that ships this package, 2026-07-28.
 
 ## The preview is the authority
 
@@ -12,12 +12,13 @@ print-md preview ./books/core-book
 ```
 
 Port 3579 is the default; the user may bind another one, and the printed URL is
-the truth. The `previewUrl` input carries whatever they are actually running.
+the truth. The runtime brief carries whatever they are actually running.
 
-The preview renders the same document the build does — same markdown pipeline,
-same inlined CSS, same Paged.js polyfill — so page size, pagination, columns,
-running content, breaks, and print layout are all authoritative there. Judge
-layout from the preview, never from a browser's ordinary flow rendering.
+The preview uses the same Markdown renderer, inlined CSS, and Paged.js polyfill
+as the build. Judge print layout from its paginated pages, never from ordinary
+browser flow. The live shell is optimized for editing, so wait for its completed
+pagination and confirm page-critical work with the normal Print-MD build before
+final delivery.
 
 `GET /api/status` returns `{ hasInput, currentPath }` if you need to confirm the
 server is alive and which project it has open.
@@ -26,10 +27,9 @@ server is alive and which project it has open.
 
 The watcher debounces a burst of writes into one rebuild, then:
 
-- **one Markdown file changed** → that chapter is re-paginated and spliced into
-  the live view;
-- **anything else** — a stylesheet, several files at once, a deletion, a
-  manifest edit → a full reload, which is a complete Paged.js pagination.
+- **any watched source changed** — Markdown, stylesheet, font, image, manifest,
+  or authored plugin - the shell loads the rebuilt `book.html` into its hidden
+  frame, completes a full-document Paged.js pagination, then swaps it into view.
 
 A stylesheet edit takes the full path deliberately. In a paged medium, fonts,
 leading, spacing, custom properties, page geometry, columns, image sizing, and
@@ -48,23 +48,36 @@ until a stylesheet points at it — which is the same edit that makes it matter.
 
 Practical consequence: after a design edit, **wait for the rebuild to land**
 before judging layout. If page counts or boundaries look stale, reload the
-Browser tab.
+Browser tab, and use a normal Print-MD build for final page-critical approval.
+
+## What Open Design Browser context contains
+
+Opening the preview tab adds its URL and title to the run context. Open Design
+0.16.1 does not attach arbitrary element comments or ancestor metadata from an
+external HTTP preview. Some agents expose Browser Use automation that can query
+the live DOM; others do not. Never claim a selector, opening tag, computed style,
+or source location was supplied unless it is actually present in the run.
+
+When Browser automation is unavailable, use the user's description or attached
+screenshot, inspect the manifest and source, and ask one focused clarification
+when the target remains ambiguous.
 
 ## Relating a rendered element to its source
 
-Print-MD emits two attributes and no others:
+For source attribution, rely on these two supported attributes:
 
 - **`data-source-line`** — from `markdown-it-source-map`, on elements produced by
   Markdown. The number is the line **within its own chapter file**, so it is
   only meaningful together with the chapter.
-- **`data-chapter-src`** — on the `.pmd-chapter` wrapper in the live preview,
-  carrying the chapter's path relative to the book.
+- **`data-chapter-src`** — on source-mapped block elements in the live preview,
+  carrying the chapter's path relative to the book. It adds metadata without a
+  file-level wrapper, so authored CSS sees the same element tree as the build.
 
-To locate a selection:
+When live DOM inspection is available, locate a target as follows:
 
 1. Walk up from the selected node to the nearest ancestor carrying
    `data-source-line`.
-2. Walk further up to the nearest `[data-chapter-src]` to learn which file.
+2. Use that element's nearest `[data-chapter-src]` match to learn which file.
 3. Together those give file + line. Confirm by reading that line in the source
    before editing it.
 
@@ -77,8 +90,10 @@ the element. Which rule styles it comes from the element's semantic classes and
 the ordered `styles:` list; read the stylesheets to find the declaration that
 actually applies.
 
-Do not build a source-map database, a sidecar index, or any second metadata
-format. These two attributes are the contract.
+Print-MD also emits semantic data attributes for layout primitives; those are
+not source coordinates. Do not build a source-map database, a sidecar index, or
+any second metadata format. The two attributes above are the source-attribution
+contract.
 
 ## Preview DOM edits are transient
 

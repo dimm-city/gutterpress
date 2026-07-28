@@ -1,7 +1,7 @@
 # Themes, styles, and assets
 
 How Print-MD composes CSS and how files reach the finished book.
-Verified against Print-MD `main`, 2026-07-28.
+Verified against the Print-MD source that ships this package, 2026-07-28.
 
 ## Two CSS locations, different roles
 
@@ -11,10 +11,15 @@ Verified against Print-MD `main`, 2026-07-28.
   page rules. No filename carries special meaning; `tokens.css` and
   `components.css` are conventions, not contracts.
 
-Applying or importing a theme copies the whole package into the book and wires
-`themes/<id>/theme.css` into `styles:`. Exactly one theme entry is active at a
-time, and it sits at the **front** of the list so the project's own stylesheets
-extend it rather than fight it.
+Applying a built-in theme or importing a local folder/zip copies the whole
+package into the book and wires `themes/<id>/theme.css` into `styles:`. A bare
+CSS or URL import creates only `theme.css` plus metadata; URL import does not
+fetch referenced fonts or images. Use a local folder/zip when the complete asset
+package must travel with the theme. Exactly one local theme entry is active at a
+time. The first application defaults to the front of the list; replacing an
+active theme preserves that entry's established cascade position. Do not reorder
+an established list merely to force a theme first. Put intentional extension or
+book-override styles after the theme when that is the project's chosen cascade.
 
 ## The cascade
 
