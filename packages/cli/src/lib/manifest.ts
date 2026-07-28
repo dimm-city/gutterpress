@@ -241,11 +241,21 @@ export function resolveConfig(
   // (so old manifests don't break) but no longer affect resolution — each
   // gets a one-line once-per-process notice instead of being threaded
   // through the merge above.
-  if (m.output?.html !== undefined || c.output?.html !== undefined) {
-    warnOnce(
-      "output-html-deprecated",
-      "[print-md] manifest field `output.html` is deprecated and ignored. " +
-        "The rendered book HTML is always written as `book.html`."
+  // `output:` and `source.assets:` are gone entirely (not merely ignored): the
+  // output location is a convention (lib/output-paths.ts) and the asset set is
+  // derived from the book's own references (lib/asset-inline.ts). A manifest
+  // that still carries either gets one actionable error rather than silently
+  // building to a place the author no longer controls.
+  const legacy = m as { output?: unknown; source?: { assets?: unknown } };
+  if (legacy.output !== undefined || legacy.source?.assets !== undefined) {
+    const stale = [
+      legacy.output !== undefined ? "`output`" : null,
+      legacy.source?.assets !== undefined ? "`source.assets`" : null,
+    ].filter(Boolean);
+    throw new UsageError(
+      `Manifest field(s) ${stale.join(" and ")} are no longer supported — remove them.\n` +
+        "  Output goes to `dist/<title-slug>/` automatically (use `--out` for a one-off location).\n" +
+        "  Assets are discovered from what your book actually references, so no list is needed."
     );
   }
   if (
@@ -279,7 +289,6 @@ export function resolveConfig(
     styles: c.styles ?? m.styles,
     plugins,
     source: mergeShape(c.source, m.source, preset.source),
-    output: mergeShape(c.output, m.output, preset.output),
     pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),
     page: mergeShape(c.page, m.page, preset.page),
     ink: mergeShape(c.ink, m.ink, preset.ink),

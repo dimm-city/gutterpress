@@ -89,7 +89,6 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.page).toEqual(DTRPG_PRESET.page);
     expect(config.pdfx).toEqual(DTRPG_PRESET.pdfx);
     expect(config.ink).toEqual(DTRPG_PRESET.ink);
-    expect(config.output).toEqual(DTRPG_PRESET.output);
     expect(config.lint).toEqual(DTRPG_PRESET.lint);
     expect(config.validate.enabled).toBe(DTRPG_PRESET.validate.enabled);
     expect(config.validate.checks).toEqual(DTRPG_PRESET.validate.checks);
@@ -206,12 +205,30 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(config.validate.assets.allowedColorSpaces).toEqual(["RGB"]);
   });
 
-  test("source.assets array leaf: cli replaces manifest replaces preset, wholesale", () => {
-    const config = resolveConfig(
-      { source: { assets: ["fonts"] } },
-      { source: { assets: ["css", "images"] } },
+  test("a manifest carrying the removed `source.assets` fails loudly instead of building wrong", () => {
+    // Assets are derived from what the book references now (lib/asset-inline.ts).
+    // A stale list must not be silently ignored: doing so would build an artifact
+    // the author did not ask for, which is the exact silent class this replaced.
+    expect(() =>
+      resolveConfig({}, { source: { assets: ["css", "images"] } } as never),
+    ).toThrow(/source\.assets/);
+  });
+
+  test("a manifest carrying the removed `output` block fails loudly", () => {
+    expect(() => resolveConfig({}, { output: { dir: "build" } } as never)).toThrow(
+      /`output`/,
     );
-    expect(config.source.assets).toEqual(["fonts"]);
+  });
+
+  test("the removal error tells the author what to do instead", () => {
+    try {
+      resolveConfig({}, { output: { dir: "build" } } as never);
+      throw new Error("expected a throw");
+    } catch (err) {
+      const msg = String(err);
+      expect(msg).toContain("dist/<title-slug>/");
+      expect(msg).toContain("--out");
+    }
   });
 
   test("resolveConfig output is not aliased to the preset's own nested objects (independent per call)", () => {
@@ -220,17 +237,6 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     expect(a.page).not.toBe(b.page);
     expect(a.validate.checks).not.toBe(b.validate.checks);
     expect(a.validate.checks).not.toBe(DTRPG_PRESET.validate.checks);
-  });
-
-  // mergeShape's "keys always come from preset's own shape" rule (finding #24):
-  // a deprecated key the manifest TYPE carries (`output.html`) but `preset`/
-  // `ResolvedConfig` do not declare must never leak into the resolved object —
-  // only `dir`/`filename` are copied.
-  test("a deprecated key absent from the preset's shape (output.html) never leaks into the resolved output object", () => {
-    const config = resolveConfig({}, { output: { html: "custom.html", filename: "book.pdf" } });
-    expect(config.output.filename).toBe("book.pdf");
-    expect(Object.keys(config.output).sort()).toEqual(["dir", "filename"]);
-    expect((config.output as Record<string, unknown>).html).toBeUndefined();
   });
 
   test("allowedCallouts is deprecated, ignored, and absent from the resolved validate.source object", () => {
@@ -256,9 +262,9 @@ describe("resolveConfig deprecation warnings (finding #24)", () => {
     const orig = console.warn;
     console.warn = ((m: unknown) => { lines.push(String(m)); }) as typeof console.warn;
     try {
-      resolveConfig({}, { output: { html: "x.html" } });
-      resolveConfig({}, { output: { html: "y.html" } });
-      const hits = lines.filter((l) => l.includes("output.html"));
+      resolveConfig({}, { validate: { source: { allowedCallouts: ["a"] } } });
+      resolveConfig({}, { validate: { source: { allowedCallouts: ["b"] } } });
+      const hits = lines.filter((l) => l.includes("allowedCallouts"));
       expect(hits.length).toBe(1);
     } finally {
       console.warn = orig;

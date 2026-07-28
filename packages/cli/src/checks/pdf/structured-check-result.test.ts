@@ -8,9 +8,11 @@
  * The underlying PDF inspectors (Ghostscript inkcov, PDF.js reader) are mocked
  * so these run with no external tools and no fixtures.
  */
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect, spyOn, afterAll } from "bun:test";
 import { resolveConfig } from "../../lib/manifest";
 import type { CheckContext } from "../types";
+import * as pdfParse from "../../lib/pdf-parse";
+import * as pdfInspect from "../../lib/pdf-inspect";
 
 // --- Mutable mock state -----------------------------------------------------
 
@@ -35,21 +37,52 @@ const inspectState: {
   fonts: [],
 };
 
-await mock.module("../../lib/pdf-parse", () => ({
-  getPerPageInkCoverage: async () => inkResult,
-  readPdfBytes: async () => "",
-  parseInkCov: () => [],
-}));
+// `spyOn` + `mockRestore()`, NOT `mock.module()`. `mock.module()` replaces the
+// module in Bun's SHARED, process-wide resolution registry for the whole test
+// run — every file that runs afterwards, not just this one — and is never
+// auto-restored. That caused real cross-file pollution: any later file that
+// freshly imported the real `pdf-parse`/`pdf-inspect` silently got these fakes
+// (e.g. `parseInkCov()` always returning `[]`), and any later file importing
+// the check registry hit a module-link `SyntaxError` because the fake's export
+// list omitted `isLoadable`, which `checks/pdf/qpdf-structure.ts` imports
+// statically. Reproducible with `bun test --randomize --seed=12345`.
+//
+// `spyOn` patches the live export bindings on the real module object that every
+// other file's named imports are already bound to, so `mockRestore()` below
+// hands the real implementation back to whoever runs next. Same discipline
+// `build-runner.browser-lifecycle.test.ts` and `chromium.test.ts` document.
+spyOn(pdfParse, "getPerPageInkCoverage").mockImplementation(async () => inkResult);
+spyOn(pdfParse, "readPdfBytes").mockImplementation(async () => "");
+spyOn(pdfParse, "parseInkCov").mockImplementation(() => []);
 
-await mock.module("../../lib/pdf-inspect", () => ({
-  loadPdf: async () => ({ getPage: async () => ({}) }),
-  getOpPass: async () => ({
-    imagesByPage: inspectState.imagesByPage,
-    fonts: inspectState.fonts,
-  }),
-  getTextPass: async () => ({ textByPage: inspectState.textByPage }),
-  getPageSize: () => ({ w: 100, h: 100 }),
-}));
+spyOn(pdfInspect, "loadPdf").mockImplementation(
+  async () => ({ getPage: async () => ({}) }) as never
+);
+spyOn(pdfInspect, "getOpPass").mockImplementation(
+  async () =>
+    ({
+      imagesByPage: inspectState.imagesByPage,
+      fonts: inspectState.fonts,
+    }) as never
+);
+spyOn(pdfInspect, "getTextPass").mockImplementation(
+  async () => ({ textByPage: inspectState.textByPage }) as never
+);
+spyOn(pdfInspect, "getPageSize").mockImplementation(() => ({ w: 100, h: 100 }) as never);
+
+afterAll(() => {
+  for (const fn of [
+    pdfParse.getPerPageInkCoverage,
+    pdfParse.readPdfBytes,
+    pdfParse.parseInkCov,
+    pdfInspect.loadPdf,
+    pdfInspect.getOpPass,
+    pdfInspect.getTextPass,
+    pdfInspect.getPageSize,
+  ]) {
+    (fn as unknown as { mockRestore?: () => void }).mockRestore?.();
+  }
+});
 
 const inkCheck = (await import("./ink-coverage")).default;
 const rasterCheck = (await import("./rasterized-pages")).default;

@@ -4,6 +4,7 @@ import { BOOK_HTML_FILENAME } from "../viewer";
 import { canonicalChapterId } from "./chapter-id";
 import { assembleBookHtml, type LayoutWarning } from "./assemble";
 import { resolveActiveStyles } from "../style-resolver";
+import { inlineStyles, type AssetCopy } from "../asset-inline";
 import type { LoadedPlugin } from "./renderer";
 
 export type { LayoutWarning } from "./assemble";
@@ -48,11 +49,26 @@ export async function renderChapters(
      * it is fully backward compatible.
      */
     onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
+    /** See {@link assembleBookHtml}'s option of the same name. */
+    onImageRefs?: (refs: string[]) => void;
+    /**
+     * Files the inlined CSS needs alongside the book (content-addressed images
+     * too large to embed). The build adds these to its copy plan.
+     */
+    onCssAssets?: (copies: AssetCopy[]) => void;
+    /** Non-fatal notices from the inliner (e.g. a remote `url()` left as-is). */
+    onStyleWarnings?: (warnings: string[]) => void;
   } = {}
 ): Promise<string> {
-  // The SAME resolver the editor uses, so the rendered <link> is always the file
+  // The SAME resolver the editor uses, so what gets inlined is always the file
   // the Design/Edit-CSS surface edits (no "design doesn't change preview").
   const styles = await resolveActiveStyles(inputDir, opts.styles);
+  // Read + inline them here (fonts become data: URIs, oversized CSS images get
+  // a copy plan). A stylesheet is a file to READ, never a file to ship, so its
+  // location — themes/, ../design-guide/, anywhere — has no effect on output.
+  const inlined = await inlineStyles(inputDir, styles);
+  if (inlined.warnings.length > 0) opts.onStyleWarnings?.(inlined.warnings);
+  if (inlined.copies.length > 0) opts.onCssAssets?.(inlined.copies);
 
   // Determine which files to process
   let files: string[];
@@ -77,12 +93,13 @@ export async function renderChapters(
     // here also makes Windows-authored manifest entries (`chapters\03.md`)
     // readable on POSIX hosts (canonicalChapterId already normalised slashes).
     readText: (relPath) => readFile(join(inputDir, canonicalChapterId(relPath)), "utf-8"),
-    styles,
+    projectCss: inlined.css,
     title: opts.title,
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,
     wrapChapters: opts.wrapChapters,
     onChapterWarnings: opts.onChapterWarnings,
+    onImageRefs: opts.onImageRefs,
   });
 }
 
@@ -103,6 +120,10 @@ export async function renderChaptersToFile(
     pluginCss?: string;
     /** ARCH finding #4 — see {@link renderChapters}'s option of the same name. */
     onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
+    /** See {@link renderChapters}'s options of the same names. */
+    onImageRefs?: (refs: string[]) => void;
+    onCssAssets?: (copies: AssetCopy[]) => void;
+    onStyleWarnings?: (warnings: string[]) => void;
   } = {}
 ): Promise<string> {
   await mkdir(outDir, { recursive: true });
@@ -113,6 +134,9 @@ export async function renderChaptersToFile(
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,
     onChapterWarnings: opts.onChapterWarnings,
+    onImageRefs: opts.onImageRefs,
+    onCssAssets: opts.onCssAssets,
+    onStyleWarnings: opts.onStyleWarnings,
   });
   const outFile = join(outDir, BOOK_HTML_FILENAME);
   await writeFile(outFile, html);

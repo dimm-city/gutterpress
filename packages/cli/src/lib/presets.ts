@@ -11,20 +11,11 @@ export const DTRPG_PRESET: VendorPreset = {
   // documented fallback chain and made every styles:-less project silently
   // link a phantom `css/print.css`, whether or not it existed on disk.
   plugins: [],
+  // No `assets` list and no `output` block: assets are discovered from the
+  // book's own references (lib/asset-inline.ts) and the output location is a
+  // convention (lib/output-paths.ts), so neither is configuration any more.
   source: {
     files: null,
-    // "styles" and "assets" cover what `print-md new` actually scaffolds
-    // (a starter `styles/book.css` theme + an `assets/` dir the authoring
-    // guide tells writers to put images in — see chapter 1/3 of the user
-    // guide). "css"/"fonts"/"images" are kept for pre-existing projects that
-    // relied on those conventional dir names before scaffolding existed (a
-    // fresh project's starter theme and `assets/cover.svg`-style media were
-    // referenced by the built HTML but never copied into the output).
-    assets: ["css", "fonts", "images", "styles", "assets"],
-  },
-  output: {
-    dir: "dist",
-    filename: "book.pdf",
   },
   pdfx: {
     flavor: "x1a",
@@ -118,16 +109,11 @@ export const DTRPG_PRESET: VendorPreset = {
 export const BOOK_PRESET: VendorPreset = {
   // No default `styles:` — see the matching comment on DTRPG_PRESET (ARCH #2).
   plugins: [],
+  // No `assets` list and no `output` block: assets are discovered from the
+  // book's own references (lib/asset-inline.ts) and the output location is a
+  // convention (lib/output-paths.ts), so neither is configuration any more.
   source: {
     files: null,
-    // See the matching comment on DTRPG_PRESET.source.assets above — every
-    // built-in template resolves to either this preset or DTRPG_PRESET, and
-    // both scaffold `styles/book.css` + `assets/`.
-    assets: ["css", "fonts", "images", "styles", "assets"],
-  },
-  output: {
-    dir: "dist",
-    filename: "book.pdf",
   },
   pdfx: {
     flavor: "x1a",

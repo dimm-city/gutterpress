@@ -184,7 +184,7 @@ title: "My Book"
 The schema validates:
 - **Types** - Strings must be strings, arrays must be arrays, `page.width` must be a number
 - **Allowed values** - e.g. `preset` must be `dtrpg` or `book`, `pdfx.flavor` must be `x1a` or `x3`
-- **Structure** - Nested sections (`source`, `output`, `validate`, …) and their property names
+- **Structure** - Nested sections (`source`, `validate`, `pdfx`, …) and their property names
 
 Every property is optional: an omitted field falls back to the resolved preset default.
 
@@ -259,7 +259,11 @@ plugins:
 Where the content comes from.
 
 - `files` (array of strings, or `null`) - Explicit, ordered markdown files relative to the manifest directory. Omit or set `null` to include every `.md` file alphabetically.
-- `assets` (array of strings) - Directories copied alongside the rendered book. May point outside the project. Every asset directory is **flattened into one output folder**, so on a filename clash the last entry wins — order matters. Default: `["css", "fonts", "images", "styles", "assets"]`.
+
+There is no `assets` field: print-md discovers every file the book actually
+references — image `src` attributes, CSS `url()`/`@font-face` — and copies
+exactly those. An author-maintained directory list could drift from what the
+book uses; this can't.
 
 ```yaml
 source:
@@ -267,22 +271,17 @@ source:
     - "frontmatter/title-page.md"
     - "chapters/01-introduction.md"
     - "appendix/glossary.md"
-  assets:
-    - "css"
-    - "fonts"
-    - "images"
 ```
 
-#### `output` (object)
-- `dir` (string) - Output directory relative to the manifest directory. Default `dist`.
-- `filename` (string) - PDF filename. Default `book.pdf`.
-- `html` (string) - **Deprecated and ignored.** The rendered book HTML is always written as `book.html`; setting this only logs a warning.
+#### Output location (not a manifest field)
 
-```yaml
-output:
-  dir: dist
-  filename: my-book.pdf
-```
+There is no `output` block. Every build writes to
+`<manifestDir>/dist/<title-slug>/`, and artifacts are named
+`<title-slug>-<format>.<ext>` (e.g. `dragon-heist-pdf.pdf`,
+`dragon-heist-pdfx.pdf`) — a convention, not configuration, so `pdf` and
+`pdfx` builds never overwrite each other and multiple books in one tree
+always separate themselves. Use `--out <path>` on the command line for a
+per-invocation override (CI staging, one-offs).
 
 #### `page` (object)
 Expected page geometry, in **points** (1in = 72pt).
@@ -369,14 +368,6 @@ source:
     - "chapters/01-introduction.md"
     - "chapters/02-installation.md"
     - "appendix/glossary.md"
-  assets:
-    - "styles"
-    - "fonts"
-    - "images"
-
-output:
-  dir: dist
-  filename: "print-md-guide.pdf"
 
 # Validation bounds only — the CSS @page rule sets the real trim size.
 page:

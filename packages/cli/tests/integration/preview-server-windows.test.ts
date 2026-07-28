@@ -64,10 +64,14 @@ describe("startPreviewServer end-to-end (matches viewer's /api/preview path)", (
     expect(html).toContain("Smoke Test");
   });
 
-  it("loads a directory with a manifest.yaml using a relative ../_shared assets ref", async () => {
-    // Simulate a project layout with an external assets ref (common in
-    // DC design guide style projects). On Windows, glob path resolution
-    // and the external-asset watch root must both handle backslashes.
+  it("inlines a stylesheet shared from a sibling directory via a relative ../ path", async () => {
+    // A project layout with a shared design system alongside it (the DC design
+    // guide shape). The cross-platform concern this test exists for is intact:
+    // the `../`-relative path must resolve on Windows (backslash separators)
+    // as well as POSIX. What changed is the MECHANISM — the shared stylesheet
+    // is no longer mirrored into a temp root under its basename; it is READ and
+    // inlined into book.html, so there is no copy, no flattening, and no second
+    // place for it to go missing.
     const root = await mkdtemp(join(tmpdir(), "print-md-itest-shared-"));
     const sharedDir = join(root, "_shared", "css");
     const projectDir = join(root, "book");
@@ -78,9 +82,8 @@ describe("startPreviewServer end-to-end (matches viewer's /api/preview path)", (
       join(projectDir, "manifest.yaml"),
       [
         "title: Shared Assets Test",
-        "source:",
-        "  assets:",
-        "    - ../_shared",
+        "styles:",
+        "  - ../_shared/css/print.css",
         "",
       ].join("\n")
     );
@@ -105,11 +108,9 @@ describe("startPreviewServer end-to-end (matches viewer's /api/preview path)", (
     const html = await res.text();
     expect(html).toContain("Shared Assets Test");
 
-    // The external _shared dir gets mirrored into the temp root under
-    // basename(asset). Fetch one of its files to prove the static handler
-    // resolves cross-platform.
-    const cssRes = await fetch(`${active.url}/_shared/css/print.css`);
-    expect(cssRes.status).toBe(200);
-    expect(await cssRes.text()).toContain("color: black");
+    // The shared stylesheet's RULES are in the document itself — proof the
+    // `../`-relative path resolved — and nothing is <link>ed.
+    expect(html).toContain("color: black");
+    expect(html).not.toContain('<link rel="stylesheet"');
   });
 });

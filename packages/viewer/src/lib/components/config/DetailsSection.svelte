@@ -83,15 +83,6 @@
       <button class="ghost small add" onclick={controller.addAuthor}><Icon name="plus" size={12} /> Add author</button>
     </div>
   </div>
-  <label class="field">
-    <span class="lbl">Output filename</span>
-    <input
-      class="input"
-      type="text"
-      bind:value={controller.outputDraft}
-      placeholder="book.pdf"
-    />
-  </label>
   <div class="field">
     <span class="lbl">Source files</span>
     {#if controller.sourceFiles.length === 0}

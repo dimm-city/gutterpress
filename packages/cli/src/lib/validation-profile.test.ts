@@ -134,8 +134,6 @@ describe("structuredClone deep-copy equivalence (finding #21)", () => {
     expect(locked.styles).toEqual(base.styles);
     expect(locked.plugins).not.toBe(base.plugins);
     expect(locked.source).not.toBe(base.source);
-    expect(locked.source.assets).not.toBe(base.source.assets);
-    expect(locked.output).not.toBe(base.output);
     expect(locked.pdfx).not.toBe(base.pdfx);
     expect(locked.page).not.toBe(base.page);
     expect(locked.ink).not.toBe(base.ink);

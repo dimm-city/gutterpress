@@ -38,7 +38,7 @@ function make(
     onSaved,
     onError,
     projectDir: over.noProject ? null : "/proj",
-    fields: over.fields ?? { title: "My Book", authors: ["A", "B"], outputFilename: "book.pdf", sourceFiles: ["a.md", "b.md"] },
+    fields: over.fields ?? { title: "My Book", authors: ["A", "B"], sourceFiles: ["a.md", "b.md"] },
     allFiles: over.allFiles ?? ["a.md", "b.md", "c.md"],
     readCalls: 0,
     listCalls: 0,
@@ -79,7 +79,6 @@ test("initial public rune state matches the panel defaults", () => {
   expect(ctrl.detailsSaving).toBe(false);
   expect(ctrl.detailsError).toBeNull();
   expect(ctrl.titleDraft).toBe("");
-  expect(ctrl.outputDraft).toBe("");
   expect(ctrl.authorsDraft).toEqual([]);
   expect(ctrl.sourceFiles).toEqual([]);
 });
@@ -90,7 +89,6 @@ test("loadDetails populates fields, drafts, and the source-files list (manifest 
   expect(h.readCalls).toBe(1);
   expect(h.listCalls).toBe(1);
   expect(h.ctrl.titleDraft).toBe("My Book");
-  expect(h.ctrl.outputDraft).toBe("book.pdf");
   expect(h.ctrl.authorsDraft).toEqual(["A", "B"]);
   expect(h.ctrl.sourceFiles).toEqual([
     { path: "a.md", included: true },
@@ -163,7 +161,6 @@ test("saveDetails trims authors and writes the ordered included source files", a
   const h = make();
   await h.ctrl.loadDetails();
   h.ctrl.titleDraft = "  New Title  ";
-  h.ctrl.outputDraft = "  out.pdf  ";
   h.ctrl.authorsDraft = ["  Ada ", "", "  Grace"];
   await h.ctrl.saveDetails();
   expect(h.writeCalls.length).toBe(1);
@@ -172,7 +169,6 @@ test("saveDetails trims authors and writes the ordered included source files", a
     updates: {
       title: "New Title",
       authors: ["Ada", "Grace"],
-      outputFilename: "out.pdf",
       // a.md + b.md included (manifest), c.md excluded → explicit list.
       sourceFiles: ["a.md", "b.md"],
     },

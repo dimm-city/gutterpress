@@ -9,10 +9,9 @@ import path from 'path';
 import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { mkdir, remove, copyDirectory, fileExists } from '../utils/file-utils';
-import { info, debug, warn } from '../utils/logger';
+import { mkdir, remove, fileExists } from '../utils/file-utils';
+import { info, debug } from '../utils/logger';
 import { loadManifest, resolveConfig } from '../lib/manifest';
-import { copyAssets } from '../lib/assets';
 import type { ResolvedConfig } from '../schema/manifest.types';
 import type { ServerState } from './server-context';
 import { generateAndWriteHtml, stopFileWatcher, startFileWatcher } from './file-watcher';
@@ -68,16 +67,30 @@ async function cleanupOrphanTempDirs(): Promise<void> {
 }
 
 /**
- * Initialize preview directories and copy source files.
+ * Initialize the preview's temp directory.
  *
- * When `inputPath` is empty (no-input mode), the temp dir is still created
- * with the preview viewer assets so the browser has something to load; the
- * source-content copy and manifest-asset copy are skipped.
+ * SERVE-IN-PLACE (this replaces the old whole-tree `copyDirectory(inputPath,
+ * tempDir)` + manifest-asset `copyAssets` call): the temp dir is no longer a
+ * mirror of the project. It holds ONLY files print-md itself generates — right
+ * now that's `book.html` (written later by {@link generateAndWriteHtml}) and
+ * the PID marker file below. Every other path the served HTML asks for
+ * (images, anything else under the project) is read straight from the
+ * project directory by the HTTP server (see http-server.ts) — the project is
+ * never copied anywhere.
+ *
+ * This is what makes preview asset resolution identical to the build's BY
+ * CONSTRUCTION: both read the same real files off the same real project tree,
+ * so there is no separate copy step that can drift from what a build actually
+ * ships (the "works in preview, broken in the PDF" bug class). It also means
+ * a project's `.env`, `.git`, or any other dotfile is never duplicated into a
+ * world-readable temp dir the way the old whole-tree copy did — see
+ * http-server.ts's dotfile guard, which is what stands between a request and
+ * the project's real dotfiles now that the project is served directly.
+ *
+ * No longer takes `inputPath`/`config` — both were needed only for the copy
+ * steps removed above, and there is nothing left to configure here.
  */
-export async function initializePreviewDirectories(
-  inputPath: string,
-  config?: ResolvedConfig
-): Promise<string> {
+export async function initializePreviewDirectories(): Promise<string> {
   // Reap any orphan temp dirs from previous runs before creating ours.
   await cleanupOrphanTempDirs();
 
@@ -89,11 +102,6 @@ export async function initializePreviewDirectories(
   // Mark this dir as ours so a future startup can detect orphan-ship.
   await writeFile(path.join(tempDir, PID_FILE_NAME), `${process.pid}\n`, 'utf8');
 
-  if (inputPath) {
-    await copyDirectory(inputPath, tempDir);
-    debug(`Copied input files to ${tempDir}`);
-  }
-
   // Preview assets (paged.polyfill.js, pagedjs-bridge.js, pagedjs-interface.js,
   // favicon) are served directly from the process-wide embedded-assets dir by
   // the HTTP server (see http-server.ts EMBEDDED_PREFIXES/EMBEDDED_EXACT), not
@@ -101,20 +109,6 @@ export async function initializePreviewDirectories(
   // but is NOT served or read at runtime — it is editor-facing only (authors
   // reference it via a `# yaml-language-server: $schema=` comment; see
   // docs/schema-autocomplete.md).
-
-  // Copy manifest assets (e.g., ../_shared directories)
-  if (inputPath && config?.source?.assets) {
-    await copyAssets(inputPath, tempDir, config.source.assets, {
-      onCopy: (assetPath) => debug(`Copied manifest asset: ${assetPath}`),
-      onSkip: (_assetPath, srcPath) => debug(`Manifest asset not found: ${srcPath} (skipping)`),
-      onCollision: ({ destName, fileName, winnerAsset, loserAsset }) =>
-        warn(
-          `Asset collision: "${winnerAsset}/${fileName}" overwrites "${loserAsset}/${fileName}" ` +
-            `(both flatten to ${destName}/${fileName}). Last entry wins — rename the file or reorder ` +
-            `manifest assets if this is not intended.`
-        ),
-    });
-  }
 
   return tempDir;
 }
@@ -145,7 +139,16 @@ export async function initializeConfiguration(
 }
 
 /**
- * Restart the preview server with a new input directory
+ * Restart the preview server with a new input directory.
+ *
+ * SERVE-IN-PLACE makes this trivially correct where the old copy-based
+ * version was not: the HTTP server (http-server.ts) reads `state.
+ * currentInputPath` fresh on every request instead of serving a stale mirror,
+ * so repointing that one field IS the switch — there is no per-project copy
+ * to redo, and therefore no old project's files left behind in the (now
+ * shared-nothing, generated-files-only) temp dir the way the previous
+ * `copyDirectory(newInputPath, state.tempDir)` could leave a stale mix of two
+ * projects' content if it partially failed.
  */
 export async function restartPreview(newInputPath: string, state: ServerState): Promise<void> {
   info(`Restarting preview for: ${newInputPath}`);
@@ -153,11 +156,6 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
   await stopFileWatcher(state);
 
   state.currentInputPath = newInputPath;
-
-  // Only re-copy the input content — preview assets are already in the temp dir.
-  // Re-copying them would force a top-level reload of book.html and kill the
-  // browser session.
-  await copyDirectory(newInputPath, state.tempDir);
 
   const manifest = await loadManifest(newInputPath);
   state.config = resolveConfig({}, manifest);

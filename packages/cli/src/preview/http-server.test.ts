@@ -25,7 +25,16 @@ import { resolveConfig } from '../lib/manifest';
 import type { ServerState } from './server-context';
 import type { PreviewServerOptions } from '../types';
 
-function makeState(tempDir: string): ServerState {
+/**
+ * `currentInputPath` (the served PROJECT root) and `tempDir` (where
+ * print-md's own generated `book.html` lives) default to the SAME directory
+ * when only one is given — most tests here don't care about the split. The
+ * two-arg form is used where a test specifically needs to prove
+ * serve-in-place behavior: that a non-book.html path is read from the real
+ * project directory and NOT from the (possibly distinct, possibly empty)
+ * temp dir.
+ */
+function makeState(currentInputPath: string, tempDir: string = currentInputPath): ServerState {
   const config = resolveConfig({}, {});
   const options: PreviewServerOptions = {
     port: 3000,
@@ -35,7 +44,7 @@ function makeState(tempDir: string): ServerState {
     openBrowser: false,
   };
   return {
-    currentInputPath: tempDir,
+    currentInputPath,
     currentWatcher: null,
     rebuildTimer: null,
     isRebuilding: false,
@@ -187,11 +196,17 @@ describe('findAvailablePort', () => {
 
 describe('createPreviewServer', () => {
   let tempDir: string;
+  /** The served PROJECT root — deliberately a SEPARATE directory from
+   * tempDir in every test below that exercises serve-in-place, so a passing
+   * test proves the file actually came from the project directory and not
+   * from an accidental alias between the two roots. */
+  let projectDir: string;
   let server: PreviewServer | null;
   let port: number;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), 'print-md-http-test-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'print-md-http-test-temp-'));
+    projectDir = await mkdtemp(join(tmpdir(), 'print-md-http-test-project-'));
     server = null;
     // Pick an unlikely-to-be-busy port range per test.
     port = 50000 + Math.floor(Math.random() * 5000);
@@ -203,12 +218,17 @@ describe('createPreviewServer', () => {
       server = null;
     }
     await rm(tempDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   });
 
-  test('serves a static text file from tempDir', async () => {
-    await writeFile(join(tempDir, 'note.txt'), 'hello world');
+  test('serves a static file directly from the project root (serve-in-place)', async () => {
+    // note.txt lives ONLY in projectDir — tempDir stays empty for this test.
+    // A 200 here can only mean the non-book.html path resolved against
+    // state.currentInputPath, not a copy sitting in state.tempDir (there is
+    // no copy anymore — see lifecycle.ts's initializePreviewDirectories).
+    await writeFile(join(projectDir, 'note.txt'), 'hello world');
 
-    const state = makeState(tempDir);
+    const state = makeState(projectDir, tempDir);
     server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/note.txt`);
@@ -270,14 +290,70 @@ describe('createPreviewServer', () => {
     expect(res.status).toBe(404);
   });
 
-  test('refuses to serve files outside tempDir (path traversal)', async () => {
-    const state = makeState(tempDir);
+  test('refuses to serve files outside the project root (path traversal)', async () => {
+    const state = makeState(projectDir, tempDir);
     server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/../../etc/passwd`);
-    // Either 404 (resolve outside tempDir -> null) or 400 — never 200.
+    // Either 404 (resolve outside the project root -> null) or 400 — never 200.
     expect(res.status).not.toBe(200);
     expect([400, 404]).toContain(res.status);
+  });
+
+  test('404s a dotfile at the project root instead of reading it (e.g. ".env")', async () => {
+    // Serve-in-place (this test's whole describe block) reads the REAL
+    // project directory instead of a throwaway copy — the old whole-tree
+    // copy this replaced happened to leak a project's .env into the served
+    // temp dir too, but nobody could reach it without knowing the temp dir's
+    // random name. Serving the real tree removes that obscurity, so this
+    // guard is now load-bearing: a request for a dotfile must 404, and the
+    // secret's contents must never appear in the response body.
+    await writeFile(join(projectDir, '.env'), 'SECRET_API_KEY=do-not-leak-this');
+
+    const state = makeState(projectDir, tempDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(`http://localhost:${port}/.env`);
+    expect(res.status).toBe(404);
+    const body = await res.text();
+    expect(body).not.toContain('do-not-leak-this');
+  });
+
+  test('404s a file inside a dot-directory at the project root (e.g. ".git/config")', async () => {
+    await mkdir(join(projectDir, '.git'), { recursive: true });
+    await writeFile(join(projectDir, '.git', 'config'), '[remote "origin"]\n\turl = do-not-leak-this\n');
+
+    const state = makeState(projectDir, tempDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(`http://localhost:${port}/.git/config`);
+    expect(res.status).toBe(404);
+    const body = await res.text();
+    expect(body).not.toContain('do-not-leak-this');
+  });
+
+  test('an ordinary file next to a dotfile still serves normally (the guard is scoped, not overbroad)', async () => {
+    await writeFile(join(projectDir, '.env'), 'SECRET=1');
+    await writeFile(join(projectDir, 'chapter-01.md'), '# Chapter One');
+
+    const state = makeState(projectDir, tempDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(`http://localhost:${port}/chapter-01.md`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('# Chapter One');
+  });
+
+  test('no-input mode (no project root) 404s any non-book.html path instead of erroring', async () => {
+    // state.currentInputPath === '' models the viewer's "no directory picked
+    // yet" mode (see lifecycle.ts). There is no project to serve a
+    // non-book.html path from, so every such request must 404, not throw or
+    // crash the server.
+    const state = makeState('', tempDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(`http://localhost:${port}/anything.png`);
+    expect(res.status).toBe(404);
   });
 
   test('routes /api/status through the dispatcher', async () => {
@@ -334,11 +410,11 @@ describe('createPreviewServer', () => {
     ws.close();
   });
 
-  test('serves files from nested subdirectories', async () => {
-    await mkdir(join(tempDir, 'sub'));
-    await writeFile(join(tempDir, 'sub', 'data.json'), '{"ok":true}');
+  test('serves files from nested subdirectories of the project root', async () => {
+    await mkdir(join(projectDir, 'sub'));
+    await writeFile(join(projectDir, 'sub', 'data.json'), '{"ok":true}');
 
-    const state = makeState(tempDir);
+    const state = makeState(projectDir, tempDir);
     server = await createPreviewServer(state, port);
 
     const res = await fetch(`http://localhost:${port}/sub/data.json`);

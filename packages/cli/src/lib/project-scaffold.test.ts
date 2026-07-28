@@ -13,6 +13,7 @@ import {
 import type { CreateProjectError } from "./project-scaffold.ts";
 import { detectProjectSource } from "./project-source.ts";
 import { providerFor } from "./source-provider.ts";
+import { loadManifest, resolveConfig } from "./manifest.ts";
 
 async function tmpParent(): Promise<string> {
   return mkdtemp(path.join(tmpdir(), "pmd-scaffold-"));
@@ -48,10 +49,17 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
     const manifest = await readFile(result.manifestPath, "utf8");
     expect(manifest).toContain('title: "Test Book"');
     expect(manifest).toContain('- "Jane Writer"');
-    expect(manifest).toContain("test-book.pdf");
     expect(manifest).toContain("chapter-01.md");
     // The manifest references the scaffolded stylesheet.
     expect(manifest).toContain("styles/book.css");
+    // No `output:` block: output location is a convention (output-paths.ts),
+    // and resolveConfig THROWS a UsageError if a manifest still carries one —
+    // scaffolding one in would hard-fail every build of a fresh project.
+    expect(manifest).not.toContain("output:");
+    expect(manifest).not.toContain("{{OUTPUT_PDF}}");
+    // The generated manifest must actually resolve without throwing.
+    const parsed = await loadManifest(result.projectDir);
+    expect(() => resolveConfig({}, parsed)).not.toThrow();
 
     const chapter = await readFile(result.openFile, "utf8");
     expect(chapter).toContain("Test Book");
@@ -269,5 +277,94 @@ test("adoptFolder: never overwrites an existing styles/book.css", async () => {
   await writeFile(path.join(dir, "styles", "book.css"), "/* mine */ :root{}", "utf8");
   await adoptFolder({ dir, versionHistory: "none" });
   expect(await readFile(path.join(dir, "styles", "book.css"), "utf8")).toContain("/* mine */");
+  await rm(dir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// .gitignore — every scaffolded project must ignore dist/ (build output),
+// or the default-on auto-snapshot feature commits and pushes a fresh,
+// incompressible PDF on every build until GitHub's 100MB limit rejects it.
+// ---------------------------------------------------------------------------
+
+test("scaffoldProject writes a .gitignore excluding dist/", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "Ignore Book",
+      parentDir: parent,
+      versionHistory: "none",
+    });
+    const gitignore = await readFile(path.join(result.projectDir, ".gitignore"), "utf8");
+    expect(gitignore).toContain("dist/");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject appends dist/ to a custom template's .gitignore without clobbering it", async () => {
+  const templateDir = await mkdtemp(path.join(tmpdir(), "pmd-tpl-gitignore-"));
+  const parent = await tmpParent();
+  try {
+    await writeFile(path.join(templateDir, "manifest.yaml"), "title: \"{{TITLE}}\"\n", "utf8");
+    await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
+    await writeFile(path.join(templateDir, ".gitignore"), "node_modules/\n", "utf8");
+
+    const result = await scaffoldProject({
+      name: "Custom Tpl Book",
+      parentDir: parent,
+      templateDir,
+      versionHistory: "none",
+    });
+
+    const gitignore = await readFile(path.join(result.projectDir, ".gitignore"), "utf8");
+    expect(gitignore).toContain("node_modules/");
+    expect(gitignore).toContain("dist/");
+  } finally {
+    await rm(templateDir, { recursive: true, force: true });
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject leaves a custom template's .gitignore untouched when it already ignores dist/", async () => {
+  const templateDir = await mkdtemp(path.join(tmpdir(), "pmd-tpl-gitignore-has-dist-"));
+  const parent = await tmpParent();
+  try {
+    await writeFile(path.join(templateDir, "manifest.yaml"), "title: \"{{TITLE}}\"\n", "utf8");
+    await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
+    const original = "# my ignores\ndist/\n";
+    await writeFile(path.join(templateDir, ".gitignore"), original, "utf8");
+
+    const result = await scaffoldProject({
+      name: "Already Ignored Book",
+      parentDir: parent,
+      templateDir,
+      versionHistory: "none",
+    });
+
+    const gitignore = await readFile(path.join(result.projectDir, ".gitignore"), "utf8");
+    expect(gitignore).toBe(original);
+  } finally {
+    await rm(templateDir, { recursive: true, force: true });
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("adoptFolder writes a .gitignore excluding dist/ when the folder has none", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-gitignore-"));
+  await writeFile(path.join(dir, "doc.md"), "# Doc\n", "utf8");
+  await adoptFolder({ dir, versionHistory: "none" });
+  const gitignore = await readFile(path.join(dir, ".gitignore"), "utf8");
+  expect(gitignore).toContain("dist/");
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("adoptFolder appends dist/ to an existing .gitignore without overwriting it", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-gitignore-existing-"));
+  await writeFile(path.join(dir, "doc.md"), "# Doc\n", "utf8");
+  await writeFile(path.join(dir, ".gitignore"), "*.log", "utf8"); // no trailing newline
+  await adoptFolder({ dir, versionHistory: "none" });
+  const gitignore = await readFile(path.join(dir, ".gitignore"), "utf8");
+  expect(gitignore).toContain("*.log");
+  expect(gitignore).toContain("dist/");
   await rm(dir, { recursive: true, force: true });
 });

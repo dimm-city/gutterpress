@@ -119,7 +119,7 @@
     },
     "source": {
       "type": "object",
-      "description": "Where the book's content comes from.",
+      "description": "Where the book's content comes from. There is no `assets` list: the build discovers every file the book actually references (image src, CSS url()/@font-face, …) and copies exactly those — see lib/asset-inline.ts. An author-maintained asset directory list could drift from what the book uses; this can't.",
       "properties": {
         "files": {
           "type": ["array", "null"],
@@ -133,42 +133,6 @@
             ["chapter-01.md", "chapter-02.md"],
             ["frontmatter/title.md", "chapters/intro.md", "appendix.md"]
           ]
-        },
-        "assets": {
-          "type": "array",
-          "description": "Directories copied alongside the rendered book (css, fonts, images, …). Paths are relative to the manifest directory and may point outside it. Every asset directory is FLATTENED into one output folder, so on a filename clash the LAST entry wins — order matters.",
-          "default": ["css", "fonts", "images", "styles", "assets"],
-          "items": {
-            "type": "string",
-            "minLength": 1
-          },
-          "examples": [
-            ["css", "fonts", "images"],
-            ["../shared/css", "../shared/fonts", "css", "images"]
-          ]
-        }
-      }
-    },
-    "output": {
-      "type": "object",
-      "description": "Where build artifacts are written.",
-      "properties": {
-        "dir": {
-          "type": "string",
-          "description": "Output directory, relative to the manifest directory.",
-          "default": "dist",
-          "examples": ["dist", "build/pdf"]
-        },
-        "filename": {
-          "type": "string",
-          "description": "PDF filename written into the output directory.",
-          "default": "book.pdf",
-          "examples": ["book.pdf", "field-guide.pdf"]
-        },
-        "html": {
-          "type": "string",
-          "deprecated": true,
-          "description": "DEPRECATED and IGNORED. The rendered book HTML is always written as `book.html`. Setting this logs a deprecation warning and has no effect; remove it."
         }
       }
     },
@@ -549,12 +513,7 @@
       "preset": "book",
       "styles": ["styles/book.css"],
       "source": {
-        "files": ["chapter-01.md", "chapter-02.md"],
-        "assets": ["styles", "images"]
-      },
-      "output": {
-        "dir": "dist",
-        "filename": "my-book.pdf"
+        "files": ["chapter-01.md", "chapter-02.md"]
       }
     },
     {
@@ -569,8 +528,7 @@
       ],
       "styles": ["css/index.css"],
       "source": {
-        "files": ["chapter-00.md", "chapter-01.md"],
-        "assets": ["../shared/css", "../shared/fonts", "css", "images"]
+        "files": ["chapter-00.md", "chapter-01.md"]
       },
       "page": {
         "width": 621,

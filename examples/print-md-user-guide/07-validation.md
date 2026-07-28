@@ -26,23 +26,23 @@ both formats.
 
 ```bash
 # Validate an existing PDF for print compliance
-print-md validate --pdf dist/book.pdf
+print-md validate --pdf dist/my-book/my-book-pdf.pdf
 
 # With a manifest for project-specific settings
-print-md validate --pdf dist/book.pdf --manifest ./manifest.yaml
+print-md validate --pdf dist/my-book/my-book-pdf.pdf --manifest ./manifest.yaml
 
 # Lock deterministic DTRPG thresholds
-print-md validate --pdf dist/book.pdf --profile dtrpg
+print-md validate --pdf dist/my-book/my-book-pdf.pdf --profile dtrpg
 ```
 
 ### Preflight report
 
 ```bash
 # Run post-build checks and write JSON + markdown reports
-print-md preflight --pdf dist/book.pdf --profile dtrpg
+print-md preflight --pdf dist/my-book/my-book-pdf.pdf --profile dtrpg
 
 # Custom report location
-print-md preflight --pdf dist/book.pdf --report-dir .reviews --name release-preflight
+print-md preflight --pdf dist/my-book/my-book-pdf.pdf --report-dir .reviews --name release-preflight
 ```
 
 ### Validate source files
@@ -52,29 +52,29 @@ print-md preflight --pdf dist/book.pdf --report-dir .reviews --name release-pref
 print-md validate --input ./my-book
 
 # Both pre-build and post-build checks together
-print-md validate --input ./my-book --pdf dist/book.pdf
+print-md validate --input ./my-book --pdf dist/my-book/my-book-pdf.pdf
 ```
 
 ### Filtering checks
 
 ```bash
 # Only PDF checks
-print-md validate --pdf dist/book.pdf --category pdf
+print-md validate --pdf dist/my-book/my-book-pdf.pdf --category pdf
 
 # Only source and asset checks
 print-md validate --input ./my-book --category source,asset
 
 # Run a single specific check
-print-md validate --pdf dist/book.pdf --only pdf.print.page-size
+print-md validate --pdf dist/my-book/my-book-pdf.pdf --only pdf.print.page-size
 
 # Run a group with wildcard selectors
 print-md validate --input ./my-book --only source.links.*
 
 # Skip specific checks
-print-md validate --pdf dist/book.pdf --skip pdf.nav.cross-refs
+print-md validate --pdf dist/my-book/my-book-pdf.pdf --skip pdf.nav.cross-refs
 
 # JSON output for CI
-print-md validate --pdf dist/book.pdf --format json
+print-md validate --pdf dist/my-book/my-book-pdf.pdf --format json
 ```
 
 ## CLI Arguments
@@ -221,7 +221,7 @@ This runs the full pipeline including both pre-build and post-build validation.
 ### 4. Preflight for submission
 
 ```bash
-print-md preflight --pdf dist/my-book.pdf --profile dtrpg
+print-md preflight --pdf dist/my-book/my-book-pdfx.pdf --profile dtrpg
 ```
 
 Generates deterministic JSON and markdown reports suitable for archival or submission evidence.
@@ -257,7 +257,8 @@ Caused by excess `@page` markers. Audit your source files for unnecessary page b
 
 ### Font issues
 
-- Ensure font files are included in the `source.assets` list in `manifest.yaml`
+- A missing font is a build error naming the file — check the `url(...)` path
+  in your CSS is correct and relative to that CSS file
 - Test on a clean machine to catch fonts that only happen to be installed locally
 
 ### Color shift

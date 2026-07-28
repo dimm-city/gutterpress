@@ -1,4 +1,5 @@
-import { expect, mock, test } from "bun:test";
+import { afterAll, expect, spyOn, test } from "bun:test";
+import * as platformModule from "$lib/platform";
 
 (globalThis as unknown as { $state?: <T>(value: T) => T }).$state ??= (value) => value;
 
@@ -28,10 +29,39 @@ const platform = {
   },
 };
 
-mock.module("$lib/platform", () => ({
-  getPlatform: () => platform,
-  isDesktop: () => true,
-}));
+// WHY spyOn + mockRestore, NOT mock.module: `mock.module()` replaces the
+// module in Bun's SHARED, process-wide resolution registry, keyed by the
+// RESOLVED file path — "$lib/platform" here and the relative
+// "../../src/lib/platform/index" that tests/platform/adapter.test.ts and
+// tests/recovery/platform-recovery-seam.test.ts import both resolve to the
+// same absolute src/lib/platform/index.ts. The previous `mock.module`
+// substitution here was therefore visible to every later test file, not just
+// this one, and `bun test --isolate` does NOT sandbox it (same caveat already
+// called out for `mock.module("electron", …)` in tests/platform/
+// sveltekit-host.ts and friends). Its replacement object only had
+// `getPlatform`/`isDesktop`, so any later file statically importing
+// `DEFAULT_SETTINGS` or `__resetPlatform` from platform/index died with a
+// misleading "Export named 'X' not found" SyntaxError.
+//
+// Wrapping the old `mock.module` in `afterAll(() => mock.restore())` was
+// tried first and does NOT fix this: verified by reproduction that the
+// pollution still reaches a second file even when that file imports the
+// exact same "$lib/platform" specifier this one mocked. `mock.restore()` is
+// documented for undoing `spyOn`; it is not a reliable way to reverse a
+// `mock.module` registry substitution for this module in this codebase.
+// `spyOn` avoids the whole class of problem: it patches the live export
+// bindings on the REAL module object that every other file's named imports
+// are already bound to (no registry substitution, no missing exports), so
+// `mockRestore()` in `afterAll` hands the real implementation back
+// deterministically. Same discipline
+// packages/cli/src/checks/pdf/structured-check-result.test.ts documents.
+spyOn(platformModule, "getPlatform").mockImplementation(() => platform as never);
+spyOn(platformModule, "isDesktop").mockImplementation(() => true);
+
+afterAll(() => {
+  (platformModule.getPlatform as unknown as { mockRestore: () => void }).mockRestore();
+  (platformModule.isDesktop as unknown as { mockRestore: () => void }).mockRestore();
+});
 
 const { UpdateController } = await import("../../src/lib/update/update-controller.svelte");
 

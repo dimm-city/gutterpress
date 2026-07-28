@@ -145,8 +145,8 @@ export async function saveProjectAsTemplate(
   }
 
   // Re-tokenise the manifest so the template is reusable: replace the concrete
-  // title/authors/output filename with the {{...}} placeholders the scaffolder
-  // fills back in. Best-effort — a project may have an unusual manifest.
+  // title/authors with the {{...}} placeholders the scaffolder fills back in.
+  // Best-effort — a project may have an unusual manifest.
   const manifestName = MANIFEST_FILENAMES.find((name) =>
     entries.some((entry) => entry.name === name)
   );
@@ -168,7 +168,17 @@ export async function saveProjectAsTemplate(
   };
 }
 
-/** Replace concrete title/authors/output values in a manifest with placeholders. */
+/**
+ * Replace concrete title/authors values in a manifest with placeholders.
+ *
+ * NOTE: this used to also re-tokenise `output.filename` back to
+ * `{{OUTPUT_PDF}}`. `output:` is no longer a valid manifest field —
+ * `resolveConfig` throws a `UsageError` if a manifest still carries one — so
+ * a project a user can actually save as a template can never have a
+ * `filename:` key to rewrite. That branch (and the `{{OUTPUT_PDF}}` token
+ * it produced) was removed rather than kept as permanently-dead pattern
+ * matching.
+ */
 async function retokeniseManifest(manifestPath: string): Promise<void> {
   let text: string;
   try {
@@ -182,8 +192,7 @@ async function retokeniseManifest(manifestPath: string): Promise<void> {
     // (anchored to the `authors:` key) — not just any first `- item`, which
     // would clobber a `source.files:` entry in manifests that list source
     // before authors. Inline `authors:` (no block list) is left as-is.
-    .replace(/^(authors:[^\n]*\n[ \t]*-[ \t]*).*$/m, '$1"{{AUTHOR}}"')
-    .replace(/^(\s*filename:\s*).*$/m, '$1"{{OUTPUT_PDF}}"');
+    .replace(/^(authors:[^\n]*\n[ \t]*-[ \t]*).*$/m, '$1"{{AUTHOR}}"');
   await writeFile(manifestPath, text, "utf8");
 }
 

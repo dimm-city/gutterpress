@@ -33,7 +33,7 @@ afterEach(async () => {
   }
 });
 
-test("resolveBuildContext resolves a relative output.dir against the project's manifestDir, not the CWD (cross-project dist collision)", async () => {
+test("resolveBuildContext resolves the conventional output dir against the project's manifestDir, not the CWD (cross-project dist collision)", async () => {
   // Two separate scaffolded projects, at different absolute paths.
   const projA = await mkdtemp(join(tmpdir(), "pmd-proj-a-"));
   const projB = await mkdtemp(join(tmpdir(), "pmd-proj-b-"));
@@ -59,13 +59,13 @@ test("resolveBuildContext resolves a relative output.dir against the project's m
   });
 
   // Each project's output must land in ITS OWN <projectDir>/dist ...
-  expect(ctxA.outDir).toBe(join(projA, "dist"));
-  expect(ctxB.outDir).toBe(join(projB, "dist"));
+  expect(ctxA.outDir).toBe(join(projA, "dist", "project-a"));
+  expect(ctxB.outDir).toBe(join(projB, "dist", "project-b"));
   // ... not collide on a shared directory (the bug: both used to resolve to
   // <repoCwd>/dist and therefore to each other).
   expect(ctxA.outDir).not.toBe(ctxB.outDir);
-  expect(ctxA.outDir).not.toBe(join(repoCwd, "dist"));
-  expect(ctxB.outDir).not.toBe(join(repoCwd, "dist"));
+  expect(ctxA.outDir).not.toBe(join(repoCwd, "dist", "project-a"));
+  expect(ctxB.outDir).not.toBe(join(repoCwd, "dist", "project-b"));
 });
 
 test("resolveBuildContext preserves an explicit --out exactly (no re-resolution against manifestDir or CWD)", async () => {
@@ -91,24 +91,39 @@ test("resolveBuildContext preserves an explicit --out exactly (no re-resolution 
   expect(ctx.outDir).toBe(explicitOut);
 });
 
-test("resolveBuildContext keeps an absolute manifest output.dir absolute", async () => {
-  const projA = await mkdtemp(join(tmpdir(), "pmd-proj-abs-"));
-  const absOut = await mkdtemp(join(tmpdir(), "pmd-abs-out-"));
+test("two books anchored in ONE tree get separate output dirs with no configuration", async () => {
+  // The case a single shared `dist` could never handle however `output.dir` was
+  // configured — and the reason the field is gone rather than re-tuned.
+  const tree = await mkdtemp(join(tmpdir(), "pmd-multi-book-"));
   const repoCwd = await mkdtemp(join(tmpdir(), "pmd-repo-cwd3-"));
-  dirsToClean.push(projA, absOut, repoCwd);
-
-  await Bun.write(
-    join(projA, "manifest.yaml"),
-    `title: Absolute Output Test\noutput:\n  dir: ${absOut}\n`
-  );
+  dirsToClean.push(tree, repoCwd);
+  await Bun.write(join(tree, "book-01", "manifest.yaml"), "title: Dragon Heist\n");
+  await Bun.write(join(tree, "book-02", "manifest.yaml"), "title: Design Guide\n");
 
   process.chdir(repoCwd);
 
-  const ctx = await resolveBuildContext({
-    inputDir: projA,
+  const one = await resolveBuildContext({
+    inputDir: join(tree, "book-01"),
+    format: "html",
+    rawArgs: {},
+  });
+  const two = await resolveBuildContext({
+    inputDir: join(tree, "book-02"),
     format: "html",
     rawArgs: {},
   });
 
-  expect(ctx.outDir).toBe(absOut);
+  expect(one.outDir).toBe(join(tree, "book-01", "dist", "dragon-heist"));
+  expect(two.outDir).toBe(join(tree, "book-02", "dist", "design-guide"));
+  expect(one.outDir).not.toBe(two.outDir);
+});
+
+test("a manifest still carrying the removed `output` block fails loudly", async () => {
+  const proj = await mkdtemp(join(tmpdir(), "pmd-proj-legacy-"));
+  dirsToClean.push(proj);
+  await Bun.write(join(proj, "manifest.yaml"), "title: Legacy\noutput:\n  dir: build\n");
+
+  await expect(
+    resolveBuildContext({ inputDir: proj, format: "html", rawArgs: {} })
+  ).rejects.toThrow(/`output`/);
 });

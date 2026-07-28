@@ -5,7 +5,7 @@
  * writer before #PCV).
  *
  * Centralises the read manifest subset (`fields`), the four editable drafts
- * (`titleDraft` / `outputDraft` / `authorsDraft` / `sourceDraft`), the
+ * (`titleDraft` / `authorsDraft` / `sourceDraft`), the
  * load/save flags, and the author-list array intents (`addAuthor` /
  * `removeAuthor` / `setAuthor`).
  *
@@ -60,7 +60,6 @@ export class DetailsSectionController {
   /** Editable title draft — bound directly from the template. */
   titleDraft = $state("");
   /** Editable output-filename draft — bound directly from the template. */
-  outputDraft = $state("");
   /** Editable author-name drafts, one per row. */
   authorsDraft = $state<string[]>([]);
   /** The source-files list: every project markdown file, ordered, each row
@@ -95,7 +94,6 @@ export class DetailsSectionController {
       ]);
       this.fields = f;
       this.titleDraft = f.title ?? "";
-      this.outputDraft = f.outputFilename ?? "";
       this.authorsDraft = f.authors ?? [];
       this.scanOk = scan.ok;
       // Failed scan: fall back to the manifest's own entries as the universe
@@ -148,7 +146,6 @@ export class DetailsSectionController {
       const out = await this.deps.writeManifest(projectDir, {
         title: this.titleDraft.trim(),
         authors: trimmedAuthors,
-        outputFilename: this.outputDraft.trim(),
         sourceFiles: src,
       });
       this.fields = out;

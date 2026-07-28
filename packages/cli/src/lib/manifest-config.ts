@@ -1,7 +1,7 @@
 /**
  * Manifest configuration writers — the unified "Project Configuration" view
  * (#PCV) owns editing the simple, author-facing manifest fields that the four
- * retired modal managers never touched: `title`, `authors`, `output.filename`,
+ * retired modal managers never touched: `title`, `authors`,
  * `source.files`, plus a generic `setActiveStyles` to reorder/enable the
  * stylesheets list (the active set) without going through theme-apply.
  *
@@ -24,8 +24,6 @@ import {
 export interface ProjectConfigFields {
   title?: string;
   authors?: string[];
-  /** `output.filename` in the manifest; the built PDF's name. */
-  outputFilename?: string;
   /** `source.files` — the markdown inputs (null means "all chapter files"). */
   sourceFiles?: string[] | null;
 }
@@ -61,19 +59,6 @@ export async function setManifestFields(
       doc.delete("authors");
     } else {
       doc.set("authors", a);
-    }
-  }
-
-  if (hasKey(updates, "outputFilename")) {
-    if (updates.outputFilename === undefined || updates.outputFilename === "") {
-      doc.deleteIn(["output", "filename"]);
-      // Drop a now-empty `output:` map rather than leaving a dangling key.
-      const output = doc.get("output", true);
-      if (isMap(output) && output.items.length === 0) {
-        doc.delete("output");
-      }
-    } else {
-      doc.setIn(["output", "filename"], updates.outputFilename);
     }
   }
 
@@ -113,8 +98,6 @@ export async function readManifestFields(projectDir: string): Promise<ProjectCon
     if (isSeq(authors)) {
       out.authors = (authors.items as unknown[]).map((i) => scalarString(i) ?? "");
     }
-    const outFilename = doc.getIn(["output", "filename"]);
-    if (typeof outFilename === "string") out.outputFilename = outFilename;
     const filesNode = doc.getIn(["source", "files"], true);
     if (isSeq(filesNode)) {
       out.sourceFiles = (filesNode.items as unknown[]).map((i) => scalarString(i) ?? "");

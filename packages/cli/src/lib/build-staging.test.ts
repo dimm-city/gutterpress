@@ -8,7 +8,7 @@ import {
   stripPaginationRuntime,
   injectNavigationScripts,
   shipRuntimePaginatedHtml,
-  stagePaginationInput,
+  stripPaginationOrigin,
 } from "./build-staging.ts";
 import { pagedjsPolyfillTag } from "./pagedjs-marker.ts";
 
@@ -135,42 +135,29 @@ test("shipRuntimePaginatedHtml rewrites the book + vendors the polyfill", async 
   }
 });
 
-// The shared staging sequence used by BOTH the HTML and PDF pagination passes:
-// wipe/recreate the stage dir, copy the rendered book.html, vendor the Paged.js
-// polyfill, and patch the staged HTML to load it. No Chromium involved.
-test("stagePaginationInput stages book + vendors + patches the polyfill", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-stage-"));
-  try {
-    const { mkdir } = await import("node:fs/promises");
-    const outDir = join(dir, "out");
-    const stageDir = join(dir, "stage");
-    const htmlFile = join(outDir, "book.html");
-    // Write the source book (no assets configured).
-    await mkdir(outDir, { recursive: true });
-    await writeFile(
-      htmlFile,
-      "<!DOCTYPE html><html><head><title>x</title></head><body><p>hi</p></body></html>",
-      "utf-8"
-    );
+// Paged.js absolutizes every non-data: CSS url() against the sheet's origin, so
+// the serialized document comes back pointing at the build's ephemeral
+// http://127.0.0.1:<port>/ — a port that dies with the build. These cover the
+// rewrite back to document-relative URLs.
+test("stripPaginationOrigin rewrites the ephemeral build origin to document-relative URLs", () => {
+  const html = 'a { background: url("http://127.0.0.1:44321/assets/ab12.png"); }';
+  expect(stripPaginationOrigin(html)).toBe('a { background: url("assets/ab12.png"); }');
+});
 
-    // Pre-seed the stage dir with a stale file to prove it gets wiped.
-    await mkdir(stageDir, { recursive: true });
-    await writeFile(join(stageDir, "stale.txt"), "old", "utf-8");
+test("stripPaginationOrigin strips the leading slash too, so subpath deploys work", () => {
+  // book.html sits at the artifact root: `assets/x.png` is correct, while a
+  // root-relative `/assets/x.png` would break a GitHub Pages project site.
+  const out = stripPaginationOrigin("url(http://127.0.0.1:1/images/x.png)");
+  expect(out).toBe("url(images/x.png)");
+  expect(out).not.toContain("/images");
+});
 
-    const stagedHtml = await stagePaginationInput(htmlFile, outDir, [], stageDir);
+test("stripPaginationOrigin handles several ports and occurrences in one document", () => {
+  const html = "url(http://127.0.0.1:1/a.png) url(http://127.0.0.1:65535/b/c.png)";
+  expect(stripPaginationOrigin(html)).toBe("url(a.png) url(b/c.png)");
+});
 
-    // Returns the staged book path inside the stage dir.
-    expect(stagedHtml).toBe(join(stageDir, "book.html"));
-    expect(existsSync(stagedHtml)).toBe(true);
-    // Stage dir was wiped (stale file gone).
-    expect(existsSync(join(stageDir, "stale.txt"))).toBe(false);
-    // Polyfill vendored from embedded assets.
-    expect(existsSync(join(stageDir, "vendor/paged.polyfill.js"))).toBe(true);
-    // Staged HTML patched to load the vendored polyfill + break handler.
-    const staged = await readFile(stagedHtml, "utf-8");
-    expect(staged).toMatch(/vendor\/paged\.polyfill\.js/);
-    expect(staged).toMatch(/BreakInsideAvoidHandler/);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-  }
+test("stripPaginationOrigin leaves genuine remote URLs and data: URIs alone", () => {
+  const html = 'url("https://cdn.example.com/x.png") url("data:image/gif;base64,AAAA")';
+  expect(stripPaginationOrigin(html)).toBe(html);
 });

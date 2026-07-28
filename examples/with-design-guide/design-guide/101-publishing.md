@@ -109,7 +109,7 @@ print-md build field-guide --format pdfx --out .print-md/build/field-guide-print
 
 ## Design Guide as Static Site {#publishing}
 
-The design guide is a first-class output target, the same as any book project. `build --format html` produces a complete deployable directory with the same viewer chrome as the preview server — toolbar, page nav, zoom, print button — but with no backing server.
+The design guide is a first-class output target, the same as any book project. `build --format html` produces a complete deployable directory — no backing server, no toolbar chrome. `book.html` is a plain, self-contained, pre-paginated document: your stylesheets and any embedded fonts are inlined directly into it, so there's nothing else to serve alongside it except the images it references.
 
 ### Build the static site
 
@@ -121,16 +121,22 @@ Output structure:
 
 ```
 design-guide-site/
-├── index.html       ← the print-md viewer (same UI as preview)
-├── book.html        ← the rendered guide content
-├── preview/         ← viewer scripts and styles
-│   ├── scripts/
-│   └── styles/
-├── css/             ← copied from manifest assets
-└── fonts/
+├── index.html       ← redirects to book.html (a default entry point for static hosts)
+├── book.html        ← the rendered guide, CSS + fonts inlined, pre-paginated
+└── preview/
+    └── scripts/      ← pagedjs-interface.js and pagedjs-bridge.js (page nav, zoom)
 ```
 
-Open `index.html` in any browser — no server needed. The viewer loads `book.html` (the rendered guide content) into an iframe alongside the toolbar chrome.
+There's no `css/` or `fonts/` folder in the output — stylesheets are read and
+inlined into `book.html`, not copied. If the guide references any images too
+large to inline, they travel with the build at their own project-relative
+path (or under `assets/` for one that lives outside the project).
+
+Open `book.html` directly in a browser — no server needed. The desktop app's
+toolbar (page nav, zoom, print, folder picker) is a separate application
+(`packages/viewer`) and is not part of this static build output; the nav
+scripts here only let *your own* embedding page drive `window.previewAPI` if
+you build one, similar to how the Electron viewer does.
 
 ### npm scripts (optional)
 
@@ -159,7 +165,7 @@ The guide is reachable at `https://<owner>.github.io/<repo>/`. The viewer uses r
 4. In `.github/workflows/publish-design-guide.yml`, uncomment the **Deploy to Azure Static Web Apps** step.
 5. If you are only deploying to Azure, remove or comment out the GitHub Pages upload/deploy pieces.
 
-The Azure deployment uses the already-built `design-guide-site/` directory, so Static Web Apps serves the exact same `index.html` + `book.html` viewer bundle produced by `print-md build --format html`.
+The Azure deployment uses the already-built `design-guide-site/` directory, so Static Web Apps serves the exact same `index.html` + `book.html` output produced by `print-md build --format html`.
 
 ### Include a downloadable PDF
 
@@ -176,7 +182,8 @@ print-md build design-guide --format pdf --out ./_site
 print-md build design-guide --format pdfx --out ./_site --pdfx-flavor x1a --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
-Link to it from `00-toc.md`: `[Download PDF](book.pdf){.download}`.
+The PDF is named `<title-slug>-pdf.pdf` (a slug of the manifest `title`) — link
+to it from `00-toc.md`, e.g. `[Download PDF](your-book-title-design-guide-pdf.pdf){.download}`.
 
 ---
 

@@ -5,6 +5,8 @@ import net from "node:net";
 import type { Page } from "puppeteer-core";
 import { getBrowser } from "./browser-pool";
 import { resolveStaticPath, serveFile } from "./static-serve";
+import { patchHtmlStringForPagedjs } from "./pagedjs";
+import { getAssetPath } from "./embedded-assets";
 import { log } from "../utils/logger";
 import { BuildError } from "./build-error";
 
@@ -20,30 +22,45 @@ import { BuildError } from "./build-error";
  * `Page` themselves.
  */
 
+/** An in-memory response served instead of reading a file from disk. */
+export interface ServerOverlay {
+  body: string | Buffer;
+  contentType: string;
+}
+
 /**
- * Start a localhost static file server rooted at `dir`, serving `defaultFile`
- * for the `/` path. Returns the chosen port and a `close()` that resolves once
- * the server has shut down.
+ * Start a localhost static file server rooted at `dir`, with optional in-memory
+ * `overlays` keyed by URL path (e.g. `/book.html`).
+ *
+ * Overlays are what let the build paginate WITHOUT staging a second copy of the
+ * project. `outDir` is served directly; the Paged.js-patched `book.html` and the
+ * vendored polyfill are supplied from memory, so the engine never has to be
+ * written into the shipped artifact and no asset is copied twice. This mirrors
+ * the preview server, which has always served `/vendor/*` as a virtual overlay
+ * rather than copying it per project.
  *
  * Path-traversal protection, the MIME map, and the actual file response are
  * the shared `./static-serve` primitives (`resolveStaticPath` + `serveFile`)
  * also used by preview/http-server.ts — a request that resolves outside `dir`
- * gets 403; a missing file gets 404 from `serveFile` itself. Shared by the
- * static-HTML pagination pass and the PDF render pass — both stage HTML +
- * assets into a temp dir and need a real HTTP origin so relative asset URLs
- * resolve.
+ * gets 403; a missing file gets 404 from `serveFile` itself.
  */
-function createStaticFileServer(
+export function createStaticFileServer(
   dir: string,
-  defaultFile: string
+  defaultFile: string,
+  overlays: Record<string, ServerOverlay> = {}
 ): Promise<{ port: number; close: () => Promise<void> }> {
   const root = path.resolve(dir);
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, "http://127.0.0.1");
-    // Both current callers navigate straight to `/${filename}`, so the `"/"`
-    // → defaultFile branch is a convenience fallback (e.g. a future caller
-    // hitting the bare origin); it is not exercised on the render path today.
     const pathname = url.pathname === "/" ? "/" + defaultFile : url.pathname;
+
+    const overlay = overlays[pathname];
+    if (overlay) {
+      res.writeHead(200, { "Content-Type": overlay.contentType });
+      res.end(overlay.body);
+      return;
+    }
+
     const filePath = resolveStaticPath(pathname, root);
     if (!filePath) {
       res.writeHead(403);
@@ -476,11 +493,50 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
  * This is the same headless engine the PDF path uses — the only difference is we
  * capture `document.documentElement.outerHTML` instead of (or before) printing.
  */
-export async function paginateToStaticHtml(stagedHtml: string): Promise<string> {
-  const stageDir = path.dirname(path.resolve(stagedHtml));
-  const htmlFilename = path.basename(stagedHtml);
+/**
+ * Build the overlay set that turns a plain `outDir` into a paginatable origin:
+ * the Paged.js-patched `book.html` and the vendored polyfill, both in memory.
+ *
+ * Nothing is written to disk, so the shipped `book.html` never carries the
+ * pagination engine and no asset is copied a second time just to be served.
+ */
+async function paginationOverlays(
+  bookHtml: string,
+  htmlFilename: string
+): Promise<Record<string, ServerOverlay>> {
+  const polyfill = await fsp.readFile(await getAssetPath("vendor/paged.polyfill.js"));
+  return {
+    [`/${htmlFilename}`]: {
+      body: patchHtmlStringForPagedjs(bookHtml, "/vendor/paged.polyfill.js"),
+      contentType: "text/html; charset=utf-8",
+    },
+    "/vendor/paged.polyfill.js": {
+      body: polyfill,
+      contentType: "application/javascript",
+    },
+  };
+}
 
-  const server = await createStaticFileServer(stageDir, htmlFilename);
+/**
+ * Build-time pagination (SSG model): drive headless Chromium to fully paginate
+ * the book with Paged.js, then serialize the resulting already-fragmented DOM
+ * to a static HTML string. Paged.js's polisher injects its layout CSS as
+ * `<style>` elements INTO the DOM, so the serialized markup carries everything
+ * needed to render the pages with NO runtime pagination engine.
+ *
+ * Serves `outDir` itself (images resolve relative to `book.html`, exactly as
+ * they will in the shipped artifact) with the engine supplied as overlays.
+ */
+export async function paginateToStaticHtml(htmlFile: string): Promise<string> {
+  const outDir = path.dirname(path.resolve(htmlFile));
+  const htmlFilename = path.basename(htmlFile);
+  const bookHtml = await fsp.readFile(htmlFile, "utf-8");
+
+  const server = await createStaticFileServer(
+    outDir,
+    htmlFilename,
+    await paginationOverlays(bookHtml, htmlFilename)
+  );
 
   try {
     // Reuse the pre-warmed pooled browser; open a fresh page, close the PAGE.
@@ -497,9 +553,7 @@ export async function paginateToStaticHtml(stagedHtml: string): Promise<string> 
       const count = await page.evaluate(
         () => document.querySelectorAll(".pagedjs_page").length
       );
-      log.info(
-        `Paged.js paginated ${count} pages → serialized to static HTML`
-      );
+      log.info(`Paged.js paginated ${count} pages → serialized to static HTML`);
       return html;
     } finally {
       await page.close();
@@ -509,16 +563,25 @@ export async function paginateToStaticHtml(stagedHtml: string): Promise<string> 
   }
 }
 
+/**
+ * Render `htmlFile` (in its own `outDir`) to a PDF, serving that directory with
+ * the pagination engine supplied as in-memory overlays.
+ */
 export async function renderHtmlToPdf(
-  inputHtml: string,
+  htmlFile: string,
   outPdf: string,
   renderer: PdfRenderer = puppeteerPdfRenderer,
   captureStaticHtmlTo?: string
 ) {
-  const stageDir = path.dirname(path.resolve(inputHtml));
-  const htmlFilename = path.basename(inputHtml);
+  const outDir = path.dirname(path.resolve(htmlFile));
+  const htmlFilename = path.basename(htmlFile);
+  const bookHtml = await fsp.readFile(htmlFile, "utf-8");
 
-  const server = await createStaticFileServer(stageDir, htmlFilename);
+  const server = await createStaticFileServer(
+    outDir,
+    htmlFilename,
+    await paginationOverlays(bookHtml, htmlFilename)
+  );
 
   try {
     await renderer({

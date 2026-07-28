@@ -72,15 +72,21 @@ htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint an
   });
 
   // Return shape: html has no PDF, a book.html htmlPath, and a fingerprint.
+  // Both are non-null here because a conventional project build PUBLISHES them;
+  // only a one-file delivery (--out x.pdf) reports them as absent.
   expect(result.outDir).toBe(outDir);
   expect(result.pdfPath).toBeNull();
-  expect(existsSync(result.htmlPath)).toBe(true);
-  expect(result.htmlPath).toBe(join(outDir, "book.html"));
-  expect(existsSync(result.fingerprintPath)).toBe(true);
-  expect(result.fingerprintPath).toBe(join(outDir, "build-fingerprint.json"));
+  expect(result.htmlPath).not.toBeNull();
+  expect(result.fingerprintPath).not.toBeNull();
+  const htmlPath = result.htmlPath!;
+  const fingerprintPath = result.fingerprintPath!;
+  expect(existsSync(htmlPath)).toBe(true);
+  expect(htmlPath).toBe(join(outDir, "book.html"));
+  expect(existsSync(fingerprintPath)).toBe(true);
+  expect(fingerprintPath).toBe(join(outDir, "build-fingerprint.json"));
 
   // book.html carries the authored content.
-  const book = await readFile(result.htmlPath, "utf-8");
+  const book = await readFile(htmlPath, "utf-8");
   expect(book).toMatch(/Hello/);
 
   // A redirect index.html is written as the static-host entry point.
@@ -88,7 +94,7 @@ htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint an
   expect(indexHtml).toMatch(/url=book\.html/);
 
   // The fingerprint records the build command.
-  const fp = JSON.parse(await readFile(result.fingerprintPath, "utf-8"));
+  const fp = JSON.parse(await readFile(fingerprintPath, "utf-8"));
   expect(fp.command).toBe("build");
 }, 30_000); // A cold full build (markdown render + asset copy + fingerprint) can
 // sit near bun's default 5s timeout on a slow runner; give it comfortable head-room.

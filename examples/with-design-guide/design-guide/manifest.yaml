@@ -18,8 +18,6 @@ source:
     - 05-layout.md
     - 06-markdown-reference.md
     - 101-publishing.md
-  assets:
-    - styles
 
 # Page geometry — change here to match your book's trim size.
 # Values are in points (72pt = 1in). Common sizes:

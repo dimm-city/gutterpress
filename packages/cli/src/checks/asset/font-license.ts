@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
-import { FONT_EXTS } from "./extensions";
+import { ASSET_SCAN_IGNORE_GLOBS, FONT_EXTS } from "./extensions";
 
 const LICENSE_NAMES = [
   "LICENSE",
@@ -33,6 +33,7 @@ const check: Check = {
       const matches = await glob(`**/*.{${FONT_EXTS.join(",")}}`, {
         cwd: dir,
         absolute: true,
+        ignore: [...ASSET_SCAN_IGNORE_GLOBS],
       });
       for (const m of matches) {
         fontDirs.add(resolve(m, ".."));

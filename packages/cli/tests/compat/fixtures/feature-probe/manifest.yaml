@@ -8,8 +8,6 @@ styles:
 source:
   files:
     - 01-features.md
-  assets:
-    - styles
 
 page:
   width: 612

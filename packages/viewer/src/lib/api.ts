@@ -180,8 +180,6 @@ export interface PublishProviderStaticInfo {
 export interface ProjectConfigFields {
   title?: string;
   authors?: string[];
-  /** `output.filename`; the built PDF's name. */
-  outputFilename?: string;
   /** `source.files` — null is the deliberate "all chapter files" sentinel. */
   sourceFiles?: string[] | null;
 }

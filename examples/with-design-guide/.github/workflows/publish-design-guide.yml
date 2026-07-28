@@ -3,8 +3,9 @@
 # Triggers on changes under design-guide/ — the path whose content the guide
 # depends on. Builds the static site with
 # `print-md build --format html`, which produces a directory containing the
-# print-md viewer (index.html) wrapping the rendered book HTML
-# (book.html), the viewer scripts and styles, and the user assets.
+# rendered, self-contained book HTML (book.html — CSS and fonts already
+# inlined), a redirect index.html for hosts that need a default entry point,
+# the page-nav/zoom scripts, and any images the guide actually references.
 #
 # GitHub Pages repo settings:
 #   Settings → Pages → Source: GitHub Actions
@@ -53,8 +54,9 @@ jobs:
         run: bun add -d @dimm-city/print-md
 
       - name: Build the design guide as a static site
-        # Produces ./design-guide-site/ containing index.html (the print-md
-        # viewer chrome), book.html, preview/, and the user assets.
+        # Produces ./design-guide-site/ containing index.html (redirects to
+        # book.html), book.html (self-contained: CSS/fonts inlined),
+        # preview/ (nav scripts), and any referenced images.
         run: bunx print-md build ./design-guide --format html --out ./design-guide-site
 
       # Uncomment this step to deploy the prebuilt static site to Azure

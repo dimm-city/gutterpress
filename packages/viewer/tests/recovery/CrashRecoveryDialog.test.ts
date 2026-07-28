@@ -402,7 +402,17 @@ describe("CrashRecoveryDialog — two-step Discard (M12 fix 3)", () => {
 
 describe("REGRESSION GUARD — CrashRecoveryDialog invariants", () => {
   test("still exports the RecoveryItem interface with the same shape", () => {
-    const source = readSource();
+    // The interface moved OUT of the .svelte file into a plain `.ts` module:
+    // TypeScript's ambient `*.svelte` declaration exposes only a component
+    // default export, so non-Svelte consumers (the controller) could not
+    // `import type` it and the package failed to typecheck. The contract this
+    // guard protects is unchanged — only its declaration site moved, and the
+    // component still re-exports it.
+    const source = fs.readFileSync(
+      path.join(import.meta.dirname, "../../src/lib/components/crash-recovery-types.ts"),
+      "utf-8",
+    );
+    expect(readSource()).toContain("export type { RecoveryItem }");
     expect(source).toContain("export interface RecoveryItem");
     expect(source).toContain("filePath: string");
     expect(source).toContain("recoveryPath: string");

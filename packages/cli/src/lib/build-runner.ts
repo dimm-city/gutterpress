@@ -1,10 +1,13 @@
 import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import os from "node:os";
+import { randomBytes } from "node:crypto";
 import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPluginsWithCss } from "./markdown/plugins";
-import { copyAssets } from "./assets";
+import { planImageCopies, type AssetCopy } from "./asset-inline";
+import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
 import { prewarmBrowser, closeBrowser } from "./browser-pool";
 import {
@@ -23,7 +26,6 @@ import { preflightBuildTools, computeGates, type Gates } from "./build-preflight
 import {
   finalizeStaticBook,
   shipRuntimePaginatedHtml,
-  stagePaginationInput,
   createStageRoot,
 } from "./build-staging";
 import {
@@ -82,9 +84,16 @@ export interface BuildRunnerOptions {
 
 export interface BuildRunnerResult {
   outDir: string;
-  htmlPath: string;
+  /**
+   * The published `book.html`, or `null` for a one-file delivery (`--out x.pdf`,
+   * a viewer export) where only the PDF is delivered and everything else is
+   * discarded with the work dir. Returning a work-dir path here would hand the
+   * caller a filename that is already deleted by the time they see it.
+   */
+  htmlPath: string | null;
   pdfPath: string | null;
-  fingerprintPath: string;
+  /** As {@link htmlPath}: `null` when nothing but the artifact was published. */
+  fingerprintPath: string | null;
 }
 
 export interface SplitOutPath {
@@ -121,6 +130,24 @@ export function splitOutPath(
  * Assembled by {@link resolveBuildContext}; consumed by {@link runQualityGates},
  * {@link renderBook}, and the {@link OutputStrategy} implementations.
  */
+/**
+ * Where a finished build is delivered. The build itself always writes to a
+ * scratch `workDir`; this says what happens to it afterwards.
+ *
+ * The distinction is structural, not a flag: `rm` appears in exactly one branch
+ * of {@link publishBuild}, the `project` one, whose path is always computed by
+ * `resolveOutputDir` from the manifest. A caller-supplied path is a different
+ * variant that reaches different code, so no `--out` value can be deleted —
+ * there is no code path that would do it.
+ */
+export type PublishTarget =
+  /** print-md's own `dist/<slug>/`. Replaced wholesale, so stale files vanish. */
+  | { kind: "project"; dir: string }
+  /** `--out <dir>`: the user's directory. Files are added; nothing is removed. */
+  | { kind: "directory"; dir: string }
+  /** `--out <file.pdf>` / the viewer's Save dialog: ONE file, nothing else. */
+  | { kind: "file"; file: string };
+
 export interface BuildContext {
   opts: BuildRunnerOptions;
   format: BuildFormat;
@@ -129,6 +156,18 @@ export interface BuildContext {
   manifestDir: string;
   config: ReturnType<typeof resolveConfig>;
   gates: Gates;
+  /**
+   * Where the build actually writes. A build assembles a COMPLETE output tree
+   * here and only then replaces `outDir` with it, so a build is atomic (a crash
+   * leaves the previous output untouched) and stale files cannot survive — the
+   * work dir starts empty, so whatever is not rebuilt simply is not there.
+   *
+   * It is a sibling of `outDir` rather than an OS temp dir so the final publish
+   * is a same-filesystem `rename`.
+   */
+  workDir: string;
+  /** What to do with `workDir` once the build succeeds. */
+  target: PublishTarget;
 }
 
 /**
@@ -170,24 +209,41 @@ export async function resolveBuildContext(
   const config = resolveConfig(
     {
       title: opts.title,
-      output: opts.outDir ? { dir: opts.outDir } : undefined,
       pdfx: pdfxConfigOverride,
     },
     manifest
   );
 
-  // An explicit --out is already resolved (against the CWD, by splitOutPath
-  // in commands/build.ts) before it reaches here — pass it through unchanged.
-  // Otherwise, config.output.dir (relative by default, e.g. "dist") must
-  // resolve against the PROJECT being built (manifestDir), not the command's
-  // CWD — see maintainer P1 (PR #98): building multiple absolute-path projects
-  // from one CWD collided on a single shared <cwd>/dist. An absolute
-  // config.output.dir stays absolute (path.resolve ignores the base in that
-  // case).
-  const outDir = opts.outDir ?? path.resolve(manifestDir, config.output.dir);
+  // An explicit --out is already resolved (against the CWD, by splitOutPath in
+  // commands/build.ts) before it reaches here — pass it through unchanged.
+  // Otherwise the location is a CONVENTION, not configuration:
+  // `<manifestDir>/dist/<title-slug>/`. Anchoring on the manifest dir keeps
+  // multiple projects built from one CWD apart, and the per-book slug keeps
+  // multiple books in ONE tree apart — the case a single shared `dist` could
+  // never handle no matter how `output.dir` was configured.
+  // A `--out something.pdf` names ONE artifact; only that file is delivered, so
+  // a build can never scatter book.html/images/ into the folder someone picked
+  // in a Save dialog. `--out <dir>` delivers the whole bundle but never deletes.
+  const target: PublishTarget = opts.pdfFileOverride
+    ? { kind: "file", file: path.resolve(opts.pdfFileOverride) }
+    : opts.outDir
+      ? { kind: "directory", dir: opts.outDir }
+      : { kind: "project", dir: resolveOutputDir(manifestDir, config.title) };
+  const outDir = target.kind === "file" ? path.dirname(target.file) : target.dir;
   const gates = computeGates(format, opts, config);
+  // For our own `dist/`, the work dir is a sibling of the destination so the
+  // publish is a same-filesystem atomic rename. For a caller-supplied target we
+  // must not create scratch directories in someone else's folder, so it goes to
+  // the OS temp dir and the publish is a copy.
+  const workDir =
+    target.kind === "project"
+      ? path.join(
+          path.dirname(target.dir),
+          `.${path.basename(target.dir)}-build-${randomBytes(6).toString("hex")}`
+        )
+      : path.join(os.tmpdir(), `print-md-build-${randomBytes(6).toString("hex")}`);
 
-  return { opts, format, inputDir, outDir, manifestDir, config, gates };
+  return { opts, format, inputDir, outDir, workDir, target, manifestDir, config, gates };
 }
 
 /**
@@ -240,7 +296,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * without driving the full `runBuild` pagination/PDF machinery.
  */
 export async function renderBook(ctx: BuildContext): Promise<string> {
-  const { config, manifestDir, inputDir, outDir } = ctx;
+  const { config, manifestDir, inputDir, workDir } = ctx;
 
   if (config.source.files && config.source.files.length > 0) {
     log.info(`Using specified files (${config.source.files.length} total)`);
@@ -261,7 +317,14 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     log.success(`Loaded ${plugins.length} plugin(s)`);
   }
 
-  const htmlFile = await renderChaptersToFile(inputDir, outDir, {
+  // The render reports every asset the book actually references: image `src`
+  // values (markdown tokens + raw HTML) and any CSS image too large to inline.
+  // That report IS the copy plan — there is no separate author-maintained list
+  // that could drift from it, which is what made assets silently go missing.
+  const imageRefs: string[] = [];
+  const cssAssets: AssetCopy[] = [];
+
+  const htmlFile = await renderChaptersToFile(inputDir, workDir, {
     title: config.title,
     styles: config.styles,
     files: config.source.files,
@@ -272,26 +335,60 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
         log.warn(`  ${file}, line ${w.line}: ${w.message}`);
       }
     },
+    onImageRefs: (refs) => imageRefs.push(...refs),
+    onCssAssets: (copies) => cssAssets.push(...copies),
+    onStyleWarnings: (warnings) => {
+      for (const w of warnings) log.warn(`  ${w}`);
+    },
   });
   log.success(`Wrote ${htmlFile}`);
 
-  const assetDirs = config.source.assets;
-  if (assetDirs.length > 0) {
-    log.info("Copying assets");
-    await copyAssets(inputDir, outDir, assetDirs, {
-      onCopy: (assetPath) => log.info(`  Copied ${assetPath}/`),
-      onSkip: (assetPath, srcPath) =>
-        log.warn(`  ${assetPath}/ not found at ${srcPath} (skipping)`),
-      onCollision: ({ destName, fileName, winnerAsset, loserAsset }) =>
-        log.warn(
-          `  Asset collision: "${winnerAsset}/${fileName}" overwrites "${loserAsset}/${fileName}" ` +
-            `(both flatten to ${destName}/${fileName}). Last entry wins — rename the file or reorder ` +
-            `manifest assets if this is not intended.`
-        ),
-    });
+  const { copies: imageCopies, errors } = await planImageCopies(inputDir, imageRefs);
+  if (errors.length > 0) {
+    throw new BuildError(
+      `Cannot resolve ${errors.length} image reference(s):\n` +
+        errors.map((e) => `  - ${e}`).join("\n"),
+      1
+    );
+  }
+
+  const copies = [...cssAssets, ...imageCopies];
+  if (copies.length > 0) {
+    log.info(`Copying ${copies.length} referenced asset(s)`);
+    await copyReferencedAssets(copies, workDir);
   }
 
   return htmlFile;
+}
+
+/**
+ * Copy the planned assets into `outDir`, preserving each one's output-relative
+ * path. Parallel because these are independent file copies and a book's image
+ * set is routinely in the hundreds — the old serial `copyDir` walked every
+ * asset directory one `copyFile` at a time.
+ */
+async function copyReferencedAssets(
+  copies: AssetCopy[],
+  outDir: string
+): Promise<void> {
+  const dirs = new Set(
+    copies.map((c) => path.dirname(path.resolve(outDir, c.to)))
+  );
+  await Promise.all([...dirs].map((d) => fsp.mkdir(d, { recursive: true })));
+  await Promise.all(
+    copies.map(async (c) => {
+      const dest = path.resolve(outDir, c.to);
+      try {
+        await fsp.copyFile(c.from, dest);
+      } catch (err) {
+        throw new BuildError(
+          `Could not copy asset ${c.from} → ${c.to}: ` +
+            (err instanceof Error ? err.message : String(err)),
+          1
+        );
+      }
+    })
+  );
 }
 
 /**
@@ -347,17 +444,84 @@ async function finalizeBuild(
   ctx: BuildContext,
   fingerprint: BuildFingerprintInput,
   wroteMessage: string,
-  paths: { htmlPath: string; pdfPath: string | null }
+  paths: { htmlPath: string; pdfPath: string | null },
+  artifactName: string | null = null
 ): Promise<BuildRunnerResult> {
-  const fingerprintPath = await writeBuildFingerprint(fingerprint);
+  const workFingerprint = await writeBuildFingerprint({
+    ...fingerprint,
+    outputDir: ctx.workDir,
+  });
+  await publishBuild(ctx, artifactName);
+
+  // A `file` target delivers ONE artifact; the fingerprint and book.html stay
+  // in the work dir and are removed with it, so they are reported as absent
+  // rather than as paths the caller cannot open.
+  const delivered = ctx.target.kind !== "file";
+  const fingerprintPath = delivered
+    ? path.join(ctx.outDir, path.basename(workFingerprint))
+    : null;
+
   log.success(wroteMessage);
-  log.info(`Fingerprint: ${fingerprintPath}`);
+  if (fingerprintPath) log.info(`Fingerprint: ${fingerprintPath}`);
   return {
     outDir: ctx.outDir,
-    htmlPath: paths.htmlPath,
+    htmlPath: delivered
+      ? path.join(ctx.outDir, path.relative(ctx.workDir, paths.htmlPath))
+      : null,
     pdfPath: paths.pdfPath,
     fingerprintPath,
   };
+}
+
+/**
+ * Deliver the completed work dir to its target.
+ *
+ * `rm` on a destination exists ONLY in the `project` branch, whose path always
+ * came from `resolveOutputDir`. Neither caller-supplied variant can reach it,
+ * so no `--out` path is deletable by construction rather than by a guard.
+ */
+async function publishBuild(ctx: BuildContext, artifactName: string | null): Promise<void> {
+  const { workDir, target } = ctx;
+
+  if (target.kind === "file") {
+    // Exactly one artifact is delivered. Nothing else the build produced —
+    // book.html, images/, the fingerprint — goes anywhere near the caller's
+    // folder, which is what stops a Save dialog from being sprayed with output.
+    if (!artifactName) throw new BuildError("No artifact to write for this format", 1);
+    await fsp.mkdir(path.dirname(target.file), { recursive: true });
+    await fsp.copyFile(path.join(workDir, artifactName), target.file);
+    return;
+  }
+
+  if (target.kind === "directory") {
+    // The user's directory: add files, never remove any.
+    await fsp.mkdir(target.dir, { recursive: true });
+    await fsp.cp(workDir, target.dir, { recursive: true, force: true });
+    return;
+  }
+
+  // Our own dist/<slug>/: replaced wholesale, which is what makes stale files
+  // vanish with no bookkeeping. Other formats' PDFs are carried across first so
+  // building pdf and html accumulates both.
+  for (const name of await listPdfs(target.dir)) {
+    if (!fs.existsSync(path.join(workDir, name))) {
+      await fsp.rename(path.join(target.dir, name), path.join(workDir, name));
+    }
+  }
+  await fsp.rm(target.dir, { recursive: true, force: true });
+  await fsp.mkdir(path.dirname(target.dir), { recursive: true });
+  await fsp.rename(workDir, target.dir);
+}
+
+/** Top-level `*.pdf` filenames in `dir`; empty when it does not exist. */
+async function listPdfs(dir: string): Promise<string[]> {
+  try {
+    return (await fsp.readdir(dir, { withFileTypes: true }))
+      .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(".pdf"))
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -384,8 +548,7 @@ class HtmlOutput implements OutputStrategy {
     ctx: BuildContext,
     htmlFile: string
   ): Promise<BuildRunnerResult> {
-    const { outDir, inputDir, config, opts } = ctx;
-    const assetDirs = config.source.assets;
+    const { workDir, outDir, inputDir, config, opts } = ctx;
 
     const chromium = await resolveChromiumExecutable();
     if (!chromium) {
@@ -396,40 +559,24 @@ class HtmlOutput implements OutputStrategy {
           "paginate on load). Install Chromium or set CHROMIUM_PATH for " +
           "pre-paginated static output."
       );
-      await shipRuntimePaginatedHtml(htmlFile, outDir);
+      await shipRuntimePaginatedHtml(htmlFile, workDir);
     } else {
-      // Stage a working copy for the build-time pagination pass (assets +
-      // polyfill) under the OS temp dir — never in the caller's cwd. Cleaned up
-      // in finally so it does not leak on the error path either.
-      const htmlStage = await createStageRoot();
-      try {
-        const stagedBook = await stagePaginationInput(
-          htmlFile,
-          outDir,
-          assetDirs,
-          htmlStage
-        );
-
-        log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
-        const paginated = await paginateToStaticHtml(stagedBook);
-        await finalizeStaticBook(paginated, htmlFile, outDir);
-      } finally {
-        await fsp.rm(htmlStage, { recursive: true, force: true });
-      }
+      // No staging copy: book.html is self-contained (CSS + fonts inlined) and
+      // its images already sit in outDir, so the pagination pass serves outDir
+      // itself with the engine supplied as in-memory overlays.
+      log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
+      const paginated = await paginateToStaticHtml(htmlFile);
+      await finalizeStaticBook(paginated, htmlFile, workDir);
     }
 
-    // Write a minimal index.html that redirects to book.html so static hosts
-    // (Azure SWA, GitHub Pages, etc.) have a default entry point. This is not
-    // the viewer chrome — the Electron viewer loads book.html directly by name.
-    const indexPath = path.join(outDir, "index.html");
-    if (!fs.existsSync(indexPath)) {
-      await fsp.writeFile(
-        indexPath,
-        `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=book.html"><title>print-md</title></head><body></body></html>\n`,
-        "utf-8"
-      );
-    }
-
+    // A minimal index.html redirects to book.html so static hosts (Azure SWA,
+    // GitHub Pages, etc.) have a default entry point. This is not the viewer
+    // chrome — the Electron viewer loads book.html directly by name.
+    await fsp.writeFile(
+      path.join(workDir, "index.html"),
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=book.html"><title>print-md</title></head><body></body></html>\n`,
+      "utf-8"
+    );
     return finalizeBuild(
       ctx,
       {
@@ -444,7 +591,7 @@ class HtmlOutput implements OutputStrategy {
           stripAnnotations: null,
         },
       },
-      `Wrote: ${path.join(outDir, "book.html")}`,
+      `Wrote: ${path.join(outDir, BOOK_HTML)}`,
       { htmlPath: htmlFile, pdfPath: null }
     );
   }
@@ -462,27 +609,27 @@ class PdfOutput implements OutputStrategy {
     ctx: BuildContext,
     htmlFile: string
   ): Promise<BuildRunnerResult> {
-    const { outDir, inputDir, config, opts, format, manifestDir, gates } = ctx;
-    const assetDirs = config.source.assets;
+    const { workDir, outDir, inputDir, config, opts, format, manifestDir, gates } = ctx;
 
     const pdfxMode: PdfxFlavor | undefined =
       format === "pdfx" ? (opts.pdfxFlavor ?? config.pdfx.flavor) : undefined;
 
-    const pdfFile =
-      opts.pdfFileOverride ?? path.join(outDir, config.output.filename);
+    // Artifact name is a convention: `<title-slug>-<format>.pdf`. The format is
+    // part of the NAME because the extension cannot distinguish a plain PDF
+    // from a PDF/X one — previously both formats shared one configured
+    // filename, so building both left only the last one on disk.
+    const pdfName = artifactName(config.title, pdfxMode ? "pdfx" : "pdf");
+    // ALWAYS built inside the work dir, whatever the destination is; publishing
+    // is what decides where it lands. That keeps every format atomic and keeps
+    // the "one file only" delivery rule in one place.
+    const pdfFile = path.join(workDir, pdfName);
+    const reportedPdf =
+      ctx.target.kind === "file" ? ctx.target.file : path.join(outDir, pdfName);
 
-    // Stage build directory under the OS temp dir — never in the caller's cwd
-    // (runBuild is exported and driven by the viewer host). Cleaned up in finally
-    // so it does not leak on the success path OR any error/throw below.
+    // Scratch dir under the OS temp dir, for PDF/X intermediates only — never
+    // for staging assets. Removed in a finally so it cannot leak.
     const stage = await createStageRoot();
     try {
-      const stagedHtml = await stagePaginationInput(
-        htmlFile,
-        outDir,
-        assetDirs,
-        stage
-      );
-
       const rawPdf = pdfxMode
         ? path.join(stage, "raw.pdf")
         : path.resolve(pdfFile);
@@ -490,20 +637,19 @@ class PdfOutput implements OutputStrategy {
       await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
       // PDF unification: the default renderer prints the PDF and, from the SAME
       // pagination pass, serializes the static viewer book.html — so the on-screen
-      // pages and the PDF come from one paginated artifact. The PDF call itself is
-      // unchanged, so the PDF is pixel-identical to the pre-SSG pipeline. Injected
-      // renderers (e.g. the Electron viewer) print only.
+      // pages and the PDF come from one paginated artifact. Injected renderers
+      // (e.g. the Electron viewer) print only.
       const staticHtmlRaw = opts.pdfRenderer
         ? undefined
         : path.join(stage, "book-static-raw.html");
-      await renderHtmlToPdf(stagedHtml, rawPdf, opts.pdfRenderer, staticHtmlRaw);
+      await renderHtmlToPdf(htmlFile, rawPdf, opts.pdfRenderer, staticHtmlRaw);
       if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
         await finalizeStaticBook(
           await fsp.readFile(staticHtmlRaw, "utf-8"),
           htmlFile,
-          outDir
+          workDir
         );
-        log.success(`Wrote static viewer: ${path.join(outDir, "book.html")}`);
+        log.success(`Wrote static viewer: ${path.join(outDir, BOOK_HTML)}`);
       }
 
       if (!pdfxMode) {
@@ -544,6 +690,7 @@ class PdfOutput implements OutputStrategy {
         });
       }
 
+
       // Post-build validation (pdfx only)
       if (gates.postValidate) {
         log.info("Post-build validation");
@@ -574,8 +721,9 @@ class PdfOutput implements OutputStrategy {
             stripAnnotations: shouldStripAnnotations,
           },
         },
-        `Wrote: ${pdfFile}`,
-        { htmlPath: htmlFile, pdfPath: pdfFile }
+        `Wrote: ${reportedPdf}`,
+        { htmlPath: htmlFile, pdfPath: reportedPdf },
+        pdfName
       );
     } finally {
       await fsp.rm(stage, { recursive: true, force: true });
@@ -605,7 +753,6 @@ export async function runBuild(
   const ctx = await resolveBuildContext(opts);
 
   log.info(`Build (${ctx.format}): ${ctx.inputDir} -> ${ctx.outDir}`);
-  await fsp.mkdir(ctx.outDir, { recursive: true });
 
   // Pre-flight tool check.
   //
@@ -627,6 +774,11 @@ export async function runBuild(
   if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 
   try {
+    // Created INSIDE the try so the finally below always reclaims it. Creating
+    // it earlier leaked a `.slug-build-*` directory on every build whose
+    // preflight or prewarm threw — e.g. every attempt with Ghostscript missing.
+    await fsp.mkdir(ctx.workDir, { recursive: true });
+
     await runQualityGates(ctx);
 
     const htmlFile = await renderBook(ctx);
@@ -636,5 +788,8 @@ export async function runBuild(
     return await strategy.finish(ctx, htmlFile);
   } finally {
     if (!opts.keepBrowserAlive) await closeBrowser();
+    // A failed build must leave the previous output untouched — the work dir is
+    // the only thing it ever wrote to, so removing it is the whole rollback.
+    await fsp.rm(ctx.workDir, { recursive: true, force: true });
   }
 }

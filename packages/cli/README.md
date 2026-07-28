@@ -93,9 +93,16 @@ my-book/
 ├─ chapter-02.md         (or in the order listed in manifest.yaml#source.files)
 ├─ css/               ← your stylesheets
 │  └─ print.css
-├─ fonts/             ← font files referenced from CSS @font-face
 └─ images/            ← images referenced from markdown or CSS
 ```
+
+The CLI discovers assets from what the book actually references — there is no
+directory list to keep in sync. Fonts are no exception: a font can live
+anywhere in the project; `@font-face { src: url(...) }` in your CSS resolves
+relative to that CSS file, wherever it is, and the build embeds it
+automatically. Images referenced from markdown or HTML must live inside the
+project folder (they keep their own relative path in the output); images
+referenced only from CSS may live anywhere the CSS can reach.
 
 See [User Guide: Chapter 1 — Getting Started](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md) for a full first-project walkthrough and [examples/](https://github.com/dimm-city/print-md/tree/main/examples) for working starters.
 
