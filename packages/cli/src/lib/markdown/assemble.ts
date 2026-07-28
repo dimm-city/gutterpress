@@ -58,27 +58,12 @@ export interface AssembleBookHtmlOptions {
   plugins?: LoadedPlugin[];
   pluginCss?: string;
   /**
-   * Wrap each source file's output in `<div class="pmd-chapter"
-   * data-chapter-src="<file>">`. Used by the incremental live-preview to
-   * identify and re-paginate a single chapter on edit. Off by default — the
-   * build output is unaffected.
-   *
-   * PAGINATION FIDELITY: the wrapper is an IDENTITY tag, not a layout one — it
-   * carries no break rule, and nothing pairs one with it. The preview used to
-   * inject `.pmd-chapter{break-before:page}` alongside it (see
-   * `injectPreviewScripts` in preview/file-watcher.ts), which made the live
-   * preview start every source file on a new page while the build path below
-   * concatenated them flat. That rule is gone: wrapped and unwrapped output now
-   * take page breaks from the same place — project CSS and markdown-it-paged
-   * markers — and land on the same boundaries. Keep it that way; any styling
-   * hung off `.pmd-chapter` re-opens the split.
-   *
-   * The wrapper is not yet perfectly inert: it is an extra element around the
-   * first chapter's first element, so a `break-before: page` there (a `.page`
-   * marker, or an `h1` in most themes) is honoured instead of dropped as
-   * start-of-flow, and wrapped output leads with one blank page. Boundaries
-   * still match; the page NUMBERS are offset by one. See the KNOWN RESIDUAL
-   * note at `injectPreviewScripts`.
+   * Add `data-chapter-src="<file>"` to the same source-mapped block elements
+   * that receive `data-source-line`. The historical option name is retained as
+   * public API, but no wrapper is emitted: even `display: contents` changes CSS
+   * selector relationships such as `body > *`, `:first-child`, and cross-file
+   * siblings, which can change pagination. Off by default; build output is
+   * unaffected.
    */
   wrapChapters?: boolean;
   /**
@@ -123,6 +108,24 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   }
 
   const md = createMarkdownRenderer(opts.plugins);
+  let sourceChapter: string | null = null;
+  if (opts.wrapChapters) {
+    const renderToken = md.renderer.renderToken.bind(md.renderer);
+    md.renderer.renderToken = (tokens, idx, options) => {
+      const token = tokens[idx]!;
+      // Keep this predicate aligned with markdown-it-source-map: those are
+      // exactly the elements that receive data-source-line during rendering.
+      if (
+        sourceChapter !== null &&
+        token.level === 0 &&
+        token.map !== null &&
+        token.type.endsWith("_open")
+      ) {
+        token.attrSet("data-chapter-src", sourceChapter);
+      }
+      return renderToken(tokens, idx, options);
+    };
+  }
 
   // Source files concatenate directly into the body. @chapter is a CORE
   // markdown-it-paged marker (parsed + wrapped + labeled by
@@ -135,8 +138,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   for (const file of files) {
     // ONE canonical identity per chapter (see chapter-id.ts): the same
     // normalized string is used to resolve the file AND as the data-chapter-src
-    // tag. The file-watcher broadcasts the identical form, and the preview
-    // shell matches the two strings exactly to splice a single edited chapter.
+    // tag used by preview source inspection and chapter-scoped scroll restore.
     const chapterId = canonicalChapterId(file);
     let content: string;
     try {
@@ -153,17 +155,20 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     // author-mistake diagnostics (§6: the plugin still owns computing them)
     // observable to a caller.
     const env: { layoutWarnings?: LayoutWarning[] } & ImageRefEnv = {};
-    const rendered = md.render(content, env);
+    sourceChapter = opts.wrapChapters ? chapterId : null;
+    let rendered: string;
+    try {
+      // Always use the public render path: standard markdown-it plugins may
+      // legitimately wrap md.render(), and preview/build must both observe it.
+      rendered = md.render(content, env);
+    } finally {
+      sourceChapter = null;
+    }
     if (env.layoutWarnings && env.layoutWarnings.length > 0) {
       opts.onChapterWarnings?.(chapterId, env.layoutWarnings);
     }
     for (const ref of env.imageRefs ?? []) imageRefs.add(ref);
-    if (opts.wrapChapters) {
-      const safe = chapterId.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-      bodyContent += `<div class="pmd-chapter" data-chapter-src="${safe}">\n${rendered}\n</div>\n`;
-    } else {
-      bodyContent += rendered + "\n";
-    }
+    bodyContent += rendered + "\n";
   }
 
   // Raw HTML <img> (author-written or plugin-emitted) never passes through the

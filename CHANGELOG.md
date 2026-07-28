@@ -16,12 +16,12 @@ This project follows [Semantic Versioning](https://semver.org/).
   spans nine source files: 227 of 293 preview pages previously carried
   different content than the build; now every page carries the same content the
   build puts there.
-  Two caveats: the preview still leads with one blank page when the first
-  source file opens with a forced break (a separate `.pmd-chapter` wrapper
-  artifact that the removed rule used to mask), so preview page *numbers* run
-  one ahead of the build. And chapters that now share a page still splice on
-  edit via the shell's shared-page path, which leaves the shared page's other
-  chapter un-reflowed until the next full reload.
+  Source attribution now annotates existing blocks instead of inserting a
+  file-level wrapper, so authored structural selectors see the same element tree
+  in preview and build. Every watched source change runs a complete document
+  pagination before the hidden frame is swapped into view. This keeps cross-file
+  page boundaries aligned after both Markdown and CSS edits instead of splicing
+  isolated chapter pages.
 
 ## [0.8.3] - 2026-07-22
 

@@ -115,7 +115,7 @@ packages/cli/src/
 │   ├── http-server.ts      # node:http + ws WebSocket dev server (static
 │   │                       #   files, the inlined /api/status route, HMR)
 │   ├── server-context.ts   # Server state shape
-│   ├── file-watcher.ts     # File change detection + incremental rebuild
+│   ├── file-watcher.ts     # File/dependency watching + full-document rebuild
 │   └── lifecycle.ts        # Server startup/shutdown, orphan temp-dir cleanup
 ├── utils/                  # Shared utilities
 │   ├── file-utils.ts       # File operations

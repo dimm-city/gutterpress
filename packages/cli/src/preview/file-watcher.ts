@@ -11,44 +11,15 @@ import path from 'path';
 import { info, debug, warn, error as logError } from '../utils/logger';
 import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
-import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
+import { resolveActiveStyles } from '../lib/style-resolver';
+import { collectStyleDependencies } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 import { pagedjsPolyfillTagRegex } from '../lib/pagedjs-marker';
 import type { ResolvedPluginConfig } from '../schema/manifest.types';
-
-/**
- * Resolve a changed file's canonical, forward-slash path relative to the
- * project root, or `null` if the file isn't under it. There is exactly ONE
- * watch root now (the project directory — see `createFileWatcher` below):
- * the old external-asset-root concept (a sibling `../_shared` directory
- * mirrored under its own name in the temp dir) went away with `copyAssets`
- * and the manifest's `source.assets` field it depended on, since a project
- * is served straight from disk (see http-server.ts) and there is no longer
- * a destination path to mirror INTO.
- *
- * `relativePath` is normalized to FORWARD slashes regardless of platform —
- * it is broadcast to clients (content-update chapter splices, CSS hot-swap
- * paths) and compared against the SPA's forward-slash chapter paths, so
- * Windows `path.sep` backslashes must never leak into it.
- *
- * Exported for the chapter-identity contract test
- * (lib/markdown/chapter-id.test.ts): the `content-update` broadcast derived
- * from this value MUST equal the `data-chapter-src` the build writes for the
- * same file (see lib/markdown/chapter-id.ts).
- */
-export function describeChange(
-  filePath: string,
-  inputResolved: string
-): { relativePath: string } | null {
-  if (filePath !== inputResolved && !filePath.startsWith(inputResolved + path.sep)) {
-    return null;
-  }
-  return { relativePath: path.relative(inputResolved, filePath).replace(/\\/g, "/") };
-}
 
 /**
  * Tiny placeholder book.html for no-input mode. The viewer's iframe needs a
@@ -74,18 +45,17 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 `;
 
 /**
- * Whether the incremental live-preview (shell + per-chapter splice) is active.
- * DEFAULT ON; opt out with PRINTMD_PREVIEW_INCREMENTAL=0 to fall back to the
- * direct book.html preview (CSS hot-swap + full reload on content).
+ * Whether the double-buffered preview shell is active. The historical env name
+ * is retained because users may already set it; chapter splicing is gone and
+ * every source change now performs a full-document pagination.
  */
 export function incrementalPreviewEnabled(): boolean {
   return process.env.PRINTMD_PREVIEW_INCREMENTAL !== "0";
 }
 
 /**
- * Shared preview render path — the full book and the single-chapter splice
- * document differ ONLY in which files render and whether chapters are wrapped.
- * renderChapters() does all the work (CSS, Paged.js script slot).
+ * Shared preview render path. renderChapters() does all Markdown, CSS, and
+ * Paged.js-slot work.
  *
  * Named `renderPreviewBook` (ARCH finding #53) to distinguish it from
  * build-runner.ts's `renderBook` — same name, different module, and a
@@ -114,10 +84,8 @@ export async function renderPreviewBook(
     wrapChapters: opts.wrapChapters,
     // ARCH finding #4: markdown-it-paged's typed, line-numbered author-mistake
     // warnings (env.layoutWarnings) used to be discarded here too — this is the
-    // ONE render path shared by the full book (generateAndWriteHtml) and the
-    // incremental per-chapter splice (renderChapterPreviewHtml), so wiring it
-    // here surfaces a marker mistake live in the preview terminal on both a
-    // full rebuild and a single-chapter edit.
+    // ONE preview render path, so wiring it here surfaces a marker mistake live
+    // in the terminal on both startup and every rebuild.
     onChapterWarnings: (file, warnings) => {
       for (const w of warnings) {
         warn(`  ${file}, line ${w.line}: ${w.message}`);
@@ -151,19 +119,9 @@ export async function renderPreviewBook(
  * different page boundaries than the PDF it built. Preview and build now take
  * their breaks from exactly the same rules.
  *
- * KNOWN RESIDUAL (predates this, was masked by the removed rule): if the first
- * source file's first element carries `break-before: page` (a `.page` marker,
- * or an `h1` in most themes), the `.pmd-chapter` wrapper makes Paged.js treat
- * that break as a real one instead of dropping it at the start of the flow, so
- * the preview leads with one blank page and every page NUMBER is one higher
- * than the build's. Page CONTENT and boundaries match; the offset does not.
- *
- * The `.pmd-chapter` wrappers stay (see `wrapChapters` in assemble.ts): they are
- * how the shell locates and splices a single edited chapter, and they carry no
- * break of their own. Without the forced break, neighbouring chapters routinely
- * share a page — preview-shell.js already handles that (see `tagPages`,
- * `pagesFor` and the shared-page branch of `spliceChapter`), at the cost of a
- * content-correct-but-un-reflowed neighbour page until the next full reload.
+ * Chapter identity is attached to existing source-mapped blocks. No wrapper or
+ * preview-only CSS is emitted, so selectors see exactly the same document tree
+ * as the build.
  */
 export function injectPreviewScripts(html: string): string {
   const iface =
@@ -192,153 +150,17 @@ export async function generateAndWriteHtml(
     await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML, "utf-8");
     return;
   }
-  const incremental = incrementalPreviewEnabled();
   const html = await renderPreviewBook(inputPath, config, {
     files: config.source?.files ?? null,
-    wrapChapters: incremental,
+    // Source identity is metadata on existing blocks and is required by both
+    // the shell and direct-book HMR paths. It never changes document structure.
+    wrapChapters: true,
   });
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
     injectPreviewScripts(html),
     "utf-8"
   );
-}
-
-/**
- * Render a SINGLE source file as a standalone, paginatable preview document
- * (same CSS/plugins/scripts as the full book, chapter-wrapped). The incremental
- * shell loads this in a hidden iframe, paginates just this chapter, and splices
- * its pages into the live view — so an edit re-paginates one chapter
- * (~hundreds of ms) instead of the whole document (~seconds).
- *
- * This document holds exactly ONE chapter, so there is nothing to isolate it
- * from and no break rule to inject — it paginates on the project's own rules,
- * same as the full book.
- */
-export async function renderChapterPreviewHtml(
-  inputPath: string,
-  file: string,
-  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
-): Promise<string> {
-  const html = await renderPreviewBook(inputPath, config, { files: [file], wrapChapters: true });
-  return injectPreviewScripts(html);
-}
-
-/**
- * One changed file, described relative to the project root — NOT a temp-dir
- * mirror destination. Since the project is served in place (http-server.ts
- * reads straight from `state.currentInputPath`), a change needs no copy step
- * and therefore carries no "did the copy actually land" flag the way the old
- * `ChangedDest.mirrored` did; the file described here IS the served file.
- */
-export interface ChangedFile {
-  /** Forward-slash path relative to the project root (broadcast to clients). */
-  relativePath: string;
-  /** Lower-cased extension of the changed file (e.g. ".css"). */
-  ext: string;
-  /** The chokidar event that reported the change (change, unlink, …). */
-  event: string;
-}
-
-/**
- * Describe every changed file relative to the project root. Pure and
- * synchronous — no fs access at all — because with serve-in-place there is
- * nothing to copy: `book.html` is re-rendered straight from the project
- * (the source of truth) and every other path is served directly from it, so
- * this step is now just naming the change for the broadcast decision below,
- * not moving any bytes. A change that doesn't resolve under `inputResolved`
- * is dropped (defensively — there is exactly one watch root today, see
- * `createFileWatcher`) rather than broadcast with a meaningless path.
- */
-export function describeChanges(
-  changes: [filePath: string, event: string][],
-  inputResolved: string
-): ChangedFile[] {
-  const files: ChangedFile[] = [];
-  for (const [changedPath, event] of changes) {
-    const described = describeChange(changedPath, inputResolved);
-    if (!described) continue;
-    files.push({
-      relativePath: described.relativePath,
-      ext: path.extname(changedPath).toLowerCase(),
-      event,
-    });
-  }
-  return files;
-}
-
-/**
- * CSS hot-swap fast path: a stylesheet edit doesn't change content flow, so
- * the client can re-fetch JUST that file (over HTTP, from wherever it
- * actually lives — serve-in-place means the project's own CSS files are
- * already reachable at their authored relative path, see http-server.ts) —
- * no re-pagination, no reload. Scroll position is preserved and the new
- * styles apply on the next frame. Returns the stylesheet paths to hot-swap,
- * or null unless EVERY change in the window resolved to a still-existing
- * stylesheet.
- *
- * A DELETED stylesheet is excluded on purpose: appending a fresh `<link>` to
- * a path that now 404s would leave the live view broken with nothing
- * downstream to correct it (unlike a deleted markdown chapter, which
- * full-reloads from a freshly re-rendered book.html). That case — and any
- * mixed window — falls through to `decideBroadcast`'s full-reload path below.
- *
- * NOTE: book.html's own `<style data-project-css>` block is re-rendered
- * unconditionally by the caller regardless of this fast path (CSS is now
- * INLINED there, unlike the old copied-CSS-file model where book.html never
- * needed to change for a pure style edit) — this function only decides
- * whether the LIVE view can skip a reload while that happens.
- * (Geometry-affecting CSS like @page size won't re-flow page boxes until a
- * content change triggers a full rebuild — acceptable for live tweaks.)
- */
-export function cssHotSwapPaths(changedFiles: ChangedFile[], changeCount: number): string[] | null {
-  if (
-    changedFiles.length === changeCount &&
-    changedFiles.length > 0 &&
-    changedFiles.every((f) => f.ext === '.css' && f.event !== 'unlink')
-  ) {
-    return changedFiles.map((f) => f.relativePath);
-  }
-  return null;
-}
-
-/** How a content change is pushed to connected preview clients. */
-export type BroadcastDecision =
-  | { kind: 'chapter-splice'; chapterId: string; relativePath: string }
-  | { kind: 'full-reload' };
-
-/**
- * Incremental: EXACTLY ONE markdown file changed (and still exists) →
- * splice just that chapter in the live shell (re-paginate one chapter,
- * not the whole doc). Any multi-file change — restore, sync merge —
- * must full-reload instead: a single-chapter splice can only refresh
- * one chapter and would leave the others stale.
- *
- * The chapterId is the CANONICAL chapter id — must equal the build's
- * data-chapter-src for the same file (see lib/markdown/chapter-id.ts)
- * or the shell can't find the chapter and degrades to a full swap.
- */
-export function decideBroadcast(
-  dests: ChangedFile[],
-  changeCount: number,
-  incremental: boolean
-): BroadcastDecision {
-  const only = dests.length === 1 ? dests[0]! : null;
-  if (
-    incremental &&
-    changeCount === 1 &&
-    only &&
-    only.ext === '.md' &&
-    only.event !== 'unlink' &&
-    only.event !== 'unlinkDir'
-  ) {
-    return {
-      kind: 'chapter-splice',
-      chapterId: canonicalChapterId(only.relativePath),
-      relativePath: only.relativePath,
-    };
-  }
-  return { kind: 'full-reload' };
 }
 
 /**
@@ -378,44 +200,274 @@ export function isDotPathUnderRoot(candidatePath: string, root: string): boolean
 }
 
 /**
- * Create and configure a file watcher for the project's input directory.
+ * Whether the watcher should ignore a path.
  *
- * Watches ONLY the project directory. The old external-asset-root watching
- * (a sibling `../_shared` directory mirrored under its own name in the temp
- * dir) went away with `copyAssets` and the manifest's `source.assets` field
- * it depended on — there is no longer a place to declare a shared directory
- * outside the project, and nothing to mirror it INTO even if there were
- * (serve-in-place means the project's own files need no mirroring either;
- * see http-server.ts).
+ * IN-PROJECT paths get the dotfile rule ({@link isDotPathUnderRoot}) — a
+ * project's own `.git/`, `.DS_Store`, editor swap files, and so on are noise.
+ *
+ * A path OUTSIDE the project is only ever seen because it is a DECLARED
+ * external dependency the manifest named explicitly (see
+ * {@link externalWatchTargets}); it is never ignored. Running the dotfile rule
+ * on it would test every ANCESTOR segment of its absolute path — so a shared
+ * foundation checked out under, say, `~/.local/share/books/shared/` would be
+ * silently dropped, which is the exact failure mode the in-project rule was
+ * rewritten to avoid.
+ */
+export function isIgnoredWatchPath(candidatePath: string, projectRoot: string): boolean {
+  const normalizedRoot = projectRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedPath = candidatePath.replace(/\\/g, "/");
+  const inProject =
+    normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + "/");
+  return inProject ? isDotPathUnderRoot(candidatePath, projectRoot) : false;
+}
+
+/**
+ * External watcher roots may be broader than one dependency when a declared
+ * file or its parent directory does not exist yet. Traverse only paths that are
+ * either a desired file or one of its ancestors; this keeps a nearest-existing
+ * ancestor watch from scanning unrelated sibling trees such as `.git/`.
+ */
+export function isExternalWatchCandidate(
+  candidatePath: string,
+  targets: Iterable<string>
+): boolean {
+  const candidate = path.resolve(candidatePath);
+  for (const rawTarget of targets) {
+    const target = path.resolve(rawTarget);
+    const rel = path.relative(candidate, target);
+    if (
+      rel === "" ||
+      (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
+    ) return true;
+  }
+  return false;
+}
+
+async function nearestExistingDirectory(start: string): Promise<string> {
+  let current = path.resolve(start);
+  while (true) {
+    try {
+      if ((await fsp.stat(current)).isDirectory()) return current;
+    } catch {
+      // Walk upward until chokidar has a real directory it can subscribe to.
+    }
+    const parent = path.dirname(current);
+    if (parent === current) return current;
+    current = parent;
+  }
+}
+
+/** Directories chokidar must subscribe to for exact external file targets. */
+export async function externalWatchRoots(targets: Iterable<string>): Promise<string[]> {
+  const roots = new Set<string>();
+  for (const target of targets) {
+    roots.add(await nearestExistingDirectory(path.dirname(path.resolve(target))));
+  }
+  return [...roots];
+}
+
+/**
+ * Everything the book reads from OUTSIDE its own folder — absolute paths,
+ * deduped. The project watch root covers in-book files; this is what it can't
+ * see.
+ *
+ * A multi-book repository keeps its shared foundation next to the books
+ * (`shared/styles/publisher-components.css`, `shared/plugins/components.js`)
+ * and each book's manifest points at it directly: a `styles:` entry is a path
+ * to READ (asset-inline.ts inlines it; nothing is staged or copied) and an
+ * authored plugin `path:` resolves against the manifest directory. Both may sit
+ * above the book root.
+ *
+ * The stylesheet side is the DEPENDENCY CLOSURE, not just the declared entry —
+ * `collectStyleDependencies` follows each active stylesheet's `@import` chain
+ * and every local `url()` it references. A shared theme's
+ * `url("../../fonts/Publisher.woff2")` is a file a design tool can replace
+ * without touching one line of CSS; watching only `theme.css` would leave the
+ * preview stale after that swap with nothing downstream to correct it. The
+ * closure is computed from ALL active stylesheets, including in-book ones,
+ * because a local stylesheet can reference a shared font just as easily — only
+ * the results that land outside the book are added here.
+ *
+ * Watching is per-FILE, never per-directory, so the set stays exact and cannot
+ * accidentally pull a large sibling tree into the watcher.
+ */
+export async function externalWatchTargets(
+  projectDir: string,
+  config: { styles?: string[]; plugins?: ResolvedPluginConfig[] }
+): Promise<string[]> {
+  const root = path.resolve(projectDir);
+  let canonicalRoot = root;
+  try {
+    canonicalRoot = await fsp.realpath(root);
+  } catch {
+    // The preview root is validated elsewhere; retain the resolved spelling if
+    // it disappears during a restart race.
+  }
+  const styles = await resolveActiveStyles(root, config.styles);
+  const candidates = [
+    ...(await collectStyleDependencies(root, styles)),
+    ...(config.plugins ?? [])
+      .map((p) => p.path)
+      .filter((p): p is string => !!p)
+      .map((p) => path.resolve(root, p)),
+  ];
+
+  const external = new Set<string>();
+  for (const abs of candidates) {
+    const authoredPath = path.resolve(abs);
+    const authoredRel = path.relative(root, authoredPath);
+    if (
+      authoredRel !== "" &&
+      (authoredRel === ".." ||
+        authoredRel.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(authoredRel))
+    ) {
+      // Keep the manifest-authored path so replacing or retargeting a symlink is
+      // observable, not only edits to its current referent.
+      external.add(authoredPath);
+    }
+
+    let canonicalPath = authoredPath;
+    try {
+      // Chokidar reports the filesystem's canonical casing. Resolve existing
+      // targets too so exact event filtering works on case-insensitive filesystems
+      // and direct edits to a symlink's referent are observed.
+      canonicalPath = await fsp.realpath(canonicalPath);
+    } catch {
+      // Missing targets retain their authored path so ancestor watching can
+      // observe their later creation.
+    }
+    const rel = path.relative(canonicalRoot, canonicalPath);
+    // Inside the project (or the project itself) — already covered by the
+    // project watch root.
+    if (
+      rel === "" ||
+      (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
+    ) continue;
+    external.add(canonicalPath);
+  }
+  return [...external];
+}
+
+/**
+ * Create and configure a file watcher for the project's input directory plus
+ * the book's declared external dependencies (see {@link externalWatchTargets}).
+ *
+ * Nothing is mirrored anywhere: the old external-asset-root watching (a sibling
+ * `../_shared` directory copied under its own name into the temp dir) went away
+ * with `copyAssets` and the manifest's `source.assets` field it depended on.
+ * The project is served straight from disk and stylesheets are inlined at
+ * render time, so an external dependency needs watching, not staging.
  */
 export function createFileWatcher(state: ServerState): FSWatcher {
   const inputResolved = path.resolve(state.currentInputPath);
-
   const watcher = watch(inputResolved, {
     persistent: true,
     ignoreInitial: true,
-    ignored: (candidatePath: string) => isDotPathUnderRoot(candidatePath, inputResolved),
+    ignored: (candidatePath: string) => isIgnoredWatchPath(candidatePath, inputResolved),
     awaitWriteFinish: {
       stabilityThreshold: 100,
       pollInterval: 50,
     },
   });
+  let desiredExternals = new Set<string>();
+  const externalWatcher = watch([], {
+    persistent: true,
+    // Initial adds are observed so a missing target created while its new watch
+    // root is still scanning cannot fall through an ignoreInitial race.
+    ignoreInitial: false,
+    ignored: (candidatePath: string) =>
+      !isExternalWatchCandidate(candidatePath, desiredExternals),
+    awaitWriteFinish: {
+      stabilityThreshold: 100,
+      pollInterval: 50,
+    },
+  });
+  let closed = false;
 
-  // Paths changed during the current debounce window. A single edit fires one
-  // event, but multi-file disk rewrites (version restore, sync merge, bulk
-  // save) fire a burst — the rebuild must see ALL of them, not just the last
-  // event's path, or it splices one (possibly wrong) chapter and leaves the
-  // rest of the live preview stale.
+  // Paths changed during the current debounce window. Multi-file rewrites are
+  // coalesced into one full-document rebuild.
   const pendingChanges = new Map<string, string>(); // filePath -> last event
+  const suppressInitialExternalAdds = new Set<string>();
 
   /** (Re-)arm the debounced rebuild timer. */
   function scheduleRebuild(): void {
+    if (closed) return;
     if (state.rebuildTimer) clearTimeout(state.rebuildTimer);
     state.rebuildTimer = setTimeout(runRebuild, DEBOUNCE.FILE_WATCH);
   }
 
+  function recordChange(event: string, filePath: string): void {
+    if (closed) return;
+    debug(`File ${event}: ${filePath}`);
+    pendingChanges.set(path.resolve(filePath), event);
+    scheduleRebuild();
+  }
+
+  watcher.on('all', recordChange);
+  externalWatcher.on('all', (event, filePath) => {
+    const target = path.resolve(filePath);
+    if (!desiredExternals.has(target)) return;
+    if (event === 'add' && suppressInitialExternalAdds.delete(target)) return;
+    recordChange(event, target);
+  });
+
+  /**
+   * Declared external dependencies currently under watch. A separate watcher
+   * owns them so watching a nearest existing ancestor can never unwatch or
+   * duplicate the book root. Re-synced before each render.
+   */
+  let watchedExternalRoots = new Set<string>();
+  let syncQueue: Promise<void> = Promise.resolve();
+  function syncExternalWatches(): Promise<void> {
+    syncQueue = syncQueue.then(runSyncExternalWatches, runSyncExternalWatches);
+    return syncQueue;
+  }
+  async function runSyncExternalWatches(): Promise<void> {
+    if (closed) return;
+    let nextTargets: Set<string>;
+    try {
+      nextTargets = new Set(
+        (await externalWatchTargets(inputResolved, state.config)).map((target) => path.resolve(target))
+      );
+    } catch (err) {
+      debug(`Could not resolve external watch targets: ${err}`);
+      return;
+    }
+    if (closed) return;
+
+    const previousTargets = desiredExternals;
+    // The ignored callback reads this set while add() scans a new root.
+    desiredExternals = nextTargets;
+    const nextRoots = new Set(await externalWatchRoots(nextTargets));
+
+    for (const root of watchedExternalRoots) {
+      if (!nextRoots.has(root)) await externalWatcher.unwatch(root);
+    }
+    for (const target of nextTargets) {
+      if (desiredExternals.has(target)) {
+        try {
+          if ((await fsp.stat(target)).isFile()) {
+            suppressInitialExternalAdds.add(target);
+            setTimeout(() => suppressInitialExternalAdds.delete(target), 1000);
+          }
+        } catch {
+          suppressInitialExternalAdds.delete(target);
+        }
+      }
+    }
+    for (const root of nextRoots) {
+      if (!watchedExternalRoots.has(root)) externalWatcher.add(root);
+    }
+    for (const target of nextTargets) {
+      if (!previousTargets.has(target)) info(`Watching shared dependency: ${target}`);
+    }
+    watchedExternalRoots = nextRoots;
+  }
+  void syncExternalWatches();
+
   async function runRebuild(): Promise<void> {
-      if (state.isRebuilding) return;
+      if (closed || state.isRebuilding) return;
 
       // Snapshot + clear AFTER the isRebuilding guard so changes skipped by an
       // in-flight rebuild stay pending until the rebuild's finally re-arms the
@@ -425,68 +477,57 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       if (changes.length === 0) return;
 
       state.isRebuilding = true;
+      let resolveInFlight!: () => void;
+      const inFlight = new Promise<void>((resolve) => { resolveInFlight = resolve; });
+      state.rebuildPromise = inFlight;
       try {
         info('Regenerating preview...');
 
-        const changedFiles = describeChanges(changes, inputResolved);
-
-        // Re-render book.html UNCONDITIONALLY, before deciding how to notify
-        // clients. This runs even for a CSS-only burst, which the old
-        // mirror-based version deliberately skipped (it returned right after
-        // the hot-swap broadcast below) — that was correct there because CSS
-        // was a copied file `book.html` merely <link>ed to, so a style edit
-        // never touched book.html itself. Now CSS is INLINED into book.html's
-        // `<style data-project-css>` block at render time (asset-inline.ts),
-        // so skipping the re-render would leave the persisted book.html
-        // holding stale styles until some LATER markdown edit happened to
-        // force one. Re-rendering here keeps a hard reload or a fresh
-        // `/__chapter` splice always current, independent of the fast paths
-        // below (which only affect how the LIVE view is notified).
-        const manifest = await loadManifest(state.currentInputPath);
+        // Re-render book.html for EVERY burst, including a CSS-only one. CSS is
+        // INLINED into book.html's `<style data-project-css>` block at render
+        // time (asset-inline.ts), so a style edit really does change book.html
+        // — skipping the re-render would leave the persisted file holding stale
+        // styles until some later markdown edit happened to force one.
+        const manifest = await loadManifest(inputResolved);
+        if (closed) return;
         const updatedConfig = resolveConfig({}, manifest);
         state.config = updatedConfig;
-        await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
+        // Subscribe from the new manifest BEFORE rendering it. A newly declared
+        // shared file may not exist yet, which correctly makes this render fail;
+        // watching the missing path first lets its later creation recover the
+        // preview without another manifest edit or a server restart.
+        await syncExternalWatches();
+        if (closed) return;
+        await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig);
+        if (closed) return;
 
-        // Stylesheet-only burst → hot-swap the live view immediately (no
-        // reload, no re-pagination); book.html above is already current.
-        const cssPaths = cssHotSwapPaths(changedFiles, changes.length);
-        if (cssPaths) {
-          for (const p of cssPaths) {
-            state.previewServer?.broadcastCssUpdate(p);
-            info(`CSS hot-swapped: ${p}`);
-          }
-          return;
-        }
-
-        const decision = decideBroadcast(changedFiles, changes.length, incrementalPreviewEnabled());
-        if (decision.kind === 'chapter-splice') {
-          state.previewServer?.broadcastContentUpdate(decision.chapterId);
-          info(`Chapter updated: ${decision.relativePath}`);
-        } else {
-          // Tell every connected HMR client to reload.
-          state.previewServer?.broadcastReload();
-          info(
-            changes.length > 1
-              ? `Preview updated (${changes.length} files changed — full reload)`
-              : 'Preview updated'
-          );
-        }
+        state.previewServer?.broadcastReload();
+        info(
+          changes.length > 1
+            ? `Preview updated (${changes.length} files changed — full reload)`
+            : 'Preview updated'
+        );
       } catch (err) {
         logError('Failed to regenerate preview:', err);
       } finally {
         state.isRebuilding = false;
+        resolveInFlight();
+        if (state.rebuildPromise === inFlight) state.rebuildPromise = null;
         // Changes that arrived DURING this rebuild had their debounce timer
         // fire into the isRebuilding guard above — with no further fs event
         // they would be orphaned forever. Re-arm the timer so they rebuild.
-        if (pendingChanges.size > 0) scheduleRebuild();
+        if (!closed && pendingChanges.size > 0) scheduleRebuild();
       }
   }
 
-  watcher.on('all', (event, filePath) => {
-    debug(`File ${event}: ${filePath}`);
-    pendingChanges.set(filePath, event);
-    scheduleRebuild();
-  });
+  const closeBookWatcher = watcher.close.bind(watcher);
+  watcher.close = async () => {
+    closed = true;
+    await syncQueue.catch(() => {});
+    await state.rebuildPromise?.catch(() => {});
+    await externalWatcher.close();
+    await closeBookWatcher();
+  };
 
   info('Watching for file changes...');
   return watcher;
@@ -514,8 +555,22 @@ export async function stopFileWatcher(state: ServerState): Promise<void> {
     clearTimeout(state.rebuildTimer);
     state.rebuildTimer = null;
   }
-  if (state.currentWatcher) {
-    await state.currentWatcher.close();
-    state.currentWatcher = null;
+  // Mark the watcher closed before waiting for an active render. Its close
+  // override flips the watcher-local `closed` flag synchronously, preventing
+  // new events and follow-up rebuilds even if shutdown's outer timeout expires.
+  const watcher = state.currentWatcher;
+  state.currentWatcher = null;
+  let closeError: unknown;
+  const closePromise = watcher?.close().catch((err) => { closeError = err; });
+
+  // restartPreview changes currentInputPath/config only after this returns. Let
+  // an active render finish against its original project so old and new projects
+  // can never write the same book.html.
+  await state.rebuildPromise?.catch(() => {});
+  await closePromise;
+  if (state.rebuildTimer) {
+    clearTimeout(state.rebuildTimer);
+    state.rebuildTimer = null;
   }
+  if (closeError) throw closeError;
 }

@@ -236,8 +236,8 @@ describe('createPreviewServer', () => {
     expect(await res.text()).toBe('hello world');
   });
 
-  test('serves the preview shell for "/" by default (incremental preview on)', async () => {
-    // With incremental preview enabled (the default), "/" returns the thin
+  test('serves the double-buffered preview shell for "/" by default', async () => {
+    // With the preview shell enabled (the default), "/" returns the thin
     // shell loader — it embeds book.html in an iframe (?pmdshell=1) and owns
     // HMR via preview-shell.js (flicker-free double-buffered reloads, the same
     // iframe pattern the Electron viewer uses). It does NOT inline the book.
@@ -280,6 +280,8 @@ describe('createPreviewServer', () => {
     expect(body).toContain('<h1>Hi</h1>');
     expect(body).toContain('__print-md-hmr');
     expect(body).toContain('full-reload');
+    expect(body).toContain("closest('[data-chapter-src]')");
+    expect(body).toContain('chapterId === a.chapter');
   });
 
   test('returns 404 for missing file', async () => {
@@ -423,7 +425,7 @@ describe('createPreviewServer', () => {
   });
 });
 
-describe('/__chapter route', () => {
+describe('removed /__chapter route', () => {
   let workDir: string;
   let server: PreviewServer | null;
   let port: number;
@@ -442,10 +444,7 @@ describe('/__chapter route', () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  test('renders an in-project chapter', async () => {
-    // `currentInputPath` (the served project/markdown source root) is
-    // deliberately a SUBDIRECTORY of workDir, distinct from `tempDir` — the
-    // route confines `file` to currentInputPath, not tempDir.
+  test('does not expose standalone chapter rendering', async () => {
     const projectDir = join(workDir, 'project');
     await mkdir(projectDir, { recursive: true });
     await writeFile(join(projectDir, 'chapter1.md'), '# Hello Chapter');
@@ -456,8 +455,8 @@ describe('/__chapter route', () => {
     const res = await fetch(
       `http://localhost:${port}/__chapter?file=${encodeURIComponent('chapter1.md')}`
     );
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain('Hello Chapter');
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain('Hello Chapter');
   });
 
   test('rejects a path-traversal file param that escapes the project root', async () => {
@@ -474,9 +473,7 @@ describe('/__chapter route', () => {
     const res = await fetch(
       `http://localhost:${port}/__chapter?file=${encodeURIComponent('../outside/secret.md')}`
     );
-    // Never 200, and the outside file's content must never reach the client
-    // — a traversal that "succeeds" as a 500 (e.g. some other read error)
-    // but still leaks the body would be just as bad as a 200.
+    // The retired route must never become a path traversal surface again.
     expect(res.status).not.toBe(200);
     expect([400, 404]).toContain(res.status);
     const body = await res.text();
@@ -484,13 +481,8 @@ describe('/__chapter route', () => {
   });
 
   test('rejects a backslash-based path-traversal file param', async () => {
-    // The raw `file` query param is guarded with `resolveWithinRoot`, but the
-    // actual read sink (assembleBookHtml -> canonicalChapterId) normalizes
-    // `\` to `/` BEFORE resolving against the project root. `path.resolve`
-    // on POSIX treats `\` as a literal filename character, so a raw guard
-    // check on `..\\..\\secret.md` passes containment while the sink's
-    // canonicalized form (`../../secret.md`) escapes the root. The guard
-    // must run on the same canonicalized string the sink reads.
+    // Keep the Windows-spelled traversal regression covered even though the
+    // endpoint no longer exists.
     const projectDir = join(workDir, 'project');
     const outsideDir = join(workDir, 'outside');
     await mkdir(projectDir, { recursive: true });
