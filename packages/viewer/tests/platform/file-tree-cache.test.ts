@@ -2,33 +2,33 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
-  isSameOrWithin,
   invalidateDir,
   invalidateSubtree,
   collapseDir,
   renameExpanded,
 } from "../../src/lib/components/file-tree-cache";
+import { isPathAtOrUnder } from "../../src/lib/platform/paths";
 
-// ── isSameOrWithin ───────────────────────────────────────────────────────
+// ── containment (now the shared isPathAtOrUnder, not a local copy) ──────
 
-test("isSameOrWithin: the same path matches", () => {
-  expect(isSameOrWithin("/proj/chapters", "/proj/chapters")).toBe(true);
+test("isPathAtOrUnder: the same path matches", () => {
+  expect(isPathAtOrUnder("/proj/chapters", "/proj/chapters")).toBe(true);
 });
 
-test("isSameOrWithin: a nested path matches", () => {
-  expect(isSameOrWithin("/proj/chapters/one.md", "/proj/chapters")).toBe(true);
-  expect(isSameOrWithin("/proj/chapters/sub/deep.md", "/proj/chapters")).toBe(true);
+test("isPathAtOrUnder: a nested path matches", () => {
+  expect(isPathAtOrUnder("/proj/chapters/one.md", "/proj/chapters")).toBe(true);
+  expect(isPathAtOrUnder("/proj/chapters/sub/deep.md", "/proj/chapters")).toBe(true);
 });
 
-test("isSameOrWithin: a sibling with a shared string prefix does NOT match", () => {
+test("isPathAtOrUnder: a sibling with a shared string prefix does NOT match", () => {
   // The exact bug class the fs-guard containment check exists to avoid —
   // "/proj/chapters2" is not inside "/proj/chapters".
-  expect(isSameOrWithin("/proj/chapters2/one.md", "/proj/chapters")).toBe(false);
-  expect(isSameOrWithin("/proj/chapters2", "/proj/chapters")).toBe(false);
+  expect(isPathAtOrUnder("/proj/chapters2/one.md", "/proj/chapters")).toBe(false);
+  expect(isPathAtOrUnder("/proj/chapters2", "/proj/chapters")).toBe(false);
 });
 
-test("isSameOrWithin: an unrelated path does not match", () => {
-  expect(isSameOrWithin("/proj/styles/book.css", "/proj/chapters")).toBe(false);
+test("isPathAtOrUnder: an unrelated path does not match", () => {
+  expect(isPathAtOrUnder("/proj/styles/book.css", "/proj/chapters")).toBe(false);
 });
 
 // ── invalidateDir ────────────────────────────────────────────────────────
@@ -151,4 +151,11 @@ test("FileTree.svelte's commitRename captures wasExpanded BEFORE re-keying expan
   // The refetch decision reads the captured boolean, not the live Set, so it
   // can safely come after the re-key — but it must still exist in the block.
   expect(refetchIdx).toBeGreaterThan(renameExpandedIdx);
+});
+
+test("isPathAtOrUnder: a Windows child matches its backslash-separated parent", () => {
+  // The local copy this replaced appended only "/" when `dir` had no trailing
+  // separator, so on Windows the subtree's cached listings were never
+  // invalidated after a rename/delete.
+  expect(isPathAtOrUnder("C:\\Users\\proj\\chapters\\ch1.md", "C:\\Users\\proj")).toBe(true);
 });

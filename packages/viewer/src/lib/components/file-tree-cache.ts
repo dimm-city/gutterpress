@@ -18,14 +18,7 @@
  * host `api.fs.*` calls.
  */
 
-/** True if `path` IS `dir`, or is nested under it — never a bare string-prefix
- *  match (that would treat a sibling directory sharing a name prefix, e.g.
- *  `/proj/chapters2` against `/proj/chapters`, as "inside"). */
-export function isSameOrWithin(path: string, dir: string): boolean {
-  if (path === dir) return true;
-  const prefix = dir.endsWith("/") || dir.endsWith("\\") ? dir : `${dir}/`;
-  return path.startsWith(prefix);
-}
+import { isPathAtOrUnder } from "$lib/platform/paths";
 
 /** Drop exactly one directory's cached listing so its next expand refetches. */
 export function invalidateDir<T>(cache: Record<string, T>, dir: string): Record<string, T> {
@@ -42,7 +35,12 @@ export function invalidateDir<T>(cache: Record<string, T>, dir: string): Record<
  * for a path that no longer exists (delete) or has moved (rename).
  */
 export function invalidateSubtree<T>(cache: Record<string, T>, dir: string): Record<string, T> {
-  const keys = Object.keys(cache).filter((k) => isSameOrWithin(k, dir));
+  // `isPathAtOrUnder` (platform/paths.ts) is the single source of truth for this
+  // check. A local copy here appended only "/" when `dir` lacked a separator, so
+  // on Windows a backslash-separated child never matched its own parent and the
+  // subtree's cached listings survived a rename/delete — while the editor-buffer
+  // check in +page.svelte, which used the shared helper, correctly matched.
+  const keys = Object.keys(cache).filter((k) => isPathAtOrUnder(k, dir));
   if (keys.length === 0) return cache;
   const next = { ...cache };
   for (const k of keys) delete next[k];

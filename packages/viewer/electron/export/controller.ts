@@ -310,12 +310,16 @@ export class ExportController {
           state: "success",
           message: exportSession.outPath,
         });
+        // A viewer export is a one-file delivery, so runBuild reports these as
+        // null — book.html and the fingerprint stay in its work dir and are
+        // discarded. Normalise to `undefined` for this optional-field contract
+        // rather than handing the renderer paths that do not exist.
         return {
           exportId: exportSession.id,
           outDir: result.outDir,
-          htmlPath: result.htmlPath,
+          htmlPath: result.htmlPath ?? undefined,
           pdfPath: exportSession.outPath,
-          fingerprintPath: result.fingerprintPath,
+          fingerprintPath: result.fingerprintPath ?? undefined,
         };
       } catch (e: unknown) {
         if (exportSession.canceled || this.deps.isExportCanceledError(e)) {
