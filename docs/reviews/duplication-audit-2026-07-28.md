@@ -164,6 +164,15 @@ anything except in this repo's own `example`/`demos` folders — meaning the
 build's print-safety CSS gate was silently a no-op for an ordinary author's
 project.
 
+**Behaviour change, stated plainly:** the print-safety CSS gate now actually
+runs where it previously found nothing. A project whose stylesheet has
+print-safety violations will fail `print-md build` where the same build passed
+before — not because anything got stricter, but because the gate was never
+inspecting that stylesheet. Every example in this repo lints clean under the
+new resolution (verified), so nothing here needed fixing, but an existing
+project may surface violations on its first build after this change. That is
+the gate doing its job for the first time.
+
 ### The fix
 
 Extracted `resolveActiveMarkdownFiles` (`lib/markdown/index.ts`) out of
