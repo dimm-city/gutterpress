@@ -102,13 +102,16 @@ year). `format.ts` gained an optional `now` parameter (defaults to
 
 `packages/cli/src/lib/static-serve.ts`'s `STATIC_MIME` table (shared by the
 live preview server and the build's pagination/PDF-render server) was missing
-`.webp`/`.avif`, which `asset-inline.ts`'s `MIME_BY_EXT` (the inliner's own
-threshold table — deliberately a separate table, see below) already had. A
-WebP/AVIF image over the inliner's size threshold got copied as a real file
+`.webp`/`.avif`, which `asset-inline.ts`'s `MIME_BY_EXT` already had. A
+WebP/AVIF image over the inliner's size threshold (512KB, the point at which
+it's copied instead of embedded as a `data:` URI) got copied as a real file
 and then served as `application/octet-stream` by both servers. Added both
 entries; the file's header already documented this exact
 two-table-divergence class from a prior fix (finding #17) — extended the note
-to record this recurrence.
+to record this recurrence. `MIME_BY_EXT` and `STATIC_MIME` answer genuinely
+different questions (what Content-Type a `data:` URI needs vs. what
+Content-Type an HTTP response needs) and `asset-inline.ts` is out of scope for
+this PR, so this fix only touched `static-serve.ts`'s own table.
 
 ### 7. Two one-liners
 
