@@ -204,6 +204,17 @@ receive: `ctx.cssFiles` → `checks/source/stylelint.ts`; `ctx.markdownFiles` �
 `accessibility-alt-text.ts`, `heuristic/section-density.ts`. All still get
 absolute, readable paths — just the correctly-narrowed set.
 
+An unreadable configured stylesheet now FAILS lint rather than being skipped.
+`resolveActiveStyles` returns manifest `styles:` entries verbatim without an
+existence check (its discovery fallbacks ARE existence-checked), so an entry
+that cannot be read means the author named a file that is missing, is a
+directory, or cannot be opened. The read failure used to `continue` silently
+while the count had already been logged — `ok: true`, `filesLinted: 1`, nothing
+inspected. That is the same silent-green this section exists to remove, and
+`inlineStyles` already treats a missing stylesheet as a hard build error, so
+lint now agrees with the build instead of disagreeing quietly. `filesLinted`
+also counts what was actually read, not what was attempted.
+
 New tests pin the resolved sets against the build's own behavior:
 non-recursive root listing and unreferenced-theme exclusion
 (`validation-exec.test.ts`), the removed `.build`/`example` scaffolding no

@@ -12,7 +12,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { mkdtemp, rm, writeFile } from 'fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { UsageError } from './cli-args';
@@ -123,4 +123,60 @@ describe('runLint resolves the same active stylesheet the renderer would', () =>
       await rm(tmpDir, { recursive: true, force: true });
     }
   });
+});
+
+test("a configured stylesheet that does not exist FAILS lint instead of reporting success", async () => {
+  // resolveActiveStyles returns manifest `styles:` entries verbatim, without an
+  // existence check, so an unreadable entry here means the author named a file
+  // that isn't there. Skipping it silently returned ok:true having inspected
+  // nothing — the same silent-green this resolver change exists to remove.
+  const dir = await mkdtemp(join(tmpdir(), "pmd-lint-missing-"));
+  try {
+    await writeFile(
+      join(dir, "manifest.yaml"),
+      "title: Missing Sheet\nstyles:\n  - styles/gone.css\n",
+      "utf8",
+    );
+
+    const { runLint } = await import('./lint-runner');
+    const result = await runLint({ manifest: dir });
+    expect(result.ok).toBe(false);
+    expect(result.filesLinted).toBe(0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a configured stylesheet that is a DIRECTORY fails lint too", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pmd-lint-dir-"));
+  try {
+    await mkdir(join(dir, "styles", "book.css"), { recursive: true });
+    await writeFile(
+      join(dir, "manifest.yaml"),
+      "title: Dir Sheet\nstyles:\n  - styles/book.css\n",
+      "utf8",
+    );
+
+    const { runLint } = await import('./lint-runner');
+    const result = await runLint({ manifest: dir });
+    expect(result.ok).toBe(false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("filesLinted counts what was actually inspected", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "pmd-lint-count-"));
+  try {
+    await mkdir(join(dir, "styles"), { recursive: true });
+    await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");
+    await writeFile(join(dir, "manifest.yaml"), "title: Counted\n", "utf8");
+
+    const { runLint } = await import('./lint-runner');
+    const result = await runLint({ manifest: dir });
+    expect(result.ok).toBe(true);
+    expect(result.filesLinted).toBe(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

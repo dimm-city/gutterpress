@@ -59,13 +59,30 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   let errorCount = 0;
   let riskyCount = 0;
 
+  let linted = 0;
+
   for (const file of files) {
     let css: string;
     try {
       css = await readFile(file, "utf8");
-    } catch {
+    } catch (err) {
+      // An unreadable stylesheet FAILS lint rather than being skipped. These
+      // paths come from `resolveActiveStyles`, whose discovery fallbacks are
+      // existence-checked — so an unreadable entry means the manifest's
+      // `styles:` list (returned verbatim, style-resolver.ts:126) names a file
+      // that is missing, is a directory, or cannot be opened. Skipping it
+      // silently reported `ok: true` having inspected nothing, which is the
+      // same silent-green this resolver change exists to remove; `inlineStyles`
+      // already treats a missing stylesheet as a hard build error, so lint
+      // agrees with the build instead of disagreeing quietly.
+      log.error(`  ${file}`);
+      log.error(
+        `    cannot read stylesheet: ${err instanceof Error ? err.message : String(err)}`
+      );
+      errorCount++;
       continue;
     }
+    linted++;
     const warnings = checkCss(css, file);
     const errors = warnings.filter((w) => w.severity === "error");
     riskyCount += warnings.filter((w) => w.rule === ruleRiskyProps).length;
@@ -81,7 +98,7 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   if (errorCount > 0) {
     log.error("CSS lint errors found");
-    return { ok: false, riskyCount, filesLinted: files.length };
+    return { ok: false, riskyCount, filesLinted: linted };
   }
 
   if (riskyCount > 0) {
@@ -95,5 +112,5 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     log.success("CSS lint passed");
   }
 
-  return { ok: true, riskyCount, filesLinted: files.length };
+  return { ok: true, riskyCount, filesLinted: linted };
 }
