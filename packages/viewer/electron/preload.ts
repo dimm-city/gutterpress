@@ -70,31 +70,13 @@ interface CreateProjectResult {
   versionHistoryError?: string;
 }
 
-// plugin:*, theme:*, project:listStyles types removed — migrated to server routes (Phase 2E).
-
-interface StyleToken {
-  name: string;
-  value: string;
-  kind: "color" | "length" | "text";
-  label: string;
-  number?: number;
-  unit?: string;
-}
-
-interface RecentFolderEntry {
-  path: string;
-  title: string;
-}
-
-interface FavoriteEntry {
-  path: string;
-  title: string;
-}
-
-interface DiscoveredProject {
-  path: string;
-  title: string;
-}
+// plugin:*, theme:*, project:listStyles types removed — migrated to server
+// routes (Phase 2E). This block used to also declare module-local
+// `StyleToken`/`RecentFolderEntry`/`FavoriteEntry`/`DiscoveredProject`
+// interfaces left behind by that migration and never referenced anywhere in
+// this file — the real shapes live in src/lib/platform/dtos.ts. Removed in
+// the 2026-07-28 duplication audit; see
+// docs/reviews/duplication-audit-2026-07-28.md.
 
 // Local version history (#13): `SnapshotEntry` / `RestoreVersionResult` /
 // `ProjectClassification` are defined in `src/lib/platform/shared-types.ts`

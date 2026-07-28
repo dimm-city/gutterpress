@@ -4,7 +4,6 @@ import {
   closesPanelOnSelect,
   friendlySource,
   groupProblems,
-  MISSING_ASSETS_SOURCE,
   problemCounts,
   splitProblemMessage,
 } from "../../src/lib/problems";
@@ -61,12 +60,6 @@ test("groupProblems: same line sorts errors before warnings before infos", () =>
     "warning",
     "info",
   ]);
-});
-
-// M30: the missing-shared-asset-folder finding is a synthetic viewer source,
-// not a CLI check — it still needs a friendly label like every other source.
-test("friendlySource maps the missing-shared-assets synthetic source to 'Missing assets'", () => {
-  expect(friendlySource(MISSING_ASSETS_SOURCE)).toBe("Missing assets");
 });
 
 // M32: markdownlint's writer-first message format is "<description> (<code>)"

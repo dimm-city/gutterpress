@@ -11,7 +11,6 @@ import {
   remove,
   isDirectory,
   readDirectory,
-  copyDirectory,
   waitForFile,
 } from './file-utils.ts';
 import path from 'path';
@@ -137,65 +136,6 @@ describe('File Utilities', () => {
 
       expect(names).toEqual(['file1.txt', 'file2.txt', 'subdir']);
       expect(entries.every((e) => e.isFile() || e.isDirectory())).toBe(true);
-    });
-  });
-
-  describe('copyDirectory', () => {
-    test('copies directory and contents', async () => {
-      const srcDir = path.join(testDir, 'source');
-      const destDir = path.join(testDir, 'dest');
-
-      await mkdir(srcDir);
-      await writeFile(path.join(srcDir, 'file1.txt'), 'content1');
-      await writeFile(path.join(srcDir, 'file2.txt'), 'content2');
-      await mkdir(path.join(srcDir, 'subdir'));
-      await writeFile(path.join(srcDir, 'subdir', 'file3.txt'), 'content3');
-
-      await copyDirectory(srcDir, destDir);
-
-      expect(await fileExists(path.join(destDir, 'file1.txt'))).toBe(true);
-      expect(await fileExists(path.join(destDir, 'file2.txt'))).toBe(true);
-      expect(await fileExists(path.join(destDir, 'subdir', 'file3.txt'))).toBe(true);
-      expect(await readFile(path.join(destDir, 'file1.txt'))).toBe('content1');
-    });
-
-    test('throws error if source does not exist', async () => {
-      const srcDir = path.join(testDir, 'nonexistent');
-      const destDir = path.join(testDir, 'dest');
-
-      await expect(copyDirectory(srcDir, destDir)).rejects.toThrow(/does not exist/);
-    });
-
-    test('throws error if source is not a directory', async () => {
-      const srcFile = path.join(testDir, 'file.txt');
-      const destDir = path.join(testDir, 'dest');
-
-      await writeFile(srcFile, 'content');
-
-      await expect(copyDirectory(srcFile, destDir)).rejects.toThrow(/not a directory/);
-    });
-
-    test('throws BuildError listing failures when a file cannot be copied', async () => {
-      const srcDir = path.join(testDir, 'source');
-      const destDir = path.join(testDir, 'dest');
-
-      // A source file whose destination is blocked by a same-named directory,
-      // so fs.copyFile fails (EISDIR) and copyDirectory aggregates the failure.
-      await mkdir(srcDir);
-      await writeFile(path.join(srcDir, 'conflict.txt'), 'content');
-      await mkdir(path.join(destDir, 'conflict.txt'));
-
-      let caught: unknown;
-      try {
-        await copyDirectory(srcDir, destDir);
-      } catch (error) {
-        caught = error;
-      }
-
-      expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).name).toBe('BuildError');
-      expect((caught as Error).message).toMatch(/Failed to copy 1 file\(s\)/);
-      expect((caught as Error).message).toContain('conflict.txt');
     });
   });
 

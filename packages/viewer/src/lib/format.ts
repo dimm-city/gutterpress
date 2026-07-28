@@ -8,10 +8,16 @@
  * Coarse "time ago" rendering for a timestamp (ms since epoch), e.g. snapshot
  * times in the history panel. Rounds to the largest sensible unit and falls back
  * to a locale date once past two weeks. Single source of truth, shared across the
- * renderer.
+ * renderer — StatusBar.svelte's save-status popover used to hand-roll a second,
+ * differently-worded copy of this ("N minute(s) ago", no ≥14-day date fallback);
+ * consolidated onto this implementation in the 2026-07-28 duplication audit (see
+ * docs/reviews/duplication-audit-2026-07-28.md).
+ *
+ * @param now Reference "current" time (ms since epoch). Defaults to `Date.now()`;
+ * callers pass an explicit value only for deterministic tests.
  */
-export function relativeTime(ms: number): string {
-  const diff = Date.now() - ms;
+export function relativeTime(ms: number, now: number = Date.now()): string {
+  const diff = now - ms;
   const min = Math.round(diff / 60_000);
   if (min < 1) return "just now";
   if (min < 60) return `${min} min${min === 1 ? "" : "s"} ago`;

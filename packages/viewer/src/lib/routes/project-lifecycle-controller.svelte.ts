@@ -64,7 +64,6 @@ export interface ProjectLifecycleToast {
 export interface ProjectLifecyclePreviewResult {
   url: string;
   title: string | null;
-  missingSharedAssets?: string[];
 }
 
 /** Composed `ProjectSessionController` surface (the bits this controller drives/reads). */
@@ -154,12 +153,10 @@ export interface ProjectLifecycleDeps {
   toast: () => ProjectLifecycleToast | null;
   /** Clear stale problems/log-path state for the project a new open targets. */
   clearStaleProjectState: () => void;
-  /** Set the missing-shared-assets Problems rows + toast (M30). */
-  onMissingSharedAssets: (paths: string[]) => void;
   /**
    * The single page-local reset hook for state this controller does not own:
-   * the Problems panel (`problems`/`problemsError`/`missingAssetProblems`/
-   * `problemsOpen`), the editor pane (`editorOpen`/`previewHidden`), the
+   * the Problems panel (`problems`/`problemsError`/`problemsOpen`), the
+   * editor pane (`editorOpen`/`previewHidden`), the
    * editor buffer, the folder watcher, `pageNav`'s counters + edit mode, and
    * the crash-recovery scan state (`crashRecovery.reset()` and
    * `pendingRecoveryScanDir`). Called once from `resetWorkspace()` so every
@@ -365,8 +362,6 @@ export class ProjectLifecycleController {
         // async settings load / onSettingsChange sink can't overwrite it.
         d.setSplitRatioSetting(restored.splitPaneRatio);
       }
-      // M30: signal for the #1 cause of wrong fonts/styles.
-      d.onMissingSharedAssets(data.missingSharedAssets ?? []);
       // Crash-recovery offer (#44): deferred while the start screen is up so
       // the recovery dialog never opens under/over the landing.
       if (d.isLandingVisible()) d.setPendingRecoveryScanDir(targetDir);

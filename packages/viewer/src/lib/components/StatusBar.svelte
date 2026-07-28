@@ -18,6 +18,7 @@
   import BookSwitcher from "$lib/components/BookSwitcher.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
+  import { relativeTime } from "$lib/format";
   import { onMount } from "svelte";
   import type { ConflictFileInfo, SyncState } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
@@ -155,17 +156,6 @@
   let latestVersionAt = $state<number | null>(null);
   let versionsLoaded = $state(false);
   let versionsLoading = $state(false);
-
-  function relativeTime(ms: number, now: number): string {
-    const secs = Math.max(0, Math.round((now - ms) / 1000));
-    if (secs < 60) return "just now";
-    const mins = Math.round(secs / 60);
-    if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
-    const hours = Math.round(mins / 60);
-    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-    const dayCount = Math.round(hours / 24);
-    return `${dayCount} day${dayCount === 1 ? "" : "s"} ago`;
-  }
 
   let onThisComputerText = $derived.by((): string => {
     if (forceSaving || savePhase === "saving" || savePhase === "dirty") return "Saving…";

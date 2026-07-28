@@ -8,7 +8,7 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type { MarkdownFileLaunchEvent, RecoveryConfirmRequest } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
-  import { MISSING_ASSETS_SOURCE, problemCounts } from "$lib/problems";
+  import { problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
   import RecoveryOverlay from "$lib/components/RecoveryOverlay.svelte";
@@ -498,18 +498,7 @@
     clearStaleProjectState: () => {
       problems = [];
       problemsError = null;
-      missingAssetProblems = [];
       logFilePath = null;
-    },
-    onMissingSharedAssets: (missing) => {
-      missingAssetProblems = missing.map((path) => ({
-        severity: "warning",
-        message: `Shared asset folder not found — fonts/styles may be wrong: ${path}. Make sure the shared directory exists next to this project.`,
-        source: MISSING_ASSETS_SOURCE,
-      }));
-      if (missing.length > 0) {
-        toast?.info("Missing shared asset folder(s) — see Problems for details.");
-      }
     },
     resetExtras: () => {
       stopFolderWatch();
@@ -529,7 +518,6 @@
       pendingRecoveryScanDir = null;
       problems = [];
       problemsError = null;
-      missingAssetProblems = [];
       problemsOpen = false;
     },
   });
@@ -1481,15 +1469,7 @@
   // when the lint API call itself failed, so the panel can render a neutral
   // "we couldn't check" row instead of a false green all-clear.
   let problemsError = $state<string | null>(null);
-  // M30: missing shared-asset folders ("the #1 cause of wrong fonts/styles")
-  // used to be a single 5-second auto-dismissing toast that the Problems
-  // panel never heard about. Held separately from `problems` (which
-  // refreshProblems() wholesale-replaces on every rebuild) so these rows
-  // persist across rebuilds; cleared alongside `problems` whenever a project
-  // closes/switches.
-  let missingAssetProblems = $state<ProblemEntry[]>([]);
-  let allProblems = $derived([...missingAssetProblems, ...problems]);
-  let problemBadge = $derived(problemCounts(allProblems).badge);
+  let problemBadge = $derived(problemCounts(problems).badge);
 
   function refreshProblems() {
     if (!isDesktop() || !lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
@@ -2739,7 +2719,7 @@
     fileOpen={!!editorFilePath}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
-    problems={allProblems}
+    {problems}
     problemsLoading={problemsLoading}
     {problemsError}
     bind:problemsOpen={problemsOpen}

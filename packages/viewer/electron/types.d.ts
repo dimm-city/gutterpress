@@ -17,8 +17,6 @@
 import type {
   UpdaterEventPayload,
   AppSettings,
-  ProjectSource,
-  ProjectCapabilities,
   DeviceCodeInfo,
   RemoteConnection,
   RemoteRepository,
@@ -51,47 +49,14 @@ declare global {
     onEvent(cb: (event: UpdaterEvent) => void): () => void;
   }
 
-  // plugin:*, theme:*, project:listStyles types removed — migrated to server routes (Phase 2E).
-  interface StyleToken {
-    name: string;
-    value: string;
-    kind: "color" | "length" | "text";
-    label: string;
-    number?: number;
-    unit?: string;
-  }
-
-  /** Result of classifying an opened folder (#12). */
-  interface ProjectClassification {
-    source: ProjectSource;
-    capabilities: ProjectCapabilities;
-    hasManifest: boolean;
-  }
-
-  // ── Sync recovery seam (Foundation — §8 / ADR 0004) ──────────────────────
-  // Defined locally so the renderer never value-imports the lib.
-
-  interface RecoveryConfirmRequest {
-    requestId: string;
-    projectDir: string;
-    confirmation: {
-      repair: string;
-      risk: "none" | "low" | "medium" | "high";
-      summary: string;
-      backupZipPath: string;
-      willChangeLocalFiles: boolean;
-      willChangeGitMetadata: boolean;
-      willChangeRemote: boolean;
-      canBeUndoneFromBackup: boolean;
-    };
-  }
-
-  interface ConflictPreview {
-    mine: string;
-    theirs: string;
-    kind: "both-edited" | "you-deleted" | "online-deleted";
-    isBinary: boolean;
-  }
+  // plugin:*, theme:*, project:listStyles types removed — migrated to server
+  // routes (Phase 2E). This block used to also declare ambient `StyleToken`,
+  // `ProjectClassification`, `RecoveryConfirmRequest`, and `ConflictPreview`
+  // interfaces left behind by that and the later sync-recovery migration
+  // (§8 / ADR 0004) — none of them were ever referenced (every real call site
+  // imports its own copy from src/lib/platform/dtos.ts or contract.ts).
+  // Removed in the 2026-07-28 duplication audit; see
+  // docs/reviews/duplication-audit-2026-07-28.md.
 
   interface Window {
     electron?: {
@@ -158,7 +123,6 @@ declare global {
         port: number;
         input: string;
         title: string | null;
-        missingSharedAssets?: string[];
       }>;
       stopPreview(): Promise<{ stopped: boolean }>;
       cancelExport(exportId: string): Promise<{ canceled: boolean }>;

@@ -616,7 +616,7 @@
         class="image-input"
         type="text"
         readonly
-        value={imageSrc ? imageSrc.split(/[\\/]/).pop() : ""}
+        value={imageSrc ? basenameOf(imageSrc) : ""}
         placeholder="No file selected"
         aria-label="Selected image file"
       />
