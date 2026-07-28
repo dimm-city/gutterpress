@@ -299,14 +299,16 @@ Flattening is gone, so an href has exactly one source: the path the manifest nam
 
 The watcher had exactly one root — the book folder — so editing a shared stylesheet or a shared authored plugin in a multi-book repository never refreshed the preview.
 
-`externalWatchTargets` (`packages/cli/src/preview/file-watcher.ts`) now resolves the book's declared `styles:` and authored `plugins[].path` entries and adds each one that lands outside the book as an extra watch target. The set is re-synced after every rebuild, so a manifest edit that adds or drops a shared entry takes effect without restarting the preview. Only declared entries are watched, not their parent directories — a file reached only through an `@import` from a shared stylesheet is not watched individually.
+`externalWatchTargets` (`packages/cli/src/preview/file-watcher.ts`) now watches everything the book reads from outside its own folder. For plugins that is the authored `plugins[].path` entries; for CSS it is the full **dependency closure**, not just the declared entry — `collectStyleDependencies` (`packages/cli/src/lib/asset-inline.ts`) follows each active stylesheet's `@import` chain and every local `url()` it references, because a shared theme's font or ornament is a file a design tool can replace without touching one line of CSS. The closure is computed from all active stylesheets, including in-book ones (a local sheet can reference a shared face just as easily); only results landing outside the book are added, since the project root already covers the rest.
+
+Watching is per-file, never per-directory, so the set stays exact. It is re-synced after every rebuild, so a manifest edit that adds or drops a shared entry takes effect without restarting the preview.
 
 | Change | Action |
 |---|---|
 | Markdown listed in `source.files` | Rebuild; splice that chapter |
 | Top-level Markdown under implicit discovery | Rebuild; splice that chapter |
 | Any stylesheet, local or declared-shared | Rebuild and repaginate |
-| Font or image referenced by the book | Rebuild |
+| Font or image referenced by the book, local or shared | Rebuild |
 | Manifest | Reload configuration, re-sync watch targets, rebuild |
 | Configured authored local plugin, local or declared-shared | Reload plugin and rebuild |
 | Managed npm package changed by `plugin add` | Reload as required |

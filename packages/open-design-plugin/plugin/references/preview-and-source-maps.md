@@ -36,12 +36,15 @@ leading, spacing, custom properties, page geometry, columns, image sizing, and
 `break-*` rules all move page boundaries, so a restyled-but-unrepaginated view
 would show new styling on stale page boxes.
 
-The watcher also follows the book's **declared external dependencies**: a
-`styles:` entry or an authored plugin `path:` that resolves outside the book
-folder is watched too, so editing `shared/styles/components.css` in a multi-book
-repository refreshes the preview. Only the declared entries are watched — a file
-reached only through an `@import` from a shared stylesheet is not, so touch the
-declared entry (or any book file) to pick such a change up.
+The watcher also follows everything the book reads from **outside its own
+folder**: authored plugin paths, and each active stylesheet's full dependency
+closure — the sheet itself, its `@import` chain, and every local `url()` target.
+So editing `shared/styles/components.css` refreshes the preview, and so does
+replacing `shared/fonts/Publisher.woff2` without touching any CSS.
+
+One consequence worth knowing: a shared asset is watched because some stylesheet
+*references* it. Dropping a brand-new file into `shared/fonts/` changes nothing
+until a stylesheet points at it — which is the same edit that makes it matter.
 
 Practical consequence: after a design edit, **wait for the rebuild to land**
 before judging layout. If page counts or boundaries look stale, reload the

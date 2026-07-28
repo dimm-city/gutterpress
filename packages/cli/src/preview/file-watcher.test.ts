@@ -262,6 +262,82 @@ describe('externalWatchTargets', () => {
     }
   });
 
+  test('follows a shared stylesheet\'s url() and @import closure', async () => {
+    // Codex review on PR #129: a design tool can replace a shared FONT without
+    // touching one line of CSS. Watching only the declared theme.css would let
+    // that swap leave the "authoritative" preview stale forever.
+    const repo = await mkdtemp(join(tmpdir(), 'pmd-closure-'));
+    try {
+      const book = join(repo, 'books', 'core-book');
+      const shared = join(repo, 'shared');
+      await mkdirp(book, { recursive: true });
+      await mkdirp(join(shared, 'themes', 'publisher'), { recursive: true });
+      await mkdirp(join(shared, 'fonts'), { recursive: true });
+      await writeFile(join(shared, 'fonts', 'Publisher.woff2'), 'font-bytes');
+      await writeFile(join(shared, 'themes', 'publisher', 'palette.css'), ':root{--c:red}');
+      await writeFile(
+        join(shared, 'themes', 'publisher', 'theme.css'),
+        '@import "./palette.css";\n' +
+          '@font-face{font-family:P;src:url("../../fonts/Publisher.woff2")}\n',
+      );
+
+      const targets = await externalWatchTargets(book, {
+        styles: ['../../shared/themes/publisher/theme.css'],
+      });
+
+      expect(targets.sort()).toEqual(
+        [
+          join(shared, 'themes', 'publisher', 'theme.css'),
+          join(shared, 'themes', 'publisher', 'palette.css'),
+          join(shared, 'fonts', 'Publisher.woff2'),
+        ].sort(),
+      );
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('follows a LOCAL stylesheet out to a shared font', async () => {
+    // The closure is computed from every active stylesheet, not just the
+    // external ones: a book-local sheet can reference a shared face too.
+    const repo = await mkdtemp(join(tmpdir(), 'pmd-localref-'));
+    try {
+      const book = join(repo, 'books', 'core-book');
+      await mkdirp(join(book, 'styles'), { recursive: true });
+      await mkdirp(join(repo, 'shared', 'fonts'), { recursive: true });
+      await writeFile(join(repo, 'shared', 'fonts', 'Body.woff2'), 'font-bytes');
+      await writeFile(
+        join(book, 'styles', 'book.css'),
+        '@font-face{font-family:B;src:url("../../../shared/fonts/Body.woff2")}',
+      );
+
+      const targets = await externalWatchTargets(book, { styles: ['styles/book.css'] });
+
+      // The local sheet itself is covered by the project watch root; only the
+      // font escapes the book.
+      expect(targets).toEqual([join(repo, 'shared', 'fonts', 'Body.woff2')]);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test('a missing or unparseable stylesheet never throws', async () => {
+    // A watcher that throws stops watching everything; the build is what
+    // reports these properly.
+    const book = await mkdtemp(join(tmpdir(), 'pmd-bad-'));
+    try {
+      await mkdirp(join(book, 'styles'), { recursive: true });
+      await writeFile(join(book, 'styles', 'broken.css'), 'body { color: ');
+      expect(
+        await externalWatchTargets(book, {
+          styles: ['styles/broken.css', 'styles/does-not-exist.css'],
+        }),
+      ).toEqual([]);
+    } finally {
+      await rm(book, { recursive: true, force: true });
+    }
+  });
+
   test('returns nothing for a self-contained book', async () => {
     const book = await mkdtemp(join(tmpdir(), 'pmd-book-'));
     try {
@@ -604,6 +680,46 @@ describe('createFileWatcher', () => {
       await watcher.close();
       await rm(repo, { recursive: true, force: true });
       await rm(sharedTempDir, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  test('replacing a shared font referenced only by CSS rebuilds the preview', async () => {
+    // The font is never named by the manifest — it is reached through the
+    // shared theme's url(). Swapping the file must still repaginate.
+    const repo = await mkdtemp(join(tmpdir(), 'print-md-test-font-'));
+    const book = join(repo, 'books', 'core-book');
+    const fontPath = join(repo, 'shared', 'fonts', 'Publisher.woff2');
+    await mkdirp(book, { recursive: true });
+    await mkdirp(join(repo, 'shared', 'themes', 'publisher'), { recursive: true });
+    await mkdirp(join(repo, 'shared', 'fonts'), { recursive: true });
+    await writeFile(join(book, 'chapter-01.md'), '# One');
+    await writeFile(fontPath, 'original-font-bytes');
+    await writeFile(
+      join(repo, 'shared', 'themes', 'publisher', 'theme.css'),
+      '@font-face{font-family:P;src:url("../../fonts/Publisher.woff2")}',
+    );
+    const fontTempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    const fontState = createTestServerState(book, fontTempDir);
+    fontState.config = resolveConfig({}, {
+      title: 'Core Book',
+      styles: ['../../shared/themes/publisher/theme.css'],
+    });
+
+    const calls = attachBroadcastRecorder(fontState);
+    const watcher = createFileWatcher(fontState);
+    fontState.currentWatcher = watcher;
+    try {
+      await waitForWatcherReady(watcher);
+      await wait(300); // external targets are added asynchronously
+
+      await writeFile(fontPath, 'replaced-font-bytes');
+      await waitForRebuild(fontState, calls);
+
+      expect(calls).toEqual([{ type: 'full-reload' }]);
+    } finally {
+      await watcher.close();
+      await rm(repo, { recursive: true, force: true });
+      await rm(fontTempDir, { recursive: true, force: true });
     }
   }, 30000);
 

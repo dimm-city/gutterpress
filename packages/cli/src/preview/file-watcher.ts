@@ -14,6 +14,7 @@ import { renderChapters } from '../lib/markdown/index';
 import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
+import { collectStyleDependencies } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
@@ -25,10 +26,10 @@ import type { ResolvedPluginConfig } from '../schema/manifest.types';
  * Resolve a changed file's canonical, forward-slash path relative to the
  * project root, or `null` if the file isn't under it — which, for a file the
  * watcher was asked to watch, means it is a DECLARED EXTERNAL DEPENDENCY (a
- * shared stylesheet or authored plugin the manifest points at outside the
- * book; see `externalWatchTargets` below). Those have no project-relative
- * path to broadcast, so `runRebuild` treats them as an unconditional full
- * rebuild rather than trying to name them.
+ * shared stylesheet, one of its fonts/images, or an authored plugin the book
+ * reads from outside its folder; see `externalWatchTargets` below). Those have
+ * no project-relative path to broadcast, so `runRebuild` treats them as an
+ * unconditional full rebuild rather than trying to name them.
  *
  * There is no mirroring of any kind any more: the old external-asset-root
  * concept (a sibling `../_shared` directory copied under its own name into
@@ -37,9 +38,9 @@ import type { ResolvedPluginConfig } from '../schema/manifest.types';
  * http-server.ts) and stylesheets are inlined at render time (asset-inline.ts).
  *
  * `relativePath` is normalized to FORWARD slashes regardless of platform —
- * it is broadcast to clients (content-update chapter splices, CSS hot-swap
- * paths) and compared against the SPA's forward-slash chapter paths, so
- * Windows `path.sep` backslashes must never leak into it.
+ * it is broadcast to clients (content-update chapter splices) and compared
+ * against the SPA's forward-slash chapter paths, so Windows `path.sep`
+ * backslashes must never leak into it.
  *
  * Exported for the chapter-identity contract test
  * (lib/markdown/chapter-id.test.ts): the `content-update` broadcast derived
@@ -82,7 +83,7 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 /**
  * Whether the incremental live-preview (shell + per-chapter splice) is active.
  * DEFAULT ON; opt out with PRINTMD_PREVIEW_INCREMENTAL=0 to fall back to the
- * direct book.html preview (CSS hot-swap + full reload on content).
+ * direct book.html preview (full reload on every change).
  */
 export function incrementalPreviewEnabled(): boolean {
   return process.env.PRINTMD_PREVIEW_INCREMENTAL !== "0";
@@ -382,37 +383,46 @@ export function isIgnoredWatchPath(candidatePath: string, projectRoot: string): 
 }
 
 /**
- * The book's DECLARED dependencies that live outside the book folder —
- * absolute paths, deduped.
+ * Everything the book reads from OUTSIDE its own folder — absolute paths,
+ * deduped. The project watch root covers in-book files; this is what it can't
+ * see.
  *
  * A multi-book repository keeps its shared foundation next to the books
  * (`shared/styles/publisher-components.css`, `shared/plugins/components.js`)
  * and each book's manifest points at it directly: a `styles:` entry is a path
  * to READ (asset-inline.ts inlines it; nothing is staged or copied) and an
- * authored plugin `path:` resolves against the manifest directory. Both may
- * therefore sit above the book root, where the project watch root cannot see
- * them — so editing the shared foundation would leave the preview stale with
- * no indication anything had happened.
+ * authored plugin `path:` resolves against the manifest directory. Both may sit
+ * above the book root.
  *
- * Only the DECLARED entries are watched, not their containing directories: the
- * set is exact, predictable, and cannot accidentally pull a large sibling tree
- * into the watcher. A file pulled in by an `@import` from a shared stylesheet
- * is therefore not watched; edit the declared entry (or any book file) to pick
- * it up.
+ * The stylesheet side is the DEPENDENCY CLOSURE, not just the declared entry —
+ * `collectStyleDependencies` follows each active stylesheet's `@import` chain
+ * and every local `url()` it references. A shared theme's
+ * `url("../../fonts/Publisher.woff2")` is a file a design tool can replace
+ * without touching one line of CSS; watching only `theme.css` would leave the
+ * preview stale after that swap with nothing downstream to correct it. The
+ * closure is computed from ALL active stylesheets, including in-book ones,
+ * because a local stylesheet can reference a shared font just as easily — only
+ * the results that land outside the book are added here.
+ *
+ * Watching is per-FILE, never per-directory, so the set stays exact and cannot
+ * accidentally pull a large sibling tree into the watcher.
  */
 export async function externalWatchTargets(
   projectDir: string,
   config: { styles?: string[]; plugins?: ResolvedPluginConfig[] }
 ): Promise<string[]> {
   const root = path.resolve(projectDir);
-  const declared = [
-    ...(await resolveActiveStyles(root, config.styles)),
-    ...(config.plugins ?? []).map((p) => p.path).filter((p): p is string => !!p),
+  const styles = await resolveActiveStyles(root, config.styles);
+  const candidates = [
+    ...(await collectStyleDependencies(root, styles)),
+    ...(config.plugins ?? [])
+      .map((p) => p.path)
+      .filter((p): p is string => !!p)
+      .map((p) => path.resolve(root, p)),
   ];
 
   const external = new Set<string>();
-  for (const entry of declared) {
-    const abs = path.resolve(root, entry);
+  for (const abs of candidates) {
     const rel = path.relative(root, abs);
     // Inside the project (or the project itself) — already covered by the
     // project watch root.

@@ -40,7 +40,7 @@ const HMR_CLIENT_SNIPPET = `
     // with ?pmdshell=1 and owns HMR (it swaps frames + syncs scroll), so we stay
     // inert. We must NOT bail merely because we're framed — other hosts (the
     // Electron viewer's SPA) embed book.html directly and rely on this HMR client
-    // for CSS hot-swap, scroll-anchor, and reload.
+    // for scroll-anchor and reload.
     if (/[?&]pmdshell=1/.test(location.search)) return;
     var ANCHOR_KEY = 'pmd-scroll-anchor';
 
@@ -121,7 +121,8 @@ const HMR_CLIENT_SNIPPET = `
  * iframe and double-buffers content reloads: on a markdown edit it paginates a
  * SECOND hidden iframe, waits for it to finish, then swaps it in atomically and
  * restores the scroll anchor — so the visible page never flickers or rebuilds in
- * view. CSS edits are forwarded into the active frame (instant hot-swap). This is
+ * view. A CSS edit takes the same path: in a paged medium a stylesheet moves page
+ * boundaries, so it must repaginate rather than restyle a stale layout. This is
  * the same iframe pattern the Electron viewer uses, converging the two.
  */
 const SHELL_HTML = `<!doctype html>
