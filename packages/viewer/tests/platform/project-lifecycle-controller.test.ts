@@ -55,18 +55,17 @@ interface Harness {
     scanForRecovery: Spy<[string]>;
     dismissLanding: Spy<[boolean | undefined]>;
     clearStaleProjectState: Spy<[]>;
-    onMissingSharedAssets: Spy<[string[]]>;
     resetExtras: Spy<[]>;
     toastError: Spy<[string]>;
     toastInfo: Spy<[string]>;
     landingVisible: boolean;
     pageNav: { totalPages: number; currentPage: number };
     zoomView: { userSetViewMode: boolean; restoreSplitRatio: Spy<[number]> };
-    startPreviewResult: { url: string; title: string | null; missingSharedAssets?: string[] };
+    startPreviewResult: { url: string; title: string | null };
     startPreviewImpl?: (input: {
       key: string;
       displayName: string;
-    }) => Promise<{ url: string; title: string | null; missingSharedAssets?: string[] }>;
+    }) => Promise<{ url: string; title: string | null }>;
     classifyImpl?: (dir: string) => Promise<void>;
     flushResult: boolean;
     activeBookHasManifest: boolean;
@@ -94,7 +93,6 @@ function make(): Harness {
   const scanForRecovery = spy<[string]>();
   const dismissLanding = spy<[boolean | undefined]>();
   const clearStaleProjectState = spy<[]>();
-  const onMissingSharedAssets = spy<[string[]]>();
   const resetExtras = spy<[]>();
   const toastError = spy<[string]>();
   const toastInfo = spy<[string]>();
@@ -119,7 +117,6 @@ function make(): Harness {
     scanForRecovery,
     dismissLanding,
     clearStaleProjectState,
-    onMissingSharedAssets,
     resetExtras,
     toastError,
     toastInfo,
@@ -189,7 +186,6 @@ function make(): Harness {
       info: (msg: string) => toastInfo(msg),
     }),
     clearStaleProjectState: () => clearStaleProjectState(),
-    onMissingSharedAssets: (paths) => onMissingSharedAssets(paths),
     resetExtras: () => resetExtras(),
   };
 
@@ -407,7 +403,6 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
     dismissLanding: () => {},
     toast: () => null,
     clearStaleProjectState: () => {},
-    onMissingSharedAssets: () => {},
     resetExtras: () => order.push("resetExtras"),
   });
 
@@ -474,7 +469,6 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
     dismissLanding: () => {},
     toast: () => null,
     clearStaleProjectState: () => {},
-    onMissingSharedAssets: () => {},
     resetExtras: () => resetExtras(),
   });
 
@@ -590,7 +584,6 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
     dismissLanding: () => {},
     toast: () => null,
     clearStaleProjectState: () => {},
-    onMissingSharedAssets: () => {},
     resetExtras: () => {},
   });
 
@@ -659,7 +652,6 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
     dismissLanding: () => {},
     toast: () => null,
     clearStaleProjectState: () => {},
-    onMissingSharedAssets: () => {},
     resetExtras: () => {},
   });
 

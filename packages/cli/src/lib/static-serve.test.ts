@@ -9,7 +9,7 @@ import { STATIC_MIME, resolveStaticPath, resolveWithinRoot, serveFile } from "./
 
 // ── STATIC_MIME ──────────────────────────────────────────────────────────
 
-test("STATIC_MIME covers the shared 17-extension table", () => {
+test("STATIC_MIME covers the shared extension table", () => {
   const expected = [
     ".html",
     ".htm",
@@ -22,6 +22,8 @@ test("STATIC_MIME covers the shared 17-extension table", () => {
     ".jpeg",
     ".gif",
     ".svg",
+    ".webp",
+    ".avif",
     ".ico",
     ".woff",
     ".woff2",
@@ -35,6 +37,11 @@ test("STATIC_MIME covers the shared 17-extension table", () => {
   expect(STATIC_MIME[".css"]).toBe("text/css");
   expect(STATIC_MIME[".js"]).toBe("application/javascript");
   expect(STATIC_MIME[".woff2"]).toBe("font/woff2");
+  // 2026-07-28 duplication audit: added to close the divergence with
+  // asset-inline.ts's MIME_BY_EXT, which already had both (see static-serve.ts's
+  // header comment).
+  expect(STATIC_MIME[".webp"]).toBe("image/webp");
+  expect(STATIC_MIME[".avif"]).toBe("image/avif");
 });
 
 // ── resolveStaticPath ────────────────────────────────────────────────────

@@ -6,7 +6,6 @@
 
 import { promises as fs, type Dirent } from 'fs';
 import path from 'path';
-import { BuildError } from '../lib/build-error.ts';
 
 /**
  * Read a file as UTF-8 text
@@ -70,105 +69,6 @@ export async function isDirectory(targetPath: string): Promise<boolean> {
  */
 export async function readDirectory(dirPath: string): Promise<Dirent[]> {
   return await fs.readdir(dirPath, { withFileTypes: true });
-}
-
-/** Default directories to exclude when copying project directories */
-const DEFAULT_EXCLUDE_DIRS = new Set([
-  'node_modules',
-  '.git',
-  '.claude',
-  '.opencode',
-  '.reviews',
-  '.references',
-  '.build',
-  'dist',
-]);
-
-/**
- * Copy a directory recursively with comprehensive error handling
- *
- * Attempts to copy all files even if some fail. Collects all errors and reports them
- * together at the end, allowing the caller to decide if partial success is acceptable.
- * Symlinks are skipped to avoid ENOENT/ENOTSUP errors.
- *
- * @param src Source directory path
- * @param dest Destination directory path
- * @param options Copy options
- * @param options.overwrite Whether to overwrite existing files (default: true)
- * @param options.exclude Directory names to skip (default: node_modules, .git, .claude, etc.)
- * @throws {Error} If source doesn't exist or isn't a directory
- * @throws {BuildError} If any files fail to copy (includes details of all failures)
- */
-export async function copyDirectory(
-  src: string,
-  dest: string,
-  options: { overwrite?: boolean; exclude?: Set<string> } = {}
-): Promise<void> {
-  const { overwrite = true, exclude = DEFAULT_EXCLUDE_DIRS } = options;
-
-  // Validate source exists and is a directory
-  if (!(await fileExists(src))) {
-    throw new Error(`Source directory does not exist: ${src}`);
-  }
-
-  if (!(await isDirectory(src))) {
-    throw new Error(`Source path is not a directory: ${src}`);
-  }
-
-  // Create destination directory
-  await mkdir(dest);
-
-  // Read directory entries
-  const entries = await readDirectory(src);
-
-  // Track all copy errors instead of failing immediately
-  const errors: Array<{ path: string; error: Error }> = [];
-
-  // Attempt to copy all entries, collecting errors along the way
-  for (const entry of entries) {
-    // Skip excluded directories
-    if (exclude.has(entry.name)) {
-      continue;
-    }
-
-    // Skip symlinks to avoid ENOENT/ENOTSUP errors
-    if (entry.isSymbolicLink()) {
-      continue;
-    }
-
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-
-    try {
-      if (entry.isDirectory()) {
-        await copyDirectory(srcPath, destPath, { overwrite, exclude });
-      } else {
-        // Check overwrite setting
-        if (!overwrite && (await fileExists(destPath))) {
-          continue;
-        }
-
-        // Attempt file copy
-        await fs.copyFile(srcPath, destPath);
-      }
-    } catch (error) {
-      // Collect error details for this file/directory
-      errors.push({
-        path: srcPath,
-        error: error instanceof Error ? error : new Error(String(error)),
-      });
-    }
-  }
-
-  // If any copies failed, throw detailed error with all failures
-  if (errors.length > 0) {
-    const fileList = errors
-      .map(({ path, error }) => `  - ${path}: ${error.message}`)
-      .join('\n');
-    throw new BuildError(
-      `Failed to copy ${errors.length} file(s) from ${src} to ${dest}:\n${fileList}`
-    );
-  }
 }
 
 /**

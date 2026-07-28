@@ -42,7 +42,6 @@ function makeHandle(over: Partial<PreviewHandle> = {}): PreviewHandle {
     url: "http://127.0.0.1:1234",
     port: 1234,
     inputPath: "/book",
-    missingSharedAssets: [],
     stop: async () => {},
     ...over,
   };
@@ -177,7 +176,6 @@ test("happy path (local-folder): starts server, sets activePreview, returns resu
     port: 1234,
     input: "/book",
     title: "book",
-    missingSharedAssets: [],
   });
   expect(h.getActivePreview()?.inputPath).toBe("/book");
 });

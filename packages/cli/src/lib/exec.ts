@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { readdir, mkdir, copyFile } from "node:fs/promises";
 import { join, resolve as resolvePath, delimiter } from "node:path";
 
 /**
@@ -209,21 +208,4 @@ export async function execCapture(
       ? `${cmd} was killed by signal ${signal}\n${stderr}`
       : `${cmd} exited ${code}\n${stderr}`
   );
-}
-
-/**
- * Recursively copy a directory tree.
- */
-export async function copyDir(src: string, dst: string): Promise<void> {
-  await mkdir(dst, { recursive: true });
-  const entries = await readdir(src, { withFileTypes: true });
-  for (const e of entries) {
-    const s = join(src, e.name);
-    const d = join(dst, e.name);
-    if (e.isDirectory()) {
-      await copyDir(s, d);
-    } else {
-      await copyFile(s, d);
-    }
-  }
 }

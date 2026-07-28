@@ -653,7 +653,6 @@ export interface PreviewStartResult {
   port: number;
   input: string;
   title: string | null;
-  missingSharedAssets?: string[];
 }
 
 export interface RawBuildArgs {

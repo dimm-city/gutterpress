@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { log } from "../utils/logger";
 import { checkCss, ruleRiskyProps } from "./printsafe";
+import { resolveActiveStyles } from "./style-resolver";
 
 export interface LintRunnerOptions {
   files?: string;
@@ -25,23 +26,27 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   let files: string[];
   if (opts.files) {
+    // Explicit override (`print-md lint <glob>` with no manifest project) —
+    // the one case that legitimately wants arbitrary glob expansion.
     files = await glob([opts.files], { nodir: true, ignore: ["**/*.min.css"] });
-  } else if (manifest.styles?.length) {
-    files = await glob(
-      manifest.styles.map((stylePath) => resolve(manifestDir, stylePath)),
-      { nodir: true, ignore: ["**/*.min.css"] }
-    );
   } else {
-    const stageFiles = await glob([".build/**/*.css"], {
-      nodir: true,
-      ignore: ["**/*.min.css"],
-    });
-    files =
-      stageFiles.length > 0
-        ? stageFiles
-        : await glob(["example/**/*.css", "demos/**/*.css"], {
-            ignore: ["node_modules/**", "dist/**"],
-          });
+    // THE canonical "which stylesheet(s) does this project use?" resolver —
+    // the SAME one the renderer/editor use (style-resolver.ts), so
+    // `print-md lint` checks exactly the stylesheet(s) that ship.
+    //
+    // This used to be its own third fallback chain (2026-07-28 duplication
+    // audit): when the manifest had no `styles:`, it globbed `.build/**/*.css`
+    // and then `example/**/*.css`/`demos/**/*.css` — leftover scaffolding for
+    // linting THIS REPO's own dogfooding examples, unrelated to any given
+    // project's manifest, and (unlike every other project-wide scan in this
+    // package) it never applied ASSET_SCAN_IGNORE_GLOBS, so it didn't even
+    // exclude node_modules/.git/dist. resolveActiveStyles's own fallback
+    // (styles/book.css, else the first discovered project .css, else `[]`)
+    // replaces all of that.
+    const relStyles = await resolveActiveStyles(manifestDir, manifest.styles);
+    files = relStyles
+      .map((rel) => resolve(manifestDir, rel))
+      .filter((f) => !f.endsWith(".min.css"));
   }
 
   if (files.length === 0) {
@@ -54,13 +59,30 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
   let errorCount = 0;
   let riskyCount = 0;
 
+  let linted = 0;
+
   for (const file of files) {
     let css: string;
     try {
       css = await readFile(file, "utf8");
-    } catch {
+    } catch (err) {
+      // An unreadable stylesheet FAILS lint rather than being skipped. These
+      // paths come from `resolveActiveStyles`, whose discovery fallbacks are
+      // existence-checked — so an unreadable entry means the manifest's
+      // `styles:` list (returned verbatim, style-resolver.ts:126) names a file
+      // that is missing, is a directory, or cannot be opened. Skipping it
+      // silently reported `ok: true` having inspected nothing, which is the
+      // same silent-green this resolver change exists to remove; `inlineStyles`
+      // already treats a missing stylesheet as a hard build error, so lint
+      // agrees with the build instead of disagreeing quietly.
+      log.error(`  ${file}`);
+      log.error(
+        `    cannot read stylesheet: ${err instanceof Error ? err.message : String(err)}`
+      );
+      errorCount++;
       continue;
     }
+    linted++;
     const warnings = checkCss(css, file);
     const errors = warnings.filter((w) => w.severity === "error");
     riskyCount += warnings.filter((w) => w.rule === ruleRiskyProps).length;
@@ -76,7 +98,7 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   if (errorCount > 0) {
     log.error("CSS lint errors found");
-    return { ok: false, riskyCount, filesLinted: files.length };
+    return { ok: false, riskyCount, filesLinted: linted };
   }
 
   if (riskyCount > 0) {
@@ -90,5 +112,5 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
     log.success("CSS lint passed");
   }
 
-  return { ok: true, riskyCount, filesLinted: files.length };
+  return { ok: true, riskyCount, filesLinted: linted };
 }

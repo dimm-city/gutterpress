@@ -90,6 +90,15 @@
 
   // A friendly preview of the folder name we'll create (slug of the title). Kept
   // purely informational — the writer never types a slug.
+  //
+  // This is a deliberate inline copy of `packages/cli/src/lib/slug.ts`'s
+  // `slugify` (NFKD normalize, strip diacritics, lowercase, collapse
+  // non-alphanumerics to hyphens, trim edge hyphens) — CLAUDE.md §8 forbids
+  // the SPA from value-importing `@dimm-city/print-md` (the compiled binary
+  // has no `node_modules` for a plugin/renderer to resolve against, and a
+  // value import here would drag Node-target lib code into the browser
+  // bundle), so this can't just call the real thing. If `slugify` ever
+  // changes, mirror the change here too.
   let folderPreview = $derived.by<string>(() => {
     const slug = name
       .normalize("NFKD")

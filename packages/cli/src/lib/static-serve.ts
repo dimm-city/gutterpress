@@ -11,6 +11,17 @@ import { readFile } from "node:fs/promises";
  * (finding #17) — a new asset type added to only one would render differently
  * in preview vs build-time pagination with no error, a silent divergence
  * class. One table now; add a new extension once.
+ *
+ * That same divergence class recurred once more (2026-07-28 duplication
+ * audit): this table and `asset-inline.ts`'s `MIME_BY_EXT` — a separate table
+ * answering a separate question, "what Content-Type does a data: URI need
+ * when embedding this file inline," vs. this table's "what Content-Type does
+ * an HTTP response need" — had drifted again, missing `.webp`/`.avif` here.
+ * A large (>512KB, over the inliner's threshold) WebP/AVIF image was copied
+ * as a real file and then served as `application/octet-stream` by both
+ * servers above. Added below; if a third image format shows up, add it to
+ * BOTH tables in the same commit (asset-inline.ts is out of scope for this
+ * PR — see docs/reviews/duplication-audit-2026-07-28.md).
  */
 export const STATIC_MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -24,6 +35,8 @@ export const STATIC_MIME: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
   ".ico": "image/x-icon",
   ".woff": "font/woff",
   ".woff2": "font/woff2",

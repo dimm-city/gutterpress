@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { resolveConfig } from "../manifest";
-import { renderChapters, renderChaptersToFile, type LayoutWarning } from "./index";
+import {
+  renderChapters,
+  renderChaptersToFile,
+  resolveActiveMarkdownFiles,
+  type LayoutWarning,
+} from "./index";
 
 /**
  * ARCH finding #2 — integration test REQUIRED by the work package: a manifest
@@ -104,6 +109,46 @@ test("an explicit manifest `styles:` list still wins over styles/book.css", asyn
   // The explicit list is what gets INLINED; the conventional fallback is not.
   expect(html).toContain("--from-custom");
   expect(html).not.toContain("--from-book-css");
+});
+
+/**
+ * resolveActiveMarkdownFiles (2026-07-28 duplication audit) — extracted out of
+ * renderChapters's own inline fallback so validation-exec.ts and
+ * lint-runner.ts can resolve "the book's markdown files" with the exact same
+ * logic renderChapters uses, instead of a separately-maintained recursive
+ * glob. These pin down the two branches directly.
+ */
+test("resolveActiveMarkdownFiles: no configured files falls back to root .md files, alphabetically, non-recursive", async () => {
+  const dir = await makeProject();
+  await writeFile(join(dir, "b.md"), "# B\n", "utf8");
+  await writeFile(join(dir, "a.md"), "# A\n", "utf8");
+  await mkdir(join(dir, "drafts"), { recursive: true });
+  await writeFile(join(dir, "drafts", "c.md"), "# C\n", "utf8");
+
+  const files = await resolveActiveMarkdownFiles(dir);
+
+  // Alphabetical, and drafts/c.md (one level down) is excluded — the same
+  // root-only listing renderChapters' own fallback performs.
+  expect(files).toEqual(["a.md", "b.md"]);
+});
+
+test("resolveActiveMarkdownFiles: configured files are returned verbatim, in the given order", async () => {
+  const dir = await makeProject();
+  await writeFile(join(dir, "a.md"), "# A\n", "utf8");
+  await writeFile(join(dir, "b.md"), "# B\n", "utf8");
+
+  const files = await resolveActiveMarkdownFiles(dir, ["b.md", "a.md"]);
+
+  expect(files).toEqual(["b.md", "a.md"]);
+});
+
+test("resolveActiveMarkdownFiles: an empty configured-files array still falls back (matches renderChapters' opts.files.length > 0 guard)", async () => {
+  const dir = await makeProject();
+  await writeFile(join(dir, "only.md"), "# Only\n", "utf8");
+
+  const files = await resolveActiveMarkdownFiles(dir, []);
+
+  expect(files).toEqual(["only.md"]);
 });
 
 /**

@@ -40,7 +40,6 @@ export interface PreviewHandle {
   url: string;
   port: number;
   inputPath: string;
-  missingSharedAssets?: string[];
   stop: () => Promise<void>;
 }
 
@@ -53,7 +52,6 @@ export interface PreviewOpenResult {
   port: number;
   input: string;
   title: string;
-  missingSharedAssets: string[];
 }
 
 /** External touch-points injected into the controller (all faked in tests). */
@@ -231,7 +229,6 @@ export class PreviewOpenController {
       port: activePreview.port,
       input: activePreview.inputPath,
       title,
-      missingSharedAssets: activePreview.missingSharedAssets ?? [],
     };
   }
 

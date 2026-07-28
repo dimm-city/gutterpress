@@ -329,6 +329,113 @@ describe("executeValidation context derived from --input", () => {
   });
 });
 
+// ── file-set resolvers match the renderer's (2026-07-28 duplication audit) ─
+//
+// Before this, an inputDir run with no manifest `source.files`/`styles`
+// globbed `**/*.md`/`**/*.css` across the WHOLE project — so validation/lint
+// checked files the book never renders. These prove context.markdownFiles/
+// cssFiles now match resolveActiveMarkdownFiles/resolveActiveStyles exactly
+// (the same resolvers renderChapters/renderBook use), not an independent scan.
+
+describe("executeValidation markdown/css file-set resolvers", () => {
+  test("markdown fallback is the non-recursive root listing, not a recursive glob", async () => {
+    const dir = await makeDir("pmd-vexec-md-nonrecursive-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      // A subdirectory's .md file must NOT be picked up when source.files is
+      // unset — renderChapters' own fallback (lib/markdown/index.ts) only
+      // reads the project root, exactly like resolveActiveMarkdownFiles.
+      await mkdir(path.join(dir, "drafts"), { recursive: true });
+      await writeFile(path.join(dir, "drafts", "unused.md"), "# Draft\n", "utf-8");
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      expect(execution.context.markdownFiles).toEqual([
+        path.join(dir, "chapter-01.md"),
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("manifest source.files (explicit order) is used verbatim, excluding unlisted root .md files", async () => {
+    const dir = await makeDir("pmd-vexec-md-explicit-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# One\n", "utf-8");
+      await writeFile(path.join(dir, "chapter-02.md"), "# Two\n", "utf-8");
+      await writeFile(path.join(dir, "unlisted.md"), "# Unlisted\n", "utf-8");
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        "title: Ordered\nsource:\n  files:\n    - chapter-02.md\n    - chapter-01.md\n",
+        "utf-8"
+      );
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      // Same order the manifest declares, and unlisted.md is excluded — this
+      // is exactly what renderChapters would read and in what order.
+      expect(execution.context.markdownFiles).toEqual([
+        path.join(dir, "chapter-02.md"),
+        path.join(dir, "chapter-01.md"),
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("css fallback resolves the SAME active stylesheet the renderer would link, not every .css in the project", async () => {
+    const dir = await makeDir("pmd-vexec-css-active-only-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      // Conventional active stylesheet (style-resolver.ts FALLBACK_PRIORITY).
+      await mkdir(path.join(dir, "styles"), { recursive: true });
+      await writeFile(path.join(dir, "styles", "book.css"), "body { color: red; }", "utf-8");
+      // An unreferenced theme sitting alongside it must NOT be validated —
+      // the book never links it, so print-safety findings on it would be
+      // findings on a file that doesn't ship.
+      await mkdir(path.join(dir, "themes", "unused"), { recursive: true });
+      await writeFile(
+        path.join(dir, "themes", "unused", "theme.css"),
+        "body { background: url(http://example.com/x.png); }",
+        "utf-8"
+      );
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      expect(execution.context.cssFiles).toEqual([
+        path.join(dir, "styles", "book.css"),
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("manifest styles: list is resolved verbatim (active set), excluding other project .css files", async () => {
+    const dir = await makeDir("pmd-vexec-css-explicit-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      await mkdir(path.join(dir, "css"), { recursive: true });
+      await writeFile(path.join(dir, "css", "main.css"), "body { color: blue; }", "utf-8");
+      await writeFile(path.join(dir, "css", "unused.css"), "body { color: green; }", "utf-8");
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        "title: Explicit Styles\nstyles:\n  - css/main.css\n",
+        "utf-8"
+      );
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      expect(execution.context.cssFiles).toEqual([path.join(dir, "css", "main.css")]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── assetDirs derivation (no more `source.assets` config list) ─────────────
 
 describe("executeValidation assetDirs derivation", () => {

@@ -6,6 +6,9 @@ import { resolveOutputDir } from "./output-paths";
 import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./viewer";
 import { UsageError } from "./cli-args";
+import { resolveActiveStyles } from "./style-resolver";
+import { resolveActiveMarkdownFiles } from "./markdown/index";
+import { canonicalChapterId } from "./markdown/chapter-id";
 import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
 import { getChecks, getKnownCategories } from "../checks/registry";
@@ -221,27 +224,30 @@ export async function executeValidation(
   const outDir = resolveOutputDir(manifestDir, config.title);
 
   if (inputDir) {
-    const { glob } = await import("glob");
-    // A manifest may omit source.files / styles (auto-discover everything).
-    // glob() throws on a null/undefined pattern, so fall back to a recursive
-    // glob when the config doesn't enumerate them explicitly.
-    markdownFiles = await glob(config.source.files ?? "**/*.md", {
-      cwd: manifestDir,
-      absolute: true,
-      nodir: true,
-      ignore: ["**/node_modules/**"],
-    });
-    cssFiles = await glob(
-      config.styles?.length
-        ? config.styles.map((stylePath) => resolve(manifestDir, stylePath))
-        : "**/*.css",
-      {
-        cwd: manifestDir,
-        absolute: true,
-        nodir: true,
-        ignore: ["**/node_modules/**", "**/*.min.css"],
-      }
-    );
+    // THE canonical file-set resolvers — the SAME ones the renderer uses
+    // (renderChapters, lib/markdown/index.ts / renderBook, build-runner.ts) —
+    // instead of an independent recursive glob across the whole project.
+    // Before this (2026-07-28 duplication audit), a manifest with no
+    // `source.files`/`styles` made validation glob `**/*.md` / `**/*.css`
+    // project-wide: an unused theme, a drafts folder, or a design system's own
+    // docs got linted/validated even though the book never references them,
+    // and the print-safety `checkCss` gate ran on stylesheets that don't ship.
+    // Anchored on `inputDir` (not `manifestDir`) to match exactly what the
+    // build anchors `renderChapters`/`resolveActiveStyles` on — the two only
+    // differ when an explicit `--manifest` points outside `--input`, and the
+    // old glob's `cwd: manifestDir` silently used the wrong directory in that
+    // case; `inputDir` is what actually gets rendered.
+    const relMarkdown = await resolveActiveMarkdownFiles(inputDir, config.source.files);
+    markdownFiles = relMarkdown.map((f) => join(inputDir, canonicalChapterId(f)));
+
+    // stylelint (source.stylelint) skips minified CSS — same as lint-runner.ts
+    // — since line/column findings on a minified file are meaningless; it
+    // still ships via resolveActiveStyles/inlineStyles regardless.
+    const relStyles = await resolveActiveStyles(inputDir, config.styles);
+    cssFiles = relStyles
+      .map((rel) => resolve(inputDir, rel))
+      .filter((f) => !f.endsWith(".min.css"));
+
     // The project root, wholesale. Excluding node_modules/.git/dist happens at
     // the GLOB level (ASSET_SCAN_IGNORE_GLOBS, checks/asset/extensions.ts), not
     // by choosing which directories to scan — picking directories silently

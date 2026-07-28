@@ -14,15 +14,6 @@ export interface ProblemGroup {
 }
 
 /**
- * Synthetic "check id" for the viewer's own missing-shared-asset-folder
- * finding (M30). This isn't a CLI check — the CLI check registry never sees
- * it — but it flows through the same `ProblemEntry[]`/`SOURCE_LABELS` pipeline
- * so it renders as an ordinary (persistent) Problems row instead of the
- * 5-second auto-dismissing toast it used to be.
- */
-export const MISSING_ASSETS_SOURCE = "viewer.missing-shared-assets";
-
-/**
  * Plain-language labels for check ids — the audience is non-technical authors,
  * so "source.links.local-refs" reads as "Broken link". Unknown ids fall back
  * to the raw id so new checks are never hidden.
@@ -39,7 +30,6 @@ const SOURCE_LABELS: Record<string, string> = {
   "source.htmlhint": "HTML check",
   "source.accessibility.alt-text": "Image description",
   "source.accessibility.heading-order": "Heading order",
-  [MISSING_ASSETS_SOURCE]: "Missing assets",
   // Asset-category checks (#105 publish preflight). Kept in the SAME table as
   // the source checks so `friendlySource` stays the ONE plain-language label
   // authority — preflight must not maintain a second, drifting label map.
