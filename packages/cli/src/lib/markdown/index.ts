@@ -16,6 +16,30 @@ export type { LayoutWarning } from "./assemble";
 export { createMarkdownRenderer } from "./renderer";
 
 /**
+ * THE canonical "which markdown files make up this book, and in what order?"
+ * resolver — markdown's counterpart to `resolveActiveStyles` (style-resolver.ts).
+ * Both `renderChapters` below AND validation/lint (validation-exec.ts,
+ * lint-runner.ts) call this, so what gets checked is always what gets rendered
+ * (2026-07-28 duplication audit — those two used to each re-derive their own
+ * recursive-glob approximation of "the book's markdown files" instead of
+ * calling this):
+ *   1. `configuredFiles` (the manifest `source.files` list), if it has entries,
+ *      in that order; else
+ *   2. every `.md` file directly inside `inputDir` — NOT recursive, since a
+ *      book's chapters live at the project root by convention — alphabetically.
+ * Returned entries are exactly as authored/discovered (relative to `inputDir`,
+ * un-normalised); callers that need a readable path must resolve them the same
+ * way `renderChapters` does below (`join(inputDir, canonicalChapterId(f))`).
+ */
+export async function resolveActiveMarkdownFiles(
+  inputDir: string,
+  configuredFiles?: string[] | null
+): Promise<string[]> {
+  if (configuredFiles && configuredFiles.length > 0) return configuredFiles;
+  return (await readdir(inputDir)).filter((f: string) => f.endsWith(".md")).sort();
+}
+
+/**
  * Render all chapter markdown files to a single HTML string.
  *
  * If files are specified, they will be included in the provided order.
@@ -70,17 +94,9 @@ export async function renderChapters(
   if (inlined.warnings.length > 0) opts.onStyleWarnings?.(inlined.warnings);
   if (inlined.copies.length > 0) opts.onCssAssets?.(inlined.copies);
 
-  // Determine which files to process
-  let files: string[];
-  if (opts.files && opts.files.length > 0) {
-    // Use explicit files in the provided order
-    files = opts.files;
-  } else {
-    // Fallback to all .md files in alphabetical order
-    files = (await readdir(inputDir))
-      .filter((f: string) => f.endsWith(".md"))
-      .sort();
-  }
+  // Determine which files to process (manifest `source.files` in order, else
+  // every root-level .md file alphabetically) — see resolveActiveMarkdownFiles.
+  const files = await resolveActiveMarkdownFiles(inputDir, opts.files);
 
   // Validate that files exist
   if (files.length === 0) {
