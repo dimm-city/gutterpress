@@ -18,7 +18,7 @@
  */
 
 import { basenameOf } from "../platform/paths";
-import type { RecoveryItem } from "../components/CrashRecoveryDialog.svelte";
+import type { RecoveryItem } from "../components/crash-recovery-types";
 
 export type { RecoveryItem };
 

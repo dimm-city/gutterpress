@@ -27,13 +27,9 @@
   import Icon from "$lib/components/Icon.svelte";
   import { api } from "$lib/api";
   import { dialogBehavior } from "$lib/dialog";
+  import type { RecoveryItem } from "$lib/components/crash-recovery-types";
 
-  export interface RecoveryItem {
-    filePath: string;
-    recoveryPath: string;
-    fileName: string;
-    savedAt: number;
-  }
+  export type { RecoveryItem };
 
   let {
     items,

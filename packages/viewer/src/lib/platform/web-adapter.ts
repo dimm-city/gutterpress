@@ -775,10 +775,12 @@ export class WebAdapter implements Platform {
       .filter((s) => s.length > 0)
       .join("\n\n");
 
+    // The assembler inlines `projectCss` into its own <style> block, in the
+    // right cascade position — the browser has no separate inlining step to do.
     let html = await assembleBookHtml({
       files: md,
       readText: (relPath) => readFileFromRoot(root, relPath),
-      styles: [],
+      projectCss,
       title: input.displayName,
     });
 
@@ -792,16 +794,6 @@ export class WebAdapter implements Platform {
       pagedjsPolyfillTagRegex(),
       `<script src="${VENDOR_PAGED_POLYFILL_URL}"></script>`,
     );
-
-    // Inject the inlined project CSS just before </head> (after the assembler's
-    // own paged-plugin <style> so project rules win on equal specificity, same
-    // cascade order as the linked stylesheet would have had).
-    if (projectCss) {
-      const styleTag = `  <style data-project-css>\n${projectCss}\n</style>\n`;
-      html = html.includes("</head>")
-        ? html.replace("</head>", styleTag + "</head>")
-        : styleTag + html;
-    }
 
     return html;
   }

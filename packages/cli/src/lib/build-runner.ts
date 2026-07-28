@@ -1,6 +1,7 @@
 import path from "node:path";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import os from "node:os";
 import { randomBytes } from "node:crypto";
 import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
@@ -122,6 +123,24 @@ export function splitOutPath(
  * Assembled by {@link resolveBuildContext}; consumed by {@link runQualityGates},
  * {@link renderBook}, and the {@link OutputStrategy} implementations.
  */
+/**
+ * Where a finished build is delivered. The build itself always writes to a
+ * scratch `workDir`; this says what happens to it afterwards.
+ *
+ * The distinction is structural, not a flag: `rm` appears in exactly one branch
+ * of {@link publishBuild}, the `project` one, whose path is always computed by
+ * `resolveOutputDir` from the manifest. A caller-supplied path is a different
+ * variant that reaches different code, so no `--out` value can be deleted —
+ * there is no code path that would do it.
+ */
+export type PublishTarget =
+  /** print-md's own `dist/<slug>/`. Replaced wholesale, so stale files vanish. */
+  | { kind: "project"; dir: string }
+  /** `--out <dir>`: the user's directory. Files are added; nothing is removed. */
+  | { kind: "directory"; dir: string }
+  /** `--out <file.pdf>` / the viewer's Save dialog: ONE file, nothing else. */
+  | { kind: "file"; file: string };
+
 export interface BuildContext {
   opts: BuildRunnerOptions;
   format: BuildFormat;
@@ -140,13 +159,8 @@ export interface BuildContext {
    * is a same-filesystem `rename`.
    */
   workDir: string;
-  /**
-   * True when `outDir` is print-md's conventional `dist/<slug>/`, which it owns
-   * and may replace wholesale. False for an explicit `--out`, which points at a
-   * directory the USER owns — there the build only adds files, never deletes,
-   * so pointing `--out` at a folder of your own files cannot destroy them.
-   */
-  ownsOutDir: boolean;
+  /** What to do with `workDir` once the build succeeds. */
+  target: PublishTarget;
 }
 
 /**
@@ -200,17 +214,29 @@ export async function resolveBuildContext(
   // multiple projects built from one CWD apart, and the per-book slug keeps
   // multiple books in ONE tree apart — the case a single shared `dist` could
   // never handle no matter how `output.dir` was configured.
-  const ownsOutDir = opts.outDir === undefined;
-  const outDir = opts.outDir ?? resolveOutputDir(manifestDir, config.title);
+  // A `--out something.pdf` names ONE artifact; only that file is delivered, so
+  // a build can never scatter book.html/images/ into the folder someone picked
+  // in a Save dialog. `--out <dir>` delivers the whole bundle but never deletes.
+  const target: PublishTarget = opts.pdfFileOverride
+    ? { kind: "file", file: path.resolve(opts.pdfFileOverride) }
+    : opts.outDir
+      ? { kind: "directory", dir: opts.outDir }
+      : { kind: "project", dir: resolveOutputDir(manifestDir, config.title) };
+  const outDir = target.kind === "file" ? path.dirname(target.file) : target.dir;
   const gates = computeGates(format, opts, config);
-  // Sibling of outDir (same filesystem → the publish is an atomic rename), and
-  // dot-prefixed so a stray work dir from a killed build is obviously scratch.
-  const workDir = path.join(
-    path.dirname(outDir),
-    `.${path.basename(outDir)}-build-${randomBytes(6).toString("hex")}`
-  );
+  // For our own `dist/`, the work dir is a sibling of the destination so the
+  // publish is a same-filesystem atomic rename. For a caller-supplied target we
+  // must not create scratch directories in someone else's folder, so it goes to
+  // the OS temp dir and the publish is a copy.
+  const workDir =
+    target.kind === "project"
+      ? path.join(
+          path.dirname(target.dir),
+          `.${path.basename(target.dir)}-build-${randomBytes(6).toString("hex")}`
+        )
+      : path.join(os.tmpdir(), `print-md-build-${randomBytes(6).toString("hex")}`);
 
-  return { opts, format, inputDir, outDir, workDir, ownsOutDir, manifestDir, config, gates };
+  return { opts, format, inputDir, outDir, workDir, target, manifestDir, config, gates };
 }
 
 /**
@@ -411,56 +437,73 @@ async function finalizeBuild(
   ctx: BuildContext,
   fingerprint: BuildFingerprintInput,
   wroteMessage: string,
-  paths: { htmlPath: string; pdfPath: string | null }
+  paths: { htmlPath: string; pdfPath: string | null },
+  artifactName: string | null = null
 ): Promise<BuildRunnerResult> {
-  const fingerprintPath = await writeBuildFingerprint({
+  const workFingerprint = await writeBuildFingerprint({
     ...fingerprint,
     outputDir: ctx.workDir,
   });
-  await publishBuild(ctx);
+  await publishBuild(ctx, artifactName);
+
+  // A `file` target delivers ONE artifact, so the fingerprint and book.html
+  // stay in the work dir and are discarded with it — reporting paths there
+  // would name files that do not exist.
+  const delivered = ctx.target.kind !== "file";
+  const fingerprintPath = delivered
+    ? path.join(ctx.outDir, path.basename(workFingerprint))
+    : workFingerprint;
+
   log.success(wroteMessage);
-  log.info(`Fingerprint: ${path.join(ctx.outDir, path.basename(fingerprintPath))}`);
+  if (delivered) log.info(`Fingerprint: ${fingerprintPath}`);
   return {
     outDir: ctx.outDir,
-    htmlPath: path.join(ctx.outDir, path.relative(ctx.workDir, paths.htmlPath)),
+    htmlPath: delivered
+      ? path.join(ctx.outDir, path.relative(ctx.workDir, paths.htmlPath))
+      : paths.htmlPath,
     pdfPath: paths.pdfPath,
-    fingerprintPath: path.join(ctx.outDir, path.basename(fingerprintPath)),
+    fingerprintPath,
   };
 }
 
 /**
- * Move the completed work dir into place.
+ * Deliver the completed work dir to its target.
  *
- * When print-md owns `outDir` (the conventional `dist/<slug>/`) the whole
- * directory is REPLACED, which is what removes stale files without any
- * bookkeeping: the work dir holds exactly this build's output, so anything no
- * longer produced simply is not in it. Artifacts of OTHER formats — a
- * `*-pdfx.pdf` sitting next to this run's `*-pdf.pdf` — are carried across
- * first, so building both formats accumulates them side by side.
- *
- * When the caller passed an explicit `--out`, that directory belongs to the
- * USER: files are merged in and nothing is ever deleted.
+ * `rm` on a destination exists ONLY in the `project` branch, whose path always
+ * came from `resolveOutputDir`. Neither caller-supplied variant can reach it,
+ * so no `--out` path is deletable by construction rather than by a guard.
  */
-async function publishBuild(ctx: BuildContext): Promise<void> {
-  const { workDir, outDir, ownsOutDir } = ctx;
+async function publishBuild(ctx: BuildContext, artifactName: string | null): Promise<void> {
+  const { workDir, target } = ctx;
 
-  if (!ownsOutDir) {
-    await fsp.mkdir(outDir, { recursive: true });
-    await fsp.cp(workDir, outDir, { recursive: true, force: true });
-    await fsp.rm(workDir, { recursive: true, force: true });
+  if (target.kind === "file") {
+    // Exactly one artifact is delivered. Nothing else the build produced —
+    // book.html, images/, the fingerprint — goes anywhere near the caller's
+    // folder, which is what stops a Save dialog from being sprayed with output.
+    if (!artifactName) throw new BuildError("No artifact to write for this format", 1);
+    await fsp.mkdir(path.dirname(target.file), { recursive: true });
+    await fsp.copyFile(path.join(workDir, artifactName), target.file);
     return;
   }
 
-  // Carry over sibling-format PDFs this build did not produce.
-  for (const name of await listPdfs(outDir)) {
-    if (!fs.existsSync(path.join(workDir, name))) {
-      await fsp.rename(path.join(outDir, name), path.join(workDir, name));
-    }
+  if (target.kind === "directory") {
+    // The user's directory: add files, never remove any.
+    await fsp.mkdir(target.dir, { recursive: true });
+    await fsp.cp(workDir, target.dir, { recursive: true, force: true });
+    return;
   }
 
-  await fsp.rm(outDir, { recursive: true, force: true });
-  await fsp.mkdir(path.dirname(outDir), { recursive: true });
-  await fsp.rename(workDir, outDir);
+  // Our own dist/<slug>/: replaced wholesale, which is what makes stale files
+  // vanish with no bookkeeping. Other formats' PDFs are carried across first so
+  // building pdf and html accumulates both.
+  for (const name of await listPdfs(target.dir)) {
+    if (!fs.existsSync(path.join(workDir, name))) {
+      await fsp.rename(path.join(target.dir, name), path.join(workDir, name));
+    }
+  }
+  await fsp.rm(target.dir, { recursive: true, force: true });
+  await fsp.mkdir(path.dirname(target.dir), { recursive: true });
+  await fsp.rename(workDir, target.dir);
 }
 
 /** Top-level `*.pdf` filenames in `dir`; empty when it does not exist. */
@@ -569,12 +612,12 @@ class PdfOutput implements OutputStrategy {
     // from a PDF/X one — previously both formats shared one configured
     // filename, so building both left only the last one on disk.
     const pdfName = artifactName(config.title, pdfxMode ? "pdfx" : "pdf");
-    // With no explicit override the PDF is built INSIDE the work dir and
-    // published with everything else; an override names a destination the
-    // caller owns (the viewer's Save dialog, `--out book.pdf`) and is written
-    // there directly so nothing else of ours lands in that folder.
-    const pdfFile = opts.pdfFileOverride ?? path.join(workDir, pdfName);
-    const reportedPdf = opts.pdfFileOverride ?? path.join(outDir, pdfName);
+    // ALWAYS built inside the work dir, whatever the destination is; publishing
+    // is what decides where it lands. That keeps every format atomic and keeps
+    // the "one file only" delivery rule in one place.
+    const pdfFile = path.join(workDir, pdfName);
+    const reportedPdf =
+      ctx.target.kind === "file" ? ctx.target.file : path.join(outDir, pdfName);
 
     // Scratch dir under the OS temp dir, for PDF/X intermediates only — never
     // for staging assets. Removed in a finally so it cannot leak.
@@ -672,7 +715,8 @@ class PdfOutput implements OutputStrategy {
           },
         },
         `Wrote: ${reportedPdf}`,
-        { htmlPath: htmlFile, pdfPath: reportedPdf }
+        { htmlPath: htmlFile, pdfPath: reportedPdf },
+        pdfName
       );
     } finally {
       await fsp.rm(stage, { recursive: true, force: true });
