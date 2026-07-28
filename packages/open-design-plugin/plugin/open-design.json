@@ -1,0 +1,124 @@
+{
+  "$schema": "https://open-design.ai/schemas/plugin.v1.json",
+  "specVersion": "1.0.0",
+  "name": "print-md-publishing",
+  "title": "Print-MD Publishing",
+  "version": "0.1.0",
+  "description": "Design and refine an existing Print-MD publication in place while preserving its paged-media, theme, asset, plugin, and Git conventions.",
+  "license": "MPL-2.0",
+  "author": {
+    "name": "Dimm City"
+  },
+  "tags": [
+    "publishing",
+    "print",
+    "markdown",
+    "paged-media",
+    "tune-collab"
+  ],
+  "compat": {
+    "agentSkills": [
+      {
+        "path": "./SKILL.md"
+      }
+    ]
+  },
+  "od": {
+    "kind": "skill",
+    "taskKind": "tune-collab",
+    "scenario": "publishing",
+    "useCase": {
+      "query": "Refine the Print-MD publication at {{bookPath}}. Goal: {{goal}}. Edit scope: {{editScope}}. Change ownership: {{changeScope}}. Treat {{previewUrl}} as the authoritative paginated preview."
+    },
+    "context": {
+      "skills": [
+        {
+          "path": "./SKILL.md"
+        }
+      ],
+      "atoms": [
+        "file-read",
+        "todo-write",
+        "file-edit",
+        "file-write"
+      ]
+    },
+    "pipeline": {
+      "stages": [
+        {
+          "id": "inspect",
+          "atoms": [
+            "file-read",
+            "todo-write"
+          ]
+        },
+        {
+          "id": "edit",
+          "atoms": [
+            "file-edit",
+            "file-write"
+          ]
+        },
+        {
+          "id": "verify",
+          "atoms": [
+            "file-read"
+          ]
+        }
+      ]
+    },
+    "inputs": [
+      {
+        "name": "bookPath",
+        "label": "Book path",
+        "type": "string",
+        "required": true,
+        "default": ".",
+        "placeholder": "books/core-book"
+      },
+      {
+        "name": "goal",
+        "label": "What should change?",
+        "type": "text",
+        "required": true,
+        "placeholder": "Refine chapter openers and reduce their page-space cost."
+      },
+      {
+        "name": "editScope",
+        "label": "Edit scope",
+        "type": "select",
+        "required": true,
+        "default": "theme",
+        "options": [
+          "theme",
+          "layout",
+          "content"
+        ]
+      },
+      {
+        "name": "changeScope",
+        "label": "Change ownership",
+        "type": "select",
+        "required": true,
+        "default": "book-only",
+        "options": [
+          "book-only",
+          "shared-foundation"
+        ]
+      },
+      {
+        "name": "previewUrl",
+        "label": "Print-MD preview URL",
+        "type": "string",
+        "required": false,
+        "default": "http://localhost:3579/",
+        "placeholder": "http://localhost:3579/"
+      }
+    ],
+    "capabilities": [
+      "prompt:inject",
+      "fs:read",
+      "fs:write"
+    ]
+  }
+}

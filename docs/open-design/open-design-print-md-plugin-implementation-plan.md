@@ -4,7 +4,17 @@
 
 **Audience:** developers building and maintaining the Open Design workflow plugin  
 **Purpose:** provide the files, contracts, workflow rules, test fixtures, and release steps needed to build an Open Design plugin that safely edits existing Print-MD publications.  
-**Verified against:** Print-MD `main` at [`719173c`](https://github.com/dimm-city/print-md/commit/719173c1ce68d7acd91494f477eb8e74533171a0) and Open Design `main` at [`fac1013`](https://github.com/nexu-io/open-design/commit/fac10139c0138a5700c128079e23c3e7a622516c), July 27, 2026.
+**Verified against:** Print-MD `main` at `06403ab`, July 28, 2026, and Open Design `main` at [`fac1013`](https://github.com/nexu-io/open-design/commit/fac10139c0138a5700c128079e23c3e7a622516c).
+
+> **Revision note (2026-07-28).** The Print-MD contracts in §4.8, §7, §8, §10,
+> and §14 were re-verified against the source. Two changed materially since the
+> original draft: `source.assets` staging was removed (shared design now
+> composes by reference — see
+> [`docs/reviews/asset-pipeline-deep-analysis-2026-07-27.md`](../reviews/asset-pipeline-deep-analysis-2026-07-27.md)),
+> and the preview now repaginates after a stylesheet edit instead of hot-swapping
+> a `<link>`. The skill text and reference outlines below reflect the current
+> behavior. The Open Design contracts (§4.1–§4.7, §12, §13, §18) are as
+> described in the original draft and have not been re-verified here.
 
 ## 1. Architectural decision
 
@@ -173,14 +183,26 @@ Direct DOM tuning is durable only for eligible local project HTML. A Print-MD pr
 The plugin must understand these current contracts:
 
 - manifests: `manifest.yaml`, `manifest.yml`, `print-md.yaml`;
-- explicit `source.files`, otherwise alphabetically sorted top-level `.md` files;
-- one active `themes/<id>/theme.css` entry;
-- ordered `manifest.styles`;
-- external `source.assets` flattened to their basename, with later collisions winning;
-- authored local plugins resolved relative to the manifest;
+- explicit `source.files`, otherwise alphabetically sorted **top-level** `.md`
+  files (never recursive — a `chapters/` folder requires an explicit list);
+- one active `themes/<id>/theme.css` entry, listed first in the cascade;
+- ordered `manifest.styles`, where **an entry is a path to READ, not a file to
+  ship**: it may point outside the book (`../../shared/styles/x.css`), it is
+  inlined into `book.html`, and its `url()`s resolve relative to itself, so its
+  fonts and images travel with it;
+- **no `source.assets` and no `output`** — both were removed and a manifest
+  that still carries either fails the build with a message naming the field;
+  assets are discovered from what the book references and output goes to
+  `dist/<title-slug>/`;
+- a Markdown image reference must resolve **inside** the book; `../` or absolute
+  refs are build errors (CSS `url()` has no such restriction);
+- authored local plugins resolved relative to the manifest, including paths
+  outside the book;
 - npm plugins managed beneath the book's `plugins/npm/` tree by `print-md plugin add`;
 - source metadata emitted as `data-source-line` and `data-chapter-src`; and
-- current CSS hot-swap does not rerun Paged.js, so a full Browser reload is required after pagination-affecting CSS until the generic Print-MD fix ships.
+- a stylesheet edit triggers a full rebuild and a complete Paged.js
+  repagination — including an edit to a shared stylesheet the manifest names —
+  so the visible preview is always a real pagination, not a restyled stale one.
 
 ## 5. Plugin repository and package layout
 
@@ -209,6 +231,13 @@ packages/open-design-plugin/
     └── release-checklist.md
 ```
 
+**Shipped so far (2026-07-28):** `packages/open-design-plugin/plugin/` — the
+installable package with `SKILL.md`, `open-design.json`, the five reference
+files, `README.md`, `LICENSE`, and `CHANGELOG.md`. The `test-fixtures/` books
+(§14) and `docs/release-checklist.md` are still to come; §15's package-schema
+assertions cannot run here either, because the `od` CLI is not available in this
+repository's toolchain.
+
 During development:
 
 ```bash
@@ -235,7 +264,7 @@ Use this initial manifest:
   "title": "Print-MD Publishing",
   "version": "0.1.0",
   "description": "Design and refine an existing Print-MD publication in place while preserving its paged-media, theme, asset, plugin, and Git conventions.",
-  "license": "MIT",
+  "license": "MPL-2.0",
   "author": {
     "name": "Dimm City"
   },
@@ -363,6 +392,7 @@ Use this initial manifest:
 - The pipeline uses only implemented first-party file/planning atoms.
 - No MCP, connector, network, shell, custom component, or media capability is requested.
 - `compat.agentSkills` and `od.context.skills` intentionally point to the same file, matching Open Design's current template pattern.
+- `license` is **MPL-2.0**, matching the repository the package is maintained in (this doc originally specified MIT; the shipped package must not claim a licence the repository does not grant). Revisit only if the package moves to its own repository under a different licence.
 
 ## 7. Exact `SKILL.md`
 
@@ -416,16 +446,17 @@ changing the project.
 Read and summarize:
 
 - explicit or implicit manuscript files;
-- `styles` and the active `themes/<id>/theme.css` entry;
-- ordered `source.assets` roots;
+- the ordered `styles` list and which entries are shared (a path escaping the
+  book) versus book-local, with the active `themes/<id>/theme.css` first;
 - page, preset, PDF/X, and validation constraints relevant to the request;
 - authored local plugins and Print-MD-managed npm plugins;
 - repository-level and book-level design guidance; and
-- shared versus local sources that feed each staged publication path.
+- which stylesheet actually owns the rule you intend to change.
 
-For a staged asset path, inspect matching source roots in manifest order and
-select the last existing source. Do not assume `styles/foo.css` physically lives
-inside the book when it may be supplied by `../../shared/styles/foo.css`.
+Every `styles` entry names a real file at that exact path — there is no staging
+or flattening, so nothing has to be reverse-mapped. Read each entry to see
+whether the declaration you want already exists in a shared file (changing it
+affects every book that lists it) or only in the book's own stylesheet.
 
 ### 3. Enforce ownership and edit scope
 
@@ -437,7 +468,7 @@ Follow `changeScope`:
 Follow `editScope`:
 
 - `theme`: CSS, theme-owned fonts/images, and design guidance only.
-- `layout`: theme scope plus semantic layout markers, manifest style/asset configuration, and authored local plugin source when necessary.
+- `layout`: theme scope plus semantic layout markers, manifest style configuration, and authored local plugin source when necessary.
 - `content`: layout scope plus manuscript prose and structure.
 
 Never broaden either scope silently.
@@ -462,7 +493,7 @@ into the file that should own it permanently.
 - Confirm no generated output or managed npm plugin file changed.
 - Inspect the Print-MD preview at `previewUrl` when one was provided.
 - Use existing `data-source-line`, `data-chapter-src`, IDs, classes, and semantic structure to relate preview elements to source.
-- After typography, page geometry, columns, spacing, font, image-size, or break-rule changes, ensure a complete Paged.js pagination occurred. On Print-MD versions that only hot-swap CSS, reload the Browser preview.
+- After typography, page geometry, columns, spacing, font, image-size, or break-rule changes, confirm the preview finished a complete Paged.js pagination. Current Print-MD repaginates on every stylesheet edit; reload the Browser tab if the page count or boundaries look stale.
 - Report the files changed, their shared or book-local ownership, and any remaining preview limitation.
 ```
 
@@ -480,7 +511,8 @@ Include:
 - fixed generated `book.html` ownership;
 - stylesheet fallback order when `styles` is omitted;
 - CSS `@page` as actual page geometry versus manifest page values as validation expectations;
-- output directories that must never be edited; and
+- the fixed `dist/<title-slug>/` output location, which must never be edited;
+- `source.assets` and `output` as removed fields that now fail the build; and
 - the rule that the exact target `bookPath` is authoritative.
 
 ### `references/themes-styles-assets.md`
@@ -488,12 +520,15 @@ Include:
 Include:
 
 - `themes/<id>/theme.css` and optional `theme.json`;
-- one-active-theme behavior;
+- one-active-theme behavior, and the theme's position at the front of `styles:`;
 - `styles/book.css` and the absence of required special CSS filenames;
-- ordered manifest stylesheet cascade;
-- shared-first/local-second asset flattening;
-- later-entry collision precedence;
-- CSS URL resolution from staged output paths;
+- the ordered manifest stylesheet cascade: paged primitives, plugin CSS, then
+  `styles:` in listed order, so project CSS wins at equal specificity;
+- a `styles:` entry as a path to READ — shared foundations are referenced, not
+  copied, and may live above the book root;
+- `url()` resolution relative to the stylesheet that contains it, with fonts
+  always embedded and images embedded or copied by size;
+- the in-book rule for Markdown image references;
 - direct plugin/profile paths; and
 - authored local plugins versus managed `plugins/npm/` packages.
 
@@ -513,13 +548,14 @@ Include the stable Print-MD authoring surface:
 
 Include:
 
-- default preview port and user-supplied ports;
+- default preview port (3579) and user-supplied ports;
 - Print-MD preview as pagination authority;
 - `data-source-line` and `data-chapter-src` reuse;
 - nearest source-bearing ancestor inspection;
 - why an HTTP-preview DOM edit is transient;
-- current CSS hot-swap repagination limitation; and
-- full reload behavior until the generic Print-MD fix ships.
+- repagination on every stylesheet edit, including a declared shared
+  stylesheet outside the book; and
+- when a manual Browser reload is still worth doing.
 
 ### `references/git-and-plugin-ownership.md`
 
@@ -564,10 +600,10 @@ activeStyles =
   manifest.styles when non-empty
   otherwise Print-MD fallback discovery
 
-for each staged style or asset path:
-  candidate sources are matching ordered source.assets roots
-  plus the direct bookRoot-relative path when applicable
-  winning source is the last existing candidate in staging order
+for each style entry:
+  the entry IS the source path, resolved against bookRoot
+  an entry that escapes bookRoot is a shared foundation file
+  its url() references resolve against that file's own directory
 ```
 
 Do not recursively search the repository and guess among multiple books when `bookPath` is supplied. Inputs are authoritative. A later UI enhancement may list candidate books before application, but it is not required for the plugin.
@@ -581,7 +617,6 @@ bookRoot/themes/**
 bookRoot/styles/**
 bookRoot/fonts/**
 bookRoot/images/**
-bookRoot/assets/**
 bookRoot/design/**
 shared equivalents when changeScope = shared-foundation
 ```
@@ -592,7 +627,7 @@ It may update a manifest only when necessary to reference an existing/new styles
 
 ```text
 manuscript Markdown layout markers/classes
-manifest styles/source.assets/page-related configuration
+manifest styles/page-related configuration
 authored local Print-MD plugin source
 ```
 
@@ -614,6 +649,9 @@ plugins/npm/**
 Open Design application data
 files outside the imported repository root
 ```
+
+Never REINTRODUCE a removed manifest field either: adding `source.assets` or
+`output` back to a manifest breaks the build outright.
 
 ## 11. Visual selection workflow
 
@@ -728,7 +766,7 @@ books/core-book
 books/supplement
 ```
 
-Verify `bookPath`, shared/book ownership, asset flattening, and sibling-book isolation.
+Verify `bookPath`, shared/book ownership, reference-based shared composition, and sibling-book isolation.
 
 ## 15. Test matrix
 
@@ -754,7 +792,7 @@ Verify `bookPath`, shared/book ownership, asset flattening, and sibling-book iso
 6. styles-only book
 7. project-local theme
 8. shared theme and local style extension
-9. local asset shadowing shared staged path
+9. book stylesheet shadowing a shared declaration through cascade order
 10. authored shared Print-MD plugin
 11. authored local Print-MD plugin
 12. managed npm Print-MD plugin tree
@@ -773,7 +811,7 @@ For every agent-run fixture, assert:
 - only ownership allowed by `changeScope` changed;
 - manuscript source membership did not accidentally expand;
 - one active theme remained;
-- shared/local precedence was respected;
+- shared/local cascade precedence was respected;
 - the final preview reflected the source edit after complete pagination; and
 - the final response named every changed file and its owner.
 
@@ -918,11 +956,15 @@ The plugin is complete when:
 
 ### Print-MD
 
-- [Current CLI and manifest behavior](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/packages/cli/README.md)
-- [Manifest resolver](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/packages/cli/src/lib/manifest.ts)
-- [Theme manager](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/packages/cli/src/lib/theme-manager.ts)
-- [Asset resolver](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/packages/cli/src/lib/assets.ts)
-- [Plugin command](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/packages/cli/src/commands/plugin.ts)
-- [npm plugin vendoring](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/docs/adr/0007-npm-plugin-vendoring.md)
-- [Preview watcher](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/packages/cli/src/preview/file-watcher.ts)
-- [Git repository detection](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/packages/cli/src/lib/project-source.ts)
+- [Current CLI and manifest behavior](../../packages/cli/README.md)
+- [Manifest resolver](../../packages/cli/src/lib/manifest.ts)
+- [Manuscript file resolution](../../packages/cli/src/lib/markdown/index.ts)
+- [Stylesheet resolution](../../packages/cli/src/lib/style-resolver.ts)
+- [CSS/font/image inlining](../../packages/cli/src/lib/asset-inline.ts)
+- [Book HTML assembly and cascade order](../../packages/cli/src/lib/markdown/assemble.ts)
+- [Theme manager](../../packages/cli/src/lib/theme-manager.ts)
+- [Plugin command](../../packages/cli/src/commands/plugin.ts)
+- [npm plugin vendoring](../adr/0007-npm-plugin-vendoring.md)
+- [Preview watcher](../../packages/cli/src/preview/file-watcher.ts)
+- [Git repository detection](../../packages/cli/src/lib/project-source.ts)
+- [Compatibility plan for filesystem design tools](./print-md-open-design-implementation-plan.md)

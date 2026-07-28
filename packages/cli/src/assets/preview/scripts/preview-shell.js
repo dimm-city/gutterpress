@@ -1,8 +1,9 @@
 // print-md preview shell controller (shared by the CLI preview and the Electron
 // viewer). Hosts book.html in an iframe and applies live edits without flicker:
-//   - css-update     → hot-swap the stylesheet into the active book (no reload)
 //   - content-update → re-paginate ONLY the edited chapter and splice it in
 //   - full-reload    → double-buffer: paginate a hidden iframe, then swap
+//                      (this is also what a stylesheet edit takes: in a paged
+//                      medium CSS moves page boundaries, so it must repaginate)
 // Scroll position is preserved via a chapter-scoped source-line anchor.
 //
 // TRANSPORT IS ABSTRACTED: change events arrive via connectChanges(), which uses
@@ -31,14 +32,6 @@
 
   function fdoc(f) { try { return f.contentDocument; } catch (_) { return null; } }
   function fwin(f) { try { return f.contentWindow; } catch (_) { return null; } }
-
-  function hotCss(p) {
-    var d = fdoc(active); if (!d) return;
-    var id = 'pmd-hot-' + p.replace(/[^a-z0-9]/gi, '_');
-    var prev = d.getElementById(id); if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
-    var l = d.createElement('link'); l.rel = 'stylesheet'; l.id = id; l.href = p + '?t=' + Date.now();
-    (d.head || d.documentElement).appendChild(l);
-  }
 
   function chapterOf(el) { var c = el.closest && el.closest('[data-chapter-src]'); return c ? c.getAttribute('data-chapter-src') : null; }
 
@@ -295,7 +288,6 @@
 
   connectChanges(function (m) {
     if (!m || !m.type) return;
-    if (m.type === 'css-update' && m.path) { hotCss(m.path); return; }
     if (m.type === 'content-update' && m.file) { spliceChapter(m.file); return; }
     if (m.type === 'full-reload') { swap(); return; }
   });

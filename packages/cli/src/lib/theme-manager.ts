@@ -274,9 +274,20 @@ export async function getActiveTheme(projectDir: string): Promise<ThemeInfo | nu
 
 /**
  * Wire the manifest `styles:` list so `themes/<id>/theme.css` is the active
- * theme: remove any previous theme `theme.css` entry, then append the new
- * one. The project's own (non-theme) stylesheets are preserved. Comments and
- * formatting round-trip via the yaml Document API.
+ * theme, KEEPING THE THEME'S CASCADE POSITION. The project's own (non-theme)
+ * stylesheets are preserved. Comments and formatting round-trip via the yaml
+ * Document API.
+ *
+ * Position matters because `styles:` order IS the cascade order — the renderer
+ * inlines the entries in sequence (asset-inline.ts) and later rules win at
+ * equal specificity. A theme is the BASE layer that a project's own stylesheets
+ * extend, so:
+ *
+ *   - replacing a theme reuses the OLD theme's index, so `styles: [theme,
+ *     book.css]` cannot silently become `[book.css, theme]` and invert every
+ *     override the author wrote; and
+ *   - the first theme is inserted at the FRONT, ahead of the ordinary project
+ *     styles that will now extend it.
  */
 async function setActiveThemeStyle(projectDir: string, id: string): Promise<void> {
   const { doc, file } = await loadManifestDoc(projectDir);
@@ -287,13 +298,19 @@ async function setActiveThemeStyle(projectDir: string, id: string): Promise<void
   // so "Revert to previous theme" can re-apply it later.
   const previousId = activeThemeIdInSeq(seq.items as Node[]);
 
-  // Drop any existing theme style entry (we keep exactly one active theme).
-  const kept = (seq.items as Node[]).filter((item) => {
+  // Keep exactly one active theme, at the position the outgoing theme held
+  // (or at the front when this is the project's first theme).
+  const items = seq.items as Node[];
+  const firstThemeIndex = items.findIndex((item) => {
+    const h = scalarString(item);
+    return !!h && THEME_HREF_RE.test(h);
+  });
+  const kept = items.filter((item) => {
     const h = scalarString(item);
     return !(h && THEME_HREF_RE.test(h));
   });
+  kept.splice(firstThemeIndex === -1 ? 0 : firstThemeIndex, 0, new Scalar(href));
   seq.items = kept;
-  seq.add(new Scalar(href));
 
   // Record / clear the previous-theme reference:
   //  - a genuinely different theme was active  → remember it (revert target),

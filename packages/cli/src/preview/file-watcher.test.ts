@@ -15,9 +15,10 @@ import {
   stopFileWatcher,
   injectPreviewScripts,
   describeChanges,
-  cssHotSwapPaths,
+  externalWatchTargets,
   decideBroadcast,
   isDotPathUnderRoot,
+  isIgnoredWatchPath,
   type ChangedFile,
 } from './file-watcher';
 import { pagedjsPolyfillTag } from '../lib/pagedjs-marker';
@@ -227,38 +228,65 @@ describe('injectPreviewScripts', () => {
   });
 });
 
-describe('cssHotSwapPaths', () => {
-  const css = (p: string, event = 'change'): ChangedFile => ({ relativePath: p, ext: '.css', event });
-  const md = (p: string): ChangedFile => ({ relativePath: p, ext: '.md', event: 'change' });
+describe('externalWatchTargets', () => {
+  test('returns declared styles and authored plugins that live outside the book', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'pmd-shared-'));
+    try {
+      const book = join(repo, 'books', 'core-book');
+      await mkdirp(join(book, 'styles'), { recursive: true });
+      await mkdirp(join(repo, 'shared', 'styles'), { recursive: true });
+      await mkdirp(join(repo, 'shared', 'plugins'), { recursive: true });
+      await writeFile(join(book, 'styles', 'book.css'), 'body{}');
+      await writeFile(join(repo, 'shared', 'styles', 'components.css'), 'body{}');
+      await writeFile(join(repo, 'shared', 'plugins', 'components.js'), 'export default () => {};');
 
-  test('returns every stylesheet path when the whole window is CSS', () => {
-    expect(cssHotSwapPaths([css('a.css'), css('sub/b.css')], 2)).toEqual(['a.css', 'sub/b.css']);
+      const targets = await externalWatchTargets(book, {
+        styles: ['../../shared/styles/components.css', 'styles/book.css'],
+        plugins: [
+          { path: '../../shared/plugins/components.js', priority: 100, options: {} },
+          { path: './plugins/local.js', priority: 100, options: {} },
+          { name: 'markdown-it-emoji', priority: 100, options: {} },
+        ],
+      });
+
+      // Only the two out-of-book entries; in-book paths are already covered by
+      // the project watch root, and an npm plugin has no source path at all.
+      expect(targets.sort()).toEqual(
+        [
+          join(repo, 'shared', 'styles', 'components.css'),
+          join(repo, 'shared', 'plugins', 'components.js'),
+        ].sort(),
+      );
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
   });
 
-  test('returns null when any change is not a stylesheet', () => {
-    expect(cssHotSwapPaths([css('a.css'), md('ch.md')], 2)).toBeNull();
+  test('returns nothing for a self-contained book', async () => {
+    const book = await mkdtemp(join(tmpdir(), 'pmd-book-'));
+    try {
+      await mkdirp(join(book, 'styles'), { recursive: true });
+      await writeFile(join(book, 'styles', 'book.css'), 'body{}');
+      expect(await externalWatchTargets(book, { styles: ['styles/book.css'] })).toEqual([]);
+    } finally {
+      await rm(book, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('isIgnoredWatchPath', () => {
+  const root = join(tmpdir(), 'proj');
+
+  test('applies the dotfile rule inside the project', () => {
+    expect(isIgnoredWatchPath(join(root, '.git', 'config'), root)).toBe(true);
+    expect(isIgnoredWatchPath(join(root, 'chapter-01.md'), root)).toBe(false);
   });
 
-  test('returns null when a change resolved to no destination (count mismatch)', () => {
-    // A change outside the watch root is dropped by describeChanges — the
-    // fast path must not fire when it cannot account for every change.
-    expect(cssHotSwapPaths([css('a.css')], 2)).toBeNull();
-  });
-
-  test('returns null for an empty window', () => {
-    expect(cssHotSwapPaths([], 0)).toBeNull();
-  });
-
-  test('returns null when the stylesheet was deleted, not edited', () => {
-    // Serve-in-place means the changed file IS the served file — there is no
-    // copy step left to fail independently of the edit (see the old
-    // `mirrored` flag this replaces). The one way a hot-swap can still go
-    // stale is a DELETE: appending a fresh <link> to a path that now 404s
-    // would break the live view with nothing downstream to repair it. That
-    // must fall through to a full reload instead.
-    const deleted: ChangedFile = { relativePath: 'a.css', ext: '.css', event: 'unlink' };
-    expect(cssHotSwapPaths([deleted], 1)).toBeNull();
-    expect(cssHotSwapPaths([css('ok.css'), deleted], 2)).toBeNull();
+  test('never ignores a declared external dependency, dot-prefixed ancestors and all', () => {
+    // The dotfile rule tests every segment relative to the root; for a path
+    // OUTSIDE the root that would mean testing its whole absolute path, so a
+    // shared foundation under `~/.local/share/...` would vanish silently.
+    expect(isIgnoredWatchPath(join(tmpdir(), '.local', 'shared', 'theme.css'), root)).toBe(false);
   });
 });
 
@@ -473,7 +501,6 @@ describe('createFileWatcher', () => {
       port: 0,
       async close() {},
       broadcastReload() { calls.push({ type: 'full-reload' }); },
-      broadcastCssUpdate(p: string) { calls.push({ type: 'css-update', arg: p }); },
       broadcastContentUpdate(f: string) { calls.push({ type: 'content-update', arg: f }); },
     } as any;
     return calls;
@@ -519,7 +546,7 @@ describe('createFileWatcher', () => {
     await watcher.close();
   }, 30000);
 
-  test('css-only burst hot-swaps every changed stylesheet without a reload', async () => {
+  test('css-only burst full-reloads so Paged.js repaginates', async () => {
     await writeFile(join(testDir, 'a.css'), 'body{color:red}');
     await writeFile(join(testDir, 'b.css'), 'body{margin:0}');
     const calls = attachBroadcastRecorder(state);
@@ -531,9 +558,53 @@ describe('createFileWatcher', () => {
     watcher.emit('all', 'change', join(testDir, 'b.css'));
     await waitForRebuild(state, calls);
 
-    expect(calls.map((c) => c.type)).toEqual(['css-update', 'css-update']);
-    expect(calls.map((c) => (c as any).arg).sort()).toEqual(['a.css', 'b.css']);
+    // A stylesheet edit changes page geometry, leading, spacing, break rules —
+    // so the live view must repaginate, not re-link a stale layout.
+    expect(calls).toEqual([{ type: 'full-reload' }]);
     await watcher.close();
+  }, 30000);
+
+  test('editing a shared stylesheet outside the book rebuilds the preview', async () => {
+    // The multi-book layout: books/<book>/ reads ../../shared/styles/*.css.
+    // The shared file is above the project watch root, so it is only seen
+    // because the manifest declares it (externalWatchTargets).
+    const repo = await mkdtemp(join(tmpdir(), 'print-md-test-repo-'));
+    const book = join(repo, 'books', 'core-book');
+    const sharedCss = join(repo, 'shared', 'styles', 'components.css');
+    await mkdirp(book, { recursive: true });
+    await mkdirp(join(repo, 'shared', 'styles'), { recursive: true });
+    await writeFile(join(book, 'chapter-01.md'), '# One');
+    await writeFile(sharedCss, 'body { color: red }');
+    await writeFile(
+      join(book, 'manifest.yaml'),
+      'title: Core Book\nstyles:\n  - ../../shared/styles/components.css\n',
+    );
+    const sharedTempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    const sharedState = createTestServerState(book, sharedTempDir);
+    sharedState.config = resolveConfig({}, {
+      title: 'Core Book',
+      styles: ['../../shared/styles/components.css'],
+    });
+
+    const calls = attachBroadcastRecorder(sharedState);
+    const watcher = createFileWatcher(sharedState);
+    sharedState.currentWatcher = watcher;
+    try {
+      await waitForWatcherReady(watcher);
+      // The external target is added asynchronously after the watcher exists.
+      await wait(300);
+
+      // A REAL write (not an emitted event) — this only reaches the watcher
+      // if the external target was genuinely added to it.
+      await writeFile(sharedCss, 'body { color: blue }');
+      await waitForRebuild(sharedState, calls);
+
+      expect(calls).toEqual([{ type: 'full-reload' }]);
+    } finally {
+      await watcher.close();
+      await rm(repo, { recursive: true, force: true });
+      await rm(sharedTempDir, { recursive: true, force: true });
+    }
   }, 30000);
 
   test('broadcast chapter paths use forward slashes (never backslashes)', async () => {

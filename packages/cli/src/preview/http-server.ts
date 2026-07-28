@@ -111,25 +111,6 @@ const HMR_CLIENT_SNIPPET = `
         location.reload();
         return;
       }
-      // CSS hot-swap: Paged.js inlines the user CSS and REMOVES the original
-      // <link> during pagination, so there is usually no <link> left to bump.
-      // Instead we (re)inject a fresh <link> for the edited stylesheet, appended
-      // LAST so its rules win the cascade over Paged.js's stale inlined copy.
-      // No reload, no re-pagination — scroll position is preserved and the new
-      // styles apply on the next frame. (Geometry/@page changes won't re-flow
-      // page boxes until a content edit triggers a full rebuild.)
-      if (msg.type === 'css-update' && msg.path) {
-        var id = 'pmd-hot-' + msg.path.replace(/[^a-z0-9]/gi, '_');
-        var prev = document.getElementById(id);
-        if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
-        var link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.id = id;
-        link.href = msg.path + '?t=' + Date.now();
-        (document.head || document.documentElement).appendChild(link);
-        window.dispatchEvent(new CustomEvent('pmd:css-updated', { detail: { path: msg.path } }));
-        return;
-      }
     };
   })();
 </script>
@@ -166,12 +147,6 @@ export interface PreviewServer {
    * client. Safe to call after `close()` (no-op).
    */
   broadcastReload(): void;
-  /**
-   * Broadcast a `{ type: "css-update", path }` message so clients re-fetch just
-   * that stylesheet (no reload / re-pagination). `path` is the stylesheet's
-   * served path relative to the temp dir (e.g. "styles/guide.css").
-   */
-  broadcastCssUpdate(stylesheetPath: string): void;
   /**
    * Broadcast a `{ type: "content-update", file }` message so the incremental
    * shell re-paginates and splices just that chapter (instead of reloading the
@@ -636,9 +611,6 @@ export async function createPreviewServer(
     },
     broadcastReload() {
       broadcast({ type: 'full-reload' });
-    },
-    broadcastCssUpdate(stylesheetPath: string) {
-      broadcast({ type: 'css-update', path: stylesheetPath });
     },
     broadcastContentUpdate(file: string) {
       broadcast({ type: 'content-update', file });

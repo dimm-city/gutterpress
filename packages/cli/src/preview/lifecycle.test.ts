@@ -56,7 +56,6 @@ function makeStubServer(): PreviewServer & {
     broadcastReload() {
       stub.broadcastReloadCalls++;
     },
-    broadcastCssUpdate() {},
     broadcastContentUpdate() {},
   };
   return stub;
@@ -367,7 +366,6 @@ describe("shutdownServer", () => {
       port: 3000,
       close: () => new Promise<void>(() => {}), // never resolves
       broadcastReload() {},
-      broadcastCssUpdate() {},
       broadcastContentUpdate() {},
     };
     const state = makeState({ tempDir, previewServer: hangingServer });

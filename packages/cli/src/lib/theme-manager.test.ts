@@ -134,6 +134,54 @@ describe("theme-manager", () => {
       expect(manifest).toContain(`${THEMES_DIR}/clean-book/theme.css`);
     });
 
+    // `styles:` order IS the cascade order (asset-inline.ts inlines the entries
+    // in sequence), so a theme that lands AFTER the project's own stylesheets
+    // silently defeats every override the author wrote at equal specificity.
+    test("inserts the first theme ahead of the project's own stylesheets", async () => {
+      const dir = projectDir();
+      writeManifest(
+        dir,
+        ["title: Test", "styles:", "  - styles/book.css", ""].join("\n"),
+      );
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+
+      const lines = readManifest(dir).split("\n");
+      const themeIndex = lines.findIndex((l) =>
+        l.includes(`${THEMES_DIR}/clean-book/theme.css`),
+      );
+      const bookIndex = lines.findIndex((l) => l.includes("styles/book.css"));
+      expect(themeIndex).toBeGreaterThan(-1);
+      expect(themeIndex).toBeLessThan(bookIndex);
+    });
+
+    test("switching themes keeps the outgoing theme's cascade position", async () => {
+      const dir = projectDir();
+      writeManifest(
+        dir,
+        [
+          "title: Test",
+          "styles:",
+          "  - styles/reset.css",
+          `  - ${THEMES_DIR}/clean-book/theme.css`,
+          "  - styles/book.css",
+          "",
+        ].join("\n"),
+      );
+      // The theme folder must exist for getActiveTheme to accept it.
+      await applyTheme(dir, { kind: "builtin", id: "clean-book" });
+      await applyTheme(dir, { kind: "builtin", id: "zine" });
+
+      const entries = readManifest(dir)
+        .split("\n")
+        .filter((l) => l.trim().startsWith("- "))
+        .map((l) => l.trim().slice(2));
+      expect(entries).toEqual([
+        "styles/reset.css",
+        `${THEMES_DIR}/zine/theme.css`,
+        "styles/book.css",
+      ]);
+    });
+
     test("getActiveTheme returns null when no theme is applied", async () => {
       const dir = projectDir();
       writeManifest(dir, ["title: Test", ""].join("\n"));

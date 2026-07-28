@@ -13,6 +13,7 @@ import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
 import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
+import { resolveActiveStyles } from '../lib/style-resolver';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/viewer';
 import type { ServerState } from './server-context';
@@ -22,13 +23,18 @@ import type { ResolvedPluginConfig } from '../schema/manifest.types';
 
 /**
  * Resolve a changed file's canonical, forward-slash path relative to the
- * project root, or `null` if the file isn't under it. There is exactly ONE
- * watch root now (the project directory — see `createFileWatcher` below):
- * the old external-asset-root concept (a sibling `../_shared` directory
- * mirrored under its own name in the temp dir) went away with `copyAssets`
- * and the manifest's `source.assets` field it depended on, since a project
- * is served straight from disk (see http-server.ts) and there is no longer
- * a destination path to mirror INTO.
+ * project root, or `null` if the file isn't under it — which, for a file the
+ * watcher was asked to watch, means it is a DECLARED EXTERNAL DEPENDENCY (a
+ * shared stylesheet or authored plugin the manifest points at outside the
+ * book; see `externalWatchTargets` below). Those have no project-relative
+ * path to broadcast, so `runRebuild` treats them as an unconditional full
+ * rebuild rather than trying to name them.
+ *
+ * There is no mirroring of any kind any more: the old external-asset-root
+ * concept (a sibling `../_shared` directory copied under its own name into
+ * the temp dir) went away with `copyAssets` and the manifest's `source.assets`
+ * field it depended on, since a project is served straight from disk (see
+ * http-server.ts) and stylesheets are inlined at render time (asset-inline.ts).
  *
  * `relativePath` is normalized to FORWARD slashes regardless of platform —
  * it is broadcast to clients (content-update chapter splices, CSS hot-swap
@@ -267,41 +273,6 @@ export function describeChanges(
   return files;
 }
 
-/**
- * CSS hot-swap fast path: a stylesheet edit doesn't change content flow, so
- * the client can re-fetch JUST that file (over HTTP, from wherever it
- * actually lives — serve-in-place means the project's own CSS files are
- * already reachable at their authored relative path, see http-server.ts) —
- * no re-pagination, no reload. Scroll position is preserved and the new
- * styles apply on the next frame. Returns the stylesheet paths to hot-swap,
- * or null unless EVERY change in the window resolved to a still-existing
- * stylesheet.
- *
- * A DELETED stylesheet is excluded on purpose: appending a fresh `<link>` to
- * a path that now 404s would leave the live view broken with nothing
- * downstream to correct it (unlike a deleted markdown chapter, which
- * full-reloads from a freshly re-rendered book.html). That case — and any
- * mixed window — falls through to `decideBroadcast`'s full-reload path below.
- *
- * NOTE: book.html's own `<style data-project-css>` block is re-rendered
- * unconditionally by the caller regardless of this fast path (CSS is now
- * INLINED there, unlike the old copied-CSS-file model where book.html never
- * needed to change for a pure style edit) — this function only decides
- * whether the LIVE view can skip a reload while that happens.
- * (Geometry-affecting CSS like @page size won't re-flow page boxes until a
- * content change triggers a full rebuild — acceptable for live tweaks.)
- */
-export function cssHotSwapPaths(changedFiles: ChangedFile[], changeCount: number): string[] | null {
-  if (
-    changedFiles.length === changeCount &&
-    changedFiles.length > 0 &&
-    changedFiles.every((f) => f.ext === '.css' && f.event !== 'unlink')
-  ) {
-    return changedFiles.map((f) => f.relativePath);
-  }
-  return null;
-}
-
 /** How a content change is pushed to connected preview clients. */
 export type BroadcastDecision =
   | { kind: 'chapter-splice'; chapterId: string; relativePath: string }
@@ -313,6 +284,17 @@ export type BroadcastDecision =
  * not the whole doc). Any multi-file change — restore, sync merge —
  * must full-reload instead: a single-chapter splice can only refresh
  * one chapter and would leave the others stale.
+ *
+ * EVERYTHING ELSE, INCLUDING A STYLESHEET EDIT, FULL-RELOADS — which means a
+ * complete Paged.js re-pagination. A CSS-only burst used to take a hot-swap
+ * fast path that appended a fresh `<link>` without re-paginating; that was
+ * wrong for a paged medium, where page geometry, fonts, leading, spacing,
+ * custom properties, column rules, image sizing, and `break-*` rules all move
+ * page boundaries. The live view showed the new styling laid out on the OLD
+ * page boxes, so an author (or an external design tool inspecting the preview)
+ * judged pagination against a view that no longer matched what `print-md
+ * build` would produce. The double-buffered swap + `data-source-line` anchor
+ * restore in preview-shell.js keep the reload from being disruptive.
  *
  * The chapterId is the CANONICAL chapter id — must equal the build's
  * data-chapter-src for the same file (see lib/markdown/chapter-id.ts)
@@ -378,15 +360,77 @@ export function isDotPathUnderRoot(candidatePath: string, root: string): boolean
 }
 
 /**
- * Create and configure a file watcher for the project's input directory.
+ * Whether the watcher should ignore a path.
  *
- * Watches ONLY the project directory. The old external-asset-root watching
- * (a sibling `../_shared` directory mirrored under its own name in the temp
- * dir) went away with `copyAssets` and the manifest's `source.assets` field
- * it depended on — there is no longer a place to declare a shared directory
- * outside the project, and nothing to mirror it INTO even if there were
- * (serve-in-place means the project's own files need no mirroring either;
- * see http-server.ts).
+ * IN-PROJECT paths get the dotfile rule ({@link isDotPathUnderRoot}) — a
+ * project's own `.git/`, `.DS_Store`, editor swap files, and so on are noise.
+ *
+ * A path OUTSIDE the project is only ever seen because it is a DECLARED
+ * external dependency the manifest named explicitly (see
+ * {@link externalWatchTargets}); it is never ignored. Running the dotfile rule
+ * on it would test every ANCESTOR segment of its absolute path — so a shared
+ * foundation checked out under, say, `~/.local/share/books/shared/` would be
+ * silently dropped, which is the exact failure mode the in-project rule was
+ * rewritten to avoid.
+ */
+export function isIgnoredWatchPath(candidatePath: string, projectRoot: string): boolean {
+  const normalizedRoot = projectRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalizedPath = candidatePath.replace(/\\/g, "/");
+  const inProject =
+    normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + "/");
+  return inProject ? isDotPathUnderRoot(candidatePath, projectRoot) : false;
+}
+
+/**
+ * The book's DECLARED dependencies that live outside the book folder —
+ * absolute paths, deduped.
+ *
+ * A multi-book repository keeps its shared foundation next to the books
+ * (`shared/styles/publisher-components.css`, `shared/plugins/components.js`)
+ * and each book's manifest points at it directly: a `styles:` entry is a path
+ * to READ (asset-inline.ts inlines it; nothing is staged or copied) and an
+ * authored plugin `path:` resolves against the manifest directory. Both may
+ * therefore sit above the book root, where the project watch root cannot see
+ * them — so editing the shared foundation would leave the preview stale with
+ * no indication anything had happened.
+ *
+ * Only the DECLARED entries are watched, not their containing directories: the
+ * set is exact, predictable, and cannot accidentally pull a large sibling tree
+ * into the watcher. A file pulled in by an `@import` from a shared stylesheet
+ * is therefore not watched; edit the declared entry (or any book file) to pick
+ * it up.
+ */
+export async function externalWatchTargets(
+  projectDir: string,
+  config: { styles?: string[]; plugins?: ResolvedPluginConfig[] }
+): Promise<string[]> {
+  const root = path.resolve(projectDir);
+  const declared = [
+    ...(await resolveActiveStyles(root, config.styles)),
+    ...(config.plugins ?? []).map((p) => p.path).filter((p): p is string => !!p),
+  ];
+
+  const external = new Set<string>();
+  for (const entry of declared) {
+    const abs = path.resolve(root, entry);
+    const rel = path.relative(root, abs);
+    // Inside the project (or the project itself) — already covered by the
+    // project watch root.
+    if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) continue;
+    external.add(abs);
+  }
+  return [...external];
+}
+
+/**
+ * Create and configure a file watcher for the project's input directory plus
+ * the book's declared external dependencies (see {@link externalWatchTargets}).
+ *
+ * Nothing is mirrored anywhere: the old external-asset-root watching (a sibling
+ * `../_shared` directory copied under its own name into the temp dir) went away
+ * with `copyAssets` and the manifest's `source.assets` field it depended on.
+ * The project is served straight from disk and stylesheets are inlined at
+ * render time, so an external dependency needs watching, not staging.
  */
 export function createFileWatcher(state: ServerState): FSWatcher {
   const inputResolved = path.resolve(state.currentInputPath);
@@ -394,12 +438,46 @@ export function createFileWatcher(state: ServerState): FSWatcher {
   const watcher = watch(inputResolved, {
     persistent: true,
     ignoreInitial: true,
-    ignored: (candidatePath: string) => isDotPathUnderRoot(candidatePath, inputResolved),
+    ignored: (candidatePath: string) => isIgnoredWatchPath(candidatePath, inputResolved),
     awaitWriteFinish: {
       stabilityThreshold: 100,
       pollInterval: 50,
     },
   });
+
+  /**
+   * Declared external dependencies currently under watch. Re-synced after
+   * every rebuild so a manifest edit that adds or drops a shared entry takes
+   * effect without restarting the preview server.
+   */
+  let watchedExternals = new Set<string>();
+  // Serialized: the startup sync and the first rebuild's sync can otherwise
+  // overlap, and both would report adding the same target.
+  let syncQueue: Promise<void> = Promise.resolve();
+  function syncExternalWatches(): Promise<void> {
+    syncQueue = syncQueue.then(runSyncExternalWatches, runSyncExternalWatches);
+    return syncQueue;
+  }
+  async function runSyncExternalWatches(): Promise<void> {
+    let desired: Set<string>;
+    try {
+      desired = new Set(await externalWatchTargets(inputResolved, state.config));
+    } catch (err) {
+      debug(`Could not resolve external watch targets: ${err}`);
+      return;
+    }
+    for (const target of watchedExternals) {
+      if (!desired.has(target)) watcher.unwatch(target);
+    }
+    for (const target of desired) {
+      if (!watchedExternals.has(target)) {
+        watcher.add(target);
+        info(`Watching shared dependency: ${target}`);
+      }
+    }
+    watchedExternals = desired;
+  }
+  void syncExternalWatches();
 
   // Paths changed during the current debounce window. A single edit fires one
   // event, but multi-file disk rewrites (version restore, sync merge, bulk
@@ -430,34 +508,22 @@ export function createFileWatcher(state: ServerState): FSWatcher {
 
         const changedFiles = describeChanges(changes, inputResolved);
 
-        // Re-render book.html UNCONDITIONALLY, before deciding how to notify
-        // clients. This runs even for a CSS-only burst, which the old
-        // mirror-based version deliberately skipped (it returned right after
-        // the hot-swap broadcast below) — that was correct there because CSS
-        // was a copied file `book.html` merely <link>ed to, so a style edit
-        // never touched book.html itself. Now CSS is INLINED into book.html's
-        // `<style data-project-css>` block at render time (asset-inline.ts),
-        // so skipping the re-render would leave the persisted book.html
-        // holding stale styles until some LATER markdown edit happened to
-        // force one. Re-rendering here keeps a hard reload or a fresh
-        // `/__chapter` splice always current, independent of the fast paths
-        // below (which only affect how the LIVE view is notified).
+        // Re-render book.html for EVERY burst, including a CSS-only one. CSS is
+        // INLINED into book.html's `<style data-project-css>` block at render
+        // time (asset-inline.ts), so a style edit really does change book.html
+        // — skipping the re-render would leave the persisted file holding stale
+        // styles until some later markdown edit happened to force one.
         const manifest = await loadManifest(state.currentInputPath);
         const updatedConfig = resolveConfig({}, manifest);
         state.config = updatedConfig;
         await generateAndWriteHtml(state.currentInputPath, state.tempDir, updatedConfig);
+        // The manifest may have just changed which shared files the book reads.
+        void syncExternalWatches();
 
-        // Stylesheet-only burst → hot-swap the live view immediately (no
-        // reload, no re-pagination); book.html above is already current.
-        const cssPaths = cssHotSwapPaths(changedFiles, changes.length);
-        if (cssPaths) {
-          for (const p of cssPaths) {
-            state.previewServer?.broadcastCssUpdate(p);
-            info(`CSS hot-swapped: ${p}`);
-          }
-          return;
-        }
-
+        // An external dependency's change has no project-relative path, so
+        // `describeChanges` drops it and `changeCount` still counts it — which
+        // is exactly what makes `decideBroadcast` fall through to a full
+        // reload for it.
         const decision = decideBroadcast(changedFiles, changes.length, incrementalPreviewEnabled());
         if (decision.kind === 'chapter-splice') {
           state.previewServer?.broadcastContentUpdate(decision.chapterId);

@@ -2,7 +2,7 @@
 
 Open Design can refine a Print-MD publication directly because both applications work with ordinary files. Open Design edits the repository; Print-MD renders the authoritative paginated preview. There is no conversion step and no Open Design-specific Print-MD project format.
 
-This guide assumes the **Print-MD Publishing** plugin is available in Open Design and the generic Print-MD preview improvements are complete.
+This guide assumes the **Print-MD Publishing** plugin is available in Open Design. The generic Print-MD preview improvements it relies on — theme cascade position, repagination after a stylesheet edit, and watching declared shared files — are in `main` as of 2026-07-28.
 
 ## Install the Open Design plugin
 
@@ -37,7 +37,6 @@ my-book/
 ├── styles/
 ├── fonts/
 ├── images/
-├── assets/
 ├── plugins/
 ├── profiles/
 └── design-guide/
@@ -56,7 +55,6 @@ publication-project/
 │   ├── styles/
 │   ├── fonts/
 │   ├── images/
-│   ├── assets/
 │   ├── plugins/
 │   └── profiles/
 └── books/
@@ -79,7 +77,7 @@ source:
     - chapters/02-rules.md
 ```
 
-When `source.files` is absent or empty, Print-MD renders every top-level `.md` file in the book folder alphabetically. Put book-specific guidance under `design/DESIGN.md` in that case.
+When `source.files` is absent or empty, Print-MD renders every top-level `.md` file in the book folder alphabetically — and only top-level files, so a `chapters/` folder needs an explicit list. Put book-specific guidance under `design/DESIGN.md` when discovery is implicit.
 
 The Print-MD Publishing plugin checks this before editing and warns when a control document could enter the publication.
 
@@ -99,7 +97,7 @@ http://localhost:3579/
 
 Open that URL in an Open Design Browser tab. The Print-MD preview is authoritative for page size, pagination, columns, running content, page breaks, and print layout.
 
-When Open Design changes active CSS, fonts, images, page rules, or manuscript structure, Print-MD rebuilds and completes a fresh Paged.js pagination before replacing the visible preview.
+When Open Design changes active CSS, fonts, images, page rules, or manuscript structure, Print-MD rebuilds and completes a fresh Paged.js pagination before replacing the visible preview. This applies to a shared stylesheet outside the book too, as long as the book's manifest names it.
 
 ## Apply the Print-MD Publishing plugin
 
@@ -111,7 +109,7 @@ Apply the plugin to the Open Design project bound to the repository. Supply:
 - **Change ownership** — book-only or shared foundation
 - **Preview URL** — the running Print-MD URL
 
-The plugin reads the book manifest, source list, active theme, ordered styles, asset roots, plugins, print constraints, and tracked design guidance before it changes anything.
+The plugin reads the book manifest, source list, active theme, ordered styles, plugins, print constraints, and tracked design guidance before it changes anything.
 
 ## Choose the edit scope
 
@@ -132,9 +130,9 @@ It does not change manuscript prose or semantic layout markers.
 Open Design may also change:
 
 - reusable section components;
-- `@chapter`, `@page`, `@section`, and related semantic markers;
+- `@chapter`, `@page`, `@section`, `@spread`, `@continue`, and related semantic markers;
 - page and column rules;
-- manifest style or asset configuration when required; and
+- manifest style configuration when required; and
 - authored Print-MD plugin behavior when CSS and semantic Markdown are insufficient.
 
 ### Content
@@ -166,43 +164,35 @@ styles:
 
 Later manifest styles win at equal specificity. Open Design integrates accepted changes into the file that should own them permanently. It does not create `open-design.css`, a token JSON file, or another tool-specific layer.
 
-## Compose shared and book-local assets
+## Compose shared and book-local design
 
-Shared roots come first and matching book-local roots come second:
+A `styles:` entry is a path Print-MD **reads**, not a file it copies. Point a book straight at the shared foundation and list the book's own CSS after it:
 
 ```yaml
 source:
   files:
     - chapters/01-introduction.md
     - chapters/02-rules.md
-  assets:
-    - ../../shared/themes
-    - ../../shared/styles
-    - ../../shared/fonts
-    - ../../shared/images
-    - ../../shared/assets
-    - themes
-    - styles
-    - fonts
-    - images
-    - assets
+styles:
+  - ../../shared/themes/publisher/theme.css
+  - ../../shared/styles/publisher-components.css
+  - styles/book.css
 ```
 
-External parent paths flatten to their basename. For example:
+Print-MD inlines those files in order into the built book. Each stylesheet's `url()` references resolve **relative to that stylesheet**, so a shared theme's own fonts and images come with it automatically:
 
 ```text
-../../shared/themes/publisher/theme.css
+shared/themes/publisher/theme.css
+  └── url("../../fonts/Publisher.woff2")   → embedded in the book
 ```
 
-is staged as:
+Fonts are always embedded as data URIs. Images under about 512 KB are embedded; larger ones are copied next to `book.html`.
 
-```text
-themes/publisher/theme.css
-```
+There is no asset list, no flattening, and no collision rule. To shadow a shared decision, list the book's own stylesheet later — the cascade does the rest.
 
-When a shared and local source produce the same output path, the later local source wins. Use this only for an intentional complete replacement; otherwise use distinct filenames or theme IDs.
+**One standing rule:** an image used directly in **Markdown prose** must live inside the book folder. A `../` or absolute image reference is a build error asking you to copy the file into the project. Shared art that is referenced from shared **CSS** is fine; shared art referenced from prose must be copied into the book that uses it.
 
-Do not add the entire `../../shared` folder to `source.assets` when it also contains notes, profiles, or plugin source.
+> Manifests written for older Print-MD releases may still carry `source.assets` or `output`. Both were removed; a manifest that still has either fails with a message naming the field. Delete them — assets are discovered from what the book references, and output goes to `dist/<title-slug>/`.
 
 ## Choose shared or book-only ownership
 
@@ -318,16 +308,18 @@ Use `print-md doctor` when diagnosing missing external tools or installation pro
 - Keep theme packages in `themes/` and ordinary CSS in `styles/`.
 - Keep design guidance nested when manuscript discovery is implicit.
 - Put cross-book work in `shared/`; put book-only work in the book folder.
-- List shared asset roots before matching local roots.
-- Keep one active theme and extend it through later ordinary styles.
+- Reference shared CSS directly from `styles:` — nothing needs copying.
+- Keep prose images inside the book that uses them.
+- Keep one active theme, listed first, and extend it through later ordinary styles.
 - Let Print-MD manage registry-installed packages under `plugins/npm/`.
 - Never edit generated `book.html` or build output.
 - Use the Print-MD preview as the final authority for pagination.
 
 ## References
 
-- [Print-MD CLI and manifest reference](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/packages/cli/README.md)
-- [Print-MD styling and themes](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/examples/print-md-user-guide/04-styling-theming.md)
-- [Print-MD plugins](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/examples/print-md-user-guide/06-plugins.md)
-- [Print-MD companion design guides](https://github.com/dimm-city/print-md/blob/719173c1ce68d7acd91494f477eb8e74533171a0/docs/design-guides.md)
-- [Open Design](https://github.com/nexu-io/open-design/tree/fac10139c0138a5700c128079e23c3e7a622516c)
+- [Print-MD CLI and manifest reference](../../packages/cli/README.md)
+- [Print-MD styling and themes](../../examples/print-md-user-guide/04-styling-theming.md)
+- [Print-MD plugins](../../examples/print-md-user-guide/06-plugins.md)
+- [Print-MD companion design guides](../design-guides.md)
+- [Print-MD compatibility plan for filesystem design tools](./print-md-open-design-implementation-plan.md)
+- [Open Design](https://github.com/nexu-io/open-design)
