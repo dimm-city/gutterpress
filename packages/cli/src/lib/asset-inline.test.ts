@@ -209,3 +209,54 @@ describe("decodeRef", () => {
     expect(decodeRef("100%.png")).toBe("100%.png");
   });
 });
+
+describe("inlineStyles — @import correctness", () => {
+  test("an imported sheet's urls resolve against ITS OWN directory, not the importer's", async () => {
+    // Regression: imports used to be expanded BEFORE the url() walk, so the
+    // parent re-resolved the child's already-rewritten path and aborted with a
+    // bogus missing-asset error.
+    await put("images/bg.png", Buffer.alloc(IMAGE_INLINE_MAX_BYTES + 1, 1));
+    await put("styles/parts/page.css", 'body { background-image: url("../../images/bg.png"); }');
+    await put("styles/book.css", '@import "parts/page.css";\nh1 { color: red; }');
+
+    const { css, copies } = await inlineStyles(dir, ["styles/book.css"]);
+    expect(copies).toEqual([{ from: path.join(dir, "images/bg.png"), to: "images/bg.png" }]);
+    expect(css).toContain('url("images/bg.png")');
+  });
+
+  test("an @import's media condition is preserved, not silently dropped", async () => {
+    // Otherwise screen-only rules would leak into the printed book.
+    await put("styles/screen.css", "body { color: lime; }");
+    await put("styles/book.css", '@import "screen.css" screen;');
+
+    const { css } = await inlineStyles(dir, ["styles/book.css"]);
+    expect(css).toMatch(/@media\s+screen/);
+    expect(css).toContain("lime");
+  });
+
+  test("an @import's layer() is preserved", async () => {
+    await put("styles/theme.css", "body { color: teal; }");
+    await put("styles/book.css", '@import "theme.css" layer(theme);');
+
+    const { css } = await inlineStyles(dir, ["styles/book.css"]);
+    expect(css).toMatch(/@layer\s+theme/);
+  });
+});
+
+describe("inlineStyles — url() parsing", () => {
+  test("a quoted filename containing ) is resolved", async () => {
+    await put("images/Figure (1).png", Buffer.alloc(8, 1));
+    await put("styles/book.css", 'h1 { background-image: url("../images/Figure (1).png"); }');
+
+    const { css } = await inlineStyles(dir, ["styles/book.css"]);
+    expect(css).toContain("data:image/png;base64,");
+  });
+
+  test("a double-quoted filename containing an apostrophe is resolved", async () => {
+    await put("images/author's-photo.png", Buffer.alloc(8, 2));
+    await put("styles/book.css", `h1 { background-image: url("../images/author's-photo.png"); }`);
+
+    const { css } = await inlineStyles(dir, ["styles/book.css"]);
+    expect(css).toContain("data:image/png;base64,");
+  });
+});

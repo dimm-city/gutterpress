@@ -84,9 +84,16 @@ export interface BuildRunnerOptions {
 
 export interface BuildRunnerResult {
   outDir: string;
-  htmlPath: string;
+  /**
+   * The published `book.html`, or `null` for a one-file delivery (`--out x.pdf`,
+   * a viewer export) where only the PDF is delivered and everything else is
+   * discarded with the work dir. Returning a work-dir path here would hand the
+   * caller a filename that is already deleted by the time they see it.
+   */
+  htmlPath: string | null;
   pdfPath: string | null;
-  fingerprintPath: string;
+  /** As {@link htmlPath}: `null` when nothing but the artifact was published. */
+  fingerprintPath: string | null;
 }
 
 export interface SplitOutPath {
@@ -446,21 +453,21 @@ async function finalizeBuild(
   });
   await publishBuild(ctx, artifactName);
 
-  // A `file` target delivers ONE artifact, so the fingerprint and book.html
-  // stay in the work dir and are discarded with it — reporting paths there
-  // would name files that do not exist.
+  // A `file` target delivers ONE artifact; the fingerprint and book.html stay
+  // in the work dir and are removed with it, so they are reported as absent
+  // rather than as paths the caller cannot open.
   const delivered = ctx.target.kind !== "file";
   const fingerprintPath = delivered
     ? path.join(ctx.outDir, path.basename(workFingerprint))
-    : workFingerprint;
+    : null;
 
   log.success(wroteMessage);
-  if (delivered) log.info(`Fingerprint: ${fingerprintPath}`);
+  if (fingerprintPath) log.info(`Fingerprint: ${fingerprintPath}`);
   return {
     outDir: ctx.outDir,
     htmlPath: delivered
       ? path.join(ctx.outDir, path.relative(ctx.workDir, paths.htmlPath))
-      : paths.htmlPath,
+      : null,
     pdfPath: paths.pdfPath,
     fingerprintPath,
   };
@@ -746,7 +753,6 @@ export async function runBuild(
   const ctx = await resolveBuildContext(opts);
 
   log.info(`Build (${ctx.format}): ${ctx.inputDir} -> ${ctx.outDir}`);
-  await fsp.mkdir(ctx.workDir, { recursive: true });
 
   // Pre-flight tool check.
   //
@@ -768,6 +774,11 @@ export async function runBuild(
   if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 
   try {
+    // Created INSIDE the try so the finally below always reclaims it. Creating
+    // it earlier leaked a `.slug-build-*` directory on every build whose
+    // preflight or prewarm threw — e.g. every attempt with Ghostscript missing.
+    await fsp.mkdir(ctx.workDir, { recursive: true });
+
     await runQualityGates(ctx);
 
     const htmlFile = await renderBook(ctx);

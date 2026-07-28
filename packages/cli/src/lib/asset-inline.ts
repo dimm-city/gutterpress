@@ -135,20 +135,60 @@ async function rewriteUrls(
   value: string,
   rewrite: (url: string) => Promise<string | null>
 ): Promise<string> {
-  const re = /url\(\s*(['"]?)([^'")]*)\1\s*\)/gi;
+  // Each quoted branch is delimited ONLY by its own quote, so
+  // `url("Figure (1).png")` and `url("author's-photo.png")` both parse; the
+  // unquoted branch stops at whitespace or the closing paren, per the CSS grammar.
+  const re = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^'"()\s]*))\s*\)/gi;
   const matches = [...value.matchAll(re)];
   if (matches.length === 0) return value;
 
   let out = "";
   let last = 0;
   for (const m of matches) {
-    const raw = m[2] ?? "";
+    const raw = m[1] ?? m[2] ?? m[3] ?? "";
     const replacement = await rewrite(raw);
     out += value.slice(last, m.index);
     out += replacement === null ? m[0] : `url("${replacement}")`;
     last = (m.index ?? 0) + m[0].length;
   }
   return out + value.slice(last);
+}
+
+/**
+ * Re-apply an `@import`'s trailing conditions to the CSS it pulled in.
+ *
+ * `@import "screen.css" screen`, `… layer(theme)` and `… supports(...)` all
+ * gate the imported rules. Splicing the rules in unconditionally would let
+ * screen-only styling into the printed book and flatten cascade-layer order, so
+ * each qualifier is rebuilt as the equivalent wrapping at-rule.
+ */
+function wrapImportConditions(node: AtRule, imported: postcss.Root): postcss.Root | postcss.AtRule {
+  // Drop the target itself; what remains is the condition list.
+  const rest = node.params
+    .replace(/^url\(\s*(['"]?)[^'")]*\1\s*\)/i, "")
+    .replace(/^(['"]).*?\1/, "")
+    .trim();
+  if (!rest) return imported;
+
+  let inner: postcss.Root | postcss.AtRule = imported;
+  let media = rest;
+
+  const layer = media.match(/\blayer\(([^)]*)\)|\blayer\b/i);
+  if (layer) {
+    media = media.replace(layer[0], "").trim();
+    inner = postcss.atRule({ name: "layer", params: (layer[1] ?? "").trim(), nodes: [inner as never] });
+  }
+
+  const supports = media.match(/\bsupports\(([\s\S]*)\)/i);
+  if (supports) {
+    media = media.replace(supports[0], "").trim();
+    inner = postcss.atRule({ name: "supports", params: (supports[1] ?? "").trim(), nodes: [inner as never] });
+  }
+
+  if (media) {
+    inner = postcss.atRule({ name: "media", params: media, nodes: [inner as never] });
+  }
+  return inner;
 }
 
 /** Resolve an `@import` target to an absolute path, or null if remote/dynamic. */
@@ -192,19 +232,12 @@ async function inlineOne(
     );
   }
 
-  // 1. Inline local @imports in place, so the cascade order is preserved.
-  const imports: Array<{ node: AtRule; target: string }> = [];
-  root.walkAtRules("import", (node) => {
-    const target = importTarget(node);
-    if (target) imports.push({ node, target });
-  });
-  for (const { node, target } of imports) {
-    const importedAbs = path.resolve(cssDir, stripUrlSuffix(decodeRef(target)));
-    const inlined = await inlineOne(importedAbs, projectDir, copies, warnings, seen);
-    node.replaceWith(postcss.parse(inlined, { from: importedAbs }));
-  }
-
-  // 2. Rewrite every url() in every declaration.
+  // Rewrite THIS stylesheet's own url()s FIRST, while `root` still contains
+  // only its own declarations. Expanding imports first would splice the child's
+  // rules into this tree and the walk below would re-resolve their ALREADY
+  // resolved URLs against the parent's directory — e.g. a child's
+  // `../../images/bg.png`, correctly rewritten to `images/bg.png`, would then be
+  // looked for at `styles/images/bg.png` and abort the build.
   const decls: Declaration[] = [];
   root.walkDecls((decl) => {
     if (decl.value.includes("url(")) decls.push(decl);
@@ -248,6 +281,20 @@ async function inlineOne(
       copies.set(dest, { from: absAsset, to: dest });
       return dest;
     });
+  }
+
+  // Then expand local @imports in place, preserving cascade position — and any
+  // media / supports / layer conditions the import carried, which otherwise
+  // would be silently dropped and let screen-only rules into the printed book.
+  const imports: Array<{ node: AtRule; target: string }> = [];
+  root.walkAtRules("import", (node) => {
+    const target = importTarget(node);
+    if (target) imports.push({ node, target });
+  });
+  for (const { node, target } of imports) {
+    const importedAbs = path.resolve(cssDir, stripUrlSuffix(decodeRef(target)));
+    const inlined = await inlineOne(importedAbs, projectDir, copies, warnings, seen);
+    node.replaceWith(wrapImportConditions(node, postcss.parse(inlined, { from: importedAbs })));
   }
 
   return root.toString();

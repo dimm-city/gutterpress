@@ -43,21 +43,34 @@ export function registerImageRule(md: MarkdownIt): void {
 }
 
 /**
- * Collect `src` values from raw HTML `<img>` tags in rendered output.
+ * Collect local image references from raw HTML in rendered output.
  *
- * The markdown rule above only sees markdown image tokens; a plugin (or an
- * author writing HTML directly) can emit `<img src="…">` that never passes
- * through it. Scanning the assembled HTML catches those, so "referenced means
- * shipped" holds for every image in the document rather than only the
- * markdown-authored ones.
+ * Covers `src` on `<img>` AND every candidate in a `srcset` (on `<img>` or on
+ * `<source>` inside `<picture>`). A responsive image's candidates are real files
+ * the browser may choose: the preview serves them straight from the project so
+ * they look fine, but the build only ships what the copy plan names — so a
+ * candidate that never entered the plan 404s during pagination and drops out of
+ * the PDF silently. Scanning only `src` was exactly that gap.
  */
 export function collectHtmlImageRefs(html: string): string[] {
   const refs: string[] = [];
-  const re = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+
+  const srcRe = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(html))) {
+  while ((m = srcRe.exec(html))) {
     const src = m[1] ?? m[2] ?? m[3];
     if (src) refs.push(src);
   }
+
+  // srcset is a comma-separated candidate list, each "<url> [descriptor]".
+  const srcsetRe = /<(?:img|source)\b[^>]*?\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+  while ((m = srcsetRe.exec(html))) {
+    const list = m[1] ?? m[2] ?? "";
+    for (const candidate of list.split(",")) {
+      const url = candidate.trim().split(/\s+/)[0];
+      if (url) refs.push(url);
+    }
+  }
+
   return refs;
 }

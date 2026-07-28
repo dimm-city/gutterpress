@@ -59,3 +59,19 @@ test("collectHtmlImageRefs tolerates attributes before src and self-closing tags
 test("collectHtmlImageRefs returns nothing for markup with no images", () => {
   expect(collectHtmlImageRefs("<p>text</p>")).toEqual([]);
 });
+
+test("collectHtmlImageRefs collects every srcset candidate, not just src", () => {
+  // A candidate missing from the copy plan 404s during pagination and vanishes
+  // from the PDF with no error, because only planned files reach the output.
+  const refs = collectHtmlImageRefs(
+    `<img src="a.png" srcset="a-1x.png 1x, a-2x.png 2x">`
+  );
+  expect(refs).toEqual(["a.png", "a-1x.png", "a-2x.png"]);
+});
+
+test("collectHtmlImageRefs handles <source srcset> inside <picture>", () => {
+  const refs = collectHtmlImageRefs(
+    `<picture><source srcset="wide.avif 1200w, narrow.avif 400w"><img src="fallback.png"></picture>`
+  );
+  expect(refs).toEqual(["fallback.png", "wide.avif", "narrow.avif"]);
+});
