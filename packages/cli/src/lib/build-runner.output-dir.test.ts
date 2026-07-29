@@ -127,3 +127,50 @@ test("a manifest still carrying the removed `output` block fails loudly", async 
     resolveBuildContext({ inputDir: proj, format: "html", rawArgs: {} })
   ).rejects.toThrow(/`output`/);
 });
+
+// ── 2026-07-29 audit: ONE anchor for every manifest-relative path ────────────
+//
+// Within one build, the same manifest's relative entries resolved against two
+// different roots: plugin paths, the lint gate, and the output dir used
+// `manifestDir`, while `styles:` and `source.files` used `inputDir`. They are
+// identical in the normative layout (the manifest lives in the book folder), and
+// diverge only when an explicit `--manifest` points outside `--input` — where the
+// docs are unambiguous: "Files in source.files are relative to the manifest
+// directory", and a `styles:` entry is manifest-relative too. So the lint gate
+// was checking a different set of stylesheets than the ones that shipped, and
+// `../../shared/...` entries resolved from the wrong root.
+//
+// `renderDir` is the single anchor every manifest-relative path resolves
+// against.
+
+test("renderDir is the manifest's directory, so styles/chapters share the anchor plugins and lint already used", async () => {
+  const proj = await mkdtemp(join(tmpdir(), "gutterpress-anchor-input-"));
+  const cfgDir = await mkdtemp(join(tmpdir(), "gutterpress-anchor-manifest-"));
+  dirsToClean.push(proj, cfgDir);
+  await Bun.write(join(cfgDir, "manifest.yaml"), "title: Anchored\nstyles:\n  - styles/book.css\n");
+
+  const ctx = await resolveBuildContext({
+    inputDir: proj,
+    manifestPath: join(cfgDir, "manifest.yaml"),
+    format: "html",
+    rawArgs: {},
+  });
+
+  expect(ctx.renderDir).toBe(ctx.manifestDir);
+  expect(ctx.renderDir).toBe(cfgDir);
+  // The input dir is still recorded (it is what the author pointed at) — it is
+  // just no longer a second, competing anchor.
+  expect(ctx.inputDir).toBe(proj);
+});
+
+test("renderDir equals inputDir in the normative layout (manifest inside the book)", async () => {
+  const proj = await mkdtemp(join(tmpdir(), "gutterpress-anchor-same-"));
+  dirsToClean.push(proj);
+  await Bun.write(join(proj, "manifest.yaml"), "title: Same\n");
+
+  const ctx = await resolveBuildContext({ inputDir: proj, format: "html", rawArgs: {} });
+
+  expect(ctx.renderDir).toBe(proj);
+  expect(ctx.renderDir).toBe(ctx.inputDir);
+  expect(ctx.renderDir).toBe(ctx.manifestDir);
+});

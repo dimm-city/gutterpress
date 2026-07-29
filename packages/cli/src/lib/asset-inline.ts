@@ -287,8 +287,13 @@ async function inlineOne(
       // outside the project has no representable relative path, so it is
       // content-addressed (which also makes same-basename files collision-proof).
       const projectRel = path.relative(projectDir, absAsset);
+      // Separator-aware, same reason as planImageCopies below: a CSS asset named
+      // `..hero.png` at the project root IS in-project and keeps its own path
+      // instead of being needlessly content-addressed.
+      const escapesProject =
+        projectRel === ".." || projectRel.startsWith(`..${path.sep}`);
       const dest =
-        projectRel && !projectRel.startsWith("..") && !path.isAbsolute(projectRel)
+        projectRel && !escapesProject && !path.isAbsolute(projectRel)
           ? toPosix(projectRel)
           : `${HASHED_ASSET_DIR}/${contentHash(bytes)}${ext}`;
       copies.set(dest, { from: absAsset, to: dest });
@@ -441,7 +446,10 @@ export async function planImageCopies(
 
     const abs = path.resolve(projectDir, cleaned);
     const rel = path.relative(projectDir, abs);
-    if (rel.startsWith("..")) {
+    // Separator-aware: a bare `startsWith("..")` also matched a legitimate
+    // project-root file whose NAME begins with two dots (`..cover.png`), and
+    // told the author to copy a file into a folder it was already in.
+    if (rel === ".." || rel.startsWith(`..${path.sep}`)) {
       errors.push(
         `Image reference points outside the project: ${ref}\n` +
           `  Copy the file into your project folder and reference it from there.`

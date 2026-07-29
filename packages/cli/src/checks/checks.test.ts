@@ -779,6 +779,65 @@ describe("Local markdown refs check", () => {
     expect(results).toHaveLength(0);
   });
 
+  // ── 2026-07-29 audit: the check must agree with the build on R5 ────────────
+  //
+  // A prose image must live inside the book folder; `planImageCopies`
+  // (lib/asset-inline.ts) fails the BUILD on a `../` or absolute ref, telling
+  // the author to copy the file in. This pre-build check only asked whether the
+  // file EXISTED, so a ref that escapes the book passed validation and then
+  // failed the build — the check green-lighting exactly what it exists to catch
+  // early.
+
+  test("reports a prose image ref that escapes the book, even though the file exists", async () => {
+    const base = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-escape-"));
+    const book = join(base, "book");
+    const shared = join(base, "shared");
+    await mkdir(book, { recursive: true });
+    await mkdir(shared, { recursive: true });
+    await writeFile(join(shared, "art.png"), "fake-bytes");
+    const mainFile = join(book, "main.md");
+    await writeFile(mainFile, "![shared art](../shared/art.png)\n");
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: book, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.severity).toBe("error");
+    expect(results[0]!.message).toContain("outside");
+  });
+
+  test("reports an ABSOLUTE prose image ref, even though the file exists", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-abs-"));
+    await writeFile(join(dir, "art.png"), "fake-bytes");
+    const mainFile = join(dir, "main.md");
+    await writeFile(mainFile, `![abs](${join(dir, "art.png")})\n`);
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: dir, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.severity).toBe("error");
+  });
+
+  test("a LINK (not an image) may still point outside the book", async () => {
+    // Only prose IMAGES are copied into the book, so only they carry the
+    // in-book rule. A relative link to a sibling document is ordinary Markdown.
+    const base = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-link-"));
+    const book = join(base, "book");
+    await mkdir(book, { recursive: true });
+    await writeFile(join(base, "NOTES.md"), "# notes\n");
+    const mainFile = join(book, "main.md");
+    await writeFile(mainFile, "[notes](../NOTES.md)\n");
+
+    const check = getCheckById("source.links.local-refs")!;
+    const ctx = makeCtx({ inputDir: book, markdownFiles: [mainFile] });
+    const results = await check.run(ctx);
+
+    expect(results).toHaveLength(0);
+  });
+
   // Same bug, non-ASCII case: `café.png` is authored as `caf%C3%A9.png`.
   test("percent-decodes a non-ASCII escape before probing the filesystem", async () => {
     const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-"));

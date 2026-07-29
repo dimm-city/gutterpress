@@ -1,12 +1,13 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { resolveOutputDir } from "./output-paths";
 import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./desktop";
 import { UsageError } from "./cli-args";
 import { resolveActiveStyles } from "./style-resolver";
+import { collectStyleDependencies } from "./asset-inline";
 import { resolveActiveMarkdownFiles } from "./markdown/index";
 import { canonicalChapterId } from "./markdown/chapter-id";
 import { formatReport, type OutputFormat } from "../checks/formatter";
@@ -48,6 +49,51 @@ export interface ValidationExecutionResult {
   runnerOptions: RunnerOptions;
   tools: ToolCheckResult;
   report: RunnerReport;
+}
+
+/** Asset extensions whose files ship inside the built book (see asset-inline.ts). */
+const SHIPPED_ASSET_EXTS = new Set([
+  ".woff2", ".woff", ".ttf", ".otf",
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".svg", ".tif", ".tiff",
+]);
+
+/**
+ * Directories holding the active stylesheets' asset closure that lives OUTSIDE
+ * the book — a shared repo-root theme's fonts and images, which the build
+ * embeds into the PDF and which therefore have to pass the same asset checks as
+ * in-book art.
+ *
+ * Only the asset files' own directories are returned: not the whole shared tree,
+ * and not the stylesheets' directories (which may hold unrelated CSS and art
+ * that never ships). Deduped, and anything already inside `inputDir` is dropped
+ * since the wholesale project scan covers it. Never throws — a missing or
+ * mid-edit stylesheet just contributes nothing, exactly as the preview watcher's
+ * use of the same collector does.
+ */
+async function sharedAssetDirs(
+  manifestDir: string,
+  relStyles: string[],
+  inputDir: string,
+): Promise<string[]> {
+  let closure: string[];
+  try {
+    closure = await collectStyleDependencies(manifestDir, relStyles);
+  } catch {
+    return [];
+  }
+  const projectRoot = resolve(inputDir);
+  const dirs = new Set<string>();
+  for (const file of closure) {
+    const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
+    if (!SHIPPED_ASSET_EXTS.has(ext)) continue;
+    const dir = dirname(resolve(file));
+    // Already inside the project? The wholesale project scan covers it.
+    const rel = relative(projectRoot, dir);
+    const insideProject = rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`));
+    if (insideProject) continue;
+    dirs.add(dir);
+  }
+  return [...dirs];
 }
 
 function parseCsv(value?: string): string[] | undefined {
@@ -232,20 +278,23 @@ export async function executeValidation(
     // project-wide: an unused theme, a drafts folder, or a design system's own
     // docs got linted/validated even though the book never references them,
     // and the print-safety `checkCss` gate ran on stylesheets that don't ship.
-    // Anchored on `inputDir` (not `manifestDir`) to match exactly what the
-    // build anchors `renderChapters`/`resolveActiveStyles` on — the two only
-    // differ when an explicit `--manifest` points outside `--input`, and the
-    // old glob's `cwd: manifestDir` silently used the wrong directory in that
-    // case; `inputDir` is what actually gets rendered.
-    const relMarkdown = await resolveActiveMarkdownFiles(inputDir, config.source.files);
-    markdownFiles = relMarkdown.map((f) => join(inputDir, canonicalChapterId(f)));
+    //
+    // Anchored on `manifestDir` — the SAME single anchor the build resolves
+    // every manifest-relative path against (`BuildContext.renderDir`). This
+    // used to say `inputDir` "to match what the build anchors renderChapters on",
+    // which was true at the time and wrong in the same way the build was: the
+    // two differ only under an explicit `--manifest` outside `--input`, and the
+    // docs are unambiguous that `source.files` and `styles:` are BOTH
+    // manifest-relative (2026-07-29 audit).
+    const relMarkdown = await resolveActiveMarkdownFiles(manifestDir, config.source.files);
+    markdownFiles = relMarkdown.map((f) => join(manifestDir, canonicalChapterId(f)));
 
     // stylelint (source.stylelint) skips minified CSS — same as lint-runner.ts
     // — since line/column findings on a minified file are meaningless; it
     // still ships via resolveActiveStyles/inlineStyles regardless.
-    const relStyles = await resolveActiveStyles(inputDir, config.styles);
+    const relStyles = await resolveActiveStyles(manifestDir, config.styles);
     cssFiles = relStyles
-      .map((rel) => resolve(inputDir, rel))
+      .map((rel) => resolve(manifestDir, rel))
       .filter((f) => !f.endsWith(".min.css"));
 
     // The project root, wholesale. Excluding node_modules/.git/dist happens at
@@ -253,7 +302,16 @@ export async function executeValidation(
     // by choosing which directories to scan — picking directories silently
     // dropped every file sitting at the project root, and scanned nothing at
     // all for a project whose only subdirectory was `dist`.
-    assetDirs = [inputDir];
+    //
+    // Plus the directories holding the ACTIVE stylesheets' out-of-book asset
+    // closure (2026-07-29 audit). A shared repo-root theme's own `url()`
+    // targets are embedded into the built PDF — fonts always, images under the
+    // inline cap — so a scan limited to the book folder never checked shipped
+    // shared fonts or art for resolution, colour space, TAC, file size, alpha,
+    // or font licence. Only the asset files' OWN directories are added, not the
+    // whole shared tree and not the stylesheets' directories, so the scan stays
+    // as tight as the closure itself.
+    assetDirs = [inputDir, ...(await sharedAssetDirs(manifestDir, relStyles, inputDir))];
 
     const possibleHtml = join(outDir, BOOK_HTML_FILENAME);
     if (existsSync(possibleHtml)) {
