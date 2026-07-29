@@ -23,8 +23,8 @@
  * Node/lib-side ONLY — never imported by the renderer.
  */
 
-import path from "node:path";
 import { gitIdentityFrom, type GitIdentitySettings } from "../git-identity";
+import { operationLogSlug } from "../recovery-paths";
 
 type LibModule = typeof import("gutterpress");
 
@@ -45,7 +45,7 @@ export interface AutoSnapshotDeps {
   readSettings: () => Promise<{ versionHistory: unknown } & GitIdentitySettings>;
   /** The currently watched/open project dir, used to guard against switches. */
   getWatchedDir: () => string | null;
-  /** Resolve the operation-log file path for a repo slug (project basename). */
+  /** Resolve the operation-log file path for a repo slug (see recovery-paths.ts's operationLogSlug). */
   operationLogPath: (slug: string) => string;
   /** Injectable timer arm. Real code uses setTimeout (+unref); tests fake it. */
   setTimer?: (cb: () => void, ms: number) => unknown;
@@ -170,7 +170,10 @@ export class AutoSnapshotScheduler {
         // Record the snapshot in the project's operation log so the bottom-bar
         // "Version history" affordance shows it (local-git projects have no
         // remote/sync, but they DO snapshot — those snapshots must be logged).
-        logFile: this.deps.operationLogPath(path.basename(dir)),
+        // Keyed to the REPO, not the opened book: the snapshot commits the whole
+        // repository, so a monorepo's books share one log instead of one file
+        // each (see recovery-paths.ts's operationLogSlug).
+        logFile: this.deps.operationLogPath(operationLogSlug(source.repoRoot)),
         // Attribute the commit to the author, exactly like the manual
         // "Save a version" route does. Without this, automatic snapshots — the
         // overwhelming majority of a project's history — were committed as the

@@ -32,6 +32,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { readFile } from "node:fs/promises";
 import { getAppHooks } from "./server-bridge/app-hooks";
+import { isWithinRootCanonical } from "./server-bridge/fs-guard";
 import type {
   ConfirmationGate,
   ConflictKind,
@@ -288,28 +289,58 @@ export interface ConflictPreviewResult {
 }
 
 /**
+ * Which directory a conflicted file's path is relative to.
+ *
+ * Conflict file paths come from isomorphic-git and are REPO-ROOT-relative (see
+ * `conflict-resolution.ts`: "conflict paths are repo-root-relative"). The
+ * conflict dialog, however, passes the OPENED BOOK dir — so in a multi-book
+ * repo the join produced `<repo>/books/<book>/books/<book>/chapter-01.md`,
+ * a path that never exists: `readFile` threw, the catch left `mine` empty, the
+ * sidecar missed too, and every conflict preview rendered BLANK on both sides
+ * while the resolution buttons still worked. Silent, and worst exactly where
+ * the stakes are highest — choosing between two versions of your own work.
+ *
+ * The base is therefore taken from HOST state, never from the renderer: the
+ * detected repository root when the project has one, else the active workspace
+ * root. `requested` is the renderer's value and is used only when no project is
+ * open at all (in which case the route's own guard has already refused the
+ * call). Pure; no I/O.
+ */
+export function conflictBaseDir(
+  repositoryRoot: string | null,
+  workspaceRoot: string | null,
+  requested: string,
+): string {
+  return repositoryRoot ?? workspaceRoot ?? requested;
+}
+
+/**
  * Read the working-tree copy and the online-sidecar copy of a conflicted file.
  * Used by the `/api/sync/get-conflict-preview` server route (via
  * `conflictPreviewHooksImpl` in main.ts).
  *
- * @param projectDir  Absolute path to the project directory
- * @param relativePath  Relative path within the project (no `..` allowed)
+ * @param baseDir  Absolute path the conflict path is relative to — the REPO
+ *   ROOT for a git project (see {@link conflictBaseDir}), never blindly the
+ *   opened book folder
+ * @param relativePath  Path relative to `baseDir` (no `..` allowed)
  * @param kind  The ConflictKind for this file
  * @param onlineCopyPath  The lib's onlineCopyPath() function
  */
 export async function getConflictPreviewImpl(
-  projectDir: string,
+  baseDir: string,
   relativePath: string,
   kind: ConflictKind,
   onlineCopyPath: (absPath: string) => string,
 ): Promise<ConflictPreviewResult> {
-  // Safety: reject path traversal
-  const resolvedProject = path.resolve(projectDir);
-  const resolvedFile = path.resolve(projectDir, relativePath);
-  if (
-    !resolvedFile.startsWith(resolvedProject + path.sep) &&
-    resolvedFile !== resolvedProject
-  ) {
+  // Safety: reject path traversal. Canonical (symlink-following), not merely
+  // lexical: `path.resolve` normalizes `..`/`.` but leaves symlinks intact, so
+  // a project-local symlink aliasing an outside directory would pass a lexical
+  // check and then be followed outside by the readFile/existsSync below. This
+  // check is the authoritative one — the route's own containment test can only
+  // reason about the dir the RENDERER named, which is not the base we resolve
+  // against (see conflictBaseDir).
+  const resolvedFile = path.resolve(baseDir, relativePath);
+  if (!(await isWithinRootCanonical(resolvedFile, baseDir))) {
     throw new Error(`Path traversal rejected: ${relativePath}`);
   }
 

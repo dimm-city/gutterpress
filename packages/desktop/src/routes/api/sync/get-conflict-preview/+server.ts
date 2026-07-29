@@ -26,16 +26,22 @@ export const POST: RequestHandler = defineRoute<
   // (ARCH #37, realpath-based) confines it to the currently-open project,
   // the same guard every other fs-touching route uses.
   //
-  // Confining `projectDir` alone is not enough: `getConflictPreviewImpl`
-  // (electron/recovery-bridge.ts) joins it with the caller-supplied relative
-  // `path` using a LEXICAL `path.resolve` + `startsWith` check, which does
-  // not follow symlinks — a project-local symlink aliasing an outside
-  // directory (`projectDir/alias -> /etc`) passes that lexical check but is
-  // then followed outside the project by the actual `readFile`/
-  // `existsSync` calls. So the derived file target is independently
-  // confined here too, canonically (`requireWithinProjectRoot` again,
-  // symlink-safe via `realpathTolerant`) before the request ever reaches the
-  // host handler.
+  // Confining `projectDir` alone is not enough: the caller-supplied relative
+  // `path` is joined to a directory and read. Two layers check it, and which
+  // one is AUTHORITATIVE changed with the 2026-07-29 audit:
+  //
+  //   - Here: `resolve(projectDir, path)` must stay inside the open project,
+  //     canonically (symlink-safe via `realpathTolerant`). This is
+  //     defense-in-depth on the renderer's own framing — it catches a `..` or
+  //     a project-local symlink escape (`projectDir/alias -> /etc`) one layer
+  //     early, and cannot false-reject a genuine conflict path, which is
+  //     repo-relative and so always resolves *inside* whatever directory it is
+  //     joined to.
+  //   - In the host: `getConflictPreviewImpl` repeats the canonical check
+  //     against the base it ACTUALLY resolves against — the detected repo
+  //     root, because conflict paths are repo-root-relative (see
+  //     `conflictBaseDir`). That base is host state, not `projectDir`, so only
+  //     the host can check the path it really opens.
   validate: async (raw) => {
     const body = raw as { projectDir?: string; path?: string; kind?: string };
     if (!body?.projectDir || !body?.path) {

@@ -359,3 +359,59 @@ test("resolveActiveBookDir: multiple books, bare repo root picked → first LIST
   const sorted: ProjectBookEntry[] = [...books].sort((a, b) => (a.subPath < b.subPath ? -1 : 1));
   expect(resolveActiveBookDir("/repo", "/repo", sorted)).toBe("/repo/alpha");
 });
+
+// ── 2026-07-29 audit: the books[0] fallback was too eager ────────────────────
+//
+// The fallback's own doc comment scopes it to "the bare repo root was picked",
+// but the condition was an exact `===` string compare against each book path
+// with an unconditional `books[0]` fallback for ANY non-match. So pointing at
+// a folder INSIDE book B — or at B's path with a trailing slash — silently
+// opened book A instead of the book the author asked for, contradicting
+// "Gutterpress renders only the book you opened … found from whichever
+// directory you point at".
+
+const TWO_BOOKS: ProjectBookEntry[] = [
+  { path: "/repo/alpha", title: "alpha", subPath: "alpha" },
+  { path: "/repo/beta", title: "beta", subPath: "beta" },
+];
+
+test("resolveActiveBookDir: a folder INSIDE a book resolves to THAT book, not books[0]", () => {
+  expect(resolveActiveBookDir("/repo/beta/chapters", "/repo", TWO_BOOKS)).toBe("/repo/beta");
+  expect(resolveActiveBookDir("/repo/beta/styles/deep/nest", "/repo", TWO_BOOKS)).toBe("/repo/beta");
+});
+
+test("resolveActiveBookDir: a trailing-slash spelling of a book path resolves to that book", () => {
+  expect(resolveActiveBookDir("/repo/beta/", "/repo", TWO_BOOKS)).toBe("/repo/beta");
+});
+
+test("resolveActiveBookDir: a non-normalized spelling of a book path resolves to that book", () => {
+  expect(resolveActiveBookDir("/repo/alpha/../beta", "/repo", TWO_BOOKS)).toBe("/repo/beta");
+  expect(resolveActiveBookDir("/repo/./beta", "/repo", TWO_BOOKS)).toBe("/repo/beta");
+});
+
+test("resolveActiveBookDir: the DEEPEST containing book wins when books nest", () => {
+  const nested: ProjectBookEntry[] = [
+    { path: "/repo", title: "outer", subPath: "" },
+    { path: "/repo/books/inner", title: "inner", subPath: "books/inner" },
+  ];
+  expect(resolveActiveBookDir("/repo/books/inner/chapters", "/repo", nested)).toBe(
+    "/repo/books/inner",
+  );
+});
+
+test("resolveActiveBookDir: a prefix-sibling folder does NOT match the shorter book", () => {
+  // "/repo/beta2" must not be treated as inside "/repo/beta".
+  const books: ProjectBookEntry[] = [
+    { path: "/repo/alpha", title: "alpha", subPath: "alpha" },
+    { path: "/repo/beta", title: "beta", subPath: "beta" },
+    { path: "/repo/beta2", title: "beta2", subPath: "beta2" },
+  ];
+  expect(resolveActiveBookDir("/repo/beta2/chapters", "/repo", books)).toBe("/repo/beta2");
+});
+
+test("resolveActiveBookDir: a folder in no book at all still falls back to books[0]", () => {
+  // The documented case the fallback is FOR: a repo-level folder that belongs
+  // to no book (or the bare repo root).
+  expect(resolveActiveBookDir("/repo/shared/styles", "/repo", TWO_BOOKS)).toBe("/repo/alpha");
+  expect(resolveActiveBookDir("/repo", "/repo", TWO_BOOKS)).toBe("/repo/alpha");
+});

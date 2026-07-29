@@ -138,6 +138,18 @@ export interface ProjectLifecycleDeps {
   setSplitRatioSetting: (value: number) => void;
   /** Seed the pending page/view-mode restore consumed by PreviewEventController. */
   setPendingRestore: (viewMode: "single" | "two-column" | null, page: number | null) => void;
+  /**
+   * Read the per-project page/view-mode/split state for a directory.
+   *
+   * Owned by this controller rather than passed in by the caller (2026-07-29
+   * audit): the state is WRITTEN under the RESOLVED book dir, but every caller
+   * fetched it under the dir the user PICKED — which differ exactly when the
+   * session retargets (an open keyed to the repo root, or to a folder inside a
+   * book), so the read missed and the book opened at page 1 with the default
+   * view mode. Only this controller knows the resolved target, so only it can
+   * key the read correctly.
+   */
+  getDesktopProjectState: (dir: string) => Promise<PersistedProjectState | null>;
   /** Re-arm PreviewEventController's first-render-only success toast gate. */
   resetFirstRenderGate: () => void;
   /** Flush the editor buffer's pending save; false means the transition must stop. */
@@ -237,19 +249,23 @@ export class ProjectLifecycleController {
   }
 
   /**
-   * The ONE open-a-project-folder pipeline. `restoreState` may be a promise
-   * (the caller's in-flight per-project-state fetch) so the read overlaps
-   * classify/startPreview instead of preceding them. `epoch` defaults to
-   * claiming a fresh epoch; callers with work between their intent and this
-   * call (setUpAsBook's adopt) pass their pre-claimed epoch.
+   * The ONE open-a-project-folder pipeline.
+   *
+   * The per-project restore state is fetched HERE, keyed to the RESOLVED book
+   * dir, instead of being handed in by the caller. Callers used to start that
+   * read at intent time and pass the promise so it overlapped
+   * classify/startPreview — but they could only key it to the dir the user
+   * PICKED, which is the wrong key whenever classification retargets (see
+   * `getDesktopProjectState`'s doc comment). The read is a local prefs file;
+   * doing it after classify costs a millisecond and is correct. The epoch is
+   * still claimed synchronously at call time, so "last click wins" is unchanged.
+   *
+   * `epoch` defaults to claiming a fresh epoch; callers with work between their
+   * intent and this call (setUpAsBook's adopt) pass their pre-claimed epoch.
    */
   async startFolderPreview(
     dir: string,
     label = "Starting preview…",
-    restoreState:
-      | PersistedProjectState
-      | null
-      | Promise<PersistedProjectState | null> = null,
     displayName: string | null = null,
     epoch = ++this.folderOpenEpoch,
   ): Promise<boolean> {
@@ -315,6 +331,9 @@ export class ProjectLifecycleController {
       if (this.currentDir !== targetDir) {
         d.resetBuffer();
       }
+      // Keyed to the RESOLVED book, and started before the (slow) preview host
+      // call so the read still overlaps it.
+      const restoreState = d.getDesktopProjectState(targetDir).catch(() => null);
       const data = await d.startPreviewHost({ key: targetDir, displayName: targetDisplayName });
       if (superseded()) return false;
       this.sourceMode = "folder";
@@ -358,9 +377,8 @@ export class ProjectLifecycleController {
         this.previewUrl = data.url;
         this.rendering = true;
       }
-      // The restore-state fetch was started at intent time and has been
-      // overlapping classify/startPreview — settle it here where it's needed.
-      const restored = restoreState ? await restoreState : null;
+      // Settle the restore-state read here, where it is applied.
+      const restored = await restoreState;
       if (superseded()) return false;
       const restoredViewMode = restored?.viewMode;
       d.setPendingRestore(
@@ -481,7 +499,7 @@ export class ProjectLifecycleController {
       if (epoch !== this.folderOpenEpoch) return false; // user opened something else meanwhile
       this.openError = null;
       this.adoptBannerDismissed = true;
-      return await this.startFolderPreview(dir, "Setting up your book…", null, null, epoch);
+      return await this.startFolderPreview(dir, "Setting up your book…", null, epoch);
     } catch (e) {
       // Never stomp a newer open's error state with a stale adopt failure.
       if (epoch !== this.folderOpenEpoch) return false;

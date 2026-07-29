@@ -17,7 +17,7 @@ import { describe, test, expect } from "bun:test";
 import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { getConflictPreviewImpl } from "../../electron/recovery-bridge";
+import { conflictBaseDir, getConflictPreviewImpl } from "../../electron/recovery-bridge";
 import type { ConflictKind } from "../../electron/recovery-bridge";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -183,6 +183,68 @@ describe("getConflictPreviewImpl (real implementation)", () => {
       expect(result.theirs).toBe("");
     } finally {
       await teardown();
+    }
+  });
+});
+
+// ── conflictBaseDir: which root conflict paths are relative to ───────────────
+//
+// 2026-07-29 audit. Conflict file paths come from isomorphic-git and are
+// REPO-ROOT-relative (conflict-resolution.ts: "conflict paths are
+// repo-root-relative"). The dialog passed the OPENED BOOK dir, so in any
+// multi-book repo the join produced
+// `<repo>/books/field-guide/books/field-guide/chapter-01.md` — a path that
+// never exists. `readFile` threw, the catch left `mine` empty, the sidecar
+// missed too, and every conflict preview in a monorepo rendered BLANK on both
+// sides while the resolution buttons still worked. Silent, and worst exactly
+// where the stakes are highest: choosing between two versions of your work.
+
+describe("conflictBaseDir", () => {
+  test("prefers the repo root over the opened book dir", () => {
+    expect(conflictBaseDir("/repo", "/repo/books/field-guide", "/repo/books/field-guide")).toBe(
+      "/repo",
+    );
+  });
+
+  test("falls back to the workspace root when the project has no repo", () => {
+    expect(conflictBaseDir(null, "/books/loose-folder", "/books/loose-folder")).toBe(
+      "/books/loose-folder",
+    );
+  });
+
+  test("never trusts the renderer-supplied dir while a host root is known", () => {
+    // The renderer asking about some other directory cannot move the base.
+    expect(conflictBaseDir("/repo", "/repo/books/a", "/somewhere/else")).toBe("/repo");
+    expect(conflictBaseDir(null, "/repo/books/a", "/somewhere/else")).toBe("/repo/books/a");
+  });
+
+  test("uses the requested dir only when no project is open at all", () => {
+    expect(conflictBaseDir(null, null, "/fallback")).toBe("/fallback");
+  });
+});
+
+describe("getConflictPreviewImpl resolves repo-relative paths against the repo root", () => {
+  test("a nested book's conflicted file is read, not blanked", async () => {
+    const repo = await mkdtemp(path.join(tmpdir(), "gutterpress-conflict-repo-"));
+    try {
+      const book = path.join(repo, "books", "field-guide");
+      await mkdir(book, { recursive: true });
+      await writeFile(path.join(book, "chapter-01.md"), "my text", "utf-8");
+      await writeFile(path.join(book, "chapter-01.md.online"), "their text", "utf-8");
+
+      // What the sync engine reports: a path relative to the REPO ROOT.
+      const relFromRepo = path.join("books", "field-guide", "chapter-01.md");
+
+      const good = await getConflictPreviewImpl(repo, relFromRepo, "both-edited", onlineCopyPath);
+      expect(good.mine).toBe("my text");
+      expect(good.theirs).toBe("their text");
+
+      // The pre-fix wiring: same repo-relative path joined to the BOOK dir.
+      const blanked = await getConflictPreviewImpl(book, relFromRepo, "both-edited", onlineCopyPath);
+      expect(blanked.mine).toBe("");
+      expect(blanked.theirs).toBe("");
+    } finally {
+      await rm(repo, { recursive: true, force: true });
     }
   });
 });
