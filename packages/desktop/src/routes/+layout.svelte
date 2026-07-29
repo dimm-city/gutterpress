@@ -11,10 +11,13 @@
   // (!isDesktop()) — NEVER under Electron, where the SPA loads via app:// and
   // ships inside the app (updated as a whole via electron-updater); a SW there
   // would serve stale cached assets across app updates. The SW precaches the
-  // app shell + vendored paged.js for offline use. SvelteKit does not
-  // auto-register it, so we do.
+  // app shell + vendored paged.js for offline use. SvelteKit auto-registration
+  // is disabled in svelte.config.js so this guarded registration is the only one.
   onMount(() => {
     if (isDesktop()) return;
+    // Chromium does not support service workers on Electron's custom app://
+    // scheme. Keep this safe even if the preload bridge fails to initialize.
+    if (location.protocol !== "http:" && location.protocol !== "https:") return;
     if (!("serviceWorker" in navigator)) return;
     // import.meta.env.DEV is false in the static production build; skip
     // registration in `vite dev` because the SW would cache the dev server's

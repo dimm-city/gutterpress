@@ -2,12 +2,17 @@ import { test, expect } from "bun:test";
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import svelteConfig from "../../svelte.config.js";
 
 // Resolve relative to THIS FILE so the test passes regardless of cwd
 // (zero-tolerance: bare `bun test` from the repo root must work).
 const here = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = join(here, "..", "..");
 const swSource = readFileSync(join(desktopRoot, "src", "service-worker.ts"), "utf8");
+const layoutSource = readFileSync(
+  join(desktopRoot, "src", "routes", "+layout.svelte"),
+  "utf8",
+);
 
 // ── #33 Phase 4: service-worker app-shell precache + offline ─────────────────
 //
@@ -50,4 +55,13 @@ test("service worker is cache-first for same-origin GETs only (#33)", () => {
   expect(swSource).toContain('req.method !== "GET"');
   expect(swSource).toContain("sw.location.origin");
   expect(swSource).toContain("cache.match(req)");
+});
+
+test("service worker registration never runs on Electron's app:// origin", () => {
+  // SvelteKit otherwise injects an unconditional registration into rendered
+  // HTML, before the guarded component onMount callback gets a chance to run.
+  expect(svelteConfig.kit?.serviceWorker?.register).toBe(false);
+  expect(layoutSource).toContain('location.protocol !== "http:"');
+  expect(layoutSource).toContain('location.protocol !== "https:"');
+  expect(layoutSource).toContain("if (isDesktop()) return;");
 });
