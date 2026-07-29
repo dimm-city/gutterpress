@@ -62,7 +62,7 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
 
 // ── (a) projectRoots() no longer derives authorization from watcher state ──
 
-test("(a) fsGuardImpl.projectRoots() is derived ONLY from activeWorkspaceRoot, never folderWatch.getWatchedDir()", () => {
+test("(a) fsGuardImpl.projectRoots() uses host-detected workspace roots, never folderWatch.getWatchedDir()", () => {
   const implStart = main.indexOf("const fsGuardImpl: FsGuardHooks = {");
   expect(implStart).toBeGreaterThan(-1);
   const rootsStart = main.indexOf("projectRoots(): string[] {", implStart);
@@ -78,6 +78,7 @@ test("(a) fsGuardImpl.projectRoots() is derived ONLY from activeWorkspaceRoot, n
   expect(rootsBody).not.toContain("getWatchedDir");
   // Still gated on the host-set workspace capability (not falling back to "anywhere").
   expect(rootsBody).toContain("activeWorkspaceRoot");
+  expect(rootsBody).toContain("activeRepositoryRoot");
 });
 
 // ── (b) an fs route for a dir that's merely "watched" (not the active

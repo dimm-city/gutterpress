@@ -69,7 +69,7 @@ export class StylesSectionController {
       // Rebuild the active paths list after this toggle.
       const next = this.styles
         .filter((x) => (x.path === s.path ? on : x.active))
-        .map((x) => x.path);
+        .map((x) => x.displayName);
       await this.deps.setActive(projectDir, next);
       await this.loadStyles();
       // Design tokens live on the (possibly changed) active stylesheet — refresh.

@@ -48,7 +48,7 @@ function make(over: Partial<{ noProject: boolean; styles: ProjectStyle[] }> = {}
     setActive: (dir, paths) => {
       h.setActiveCalls.push({ dir, paths });
       if (h.failSetActive) return Promise.reject(new Error("write failed"));
-      h.styles = h.styles.map((s) => ({ ...s, active: paths.includes(s.path) }));
+      h.styles = h.styles.map((s) => ({ ...s, active: paths.includes(s.displayName) }));
       return Promise.resolve(paths);
     },
     onToggled: (on) => onToggled(on),
@@ -84,11 +84,27 @@ test("toggleStyleActive rebuilds the active-paths list, saves, reloads, and refr
   const h = make();
   await h.ctrl.loadStyles();
   await h.ctrl.toggleStyleActive(STYLE_B, true);
-  expect(h.setActiveCalls).toEqual([{ dir: "/proj", paths: ["/proj/a.css", "/proj/b.css"] }]);
+  expect(h.setActiveCalls).toEqual([{ dir: "/proj", paths: ["a.css", "b.css"] }]);
   expect(h.ctrl.styles.find((s) => s.path === STYLE_B.path)?.active).toBe(true);
   expect(h.afterStyleChange.calls.length).toBe(1);
   expect(h.onToggled.calls).toEqual([[true]]);
   expect(h.ctrl.stylesBusy).toBe(false);
+});
+
+test("toggleStyleActive preserves a shared stylesheet as a project-relative path", async () => {
+  const shared: ProjectStyle = {
+    path: "/repo/shared/theme.css",
+    displayName: "../shared/theme.css",
+    active: false,
+  };
+  const h = make({ styles: [STYLE_A, shared] });
+  await h.ctrl.loadStyles();
+
+  await h.ctrl.toggleStyleActive(shared, true);
+
+  expect(h.setActiveCalls).toEqual([
+    { dir: "/proj", paths: ["a.css", "../shared/theme.css"] },
+  ]);
 });
 
 test("toggling a stylesheet off excludes it from the active-paths list", async () => {

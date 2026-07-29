@@ -15,25 +15,26 @@
  *
  * ## Policy
  *
- * `projectRoots()` is the currently-open project. It is sourced SOLELY from
- * the active preview's resolved input dir, set the instant `api:preview`
- * resolves (main.ts's `activePreview`) — NEVER from renderer-supplied watcher
- * state. It used to also union in the folder watcher's tracked dir
+ * `projectRoots()` is the currently-open book plus its host-detected enclosing
+ * repository (when it is nested in one). The book root is established before
+ * preview generation; the repository root comes from the host's
+ * `detectProjectSource`, never from a renderer-supplied path. It used to also
+ * union in the folder watcher's tracked dir
  * (`folderWatch.getWatchedDir()`, set once the renderer calls
  * `fs:watchFolder`), but `fs:watchFolder` accepted any absolute path from the
  * renderer, so that union let a same-origin script call
  * `fs:watchFolder("/home/user/.ssh")` and have THAT directory authorized for
  * direct fs-route reads/writes (P1 review, PR #98). `fs:watchFolder` now
- * rejects any `dirPath` that isn't this same `activePreview`'s project
+ * rejects any `dirPath` that isn't the active book root
  * (main.ts), so the watcher can no longer diverge from it — but authorization
- * itself derives only from `activePreview`, on principle: the watcher is
+ * itself derives only from host-owned roots, on principle: the watcher is
  * host-authorized input, not an independent authorization source. The SPA's
  * own open-project sequence (`routes/+page.svelte`) already awaits
- * `startPreviewHost` (which sets `activePreview`) BEFORE it lists/reads the
+ * `startPreviewHost` (which sets the roots) BEFORE it lists/reads the
  * NEW project's files (`ensureEditorFile`, the manifest-detection `listDir`)
  * and before it calls `startFolderWatch`, so dropping the watcher union does
  * not 403 that legitimate "open a different project" window. Once a project
- * closes, `activePreview` goes back to null and `projectRoots()` to empty, so
+ * closes, both roots go back to null and `projectRoots()` to empty, so
  * a stray fs-route call from the SPA with no project open is rejected rather
  * than falling back to "anywhere".
  *

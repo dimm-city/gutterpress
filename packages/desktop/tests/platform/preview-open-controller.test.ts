@@ -22,6 +22,7 @@ interface HarnessOpts {
   startPreviewServer?: () => unknown;
   activePreview?: PreviewHandle | null;
   activeWorkspaceRoot?: string | null;
+  activeRepositoryRoot?: string | null;
   statThrows?: boolean;
   statIsDirectory?: boolean;
   watchedDir?: string | null;
@@ -37,6 +38,7 @@ interface Harness {
   appendFileCalls: string[];
   getActivePreview: () => PreviewHandle | null;
   getActiveWorkspaceRoot: () => string | null;
+  getActiveRepositoryRoot: () => string | null;
   runPreflightCalls: Array<[string, unknown]>;
   startCalls: number;
 }
@@ -62,6 +64,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   let startCalls = 0;
   let activePreview: PreviewHandle | null = opts.activePreview ?? null;
   let activeWorkspaceRoot: string | null = opts.activeWorkspaceRoot ?? null;
+  let activeRepositoryRoot: string | null = opts.activeRepositoryRoot ?? null;
   let watchedDir: string | null = opts.watchedDir ?? null;
 
   const lib = {
@@ -108,6 +111,9 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     getActiveWorkspaceRoot: () => activeWorkspaceRoot,
     setActiveWorkspaceRoot: (root) => {
       activeWorkspaceRoot = root;
+    },
+    setActiveRepositoryRoot: (root) => {
+      activeRepositoryRoot = root;
     },
     stat: async () => {
       if (opts.statThrows) throw new Error("ENOENT: folder missing");
@@ -162,6 +168,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     appendFileCalls,
     getActivePreview: () => activePreview,
     getActiveWorkspaceRoot: () => activeWorkspaceRoot,
+    getActiveRepositoryRoot: () => activeRepositoryRoot,
     runPreflightCalls,
     get startCalls() {
       return startCalls;
@@ -193,6 +200,20 @@ test("happy path (local-folder): starts server, sets activePreview, returns resu
     title: "book",
   });
   expect(h.getActivePreview()?.inputPath).toBe("/book");
+  expect(h.getActiveRepositoryRoot()).toBeNull();
+});
+
+test("a nested git book authorizes its host-detected repository for shared project files", async () => {
+  const h = makeHarness({
+    sourceType: "local-git-folder",
+    repoRoot: "/repo",
+    subPath: "field-guide",
+  });
+
+  await h.controller.open({ input: "/book" });
+
+  expect(h.getActiveWorkspaceRoot()).toBe("/book");
+  expect(h.getActiveRepositoryRoot()).toBe("/repo");
 });
 
 test("title falls back to dir basename when no manifest, and adopts manifest.title when present", async () => {
@@ -246,9 +267,13 @@ test("a missing replacement folder rejects and clears the workspace the renderer
 });
 
 test("stop clears a workspace even when no preview server was started", async () => {
-  const h = makeHarness({ activeWorkspaceRoot: "/broken-book" });
+  const h = makeHarness({
+    activeWorkspaceRoot: "/broken-book",
+    activeRepositoryRoot: "/repo",
+  });
   expect(await h.controller.stop()).toEqual({ stopped: true });
   expect(h.getActiveWorkspaceRoot()).toBeNull();
+  expect(h.getActiveRepositoryRoot()).toBeNull();
 });
 
 test("recents upsert: local-folder keys on the opened dir, no lastActiveBook", async () => {
@@ -426,6 +451,7 @@ test("overlapping open() calls are serialized in arrival order", async () => {
     setActiveWorkspaceRoot: (root) => {
       activeWorkspaceRoot = root;
     },
+    setActiveRepositoryRoot: () => {},
     stat: async () => ({ isDirectory: () => true }),
     updatePrefs: async (mutate) => mutate({}),
     tokenStore: {} as PreviewOpenControllerDeps["tokenStore"],

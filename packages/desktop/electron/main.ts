@@ -237,11 +237,16 @@ function loadLib(): Promise<LibModule> {
 
 let activePreview: PreviewHandle | null = null;
 let activeWorkspaceRoot: string | null = null;
+let activeRepositoryRoot: string | null = null;
 
 function setActiveWorkspaceRoot(root: string | null): void {
   const normalized = root ? path.resolve(root) : null;
   if (normalized !== activeWorkspaceRoot) stopFolderWatch();
   activeWorkspaceRoot = normalized;
+}
+
+function setActiveRepositoryRoot(root: string | null): void {
+  activeRepositoryRoot = root ? path.resolve(root) : null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1474,8 +1479,11 @@ const conflictPreviewHooksImpl: ConflictPreviewHooks = {
 // ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this
 // implements. `projectRoots` is derived SOLELY from the host-validated active
-// workspace root (set before preview generation begins), never from the folder
-// watcher's tracked dir or from whether a preview server exists. It
+// workspace root (set before preview generation begins) plus the enclosing
+// repository root detected by the host for a nested book, never from the folder
+// watcher's tracked dir or from whether a preview server exists. This lets a
+// multi-book project edit shared styles and assets without trusting a path
+// supplied by the renderer. It
 // used to also union in `folderWatch.getWatchedDir()`, but that let a
 // renderer-supplied `fs:watchFolder` call (any absolute path, e.g. the user's
 // SSH directory) authorize itself as a project root — the watcher's tracked
@@ -1490,7 +1498,9 @@ const conflictPreviewHooksImpl: ConflictPreviewHooks = {
 // "open a different project" window.
 const fsGuardImpl: FsGuardHooks = {
   projectRoots(): string[] {
-    return activeWorkspaceRoot ? [activeWorkspaceRoot] : [];
+    return [activeWorkspaceRoot, activeRepositoryRoot].filter(
+      (root): root is string => root !== null,
+    );
   },
   readOnlyRoots(): string[] {
     // Directories legitimately READ from outside the open project:
@@ -1620,6 +1630,7 @@ const previewOpen = new PreviewOpenController({
   },
   getActiveWorkspaceRoot: () => activeWorkspaceRoot,
   setActiveWorkspaceRoot,
+  setActiveRepositoryRoot,
   stat: (target) => stat(target),
   updatePrefs,
   tokenStore: electronTokenStore,

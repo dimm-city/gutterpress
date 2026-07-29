@@ -58,6 +58,8 @@ export interface PreviewOpenControllerDeps {
   /** Host-owned filesystem capability, independent of preview-server success. */
   getActiveWorkspaceRoot: () => string | null;
   setActiveWorkspaceRoot: (root: string | null) => void;
+  /** Host-detected enclosing repository, when the active book shares repo-level files. */
+  setActiveRepositoryRoot: (root: string | null) => void;
   /** Validate that a renderer-selected workspace exists and is a directory. */
   stat: (target: string) => Promise<{ isDirectory(): boolean }>;
   /** Atomic read-modify-write over gutterpress-prefs.json (electron/prefs-store.ts). */
@@ -124,6 +126,7 @@ export class PreviewOpenController {
     const active = this.deps.getActivePreview();
     if (active) await active.stop().catch(() => {});
     this.deps.setActivePreview(null);
+    this.deps.setActiveRepositoryRoot(null);
     this.deps.setActiveWorkspaceRoot(null);
     return { stopped: true };
   }
@@ -158,6 +161,7 @@ export class PreviewOpenController {
       await existing.stop().catch(() => {});
     }
     this.deps.setActivePreview(null);
+    this.deps.setActiveRepositoryRoot(null);
     this.deps.setActiveWorkspaceRoot(openedDir);
 
     let lib: LibModule | null = null;
@@ -217,6 +221,9 @@ export class PreviewOpenController {
         console.warn("[api:preview] project source detection failed (non-fatal):", e);
       }
     }
+    this.deps.setActiveRepositoryRoot(
+      source?.type === "local-git-folder" ? path.resolve(source.repoRoot) : null,
+    );
 
     await this.deps
       .updatePrefs((prefs) => ({
