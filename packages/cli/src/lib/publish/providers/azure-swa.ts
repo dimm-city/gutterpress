@@ -81,7 +81,7 @@ export const azureSwaProvider: PublishProvider = {
         severity: "error",
         id: "azure-swa/needs-html",
         message:
-          "Azure Static Web Apps publishes the HTML export. Build with `print-md build --format html` first.",
+          "Azure Static Web Apps publishes the HTML export. Build with `gutterpress build --format html` first.",
       });
     }
     if (!(await resolveSwaCommand(req))) {

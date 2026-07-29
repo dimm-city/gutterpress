@@ -162,7 +162,7 @@ function isLocalRef(ref: string): boolean {
  *        reported as a build-failing error.
  *      - A non-image LINK (e.g. one chapter linking to another markdown file)
  *        is never touched by the renderer — it ships as an ordinary relative
- *        href that a reader's browser/PDF viewer resolves relative to the
+ *        href that a reader's browser/PDF desktop resolves relative to the
  *        LINKING file, so that stays the frame this check uses too.
  *      - A reference-style definition (`kind: "ambiguous"`) is accepted in
  *        EITHER frame: this check has no way to see whether the label it

@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# print-md installer for Linux and macOS
+# Gutterpress installer for Linux and macOS
 #
 # Downloads the standalone binary for the current platform from GitHub
 # Releases and drops it in ~/.local/bin. No bun, node, or git required.
 #
-#   curl -fsSL https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/scripts/install.sh | bash
 #
 # Optional environment variables:
-#   PRINTMD_VERSION  override the version to install (e.g. v0.2.0-beta.5)
+#   GUTTERPRESS_VERSION  override the version to install (e.g. v0.2.0-beta.5)
 #   GITHUB_TOKEN     auth token (only needed while the repo is private)
-#   PRINTMD_PREFIX   install dir override (default: ~/.local/bin)
+#   GUTTERPRESS_PREFIX   install dir override (default: ~/.local/bin)
 
 set -euo pipefail
 
-REPO="dimm-city/print-md"
+REPO="dimm-city/gutterpress"
 GITHUB_TOKEN="${GITHUB_TOKEN:-}"
-PRINTMD_VERSION="${PRINTMD_VERSION:-}"
-PRINTMD_PREFIX="${PRINTMD_PREFIX:-$HOME/.local/bin}"
+GUTTERPRESS_VERSION="${GUTTERPRESS_VERSION:-}"
+GUTTERPRESS_PREFIX="${GUTTERPRESS_PREFIX:-$HOME/.local/bin}"
 
 # Name of the published checksum manifest. Written by
 # tools/prepare-release-assets.mjs as `<sha256>  <asset name>` lines.
-PRINTMD_CHECKSUM_ASSET="SHA256SUMS.txt"
+GUTTERPRESS_CHECKSUM_ASSET="SHA256SUMS.txt"
 
 # Set by verify_checksum() to the reason verification was skipped, and empty
 # when the download was actually verified. main() reads it to repeat the
 # warning at the end of the run.
-PRINTMD_UNVERIFIED=""
+GUTTERPRESS_UNVERIFIED=""
 
 # ---- output helpers --------------------------------------------------------
 
@@ -53,12 +53,12 @@ detect_platform() {
         *) print_error "Unsupported architecture: $uname_m"; return 1 ;;
     esac
 
-    PRINTMD_OS="$os"
-    PRINTMD_ARCH="$arch"
+    GUTTERPRESS_OS="$os"
+    GUTTERPRESS_ARCH="$arch"
     # Must match the release.yml build-cli matrix `artifact` names. The `-cli`
     # infix distinguishes these standalone CLI binaries from the
-    # print-md-viewer-* desktop assets in the same release.
-    PRINTMD_ASSET="print-md-cli-${os}-${arch}"
+    # gutterpress-desktop-* desktop assets in the same release.
+    GUTTERPRESS_ASSET="gutterpress-cli-${os}-${arch}"
 }
 
 # ---- curl helpers ----------------------------------------------------------
@@ -96,19 +96,19 @@ gh_download() {
 
 fetch_release() {
     local url
-    if [ -n "$PRINTMD_VERSION" ]; then
-        local tag="${PRINTMD_VERSION#v}"
+    if [ -n "$GUTTERPRESS_VERSION" ]; then
+        local tag="${GUTTERPRESS_VERSION#v}"
         tag="v${tag}"
         url="https://api.github.com/repos/${REPO}/releases/tags/${tag}"
-        if ! PRINTMD_RELEASE_JSON="$(gh_curl '' "$url" 2>&1)"; then
+        if ! GUTTERPRESS_RELEASE_JSON="$(gh_curl '' "$url" 2>&1)"; then
             print_error "Could not fetch release $tag from $REPO"
             return 1
         fi
     else
         url="https://api.github.com/repos/${REPO}/releases/latest"
-        if ! PRINTMD_RELEASE_JSON="$(gh_curl '' "$url" 2>/dev/null)"; then
+        if ! GUTTERPRESS_RELEASE_JSON="$(gh_curl '' "$url" 2>/dev/null)"; then
             url="https://api.github.com/repos/${REPO}/releases?per_page=1"
-            if ! PRINTMD_RELEASE_JSON="$(gh_curl '' "$url" 2>&1)"; then
+            if ! GUTTERPRESS_RELEASE_JSON="$(gh_curl '' "$url" 2>&1)"; then
                 print_error "Could not fetch latest release from $REPO"
                 if [ -z "$GITHUB_TOKEN" ]; then
                     print_info "If the repository is private, set GITHUB_TOKEN."
@@ -116,17 +116,17 @@ fetch_release() {
                 return 1
             fi
             # /releases returns an array — take the first element.
-            PRINTMD_RELEASE_JSON="${PRINTMD_RELEASE_JSON#[}"
-            PRINTMD_RELEASE_JSON="${PRINTMD_RELEASE_JSON%]}"
+            GUTTERPRESS_RELEASE_JSON="${GUTTERPRESS_RELEASE_JSON#[}"
+            GUTTERPRESS_RELEASE_JSON="${GUTTERPRESS_RELEASE_JSON%]}"
         fi
     fi
 
-    PRINTMD_TAG="$(printf '%s' "$PRINTMD_RELEASE_JSON" \
+    GUTTERPRESS_TAG="$(printf '%s' "$GUTTERPRESS_RELEASE_JSON" \
         | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
         | head -1 \
         | sed -E 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
 
-    if [ -z "$PRINTMD_TAG" ]; then
+    if [ -z "$GUTTERPRESS_TAG" ]; then
         print_error "Could not parse release tag from GitHub response"
         return 1
     fi
@@ -138,7 +138,7 @@ fetch_release() {
 asset_url_by_name() {
     local name="$1"
     if command -v python3 >/dev/null 2>&1; then
-        printf '%s' "$PRINTMD_RELEASE_JSON" \
+        printf '%s' "$GUTTERPRESS_RELEASE_JSON" \
             | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -150,7 +150,7 @@ for a in data.get('assets', []):
 " "$name"
     else
         # Locate the asset block whose "name" matches and pull its API "url".
-        printf '%s' "$PRINTMD_RELEASE_JSON" \
+        printf '%s' "$GUTTERPRESS_RELEASE_JSON" \
             | tr '\n' ' ' \
             | grep -oE '\{[^{}]*"name"[^{}]*"'"$name"'"[^{}]*\}' \
             | head -1 \
@@ -162,10 +162,10 @@ for a in data.get('assets', []):
 
 # Find the download URL for our platform's asset. Missing asset is fatal.
 resolve_asset_url() {
-    PRINTMD_ASSET_URL="$(asset_url_by_name "$PRINTMD_ASSET")"
+    GUTTERPRESS_ASSET_URL="$(asset_url_by_name "$GUTTERPRESS_ASSET")"
 
-    if [ -z "$PRINTMD_ASSET_URL" ]; then
-        print_error "Release $PRINTMD_TAG has no asset named $PRINTMD_ASSET"
+    if [ -z "$GUTTERPRESS_ASSET_URL" ]; then
+        print_error "Release $GUTTERPRESS_TAG has no asset named $GUTTERPRESS_ASSET"
         return 1
     fi
 }
@@ -195,67 +195,67 @@ sha256_of_file() {
 # hash is simply unavailable (the release predates SHA256SUMS.txt, the manifest
 # doesn't list this asset, or the machine has no sha256 tool) we warn and
 # continue, so installing an older release still works. Every skip records its
-# reason in PRINTMD_UNVERIFIED, which main() reprints at the end of the run
+# reason in GUTTERPRESS_UNVERIFIED, which main() reprints at the end of the run
 # where it cannot scroll by unnoticed.
 verify_checksum() {
     local file="$1"
-    PRINTMD_UNVERIFIED=""
+    GUTTERPRESS_UNVERIFIED=""
 
     print_step "Verifying download..."
 
     local checksum_url
-    checksum_url="$(asset_url_by_name "$PRINTMD_CHECKSUM_ASSET")"
+    checksum_url="$(asset_url_by_name "$GUTTERPRESS_CHECKSUM_ASSET")"
     if [ -z "$checksum_url" ]; then
-        PRINTMD_UNVERIFIED="release $PRINTMD_TAG does not publish $PRINTMD_CHECKSUM_ASSET"
-        print_info "This release publishes no $PRINTMD_CHECKSUM_ASSET — cannot verify."
+        GUTTERPRESS_UNVERIFIED="release $GUTTERPRESS_TAG does not publish $GUTTERPRESS_CHECKSUM_ASSET"
+        print_info "This release publishes no $GUTTERPRESS_CHECKSUM_ASSET — cannot verify."
         return 0
     fi
 
     local sums
     if ! sums="$(gh_curl application/octet-stream "$checksum_url" 2>/dev/null)"; then
-        PRINTMD_UNVERIFIED="could not download $PRINTMD_CHECKSUM_ASSET"
-        print_info "Could not download $PRINTMD_CHECKSUM_ASSET — cannot verify."
+        GUTTERPRESS_UNVERIFIED="could not download $GUTTERPRESS_CHECKSUM_ASSET"
+        print_info "Could not download $GUTTERPRESS_CHECKSUM_ASSET — cannot verify."
         return 0
     fi
 
     # Lines are `<sha256>  <asset name>`; awk splits on whitespace.
     local expected
     expected="$(printf '%s\n' "$sums" \
-        | awk -v want="$PRINTMD_ASSET" '$2 == want { print $1; exit }')"
+        | awk -v want="$GUTTERPRESS_ASSET" '$2 == want { print $1; exit }')"
     if [ -z "$expected" ]; then
-        PRINTMD_UNVERIFIED="$PRINTMD_CHECKSUM_ASSET does not list $PRINTMD_ASSET"
-        print_info "$PRINTMD_ASSET is not listed in $PRINTMD_CHECKSUM_ASSET — cannot verify."
+        GUTTERPRESS_UNVERIFIED="$GUTTERPRESS_CHECKSUM_ASSET does not list $GUTTERPRESS_ASSET"
+        print_info "$GUTTERPRESS_ASSET is not listed in $GUTTERPRESS_CHECKSUM_ASSET — cannot verify."
         return 0
     fi
 
     local actual
     if ! actual="$(sha256_of_file "$file")"; then
-        PRINTMD_UNVERIFIED="no sha256 tool found (need sha256sum, shasum, or openssl)"
+        GUTTERPRESS_UNVERIFIED="no sha256 tool found (need sha256sum, shasum, or openssl)"
         print_info "No sha256 tool on this system — cannot verify."
         return 0
     fi
 
     if [ "$(to_lower "$actual")" != "$(to_lower "$expected")" ]; then
-        print_error "Checksum mismatch for $PRINTMD_ASSET"
+        print_error "Checksum mismatch for $GUTTERPRESS_ASSET"
         print_error "  expected: $expected"
         print_error "  actual:   $actual"
         print_error "Refusing to install: the download is corrupt or has been tampered with."
         return 1
     fi
 
-    print_success "Checksum verified against $PRINTMD_CHECKSUM_ASSET"
+    print_success "Checksum verified against $GUTTERPRESS_CHECKSUM_ASSET"
 }
 
 # ---- install steps ---------------------------------------------------------
 
 install_binary() {
-    print_step "Downloading print-md $PRINTMD_TAG ($PRINTMD_OS/$PRINTMD_ARCH)..."
+    print_step "Downloading gutterpress $GUTTERPRESS_TAG ($GUTTERPRESS_OS/$GUTTERPRESS_ARCH)..."
 
-    mkdir -p "$PRINTMD_PREFIX"
-    PRINTMD_BIN="$PRINTMD_PREFIX/print-md"
-    local tmp="$PRINTMD_BIN.download"
+    mkdir -p "$GUTTERPRESS_PREFIX"
+    GUTTERPRESS_BIN="$GUTTERPRESS_PREFIX/gutterpress"
+    local tmp="$GUTTERPRESS_BIN.download"
 
-    if ! gh_download application/octet-stream -o "$tmp" "$PRINTMD_ASSET_URL"; then
+    if ! gh_download application/octet-stream -o "$tmp" "$GUTTERPRESS_ASSET_URL"; then
         rm -f "$tmp"
         print_error "Failed to download binary"
         return 1
@@ -269,41 +269,41 @@ install_binary() {
     fi
 
     chmod +x "$tmp"
-    mv -f "$tmp" "$PRINTMD_BIN"
-    print_success "Installed binary to $PRINTMD_BIN"
+    mv -f "$tmp" "$GUTTERPRESS_BIN"
+    print_success "Installed binary to $GUTTERPRESS_BIN"
 }
 
 verify_install() {
     print_step "Verifying installation..."
     local version
-    if ! version="$("$PRINTMD_BIN" --version 2>&1)"; then
-        print_error "print-md installed but failed to run"
+    if ! version="$("$GUTTERPRESS_BIN" --version 2>&1)"; then
+        print_error "gutterpress installed but failed to run"
         printf '%s\n' "$version" >&2
         return 1
     fi
-    print_success "print-md is working! ($version)"
+    print_success "gutterpress is working! ($version)"
 }
 
-PRINTMD_PATH_MARKER_BEGIN="# >>> print-md installer >>>"
-PRINTMD_PATH_MARKER_END="# <<< print-md installer <<<"
+GUTTERPRESS_PATH_MARKER_BEGIN="# >>> gutterpress installer >>>"
+GUTTERPRESS_PATH_MARKER_END="# <<< gutterpress installer <<<"
 
-# Write (or rewrite) the print-md PATH block in a single rc file. Any existing
+# Write (or rewrite) the gutterpress PATH block in a single rc file. Any existing
 # block between our markers is stripped first, so re-installs — even with a
-# changed PRINTMD_PREFIX — replace the old entry instead of stacking a new one.
+# changed GUTTERPRESS_PREFIX — replace the old entry instead of stacking a new one.
 update_rc_path_block() {
     local rc="$1" line="$2" tmp
     mkdir -p "$(dirname "$rc")"
     [ -f "$rc" ] || : > "$rc"
     tmp="$(mktemp)"
-    awk -v b="$PRINTMD_PATH_MARKER_BEGIN" -v e="$PRINTMD_PATH_MARKER_END" '
+    awk -v b="$GUTTERPRESS_PATH_MARKER_BEGIN" -v e="$GUTTERPRESS_PATH_MARKER_END" '
         $0 == b { skip = 1; next }
         $0 == e { skip = 0; next }
         !skip   { print }
     ' "$rc" > "$tmp"
     {
-        printf '%s\n' "$PRINTMD_PATH_MARKER_BEGIN"
+        printf '%s\n' "$GUTTERPRESS_PATH_MARKER_BEGIN"
         printf '%s\n' "$line"
-        printf '%s\n' "$PRINTMD_PATH_MARKER_END"
+        printf '%s\n' "$GUTTERPRESS_PATH_MARKER_END"
     } >> "$tmp"
     mv "$tmp" "$rc"
 }
@@ -315,7 +315,7 @@ update_rc_path_block() {
 # realistic set rather than a single guessed file.
 ensure_path() {
     case ":$PATH:" in
-        *":$PRINTMD_PREFIX:"*) return 0 ;;
+        *":$GUTTERPRESS_PREFIX:"*) return 0 ;;
     esac
 
     local line os
@@ -324,15 +324,15 @@ ensure_path() {
     case "${SHELL:-}" in
         */fish)
             # Single-quoted format string keeps $PATH literal so fish expands it.
-            line=$(printf 'set -gx PATH %s $PATH' "$PRINTMD_PREFIX")
+            line=$(printf 'set -gx PATH %s $PATH' "$GUTTERPRESS_PREFIX")
             targets=("$HOME/.config/fish/config.fish")
             ;;
         */zsh)
-            line=$(printf 'export PATH="%s:$PATH"' "$PRINTMD_PREFIX")
+            line=$(printf 'export PATH="%s:$PATH"' "$GUTTERPRESS_PREFIX")
             targets=("$HOME/.zshrc")
             ;;
         */bash)
-            line=$(printf 'export PATH="%s:$PATH"' "$PRINTMD_PREFIX")
+            line=$(printf 'export PATH="%s:$PATH"' "$GUTTERPRESS_PREFIX")
             targets=("$HOME/.bashrc")
             if [ "$os" = "Darwin" ]; then
                 if [ -f "$HOME/.bash_profile" ]; then
@@ -343,8 +343,8 @@ ensure_path() {
             fi
             ;;
         *)
-            print_info "$PRINTMD_PREFIX is not on PATH and your shell (${SHELL:-unknown}) isn't recognized."
-            print_info "Add it manually: export PATH=\"$PRINTMD_PREFIX:\$PATH\""
+            print_info "$GUTTERPRESS_PREFIX is not on PATH and your shell (${SHELL:-unknown}) isn't recognized."
+            print_info "Add it manually: export PATH=\"$GUTTERPRESS_PREFIX:\$PATH\""
             return 0
             ;;
     esac
@@ -352,7 +352,7 @@ ensure_path() {
     local rc
     for rc in "${targets[@]}"; do
         update_rc_path_block "$rc" "$line"
-        print_success "Added $PRINTMD_PREFIX to PATH in $rc"
+        print_success "Added $GUTTERPRESS_PREFIX to PATH in $rc"
     done
     print_info "Restart your shell or run: source ${targets[0]}"
 }
@@ -365,27 +365,27 @@ resolve_documents_dir() {
     fi
 }
 
-# Create ~/Documents/print-md and seed it with the bundled examples so the
-# viewer's "Open Project" picker has something to show out of the box.
-setup_print_md_directory() {
-    print_step "Setting up print-md directory..."
+# Create ~/Documents/gutterpress and seed it with the bundled examples so the
+# desktop's "Open Project" picker has something to show out of the box.
+setup_gutterpress_directory() {
+    print_step "Setting up gutterpress directory..."
 
     local documents_dir
     documents_dir="$(resolve_documents_dir)"
     mkdir -p "$documents_dir"
 
-    PRINTMD_DIR="$documents_dir/print-md"
-    mkdir -p "$PRINTMD_DIR"
-    print_info "print-md directory: $PRINTMD_DIR"
+    GUTTERPRESS_DIR="$documents_dir/gutterpress"
+    mkdir -p "$GUTTERPRESS_DIR"
+    print_info "gutterpress directory: $GUTTERPRESS_DIR"
 
-    local examples_dir="$PRINTMD_DIR/examples"
+    local examples_dir="$GUTTERPRESS_DIR/examples"
     if [ -d "$examples_dir" ] && [ -n "$(ls -A "$examples_dir" 2>/dev/null)" ]; then
         print_info "Examples already present at $examples_dir (skipping)"
         return 0
     fi
 
     # Pull the source archive for the same tag and extract just `examples/`.
-    local archive_url="https://api.github.com/repos/${REPO}/tarball/${PRINTMD_TAG}"
+    local archive_url="https://api.github.com/repos/${REPO}/tarball/${GUTTERPRESS_TAG}"
     local tmp_dir
     tmp_dir="$(mktemp -d)"
 
@@ -393,7 +393,7 @@ setup_print_md_directory() {
     if gh_download application/octet-stream -o "$tmp_dir/source.tar.gz" "$archive_url"; then
         if tar -xzf "$tmp_dir/source.tar.gz" -C "$tmp_dir"; then
             local extracted
-            extracted="$(find "$tmp_dir" -maxdepth 1 -type d \( -name '*-print-md-*' -o -name 'print-md-*' \) | head -1)"
+            extracted="$(find "$tmp_dir" -maxdepth 1 -type d \( -name '*-gutterpress-*' -o -name 'gutterpress-*' \) | head -1)"
             if [ -n "$extracted" ] && [ -d "$extracted/examples" ]; then
                 mkdir -p "$examples_dir"
                 cp -R "$extracted/examples/." "$examples_dir/"
@@ -411,7 +411,7 @@ setup_print_md_directory() {
 }
 
 create_desktop_shortcut() {
-    if [ "$PRINTMD_OS" != "linux" ]; then
+    if [ "$GUTTERPRESS_OS" != "linux" ]; then
         return 0
     fi
 
@@ -423,16 +423,16 @@ create_desktop_shortcut() {
         return 0
     fi
 
-    local desktop_file="$desktop_dir/print-md-preview.desktop"
-    local working_dir="${PRINTMD_DIR:-$HOME/Documents}"
+    local desktop_file="$desktop_dir/gutterpress-preview.desktop"
+    local working_dir="${GUTTERPRESS_DIR:-$HOME/Documents}"
 
     cat > "$desktop_file" <<EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Print-md Preview
-Comment=Start Print-md Preview Server
-Exec=$PRINTMD_BIN preview --open true
+Name=gutterpress Desktop
+Comment=Start gutterpress Desktop
+Exec=$GUTTERPRESS_BIN preview --open true
 Path=$working_dir
 Terminal=true
 StartupNotify=true
@@ -450,7 +450,7 @@ EOF
 main() {
     echo ""
     echo "========================================"
-    echo "  print-md Installation"
+    echo "  gutterpress Installation"
     echo "========================================"
     echo ""
 
@@ -460,17 +460,17 @@ main() {
     fi
 
     detect_platform
-    print_info "Detected platform: $PRINTMD_OS/$PRINTMD_ARCH"
+    print_info "Detected platform: $GUTTERPRESS_OS/$GUTTERPRESS_ARCH"
 
     print_step "Resolving release..."
     fetch_release
-    print_info "Release: $PRINTMD_TAG"
+    print_info "Release: $GUTTERPRESS_TAG"
     resolve_asset_url
 
     install_binary
     verify_install
     ensure_path
-    setup_print_md_directory || true
+    setup_gutterpress_directory || true
     create_desktop_shortcut || true
 
     echo ""
@@ -478,28 +478,28 @@ main() {
     echo "  Installation Complete!"
     echo "========================================"
     echo ""
-    print_success "print-md is ready to use!"
-    if [ -n "${PRINTMD_DIR:-}" ]; then
+    print_success "gutterpress is ready to use!"
+    if [ -n "${GUTTERPRESS_DIR:-}" ]; then
         echo ""
-        print_info "Examples are at: $PRINTMD_DIR/examples"
+        print_info "Examples are at: $GUTTERPRESS_DIR/examples"
     fi
     echo ""
-    if [ "$PRINTMD_OS" = "linux" ] && [ -d "${XDG_DESKTOP_DIR:-$HOME/Desktop}" ]; then
-        print_info "Double-click 'Print-md Preview' on your desktop to start the viewer."
+    if [ "$GUTTERPRESS_OS" = "linux" ] && [ -d "${XDG_DESKTOP_DIR:-$HOME/Desktop}" ]; then
+        print_info "Double-click 'gutterpress Desktop' on your desktop to start the desktop."
     else
-        print_info "Get started: print-md --help"
+        print_info "Get started: gutterpress --help"
     fi
     echo ""
 
     # Last thing on screen, so an unverified install cannot be missed.
-    if [ -n "$PRINTMD_UNVERIFIED" ]; then
+    if [ -n "$GUTTERPRESS_UNVERIFIED" ]; then
         print_error "WARNING: this download was NOT verified against a checksum."
-        print_info "Reason: $PRINTMD_UNVERIFIED"
-        print_info "print-md binaries are unsigned, so nothing has confirmed this file's"
+        print_info "Reason: $GUTTERPRESS_UNVERIFIED"
+        print_info "gutterpress binaries are unsigned, so nothing has confirmed this file's"
         print_info "integrity. To check it by hand, compare the sha256 of"
-        print_info "  $PRINTMD_BIN"
+        print_info "  $GUTTERPRESS_BIN"
         print_info "against the release page:"
-        print_info "  https://github.com/${REPO}/releases/tag/${PRINTMD_TAG}"
+        print_info "  https://github.com/${REPO}/releases/tag/${GUTTERPRESS_TAG}"
         echo ""
     fi
 }

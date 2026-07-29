@@ -21,7 +21,7 @@ const FILES: Record<string, string> = {
 };
 
 test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on disk)", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-assemble-parity-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-assemble-parity-"));
   try {
     await mkdir(join(dir, "css"), { recursive: true });
     await writeFile(join(dir, "css/print.css"), "body{}", "utf-8");
@@ -69,7 +69,7 @@ test("assembleBookHtml (pure, in-memory readText) === renderChapters (node, on d
 });
 
 test("assembleBookHtml wrapChapters parity with renderChapters", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-assemble-wrap-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-assemble-wrap-"));
   try {
     await mkdir(join(dir, "css"), { recursive: true });
     await writeFile(join(dir, "css/print.css"), "body{}", "utf-8");
@@ -93,7 +93,7 @@ test("assembleBookHtml wrapChapters parity with renderChapters", async () => {
     });
     expect(pureHtml).toBe(nodeHtml);
     expect(pureHtml).toContain('data-chapter-src="01-intro.md"');
-    expect(pureHtml).not.toContain('class="pmd-chapter"');
+    expect(pureHtml).not.toContain('class="gutterpress-chapter"');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

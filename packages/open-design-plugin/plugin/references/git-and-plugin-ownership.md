@@ -1,12 +1,12 @@
 # Git scope and plugin ownership
 
 Who owns which file, what version control captures, and how this plugin's own
-package is distributed. Verified against the Print-MD source that ships this
+package is distributed. Verified against the Gutterpress source that ships this
 package, 2026-07-28.
 
-## Print-MD's Git scope is the whole repository
+## Gutterpress's Git scope is the whole repository
 
-When a book sits inside a larger repository, Print-MD records the book's
+When a book sits inside a larger repository, Gutterpress records the book's
 subpath but every version operation — snapshot, history, restore, pull, push —
 runs against the **enclosing repository root**. A snapshot taken while editing
 `books/core-book` therefore includes the shared foundation and the sibling book.
@@ -53,7 +53,7 @@ design/
 └── open-design/
     ├── skills/
     └── plugins/
-        └── print-md-publishing/
+        └── gutterpress-publishing/
 ```
 
 `.od-skills/` is where Open Design stages the active skill and its side files
@@ -70,9 +70,9 @@ on another machine needs that vendored tree committed, receipts and all.
 
 ## Two unrelated plugin systems
 
-- **Print-MD plugins** are markdown-it modules a *book manifest* names, either
+- **Gutterpress plugins** are markdown-it modules a *book manifest* names, either
   by `path` (authored, Git-tracked source) or as a managed npm package vendored
-  under that book's `plugins/npm/` by `print-md plugin add`.
+  under that book's `plugins/npm/` by `gutterpress plugin add`.
 - **Open Design plugins** are workflow packages a *contributor* installs into
   their own Open Design registry.
 
@@ -87,9 +87,9 @@ the installed copy:
 
 ```bash
 git pull
-od plugin validate ./design/open-design/plugins/print-md-publishing --no-daemon
-od plugin install  ./design/open-design/plugins/print-md-publishing
-od plugin doctor   print-md-publishing
+od plugin validate ./design/open-design/plugins/gutterpress-publishing --no-daemon
+od plugin install  ./design/open-design/plugins/gutterpress-publishing
+od plugin doctor   gutterpress-publishing
 ```
 
 Reinstall after every package change during development, and after any pull that
@@ -98,7 +98,7 @@ inputs, capabilities, or ownership rules change, so a stale installed copy is
 identifiable.
 
 Version 0.2.0 is not published in the Open Design marketplace. Use a trusted
-local install; do not assume `od plugin install print-md-publishing` resolves.
+local install; do not assume `od plugin install gutterpress-publishing` resolves.
 Open Design 0.16.1 also cannot persistently grant an explicit pipeline's derived
 `pipeline:*` capability to a restricted direct-GitHub/URL install, so that is
 not a supported team distribution path for this version.

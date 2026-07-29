@@ -24,7 +24,7 @@ export const PAGEDJS_VERSION = "0.4.3";
 export const PAGEDJS_POLYFILL_MARKER = "data-pagedjs-polyfill";
 
 /**
- * The polyfill `<script>` slot print-md core emits into `book.html`. Carries the
+ * The polyfill `<script>` slot Gutterpress core emits into `book.html`. Carries the
  * stable marker (with the intended version as its value, for greppability) and
  * NO `src` — an un-rewritten `book.html` has zero network dependency. Every
  * consumer replaces this slot with a locally-vendored polyfill before the book

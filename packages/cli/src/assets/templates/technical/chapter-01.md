@@ -25,7 +25,7 @@ Use `inline code` for commands and identifiers, and fenced blocks for longer
 examples:
 
 ```sh
-print-md build
+gutterpress build
 ```
 
 Add more files alongside this one for each chapter or section of your document.

@@ -1,6 +1,6 @@
 @chapter #ch-cli .cli
 
-# Print-md CLI Reference {#cli-reference}
+# Gutterpress CLI Reference {#cli-reference}
 
 <div class="lede">Commands for authoring, building, and publishing. The design guide itself is a first-class output target alongside the book.</div>
 
@@ -8,11 +8,11 @@
 
 ## Command Overview {#cli-overview}
 
-### print-md preview
+### gutterpress preview
 
 Starts the live preview server with hot reload. Edits to markdown, CSS, or assets reflect immediately.
 
-**Syntax** — `print-md preview [INPUT] [OPTIONS]`
+**Syntax** — `gutterpress preview [INPUT] [OPTIONS]`
 
 `INPUT` defaults to the current directory.
 
@@ -27,22 +27,22 @@ Starts the live preview server with hot reload. Edits to markdown, CSS, or asset
 **Examples**:
 
 ```
-print-md preview field-guide --port 3579 --open false
-print-md preview design-guide --port 3580 --open false
+gutterpress preview field-guide --port 3579 --open false
+gutterpress preview design-guide --port 3580 --open false
 ```
 
 The preview opens at `http://localhost:PORT/` (root).
 
 <div class="callout-note">
 <span class="callout-label">Note</span>
-If the port is in use, print-md automatically increments to the next available port and logs which port was chosen.
+If the port is in use, Gutterpress automatically increments to the next available port and logs which port was chosen.
 </div>
 
-### print-md build
+### gutterpress build
 
 Produces output from a manifest directory. Use `--format html` for a deployable static site; `--format pdf` (default) for a Chromium-rendered PDF; `--format pdfx` for a validated CMYK PDF/X.
 
-**Syntax** — `print-md build [INPUT] [OPTIONS]`
+**Syntax** — `gutterpress build [INPUT] [OPTIONS]`
 
 `INPUT` is a positional argument pointing to the manifest directory (defaults to cwd).
 
@@ -59,28 +59,28 @@ Produces output from a manifest directory. Use `--format html` for a deployable 
 **Examples**:
 
 ```
-# HTML static site (design guide → deployable viewer)
-print-md build design-guide --format html --out ./_site
+# HTML static site (design guide → deployable desktop output)
+gutterpress build design-guide --format html --out ./_site
 
 # PDF (plain Chromium)
-print-md build field-guide --format pdf --out ./field-guide.pdf
+gutterpress build field-guide --format pdf --out ./field-guide.pdf
 
 # PDF/X (CMYK, embedded fonts)
-print-md build field-guide --format pdfx --pdfx-flavor x1a --icc ./profiles/CGATS21_CRPC1.icc
+gutterpress build field-guide --format pdfx --pdfx-flavor x1a --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
 > Plain `--format pdf` needs only a Chromium-based browser. **PDF/X (CMYK)
 > additionally requires Ghostscript + qpdf** on the host — install them (see
-> [System Setup](../../print-md-user-guide/08-system-setup.md)) or run the build
-> via the [print-md Docker image](../../../docs/docker.md), which bundles all
+> [System Setup](../../gutterpress-user-guide/08-system-setup.md)) or run the build
+> via the [Gutterpress Docker image](../../../docs/docker.md), which bundles all
 > three tools.
 
-There is no separate "full pipeline" command — `print-md build` already runs
+There is no separate "full pipeline" command — `gutterpress build` already runs
 the validated pipeline on its own:
 `lint → validate:pre-build → convert → assets → build → validate:post-build`.
 Note that the final `validate:post-build` phase runs for `--format pdfx` ONLY;
 a plain `--format pdf` build stops after the build step
-(see [User Guide, Chapter 7 — Validation](../../print-md-user-guide/07-validation.md)).
+(see [User Guide, Chapter 7 — Validation](../../gutterpress-user-guide/07-validation.md)).
 Skip individual phases with flags on `build` itself:
 
 | Flag | Description |
@@ -92,11 +92,11 @@ Skip individual phases with flags on `build` itself:
 **Example** — validated PDF/X build:
 
 ```
-print-md build field-guide --format pdfx --out .print-md/build/field-guide-print-pdf \
-  --pdfx-flavor x1a --icc .print-md/profiles/CGATS21_CRPC1.icc
+gutterpress build field-guide --format pdfx --out .gutterpress/build/field-guide-print-pdf \
+  --pdfx-flavor x1a --icc .gutterpress/profiles/CGATS21_CRPC1.icc
 ```
 
-### print-md lint / validate / audit / preflight
+### gutterpress lint / validate / audit / preflight
 
 | Command | Description |
 |---------|-------------|
@@ -118,7 +118,7 @@ images in the output directory.
 ### Build the static site
 
 ```
-print-md build design-guide --format html --out .print-md/build/design-guide-site
+gutterpress build design-guide --format html --out .gutterpress/build/design-guide-site
 ```
 
 Output structure:
@@ -138,9 +138,9 @@ path (or under `assets/` for one that lives outside the project).
 
 Open `book.html` directly in a browser — no server needed. The desktop app's
 toolbar (page nav, zoom, print, folder picker) is a separate application
-(`packages/viewer`) and is not part of this static build output; the nav
+(`packages/desktop`) and is not part of this static build output; the nav
 scripts here only let *your own* embedding page drive `window.previewAPI` if
-you build one, similar to how the Electron viewer does.
+you build one, similar to how the Electron desktop app does.
 
 ### npm scripts (optional)
 
@@ -148,18 +148,18 @@ If your project uses a `package.json`, add these as convenience scripts:
 
 ```json
 "scripts": {
-  "preview": "print-md preview design-guide --port 3580 --open false",
-  "build:guide": "print-md build design-guide --format html --out ./_site"
+  "preview": "gutterpress preview design-guide --port 3580 --open false",
+  "build:guide": "gutterpress build design-guide --format html --out ./_site"
 }
 ```
 
 ### Publish to GitHub Pages
 
-1. Copy the workflow from `print-md/examples/with-design-guide/.github/workflows/publish-design-guide.yml` into your repo.
+1. Copy the workflow from `gutterpress/examples/with-design-guide/.github/workflows/publish-design-guide.yml` into your repo.
 2. Set **Settings → Pages → Source: GitHub Actions**.
 3. Push to `main` — the workflow runs `build --format html` and deploys.
 
-The guide is reachable at `https://<owner>.github.io/<repo>/`. The viewer uses relative paths, so subpath hosting works without configuration.
+The guide is reachable at `https://<owner>.github.io/<repo>/`. The desktop output uses relative paths, so subpath hosting works without configuration.
 
 ### Publish to Azure Static Web Apps
 
@@ -169,7 +169,7 @@ The guide is reachable at `https://<owner>.github.io/<repo>/`. The viewer uses r
 4. In `.github/workflows/publish-design-guide.yml`, uncomment the **Deploy to Azure Static Web Apps** step.
 5. If you are only deploying to Azure, remove or comment out the GitHub Pages upload/deploy pieces.
 
-The Azure deployment uses the already-built `design-guide-site/` directory, so Static Web Apps serves the exact same `index.html` + `book.html` output produced by `print-md build --format html`.
+The Azure deployment uses the already-built `design-guide-site/` directory, so Static Web Apps serves the exact same `index.html` + `book.html` output produced by `gutterpress build --format html`.
 
 ### Include a downloadable PDF
 
@@ -177,13 +177,13 @@ To publish a PDF alongside the HTML guide:
 
 ```
 # Build the HTML site first
-print-md build design-guide --format html --out ./_site
+gutterpress build design-guide --format html --out ./_site
 
 # Add the PDF into the same output dir
-print-md build design-guide --format pdf --out ./_site
+gutterpress build design-guide --format pdf --out ./_site
 
 # Or build a fully validated PDF/X:
-print-md build design-guide --format pdfx --out ./_site --pdfx-flavor x1a --icc ./profiles/CGATS21_CRPC1.icc
+gutterpress build design-guide --format pdfx --out ./_site --pdfx-flavor x1a --icc ./profiles/CGATS21_CRPC1.icc
 ```
 
 The PDF is named `<title-slug>-pdf.pdf` (a slug of the manifest `title`) — link
@@ -196,7 +196,7 @@ to it from `00-toc.md`, e.g. `[Download PDF](your-book-title-design-guide-pdf.pd
 With the design guide published and the PDF generated, you're ready to ship:
 
 1. **Proof the PDF** — open the built PDF in Acrobat or Preview and page through it at 100%. Check running headers, folios, page breaks, and component rendering.
-2. **Preflight** — run `print-md preflight your-book.pdf` to validate trim, bleed, font embedding, and ink limits before sending to the printer.
+2. **Preflight** — run `gutterpress preflight your-book.pdf` to validate trim, bleed, font embedding, and ink limits before sending to the printer.
 3. **Submit** — upload the preflighted PDF to your print provider (DriveThruRPG, IngramSpark, Lulu, or your offset print partner).
 
-*Design guide · print-md · MPL-2.0*
+*Design guide · Gutterpress · MPL-2.0*

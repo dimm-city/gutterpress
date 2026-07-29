@@ -28,7 +28,7 @@
  * Cross-platform: uses `node:fs` appendFileSync + `node:path`. The caller
  * is responsible for providing a valid directory (the logger creates the
  * file but NOT the parent directory — that's the caller's job, e.g. the
- * viewer ensures `userData/logs/` exists before passing the path).
+ * desktop ensures `userData/logs/` exists before passing the path).
  *
  * Compatible with `bun build --compile`: no runtime package.json reads, no
  * computed-path dynamic imports, no native bindings — just `fs.appendFileSync`.

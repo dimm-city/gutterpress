@@ -26,13 +26,13 @@ export async function runLint(opts: LintRunnerOptions = {}): Promise<LintRunnerR
 
   let files: string[];
   if (opts.files) {
-    // Explicit override (`print-md lint <glob>` with no manifest project) —
+    // Explicit override (`gutterpress lint <glob>` with no manifest project) —
     // the one case that legitimately wants arbitrary glob expansion.
     files = await glob([opts.files], { nodir: true, ignore: ["**/*.min.css"] });
   } else {
     // THE canonical "which stylesheet(s) does this project use?" resolver —
     // the SAME one the renderer/editor use (style-resolver.ts), so
-    // `print-md lint` checks exactly the stylesheet(s) that ship.
+    // `gutterpress lint` checks exactly the stylesheet(s) that ship.
     //
     // This used to be its own third fallback chain (2026-07-28 duplication
     // audit): when the manifest had no `styles:`, it globbed `.build/**/*.css`

@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 
 /**
- * Open a file in the user's default OS viewer. Detached + unref'd so the
- * caller can exit immediately without waiting on the viewer process.
+ * Open a file in the user's default OS desktop. Detached + unref'd so the
+ * caller can exit immediately without waiting on the desktop process.
  */
 export function openPath(filePath: string): Promise<void> {
   return new Promise((resolve, reject) => {

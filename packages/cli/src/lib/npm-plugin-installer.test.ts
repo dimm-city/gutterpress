@@ -266,7 +266,7 @@ afterEach(async () => {
 describe("npm plugin installation", () => {
   test("resolves latest, verifies and vendors the tarball, pins the manifest, and loads without running scripts", async () => {
     const dir = await projectDir();
-    const name = "markdown-it-print-md-fixture";
+    const name = "markdown-it-gutterpress-fixture";
     const version = "1.2.3";
     const fixture = registryFixture(name, version, packageEntries(name, version));
 
@@ -388,7 +388,7 @@ describe("npm plugin installation", () => {
   test("vendors and loads a complete transitive dependency tree", async () => {
     const dir = await projectDir();
     const name = "markdown-it-transitive-fixture";
-    const dependency = "print-md-transitive-dependency";
+    const dependency = "gutterpress-transitive-dependency";
     const fixture = registryGraphFixture([
       {
         name,
@@ -421,7 +421,7 @@ describe("npm plugin installation", () => {
   test("loads CommonJS dependencies through the verified graph resolver", async () => {
     const dir = await projectDir();
     const name = "markdown-it-commonjs-graph-fixture";
-    const dependency = "print-md-commonjs-dependency";
+    const dependency = "gutterpress-commonjs-dependency";
     const fixture = registryGraphFixture([
       {
         name,
@@ -455,7 +455,7 @@ describe("npm plugin installation", () => {
   test("honors require conditions, wildcard subpaths, and JSON export targets", async () => {
     const dir = await projectDir();
     const name = "markdown-it-commonjs-exports-fixture";
-    const dependency = "print-md-commonjs-exports-dependency";
+    const dependency = "gutterpress-commonjs-exports-dependency";
     const fixture = registryGraphFixture([
       {
         name,
@@ -504,7 +504,7 @@ describe("npm plugin installation", () => {
     for (const format of ["module", "commonjs"] as const) {
       const dir = await projectDir();
       const name = `markdown-it-ambient-${format}-fixture`;
-      const ambient = `print-md-ambient-${format}-dependency`;
+      const ambient = `gutterpress-ambient-${format}-dependency`;
       const pluginManifest = format === "module"
         ? { type: "module", exports: "./index.js" }
         : { type: "commonjs", main: "index.cjs", exports: "./index.cjs" };
@@ -566,7 +566,7 @@ describe("npm plugin installation", () => {
   test("rewrites literal dynamic imports and rejects nonliteral import or require expressions", async () => {
     const dir = await projectDir();
     const name = "markdown-it-dynamic-import-fixture";
-    const dependency = "print-md-dynamic-import-dependency";
+    const dependency = "gutterpress-dynamic-import-dependency";
     const fixture = registryGraphFixture([
       {
         name,
@@ -618,9 +618,9 @@ describe("npm plugin installation", () => {
   test("keeps conflicting transitive versions in their parents' nested node_modules", async () => {
     const dir = await projectDir();
     const name = "markdown-it-conflict-fixture";
-    const left = "print-md-left-fixture";
-    const right = "print-md-right-fixture";
-    const shared = "print-md-shared-fixture";
+    const left = "gutterpress-left-fixture";
+    const right = "gutterpress-right-fixture";
+    const shared = "gutterpress-shared-fixture";
     const fixture = registryGraphFixture([
       {
         name,
@@ -684,7 +684,7 @@ describe("npm plugin installation", () => {
     }
 
     const missingName = "markdown-it-missing-edge-fixture";
-    const required = "print-md-required-edge";
+    const required = "gutterpress-required-edge";
     await expectCorruptReceipt(
       missingName,
       [
@@ -698,8 +698,8 @@ describe("npm plugin installation", () => {
     );
 
     const undeclaredName = "markdown-it-undeclared-edge-fixture";
-    const parent = "print-md-edge-parent";
-    const transitive = "print-md-edge-transitive";
+    const parent = "gutterpress-edge-parent";
+    const transitive = "gutterpress-edge-transitive";
     await expectCorruptReceipt(
       undeclaredName,
       [
@@ -715,8 +715,8 @@ describe("npm plugin installation", () => {
     );
 
     const wrongName = "markdown-it-wrong-name-edge-fixture";
-    const firstDependency = "print-md-first-edge";
-    const secondDependency = "print-md-second-edge";
+    const firstDependency = "gutterpress-first-edge";
+    const secondDependency = "gutterpress-second-edge";
     await expectCorruptReceipt(
       wrongName,
       [
@@ -738,9 +738,9 @@ describe("npm plugin installation", () => {
     );
 
     const incompatibleName = "markdown-it-incompatible-edge-fixture";
-    const left = "print-md-range-left";
-    const right = "print-md-range-right";
-    const shared = "print-md-range-shared";
+    const left = "gutterpress-range-left";
+    const right = "gutterpress-range-right";
+    const shared = "gutterpress-range-shared";
     await expectCorruptReceipt(
       incompatibleName,
       [
@@ -764,7 +764,7 @@ describe("npm plugin installation", () => {
     );
 
     const optionalName = "markdown-it-optional-skip-edge-fixture";
-    const optional = "print-md-unavailable-edge-optional";
+    const optional = "gutterpress-unavailable-edge-optional";
     await expectCorruptReceipt(
       optionalName,
       [{
@@ -779,7 +779,7 @@ describe("npm plugin installation", () => {
     );
 
     const peerName = "markdown-it-required-peer-edge-fixture";
-    const peer = "print-md-required-edge-peer";
+    const peer = "gutterpress-required-edge-peer";
     await expectCorruptReceipt(
       peerName,
       [
@@ -793,7 +793,7 @@ describe("npm plugin installation", () => {
     );
 
     const disconnectedName = "markdown-it-disconnected-edge-fixture";
-    const disconnected = "print-md-disconnected-edge";
+    const disconnected = "gutterpress-disconnected-edge";
     const disconnectedDir = await projectDir();
     const disconnectedFixture = registryGraphFixture([
       {
@@ -835,7 +835,7 @@ describe("npm plugin installation", () => {
   test("records cycles without downloading a duplicate ancestor", async () => {
     const dir = await projectDir();
     const name = "markdown-it-cycle-fixture";
-    const dependency = "print-md-cycle-dependency";
+    const dependency = "gutterpress-cycle-dependency";
     const fixture = registryGraphFixture([
       {
         name,
@@ -884,10 +884,10 @@ describe("npm plugin installation", () => {
   test("installs required peers and records unavailable optional dependencies and optional peers", async () => {
     const dir = await projectDir();
     const name = "markdown-it-peer-fixture";
-    const requiredPeer = "print-md-required-peer";
-    const optional = "print-md-missing-optional";
-    const optionalParent = "print-md-optional-parent";
-    const optionalPeer = "print-md-optional-peer";
+    const requiredPeer = "gutterpress-required-peer";
+    const optional = "gutterpress-missing-optional";
+    const optionalParent = "gutterpress-optional-parent";
+    const optionalPeer = "gutterpress-optional-peer";
     const fixture = registryGraphFixture([
       {
         name,
@@ -902,7 +902,7 @@ describe("npm plugin installation", () => {
       {
         name: optionalParent,
         version: "1.0.0",
-        manifest: { dependencies: { "print-md-missing-child": "1.0.0" } },
+        manifest: { dependencies: { "gutterpress-missing-child": "1.0.0" } },
       },
     ]);
 
@@ -957,7 +957,7 @@ describe("npm plugin installation", () => {
     const requiredFixture = registryGraphFixture([{
       name: requiredName,
       version: "1.0.0",
-      manifest: { dependencies: { "print-md-not-published": "^1.0.0" } },
+      manifest: { dependencies: { "gutterpress-not-published": "^1.0.0" } },
     }]);
     await expect(addNpmPlugin(requiredDir, requiredName, { fetch: requiredFixture.fetch })).rejects.toThrow(
       /not found/i,
@@ -969,11 +969,11 @@ describe("npm plugin installation", () => {
     const optionalFixture = registryGraphFixture([{
       name: optionalName,
       version: "1.0.0",
-      manifest: { optionalDependencies: { "print-md-local-only": "file:../local" } },
+      manifest: { optionalDependencies: { "gutterpress-local-only": "file:../local" } },
     }]);
     await addNpmPlugin(optionalDir, optionalName, { fetch: optionalFixture.fetch });
     expect((await receipt(optionalDir, optionalName, "1.0.0")).skipped[0]).toMatchObject({
-      name: "print-md-local-only",
+      name: "gutterpress-local-only",
       kind: "optional",
     });
   });
@@ -981,8 +981,8 @@ describe("npm plugin installation", () => {
   test("records optional network failures and timeouts without hiding required failures", async () => {
     const dir = await projectDir();
     const name = "markdown-it-optional-network-fixture";
-    const offline = "print-md-optional-offline";
-    const timedOut = "print-md-optional-timeout";
+    const offline = "gutterpress-optional-offline";
+    const timedOut = "gutterpress-optional-timeout";
     const fixture = registryGraphFixture([{
       name,
       version: "1.0.0",
@@ -1011,7 +1011,7 @@ describe("npm plugin installation", () => {
 
     const requiredDir = await projectDir();
     const requiredName = "markdown-it-required-network-fixture";
-    const required = "print-md-required-offline";
+    const required = "gutterpress-required-offline";
     const requiredFixture = registryGraphFixture([{
       name: requiredName,
       version: "1.0.0",
@@ -1030,7 +1030,7 @@ describe("npm plugin installation", () => {
   test("never suppresses a security failure in an optional dependency", async () => {
     const dir = await projectDir();
     const name = "markdown-it-unsafe-optional-fixture";
-    const dependency = "print-md-unsafe-optional";
+    const dependency = "gutterpress-unsafe-optional";
     const fixture = registryGraphFixture([
       {
         name,
@@ -1052,7 +1052,7 @@ describe("npm plugin installation", () => {
 
     const integrityDir = await projectDir();
     const integrityName = "markdown-it-integrity-optional-fixture";
-    const integrityDependency = "print-md-integrity-optional";
+    const integrityDependency = "gutterpress-integrity-optional";
     const integrityFixture = registryGraphFixture([
       {
         name: integrityName,
@@ -1072,7 +1072,7 @@ describe("npm plugin installation", () => {
 
     const limitedDir = await projectDir();
     const limitedName = "markdown-it-oversized-optional-fixture";
-    const limitedDependency = "print-md-oversized-optional";
+    const limitedDependency = "gutterpress-oversized-optional";
     const limitedFixture = registryGraphFixture([
       {
         name: limitedName,
@@ -1154,7 +1154,7 @@ describe("npm plugin installation", () => {
 
     const dir = await projectDir();
     const name = "markdown-it-package-limit-fixture";
-    const dependency = "print-md-package-limit-dependency";
+    const dependency = "gutterpress-package-limit-dependency";
     const fixture = registryGraphFixture([
       { name, version: "1.0.0", manifest: { dependencies: { [dependency]: "1.0.0" } } },
       { name: dependency, version: "1.0.0" },
@@ -1494,7 +1494,7 @@ describe("npm plugin installation", () => {
         const dir = await projectDir();
         const suffix = `${format}-${declared ? "declared" : "ambient"}`;
         const name = `markdown-it-runtime-${suffix}-fixture`;
-        const dependency = `print-md-runtime-${suffix}-dependency`;
+        const dependency = `gutterpress-runtime-${suffix}-dependency`;
         const rootManifest = format === "module"
           ? {
               type: "module",

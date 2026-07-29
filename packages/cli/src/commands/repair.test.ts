@@ -1,5 +1,5 @@
 /**
- * Tests for `print-md repair`'s DIAGNOSIS step (repair.ts).
+ * Tests for `gutterpress repair`'s DIAGNOSIS step (repair.ts).
  *
  * H1 fix under test: classifyFromHealth (health.ts's filesystem-presence
  * checks) can NEVER return corrupt_index / missing_or_corrupt_objects /
@@ -11,7 +11,7 @@
  * post-fetch verification) that runs when classifyFromHealth finds nothing,
  * and feeds any thrown error through classifyGitError to get the real kind.
  *
- * These tests exercise the actual `print-md repair --check` CLI process (the
+ * These tests exercise the actual `gutterpress repair --check` CLI process (the
  * end-to-end surface the bug was observed on), built from source with Bun —
  * no system git involved (isomorphic-git only, per CLAUDE.md §7).
  */
@@ -90,7 +90,7 @@ function makeStaleLock(dir: string): void {
   fs.utimesSync(lockPath, old, old);
 }
 
-describe("print-md repair --check diagnosis", () => {
+describe("gutterpress repair --check diagnosis", () => {
   test("healthy repo reports healthy and exits 0", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "repair-healthy-"));
     try {
@@ -106,7 +106,7 @@ describe("print-md repair --check diagnosis", () => {
   test("fresh git init with no commits yet reports healthy (unborn HEAD is not corruption)", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "repair-unborn-"));
     try {
-      // `print-md new` git-inits a project before its first snapshot commit;
+      // `gutterpress new` git-inits a project before its first snapshot commit;
       // in that window HEAD names a branch with no commits, and the
       // readability probe throws the same NotFoundError as ref-store damage.
       // isUnbornRepo (empty object store) must keep this diagnosed healthy.
@@ -140,7 +140,7 @@ describe("print-md repair --check diagnosis", () => {
   }, 20_000);
 });
 
-describe("print-md repair app-open guard (M2)", () => {
+describe("gutterpress repair app-open guard (M2)", () => {
   test("a fresh app heartbeat blocks repair without --force and leaves the lock untouched", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "repair-heartbeat-fresh-"));
     try {

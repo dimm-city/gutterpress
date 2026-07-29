@@ -20,24 +20,21 @@ const WINGET_ROOT = join(
   "manifests",
   "d",
   "DimmCity",
-  "PrintMdViewer",
+  "Gutterpress",
 );
-const REPOSITORY = "dimm-city/print-md";
+const REPOSITORY = "dimm-city/gutterpress";
 const HASH = /^[0-9a-f]{64}$/;
 const STABLE_VERSION = /^\d+\.\d+\.\d+$/;
-const WINDOWS_VIEWER_INSTALLER = "print-md-viewer-setup-win-x64.exe";
-const LEGACY_WINDOWS_VIEWER_INSTALLERS = new Map([
-  ["0.8.3", "print-md-viewer-0.8.3-win-x64.exe"],
-]);
+const WINDOWS_INSTALLER = "Gutterpress-setup-win-x64.exe";
 
-function expectedAssetNames(windowsViewerInstaller) {
+function expectedAssetNames(windowsInstaller) {
   return [
-    "print-md-cli-linux-arm64",
-    "print-md-cli-linux-x64",
-    "print-md-cli-macos-arm64",
-    "print-md-cli-macos-x64",
-    "print-md-cli-windows-x64.exe",
-    windowsViewerInstaller,
+    "gutterpress-cli-linux-arm64",
+    "gutterpress-cli-linux-x64",
+    "gutterpress-cli-macos-arm64",
+    "gutterpress-cli-macos-x64",
+    "gutterpress-cli-windows-x64.exe",
+    windowsInstaller,
   ];
 }
 
@@ -45,16 +42,10 @@ function validateMetadata(metadata) {
   if (!metadata || !STABLE_VERSION.test(metadata.version)) {
     throw new Error(`package-manager version must be stable semver, got '${metadata?.version}'`);
   }
-  const legacyInstaller = LEGACY_WINDOWS_VIEWER_INSTALLERS.get(metadata.version);
-  if (
-    metadata.windowsViewerInstaller !== WINDOWS_VIEWER_INSTALLER &&
-    metadata.windowsViewerInstaller !== legacyInstaller
-  ) {
-    throw new Error(
-      `Windows viewer installer must use the stable basename '${WINDOWS_VIEWER_INSTALLER}'`,
-    );
+  if (metadata.windowsInstaller !== WINDOWS_INSTALLER) {
+    throw new Error(`Windows installer must use the stable basename '${WINDOWS_INSTALLER}'`);
   }
-  const expected = expectedAssetNames(metadata.windowsViewerInstaller);
+  const expected = expectedAssetNames(metadata.windowsInstaller);
   const actual = Object.keys(metadata.assets ?? {}).sort();
   if (JSON.stringify(actual) !== JSON.stringify([...expected].sort())) {
     throw new Error(`package-manager asset set is wrong: expected ${expected.join(", ")}`);
@@ -82,20 +73,15 @@ function metadataFromChecksums(version, path) {
     throw new Error(`package-manager releases require stable semver, got '${version}'`);
   }
   const checksums = parseChecksums(path);
-  const legacyInstaller = LEGACY_WINDOWS_VIEWER_INSTALLERS.get(version);
-  const windowsViewerInstaller =
-    checksums.has(WINDOWS_VIEWER_INSTALLER) || !legacyInstaller
-      ? WINDOWS_VIEWER_INSTALLER
-      : legacyInstaller;
   const assets = {};
-  for (const name of expectedAssetNames(windowsViewerInstaller)) {
+  for (const name of expectedAssetNames(WINDOWS_INSTALLER)) {
     const hash = checksums.get(name);
     if (!hash) throw new Error(`SHA256SUMS.txt has no entry for ${name}`);
     assets[name] = hash;
   }
   return validateMetadata({
     version,
-    windowsViewerInstaller,
+    windowsInstaller: WINDOWS_INSTALLER,
     assets,
   });
 }
@@ -103,7 +89,7 @@ function metadataFromChecksums(version, path) {
 function formula(metadata) {
   const { version, assets } = metadata;
   const release = `https://github.com/${REPOSITORY}/releases/download/v${version}`;
-  return `class PrintMd < Formula
+  return `class Gutterpress < Formula
   desc "Convert Markdown and CSS into print-ready PDFs"
   homepage "https://github.com/${REPOSITORY}"
   version "${version}"
@@ -111,33 +97,33 @@ function formula(metadata) {
 
   on_macos do
     if Hardware::CPU.arm?
-      url "${release}/print-md-cli-macos-arm64"
-      sha256 "${assets["print-md-cli-macos-arm64"]}"
+      url "${release}/gutterpress-cli-macos-arm64"
+      sha256 "${assets["gutterpress-cli-macos-arm64"]}"
     else
-      url "${release}/print-md-cli-macos-x64"
-      sha256 "${assets["print-md-cli-macos-x64"]}"
+      url "${release}/gutterpress-cli-macos-x64"
+      sha256 "${assets["gutterpress-cli-macos-x64"]}"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "${release}/print-md-cli-linux-arm64"
-      sha256 "${assets["print-md-cli-linux-arm64"]}"
+      url "${release}/gutterpress-cli-linux-arm64"
+      sha256 "${assets["gutterpress-cli-linux-arm64"]}"
     else
-      url "${release}/print-md-cli-linux-x64"
-      sha256 "${assets["print-md-cli-linux-x64"]}"
+      url "${release}/gutterpress-cli-linux-x64"
+      sha256 "${assets["gutterpress-cli-linux-x64"]}"
     end
   end
 
   def install
-    artifact = Dir["print-md-cli-*"].first
-    odie "print-md release artifact is missing" unless artifact
+    artifact = Dir["gutterpress-cli-*"].first
+    odie "gutterpress release artifact is missing" unless artifact
     chmod 0755, artifact
-    bin.install artifact => "print-md"
+    bin.install artifact => "gutterpress"
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/print-md --version")
+    assert_match version.to_s, shell_output("#{bin}/gutterpress --version")
   end
 end
 `;
@@ -157,17 +143,17 @@ function scoopManifest(metadata) {
       },
       architecture: {
         "64bit": {
-          url: `${release}/print-md-cli-windows-x64.exe#/print-md.exe`,
-          hash: assets["print-md-cli-windows-x64.exe"],
+            url: `${release}/gutterpress-cli-windows-x64.exe#/gutterpress.exe`,
+            hash: assets["gutterpress-cli-windows-x64.exe"],
         },
       },
-      bin: "print-md.exe",
+      bin: "gutterpress.exe",
       notes: "PDF generation requires Chrome, Chromium, Edge, or another supported Chromium browser.",
       checkver: { github: `https://github.com/${REPOSITORY}` },
       autoupdate: {
         architecture: {
           "64bit": {
-            url: `https://github.com/${REPOSITORY}/releases/download/v$version/print-md-cli-windows-x64.exe#/print-md.exe`,
+            url: `https://github.com/${REPOSITORY}/releases/download/v$version/gutterpress-cli-windows-x64.exe#/gutterpress.exe`,
           },
         },
       },
@@ -179,20 +165,20 @@ function scoopManifest(metadata) {
 
 function wingetManifest(metadata) {
   const { version, assets } = metadata;
-  const installer = metadata.windowsViewerInstaller;
+  const installer = metadata.windowsInstaller;
   return `# Generated by tools/update-package-managers.mjs. Submit this file to microsoft/winget-pkgs.
-PackageIdentifier: DimmCity.PrintMdViewer
+PackageIdentifier: DimmCity.Gutterpress
 PackageVersion: ${version}
 PackageLocale: en-US
 Publisher: itlackey
 PublisherUrl: https://github.com/dimm-city
 PublisherSupportUrl: https://github.com/${REPOSITORY}/issues
-PackageName: print-md-viewer
+PackageName: Gutterpress
 PackageUrl: https://github.com/${REPOSITORY}
 License: MPL-2.0
 LicenseUrl: https://github.com/${REPOSITORY}/blob/v${version}/LICENSE
 ShortDescription: Write books in Markdown and export professionally typeset PDFs.
-Moniker: print-md-viewer
+Moniker: gutterpress
 Tags:
   - markdown
   - pdf
@@ -211,10 +197,10 @@ ManifestVersion: 1.12.0
 
 function generatedFiles(metadata) {
   return new Map([
-    [join(ROOT, "Formula", "print-md.rb"), formula(metadata)],
-    [join(ROOT, "bucket", "print-md.json"), scoopManifest(metadata)],
+    [join(ROOT, "Formula", "gutterpress.rb"), formula(metadata)],
+    [join(ROOT, "bucket", "gutterpress.json"), scoopManifest(metadata)],
     [
-      join(WINGET_ROOT, metadata.version, "DimmCity.PrintMdViewer.yaml"),
+      join(WINGET_ROOT, metadata.version, "DimmCity.Gutterpress.yaml"),
       wingetManifest(metadata),
     ],
   ]);

@@ -104,7 +104,7 @@ async function setupBinaryConflict(opts?: {
   bobBytes?: Uint8Array;
 }): Promise<BinaryConflictHarness> {
   // Server setup with initial binary file
-  const serverDir = await tempDir("pmd-binconflict-server-");
+  const serverDir = await tempDir("gutterpress-binconflict-server-");
   await git.init({ fs, dir: serverDir, defaultBranch: "main" });
 
   const initialBytes = randomBinaryBytes(1);
@@ -118,12 +118,12 @@ async function setupBinaryConflict(opts?: {
   const server = await startGitServer(serverDir);
 
   // Alice clones
-  const aliceParent = await tempDir("pmd-binconflict-alice-");
+  const aliceParent = await tempDir("gutterpress-binconflict-alice-");
   const aliceDir = path.join(aliceParent, "alice-project");
   await cloneRepository({ url: server.url, dir: aliceDir });
 
   // Bob clones
-  const bobParent = await tempDir("pmd-binconflict-bob-");
+  const bobParent = await tempDir("gutterpress-binconflict-bob-");
   const bobDir = path.join(bobParent, "bob-project");
   await cloneRepository({ url: server.url, dir: bobDir });
 

@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 test("renderBook logs a clearly attributed warning for a chapter with a marker mistake", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-build-warnings-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-build-warnings-"));
   dirs.push(dir);
 
   // Explicit preset so this test's console.warn spy only ever captures the
@@ -65,7 +65,7 @@ test("renderBook logs a clearly attributed warning for a chapter with a marker m
 });
 
 test("renderBook logs no layout-marker warning for a chapter with no marker mistakes", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-build-nowarnings-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-build-nowarnings-"));
   dirs.push(dir);
 
   await writeFile(join(dir, "manifest.yaml"), "title: Clean\npreset: book\n", "utf8");

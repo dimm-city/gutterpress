@@ -3,7 +3,7 @@
   // (index.ts + api/index.ts and their transitive types) alongside the
   // bun-built dist/ JS. The runtime JS is produced by `bun build` (see the
   // package.json "build" script); this only generates the parallel type surface
-  // that tsc-based consumers (the viewer, external TS plugin authors) resolve
+  // that tsc-based consumers (the desktop, external TS plugin authors) resolve
   // via the package "types" export condition.
   "extends": "./tsconfig.json",
   "compilerOptions": {

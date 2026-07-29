@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // ──────────────────────────────────────────────────────────────────────────
-// Purity gate for `@dimm-city/print-md/render` (dist/render.js).
+// Purity gate for `gutterpress/render` (dist/render.js).
 //
-// The viewer's SPA (root CLAUDE.md §8 / ADR 0004) VALUE-imports this subpath
+// The desktop's SPA (root CLAUDE.md §8 / ADR 0004) VALUE-imports this subpath
 // into the browser bundle — it must therefore contain zero Node-only code.
 // The 2026-07 regression this guards against: building render.ts in the same
 // `bun build --splitting` invocation as the Node entrypoints let a shared
@@ -22,7 +22,7 @@
 //   - createRequire anywhere in the text.
 // Bare external package specifiers are left external by `--packages=external`
 // and cannot be inspected here; a node-only dependency would surface the
-// moment `vite dev` resolves it in the viewer, and keeping render.ts's
+// moment `vite dev` resolves it in the desktop, and keeping render.ts's
 // dependency list tiny is the real control for that class. (The specifier
 // regexes are textual: a string literal that LOOKS like an import could
 // false-positive — acceptable for a loud, build-time gate on a 23KB file.)
@@ -75,7 +75,7 @@ for (const spec of specifiersOf(source)) {
 
 if (violations.length > 0) {
   console.error(
-    "✖ @dimm-city/print-md/render is no longer node-free/self-contained — the viewer " +
+    "✖ gutterpress/render is no longer node-free/self-contained — the desktop " +
       "SPA value-imports it into the browser bundle (root CLAUDE.md §8):",
   );
   for (const v of violations) console.error("  - " + v);

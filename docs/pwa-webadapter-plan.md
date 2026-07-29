@@ -6,11 +6,11 @@
 > spike are folded in throughout:
 >
 > 1. **Desktop auto-update is now electron-updater** (full-app updates from the
->    GitHub Releases feed; see `packages/viewer/README.md` "Auto-update"). The
+>    GitHub Releases feed; see the desktop app documentation "Auto-update"). The
 >    custom web-UI hot-swap system (`web-runtime.ts`, Ed25519-signed `web-v*`
 >    bundles) this document originally coexisted with was **deleted** — every
 >    reference has been updated.
-> 2. **The viewer build is `adapter-node`, not `adapter-static`** (handler.js +
+> 2. **The desktop build is `adapter-node`, not `adapter-static`** (handler.js +
 >    client/ + server/; `ssr=false`, relative paths unchanged). Host
 >    capabilities are `+server.ts` routes backed by hooks the Electron main
 >    registers on `globalThis`. This *adds* a delivery target: the same build
@@ -25,7 +25,7 @@
 
 ## 0. Executive summary
 
-The viewer is a SvelteKit SPA (`ssr=false`, relative paths, built with
+The desktop app is a SvelteKit SPA (`ssr=false`, relative paths, built with
 `adapter-node`) that talks to its host **only** through `getPlatform()` →
 `Platform = PlatformAdapter & HostServices`. Electron is one implementation;
 this plan fills in `WebAdapter` as the second. The same UI publishes to
@@ -129,8 +129,8 @@ Verdicts: ✅ Implementable now · 🟡 Degrade via `capabilities()`/no-op · �
 | `capabilities()` | all-true | ✅ | FSA present → `{nativeSavePath:false, showInFolder:false, persistentFolderAccess:true}`; Safari → all-false |
 | `getSettings/setSettings` | userData json | ✅ already done | `localStorage` (already implemented in stub) |
 | `getNativeTheme/onNativeThemeUpdated` | nativeTheme | ✅ already done | `matchMedia('(prefers-color-scheme: dark)')` (already implemented) |
-| `getViewerPrefs/setViewerPrefs` | userData json | ✅ | IndexedDB `prefs` store (or localStorage) |
-| `getViewerProjectState/setViewerProjectState` | userData json | ✅ | IndexedDB keyed by `FolderRef.key` |
+| `getDesktopPrefs/setDesktopPrefs` | userData json | ✅ | IndexedDB `prefs` store (or localStorage) |
+| `getDesktopProjectState/setDesktopProjectState` | userData json | ✅ | IndexedDB keyed by `FolderRef.key` |
 | `getRecentFolders/getFavorites/toggleFavorite/removeRecent` | userData json | ✅ | IndexedDB; entries hold the persisted FSA handle (§4) |
 | `getLastProject` | userData | ✅ | IndexedDB last-opened handle id |
 | `listProjectFiles(dir)` | `fs:listDir` shallow | ✅ | FSA: iterate root handle, filter `.md`/`.css` |
@@ -160,7 +160,7 @@ Verdicts: ✅ Implementable now · 🟡 Degrade via `capabilities()`/no-op · �
 | `onRecoveryConfirm/respondRecoveryConfirm` | recovery IPC | 🟡 no-op already | recovery out-of-scope |
 | `onBuildProgress/onUrlPreviewBlocked/onFolderChanged/onFlushBeforeClose` | event IPC | 🟡 no-op already | no host events on web |
 | `setDirtyState` | close-gate IPC | 🟡 reject→**change to no-op**; use `beforeunload` in SPA-host (still adapter-owned) | browser has no main-process close gate |
-| `getStatus` | lib status | 🟡 resolve `{ok:true,runtime:"web",name:"print-md"}` (upgrade from reject) | so status chrome renders |
+| `getStatus` | lib status | 🟡 resolve `{ok:true,runtime:"web",name:"gutterpress"}` (upgrade from reject) | so status chrome renders |
 | `doctor` | lib doctor | ⛔ reject | diagnostics are Node-tool-bound |
 
 ### 1d. `HostServices` — out-of-scope-for-web (keep current stub: reject)
@@ -258,7 +258,7 @@ host serves it.
 
 ### 3a. Node-backed website (adapter-node build, deployed as-is)
 
-The viewer's `build/` output (handler.js + client/ + server/) runs on any Node
+The desktop app's `build/` output (handler.js + client/ + server/) runs on any Node
 host — a VPS, a container, a PaaS. This is a first-class publish target: we
 want the UI publishable to node-backed websites, not only as a static PWA.
 
@@ -306,8 +306,8 @@ What a static host (or the CLI) must serve for the PWA:
 
 Implementation is small and reuses existing infra: the preview server already
 serves static files and `/vendor/*` (`http-server.ts`). Add a CLI flag
-(e.g. `print-md serve [--port]` or `print-md preview --pwa`) that points the
-existing static server at the viewer client bundle instead of a per-project
+(e.g. `gutterpress serve [--port]` or `gutterpress preview --pwa`) that points the
+existing static server at the desktop client bundle instead of a per-project
 temp dir, and serves the manifest/SW. **No new backend endpoints.**
 
 > The PWA is equally hostable from **any** static host (GitHub Pages, a CDN) —
@@ -331,7 +331,7 @@ This is the standard, documented FSA persistence pattern (`localStorage` cannot
 store handles; IndexedDB can).
 
 Design:
-- An IndexedDB DB `print-md` with stores:
+- An IndexedDB DB `gutterpress` with stores:
   - `handles` — `{ key, handle }` (the persisted FSA handle).
   - `prefs`, `projectStates`, `recents`, `favorites` — replace the userData json.
 - **The `key`**: a stable, app-generated opaque id minted when a folder is first
@@ -361,8 +361,8 @@ private to the origin (not the user's real folder). Export = download a zip.
 ### Web app manifest (`static/manifest.webmanifest`)
 ```jsonc
 {
-  "name": "print-md",
-  "short_name": "print-md",
+  "name": "Gutterpress",
+  "short_name": "Gutterpress",
   "start_url": "./",            // relative — matches paths.relative=true
   "scope": "./",
   "display": "standalone",
@@ -460,7 +460,7 @@ it back. No preview, no SW, no persistence.
 ### Phase 3 — Persistence (IndexedDB) + recents/favorites/prefs/project-state
 **Goal:** reopen a previously opened folder across sessions.
 - IndexedDB stores; persist handles; `getRecentFolders/getFavorites/...`,
-  `getViewerPrefs/...`, `getViewerProjectState/...`, `getLastProject`.
+  `getDesktopPrefs/...`, `getDesktopProjectState/...`, `getLastProject`.
 - Permission re-grant gesture UI for reopening.
 - **TDD:** unit tests with `fake-indexeddb`; assert handle round-trips, key
   stability, `queryPermission`/`requestPermission` flow (mocked).

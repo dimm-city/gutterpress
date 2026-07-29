@@ -158,7 +158,7 @@ async function setupAuthHarness(opts: {
   const serverPassword = opts.serverPassword ?? GOOD_PASSWORD;
   const clientToken = opts.clientToken ?? GOOD_PASSWORD;
 
-  const serverDir = await tempDir("pmd-auth-recovery-server-");
+  const serverDir = await tempDir("gutterpress-auth-recovery-server-");
   await createFixtureRepo(serverDir);
   const initialServerHead = await git.resolveRef({ fs: nodeFs, dir: serverDir, ref: "main" });
 
@@ -166,7 +166,7 @@ async function setupAuthHarness(opts: {
     requireAuth: { username: TEST_USERNAME, password: serverPassword },
   });
 
-  const parent = await tempDir("pmd-auth-recovery-client-");
+  const parent = await tempDir("gutterpress-auth-recovery-client-");
   const projectDir = path.join(parent, "project");
 
   // Clone with the correct credential so we get a valid local repo

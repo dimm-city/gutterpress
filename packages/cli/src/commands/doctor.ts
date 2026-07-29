@@ -12,7 +12,7 @@ const commandArgs = {} as const;
 export default defineCommand({
   meta: {
     name: "doctor",
-    description: "Check system tools used by print-md",
+    description: "Check system tools used by Gutterpress",
   },
   args: commandArgs,
   async run({ args, rawArgs }) {
@@ -21,7 +21,7 @@ export default defineCommand({
       rejectExtraPositionals(args._, 0, "doctor");
 
       const diagnostics = await getSystemDiagnostics();
-      console.log(`print-md ${diagnostics.libVersion}`);
+      console.log(`gutterpress ${diagnostics.libVersion}`);
       console.log(
         `System: ${diagnostics.platform.os} ${diagnostics.platform.arch} ` +
           `(${diagnostics.platform.release}), Node ${diagnostics.platform.node}`

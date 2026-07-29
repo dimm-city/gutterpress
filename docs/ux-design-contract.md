@@ -1,8 +1,8 @@
-# print-md UX Design Contract
+# Gutterpress UX Design Contract
 
 > **Status: draft revision** of the contract originally proposed in issue
-> [#40](https://github.com/dimm-city/print-md/issues/40). Baselined against
-> viewer **0.8.0-beta.1** (2026-07-14).
+> [#40](https://github.com/dimm-city/gutterpress/issues/40). Baselined against
+> desktop **0.8.0-beta.1** (2026-07-14).
 >
 > This document is the normative home of the UX contract. Issue #40 remains
 > the tracking issue and links here. **Deviations are proposed as PRs against
@@ -21,10 +21,10 @@ Every feature area below is tagged with its implementation status:
 
 ## Scope
 
-This contract governs the **viewer application** — the desktop Electron app
+This contract governs the **desktop application** — the desktop Electron app
 and its PWA/browser target (#33/#34, `docs/pwa-webadapter-plan.md`).
 
-**Out of scope:** the CLI (`print-md new/build/preview/lint/publish`). The CLI
+**Out of scope:** the CLI (`gutterpress new/build/preview/lint/publish`). The CLI
 is the power-user and CI surface (see the repo README: "a desktop application
 (with a CLI for power users)") and is governed by `packages/cli/README.md` and
 `docs/publishing.md`. Developer users are expected to move between the app and
@@ -40,7 +40,7 @@ contract and those documents conflict, the architecture documents win.**
 | Renderer stays PWA-clean; host capabilities via server routes (default) or the Platform seam (push streams, BrowserWindow calls, FSA-divergent fs) | `CLAUDE.md` §8, `docs/adr/0004-platform-abstraction.md` | Theme import file IO, AI/publish network calls, preflight fs checks → server routes. Publish/build **progress streams** → the adapter/IPC push seam. No `node:*` or lib value-imports in the SPA. |
 | Preview bridge protocol | `docs/adr/0005-preview-bridge-protocol.md` | Sync scroll, page navigation, outline, any preview overlay or overflow probe must go through the bridge. |
 | Plugins are plain markdown-it plugins; no plugin API; loader never auto-installs | `CLAUDE.md` §5 | Constrains §9 (Plugin manager) below. |
-| PDF rendering = Electron `printToPDF` (viewer) / puppeteer-core (CLI); pure-JS tooling posture | `docs/adr/0002-pdf-rendering-and-pure-js-tooling.md` | Preflight/export UX; "export" not "download". |
+| PDF rendering = Electron `printToPDF` (desktop) / puppeteer-core (CLI); pure-JS tooling posture | `docs/adr/0002-pdf-rendering-and-pure-js-tooling.md` | Preflight/export UX; "export" not "download". |
 | Git/GitHub operations are Node-native pure JS | `CLAUDE.md` §7, `docs/adr/0006-remote-git-github-integration.md` | Project source / sync / provider-auth UX. |
 | `$effect` is eslint-banned in the SPA; persisted preferences flow through the settings store's `onSettingsChange()` channel | `CLAUDE.md` §8 | Every persisted preference this contract specs (font size, pane layout, sync toggle, tooltip-seen state). |
 | All changes must REDUCE complexity unless properly justified | `CLAUDE.md` Primary Goals | Every PROPOSED item needs a scoped issue before implementation. |
@@ -49,7 +49,7 @@ contract and those documents conflict, the architecture documents win.**
 
 ## Vision Statement
 
-print-md transforms markdown into beautifully paginated PDFs with zero layout
+Gutterpress transforms markdown into beautifully paginated PDFs with zero layout
 friction. It meets authors where they work — in prose, in code, and (via the
 PWA) on mobile for writing and previewing — and stays invisible until they
 need it. The interface disappears into the writing; the print engine makes the
@@ -79,7 +79,7 @@ Notes:
   documentation is a web-docs use case outside the repo's print-materials
   goals (no example, guide chapter, or issue targets it) and is **out of
   scope**. The persona is re-grounded in what the repo demonstrates
-  (`examples/print-md-user-guide` is itself a printed manual).
+  (`examples/gutterpress-user-guide` is itself a printed manual).
 - Dev's happy path may be the CLI (see Scope); app UX for Dev means escape
   hatches and inspectability, not replicating the CLI in the GUI.
 
@@ -93,7 +93,7 @@ Statuses reflect 0.8.0-beta.1. Names in parentheses are the shipped
 components/controllers.
 
 ```
-print-md/
+gutterpress/
 ├── Welcome / start screen                     SHIPPED  (WelcomeLanding: continue card,
 │                                                        recents/favorites/discovered via ProjectsListBody)
 ├── New project wizard / templates             SHIPPED  (NewProjectWizard, #25; templates from the
@@ -286,9 +286,9 @@ the plan wins.**
   templates** (Book, TTRPG supplement, Zine, Technical document), custom
   templates, save-as-template, import-from-folder.
 - Templates come from the **shared lib scaffolding** in
-  `@dimm-city/print-md` (same set behind `print-md new`; CLAUDE.md §7 "one
+  `gutterpress` (same set behind `gutterpress new`; CLAUDE.md §7 "one
   implementation, two thin front-ends") — the picker is a front-end over the
-  lib, never a viewer-only template store.
+  lib, never a desktop-only template store.
 - PROPOSED: additional curated templates (Novel, Resume, Chapbook,
   Rulebook…). Whatever the final count, **each shipped template carries
   annotated comments in both markdown and CSS**; at minimum the templates
@@ -310,7 +310,7 @@ the plan wins.**
 
 - Advanced features are **de-emphasized, never hidden or disabled**: a
   collapsed/badged "Advanced" menu grouping until the first successful PDF
-  export, tracked per app installation in viewer prefs (userData), after
+  export, tracked per app installation in desktop prefs (userData), after
   which the badge (not the item) disappears. Everything stays reachable via
   menus at all times — hiding would contradict
   the Dev persona's "no escape hatches" pain point and would **regress
@@ -339,7 +339,7 @@ switching (markdown-first, not canvas-first); floating panels that lose
 position; modal dialogs for live-editable properties (page size/margins);
 exposing low-level engine concepts to non-technical users.
 
-**Preflight (PROPOSED — tracked in #105; engine is SHIPPED):** the panel is a viewer
+**Preflight (PROPOSED — tracked in #105; engine is SHIPPED):** the panel is a desktop
 UI over the **existing check registry** (`packages/cli/src/checks/`: font
 refs/licensing, broken local refs, heuristics, alt text, heading order,
 print-safety CSS; post-build PDF checks — embedded fonts, page size, ink
@@ -522,7 +522,7 @@ Shipped: CSS editing is a **language mode of the single CodeMirror 6 editor**
 tabbed/split panel. The lint gutter runs the **postcss-based print-safety
 checker** (`checkCss`, the four `printsafe/*` rules) via the
 `api/lint/check-css` route + `getPlatform().checkCss` — the same engine as
-`print-md validate`. Completions are a curated paged-media table.
+`gutterpress validate`. Completions are a curated paged-media table.
 
 > **stylelint is not used and must not be reintroduced** — it was removed
 > because it cannot survive `bun build --compile` (CLAUDE.md §3). New lint
@@ -552,7 +552,7 @@ that rule.
 The model (binding, from CLAUDE.md §5):
 
 - Plugins are **plain markdown-it npm packages** declared in the project
-  manifest. There is no custom plugin API, hosted print-md registry, or sandbox.
+  manifest. There is no custom plugin API, hosted Gutterpress registry, or sandbox.
   Explicit install resolves the public npm registry and vendors an exact
   version plus its runtime dependency tree; the build/preview loader itself
   never installs or accesses the network. The desktop host confines the target
@@ -703,7 +703,7 @@ capability gating via the platform seam.
 
 ### Measurement approach (decided — no telemetry, #108)
 
-print-md ships **no telemetry, no analytics events, and no session recording**
+Gutterpress ships **no telemetry, no analytics events, and no session recording**
 (decision on **#108**, 2026-07-14) — consistent with its local-first, MPL-2.0,
 no-backend posture and the privacy stance behind the no-font-CDN rule. All
 quality gates below are therefore measured **without instrumentation**:
@@ -872,7 +872,7 @@ device class.
 **Build on [bits-ui](https://bits-ui.com)** — headless, Svelte-5-native
 (runes), WCAG-focused, MIT — or **[shadcn-svelte](https://shadcn-svelte.com)**
 as a pre-styled layer (community shadcn port built on bits-ui; **note: it
-implies adopting Tailwind, which the viewer does not use** — bits-ui alone
+implies adopting Tailwind, which the desktop app does not use** — bits-ui alone
 works with the plain-CSS token system below). **[Melt UI](https://melt-ui.com)**
 is the alternative headless builder. bits-ui's `Command` component (and
 shadcn-svelte's pre-styled Command) is the Svelte equivalent of `cmdk` for the
@@ -978,7 +978,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Raw Paged.js / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |
 | Raw rule IDs / linter jargon as primary text | Writer-first product | Plain-language labels, codes demoted (shipped, §10) |
 | Reintroducing stylelint or any bundler-hostile dep for editor lint | Breaks `bun build --compile` (CLAUDE.md §3) | Extend `printsafe.ts` |
-| A print-md-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts CLAUDE.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
+| A Gutterpress-specific plugin API, hosted plugin marketplace, or fake granular permissions UI | Contradicts CLAUDE.md §5 and the unsandboxed runtime | §9's plain-package model and one honest full-privilege confirmation |
 | Settings with >30 items in a flat list | Overwhelming | Shipped tab structure (§4) |
 
 ---

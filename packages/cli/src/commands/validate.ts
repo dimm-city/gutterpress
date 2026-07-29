@@ -65,7 +65,7 @@ export default defineCommand({
       args.format === "json" ? "json" : "text";
 
     // M46: `dir` (positional) sets the same source directory `--input` does —
-    // an explicit --input still wins, but `print-md validate ./my-book` now
+            // an explicit --input still wins, but `gutterpress validate ./my-book` now
     // actually validates ./my-book instead of silently validating cwd.
     const positionalDir = typeof args.dir === "string" ? args.dir : undefined;
     const inputFlag = typeof args.input === "string" ? args.input : undefined;

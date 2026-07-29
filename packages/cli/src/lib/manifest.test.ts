@@ -54,8 +54,8 @@ test("a bare npm package name (no separator) is still treated as a package name"
 });
 
 test("a scoped npm package name (has a separator but no JS-extension suffix) is still a package name", () => {
-  const [a] = pluginsOf(["@my-org/print-md-plugin"]);
-  expect(a!.name).toBe("@my-org/print-md-plugin");
+  const [a] = pluginsOf(["@my-org/gutterpress-plugin"]);
+  expect(a!.name).toBe("@my-org/gutterpress-plugin");
   expect(a!.path).toBeUndefined();
 });
 
@@ -287,7 +287,7 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
   });
 
   test("explicit: true + nonexistent path throws UsageError naming the path (typo repro)", async () => {
-    const missing = join(tmpdir(), "print-md-typo-manifest-does-not-exist.yaml");
+    const missing = join(tmpdir(), "gutterpress-typo-manifest-does-not-exist.yaml");
 
     await expect(
       loadManifestWithPath(missing, { explicit: true })
@@ -298,7 +298,7 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
   });
 
   test("explicit: false (or omitted) + nonexistent path silently falls back to an empty manifest (legacy/default-discovery behavior preserved)", async () => {
-    const missing = join(tmpdir(), "print-md-no-such-project-dir-xyz");
+    const missing = join(tmpdir(), "gutterpress-no-such-project-dir-xyz");
 
     const { manifest, manifestDir } = await loadManifestWithPath(missing);
     expect(manifest).toEqual({});
@@ -316,7 +316,7 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
   });
 
   test("explicit: true + a path that DOES resolve to a real manifest still loads it normally", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pmd-manifest-explicit-ok-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-manifest-explicit-ok-"));
     dirsToClean.push(dir);
     const manifestPath = join(dir, "manifest.yaml");
     await Bun.write(manifestPath, "title: Explicit And Present\n");
@@ -330,7 +330,7 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
   });
 
   test("malformed YAML throws a clean UsageError naming the manifest and parser position", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pmd-manifest-invalid-yaml-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-manifest-invalid-yaml-"));
     dirsToClean.push(dir);
     const manifestPath = join(dir, "manifest.yaml");
     await Bun.write(manifestPath, "title: Broken\nsource:\n\tfiles:\n");
@@ -341,20 +341,7 @@ describe("loadManifestWithPath explicit-path behavior (finding #12)", () => {
     );
   });
 
-  test("automatic discovery recognizes canonical and persisted legacy manifest filenames", async () => {
-    expect([...MANIFEST_FILENAMES]).toEqual([
-      "manifest.yaml",
-      "manifest.yml",
-      "print-md.yaml",
-    ]);
-
-    const dir = await mkdtemp(join(tmpdir(), "pmd-manifest-noncanonical-"));
-    dirsToClean.push(dir);
-    const legacyPath = join(dir, "print-md.yaml");
-    await Bun.write(legacyPath, "title: Legacy Project\n");
-
-    const loaded = await loadManifestWithPath(dir);
-    expect(loaded.manifest.title).toBe("Legacy Project");
-    expect(loaded.manifestPath).toBe(legacyPath);
+  test("automatic discovery uses only the canonical manifest filename", async () => {
+    expect([...MANIFEST_FILENAMES]).toEqual(["manifest.yaml"]);
   });
 });

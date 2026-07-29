@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { resolveOutputDir } from "./output-paths";
 import { log } from "../utils/logger";
-import { BOOK_HTML_FILENAME } from "./viewer";
+import { BOOK_HTML_FILENAME } from "./desktop";
 import { UsageError } from "./cli-args";
 import { resolveActiveStyles } from "./style-resolver";
 import { resolveActiveMarkdownFiles } from "./markdown/index";

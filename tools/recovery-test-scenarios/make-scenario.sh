@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# make-scenario.sh — build print-md test repos in known-broken Git states so you
-# can open them in the viewer and watch the sync-recovery UI do its thing.
+# make-scenario.sh — build Gutterpress test repos in known-broken Git states so you
+# can open them in the desktop app and watch the sync-recovery UI do its thing.
 #
 # These are THROWAWAY TEST FIXTURES you run by hand. They use the system `git`
 # binary on purpose (ergonomics) — that's fine: CLAUDE.md §7's "pure
@@ -16,18 +16,18 @@
 # Defaults: target-dir = ./recovery-scenarios/<scenario>
 #           base-dir   = ./recovery-scenarios
 #
-# Then in the viewer: File ▸ Open Folder ▸ pick the scenario dir. The project-open
+# Then in the desktop app: File ▸ Open Folder ▸ pick the scenario dir. The project-open
 # health preflight classifies the state and runs recovery (see README.md for the
 # exact UI each one should produce).
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 # Deterministic identity so commits work even with no global git config.
-git_c() { git -C "$DIR" -c user.name="Test Author" -c user.email="test@print-md.local" "$@"; }
+git_c() { git -C "$DIR" -c user.name="Test Author" -c user.email="test@gutterpress.local" "$@"; }
 
 # Sentinel written into every scenario dir. We ONLY ever rm a dir that contains
 # it, so this script can never delete data it didn't create.
-SENTINEL=".print-md-test-scenario"
+SENTINEL=".gutterpress-test-scenario"
 
 SCENARIOS=(
   healthy
@@ -44,7 +44,7 @@ SCENARIOS=(
 
 usage() {
   cat <<EOF
-make-scenario.sh — print-md sync-recovery test fixtures
+make-scenario.sh — Gutterpress sync-recovery test fixtures
 
   ./make-scenario.sh list
   ./make-scenario.sh <scenario> [target-dir]
@@ -81,7 +81,7 @@ prepare_dir() {
   : > "$DIR/$SENTINEL"
 }
 
-# Scaffold a minimal-but-valid print-md project + initialise a 2-commit repo.
+# Scaffold a minimal-but-valid Gutterpress project + initialise a 2-commit repo.
 scaffold_and_init() {
   prepare_dir
   mkdir -p "$DIR/chapters" "$DIR/assets"
@@ -101,8 +101,8 @@ YAML
   cat > "$DIR/chapters/01-intro.md" <<'MD'
 # Introduction
 
-This is a throwaway project used to test print-md's sync-recovery UI.
-Open the folder in the viewer and watch what happens.
+This is a throwaway project used to test Gutterpress's sync-recovery UI.
+Open the folder in the desktop app and watch what happens.
 MD
 
   cat > "$DIR/chapters/02-arrival.md" <<'MD'
@@ -251,7 +251,7 @@ case "$cmd" in
       printf '    %s\n' "$(expect_note "$s")"
     done
     echo
-    echo "Open any of these folders in the viewer to test. Re-run to reset."
+    echo "Open any of these folders in the desktop app to test. Re-run to reset."
     exit 0
     ;;
   *)
@@ -263,7 +263,7 @@ case "$cmd" in
       echo "Expect in the app:"
       echo "  $(expect_note "$cmd")"
       echo
-      echo "Open this folder in the viewer (File ▸ Open Folder). Re-run this command to reset it."
+    echo "Open this folder in the desktop app (File ▸ Open Folder). Re-run this command to reset it."
       exit 0
     fi
     echo "Unknown scenario: $cmd" >&2

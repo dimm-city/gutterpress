@@ -180,7 +180,7 @@ describe("guardTrackingRef", () => {
   }
 
   async function withRepo(fn: (dir: string, commit: string) => Promise<void>): Promise<void> {
-    const dir = await tempDir("pmd-guard-");
+    const dir = await tempDir("gutterpress-guard-");
     try {
       await fn(dir, await makeRepo(dir));
     } finally {
@@ -293,7 +293,7 @@ describe("guardRemoteRefs", () => {
   }
 
   async function withRepo(fn: (dir: string, commit: string) => Promise<void>): Promise<void> {
-    const dir = await tempDir("pmd-guard-multi-");
+    const dir = await tempDir("gutterpress-guard-multi-");
     try {
       await fn(dir, await makeRepo(dir));
     } finally {
@@ -377,7 +377,7 @@ describe("guardRefs — a damaged ref store never blocks the guarded fetch (PR #
   const BOGUS = "a".repeat(40);
 
   async function withEmptyRepo(fn: (dir: string) => Promise<void>): Promise<void> {
-    const dir = await tempDir("pmd-guardrefs-");
+    const dir = await tempDir("gutterpress-guardrefs-");
     try {
       await git.init({ fs, dir, defaultBranch: "main" });
       await fn(dir);
@@ -453,8 +453,8 @@ describe("guardRefs — a damaged ref store never blocks the guarded fetch (PR #
 
 describe("fetchRemoteTip — dangling tracking ref after an aborted transfer (R15)", () => {
   test("a fetch that dies before the pack lands does not leave the tracking ref dangling", async () => {
-    const serverDir = await tempDir("pmd-r15-server-");
-    const localDir = await tempDir("pmd-r15-local-");
+    const serverDir = await tempDir("gutterpress-r15-server-");
+    const localDir = await tempDir("gutterpress-r15-local-");
     try {
       await createFixtureRepo(serverDir);
       const server = await startGitServer(serverDir);

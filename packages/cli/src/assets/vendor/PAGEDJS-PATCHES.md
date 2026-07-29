@@ -19,7 +19,7 @@
 > Verify against the registry tarball, not against this file, when auditing.
 
 **Second copy (MUST stay identical):**
-`packages/viewer/static/vendor/paged.polyfill.js`. The viewer ships its own
+`packages/desktop/static/vendor/paged.polyfill.js`. The desktop ships its own
 byte-identical copy of this file. A drift guard
 (`packages/cli/src/assets/vendor/paged-polyfill-drift.test.ts`) fails CI if the
 two ever diverge.
@@ -27,7 +27,7 @@ two ever diverge.
 To update the vendored copy: replace `paged.polyfill.js` with the new dist
 from `node_modules/pagedjs/dist/paged.polyfill.js` after bumping the version,
 verify each patch below is still needed, and re-apply — then copy the SAME
-result to `packages/viewer/static/vendor/paged.polyfill.js` so both stay in
+result to `packages/desktop/static/vendor/paged.polyfill.js` so both stay in
 sync (the drift test enforces this). File all applied patches as GitHub issues
 at https://github.com/pagedjs/pagedjs/issues before updating.
 
@@ -78,7 +78,7 @@ if (previousBreakAfter.dataset.previousBreakAfter) {
 **Justification:** The CSS break spec does not say `"avoid"` should be
 invisible to the page model — it says it should influence layout decisions.
 Forwarding it to the page model lets custom `afterPageLayout` handlers
-(including future print-md handlers) inspect and act on it.
+(including future gutterpress handlers) inspect and act on it.
 
 ---
 
@@ -226,7 +226,7 @@ div.chapter h2 + p,
 div.chapter h3 + p { margin-top: 0; }
 ```
 
-Print-md's own postcss-based print-safety checks (`src/lib/printsafe.ts`) flag
+gutterpress's own postcss-based print-safety checks (`src/lib/printsafe.ts`) flag
 this pattern via the `printsafe/no-pagedjs-crash-selectors` rule.
 
 **Justification:** An unhandled `SyntaxError` that blanks the entire output is
@@ -244,7 +244,7 @@ no-op.
 **Lines changed:** new `splitSelectors()` helper + 8 call sites
 
 > **This edit was shipping with no entry in this file.** In code it is self-labelled
-> `// print-md PATCH-4:`, which collides with the genuinely-deferred PATCH-4 below
+> `// gutterpress PATCH-4:`, which collides with the genuinely-deferred PATCH-4 below
 > (`break-after: column`). The doc said PATCH-4 was not applied; the code said it was.
 > Both statements were true about *different* things. Renumbered to PATCH-5 here; the
 > in-code comment should be renumbered to match.
@@ -279,7 +279,7 @@ chunker's break logic only acts on page-level break values ("always", "page",
 attribute but never triggers a column advance in the Paged.js chunker — column
 breaks via CSS are therefore impossible.
 
-**Workaround:** print-md's `@section .two-column .col-split` generates explicit
+**Workaround:** gutterpress's `@section .two-column .col-split` generates explicit
 `<div class="col">` wrapper divs at render time, producing side-by-side flex
 columns that do not depend on CSS column break processing. This is the
 recommended approach and is more reliable than depending on Paged.js to
@@ -309,7 +309,7 @@ equal, so the page break ALWAYS fires for recto/verso, not conditionally.
 
 This is a partial implementation: it forces a new page but does not insert a
 blank page to guarantee the correct side. Guaranteeing chapter-on-recto in
-print-md is left to the author — insert `@page-break` before a chapter after
+gutterpress is left to the author — insert `@page-break` before a chapter after
 reviewing output if the chapter lands on verso. This is the right trade-off for
 a simple-markdown-first tool; auto-recto adds complexity and surprise blank
 pages without clear benefit.

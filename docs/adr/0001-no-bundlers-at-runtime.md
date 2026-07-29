@@ -14,7 +14,7 @@ of deps that need filesystem resolution at runtime").
 
 ## Context
 
-print-md ships as a standalone single-file executable built with
+Gutterpress ships as a standalone single-file executable built with
 `bun build --compile`. Runtime dependencies that carry native bindings, read
 their own `package.json`/data files at runtime, or load modules via
 computed-path dynamic `import()` break inside the compiled binary's `/$bunfs/`

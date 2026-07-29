@@ -2,7 +2,7 @@
 
 # Table of Contents
 
-<div class="lede">Navigate this guide by chapter. Each heading links directly to its chapter opener — click or tap in the PDF viewer to jump.</div>
+<div class="lede">Navigate this guide by chapter. Each heading links directly to its chapter opener — click or tap in the PDF preview to jump.</div>
 
 <ol>
 <li><a href="#ch-typography">Typography</a> — Type scale, headings, body text, inline elements, token reference</li>
@@ -23,6 +23,6 @@ This guide renders with the **same stylesheet and page geometry** as your book. 
 To make it yours:
 
 1. Edit **§ 1 BRAND TOKENS** in `styles/guide.css` — colors, fonts, type scale.
-2. Run `print-md preview design-guide` to see changes live.
+2. Run `gutterpress preview design-guide` to see changes live.
 3. Add book-specific rules to **§ 8 YOUR BOOK LAYER** at the bottom of `guide.css`.
 4. Remove chapters you don't need; add chapters for components your book uses.

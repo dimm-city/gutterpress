@@ -108,7 +108,7 @@ const check: Check = {
           line: v.lineNumber,
           column: v.errorRange?.[0],
           // Structured rule id (e.g. "MD018") for consumers — like the
-          // viewer's Problems panel — that want to key off the finding kind
+          // desktop's Problems panel — that want to key off the finding kind
           // without parsing it back out of `message`.
           code: v.ruleNames[0],
         });

@@ -1,6 +1,6 @@
 # The Contextual Cascade Principle
 
-**The recommended CSS architecture pattern for print-md projects.**
+**The recommended CSS architecture pattern for Gutterpress projects.**
 
 This document explains the pattern, why it exists, and how to apply it. For a worked end-to-end implementation, see the [design-guide example](../examples/with-design-guide/design-guide/).
 
@@ -201,7 +201,7 @@ See the [design-guide example](../examples/with-design-guide/design-guide/) for 
 
 ---
 
-## Adopting this pattern in your print-md project
+## Adopting this pattern in your Gutterpress project
 
 1. **Components live in one file**, conventionally `css/dc-components.css` (or `css/<your-brand>-components.css`). Each component is `.section.dc-X` plus its descendant rules.
 

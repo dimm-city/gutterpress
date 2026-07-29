@@ -10,7 +10,7 @@ import {
 } from "./operation-log.ts";
 
 async function tempDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "pmd-oplog-"));
+  return mkdtemp(path.join(tmpdir(), "gutterpress-oplog-"));
 }
 
 describe("operation-log", () => {

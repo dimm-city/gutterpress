@@ -108,7 +108,7 @@ export interface RecommendedPlugin {
   /** One-line author-friendly description. */
   description: string;
   /**
-   * True when print-md ships this plugin (see `BUILTIN_OPTIONAL_PLUGINS`):
+   * True when gutterpress ships this plugin (see `BUILTIN_OPTIONAL_PLUGINS`):
    * "Add" enables it instantly, no install, works offline. All entries below
    * are built-in — the always-on defaults (attrs/footnote/deflist, applied
    * unconditionally in renderer.ts) are intentionally NOT listed here, since
@@ -118,7 +118,7 @@ export interface RecommendedPlugin {
 }
 
 /**
- * Curated, BUILT-IN opt-in markdown features. Each is bundled with print-md
+ * Curated, BUILT-IN opt-in markdown features. Each is bundled with gutterpress
  * (`BUILTIN_OPTIONAL_PLUGINS`), so clicking "Add" writes the manifest entry AND
  * the feature works immediately — no terminal, no install, offline. This is the
  * non-technical-author happy path: "turn on a feature → it works".

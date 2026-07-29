@@ -8,7 +8,7 @@
  *   1  FINDINGS  — the command completed but reported findings/validation
  *                  failures (validate/preflight/audit findings, a build's
  *                  quality-gate rejection). The invocation itself was fine;
- *                  the content wasn't. Standalone `print-md lint` uses this
+ *                  the content wasn't. Standalone `gutterpress lint` uses this
  *                  code for CSS lint failures too, but the `build` pipeline's
  *                  own CSS-lint gate is a documented historical exception
  *                  that exits 2 instead (see build-runner.ts's

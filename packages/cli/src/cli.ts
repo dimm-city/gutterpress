@@ -33,7 +33,7 @@ const VERSION = pkg.version;
 
 const main = defineCommand({
   meta: {
-    name: "print-md",
+    name: "gutterpress",
     version: VERSION,
     description:
       "Markdown to print-ready PDF (and static-site HTML) using Chromium + Paged.js",
@@ -63,7 +63,7 @@ async function preflightRequiredInvocations(rawArgs: string[]): Promise<void> {
         name: { ...newArgs.name, required: false },
       });
       if (parsed.name === undefined) {
-        throw new UsageError("print-md new: missing required positional argument NAME");
+        throw new UsageError("gutterpress new: missing required positional argument NAME");
       }
       return;
     }
@@ -76,7 +76,7 @@ async function preflightRequiredInvocations(rawArgs: string[]): Promise<void> {
         pdf: { ...preflightArgs.pdf, required: false },
       });
       if (parsed.pdf === undefined) {
-        throw new UsageError("print-md preflight: missing required argument --pdf");
+        throw new UsageError("gutterpress preflight: missing required argument --pdf");
       }
       return;
     }
@@ -86,12 +86,12 @@ async function preflightRequiredInvocations(rawArgs: string[]): Promise<void> {
     if (subcommand === undefined) return;
     if (subcommand === "--" || subcommand === "-") {
       throw new UsageError(
-        `print-md plugin: expected a subcommand before ${subcommand}`,
+        `gutterpress plugin: expected a subcommand before ${subcommand}`,
       );
     }
     if (subcommand.startsWith("-")) return;
     if (subcommand !== "add") {
-      throw new UsageError(`print-md plugin: unknown command "${subcommand}"`);
+      throw new UsageError(`gutterpress plugin: unknown command "${subcommand}"`);
     }
     const { pluginAddArgs } = await import("./commands/plugin");
     rejectUnknownFlags(subcommandArgs, pluginAddArgs, "plugin add");
@@ -100,7 +100,7 @@ async function preflightRequiredInvocations(rawArgs: string[]): Promise<void> {
       package: { ...pluginAddArgs.package, required: false },
     });
     if (parsed.package === undefined) {
-      throw new UsageError("print-md plugin add: missing required positional argument PACKAGE");
+      throw new UsageError("gutterpress plugin add: missing required positional argument PACKAGE");
     }
   } catch (error) {
     exitUsage(error);
@@ -181,7 +181,7 @@ if (!wantsHelp && !wantsVersion && !isKnownSubcommand) {
       `Unknown command "${implicit.unknownCommand}".` +
         (suggestion
           ? ` Did you mean "${suggestion}"?`
-          : ` Run "print-md --help" to see available commands.`)
+           : ` Run "gutterpress --help" to see available commands.`)
     );
     process.exitCode = EXIT_CODES.USAGE;
     shouldRun = false;

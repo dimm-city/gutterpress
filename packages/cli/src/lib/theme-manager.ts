@@ -1,5 +1,5 @@
 /**
- * Theme manager (#32) — list / apply / import print-md themes.
+ * Theme manager (#32) — list / apply / import Gutterpress themes.
  *
  * A THEME is a folder containing `theme.css` plus optional `theme.json`
  * metadata (`name`, `author`, `description`, `preview`). A theme MAY bundle
@@ -28,7 +28,7 @@
  *
  * This module is pure Node fs + the global `fetch` (URL import) — NO subprocess,
  * NO bundler, NO runtime package.json reads — so it works under
- * `bun build --compile` and in the packaged viewer alike (CLAUDE.md §1/§3), and
+ * `bun build --compile` and in the packaged desktop alike (CLAUDE.md §1/§3), and
  * is consumed by BOTH front-ends through the platform seam (one impl).
  */
 import { cp, mkdir, readFile, readdir, stat, writeFile, rm } from "node:fs/promises";

@@ -1,12 +1,12 @@
 /**
  * Host-timer POLICY (pure) extracted from the source-provider abstraction.
  *
- * These helpers are the testable core of the viewer host's automatic-snapshot
+ * These helpers are the testable core of the desktop host's automatic-snapshot
  * and automatic-sync timers: they turn a persisted, possibly-partial user
  * settings object into a concrete debounce/cadence delay (ms) — or `null` when
  * the feature is switched off. The timers themselves live in the Electron main
  * process (CLAUDE.md §8); this module owns ONLY the clamping/default policy so
- * both the CLI and the viewer resolve delays identically.
+ * both the CLI and the desktop resolve delays identically.
  *
  * Nothing here touches Git, the filesystem, or `isomorphic-git` — it is the
  * host-facing cadence policy, deliberately separate from `source-provider.ts`'s
@@ -15,7 +15,7 @@
 
 // ── Automatic snapshots (RC1-3) ───────────────────────────────────────────────
 
-/** User-facing auto-snapshot policy (mirrors the viewer's settings group). */
+/** User-facing auto-snapshot policy (mirrors the desktop's settings group). */
 export interface AutoSnapshotPolicy {
   /** Master switch — automatic snapshots default ON. */
   autoSnapshot: boolean;
@@ -31,7 +31,7 @@ export const AUTO_SNAPSHOT_DEFAULT_MINUTES = 10;
 
 // ── Automatic sync (transparent-sync integration plan §4.3) ──────────────────
 
-/** User-facing auto-sync policy (mirrors the viewer's settings group). */
+/** User-facing auto-sync policy (mirrors the desktop's settings group). */
 export interface AutoSyncPolicy {
   /** Master switch — automatic sync defaults ON when a remote is configured. */
   autoSync: boolean;

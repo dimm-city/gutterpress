@@ -24,9 +24,9 @@ async function launchBrowser(timeoutMs: number): Promise<Browser> {
   const executablePath = await requireChromiumExecutable();
   // Lazy-load puppeteer-core (biggest dep; only needed for rendered output).
   const puppeteer = (await import("puppeteer-core")).default;
-  // Extra Chromium flags via PRINTMD_CHROMIUM_ARGS (containers/CI:
+  // Extra Chromium flags via GUTTERPRESS_CHROMIUM_ARGS (containers/CI:
   // "--no-sandbox --disable-dev-shm-usage").
-  const extraChromiumArgs = (process.env.PRINTMD_CHROMIUM_ARGS ?? "")
+  const extraChromiumArgs = (process.env.GUTTERPRESS_CHROMIUM_ARGS ?? "")
     .split(/\s+/)
     .filter(Boolean);
   return puppeteer.launch({

@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 // runtime) cannot extract the NAMED export `{ HTMLHint }` from it — it throws
 // "does not provide an export named 'HTMLHint'". A default import returns the
 // CJS module.exports object, from which we destructure HTMLHint. (Bun is lenient
-// about the named form, which is why this only failed in the Node-based viewer.)
+// about the named form, which is why this only failed in the Node-based desktop.)
 import htmlhint from "htmlhint";
 import { registerCheck } from "../registry";
 import { findConfigFile } from "./config-file";

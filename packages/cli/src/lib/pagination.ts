@@ -92,7 +92,7 @@ export interface PdfRenderInput {
    * When set, after printing the PDF the renderer also serializes the
    * already-paginated DOM (the same DOM it just printed) and writes it to this
    * path as raw static HTML. Lets ONE pagination pass emit BOTH the PDF and the
-   * static viewer HTML, so screen and PDF come from the same artifact. The
+   * static desktop HTML, so screen and PDF come from the same artifact. The
    * serialize is read-only and runs AFTER `page.pdf()`, so it cannot affect the
    * PDF. Optional; injected renderers that cannot serialize may ignore it.
    */
@@ -106,7 +106,7 @@ export interface PdfRenderInput {
  * `outPdf` with backgrounds printed.
  *
  * The default ({@link puppeteerPdfRenderer}) drives a system/bundled Chromium.
- * The Electron viewer injects one backed by its own `webContents.printToPDF`,
+ * The Electron desktop injects one backed by its own `webContents.printToPDF`,
  * so the packaged app needs no external browser (ADR 0002, Phase 4).
  */
 export type PdfRenderer = (input: PdfRenderInput) => Promise<void>;
@@ -472,7 +472,7 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
     });
 
     // Unification: serialize the SAME printed DOM to static HTML so the on-screen
-    // viewer renders the identical artifact the PDF was printed from. Read-only,
+    // desktop renders the identical artifact the PDF was printed from. Read-only,
     // after page.pdf() — does not perturb the PDF.
     if (captureStaticHtmlTo) {
       const staticHtml = await serializePaginatedDom(page);

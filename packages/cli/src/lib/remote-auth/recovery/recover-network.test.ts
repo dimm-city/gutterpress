@@ -59,10 +59,10 @@ interface NetworkHarness {
  * The cloned project dir already has two commits (from createFixtureRepo).
  */
 async function setupOnlineHarness(): Promise<NetworkHarness> {
-  const serverDir = await tempDir("pmd-net-server-");
+  const serverDir = await tempDir("gutterpress-net-server-");
   await createFixtureRepo(serverDir);
   const server = await startGitServer(serverDir);
-  const parent = await tempDir("pmd-net-client-");
+  const parent = await tempDir("gutterpress-net-client-");
   const projectDir = path.join(parent, "project");
   await cloneRepository({ url: server.url, dir: projectDir });
   return {

@@ -1,9 +1,9 @@
 /**
  * Project scaffolding (#25 — new-project wizard / starter template).
  *
- * The "create a project" logic lives HERE, in `@dimm-city/print-md`, so the
- * viewer wizard (`NewProjectWizard.svelte` → IPC pass-through) and the CLI
- * command (`print-md new`) are both thin front-ends over ONE implementation —
+ * The "create a project" logic lives HERE, in `gutterpress`, so the
+ * desktop wizard (`NewProjectWizard.svelte` → IPC pass-through) and the CLI
+ * command (`gutterpress new`) are both thin front-ends over ONE implementation —
  * no duplication (issue #25 architecture clarification, 2026-06-06).
  *
  * Scaffolding model (per the issue):
@@ -101,7 +101,7 @@ export interface CreateProjectResult {
   /** Absolute path of the generated manifest. */
   manifestPath: string;
   /**
-   * Absolute path of the sample chapter the viewer should open first, so the
+   * Absolute path of the sample chapter the desktop should open first, so the
    * author immediately sees a rendered document (issue acceptance criterion).
    */
   openFile: string;
@@ -160,7 +160,7 @@ export function escapeYamlScalar(value: string): string {
 const DEFAULT_AUTHOR = "Anonymous";
 
 /**
- * Scaffold a new print-md project. Resolves with a {@link CreateProjectResult};
+ * Scaffold a new gutterpress project. Resolves with a {@link CreateProjectResult};
  * throws a {@link CreateProjectError} on any precondition failure.
  */
 export async function scaffoldProject(
@@ -230,7 +230,7 @@ export async function scaffoldProject(
       // sidecar). The author's saved files become the new project's files.
       const entries = await readdir(customTemplateDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (entry.name === ".print-md-template.json") continue;
+        if (entry.name === ".gutterpress-template.json") continue;
         await cp(
           path.join(customTemplateDir, entry.name),
           path.join(projectDir, entry.name),
@@ -286,7 +286,7 @@ export async function scaffoldProject(
     "{{AUTHOR}}": escapeYamlScalar(author),
   };
 
-  // Which file the viewer opens first: the manifest's first source file when we
+  // Which file the desktop opens first: the manifest's first source file when we
   // can read it (custom templates may not have chapter-01.md), else chapter-01.
   let openFile = path.join(projectDir, "chapter-01.md");
   try {
@@ -349,7 +349,7 @@ export async function scaffoldProject(
   return result;
 }
 
-/** Options for adopting an EXISTING folder as a print-md project (in place). */
+/** Options for adopting an EXISTING folder as a gutterpress project (in place). */
 export interface AdoptFolderOptions {
   /** Absolute path of the existing folder to set up as a book. */
   dir: string;
@@ -370,7 +370,7 @@ function prettifyFolderName(base: string): string {
 }
 
 /**
- * Adopt an EXISTING folder as a print-md project, in place (no new subfolder).
+ * Adopt an EXISTING folder as a gutterpress project, in place (no new subfolder).
  * Writes a `manifest.yaml` (using the folder's existing top-level `.md` files as
  * `source.files`, or scaffolding a `chapter-01.md` when there are none), copies
  * a starter `styles/book.css`, ensures `dist/` is gitignored (see
@@ -397,7 +397,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
   if (MANIFEST_FILENAMES.some((name) => existsSync(path.join(dir, name)))) {
     throw new CreateProjectErrorImpl(
       "target-exists",
-      "This folder is already a print-md project.",
+      "This folder is already a Gutterpress project.",
     );
   }
 
@@ -465,7 +465,7 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
       await provider.initVersionHistory({
         projectDir: dir,
         authorName: options.author?.trim() || undefined,
-        initialMessage: "Set up as a print-md book",
+        initialMessage: "Set up as a gutterpress book",
       });
       versionHistory = "local-git";
     } catch (e) {
@@ -489,8 +489,8 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
  * (`dist/` — lib/output-paths.ts's `DIST_DIRNAME`).
  *
  * Confirmed bug this closes: no scaffolded project ever got a `.gitignore`,
- * and print-md's auto-snapshot feature is ON BY DEFAULT and auto-pushes.
- * Every `print-md build` writes a fresh, incompressible PDF (plus any copied
+ * and gutterpress's auto-snapshot feature is ON BY DEFAULT and auto-pushes.
+ * Every `gutterpress build` writes a fresh, incompressible PDF (plus any copied
  * assets) into `dist/<title-slug>/`; without an ignore rule, the very next
  * snapshot commits and pushes it. That grows `.git` by a full PDF on every
  * build and, once a single artifact crosses GitHub's 100MB per-file limit,

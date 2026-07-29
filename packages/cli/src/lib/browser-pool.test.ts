@@ -8,7 +8,7 @@
  * the pool's OWN logic in isolation: singleton reuse, close-then-relaunch,
  * the no-op close, failure not poisoning the pool, prewarm idempotency, the
  * `disconnected`-listener auto-reset, and the launch-option wiring
- * (executablePath / protocolTimeout / PRINTMD_CHROMIUM_ARGS parsing).
+ * (executablePath / protocolTimeout / GUTTERPRESS_CHROMIUM_ARGS parsing).
  *
  * Mocking strategy: browser-pool.ts only ever reaches puppeteer-core through
  * a lazy `(await import("puppeteer-core")).default` inside its private
@@ -268,9 +268,9 @@ test("launchBrowser resolves the executable via requireChromiumExecutable and fo
   expect(opts.headless).toBe(true);
 });
 
-test("PRINTMD_CHROMIUM_ARGS is split on whitespace and forwarded as launch args", async () => {
-  const prevArgs = process.env.PRINTMD_CHROMIUM_ARGS;
-  process.env.PRINTMD_CHROMIUM_ARGS = "--no-sandbox   --disable-dev-shm-usage";
+test("GUTTERPRESS_CHROMIUM_ARGS is split on whitespace and forwarded as launch args", async () => {
+  const prevArgs = process.env.GUTTERPRESS_CHROMIUM_ARGS;
+  process.env.GUTTERPRESS_CHROMIUM_ARGS = "--no-sandbox   --disable-dev-shm-usage";
   try {
     stubChromium();
     const { browser } = makeFakeBrowser();
@@ -281,14 +281,14 @@ test("PRINTMD_CHROMIUM_ARGS is split on whitespace and forwarded as launch args"
     const opts = launchMock.mock.calls[0]![0] as Record<string, unknown>;
     expect(opts.args).toEqual(["--no-sandbox", "--disable-dev-shm-usage"]);
   } finally {
-    if (prevArgs === undefined) delete process.env.PRINTMD_CHROMIUM_ARGS;
-    else process.env.PRINTMD_CHROMIUM_ARGS = prevArgs;
+    if (prevArgs === undefined) delete process.env.GUTTERPRESS_CHROMIUM_ARGS;
+    else process.env.GUTTERPRESS_CHROMIUM_ARGS = prevArgs;
   }
 });
 
-test("PRINTMD_CHROMIUM_ARGS unset yields an empty args array (no stray empty-string token)", async () => {
-  const prevArgs = process.env.PRINTMD_CHROMIUM_ARGS;
-  delete process.env.PRINTMD_CHROMIUM_ARGS;
+test("GUTTERPRESS_CHROMIUM_ARGS unset yields an empty args array (no stray empty-string token)", async () => {
+  const prevArgs = process.env.GUTTERPRESS_CHROMIUM_ARGS;
+  delete process.env.GUTTERPRESS_CHROMIUM_ARGS;
   try {
     stubChromium();
     const { browser } = makeFakeBrowser();
@@ -299,6 +299,6 @@ test("PRINTMD_CHROMIUM_ARGS unset yields an empty args array (no stray empty-str
     const opts = launchMock.mock.calls[0]![0] as Record<string, unknown>;
     expect(opts.args).toEqual([]);
   } finally {
-    if (prevArgs !== undefined) process.env.PRINTMD_CHROMIUM_ARGS = prevArgs;
+    if (prevArgs !== undefined) process.env.GUTTERPRESS_CHROMIUM_ARGS = prevArgs;
   }
 });

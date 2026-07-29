@@ -6,8 +6,8 @@
  * syncable, including repos cloned externally.
  *
  * The lib NEVER touches OS keychains — host applications inject the
- * implementation (the Electron viewer uses `safeStorage`; see
- * packages/viewer/electron/credential-store.ts). The one concrete
+ * implementation (the Electron desktop uses `safeStorage`; see
+ * packages/desktop/electron/credential-store.ts). The one concrete
  * implementation here, {@link FileTokenStore}, is the CLI's store: a `0600`
  * JSON file under the user config dir (the `gh` CLI model — encrypted-at-rest
  * is explicitly not required for the CLI per ADR 0006 D3).
@@ -98,20 +98,20 @@ function stripWww(host: string): string {
 }
 
 /**
- * Resolve the print-md user config directory (where the CLI token store
+ * Resolve the Gutterpress user config directory (where the CLI token store
  * lives). There is no pre-existing lib config-dir mechanism to follow (the CLI
  * config cascade is per-project manifest based), so this establishes the
- * standard one: `$PRINT_MD_CONFIG_DIR` override → `%APPDATA%/print-md` on
- * Windows → `$XDG_CONFIG_HOME/print-md` → `~/.config/print-md`.
+ * standard one: `$GUTTERPRESS_CONFIG_DIR` override → `%APPDATA%/gutterpress` on
+ * Windows → `$XDG_CONFIG_HOME/gutterpress` → `~/.config/gutterpress`.
  */
 export function defaultConfigDir(): string {
-  const override = process.env.PRINT_MD_CONFIG_DIR?.trim();
+  const override = process.env.GUTTERPRESS_CONFIG_DIR?.trim();
   if (override) return override;
   if (process.platform === "win32" && process.env.APPDATA) {
-    return path.join(process.env.APPDATA, "print-md");
+    return path.join(process.env.APPDATA, "gutterpress");
   }
   const xdg = process.env.XDG_CONFIG_HOME?.trim();
-  return path.join(xdg || path.join(os.homedir(), ".config"), "print-md");
+  return path.join(xdg || path.join(os.homedir(), ".config"), "gutterpress");
 }
 
 interface StoredFileShape {
@@ -122,7 +122,7 @@ interface StoredFileShape {
 /**
  * The CLI's {@link TokenStore}: a JSON file with `0600` permissions under the
  * user config dir. Plaintext-at-rest by design (the `gh`/`npm` model) — the
- * viewer uses an OS-keychain-backed store instead.
+ * desktop uses an OS-keychain-backed store instead.
  */
 export class FileTokenStore implements TokenStore {
   readonly filePath: string;
@@ -154,7 +154,7 @@ export class FileTokenStore implements TokenStore {
       if (parsed && typeof parsed === "object" && parsed.credentials) return parsed;
     } catch {
       // Corrupt JSON: preserve the evidence BEFORE any subsequent set/delete
-      // overwrites it (the viewer's credential store fixed this exact silent
+      // overwrites it (the desktop's credential store fixed this exact silent
       // total-credential-loss as #34 — same pattern here). Best-effort; the
       // store still starts empty so the user can reconnect.
       await writeFile(`${this.filePath}.corrupt`, raw, {

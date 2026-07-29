@@ -36,17 +36,17 @@ try {
 
   const version = "1.2.3";
   const hash = "a".repeat(64);
-  const stableInstaller = "print-md-viewer-setup-win-x64.exe";
-  const portableZip = `print-md-viewer-${version}-win-x64.zip`;
+  const stableInstaller = "Gutterpress-setup-win-x64.exe";
+  const portableZip = `Gutterpress-${version}-win-x64.zip`;
   const checksums = join(root, "SHA256SUMS.txt");
   writeFileSync(
     checksums,
     [
-      "print-md-cli-linux-arm64",
-      "print-md-cli-linux-x64",
-      "print-md-cli-macos-arm64",
-      "print-md-cli-macos-x64",
-      "print-md-cli-windows-x64.exe",
+      "gutterpress-cli-linux-arm64",
+      "gutterpress-cli-linux-x64",
+      "gutterpress-cli-macos-arm64",
+      "gutterpress-cli-macos-x64",
+      "gutterpress-cli-windows-x64.exe",
       stableInstaller,
       portableZip,
     ]
@@ -66,7 +66,7 @@ try {
   check("asset metadata records the release version", metadata.version === version);
   check(
     "asset metadata records the stable Windows installer basename",
-    metadata.windowsViewerInstaller === stableInstaller,
+    metadata.windowsInstaller === stableInstaller,
   );
   check(
     "portable ZIP remains separate from package-manager installer metadata",
@@ -74,11 +74,11 @@ try {
   );
   check(
     "Homebrew formula is generated",
-    readFileSync(join(root, "Formula", "print-md.rb"), "utf8").includes(`version "${version}"`),
+    readFileSync(join(root, "Formula", "gutterpress.rb"), "utf8").includes(`version "${version}"`),
   );
   check(
     "Scoop manifest is generated",
-    JSON.parse(readFileSync(join(root, "bucket", "print-md.json"), "utf8")).version === version,
+    JSON.parse(readFileSync(join(root, "bucket", "gutterpress.json"), "utf8")).version === version,
   );
   check(
     "submission-ready winget manifest is generated",
@@ -90,9 +90,9 @@ try {
         "manifests",
         "d",
         "DimmCity",
-        "PrintMdViewer",
+        "Gutterpress",
         version,
-        "DimmCity.PrintMdViewer.yaml",
+        "DimmCity.Gutterpress.yaml",
       ),
     ),
   );
@@ -104,9 +104,9 @@ try {
       "manifests",
       "d",
       "DimmCity",
-      "PrintMdViewer",
+      "Gutterpress",
       version,
-      "DimmCity.PrintMdViewer.yaml",
+      "DimmCity.Gutterpress.yaml",
     ),
     "utf8",
   );
@@ -116,7 +116,7 @@ try {
   );
   check(
     "winget does not regress to the old versioned installer basename",
-    !winget.includes(`print-md-viewer-${version}-win-x64.exe`),
+    !winget.includes(`Gutterpress-${version}-win-x64.exe`),
   );
 
   const prerelease = run(script, ["--update", "1.2.4-beta.1", checksums]);
@@ -125,28 +125,10 @@ try {
   const oldInstallerChecksums = join(root, "old-installer-SHA256SUMS.txt");
   writeFileSync(
     oldInstallerChecksums,
-    readFileSync(checksums, "utf8").replace(
-      stableInstaller,
-      `print-md-viewer-${version}-win-x64.exe`,
-    ),
+    readFileSync(checksums, "utf8").replace(stableInstaller, `Gutterpress-${version}-win-x64.exe`),
   );
   const oldInstaller = run(script, ["--update", version, oldInstallerChecksums]);
-  check("new releases reject a versioned Windows installer basename", oldInstaller.status === 1);
-
-  const legacyInstaller = "print-md-viewer-0.8.3-win-x64.exe";
-  writeFileSync(
-    oldInstallerChecksums,
-    readFileSync(checksums, "utf8").replace(stableInstaller, legacyInstaller),
-  );
-  const legacyUpdate = run(script, ["--update", "0.8.3", oldInstallerChecksums]);
-  check("v0.8.3 can regenerate immutable legacy metadata", legacyUpdate.status === 0);
-  const legacyMetadata = JSON.parse(
-    readFileSync(join(root, "packaging", "package-manager-assets.json"), "utf8"),
-  );
-  check(
-    "v0.8.3 records its historical installer basename",
-    legacyMetadata.windowsViewerInstaller === legacyInstaller,
-  );
+  check("releases reject a versioned Windows installer basename", oldInstaller.status === 1);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

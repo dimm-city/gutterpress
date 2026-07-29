@@ -4,7 +4,7 @@
  * Storage model (Occam's razor): each snippet is a plain `.md` file under the
  * project's `snippets/` folder. No database, no app-config store — the simplest
  * thing that works, and it travels with the project (and through version
- * history) for free. Both the CLI and the viewer host use this ONE module.
+ * history) for free. Both the CLI and the desktop host use this ONE module.
  *
  * Variable substitution is a deliberately tiny `{{name}}` → value map. The two
  * pure functions (`extractVariables`, `substituteVariables`) carry no IO and are

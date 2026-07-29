@@ -1,13 +1,13 @@
-// print-md preview shell controller (shared by the CLI preview and Electron).
+// Gutterpress preview shell controller (shared by the CLI preview and Electron).
 // Every source change takes one correctness-first path: paginate a fresh hidden
 // full document, then swap it in without flashing unpaginated content.
 //
 // TRANSPORT IS ABSTRACTED: change events arrive through connectChanges(), which
-// uses WebSocket by default but honors window.__PMD_CHANGE_SOURCE so an Electron
+  // uses WebSocket by default but honors window.__GUTTERPRESS_CHANGE_SOURCE so an Electron
 // host can feed the same full-reload signal over IPC.
 (function () {
   'use strict';
-  var active = document.getElementById('pmd-active');
+  var active = document.getElementById('gutterpress-active');
   var building = null;
   if (!active) return;
 
@@ -106,7 +106,7 @@
     var frame = document.createElement('iframe');
     frame.style.visibility = 'hidden';
     frame.setAttribute('aria-hidden', 'true');
-    frame.src = '/book.html?pmdshell=1&bust=' + Date.now();
+    frame.src = '/book.html?gutterpressshell=1&bust=' + Date.now();
     building = frame;
 
     var finished = false;
@@ -134,9 +134,9 @@
   }
 
   function connectChanges(onMessage) {
-    var source = window.__PMD_CHANGE_SOURCE;
+    var source = window.__GUTTERPRESS_CHANGE_SOURCE;
     if (source && typeof source.subscribe === 'function') return source.subscribe(onMessage);
-    var wsPath = window.__PMD_HMR || '/__print-md-hmr';
+    var wsPath = window.__GUTTERPRESS_HMR || '/__gutterpress-hmr';
     var ws = new WebSocket(location.origin.replace(/^http/, 'ws') + wsPath);
     ws.onmessage = function (event) {
       var message;

@@ -10,7 +10,7 @@ import {
 } from "./project-source";
 
 async function tempDir(): Promise<string> {
-  return await mkdtemp(path.join(tmpdir(), "pmd-src-"));
+  return await mkdtemp(path.join(tmpdir(), "gutterpress-src-"));
 }
 
 test("plain folder (no .git) → local-folder", async () => {

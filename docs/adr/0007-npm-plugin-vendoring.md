@@ -6,7 +6,7 @@ Accepted (2026-07-26).
 
 ## Context
 
-The standalone CLI and packaged viewer must install ordinary markdown-it npm
+The standalone CLI and packaged desktop app must install ordinary markdown-it npm
 plugins for authors who do not have npm, Node.js, or Bun installed. Copying
 only a plugin's own tarball is insufficient: many plugins import runtime
 dependencies, and package-name resolution inside a compiled executable must
@@ -38,7 +38,7 @@ publication, and user consent must fail closed.
    recorded as skipped rather than auto-installed. Registry semver ranges and
    dist-tags are supported; `file:`, Git, URL, workspace, link, and npm-alias
    selectors are not.
-5. A schema-v2 `.print-md-install.json` receipt records the exact graph,
+5. A schema-v2 `.gutterpress-install.json` receipt records the exact graph,
    dependency edges, tarball URLs, integrity values, skipped optionals,
    deterministic import/require entries, and a SHA-256 digest of every vendored
    file and path. The loader first snapshots the versioned vendor tree, then
@@ -92,4 +92,4 @@ publication, and user consent must fail closed.
 - `packages/cli/src/lib/plugin-vendor.ts`
 - `packages/cli/src/lib/plugin-manager.ts`
 - `packages/cli/src/lib/markdown/plugins.ts`
-- `packages/viewer/src/routes/api/plugin/add-npm/+server.ts`
+- `packages/desktop/src/routes/api/plugin/add-npm/+server.ts`

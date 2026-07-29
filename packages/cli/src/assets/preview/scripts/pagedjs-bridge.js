@@ -1,23 +1,23 @@
 // Cross-origin postMessage bridge for window.previewAPI.
 //
-// The viewer (Svelte toolbar) and this iframe are on different origins
-// (SvelteKit on port A, print-md preview on port B), so the toolbar can't
+// The desktop (Svelte toolbar) and this iframe are on different origins
+// (SvelteKit on port A, gutterpress preview on port B), so the toolbar can't
 // reach window.previewAPI directly. This bridge listens for command
 // messages, calls the local previewAPI, and posts results / events back to
 // the parent window.
 //
 // Protocol:
-//   parent -> iframe: { type: 'pmd:cmd', id: <number>, cmd: <string>, args?: [...] }
-//   iframe -> parent: { type: 'pmd:reply', id: <number>, ok: true, result: <any> }
-//                  or { type: 'pmd:reply', id: <number>, ok: false, error: <string> }
-//   iframe -> parent: { type: 'pmd:event', name: 'pageChanged'|'renderingComplete'|'ready', detail }
+//   parent -> iframe: { type: 'gutterpress:cmd', id: <number>, cmd: <string>, args?: [...] }
+//   iframe -> parent: { type: 'gutterpress:reply', id: <number>, ok: true, result: <any> }
+//                  or { type: 'gutterpress:reply', id: <number>, ok: false, error: <string> }
+//   iframe -> parent: { type: 'gutterpress:event', name: 'pageChanged'|'renderingComplete'|'ready', detail }
 //
 // Commands map 1:1 to previewAPI methods: getTotalPages, getCurrentPage,
 // goToPage, firstPage, prevPage, nextPage, lastPage, setViewMode, setZoom,
 // toggleDebugMode. Plus a synthetic 'print' command that calls window.print().
 //
 // Additional messages:
-//   parent -> iframe: { type: 'pmd:inject-styles', id: <attr-name>, css: <string> }
+//   parent -> iframe: { type: 'gutterpress:inject-styles', id: <attr-name>, css: <string> }
 //     Inserts or replaces a <style data-{id}="true"> block in the iframe's <head>.
 //     Used to push view-mode CSS and debug CSS into the cross-origin iframe.
 
@@ -46,14 +46,14 @@
 
   window.addEventListener('message', function (e) {
     var data = e.data;
-    if (!data || data.type !== 'pmd:cmd') return;
+    if (!data || data.type !== 'gutterpress:cmd') return;
     var id = data.id;
     try {
       var result = call(data.cmd, data.args);
-      post({ type: 'pmd:reply', id: id, ok: true, result: result });
+      post({ type: 'gutterpress:reply', id: id, ok: true, result: result });
     } catch (err) {
       post({
-        type: 'pmd:reply',
+        type: 'gutterpress:reply',
         id: id,
         ok: false,
         error: err && err.message ? err.message : String(err),
@@ -62,23 +62,23 @@
   });
 
   window.addEventListener('pageChanged', function (e) {
-    post({ type: 'pmd:event', name: 'pageChanged', detail: e.detail });
+    post({ type: 'gutterpress:event', name: 'pageChanged', detail: e.detail });
   });
   window.addEventListener('renderingComplete', function (e) {
-    post({ type: 'pmd:event', name: 'renderingComplete', detail: e.detail });
+    post({ type: 'gutterpress:event', name: 'renderingComplete', detail: e.detail });
   });
   // ADR 0005: source-position sync + click-to-source.
   window.addEventListener('sourceLineChanged', function (e) {
-    post({ type: 'pmd:event', name: 'sourceLineChanged', detail: e.detail });
+    post({ type: 'gutterpress:event', name: 'sourceLineChanged', detail: e.detail });
   });
   window.addEventListener('elementActivated', function (e) {
-    post({ type: 'pmd:event', name: 'elementActivated', detail: e.detail });
+    post({ type: 'gutterpress:event', name: 'elementActivated', detail: e.detail });
   });
 
   // Announce readiness as soon as previewAPI is defined.
   function announceReady() {
     if (window.previewAPI) {
-      post({ type: 'pmd:event', name: 'ready', detail: {} });
+      post({ type: 'gutterpress:event', name: 'ready', detail: {} });
     } else {
       setTimeout(announceReady, 50);
     }
@@ -88,18 +88,18 @@
   // Set background color via inline style on <html> (toolbar's bg-color picker).
   window.addEventListener('message', function (e) {
     var data = e.data;
-    if (!data || data.type !== 'pmd:bg-color') return;
+    if (!data || data.type !== 'gutterpress:bg-color') return;
     document.documentElement.style.background = data.color;
   });
 
   // Inject or replace a named <style> block in the iframe's <head>.
-  // { type: 'pmd:inject-styles', id: <string>, css: <string> }
-  // The <style> element gets data-pmd-<id>="true" so subsequent calls update
+  // { type: 'gutterpress:inject-styles', id: <string>, css: <string> }
+  // The <style> element gets data-gutterpress-<id>="true" so subsequent calls update
   // the same block rather than appending duplicates.
   window.addEventListener('message', function (e) {
     var data = e.data;
-    if (!data || data.type !== 'pmd:inject-styles') return;
-    var attrName = 'data-pmd-' + data.id;
+    if (!data || data.type !== 'gutterpress:inject-styles') return;
+    var attrName = 'data-gutterpress-' + data.id;
     var existing = document.querySelector('style[' + attrName + ']');
     if (!existing) {
       existing = document.createElement('style');

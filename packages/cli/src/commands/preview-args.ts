@@ -9,7 +9,7 @@ export const previewArgs = {
     description: "Watch files for changes (html only)",
     negativeDescription: "Disable file watching (html only)",
   },
-  open: { type: "boolean", default: true, description: "Automatically open browser/viewer (default: true; use --no-open to skip)" },
+  open: { type: "boolean", default: true, description: "Automatically open browser/desktop (default: true; use --no-open to skip)" },
   verbose: { type: "boolean", description: "Enable verbose output" },
   debug: { type: "boolean", description: "Debug mode (preserve temporary files)" },
   out: { type: "string", description: "Output directory (pdf|pdfx only)" },

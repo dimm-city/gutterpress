@@ -12,7 +12,7 @@ Accepted (as evidenced by the shipped implementation).
 
 ## Context
 
-print-md needs to (1) render a staged HTML + CSS book to a print-ready PDF via
+Gutterpress needs to (1) render a staged HTML + CSS book to a print-ready PDF via
 a Chromium engine, and (2) inspect and validate the resulting PDF and its
 embedded images for the post-build check system — all while satisfying two
 constraints elsewhere in this repo:
@@ -21,7 +21,7 @@ constraints elsewhere in this repo:
   --compile` binary. Dependencies that read their own `package.json` at
   runtime, or that load code via a computed-path dynamic `import()`, cannot be
   embedded and must be dropped or avoided.
-- **The packaged Electron viewer already ships a full Chromium** (it *is*
+- **The packaged Electron desktop already ships a full Chromium** (it *is*
   Electron). Spawning a second, separately-resolved Chromium via
   `puppeteer-core` for PDF export in that context is redundant weight and an
   extra "no Chromium found" failure mode non-technical users would hit.
@@ -32,13 +32,13 @@ constraints elsewhere in this repo:
    Chromium via `puppeteer-core` (`packages/cli/src/lib/build-runner.ts`).
    Chosen over Prince XML, Playwright, and a `pagedjs-cli` subprocess because
    it is open-source and cross-platform, supports full CSS Paged Media,
-   ships no bundled browser itself (print-md resolves a system/bundled
+    ships no bundled browser itself (Gutterpress resolves a system/bundled
    Chromium — see `packages/cli/src/lib/chromium.ts`), and gives direct
    in-process PDF generation via `page.pdf()` with no subprocess overhead.
-2. **HTML → PDF rendering (packaged Electron viewer, Phase 4):** inject an
+2. **HTML → PDF rendering (packaged Electron desktop):** inject an
    alternative `PdfRenderer` that uses Electron's **own** bundled Chromium — a
    hidden `BrowserWindow` + `webContents.printToPDF` — instead of spawning an
-   external Chromium via puppeteer (`packages/viewer/electron/pdf-export.ts`).
+   external Chromium via puppeteer (`packages/desktop/electron/pdf-export.ts`).
    This drops the external-browser dependency for PDF export in the packaged
    app with zero added bytes and full Paged.js fidelity, at the cost of that
    renderer being Electron-only code. It is injected into the shared lib's
@@ -46,7 +46,7 @@ constraints elsewhere in this repo:
    Paged.js algorithm (`createStaticFileServer` + the render/measure/print
    sequence in `build-runner.ts`) is implemented once and shared by both
    renderers — only the final "drive a browser page and print" step differs.
-   Escape hatch: `PRINTMD_VIEWER_PUPPETEER=1` falls back to the lib's default
+   Escape hatch: `GUTTERPRESS_PUPPETEER=1` falls back to the lib's default
    puppeteer renderer.
 3. **Post-build PDF inspection (validation checks):** replace the Poppler
    suite (`pdfinfo`/`pdffonts`/`pdfimages`/`pdftotext`) and general `qpdf`
@@ -80,7 +80,7 @@ constraints elsewhere in this repo:
 
 - Production PDFs built from the CLI/library entry point always go through
   `puppeteer-core` + a resolved Chromium (`chromium.ts`, `browser-pool.ts`).
-- The packaged viewer's PDF export is faster and has one fewer external
+- The packaged desktop's PDF export is faster and has one fewer external
   dependency to resolve, but its renderer is Electron-specific code
   (`electron/pdf-export.ts`), not part of the published library.
 - The check system's PDF/image inspection has zero system dependency for the
@@ -93,9 +93,9 @@ constraints elsewhere in this repo:
 ## Sources
 
 Reconstructed from citations in: `CLAUDE.md` (Monorepo layout section),
-`packages/cli/src/lib/build-runner.ts`, `packages/viewer/electron/pdf-export.ts`,
+`packages/cli/src/lib/build-runner.ts`, `packages/desktop/electron/pdf-export.ts`,
 `packages/cli/src/lib/pdf-inspect.ts`, `packages/cli/src/lib/pdf-parse.ts`,
 `packages/cli/src/lib/ghostscript.ts`, `packages/cli/src/lib/image-inspect.ts`,
 `packages/cli/src/checks/pdf/image-resolution.ts`,
 `packages/cli/src/checks/pdf/qpdf-structure.ts`,
-`examples/print-md-user-guide/08-system-setup.md`.
+`examples/gutterpress-user-guide/08-system-setup.md`.

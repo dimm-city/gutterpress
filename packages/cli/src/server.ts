@@ -58,7 +58,7 @@ export async function startPreviewServer(
 
   // Stage 1: Validate and initialize. Empty input is a deliberate "no
   // directory picked yet" mode: the server boots with a placeholder page,
-  // and the viewer desktop app (packages/viewer) shows its own folder picker.
+  // and the desktop desktop app (packages/desktop) shows its own folder picker.
   // Compare to the previous behavior of silently defaulting to process.cwd().
   const inputPath = options.input ?? '';
   await validateInputPath(inputPath);

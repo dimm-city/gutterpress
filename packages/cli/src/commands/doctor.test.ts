@@ -40,7 +40,7 @@ test("doctor prints system details, tool status, install guidance, and the setup
         installHint: "apt install qpdf\nor use your package manager",
       },
     ],
-    configDir: "/home/test/.config/print-md",
+    configDir: "/home/test/.config/gutterpress",
     docsUrl: "https://example.test/setup",
   });
 
@@ -51,9 +51,9 @@ test("doctor prints system details, tool status, install guidance, and the setup
 
   await runCommand(doctorCommand, { rawArgs: [] });
 
-  expect(lines[0]).toBe("print-md 1.2.3");
+  expect(lines[0]).toBe("gutterpress 1.2.3");
   expect(lines.join("\n")).toContain("System: linux x64 (6.1), Node 22.0.0");
-  expect(lines.join("\n")).toContain("Config: /home/test/.config/print-md");
+  expect(lines.join("\n")).toContain("Config: /home/test/.config/gutterpress");
   expect(lines.join("\n")).toContain("[ok] Chromium-based browser");
   expect(lines.join("\n")).toContain("Path: /usr/bin/chromium");
   expect(lines.join("\n")).toContain("[missing] qpdf");

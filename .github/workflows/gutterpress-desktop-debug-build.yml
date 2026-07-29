@@ -1,0 +1,33 @@
+name: Gutterpress desktop debug build (Windows)
+
+# Builds the Windows desktop installer + portable zip from any branch and uploads them as an
+# artifact you can download from the Actions tab. Use this for testing
+# in-progress branches (like fix/first-render-perf) without cutting a
+# release.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build desktop Windows installer + zip
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/bun
+
+      - name: Build desktop Windows installer and zip
+        uses: ./.github/actions/build-gutterpress-desktop-windows
+
+      - name: Upload desktop Windows artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: gutterpress-desktop-windows-debug-${{ github.sha }}
+          path: |
+            packages/desktop/dist/*.exe
+            packages/desktop/dist/*.zip
+          if-no-files-found: error
+          retention-days: 14

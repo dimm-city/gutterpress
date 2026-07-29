@@ -2,7 +2,7 @@
  * Project source classification (#12).
  *
  * Classifies an opened folder as one of three `ProjectSource` variants so the
- * viewer (and, later, the CLI) can decide which actions to surface — open,
+ * desktop (and, later, the CLI) can decide which actions to surface — open,
  * enable version history, snapshot, view history, sync — WITHOUT exposing
  * Git terminology to non-technical authors.
  *
@@ -80,7 +80,7 @@ export type ProjectSource =
  * What the UI may offer for a given source. Derived purely from the source
  * type; no I/O.
  *
- * NOTE (audit D5): today the viewer only reads `canSnapshot` (it gates the
+ * NOTE (audit D5): today the desktop only reads `canSnapshot` (it gates the
  * StatusBar "Version history" affordance). The other flags —
  * `canEnableVersionHistory`, `canViewHistory`, `canRestoreSnapshot`, `canRead`,
  * `canWriteLocal`, `authManagedByApp` — are computed and part of the DTO but

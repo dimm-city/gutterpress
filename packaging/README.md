@@ -1,6 +1,6 @@
 # Package-manager metadata
 
-`Formula/print-md.rb`, `bucket/print-md.json`, and the files under
+`Formula/gutterpress.rb`, `bucket/gutterpress.json`, and the files under
 `packaging/winget/` are generated from `packaging/package-manager-assets.json`.
 Do not update their versions or hashes independently.
 
@@ -32,8 +32,5 @@ install` requires a pull request to the external
 repository. No repository-scoped GitHub token can submit that pull request, so
 the workflow does not pretend to automate it or require an undeclared secret.
 
-The `v0.8.3` source metadata retains that release's historical versioned
-Windows viewer installer basename because published release assets are
-immutable. Every newly generated release requires
-`print-md-viewer-setup-win-x64.exe`; its winget URL remains scoped to the
-versioned `v<version>` release tag.
+All generated metadata targets the clean-break Gutterpress release assets,
+including the stable `Gutterpress-setup-win-x64.exe` installer basename.

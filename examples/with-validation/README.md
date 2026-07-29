@@ -1,6 +1,6 @@
 # Validation Example
 
-Demonstrates print-md's validation system with all four check categories configured.
+Demonstrates Gutterpress's validation system with all four check categories configured.
 
 ## What's Included
 
@@ -16,34 +16,34 @@ Demonstrates print-md's validation system with all four check categories configu
 
 ```bash
 # Pre-build checks (source + asset)
-print-md validate --input .
+gutterpress validate --input .
 
 # Post-build checks (requires a built PDF)
-print-md validate --pdf dist/validation-example/validation-example-pdf.pdf
+gutterpress validate --pdf dist/validation-example/validation-example-pdf.pdf
 
 # All checks together
-print-md validate --input . --pdf dist/validation-example/validation-example-pdf.pdf
+gutterpress validate --input . --pdf dist/validation-example/validation-example-pdf.pdf
 
 # Full validated PDF/X pipeline (includes validation at both phases)
-print-md build . --format pdfx
+gutterpress build . --format pdfx
 
 # JSON output for CI
-print-md validate --input . --format json
+gutterpress validate --input . --format json
 ```
 
 ## Filtering
 
 ```bash
 # By category
-print-md validate --input . --category source
-print-md validate --pdf dist/validation-example/validation-example-pdf.pdf --category pdf,heuristic
+gutterpress validate --input . --category source
+gutterpress validate --pdf dist/validation-example/validation-example-pdf.pdf --category pdf,heuristic
 
 # By check ID
-print-md validate --input . --only source.markdownlint
-print-md validate --pdf dist/validation-example/validation-example-pdf.pdf --skip pdf.structure.qpdf
+gutterpress validate --input . --only source.markdownlint
+gutterpress validate --pdf dist/validation-example/validation-example-pdf.pdf --skip pdf.structure.qpdf
 
 # By phase
-print-md validate --input . --phase pre-build
+gutterpress validate --input . --phase pre-build
 ```
 
 ## What to Expect
@@ -82,4 +82,4 @@ built in** — no tools to install. The only optional system tools are for the
 
 Or skip installing anything and run the full PDF/X pipeline via the
 [Docker image](../../docs/docker.md). Rendering any PDF also needs a
-Chromium-based browser (see [System Setup](../print-md-user-guide/08-system-setup.md)).
+Chromium-based browser (see [System Setup](../gutterpress-user-guide/08-system-setup.md)).

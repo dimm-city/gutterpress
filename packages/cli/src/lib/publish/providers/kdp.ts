@@ -46,7 +46,7 @@ export const kdpProvider: PublishProvider = {
       severity: "info",
       id: "kdp/print-specs",
       message:
-        "KDP print interiors have strict trim/bleed/margin specs. Run `print-md validate --pdf <file>` and compare against your chosen trim size before uploading.",
+        "KDP print interiors have strict trim/bleed/margin specs. Run `gutterpress validate --pdf <file>` and compare against your chosen trim size before uploading.",
     });
     return issues;
   },
@@ -65,10 +65,10 @@ export const kdpProvider: PublishProvider = {
         "Fill in book details from LISTING.md (title, authors, description).",
         "Upload the interior PDF from the package folder as the manuscript.",
         "Upload a cover sized with KDP's Cover Calculator.",
-        "Use KDP's Print Previewer to verify margins and bleed, then submit for review.",
+        "Use KDP's Print Predesktop to verify margins and bleed, then submit for review.",
       ],
       detail:
-        "Amazon offers no KDP API, so print-md prepared the package and the checklist for you.",
+        "Amazon offers no KDP API, so gutterpress prepared the package and the checklist for you.",
     };
   },
 };

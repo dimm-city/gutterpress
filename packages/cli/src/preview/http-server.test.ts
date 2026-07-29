@@ -27,7 +27,7 @@ import type { PreviewServerOptions } from '../types';
 
 /**
  * `currentInputPath` (the served PROJECT root) and `tempDir` (where
- * print-md's own generated `book.html` lives) default to the SAME directory
+ * gutterpress's own generated `book.html` lives) default to the SAME directory
  * when only one is given — most tests here don't care about the split. The
  * two-arg form is used where a test specifically needs to prove
  * serve-in-place behavior: that a non-book.html path is read from the real
@@ -205,8 +205,8 @@ describe('createPreviewServer', () => {
   let port: number;
 
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), 'print-md-http-test-temp-'));
-    projectDir = await mkdtemp(join(tmpdir(), 'print-md-http-test-project-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'gutterpress-http-test-temp-'));
+    projectDir = await mkdtemp(join(tmpdir(), 'gutterpress-http-test-project-'));
     server = null;
     // Pick an unlikely-to-be-busy port range per test.
     port = 50000 + Math.floor(Math.random() * 5000);
@@ -238,9 +238,9 @@ describe('createPreviewServer', () => {
 
   test('serves the double-buffered preview shell for "/" by default', async () => {
     // With the preview shell enabled (the default), "/" returns the thin
-    // shell loader — it embeds book.html in an iframe (?pmdshell=1) and owns
+    // shell loader — it embeds book.html in an iframe (?gutterpressshell=1) and owns
     // HMR via preview-shell.js (flicker-free double-buffered reloads, the same
-    // iframe pattern the Electron viewer uses). It does NOT inline the book.
+    // iframe pattern the Electron desktop uses). It does NOT inline the book.
     await writeFile(
       join(tempDir, 'book.html'),
       '<!doctype html><html><body><h1>Hi</h1></body></html>'
@@ -254,14 +254,14 @@ describe('createPreviewServer', () => {
     expect(res.headers.get('content-type')).toContain('text/html');
 
     const body = await res.text();
-    expect(body).toContain('/book.html?pmdshell=1');
+    expect(body).toContain('/book.html?gutterpressshell=1');
     expect(body).toContain('preview-shell.js');
     // The shell is a loader, not the book itself.
     expect(body).not.toContain('<h1>Hi</h1>');
   });
 
   test('serves book.html with the HMR client injected', async () => {
-    // The CLI no longer ships a viewer chrome index.html; the rendered paginated
+    // The CLI no longer ships a desktop chrome index.html; the rendered paginated
     // book lives at /book.html. Any served HTML gets the HMR client injected so
     // direct embedders (and the shell's inner frame) can hot-reload.
     await writeFile(
@@ -278,7 +278,7 @@ describe('createPreviewServer', () => {
 
     const body = await res.text();
     expect(body).toContain('<h1>Hi</h1>');
-    expect(body).toContain('__print-md-hmr');
+    expect(body).toContain('__gutterpress-hmr');
     expect(body).toContain('full-reload');
     expect(body).toContain("closest('[data-chapter-src]')");
     expect(body).toContain('chapterId === a.chapter');
@@ -347,7 +347,7 @@ describe('createPreviewServer', () => {
   });
 
   test('no-input mode (no project root) 404s any non-book.html path instead of erroring', async () => {
-    // state.currentInputPath === '' models the viewer's "no directory picked
+    // state.currentInputPath === '' models the desktop's "no directory picked
     // yet" mode (see lifecycle.ts). There is no project to serve a
     // non-book.html path from, so every such request must 404, not throw or
     // crash the server.
@@ -381,7 +381,7 @@ describe('createPreviewServer', () => {
     const state = makeState(tempDir);
     server = await createPreviewServer(state, port);
 
-    const ws = new WebSocket(`ws://localhost:${port}/__print-md-hmr`);
+    const ws = new WebSocket(`ws://localhost:${port}/__gutterpress-hmr`);
 
     // Wait for connection.
     await new Promise<void>((resolve, reject) => {
@@ -431,7 +431,7 @@ describe('removed /__chapter route', () => {
   let port: number;
 
   beforeEach(async () => {
-    workDir = await mkdtemp(join(tmpdir(), 'print-md-chapter-test-'));
+    workDir = await mkdtemp(join(tmpdir(), 'gutterpress-chapter-test-'));
     server = null;
     port = 50000 + Math.floor(Math.random() * 5000);
   });

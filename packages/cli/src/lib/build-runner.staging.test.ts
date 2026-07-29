@@ -9,12 +9,12 @@ import type { PdfRenderInput } from "./pagination.ts";
 
 /**
  * Staging-hygiene guard (P2 / build-tmpdir-staging): a build must NOT leave a
- * `.print-md-stage*` scratch directory behind in the caller's cwd. runBuild is
- * exported and driven by the viewer host, so polluting/mutating cwd is a real
+ * `.gutterpress-stage*` scratch directory behind in the caller's cwd. runBuild is
+ * exported and driven by the desktop host, so polluting/mutating cwd is a real
  * side effect and breaks concurrent builds.
  *
  * Drives the FULL PDF path of runBuild via an injected `pdfRenderer` — the same
- * seam the Electron viewer uses. Injecting a renderer also skips the Chromium
+ * seam the Electron desktop uses. Injecting a renderer also skips the Chromium
  * preflight, so this runs with no browser installed. The fake renderer writes a
  * minimal valid PDF so the rest of the pipeline (stamp, fingerprint) runs to
  * completion exactly as production would.
@@ -45,12 +45,12 @@ afterEach(async () => {
   }
 });
 
-test("runBuild (pdf) leaves no .print-md-stage* dir in cwd and still writes the PDF", async () => {
+test("runBuild (pdf) leaves no .gutterpress-stage* dir in cwd and still writes the PDF", async () => {
   // A source project with a single chapter.
-  const inputDir = await mkdtemp(join(tmpdir(), "pmd-stage-input-"));
-  const outDir = await mkdtemp(join(tmpdir(), "pmd-stage-out-"));
+  const inputDir = await mkdtemp(join(tmpdir(), "gutterpress-stage-input-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-stage-out-"));
   // A pristine working directory we run the build FROM.
-  const workCwd = await mkdtemp(join(tmpdir(), "pmd-stage-cwd-"));
+  const workCwd = await mkdtemp(join(tmpdir(), "gutterpress-stage-cwd-"));
   dirsToClean.push(inputDir, outDir, workCwd);
 
   await writeFile(
@@ -83,7 +83,7 @@ test("runBuild (pdf) leaves no .print-md-stage* dir in cwd and still writes the 
 
   // No scratch staging directory leaked into the working directory.
   const leftover = (await readdir(workCwd)).filter((name) =>
-    name.startsWith(".print-md-stage")
+    name.startsWith(".gutterpress-stage")
   );
   expect(leftover).toEqual([]);
 });

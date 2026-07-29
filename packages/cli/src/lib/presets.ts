@@ -233,7 +233,7 @@ export function resolvePreset(presetName: string | undefined): VendorPreset {
   if (presetName === undefined) {
     warnOnce(
       "no-preset-set",
-      "[print-md] No `preset` set in manifest.yaml — defaulting to \"dtrpg\" " +
+      "[gutterpress] No `preset` set in manifest.yaml — defaulting to \"dtrpg\" " +
         "(DriveThruRPG trim size, TAC cap 240, forced PDF/X) for backward " +
         "compatibility. Set `preset: dtrpg` to keep this explicitly, or " +
         "`preset: book` for a neutral 6x9in trade-book default with no " +

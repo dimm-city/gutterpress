@@ -32,7 +32,7 @@ function Invoke-Process {
     }
 }
 
-function Invoke-PrintMd {
+function Invoke-Gutterpress {
     param(
         [pscustomobject]$Descriptor,
         [string[]]$Arguments
@@ -54,15 +54,15 @@ function Invoke-PrintMd {
     Invoke-Process -Command $Descriptor.Command -Arguments $args
 }
 
-function Get-PrintMdDescriptor {
+function Get-GutterpressDescriptor {
     $candidates = @(
-        [pscustomobject]@{ Display = 'print-md'; Command = 'print-md'; Args = @(); UseSeparator = $false }
+        [pscustomobject]@{ Display = 'gutterpress'; Command = 'gutterpress'; Args = @(); UseSeparator = $false }
     )
 
     # The standalone installer drops the binary in a known location. Fall
     # back to invoking it by absolute path so a missing PATH entry doesn't
     # mask a successful install.
-    $installedExe = Join-Path $env:LOCALAPPDATA "Programs\print-md\print-md.exe"
+    $installedExe = Join-Path $env:LOCALAPPDATA "Programs\gutterpress\gutterpress.exe"
     if (Test-Path $installedExe) {
         $candidates += [pscustomobject]@{
             Display = $installedExe
@@ -73,7 +73,7 @@ function Get-PrintMdDescriptor {
     }
 
     foreach ($candidate in $candidates) {
-        $result = Invoke-PrintMd -Descriptor $candidate -Arguments @('--version')
+        $result = Invoke-Gutterpress -Descriptor $candidate -Arguments @('--version')
         if ($result.ExitCode -eq 0) {
             $versionLine = ($result.Output -split "`r?`n")[0]
             return [pscustomobject]@{
@@ -83,7 +83,7 @@ function Get-PrintMdDescriptor {
         }
     }
 
-    throw "Unable to find a working print-md command"
+    throw "Unable to find a working gutterpress command"
 }
 
 function Require-Success {
@@ -99,7 +99,7 @@ function Require-Success {
 }
 
 try {
-    Write-Section "print-md Windows install test"
+    Write-Section "gutterpress Windows install test"
 
     if ($SkipInstall) {
         Write-Host "Skipping install step"
@@ -111,31 +111,31 @@ try {
 
     Refresh-UserPath
 
-    Write-Section "Resolving print-md command"
-    $printmd = Get-PrintMdDescriptor
-    Write-Host "Using command: $($printmd.Candidate.Display)"
-    Write-Host "print-md version: $($printmd.Version)"
+    Write-Section "Resolving gutterpress command"
+    $gutterpress = Get-GutterpressDescriptor
+    Write-Host "Using command: $($gutterpress.Candidate.Display)"
+    Write-Host "gutterpress version: $($gutterpress.Version)"
 
     if ($Quick) {
         Write-Host "Quick mode enabled; skipping extended help checks"
     } else {
-        Write-Section "Checking print-md --help"
-        $helpResult = Invoke-PrintMd -Descriptor $printmd.Candidate -Arguments @('--help')
-        Require-Success -Result $helpResult -FailureMessage 'print-md --help failed'
+        Write-Section "Checking gutterpress --help"
+        $helpResult = Invoke-Gutterpress -Descriptor $gutterpress.Candidate -Arguments @('--help')
+        Require-Success -Result $helpResult -FailureMessage 'gutterpress --help failed'
         if ($helpResult.Output -notmatch 'build' -or $helpResult.Output -notmatch 'preview') {
             throw 'Help output missing expected commands'
         }
 
-        Write-Section "Checking print-md build --help"
-        $buildResult = Invoke-PrintMd -Descriptor $printmd.Candidate -Arguments @('build', '--help')
-        Require-Success -Result $buildResult -FailureMessage 'print-md build --help failed'
+        Write-Section "Checking gutterpress build --help"
+        $buildResult = Invoke-Gutterpress -Descriptor $gutterpress.Candidate -Arguments @('build', '--help')
+        Require-Success -Result $buildResult -FailureMessage 'gutterpress build --help failed'
         if ($buildResult.Output -notmatch '--out\b' -or $buildResult.Output -notmatch '--format') {
             throw 'Build help output missing expected flags'
         }
 
-        Write-Section "Checking print-md preview --help"
-        $previewResult = Invoke-PrintMd -Descriptor $printmd.Candidate -Arguments @('preview', '--help')
-        Require-Success -Result $previewResult -FailureMessage 'print-md preview --help failed'
+        Write-Section "Checking gutterpress preview --help"
+        $previewResult = Invoke-Gutterpress -Descriptor $gutterpress.Candidate -Arguments @('preview', '--help')
+        Require-Success -Result $previewResult -FailureMessage 'gutterpress preview --help failed'
         if ($previewResult.Output -notmatch '--port') {
             throw 'Preview help output missing expected flags'
         }
@@ -152,7 +152,7 @@ try {
             throw 'Desktop path not available for current user'
         }
 
-        $shortcutPath = Join-Path $desktop 'Print-md Preview.lnk'
+        $shortcutPath = Join-Path $desktop 'gutterpress Desktop.lnk'
         if (-not (Test-Path $shortcutPath)) {
             throw "Desktop shortcut not found at $shortcutPath"
         }

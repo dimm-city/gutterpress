@@ -1,7 +1,7 @@
 /**
  * End-to-end tests for the CLI's positional-argument uniformity (UX finding
  * M46) and exit-code contract (UX finding M47), driven through the actual
- * `print-md` CLI process (built from source with Bun, no compiled binary) —
+ * `gutterpress` CLI process (built from source with Bun, no compiled binary) —
  * the surface these bugs were observed on. See `EXIT_CODES` in
  * `../lib/cli-args.ts` (re-exported from `../lib/build-error.ts`) for the
  * contract these tests pin: 0 clean / 1 findings / 2 usage / 3 pipeline.
@@ -32,7 +32,7 @@ function runCli(cliArgs: string[]): { exitCode: number; stdout: string; stderr: 
 }
 
 async function makeProjectDir(manifestYaml?: string): Promise<string> {
-  const dir = await makeTempDir("print-md-cli-contract-");
+  const dir = await makeTempDir("gutterpress-cli-contract-");
   if (manifestYaml !== undefined) {
     await writeFile(path.join(dir, "manifest.yaml"), manifestYaml, "utf8");
   }
@@ -42,7 +42,7 @@ async function makeProjectDir(manifestYaml?: string): Promise<string> {
 // ── M46: uniform optional positional [input-dir] ────────────────────────────
 
 describe("M46: validate/preflight/audit accept a positional project directory", () => {
-  test("`print-md validate <dir>` validates the given dir, not cwd", async () => {
+  test("`gutterpress validate <dir>` validates the given dir, not cwd", async () => {
     // A manifest with an unknown preset makes resolution fail loudly and
     // distinctly for THIS directory — proof the positional was actually used
     // (validating cwd, which has no such manifest, would behave differently).
@@ -56,7 +56,7 @@ describe("M46: validate/preflight/audit accept a positional project directory", 
     }
   }, 30000);
 
-  test("`print-md validate --input <dir>` still works (explicit flag)", async () => {
+  test("`gutterpress validate --input <dir>` still works (explicit flag)", async () => {
     const dir = await makeProjectDir("preset: totally-bogus-preset\n");
     try {
       const { exitCode, stderr } = runCli(["validate", "--input", dir]);
@@ -81,7 +81,7 @@ describe("M46: validate/preflight/audit accept a positional project directory", 
     }
   }, 30000);
 
-  test("`print-md audit <dir>` uses the real citty positional (not a hand-rolled args._ read)", async () => {
+  test("`gutterpress audit <dir>` uses the real citty positional (not a hand-rolled args._ read)", async () => {
     const dir = await makeProjectDir("preset: totally-bogus-preset\n");
     try {
       const { exitCode, stderr } = runCli(["audit", dir]);
@@ -92,7 +92,7 @@ describe("M46: validate/preflight/audit accept a positional project directory", 
     }
   }, 30000);
 
-  test("`print-md preflight <dir> --pdf <missing.pdf>` accepts the positional project directory", async () => {
+  test("`gutterpress preflight <dir> --pdf <missing.pdf>` accepts the positional project directory", async () => {
     const dir = await makeProjectDir("preset: totally-bogus-preset\n");
     try {
       const { exitCode, stderr } = runCli([
@@ -110,38 +110,38 @@ describe("M46: validate/preflight/audit accept a positional project directory", 
 });
 
 describe("M46: unexpected extra positionals are a UsageError (exit 2), uniformly", () => {
-  test("`print-md build a b` rejects the extra positional", async () => {
+  test("`gutterpress build a b` rejects the extra positional", async () => {
     const { exitCode, stderr } = runCli(["build", "a", "b"]);
     expect(exitCode).toBe(2);
-    expect(stderr).toContain("print-md build");
+    expect(stderr).toContain("gutterpress build");
     expect(stderr).toContain("unexpected extra argument");
   }, 30000);
 
-  test("`print-md validate a b` rejects the extra positional", async () => {
+  test("`gutterpress validate a b` rejects the extra positional", async () => {
     const { exitCode, stderr } = runCli(["validate", "a", "b"]);
     expect(exitCode).toBe(2);
-    expect(stderr).toContain("print-md validate");
+    expect(stderr).toContain("gutterpress validate");
   }, 30000);
 
-  test("`print-md audit a b` rejects the extra positional", async () => {
+  test("`gutterpress audit a b` rejects the extra positional", async () => {
     const { exitCode, stderr } = runCli(["audit", "a", "b"]);
     expect(exitCode).toBe(2);
-    expect(stderr).toContain("print-md audit");
+    expect(stderr).toContain("gutterpress audit");
   }, 30000);
 
-  test("`print-md lint a b` rejects the extra positional", async () => {
+  test("`gutterpress lint a b` rejects the extra positional", async () => {
     const { exitCode, stderr } = runCli(["lint", "a", "b"]);
     expect(exitCode).toBe(2);
-    expect(stderr).toContain("print-md lint");
+    expect(stderr).toContain("gutterpress lint");
   }, 30000);
 
-  test("`print-md new Name Extra` rejects the extra positional before touching disk", async () => {
-    const dir = await makeTempDir("print-md-cli-contract-new-");
+  test("`gutterpress new Name Extra` rejects the extra positional before touching disk", async () => {
+    const dir = await makeTempDir("gutterpress-cli-contract-new-");
     try {
       const before = fs.readdirSync(dir);
       const { exitCode, stderr } = runCli(["new", "Name", "Extra", "--dir", dir, "--no-git"]);
       expect(exitCode).toBe(2);
-      expect(stderr).toContain("print-md new");
+      expect(stderr).toContain("gutterpress new");
       // Nothing was scaffolded — the check ran before any filesystem work.
       expect(fs.readdirSync(dir)).toEqual(before);
     } finally {
@@ -153,8 +153,8 @@ describe("M46: unexpected extra positionals are a UsageError (exit 2), uniformly
 // ── M47: one exit-code contract ─────────────────────────────────────────────
 
 describe("M47: exit-code contract (0 clean / 1 findings / 2 usage / 3 pipeline)", () => {
-  test("`print-md lint` exits 1 (not 2) on CSS findings", async () => {
-    const dir = await makeTempDir("print-md-cli-contract-lint-");
+  test("`gutterpress lint` exits 1 (not 2) on CSS findings", async () => {
+    const dir = await makeTempDir("gutterpress-cli-contract-lint-");
     try {
       await mkdir(path.join(dir, "css"), { recursive: true });
       // A remote url() reference is flagged as a hard error by printsafe.ts.
@@ -175,8 +175,8 @@ describe("M47: exit-code contract (0 clean / 1 findings / 2 usage / 3 pipeline)"
     }
   }, 30000);
 
-  test("`print-md lint` on clean CSS exits 0", async () => {
-    const dir = await makeTempDir("print-md-cli-contract-lint-clean-");
+  test("`gutterpress lint` on clean CSS exits 0", async () => {
+    const dir = await makeTempDir("gutterpress-cli-contract-lint-clean-");
     try {
       await mkdir(path.join(dir, "css"), { recursive: true });
       await writeFile(path.join(dir, "css", "print.css"), "body { color: black; }\n", "utf8");
@@ -211,7 +211,7 @@ describe("C6: implicit preview only applies to directories or no command", () =>
   });
 
   test("a nonexistent path is rejected as an unknown command", () => {
-    const missing = path.join(process.cwd(), "definitely-not-a-print-md-directory");
+    const missing = path.join(process.cwd(), "definitely-not-a-gutterpress-directory");
     const { exitCode, stderr } = runCli([missing]);
     expect(exitCode).toBe(2);
     expect(stderr).toContain(`Unknown command "${missing}"`);
@@ -341,7 +341,7 @@ describe("plugin add usage errors", () => {
   });
 
   test("a nonexistent project target exits 2 and is not created", async () => {
-    const parent = await makeTempDir("print-md-cli-plugin-target-");
+    const parent = await makeTempDir("gutterpress-cli-plugin-target-");
     const missing = path.join(parent, "typoed-project");
     try {
       const { exitCode, stderr } = runCli([
@@ -425,7 +425,7 @@ describe("parse-time usage errors keep the documented exit code", () => {
   );
 
   test("a dash-prefixed string token is preserved as an option value", async () => {
-    const dir = await makeTempDir("print-md-cli-dash-value-");
+    const dir = await makeTempDir("gutterpress-cli-dash-value-");
     try {
       const { exitCode, stderr } = runCli([
         "new",

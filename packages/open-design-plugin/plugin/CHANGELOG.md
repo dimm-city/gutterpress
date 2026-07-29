@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the **Print-MD Publishing** Open Design plugin.
+All notable changes to the **Gutterpress Publishing** Open Design plugin.
 
 The version in `open-design.json` is bumped whenever the package contents or
 the workflow contract change. Changes to inputs, capabilities, edit scopes, or
@@ -15,7 +15,7 @@ ownership rules are user-visible compatibility changes.
 - Classified the package in Open Design's `refine` lane and recorded the tested
   Open Design floor.
 - Corrected theme cascade, Browser-context, preview-pagination, trust, and
-  distribution guidance to match current Open Design and Print-MD behavior.
+  distribution guidance to match current Open Design and Gutterpress behavior.
 - Made the injected skill self-contained because Open Design stages companion
   files without exposing a stable package-relative path to the agent.
 - Documented the CLI run's lack of Browser/form UI, the unenforced Open Design

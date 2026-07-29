@@ -23,7 +23,7 @@ const CRED: HostCredential = {
 };
 
 test("happy path: reachable repo reports ok with refCount and defaultBranch", async () => {
-  const repoDir = await tempDir("pmd-access-src-");
+  const repoDir = await tempDir("gutterpress-access-src-");
   let server: GitServer | null = null;
   try {
     await createFixtureRepo(repoDir);
@@ -41,7 +41,7 @@ test("happy path: reachable repo reports ok with refCount and defaultBranch", as
 }, 20_000);
 
 test("auth-required server without a credential classifies as auth", async () => {
-  const repoDir = await tempDir("pmd-access-auth-");
+  const repoDir = await tempDir("gutterpress-access-auth-");
   let server: GitServer | null = null;
   try {
     await createFixtureRepo(repoDir);
@@ -62,7 +62,7 @@ test("auth-required server without a credential classifies as auth", async () =>
 }, 20_000);
 
 test("auth-required server with the right credential succeeds (token kind → Basic auth)", async () => {
-  const repoDir = await tempDir("pmd-access-cred-");
+  const repoDir = await tempDir("gutterpress-access-cred-");
   let server: GitServer | null = null;
   try {
     await createFixtureRepo(repoDir);
@@ -79,7 +79,7 @@ test("auth-required server with the right credential succeeds (token kind → Ba
 }, 20_000);
 
 test("a credential embedded in the URL is used and never echoed (D7)", async () => {
-  const repoDir = await tempDir("pmd-access-urlcred-");
+  const repoDir = await tempDir("gutterpress-access-urlcred-");
   let server: GitServer | null = null;
   try {
     await createFixtureRepo(repoDir);
@@ -98,7 +98,7 @@ test("a credential embedded in the URL is used and never echoed (D7)", async () 
 }, 20_000);
 
 test("404 host classifies as not-found", async () => {
-  const repoDir = await tempDir("pmd-access-404-");
+  const repoDir = await tempDir("gutterpress-access-404-");
   let server: GitServer | null = null;
   try {
     await createFixtureRepo(repoDir);
@@ -114,7 +114,7 @@ test("404 host classifies as not-found", async () => {
 
 test("connection-refused classifies as unreachable", async () => {
   // A just-closed server's port refuses connections.
-  const repoDir = await tempDir("pmd-access-refused-");
+  const repoDir = await tempDir("gutterpress-access-refused-");
   try {
     await createFixtureRepo(repoDir);
     const server = await startGitServer(repoDir);
@@ -226,12 +226,12 @@ test("non-loopback http + stored credential: token is NEVER sent, classified ins
   }
 });
 
-// The viewer's Advanced Setup dialog sanitizes displayed messages with
+// The desktop's Advanced Setup dialog sanitizes displayed messages with
 // /https?:\/\/\S+/g → "(address hidden)". A message embedding a literal scheme
 // token — "(http://)" — matches that regex and renders as broken text on
 // exactly the surface these messages were written for. Copy may say "https",
 // never "http://" / "https://".
-test("failure messages contain no URL-shaped token (the viewer sanitizer would redact it)", () => {
+test("failure messages contain no URL-shaped token (the desktop sanitizer would redact it)", () => {
   const offenders = Object.entries(FAILURE_MESSAGES)
     .filter(([, message]) => /https?:\/\/\S+/.test(message))
     .map(([reason]) => reason);

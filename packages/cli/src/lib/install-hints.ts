@@ -4,7 +4,7 @@
  * installed.
  *
  * This is the single source of truth. `build-preflight.ts` (preflight error),
- * `diagnostics.ts` (viewer Help/About dialog + `print-md doctor`), and
+ * `diagnostics.ts` (desktop Help/About dialog + `gutterpress doctor`), and
  * `chromium.ts` (`requireChromiumExecutable`'s thrown error) all import
  * from here instead of hand-copying the per-platform install commands —
  * previously three diverging copies existed (see

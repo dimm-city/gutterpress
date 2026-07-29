@@ -40,8 +40,8 @@ const CRED: HostCredential = {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 test("full clone over smart HTTP classifies as local-git-folder and history works", async () => {
-  const repoDir = await tempDir("pmd-clone-src-");
-  const workDir = await tempDir("pmd-clone-dst-");
+  const repoDir = await tempDir("gutterpress-clone-src-");
+  const workDir = await tempDir("gutterpress-clone-dst-");
   const dest = path.join(workDir, "book");
   let server: GitServer | null = null;
   try {
@@ -95,8 +95,8 @@ test("full clone over smart HTTP classifies as local-git-folder and history work
 }, 20_000);
 
 test("SHALLOW CLONE SPIKE: depth:1 clones; listHistory + snapshot still work but history is truncated", async () => {
-  const repoDir = await tempDir("pmd-shallow-src-");
-  const workDir = await tempDir("pmd-shallow-dst-");
+  const repoDir = await tempDir("gutterpress-shallow-src-");
+  const workDir = await tempDir("gutterpress-shallow-dst-");
   const dest = path.join(workDir, "book");
   let server: GitServer | null = null;
   try {
@@ -134,8 +134,8 @@ test("SHALLOW CLONE SPIKE: depth:1 clones; listHistory + snapshot still work but
 }, 20_000);
 
 test("transport sends the credential as Basic auth (github-oauth → x-access-token)", async () => {
-  const repoDir = await tempDir("pmd-auth-src-");
-  const workDir = await tempDir("pmd-auth-dst-");
+  const repoDir = await tempDir("gutterpress-auth-src-");
+  const workDir = await tempDir("gutterpress-auth-dst-");
   const dest = path.join(workDir, "book");
   let server: GitServer | null = null;
   try {
@@ -157,8 +157,8 @@ test("transport sends the credential as Basic auth (github-oauth → x-access-to
 }, 20_000);
 
 test("token embedded in the clone URL is stripped, used for auth, and migrated to the store (D7)", async () => {
-  const repoDir = await tempDir("pmd-urlauth-src-");
-  const workDir = await tempDir("pmd-urlauth-dst-");
+  const repoDir = await tempDir("gutterpress-urlauth-src-");
+  const workDir = await tempDir("gutterpress-urlauth-dst-");
   const dest = path.join(workDir, "book");
   const store = new FileTokenStore(path.join(workDir, "credentials.json"));
   let server: GitServer | null = null;
@@ -197,8 +197,8 @@ test("token embedded in the clone URL is stripped, used for auth, and migrated t
 }, 20_000);
 
 test("failed clone removes the partially-created directory; a retry then succeeds", async () => {
-  const repoDir = await tempDir("pmd-cleanup-src-");
-  const workDir = await tempDir("pmd-cleanup-dst-");
+  const repoDir = await tempDir("gutterpress-cleanup-src-");
+  const workDir = await tempDir("gutterpress-cleanup-dst-");
   const dest = path.join(workDir, "book");
   let server: GitServer | null = null;
   try {
@@ -228,8 +228,8 @@ test("failed clone removes the partially-created directory; a retry then succeed
 }, 20_000);
 
 test("failed clone into a pre-existing (empty) folder keeps the user's folder", async () => {
-  const repoDir = await tempDir("pmd-keepdir-src-");
-  const workDir = await tempDir("pmd-keepdir-dst-");
+  const repoDir = await tempDir("gutterpress-keepdir-src-");
+  const workDir = await tempDir("gutterpress-keepdir-dst-");
   // workDir itself pre-exists (mkdtemp created it) and is empty.
   let server: GitServer | null = null;
   try {
@@ -292,7 +292,7 @@ test("non-loopback http + stored credential: clone names the insecure address, n
     token: "s3cret",
     createdAt: 0,
   };
-  const workDir = await tempDir("pmd-insecure-dst-");
+  const workDir = await tempDir("gutterpress-insecure-dst-");
   try {
     let thrown: unknown;
     try {
@@ -310,7 +310,7 @@ test("non-loopback http + stored credential: clone names the insecure address, n
     expect(message).toMatch(/isn't secure/i);
     expect(message).not.toMatch(/try again/i);
     expect(message).not.toContain(remoteCred.token);
-    // The viewer sanitizes displayed messages with /https?:\/\/\S+/g →
+    // The desktop sanitizes displayed messages with /https?:\/\/\S+/g →
     // "(address hidden)" — no literal scheme tokens allowed in the copy.
     expect(message).not.toMatch(/https?:\/\/\S+/);
   } finally {
@@ -319,7 +319,7 @@ test("non-loopback http + stored credential: clone names the insecure address, n
 });
 
 test("clone into a non-empty folder fails with a friendly message", async () => {
-  const workDir = await tempDir("pmd-nonempty-");
+  const workDir = await tempDir("gutterpress-nonempty-");
   try {
     await writeFile(path.join(workDir, "existing.txt"), "x");
     await expect(
@@ -331,7 +331,7 @@ test("clone into a non-empty folder fails with a friendly message", async () => 
 });
 
 test("SSH URLs are rejected with author-friendly guidance (ADR 0006 D6)", async () => {
-  const workDir = await tempDir("pmd-ssh-");
+  const workDir = await tempDir("gutterpress-ssh-");
   try {
     await expect(
       cloneRepository({

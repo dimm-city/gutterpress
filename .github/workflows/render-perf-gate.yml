@@ -1,5 +1,5 @@
 
-name: Viewer render-perf gate
+name: Gutterpress render-perf gate
 
 # Catches the v0.4.1..v0.5.0-rc.3 class of regression: hiding the cross-origin
 # preview iframe (opacity:0 / opaque cover) makes Chromium render-throttle it
@@ -16,11 +16,11 @@ on:
   pull_request:
     branches: [main, develop]
     paths:
-      - "packages/viewer/src/**"
-      - "packages/viewer/electron/**"
+      - "packages/desktop/src/**"
+      - "packages/desktop/electron/**"
       - "packages/cli/src/preview/**"
       - "packages/cli/src/assets/preview/**"
-      - "packages/viewer/tests/perf/**"
+      - "packages/desktop/tests/perf/**"
       - ".github/workflows/render-perf-gate.yml"
   workflow_dispatch:
 
@@ -45,8 +45,8 @@ jobs:
       - name: Build lib
         run: bun run build
 
-      - name: Build viewer (SPA + electron main)
-        working-directory: packages/viewer
+      - name: Build desktop (SPA + electron main)
+        working-directory: packages/desktop
         run: |
           npm run build
           npm run electron:build
@@ -55,7 +55,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Run render-perf gate
-        working-directory: packages/viewer
+        working-directory: packages/desktop
         # No DISPLAY on the runner → the gate wraps electron in xvfb-run itself.
         run: node tests/perf/render-gate.mjs
 
@@ -64,7 +64,7 @@ jobs:
       # it never turns this check red (kept off the required-checks path,
       # per CLAUDE.md / the perf map). Reuses the app already built above.
       - name: Run re-render latency gate (advisory)
-        working-directory: packages/viewer
+        working-directory: packages/desktop
         # `if: always()` so a hard fail of the throughput gate above still lets
         # the advisory number get reported; the step itself cannot fail CI.
         if: always()

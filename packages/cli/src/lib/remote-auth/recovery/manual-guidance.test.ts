@@ -46,10 +46,10 @@ describe("makeManualGuidance — machine action key", () => {
     });
   }
 
-  // The viewer's Advanced Setup dialog sanitizes displayed messages with
+  // The desktop's Advanced Setup dialog sanitizes displayed messages with
   // /https?:\/\/\S+/g → "(address hidden)"; a literal "(https://)" in the copy
   // matches it and renders as broken text. Say "https", never "https://".
-  test("insecure_transport guidance contains no URL-shaped token (viewer sanitizer)", () => {
+  test("insecure_transport guidance contains no URL-shaped token (desktop sanitizer)", () => {
     const g = makeManualGuidance(ctx, "insecure_transport");
     for (const text of [g.userSummary, g.recommendedNextStep, ...(g.safeNextSteps ?? [])]) {
       expect(text).not.toMatch(/https?:\/\/\S+/);
@@ -118,7 +118,7 @@ describe("makeManualGuidance — machine action key", () => {
       userSummary:
         "Your project's last update didn't finish, so it can't be synced yet.",
       recommendedNextStep:
-        "Let print-md undo the unfinished update and return your project to its last working state.",
+        "Let gutterpress undo the unfinished update and return your project to its last working state.",
       recommendedAction: "Restore to normal",
       recommendedActionKey: "restore_repo",
       safeNextSteps: [
@@ -136,7 +136,7 @@ describe("makeManualGuidance — machine action key", () => {
       userSummary:
         "Your project's last update didn't finish, so it can't be synced yet.",
       recommendedNextStep:
-        "Let print-md undo the unfinished update and return your project to its last working state.",
+        "Let gutterpress undo the unfinished update and return your project to its last working state.",
       recommendedAction: "Restore to normal",
       recommendedActionKey: "restore_repo",
       safeNextSteps: [
@@ -152,7 +152,7 @@ describe("makeManualGuidance — machine action key", () => {
       userSummary:
         "Your project's last update didn't finish, so it can't be synced yet.",
       recommendedNextStep:
-        "Let print-md undo the unfinished update and return your project to its last working state.",
+        "Let gutterpress undo the unfinished update and return your project to its last working state.",
       recommendedAction: "Restore to normal",
       recommendedActionKey: "restore_repo",
       safeNextSteps: [

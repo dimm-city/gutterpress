@@ -4,7 +4,7 @@
  * which reads as gibberish to a non-technical writer. The human-readable
  * description must come first; the rule code is demoted to a suffix (and
  * also surfaced structurally via `CheckResult.code` for consumers — e.g. the
- * viewer's Problems panel — that want to key off it without parsing prose).
+ * desktop's Problems panel — that want to key off it without parsing prose).
  */
 import { describe, test, expect } from "bun:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
@@ -18,7 +18,7 @@ import "./markdownlint";
 
 describe("markdownlint message format (writer-first, M32)", () => {
   test("message leads with the human description, not the rule code", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-msg-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-mdlint-msg-"));
     try {
       await writeFile(join(dir, ".markdownlint.yaml"), "default: true\n");
       const mdFile = join(dir, "doc.md");

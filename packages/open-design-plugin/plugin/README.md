@@ -1,16 +1,16 @@
-# Print-MD Publishing — an Open Design plugin
+# Gutterpress Publishing — an Open Design plugin
 
-Design and refine an **existing** Print-MD publication in place, without
+Design and refine an **existing** Gutterpress publication in place, without
 converting it into a web application and without editing generated output.
 
-Print-MD stays the renderer. Open Design edits the ordinary Markdown, CSS,
-theme, manifest, and plugin files that Print-MD already understands, and the
-running Print-MD preview is the authority for pagination.
+Gutterpress stays the renderer. Open Design edits the ordinary Markdown, CSS,
+theme, manifest, and plugin files that Gutterpress already understands, and the
+running Gutterpress preview is the authority for pagination.
 
 ## What it is
 
 A static Open Design plugin — no JavaScript, no MCP server, no React surface,
-no Print-MD API. The package is two contracts plus optional supporting reference
+no Gutterpress API. The package is two contracts plus optional supporting reference
 material:
 
 ```text
@@ -35,20 +35,20 @@ plugin/
 The plugin is not yet listed in the Open Design marketplace. Install the
 Git-tracked package as a trusted local plugin.
 
-From a Print-MD checkout:
+From a Gutterpress checkout:
 
 ```bash
 od plugin validate ./packages/open-design-plugin/plugin --no-daemon
 od plugin install  ./packages/open-design-plugin/plugin
-od plugin doctor   print-md-publishing
+  od plugin doctor   gutterpress-publishing
 ```
 
 From a publication repository that vendors the package:
 
 ```bash
-od plugin validate ./design/open-design/plugins/print-md-publishing --no-daemon
-od plugin install  ./design/open-design/plugins/print-md-publishing
-od plugin doctor   print-md-publishing
+od plugin validate ./design/open-design/plugins/gutterpress-publishing --no-daemon
+od plugin install  ./design/open-design/plugins/gutterpress-publishing
+od plugin doctor   gutterpress-publishing
 ```
 
 A local install **copies** the package into Open Design's registry. Editing the
@@ -79,21 +79,21 @@ and the active Browser tab:
 | Goal | Use the concrete request; ask when no outcome was requested. |
 | Edit scope | Default to `theme`; widen to `layout` or `content` only when the request requires it. |
 | Change ownership | Default to `book-only`; use shared foundations only when explicitly requested. |
-| Preview URL | Prefer the active loopback Print-MD Browser tab, then port 3579; verify `/api/status` before relying on it. |
+| Preview URL | Prefer the active loopback Gutterpress browser tab, then port 3579; verify `/api/status` before relying on it. |
 
 When a safety-relevant value cannot be inferred, the agent emits one inline
-`print-md-brief` question form containing only the unresolved fields and waits
+`gutterpress-brief` question form containing only the unresolved fields and waits
 for the answer before writing.
 
 ## Using it
 
 1. Import the **repository root** into Open Design and open the **target book**
-   in Print-MD.
-2. Start `print-md preview ./books/core-book` and open its printed URL in an Open
+   in Gutterpress.
+2. Start `gutterpress preview ./books/core-book` and open its printed URL in an Open
    Design Browser tab.
 3. Attach the plugin and describe the goal, book, and any non-default scope in
    the same message.
-4. Review the source edits, wait for pagination, and run the normal Print-MD
+4. Review the source edits, wait for pagination, and run the normal Gutterpress
    checks before committing.
 
 Open Design 0.16.1 has a host-side limitation in its existing-project plugin
@@ -102,7 +102,7 @@ the subsequent run. Until that host issue is fixed, the reliable invocation is:
 
 ```bash
 od project list
-od plugin run print-md-publishing \
+od plugin run gutterpress-publishing \
   --project <project-id> \
   --message "In books/core-book, tighten chapter opener spacing. Keep the change book-only and do not edit prose. The preview is http://localhost:3579/." \
   --follow
@@ -114,7 +114,7 @@ preview URL in `--message` when they matter. If the agent still emits a
 clarification form, that run stops without writing; answer from the project chat
 or start a follow-up run with the resolved brief.
 
-The package does not start or supervise Print-MD. Its workflow policy also
+The package does not start or supervise Gutterpress. Its workflow policy also
 forbids Git, package-manager, and generated-output edits.
 
 ## Capabilities
@@ -156,11 +156,11 @@ files outside the imported repository root
 
 The workflow forbids these paths. It also forbids tool-specific override CSS,
 token JSON, project-state files, and the removed `source.assets` / `output`
-manifest fields, both of which fail a current Print-MD build.
+manifest fields, both of which fail a current Gutterpress build.
 
 ## Compatibility
 
-- **Print-MD:** this release candidate requires the unreleased Print-MD source
+- **Gutterpress:** this release candidate requires the unreleased Gutterpress source
   on this branch as of 2026-07-28. Published version 0.8.3 does not contain the
   required full-document preview reload and shared-dependency recovery fixes;
   record an exact release floor after those changes are tagged.

@@ -5,7 +5,7 @@ import { isToolAvailable, findTool } from "./tool-probe";
 // bun itself is guaranteed to be on PATH in this test environment (the test
 // runner is `bun test`), so it's a safe stand-in for "a real, installed tool".
 const REAL_TOOL = "bun";
-const FAKE_TOOL = "print-md-definitely-not-a-real-binary-xyz";
+const FAKE_TOOL = "gutterpress-definitely-not-a-real-binary-xyz";
 
 test("isToolAvailable resolves true for a tool that is actually on PATH", async () => {
   expect(await isToolAvailable(REAL_TOOL)).toBe(true);

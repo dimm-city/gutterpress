@@ -64,7 +64,7 @@ test("extractUrlCredential keys the migrated credential with the port kept", () 
 // ── Writer→reader round-trips on real repo fixtures ──────────────────────────
 
 async function repoWithRemote(remoteUrl: string): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-hostkey-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-hostkey-"));
   const gitDir = path.join(dir, ".git");
   await mkdir(gitDir, { recursive: true });
   await writeFile(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n");
@@ -153,7 +153,7 @@ test("canSync truth table: https+cred → sync; https−cred → connect; ssh �
     const repo = c.remote
       ? await repoWithRemote(c.remote)
       : await (async () => {
-          const dir = await mkdtemp(path.join(tmpdir(), "pmd-hostkey-"));
+          const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-hostkey-"));
           const gitDir = path.join(dir, ".git");
           await mkdir(gitDir, { recursive: true });
           await writeFile(path.join(gitDir, "HEAD"), "ref: refs/heads/main\n");

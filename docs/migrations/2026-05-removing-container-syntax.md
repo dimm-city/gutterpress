@@ -1,6 +1,6 @@
 # Migration: removing `:::` container syntax (2026-05-17)
 
-Print-md used to ship `markdown-it-container`, which parsed triple-colon
+Gutterpress used to ship `markdown-it-container`, which parsed triple-colon
 fences (`::: name ... :::`) into a `<div class="name">` wrapper. That plugin
 and syntax were **removed** on 2026-05-17. The `@`-prefixed marker family
 already built into core (`@page`, `@section`, `@end-section`, `@column-break`,
@@ -12,7 +12,7 @@ markdown in a styled, page-break-aware `<div>`.
 - `@section` already gives every named container the same capability
   (`break-inside: avoid`, an addressable `#id`, arbitrary `.class` names) with
   no separate plugin, no per-container registration step, and no
-  print-md-specific plugin API (see rule 5 in `CLAUDE.md`).
+  Gutterpress-specific plugin API (see rule 5 in `CLAUDE.md`).
 - Two competing block-wrapping syntaxes (`:::name` and `@section`) added
   author confusion without adding capability.
 
@@ -39,10 +39,10 @@ as-is.
 `validate.source.allowedCallouts` gated a callout-name validation check that
 only made sense for the container-syntax registration model. It is now a
 no-op — the field is kept in the schema so older manifests still parse, but
-it has no effect. It can be deleted from your `manifest.yaml`; print-md
+it has no effect. It can be deleted from your `manifest.yaml`; Gutterpress
 prints a one-time deprecation warning if it's left in place with entries.
 
 ## See also
 
-- [User Guide: Chapter 2 — Writing Your Content](../../examples/print-md-user-guide/02-writing-content.md) for the full `@` marker reference
-- [User Guide: Chapter 6 — Plugins](../../examples/print-md-user-guide/06-plugins.md) for the plugin pipeline these markers are part of
+- [User Guide: Chapter 2 — Writing Your Content](../../examples/gutterpress-user-guide/02-writing-content.md) for the full `@` marker reference
+- [User Guide: Chapter 6 — Plugins](../../examples/gutterpress-user-guide/06-plugins.md) for the plugin pipeline these markers are part of

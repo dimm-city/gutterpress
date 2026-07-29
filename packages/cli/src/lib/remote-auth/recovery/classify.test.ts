@@ -397,10 +397,10 @@ describe("classifyTransportFailure / classifyGitError — insecure transport", (
     expect(classifyGitError(insecureTransportError(), healthyRepo)).toBe("insecure_transport");
   });
 
-  // The viewer's Advanced Setup dialog sanitizes displayed messages with
+  // The desktop's Advanced Setup dialog sanitizes displayed messages with
   // /https?:\/\/\S+/g → "(address hidden)"; a literal "(http://)" in the copy
   // matches it and renders as broken text. Say "https", never "http://".
-  test("InsecureTransportError's message contains no URL-shaped token (viewer sanitizer)", () => {
+  test("InsecureTransportError's message contains no URL-shaped token (desktop sanitizer)", () => {
     expect(new InsecureTransportError().message).not.toMatch(/https?:\/\/\S+/);
   });
 });

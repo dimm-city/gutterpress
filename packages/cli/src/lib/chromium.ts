@@ -40,7 +40,7 @@ const SYSTEM_PATHS: string[] = [
 
 /**
  * Chromium-compatible binary names to probe on PATH if no fixed location hits.
- * Order is "most likely to be a print-md-suitable Chromium" first.
+ * Order is "most likely to be a Gutterpress-suitable Chromium" first.
  */
 const PATH_CANDIDATES: string[] = [
   "google-chrome",
@@ -100,15 +100,15 @@ export async function requireChromiumExecutable(): Promise<string> {
 
   throw new Error(
     [
-      "No Chrome / Chromium / Edge binary found. print-md needs a Chromium-based browser to render PDFs.",
+      "No Chrome / Chromium / Edge binary found. Gutterpress needs a Chromium-based browser to render PDFs.",
       "",
       "Install one of:",
       INSTALL_HINTS.chromium.body,
       "",
       "Or point to an existing install:",
-      "  CHROMIUM_PATH=/path/to/chrome print-md build ...",
+      "  CHROMIUM_PATH=/path/to/chrome gutterpress build ...",
       "",
-      "The print-md desktop app includes its own browser and needs no separate browser installation.",
+      "The Gutterpress desktop app includes its own browser and needs no separate browser installation.",
     ].join("\n")
   );
 }

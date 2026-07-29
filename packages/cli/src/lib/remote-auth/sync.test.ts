@@ -50,10 +50,10 @@ interface Harness {
 }
 
 async function setupClone(opts: { requireAuth?: { username: string; password: string } } = {}): Promise<Harness> {
-  const serverDir = await tempDir("pmd-sync-server-");
+  const serverDir = await tempDir("gutterpress-sync-server-");
   await createFixtureRepo(serverDir);
   const server = await startGitServer(serverDir, opts);
-  const parent = await tempDir("pmd-sync-client-");
+  const parent = await tempDir("gutterpress-sync-client-");
   const projectDir = path.join(parent, "project");
   const credential: HostCredential | undefined = opts.requireAuth
     ? {
@@ -505,7 +505,7 @@ describe("syncProject", () => {
 
 describe("test server receive-pack validation", () => {
   test("a stale oldOid is rejected as non-fast-forward and the ref does not move", async () => {
-    const serverDir = await tempDir("pmd-sync-nff-server-");
+    const serverDir = await tempDir("gutterpress-sync-nff-server-");
     const { first } = await createFixtureRepo(serverDir);
     const server = await startGitServer(serverDir);
     try {
@@ -857,7 +857,7 @@ describe("resolveConflicts", () => {
       // Detach HEAD directly (isomorphic-git's currentBranch() returns
       // undefined once HEAD is a raw oid instead of a symbolic ref) so
       // resolveConflicts's own currentBranchOrThrow() throws MSG_NO_BRANCH —
-      // the same setup-error path the viewer's ConflictChoicesDialog must
+      // the same setup-error path the desktop's ConflictChoicesDialog must
       // route to its connect surface instead of rendering verbatim.
       const oid = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
       fs.writeFileSync(path.join(h.projectDir, ".git", "HEAD"), `${oid}\n`);
@@ -1037,7 +1037,7 @@ describe("resolveConflicts binary safety (BUG 3)", () => {
     h: Harness;
     onlinePng: Uint8Array;
   }> {
-    const serverDir = await tempDir("pmd-bin-server-");
+    const serverDir = await tempDir("gutterpress-bin-server-");
     await createFixtureRepo(serverDir);
     // Base commit on the server: a binary cover + a text chapter (the shared
     // ancestor both sides will diverge from).
@@ -1052,7 +1052,7 @@ describe("resolveConflicts binary safety (BUG 3)", () => {
     });
 
     const server = await startGitServer(serverDir);
-    const parent = await tempDir("pmd-bin-client-");
+    const parent = await tempDir("gutterpress-bin-client-");
     const projectDir = path.join(parent, "project");
     // Clone NOW — the client gets the binary base as its common ancestor.
     await cloneRepository({ url: server.url, dir: projectDir });
@@ -1442,13 +1442,13 @@ describe("syncProject — structural preflight", () => {
     try {
       await writeFile(path.join(h.projectDir, "chapter-01.md"), "# One\n\nRecovered staged draft.\n");
       await git.add({ fs, dir: h.projectDir, filepath: "chapter-01.md" });
-      fs.writeFileSync(path.join(h.projectDir, ".git", "print-md-snapshot-staging"), "");
+      fs.writeFileSync(path.join(h.projectDir, ".git", "gutterpress-snapshot-staging"), "");
 
       const outcome = await syncProject({ projectDir: h.projectDir });
 
       expect(outcome.status).toBe("synced");
       expect("snapshotId" in outcome ? outcome.snapshotId : undefined).toBeDefined();
-      expect(fs.existsSync(path.join(h.projectDir, ".git", "print-md-snapshot-staging"))).toBe(false);
+      expect(fs.existsSync(path.join(h.projectDir, ".git", "gutterpress-snapshot-staging"))).toBe(false);
       expect(await serverHead(h.serverDir)).toBe(
         await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" }),
       );

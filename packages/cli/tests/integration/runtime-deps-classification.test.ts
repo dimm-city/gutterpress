@@ -3,7 +3,7 @@
  * packages/cli/package.json#dependencies (not devDependencies).
  *
  * electron-builder packages production deps only. A missing dep classification
- * means the packaged viewer crashes at runtime with ERR_MODULE_NOT_FOUND when
+ * means the packaged desktop crashes at runtime with ERR_MODULE_NOT_FOUND when
  * it hits that code path — exactly what happened with stylelint in v0.1.2.
  *
  * This test scans the lib source for static and dynamic imports, filters out
@@ -163,7 +163,7 @@ describe("runtime deps classification", () => {
           violations.push({
             package: pkg,
             where,
-            reason: `runtime import of "${pkg}" but it's in devDependencies — electron-builder won't ship it, packaged viewer will crash with ERR_MODULE_NOT_FOUND`,
+            reason: `runtime import of "${pkg}" but it's in devDependencies — electron-builder won't ship it, packaged desktop will crash with ERR_MODULE_NOT_FOUND`,
           });
         } else {
           violations.push({

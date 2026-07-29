@@ -4,7 +4,7 @@
 
 This repo is a Bun workspace with two packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package:
+- **`packages/cli/`** (`gutterpress`) — the single published package:
   ALL runtime logic (markdown rendering, preview HTTP server, PDF generation via
   puppeteer-core, lint, validation — under `src/`) **and** the CLI entry
   (`src/cli.ts`). It exposes a library (`exports` → `dist/index.js`) and a CLI
@@ -19,7 +19,7 @@ This repo is a Bun workspace with two packages:
   (`bun build src/cli.ts --compile --target=<target> --outfile=…`) — there is
   no separate `compile` package.json script or `scripts/compile.ts`. The
   no-bundlers-at-runtime rule (§1 below) applies to this package.
-- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron desktop
+- **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron desktop
   app with a SvelteKit SPA frontend. The SPA is built with
   `@sveltejs/adapter-node`, which emits a Node HTTP handler (`build/handler.js`).
   In production the Electron main process starts that handler on a local
@@ -33,24 +33,24 @@ This repo is a Bun workspace with two packages:
   updater events) and the build/preview pipeline calls that need a live
   BrowserWindow. The Electron main + preload are
   built by **electron-vite** to `out/main/main.js` + `out/preload/`; the main
-  is ESM and loads the lib with a plain dynamic `import("@dimm-city/print-md")`
+  is ESM and loads the lib with a plain dynamic `import("gutterpress")`
   (no CJS→ESM `new Function` bridge — that was removed when the build moved to
   electron-vite + asar, commit `c5e75ae`). No afterPack hook; electron-builder
   packages the lib + its transitive deps from the workspace `node_modules` via
   its standard dep walker (puppeteer-core is `asarUnpack`ed; PDF export itself
   uses Electron's own Chromium via `webContents.printToPDF` — see
   `docs/adr/0002-pdf-rendering-and-pure-js-tooling.md`).
-  See [project_viewer_architecture] memory + `packages/viewer/README.md` for the
+  See [project_gutterpress_architecture] memory + `packages/desktop/` for the
   full picture.
 
 The lib's runtime is Node.js-compatible — no `Bun.serve`/`Bun.file`/
 runtime Bun APIs. `with { type: "file" }` is used as a build-time syntax
 only; bun build compiles it to plain string constants in the dist output.
-This is what enables the viewer to run with Electron's bundled Node.
+This is what enables the desktop app to run with Electron's bundled Node.
 Bun is required for development (workspace install, lib build, CLI
-compile, tests) but NOT for end users of the packaged viewer.
+compile, tests) but NOT for end users of the packaged desktop app.
 
-## What print-md ships
+## What Gutterpress ships
 
 A standalone binary built with `bun build --compile`, via the inline compile
 step in the release workflow's `build-cli` job (`.github/workflows/release.yml`:
@@ -59,7 +59,7 @@ per platform). Users download a single executable from GitHub Releases —
 no Node, no Bun, no `node_modules` on the host. The CLI also runs from source
 via `bun packages/cli/src/cli.ts` during development.
 
-## print-md Primary Goals
+## Gutterpress Primary Goals
 > [!ALERT]
 > VERY IMPORTANT: All changes to this repo MUST comply with these goals.
 > All changes must REDUCE complexity unless it can be properly justified.
@@ -82,7 +82,7 @@ pipeline.
 Default, author-facing layout primitives belong in the most general reusable
 layer that can own them:
 
-1. Put generic markdown authoring behavior in core print-md / `markdown-it-paged`
+1. Put generic markdown authoring behavior in core Gutterpress / `markdown-it-paged`
 2. Put project-specific component chrome and macro semantics in that project's
    plugin and component CSS layer
 3. Put book-specific positioning and context-only break tuning in that book's
@@ -120,7 +120,7 @@ If you need a dev server with live reload, use **`node:http` + the `ws`
 package** — not `Bun.serve`. The lib runtime must stay Bun-API-free (see the
 Monorepo layout section above: no `Bun.serve`/`Bun.file`) so Electron's bundled
 Node can run it in-process; `Bun.serve` would work under Bun but crash the
-packaged viewer. The actual implementation
+packaged desktop app. The actual implementation
 (`packages/cli/src/preview/http-server.ts`) is a `node:http` static file
 server + a `ws` WebSocket server that broadcasts a "full-reload" message on
 file change — Node-compatible, runs under both Bun (dev / compiled binary)
@@ -128,9 +128,9 @@ and Node.js (Electron), with no bundler involved.
 
 ### 2. Lazy-load heavy optional deps
 
-Anything used by a single subcommand (e.g. `puppeteer-core` in `print-md build`)
+Anything used by a single subcommand (e.g. `puppeteer-core` in `gutterpress build`)
 should be imported with a dynamic `import()` inside the command handler, not at
-top-level. This keeps `print-md --help` fast and isolates failures to the
+top-level. This keeps `gutterpress --help` fast and isolates failures to the
 specific command path.
 
 ### 3. Keep the binary free of deps that need filesystem resolution at runtime
@@ -152,30 +152,30 @@ every dep bump).
 ### 4. Embedded static assets are fine
 
 `with { type: "file" }` imports and `packages/cli/src/lib/embedded-assets.ts`'s
-extraction pattern are the **canonical** way to ship the viewer chrome
+extraction pattern are the **canonical** way to ship the desktop chrome
 (HTML/CSS/JS) inside the binary. This pattern works under `bun build --compile`
 and should not be rewritten.
 
 ### 5. Plugins are plain markdown-it plugins
 
 User plugins loaded via the manifest follow the standard `(md, options) => void`
-markdown-it signature. Do **not** introduce a print-md-specific plugin API
+markdown-it signature. Do **not** introduce a Gutterpress-specific plugin API
 (no host-injected `ctx` arg, no required base class, no custom hooks).
 Reasons:
 
-  1. Any of the hundreds of markdown-it plugins on npm Just Works in print-md.
-  2. Plugin authors cannot reliably import from `@dimm-city/print-md` because
+  1. Any of the hundreds of markdown-it plugins on npm Just Works in Gutterpress.
+  2. Plugin authors cannot reliably import from `gutterpress` because
      the compiled binary has no `node_modules` for plugin code to resolve
      against. If a plugin needs an internal helper, it must inline-copy it
      (e.g. a plugin's marker parser should be an inlined copy of
      `markdown-it-paged`'s `parseMarkerLine`, not an import).
   3. `packages/cli/src/index.ts` re-exports type-only definitions
-     (`PrintMdPlugin`, `PrintMdPluginMetadata`, `PrintMdPluginExport`) for
+     (`GutterpressPlugin`, `GutterpressPluginMetadata`, `GutterpressPluginExport`) for
      TypeScript plugin authors. Types only — zero runtime coupling.
 
 Plugin loader (`packages/cli/src/lib/markdown/plugins.ts`) does NOT auto-install
 or access the network. Installation is an explicit shared-lib action
-(`addNpmPlugin`, used by the viewer route and `print-md plugin add`) that resolves
+(`addNpmPlugin`, used by the desktop route and `gutterpress plugin add`) that resolves
 the public npm registry to an exact version graph, verifies every tarball,
 safely vendors a complete nested dependency tree under the project, writes a
 whole-tree schema-v2 receipt, load-tests it, and only then atomically records
@@ -196,13 +196,13 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
     A final artifact must never silently omit author-configured formatting.
   - **Degrade-and-report (`onError` supplied)** — the LIVE PREVIEW only. A plugin
     whose vendored copy is missing or cannot load is skipped, `onError` fires
-    (the preview `warn`s; the viewer Plugins panel shows "Needs install" or the
+    (the preview `warn`s; the desktop Plugins panel shows "Needs install" or the
     load error with fix instructions), and the rest of the document still
     renders. This is NOT the silent-skip that the loader deliberately removed —
     every skip is surfaced loudly. Rationale: one uninstalled plugin must not
     blank a non-technical author's entire preview.
 
-Authoring guide lives in [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md).
+Authoring guide lives in [User Guide: Chapter 6 — Plugins](./examples/gutterpress-user-guide/06-plugins.md).
 
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
 removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,
@@ -237,12 +237,12 @@ The upcoming project-source / version-history / GitHub features (milestones
   `local-folder` (no Git) when Git can't or shouldn't be used.
 - **Shared lib, not duplicated.** Project scaffolding (with embedded-asset
   templates), source-type detection/capabilities, and the Git/provider layer
-  live in `@dimm-city/print-md` and are consumed by **both** the CLI
-  (`print-md new`, etc.) and the viewer — one implementation, two thin
+  live in `gutterpress` and are consumed by **both** the CLI
+  (`gutterpress new`, etc.) and the desktop app — one implementation, two thin
   front-ends.
 
 Rationale: this keeps the `bun build --compile` CLI binary and the packaged
-viewer fully self-contained (consistent with §1/§3) and makes the features work
+desktop app fully self-contained (consistent with §1/§3) and makes the features work
 for users with nothing pre-installed. NOTE: the existing PDF-validation external
 tools (qpdf/gs/pdf* via `execCapture`) are a separate, pre-existing concern and
 are unaffected by this rule — this rule governs the new Git/source surface only.
@@ -250,11 +250,11 @@ are unaffected by this rule — this rule governs the new Git/source surface onl
 ### 8. Platform abstraction — the renderer is host-agnostic; the host runs platform code (CORE REQUIREMENT)
 
 > [!ALERT]
-> This is a **non-negotiable core architecture requirement** for the viewer and
+> This is a **non-negotiable core architecture requirement** for the desktop app and
 > for **every Electron application started in this org** — it is the gold
 > standard, applied by default. See `docs/adr/0004-platform-abstraction.md`.
 
-The viewer is an Electron shell hosting a **SvelteKit SPA** (built with
+The desktop app is an Electron shell hosting a **SvelteKit SPA** (built with
 `@sveltejs/adapter-node`). The SPA is written so it could run unchanged in a
 browser PWA tomorrow. To make that true — and to keep the desktop build correct
 — the renderer never contains host/Node code; it reaches the host through one
@@ -273,10 +273,10 @@ BrowserWindow. Either way the renderer stays PWA-clean — a `+server.ts` route 
 host Node code that happens to live under `src/routes/`, and it never leaks into
 the client bundle.
 
-**The renderer (the SPA, everything under `packages/viewer/src/`) MUST stay
+**The renderer (the SPA, everything under `packages/desktop/src/`) MUST stay
 "PWA-clean": it contains ZERO platform/host code.**
 
-- **No runtime imports from `@dimm-city/print-md`** in the SPA. `import type`
+- **No runtime imports from `gutterpress`** in the SPA. `import type`
   is fine (erased at build). A *value* import (e.g. `import { checkCss }`) drags
   the Node-target lib — and its transitive `fileURLToPath`/`node:*`/`postcss`/
   `isomorphic-git` code — into the browser bundle, which builds fine (vite shims
@@ -314,7 +314,7 @@ directly (only `electron-adapter.ts` may).
 above).
 
 1. `src/routes/api/<ns>/<op>/+server.ts` — the real Node work (may `import`
-   `@dimm-city/print-md`, `node:*`, postcss, isomorphic-git — it runs in main,
+   `gutterpress`, `node:*`, postcss, isomorphic-git — it runs in main,
    never in the client bundle)
 2. `src/lib/api.ts` — the typed `fetch("/api/<ns>/<op>")` wrapper; components
    call `api.<ns>.<op>(...)` directly. No `contract.ts` / `HostServices` /
@@ -344,7 +344,7 @@ because every route needs a `Platform` method; the route itself is still the
 (A) path.
 
 **Svelte 5 conventions: `$effect` is banned in the SPA.** Enforced by eslint
-(`no-restricted-syntax` in `packages/viewer/eslint.config.*`) — the error
+(`no-restricted-syntax` in `packages/desktop/eslint.config.*`) — the error
 message lists the sanctioned alternatives (onMount for DOM setup/cleanup,
 event handlers for user-triggered state, `$derived` + `class:` bindings for
 reactive presentation, `{#key}` for identity re-init, `untrack()` for one-time
@@ -369,11 +369,11 @@ code serves both Electron (`ElectronAdapter` → the existing server routes)
 and the browser (`WebAdapter`); on the Electron target, `api.ts` remains the
 correct call site for those capabilities.
 
-**Verification (must pass before any viewer change is "done"):** the client
+**Verification (must pass before any desktop change is "done"):** the client
 SPA bundle must contain no host code — adapter-node emits the browser assets
 to `build/client/`, and this is now **enforced automatically** by ONE script,
 `tools/check-render-purity.mjs`: CI runs it (`.github/workflows/ci.yml`) and
-the viewer's `npm run build` runs it with `--strict` (absent dir or zero
+the desktop app's `npm run build` runs it with `--strict` (absent dir or zero
 scannable files = failure). It fails on host code — the named leak
 identifiers (`fileURLToPath`/`createRequire`/`isomorphic-git`), any quoted
 `node:*` specifier, or a bare builtin `require()` (generated from
@@ -384,7 +384,7 @@ Two caveats keep this honest:
 scopes to `build/client/` only. (2) Rollup tree-shaking can HIDE a leak from
 the production scan while `vite dev` (no tree-shaking) still crashes on it —
 this is exactly how a shared bun-build chunk topped with `createRequire`
-leaked through `@dimm-city/print-md/render` in 2026-07. The lib side
+leaked through `gutterpress/render` in 2026-07. The lib side
 therefore has its own gate: `packages/cli`'s build compiles `src/render.ts`
 as a separate non-split `bun build` graph and runs
 `scripts/check-render-pure.mjs`, which fails if the `dist/render.js` closure
@@ -420,13 +420,13 @@ What remains relevant to **this** repo:
   `data-chapter-label` propagation, `.chapter-opener` injection); its CSS half
   moved to dc-op-manual. The full frozen contract and the durable paged.js CSS
   anti-patterns are preserved in AKM
-  (`memory:print-md-dc-design-guide-frozen-chapter-opener-historical`,
+  (`memory:gutterpress-dc-design-guide-frozen-chapter-opener-historical`,
   `memory:print-css-architectural-anti-patterns`).
 
 ## Background reading
 
 - The "No bundlers at runtime" rule (§1 above)
-- `packages/viewer/README.md` — viewer dev and packaging instructions
+- `packages/desktop/README.md` — desktop dev and packaging instructions
 - [Single-file executable — Bun](https://bun.com/docs/bundler/executables)
 - [Embed directory in executable with `bun build --compile` (#5445)](https://github.com/oven-sh/bun/issues/5445)
 - [`bun build` does not embed binaries from node_modules correctly (#15374)](https://github.com/oven-sh/bun/issues/15374)

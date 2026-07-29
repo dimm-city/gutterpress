@@ -2,20 +2,18 @@ import { readFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
-import type { PrintMdManifest, ResolvedConfig, PluginConfig, ResolvedPluginConfig } from "../schema/manifest.types";
+import type { GutterpressManifest, ResolvedConfig, PluginConfig, ResolvedPluginConfig } from "../schema/manifest.types";
 import { resolvePreset, warnOnce } from "./presets";
 import { UsageError } from "./cli-args";
 
 /**
- * The manifest file names print-md recognizes, in lookup-preference order.
+ * The manifest file name Gutterpress recognizes.
  * Single source of truth — any code that needs to find/match a manifest file
  * (project scanning, GitHub repo book discovery, …) should consume this
  * instead of hardcoding the names.
  */
 export const MANIFEST_FILENAMES = [
   "manifest.yaml",
-  "manifest.yml",
-  "print-md.yaml",
 ] as const;
 
 /** True when a directory contains any recognized project manifest file. */
@@ -36,7 +34,7 @@ export function hasProjectManifest(dir: string): boolean {
  */
 export async function loadManifest(
   pathOrDir?: string
-): Promise<PrintMdManifest> {
+): Promise<GutterpressManifest> {
   // Thin wrapper over loadManifestWithPath — the candidate-resolution loop
   // lives there; callers that don't need the directory use this.
   const { manifest } = await loadManifestWithPath(pathOrDir);
@@ -61,7 +59,7 @@ export async function loadManifestWithPath(
   pathOrDir?: string,
   opts?: { explicit?: boolean }
 ): Promise<{
-  manifest: PrintMdManifest;
+  manifest: GutterpressManifest;
   manifestDir: string;
   manifestPath: string | null;
 }> {
@@ -73,7 +71,7 @@ export async function loadManifestWithPath(
     if (existsSync(p) && statSync(p).isFile()) {
       const raw = await readFile(p, "utf8");
       try {
-        const manifest = (parseYaml(raw) as PrintMdManifest) ?? {};
+        const manifest = (parseYaml(raw) as GutterpressManifest) ?? {};
         return { manifest, manifestDir: dirname(p), manifestPath: p };
       } catch (error) {
         if (!(error instanceof YAMLParseError)) throw error;
@@ -228,8 +226,8 @@ function mergeShape<T extends PlainObject>(
  * Any field explicitly set in `cliOverrides` wins, then manifest, then preset.
  */
 export function resolveConfig(
-  cliOverrides: Partial<PrintMdManifest>,
-  manifest: PrintMdManifest
+  cliOverrides: Partial<GutterpressManifest>,
+  manifest: GutterpressManifest
 ): ResolvedConfig {
   const presetName = cliOverrides.preset ?? manifest.preset;
   const preset = resolvePreset(presetName);
@@ -264,7 +262,7 @@ export function resolveConfig(
   ) {
     warnOnce(
       "allowed-callouts-deprecated",
-      "[print-md] manifest field `validate.source.allowedCallouts` is " +
+      "[gutterpress] manifest field `validate.source.allowedCallouts` is " +
         "deprecated and ignored. The `:::` container syntax it gated was " +
         "removed 2026-05-17. See docs/migrations/2026-05-removing-container-syntax.md."
     );

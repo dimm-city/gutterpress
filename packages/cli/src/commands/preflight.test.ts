@@ -85,7 +85,7 @@ describe("preflight payload", () => {
   test("markdown output includes status and summary", () => {
     const payload = buildPreflightPayload(makeExecution());
     const markdown = toPreflightMarkdown(payload);
-    expect(markdown).toContain("# print-md preflight");
+    expect(markdown).toContain("# gutterpress preflight");
     expect(markdown).toContain("Status: **GO**");
   });
 });

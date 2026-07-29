@@ -5,7 +5,7 @@ make it your own. Everything you see on this page is just an example — replace
 with your own writing whenever you are ready.
 
 You write in plain text. Start a new paragraph by leaving a blank line, like
-this one. Your words will flow onto the page automatically, and print-md takes
+this one. Your words will flow onto the page automatically, and gutterpress takes
 care of turning them into a finished, print-ready book.
 
 ## A heading for a new section

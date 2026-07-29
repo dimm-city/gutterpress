@@ -1,22 +1,22 @@
-# @dimm-city/print-md
+# Gutterpress
 
-Command-line interface for print-md — markdown to print-ready PDF.
+Command-line interface for Gutterpress — markdown to print-ready PDF.
 
-The CLI is for power users who want to script builds, run in CI, batch-process projects, or work outside the desktop app. If you just want to write a book and export a PDF, use the [desktop app](https://github.com/dimm-city/print-md#get-the-desktop-app) instead.
+The CLI is for power users who want to script builds, run in CI, batch-process projects, or work outside the desktop app. If you just want to write a book and export a PDF, use the [desktop app](https://github.com/dimm-city/gutterpress#get-the-desktop-app) instead.
 
 ## Install
 
 ### Standalone binary (no Node, no Bun required)
 
-Download for your platform from the [latest release](https://github.com/dimm-city/print-md/releases/latest):
+Download for your platform from the [latest release](https://github.com/dimm-city/gutterpress/releases/latest):
 
 | Platform | Binary |
 |---|---|
-| Linux x64 | `print-md-cli-linux-x64` |
-| Linux ARM64 | `print-md-cli-linux-arm64` |
-| macOS Apple Silicon | `print-md-cli-macos-arm64` |
-| macOS Intel | `print-md-cli-macos-x64` |
-| Windows x64 | `print-md-cli-windows-x64.exe` |
+| Linux x64 | `gutterpress-linux-x64` |
+| Linux ARM64 | `gutterpress-linux-arm64` |
+| macOS Apple Silicon | `gutterpress-macos-arm64` |
+| macOS Intel | `gutterpress-macos-x64` |
+| Windows x64 | `gutterpress-windows-x64.exe` |
 
 Move the binary somewhere on your `PATH`, mark it executable (`chmod +x`), and you're done.
 
@@ -28,21 +28,21 @@ commands and the complete supported-platform matrix.
 ### From Homebrew (macOS and Linux)
 
 ```sh
-brew tap dimm-city/print-md https://github.com/dimm-city/print-md.git
-brew install dimm-city/print-md/print-md
+brew tap dimm-city/gutterpress https://github.com/dimm-city/gutterpress.git
+brew install dimm-city/gutterpress/gutterpress
 ```
 
 ### From Scoop (Windows x64)
 
 ```powershell
-scoop bucket add print-md https://github.com/dimm-city/print-md.git
-scoop install print-md/print-md
+scoop bucket add gutterpress https://github.com/dimm-city/gutterpress.git
+scoop install gutterpress/gutterpress
 ```
 
 ### From npm
 
 ```sh
-npm install -g @dimm-city/print-md
+npm install -g gutterpress
 ```
 
 Node.js 22 or newer is required for the npm install.
@@ -50,11 +50,11 @@ Node.js 22 or newer is required for the npm install.
 Installing with an npm git URL is intentionally unsupported. This repository
 is a Bun monorepo, its generated `dist/` is not committed, and the repository
 root is not the published CLI package. Use one of the installs above, or clone
-the repository and run `bun install` when contributing to print-md itself.
+the repository and run `bun install` when contributing to Gutterpress itself.
 
 ## System requirements
 
-The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md) for the full per-feature requirements matrix.
+The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md) for the full per-feature requirements matrix.
 
 The short version: CLI PDF rendering needs a Chromium-based browser. Optional
 PDF/X output additionally needs **Ghostscript** and **qpdf**; the desktop app
@@ -64,27 +64,27 @@ uses its bundled browser for standard PDF export.
 
 ```sh
 # Scaffold a new project (manifest + starter chapter + stylesheet)
-print-md new "My First Book"
+  gutterpress new "My First Book"
 
 # Build a PDF from a project directory
-print-md build ./my-book
+  gutterpress build ./my-book
 
 # Live preview server (Paged.js + websocket-driven full-reload on file change)
-print-md preview ./my-book
+  gutterpress preview ./my-book
 
 # Custom output path
-print-md build ./my-book --out dist/my-book.pdf
+  gutterpress build ./my-book --out dist/my-book.pdf
 
 # Print-ready PDF/X (CMYK + ICC profile, validation enabled)
-print-md build ./my-book --format pdfx --icc path/to/profile.icc
+  gutterpress build ./my-book --format pdfx --icc path/to/profile.icc
 
 # HTML output (a self-contained directory with book.html + assets)
-print-md build ./my-book --format html --out dist/my-book/
+  gutterpress build ./my-book --format html --out dist/my-book/
 ```
 
 ## Project layout
 
-A print-md project is a directory. The CLI doesn't impose much structure; the most common shape is:
+A Gutterpress project is a directory. The CLI doesn't impose much structure; the most common shape is:
 
 ```
 my-book/
@@ -104,11 +104,11 @@ automatically. Images referenced from markdown or HTML must live inside the
 project folder (they keep their own relative path in the output); images
 referenced only from CSS may live anywhere the CSS can reach.
 
-See [User Guide: Chapter 1 — Getting Started](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md) for a full first-project walkthrough and [examples/](https://github.com/dimm-city/print-md/tree/main/examples) for working starters.
+See [User Guide: Chapter 1 — Getting Started](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/01-getting-started.md) for a full first-project walkthrough and [examples/](https://github.com/dimm-city/gutterpress/tree/main/examples) for working starters.
 
 ## Manifest
 
-`manifest.yaml` is where you control everything that isn't authored in markdown — book title, the page-size preset, custom styles, plugin loading, validation rules, PDF/X configuration. It is the canonical filename for new projects; existing projects named `manifest.yml` or `print-md.yaml` are also recognized. The schema lives in [`docs/schema-autocomplete.md`](https://github.com/dimm-city/print-md/blob/main/docs/schema-autocomplete.md) for YAML autocomplete in editors.
+`manifest.yaml` is where you control everything that isn't authored in markdown — book title, the page-size preset, custom styles, plugin loading, validation rules, PDF/X configuration. It is the only recognized project manifest filename. The schema lives in [`docs/schema-autocomplete.md`](https://github.com/dimm-city/gutterpress/blob/main/docs/schema-autocomplete.md) for YAML autocomplete in editors.
 
 Minimal example:
 
@@ -129,24 +129,24 @@ source:
     - chapter-02.md
 ```
 
-The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [configuration reference](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/01-getting-started.md#manifest-configuration) for details.
+The full configuration cascade is `CLI flags > manifest.yaml > preset defaults`. See the [configuration reference](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/01-getting-started.md#manifest-configuration) for details.
 
 ## Commands
 
-print-md has 11 subcommands. `new`, `preview`, `build`, and `publish` are the
+Gutterpress has 11 subcommands. `new`, `preview`, `build`, and `publish` are the
 primary author commands; `lint`, `validate`, `audit`, and `preflight` are
 CI / advanced checks; `repair` is the version-history escape hatch; and
 `doctor` reports system readiness. `plugin` manages project plugins. Every
 command also accepts `--help` for the authoritative, always-current flag list
-(`print-md <command> --help`) — this section is regenerated from the same
+(`gutterpress <command> --help`) — this section is regenerated from the same
 source.
 
-### `print-md new`
+### `gutterpress new`
 
 Scaffold a new project from an embedded starter template — the fastest way to start writing (see [Quick start](#quick-start)).
 
 ```sh
-print-md new <name> [options]
+gutterpress new <name> [options]
 
   --author <name>     Author name to record in the project
   --dir <path>         Parent directory to create the project in (default: current directory)
@@ -156,18 +156,18 @@ print-md new <name> [options]
   --no-git
 ```
 
-### `print-md preview`
+### `gutterpress preview`
 
 Live HTML preview server by default (serves `book.html`, triggers full-reload via WebSocket on file change — pure JS rendering, no external tools). Pass `--format pdf` or `--format pdfx` for a one-shot build-and-open instead of the live server. `--manifest` applies only to those one-shot PDF/PDF-X modes; live HTML preview discovers the project manifest from its input directory.
 
 ```sh
-print-md preview [input-dir] [options]
+gutterpress preview [input-dir] [options]
 
   --format <fmt>          html (default, live HMR) | pdf | pdfx
   --port <n>              Bind port                     (default: 3579, html only)
   --host <h>              Bind host                     (default: 127.0.0.1). Pass 0.0.0.0 to expose on the LAN.
   --no-watch              Disable file watching (html only)
-  --open                  Automatically open browser/viewer (default: true; use --no-open to skip)
+  --open                  Automatically open browser (default: true; use --no-open to skip)
   --no-open
   --verbose               Enable verbose output
   --debug                 Debug mode (preserve temporary files)
@@ -181,12 +181,12 @@ print-md preview [input-dir] [options]
   --skip-post-validate    Skip post-build PDF/X validation              (pdfx only)
 ```
 
-### `print-md build`
+### `gutterpress build`
 
 Build a PDF (default) or HTML output. Pipeline: `lint → validate:pre → convert → assets → build → validate:post`.
 
 ```sh
-print-md build [input-dir] [options]
+gutterpress build [input-dir] [options]
 
   --format <fmt>          pdf | pdfx | html       (default: pdf)
   --out <path>            Output file or directory. For pdf|pdfx, --out may also be a .pdf file path.
@@ -200,12 +200,12 @@ print-md build [input-dir] [options]
   --skip-post-validate    Skip post-build PDF/X validation
 ```
 
-### `print-md publish`
+### `gutterpress publish`
 
 Push a built PDF/HTML artifact to a publishing platform (itch.io, DriveThruRPG, Amazon KDP, Azure Static Web Apps, Shopify), headlessly and CI-safely. Credentials live in a 0600 user-config store (never in the project); provider env vars override it for CI.
 
 ```sh
-print-md publish [project] [options]
+gutterpress publish [project] [options]
 
   --provider <id>     itch | drivethrurpg | kdp | azure-swa | shopify
   --list               List providers and connection status
@@ -222,19 +222,19 @@ print-md publish [project] [options]
 
 ```sh
 # List providers and connection status
-print-md publish --list
+gutterpress publish --list
 
 # Store an API key for itch.io, then publish
-print-md publish --provider itch --connect
-print-md publish --provider itch ./my-book
+gutterpress publish --provider itch --connect
+gutterpress publish --provider itch ./my-book
 ```
 
-### `print-md lint`
+### `gutterpress lint`
 
-Run print-md's print-safety CSS checks (postcss-based: remote URLs, rasterizing effects, Paged.js crash-prone selectors) against the project's CSS files.
+Run Gutterpress's print-safety CSS checks (postcss-based: remote URLs, rasterizing effects, Paged.js crash-prone selectors) against the project's CSS files.
 
 ```sh
-print-md lint [files] [options]
+gutterpress lint [files] [options]
 
   --manifest <path>    Path to manifest.yaml
 ```
@@ -243,14 +243,14 @@ print-md lint [files] [options]
 
 Common print-unsafe patterns the plugin flags: remote `url(...)` references in CSS, paged.js-crashing `:is()`-with-sibling selectors, properties with no print equivalent.
 
-### `print-md validate`
+### `gutterpress validate`
 
-Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 7 — Validation](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/07-validation.md) for the full check list and [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md) for which external tools each check needs.
+Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 7 — Validation](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-validation.md) for the full check list and [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md) for which external tools each check needs.
 
 The positional directory and `--pdf`/`--input` are independent: the positional (or `--input`) sets the pre-build source directory, `--pdf` separately points at a built PDF for post-build checks. `--input` overrides the positional if both are given.
 
 ```sh
-print-md validate [dir] [options]
+gutterpress validate [dir] [options]
 
   --pdf <path>         Path to the PDF file to validate (post-build checks)
   --input <dir>        Source directory for pre-build checks (overrides the positional directory)
@@ -263,12 +263,12 @@ print-md validate [dir] [options]
   --profile <p>        Validation profile lock (currently: dtrpg)
 ```
 
-### `print-md audit`
+### `gutterpress audit`
 
 Run asset-only validation checks (image DPI/format/color-space, print-readiness) without the rest of the validation pipeline.
 
 ```sh
-print-md audit [dir] [options]
+gutterpress audit [dir] [options]
 
   --input <dir>        Asset directory (overrides the positional directory)
   --manifest <path>    Path to manifest.yaml
@@ -277,12 +277,12 @@ print-md audit [dir] [options]
   --format <fmt>       text (default) | json
 ```
 
-### `print-md preflight`
+### `gutterpress preflight`
 
 Run a deterministic print preflight against an already-built PDF and write a GO/FIX/NO-GO report (JSON + Markdown) — the automatable gate for CI before handing a PDF to a printer.
 
 ```sh
-print-md preflight [dir] --pdf <path> [options]
+gutterpress preflight [dir] --pdf <path> [options]
 
   --pdf <path>              Path to the PDF file to preflight   (required)
   --input <dir>             Optional source directory for pre-build checks (overrides the positional directory)
@@ -294,37 +294,37 @@ print-md preflight [dir] --pdf <path> [options]
 
 Exits 1 when the computed status is `NO-GO` (errors, or a required check skipped/failed).
 
-### `print-md repair`
+### `gutterpress repair`
 
-Diagnose and repair the project's version history — no git knowledge (and no system git) required. Detects the states that block syncing (an update that didn't finish, a leftover lock from a crash, a damaged or missing history) and applies the same safe repair the viewer offers: a safety-copy zip is saved first, and nothing changes without your confirmation.
+Diagnose and repair the project's version history — no git knowledge (and no system git) required. Detects the states that block syncing (an update that didn't finish, a leftover lock from a crash, a damaged or missing history) and applies the same safe repair the desktop app offers: a safety-copy zip is saved first, and nothing changes without your confirmation.
 
 ```sh
-print-md repair [dir]
+gutterpress repair [dir]
 
   --check     Diagnose only — never change anything (exit 1 when repair is needed)
   --yes       Approve the repair without prompting
-  --force     Repair even if the print-md app appears to have this project open
+  --force     Repair even if the Gutterpress app appears to have this project open
 ```
 
-### `print-md doctor`
+### `gutterpress doctor`
 
-Report the print-md version, platform and config paths, and whether each external tool is available. Missing tools include the features that use them and platform-specific installation guidance.
+Report the Gutterpress version, platform and config paths, and whether each external tool is available. Missing tools include the features that use them and platform-specific installation guidance.
 
 ```sh
-print-md doctor
+gutterpress doctor
 ```
 
-### `print-md plugin`
+### `gutterpress plugin`
 
 Manage project markdown-it plugins.
 
 ```sh
-print-md plugin
+gutterpress plugin
 
   --help    Show plugin subcommands
 ```
 
-#### `print-md plugin add`
+#### `gutterpress plugin add`
 
 Download a markdown-it package and its runtime dependencies directly from npm,
 verify their registry hashes, vendor the complete graph into the project, and
@@ -332,9 +332,9 @@ pin the exact root version. This does not invoke npm, Bun, Node.js tooling, or
 package install scripts.
 
 ```sh
-print-md plugin add markdown-it-highlightjs ./my-book
-print-md plugin add markdown-it-highlightjs@4.3.0 ./my-book
-print-md plugin add markdown-it-emoji@3.0.0 ./my-book --export full
+gutterpress plugin add markdown-it-highlightjs ./my-book
+gutterpress plugin add markdown-it-highlightjs@4.3.0 ./my-book
+gutterpress plugin add markdown-it-emoji@3.0.0 ./my-book --export full
 ```
 
 ## Exit codes
@@ -352,11 +352,11 @@ This applies uniformly across `build`, `preview`, `lint`, `validate`, `preflight
 
 ## Plugins
 
-print-md uses [markdown-it](https://github.com/markdown-it/markdown-it) under the hood, so pure-JavaScript plugins that follow the `(md, options) => void` signature work without a print-md-specific API. Load them in `manifest.yaml`:
+Gutterpress uses [markdown-it](https://github.com/markdown-it/markdown-it) under the hood, so pure-JavaScript plugins that follow the `(md, options) => void` signature work without a Gutterpress-specific API. Load them in `manifest.yaml`:
 
 ```yaml
 plugins:
-  # npm package installed by `print-md plugin add markdown-it-highlightjs`
+  # npm package installed by `gutterpress plugin add markdown-it-highlightjs`
   - name: markdown-it-highlightjs
     version: 4.3.0
   # package whose plugin function is a named export
@@ -385,7 +385,7 @@ privileges.
 Use the manifest `export` field, or `plugin add --export <name>`, for packages
 that expose a named plugin function instead of a default export.
 
-See [User Guide: Chapter 6 — Plugins](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/06-plugins.md) for authoring custom plugins.
+See [User Guide: Chapter 6 — Plugins](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/06-plugins.md) for authoring custom plugins.
 
 ## CI / scripting
 
@@ -394,29 +394,29 @@ The standalone binary is the easiest way — drop it in a GitHub Actions step an
 ```yaml
 - name: Build PDF
   run: |
-    curl -L -o print-md \
-      https://github.com/dimm-city/print-md/releases/latest/download/print-md-cli-linux-x64
-    chmod +x print-md
+    curl -L -o gutterpress \
+      https://github.com/dimm-city/gutterpress/releases/latest/download/gutterpress-linux-x64
+    chmod +x gutterpress
     sudo apt-get install -y google-chrome-stable ghostscript
-    ./print-md build ./my-book --out dist/my-book.pdf
+    ./gutterpress build ./my-book --out dist/my-book.pdf
 ```
 
-The binary is self-contained except for the system tools described in [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md). On a runner with Chrome and Ghostscript present, you don't need a separate Node or Bun install.
+The binary is self-contained except for the system tools described in [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md). On a runner with Chrome and Ghostscript present, you don't need a separate Node or Bun install.
 
 ## Troubleshooting
 
-- **`Ghostscript executable not found`** — Ghostscript is required only for PDF/X and ink-coverage checks. Standard Windows installs are auto-detected; for a non-standard install, set `GHOSTSCRIPT_PATH` to the full path of `gs`, `gswin64c.exe`, or `gswin32c.exe`. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md).
+- **`Ghostscript executable not found`** — Ghostscript is required only for PDF/X and ink-coverage checks. Standard Windows installs are auto-detected; for a non-standard install, set `GHOSTSCRIPT_PATH` to the full path of `gs`, `gswin64c.exe`, or `gswin32c.exe`. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md).
 - **`No Chrome or Chromium binary found`** — install a Chromium-based browser or set `CHROMIUM_PATH=/path/to/chrome`. The desktop app includes its own browser and needs no separate browser install.
 - **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
 - **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.
 
 ## Links
 
-- [GitHub repository](https://github.com/dimm-city/print-md)
-- [Report an issue](https://github.com/dimm-city/print-md/issues)
-- [Full user guide](https://github.com/dimm-city/print-md/tree/main/examples/print-md-user-guide)
-- [Desktop app](https://github.com/dimm-city/print-md/releases/latest)
+- [GitHub repository](https://github.com/dimm-city/gutterpress)
+- [Report an issue](https://github.com/dimm-city/gutterpress/issues)
+- [Full user guide](https://github.com/dimm-city/gutterpress/tree/main/examples/gutterpress-user-guide)
+- [Desktop app](https://github.com/dimm-city/gutterpress/releases/latest)
 
 ## License
 
-[MPL-2.0](https://github.com/dimm-city/print-md/blob/main/LICENSE)
+[MPL-2.0](https://github.com/dimm-city/gutterpress/blob/main/LICENSE)

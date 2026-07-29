@@ -2,7 +2,7 @@
 #
 # Triggers on changes under design-guide/ — the path whose content the guide
 # depends on. Builds the static site with
-# `print-md build --format html`, which produces a directory containing the
+# `gutterpress build --format html`, which produces a directory containing the
 # rendered, self-contained book HTML (book.html — CSS and fonts already
 # inlined), a redirect index.html for hosts that need a default entry point,
 # the page-nav/zoom scripts, and any images the guide actually references.
@@ -50,14 +50,14 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install print-md (and any plugins)
-        run: bun add -d @dimm-city/print-md
+      - name: Install Gutterpress (and any plugins)
+        run: bun add -d gutterpress
 
       - name: Build the design guide as a static site
         # Produces ./design-guide-site/ containing index.html (redirects to
         # book.html), book.html (self-contained: CSS/fonts inlined),
         # preview/ (nav scripts), and any referenced images.
-        run: bunx print-md build ./design-guide --format html --out ./design-guide-site
+        run: bunx gutterpress build ./design-guide --format html --out ./design-guide-site
 
       # Uncomment this step to deploy the prebuilt static site to Azure
       # Static Web Apps instead of (or alongside) GitHub Pages.

@@ -1,5 +1,5 @@
 /**
- * Leveled logging utility for print-md.
+ * Leveled logging utility for gutterpress.
  *
  * ONE logger for the whole CLI/lib. Two surfaces share a single level state:
  *
@@ -9,7 +9,7 @@
  *     `debug()` lines become visible; by default (INFO) they are suppressed.
  *   - The `log` facade object (`log.info`/`log.warn`/`log.error`/`log.success`)
  *     — clean, prefix-styled command output used by the CLI commands and
- *     re-exported from `index.ts` for the viewer. Always emitted (it carries
+ *     re-exported from `index.ts` for the desktop. Always emitted (it carries
  *     user-facing command results, not diagnostic chatter), preserving the
  *     historical `lib/logger` behavior verbatim.
  */
@@ -117,7 +117,7 @@ export function reset(): void {
 }
 
 // ── Command-facing `log` facade ──────────────────────────────────────────────
-// Clean prefix-styled output for CLI command results (and the viewer, via the
+// Clean prefix-styled output for CLI command results (and the desktop, via the
 // `index.ts` re-export). Kept byte-for-byte compatible with the former
 // `lib/logger` object so command output stays visually identical. Deliberately
 // NOT level-gated: these are user-facing results, not diagnostics.

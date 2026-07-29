@@ -44,7 +44,7 @@ jobs:
           echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
       - name: Run tests
-        run: bun --filter @dimm-city/print-md test
+        run: bun --filter gutterpress test
 
       - name: Test Open Design plugin contract
         working-directory: packages/open-design-plugin
@@ -75,10 +75,10 @@ jobs:
       # NOTE: never use `bun --cwd <pkg> run <script>` in workflows — on Bun
       # 1.3.x that form prints `bun run` usage and EXITS 0 without running the
       # script, so the step passes while doing nothing (review finding: this
-      # made the viewer-build and type-check steps silent no-ops).
+      # made the desktop-build and type-check steps silent no-ops).
       # `working-directory` + `bun run <script>` is the robust form.
-      - name: Build viewer (static SPA + Electron main)
-        working-directory: packages/viewer
+      - name: Build desktop (static SPA + Electron main)
+        working-directory: packages/desktop
         run: |
           bun run build
           bun run electron:build
@@ -90,17 +90,17 @@ jobs:
         run: node tools/check-render-purity.test.mjs
 
       # §8 renderer-purity guardrail: fail if host/node code leaked into the
-      # built viewer CLIENT SPA bundle. Scope is build/client/ ONLY —
+      # built desktop CLIENT SPA bundle. Scope is build/client/ ONLY —
       # adapter-node's build/server/ + build/handler.js are host Node code by
       # design (§8). --strict: the build step above just ran, so an absent
       # build/client means the build silently did nothing — that must FAIL,
       # not skip (review finding: the non-strict form passed vacuously while
       # the broken `bun --cwd` build step produced no output at all).
       - name: Check renderer purity (CLAUDE.md §8)
-        run: node tools/check-render-purity.mjs packages/viewer/build/client --strict
+        run: node tools/check-render-purity.mjs packages/desktop/build/client --strict
 
-  viewer-test:
-    name: Viewer Test
+  desktop-test:
+    name: Desktop Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -111,21 +111,21 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      # The viewer suite imports @dimm-city/print-md by name (resolves to its
-      # built dist/), so build the package before running viewer tests — same
+      # The desktop suite imports gutterpress by name (resolves to its
+      # built dist/), so build the package before running desktop tests — same
       # prerequisite and command as release.yml's `test` job, kept identical
       # so the two gates cannot drift apart.
       - name: Build package dist
         run: bun run build
         working-directory: packages/cli
 
-      - name: Run viewer tests
+      - name: Run desktop tests
         run: bun run test
-        working-directory: packages/viewer
+        working-directory: packages/desktop
 
-      - name: Run viewer lint
+      - name: Run desktop lint
         run: bun run lint
-        working-directory: packages/viewer
+        working-directory: packages/desktop
 
   type-check:
     name: Type Check
@@ -145,10 +145,10 @@ jobs:
       # this job used that broken form, so the whole Type Check job was a
       # silent no-op that always passed.
       #
-      # svelte-check and the electron tsc resolve @dimm-city/print-md's types
+      # svelte-check and the electron tsc resolve gutterpress's types
       # to packages/cli/dist/*.d.ts (gitignored), so build the CLI dist first —
-      # same prerequisite the viewer-test job already documents.
-      - name: Build package dist (types for the viewer checks)
+      # same prerequisite the desktop-test job already documents.
+      - name: Build package dist (types for the desktop checks)
         working-directory: packages/cli
         run: bun run build:library
 
@@ -156,14 +156,14 @@ jobs:
         working-directory: packages/cli
         run: bun run typecheck
 
-      - name: Run TypeScript compiler (viewer SPA)
-        working-directory: packages/viewer
+      - name: Run TypeScript compiler (desktop SPA)
+        working-directory: packages/desktop
         run: bun run check
 
       # audit F1: `check` above is svelte-check (SPA only). The Electron
       # main/preload TS was never type-checked in CI — its `typecheck` script
       # existed but nothing ran it, so a type error in electron/main.ts merged
       # green. Run it too.
-      - name: Run TypeScript compiler (viewer Electron main/preload)
-        working-directory: packages/viewer
+      - name: Run TypeScript compiler (desktop Electron main/preload)
+        working-directory: packages/desktop
         run: bun run typecheck

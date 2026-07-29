@@ -10,12 +10,12 @@ import {
 } from "../lib/cli-args.ts";
 
 /**
- * `print-md new` — scaffold a new project from an embedded starter template.
+ * `gutterpress new` — scaffold a new project from an embedded starter template.
  *
  * A thin front-end over the shared lib's `scaffoldProject` (#25): the same
- * function the viewer wizard calls. Works fully headless — no viewer required.
+ * function the desktop wizard calls. Works fully headless — no desktop required.
  *
- *   print-md new "My First Book" --author "Jane" --dir ~/Books [--no-git]
+ *   gutterpress new "My First Book" --author "Jane" --dir ~/Books [--no-git]
  */
 export const newArgs = {
   name: {
@@ -49,7 +49,7 @@ export const newArgs = {
 export default defineCommand({
   meta: {
     name: "new",
-    description: "Create a new print-md project from a starter template",
+    description: "Create a new Gutterpress project from a starter template",
   },
   args: newArgs,
   async run({ args, rawArgs }) {
@@ -101,7 +101,7 @@ export default defineCommand({
         );
       }
       console.log("");
-      console.log(`Next: print-md preview "${result.projectDir}"`);
+      console.log(`Next: gutterpress preview "${result.projectDir}"`);
     } catch (e) {
       const err = e as CreateProjectError;
       const code = err && typeof err.code === "string" ? err.code : "scaffold-io";

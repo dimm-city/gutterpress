@@ -49,7 +49,7 @@ examples/field-guide/
 /packages/cli/tests/field-guide-input/
 /packages/cli/tests/field-guide.pdf
 # (Removed a blanket `tests/` ignore: there is no root-level scratch tests dir —
-# the only tests/ dirs are packages/{cli,lib,viewer}/tests, which are all
+# the only tests/ dirs are packages/{cli,desktop}/tests, which are all
 # committed. The blanket rule matched them at any depth and, via git's
 # "can't re-include under an excluded parent" rule, forced `git add -f` and
 # broke negations for any NEW test file. Package test dirs are tracked normally.)
@@ -61,14 +61,14 @@ examples/field-guide/
 review/
 review_screenshots/
 _site/dc-design-guide-migration-check/
-.print-md-stage/
+.gutterpress-stage/
 web-ui-signing.key
 
 # Playwright artifacts (cross-browser preview smoke test)
 test-results/
 
-# generated update-manifest baseline (viewer build artifact)
-packages/viewer/version.json
+# generated update-manifest baseline (desktop build artifact)
+packages/desktop/version.json
 
 # Local-only plan/history docs (moved out of the repo to keep assets small)
 .docs-archive/

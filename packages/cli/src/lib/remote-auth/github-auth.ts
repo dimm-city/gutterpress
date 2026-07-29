@@ -49,7 +49,7 @@ export interface RemoteAuthProvider {
 }
 
 /**
- * Default client id for the registered "print-md" OAuth App (registered
+ * Default client id for the registered "gutterpress" OAuth App (registered
  * 2026-06-10 under the dimm-city org; switched from the original GitHub App
  * the same day — see ADR 0006 D1 amendment). Client IDs are public by design
  * (ADR 0006 D1); never put a client SECRET anywhere in this codebase — the
@@ -68,7 +68,7 @@ export interface RemoteAuthProvider {
  * GitHub → Settings → Applications. (The old GitHub-App "user-to-server
  * token expiration" foot-gun no longer applies.)
  *
- * Override order: explicit option → PRINT_MD_GITHUB_CLIENT_ID env var → this
+ * Override order: explicit option → GUTTERPRESS_GITHUB_CLIENT_ID env var → this
  * default (see {@link resolveGitHubClientId}). The env var exists so a
  * rotated registration can ship without a code change.
  *
@@ -87,13 +87,13 @@ const GITHUB_OAUTH_SCOPE = "repo";
 /**
  * Client id resolution: explicit option → env var → registered default.
  * Empty/whitespace-only values at any layer are treated as unset (the packaged
- * viewer bakes `process.env.PRINT_MD_GITHUB_CLIENT_ID` in via a vite `define`,
+ * desktop bakes `process.env.GUTTERPRESS_GITHUB_CLIENT_ID` in via a vite `define`,
  * which yields `""` when the secret is missing at build time).
  */
 export function resolveGitHubClientId(explicit?: string): string {
   return (
     explicit?.trim() ||
-    process.env.PRINT_MD_GITHUB_CLIENT_ID?.trim() ||
+    process.env.GUTTERPRESS_GITHUB_CLIENT_ID?.trim() ||
     DEFAULT_GITHUB_CLIENT_ID
   );
 }
@@ -124,7 +124,7 @@ function defaultSleep(ms: number): Promise<void> {
 /**
  * All requests run under the shared deadline + friendly-error policy
  * (../fetch-timeout.ts): the 15s timeout is COMPOSED with any caller
- * cancellation signal (the viewer's device flow always passes one — the old
+ * cancellation signal (the desktop's device flow always passes one — the old
  * `signal ?? timeout` pattern dropped the timeout entirely, leaving the
  * "Connect GitHub" dialog spinning forever on a TCP stall), caller aborts
  * rethrow raw, and everything else maps to {@link OFFLINE_MESSAGE}.

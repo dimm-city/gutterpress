@@ -1,5 +1,5 @@
 {
-  "name": "@dimm-city/print-md",
+  "name": "gutterpress",
   "version": "0.8.3",
   "description": "Markdown-to-PDF converter for professional print layout using Paged.js and Ghostscript.",
   "author": "itlackey",
@@ -16,17 +16,17 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/dimm-city/print-md.git"
+    "url": "https://github.com/dimm-city/gutterpress.git"
   },
-  "homepage": "https://github.com/dimm-city/print-md#readme",
+  "homepage": "https://github.com/dimm-city/gutterpress#readme",
   "bugs": {
-    "url": "https://github.com/dimm-city/print-md/issues"
+    "url": "https://github.com/dimm-city/gutterpress/issues"
   },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "print-md": "./dist/cli.js"
+    "gutterpress": "./dist/cli.js"
   },
   "exports": {
     ".": {

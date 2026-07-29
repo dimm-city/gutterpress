@@ -35,7 +35,7 @@ import type { CheckContext } from "../checks/types";
  * unique dir (handy when eyeballing leftover fixtures); callers that relied on
  * a suite-specific prefix pass it through so behavior is byte-identical.
  */
-export async function makeTempDir(prefix = "print-md-test-"): Promise<string> {
+export async function makeTempDir(prefix = "gutterpress-test-"): Promise<string> {
   return mkdtemp(path.join(tmpdir(), prefix));
 }
 

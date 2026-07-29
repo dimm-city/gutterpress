@@ -19,9 +19,9 @@ export interface PluginConfig {
 
 /**
  * Non-secret, per-provider publish settings (#35), keyed by provider id —
- * the same spelling as `print-md publish --provider <id>`. Secrets (API
+ * the same spelling as `gutterpress publish --provider <id>`. Secrets (API
  * keys, tokens) NEVER live in the manifest — they belong to the host's
- * credential store (CLI: 0600 file under the user config dir; viewer:
+ * credential store (CLI: 0600 file under the user config dir; desktop:
  * Electron safeStorage).
  */
 /**
@@ -63,7 +63,7 @@ export interface PublishSettings {
   };
 }
 
-export interface PrintMdManifest {
+export interface GutterpressManifest {
   title?: string;
   authors?: string[];
   publish?: PublishSettings;

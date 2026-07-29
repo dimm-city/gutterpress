@@ -16,8 +16,8 @@ import type { ResolvedConfig } from '../schema/manifest.types';
 import type { ServerState } from './server-context';
 import { generateAndWriteHtml, stopFileWatcher, startFileWatcher } from './file-watcher';
 
-const TEMP_DIR_BASE = path.join(tmpdir(), 'print-md-preview');
-const PID_FILE_NAME = '.print-md.pid';
+const TEMP_DIR_BASE = path.join(tmpdir(), 'gutterpress-preview');
+const PID_FILE_NAME = '.gutterpress.pid';
 
 /**
  * Check whether a process is alive by sending signal 0.
@@ -38,10 +38,10 @@ function isProcessAlive(pid: number): boolean {
  * Best-effort cleanup of orphan preview temp dirs left behind by previous
  * runs that didn't shut down cleanly (SIGKILL, terminal hangup, crash, etc).
  *
- * Each live preview writes its PID to `<tempDir>/.print-md.pid` after setup.
+ * Each live preview writes its PID to `<tempDir>/.gutterpress.pid` after setup.
  * On startup we walk the base dir and remove any subdirectory whose recorded
  * PID is no longer alive. Dirs without a PID file are conservatively kept
- * (they may belong to an older print-md version still in flight).
+ * (they may belong to an older gutterpress version still in flight).
  */
 async function cleanupOrphanTempDirs(): Promise<void> {
   let entries: string[];
@@ -71,7 +71,7 @@ async function cleanupOrphanTempDirs(): Promise<void> {
  *
  * SERVE-IN-PLACE (this replaces the old whole-tree `copyDirectory(inputPath,
  * tempDir)` + manifest-asset `copyAssets` call): the temp dir is no longer a
- * mirror of the project. It holds ONLY files print-md itself generates — right
+ * mirror of the project. It holds ONLY files gutterpress itself generates — right
  * now that's `book.html` (written later by {@link generateAndWriteHtml}) and
  * the PID marker file below. Every other path the served HTML asks for
  * (images, anything else under the project) is read straight from the
@@ -115,7 +115,7 @@ export async function initializePreviewDirectories(): Promise<string> {
 
 /**
  * Validate that the input path exists on the filesystem.
- * No-op for empty input (no-input mode — the viewer desktop app
+ * No-op for empty input (no-input mode — the desktop desktop app
  * supplies the path via its own folder picker).
  */
 export async function validateInputPath(inputPath: string): Promise<void> {
@@ -228,6 +228,6 @@ export async function shutdownServer(state: ServerState): Promise<void> {
   // NOTE: callers that need process termination (signal handlers in server.ts)
   // are responsible for calling process.exit() themselves. shutdownServer()
   // only cleans up — it does not decide to terminate the process, so that the
-  // viewer's PreviewServerHandle.stop() can call this safely without killing
+  // desktop's PreviewServerHandle.stop() can call this safely without killing
   // the SvelteKit host process.
 }

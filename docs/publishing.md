@@ -1,7 +1,7 @@
 # Publishing (#35)
 
-print-md can push a finished book to distribution platforms — from the CLI
-(`print-md publish`, CI-safe) or from the desktop app's Project settings →
+Gutterpress can push a finished book to distribution platforms — from the CLI
+(`gutterpress publish`, CI-safe) or from the desktop app's Project settings →
 Publish section.
 
 ## Provider matrix
@@ -9,8 +9,8 @@ Publish section.
 | Provider | id | Type | Artifact | How it works |
 |---|---|---|---|---|
 | itch.io | `itch` | **API** | PDF | Real upload via [butler](https://itch.io/docs/butler/), itch.io's official CLI. Auto-downloaded on first publish. |
-| DriveThruRPG | `drivethrurpg` | **Guided** | PDF | DTRPG has no publisher upload API. print-md stages a validated package and opens the publisher hub with a checklist. |
-| Amazon KDP | `kdp` | **Guided** | PDF | Amazon has no KDP API (automation violates its ToS). print-md stages a KDP-ready package and opens kdp.amazon.com with a checklist. |
+| DriveThruRPG | `drivethrurpg` | **Guided** | PDF | DTRPG has no publisher upload API. Gutterpress stages a validated package and opens the publisher hub with a checklist. |
+| Amazon KDP | `kdp` | **Guided** | PDF | Amazon has no KDP API (automation violates its ToS). Gutterpress stages a KDP-ready package and opens kdp.amazon.com with a checklist. |
 | Azure Static Web Apps | `azure-swa` | **API** | HTML | Deploys the static-site export via the [SWA CLI](https://learn.microsoft.com/azure/static-web-apps/static-web-apps-cli-deploy) (`swa deploy`). Requires the SWA CLI installed (`npm i -g @azure/static-web-apps-cli`). |
 | Shopify | `shopify` | **API** (partial) | PDF | Creates/updates the product via the Admin GraphQL API. File attachment is a follow-up step in the Shopify admin (digital delivery has no public API). |
 
@@ -23,22 +23,22 @@ steps. If a platform later ships an API the provider upgrades in place.
 
 ```bash
 # What can I publish to, and what's connected?
-print-md publish --list
+gutterpress publish --list
 
 # Store an API key. The PASTED key is verified with the platform before it's
 # saved (env vars can't shadow it, and a rejected paste leaves any previously
 # working key untouched).
-print-md publish --provider itch --connect --token <key>
-echo "$KEY" | print-md publish --provider shopify --connect   # or via stdin
+gutterpress publish --provider itch --connect --token <key>
+echo "$KEY" | gutterpress publish --provider shopify --connect   # or via stdin
 
 # Publish (uses the manifest's output location by default)
-print-md build && print-md publish --provider itch
+gutterpress build && gutterpress publish --provider itch
 
 # Preflight only / CI
-print-md publish --provider itch --dry-run --json
+gutterpress publish --provider itch --dry-run --json
 
 # Forget a stored key
-print-md publish --provider itch --disconnect
+gutterpress publish --provider itch --disconnect
 ```
 
 Exit codes: `0` success, `1` publish/auth failure, `2` usage error — with
@@ -83,8 +83,8 @@ settings form renders — adding a provider needs no UI changes.
 
 **Secrets never live in the project.** API keys are stored:
 
-- **CLI** — `credentials.json` (`0600`) under the print-md user config dir
-  (`$PRINT_MD_CONFIG_DIR` → `%APPDATA%/print-md` → `~/.config/print-md`), the
+- **CLI** — `credentials.json` (`0600`) under the Gutterpress user config dir
+  (`$GUTTERPRESS_CONFIG_DIR` → `%APPDATA%/gutterpress` → `~/.config/gutterpress`), the
   same `FileTokenStore` the Git remote features use.
 - **Desktop app** — Electron `safeStorage` (OS keychain: DPAPI / Keychain /
   libsecret), the same store as GitHub sync credentials.
@@ -129,7 +129,7 @@ which is what makes providers unit-testable (`publish.test.ts` runs the whole
 pipeline with fakes) and keeps the lib free of host concerns: the lib never
 touches the OS keychain (CLAUDE.md §7-style host injection).
 
-The viewer reaches the same code through `/api/publish/*` SvelteKit server
+The desktop app reaches the same code through `/api/publish/*` SvelteKit server
 routes (`list`, `connect`, `disconnect`, `set-config`, `run`) that share the
 remote-hooks host bridge; the renderer stays PWA-clean (§8) and only ever sees
 redacted credential status.

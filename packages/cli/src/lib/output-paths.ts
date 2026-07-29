@@ -16,7 +16,7 @@ import { slugify } from "./slug.ts";
 
 export const DIST_DIRNAME = "dist";
 
-/** The rendered book document. Fixed: the viewer and index.html load it by name. */
+/** The rendered book document. Fixed: the desktop and index.html load it by name. */
 export const BOOK_HTML = "book.html";
 
 /** Slug identifying one book. Falls back to `book` for an unsluggable title. */

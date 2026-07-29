@@ -29,7 +29,7 @@ test("listBuiltInTemplates returns at least the 4 shipped templates", async () =
 
 test("each built-in template scaffolds into a valid project", async () => {
   for (const id of BUILT_IN_TEMPLATE_IDS) {
-    const parent = await tmp(`pmd-tpl-${id}-`);
+    const parent = await tmp(`gutterpress-tpl-${id}-`);
     try {
       const result = await scaffoldProject({
         name: `Demo ${id}`,
@@ -52,8 +52,8 @@ test("each built-in template scaffolds into a valid project", async () => {
 });
 
 test("saveProjectAsTemplate captures an existing project as a reusable template", async () => {
-  const parent = await tmp("pmd-saveas-src-");
-  const templatesRoot = await tmp("pmd-saveas-dest-");
+  const parent = await tmp("gutterpress-saveas-src-");
+  const templatesRoot = await tmp("gutterpress-saveas-dest-");
   try {
     // Build a tiny project to capture.
     const result = await scaffoldProject({
@@ -92,13 +92,13 @@ test("saveProjectAsTemplate captures an existing project as a reusable template"
   }
 });
 
-test("custom templates preserve and scaffold the recognized manifest.yml name", async () => {
-  const project = await tmp("pmd-template-yml-source-");
-  const templatesRoot = await tmp("pmd-template-yml-saved-");
-  const parent = await tmp("pmd-template-yml-output-");
+test("custom templates preserve and scaffold the recognized manifest.yaml name", async () => {
+  const project = await tmp("gutterpress-template-yml-source-");
+  const templatesRoot = await tmp("gutterpress-template-yml-saved-");
+  const parent = await tmp("gutterpress-template-yml-output-");
   try {
     await writeFile(
-      path.join(project, "manifest.yml"),
+      path.join(project, "manifest.yaml"),
       [
         "title: Original",
         "authors:",
@@ -119,7 +119,7 @@ test("custom templates preserve and scaffold the recognized manifest.yml name", 
       name: "Yml Template",
       templatesRoot,
     });
-    expect(await readFile(path.join(saved.dir!, "manifest.yml"), "utf8")).toContain(
+    expect(await readFile(path.join(saved.dir!, "manifest.yaml"), "utf8")).toContain(
       "{{TITLE}}",
     );
 
@@ -129,7 +129,7 @@ test("custom templates preserve and scaffold the recognized manifest.yml name", 
       templateDir: saved.dir,
       versionHistory: "none",
     });
-    expect(created.manifestPath).toBe(path.join(created.projectDir, "manifest.yml"));
+    expect(created.manifestPath).toBe(path.join(created.projectDir, "manifest.yaml"));
     expect(await readFile(created.manifestPath, "utf8")).toContain(
       'title: "Created From Yml"',
     );
@@ -144,8 +144,8 @@ test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source
   // Regression: a manifest that lists `source.files` BEFORE `authors` must not
   // get its first source filename rewritten to {{AUTHOR}} (the re-tokeniser is
   // anchored to the `authors:` key, not the first `- item` in the file).
-  const project = await tmp("pmd-retok-src-");
-  const templatesRoot = await tmp("pmd-retok-dest-");
+  const project = await tmp("gutterpress-retok-src-");
+  const templatesRoot = await tmp("gutterpress-retok-dest-");
   try {
     await writeFile(
       path.join(project, "manifest.yaml"),
@@ -184,8 +184,8 @@ test("saveProjectAsTemplate re-tokenises the authors block, NOT a leading source
 // Characterization: lock the slug id + prettify label fallback of the template
 // call site so the slug/prettify consolidation changes no user-visible ids.
 test("saveProjectAsTemplate slugs the id across diacritics and punctuation", async () => {
-  const parent = await tmp("pmd-tplslug-src-");
-  const templatesRoot = await tmp("pmd-tplslug-dest-");
+  const parent = await tmp("gutterpress-tplslug-src-");
+  const templatesRoot = await tmp("gutterpress-tplslug-dest-");
   try {
     const result = await scaffoldProject({
       name: "Slug Src",
@@ -205,7 +205,7 @@ test("saveProjectAsTemplate slugs the id across diacritics and punctuation", asy
 });
 
 test("listCustomTemplates prettifies a bare folder id as its label fallback", async () => {
-  const root = await tmp("pmd-prettify-");
+  const root = await tmp("gutterpress-prettify-");
   try {
     // A template folder with no metadata sidecar → label falls back to prettify(id).
     await mkdir(path.join(root, "my_cool-template"), { recursive: true });
@@ -219,10 +219,10 @@ test("listCustomTemplates prettifies a bare folder id as its label fallback", as
 });
 
 test("listCustomTemplates returns saved templates and [] for an empty root", async () => {
-  const root = await tmp("pmd-customlist-");
+  const root = await tmp("gutterpress-customlist-");
   try {
     expect(await listCustomTemplates(root)).toEqual([]);
-    const parent = await tmp("pmd-customlist-src-");
+    const parent = await tmp("gutterpress-customlist-src-");
     try {
       const result = await scaffoldProject({
         name: "Src",

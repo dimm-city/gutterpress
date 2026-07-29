@@ -26,7 +26,7 @@ import { BuildError } from '../lib/build-error.ts';
 /**
  * URL path that upgrades to a WebSocket subscribed to the reload topic.
  */
-const HMR_PATH = '/__print-md-hmr';
+const HMR_PATH = '/__gutterpress-hmr';
 
 /**
  * Tiny client snippet injected into served HTML. Listens for `full-reload`
@@ -36,12 +36,12 @@ const HMR_CLIENT_SNIPPET = `
 <script>
   (function () {
     // When loaded by the preview SHELL (iframe double-buffer), the shell loads us
-    // with ?pmdshell=1 and owns HMR (it swaps frames + syncs scroll), so we stay
+    // with ?gutterpressshell=1 and owns HMR (it swaps frames + syncs scroll), so we stay
     // inert. We must NOT bail merely because we're framed — other hosts (the
-    // Electron viewer's SPA) embed book.html directly and rely on this HMR client
+    // Electron desktop's SPA) embed book.html directly and rely on this HMR client
     // for scroll-anchor and reload.
-    if (/[?&]pmdshell=1/.test(location.search)) return;
-    var ANCHOR_KEY = 'pmd-scroll-anchor';
+    if (/[?&]gutterpressshell=1/.test(location.search)) return;
+  var ANCHOR_KEY = 'gutterpress-scroll-anchor';
 
     // Find the element nearest the top of the viewport that carries a source
     // line (markdown-it-source-map emits data-source-line on block elements).
@@ -132,18 +132,18 @@ const HMR_CLIENT_SNIPPET = `
 
 /**
  * Preview shell (enabled by default; legacy opt-out is
- * PRINTMD_PREVIEW_INCREMENTAL=0). Hosts book.html in an iframe and
+ * GUTTERPRESS_PREVIEW_INCREMENTAL=0). Hosts book.html in an iframe and
  * double-buffers every reload: paginate a second hidden full document, then
  * swap it in atomically and restore the scroll anchor. The visible page never
  * flickers through an unpaginated state.
  */
 const SHELL_HTML = `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>print-md preview</title>
+<html lang="en"><head><meta charset="utf-8"><title>gutterpress preview</title>
 <style>html,body{margin:0;height:100%;background:#fff;overflow:hidden}
 iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}</style>
 </head><body>
-<iframe id="pmd-active" src="/book.html?pmdshell=1" title="preview"></iframe>
-<script>window.__PMD_HMR=${JSON.stringify(HMR_PATH)};</script>
+<iframe id="gutterpress-active" src="/book.html?gutterpressshell=1" title="preview"></iframe>
+<script>window.__GUTTERPRESS_HMR=${JSON.stringify(HMR_PATH)};</script>
 <script src="/preview/scripts/preview-shell.js"></script>
 </body></html>`;
 
@@ -322,9 +322,9 @@ const EMBEDDED_PREFIXES = ['/vendor/', '/preview/scripts/'];
 const EMBEDDED_EXACT = new Set(['/favicon.ico']);
 
 /**
- * Embedded assets are content-fixed per print-md VERSION, not forever: the
+ * Embedded assets are content-fixed per gutterpress VERSION, not forever: the
  * preview server binds a fixed default port (3579), so the SAME URL on the
- * SAME origin serves DIFFERENT bytes after a print-md upgrade. `immutable`
+ * SAME origin serves DIFFERENT bytes after a gutterpress upgrade. `immutable`
  * would pin a browser to the old ~900 KB polyfill for a year (it forbids even
  * a reload from revalidating), silently serving stale vendored scripts across
  * an upgrade. Instead we tag each response with a version ETag and use
@@ -333,8 +333,8 @@ const EMBEDDED_EXACT = new Set(['/favicon.ico']);
  * within or across sessions — while an upgrade's new ETag forces a fresh 200.
  */
 const EMBEDDED_CACHE_CONTROL = 'public, no-cache';
-/** Version-stamped ETag so a print-md upgrade invalidates the browser cache. */
-const EMBEDDED_ETAG = `"pmd-${PACKAGE_VERSION}"`;
+/** Version-stamped ETag so a gutterpress upgrade invalidates the browser cache. */
+const EMBEDDED_ETAG = `"gutterpress-${PACKAGE_VERSION}"`;
 
 function matchesEmbedded(urlPathname: string): boolean {
   if (EMBEDDED_EXACT.has(urlPathname)) return true;
@@ -369,7 +369,7 @@ function isDotfileRequest(urlPathname: string): boolean {
 /**
  * Create and start a preview HTTP+WebSocket server.
  *
- * `book.html` — the one file print-md generates — is served from
+ * `book.html` — the one file gutterpress generates — is served from
  * `state.tempDir`. Everything else a served page can ask for (an `<img src>`
  * at its authored project-relative path, or any other project file) is
  * served DIRECTLY from `state.currentInputPath`, the real project directory,
@@ -400,7 +400,7 @@ export async function createPreviewServer(
       return;
     }
 
-    // 2. API routes. The preview server is headless (viewer chrome — folder
+    // 2. API routes. The preview server is headless (desktop chrome — folder
     // picker, GitHub clone — lives in the desktop app), so GET /api/status is
     // the only endpoint: kept for backwards compatibility with any external
     // tooling that checks server liveness. Inlined directly (finding #54) —
@@ -421,7 +421,7 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3. Embedded assets (vendor + viewer scripts) — served from the
+    // 3. Embedded assets (vendor + desktop scripts) — served from the
     // process-wide extracted assets dir, with a long, immutable cache header
     // (EMBEDDED_CACHE_CONTROL). These never change within a process
     // lifetime, so we never copy them into per-project tempDirs (avoids
@@ -460,10 +460,10 @@ export async function createPreviewServer(
     }
 
     // 4. Static file fallback: book.html vs the project root.
-    // Treat bare "/" as book.html — the desktop app (packages/viewer) wraps
+    // Treat bare "/" as book.html — the desktop app (packages/desktop) wraps
     // book.html in its own iframe-based toolbar.
     //
-    // book.html is the ONE file print-md generates (CSS + fonts are inlined
+    // book.html is the ONE file gutterpress generates (CSS + fonts are inlined
     // into it at render time — see asset-inline.ts), so it is the only path
     // served out of `state.tempDir`. Every other path is served DIRECTLY from
     // the project directory (`state.currentInputPath`) — an `<img src>` at its

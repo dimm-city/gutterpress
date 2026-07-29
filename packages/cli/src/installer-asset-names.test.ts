@@ -3,8 +3,8 @@
  * names the release workflow uploads.
  *
  * This caught a ship-breaking bug where the release uploaded
- * `print-md-cli-<os>-<arch>` but install.sh/install.ps1 fetched
- * `print-md-<os>-<arch>` — every real download 404'd, and CI masked it by
+ * `gutterpress-cli-<os>-<arch>` but install.sh/install.ps1 fetched
+ * `gutterpress-<os>-<arch>` — every real download 404'd, and CI masked it by
  * installing from a local binary instead of the release. Keep this test green
  * so the installer ↔ release contract can never silently diverge again.
  */
@@ -18,8 +18,8 @@ const read = (rel: string) => readFileSync(join(REPO_ROOT, rel), "utf8");
 /** CLI binary asset names uploaded by the release workflow's build-cli matrix. */
 function releaseCliArtifacts(): string[] {
   const yml = read(".github/workflows/release.yml");
-  // Match the `artifact: print-md-cli-...` lines under the build-cli matrix.
-  return [...yml.matchAll(/^\s*artifact:\s*(print-md-cli-\S+)\s*$/gm)].map(
+  // Match the `artifact: gutterpress-cli-...` lines under the build-cli matrix.
+  return [...yml.matchAll(/^\s*artifact:\s*(gutterpress-cli-\S+)\s*$/gm)].map(
     (m) => m[1]!
   );
 }
@@ -30,18 +30,18 @@ describe("installer ↔ release asset-name contract", () => {
   test("release uploads the five expected CLI binaries", () => {
     expect(new Set(artifacts)).toEqual(
       new Set([
-        "print-md-cli-linux-x64",
-        "print-md-cli-linux-arm64",
-        "print-md-cli-macos-x64",
-        "print-md-cli-macos-arm64",
-        "print-md-cli-windows-x64.exe",
+        "gutterpress-cli-linux-x64",
+        "gutterpress-cli-linux-arm64",
+        "gutterpress-cli-macos-x64",
+        "gutterpress-cli-macos-arm64",
+        "gutterpress-cli-windows-x64.exe",
       ])
     );
   });
 
   test("install.sh expands to release asset names for every os/arch", () => {
     const sh = read("packages/cli/scripts/install.sh");
-    const tmpl = sh.match(/PRINTMD_ASSET="([^"]+)"/)?.[1];
+    const tmpl = sh.match(/GUTTERPRESS_ASSET="([^"]+)"/)?.[1];
     expect(tmpl).toBeDefined();
     // Every (os, arch) the script supports must resolve to an uploaded asset.
     for (const os of ["linux", "macos"]) {
@@ -56,7 +56,7 @@ describe("installer ↔ release asset-name contract", () => {
 
   test("install.ps1 returns an uploaded Windows asset name", () => {
     const ps1 = read("packages/cli/scripts/install.ps1");
-    const name = ps1.match(/return\s+"(print-md-cli-[^"]+\.exe)"/)?.[1];
+    const name = ps1.match(/return\s+"(gutterpress-cli-[^"]+\.exe)"/)?.[1];
     expect(name).toBeDefined();
     expect(artifacts).toContain(name!);
   });

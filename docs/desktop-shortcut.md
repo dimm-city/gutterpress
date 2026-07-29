@@ -2,11 +2,11 @@
 
 ## Two different things, don't mix them up
 
-print-md ships two separate desktop entries, for two separate programs:
+Gutterpress ships two separate desktop entries, for two separate programs:
 
 | | **Application-menu integration** | **CLI preview shortcut** |
 |---|---|---|
-| What it launches | The **full Electron viewer** (toolbar, editor, page navigation, zoom, folder picker, Save PDF) | The **headless `print-md preview` server** + your default browser |
+| What it launches | The **full Electron desktop app** (toolbar, editor, page navigation, zoom, folder picker, Save PDF) | The **headless `gutterpress preview` server** + your default browser |
 | Where it comes from | Opt-in, from inside the app: **Settings → App → Desktop integration** | The `install.sh` / `install.ps1` CLI installers |
 | Platforms | Linux AppImage only (Windows and macOS installers already create their own entries) | Linux and Windows |
 | Documented in | [Linux AppImage application-menu integration](#linux-appimage-application-menu-integration-desktop-app) (below) | [CLI preview shortcut](#cli-preview-shortcut-headless-preview-server) (below) |
@@ -15,7 +15,7 @@ If you want the app in your KDE/GNOME menu, you want the **first** one.
 
 ## Linux AppImage application-menu integration (desktop app)
 
-The released `print-md-viewer-<version>.AppImage` is a portable executable: it
+The released `gutterpress-<version>.AppImage` is a portable executable: it
 runs from wherever you downloaded it, and — like every AppImage — it does not
 register itself with your desktop environment. That is deliberate; a portable
 file should not copy itself into your home directory or edit your desktop
@@ -36,14 +36,14 @@ seconds.
 
 | File | Path | Mode |
 |---|---|---|
-| A managed copy of the AppImage | `$HOME/.local/bin/print-md-viewer.AppImage` | `0755` |
-| The XDG desktop entry | `${XDG_DATA_HOME:-$HOME/.local/share}/applications/city.dimm.print-md-viewer.desktop` | `0644` |
-| The application icon | `${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/city.dimm.print-md-viewer.png` | `0644` |
+| A managed copy of the AppImage | `$HOME/.local/bin/gutterpress.AppImage` | `0755` |
+| The XDG desktop entry | `${XDG_DATA_HOME:-$HOME/.local/share}/applications/city.dimm.gutterpress.desktop` | `0644` |
+| The application icon | `${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/512x512/apps/city.dimm.gutterpress.png` | `0644` |
 
 An unset, empty, or relative `XDG_DATA_HOME` is treated as invalid and falls
 back to `$HOME/.local/share` (the Base Directory spec requires an absolute
 path). The managed filename is deliberately distinct from the CLI's
-`~/.local/bin/print-md` binary, so the two never collide.
+`~/.local/bin/gutterpress` binary, so the two never collide.
 
 Because the entry points at the **managed copy**, the menu launcher keeps
 working after you move or delete the file you originally downloaded.
@@ -54,25 +54,25 @@ working after you move or delete the file you originally downloaded.
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=print-md-viewer
+Name=gutterpress
 Comment=Write books in Markdown and export print-ready PDFs
-Exec="/home/you/.local/bin/print-md-viewer.AppImage"
-TryExec=/home/you/.local/bin/print-md-viewer.AppImage
-Icon=city.dimm.print-md-viewer
+Exec="/home/you/.local/bin/gutterpress.AppImage"
+TryExec=/home/you/.local/bin/gutterpress.AppImage
+Icon=city.dimm.gutterpress
 Terminal=false
 Categories=Office;Publishing;
 StartupNotify=true
-StartupWMClass=city.dimm.print-md-viewer
+StartupWMClass=city.dimm.gutterpress
 ```
 
 There is intentionally **no** `%f`/`%F`/`%u`/`%U` field code, no `MimeType`,
-and no protocol handler: the viewer does not process startup arguments today,
+and no protocol handler: the desktop app does not process startup arguments today,
 so advertising file or URL associations would register handlers that do
 nothing. (The app's internal `app://` scheme is renderer transport, not an OS
 protocol.)
 
-`StartupWMClass` matches `desktopName` in `packages/viewer/package.json`
-(`city.dimm.print-md-viewer.desktop`), which Electron uses as the Wayland
+`StartupWMClass` matches `desktopName` in `packages/desktop/package.json`
+(`city.dimm.gutterpress.desktop`), which Electron uses as the Wayland
 application id and the X11 `WM_CLASS`. That is what lets KDE and GNOME group
 the running window under this launcher and show the right icon in the
 taskbar/dock.
@@ -105,35 +105,35 @@ first time you run the action from a downloaded AppImage, nothing is restarted
 
 ### Overview
 
-The print-md installation scripts create a desktop shortcut that starts the
-print-md preview server and opens the rendered book in your default browser.
+The Gutterpress installation scripts create a desktop shortcut that starts the
+gutterpress preview server and opens the rendered book in your default browser.
 
-The install scripts download the **standalone print-md binary** from GitHub
+The install scripts download the **standalone gutterpress binary** from GitHub
 Releases — no Bun, Node, or git is required on the machine. The shortcut
 points directly at that binary.
 
-`print-md preview` serves a **headless** HTML preview — there is no toolbar,
+`gutterpress preview` serves a **headless** HTML preview — there is no toolbar,
 page navigation, or folder picker in the browser. For the full interactive
 desktop experience (toolbar, page navigation, zoom, folder picker, PDF export),
-use the **Electron desktop app** (`packages/viewer`) instead of a browser shortcut.
+use the **Gutterpress desktop app** (`packages/desktop`) instead of a browser shortcut.
 
 ### Platform Support
 
 #### Windows (install.ps1)
 
 **Shortcut Details:**
-- **File**: `Print-md Preview.lnk` (created on Desktop)
-- **Target**: the installed `print-md.exe` binary, with arguments `preview --open true`
-- **Working Directory**: `Documents\print-md` (the examples directory the installer sets up), falling back to the user's Documents folder
-- **Icon**: the binary's own embedded icon (`<print-md.exe>,0`)
-- **Description**: "Start Print-md Preview Server"
+- **File**: `Gutterpress Preview.lnk` (created on Desktop)
+- **Target**: the installed `gutterpress.exe` binary, with arguments `preview --open true`
+- **Working Directory**: `Documents\gutterpress` (the examples directory the installer sets up), falling back to the user's Documents folder
+- **Icon**: the binary's own embedded icon (`<gutterpress.exe>,0`)
+- **Description**: "Start Gutterpress Preview Server"
 
 #### Linux (install.sh)
 
 **Shortcut Details:**
-- **File**: `print-md-preview.desktop` (created in `$XDG_DESKTOP_DIR`, falling back to `~/Desktop`)
-- **Exec**: the installed `print-md` binary, with arguments `preview --open true`
-- **Working Directory**: `~/Documents/print-md` (the examples directory the installer sets up), falling back to `~/Documents`
+- **File**: `gutterpress-preview.desktop` (created in `$XDG_DESKTOP_DIR`, falling back to `~/Desktop`)
+- **Exec**: the installed `gutterpress` binary, with arguments `preview --open true`
+- **Working Directory**: `~/Documents/gutterpress` (the examples directory the installer sets up), falling back to `~/Documents`
 - **Terminal**: true (shows server output)
 - **Icon**: none is set (the entry uses the desktop environment's default)
 - The script marks the file executable and trusted (`gio set ... metadata::trusted true`) where `gio` is available.
@@ -143,10 +143,10 @@ use the **Electron desktop app** (`packages/viewer`) instead of a browser shortc
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Print-md Preview
-Comment=Start Print-md Preview Server
-Exec=/path/to/print-md preview --open true
-Path=/home/user/Documents/print-md
+Name=Gutterpress Preview
+Comment=Start Gutterpress Preview Server
+Exec=/path/to/gutterpress preview --open true
+Path=/home/user/Documents/gutterpress
 Terminal=true
 StartupNotify=true
 ```
@@ -161,12 +161,12 @@ Currently, macOS users install the binary without a shortcut. Desktop shortcuts 
 
 #### First Launch
 1. User runs installation script
-2. Script downloads the standalone print-md binary from GitHub Releases
+2. Script downloads the standalone gutterpress binary from GitHub Releases
 3. Script creates desktop shortcut
 4. User sees success message with instructions
 
 #### Daily Use
-1. User double-clicks "Print-md Preview" shortcut
+1. User double-clicks "Gutterpress Preview" shortcut
 2. Terminal/PowerShell window opens showing server logs
 3. Browser automatically opens to `http://localhost:3579`
 4. The rendered book is displayed (headless — no toolbar)
@@ -176,7 +176,7 @@ For the full toolbar UI (page navigation, zoom, folder picker, PDF export),
 launch the desktop app from the repo:
 
 ```bash
-bun run viewer:electron
+bun --cwd packages/desktop run electron:dev
 ```
 
 ### Customization
@@ -189,11 +189,11 @@ Users can modify the shortcut to:
 ### Troubleshooting
 
 #### Windows: Shortcut not working
-- Verify print-md is installed: run `print-md --version` in PowerShell
+- Verify gutterpress is installed: run `gutterpress --version` in PowerShell
 - Check shortcut properties for correct paths
 - Reinstall with: `.\install.ps1`
 
 #### Linux: Desktop file not showing
 - Verify desktop directory: `echo $XDG_DESKTOP_DIR`
-- Make executable: `chmod +x ~/Desktop/print-md-preview.desktop`
-- Trust the file (GNOME): `gio set ~/Desktop/print-md-preview.desktop metadata::trusted true`
+- Make executable: `chmod +x ~/Desktop/gutterpress-preview.desktop`
+- Trust the file (GNOME): `gio set ~/Desktop/gutterpress-preview.desktop metadata::trusted true`

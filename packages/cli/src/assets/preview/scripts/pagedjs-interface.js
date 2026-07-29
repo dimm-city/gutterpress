@@ -26,7 +26,7 @@
   function detectVisiblePage() {
     if (pages.length === 0) return 1;
     // Use getBoundingClientRect (viewport-relative, post-zoom) rather than
-    // offsetTop. The viewer applies CSS `zoom` for fit-width; under `zoom`,
+    // offsetTop. The desktop applies CSS `zoom` for fit-width; under `zoom`,
     // offsetTop stays in PRE-zoom layout coords while window.scrollY is POST-zoom,
     // so mixing them pinned the detected page to 1. getBoundingClientRect is
     // consistent with the rendered viewport at any zoom.
@@ -214,7 +214,7 @@
       return api.notifyPageChange();
     },
     setZoom: function (z) {
-      document.documentElement.style.setProperty('--pmd-zoom', z);
+      document.documentElement.style.setProperty('--gutterpress-zoom', z);
     },
     toggleDebugMode: function () {
       debugMode = !debugMode;
@@ -363,8 +363,8 @@
       else if (spec.id) { var byId = document.getElementById(spec.id); if (byId) els = [byId]; }
       else if (spec.line != null) { var one = resolveTarget({ line: spec.line }); if (one) els = [one]; }
       for (var i = 0; i < els.length; i++) {
-        els[i].classList.add('pmd-hl');
-        els[i].setAttribute('data-pmd-hl-group', group);
+        els[i].classList.add('gutterpress-hl');
+        els[i].setAttribute('data-gutterpress-hl-group', group);
       }
       if (spec.scroll && els[0]) {
         ignoreScrollUntil = Date.now() + 350;
@@ -373,9 +373,9 @@
       if (spec.transient && els.length) {
         setTimeout(function () {
           for (var j = 0; j < els.length; j++) {
-            if (els[j].getAttribute('data-pmd-hl-group') === group) {
-              els[j].classList.remove('pmd-hl');
-              els[j].removeAttribute('data-pmd-hl-group');
+            if (els[j].getAttribute('data-gutterpress-hl-group') === group) {
+              els[j].classList.remove('gutterpress-hl');
+              els[j].removeAttribute('data-gutterpress-hl-group');
             }
           }
         }, spec.transientMs || 1200);
@@ -384,11 +384,11 @@
     },
 
     clearHighlights: function (group) {
-      var sel = group ? '.pmd-hl[data-pmd-hl-group="' + group + '"]' : '.pmd-hl';
+      var sel = group ? '.gutterpress-hl[data-gutterpress-hl-group="' + group + '"]' : '.gutterpress-hl';
       var els = Array.from(document.querySelectorAll(sel));
       for (var i = 0; i < els.length; i++) {
-        els[i].classList.remove('pmd-hl');
-        els[i].removeAttribute('data-pmd-hl-group');
+        els[i].classList.remove('gutterpress-hl');
+        els[i].removeAttribute('data-gutterpress-hl-group');
       }
       return { cleared: els.length };
     }
@@ -402,8 +402,8 @@
     try {
       var hlStyle = document.createElement('style');
       hlStyle.textContent =
-        '.pmd-hl{outline:2px solid var(--pmd-hl-color,#4ea1ff);outline-offset:2px;' +
-        'background:var(--pmd-hl-bg,rgba(78,161,255,.14));' +
+        '.gutterpress-hl{outline:2px solid var(--gutterpress-hl-color,#4ea1ff);outline-offset:2px;' +
+        'background:var(--gutterpress-hl-bg,rgba(78,161,255,.14));' +
         'transition:outline-color .2s,background .2s;}';
       (document.head || document.documentElement).appendChild(hlStyle);
     } catch (_e) { /* non-fatal: highlight just renders unstyled */ }

@@ -6,7 +6,7 @@ dist
 **/dist
 **/build
 **/.svelte-kit
-packages/viewer/electron-dist
+packages/desktop/electron-dist
 
 # Big sample content + scratch output — the image takes projects via a mount.
 examples

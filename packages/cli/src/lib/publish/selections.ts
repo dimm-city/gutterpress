@@ -10,8 +10,8 @@
  * tokens), kept out of the manifest so a default can span multiple books.
  *
  * Mirrors {@link FileTokenStore}: a `0600` JSON file under a config dir, with
- * serialized read-modify-write. The CLI and the viewer host each construct one
- * with their OWN directory (CLI: {@link defaultConfigDir}; viewer: Electron
+ * serialized read-modify-write. The CLI and the desktop host each construct one
+ * with their OWN directory (CLI: {@link defaultConfigDir}; desktop: Electron
  * `userData`) — they do not share the file, the same way their credential
  * stores don't. Front-ends resolve the effective project/global account and
  * pass it to the lib as `PublishDeps.credentialAccount`; the lib then lets the

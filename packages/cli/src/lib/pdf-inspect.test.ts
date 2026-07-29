@@ -110,7 +110,7 @@ describe("pdf-inspect (synthetic pdf-lib document)", () => {
     docu.addPage([612, 792]); // US Letter, points
     docu.addPage([612, 792]);
     const bytes = await docu.save();
-    dir = await mkdtemp(join(tmpdir(), "print-md-pdfinspect-"));
+    dir = await mkdtemp(join(tmpdir(), "gutterpress-pdfinspect-"));
     pdfPath = join(dir, "synthetic.pdf");
     await writeFile(pdfPath, bytes);
   });
@@ -157,7 +157,7 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
     const docu = await PDFDocument.create();
     docu.addPage([612, 792]);
     const bytes = await docu.save();
-    dir = await mkdtemp(join(tmpdir(), "print-md-pdfcache-"));
+    dir = await mkdtemp(join(tmpdir(), "gutterpress-pdfcache-"));
     // DOC_CACHE_MAX + 1 distinct paths, so loading them all evicts exactly one.
     for (let i = 0; i < DOC_CACHE_MAX + 1; i++) {
       const p = join(dir, `doc-${i}.pdf`);
@@ -200,7 +200,7 @@ describe("pdf-inspect cache eviction + clearPdfCache", () => {
   });
 
   // Overlapping-run protection: runChecks is served by a long-lived host (the
-  // viewer) where two runs CAN overlap. Each run holds a retain scope; the
+  // desktop) where two runs CAN overlap. Each run holds a retain scope; the
   // cache (including grace-held evictees) is cleared only when the LAST scope
   // releases, so one run's end cannot destroy documents the other is reading.
   test("releasing one of two overlapping retains keeps documents alive; the last release clears cached + grace-held", async () => {

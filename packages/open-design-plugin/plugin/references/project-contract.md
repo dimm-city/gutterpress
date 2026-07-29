@@ -1,16 +1,16 @@
 # Project contract
 
-What Print-MD treats as a project, what it renders, and what it owns.
-Verified against the Print-MD source that ships this package, 2026-07-28.
+What Gutterpress treats as a project, what it renders, and what it owns.
+Verified against the Gutterpress source that ships this package, 2026-07-28.
 
 ## Manifest
 
-Print-MD looks for these names, in order, and stops at the first one found:
+Gutterpress looks for these names, in order, and stops at the first one found:
 
 ```text
 manifest.yaml
 manifest.yml
-print-md.yaml
+gutterpress.yaml
 ```
 
 Every path inside a manifest resolves from the **manifest's own directory**.
@@ -40,7 +40,7 @@ implicit discovery.
 
 ## Stylesheets
 
-`styles:` is the explicit contract. When it is omitted, Print-MD picks the first
+`styles:` is the explicit contract. When it is omitted, Gutterpress picks the first
 of these that exists:
 
 ```text
@@ -65,7 +65,7 @@ anything. To change the page, change `@page` in the stylesheet that owns it.
 
 ## Removed manifest fields
 
-Two fields were deleted from Print-MD and now make the build fail with a message
+Two fields were deleted from Gutterpress and now make the build fail with a message
 naming them:
 
 - **`source.assets`** — assets are discovered from what the book actually
@@ -92,10 +92,10 @@ model.
 ## Commands the user runs (you do not run them)
 
 ```bash
-print-md preview ./books/core-book      # live paginated preview, default port 3579
-print-md lint    ./books/core-book      # print-safety CSS checks
-print-md build   ./books/core-book --format pdf
-print-md doctor                         # environment diagnosis
+gutterpress preview ./books/core-book      # live paginated preview, default port 3579
+gutterpress lint    ./books/core-book      # print-safety CSS checks
+gutterpress build   ./books/core-book --format pdf
+gutterpress doctor                         # environment diagnosis
 ```
 
 This plugin requests no shell or subprocess capability. Ask the user to run

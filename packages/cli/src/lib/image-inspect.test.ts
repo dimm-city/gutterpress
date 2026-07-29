@@ -112,7 +112,7 @@ function makeTiff(opts: {
 // --- harness --------------------------------------------------------------
 
 async function inspect(name: string, bytes: Buffer) {
-  const dir = await mkdtemp(join(tmpdir(), "print-md-img-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-img-"));
   try {
     const p = join(dir, name);
     await writeFile(p, bytes);

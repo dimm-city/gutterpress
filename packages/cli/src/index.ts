@@ -1,9 +1,9 @@
 /**
- * @dimm-city/print-md — runtime library for print-md.
+ * gutterpress — runtime library for Gutterpress.
  *
  * Consumed by:
  *   - packages/cli  (commands import from here; bundled into the CLI binary + npm package)
- *   - packages/viewer  (SvelteKit API routes import from here at runtime)
+ *   - packages/desktop (SvelteKit API routes import from here at runtime)
  *
  * Plugin authors use the type-only exports below to type their plugins without
  * taking a runtime dependency on this package.
@@ -28,13 +28,13 @@ export type { ResolvedSelectors } from "./checks/registry.ts";
 export type { CheckCategory, CheckPhase } from "./checks/types.ts";
 export { loadManifest } from "./lib/manifest.ts";
 
-// ── Platform abstraction contract (#41) — consumed by the viewer ─────────────
+// ── Platform abstraction contract (#41) — consumed by the desktop ────────────
 export type { PlatformAdapter, FileStat, FileWriteResult } from "./platform.ts";
 
-// ── Image inspection (#47) — backs the viewer's Media panel detail view ──────
+// ── Image inspection (#47) — backs the desktop's Media panel detail view ─────
 // Dependency-free header parser (PNG/JPEG/TIFF): width/height, DPI, alpha,
 // coarse color space. No ImageMagick/`identify` needed — safe in the packaged
-// viewer and the compiled CLI binary alike.
+// desktop and the compiled CLI binary alike.
 export { inspectImage } from "./lib/image-inspect.ts";
 export type { ImageInfo, ColorSpace } from "./lib/image-inspect.ts";
 
@@ -44,7 +44,7 @@ export type { ImageInfo, ColorSpace } from "./lib/image-inspect.ts";
 // bundled into the SPA renderer per the 0.4.0-beta.4 incident); the editor's
 // lint gutter calls `getPlatform().checkCss(...)` over that route, never this
 // export directly. Exported here so the CLI's own validation pipeline and the
-// viewer's host-side route share one implementation.
+// desktop's host-side route share one implementation.
 export { checkCss } from "./lib/printsafe.ts";
 export type { PrintSafeWarning } from "./lib/printsafe.ts";
 export {
@@ -56,7 +56,7 @@ export {
 
 // ── Type-only exports for plugin authors ─────────────────────────────────────
 export type {
-  PrintMdPlugin,
-  PrintMdPluginExport,
-  PrintMdPluginMetadata,
+  GutterpressPlugin,
+  GutterpressPluginExport,
+  GutterpressPluginMetadata,
 } from "./lib/markdown/plugins.ts";

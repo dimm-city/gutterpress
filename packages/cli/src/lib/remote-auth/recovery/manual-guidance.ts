@@ -127,7 +127,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
 
   network_unavailable: {
     userSummary:
-      "print-md couldn't reach the online repository. Check your connection and try again.",
+      "gutterpress couldn't reach the online repository. Check your connection and try again.",
     recommendedNextStep: "Check your internet connection and try syncing again.",
     recommendedAction: "Try again",
     recommendedActionKey: "sync",
@@ -142,7 +142,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
   insecure_transport: {
     userSummary:
       "This project's online address isn't secure, so the saved connection can't be used with it.",
-    // "https", never "https://" — the viewer redacts /https?:\/\/\S+/ matches.
+    // "https", never "https://" — the desktop redacts /https?:\/\/\S+/ matches.
     recommendedNextStep:
       "Change the project's online address to a secure one (starting with https), then try syncing again.",
     recommendedAction: "Check connection",
@@ -157,7 +157,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
     userSummary:
       "Your project's version history is in an unusual state and can't be synced right now.",
     recommendedNextStep:
-      "Let print-md restore your project to a normal state so syncing works again.",
+      "Let gutterpress restore your project to a normal state so syncing works again.",
     recommendedAction: "Restore to normal",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [
@@ -169,7 +169,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
     userSummary:
       "A previous operation didn't finish cleanly and left a lock behind. Removing it should fix syncing.",
     recommendedNextStep:
-      "Allow print-md to clear the leftover lock so syncing works again.",
+      "Allow gutterpress to clear the leftover lock so syncing works again.",
     recommendedAction: "Clear and retry",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [
@@ -180,9 +180,9 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
 
   corrupt_index: {
     userSummary:
-      "The project's tracking information is damaged. print-md can rebuild it from your saved history.",
+      "The project's tracking information is damaged. gutterpress can rebuild it from your saved history.",
     recommendedNextStep:
-      "Allow print-md to rebuild the tracking information from your version history.",
+      "Allow gutterpress to rebuild the tracking information from your version history.",
     recommendedAction: "Rebuild",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [
@@ -192,9 +192,9 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
 
   missing_git_dir: {
     userSummary:
-      "The version history for this project seems to be missing. print-md can try to recover it from the online copy.",
+      "The version history for this project seems to be missing. gutterpress can try to recover it from the online copy.",
     recommendedNextStep:
-      "Allow print-md to reconnect your project to its online version history.",
+      "Allow gutterpress to reconnect your project to its online version history.",
     recommendedAction: "Recover history",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [
@@ -207,7 +207,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
     userSummary:
       "Some saved history for this project appears to be missing or damaged.",
     recommendedNextStep:
-      "Allow print-md to try fetching the missing history from the online copy.",
+      "Allow gutterpress to try fetching the missing history from the online copy.",
     recommendedAction: "Fetch missing history",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [
@@ -220,7 +220,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
     userSummary:
       "This project and the online copy were created separately and don't share a starting point.",
     recommendedNextStep:
-      "Let print-md combine your work with the online version into one project.",
+      "Let gutterpress combine your work with the online version into one project.",
     recommendedAction: "Combine projects",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [
@@ -233,7 +233,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
     userSummary:
       "Your project's last update didn't finish, so it can't be synced yet.",
     recommendedNextStep:
-      "Let print-md undo the unfinished update and return your project to its last working state.",
+      "Let gutterpress undo the unfinished update and return your project to its last working state.",
     recommendedAction: "Restore to normal",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [
@@ -246,7 +246,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
     userSummary:
       "Your project's last update didn't finish, so it can't be synced yet.",
     recommendedNextStep:
-      "Let print-md undo the unfinished update and return your project to its last working state.",
+      "Let gutterpress undo the unfinished update and return your project to its last working state.",
     recommendedAction: "Restore to normal",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [
@@ -259,7 +259,7 @@ const GUIDANCE: Record<SyncErrorKind, GuidanceCopy> = {
     userSummary:
       "Your project's last update didn't finish, so it can't be synced yet.",
     recommendedNextStep:
-      "Let print-md undo the unfinished update and return your project to its last working state.",
+      "Let gutterpress undo the unfinished update and return your project to its last working state.",
     recommendedAction: "Restore to normal",
     recommendedActionKey: "restore_repo",
     safeNextSteps: [

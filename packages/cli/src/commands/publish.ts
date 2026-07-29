@@ -22,14 +22,14 @@ import {
 } from "../lib/cli-args.ts";
 
 /**
- * `print-md publish` (#35) — push a built artifact to a publishing platform,
+ * `gutterpress publish` (#35) — push a built artifact to a publishing platform,
  * headlessly (CI-safe). One command, four modes:
  *
- *   print-md publish --list                         # providers + connection status
- *   print-md publish --provider itch --connect      # store an API key (token via
+ *   gutterpress publish --list                         # providers + connection status
+ *   gutterpress publish --provider itch --connect      # store an API key (token via
  *                                                   #   --token, env var, or piped stdin)
- *   print-md publish --provider itch --disconnect   # forget the stored key
- *   print-md publish --provider itch [dir]          # publish (add --dry-run / --json)
+ *   gutterpress publish --provider itch --disconnect   # forget the stored key
+ *   gutterpress publish --provider itch [dir]          # publish (add --dry-run / --json)
  *
  * Credentials live in the 0600 user-config credential store (never in the
  * project); provider env vars (BUTLER_API_KEY, SWA_CLI_DEPLOYMENT_TOKEN,
@@ -180,7 +180,7 @@ export default defineCommand({
     const providerId = typeof args.provider === "string" ? args.provider : "";
     if (!providerId) {
       log.error(
-        "Specify a provider: print-md publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify> (or --list).",
+        "Specify a provider: gutterpress publish --provider <itch|drivethrurpg|kdp|azure-swa|shopify> (or --list).",
       );
       process.exit(EXIT_CODES.USAGE);
     }
@@ -204,7 +204,7 @@ export default defineCommand({
     if (args.connect) {
       if (!provider.info.credential.required) {
         log.info(
-          `${provider.info.label} is a guided provider — no API key needed. Just run: print-md publish --provider ${provider.info.id}`,
+          `${provider.info.label} is a guided provider — no API key needed. Just run: gutterpress publish --provider ${provider.info.id}`,
         );
         return;
       }

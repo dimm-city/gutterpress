@@ -54,7 +54,7 @@ export const drivethrurpgProvider: PublishProvider = {
       severity: "info",
       id: "drivethrurpg/validate-profile",
       message:
-        "Tip: run `print-md validate --profile dtrpg` for DriveThruRPG's print-compliance checks before uploading.",
+        "Tip: run `gutterpress validate --profile dtrpg` for DriveThruRPG's print-compliance checks before uploading.",
     });
     return issues;
   },
@@ -77,7 +77,7 @@ export const drivethrurpgProvider: PublishProvider = {
         "Set pricing and activate the title when you're ready.",
       ],
       detail:
-        "DriveThruRPG has no upload API, so print-md prepared the package and the checklist for you.",
+        "DriveThruRPG has no upload API, so gutterpress prepared the package and the checklist for you.",
     };
   },
 };

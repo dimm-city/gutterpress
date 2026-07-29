@@ -696,11 +696,11 @@ describe("chapter counter class inheritance (ch=N / .chapter-N)", () => {
 });
 
 describe("@continue / @end-section", () => {
-  test("@continue closes the current section and opens a new one with the same name + pmd-continued class", () => {
+  test("@continue closes the current section and opens a new one with the same name + gutterpress-continued class", () => {
     const { html } = renderPaged("@section S\nA\n@continue\nB\n@end-section\n");
     expect(html).toBe(
       '<div class="section" data-section="S"><p>A</p>\n</div>' +
-        '<div class="section pmd-continued" data-section="S"><p>B</p>\n</div>'
+        '<div class="section gutterpress-continued" data-section="S"><p>B</p>\n</div>'
     );
   });
 
@@ -712,19 +712,19 @@ describe("@continue / @end-section", () => {
       '<div class="section" data-section="S" data-region="aside">'
     );
     expect(html).toContain(
-      '<div class="section pmd-continued" data-section="S" data-region="aside">'
+      '<div class="section gutterpress-continued" data-section="S" data-region="aside">'
     );
   });
 
-  test("@continue does not duplicate pmd-continued if chained twice", () => {
+  test("@continue does not duplicate gutterpress-continued if chained twice", () => {
     const { html } = renderPaged(
       "@section S\nA\n@continue\nB\n@continue\nC\n@end-section\n"
     );
     const matches = html.match(/class="section[^"]*"/g) || [];
     expect(matches).toEqual([
       'class="section"',
-      'class="section pmd-continued"',
-      'class="section pmd-continued"',
+      'class="section gutterpress-continued"',
+      'class="section gutterpress-continued"',
     ]);
   });
 
@@ -928,7 +928,7 @@ describe("col-split has-column-break detection (characterization for the transfo
     expect(html).toBe(
       '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
         '<div class="col">\n<p>B</p>\n</div></div>\n' +
-        '<div class="section col-split pmd-continued"><p>C</p>\n</div>'
+        '<div class="section col-split gutterpress-continued"><p>C</p>\n</div>'
     );
   });
 
@@ -938,7 +938,7 @@ describe("col-split has-column-break detection (characterization for the transfo
     );
     expect(html).toBe(
       '<div class="section col-split"><p>A</p>\n</div>' +
-        '<div class="section col-split pmd-continued"><div class="col">\n<p>B</p>\n</div>' +
+        '<div class="section col-split gutterpress-continued"><div class="col">\n<p>B</p>\n</div>' +
         '<div class="col">\n<p>C</p>\n</div></div>\n'
     );
   });

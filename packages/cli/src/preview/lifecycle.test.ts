@@ -28,8 +28,8 @@ import type { PreviewServer } from "./http-server";
 
 // Mirrors the private constants in lifecycle.ts (TEMP_DIR_BASE / PID_FILE_NAME)
 // — not exported, so re-derived here for the orphan-cleanup fixtures.
-const TEMP_DIR_BASE = path.join(tmpdir(), "print-md-preview");
-const PID_FILE_NAME = ".print-md.pid";
+const TEMP_DIR_BASE = path.join(tmpdir(), "gutterpress-preview");
+const PID_FILE_NAME = ".gutterpress.pid";
 
 function makeOptions(overrides: Partial<PreviewServerOptions> = {}): PreviewServerOptions {
   return {
@@ -79,12 +79,12 @@ function makeState(overrides: Partial<ServerState> = {}): ServerState {
 // ── validateInputPath ───────────────────────────────────────────────────────
 
 describe("validateInputPath", () => {
-  test("empty input is a no-op (no-input / viewer folder-picker mode)", async () => {
+  test("empty input is a no-op (no-input / desktop folder-picker mode)", async () => {
     await expect(validateInputPath("")).resolves.toBeUndefined();
   });
 
   test("an existing directory resolves without throwing", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-validate-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-validate-"));
     try {
       await expect(validateInputPath(dir)).resolves.toBeUndefined();
     } finally {
@@ -93,7 +93,7 @@ describe("validateInputPath", () => {
   });
 
   test("a nonexistent path throws naming the path", async () => {
-    const missing = path.join(tmpdir(), "pmd-lifecycle-does-not-exist-" + Date.now());
+    const missing = path.join(tmpdir(), "gutterpress-lifecycle-does-not-exist-" + Date.now());
     await expect(validateInputPath(missing)).rejects.toThrow(
       `Input path not found: ${missing}`
     );
@@ -109,9 +109,9 @@ describe("initializePreviewDirectories", () => {
     // takes an inputPath/config at all. Serve-in-place means the temp dir is
     // never a mirror of the project: http-server.ts reads project files
     // straight from the project directory for every non-book.html request,
-    // so the ONLY things print-md itself ever writes into the temp dir are
+    // so the ONLY things gutterpress itself ever writes into the temp dir are
     // book.html (written later by generateAndWriteHtml) and the PID marker.
-    const projectDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-input-"));
+    const projectDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-input-"));
     let tempDir: string | undefined;
     try {
       await writeFile(path.join(projectDir, "chapter-01.md"), "# Hello\n", "utf-8");
@@ -131,7 +131,7 @@ describe("initializePreviewDirectories", () => {
 
   test("reaps orphan temp dirs whose recorded PID is no longer alive", async () => {
     await mkdir(TEMP_DIR_BASE, { recursive: true });
-    const deadDir = path.join(TEMP_DIR_BASE, "pmd-orphan-dead-" + Date.now());
+    const deadDir = path.join(TEMP_DIR_BASE, "gutterpress-orphan-dead-" + Date.now());
     await mkdir(deadDir, { recursive: true });
     // pid <= 0 is unconditionally treated as "not alive" by isProcessAlive —
     // deterministic, no reliance on real PID reuse timing.
@@ -154,7 +154,7 @@ describe("initializePreviewDirectories", () => {
 
   test("does NOT reap a temp dir whose recorded PID is this (alive) test process", async () => {
     await mkdir(TEMP_DIR_BASE, { recursive: true });
-    const aliveDir = path.join(TEMP_DIR_BASE, "pmd-orphan-alive-" + Date.now());
+    const aliveDir = path.join(TEMP_DIR_BASE, "gutterpress-orphan-alive-" + Date.now());
     await mkdir(aliveDir, { recursive: true });
     await writeFile(path.join(aliveDir, PID_FILE_NAME), `${process.pid}\n`, "utf-8");
 
@@ -183,7 +183,7 @@ describe("initializeConfiguration", () => {
   });
 
   test("loads and resolves the manifest at the given input directory", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-config-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-config-"));
     try {
       await writeFile(path.join(dir, "manifest.yaml"), "title: My Custom Title\n", "utf-8");
       const config = await initializeConfiguration(dir);
@@ -194,7 +194,7 @@ describe("initializeConfiguration", () => {
   });
 
   test("a non-empty input directory without a manifest keeps preview's default config", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-no-manifest-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-no-manifest-"));
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Loose chapter\n", "utf-8");
       const config = await initializeConfiguration(dir);
@@ -209,9 +209,9 @@ describe("initializeConfiguration", () => {
 
 describe("restartPreview", () => {
   test("repoints currentInputPath, regenerates book.html, and broadcasts a reload", async () => {
-    const oldInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-old-"));
-    const newInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-new-"));
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-temp-"));
+    const oldInputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-old-"));
+    const newInputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-new-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-temp-"));
     try {
       await writeFile(path.join(oldInputDir, "chapter-01.md"), "# Old\n", "utf-8");
       await writeFile(path.join(newInputDir, "chapter-01.md"), "# Brand New Chapter\n", "utf-8");
@@ -241,9 +241,9 @@ describe("restartPreview", () => {
   });
 
   test("stops the previous watcher before restarting", async () => {
-    const oldInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-old-"));
-    const newInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-new-"));
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-temp-"));
+    const oldInputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-old-"));
+    const newInputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-new-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-temp-"));
     try {
       await writeFile(path.join(oldInputDir, "chapter-01.md"), "# Old\n", "utf-8");
       await writeFile(path.join(newInputDir, "chapter-01.md"), "# New\n", "utf-8");
@@ -269,9 +269,9 @@ describe("restartPreview", () => {
   });
 
   test("waits for an active rebuild before switching projects", async () => {
-    const oldInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-old-"));
-    const newInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-new-"));
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-temp-"));
+    const oldInputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-old-"));
+    const newInputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-new-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-temp-"));
     try {
       await writeFile(path.join(oldInputDir, "chapter-01.md"), "# Old\n", "utf-8");
       await writeFile(path.join(newInputDir, "chapter-01.md"), "# New\n", "utf-8");
@@ -315,9 +315,9 @@ describe("restartPreview", () => {
   });
 
   test("updates state.config from the new directory's manifest", async () => {
-    const oldInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-old-"));
-    const newInputDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-new-"));
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-restart-temp-"));
+    const oldInputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-old-"));
+    const newInputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-new-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-restart-temp-"));
     try {
       await writeFile(path.join(oldInputDir, "chapter-01.md"), "# Old\n", "utf-8");
       await writeFile(path.join(newInputDir, "manifest.yaml"), "title: Retitled\n", "utf-8");
@@ -345,7 +345,7 @@ describe("restartPreview", () => {
 
 describe("shutdownServer", () => {
   test("closes the preview server and removes the temp dir", async () => {
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-shutdown-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-shutdown-"));
     const stubServer = makeStubServer();
     const state = makeState({ tempDir, previewServer: stubServer });
 
@@ -360,7 +360,7 @@ describe("shutdownServer", () => {
   });
 
   test("is idempotent: a second call is a no-op (isShuttingDown guard)", async () => {
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-shutdown-idem-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-shutdown-idem-"));
     const stubServer = makeStubServer();
     const state = makeState({ tempDir, previewServer: stubServer });
 
@@ -372,7 +372,7 @@ describe("shutdownServer", () => {
   });
 
   test("removes the temp dir even when there is no previewServer yet", async () => {
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-shutdown-noserver-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-shutdown-noserver-"));
     const state = makeState({ tempDir, previewServer: null });
 
     await expect(shutdownServer(state)).resolves.toBeUndefined();
@@ -385,7 +385,7 @@ describe("shutdownServer", () => {
   });
 
   test("a throwing stopFileWatcher does not prevent temp-dir cleanup", async () => {
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-shutdown-watcher-throws-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-shutdown-watcher-throws-"));
     const fakeWatcher = {
       close: mock(async () => {
         throw new Error("simulated chokidar close failure");
@@ -407,7 +407,7 @@ describe("shutdownServer", () => {
   });
 
   test("a previewServer.close() that hangs forever does not block cleanup past its internal timeout", async () => {
-    const tempDir = await mkdtemp(path.join(tmpdir(), "pmd-lifecycle-shutdown-hang-"));
+    const tempDir = await mkdtemp(path.join(tmpdir(), "gutterpress-lifecycle-shutdown-hang-"));
     const hangingServer: PreviewServer = {
       port: 3000,
       close: () => new Promise<void>(() => {}), // never resolves

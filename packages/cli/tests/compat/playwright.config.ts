@@ -27,7 +27,7 @@ export default defineConfig({
   webServer: [
     {
       // Simple example: the shipped user guide.
-      command: "bun src/cli.ts preview ../../examples/print-md-user-guide --no-open --port 4111",
+      command: "bun src/cli.ts preview ../../examples/gutterpress-user-guide --no-open --port 4111",
       cwd: "../..",
       url: "http://127.0.0.1:4111/book.html",
       reuseExistingServer: !process.env.CI,

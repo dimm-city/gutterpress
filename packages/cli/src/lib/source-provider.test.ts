@@ -17,7 +17,7 @@ import {
 } from "./source-provider";
 
 async function tempDir(): Promise<string> {
-  return await mkdtemp(path.join(tmpdir(), "pmd-provider-"));
+  return await mkdtemp(path.join(tmpdir(), "gutterpress-provider-"));
 }
 
 /** Init version history on a plain folder and return the upgraded provider. */
@@ -253,7 +253,7 @@ test("automatic snapshot records changes under AUTO_SNAPSHOT_MESSAGE", async () 
 });
 
 test("automatic snapshot records the caller-supplied author name AND email", async () => {
-  // The viewer's host-side auto-snapshot scheduler passes the identity the
+  // The desktop's host-side auto-snapshot scheduler passes the identity the
   // author configured in Settings; the commit object must carry both fields.
   const dir = await tempDir();
   try {
@@ -274,9 +274,9 @@ test("automatic snapshot records the caller-supplied author name AND email", asy
 });
 
 test("a partially configured identity falls back to repo config per field", async () => {
-  // The viewer omits a blank Settings field so the repo's own config can fill
+  // The desktop omits a blank Settings field so the repo's own config can fill
   // it. resolveGitAuthor is the ONE rule every commit path uses, so a name from
-  // Settings pairs with the repo's email rather than the print-md default —
+  // Settings pairs with the repo's email rather than the gutterpress default —
   // and, critically, the merge commit of a sync resolves it the SAME way the
   // preliminary snapshot does (they used to disagree).
   const dir = await tempDir();
@@ -294,20 +294,20 @@ test("a partially configured identity falls back to repo config per field", asyn
     const [head] = await git.log({ fs, dir, depth: 1 });
     expect(head!.commit.author.name).toBe("Ada Lovelace");
     expect(head!.commit.author.email).toBe("repo@example.com");
-    expect(head!.commit.author.email).not.toBe("noreply@print-md.local");
+  expect(head!.commit.author.email).not.toBe("noreply@gutterpress.local");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("resolveGitAuthor falls back per field: option → repo config → print-md default", async () => {
+test("resolveGitAuthor falls back per field: option → repo config → gutterpress default", async () => {
   const dir = await tempDir();
   try {
     await initProject(dir);
     await git.setConfig({ fs, dir, path: "user.name", value: "Repo Name" });
     await git.setConfig({ fs, dir, path: "user.email", value: "repo@example.com" });
 
-    // Nothing supplied → repo config wins over the print-md default.
+    // Nothing supplied → repo config wins over the gutterpress default.
     expect(await resolveGitAuthor(dir)).toEqual({
       name: "Repo Name",
       email: "repo@example.com",
@@ -725,7 +725,7 @@ test("a snapshot interrupted between staging and commit is recovered by the next
     // but never commit (exactly the on-disk state a mid-snapshot crash leaves).
     await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nEdited draft.\n");
     await gitMod.add({ fs: fsMod, dir, filepath: "chapter-01.md" });
-    fsMod.writeFileSync(path.join(gitDirFor(dir), "print-md-snapshot-staging"), "");
+    fsMod.writeFileSync(path.join(gitDirFor(dir), "gutterpress-snapshot-staging"), "");
 
     // The walk sees workdir == stage: without the marker this would throw
     // "no changes" and the edit would stay invisible forever.
@@ -739,7 +739,7 @@ test("a snapshot interrupted between staging and commit is recovered by the next
     const history = await provider.listHistory(dir);
     expect(history[0]!.message).toBe("recovered");
     expect(
-      fsMod.existsSync(path.join(gitDirFor(dir), "print-md-snapshot-staging")),
+      fsMod.existsSync(path.join(gitDirFor(dir), "gutterpress-snapshot-staging")),
     ).toBe(false);
     // The committed tree contains the edited content.
     const head = await gitMod.resolveRef({ fs: fsMod, dir, ref: "HEAD" });
@@ -771,7 +771,7 @@ test("a marker left AFTER a successful commit does not create a phantom empty sn
     // and removed after `git.commit()` returns — a crash between those two
     // events leaves the marker behind even though the commit above already
     // succeeded and the working tree is clean. Hand-recreate that state.
-    fsMod.writeFileSync(path.join(gitDirFor(dir), "print-md-snapshot-staging"), "");
+    fsMod.writeFileSync(path.join(gitDirFor(dir), "gutterpress-snapshot-staging"), "");
     const changes = await listWorkdirChanges(dir, {});
     expect(changes.adds.length + changes.removes.length).toBe(0);
 
@@ -789,7 +789,7 @@ test("a marker left AFTER a successful commit does not create a phantom empty sn
 
     // The stale marker is cleared so future snapshots stop "recovering".
     expect(
-      fsMod.existsSync(path.join(gitDirFor(dir), "print-md-snapshot-staging")),
+      fsMod.existsSync(path.join(gitDirFor(dir), "gutterpress-snapshot-staging")),
     ).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -805,7 +805,7 @@ test("the original crash-after-staging case still commits (unaffected by the pha
 
     await writeFile(path.join(dir, "chapter-01.md"), "# Hello\n\nStaged edit.\n");
     await gitMod.add({ fs: fsMod, dir, filepath: "chapter-01.md" });
-    fsMod.writeFileSync(path.join(gitDirFor(dir), "print-md-snapshot-staging"), "");
+    fsMod.writeFileSync(path.join(gitDirFor(dir), "gutterpress-snapshot-staging"), "");
 
     const snap = await provider.snapshot({ projectDir: dir, message: "recovered staged edit" });
 
@@ -814,7 +814,7 @@ test("the original crash-after-staging case still commits (unaffected by the pha
     expect(history[0]!.message).toBe("recovered staged edit");
     expect(history.length).toBe(2);
     expect(
-      fsMod.existsSync(path.join(gitDirFor(dir), "print-md-snapshot-staging")),
+      fsMod.existsSync(path.join(gitDirFor(dir), "gutterpress-snapshot-staging")),
     ).toBe(false);
   } finally {
     await rm(dir, { recursive: true, force: true });

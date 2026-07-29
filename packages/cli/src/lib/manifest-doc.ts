@@ -1,5 +1,5 @@
 /**
- * Shared manifest-Document helpers — resolve the `manifest.yaml`/`.yml` path,
+ * Shared manifest-Document helpers — resolve the `manifest.yaml` path,
  * load it as a `yaml` Document (comments/formatting round-trip), and ensure a
  * named sequence node exists.
  *
@@ -20,7 +20,7 @@ import { parseDocument, isSeq, YAMLSeq } from "yaml";
 import type { Document } from "yaml";
 import { MANIFEST_FILENAMES } from "./manifest";
 
-/** Resolve `manifest.yaml`/`.yml` inside a project dir; prefers an existing file. */
+/** Resolve `manifest.yaml` inside a project dir. */
 export function resolveManifestPath(projectDir: string): string {
   const existing = MANIFEST_FILENAMES.find((name) =>
     existsSync(path.join(projectDir, name))

@@ -49,8 +49,8 @@ afterEach(async () => {
 });
 
 htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint and returns the right shape", async () => {
-  const inputDir = await mkdtemp(join(tmpdir(), "pmd-orch-in-"));
-  const outDir = await mkdtemp(join(tmpdir(), "pmd-orch-out-"));
+  const inputDir = await mkdtemp(join(tmpdir(), "gutterpress-orch-in-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-orch-out-"));
   dirsToClean.push(inputDir, outDir);
 
   await writeFile(
@@ -110,7 +110,7 @@ test("resolveIccProfile finds an absolute ICC that exists on disk", async () => 
 });
 
 test("resolveIccProfile resolves a relative path against the manifest dir", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-icc-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-icc-"));
   dirsToClean.push(dir);
   await mkdir(join(dir, "profiles"), { recursive: true });
   const iccOnDisk = join(dir, "profiles", "custom.icc");
@@ -125,7 +125,7 @@ test("resolveIccProfile falls back to the embedded default for the unspecified C
   // manifest dir nor cwd), no explicit --icc, and the default basename => the
   // embedded asset copy is used.
   const resolved = await resolveIccProfile(
-    "pmd-no-such-dir/CGATS21_CRPC1.icc",
+    "gutterpress-no-such-dir/CGATS21_CRPC1.icc",
     "/nonexistent",
     undefined
   );

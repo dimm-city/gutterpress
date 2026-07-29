@@ -15,7 +15,7 @@ This guide renders with the same stylesheet and page geometry as the book itself
 | **Components** | Callouts, sidebars, pull quotes, spec blocks |
 | **Page Templates** | Cover, chapter opener, full-bleed spread |
 | **Layout** | Multi-column, image floats, utilities |
-| **Markdown Reference** | Every print-md syntax feature with live examples |
+| **Markdown Reference** | Every Gutterpress syntax feature with live examples |
 | **CLI Reference** | Build, preview, and publish commands |
 
 ## How to make this your own
@@ -43,7 +43,7 @@ Open `styles/guide.css` and update **§ 1 BRAND TOKENS** at the top. Every rule 
 ### 3. Preview live
 
 ```
-print-md preview design-guide --port 3580
+gutterpress preview design-guide --port 3580
 ```
 
 ### 4. Delete what you don't need
@@ -54,10 +54,10 @@ The guide is most useful when it only documents what you actually use. Remove an
 
 ```
 # Static HTML site (GitHub Pages, Netlify, etc.)
-print-md build design-guide --format html --out ./_site
+gutterpress build design-guide --format html --out ./_site
 
 # PDF download to bundle alongside
-print-md build design-guide --format pdf --out ./_site/guide.pdf
+gutterpress build design-guide --format pdf --out ./_site/guide.pdf
 ```
 
 ## Project structure
@@ -88,8 +88,8 @@ The design guide shares a single stylesheet with the book. When you update `§ 1
 Recommended workflow:
 
 1. Update tokens in `guide.css`
-2. Run `print-md preview design-guide` to confirm the guide looks right
-3. Run `print-md preview your-book` to confirm the book inherits the change
+2. Run `gutterpress preview design-guide` to confirm the guide looks right
+3. Run `gutterpress preview your-book` to confirm the book inherits the change
 4. Commit both files together
 
 This keeps the guide as a living document: it always reflects the active state of the book's design system.

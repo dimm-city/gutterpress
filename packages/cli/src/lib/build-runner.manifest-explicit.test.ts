@@ -31,7 +31,7 @@ afterEach(async () => {
 });
 
 test("resolveBuildContext throws UsageError when --manifest points at a nonexistent path (typo repro)", async () => {
-  const projA = await mkdtemp(join(tmpdir(), "pmd-proj-typo-manifest-"));
+  const projA = await mkdtemp(join(tmpdir(), "gutterpress-proj-typo-manifest-"));
   dirsToClean.push(projA);
 
   const missingManifest = join(projA, "typo.yaml");
@@ -56,7 +56,7 @@ test("resolveBuildContext throws UsageError when --manifest points at a nonexist
 });
 
 test("runBuild rejects with UsageError before creating any output directory when --manifest is a typo'd path", async () => {
-  const projA = await mkdtemp(join(tmpdir(), "pmd-proj-typo-manifest-build-"));
+  const projA = await mkdtemp(join(tmpdir(), "gutterpress-proj-typo-manifest-build-"));
   dirsToClean.push(projA);
 
   const missingManifest = join(projA, "typo.yaml");
@@ -77,7 +77,7 @@ test("runBuild rejects with UsageError before creating any output directory when
 });
 
 test("resolveBuildContext rejects a build when project discovery finds no manifest", async () => {
-  const projNoManifest = await mkdtemp(join(tmpdir(), "pmd-proj-no-manifest-"));
+  const projNoManifest = await mkdtemp(join(tmpdir(), "gutterpress-proj-no-manifest-"));
   dirsToClean.push(projNoManifest);
 
   await expect(
@@ -102,5 +102,5 @@ test("resolveBuildContext rejects a build when project discovery finds no manife
       format: "html",
       rawArgs: {},
     })
-  ).rejects.toThrow("print-md build <project-dir>");
+  ).rejects.toThrow("gutterpress build <project-dir>");
 });

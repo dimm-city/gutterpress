@@ -34,7 +34,7 @@ const RENDER_TEST_TIMEOUT_MS = 120_000;
  * Returns the staged book.html path and a cleanup fn.
  */
 async function stageMinimalBook(): Promise<{ stagedBook: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-render-smoke-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-render-smoke-"));
   const stagedBook = join(dir, "book.html");
   // Two pages: a div that forces a page break before the second block.
   const html =
@@ -100,7 +100,7 @@ testIf(
 testIf(
   "preview chapter metadata preserves structural-selector pagination",
   async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pmd-wrapper-fidelity-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-wrapper-fidelity-"));
     try {
       await writeFile(join(dir, "a.md"), "# First\n\nAlpha.\n", "utf8");
       await writeFile(join(dir, "b.md"), "# Second\n\nBeta.\n", "utf8");
@@ -145,7 +145,7 @@ testIf(
       expect(previewPages.filter((start) => start < previewHtml.lastIndexOf("First")).length).toBe(1);
       expect(previewHtml).toContain('data-chapter-src="a.md"');
       expect(previewHtml).toContain('data-chapter-src="b.md"');
-      expect(previewHtml).not.toContain('class="pmd-chapter"');
+      expect(previewHtml).not.toContain('class="gutterpress-chapter"');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -1,20 +1,20 @@
-# Print-md Documentation
+# Gutterpress Documentation
 
 Complete documentation for creating professional print documents from markdown.
 
-> **📖 User Guide** — The canonical documentation is now the **[Print-md User Guide](../examples/print-md-user-guide/)**, a complete 48-page professionally formatted book covering all core features. Start here for learning Print-md.
+> **📖 User Guide** — The canonical documentation is the **[Gutterpress User Guide](../examples/gutterpress-user-guide/)**, a professionally formatted book covering all core features. Start here for learning Gutterpress.
 >
 > This directory contains technical architecture docs and advanced references. For authoring guides, see the user guide chapters linked below.
 
 ## Quick Start
 
-New to Print-md? Start here:
+New to Gutterpress? Start here:
 
-- **[User Guide — Chapter 1: Getting Started](../examples/print-md-user-guide/01-getting-started.md)** - Installation, basic workflow, and project setup
+- **[User Guide — Chapter 1: Getting Started](../examples/gutterpress-user-guide/01-getting-started.md)** - Installation, basic workflow, and project setup
 
 ## Core Documentation (see User Guide)
 
-See the **[Print-md User Guide](../examples/print-md-user-guide/)** for all core documentation:
+See the **[Gutterpress User Guide](../examples/gutterpress-user-guide/)** for all core documentation:
 
 - **Chapter 1: Getting Started** — Installation, basic commands, project structure, manifest configuration
 - **Chapter 2: Writing Your Content** — Headings, text formatting, lists, blockquotes, tables, layout directives
@@ -29,49 +29,49 @@ The user guide is authored as a complete professional book and serves as the can
 
 ## Documentation by Use Case
 
-See the [Print-md User Guide](../examples/print-md-user-guide/) for all topics:
+See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all topics:
 
 **Create my first document**
-→ [User Guide: Chapter 1 — Getting Started](../examples/print-md-user-guide/01-getting-started.md)
+→ [User Guide: Chapter 1 — Getting Started](../examples/gutterpress-user-guide/01-getting-started.md)
 
 **Control where pages break**
-→ [User Guide: Chapter 2 — Layout Directives](../examples/print-md-user-guide/02-writing-content.md#layout-directives)
+→ [User Guide: Chapter 2 — Layout Directives](../examples/gutterpress-user-guide/02-writing-content.md#layout-directives)
 
 **Format text and headings**
-→ [User Guide: Chapter 2 — Text Formatting](../examples/print-md-user-guide/02-writing-content.md#text-formatting)
+→ [User Guide: Chapter 2 — Text Formatting](../examples/gutterpress-user-guide/02-writing-content.md#text-formatting)
 
 **Add warning boxes or tips**
-→ [User Guide: Chapter 3 — Callouts](../examples/print-md-user-guide/03-visual-elements.md#callouts)
+→ [User Guide: Chapter 3 — Callouts](../examples/gutterpress-user-guide/03-visual-elements.md#callouts)
 
 **Include photos or artwork**
-→ [User Guide: Chapter 3 — Images](../examples/print-md-user-guide/03-visual-elements.md#images)
+→ [User Guide: Chapter 3 — Images](../examples/gutterpress-user-guide/03-visual-elements.md#images)
 
 **Create an RPG rulebook**
-→ [User Guide: Chapter 5 — TTRPG Extensions](../examples/print-md-user-guide/05-ttrpg-extensions.md)
+→ [User Guide: Chapter 5 — TTRPG Extensions](../examples/gutterpress-user-guide/05-ttrpg-extensions.md)
 
 **Customize colors and fonts**
-→ [User Guide: Chapter 4 — Styling & Theming](../examples/print-md-user-guide/04-styling-theming.md)
+→ [User Guide: Chapter 4 — Styling & Theming](../examples/gutterpress-user-guide/04-styling-theming.md)
 
 **Structure CSS for a multi-chapter book** (the recommended pattern for component variants, per-chapter overrides, and reusable section libraries)
 → [The Contextual Cascade Principle](./contextual-cascade-principle.md)
 
 **Validate my project for print**
-→ [User Guide: Chapter 7 — Validation](../examples/print-md-user-guide/07-validation.md)
+→ [User Guide: Chapter 7 — Validation](../examples/gutterpress-user-guide/07-validation.md)
 
 **Prepare for professional printing**
-→ [User Guide: Chapter 8 — System Setup](../examples/print-md-user-guide/08-system-setup.md)
+→ [User Guide: Chapter 8 — System Setup](../examples/gutterpress-user-guide/08-system-setup.md)
 
 **Diagnose a missing-tool error (`spawn gs ENOENT`, "No Chromium found", etc)**
-→ [User Guide: Chapter 8 — System Setup / Troubleshooting](../examples/print-md-user-guide/08-system-setup.md)
+→ [User Guide: Chapter 8 — System Setup / Troubleshooting](../examples/gutterpress-user-guide/08-system-setup.md)
 
 **Use the CLI from a terminal or CI**
 → [CLI README](../packages/cli/README.md)
 
-**Install the viewer or CLI, verify a download, or check platform support**
+**Install the desktop app or CLI, verify a download, or check platform support**
 → [Installation and supported platforms](./installing.md)
 
-**Develop on the viewer or the lib**
-→ [Viewer README](../packages/viewer/README.md) · [Architecture](ARCHITECTURE.md)
+**Develop on the desktop app or the lib**
+→ [Architecture](ARCHITECTURE.md)
 
 ## Quick Reference
 
@@ -79,19 +79,19 @@ See the [Print-md User Guide](../examples/print-md-user-guide/) for all topics:
 
 ```bash
 # Build PDF
-print-md build ./my-book
+ gutterpress build ./my-book
 
 # Preview with live reload
-print-md preview ./my-book
+ gutterpress preview ./my-book
 
 # Full validated print-ready PDF/X pipeline
-print-md build ./my-book --format pdfx
+ gutterpress build ./my-book --format pdfx
 
 # Validate source files
-print-md validate --input ./my-book
+ gutterpress validate --input ./my-book
 
 # Validate a built PDF (dist/<title-slug>/<title-slug>-pdf.pdf)
-print-md validate --pdf dist/my-book/my-book-pdf.pdf
+ gutterpress validate --pdf dist/my-book/my-book-pdf.pdf
 ```
 
 ### Common Directives
@@ -109,11 +109,11 @@ print-md validate --pdf dist/my-book/my-book-pdf.pdf
 ### Common Callouts
 
 > **Plugin required:** `> [!note]`-style GitHub alert syntax is **not** part
-> of core print-md — it lives in the separate, DC-branded Dimm City plugin.
+> of core Gutterpress — it lives in the separate, Dimm City plugin.
 > Without that plugin configured, these print as literal blockquote text
-> (`[!note] ...`). See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugins.md)
+> (`[!note] ...`). See [User Guide: Chapter 6 — Plugins](../examples/gutterpress-user-guide/06-plugins.md)
 > to add it, or use `@section .callout-tip` … `@end-section` (a plain marker
-> core always renders — see [User Guide: Chapter 9 — Publishing](../examples/print-md-user-guide/09-publishing.md))
+> core always renders — see [User Guide: Chapter 9 — Publishing](../examples/gutterpress-user-guide/09-publishing.md))
 > or a plain `>` blockquote for a core-only callout.
 
 ```markdown
@@ -136,18 +136,18 @@ docs/
 ├── SOURCE-FILES-GUIDE.md                  # Deep-dive into source.files configuration
 ├── migrations/                            # Migration guides
 │   └── 2026-05-removing-container-syntax.md
-├── docker.md                              # Running print-md in Docker
+├── docker.md                              # Running Gutterpress in Docker
 ├── publishing.md                          # Publishing built output to platforms
 ├── schema-autocomplete.md                 # manifest.yaml JSON Schema / editor autocomplete
 ├── design-guides.md                       # Companion design-guide projects
 ├── open-design/                           # Open Design workflow and plugin guides
-├── desktop-shortcut.md                    # OS desktop shortcuts for the viewer
+├── desktop-shortcut.md                    # OS desktop shortcuts for the desktop app
 ├── reviews/                               # Point-in-time critical review reports
 └── [remaining files are point-in-time audits/plans, kept for history — not
      part of the current documentation set]
 ```
 
-All authoring documentation lives in the **[Print-md User Guide](../examples/print-md-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials — some current (the files listed above), some historical audit/planning artifacts kept for the record.
+All authoring documentation lives in the **[Gutterpress User Guide](../examples/gutterpress-user-guide/)** (in `examples/`). This directory contains developer/architect reference materials — some current (the files listed above), some historical audit/planning artifacts kept for the record.
 
 ## Contributing
 
