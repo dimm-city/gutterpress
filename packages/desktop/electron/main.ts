@@ -881,8 +881,8 @@ const skAuthToken = randomBytes(32).toString("hex");
 // (see the single-instance lock below). So we keep hardware acceleration at its
 // Electron default; forcing software rendering only slows the paged.js preview.
 
-// Register the scheme as standard (must happen before app.whenReady) so
-// fetch from the page works and ServiceWorker / IndexedDB / etc. behave.
+// Register the scheme as standard (must happen before app.whenReady) so fetch
+// and origin-scoped browser APIs such as IndexedDB work from the app:// page.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "app",
