@@ -188,7 +188,7 @@ the full tree from a private snapshot, then rewrite reachable literal ESM and
 CommonJS package requests to receipt-approved private copies; unresolved or
 nonliteral requests fail closed, and an invalid marker never falls back to a
 global cache. Full rationale and optional/peer semantics:
-[`docs/adr/0007-npm-plugin-vendoring.md`](./docs/adr/0007-npm-plugin-vendoring.md).
+[`docs/adr/0007-npm-plugin-vendoring.md`](./.reviews/adr/0007-npm-plugin-vendoring.md).
 The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 
   - **Fail-fast (no `onError`)** — build/export/validate. Any load error aborts

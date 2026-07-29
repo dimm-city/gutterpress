@@ -600,7 +600,7 @@ process-local tree with no `node_modules` links. Literal ESM imports and
 CommonJS requires in the reachable module graph are resolved through the
 receipt and rewritten to those private copies; unresolved or nonliteral module
 requests fail closed instead of substituting project or ancestor packages. See
-[ADR 0007](./adr/0007-npm-plugin-vendoring.md).
+[ADR 0007](../.reviews/adr/0007-npm-plugin-vendoring.md).
 
 Plugin modules normally expose a default function. A manifest entry may set
 `export` to explicitly select a named function when a package exposes several

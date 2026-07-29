@@ -255,7 +255,7 @@ but Git collaboration uses the existing architecture.
 
 - [Print-MD enclosing repository detection](../../packages/cli/src/lib/project-source.ts)
 - [Print-MD version-history provider](../../packages/cli/src/lib/source-provider.ts)
-- [Print-MD npm plugin vendoring](../adr/0007-npm-plugin-vendoring.md)
+- [Print-MD npm plugin vendoring](../../.reviews/adr/0007-npm-plugin-vendoring.md)
 - [Print-MD CSS/font/image inlining](../../packages/cli/src/lib/asset-inline.ts)
 - [Print-MD preview file watching](../../packages/cli/src/preview/file-watcher.ts)
 - [Open Design direct-folder import](https://github.com/nexu-io/open-design/blob/a7e205939d441d29d64e616d6f5ec89c53bb711a/apps/daemon/src/import-export-routes.ts)
