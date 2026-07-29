@@ -68,10 +68,48 @@ export function resolveWithinRoot(relPath: string, root: string): string | null 
 }
 
 /**
+ * True if any path segment of `urlPathname` is a dotfile/dot-directory (e.g.
+ * `/.env`, `/.git/config`, `/foo/.hidden/bar`).
+ *
+ * This is the guard any server needs when it resolves request paths against a
+ * REAL project tree rather than a staged copy of generated output (the preview
+ * server's serve-in-place model). Containment alone is not sufficient there:
+ * `.env` and `.git/config` live INSIDE the served root, so
+ * {@link resolveWithinRoot} happily returns them — this is the one thing
+ * standing between a request and the project's actual secrets.
+ *
+ * It runs on the DECODED path so a percent-encoded segment (`%2e%2e`) can't
+ * spell a dot past a naive string check, and an encoding that fails to decode
+ * is refused rather than guessed at.
+ *
+ * BOTH `/` and `\` count as separators, on every platform. A raw backslash
+ * never survives the WHATWG URL parser (it normalizes to `/` for special
+ * schemes), but a percent-encoded one does: `/%5C.env` decodes to `/\.env`,
+ * whose only `/`-delimited segment is `\.env` — which does not START with a
+ * dot. `path.win32.resolve` DOES treat `\` as a separator, so on Windows that
+ * request resolved to `<root>\.env`, inside the root, and the preview served
+ * the project's real `.env`. Splitting on both separators closes that hole,
+ * and doing it platform-independently is what lets a POSIX test run pin the
+ * Windows behavior.
+ */
+export function hasDotSegment(urlPathname: string): boolean {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(urlPathname);
+  } catch {
+    return true;
+  }
+  return decoded.split(/[/\\]/).some((segment) => segment.startsWith("."));
+}
+
+/**
  * Resolve a request URL pathname to an absolute path inside `root`, guarding
  * against path traversal (`..`, encoded separators, absolute-looking paths).
  * Returns `null` if the pathname cannot be decoded or the resolved path
  * escapes `root` — callers turn that into a 403/404 as fits their route.
+ *
+ * Containment only — a caller serving a real project tree must ALSO run
+ * {@link hasDotSegment}, since dotfiles are contained but must stay unreachable.
  */
 export function resolveStaticPath(urlPathname: string, root: string): string | null {
   let decoded: string;

@@ -16,7 +16,7 @@ import { WebSocket, WebSocketServer } from 'ws';
 import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
-import { STATIC_MIME, resolveStaticPath } from '../lib/static-serve.ts';
+import { STATIC_MIME, hasDotSegment, resolveStaticPath } from '../lib/static-serve.ts';
 import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
 import { incrementalPreviewEnabled } from './file-watcher.ts';
@@ -342,31 +342,6 @@ function matchesEmbedded(urlPathname: string): boolean {
 }
 
 /**
- * True if any path segment of `urlPathname` is a dotfile/dot-directory (e.g.
- * `/.env`, `/.git/config`, `/foo/.hidden/bar`).
- *
- * SERVE-IN-PLACE (see the static-file fallback below) means requests are now
- * resolved directly against the project directory instead of a throwaway
- * copy of it — the old whole-tree `copyDirectory` this replaces happened to
- * leak the project's `.env` and an external `.git` into the served temp dir
- * too, but nobody could reach them without knowing the temp dir's random
- * name. Serving the REAL project tree removes that obscurity, so this guard
- * is the one thing standing between a request and the project's actual
- * secrets. It runs on the decoded path so a percent-encoded segment (e.g.
- * `%2e%2e`) can't spell a dot past a naive string check; a percent-encoding
- * that fails to decode is refused rather than guessed at.
- */
-function isDotfileRequest(urlPathname: string): boolean {
-  let decoded: string;
-  try {
-    decoded = decodeURIComponent(urlPathname);
-  } catch {
-    return true;
-  }
-  return decoded.split('/').some((segment) => segment.startsWith('.'));
-}
-
-/**
  * Create and start a preview HTTP+WebSocket server.
  *
  * `book.html` — the one file gutterpress generates — is served from
@@ -477,13 +452,16 @@ export async function createPreviewServer(
     // Serving the project root for the first time means its OWN dotfiles are
     // now in the request path too (the old whole-tree copy leaked `.env` and
     // an external `.git` into a throwaway dir; this reads the real thing), so
-    // `isDotfileRequest` is a hard requirement here, not a nicety — a request
-    // for `/.env` or anything under a dot-directory must 404, never read
-    // through. No-input mode (`state.currentInputPath === ''`) has no project
-    // to serve from either, so every non-book.html path 404s there too.
+    // `hasDotSegment` (lib/static-serve.ts — shared with the containment
+    // guard it must accompany) is a hard requirement here, not a nicety: a
+    // request for `/.env` or anything under a dot-directory must 404, never
+    // read through, INCLUDING the `%5C`-spelled separator that `path.resolve`
+    // honors on Windows. No-input mode (`state.currentInputPath === ''`) has
+    // no project to serve from either, so every non-book.html path 404s there
+    // too.
     const pathname = url.pathname === '/' ? '/book.html' : url.pathname;
     const servingProjectRoot = pathname !== '/book.html';
-    if (servingProjectRoot && (!state.currentInputPath || isDotfileRequest(pathname))) {
+    if (servingProjectRoot && (!state.currentInputPath || hasDotSegment(pathname))) {
       res.writeHead(404);
       res.end('Not Found');
       return;
