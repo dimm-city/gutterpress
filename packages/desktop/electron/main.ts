@@ -939,6 +939,9 @@ const writeHooksImpl: WriteHooks = {
   scheduleAutoSnapshot,
   scheduleAutoSync: (dir: string) => autoSync.schedule(dir),
   getWatchedDir: () => folderWatch.getWatchedDir(),
+  // Same host-detected root the fs guard authorizes writes against, so "this
+  // write was allowed" and "this write counts as an edit" can never disagree.
+  getRepositoryRoot: () => activeRepositoryRoot,
 };
 const watchHooksImpl: WatchHooks = {
   startFolderWatch,

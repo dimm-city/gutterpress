@@ -64,6 +64,41 @@ function defaultSetTimer(cb: () => void, ms: number): unknown {
   return setTimeout(cb, ms);
 }
 
+/**
+ * Path segments whose subtrees are never publication SOURCE (R15), so a change
+ * inside one is not an author edit:
+ *
+ *  - `.git` — the automatic snapshot itself mutates it, and treating that as an
+ *    edit would re-arm the snapshot timer forever (RC1-3).
+ *  - `dist` — build output. `gutterpress build` writes a whole book's worth of
+ *    files there.
+ *  - `plugins/npm` (matched by its `npm` segment under `plugins`) and
+ *    `node_modules` — vendored dependency trees, written wholesale by an
+ *    in-app plugin install, which arms its own effects through the fs routes.
+ *
+ * These mattered much less when the watch was non-recursive (only top-level
+ * entries were ever seen); now that it is recursive, an unfiltered build or
+ * plugin install would storm the debounce.
+ */
+const IGNORED_WATCH_SEGMENTS = new Set([".git", "dist", "node_modules"]);
+
+/**
+ * True when a watch event's relative path lies inside an ignored subtree.
+ * Segment-aware on BOTH separators: `distribution.md` is not `dist/`, and a
+ * Windows `dist\\book.pdf` is still ignored.
+ */
+export function isIgnoredWatchEntry(relativePath: string): boolean {
+  const segments = relativePath.split(/[/\\]/);
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i]!;
+    if (IGNORED_WATCH_SEGMENTS.has(segment)) return true;
+    // The vendored npm tree lives at `plugins/npm/…`; a book's own authored
+    // `plugins/*.js` files ARE source and must keep firing.
+    if (segment === "plugins" && segments[i + 1] === "npm") return true;
+  }
+  return false;
+}
+
 function defaultClearTimer(h: unknown): void {
   clearTimeout(h as NodeJS.Timeout);
 }
@@ -95,8 +130,17 @@ export class FolderWatcher {
   }
 
   /**
-   * Watch `dirPath` (non-recursive). Normalizes the path first; a no-op if the
-   * same dir is already watched. Switching dirs stops the old watcher first.
+   * Watch `dirPath` RECURSIVELY. Normalizes the path first; a no-op if the same
+   * dir is already watched. Switching dirs stops the old watcher first.
+   *
+   * The watch used to be non-recursive, so the only events it could ever see
+   * were the book's TOP-LEVEL entries (2026-07-29 audit). An external editor
+   * saving `chapters/ch01.md` or `styles/book.css` produced no
+   * `fs:folderChanged` — the file tree and editor never reconciled — and no edit
+   * signal, so the auto-snapshot/auto-sync debounce never armed, while the
+   * embedded CLI preview watcher (recursive, plus the declared shared-stylesheet
+   * closure) saw the same edit and rebuilt the preview. Two observers of one
+   * project giving two answers.
    */
   start(dirPath: string): void {
     // Normalise so autoSyncStates map keys are consistent (the export gate and all
@@ -106,7 +150,7 @@ export class FolderWatcher {
     this.stop();
     this.setWatchedDir(normalizedDir);
     try {
-      this.watcher = this.deps.watch(dirPath, { recursive: false }, (_event, filename) => {
+      this.watcher = this.deps.watch(dirPath, { recursive: true }, (_event, filename) => {
         // fs.watch is noisy (fires on rename + change). Debounce so a single
         // external save produces one renderer notification.
         const name =
@@ -115,13 +159,7 @@ export class FolderWatcher {
             : filename
               ? Buffer.from(filename).toString()
               : "";
-        // Git-internal writes are NOT content changes (RC1-3): the automatic
-        // snapshot itself mutates `.git`, and treating that as an edit would
-        // re-trigger preview reloads and re-arm the snapshot timer forever.
-        // (The watch is non-recursive, so `.git` is the only segment we see.)
-        if (name === ".git" || name.startsWith(".git/") || name.startsWith(".git\\")) {
-          return;
-        }
+        if (isIgnoredWatchEntry(name)) return;
         if (this.debounce) this.clearTimer(this.debounce);
         this.debounce = this.setTimer(() => {
           this.deps.onFolderChanged(name);
