@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { getFsGuardHooks, isWithinAnyRootCanonical } from '../../../../electron/server-bridge/fs-guard';
+import { requireAbsolute } from './handler';
 
 // Route-side half of the fs-route project-scoping guard (ARCH review #37).
 // The policy itself — what `projectRoots()`/`readOnlyRoots()` mean and why —
@@ -45,4 +46,35 @@ export async function requireWithinProjectRoot(
     error(403, `${routeName}: path is outside the open project`);
   }
   return absPath;
+}
+
+/**
+ * THE check for a route's renderer-supplied `projectDir`: absolute (400 if
+ * not) AND inside the open project (403 if not) in one call.
+ *
+ * Every route that does filesystem, git, or credentialed-network work against
+ * a `projectDir` uses this — the 2026-07-29 audit found ~36 of them
+ * (vcs/*, remote/sync, publish/*, theme/*, style/*, manifest/*, plugin/*,
+ * snip/*, tpl/save-as-template, lint/project) validating the parameter with
+ * `requireAbsolute` alone, i.e. accepting ANY absolute path on disk. Having
+ * ONE named check instead of a two-call idiom is what makes the invariant
+ * greppable: a `projectDir` route that doesn't call this is the exception and
+ * has to say why.
+ *
+ * Call it from `validate`, never from `call`: `handleRemoteErrors` /
+ * `handlePublishErrors` wrap `call` and swallow non-`Error` throwables (a
+ * SvelteKit `HttpError` is a plain object), which would turn this 403 into a
+ * generic 500 with a misleading message.
+ *
+ * NOT for routes that legitimately run with no project open — project
+ * discovery/adoption/creation (`app/classify-project`, `app/adopt-folder`,
+ * `app/create-project`, `app/discover-projects`), a clone destination
+ * (`remote/clone-repository`), userData-side stores (`app/*` prefs/state,
+ * `recovery/*`), or a dialog-picked source path (which is gated by the
+ * one-time capability in `electron/server-bridge/picked-files.ts` instead).
+ * `projectRoots()` is empty until a project opens, so this fails closed for
+ * all of them by design.
+ */
+export async function requireProjectDir(value: unknown, routeName: string): Promise<string> {
+  return requireWithinProjectRoot(requireAbsolute(value, routeName), routeName);
 }

@@ -1,18 +1,20 @@
 import { error } from '@sveltejs/kit';
 import type { RequestEvent } from '@sveltejs/kit';
 import { jsonRoute, requireAbsolute, type ErrorClassifier } from './handler';
-import { requireWithinProjectRoot } from './fs-guard';
+import { requireProjectDir, requireWithinProjectRoot } from './fs-guard';
 
 // The declarative route factory (#35/#36/#38). Composes `jsonRoute` with the
 // three pieces of boilerplate that used to be hand-copied into every one of
 // the ~91 `+server.ts` files: a hooks-bag lookup + its 503, request-body
 // validation, and (via `jsonRoute`'s `onError`) friendly error reclassification.
 //
-// `requireAbsolute` and `requireWithinProjectRoot` (#37 — the fs-route
-// project-scoping guard) are re-exported here so a route only needs one
-// import line from `../../_lib/route` to reach `defineRoute` +
-// `loadLib`/`loadApiLib` + both path checks together.
-export { requireAbsolute, requireWithinProjectRoot };
+// `requireAbsolute`, `requireWithinProjectRoot` and `requireProjectDir` (#37 —
+// the fs-route project-scoping guard) are re-exported here so a route only
+// needs one import line from `../../_lib/route` to reach `defineRoute` +
+// `loadLib`/`loadApiLib` + the path checks together. `requireProjectDir` is
+// the one to reach for when the parameter is a `projectDir`: absolute AND
+// inside the open project, in one call.
+export { requireAbsolute, requireProjectDir, requireWithinProjectRoot };
 
 // ── One canonical lib accessor (#35) ─────────────────────────────────────────
 //

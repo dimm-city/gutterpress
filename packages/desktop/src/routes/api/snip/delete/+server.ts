@@ -1,11 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string; fileName: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; fileName?: string };
-    const projectDir = requireAbsolute(body.projectDir, 'snip/delete');
+    const projectDir = await requireProjectDir(body.projectDir, 'snip/delete');
     if (typeof body.fileName !== 'string') {
       error(400, 'snip/delete requires { projectDir: string, fileName: string }');
     }

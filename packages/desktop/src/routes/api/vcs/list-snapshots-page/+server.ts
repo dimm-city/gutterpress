@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{
@@ -8,9 +8,9 @@ export const POST: RequestHandler = defineRoute<{
   limit?: number;
   before?: string;
 }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; limit?: unknown; before?: unknown };
-    const projectDir = requireAbsolute(body.projectDir, 'vcs/list-snapshots-page');
+    const projectDir = await requireProjectDir(body.projectDir, 'vcs/list-snapshots-page');
     // Validate the continuation cursor before it reaches the lib (it is
     // used as a git ref); a malformed cursor must never become a ref query.
     const before = body.before;

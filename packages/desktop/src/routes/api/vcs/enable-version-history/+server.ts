@@ -1,6 +1,6 @@
 import { gitIdentityArgs } from '$lib/server/settings';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // NOTE (audit D7): no SPA action calls api.vcs.enableVersionHistory yet — the
@@ -24,8 +24,8 @@ interface LibModule {
 }
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
-  validate: (raw) => ({
-    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'vcs/enable-version-history'),
+  validate: async (raw) => ({
+    projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'vcs/enable-version-history'),
   }),
   call: async ({ body }) => {
     const lib = (await loadLib()) as unknown as LibModule;

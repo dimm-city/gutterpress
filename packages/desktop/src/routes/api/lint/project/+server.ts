@@ -1,10 +1,10 @@
 import path from 'node:path';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
-  validate: (raw) => ({
-    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'lint:project'),
+  validate: async (raw) => ({
+    projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'lint:project'),
   }),
   call: async ({ body }) => {
     const projectDir = body.projectDir;

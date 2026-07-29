@@ -1,11 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string; url: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; url?: string };
-    const projectDir = requireAbsolute(body.projectDir, 'theme/import-from-url');
+    const projectDir = await requireProjectDir(body.projectDir, 'theme/import-from-url');
     if (typeof body.url !== 'string' || !body.url) {
       error(400, 'theme/import-from-url requires a url');
     }

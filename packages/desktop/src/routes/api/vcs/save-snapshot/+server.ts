@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import { gitIdentityArgs } from '$lib/server/settings';
 import { getVcsHooks, type VcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 interface SnapshotEntry {
@@ -32,9 +32,9 @@ export const POST: RequestHandler = defineRoute<
 >({
   hooks: () => getVcsHooks<LibModule>(),
   hooksUnavailableMessage: 'VCS hooks not registered',
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; message?: unknown };
-    const projectDir = requireAbsolute(body.projectDir, 'vcs/save-snapshot');
+    const projectDir = await requireProjectDir(body.projectDir, 'vcs/save-snapshot');
     const message = typeof body.message === 'string' && body.message.trim()
       ? body.message.trim()
       : 'Saved snapshot';

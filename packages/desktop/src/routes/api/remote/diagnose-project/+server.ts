@@ -1,5 +1,5 @@
 import { getHooks, handleRemoteErrors, type LibModule, type RemoteHooks, type TokenStore } from '../_hooks';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<
@@ -8,8 +8,8 @@ export const POST: RequestHandler = defineRoute<
 >({
   hooks: getHooks,
   hooksUnavailableMessage: 'Remote hooks not available',
-  validate: (raw) => ({
-    projectDir: requireAbsolute((raw as { projectDir?: string })?.projectDir, 'remote:diagnoseProject'),
+  validate: async (raw) => ({
+    projectDir: await requireProjectDir((raw as { projectDir?: string })?.projectDir, 'remote:diagnoseProject'),
   }),
   call: async ({ body, hooks }) =>
     handleRemoteErrors('remote:diagnoseProject', async () => {

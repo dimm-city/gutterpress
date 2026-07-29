@@ -1,11 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string; ref: string; enabled: boolean }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; ref?: string; enabled?: boolean };
-    const projectDir = requireAbsolute(body.projectDir, 'plugin/set-enabled');
+    const projectDir = await requireProjectDir(body.projectDir, 'plugin/set-enabled');
     if (typeof body.ref !== 'string') {
       error(400, 'plugin/set-enabled requires a ref string');
     }

@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 interface Body {
@@ -8,9 +8,9 @@ interface Body {
 }
 
 export const POST: RequestHandler = defineRoute<Body>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; target?: { kind?: string; id?: string } };
-    const projectDir = requireAbsolute(body.projectDir, 'theme/apply');
+    const projectDir = await requireProjectDir(body.projectDir, 'theme/apply');
     if (!body.target || typeof body.target.kind !== 'string' || typeof body.target.id !== 'string') {
       error(400, 'theme/apply requires a target { kind, id }');
     }

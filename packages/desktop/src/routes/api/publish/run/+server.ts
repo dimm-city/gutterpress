@@ -1,5 +1,5 @@
 import { getHooks, handlePublishErrors } from '../_hooks';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -10,7 +10,7 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = defineRoute<
   {
-    projectDir?: string;
+    projectDir: string;
     providerId?: string;
     artifactPath?: string;
     dryRun?: boolean;
@@ -19,9 +19,26 @@ export const POST: RequestHandler = defineRoute<
 >({
   hooks: getHooks,
   hooksUnavailableMessage: 'Publish hooks not available',
+  // The path checks live HERE, not inside `call`: `handlePublishErrors` maps
+  // any non-`Error` throwable to a generic 500, and a SvelteKit `HttpError` is
+  // a plain object — so a 403/400 raised inside `call` would reach the client
+  // as "Publishing could not be completed."
+  validate: async (raw) => {
+    const body = raw as {
+      projectDir?: unknown;
+      providerId?: unknown;
+      artifactPath?: unknown;
+      dryRun?: unknown;
+    };
+    return {
+      projectDir: await requireProjectDir(body.projectDir, 'publish:run'),
+      ...(typeof body.providerId === 'string' ? { providerId: body.providerId } : {}),
+      ...(typeof body.artifactPath === 'string' ? { artifactPath: body.artifactPath } : {}),
+      ...(body.dryRun ? { dryRun: true } : {}),
+    };
+  },
   call: async ({ body, hooks }) =>
     handlePublishErrors('publish:run', async () => {
-      const projectDir = requireAbsolute(body.projectDir, 'publish:run');
       if (!body.providerId) throw new Error('publish:run requires { providerId }');
       const lib = await hooks.loadLib();
       if (!lib.runPublish) {
@@ -30,7 +47,7 @@ export const POST: RequestHandler = defineRoute<
       const log: string[] = [];
       const result = await lib.runPublish(
         {
-          projectDir,
+          projectDir: body.projectDir,
           providerId: body.providerId,
           ...(typeof body.artifactPath === 'string' && body.artifactPath
             ? { artifactPath: body.artifactPath }

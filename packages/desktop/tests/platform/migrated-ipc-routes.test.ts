@@ -48,9 +48,26 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
   }
 }
 
-/** The shared base fake, with remote/sync/updater defaulting to "not registered" (undefined) — each describe block below overrides the ONE it's testing per-test; the 503 tests rely on this default. */
+/**
+ * The shared base fake, with remote/sync/updater defaulting to "not
+ * registered" (undefined) — each describe block below overrides the ONE it's
+ * testing per-test; the 503 tests rely on this default.
+ *
+ * `fsGuard` models an OPEN project at `/abs/project`: `remote/*` routes now
+ * confine their `projectDir` to the host-owned `projectRoots()` allow-list
+ * (2026-07-29 audit), so these tests have to say which project is open before
+ * they can exercise anything downstream of that check. The containment check
+ * canonicalizes lexically for a path that doesn't exist on disk, so the
+ * synthetic `/abs/project` works without touching the filesystem.
+ * Out-of-project rejection itself is covered in route-scoping.test.ts.
+ */
 function baseServices(): HostServices {
-  return makeHostServices({ remote: undefined, sync: undefined, updater: undefined });
+  return makeHostServices({
+    remote: undefined,
+    sync: undefined,
+    updater: undefined,
+    fsGuard: { projectRoots: () => ["/abs/project"], readOnlyRoots: () => [] as string[] },
+  });
 }
 
 afterEach(() => {

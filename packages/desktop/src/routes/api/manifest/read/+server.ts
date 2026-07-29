@@ -1,9 +1,9 @@
-import { defineRoute, loadApiLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadApiLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string }>({
-  validate: (raw) => ({
-    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'manifest/read'),
+  validate: async (raw) => ({
+    projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'manifest/read'),
   }),
   call: async ({ body }) => {
     const lib = await loadApiLib();
