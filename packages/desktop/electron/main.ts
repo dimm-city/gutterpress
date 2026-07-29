@@ -1687,6 +1687,7 @@ const exportController = new ExportController({
   rename: (from, to) => rename(from, to),
   rm: (p) => rm(p, { force: true }),
   consumeSavePath: (absPath) => savePathsImpl.consume(absPath),
+  registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
 secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));

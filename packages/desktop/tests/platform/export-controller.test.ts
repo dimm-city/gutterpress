@@ -57,6 +57,8 @@ interface Harness {
   /** Args of every fake runBuild() call, in order — lets tests assert on the
    * resolved `outDir`/`pdfFileOverride` (the workspace/destination split). */
   buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null }>;
+  /** Paths handed to `registerPickedPath`, in order (the reveal capability). */
+  registeredPicks: string[];
 }
 
 function makeHarness(opts: HarnessOpts = {}): Harness {
@@ -67,6 +69,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const latched = new Set<string>();
   const syncArgs: unknown[] = [];
   const buildArgs: Array<{ outDir?: string; pdfFileOverride?: string | null }> = [];
+  const registeredPicks: string[] = [];
   const counters = { sync: 0, build: 0 };
   let session: ExportSession | null = opts.activeSession ?? null;
 
@@ -126,6 +129,9 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
       removed.push(p);
     },
     consumeSavePath: opts.consumeSavePath ?? (() => true),
+    registerPickedPath: (absPath: string) => {
+      registeredPicks.push(absPath);
+    },
   };
 
   return {
@@ -133,6 +139,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     progress,
     emitted,
     renamed,
+    registeredPicks,
     removed,
     get syncCalls() {
       return counters.sync;
@@ -256,6 +263,29 @@ test("an 'out' the Save dialog registered is consumed exactly once — a replay 
     .build({ input: "/book", out: "/out/book.pdf" })
     .catch((e) => e);
   expect((err as Error & { code?: string }).code).toBe("OUT_NOT_AUTHORIZED");
+});
+
+// ── 2026-07-29 audit: the reveal capability for the written PDF ────────────
+
+test("a successful export registers the written PDF so 'Show in Folder' can reveal it", async () => {
+  // `shell/show-in-folder` confines its target to the open project plus the
+  // read-only roots — but the export destination is deliberately OUTSIDE the
+  // project (wherever the author pointed the Save dialog). The host records
+  // the path it actually wrote, so the reveal is authorized without the route
+  // ever trusting a renderer-supplied path.
+  const h = makeHarness();
+  await h.controller.build({ input: "/book", out: "/home/author/Desktop/book.pdf" });
+  expect(h.registeredPicks).toEqual(["/home/author/Desktop/book.pdf"]);
+});
+
+test("a FAILED export registers nothing (no reveal capability for a PDF never written)", async () => {
+  const h = makeHarness({
+    runBuild: () => {
+      throw new Error("render blew up");
+    },
+  });
+  await h.controller.build({ input: "/book", out: "/home/author/Desktop/book.pdf" }).catch(() => {});
+  expect(h.registeredPicks).toEqual([]);
 });
 
 test("pdfx without icc is rejected", async () => {

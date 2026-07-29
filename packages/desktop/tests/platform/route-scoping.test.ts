@@ -36,6 +36,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { isHttpError } from "@sveltejs/kit";
 import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { createPickedFilesService } from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 
 import { POST as vcsSaveSnapshot } from "../../src/routes/api/vcs/save-snapshot/+server";
@@ -74,6 +75,7 @@ import { POST as snipDelete } from "../../src/routes/api/snip/delete/+server";
 import { POST as snipList } from "../../src/routes/api/snip/list/+server";
 import { POST as tplSaveAsTemplate } from "../../src/routes/api/tpl/save-as-template/+server";
 import { POST as lintProject } from "../../src/routes/api/lint/project/+server";
+import { POST as showInFolder } from "../../src/routes/api/shell/show-in-folder/+server";
 
 type RouteHandler = (event: { request: Request }) => Promise<Response>;
 
@@ -323,6 +325,221 @@ test("manifest/set-fields still writes inside the open book", async () => {
   } as Parameters<typeof manifestSetFields>[0])) as Response;
   expect(res.status).toBe(200);
   expect(await res.json()).toMatchObject({ title: "Renamed" });
+});
+
+// ── publish/run's artifactPath: the upload SOURCE, not just projectDir ────
+//
+// `artifactPath` is forwarded to `lib.runPublish`, which uploads that file to
+// the configured provider with the author's stored credential — so an
+// unchecked renderer-supplied value is a local-file-to-network exfiltration
+// primitive, not merely an out-of-project read. It cannot simply be confined
+// to the project either: desktop PDF exports go wherever the author chose in
+// the Save dialog, which is the documented common case. So an out-of-project
+// artifact must be a path a native picker actually returned — the same
+// one-time-capability model `media:importImage`/`fs:copyFile` use for `src`.
+
+function publishHost(roots: string[], picked: ReturnType<typeof createPickedFilesService>) {
+  registerHostServices(
+    makeHostServices({
+      desktop: { getUserDataPath: () => base },
+      fsGuard: { projectRoots: () => roots, readOnlyRoots: () => [] as string[] },
+      pickedFiles: picked,
+      remote: {
+        loadLib: async () => ({ runPublish: async () => ({ ok: true, outcome: { kind: "api" } }) }),
+        tokenStore: {},
+        GITHUB_HOST: "github.com",
+      } as never,
+    }),
+  );
+}
+
+test("publish/run: an artifact inside the project is allowed", async () => {
+  const picked = createPickedFilesService();
+  publishHost([bookDir, repoRoot], picked);
+  const artifact = path.join(bookDir, "dist", "book.pdf");
+  await mkdir(path.dirname(artifact), { recursive: true });
+  await writeFile(artifact, "%PDF-1.4", "utf8");
+  const status = await statusOf(
+    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: artifact }) } as Parameters<
+      typeof publishRun
+    >[0]),
+  );
+  expect(status).not.toBe(403);
+});
+
+test("publish/run: an out-of-project artifact that was never picked is rejected (403)", async () => {
+  const picked = createPickedFilesService();
+  publishHost([bookDir, repoRoot], picked);
+  const secret = path.join(outsideDir, "id_rsa");
+  await writeFile(secret, "PRIVATE KEY", "utf8");
+  const status = await statusOf(
+    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: secret }) } as Parameters<
+      typeof publishRun
+    >[0]),
+  );
+  expect(status).toBe(403);
+});
+
+test("publish/run: an out-of-project artifact the native picker returned is allowed", async () => {
+  const picked = createPickedFilesService();
+  publishHost([bookDir, repoRoot], picked);
+  const exported = path.join(outsideDir, "book.pdf");
+  await writeFile(exported, "%PDF-1.4", "utf8");
+  picked.register([exported]); // what dialog/pick-pdf-file does with its result
+  const status = await statusOf(
+    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported }) } as Parameters<
+      typeof publishRun
+    >[0]),
+  );
+  expect(status).not.toBe(403);
+});
+
+test("publish/run: a picked artifact survives the dry-run → publish sequence", async () => {
+  // The wizard's "Check readiness" (dryRun) and the real publish are two
+  // separate calls with the SAME artifactPath. A strictly one-time consume
+  // would 403 the second one.
+  const picked = createPickedFilesService();
+  publishHost([bookDir, repoRoot], picked);
+  const exported = path.join(outsideDir, "book.pdf");
+  await writeFile(exported, "%PDF-1.4", "utf8");
+  picked.register([exported]);
+  const dry = await statusOf(
+    publishRun({
+      request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported, dryRun: true }),
+    } as Parameters<typeof publishRun>[0]),
+  );
+  expect(dry).not.toBe(403);
+  const real = await statusOf(
+    publishRun({ request: request({ projectDir: bookDir, providerId: "itch", artifactPath: exported }) } as Parameters<
+      typeof publishRun
+    >[0]),
+  );
+  expect(real).not.toBe(403);
+});
+
+test("publish/run: a RELATIVE artifactPath resolves against the project, as the lib does", async () => {
+  // run-publish.ts does `path.resolve(projectDir, artifactPath)`, so a
+  // relative artifact is project-relative and must not need a picker.
+  const picked = createPickedFilesService();
+  publishHost([bookDir, repoRoot], picked);
+  await mkdir(path.join(bookDir, "dist"), { recursive: true });
+  await writeFile(path.join(bookDir, "dist", "book.pdf"), "%PDF-1.4", "utf8");
+  const status = await statusOf(
+    publishRun({
+      request: request({ projectDir: bookDir, providerId: "itch", artifactPath: "dist/book.pdf" }),
+    } as Parameters<typeof publishRun>[0]),
+  );
+  expect(status).not.toBe(403);
+});
+
+test("publish/run: a relative artifactPath cannot ../ its way out of the project", async () => {
+  const picked = createPickedFilesService();
+  publishHost([bookDir], picked); // book-only session, so the repo is outside
+  const status = await statusOf(
+    publishRun({
+      request: request({
+        projectDir: bookDir,
+        providerId: "itch",
+        artifactPath: path.join("..", "..", "..", "elsewhere", "id_rsa"),
+      }),
+    } as Parameters<typeof publishRun>[0]),
+  );
+  expect(status).toBe(403);
+});
+
+// ── shell/show-in-folder: the reveal target ───────────────────────────────
+//
+// This route had NO path validation at all — not even `requireAbsolute` — and
+// handed whatever it was given to the OS file manager. It has three legitimate
+// callers: a project media file, a crash-recovery backup zip under userData,
+// and the exported PDF at the destination the author picked in the Save dialog
+// (which is deliberately OUTSIDE the project). So it takes the same shape as
+// publish/run's artifact: project + read-only roots, plus a path a native
+// dialog produced.
+
+function revealHost(picked: ReturnType<typeof createPickedFilesService>, revealed: string[]) {
+  registerHostServices(
+    makeHostServices({
+      desktop: {
+        getUserDataPath: () => base,
+        showItemInFolder: (p: string) => {
+          revealed.push(p);
+        },
+      },
+      fsGuard: {
+        projectRoots: () => [bookDir, repoRoot],
+        readOnlyRoots: () => [path.join(base, "recovery")],
+      },
+      pickedFiles: picked,
+    }),
+  );
+}
+
+test("shell/show-in-folder: a project file is revealed", async () => {
+  const revealed: string[] = [];
+  revealHost(createPickedFilesService(), revealed);
+  const target = path.join(bookDir, "images", "cover.png");
+  await mkdir(path.dirname(target), { recursive: true });
+  await writeFile(target, "png", "utf8");
+  const res = (await showInFolder({ request: request({ filePath: target }) } as Parameters<
+    typeof showInFolder
+  >[0])) as Response;
+  expect(res.status).toBe(200);
+  expect(revealed).toEqual([target]);
+});
+
+test("shell/show-in-folder: a crash-recovery backup under userData is revealed", async () => {
+  const revealed: string[] = [];
+  revealHost(createPickedFilesService(), revealed);
+  const zip = path.join(base, "recovery", "backup.zip");
+  await mkdir(path.dirname(zip), { recursive: true });
+  await writeFile(zip, "zip", "utf8");
+  const res = (await showInFolder({ request: request({ filePath: zip }) } as Parameters<
+    typeof showInFolder
+  >[0])) as Response;
+  expect(res.status).toBe(200);
+  expect(revealed).toEqual([zip]);
+});
+
+test("shell/show-in-folder: an unrelated outside path is rejected and never revealed", async () => {
+  const revealed: string[] = [];
+  revealHost(createPickedFilesService(), revealed);
+  const status = await statusOf(
+    showInFolder({ request: request({ filePath: path.join(outsideDir, "secret.txt") }) } as Parameters<
+      typeof showInFolder
+    >[0]),
+  );
+  expect(status).toBe(403);
+  expect(revealed).toEqual([]);
+});
+
+test("shell/show-in-folder: the exported PDF's chosen destination is revealed (twice)", async () => {
+  // The export flow's "Show in Folder" toast action. The export controller
+  // registers the PDF it actually wrote, so the reveal is authorized without
+  // trusting the renderer's path — and the toast can be clicked more than once.
+  const revealed: string[] = [];
+  const picked = createPickedFilesService();
+  revealHost(picked, revealed);
+  const exported = path.join(outsideDir, "book.pdf");
+  await writeFile(exported, "%PDF-1.4", "utf8");
+  picked.register([exported]);
+  for (const _ of [1, 2]) {
+    const res = (await showInFolder({ request: request({ filePath: exported }) } as Parameters<
+      typeof showInFolder
+    >[0])) as Response;
+    expect(res.status).toBe(200);
+  }
+  expect(revealed).toEqual([exported, exported]);
+});
+
+test("shell/show-in-folder: a relative path is a 400, not a silent reveal", async () => {
+  const revealed: string[] = [];
+  revealHost(createPickedFilesService(), revealed);
+  const status = await statusOf(
+    showInFolder({ request: request({ filePath: "rel/path.pdf" }) } as Parameters<typeof showInFolder>[0]),
+  );
+  expect(status).toBe(400);
+  expect(revealed).toEqual([]);
 });
 
 // ── Symlink escape (the P1 canonicalization requirement) ─────────────────
