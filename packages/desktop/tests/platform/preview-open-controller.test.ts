@@ -21,6 +21,9 @@ interface HarnessOpts {
   manifestThrows?: boolean;
   startPreviewServer?: () => unknown;
   activePreview?: PreviewHandle | null;
+  activeWorkspaceRoot?: string | null;
+  statThrows?: boolean;
+  statIsDirectory?: boolean;
   watchedDir?: string | null;
 }
 
@@ -33,6 +36,7 @@ interface Harness {
   mkdirCalls: string[];
   appendFileCalls: string[];
   getActivePreview: () => PreviewHandle | null;
+  getActiveWorkspaceRoot: () => string | null;
   runPreflightCalls: Array<[string, unknown]>;
   startCalls: number;
 }
@@ -57,6 +61,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
   const runPreflightCalls: Array<[string, unknown]> = [];
   let startCalls = 0;
   let activePreview: PreviewHandle | null = opts.activePreview ?? null;
+  let activeWorkspaceRoot: string | null = opts.activeWorkspaceRoot ?? null;
   let watchedDir: string | null = opts.watchedDir ?? null;
 
   const lib = {
@@ -99,6 +104,14 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     getActivePreview: () => activePreview,
     setActivePreview: (p) => {
       activePreview = p;
+    },
+    getActiveWorkspaceRoot: () => activeWorkspaceRoot,
+    setActiveWorkspaceRoot: (root) => {
+      activeWorkspaceRoot = root;
+    },
+    stat: async () => {
+      if (opts.statThrows) throw new Error("ENOENT: folder missing");
+      return { isDirectory: () => opts.statIsDirectory !== false };
     },
     updatePrefs: async (mutate) => {
       calls.push("updatePrefs");
@@ -148,6 +161,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     mkdirCalls,
     appendFileCalls,
     getActivePreview: () => activePreview,
+    getActiveWorkspaceRoot: () => activeWorkspaceRoot,
     runPreflightCalls,
     get startCalls() {
       return startCalls;
@@ -172,6 +186,7 @@ test("happy path (local-folder): starts server, sets activePreview, returns resu
   const res = await h.controller.open({ input: "/book" });
 
   expect(res).toEqual({
+    previewStarted: true,
     url: "http://127.0.0.1:1234",
     port: 1234,
     input: "/book",
@@ -203,15 +218,37 @@ test("an existing active preview is stopped before starting the new one", async 
   expect(h.getActivePreview()?.inputPath).toBe("/book");
 });
 
-test("startPreviewServer failure wraps the message and leaves activePreview untouched", async () => {
+test("startPreviewServer failure keeps the workspace root active and returns an actionable result", async () => {
   const h = makeHarness({
     startPreviewServer: () => {
       throw new Error("port in use");
     },
   });
-  const err = await h.controller.open({ input: "/book" }).catch((e) => e);
-  expect((err as Error).message).toBe("Preview server failed to start: port in use");
+  const result = await h.controller.open({ input: "/book" });
+  expect(result).toEqual({
+    previewStarted: false,
+    input: "/book",
+    title: "book",
+    error: "port in use",
+  });
   expect(h.getActivePreview()).toBeNull();
+  expect(h.getActiveWorkspaceRoot()).toBe("/book");
+});
+
+test("a missing replacement folder rejects and clears the workspace the renderer will tear down", async () => {
+  const h = makeHarness({
+    activeWorkspaceRoot: "/current",
+    statThrows: true,
+  });
+  await expect(h.controller.open({ input: "/missing" })).rejects.toThrow(/ENOENT: folder missing/);
+  expect(h.getActiveWorkspaceRoot()).toBeNull();
+  expect(h.startCalls).toBe(0);
+});
+
+test("stop clears a workspace even when no preview server was started", async () => {
+  const h = makeHarness({ activeWorkspaceRoot: "/broken-book" });
+  expect(await h.controller.stop()).toEqual({ stopped: true });
+  expect(h.getActiveWorkspaceRoot()).toBeNull();
 });
 
 test("recents upsert: local-folder keys on the opened dir, no lastActiveBook", async () => {
@@ -378,12 +415,18 @@ test("overlapping open() calls are serialized in arrival order", async () => {
   } as unknown as LibModule;
 
   let activePreview: PreviewHandle | null = null;
+  let activeWorkspaceRoot: string | null = null;
   const controller = new PreviewOpenController({
     loadLib: async () => lib,
     getActivePreview: () => activePreview,
     setActivePreview: (p) => {
       activePreview = p;
     },
+    getActiveWorkspaceRoot: () => activeWorkspaceRoot,
+    setActiveWorkspaceRoot: (root) => {
+      activeWorkspaceRoot = root;
+    },
+    stat: async () => ({ isDirectory: () => true }),
     updatePrefs: async (mutate) => mutate({}),
     tokenStore: {} as PreviewOpenControllerDeps["tokenStore"],
     operationLogPath: (slug) => `/logs/${slug}.log`,
@@ -421,4 +464,30 @@ test("overlapping open() calls are serialized in arrival order", async () => {
   expect(order).toEqual(["start-first", "done-first", "start-second", "done-second"]);
   expect(r1.input).toBe("/book1");
   expect(r2.input).toBe("/book2");
+});
+
+test("stop requested during startup is serialized and tears down the late preview", async () => {
+  let releaseStart!: (handle: PreviewHandle) => void;
+  const startGate = new Promise<PreviewHandle>((resolve) => {
+    releaseStart = resolve;
+  });
+  let stopped = false;
+  const h = makeHarness({ startPreviewServer: () => startGate });
+
+  const opening = h.controller.open({ input: "/book" });
+  await settle();
+  const stopping = h.controller.stop();
+  releaseStart(
+    makeHandle({
+      stop: async () => {
+        stopped = true;
+      },
+    }),
+  );
+
+  await opening;
+  await stopping;
+  expect(stopped).toBe(true);
+  expect(h.getActivePreview()).toBeNull();
+  expect(h.getActiveWorkspaceRoot()).toBeNull();
 });

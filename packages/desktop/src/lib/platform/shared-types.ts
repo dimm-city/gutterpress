@@ -648,12 +648,23 @@ export interface RawPreviewStartArgs {
   input: string;
 }
 
-export interface PreviewStartResult {
+export interface PreviewStartSuccess {
+  previewStarted: true;
   url: string;
   port: number;
   input: string;
   title: string | null;
 }
+
+export interface PreviewStartFailure {
+  previewStarted: false;
+  input: string;
+  title: string | null;
+  /** Actionable preview-generation failure; the folder itself is still open. */
+  error: string;
+}
+
+export type PreviewStartResult = PreviewStartSuccess | PreviewStartFailure;
 
 export interface RawBuildArgs {
   input: string;

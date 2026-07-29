@@ -102,6 +102,9 @@ try {
   log(`startPreview ok: ${JSON.stringify(result.data)}`);
 
   const data = result.data;
+  if (!data.previewStarted) {
+    fail(`workspace opened but preview did not start: ${data.error}`);
+  }
   if (typeof data.url !== "string" || !/^http:\/\/127\.0\.0\.1:\d+$/.test(data.url)) {
     fail(`bad url in response: ${data.url}`);
   }

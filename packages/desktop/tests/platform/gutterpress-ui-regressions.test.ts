@@ -25,6 +25,18 @@ test("preview toolbar button toggles preview visibility so the editor can fill t
   expect(toolbar).not.toContain("Preview only");
 });
 
+test("a preview-generation failure keeps the folder workspace open with repair actions", () => {
+  const src = read("src/routes/+page.svelte");
+  expect(src).toContain(
+    '{#if lifecycle.previewUrl || (lifecycle.sourceMode === "folder" && lifecycle.currentDir)}',
+  );
+  expect(src).toContain('class="preview-error-view" role="alert"');
+  expect(src).toContain("void lifecycle.retryPreview()");
+  expect(src).toContain("onclick={showPreviewFiles}");
+  expect(src).toContain('source: "desktop.preview"');
+  expect(src).toContain("problems={displayedProblems}");
+});
+
 test("Electron windows and AppImage package carry the app icon", () => {
   const main = read("electron/main.ts");
   const builder = read("electron-builder.yml");
@@ -337,6 +349,6 @@ test("C2: recents for a repo-backed project key on the repo root, remembering th
   // main.ts into electron/preview/controller.ts (ARCH review finding #6) —
   // this logic now lives there, not in main.ts.
   const controller = read("electron/preview/controller.ts");
-  expect(controller).toContain('path: source.type === "local-git-folder" ? source.repoRoot : openedDir');
+  expect(controller).toContain('path: source?.type === "local-git-folder" ? source.repoRoot : openedDir');
   expect(controller).toContain("lastActiveBook: openedDir");
 });

@@ -46,6 +46,61 @@ export function friendlyFolderError(msg: string): string {
   return "Something went wrong opening this folder. Try again, or choose a different folder.";
 }
 
+export interface FriendlyPreviewError {
+  title: string;
+  message: string;
+  details: string;
+}
+
+/** Explain a preview-generation failure without treating the folder as closed. */
+export function friendlyPreviewError(raw: string): FriendlyPreviewError {
+  const details = friendlyHostError(raw)
+    .replace(/^Preview server failed to start:\s*/i, "")
+    .trim();
+  const yamlPosition = details.match(/Invalid YAML in [^\n]+ at line (\d+), column (\d+)/i);
+  if (yamlPosition) {
+    return {
+      title: "The project manifest has invalid YAML.",
+      message: `Fix the entry at line ${yamlPosition[1]}, column ${yamlPosition[2]}, then try the preview again.`,
+      details,
+    };
+  }
+  if (/`source\.assets`|source\.assets/i.test(details)) {
+    return {
+      title: "This book uses an outdated manifest setting.",
+      message:
+        "Remove the source.assets block from manifest.yaml, then try again. Assets are now discovered automatically.",
+      details,
+    };
+  }
+  if (/Missing (?:stylesheet|font file|asset):/i.test(details)) {
+    return {
+      title: "A file needed by the preview is missing.",
+      message: "Open the Files panel, correct the missing path, then try the preview again.",
+      details,
+    };
+  }
+  if (/No markdown files found/i.test(details)) {
+    return {
+      title: "No Markdown chapters were found.",
+      message: "Add a chapter or correct the source.files entries in manifest.yaml, then try again.",
+      details,
+    };
+  }
+  if (/Could not parse CSS|CSS (?:parse|syntax) error/i.test(details)) {
+    return {
+      title: "A stylesheet could not be read.",
+      message: "Open the stylesheet, fix the reported CSS error, then try the preview again.",
+      details,
+    };
+  }
+  return {
+    title: "The folder is open, but its preview could not be built.",
+    message: "You can keep editing the files. Review the details below, then try the preview again.",
+    details,
+  };
+}
+
 /**
  * Map a raw PDF-export error to plain-language guidance for a toast. Reads the
  * host error `code` when present and falls back to message pattern-matching.

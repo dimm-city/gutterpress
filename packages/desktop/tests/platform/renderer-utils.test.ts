@@ -3,6 +3,7 @@ import {
   friendlyFolderError,
   friendlyHostError,
   friendlyPdfError,
+  friendlyPreviewError,
 } from "../../src/lib/errors";
 import { relativeTime } from "../../src/lib/format";
 
@@ -37,6 +38,25 @@ test("friendlyFolderError gives repair guidance for malformed manifest.yaml", ()
   ).toBe(
     "The project manifest has invalid YAML at line 3, column 1. Fix that entry and try again.",
   );
+});
+
+test("friendlyPreviewError explains obsolete manifest fields without closing the folder", () => {
+  expect(
+    friendlyPreviewError(
+      "Error invoking remote method 'api:preview': Error: Preview server failed to start: Manifest field(s) `source.assets` are no longer supported - remove them.",
+    ),
+  ).toMatchObject({
+    title: "This book uses an outdated manifest setting.",
+    message: expect.stringContaining("Remove the source.assets block"),
+  });
+});
+
+test("friendlyPreviewError preserves missing-file details for the repair view", () => {
+  const result = friendlyPreviewError(
+    "Missing stylesheet: /books/example/css/missing.css\nCheck the path.",
+  );
+  expect(result.title).toBe("A file needed by the preview is missing.");
+  expect(result.details).toContain("/books/example/css/missing.css");
 });
 
 // friendlyPdfError(SYNC_CONFLICT) — the host (electron/export/controller.ts)

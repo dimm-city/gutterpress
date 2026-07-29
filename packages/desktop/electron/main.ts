@@ -231,10 +231,18 @@ function loadLib(): Promise<LibModule> {
 // ──────────────────────────────────────────────────────────────────────────
 
 // ──────────────────────────────────────────────────────────────────────────
-// Preview server state
+// Workspace/preview state. The workspace root is the host-owned filesystem
+// capability; the preview server is optional and may fail while files stay open.
 // ──────────────────────────────────────────────────────────────────────────
 
 let activePreview: PreviewHandle | null = null;
+let activeWorkspaceRoot: string | null = null;
+
+function setActiveWorkspaceRoot(root: string | null): void {
+  const normalized = root ? path.resolve(root) : null;
+  if (normalized !== activeWorkspaceRoot) stopFolderWatch();
+  activeWorkspaceRoot = normalized;
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 // Desktop prefs (#42/#43) — session/per-project state in gutterpress-prefs.json,
@@ -568,7 +576,7 @@ function safeSend(channel: string, ...args: unknown[]): void {
 }
 
 function recordLastFlushFailure(): Promise<void> {
-  const projectDir = activePreview?.inputPath ?? folderWatch.getWatchedDir();
+  const projectDir = activeWorkspaceRoot ?? undefined;
   const marker = createLastFlushFailure(projectDir);
   return updatePrefs((prefs) => ({ ...prefs, lastFlushFailed: marker })).then(() => undefined);
 }
@@ -991,12 +999,12 @@ secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
   // fs:watchFolder("/home/user/.ssh") and turn an arbitrary directory into an
   // authorized fs-route root (direct reads, copy-file's "inside project"
   // shortcut, …). The watcher exists ONLY to watch the already-open project,
-  // so it is now gated on the host-set `activePreview`, never on
+  // so it is now gated on the host-set `activeWorkspaceRoot`, never on
   // renderer-supplied input — matching projectRoots()'s sole authorization
   // source.
-  if (!activePreview || path.resolve(dirPath) !== path.resolve(activePreview.inputPath)) {
+  if (!activeWorkspaceRoot || path.resolve(dirPath) !== activeWorkspaceRoot) {
     throw new Error(
-      `fs:watchFolder: dirPath must be the active preview's project directory (got: ${dirPath})`,
+      `fs:watchFolder: dirPath must be the active workspace directory (got: ${dirPath})`,
     );
   }
   startFolderWatch(dirPath);
@@ -1465,24 +1473,24 @@ const conflictPreviewHooksImpl: ConflictPreviewHooks = {
 
 // ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this
-// implements. `projectRoots` is derived SOLELY from the active preview's
-// resolved input dir (set the instant `api:preview` resolves — see
-// `activePreview` above), never from the folder watcher's tracked dir. It
+// implements. `projectRoots` is derived SOLELY from the host-validated active
+// workspace root (set before preview generation begins), never from the folder
+// watcher's tracked dir or from whether a preview server exists. It
 // used to also union in `folderWatch.getWatchedDir()`, but that let a
 // renderer-supplied `fs:watchFolder` call (any absolute path, e.g. the user's
 // SSH directory) authorize itself as a project root — the watcher's tracked
 // dir is host-authorized input, not an independent authorization source (P1
 // review, PR #98; `fs:watchFolder` above now rejects any dirPath that isn't
-// this same `activePreview`). The SPA's own open-project sequence
+// this same `activeWorkspaceRoot`). The SPA's own open-project sequence
 // (`routes/+page.svelte` / `project-lifecycle-controller.svelte.ts`) already
-// awaits `startPreviewHost` (which sets `activePreview`) BEFORE it
+// awaits `startPreviewHost` (which sets `activeWorkspaceRoot`) BEFORE it
 // lists/reads the new project's files (`ensureEditorFile`, the
 // manifest-detection `listDir`) and BEFORE it calls `fs:watchFolder`, so
 // dropping the watcher union does not 403 that legitimate
 // "open a different project" window.
 const fsGuardImpl: FsGuardHooks = {
   projectRoots(): string[] {
-    return activePreview ? [path.resolve(activePreview.inputPath)] : [];
+    return activeWorkspaceRoot ? [activeWorkspaceRoot] : [];
   },
   readOnlyRoots(): string[] {
     // Directories legitimately READ from outside the open project:
@@ -1610,6 +1618,9 @@ const previewOpen = new PreviewOpenController({
   setActivePreview: (preview) => {
     activePreview = preview;
   },
+  getActiveWorkspaceRoot: () => activeWorkspaceRoot,
+  setActiveWorkspaceRoot,
+  stat: (target) => stat(target),
   updatePrefs,
   tokenStore: electronTokenStore,
   operationLogPath,
@@ -1628,13 +1639,7 @@ const previewOpen = new PreviewOpenController({
 
 secureHandle("api:preview", (_e, args: { input?: string }) => previewOpen.open(args));
 
-secureHandle("api:stopPreview", async () => {
-  if (activePreview) {
-    await activePreview.stop().catch(() => {});
-    activePreview = null;
-  }
-  return { stopped: true };
-});
+secureHandle("api:stopPreview", () => previewOpen.stop());
 
 secureHandle("api:cancelExport", async (_e, exportId: string) => {
   const session = getActiveExportSession();
@@ -1927,9 +1932,6 @@ app.on("window-all-closed", async () => {
     await rm(exportSession.tempOutPath, { force: true }).catch(() => {});
     setActiveExportSession(null);
   }
-  if (activePreview) {
-    await activePreview.stop().catch(() => {});
-    activePreview = null;
-  }
+  await previewOpen.stop();
   if (process.platform !== "darwin") app.quit();
 });

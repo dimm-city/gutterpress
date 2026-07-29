@@ -61,10 +61,17 @@ export interface ProjectLifecycleToast {
 }
 
 /** The bits of `startPreview`'s result this controller reads. */
-export interface ProjectLifecyclePreviewResult {
-  url: string;
-  title: string | null;
-}
+export type ProjectLifecyclePreviewResult =
+  | {
+      previewStarted: true;
+      url: string;
+      title: string | null;
+    }
+  | {
+      previewStarted: false;
+      title: string | null;
+      error: string;
+    };
 
 /** Composed `ProjectSessionController` surface (the bits this controller drives/reads). */
 export interface ProjectLifecycleProjectSession {
@@ -181,6 +188,8 @@ export class ProjectLifecycleController {
   renderProgressPage = $state(0);
   renderCompleteOverlay = $state(false);
   openError = $state<string | null>(null);
+  /** Preview generation failed, but the folder workspace remains open/editable. */
+  previewError = $state<string | null>(null);
   urlPreviewError = $state<string | null>(null);
   saveWarning = $state<string | null>(null);
   /** Default true (banner hidden) until host classification proves the manifest is absent. */
@@ -218,9 +227,12 @@ export class ProjectLifecycleController {
     this.currentFolderDisplayName = null;
     this.currentUrl = null;
     this.docTitle = null;
+    this.previewError = null;
     this.rendering = false;
     this.renderProgressPage = 0;
     this.renderCompleteOverlay = false;
+    this.deps.projectSession.reset();
+    this.deps.clearSyncDiag();
     this.deps.resetExtras();
   }
 
@@ -257,6 +269,7 @@ export class ProjectLifecycleController {
       if (superseded()) return false;
       if (!flushed) return false;
       this.openError = null;
+      this.previewError = null;
       this.urlPreviewError = null;
       this.saveWarning = null;
       this.renderCompleteOverlay = false;
@@ -292,11 +305,9 @@ export class ProjectLifecycleController {
           : (d.projectSession.books.find((b) => b.path === targetDir)?.title ?? basenameOf(targetDir));
       // New folder: clear any file selected from the previous project now that
       // its flush has succeeded, so the editor does not point at a stale path.
-      // The flush MUST happen BEFORE startPreviewHost below (#7 fix): the host derives
-      // its fs-route authorization root SOLELY from the active preview
-      // (electron/server-bridge/fs-guard.ts's `projectRoots()`), and
-      // establishes the NEW project as that root the instant `startPreviewHost`
-      // is dispatched (electron/preview/controller.ts's `runOpen`). Flushing
+      // The flush MUST happen BEFORE startPreviewHost below (#7 fix): the host
+      // establishes the NEW workspace's fs-route authorization root before it
+      // attempts preview generation. Flushing
       // AFTER that call would race the pending write for the OLD project
       // against the root having already moved — the write would fall outside
       // the new root, get rejected 403, and the buffer would still be reset,
@@ -332,15 +343,21 @@ export class ProjectLifecycleController {
       // Preload the first file into the editor buffer when a folder opens.
       void d.ensureEditorFile();
       this.docTitle = data.title ?? null;
-      // Force iframe remount by nulling first; reset overlay for the new iframe.
+      // A folder is open regardless of whether its preview could be generated.
+      // Force iframe remount by nulling first; a failure gets an in-pane repair
+      // view while the file tree/editor remain usable.
       this.previewUrl = null;
-      await Promise.resolve();
-      if (superseded()) return false;
-      this.previewUrl = data.url;
-      this.rendering = true;
+      this.previewError = data.previewStarted ? null : data.error;
+      this.rendering = false;
       this.renderProgressPage = 0;
       d.pageNav.totalPages = 0;
       d.pageNav.currentPage = 1;
+      if (data.previewStarted) {
+        await Promise.resolve();
+        if (superseded()) return false;
+        this.previewUrl = data.url;
+        this.rendering = true;
+      }
       // The restore-state fetch was started at intent time and has been
       // overlapping classify/startPreview — settle it here where it's needed.
       const restored = restoreState ? await restoreState : null;
@@ -362,9 +379,13 @@ export class ProjectLifecycleController {
         // async settings load / onSettingsChange sink can't overwrite it.
         d.setSplitRatioSetting(restored.splitPaneRatio);
       }
-      // Crash-recovery offer (#44): deferred while the start screen is up so
-      // the recovery dialog never opens under/over the landing.
-      if (d.isLandingVisible()) d.setPendingRecoveryScanDir(targetDir);
+      // A startup preview failure must reveal the retained workspace error pane
+      // instead of leaving the welcome layer held over it indefinitely.
+      const landingWasVisible = d.isLandingVisible();
+      if (!data.previewStarted && landingWasVisible) d.dismissLanding(false);
+      // Crash-recovery offer (#44): defer only while a successful preview is
+      // intentionally rendering behind the startup landing.
+      if (data.previewStarted && landingWasVisible) d.setPendingRecoveryScanDir(targetDir);
       else d.scanForRecovery(targetDir);
       // Start watching for external edits.
       d.startFolderWatch(targetDir);
@@ -386,6 +407,52 @@ export class ProjectLifecycleController {
       return false;
     } finally {
       if (!superseded()) {
+        this.busy = false;
+        this.busyLabel = "";
+      }
+    }
+  }
+
+  /** Retry only preview generation for the already-open folder workspace. */
+  async retryPreview(): Promise<boolean> {
+    const d = this.deps;
+    const dir = this.currentDir;
+    if (!dir || this.sourceMode !== "folder" || this.busy) return false;
+    const epoch = ++this.folderOpenEpoch;
+    this.busy = true;
+    this.busyLabel = "Trying preview again…";
+    try {
+      if (!(await d.flushBuffer())) return false;
+      if (epoch !== this.folderOpenEpoch) return false;
+      d.resetFirstRenderGate();
+      const data = await d.startPreviewHost({
+        key: dir,
+        displayName: this.currentFolderDisplayName ?? basenameOf(dir),
+      });
+      if (epoch !== this.folderOpenEpoch) return false;
+      this.docTitle = data.title ?? this.docTitle;
+      this.previewUrl = null;
+      this.renderProgressPage = 0;
+      d.pageNav.totalPages = 0;
+      d.pageNav.currentPage = 1;
+      if (!data.previewStarted) {
+        this.previewError = data.error;
+        this.rendering = false;
+        return false;
+      }
+      this.previewError = null;
+      await Promise.resolve();
+      if (epoch !== this.folderOpenEpoch) return false;
+      this.previewUrl = data.url;
+      this.rendering = true;
+      return true;
+    } catch (e) {
+      if (epoch !== this.folderOpenEpoch) return false;
+      this.previewError = e instanceof Error ? e.message : String(e);
+      this.rendering = false;
+      return false;
+    } finally {
+      if (epoch === this.folderOpenEpoch) {
         this.busy = false;
         this.busyLabel = "";
       }
@@ -450,6 +517,7 @@ export class ProjectLifecycleController {
     this.busyLabel = "";
     d.dismissLanding(false);
     this.openError = null;
+    this.previewError = null;
     this.urlPreviewError = null;
     this.saveWarning = null;
     // H5 fix: the SAME resetWorkspace() stopPreview/the catch use — this is
@@ -457,6 +525,8 @@ export class ProjectLifecycleController {
     // pageNav's counters here, closing the exact divergence the review
     // flagged (openUrl used to miss them; pageEditing itself was later
     // retired entirely with the toolbar refactor — see PageNavController).
+    await d.stopPreviewHost().catch(() => {});
+    if (epoch !== this.folderOpenEpoch) return false;
     this.resetWorkspace();
     this.sourceMode = "url";
     this.currentUrl = url;

@@ -65,7 +65,12 @@
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
   import { continueStatus, shouldReshowLanding } from "$lib/routes/startup-landing";
-  import { friendlyFolderError, friendlyPdfError, friendlyHostError } from "$lib/errors";
+  import {
+    friendlyFolderError,
+    friendlyPdfError,
+    friendlyHostError,
+    friendlyPreviewError,
+  } from "$lib/errors";
   import {
     PersistenceFailureNotifier,
     formatLastFlushFailureNotice,
@@ -497,6 +502,7 @@
     toast: () => toast,
     clearStaleProjectState: () => {
       problems = [];
+      problemsLoading = false;
       problemsError = null;
       logFilePath = null;
     },
@@ -517,6 +523,7 @@
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
       problems = [];
+      problemsLoading = false;
       problemsError = null;
       problemsOpen = false;
     },
@@ -1469,7 +1476,27 @@
   // when the lint API call itself failed, so the panel can render a neutral
   // "we couldn't check" row instead of a false green all-clear.
   let problemsError = $state<string | null>(null);
-  let problemBadge = $derived(problemCounts(problems).badge);
+  let previewErrorDisplay = $derived(
+    lifecycle.previewError ? friendlyPreviewError(lifecycle.previewError) : null,
+  );
+  let displayedProblems = $derived<ProblemEntry[]>(
+    previewErrorDisplay
+      ? [
+          {
+            severity: "error",
+            message: `${previewErrorDisplay.title} ${previewErrorDisplay.message}`,
+            source: "desktop.preview",
+          },
+          ...problems,
+        ]
+      : problems,
+  );
+  let problemBadge = $derived(problemCounts(displayedProblems).badge);
+
+  function showPreviewFiles(): void {
+    leftPanelOpen = true;
+    leftPanelTab = "files";
+  }
 
   function refreshProblems() {
     if (!isDesktop() || !lifecycle.currentDir || lifecycle.sourceMode !== "folder") return;
@@ -2319,7 +2346,7 @@
   /**
    * M2: Real cancel-and-close, for the initial open ONLY. Backs the
    * variant="app" overlay, which by construction only shows before any
-   * preview exists (`!lifecycle.previewUrl`) — there is no live workspace to interrupt
+   * folder workspace exists (`!lifecycle.currentDir`) — there is no live workspace to interrupt
    * yet, so a full teardown is safe here in a way it is not once the preview
    * pane is up (see handleCancelRender above). Bumping the epoch supersedes
    * whatever `startFolderPreview` call is in flight, the same mechanism
@@ -2364,7 +2391,7 @@
      layout — that's handled by the pane-scoped overlay inside .preview-pane.
      M2: this is the ONE place a real cancel-and-close is offered — safe here
      because no project session/preview exists yet (see handleCancelOpen). -->
-{#if lifecycle.busy && !!lifecycle.busyLabel && !lifecycle.previewUrl && !landingVisible}
+{#if lifecycle.busy && !!lifecycle.busyLabel && !lifecycle.currentDir && !landingVisible}
   <LoadingOverlay
     visible={true}
     label={lifecycle.busyLabel}
@@ -2439,7 +2466,7 @@
     {mobileTab}
     onSelectMobileTab={selectMobileTab}
     editorTabDisabled={!toolbarProjectOpen}
-    previewTabDisabled={!lifecycle.previewUrl}
+    previewTabDisabled={!lifecycle.previewUrl && !lifecycle.previewError}
     hidePreviewControls={isNarrow && paneMode === "edit"}
     {viewMode}
     {zoom}
@@ -2526,7 +2553,7 @@
     </div>
   {/if}
 
-  {#if lifecycle.previewUrl}
+  {#if lifecycle.previewUrl || (lifecycle.sourceMode === "folder" && lifecycle.currentDir)}
     <div
       class="workspace"
       class:editor-open={editorPaneOpen}
@@ -2654,20 +2681,44 @@
         aria-hidden={previewHidden}
         inert={previewHidden || (isNarrow && (paneMode === "edit" || editorView !== "editor")) ? true : undefined}
       >
-        {#key lifecycle.previewUrl}
-          <PreviewFrame
-            url={lifecycle.previewUrl}
-            bind:client
-            onClientReady={onClientReady}
-            onError={(msg) => {
-              if (lifecycle.sourceMode === "url") {
-                lifecycle.urlPreviewError = "This website could not be previewed inside Gutterpress.";
-              } else {
-                toast?.error(msg);
-              }
-            }}
-          />
-        {/key}
+        {#if lifecycle.previewUrl}
+          {#key lifecycle.previewUrl}
+            <PreviewFrame
+              url={lifecycle.previewUrl}
+              bind:client
+              onClientReady={onClientReady}
+              onError={(msg) => {
+                if (lifecycle.sourceMode === "url") {
+                  lifecycle.urlPreviewError = "This website could not be previewed inside Gutterpress.";
+                } else {
+                  toast?.error(msg);
+                }
+              }}
+            />
+          {/key}
+        {:else if previewErrorDisplay}
+          <div class="preview-error-view" role="alert">
+            <div class="preview-error-card">
+              <p class="preview-error-eyebrow">Preview needs attention</p>
+              <h2>{previewErrorDisplay.title}</h2>
+              <p>{previewErrorDisplay.message}</p>
+              <div class="preview-error-actions">
+                <button
+                  class="primary app-btn-primary"
+                  onclick={() => void lifecycle.retryPreview()}
+                  disabled={lifecycle.busy}
+                >
+                  {lifecycle.busy ? "Trying preview…" : "Try preview again"}
+                </button>
+                <button class="ghost" onclick={showPreviewFiles}>Show files</button>
+              </div>
+              <details>
+                <summary>Technical details</summary>
+                <pre>{previewErrorDisplay.details}</pre>
+              </details>
+            </div>
+          </div>
+        {/if}
         <!-- RC3-1: Pane-scoped overlay — position:absolute within .preview-pane
              (which has position:relative). Covers ONLY the preview area; the
              editor pane, toolbar, and all dialogs remain fully interactive.
@@ -2719,7 +2770,7 @@
     fileOpen={!!editorFilePath}
     {forceSaving}
     forceSyncing={syncController.forceSyncing}
-    {problems}
+    problems={displayedProblems}
     problemsLoading={problemsLoading}
     {problemsError}
     bind:problemsOpen={problemsOpen}
@@ -3081,6 +3132,69 @@
   }
   .preview-pane {
     position: relative;
+  }
+  .preview-error-view {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    place-items: center;
+    padding: clamp(20px, 5vw, 64px);
+    background:
+      radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--app-error-strong) 10%, transparent), transparent 45%),
+      var(--app-bg);
+  }
+  .preview-error-card {
+    width: min(680px, 100%);
+    padding: clamp(22px, 4vw, 38px);
+    border: 1px solid color-mix(in srgb, var(--app-error-strong) 45%, var(--app-border));
+    border-radius: 12px;
+    background: var(--app-surface-raised);
+    box-shadow: 0 18px 50px var(--app-shadow-md);
+  }
+  .preview-error-card h2 {
+    margin: 4px 0 10px;
+    color: var(--app-text);
+    font-size: clamp(20px, 3vw, 28px);
+  }
+  .preview-error-card > p:not(.preview-error-eyebrow) {
+    margin: 0;
+    color: var(--app-text-muted);
+    line-height: 1.55;
+  }
+  .preview-error-eyebrow {
+    margin: 0;
+    color: var(--app-error-text);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .preview-error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .preview-error-card details {
+    margin-top: 22px;
+    border-top: 1px solid var(--app-border-subtle);
+    padding-top: 14px;
+    color: var(--app-text-muted);
+  }
+  .preview-error-card summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .preview-error-card pre {
+    max-height: 220px;
+    margin: 12px 0 0;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+    color: var(--app-text);
   }
   /* Narrow widths: give editor + preview equal space. */
   @media screen and (max-width: 1100px) {

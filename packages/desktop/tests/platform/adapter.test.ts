@@ -444,6 +444,7 @@ test("WebAdapter.startPreview renders book.html in-browser → blob URL (#33 Pha
     const result = await p.startPreview({ input: ref });
 
     // Returns a blob: object URL matching the PreviewStartResult shape.
+    expect(result.previewStarted).toBe(true);
     expect(result.url).toMatch(/^blob:/);
     expect(result.port).toBe(0);
     expect(result.input).toBe(ref.key);

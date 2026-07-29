@@ -26,6 +26,7 @@ import type {
   ConflictFileInfo,
   ExportProgressEvent,
   MarkdownFileLaunchEvent,
+  PreviewStartResult,
 } from "./bridge-types";
 
 declare global {
@@ -118,12 +119,7 @@ declare global {
       // syncChanges — migrated to server route (Phase 2F)
       // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)
       // — ARCH review #8: plain request/response.
-      startPreview(args: { input: string }): Promise<{
-        url: string;
-        port: number;
-        input: string;
-        title: string | null;
-      }>;
+      startPreview(args: { input: string }): Promise<PreviewStartResult>;
       stopPreview(): Promise<{ stopped: boolean }>;
       cancelExport(exportId: string): Promise<{ canceled: boolean }>;
       build(args: {

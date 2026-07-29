@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   ProjectLifecycleController,
   type ProjectLifecycleDeps,
+  type ProjectLifecyclePreviewResult,
 } from "../../src/lib/routes/project-lifecycle-controller.svelte";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
@@ -61,11 +62,11 @@ interface Harness {
     landingVisible: boolean;
     pageNav: { totalPages: number; currentPage: number };
     zoomView: { userSetViewMode: boolean; restoreSplitRatio: Spy<[number]> };
-    startPreviewResult: { url: string; title: string | null };
+    startPreviewResult: ProjectLifecyclePreviewResult;
     startPreviewImpl?: (input: {
       key: string;
       displayName: string;
-    }) => Promise<{ url: string; title: string | null }>;
+    }) => Promise<ProjectLifecyclePreviewResult>;
     classifyImpl?: (dir: string) => Promise<void>;
     flushResult: boolean;
     activeBookHasManifest: boolean;
@@ -123,7 +124,7 @@ function make(): Harness {
     landingVisible: false,
     pageNav: { totalPages: 0, currentPage: 1 },
     zoomView: { userSetViewMode: false, restoreSplitRatio: spy<[number]>() },
-    startPreviewResult: { url: "preview://book", title: "My Book" },
+    startPreviewResult: { previewStarted: true, url: "preview://book", title: "My Book" },
     flushResult: true,
     activeBookHasManifest: true,
   };
@@ -209,6 +210,7 @@ test("initial public rune state matches the +page.svelte defaults", () => {
   expect(ctrl.renderProgressPage).toBe(0);
   expect(ctrl.renderCompleteOverlay).toBe(false);
   expect(ctrl.openError).toBeNull();
+  expect(ctrl.previewError).toBeNull();
   expect(ctrl.urlPreviewError).toBeNull();
   expect(ctrl.saveWarning).toBeNull();
   expect(ctrl.currentFolderHasManifest).toBe(true);
@@ -256,6 +258,74 @@ test("startFolderPreview: defers the crash-recovery scan while the landing is vi
 
   expect(deps.setPendingRecoveryScanDir.calls).toEqual([["/proj"]]);
   expect(deps.scanForRecovery.calls.length).toBe(0);
+});
+
+test("preview generation failure keeps the folder, files, watcher, and Problems surface open", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: false,
+    title: "Broken Book",
+    error: "Missing stylesheet: /proj/css/missing.css",
+  };
+
+  expect(await ctrl.startFolderPreview("/proj", "Opening…")).toBe(true);
+
+  expect(ctrl.currentDir).toBe("/proj");
+  expect(ctrl.docTitle).toBe("Broken Book");
+  expect(ctrl.previewUrl).toBeNull();
+  expect(ctrl.previewError).toContain("Missing stylesheet");
+  expect(ctrl.openError).toBeNull();
+  expect(ctrl.rendering).toBe(false);
+  expect(deps.ensureEditorFile.calls).toHaveLength(1);
+  expect(deps.startFolderWatch.calls).toEqual([["/proj"]]);
+  expect(deps.clearStaleProjectState.calls).toHaveLength(1);
+  expect(deps.resetExtras.calls).toHaveLength(0);
+});
+
+test("retryPreview repairs only the preview and preserves the open workspace", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: false,
+    title: "Broken Book",
+    error: "bad manifest",
+  };
+  await ctrl.startFolderPreview("/proj");
+  deps.startPreviewResult = {
+    previewStarted: true,
+    url: "preview://repaired",
+    title: "Repaired Book",
+  };
+
+  expect(await ctrl.retryPreview()).toBe(true);
+  expect(ctrl.currentDir).toBe("/proj");
+  expect(ctrl.previewUrl).toBe("preview://repaired");
+  expect(ctrl.previewError).toBeNull();
+  expect(ctrl.docTitle).toBe("Repaired Book");
+  expect(deps.classify.calls).toEqual([["/proj"]]);
+  expect(deps.resetBuffer.calls).toHaveLength(1);
+  expect(deps.startFolderWatch.calls).toHaveLength(1);
+});
+
+test("a failed retry updates the error without discarding files or restarting the watcher", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = {
+    previewStarted: false,
+    title: "Broken Book",
+    error: "first failure",
+  };
+  await ctrl.startFolderPreview("/proj");
+  deps.startPreviewResult = {
+    previewStarted: false,
+    title: "Broken Book",
+    error: "still missing css",
+  };
+
+  expect(await ctrl.retryPreview()).toBe(false);
+  expect(ctrl.currentDir).toBe("/proj");
+  expect(ctrl.previewError).toBe("still missing css");
+  expect(deps.resetExtras.calls).toHaveLength(0);
+  expect(deps.resetBuffer.calls).toHaveLength(1);
+  expect(deps.startFolderWatch.calls).toHaveLength(1);
 });
 
 test("a failed pre-navigation flush preserves the open project and never starts the replacement", async () => {
@@ -431,7 +501,7 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
     desktopRequiredMessage: "needs desktop",
     startPreviewHost: () => {
       startCall++;
-      return Promise.resolve({ url: "preview://ok", title: "Ok" });
+      return Promise.resolve({ previewStarted: true as const, url: "preview://ok", title: "Ok" });
     },
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: () => Promise.resolve(),
@@ -501,11 +571,13 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
 
 test("a superseded open's failure must not clobber the winning open's state", async () => {
   const { ctrl, deps } = make();
-  const firstStart = deferred<{ url: string; title: string | null }>();
+  const firstStart = deferred<ProjectLifecyclePreviewResult>();
   let call = 0;
   deps.startPreviewImpl = () => {
     call++;
-    return call === 1 ? firstStart.promise : Promise.resolve({ url: "preview://ok", title: "Ok" });
+    return call === 1
+      ? firstStart.promise
+      : Promise.resolve({ previewStarted: true as const, url: "preview://ok", title: "Ok" });
   };
 
   // Start the first open alone and let it run past classify (default: resolves
@@ -546,7 +618,7 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
     desktopRequiredMessage: "needs desktop",
     startPreviewHost: () => {
       order.push("startPreviewHost");
-      return Promise.resolve({ url: "preview://b", title: "B" });
+      return Promise.resolve({ previewStarted: true as const, url: "preview://b", title: "B" });
     },
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: () => Promise.resolve(),
@@ -620,7 +692,7 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
   const rejectingCtrl = new ProjectLifecycleController({
     isDesktop: () => true,
     desktopRequiredMessage: "needs desktop",
-    startPreviewHost: () => Promise.resolve({ url: "x", title: null }),
+    startPreviewHost: () => Promise.resolve({ previewStarted: true, url: "x", title: null }),
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: (dir) => {
       adoptFolder(dir);

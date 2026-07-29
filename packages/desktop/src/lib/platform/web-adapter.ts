@@ -812,6 +812,7 @@ export class WebAdapter implements Platform {
     this.lastPreviewUrl = url;
 
     return {
+      previewStarted: true,
       url,
       port: 0, // no server on web
       input: args.input.key,

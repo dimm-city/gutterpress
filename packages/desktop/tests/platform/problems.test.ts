@@ -7,7 +7,7 @@ import {
   problemCounts,
   splitProblemMessage,
 } from "../../src/lib/problems";
-import type { ProblemEntry } from "../../src/lib/platform/contract";
+import type { ProblemEntry } from "../../src/lib/platform/dtos";
 
 const make = (over: Partial<ProblemEntry>): ProblemEntry => ({
   severity: "warning",
@@ -31,6 +31,7 @@ test("friendlySource maps known check ids to plain language, passes unknown thro
   expect(friendlySource("source.links.local-refs")).toBe("Broken link");
   expect(friendlySource("source.stylelint")).toBe("Print-safety (CSS)");
   expect(friendlySource("source.accessibility.alt-text")).toBe("Image description");
+  expect(friendlySource("desktop.preview")).toBe("Preview");
   expect(friendlySource("some.future.check")).toBe("some.future.check");
 });
 

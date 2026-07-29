@@ -6,11 +6,11 @@
  *   directory such as the user SSH directory. fsGuardImpl then includes that
  *   watched path in projectRoots, authorizing direct reads there and making
  *   copy-file treat its source as inside the project, bypassing the new
- *   picker capability. Restrict this IPC call to the active preview project
+ *   picker capability. Restrict this IPC call to the active workspace project
  *   and do not derive authorization from the watcher state."
  *
  * Confirmed: `fsGuardImpl.projectRoots()` used to union
- * `path.resolve(activePreview.inputPath)` with `folderWatch.getWatchedDir()`,
+ * the host-owned project root with `folderWatch.getWatchedDir()`,
  * and `fs:watchFolder`'s handler accepted ANY absolute path from the
  * renderer (only guard: `path.isAbsolute`). A same-origin script (preview
  * XSS, malicious plugin-injected script) could therefore call
@@ -29,7 +29,7 @@
  * (src/routes/api/_lib/fs-guard.ts) with a `projectRoots()` hook shaped like
  * the FIXED main.ts (no watcher-state union) to confirm the route correctly
  * 403s a directory that is merely "being watched" but is not the active
- * preview project — the exact bypass the review demonstrated.
+ * workspace project — the exact bypass the review demonstrated.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { readFile, mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
@@ -62,7 +62,7 @@ async function caught(p: Promise<unknown>): Promise<{ status: number; message: u
 
 // ── (a) projectRoots() no longer derives authorization from watcher state ──
 
-test("(a) fsGuardImpl.projectRoots() is derived ONLY from activePreview, never folderWatch.getWatchedDir()", () => {
+test("(a) fsGuardImpl.projectRoots() is derived ONLY from activeWorkspaceRoot, never folderWatch.getWatchedDir()", () => {
   const implStart = main.indexOf("const fsGuardImpl: FsGuardHooks = {");
   expect(implStart).toBeGreaterThan(-1);
   const rootsStart = main.indexOf("projectRoots(): string[] {", implStart);
@@ -76,8 +76,8 @@ test("(a) fsGuardImpl.projectRoots() is derived ONLY from activePreview, never f
   // root. That union must be gone.
   expect(rootsBody).not.toContain("folderWatch");
   expect(rootsBody).not.toContain("getWatchedDir");
-  // Still gated on the host-set active preview (not falling back to "anywhere").
-  expect(rootsBody).toContain("activePreview");
+  // Still gated on the host-set workspace capability (not falling back to "anywhere").
+  expect(rootsBody).toContain("activeWorkspaceRoot");
 });
 
 // ── (b) an fs route for a dir that's merely "watched" (not the active
@@ -98,7 +98,7 @@ beforeEach(async () => {
   registerHostServices(
     makeHostServices({
       desktop: { getUserDataPath: () => base },
-      // Models the FIXED fsGuardImpl.projectRoots(): only the active preview's
+      // Models the FIXED fsGuardImpl.projectRoots(): only the active workspace's
       // dir, NOT a union with a separately-"watched" dir — proving the route
       // itself correctly rejects `watchedOnlyDir` once main.ts stops handing it
       // authorization.
@@ -113,7 +113,7 @@ afterEach(async () => {
   await rm(path.dirname(previewDir), { recursive: true, force: true });
 });
 
-test("(b) fs/read-file: a path inside the active preview project is still allowed", async () => {
+test("(b) fs/read-file: a path inside the active workspace is still allowed", async () => {
   const res = await readFileRoute({
     request: request({ path: path.join(previewDir, "chapter-01.md") }),
   } as Parameters<typeof readFileRoute>[0]);
@@ -121,7 +121,7 @@ test("(b) fs/read-file: a path inside the active preview project is still allowe
   expect(await res.json()).toBe("# In project");
 });
 
-test("(b) fs/read-file: a directory the renderer merely got fs:watchFolder-ed onto (not the active preview) is rejected (403)", async () => {
+test("(b) fs/read-file: a directory merely watched outside the active workspace is rejected (403)", async () => {
   const { status, message } = await caught(
     readFileRoute({
       request: request({ path: path.join(watchedOnlyDir, "id_rsa") }),
@@ -133,19 +133,19 @@ test("(b) fs/read-file: a directory the renderer merely got fs:watchFolder-ed on
 
 // ── (c) fs:watchFolder rejects a dirPath that isn't the active preview ─────
 
-test("(c) fs:watchFolder's IPC handler rejects any dirPath that doesn't match the active preview's project", () => {
+test("(c) fs:watchFolder rejects any dirPath that does not match the active workspace", () => {
   const handlerStart = main.indexOf('secureHandle("fs:watchFolder"');
   expect(handlerStart).toBeGreaterThan(-1);
   const handlerEnd = main.indexOf("});", handlerStart);
   expect(handlerEnd).toBeGreaterThan(handlerStart);
   const handlerBody = main.slice(handlerStart, handlerEnd);
 
-  // Must consult the host-set activePreview — the pre-fix handler's only
+  // Must consult the host-set activeWorkspaceRoot — the pre-fix handler's only
   // check was `path.isAbsolute(dirPath)`, which any absolute path passes.
-  expect(handlerBody).toContain("activePreview");
-  expect(handlerBody).toMatch(/!activePreview/);
+  expect(handlerBody).toContain("activeWorkspaceRoot");
+  expect(handlerBody).toMatch(/!activeWorkspaceRoot/);
   expect(handlerBody).toContain("path.resolve(dirPath)");
-  expect(handlerBody).toContain("path.resolve(activePreview.inputPath)");
+  expect(handlerBody).toContain("activeWorkspaceRoot");
   // And it must actually throw on mismatch/no-active-preview, not just log.
   expect(handlerBody).toContain("throw new Error(");
 });

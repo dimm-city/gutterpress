@@ -30,6 +30,7 @@ import { AUTO_SYNC_OPEN_DELAY_MS, type SyncStatusPayload } from "../auto-sync/or
 import { unsyncedStateFor } from "../auto-sync/unsynced-status";
 import { upsertRecentFolder } from "../recent-folders";
 import type { DesktopPrefs } from "../prefs-store";
+import type { PreviewStartResult } from "../bridge-types";
 import type { TokenStore } from "gutterpress";
 
 type LibModule = typeof import("gutterpress");
@@ -47,13 +48,6 @@ export interface PreviewOpenArgs {
   input?: string;
 }
 
-export interface PreviewOpenResult {
-  url: string;
-  port: number;
-  input: string;
-  title: string;
-}
-
 /** External touch-points injected into the controller (all faked in tests). */
 export interface PreviewOpenControllerDeps {
   /** Lazily load gutterpress. Cached by the caller. */
@@ -61,6 +55,11 @@ export interface PreviewOpenControllerDeps {
   /** main.ts's single module-level `activePreview` slot. */
   getActivePreview: () => PreviewHandle | null;
   setActivePreview: (preview: PreviewHandle | null) => void;
+  /** Host-owned filesystem capability, independent of preview-server success. */
+  getActiveWorkspaceRoot: () => string | null;
+  setActiveWorkspaceRoot: (root: string | null) => void;
+  /** Validate that a renderer-selected workspace exists and is a directory. */
+  stat: (target: string) => Promise<{ isDirectory(): boolean }>;
   /** Atomic read-modify-write over gutterpress-prefs.json (electron/prefs-store.ts). */
   updatePrefs: (mutate: (prefs: DesktopPrefs) => DesktopPrefs) => Promise<DesktopPrefs>;
   /** Credential store passed to lib.diagnoseProjectRemote. */
@@ -102,7 +101,7 @@ export class PreviewOpenController {
    * open-epoch order, and the renderer's epoch guard discards the superseded
    * call's response.
    */
-  open(args: PreviewOpenArgs): Promise<PreviewOpenResult> {
+  open(args: PreviewOpenArgs): Promise<PreviewStartResult> {
     const run = this.chain.then(() => this.runOpen(args));
     this.chain = run.then(
       () => undefined,
@@ -111,25 +110,70 @@ export class PreviewOpenController {
     return run;
   }
 
-  private async runOpen(args: PreviewOpenArgs): Promise<PreviewOpenResult> {
+  /** Serialize teardown with open() so cancel cannot leave a late preview alive. */
+  stop(): Promise<{ stopped: true }> {
+    const run = this.chain.then(() => this.runStop());
+    this.chain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  private async runStop(): Promise<{ stopped: true }> {
+    const active = this.deps.getActivePreview();
+    if (active) await active.stop().catch(() => {});
+    this.deps.setActivePreview(null);
+    this.deps.setActiveWorkspaceRoot(null);
+    return { stopped: true };
+  }
+
+  private async runOpen(args: PreviewOpenArgs): Promise<PreviewStartResult> {
     const input = args?.input;
     if (!input || typeof input !== "string") {
       throw new Error("Missing 'input' (absolute path to a project directory)");
     }
+    if (!path.isAbsolute(input)) {
+      throw new Error(`Preview input must be an absolute project directory: ${input}`);
+    }
 
-    const lib = await this.deps.loadLib();
+    const openedDir = path.resolve(input);
+    let info: { isDirectory(): boolean };
+    try {
+      info = await this.deps.stat(openedDir);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (this.deps.getActiveWorkspaceRoot() !== openedDir) await this.runStop();
+      throw new Error(`Folder could not be opened: ${msg}`);
+    }
+    if (!info.isDirectory()) {
+      if (this.deps.getActiveWorkspaceRoot() !== openedDir) await this.runStop();
+      throw new Error(`Folder could not be opened: ${openedDir} is not a directory`);
+    }
 
-    // Replace any existing preview before starting a new one.
+    // Replace the old preview, then grant the new folder capability before
+    // rendering. A render failure must not revoke access to the author's files.
     const existing = this.deps.getActivePreview();
     if (existing) {
       await existing.stop().catch(() => {});
-      this.deps.setActivePreview(null);
     }
+    this.deps.setActivePreview(null);
+    this.deps.setActiveWorkspaceRoot(openedDir);
 
-    let activePreview: PreviewHandle;
+    let lib: LibModule | null = null;
+    let title = path.basename(openedDir);
+    let result: PreviewStartResult;
     try {
-      activePreview = await lib.startPreviewServer({
-        input,
+      lib = await this.deps.loadLib();
+      try {
+        const { manifest } = await lib.loadManifestWithPath(openedDir);
+        if (manifest.title) title = manifest.title;
+      } catch {
+        /* malformed/missing manifest is reported by preview generation below */
+      }
+
+      const activePreview = await lib.startPreviewServer({
+        input: openedDir,
         port: 0,
         host: "127.0.0.1",
         noWatch: false,
@@ -139,51 +183,56 @@ export class PreviewOpenController {
         installSignalHandlers: false,
       });
       this.deps.setActivePreview(activePreview);
+      result = {
+        previewStarted: true,
+        url: activePreview.url,
+        port: activePreview.port,
+        input: openedDir,
+        title,
+      };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const stack = e instanceof Error ? e.stack ?? "" : "";
       console.error(`[api:preview] startPreviewServer failed: input=${input}`);
       console.error(`  ${msg}`);
       if (stack) console.error(stack);
-      throw new Error(`Preview server failed to start: ${msg}`);
+      result = {
+        previewStarted: false,
+        input: openedDir,
+        title,
+        error: msg,
+      };
     }
 
-    let title: string = path.basename(input);
-    try {
-      const { manifest } = await lib.loadManifestWithPath(input);
-      if (manifest.title) title = manifest.title;
-    } catch {
-      /* not a manifest project — keep dir basename */
-    }
-
-    // Normalize so the map key and watchedDir comparison use the same canonical form.
-    const openedDir = path.resolve(activePreview.inputPath);
     // C2 (book switcher): the desktop always opens an actual book folder (never a
     // bare multi-book repo root — the renderer retargets to a resolved book
     // before calling here), so `openedDir` is the active book. Detected once and
     // reused below (recents + the local-status/preflight blocks) instead of each
     // re-deriving it.
-    const source = await lib.detectProjectSource(openedDir);
+    let source: ProjectSourceResult | null = null;
+    if (lib) {
+      try {
+        source = await lib.detectProjectSource(openedDir);
+      } catch (e) {
+        console.warn("[api:preview] project source detection failed (non-fatal):", e);
+      }
+    }
 
-    await this.deps.updatePrefs((prefs) => ({
-      ...prefs,
-      lastProjectDir: openedDir,
-      // Single source of truth for recents: every successful preview start
-      // (modal, toolbar, or auto-reopen) upserts the folder here. Repo-backed
-      // projects are "a project is its git repo" (CLAUDE.md) — the entry keys on
-      // the repo root, with `lastActiveBook` remembering which book was open so
-      // reopening restores it instead of falling back to the alphabetically
-      // first book. updatePrefs is an atomic read-modify-write, so this can't
-      // clobber a concurrent prefs patch (e.g. the start screen's toggle).
-      recentFolders: upsertRecentFolder(prefs.recentFolders, {
-        path: source.type === "local-git-folder" ? source.repoRoot : openedDir,
-        title,
-        openedAt: new Date().toISOString(),
-        ...(source.type === "local-git-folder" && source.subPath !== ""
-          ? { lastActiveBook: openedDir }
-          : {}),
-      }),
-    }));
+    await this.deps
+      .updatePrefs((prefs) => ({
+        ...prefs,
+        lastProjectDir: openedDir,
+        // A workspace counts as opened even when its preview needs repair.
+        recentFolders: upsertRecentFolder(prefs.recentFolders, {
+          path: source?.type === "local-git-folder" ? source.repoRoot : openedDir,
+          title,
+          openedAt: new Date().toISOString(),
+          ...(source?.type === "local-git-folder" && source.subPath !== ""
+            ? { lastActiveBook: openedDir }
+            : {}),
+        }),
+      }))
+      .catch((e) => console.warn("[api:preview] failed to persist opened workspace:", e));
 
     // Trigger auto-sync once after the first auto-snapshot has had time to settle
     // (§4.2 project-open trigger). The snapshot debounce fires after N minutes of
@@ -196,14 +245,14 @@ export class PreviewOpenController {
     // first file change. Then do a PROMPT initial pull a few seconds after open
     // (not coupled to the 10-min snapshot debounce — that delayed it ~10.5 min and
     // hid teammate changes). syncProject snapshots-first, so a prompt run is safe.
-    void this.deps.armSyncInterval(openedDir);
+    if (source) void this.deps.armSyncInterval(openedDir);
 
     // App-open heartbeat (repair-vs-desktop detection, M2): write immediately so
     // a `Gutterpress repair` run right after open already sees a fresh marker —
     // don't wait for the first periodic tick (up to autoSyncMinutes later).
     // Reuses the injected refreshAppHeartbeat (not a second inline write) so the
     // TTL stamped here always matches the one the periodic refresh stamps.
-    if (source.type === "local-git-folder") {
+    if (source?.type === "local-git-folder") {
       void this.deps.refreshAppHeartbeat(openedDir);
     }
 
@@ -213,7 +262,7 @@ export class PreviewOpenController {
     // action), or "local" when there is no usable remote (version history
     // only). Isolated from the sync/recovery flow below; canSync projects get
     // their status from runAutoSync and ignore this branch.
-    void this.emitLocalStatusIfUnsynced(lib, openedDir, source);
+    if (lib && source) void this.emitLocalStatusIfUnsynced(lib, openedDir, source);
 
     // Preflight recovery: before the initial sync, inspect the repo for structural
     // conditions (stale lock, interrupted merge, detached head, missing git dir)
@@ -222,14 +271,9 @@ export class PreviewOpenController {
     // flow (single-flight lock, recovery routing, conflict-latch, and the BUG-3
     // runAgain decision) is owned by the orchestrator — see
     // AutoSyncOrchestrator.runPreflight (electron/auto-sync/orchestrator.ts).
-    void this.deps.runSyncPreflight(openedDir, source);
+    if (source) void this.deps.runSyncPreflight(openedDir, source);
 
-    return {
-      url: activePreview.url,
-      port: activePreview.port,
-      input: activePreview.inputPath,
-      title,
-    };
+    return result;
   }
 
   private async emitLocalStatusIfUnsynced(
