@@ -17,11 +17,8 @@
  * side-by-side split is used. Matches the historical NARROW_QUERY (820px). */
 export const NARROW_BREAKPOINT = 820;
 
-/** iPhone-14 logical viewport width — the acceptance target (#34). */
-export const MOBILE_TARGET_WIDTH = 390;
-
 /** Workspace layout mode derived purely from the viewport width. */
-export type LayoutMode = "single-column" | "split";
+type LayoutMode = "single-column" | "split";
 
 /**
  * Derive the workspace layout mode from the viewport width.
@@ -31,7 +28,7 @@ export type LayoutMode = "single-column" | "split";
  * is used. Boundary is inclusive of the breakpoint (820px → single-column),
  * matching `(max-width: 820px)` in CSS so JS and CSS never disagree.
  */
-export function layoutModeFor(
+function layoutModeFor(
   width: number,
   breakpoint: number = NARROW_BREAKPOINT,
 ): LayoutMode {

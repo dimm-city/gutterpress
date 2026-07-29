@@ -69,7 +69,7 @@ export function sendExportProgress(event: ExportProgressEvent): void {
   sendProgress(event);
 }
 
-export function requireActiveExportSession(): ExportSession {
+function requireActiveExportSession(): ExportSession {
   if (!activeExportSession) {
     throw new Error("No active export session");
   }

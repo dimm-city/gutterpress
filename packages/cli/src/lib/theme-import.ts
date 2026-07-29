@@ -29,7 +29,7 @@ import { prettify } from "./slug.ts";
 /** Reject a raw archive larger than this before unzipping (zip-bomb surface). */
 export const MAX_THEME_ARCHIVE_BYTES = 25 * 1024 * 1024;
 /** Reject an archive whose entries expand past this in total (zip-bomb surface). */
-export const MAX_THEME_UNZIPPED_BYTES = 25 * 1024 * 1024;
+const MAX_THEME_UNZIPPED_BYTES = 25 * 1024 * 1024;
 
 /** A non-fatal issue surfaced to the author after a successful import. */
 export interface ThemeImportWarning {

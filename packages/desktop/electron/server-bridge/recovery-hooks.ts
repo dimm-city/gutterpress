@@ -8,7 +8,7 @@
 
 import { getHostServices } from './host-services';
 
-export interface RecoveryEntry {
+interface RecoveryEntry {
   filePath: string;
   recoveryPath: string;
   savedAt: number;

@@ -37,13 +37,13 @@ export const RETRY_AFTER_MS = 30_000;
 export type AnyOutcome = SyncOutcome | PullOutcome;
 
 /** Every status either outcome union can carry. */
-export type OutcomeStatus = AnyOutcome["status"];
+type OutcomeStatus = AnyOutcome["status"];
 
 /** The conflict arm (from either union) — carries files + tip OIDs. */
 type ConflictOutcome = Extract<AnyOutcome, { status: "conflict" }>;
 
 /** Builds a RecoveryResult from the context and the (already-classified) outcome. */
-export type OutcomeBuilder = (ctx: RecoveryContext, outcome: AnyOutcome) => RecoveryResult;
+type OutcomeBuilder = (ctx: RecoveryContext, outcome: AnyOutcome) => RecoveryResult;
 
 /** Per-status overrides a handler supplies where it intentionally differs. */
 export type OutcomeOverrides = Partial<Record<OutcomeStatus, OutcomeBuilder>>;

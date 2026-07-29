@@ -9,11 +9,6 @@ import type { LoadedPlugin } from "./renderer";
 
 export type { LayoutWarning } from "./assemble";
 
-// Re-export the pure render core so existing callers
-// (`import { createMarkdownRenderer } from "./markdown/index"`) keep working.
-// The factory + plugin author types now live in the node-free `renderer.ts`
-// (so the browser/PWA can import them) and are surfaced here unchanged.
-export { createMarkdownRenderer } from "./renderer";
 
 /**
  * THE canonical "which markdown files make up this book, and in what order?"

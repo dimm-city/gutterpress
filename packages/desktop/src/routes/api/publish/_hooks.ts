@@ -41,7 +41,7 @@ export interface LibPublishProviderInfo {
  * `unknown`) because the token store is security-sensitive — forgetting to
  * pass it must fail the build, not the runtime.
  */
-export interface PublishRouteDeps {
+interface PublishRouteDeps {
   tokenStore: TokenStore;
   /** The selected NAMED account (label) to resolve against; "" = default. */
   credentialAccount?: string;
@@ -50,7 +50,7 @@ export interface PublishRouteDeps {
 }
 
 /** A saved credential for a provider, redacted (no token). */
-export interface LibPublishSavedAccount {
+interface LibPublishSavedAccount {
   account: string;
   label: string;
   createdAt: number;

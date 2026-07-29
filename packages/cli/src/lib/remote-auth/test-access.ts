@@ -83,7 +83,7 @@ function failure(reason: RemoteAccessFailureReason): RemoteAccessResult {
 }
 
 /** Map a raw transport error to a classified failure. Never echoes the URL. */
-export function classifyRemoteAccessError(e: unknown): RemoteAccessResult {
+function classifyRemoteAccessError(e: unknown): RemoteAccessResult {
   // FIRST: the typed withheld-credential error from onAuthFor — its message
   // mentions the connection, which the auth regex below would misclassify.
   if (isInsecureTransportError(e)) return failure("insecure-transport");

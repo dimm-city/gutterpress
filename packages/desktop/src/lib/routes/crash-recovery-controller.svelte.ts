@@ -23,7 +23,7 @@ import type { RecoveryItem } from "../components/crash-recovery-types";
 export type { RecoveryItem };
 
 /** Minimal toast surface the controller drives. */
-export interface CrashRecoveryToast {
+interface CrashRecoveryToast {
   error(message: string): void;
 }
 

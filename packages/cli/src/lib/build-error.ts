@@ -32,7 +32,6 @@ export const EXIT_CODES = {
   PIPELINE: 3,
 } as const;
 
-export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
 
 /**
  * BuildError — the canonical error type for build/pipeline failures.

@@ -32,7 +32,7 @@ import {
 } from "$lib/editor/preview-layout";
 
 /** Minimal host-command client surface the controller drives. */
-export interface ZoomViewClient {
+interface ZoomViewClient {
   call<T>(cmd: string, args?: unknown[]): Promise<T>;
 }
 

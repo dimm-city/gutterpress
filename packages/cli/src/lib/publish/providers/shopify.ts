@@ -25,7 +25,7 @@ import {
   type PublishRequest,
 } from "../types.ts";
 
-export const SHOPIFY_HOST = "shopify";
+const SHOPIFY_HOST = "shopify";
 const DEFAULT_API_VERSION = "2026-04";
 
 /** Total deadline per Admin API call (shared fetch-timeout policy — a stalled

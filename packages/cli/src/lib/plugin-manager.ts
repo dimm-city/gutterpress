@@ -66,7 +66,7 @@ interface PluginManagerInstallOptions extends NpmPluginInstallOptions {
 const pluginMutationQueues = new Map<string, Promise<void>>();
 
 /** Serialize all plugin filesystem + manifest mutations for one project. */
-export function withPluginMutationLock<T>(
+function withPluginMutationLock<T>(
   projectDir: string,
   mutation: () => Promise<T>,
 ): Promise<T> {

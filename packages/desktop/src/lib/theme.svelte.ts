@@ -20,10 +20,10 @@ import type { NativeThemeState } from "$lib/platform";
 import { api } from "$lib/api";
 
 export type ThemeMode = "light" | "dark" | "system";
-export type ResolvedTheme = "light" | "dark";
+type ResolvedTheme = "light" | "dark";
 
 /** localStorage key the no-flash inline script in app.html reads. Keep in sync. */
-export const THEME_CACHE_KEY = "gutterpress.theme-mode";
+const THEME_CACHE_KEY = "gutterpress.theme-mode";
 
 const state = $state<{
   mode: ThemeMode;
@@ -94,13 +94,6 @@ export function initTheme(): void {
   apply();
 }
 
-/** Stop listening for OS theme changes (test/teardown). */
-export function teardownTheme(): void {
-  unsubscribeOs?.();
-  unsubscribeOs = null;
-  state.initialized = false;
-}
-
 /**
  * Re-read the persisted theme mode from the settings store and re-apply. Call
  * this from a reactive `$effect` so the document follows the Settings control.
@@ -120,15 +113,3 @@ export function setThemeMode(mode: ThemeMode): void {
   apply();
 }
 
-/** Reactive accessors for UI. */
-export function useTheme() {
-  return {
-    get mode(): ThemeMode {
-      return state.mode;
-    },
-    get resolved(): ResolvedTheme {
-      return state.resolved;
-    },
-    setMode: setThemeMode,
-  };
-}

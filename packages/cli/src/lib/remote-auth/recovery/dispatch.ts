@@ -262,8 +262,3 @@ export {
   isUnbornRepo,
 } from "./inspect.ts";
 export { buildRecoveryContext } from "./context.ts";
-export type { BuildRecoveryContextOptions } from "./context.ts";
-export { recoveryPolicy, policyFor, detachedHeadWithLocalChangesPolicy } from "./policy.ts";
-export { createRecoveryZip, assertZipReadable, zipEntries } from "./backup.ts";
-export { makeManualGuidance } from "./manual-guidance.ts";
-export { failSafeNoRepair, withBackupGate } from "./failsafe.ts";

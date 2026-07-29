@@ -41,7 +41,7 @@ import type { SyncOutcome } from "../api";
 import type { ConflictFileEntry, ProjectRemoteDiagnosis } from "../platform/contract";
 
 /** Minimal toast surface the controller drives (success is fired by the injected component callback). */
-export interface SyncToast {
+interface SyncToast {
   success(message: string): void;
   info?(message: string): void;
   error(message: string): void;

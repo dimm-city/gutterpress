@@ -5,9 +5,6 @@
  * Build pipeline types are in src/schema/manifest.types.ts.
  */
 
-// Re-export manifest types for convenience
-export type { GutterpressManifest, ResolvedConfig } from './schema/manifest.types';
-
 /**
  * Options for preview server (internal)
  */

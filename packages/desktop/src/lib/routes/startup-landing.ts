@@ -35,7 +35,7 @@ export function decideStartupScreen(opts: {
   return { showLanding: !opts.lastProjectDir || opts.landingEnabled };
 }
 
-export type ContinueStatusKind = "opening" | "rendering" | "ready";
+type ContinueStatusKind = "opening" | "rendering" | "ready";
 
 export interface ContinueStatus {
   kind: ContinueStatusKind;

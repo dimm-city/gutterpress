@@ -23,7 +23,7 @@ import {
   type PublishRequest,
 } from "../types.ts";
 
-export const AZURE_SWA_HOST = "azure-swa";
+const AZURE_SWA_HOST = "azure-swa";
 
 const info: PublishProviderInfo = {
   id: "azure-swa",

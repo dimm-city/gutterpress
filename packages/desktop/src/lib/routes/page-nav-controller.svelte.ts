@@ -29,7 +29,7 @@
 import type { PageState } from "./page-types";
 
 /** Minimal host-command client surface the controller drives. */
-export interface PageNavClient {
+interface PageNavClient {
   call<T>(cmd: string, args?: unknown[]): Promise<T>;
 }
 

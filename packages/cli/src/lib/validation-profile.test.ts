@@ -2,12 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { resolveConfig } from "./manifest";
 import {
   applyDefaultPdfStrictChecks,
-  applyDtrpgPdfDefaults,
   applyValidationProfile,
 } from "./validation-profile";
 
 describe("validation profile behavior", () => {
-  test("default dtrpg pdf defaults are injected only when absent", () => {
+  test("default strict pdf checks are injected only when absent", () => {
     const base = resolveConfig(
       {},
       {
@@ -19,7 +18,7 @@ describe("validation profile behavior", () => {
       }
     );
 
-    const next = applyDtrpgPdfDefaults(base);
+    const next = applyDefaultPdfStrictChecks(base);
 
     expect(next.validate.checks["pdf.structure.qpdf"]).toBe(false);
     expect(next.validate.checks["pdf.print.pdfx-markers"]).toEqual({
@@ -53,14 +52,10 @@ describe("validation profile behavior", () => {
   });
 });
 
-// ARCH finding #21: applyDtrpgPdfDefaults is now an alias for
-// applyDefaultPdfStrictChecks (the dtrpg-branded name was misleading since
-// executeValidation applies it to every PDF validation, not just dtrpg).
-describe("applyDefaultPdfStrictChecks / applyDtrpgPdfDefaults alias (finding #21)", () => {
-  test("applyDtrpgPdfDefaults is the same function as applyDefaultPdfStrictChecks", () => {
-    expect(applyDtrpgPdfDefaults).toBe(applyDefaultPdfStrictChecks);
-  });
-
+// ARCH finding #21: the dtrpg-branded name was misleading since
+// executeValidation applies this to every PDF validation, not just dtrpg
+// (the old applyDtrpgPdfDefaults alias was removed for 0.9.0).
+describe("applyDefaultPdfStrictChecks (finding #21)", () => {
   test("applyDefaultPdfStrictChecks fills only undefined checks, without overwriting an explicit disable", () => {
     const base = resolveConfig(
       {},

@@ -10,8 +10,7 @@
 // No more "Keep them in sync manually" — add new shared types to shared-types.ts.
 //
 // This file is a TS module (has `import type`) so all augmentations live
-// inside `declare global { ... }`. main.ts imports SnapshotEntry / SnapshotPage
-// / RestoreVersionResult directly from ./bridge-types (no longer ambient).
+// inside `declare global { ... }`.
 // ──────────────────────────────────────────────────────────────────────────
 
 import type {

@@ -60,7 +60,7 @@ const { autoUpdater: realAutoUpdater } = electronUpdater;
  * property, assigned directly (see applyChannel) — so it appears here as a
  * plain field rather than the getter/setter pair the real class has.
  */
-export interface AutoUpdaterLike {
+interface AutoUpdaterLike {
   autoDownload: boolean;
   autoInstallOnAppQuit: boolean;
   allowPrerelease: boolean;

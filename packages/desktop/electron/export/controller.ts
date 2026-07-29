@@ -64,7 +64,7 @@ export interface ExportBuildResult {
  * `getOrCreateState` returning the orchestrator's mutable state bag directly,
  * which let the gate below reach in and hand-write `conflictLatched`.
  */
-export interface ExportSyncGate {
+interface ExportSyncGate {
   isConflictLatched(dir: string): boolean;
   latchConflict(dir: string, files: ConflictFile[]): void;
 }

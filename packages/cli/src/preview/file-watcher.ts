@@ -65,7 +65,7 @@ export function incrementalPreviewEnabled(): boolean {
  * fail-fast, because a final artifact must never silently drop a plugin.
  * Both preambles now share {@link loadPluginsWithCss}.
  */
-export async function renderPreviewBook(
+async function renderPreviewBook(
   inputPath: string,
   config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] },
   opts: { files: string[] | null; wrapChapters: boolean }

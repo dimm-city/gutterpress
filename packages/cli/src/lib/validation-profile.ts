@@ -46,12 +46,6 @@ export function applyDefaultPdfStrictChecks(config: ResolvedConfig): ResolvedCon
   return next;
 }
 
-/**
- * @deprecated Use {@link applyDefaultPdfStrictChecks} — kept as an alias so
- * existing call sites keep resolving under the old, dtrpg-branded name.
- */
-export const applyDtrpgPdfDefaults = applyDefaultPdfStrictChecks;
-
 export function applyValidationProfile(
   config: ResolvedConfig,
   profile: ValidationProfile

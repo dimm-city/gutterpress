@@ -45,7 +45,7 @@ export function mergeSettings(base: AppSettings, patch: DeepPartialSettings): Ap
  * toggle meant ("get prereleases before the stable release"). A file that
  * already has `channel` is left alone, so this cannot fight the new setting.
  */
-export function migrateLegacySettings(stored: DeepPartialSettings): DeepPartialSettings {
+function migrateLegacySettings(stored: DeepPartialSettings): DeepPartialSettings {
   const updates = stored.updates as
     | { channel?: unknown; includePrereleases?: unknown }
     | undefined;

@@ -14,7 +14,7 @@
 import path from "node:path";
 import { slugify } from "./slug.ts";
 
-export const DIST_DIRNAME = "dist";
+const DIST_DIRNAME = "dist";
 
 /** The rendered book document. Fixed: the desktop and index.html load it by name. */
 export const BOOK_HTML = "book.html";

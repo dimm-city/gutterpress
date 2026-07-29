@@ -140,7 +140,7 @@ export function splitOutPath(
  * variant that reaches different code, so no `--out` value can be deleted —
  * there is no code path that would do it.
  */
-export type PublishTarget =
+type PublishTarget =
   /** gutterpress's own `dist/<slug>/`. Replaced wholesale, so stale files vanish. */
   | { kind: "project"; dir: string }
   /** `--out <dir>`: the user's directory. Files are added; nothing is removed. */

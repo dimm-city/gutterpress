@@ -19,7 +19,7 @@ import {
 } from "../checks/tool-check";
 import type { CheckCategory, CheckContext, CheckPhase, CheckResult } from "../checks/types";
 import {
-  applyDtrpgPdfDefaults,
+  applyDefaultPdfStrictChecks,
   applyValidationProfile,
   DTRPG_STRICT_PDF_CHECKS,
   type ValidationProfile,
@@ -160,7 +160,7 @@ export async function executeValidation(
   const inputDir = typeof args.input === "string" ? resolve(args.input) : undefined;
 
   if (pdfPath) {
-    config = applyDtrpgPdfDefaults(config);
+    config = applyDefaultPdfStrictChecks(config);
   }
   if (profile) {
     config = applyValidationProfile(config, profile);

@@ -110,7 +110,7 @@ export interface ProjectCapabilities {
  * remote. Pure pick over a `listRemotes` result — see {@link syncRemoteFor}
  * for the I/O helper detection and the sync transport share.
  */
-export function pickSyncRemote<T extends { remote: string; url?: string }>(
+function pickSyncRemote<T extends { remote: string; url?: string }>(
   remotes: T[],
 ): T | undefined {
   return remotes.find((r) => r.remote === "origin") ?? remotes[0];
