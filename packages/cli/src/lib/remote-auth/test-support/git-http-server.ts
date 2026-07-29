@@ -36,7 +36,7 @@ export function pkt(data: string | Buffer): Buffer {
 }
 export const FLUSH = Buffer.from("0000");
 
-export function parsePktLines(body: Buffer): string[] {
+function parsePktLines(body: Buffer): string[] {
   const lines: string[] = [];
   let i = 0;
   while (i + 4 <= body.length) {
@@ -92,7 +92,7 @@ export async function createFixtureRepo(
  * a fetch of message-only commits on a multi-GB repo packs ONLY the new
  * commit objects instead of re-walking the whole project tree.
  */
-export async function collectOids(
+async function collectOids(
   repo: RepoLoc,
   commit: string,
   depth: number,
@@ -379,7 +379,7 @@ const ZERO_OID = "0".repeat(40);
  * returns the `<old> <new> <ref>` commands and the byte offset where the raw
  * packfile starts (right after the flush-pkt).
  */
-export function parseReceivePackRequest(body: Buffer): {
+function parseReceivePackRequest(body: Buffer): {
   commands: Array<{ oldOid: string; newOid: string; ref: string }>;
   packfile: Buffer;
 } {

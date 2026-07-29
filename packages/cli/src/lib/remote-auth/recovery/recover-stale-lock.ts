@@ -77,7 +77,7 @@ const STALE_THRESHOLD_MS = STALE_LOCK_MIN_AGE_MS;
  * implementation — inspect.ts's health probe consumes the same scan, so
  * health and handler can never disagree about which locks exist.
  */
-export const TOP_LEVEL_LOCK_NAMES = [
+const TOP_LEVEL_LOCK_NAMES = [
   "index.lock",
   "HEAD.lock",
   "config.lock",

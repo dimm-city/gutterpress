@@ -313,7 +313,7 @@ export function getTextPass(doc: PDFDocumentProxy): Promise<TextPass> {
 // One pass per document, memoized.
 // ---------------------------------------------------------------------------
 
-export interface ImageRef {
+interface ImageRef {
   /** XObject resource name (or "(inline)" for inline images). */
   name: string;
   /** Rendered width/height on the page, in points (from the CTM). */
@@ -323,7 +323,7 @@ export interface ImageRef {
   page: number;
 }
 
-export interface FontRef {
+interface FontRef {
   name: string;
   embedded: boolean;
 }

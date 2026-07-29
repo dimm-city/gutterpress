@@ -95,7 +95,6 @@ export type {
   ResolveConflictsOptions,
   SyncOutcome,
   SyncProjectOptions,
-  SyncRetryOptions,
 } from "./sync-types.ts";
 
 /**
@@ -105,7 +104,7 @@ export type {
  * genuinely races EVERY pass still terminates with that friendly message and
  * the work safely snapshotted.
  */
-export const DEFAULT_SYNC_RETRY: Required<Omit<SyncRetryOptions, "sleep">> = {
+const DEFAULT_SYNC_RETRY: Required<Omit<SyncRetryOptions, "sleep">> = {
   attempts: 3,
   backoffMs: 150,
 };

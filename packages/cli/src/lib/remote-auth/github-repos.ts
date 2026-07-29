@@ -42,7 +42,7 @@ export interface GitHubApiOptions {
 }
 
 /** "Reconnect" message for revoked/expired tokens (ADR 0006 D7). */
-export const RECONNECT_MESSAGE =
+const RECONNECT_MESSAGE =
   "Your GitHub connection has expired. Reconnect GitHub and try again.";
 
 async function apiGet(

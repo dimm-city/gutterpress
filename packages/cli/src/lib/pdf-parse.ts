@@ -44,7 +44,7 @@ export function parseInkCov(out: string) {
   return pages;
 }
 
-export interface InkCoveragePage {
+interface InkCoveragePage {
   page: number;
   c: number;
   m: number;

@@ -138,7 +138,7 @@ export interface SourceProvider {
 const DEFAULT_AUTHOR = "gutterpress";
 const DEFAULT_EMAIL = "noreply@gutterpress.local";
 const DEFAULT_BRANCH = "main";
-export const SNAPSHOT_STAGING_MARKER = "gutterpress-snapshot-staging";
+const SNAPSHOT_STAGING_MARKER = "gutterpress-snapshot-staging";
 
 // ── Per-repo operation queue ─────────────────────────────────────────────────
 // WHY: isomorphic-git has NO repo locking — two concurrent operations against
@@ -210,17 +210,15 @@ export function __repoLockQueueSizeForTests(): number {
 }
 
 /**
- * Resolve the commit author identity from an optional display name (exported
- * for the sync surface so merge commits carry the same identity as
- * snapshots).
+ * Resolve the commit author identity from an optional display name.
  */
-export function gitAuthor(name?: string, email?: string): { name: string; email: string } {
+function gitAuthor(name?: string, email?: string): { name: string; email: string } {
   const n = (name ?? "").trim();
   const e = (email ?? "").trim();
   return { name: n || DEFAULT_AUTHOR, email: e || DEFAULT_EMAIL };
 }
 
-export async function readGitAuthor(dir: string): Promise<{ name?: string; email?: string }> {
+async function readGitAuthor(dir: string): Promise<{ name?: string; email?: string }> {
   const [name, email] = await Promise.all([
     git.getConfig({ fs, dir, path: "user.name" }).catch(() => undefined),
     git.getConfig({ fs, dir, path: "user.email" }).catch(() => undefined),

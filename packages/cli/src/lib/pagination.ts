@@ -44,7 +44,7 @@ export interface ServerOverlay {
  * also used by preview/http-server.ts — a request that resolves outside `dir`
  * gets 403; a missing file gets 404 from `serveFile` itself.
  */
-export function createStaticFileServer(
+function createStaticFileServer(
   dir: string,
   defaultFile: string,
   overlays: Record<string, ServerOverlay> = {}

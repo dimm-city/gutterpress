@@ -105,7 +105,7 @@ type PdfxFlavor = "x1a" | "x3";
 /**
  * Generate the PostScript definition file for PDF/X output intent + GCR.
  */
-export function makePdfxDefPs(params: {
+function makePdfxDefPs(params: {
   iccPath: string;
   pdfx: PdfxFlavor;
   title: string;

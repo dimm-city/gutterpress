@@ -19,7 +19,7 @@ import {
   type PublishRequest,
 } from "../types.ts";
 
-export const ITCH_HOST = "itch.io";
+const ITCH_HOST = "itch.io";
 const TARGET_RE = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
 /** Total deadline for the api.itch.io credential check (shared fetch-timeout

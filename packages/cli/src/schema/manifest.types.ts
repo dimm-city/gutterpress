@@ -1,4 +1,4 @@
-export type CheckSeverity = "error" | "warning" | "info";
+type CheckSeverity = "error" | "warning" | "info";
 
 export interface PluginConfig {
   path?: string;
@@ -31,7 +31,7 @@ export interface PluginConfig {
  * absent uses the default (bare-host) credential. This book-level choice
  * overrides any project/global default.
  */
-export interface PublishSettings {
+interface PublishSettings {
   itch?: {
     /** itch.io project as `user/game` (the butler push target). */
     target?: string;

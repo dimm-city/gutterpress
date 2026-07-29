@@ -50,7 +50,7 @@ import {
 
 const NPM_REGISTRY = "https://registry.npmjs.org";
 
-export interface NpmPluginInstallLimits {
+interface NpmPluginInstallLimits {
   metadataBytes: number;
   packageTarballBytes: number;
   totalNetworkBytes: number;
