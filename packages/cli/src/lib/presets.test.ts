@@ -165,7 +165,7 @@ test("resolvePreset's 'no preset set' notice respects resetWarnOnce (no leftover
 });
 
 // ── Maintainer review (P4, presets.ts:236): every built-in template manifest
-// must declare an explicit `preset` so a fresh `print-md new` project never
+// must declare an explicit `preset` so a fresh `gutterpress new` project never
 // silently falls through resolvePreset's undefined-preset path (which
 // defaults to dtrpg's vendor geometry/TAC/PDF/X forcing) unless the template
 // actually wants dtrpg — as `ttrpg` genuinely does (it IS the DriveThruRPG
@@ -201,7 +201,7 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
     console.warn = ((m: unknown) => {
       lines.push(String(m));
     }) as typeof console.warn;
-    const parent = await mkdtemp(path.join(tmpdir(), "pmd-preset-scaffold-"));
+    const parent = await mkdtemp(path.join(tmpdir(), "gutterpress-preset-scaffold-"));
     try {
       for (const id of BUILT_IN_TEMPLATE_IDS) {
         const result = await scaffoldProject({
@@ -225,7 +225,7 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
 });
 
 // ── Maintainer P1 (presets.ts:115) — BOOK_PRESET/DTRPG_PRESET.source.assets
-// omitted "styles" and "assets", the two directories `print-md new` actually
+// omitted "styles" and "assets", the two directories `gutterpress new` actually
 // scaffolds (a starter `styles/book.css` theme + an `assets/` dir the user
 // guide tells authors to put images in). Every built-in template's manifest
 // references `styles/book.css` and resolves to one of these two presets, so a
@@ -237,7 +237,7 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
  * Historically a fresh project's `styles/book.css` and `assets/*` media were
  * referenced by the rendered HTML but never copied into the output, because
  * copying was driven by a hand-maintained `source.assets` list that did not
- * cover what `print-md new` actually scaffolds. The list is gone: CSS is now
+ * cover what `gutterpress new` actually scaffolds. The list is gone: CSS is now
  * inlined into `book.html` at render time and media is copied from what the
  * book actually references, so "scaffolded, therefore shipped" holds by
  * construction rather than by keeping two lists in sync.
@@ -304,6 +304,6 @@ describe("a scaffolded project's stylesheet reaches the build output (maintainer
 
 /** Temp project dir helper for the scaffold-reaches-output tests above. */
 async function makeTempProject(): Promise<{ dir: string; cleanup: () => Promise<void> }> {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-preset-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-preset-"));
   return { dir, cleanup: () => rm(dir, { recursive: true, force: true }) };
 }

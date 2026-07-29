@@ -8,7 +8,7 @@ import { satisfies, validRange } from "semver";
 /** Project-relative folder shared by local and vendored npm plugins. */
 export const PLUGINS_DIR = "plugins";
 export const VENDORED_NPM_DIR = "npm";
-export const VENDOR_RECEIPT_FILE = ".print-md-install.json";
+export const VENDOR_RECEIPT_FILE = ".gutterpress-install.json";
 export const VENDOR_RECEIPT_VERSION = 2;
 
 const NPM_SEGMENT = /^[a-z0-9][a-z0-9._~-]*$/;

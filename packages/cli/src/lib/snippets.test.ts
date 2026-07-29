@@ -14,7 +14,7 @@ import {
 } from "./snippets.ts";
 
 async function tmpProject(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "pmd-snippets-"));
+  return mkdtemp(path.join(tmpdir(), "gutterpress-snippets-"));
 }
 
 test("extractVariables finds unique placeholder names in order", () => {

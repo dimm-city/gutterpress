@@ -76,7 +76,7 @@ const add = defineCommand({
         throw new UsageError(error instanceof Error ? error.message : String(error));
       }
       if (typeof args.export === "string" && !exportName) {
-        throw new UsageError("print-md plugin add: --export requires a non-empty name");
+        throw new UsageError("gutterpress plugin add: --export requires a non-empty name");
       }
       let projectInfo;
       try {

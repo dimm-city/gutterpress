@@ -1,6 +1,6 @@
 import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { BOOK_HTML_FILENAME } from "../viewer";
+import { BOOK_HTML_FILENAME } from "../desktop";
 import { canonicalChapterId } from "./chapter-id";
 import { assembleBookHtml, type LayoutWarning } from "./assemble";
 import { resolveActiveStyles } from "../style-resolver";
@@ -118,7 +118,7 @@ export async function renderChapters(
  * Render chapters and write the result to a file.
  *
  * The output filename is fixed at `book.html` (BOOK_HTML_FILENAME) — the
- * print-md viewer (`index.html`) loads this via a relative iframe `src`.
+ * gutterpress desktop (`index.html`) loads this via a relative iframe `src`.
  */
 export async function renderChaptersToFile(
   inputDir: string,

@@ -4,13 +4,13 @@
  * `detectProjectSource` (`project-source.ts`) CLASSIFIES an opened folder. This
  * module is the OPERATIONS surface — init, snapshot, list history, restore —
  * that the new-project scaffold (#25) and the version-history UI (#13) drive.
- * It is the single abstraction both the CLI and the viewer call.
+ * It is the single abstraction both the CLI and the desktop call.
  *
  * NON-NEGOTIABLE (CLAUDE.md §7): every operation is backed by a **Node-native,
  * pure-JS** implementation (`isomorphic-git`) — NOT the system `git` binary,
  * NOT the GitHub CLI (`gh`), and with no expectation that the user has Git
  * installed (we do not bundle it). This keeps the `bun build --compile` CLI
- * binary and the packaged viewer fully self-contained.
+ * binary and the packaged desktop fully self-contained.
  */
 import * as fs from "node:fs";
 import path from "node:path";
@@ -135,10 +135,10 @@ export interface SourceProvider {
   restore(options: RestoreSnapshotOptions): Promise<void>;
 }
 
-const DEFAULT_AUTHOR = "print-md";
-const DEFAULT_EMAIL = "noreply@print-md.local";
+const DEFAULT_AUTHOR = "gutterpress";
+const DEFAULT_EMAIL = "noreply@gutterpress.local";
 const DEFAULT_BRANCH = "main";
-export const SNAPSHOT_STAGING_MARKER = "print-md-snapshot-staging";
+export const SNAPSHOT_STAGING_MARKER = "gutterpress-snapshot-staging";
 
 // ── Per-repo operation queue ─────────────────────────────────────────────────
 // WHY: isomorphic-git has NO repo locking — two concurrent operations against
@@ -233,9 +233,9 @@ export async function readGitAuthor(dir: string): Promise<{ name?: string; email
 
 /**
  * Resolve the author for a commit in `dir`, PER FIELD: caller-supplied →
- * existing repo config (`user.name` / `user.email`) → the print-md default.
+ * existing repo config (`user.name` / `user.email`) → the gutterpress default.
  *
- * This is the ONE author-resolution rule for every commit print-md writes —
+ * This is the ONE author-resolution rule for every commit gutterpress writes —
  * snapshots, merge commits, conflict resolutions, and recovery rescue commits
  * alike. Do NOT call `gitAuthor` directly at a commit site: it skips the repo
  * config, so a partially configured identity (say a name in Settings, an email
@@ -447,7 +447,7 @@ class LocalFolderSourceProvider implements SourceProvider {
     // source must still never nest a repo.
     if ((await findEnclosingRepoDir(dir)) !== undefined) {
       throw new Error(
-        "This folder is already inside a versioned project, so print-md " +
+        "This folder is already inside a versioned project, so gutterpress " +
           "won't create a separate history here.",
       );
     }
@@ -714,7 +714,7 @@ export async function snapshotWorkingTreeUnlocked(
 
 /**
  * True for the friendly "nothing new to save" rejection from `snapshot()`.
- * Exported (RC1-3) so the auto-snapshot scheduler in the viewer host can
+ * Exported (RC1-3) so the auto-snapshot scheduler in the desktop host can
  * swallow the expected clean-tree rejection without string-matching itself.
  */
 export function isNoChangesError(e: unknown): boolean {
@@ -779,7 +779,7 @@ export const RESTORE_BACKUP_MESSAGE =
 // ── Automatic snapshots (RC1-3) ───────────────────────────────────────────────
 
 /**
- * Message recorded on every host-scheduled automatic snapshot. The viewer's
+ * Message recorded on every host-scheduled automatic snapshot. The desktop's
  * history UI groups consecutive entries carrying EXACTLY this message, so the
  * string is a contract — change it only with a matching UI update.
  */
@@ -787,14 +787,14 @@ export const AUTO_SNAPSHOT_MESSAGE = "Automatic snapshot";
 
 // Host-timer cadence policy (auto-snapshot / auto-sync delays, isGitInternalPath)
 // lives in `host-policy.ts` — a cohesive, Git-free policy module the CLI and
-// viewer both consume. This file owns SourceProvider operations only.
+// desktop both consume. This file owns SourceProvider operations only.
 
 /**
  * Restore the working tree to a prior snapshot SAFELY (#13): if the current
  * state has unsaved-to-history changes, an automatic safety snapshot is
  * committed FIRST, so a restore can never lose work — the pre-restore state
  * stays reachable through the same View History UI. This is the operation the
- * viewer's "Restore Version" action calls; the raw `provider.restore()` is the
+ * desktop's "Restore Version" action calls; the raw `provider.restore()` is the
  * low-level primitive.
  *
  * Pure isomorphic-git via the provider layer (CLAUDE.md §7). Throws when the

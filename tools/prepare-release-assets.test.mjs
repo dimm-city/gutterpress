@@ -32,23 +32,23 @@ try {
   const input = join(root, "downloads");
   const output = join(root, "release");
   mkdirSync(join(input, "cli-linux"), { recursive: true });
-  mkdirSync(join(input, "viewer", "nested"), { recursive: true });
-  writeFileSync(join(input, "cli-linux", "print-md"), "cli payload\n");
-  writeFileSync(join(input, "viewer", "nested", "viewer.dmg"), "viewer payload\n");
+  mkdirSync(join(input, "desktop", "nested"), { recursive: true });
+  writeFileSync(join(input, "cli-linux", "gutterpress"), "cli payload\n");
+  writeFileSync(join(input, "desktop", "nested", "gutterpress.dmg"), "desktop payload\n");
 
   const result = run(input, output);
   check("nested artifact directories are staged", result.status === 0, result.stderr);
   check(
     "release directory contains flat files and checksum",
     JSON.stringify(readdirSync(output).sort()) ===
-      JSON.stringify(["SHA256SUMS.txt", "print-md", "viewer.dmg"]),
+      JSON.stringify(["SHA256SUMS.txt", "gutterpress", "gutterpress.dmg"]),
   );
 
   const cliHash = createHash("sha256").update("cli payload\n").digest("hex");
-  const viewerHash = createHash("sha256").update("viewer payload\n").digest("hex");
+  const desktopHash = createHash("sha256").update("desktop payload\n").digest("hex");
   const checksums = readFileSync(join(output, "SHA256SUMS.txt"), "utf8");
-  check("checksum covers staged CLI file", checksums.includes(`${cliHash}  print-md\n`));
-  check("checksum covers staged viewer file", checksums.includes(`${viewerHash}  viewer.dmg\n`));
+  check("checksum covers staged CLI file", checksums.includes(`${cliHash}  gutterpress\n`));
+  check("checksum covers staged desktop file", checksums.includes(`${desktopHash}  gutterpress.dmg\n`));
   check("checksum file does not attempt to hash itself", !checksums.includes("SHA256SUMS.txt"));
 
   const duplicateInput = join(root, "duplicates");

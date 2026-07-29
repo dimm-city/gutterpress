@@ -3,8 +3,8 @@
  *
  * packages/cli/README.md's "## Commands" section documents each subcommand's
  * usage line and flags in a fenced ```sh block right after a
- * "### `print-md <name>`" heading. This test parses that section and the
- * *real* `print-md <name> --help` output (built from source, no stale dist)
+ * "### `gutterpress <name>`" heading. This test parses that section and the
+ * *real* `gutterpress <name> --help` output (built from source, no stale dist)
  * and fails if they've drifted apart:
  *
  *   - a command citty registers is missing from the README entirely (the
@@ -72,10 +72,10 @@ interface ReadmeCommandSection {
   hasPositional: boolean;
 }
 
-/** Parse README.md's "### `print-md <name>`" sections into flags + positional-presence. */
+/** Parse README.md's "### `gutterpress <name>`" sections into flags + positional-presence. */
 function parseReadmeCommands(readme: string): Map<string, ReadmeCommandSection> {
   const sections = new Map<string, ReadmeCommandSection>();
-  const headingRe = /^### `print-md ([\w-]+)`\s*$/gm;
+  const headingRe = /^### `gutterpress ([\w-]+)`\s*$/gm;
   const headings: Array<{ name: string; index: number }> = [];
   let hm: RegExpExecArray | null;
   while ((hm = headingRe.exec(readme)) !== null) {
@@ -98,7 +98,7 @@ function parseReadmeCommands(readme: string): Map<string, ReadmeCommandSection> 
     while ((fm = fenceRe.exec(body)) !== null) {
       const block = fm[1] ?? "";
       const firstLine = (block.split("\n")[0] ?? "").trim();
-      if (firstLine.startsWith(`print-md ${name}`)) {
+      if (firstLine.startsWith(`gutterpress ${name}`)) {
         usageLine = firstLine;
         flagBlockText = block;
         break;
@@ -110,10 +110,10 @@ function parseReadmeCommands(readme: string): Map<string, ReadmeCommandSection> 
       new Set(Array.from(flagBlockText.matchAll(/--[a-zA-Z][a-zA-Z0-9-]*/g)).map((m2) => m2[0])),
     );
 
-    // A positional is documented when the token right after "print-md <name>"
+    // A positional is documented when the token right after "gutterpress <name>"
     // is a bracket/angle group other than the literal "[options]" (e.g.
     // "[input-dir]", "<name>", "[dir]").
-    const afterCmd = usageLine.slice(`print-md ${name}`.length).trim();
+    const afterCmd = usageLine.slice(`gutterpress ${name}`.length).trim();
     const firstToken = afterCmd.split(/\s+/)[0] ?? "";
     const hasPositional =
       /^[[<]/.test(firstToken) && firstToken.replace(/[[\]<>]/g, "") !== "options";
@@ -147,7 +147,7 @@ const registeredCommands = getRegisteredCommands();
 const readmeCommands = parseReadmeCommands(readmeSource);
 
 describe("packages/cli/README.md command reference matches `--help` (M18)", () => {
-  test("every citty-registered subcommand has a README `### print-md <name>` section", () => {
+  test("every citty-registered subcommand has a README `### gutterpress <name>` section", () => {
     const missing = registeredCommands.filter((c) => !readmeCommands.has(c));
     expect(missing).toEqual([]);
   });
@@ -160,7 +160,7 @@ describe("packages/cli/README.md command reference matches `--help` (M18)", () =
   });
 
   for (const cmd of registeredCommands) {
-    test(`print-md ${cmd} --help matches its README section`, () => {
+    test(`gutterpress ${cmd} --help matches its README section`, () => {
       const section = readmeCommands.get(cmd);
       expect(section).toBeDefined();
       if (!section) return;

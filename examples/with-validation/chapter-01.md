@@ -1,20 +1,20 @@
 # Introduction
 
-Welcome to the validation example. This project demonstrates how print-md checks your work for print-readiness.
+Welcome to the validation example. This project demonstrates how Gutterpress checks your work for print-readiness.
 
 ## Getting Started
 
-Print-md validation runs automatically during the build pipeline, or you can invoke it directly:
+Gutterpress validation runs automatically during the build pipeline, or you can invoke it directly:
 
 ```bash
 # Validate source files (pre-build)
-print-md validate --input .
+gutterpress validate --input .
 
 # Validate a built PDF (post-build)
-print-md validate --pdf dist/validation-example/validation-example-pdf.pdf
+gutterpress validate --pdf dist/validation-example/validation-example-pdf.pdf
 
 # Full validated PDF/X pipeline (validates at both phases)
-print-md build . --format pdfx
+gutterpress build . --format pdfx
 ```
 
 ## How Validation Works
@@ -35,7 +35,7 @@ All validation settings live in the `validate` section of `manifest.yaml`. You c
 - Point to external linter configs (markdownlint, htmlhint)
 - Set thresholds for image size, DPI, text density, and more
 
-> **Tip:** Run `print-md validate --format json` to get machine-readable output for CI pipelines.
+> **Tip:** Run `gutterpress validate --format json` to get machine-readable output for CI pipelines.
 
 ## Filtering Checks
 
@@ -43,13 +43,13 @@ Target specific categories or individual checks:
 
 ```bash
 # Only PDF checks
-print-md validate --pdf dist/validation-example/validation-example-pdf.pdf --category pdf
+gutterpress validate --pdf dist/validation-example/validation-example-pdf.pdf --category pdf
 
 # Only a single check
-print-md validate --pdf dist/validation-example/validation-example-pdf.pdf --only pdf.print.page-size
+gutterpress validate --pdf dist/validation-example/validation-example-pdf.pdf --only pdf.print.page-size
 
 # Skip specific checks
-print-md validate --input . --skip source.stylelint
+gutterpress validate --input . --skip source.stylelint
 ```
 
 > **Note:** Almost all validation runs in-process — no tools to install. Only the PDF/X

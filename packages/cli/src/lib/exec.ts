@@ -15,7 +15,7 @@ export function buildEnhancedPath(
   return `${dir}${sep}${existingPath}`;
 }
 
-/** print-md's own node_modules/.bin so locally installed tools are found. */
+/** Gutterpress's own node_modules/.bin so locally installed tools are found. */
 export const localBin = resolvePath(join(import.meta.dirname, "..", "..", "node_modules", ".bin"));
 
 /**

@@ -100,7 +100,7 @@ describe("tool-check consumes the shared enable logic (enabledWhen included)", (
       id: "test.gated-tool-check",
       category: "source",
       phase: "pre-build",
-      requiredTools: ["__print_md_nonexistent_tool_gated__"],
+      requiredTools: ["__gutterpress_nonexistent_tool_gated__"],
       enabledWhen: () => false,
     });
     const unregister = registerCheck(gated);
@@ -111,7 +111,7 @@ describe("tool-check consumes the shared enable logic (enabledWhen included)", (
       });
       // enabledWhen=false → filtered out before probing → tool never inspected.
       expect(result.missing).not.toContain(
-        "__print_md_nonexistent_tool_gated__"
+        "__gutterpress_nonexistent_tool_gated__"
       );
       expect(result.skippedChecks).not.toContain("test.gated-tool-check");
     } finally {
@@ -124,7 +124,7 @@ describe("tool-check consumes the shared enable logic (enabledWhen included)", (
       id: "test.active-tool-check",
       category: "source",
       phase: "pre-build",
-      requiredTools: ["__print_md_nonexistent_tool_active__"],
+      requiredTools: ["__gutterpress_nonexistent_tool_active__"],
     });
     const unregister = registerCheck(active);
 
@@ -132,7 +132,7 @@ describe("tool-check consumes the shared enable logic (enabledWhen included)", (
       const result = await checkToolAvailability(makeConfig(), {
         only: ["test.active-tool-check"],
       });
-      expect(result.missing).toContain("__print_md_nonexistent_tool_active__");
+      expect(result.missing).toContain("__gutterpress_nonexistent_tool_active__");
       expect(result.skippedChecks).toContain("test.active-tool-check");
     } finally {
       unregister();
@@ -209,7 +209,7 @@ describe("parse/tool-failure policy — inspection failure is a warning", () => 
   });
 
   test("genuine local-ref violations still keep their configured error severity", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-policy-refs-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-policy-refs-"));
     try {
       const mainFile = join(dir, "main.md");
       await writeFile(mainFile, "[missing](./missing.md)\n");

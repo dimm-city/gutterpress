@@ -40,7 +40,7 @@ describe("identity contract: preview tags are canonical", () => {
   let inputDir: string;
 
   beforeEach(async () => {
-    inputDir = await mkdtemp(path.join(tmpdir(), "pmd-id-input-"));
+    inputDir = await mkdtemp(path.join(tmpdir(), "gutterpress-id-input-"));
     await mkdir(path.join(inputDir, "chapters"), { recursive: true });
     await writeFile(path.join(inputDir, "root.md"), "# Root\n");
     await writeFile(path.join(inputDir, "chapters", "03-the-players.md"), "# Players\n");

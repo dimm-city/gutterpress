@@ -13,7 +13,7 @@ import {
 let dir: string;
 
 beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "pmd-inline-"));
+  dir = await mkdtemp(path.join(tmpdir(), "gutterpress-inline-"));
 });
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true });

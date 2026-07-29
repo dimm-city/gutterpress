@@ -2,7 +2,7 @@
  * recover-corrupt-index.ts — repair a corrupt or unreadable .git/index.
  *
  * WHY this is needed:
- *   The git index (staging area) can become corrupt if print-md or the OS
+ *   The git index (staging area) can become corrupt if gutterpress or the OS
  *   crashes mid-operation. When the index is unreadable, virtually every
  *   git operation fails — status checks, sync, everything. The fix is simple:
  *   delete the bad index and let git rebuild it from the last saved snapshot.

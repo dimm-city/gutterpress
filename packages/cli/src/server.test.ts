@@ -19,7 +19,7 @@ let handle: PreviewServerHandle | null = null;
 let tempDir: string;
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'print-md-server-test-'));
+  tempDir = await mkdtemp(join(tmpdir(), 'gutterpress-server-test-'));
   await writeFile(join(tempDir, 'index.md'), '# Test\n\nHello world.\n');
 });
 

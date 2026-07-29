@@ -1,7 +1,7 @@
 /**
  * recover-interrupted-rebase.ts — abort a rebase that was left unfinished.
  *
- * WHY: If print-md or the OS dies partway through combining versions, the repo
+ * WHY: If gutterpress or the OS dies partway through combining versions, the repo
  * can be left mid-rebase: `.git/rebase-merge/` (merge/interactive backend) or
  * `.git/rebase-apply/` (am backend) exists and HEAD is usually detached at a
  * replay commit. Every sync then fails. There is nothing to "finish" for a

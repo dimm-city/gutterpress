@@ -1,7 +1,7 @@
 /**
  * Platform abstraction contract (GitHub #41).
  *
- * The viewer talks to its host through ONE seam so that the app code never
+ * The desktop talks to its host through ONE seam so that the app code never
  * branches on `electron` vs `web` directly. Today the only host is Electron
  * (IPC + native dialogs). When the PWA lands (0.6.0, #...), a `WebAdapter`
  * backed by the File System Access API drops in behind the same interface and
@@ -10,7 +10,7 @@
  * This module is **types only** — it is imported by the browser SPA via
  * `import type`, so it must never pull in a Node runtime dependency.
  *
- * Canonical home: `@dimm-city/print-md`. The viewer re-exports these types
+ * Canonical home: `gutterpress`. The desktop re-exports these types
  * from `src/lib/platform/` and implements them in `electron-adapter.ts` /
  * `web-adapter.ts`. Keep the implementations in lockstep with this contract.
  */

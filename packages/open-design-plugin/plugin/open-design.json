@@ -1,12 +1,12 @@
 {
   "$schema": "https://open-design.ai/schemas/plugin.v1.json",
   "specVersion": "1.0.0",
-  "name": "print-md-publishing",
-  "title": "Print-MD Publishing",
+  "name": "gutterpress-publishing",
+  "title": "Gutterpress Publishing",
   "version": "0.2.0",
-  "description": "Design and refine an existing Print-MD publication in place while preserving its paged-media, theme, asset, plugin, and Git conventions.",
+  "description": "Design and refine an existing Gutterpress publication in place while preserving its paged-media, theme, asset, plugin, and Git conventions.",
   "license": "MPL-2.0",
-  "homepage": "https://github.com/dimm-city/print-md",
+  "homepage": "https://github.com/dimm-city/gutterpress",
   "author": {
     "name": "Dimm City",
     "url": "https://github.com/dimm-city"
@@ -35,7 +35,7 @@
       "od": ">=0.16.1"
     },
     "useCase": {
-      "query": "Refine the existing Print-MD publication in place. Use my message as the goal. Resolve the target book, permitted edit scope, change ownership, and active preview from the imported project; ask one focused clarification form before writing only when a safe value cannot be inferred."
+      "query": "Refine the existing Gutterpress publication in place. Use my message as the goal. Resolve the target book, permitted edit scope, change ownership, and active preview from the imported project; ask one focused clarification form before writing only when a safe value cannot be inferred."
     },
     "context": {
       "skills": [

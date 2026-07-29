@@ -1,7 +1,7 @@
 # Sync-recovery test scenarios
 
-Scripts that build **print-md test repos in known-broken Git states** so you can
-open them in the viewer and watch the sync-recovery UI (overlay / confirm /
+Scripts that build **Gutterpress test repos in known-broken Git states** so you can
+open them in the desktop app and watch the sync-recovery UI (overlay / confirm /
 guidance / conflict dialogs) respond.
 
 These are throwaway fixtures. They use the system `git` binary by design — that's
@@ -11,8 +11,8 @@ the **app runtime**, not local test-setup scripts.
 ## Prerequisites
 
 - `git` installed (`git --version`).
-- A built viewer to open folders in — e.g.
-  `packages/viewer/dist/print-md-viewer-0.5.3.AppImage` (`chmod +x` it, then run;
+- A built desktop app to open folders in — e.g.
+  `packages/desktop/dist/gutterpress-<version>.AppImage` (`chmod +x` it, then run;
   add `--no-sandbox` if your environment needs it).
 
 ## Usage
@@ -25,10 +25,10 @@ cd tools/recovery-test-scenarios
 ./make-scenario.sh all ~/tmp/recovery         # build all under a base dir
 ```
 
-Then in the viewer: **File ▸ Open Folder** and pick the scenario directory.
+Then in the desktop app: **File ▸ Open Folder** and pick the scenario directory.
 **Re-run the same command to reset** a scenario to its fresh broken state.
 
-**Safety:** the script writes a `.print-md-test-scenario` marker into each dir and
+**Safety:** the script writes a `.gutterpress-test-scenario` marker into each dir and
 will only ever delete a dir that has that marker — it can't clobber a real project.
 
 ## How recovery gets triggered
@@ -70,7 +70,7 @@ There are two trigger paths, and they decide which scenarios show something:
 
 ## Remote-dependent scenarios
 
-The viewer only **auto-syncs** projects with an **HTTPS remote + a stored
+The desktop app only **auto-syncs** projects with an **HTTPS remote + a stored
 credential** (`canSync`). The structural scenarios above need none of that — they
 fire from the open-time preflight. But to exercise the *sync-time* paths
 (`corrupt-index`, `missing-objects`) and real divergence/conflict recovery, point
@@ -82,7 +82,7 @@ git remote add origin https://github.com/<you>/<throwaway-repo>.git
 git push -u origin main               # seed it once while the repo is healthy
 ```
 
-Then connect the same remote in the viewer (it stores the credential), reopen the
+Then connect the same remote in the desktop app (it stores the credential), reopen the
 folder, and let auto-sync run.
 
 ## Cleanup

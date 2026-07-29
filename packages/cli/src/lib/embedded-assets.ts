@@ -40,8 +40,8 @@ import previewShellJs from "../assets/preview/scripts/preview-shell.js" with { t
 import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" };
 
-// New-project starter templates (#25). Baked in so `print-md new` (compiled
-// binary) and the viewer wizard scaffold from one embedded source.
+// New-project starter templates (#25). Baked in so `gutterpress new` (compiled
+// binary) and the desktop wizard scaffold from one embedded source.
 import tplBookManifest from "../assets/templates/book/manifest.yaml" with { type: "file" };
 import tplBookChapter01 from "../assets/templates/book/chapter-01.md" with { type: "file" };
 import tplTtrpgManifest from "../assets/templates/ttrpg/manifest.yaml" with { type: "file" };
@@ -52,7 +52,7 @@ import tplTechnicalManifest from "../assets/templates/technical/manifest.yaml" w
 import tplTechnicalChapter01 from "../assets/templates/technical/chapter-01.md" with { type: "file" };
 
 // Built-in themes (#32). Each = theme.css + theme.json, baked in so the Theme
-// Manager (compiled binary + viewer) lists/applies from one embedded source.
+// Manager (compiled binary + desktop) lists/applies from one embedded source.
 import themeCleanBookCss from "../assets/themes/clean-book/theme.css" with { type: "file" };
 import themeCleanBookJson from "../assets/themes/clean-book/theme.json" with { type: "file" };
 import themeTtrpgCss from "../assets/themes/ttrpg-supplement/theme.css" with { type: "file" };
@@ -100,7 +100,7 @@ const EMBEDDED_ASSETS: Record<string, string> = {
 let extractPromise: Promise<string> | null = null;
 
 async function extractAssets(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "print-md-assets-"));
+  const root = await mkdtemp(join(tmpdir(), "gutterpress-assets-"));
   for (const [relPath, srcPath] of Object.entries(EMBEDDED_ASSETS)) {
     const dest = join(root, relPath);
     await mkdir(dirname(dest), { recursive: true });

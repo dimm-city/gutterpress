@@ -1,9 +1,9 @@
 {
-  "skill_name": "print-md-publishing",
+  "skill_name": "gutterpress-publishing",
   "evals": [
     {
       "id": "single-book-theme-change",
-      "prompt": "In this single-book Print-MD project, tighten chapter-opener spacing without changing prose. The preview is already open.",
+      "prompt": "In this single-book Gutterpress project, tighten chapter-opener spacing without changing prose. The preview is already open.",
       "expected_output": "A minimal book-owned CSS change, verified in the paginated preview, with changed files and ownership reported.",
       "assertions": [
         "The agent reads the manifest before editing",
@@ -15,7 +15,7 @@
     {
       "id": "ambiguous-multi-book-target",
       "prompt": "Improve the publication design in this repository.",
-      "expected_output": "One inline print-md-brief question form that asks only for the unresolved target and goal, with no file writes.",
+      "expected_output": "One inline gutterpress-brief question form that asks only for the unresolved target and goal, with no file writes.",
       "assertions": [
         "The agent does not guess between multiple books",
         "The response contains one question-form and then stops",

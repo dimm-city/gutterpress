@@ -11,7 +11,7 @@ import {
 } from "./token-store";
 
 async function tempStore(): Promise<{ dir: string; store: FileTokenStore }> {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-tokens-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-tokens-"));
   return { dir, store: new FileTokenStore(path.join(dir, "credentials.json")) };
 }
 

@@ -1,7 +1,7 @@
 /**
  * buildRecoveryContext — the ONE place a RecoveryContext is resolved from a
- * project directory. Both hosts consume it (the viewer's recovery bridge and
- * `print-md repair`); each supplies only its own ConfirmationGate (dialog vs
+ * project directory. Both hosts consume it (the desktop's recovery bridge and
+ * `gutterpress repair`); each supplies only its own ConfirmationGate (dialog vs
  * terminal prompt). Keeping the resolution here means repo-root, branch,
  * credential, and slug rules can never drift between hosts.
  *

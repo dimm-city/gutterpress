@@ -1,12 +1,12 @@
 /**
- * Runtime library API for print-md.
+ * Runtime library API for gutterpress.
  *
- * Consumers (the bundled Electron + SvelteKit viewer, programmatic users)
- * import from `@dimm-city/print-md` and call these functions with the same
+ * Consumers (the bundled Electron + SvelteKit desktop, programmatic users)
+ * import from `gutterpress` and call these functions with the same
  * shape the citty CLI builds from argv — no subprocess, no JSON IPC.
  *
  * Example:
- *   import { runBuild, startPreviewServer } from "@dimm-city/print-md";
+ *   import { runBuild, startPreviewServer } from "gutterpress";
  *   const { url, stop } = await startPreviewServer({ input: "./book", installSignalHandlers: false });
  *   await runBuild({ inputDir: "./book", format: "pdf", outDir: "./out", rawArgs: {} });
  */
@@ -40,14 +40,14 @@ export {
 } from "../lib/manifest";
 
 export type {
-  PrintMdManifest,
+  GutterpressManifest,
   ResolvedConfig,
 } from "../schema/manifest.types";
 
 export type {
-  PrintMdPlugin,
-  PrintMdPluginExport,
-  PrintMdPluginMetadata,
+  GutterpressPlugin,
+  GutterpressPluginExport,
+  GutterpressPluginMetadata,
 } from "../lib/markdown/plugins";
 
 export {
@@ -156,7 +156,7 @@ export type {
 } from "../lib/theme-manager.ts";
 
 // ── Theme package import (#106) — .zip / .css importer ──
-// Only importThemeFromFile is part of the public surface (the viewer's
+// Only importThemeFromFile is part of the public surface (the desktop's
 // import-from-file route). The zip/css sub-importers and pure decision helpers
 // stay module-private (theme-import.ts exports them for its own unit tests).
 export { importThemeFromFile } from "../lib/theme-import.ts";
@@ -188,9 +188,9 @@ export type {
   HistoryPage,
 } from "../lib/source-provider.ts";
 
-// ── App-open heartbeat (repair-vs-viewer detection) ───────────────────────────
-// A live viewer process leaves a small liveness marker under the repo's own
-// `.git` dir while a project is open; `print-md repair` checks it before
+// ── App-open heartbeat (repair-vs-desktop detection) ───────────────────────────
+// A live desktop process leaves a small liveness marker under the repo's own
+// `.git` dir while a project is open; `gutterpress repair` checks it before
 // mutating so a terminal repair can't race a running app on the same repo.
 // One implementation, shared by both hosts — see lib/app-heartbeat.ts.
 export {
@@ -347,7 +347,7 @@ export type {
 } from "../lib/source-provider.ts";
 
 // ── Publish providers (#35) — node-side only; the renderer reaches these
-// through the viewer's /api/publish/* server routes. ─────────────────────────
+// through the desktop's /api/publish/* server routes. ─────────────────────────
 export {
   runPublish,
   resolvePublishRequest,

@@ -15,15 +15,15 @@ import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
 import { collectStyleDependencies } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
-import { BOOK_HTML_FILENAME } from '../lib/viewer';
+import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
 import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
 import { pagedjsPolyfillTagRegex } from '../lib/pagedjs-marker';
 import type { ResolvedPluginConfig } from '../schema/manifest.types';
 
 /**
- * Tiny placeholder book.html for no-input mode. The viewer's iframe needs a
- * valid src to load; the viewer app (packages/viewer) detects `hasInput: false`
+ * Tiny placeholder book.html for no-input mode. The desktop's iframe needs a
+ * valid src to load; the desktop app (packages/desktop) detects `hasInput: false`
  * via /api/status and shows its own folder picker. Plain text only — no
  * Paged.js, no plugins, no manifest.
  */
@@ -31,7 +31,7 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>print-md preview</title>
+  <title>gutterpress preview</title>
   <style>
     html, body { margin: 0; height: 100%; }
     body { display: flex; align-items: center; justify-content: center;
@@ -50,7 +50,7 @@ const EMPTY_BOOK_HTML = `<!doctype html>
  * every source change now performs a full-document pagination.
  */
 export function incrementalPreviewEnabled(): boolean {
-  return process.env.PRINTMD_PREVIEW_INCREMENTAL !== "0";
+  return process.env.GUTTERPRESS_PREVIEW_INCREMENTAL !== "0";
 }
 
 /**
@@ -97,7 +97,7 @@ export async function renderPreviewBook(
 /**
  * Rewrite rendered book HTML for the live preview. Injects, in order:
  *   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
- *   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (viewer)
+ *   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (desktop)
  *   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
  *   4. Paged.js polyfill itself, served directly from the process-wide
  *      embedded-assets dir by the HTTP server (see http-server.ts route
@@ -110,9 +110,9 @@ export async function renderPreviewBook(
  *          and Defender hash-cache stay warm across sessions.
  *
  * PAGINATION FIDELITY: this injects NO page-break rule. It used to add
- * `<style>.pmd-chapter{break-before:page}</style>` whenever the incremental
+ * `<style>.gutterpress-chapter{break-before:page}</style>` whenever the incremental
  * preview was on (i.e. by default), which started EVERY source file on a new
- * page in the live view. `print-md build` emits no such rule — assembleBookHtml
+ * page in the live view. `gutterpress build` emits no such rule — assembleBookHtml
  * in lib/markdown/assemble.ts concatenates source files flat into <body> and
  * breaks only where project CSS or a markdown-it-paged marker says to — so any
  * project that splits one chapter across several source files previewed with
@@ -135,10 +135,10 @@ export function injectPreviewScripts(html: string): string {
 
 /**
  * Generate HTML from markdown and write book.html to the temp directory.
- * The viewer's iframe loads `book.html` via a relative URL — same name in
+ * The desktop's iframe loads `book.html` via a relative URL — same name in
  * dev and in published static-site builds.
  *
- * Empty `inputPath` writes a static placeholder — the viewer app (packages/viewer)
+ * Empty `inputPath` writes a static placeholder — the desktop app (packages/desktop)
  * supplies a real path via its own folder picker.
  */
 export async function generateAndWriteHtml(
@@ -172,7 +172,7 @@ export async function generateAndWriteHtml(
  * therefore matched a dot segment ANYWHERE in that absolute path — including
  * every ANCESTOR directory of the project, not just the project's own dot
  * files/dirs. A project rooted under a dot-prefixed parent (e.g.
- * `~/.local/share/print-md/books/mybook`, or any `~/.config/...` tree) had
+ * `~/.local/share/gutterpress/books/mybook`, or any `~/.config/...` tree) had
  * every single path rejected by this rule, which silently disabled the
  * watcher entirely — no error, just a preview that never picked up an edit.
  *
@@ -536,7 +536,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
 /**
  * Start file watching if not disabled via options. No-input mode skips the
  * watcher entirely (nothing to watch yet) — restartPreview wires up a
- * watcher once the user picks a directory through the viewer.
+ * watcher once the user picks a directory through the desktop.
  */
 export function startFileWatcher(state: ServerState): void {
   if (state.options.noWatch) return;

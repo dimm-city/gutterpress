@@ -1,6 +1,6 @@
 // Print-safety CSS checks, run directly on a postcss AST.
 //
-// These are print-md's own checks — no stylelint. stylelint can't be bundled
+// These are Gutterpress's own checks — no stylelint. stylelint can't be bundled
 // into the `bun build --compile` binary (it loads its ~200 rule modules via a
 // computed-path dynamic import), so running these on postcss directly keeps the
 // binary, npm package, and Docker image identical and self-contained.
@@ -105,7 +105,7 @@ function splitSelectorList(selectorList: string): string[] {
 function isPagedjsCrashProneSelector(selector: string): boolean {
   const hasSiblingCombinator = selector.includes("+") || selector.includes("~");
   // :is()/:where()/:not() combined with sibling combinators crash
-  // DocumentFragment.querySelectorAll in Paged.js's CSS pipeline. As of print-md's
+  // DocumentFragment.querySelectorAll in Paged.js's CSS pipeline. As of Gutterpress's
   // vendored Paged.js the crash is caught and the selector skipped with a
   // console.warn — but the CSS still has no effect on break/nth processing.
   const hasFunctionalPseudoWithSibling =

@@ -9,12 +9,12 @@
  *
  *   - CUSTOM: saved by the author from an existing project ("Save as template")
  *     or imported from a folder. They live under a host-chosen `templatesRoot`
- *     directory (the viewer passes `<userData>/templates`; the CLI a config dir).
+ *     directory (the desktop passes `<userData>/templates`; the CLI a config dir).
  *     Each is a directory `<templatesRoot>/<id>/` containing the project's files
  *     with the title re-tokenised back to `{{TITLE}}` so it is reusable.
  *
  * This module is pure Node fs (no subprocess, no bundler) so it works under
- * `bun build --compile` and in the packaged viewer alike, and is consumed by
+ * `bun build --compile` and in the packaged desktop alike, and is consumed by
  * BOTH front-ends through the platform seam (CLAUDE.md: shared lib, one impl).
  */
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
@@ -87,7 +87,7 @@ const SKIP_ENTRIES = new Set([
   "out",
   "dist",
   "build",
-  ".print-md",
+  ".gutterpress",
   ".DS_Store",
 ]);
 
@@ -100,8 +100,8 @@ export interface SaveProjectAsTemplateOptions {
   templatesRoot: string;
 }
 
-/** A `.print-md-template.json` metadata sidecar written into each custom template. */
-const TEMPLATE_META_FILE = ".print-md-template.json";
+/** A `.gutterpress-template.json` metadata sidecar written into each custom template. */
+const TEMPLATE_META_FILE = ".gutterpress-template.json";
 
 /**
  * Capture an existing project as a reusable custom template. Copies the whole

@@ -73,7 +73,7 @@ export interface AssembleBookHtmlOptions {
    * chapter id used for `data-chapter-src`, so a host can attribute a warning
    * to the exact source file. Additive/optional — omitting it reproduces the
    * prior throwaway-env behavior exactly, so this cannot change output for
-   * existing callers (e.g. the viewer's WebAdapter, which still gets a plain
+   * existing callers (e.g. the desktop's WebAdapter, which still gets a plain
    * `Promise<string>` back).
    */
   onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;
@@ -131,7 +131,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // markdown-it-paged marker (parsed + wrapped + labeled by
   // `markdown-it-paged.js`'s `openChapter`, not any project-specific plugin —
   // see CLAUDE.md's "frozen chapter-opener" note) that owns chapter wrappers
-  // and IDs; print-md core itself does not impose a separate file-level
+  // and IDs; gutterpress core itself does not impose a separate file-level
   // wrapper on top of that.
   let bodyContent = "";
   const imageRefs = new Set<string>();

@@ -1,12 +1,12 @@
 /**
- * Shared TypeScript interfaces for print-md CLI
+ * Shared TypeScript interfaces for the Gutterpress CLI
  *
  * Core types used by the preview server and CLI commands.
  * Build pipeline types are in src/schema/manifest.types.ts.
  */
 
 // Re-export manifest types for convenience
-export type { PrintMdManifest, ResolvedConfig } from './schema/manifest.types';
+export type { GutterpressManifest, ResolvedConfig } from './schema/manifest.types';
 
 /**
  * Options for preview server (internal)
@@ -32,4 +32,3 @@ export interface PreviewServerOptions {
   /** Automatically open browser (default: true) */
   openBrowser: boolean;
 }
-

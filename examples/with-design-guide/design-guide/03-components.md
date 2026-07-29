@@ -59,7 +59,7 @@ Use for positive guidance — best practices, shortcuts, or "nice to know" impro
 <div class="example">
 <div class="callout-tip">
 <span class="callout-label">Tip</span>
-Run `print-md preview` with `--verbose` to see exactly which files are being watched and when rebuilds fire. Useful for diagnosing slow hot-reload cycles.
+Run `gutterpress preview` with `--verbose` to see exactly which files are being watched and when rebuilds fire. Useful for diagnosing slow hot-reload cycles.
 </div>
 </div>
 
@@ -241,7 +241,7 @@ A zero-padded ordered list for sequential procedures — character creation, wor
 <ol class="steps">
 <li>Pick a typeface for your book. Update <code>--font-body</code> and <code>--font-display</code> in <code>§ 1 BRAND TOKENS</code>.</li>
 <li>Set your accent color. Change <code>--color-accent</code> to your primary brand hue.</li>
-<li>Run <code>print-md preview design-guide</code> to see all changes live in the browser.</li>
+<li>Run <code>gutterpress preview design-guide</code> to see all changes live in the browser.</li>
 <li>Delete any component chapter you don't use. Keep the guide focused on what your book ships.</li>
 <li>Commit both the guide and the book stylesheet together — they share the same CSS file.</li>
 </ol>

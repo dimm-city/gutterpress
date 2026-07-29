@@ -1,5 +1,5 @@
 /**
- * Canonical print-md package metadata (version + dependency versions),
+ * Canonical gutterpress package metadata (version + dependency versions),
  * read via a static `package.json` import.
  *
  * Static JSON imports are inlined by `bun build` at bundle time, so the
@@ -7,7 +7,7 @@
  * (where `import.meta.dir`/`fileURLToPath` resolution breaks down inside
  * `/$bunfs/` — see CLAUDE.md §3). This is the single source of truth for
  * the lib version: `build-fingerprint.ts` and `diagnostics.ts` (and the
- * viewer's About dialog / `print-md doctor` through it) both import from
+ * desktop's About dialog / `gutterpress doctor` through it) both import from
  * here instead of each doing their own `package.json` read. diagnostics.ts
  * previously had a private `readLibVersion()` that walked directories
  * reading `package.json` off disk at runtime — the exact pattern this file
@@ -36,5 +36,5 @@ export const PACKAGE_META: PackageMeta = {
       .devDependencies ?? {},
 };
 
-/** The print-md lib version, e.g. `"0.7.1"`. */
+/** The gutterpress lib version, e.g. `"0.7.1"`. */
 export const PACKAGE_VERSION: string = PACKAGE_META.version;

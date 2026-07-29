@@ -91,8 +91,8 @@ describe('generateAndWriteHtml', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    testDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
   });
 
   afterEach(async () => {
@@ -159,13 +159,13 @@ describe('generateAndWriteHtml', () => {
   test('keeps chapter source metadata when the legacy preview shell is disabled', async () => {
     await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
     await writeFile(join(testDir, 'chapter-02.md'), '# Chapter 2');
-    const previous = process.env.PRINTMD_PREVIEW_INCREMENTAL;
-    process.env.PRINTMD_PREVIEW_INCREMENTAL = '0';
+    const previous = process.env.GUTTERPRESS_PREVIEW_INCREMENTAL;
+    process.env.GUTTERPRESS_PREVIEW_INCREMENTAL = '0';
     try {
       await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, {}));
     } finally {
-      if (previous === undefined) delete process.env.PRINTMD_PREVIEW_INCREMENTAL;
-      else process.env.PRINTMD_PREVIEW_INCREMENTAL = previous;
+      if (previous === undefined) delete process.env.GUTTERPRESS_PREVIEW_INCREMENTAL;
+      else process.env.GUTTERPRESS_PREVIEW_INCREMENTAL = previous;
     }
 
     const content = await Bun.file(join(tempDir, 'book.html')).text();
@@ -239,14 +239,14 @@ describe('injectPreviewScripts', () => {
   test('injects no preview-only chapter layout CSS', () => {
     const out = injectPreviewScripts(html);
     expect(out).not.toContain('break-before');
-    expect(out).not.toContain('.pmd-chapter');
+    expect(out).not.toContain('.gutterpress-chapter');
     expect(out).not.toContain('data-preview-chapter-wrappers');
   });
 });
 
 describe('externalWatchTargets', () => {
   test('returns declared styles and authored plugins that live outside the book', async () => {
-    const repo = await mkdtemp(join(tmpdir(), 'pmd-shared-'));
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-shared-'));
     try {
       const book = join(repo, 'books', 'core-book');
       await mkdirp(join(book, 'styles'), { recursive: true });
@@ -280,7 +280,7 @@ describe('externalWatchTargets', () => {
 
   test('watches both an authored external symlink and its current referent', async () => {
     if (process.platform === 'win32') return;
-    const repo = await mkdtemp(join(tmpdir(), 'pmd-shared-link-'));
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-shared-link-'));
     try {
       const book = join(repo, 'book');
       const shared = join(repo, 'shared');
@@ -306,7 +306,7 @@ describe('externalWatchTargets', () => {
     // Codex review on PR #129: a design tool can replace a shared FONT without
     // touching one line of CSS. Watching only the declared theme.css would let
     // that swap leave the "authoritative" preview stale forever.
-    const repo = await mkdtemp(join(tmpdir(), 'pmd-closure-'));
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-closure-'));
     try {
       const book = join(repo, 'books', 'core-book');
       const shared = join(repo, 'shared');
@@ -340,7 +340,7 @@ describe('externalWatchTargets', () => {
   test('follows a LOCAL stylesheet out to a shared font', async () => {
     // The closure is computed from every active stylesheet, not just the
     // external ones: a book-local sheet can reference a shared face too.
-    const repo = await mkdtemp(join(tmpdir(), 'pmd-localref-'));
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-localref-'));
     try {
       const book = join(repo, 'books', 'core-book');
       await mkdirp(join(book, 'styles'), { recursive: true });
@@ -364,7 +364,7 @@ describe('externalWatchTargets', () => {
   test('a missing or unparseable stylesheet never throws', async () => {
     // A watcher that throws stops watching everything; the build is what
     // reports these properly.
-    const book = await mkdtemp(join(tmpdir(), 'pmd-bad-'));
+    const book = await mkdtemp(join(tmpdir(), 'gutterpress-bad-'));
     try {
       await mkdirp(join(book, 'styles'), { recursive: true });
       await writeFile(join(book, 'styles', 'broken.css'), 'body { color: ');
@@ -379,7 +379,7 @@ describe('externalWatchTargets', () => {
   });
 
   test('returns nothing for a self-contained book', async () => {
-    const book = await mkdtemp(join(tmpdir(), 'pmd-book-'));
+    const book = await mkdtemp(join(tmpdir(), 'gutterpress-book-'));
     try {
       await mkdirp(join(book, 'styles'), { recursive: true });
       await writeFile(join(book, 'styles', 'book.css'), 'body{}');
@@ -421,7 +421,7 @@ describe('external watch roots', () => {
   });
 
   test('uses the nearest existing ancestor when the target hierarchy is missing', async () => {
-    const repo = await mkdtemp(join(tmpdir(), 'pmd-watch-root-'));
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-watch-root-'));
     try {
       const missing = join(repo, 'shared', 'styles', 'book.css');
       expect(await externalWatchRoots([missing])).toEqual([repo]);
@@ -456,7 +456,7 @@ describe('isDotPathUnderRoot', () => {
     // `/(^|[\/\\])\../ ` regex matched a dot-prefixed ancestor like ".local"
     // here just as readily as a real project dotfile — silently disabling
     // the watcher for every file in the project.
-    const dotAncestorRoot = '/home/user/.local/share/print-md/books/mybook';
+    const dotAncestorRoot = '/home/user/.local/share/gutterpress/books/mybook';
     expect(isDotPathUnderRoot(join(dotAncestorRoot, 'chapter-01.md'), dotAncestorRoot)).toBe(false);
     expect(isDotPathUnderRoot(join(dotAncestorRoot, '.env'), dotAncestorRoot)).toBe(true);
   });
@@ -468,8 +468,8 @@ describe('createFileWatcher', () => {
   let state: ServerState;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    testDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
 
     await writeFile(join(testDir, 'chapter-01.md'), '# Initial');
 
@@ -530,16 +530,16 @@ describe('createFileWatcher', () => {
     // Regression for the chokidar `ignored`-matcher bug isDotPathUnderRoot
     // fixes (see its doc comment in file-watcher.ts): the OLD regex tested
     // the FULL absolute path, so a dot-prefixed ANCESTOR directory (e.g.
-    // `~/.local/share/print-md/books/mybook`) matched the dotfile rule just
+    // `~/.local/share/gutterpress/books/mybook`) matched the dotfile rule just
     // like a real project dotfile would — silently disabling the watcher for
     // every file in the project, with no error anywhere. Root a real project
     // explicitly under a dot directory and prove an edit still reaches the
     // watcher and produces a broadcast.
-    const dotAncestorBase = await mkdtemp(join(tmpdir(), 'print-md-test-dotroot-'));
+    const dotAncestorBase = await mkdtemp(join(tmpdir(), 'gutterpress-test-dotroot-'));
     const dotProjectDir = join(dotAncestorBase, '.hidden-parent', 'book');
     await mkdirp(dotProjectDir, { recursive: true });
     await writeFile(join(dotProjectDir, 'chapter-01.md'), '# Initial');
-    const dotTempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    const dotTempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
     const dotState = createTestServerState(dotProjectDir, dotTempDir);
 
     const calls = attachBroadcastRecorder(dotState);
@@ -632,7 +632,7 @@ describe('createFileWatcher', () => {
     // The multi-book layout: books/<book>/ reads ../../shared/styles/*.css.
     // The shared file is above the project watch root, so it is only seen
     // because the manifest declares it (externalWatchTargets).
-    const repo = await mkdtemp(join(tmpdir(), 'print-md-test-repo-'));
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-test-repo-'));
     const book = join(repo, 'books', 'core-book');
     const sharedCss = join(repo, 'shared', 'styles', 'components.css');
     await mkdirp(book, { recursive: true });
@@ -643,7 +643,7 @@ describe('createFileWatcher', () => {
       join(book, 'manifest.yaml'),
       'title: Core Book\nstyles:\n  - ../../shared/styles/components.css\n',
     );
-    const sharedTempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    const sharedTempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
     const sharedState = createTestServerState(book, sharedTempDir);
     sharedState.config = resolveConfig({}, {
       title: 'Core Book',
@@ -674,7 +674,7 @@ describe('createFileWatcher', () => {
   test('replacing a shared font referenced only by CSS rebuilds the preview', async () => {
     // The font is never named by the manifest — it is reached through the
     // shared theme's url(). Swapping the file must still repaginate.
-    const repo = await mkdtemp(join(tmpdir(), 'print-md-test-font-'));
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-test-font-'));
     const book = join(repo, 'books', 'core-book');
     const fontPath = join(repo, 'shared', 'fonts', 'Publisher.woff2');
     await mkdirp(book, { recursive: true });
@@ -686,7 +686,7 @@ describe('createFileWatcher', () => {
       join(repo, 'shared', 'themes', 'publisher', 'theme.css'),
       '@font-face{font-family:P;src:url("../../fonts/Publisher.woff2")}',
     );
-    const fontTempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    const fontTempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
     const fontState = createTestServerState(book, fontTempDir);
     fontState.config = resolveConfig({}, {
       title: 'Core Book',
@@ -712,7 +712,7 @@ describe('createFileWatcher', () => {
   }, 30000);
 
   test('recovers when a manifest declares a shared stylesheet before that file exists', async () => {
-    const repo = await mkdtemp(join(tmpdir(), 'print-md-test-late-shared-'));
+    const repo = await mkdtemp(join(tmpdir(), 'gutterpress-test-late-shared-'));
     const book = join(repo, 'books', 'core-book');
     const sharedDir = join(repo, 'shared', 'styles');
     const sharedCss = join(sharedDir, 'late.css');
@@ -720,7 +720,7 @@ describe('createFileWatcher', () => {
     await mkdirp(book, { recursive: true });
     await writeFile(join(book, 'chapter-01.md'), '# One');
     await writeFile(manifestPath, 'title: Core Book\n');
-    const lateTempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    const lateTempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
     const lateState = createTestServerState(book, lateTempDir);
 
     const calls = attachBroadcastRecorder(lateState);
@@ -843,8 +843,8 @@ describe('startFileWatcher', () => {
   let state: ServerState;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    testDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
 
     await writeFile(join(testDir, 'chapter-01.md'), '# Test');
 
@@ -880,8 +880,8 @@ describe('stopFileWatcher', () => {
   let state: ServerState;
 
   beforeEach(async () => {
-    testDir = await mkdtemp(join(tmpdir(), 'print-md-test-input-'));
-    tempDir = await mkdtemp(join(tmpdir(), 'print-md-test-temp-'));
+    testDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-input-'));
+    tempDir = await mkdtemp(join(tmpdir(), 'gutterpress-test-temp-'));
 
     await writeFile(join(testDir, 'chapter-01.md'), '# Test');
 

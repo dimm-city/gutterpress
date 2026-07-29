@@ -22,7 +22,7 @@ afterEach(() => {
 
 describe("resolveGhostscript", () => {
   test("uses GHOSTSCRIPT_PATH before probing PATH", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "pmd-gs-resolve-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-gs-resolve-"));
     try {
       const executable = join(dir, "custom-gs");
       await writeFile(executable, "");
@@ -53,7 +53,7 @@ describe("resolveGhostscript", () => {
   });
 
   test("finds the newest conventional versioned Program Files install", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pmd-gs-program-files-"));
+    const root = await mkdtemp(join(tmpdir(), "gutterpress-gs-program-files-"));
     try {
       const oldBin = join(root, "gs", "gs9.56.1", "bin");
       const newBin = join(root, "gs", "gs10.06.0", "bin");
@@ -73,8 +73,8 @@ describe("resolveGhostscript", () => {
 });
 
 test("stripAnnotations keeps its qpdf scratch file in staging", async () => {
-  const outputDir = await mkdtemp(join(tmpdir(), "pmd-gs-output-"));
-  const stagingDir = await mkdtemp(join(tmpdir(), "pmd-gs-stage-"));
+  const outputDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-output-"));
+  const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-stage-"));
   try {
     const pdfPath = join(outputDir, "book.pdf");
     await writeFile(pdfPath, "original");
@@ -100,8 +100,8 @@ test("stripAnnotations keeps its qpdf scratch file in staging", async () => {
 });
 
 test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file", async () => {
-  const outputDir = await mkdtemp(join(tmpdir(), "pmd-gs-output-"));
-  const stagingDir = await mkdtemp(join(tmpdir(), "pmd-gs-stage-"));
+  const outputDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-output-"));
+  const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-stage-"));
   try {
     const executable = join(stagingDir, "custom-gs");
     const iccPath = join(stagingDir, "profile.icc");

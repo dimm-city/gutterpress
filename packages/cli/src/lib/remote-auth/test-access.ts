@@ -3,7 +3,7 @@
  *
  * A single refs probe (isomorphic-git `listServerRefs` over smart HTTPS — the
  * node-native replacement for `git ls-remote origin`, CLAUDE.md §7) that
- * answers: can print-md reach this remote with what it has stored? Failures
+ * answers: can gutterpress reach this remote with what it has stored? Failures
  * are CLASSIFIED so the Advanced Setup UI can show the right next step instead
  * of raw transport errors.
  *
@@ -46,7 +46,7 @@ export interface TestRemoteAccessOptions {
 }
 
 /**
- * True for any remote URL print-md's HTTPS-only transport cannot use:
+ * True for any remote URL gutterpress's HTTPS-only transport cannot use:
  * `ssh://…` and the scp-like `git@host:owner/repo.git` shorthand.
  */
 export function isSshRemoteUrl(url: string): boolean {
@@ -59,7 +59,7 @@ export function isSshRemoteUrl(url: string): boolean {
 
 /**
  * Author-friendly messages per failure reason (no URLs, no tokens — and no
- * literal scheme tokens like "http://": the viewer's Advanced Setup dialog
+ * literal scheme tokens like "http://": the desktop's Advanced Setup dialog
  * redacts anything matching /https?:\/\/\S+/, which would garble the copy).
  * Exported for the wording guard in test-access.test.ts.
  */
@@ -70,7 +70,7 @@ export const FAILURE_MESSAGES: Record<RemoteAccessFailureReason, string> = {
   unreachable:
     "Couldn't reach the Git server. Check your internet connection (and VPN, if this is a private server), then try again.",
   "ssh-unsupported":
-    "This project's online address uses SSH (git@…), which print-md can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
+    "This project's online address uses SSH (git@…), which gutterpress can't check or sync with. Everything on this computer still works — sync with your usual Git tool.",
   "insecure-transport":
     "This address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to use a saved connection.",
   tls: "The server's security certificate couldn't be verified. If this is a private server with its own certificate, ask its administrator about trusting it (NODE_EXTRA_CA_CERTS).",

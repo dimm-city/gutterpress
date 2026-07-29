@@ -1,7 +1,7 @@
 # Themes, styles, and assets
 
-How Print-MD composes CSS and how files reach the finished book.
-Verified against the Print-MD source that ships this package, 2026-07-28.
+How Gutterpress composes CSS and how files reach the finished book.
+Verified against the Gutterpress source that ships this package, 2026-07-28.
 
 ## Two CSS locations, different roles
 
@@ -27,7 +27,7 @@ What the built document contains, in order:
 
 ```text
 1. markdown-it-paged layout primitives
-2. Print-MD plugin default CSS
+2. Gutterpress plugin default CSS
 3. manifest `styles:` entries, in listed order
 ```
 
@@ -43,7 +43,7 @@ styles:
 
 ## A `styles:` entry is a path to READ
 
-Print-MD does not copy stylesheets. It reads each entry and inlines it into
+Gutterpress does not copy stylesheets. It reads each entry and inlines it into
 `book.html`. Three consequences:
 
 1. **An entry may live anywhere**, including above the book root
@@ -111,7 +111,7 @@ ICC file directly.
 - **Authored** — an ordinary `.js` file the manifest names by `path`. Git-tracked
   source; editable in `layout` or `content` scope when Markdown rendering
   behavior genuinely must change.
-- **Managed** — installed by `print-md plugin add <pkg>@<version> <book>`, which
+- **Managed** — installed by `gutterpress plugin add <pkg>@<version> <book>`, which
   verifies and vendors the exact dependency graph beneath the book's
   `plugins/npm/` tree with integrity receipts, then pins the version in the
   manifest.

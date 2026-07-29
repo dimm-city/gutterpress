@@ -72,7 +72,7 @@ test("stripPaginationRuntime is version-agnostic (marker, not URL, drives the ma
 // The runtime fallback likewise rewrites the marker slot regardless of version.
 test("shipRuntimePaginatedHtml rewrites the marker slot at any version", async () => {
   for (const version of ["0.4.3", "9.9.9"]) {
-    const dir = await mkdtemp(join(tmpdir(), "pmd-fallback-ver-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-fallback-ver-"));
     try {
       const htmlFile = join(dir, "book.html");
       await writeFile(
@@ -106,7 +106,7 @@ test("injectNavigationScripts inserts both toolbar scripts before </head>", () =
 // so the browser paginates on load (the pre-SSG behavior). Verifies the emitted
 // book.html and that the vendored assets land on disk.
 test("shipRuntimePaginatedHtml rewrites the book + vendors the polyfill", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-fallback-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-fallback-"));
   try {
     const htmlFile = join(dir, "book.html");
     await writeFile(

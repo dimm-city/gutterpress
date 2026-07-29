@@ -21,7 +21,7 @@ import {
 } from "./test-support/git-http-server";
 
 test("connect validates against the repo URL and returns a token credential", async () => {
-  const repoDir = await tempDir("pmd-generic-ok-");
+  const repoDir = await tempDir("gutterpress-generic-ok-");
   let server: GitServer | null = null;
   try {
     await createFixtureRepo(repoDir);
@@ -47,7 +47,7 @@ test("connect validates against the repo URL and returns a token credential", as
 }, 20_000);
 
 test("connect with a rejected token fails BEFORE save, friendly and token-free", async () => {
-  const repoDir = await tempDir("pmd-generic-bad-");
+  const repoDir = await tempDir("gutterpress-generic-bad-");
   let server: GitServer | null = null;
   try {
     await createFixtureRepo(repoDir);
@@ -76,7 +76,7 @@ test("connect with a rejected token fails BEFORE save, friendly and token-free",
 }, 20_000);
 
 test("connect against an unreachable server fails with guidance", async () => {
-  const repoDir = await tempDir("pmd-generic-unreach-");
+  const repoDir = await tempDir("gutterpress-generic-unreach-");
   try {
     await createFixtureRepo(repoDir);
     const server = await startGitServer(repoDir);
@@ -96,7 +96,7 @@ test("KNOWN LIMITATION: root probe accepts a wrong token when the host root is n
   // (i.e. the root is not a git endpoint) is ACCEPTED — even though the
   // token was never actually verified against anything. See the doc comment
   // on connectGenericHost. Pass repoUrl for full end-to-end verification.
-  const repoDir = await tempDir("pmd-generic-rootprobe-");
+  const repoDir = await tempDir("gutterpress-generic-rootprobe-");
   let server: GitServer | null = null;
   try {
     await createFixtureRepo(repoDir);
@@ -132,7 +132,7 @@ test("validate() keeps the credential when the probe is inconclusive (unreachabl
   // Pins the "can't tell → keep" policy: only a definitive auth rejection
   // invalidates a stored credential. An unreachable host (laptop offline,
   // VPN down) must NOT log the user out.
-  const repoDir = await tempDir("pmd-generic-validate-");
+  const repoDir = await tempDir("gutterpress-generic-validate-");
   await createFixtureRepo(repoDir);
   const server = await startGitServer(repoDir);
   const u = new URL(server.url);

@@ -7,7 +7,7 @@
  * both then reuse {@link importThemeFromFolder}.
  *
  * Host-side only (node fs + fflate + postcss via `checkCss`) — reached by the
- * viewer through the `api/theme/import-from-file` server route (CLAUDE.md §8),
+ * desktop through the `api/theme/import-from-file` server route (CLAUDE.md §8),
  * and shared with the CLI (§7 "shared lib, not duplicated"). The pure decision
  * helpers (zip-root location, path-safety, findings → reject/warn mapping,
  * unexpected-file detection) are exported separately so they unit-test without
@@ -260,7 +260,7 @@ export async function importThemeFromZip(
   }
   const prefix = root === "" ? "" : `${root}/`;
 
-  const tmp = await mkdtemp(path.join(tmpdir(), "print-md-theme-"));
+  const tmp = await mkdtemp(path.join(tmpdir(), "gutterpress-theme-"));
   try {
     const relPaths: string[] = [];
     for (const [name, data] of Object.entries(files)) {
@@ -300,7 +300,7 @@ export async function importThemeFromCssText(
   }
   const displayName = name.trim() || "Imported theme";
 
-  const tmp = await mkdtemp(path.join(tmpdir(), "print-md-theme-"));
+  const tmp = await mkdtemp(path.join(tmpdir(), "gutterpress-theme-"));
   try {
     await writeFile(path.join(tmp, "theme.css"), css, "utf8");
     await writeFile(
@@ -324,7 +324,7 @@ export async function importThemeFromCssText(
 /**
  * Import a theme from a local file path, dispatched by extension: `.zip` →
  * {@link importThemeFromZip}, `.css` → {@link importThemeFromCssText}. The
- * viewer's host reads the path from a native file picker and calls this.
+ * desktop's host reads the path from a native file picker and calls this.
  */
 export async function importThemeFromFile(
   projectDir: string,

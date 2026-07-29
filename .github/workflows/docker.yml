@@ -1,6 +1,6 @@
 name: Docker image
 
-# Builds and publishes the print-md CLI container to GitHub Container Registry.
+# Builds and publishes the Gutterpress CLI container to GitHub Container Registry.
 # Multi-arch (amd64 + arm64) via QEMU/buildx.
 #
 # workflow_dispatch is the ONLY trigger: release.yml's github-release job
@@ -42,7 +42,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/print-md
+          images: ghcr.io/dimm-city/gutterpress
           tags: |
             # Semver tags (X.Y.Z + the X.Y moving tag) apply when the run is
             # at a v* tag ref — release.yml dispatches with `--ref v<version>`.

@@ -43,7 +43,7 @@ describe("installer checksum verification", () => {
 
   test("both installers look for the checksum file the release actually publishes", () => {
     const published = publishedChecksumFilename();
-    expect(read(SH)).toContain(`PRINTMD_CHECKSUM_ASSET="${published}"`);
+    expect(read(SH)).toContain(`GUTTERPRESS_CHECKSUM_ASSET="${published}"`);
     expect(read(PS1)).toContain(`$ChecksumAsset = "${published}"`);
   });
 
@@ -52,7 +52,7 @@ describe("installer checksum verification", () => {
     // Verification must happen while the file is still at the .download path.
     const verifyAt = sh.indexOf("if ! verify_checksum");
     const chmodAt = sh.indexOf('chmod +x "$tmp"');
-    const moveAt = sh.indexOf('mv -f "$tmp" "$PRINTMD_BIN"');
+    const moveAt = sh.indexOf('mv -f "$tmp" "$GUTTERPRESS_BIN"');
     expect(verifyAt).toBeGreaterThan(-1);
     expect(verifyAt).toBeLessThan(chmodAt);
     expect(verifyAt).toBeLessThan(moveAt);
@@ -78,7 +78,7 @@ describe("installer checksum verification", () => {
     const sh = read(SH);
     const ps1 = read(PS1);
     // The skip reason is recorded...
-    expect(sh).toContain("PRINTMD_UNVERIFIED=");
+    expect(sh).toContain("GUTTERPRESS_UNVERIFIED=");
     expect(ps1).toContain("$script:Unverified =");
     // ...and reprinted as a warning at the end of the run.
     expect(sh).toContain("WARNING: this download was NOT verified against a checksum.");

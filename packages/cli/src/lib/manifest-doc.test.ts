@@ -27,16 +27,9 @@ describe("manifest-doc", () => {
       expect(resolveManifestPath(dir)).toBe(join(dir, "manifest.yaml"));
     });
 
-    test("prefers .yml only when .yaml is absent and .yml exists", () => {
-      const dir = projectDir();
-      writeFileSync(join(dir, "manifest.yml"), "title: X\n", "utf8");
-      expect(resolveManifestPath(dir)).toBe(join(dir, "manifest.yml"));
-    });
-
-    test("prefers manifest.yaml when both exist", () => {
+    test("uses manifest.yaml when it exists", () => {
       const dir = projectDir();
       writeFileSync(join(dir, "manifest.yaml"), "title: A\n", "utf8");
-      writeFileSync(join(dir, "manifest.yml"), "title: B\n", "utf8");
       expect(resolveManifestPath(dir)).toBe(join(dir, "manifest.yaml"));
     });
   });
@@ -60,14 +53,6 @@ describe("manifest-doc", () => {
       expect(file).toBe(join(dir, "manifest.yaml"));
       expect(doc.get("title")).toBe("My Book");
       expect(doc.toString()).toContain("# hello");
-    });
-
-    test("loads the .yml file when it is the only one present", async () => {
-      const dir = projectDir();
-      writeFileSync(join(dir, "manifest.yml"), "title: Y\n", "utf8");
-      const { doc, file } = await loadManifestDoc(dir);
-      expect(file).toBe(join(dir, "manifest.yml"));
-      expect(doc.get("title")).toBe("Y");
     });
 
     test("propagates manifest read errors instead of treating them as an absent file", async () => {

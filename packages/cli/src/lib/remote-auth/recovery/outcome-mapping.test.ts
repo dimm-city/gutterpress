@@ -46,7 +46,7 @@ describe("syncOptionsFrom", () => {
     const opts = syncOptionsFrom(ctx);
     // authorEmail rides along with authorName: a recovery-driven sync
     // snapshots-first, and that commit must carry the author's FULL identity
-    // rather than their name paired with the print-md default email.
+    // rather than their name paired with the gutterpress default email.
     expect(opts).toEqual({
       projectDir: ctx.projectDir,
       credential: ctx.credential,

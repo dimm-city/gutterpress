@@ -1,15 +1,15 @@
 # JSON Schema Autocomplete for manifest.yaml
 
-print-md includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
+Gutterpress includes a JSON schema for `manifest.yaml` that provides autocomplete, validation, and documentation directly in your editor.
 
-The schema is **editor-facing only**. print-md itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. Wiring the schema into your editor (below) is what turns a typo into visible feedback.
+The schema is **editor-facing only**. Gutterpress itself does not validate `manifest.yaml` against it at build or preview time — an unknown key is simply ignored by `resolveConfig`. Wiring the schema into your editor (below) is what turns a typo into visible feedback.
 
 ## Quick Setup
 
 Add this line to the top of your `manifest.yaml`:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json
 
 title: "My Book"
 authors:
@@ -34,7 +34,7 @@ That's it! Your editor will now provide:
 
 2. **Add schema reference to your manifest.yaml:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json
 
    title: "My Document"
    authors:
@@ -48,7 +48,7 @@ That's it! Your editor will now provide:
 
 ### Local Schema (Offline)
 
-If you prefer to use a local schema file, copy `packages/cli/src/assets/manifest.schema.json` from the print-md repository into your project directory, then point at your copy (the path is resolved relative to the `manifest.yaml` that carries the comment):
+If you prefer to use a local schema file, copy `packages/cli/src/assets/manifest.schema.json` from the Gutterpress repository into your project directory, then point at your copy (the path is resolved relative to the `manifest.yaml` that carries the comment):
 
 ```yaml
 # yaml-language-server: $schema=./manifest.schema.json
@@ -72,7 +72,7 @@ To apply the schema automatically to all `manifest.yaml` files:
    ```json
    {
      "yaml.schemas": {
-       "https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json": ["manifest.yaml"]
+        "https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json": ["manifest.yaml"]
      }
    }
    ```
@@ -87,7 +87,7 @@ Now all `manifest.yaml` files automatically use the schema without the header co
 
 2. **Add schema reference:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json
+    # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json
 
    title: "My Document"
    authors:
@@ -106,8 +106,8 @@ Now all `manifest.yaml` files automatically use the schema without the header co
 2. Click `+` to add a new schema
 
 3. Configure:
-   - **Name:** print-md Manifest
-   - **Schema file or URL:** `https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json`
+    - **Name:** Gutterpress Manifest
+    - **Schema file or URL:** `https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json`
    - **Schema version:** JSON Schema version 7
 
 4. Add file path pattern: `**/manifest.yaml`
@@ -127,14 +127,14 @@ Now all `manifest.yaml` files automatically use the schema without the header co
    ```json
    {
      "yaml.schemas": {
-       "https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json": ["manifest.yaml"]
+        "https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json": ["manifest.yaml"]
      }
    }
    ```
 
 3. **Or use file header:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json
+    # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json
 
    title: "My Document"
    ```
@@ -150,7 +150,7 @@ Now all `manifest.yaml` files automatically use the schema without the header co
    {
      "settings": {
        "yaml.schemas": {
-         "https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json": ["manifest.yaml"]
+          "https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json": ["manifest.yaml"]
        }
      }
    }
@@ -213,7 +213,7 @@ Every property is optional. An omitted field falls back to the default supplied 
 Document title, used for the HTML `<title>` and PDF metadata. Defaults to `"Document"`.
 
 ```yaml
-title: "The Complete Guide to print-md"
+title: "The Complete Guide to Gutterpress"
 ```
 
 #### `authors` (array of strings)
@@ -233,7 +233,7 @@ preset: book
 ```
 
 #### `styles` (array of strings)
-CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, print-md discovers one: `styles/book.css`, then `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, then the first `.css` it finds, then none.
+CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css`, then `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, then the first `.css` it finds, then none.
 
 ```yaml
 styles:
@@ -249,7 +249,7 @@ An object takes `path` (local module) or `name` (npm package), plus optional `ve
 
 ```yaml
 plugins:
-  - name: "print-md-plugin-callouts"
+  - name: "gutterpress-plugin-callouts"
     version: "1.2.3"
   - path: "plugins/dimm-city-plugin.js"
     priority: 100
@@ -260,7 +260,7 @@ Where the content comes from.
 
 - `files` (array of strings, or `null`) - Explicit, ordered markdown files relative to the manifest directory. Omit or set `null` to include every `.md` file alphabetically.
 
-There is no `assets` field: print-md discovers every file the book actually
+There is no `assets` field: Gutterpress discovers every file the book actually
 references — image `src` attributes, CSS `url()`/`@font-face` — and copies
 exactly those. An author-maintained directory list could drift from what the
 book uses; this can't.
@@ -300,7 +300,7 @@ page:
 ```
 
 #### `pdfx` (object)
-PDF/X conversion settings, used by `print-md build --format pdfx`.
+PDF/X conversion settings, used by `gutterpress build --format pdfx`.
 
 - `flavor` (string) - `x1a` (default) or `x3`.
 - `icc` (string) - Path to the ICC output-intent profile. Default `profiles/CGATS21_CRPC1.icc`.
@@ -337,19 +337,19 @@ validate:
 ```
 
 #### `publish` (object)
-Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`), keyed by the same id `print-md publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. See [publishing.md](./publishing.md).
+Non-secret publish settings per provider (`itch`, `drivethrurpg`, `kdp`, `azure-swa`, `shopify`), keyed by the same id `gutterpress publish --provider <id>` takes. API keys and tokens are **never** stored here — they live in the host credential store. See [publishing.md](./publishing.md).
 
 #### `themePrevious` (string)
-Managed automatically by print-md's Theme Manager (the "revert to previous theme" target). Not authored by hand.
+Managed automatically by Gutterpress's Theme Manager (the "revert to previous theme" target). Not authored by hand.
 
 ---
 
 ## Complete Example
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json
 
-title: "The Complete Guide to print-md"
+title: "The Complete Guide to Gutterpress"
 authors:
   - "Technical Writing Team"
 preset: book
@@ -391,7 +391,7 @@ validate:
 
 1. **Verify schema header is present:**
    ```yaml
-   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json
+   # yaml-language-server: $schema=https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json
    ```
 
 2. **Check YAML extension is installed:**
@@ -410,7 +410,7 @@ validate:
    - Proper array syntax (`- item`)
 
 2. **Verify schema URL is correct:**
-   - Must be exactly: `https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json`
+    - Must be exactly: `https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json`
 
 3. **Try local schema** (a copy of `manifest.schema.json` next to your `manifest.yaml`):
    ```yaml
@@ -449,9 +449,9 @@ Some warnings are informational:
 
 ## Schema Maintenance
 
-The schema mirrors the `PrintMdManifest` interface in `packages/cli/src/schema/manifest.types.ts`, with defaults taken from `packages/cli/src/lib/presets.ts`. When either changes, update `manifest.schema.json` to match — nothing enforces this automatically.
+The schema mirrors the `GutterpressManifest` interface in `packages/cli/src/schema/manifest.types.ts`, with defaults taken from `packages/cli/src/lib/presets.ts`. When either changes, update `manifest.schema.json` to match — nothing enforces this automatically.
 
-**Latest schema:** https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/src/assets/manifest.schema.json
+**Latest schema:** https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/src/assets/manifest.schema.json
 
 **Local copy:** Include `packages/cli/src/assets/manifest.schema.json` in your project for offline use.
 
@@ -459,10 +459,10 @@ The schema mirrors the `PrintMdManifest` interface in `packages/cli/src/schema/m
 
 ## Related Documentation
 
-- [User Guide](../examples/print-md-user-guide/) - Complete print-md usage guide
+- [User Guide](../examples/gutterpress-user-guide/) - Complete Gutterpress usage guide
 - [Design Guides](./design-guides.md) - CSS styling and companion design-guide pattern
 - [README](../README.md) - Project overview and quick start
 
 ---
 
-**Questions or issues?** [Open an issue on GitHub](https://github.com/dimm-city/print-md/issues)
+**Questions or issues?** [Open an issue on GitHub](https://github.com/dimm-city/gutterpress/issues)

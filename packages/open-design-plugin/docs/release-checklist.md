@@ -1,4 +1,4 @@
-# Print-MD Publishing Plugin Release Checklist
+# Gutterpress Publishing Plugin Release Checklist
 
 Use this checklist for each plugin release. The installable root is `plugin/`;
 tests and fixtures must not enter the archive.
@@ -9,7 +9,7 @@ tests and fixtures must not enter the archive.
 - Current upstream reference: `a7e205939d441d29d64e616d6f5ec89c53bb711a`
 - Supported distribution: trusted local install
 - Marketplace status: not published
-- Print-MD release floor: unreleased branch source; 0.8.3 is unsupported
+- Gutterpress release floor: unreleased branch source; 0.8.3 is unsupported
 - Existing-project UI status: host snapshot transport bug; use `od plugin run`
 - CLI run context: no Browser-tab attachment or interactive form collection
 - Engine floor: declared as `>=0.16.1`, not enforced by Open Design 0.16.1
@@ -26,7 +26,7 @@ tests and fixtures must not enter the archive.
 - [x] The changelog records every user-visible contract change.
 - [x] `git diff --check` passes.
 
-## Print-MD checks
+## Gutterpress checks
 
 From `packages/open-design-plugin/`:
 
@@ -63,16 +63,16 @@ node "$OPEN_DESIGN_ROOT/apps/daemon/bin/od.mjs" \
   plugin validate "$PWD/plugin" --no-daemon --json
 node "$OPEN_DESIGN_ROOT/apps/daemon/bin/od.mjs" \
   plugin pack "$PWD/plugin" \
-  --out /tmp/print-md-publishing-0.2.0.tgz --json
+  --out /tmp/gutterpress-publishing-0.2.0.tgz --json
 ```
 
 Using an isolated Open Design data directory, then run:
 
 ```bash
 od plugin install "$PWD/plugin"
-od plugin info print-md-publishing --json
-od plugin apply print-md-publishing --json
-od plugin doctor print-md-publishing --json
+od plugin info gutterpress-publishing --json
+od plugin apply gutterpress-publishing --json
+od plugin doctor gutterpress-publishing --json
 ```
 
 - [x] Validation reports no diagnostics.
@@ -86,7 +86,7 @@ od plugin doctor print-md-publishing --json
 
 - [ ] A clear single-book request proceeds without asking the user to repeat
   values that can be safely inferred.
-- [ ] An ambiguous multi-book request emits one `print-md-brief` question form
+- [ ] An ambiguous multi-book request emits one `gutterpress-brief` question form
   and writes nothing before the response.
 - [ ] `theme` scope does not change prose or layout markers.
 - [ ] `book-only` scope does not modify shared foundations.
@@ -99,7 +99,7 @@ od plugin doctor print-md-publishing --json
 ## Publication checks
 
 - [ ] A canonical public repository or stable monorepo subpath exists at a tag.
-- [ ] The required Print-MD preview changes have a tagged release and the exact
+- [ ] The required Gutterpress preview changes have a tagged release and the exact
   supported version floor is recorded.
 - [ ] The README uses only install commands that actually resolve.
 - [ ] Open Design's existing-project snapshot transport is fixed, or CLI-only
@@ -107,7 +107,7 @@ od plugin doctor print-md-publishing --json
 - [ ] Restricted pipeline trust is fixed, or the listing is official/trusted.
 - [ ] Marketplace submission/review is complete.
 - [ ] `od marketplace refresh official` followed by
-  `od plugin install print-md-publishing` succeeds.
+  `od plugin install gutterpress-publishing` succeeds.
 
 Do not mark or describe the plugin as published before every publication check
 passes.
@@ -118,7 +118,7 @@ Fill this after the final package bytes are fixed:
 
 ```text
 Date: 2026-07-28
-Print-MD commit: 70d560145cec21274f7486eb180cf512e21ea776 + release-candidate working tree
+Gutterpress commit: 70d560145cec21274f7486eb180cf512e21ea776 + release-candidate working tree
 Open Design version/commit: 0.16.1 / 4bf9b72404fa1c23c0e20439e13f2a1de9097585
 Manifest digest: b044a733fb711b9083616a4d9669209cefaaeb3d34287316e9208eb1b54ea973
 Packed archive bytes: 22334
@@ -127,6 +127,6 @@ Focused tests: plugin 7 pass; pagination 3 pass; final watcher suite 43 pass
 Full tests/build: CLI 2114 pass, 1 skip; typecheck, build, render purity, and diff check pass
 Isolated host run: install/info/apply/doctor pass; imported-project fake-agent run succeeded
 Known limitations: doctor emits the non-blocking local-skill ref warning; Open Design
-  snapshot transport and restricted pipeline grants remain host blockers; Print-MD
+  snapshot transport and restricted pipeline grants remain host blockers; Gutterpress
   0.8.3 is unsupported; schema URL and marketplace publication remain external work.
 ```

@@ -32,7 +32,7 @@ export default defineCommand({
   meta: {
     name: "build",
     description:
-      "Build the book to HTML (static-site viewer), PDF, or PDF/X. Use --format to select. Default: pdf.",
+      "Build the book to HTML (static-site desktop), PDF, or PDF/X. Use --format to select. Default: pdf.",
   },
   args: commandArgs,
   async run({ args, rawArgs }) {

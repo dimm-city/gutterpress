@@ -5,7 +5,7 @@ authors:
 # The book and the companion design guide (../design-guide/) both consume the
 # same stylesheet, so the guide always documents what the book actually ships.
 #
-# `styles:` names the stylesheet's REAL path. print-md READS a stylesheet and
+# `styles:` names the stylesheet's REAL path. Gutterpress READS a stylesheet and
 # inlines it into the book, so a shared stylesheet needs no copying, no asset
 # list, and no "name the flattened destination instead of the source" rule.
 # Fonts and images the stylesheet references resolve relative to the stylesheet

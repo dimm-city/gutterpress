@@ -16,7 +16,7 @@ import { providerFor } from "./source-provider.ts";
 import { loadManifest, resolveConfig } from "./manifest.ts";
 
 async function tmpParent(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "pmd-scaffold-"));
+  return mkdtemp(path.join(tmpdir(), "gutterpress-scaffold-"));
 }
 
 test("slugifyProjectName lowercases, hyphenates, trims", () => {
@@ -215,7 +215,7 @@ test("scaffoldProject inside an already-versioned folder reports a friendly noti
 });
 
 test("adoptFolder: uses existing markdown + scaffolds manifest/book.css in place", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-adopt-"));
   await writeFile(path.join(dir, "intro.md"), "# Intro\n\nHello.", "utf8");
   await writeFile(path.join(dir, "02-body.md"), "# Body\n", "utf8");
 
@@ -239,7 +239,7 @@ test("adoptFolder: uses existing markdown + scaffolds manifest/book.css in place
 });
 
 test("adoptFolder: scaffolds a chapter when the folder has no markdown", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-empty-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-adopt-empty-"));
   const result = await adoptFolder({ dir, title: "Fresh", versionHistory: "none" });
   expect(result.openFile).toBe(path.join(dir, "chapter-01.md"));
   expect(existsSync(path.join(dir, "chapter-01.md"))).toBe(true);
@@ -248,30 +248,14 @@ test("adoptFolder: scaffolds a chapter when the folder has no markdown", async (
 });
 
 test("adoptFolder: refuses a folder that is already a project", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-existing-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-adopt-existing-"));
   await writeFile(path.join(dir, "manifest.yaml"), "title: x\n", "utf8");
-  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(/already a print-md project/i);
-  await rm(dir, { recursive: true, force: true });
-});
-
-test("adoptFolder: recognizes manifest.yml as an existing project", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-existing-yml-"));
-  await writeFile(path.join(dir, "manifest.yml"), "title: x\n", "utf8");
-  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(/already a print-md project/i);
-  await rm(dir, { recursive: true, force: true });
-});
-
-test("adoptFolder: recognizes persisted print-md.yaml projects", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-legacy-"));
-  await writeFile(path.join(dir, "print-md.yaml"), "title: legacy\n", "utf8");
-  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(
-    /already a print-md project/i
-  );
+  await expect(adoptFolder({ dir, versionHistory: "none" })).rejects.toThrow(/already a Gutterpress project/i);
   await rm(dir, { recursive: true, force: true });
 });
 
 test("adoptFolder: never overwrites an existing styles/book.css", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-css-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-adopt-css-"));
   await writeFile(path.join(dir, "doc.md"), "# Doc\n", "utf8");
   await mkdir(path.join(dir, "styles"), { recursive: true });
   await writeFile(path.join(dir, "styles", "book.css"), "/* mine */ :root{}", "utf8");
@@ -302,7 +286,7 @@ test("scaffoldProject writes a .gitignore excluding dist/", async () => {
 });
 
 test("scaffoldProject appends dist/ to a custom template's .gitignore without clobbering it", async () => {
-  const templateDir = await mkdtemp(path.join(tmpdir(), "pmd-tpl-gitignore-"));
+  const templateDir = await mkdtemp(path.join(tmpdir(), "gutterpress-tpl-gitignore-"));
   const parent = await tmpParent();
   try {
     await writeFile(path.join(templateDir, "manifest.yaml"), "title: \"{{TITLE}}\"\n", "utf8");
@@ -326,7 +310,7 @@ test("scaffoldProject appends dist/ to a custom template's .gitignore without cl
 });
 
 test("scaffoldProject leaves a custom template's .gitignore untouched when it already ignores dist/", async () => {
-  const templateDir = await mkdtemp(path.join(tmpdir(), "pmd-tpl-gitignore-has-dist-"));
+  const templateDir = await mkdtemp(path.join(tmpdir(), "gutterpress-tpl-gitignore-has-dist-"));
   const parent = await tmpParent();
   try {
     await writeFile(path.join(templateDir, "manifest.yaml"), "title: \"{{TITLE}}\"\n", "utf8");
@@ -350,7 +334,7 @@ test("scaffoldProject leaves a custom template's .gitignore untouched when it al
 });
 
 test("adoptFolder writes a .gitignore excluding dist/ when the folder has none", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-gitignore-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-adopt-gitignore-"));
   await writeFile(path.join(dir, "doc.md"), "# Doc\n", "utf8");
   await adoptFolder({ dir, versionHistory: "none" });
   const gitignore = await readFile(path.join(dir, ".gitignore"), "utf8");
@@ -359,7 +343,7 @@ test("adoptFolder writes a .gitignore excluding dist/ when the folder has none",
 });
 
 test("adoptFolder appends dist/ to an existing .gitignore without overwriting it", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-adopt-gitignore-existing-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-adopt-gitignore-existing-"));
   await writeFile(path.join(dir, "doc.md"), "# Doc\n", "utf8");
   await writeFile(path.join(dir, ".gitignore"), "*.log", "utf8"); // no trailing newline
   await adoptFolder({ dir, versionHistory: "none" });

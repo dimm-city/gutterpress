@@ -28,14 +28,14 @@ import {
 // `node:url`/`node:module`). The types/values are re-exported below so existing
 // callers (`import { applyPlugins, ... } from "./plugins"`) are unaffected.
 import type {
-  PrintMdPlugin,
-  PrintMdPluginMetadata,
+  GutterpressPlugin,
+  GutterpressPluginMetadata,
   LoadedPlugin,
 } from "./renderer";
 export type {
-  PrintMdPlugin,
-  PrintMdPluginMetadata,
-  PrintMdPluginExport,
+  GutterpressPlugin,
+  GutterpressPluginMetadata,
+  GutterpressPluginExport,
   LoadedPlugin,
 } from "./renderer";
 export { applyPlugins, collectPluginCss } from "./renderer";
@@ -251,7 +251,7 @@ function ensureVendorCjsResolver(): void {
 }
 
 async function getIsolatedVendorBase(): Promise<string> {
-  isolatedVendorBase ??= mkdtemp(join(tmpdir(), "print-md-plugin-loads-"));
+  isolatedVendorBase ??= mkdtemp(join(tmpdir(), "gutterpress-plugin-loads-"));
   const base = await isolatedVendorBase;
   isolatedVendorBasePath = base;
   ensureExitCleanupRegistered();
@@ -686,7 +686,7 @@ export function clearVendoredPluginResolver(
  * Resolution order:
  *   1. Receipt-verified project-local vendor tree, when one exists
  *   2. User's project node_modules (legacy unpinned entries)
- *   3. print-md's own dependencies — for built-in/legacy plugins
+ *   3. gutterpress's own dependencies — for built-in/legacy plugins
  *
  * Loading never performs network access. Installation is an explicit
  * `addNpmPlugin` action which vendors first and records an exact version.
@@ -729,7 +729,7 @@ async function loadNpmPackage(
     // Not in user's project — fall through
   }
 
-  // print-md's own dependencies.
+  // gutterpress's own dependencies.
   try {
     return await import(packageName);
   } catch {
@@ -770,19 +770,19 @@ function extractPluginExports(
   pluginRef: string,
   exportName?: string,
 ): {
-  plugin: PrintMdPlugin;
-  metadata?: PrintMdPluginMetadata;
+  plugin: GutterpressPlugin;
+  metadata?: GutterpressPluginMetadata;
   css?: string;
 } {
   const mod = pluginModule !== null && (typeof pluginModule === "object" || typeof pluginModule === "function")
     ? pluginModule as Record<string, unknown>
     : {};
-  let plugin: PrintMdPlugin | undefined;
-  let metadata = mod.metadata as PrintMdPluginMetadata | undefined;
+  let plugin: GutterpressPlugin | undefined;
+  let metadata = mod.metadata as GutterpressPluginMetadata | undefined;
   let css = mod.css as string | undefined;
 
   if (exportName && typeof mod[exportName] === "function") {
-    plugin = mod[exportName] as PrintMdPlugin;
+    plugin = mod[exportName] as GutterpressPlugin;
   } else if (exportName) {
     const available = Object.entries(mod)
       .filter(([, value]) => typeof value === "function")
@@ -793,17 +793,17 @@ function extractPluginExports(
         (available.length > 0 ? ` Available function exports: ${available.join(", ")}.` : ""),
     );
   } else if (typeof mod.default === "function") {
-    plugin = mod.default as PrintMdPlugin;
+    plugin = mod.default as GutterpressPlugin;
   } else if (typeof pluginModule === "function") {
-    plugin = pluginModule as PrintMdPlugin;
+    plugin = pluginModule as GutterpressPlugin;
   } else if (
     typeof mod.default === "object" &&
     mod.default !== null &&
     typeof (mod.default as Record<string, unknown>).default === "function"
   ) {
     const inner = mod.default as Record<string, unknown>;
-    plugin = inner.default as PrintMdPlugin;
-    metadata = (inner.metadata as PrintMdPluginMetadata | undefined) ?? metadata;
+    plugin = inner.default as GutterpressPlugin;
+    metadata = (inner.metadata as GutterpressPluginMetadata | undefined) ?? metadata;
     css = (inner.css as string | undefined) ?? css;
   }
 
@@ -850,7 +850,7 @@ export function __resetPathPluginCacheForTests(): void {
 // pointing at the edited file busts it (Bun follows symlinks to their
 // realpath before the registry lookup). Since the standalone CLI binary
 // (`bun build --compile`, §1) runs on Bun's own embedded runtime for real
-// end users of `print-md preview`, a query-only bust would silently never
+// end users of `gutterpress preview`, a query-only bust would silently never
 // take effect there. A hard link IS a distinct realpath (unlike a symlink, it
 // has no "target" to resolve through), so importing a same-directory shadow
 // hard link named by mtime forces a genuinely fresh module on BOTH runtimes,
@@ -884,7 +884,7 @@ function shadowPathFor(pluginPath: string, mtimeMs: number): string {
   const ext = extname(pluginPath);
   const stem = basename(pluginPath, ext);
   const token = String(mtimeMs).replace(/\./g, "-");
-  return join(dirname(pluginPath), `.${stem}.pmd-reload-${token}${ext}`);
+  return join(dirname(pluginPath), `.${stem}.gutterpress-reload-${token}${ext}`);
 }
 
 /**
@@ -966,7 +966,7 @@ export async function loadPlugin(
 
   // Built-in opt-in plugins resolve from the bundled registry — no project
   // install, no network, works offline and in the compiled binary. This is the
-  // happy path for the viewer's recommended plugins.
+  // happy path for the desktop's recommended plugins.
   if (
     !config.path &&
     !config.version &&
@@ -993,7 +993,7 @@ export async function loadPlugin(
 
       // Always route through the mtime cache. A bare
       // `import(pathToFileURL(...).href)` is NOT freshness-safe when the
-      // process outlives one build: the viewer runs `runBuild` in-process in
+      // process outlives one build: the desktop runs `runBuild` in-process in
       // the long-lived Electron host (a memoized lib import, never a child
       // process), so a second build/export in the same session would serve the
       // FIRST build's plugin module from Node's ESM registry (which never

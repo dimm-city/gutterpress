@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // tools/check-render-purity.mjs — §8 renderer-purity guardrail.
 //
-// CLAUDE.md §8 requires the viewer renderer bundle to stay "PWA-clean": it may
-// value-import exactly one lib entry (`@dimm-city/print-md/render`), and that
-// entry MUST remain free of host/node code. This script scans the built viewer
+// CLAUDE.md §8 requires the desktop renderer bundle to stay "PWA-clean": it may
+// value-import exactly one lib entry (`gutterpress/render`), and that
+// entry MUST remain free of host/node code. This script scans the built desktop
 // SPA output and FAILS (exit 1) if any forbidden host/node marker appears in
 // it. It is the ONE implementation of the client-bundle check — CI runs it
-// (.github/workflows/ci.yml) and the viewer's `npm run build` runs it with
+// (.github/workflows/ci.yml) and the desktop app's `npm run build` runs it with
 // --strict, so the two invocations can never drift.
 //
 // Detection policy (three layers):
@@ -26,14 +26,14 @@
 //      vendored files.
 //
 // Usage:  node tools/check-render-purity.mjs [buildDir] [--strict]
-//   buildDir defaults to packages/viewer/build/client (relative to the repo
+//   buildDir defaults to packages/desktop/build/client (relative to the repo
 //   root) — the browser assets adapter-node emits. It MUST NOT default to the
 //   whole build/ tree: adapter-node also emits build/server/ + build/handler.js
 //   (the compiled +server.ts host routes), which are host Node code BY DESIGN
 //   (§8) and legitimately contain node:fs/isomorphic-git/etc. Scoping to
 //   build/client/ is the whole point of the §8 verification contract.
 //   Without --strict, an absent dir prints a skip notice and exits 0 (safe to
-//   run before a build). With --strict — the viewer build's mode — an absent
+//   run before a build). With --strict — the desktop build's mode — an absent
 //   dir OR zero scanned files is a FAILURE: a gate that scans nothing has
 //   silently stopped guarding.
 //
@@ -103,7 +103,7 @@ function main() {
   const dirArg = args.find((a) => !a.startsWith("--"));
   const buildDir = dirArg
     ? dirArg
-    : join(repoRoot(), "packages", "viewer", "build", "client");
+    : join(repoRoot(), "packages", "desktop", "build", "client");
 
   if (!existsSync(buildDir)) {
     if (strict) {
@@ -113,7 +113,7 @@ function main() {
       process.exit(1);
     }
     console.log(
-      `check-render-purity: build dir not found (${buildDir}) — skipping (run after the viewer build).`,
+      `check-render-purity: build dir not found (${buildDir}) — skipping (run after the desktop build).`,
     );
     process.exit(0);
   }
@@ -143,7 +143,7 @@ function main() {
       console.error(`  ${token}  ->  ${file}`);
     }
     console.error(
-      "\nThe SPA must only value-import @dimm-city/print-md/render, which must stay node-free.\n" +
+      "\nThe SPA must only value-import gutterpress/render, which must stay node-free.\n" +
         "Move the Node work into an api/**/+server.ts route (or the IPC bridge) and call it\n" +
         "through the platform adapter; use `import type` for types.",
     );

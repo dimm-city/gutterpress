@@ -16,7 +16,7 @@
 
    Quick start:
      1. Edit § 1 BRAND TOKENS — colors, fonts, type scale.
-     2. Run `print-md preview design-guide` to see changes live.
+     2. Run `gutterpress preview design-guide` to see changes live.
      3. Add book-specific rules to § 8 YOUR BOOK LAYER.
      4. Commit — book and guide stay in sync automatically.
    ============================================================================= */
@@ -236,7 +236,7 @@ body {
 }
 
 /* Paged.js generates transparent .pagedjs_sheet elements — explicitly set the paper
-   colour here so the viewer canvas colour never bleeds onto the visible page surface. */
+   colour here so the desktop canvas colour never bleeds onto the visible page surface. */
 .pagedjs_sheet {
   background-color: var(--color-paper);
 }

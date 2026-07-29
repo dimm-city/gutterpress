@@ -101,7 +101,7 @@ async function makeDir(prefix: string): Promise<string> {
 
 describe("executeValidation manifest resolution", () => {
   test("--manifest points at a specific (non-standard-named) manifest file", async () => {
-    const dir = await makeDir("pmd-vexec-manifest-flag-");
+    const dir = await makeDir("gutterpress-vexec-manifest-flag-");
     try {
       const manifestPath = path.join(dir, "custom-manifest.yaml");
       await writeFile(manifestPath, "title: From Manifest Flag\n", "utf-8");
@@ -116,7 +116,7 @@ describe("executeValidation manifest resolution", () => {
   });
 
   test("--input directory loads manifest.yaml from that directory when --manifest is absent", async () => {
-    const dir = await makeDir("pmd-vexec-input-dir-");
+    const dir = await makeDir("gutterpress-vexec-input-dir-");
     try {
       await writeFile(path.join(dir, "manifest.yaml"), "title: From Input Dir\n", "utf-8");
       stubCheckExecution();
@@ -130,7 +130,7 @@ describe("executeValidation manifest resolution", () => {
   });
 
   test("an explicit missing --manifest used by validate/audit/preflight fails before checks run", async () => {
-    const missing = path.join(tmpdir(), `pmd-vexec-missing-manifest-${Date.now()}.yaml`);
+    const missing = path.join(tmpdir(), `gutterpress-vexec-missing-manifest-${Date.now()}.yaml`);
     stubCheckExecution();
 
     await expect(executeValidation({ manifest: missing })).rejects.toThrow(UsageError);
@@ -145,7 +145,7 @@ describe("executeValidation manifest resolution", () => {
 
 describe("executeValidation --pdf existence guard", () => {
   test("throws 'File not found' for a --pdf path that doesn't exist, before running any checks", async () => {
-    const missing = path.join(tmpdir(), "pmd-vexec-missing-" + Date.now() + ".pdf");
+    const missing = path.join(tmpdir(), "gutterpress-vexec-missing-" + Date.now() + ".pdf");
     stubCheckExecution();
 
     await expect(executeValidation({ pdf: missing })).rejects.toThrow(
@@ -166,7 +166,7 @@ describe("executeValidation profile handling", () => {
   });
 
   test("profile: dtrpg locks the DTRPG preset geometry/ink/PDF-X defaults onto config", async () => {
-    const dir = await makeDir("pmd-vexec-dtrpg-");
+    const dir = await makeDir("gutterpress-vexec-dtrpg-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       stubCheckExecution();
@@ -188,7 +188,7 @@ describe("executeValidation profile handling", () => {
   });
 
   test("profile: dtrpg synthesizes an error for each required check skipped due to missing tools", async () => {
-    const dir = await makeDir("pmd-vexec-dtrpg-skip-");
+    const dir = await makeDir("gutterpress-vexec-dtrpg-skip-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       const skippedId = DTRPG_STRICT_PDF_CHECKS[0];
@@ -215,7 +215,7 @@ describe("executeValidation profile handling", () => {
   });
 
   test("without a profile, a skipped tool never synthesizes a required-check error", async () => {
-    const dir = await makeDir("pmd-vexec-no-profile-skip-");
+    const dir = await makeDir("gutterpress-vexec-no-profile-skip-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       stubCheckExecution({
@@ -236,7 +236,7 @@ describe("executeValidation profile handling", () => {
 
 describe("executeValidation phase auto-detection", () => {
   test("--pdf alone (no --input) auto-selects post-build", async () => {
-    const dir = await makeDir("pmd-vexec-phase-pdf-");
+    const dir = await makeDir("gutterpress-vexec-phase-pdf-");
     try {
       const pdfPath = path.join(dir, "book.pdf");
       await writeFile(pdfPath, "%PDF-1.4\n", "utf-8");
@@ -251,7 +251,7 @@ describe("executeValidation phase auto-detection", () => {
   });
 
   test("--input alone (no --pdf) auto-selects pre-build", async () => {
-    const dir = await makeDir("pmd-vexec-phase-input-");
+    const dir = await makeDir("gutterpress-vexec-phase-input-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       stubCheckExecution();
@@ -273,7 +273,7 @@ describe("executeValidation phase auto-detection", () => {
   });
 
   test("both --pdf and --input given leaves phase undefined (both phases run against both)", async () => {
-    const dir = await makeDir("pmd-vexec-phase-both-");
+    const dir = await makeDir("gutterpress-vexec-phase-both-");
     try {
       const pdfPath = path.join(dir, "book.pdf");
       await writeFile(pdfPath, "%PDF-1.4\n", "utf-8");
@@ -293,7 +293,7 @@ describe("executeValidation phase auto-detection", () => {
 
 describe("executeValidation context derived from --input", () => {
   test("detects book.html in the resolved output dir and includes it as context.htmlPath", async () => {
-    const dir = await makeDir("pmd-vexec-html-in-");
+    const dir = await makeDir("gutterpress-vexec-html-in-");
     try {
       // No manifest — title defaults to "Document" (manifest.ts), so the
       // convention output dir (output-paths.ts) is `dist/document/`.
@@ -315,7 +315,7 @@ describe("executeValidation context derived from --input", () => {
   });
 
   test("no book.html in the output dir leaves context.htmlPath undefined", async () => {
-    const dir = await makeDir("pmd-vexec-no-html-in-");
+    const dir = await makeDir("gutterpress-vexec-no-html-in-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       stubCheckExecution();
@@ -339,7 +339,7 @@ describe("executeValidation context derived from --input", () => {
 
 describe("executeValidation markdown/css file-set resolvers", () => {
   test("markdown fallback is the non-recursive root listing, not a recursive glob", async () => {
-    const dir = await makeDir("pmd-vexec-md-nonrecursive-");
+    const dir = await makeDir("gutterpress-vexec-md-nonrecursive-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       // A subdirectory's .md file must NOT be picked up when source.files is
@@ -360,7 +360,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
   });
 
   test("manifest source.files (explicit order) is used verbatim, excluding unlisted root .md files", async () => {
-    const dir = await makeDir("pmd-vexec-md-explicit-");
+    const dir = await makeDir("gutterpress-vexec-md-explicit-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# One\n", "utf-8");
       await writeFile(path.join(dir, "chapter-02.md"), "# Two\n", "utf-8");
@@ -386,7 +386,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
   });
 
   test("css fallback resolves the SAME active stylesheet the renderer would link, not every .css in the project", async () => {
-    const dir = await makeDir("pmd-vexec-css-active-only-");
+    const dir = await makeDir("gutterpress-vexec-css-active-only-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       // Conventional active stylesheet (style-resolver.ts FALLBACK_PRIORITY).
@@ -414,7 +414,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
   });
 
   test("manifest styles: list is resolved verbatim (active set), excluding other project .css files", async () => {
-    const dir = await makeDir("pmd-vexec-css-explicit-");
+    const dir = await makeDir("gutterpress-vexec-css-explicit-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       await mkdir(path.join(dir, "css"), { recursive: true });
@@ -440,7 +440,7 @@ describe("executeValidation markdown/css file-set resolvers", () => {
 
 describe("executeValidation assetDirs derivation", () => {
   test("a clean project (no node_modules/.git/dist) scans the root wholesale", async () => {
-    const dir = await makeDir("pmd-vexec-assets-clean-");
+    const dir = await makeDir("gutterpress-vexec-assets-clean-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       await mkdir(path.join(dir, "images"), { recursive: true });
@@ -458,7 +458,7 @@ describe("executeValidation assetDirs derivation", () => {
   test("a project with node_modules/.git/dist STILL scans the root wholesale", async () => {
     // The directory list must never shrink: pruning happens at the glob level
     // (ASSET_SCAN_IGNORE_GLOBS), so root-level files stay covered after a build.
-    const dir = await makeDir("pmd-vexec-assets-dirty-");
+    const dir = await makeDir("gutterpress-vexec-assets-dirty-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       await writeFile(path.join(dir, "cover.png"), "fake", "utf-8");
@@ -479,7 +479,7 @@ describe("executeValidation assetDirs derivation", () => {
 
 describe("executeValidation category/only/skip parsing", () => {
   test("comma-separated --category/--only/--skip are trimmed into arrays on runnerOptions", async () => {
-    const dir = await makeDir("pmd-vexec-csv-");
+    const dir = await makeDir("gutterpress-vexec-csv-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       stubCheckExecution();
@@ -561,7 +561,7 @@ describe("executeAndReport", () => {
  */
 describe("asset scan coverage survives a build (root files + dist present)", () => {
   test("a root-level image is still scanned when dist/ exists", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-assetscan-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-assetscan-"));
     try {
       await mkdir(path.join(dir, "dist"), { recursive: true });
       await writeFile(path.join(dir, "cover.png"), "x");
@@ -576,7 +576,7 @@ describe("asset scan coverage survives a build (root files + dist present)", () 
   });
 
   test("the build's own copies under dist/ are NOT reported as author assets", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-assetscan-dist-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-assetscan-dist-"));
     try {
       await mkdir(path.join(dir, "dist"), { recursive: true });
       await writeFile(path.join(dir, "dist", "built.png"), "x");
@@ -590,7 +590,7 @@ describe("asset scan coverage survives a build (root files + dist present)", () 
   });
 
   test("node_modules and .git are excluded but sibling project dirs are kept", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-assetscan-ig-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-assetscan-ig-"));
     try {
       await mkdir(path.join(dir, "node_modules", "pkg"), { recursive: true });
       await mkdir(path.join(dir, ".git"), { recursive: true });
@@ -608,7 +608,7 @@ describe("asset scan coverage survives a build (root files + dist present)", () 
   });
 
   test("a root-level FONT is still scanned when dist/ exists", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-assetscan-font-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-assetscan-font-"));
     try {
       await mkdir(path.join(dir, "dist"), { recursive: true });
       await writeFile(path.join(dir, "body.woff2"), "x");

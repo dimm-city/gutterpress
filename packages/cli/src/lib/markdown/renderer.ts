@@ -23,7 +23,7 @@ import markdownItPaged from "./markdown-it-paged.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
 // Optional, opt-in markdown features. Bundled so they're available WITHOUT any
-// install step — enabling one (via the manifest / the viewer's plugin manager)
+// install step — enabling one (via the manifest / the desktop's plugin manager)
 // resolves it from this registry instead of the project's node_modules. This is
 // what makes "add a plugin → it just works, offline" true for non-technical
 // authors, and works in the `bun build --compile` binary too (static imports).
@@ -36,15 +36,15 @@ import { registerImageRule } from "./images";
 /**
  * Plugin author API.
  *
- * A print-md plugin is a standard markdown-it plugin — any plugin from npm
+ * A gutterpress plugin is a standard markdown-it plugin — any plugin from npm
  * with the signature `(md, options) => void` will work, including the entire
  * markdown-it plugin ecosystem.
  *
- * Authors of *new* plugins can `import type { PrintMdPlugin } from
- * '@dimm-city/print-md'` for type-only support; no runtime dependency on
- * print-md is required (or recommended).
+ * Authors of *new* plugins can `import type { GutterpressPlugin } from
+ * 'gutterpress'` for type-only support; no runtime dependency on
+ * gutterpress is required (or recommended).
  */
-export type PrintMdPlugin = (
+export type GutterpressPlugin = (
   md: MarkdownIt,
   options?: Record<string, unknown>
 ) => void;
@@ -53,7 +53,7 @@ export type PrintMdPlugin = (
  * Optional metadata a plugin may export alongside its default plugin function.
  * Surfaced in load-time log lines so users can see which plugins are active.
  */
-export interface PrintMdPluginMetadata {
+export interface GutterpressPluginMetadata {
   name?: string;
   version?: string;
   description?: string;
@@ -65,15 +65,15 @@ export interface PrintMdPluginMetadata {
  * Full shape a plugin module may export. Only `default` is required.
  *
  * ```ts
- * const plugin: PrintMdPlugin = (md) => { ... };
+ * const plugin: GutterpressPlugin = (md) => { ... };
  * export default plugin;
- * export const metadata: PrintMdPluginMetadata = { name: 'my-plugin', version: '1.0.0' };
+ * export const metadata: GutterpressPluginMetadata = { name: 'my-plugin', version: '1.0.0' };
  * export const css = `.my-class { color: red; }`;
  * ```
  */
-export interface PrintMdPluginExport {
-  default: PrintMdPlugin;
-  metadata?: PrintMdPluginMetadata;
+export interface GutterpressPluginExport {
+  default: GutterpressPlugin;
+  metadata?: GutterpressPluginMetadata;
   /** CSS injected into <head> after user stylesheets. Use sparingly — has equal cascade specificity. */
   css?: string;
 }
@@ -81,8 +81,8 @@ export interface PrintMdPluginExport {
 /** Internal representation of a loaded plugin, ready for `md.use()`. */
 export interface LoadedPlugin {
   name: string;
-  plugin: PrintMdPlugin;
-  metadata?: PrintMdPluginMetadata;
+  plugin: GutterpressPlugin;
+  metadata?: GutterpressPluginMetadata;
   css?: string;
   options: Record<string, unknown>;
 }
@@ -98,7 +98,7 @@ function unwrapPlugin<T>(plugin: T): T {
 
 /**
  * Bundled, opt-in markdown plugins keyed by their npm name. Enabling one of
- * these (manifest `plugins: - <name>` or the viewer's plugin manager) resolves
+ * these (manifest `plugins: - <name>` or the desktop's plugin manager) resolves
  * it from HERE — no project install, no network, works offline and in the
  * compiled binary. The plugin loader (`plugins.ts`) consults this map before
  * trying to resolve a package from the project's node_modules, so a
@@ -106,11 +106,11 @@ function unwrapPlugin<T>(plugin: T): T {
  * error. (attrs/footnote/deflist are NOT here — they are always-on defaults
  * applied unconditionally below.)
  */
-export const BUILTIN_OPTIONAL_PLUGINS: Record<string, PrintMdPlugin> = {
-  "markdown-it-mark": unwrapPlugin(markdownItMark) as PrintMdPlugin,
-  "markdown-it-sub": unwrapPlugin(markdownItSub) as PrintMdPlugin,
-  "markdown-it-sup": unwrapPlugin(markdownItSup) as PrintMdPlugin,
-  "markdown-it-abbr": unwrapPlugin(markdownItAbbr) as PrintMdPlugin,
+export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
+  "markdown-it-mark": unwrapPlugin(markdownItMark) as GutterpressPlugin,
+  "markdown-it-sub": unwrapPlugin(markdownItSub) as GutterpressPlugin,
+  "markdown-it-sup": unwrapPlugin(markdownItSup) as GutterpressPlugin,
+  "markdown-it-abbr": unwrapPlugin(markdownItAbbr) as GutterpressPlugin,
 };
 
 /**

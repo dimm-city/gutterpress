@@ -1,7 +1,7 @@
 /**
  * Regression test for maintainer P1 (PR #98, build-runner.ts:139/167):
  *
- * "The guide says `print-md build ./my-book` writes dist next to the
+ * "The guide says `gutterpress build ./my-book` writes dist next to the
  * project, but this function resolves dist against the command CWD. I
  * scaffolded four projects and built them by absolute input path from the
  * repository; all wrote to one repository dist/book.html and overwrote one
@@ -35,12 +35,12 @@ afterEach(async () => {
 
 test("resolveBuildContext resolves the conventional output dir against the project's manifestDir, not the CWD (cross-project dist collision)", async () => {
   // Two separate scaffolded projects, at different absolute paths.
-  const projA = await mkdtemp(join(tmpdir(), "pmd-proj-a-"));
-  const projB = await mkdtemp(join(tmpdir(), "pmd-proj-b-"));
+  const projA = await mkdtemp(join(tmpdir(), "gutterpress-proj-a-"));
+  const projB = await mkdtemp(join(tmpdir(), "gutterpress-proj-b-"));
   // A third, unrelated CWD the "repository" build is invoked from — mirrors
   // the maintainer's repro of building by absolute input path from the repo
   // root while neither project's dist lived under that repo.
-  const repoCwd = await mkdtemp(join(tmpdir(), "pmd-repo-cwd-"));
+  const repoCwd = await mkdtemp(join(tmpdir(), "gutterpress-repo-cwd-"));
   dirsToClean.push(projA, projB, repoCwd);
   await Bun.write(join(projA, "manifest.yaml"), "title: Project A\n");
   await Bun.write(join(projB, "manifest.yaml"), "title: Project B\n");
@@ -69,8 +69,8 @@ test("resolveBuildContext resolves the conventional output dir against the proje
 });
 
 test("resolveBuildContext preserves an explicit --out exactly (no re-resolution against manifestDir or CWD)", async () => {
-  const projA = await mkdtemp(join(tmpdir(), "pmd-proj-explicit-"));
-  const repoCwd = await mkdtemp(join(tmpdir(), "pmd-repo-cwd2-"));
+  const projA = await mkdtemp(join(tmpdir(), "gutterpress-proj-explicit-"));
+  const repoCwd = await mkdtemp(join(tmpdir(), "gutterpress-repo-cwd2-"));
   dirsToClean.push(projA, repoCwd);
   await Bun.write(join(projA, "manifest.yaml"), "title: Project A\n");
 
@@ -94,8 +94,8 @@ test("resolveBuildContext preserves an explicit --out exactly (no re-resolution 
 test("two books anchored in ONE tree get separate output dirs with no configuration", async () => {
   // The case a single shared `dist` could never handle however `output.dir` was
   // configured — and the reason the field is gone rather than re-tuned.
-  const tree = await mkdtemp(join(tmpdir(), "pmd-multi-book-"));
-  const repoCwd = await mkdtemp(join(tmpdir(), "pmd-repo-cwd3-"));
+  const tree = await mkdtemp(join(tmpdir(), "gutterpress-multi-book-"));
+  const repoCwd = await mkdtemp(join(tmpdir(), "gutterpress-repo-cwd3-"));
   dirsToClean.push(tree, repoCwd);
   await Bun.write(join(tree, "book-01", "manifest.yaml"), "title: Dragon Heist\n");
   await Bun.write(join(tree, "book-02", "manifest.yaml"), "title: Design Guide\n");
@@ -119,7 +119,7 @@ test("two books anchored in ONE tree get separate output dirs with no configurat
 });
 
 test("a manifest still carrying the removed `output` block fails loudly", async () => {
-  const proj = await mkdtemp(join(tmpdir(), "pmd-proj-legacy-"));
+  const proj = await mkdtemp(join(tmpdir(), "gutterpress-proj-legacy-"));
   dirsToClean.push(proj);
   await Bun.write(join(proj, "manifest.yaml"), "title: Legacy\noutput:\n  dir: build\n");
 

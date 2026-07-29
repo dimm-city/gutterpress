@@ -149,17 +149,17 @@ interface AliceBobHarness {
  */
 async function setupAliceBob(): Promise<AliceBobHarness> {
   // Shared bare-like server repo.
-  const serverDir = await tempDir("pmd-nff-server-");
+  const serverDir = await tempDir("gutterpress-nff-server-");
   await createFixtureRepo(serverDir);
   const server = await startGitServer(serverDir);
 
   // Alice clones.
-  const aliceParent = await tempDir("pmd-nff-alice-");
+  const aliceParent = await tempDir("gutterpress-nff-alice-");
   const aliceDir = path.join(aliceParent, "alice-project");
   await cloneRepository({ url: server.url, dir: aliceDir });
 
   // Bob clones.
-  const bobParent = await tempDir("pmd-nff-bob-");
+  const bobParent = await tempDir("gutterpress-nff-bob-");
   const bobDir = path.join(bobParent, "bob-project");
   await cloneRepository({ url: server.url, dir: bobDir });
 
@@ -199,15 +199,15 @@ async function setupAliceBob(): Promise<AliceBobHarness> {
  * SAME file, so syncProject returns 'conflict'.
  */
 async function setupSameLineConflict(): Promise<AliceBobHarness> {
-  const serverDir = await tempDir("pmd-nff-conflict-server-");
+  const serverDir = await tempDir("gutterpress-nff-conflict-server-");
   await createFixtureRepo(serverDir);
   const server = await startGitServer(serverDir);
 
-  const aliceParent = await tempDir("pmd-nff-conflict-alice-");
+  const aliceParent = await tempDir("gutterpress-nff-conflict-alice-");
   const aliceDir = path.join(aliceParent, "alice-project");
   await cloneRepository({ url: server.url, dir: aliceDir });
 
-  const bobParent = await tempDir("pmd-nff-conflict-bob-");
+  const bobParent = await tempDir("gutterpress-nff-conflict-bob-");
   const bobDir = path.join(bobParent, "bob-project");
   await cloneRepository({ url: server.url, dir: bobDir });
 
@@ -477,12 +477,12 @@ describe("recover (non_fast_forward)", () => {
   // ── Auth outcome → delegate shape ──────────────────────────────────────────
 
   test("auth error from server → retry_later or needs_user (not recovered)", async () => {
-    const serverDir = await tempDir("pmd-nff-auth-server-");
+    const serverDir = await tempDir("gutterpress-nff-auth-server-");
     await createFixtureRepo(serverDir);
     const server = await startGitServer(serverDir, {
       requireAuth: { username: "writer", password: "secret" },
     });
-    const parent = await tempDir("pmd-nff-auth-client-");
+    const parent = await tempDir("gutterpress-nff-auth-client-");
     const clientDir = path.join(parent, "project");
     // Clone with the credential.
     await cloneRepository({
@@ -532,10 +532,10 @@ describe("recover (non_fast_forward)", () => {
   // ── Offline → retry_later ───────────────────────────────────────────────────
 
   test("offline (dead remote URL) → retry_later", async () => {
-    const serverDir = await tempDir("pmd-nff-offline-server-");
+    const serverDir = await tempDir("gutterpress-nff-offline-server-");
     await createFixtureRepo(serverDir);
     const server = await startGitServer(serverDir);
-    const parent = await tempDir("pmd-nff-offline-client-");
+    const parent = await tempDir("gutterpress-nff-offline-client-");
     const clientDir = path.join(parent, "project");
     await cloneRepository({ url: server.url, dir: clientDir });
 
@@ -583,10 +583,10 @@ describe("recover (non_fast_forward)", () => {
   // syncProject returns 'synced' and recover() should return 'recovered'.
 
   test("alice only has unpushed commits (no bob) → recovered", async () => {
-    const serverDir = await tempDir("pmd-nff-solo-server-");
+    const serverDir = await tempDir("gutterpress-nff-solo-server-");
     await createFixtureRepo(serverDir);
     const server = await startGitServer(serverDir);
-    const parent = await tempDir("pmd-nff-solo-client-");
+    const parent = await tempDir("gutterpress-nff-solo-client-");
     const clientDir = path.join(parent, "project");
     await cloneRepository({ url: server.url, dir: clientDir });
 

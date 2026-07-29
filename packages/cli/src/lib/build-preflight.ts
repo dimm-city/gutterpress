@@ -54,7 +54,7 @@ export async function preflightBuildTools(
   const missing: MissingTool[] = [];
 
   // Chromium — required for any rendered output, UNLESS an external PDF renderer
-  // is injected (the Electron viewer renders with its own bundled Chromium).
+  // is injected (the Electron desktop renders with its own bundled Chromium).
   if (!opts.pdfRenderer && !(await resolveChromiumExecutable())) {
     // requireChromiumExecutable() throws with multi-line install instructions
     // that include all three platforms. Defer to it for the canonical message.
@@ -82,7 +82,7 @@ export async function preflightBuildTools(
     .map((m) => `  • ${m.name}\n${m.installHint}`)
     .join("\n\n");
   throw new BuildError(
-    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set GHOSTSCRIPT_PATH, CHROMIUM_PATH, or system PATH so print-md can find them. See the User Guide Chapter 8 (System Setup) at examples/print-md-user-guide/08-system-setup.md for the full per-feature matrix.`,
+    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set GHOSTSCRIPT_PATH, CHROMIUM_PATH, or system PATH so gutterpress can find them. See the User Guide Chapter 8 (System Setup) at examples/gutterpress-user-guide/08-system-setup.md for the full per-feature matrix.`,
     2
   );
 }

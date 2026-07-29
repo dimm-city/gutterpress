@@ -21,10 +21,10 @@ env:
   PUPPETEER_SKIP_DOWNLOAD: 'true'
   PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'true'
   # GitHub App client id for the device-flow auth (ADR 0006 D1). Public by
-  # design (not a secret). The viewer's electron-vite define bakes it into the
+  # design (not a secret). The desktop's electron-vite define bakes it into the
   # packaged main process; the lib also carries it as an in-code default, so
   # this env override only matters if the registration is ever rotated.
-  PRINT_MD_GITHUB_CLIENT_ID: ${{ vars.PRINT_MD_GITHUB_CLIENT_ID }}
+  GUTTERPRESS_GITHUB_CLIENT_ID: ${{ vars.GUTTERPRESS_GITHUB_CLIENT_ID }}
 
 jobs:
   # ── 1. Gate ────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ jobs:
         run: |
           echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
 
-      # The viewer suite imports @dimm-city/print-md by name (resolves to its
+      # The desktop suite imports gutterpress by name (resolves to its
       # built dist/), so build the package before running all-package tests.
       - name: Build package dist
         run: bun run build
@@ -97,9 +97,9 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           DEFAULT: ${{ github.event.repository.default_branch }}
         run: |
-          # Normalize: strip any leading non-semver prefix such as "print-md v" or bare "v"
-          # so dispatching "print-md v0.7.1-beta.2" or "v1.2.3" behaves the same as "0.7.1-beta.2".
-          VERSION="$(echo "$VERSION" | sed -E 's/^[^0-9]*([0-9])/\1/')"
+          # Accept the conventional optional tag prefix while keeping the
+          # release input itself strictly product-neutral.
+          VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$ ]]; then
@@ -143,7 +143,7 @@ jobs:
         run: |
           node -e "
             const fs = require('fs');
-            for (const pkg of ['packages/cli/package.json', 'packages/viewer/package.json']) {
+            for (const pkg of ['packages/cli/package.json', 'packages/desktop/package.json']) {
               const p = JSON.parse(fs.readFileSync(pkg, 'utf8'));
               p.version = process.env.VERSION;
               fs.writeFileSync(pkg, JSON.stringify(p, null, 2) + '\n');
@@ -162,7 +162,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add packages/cli/package.json packages/viewer/package.json bun.lock
+           git add packages/cli/package.json packages/desktop/package.json bun.lock
 
           if ! git diff --cached --quiet; then
             git commit -m "chore: bump version to $VERSION"
@@ -209,18 +209,18 @@ jobs:
   #
   # All four jobs fan out from `version` simultaneously:
   #   build-cli          — 5 CLI binaries via Bun cross-compile (ubuntu)
-  #   build-viewer-linux   — Linux AppImage (ubuntu)
-  #   build-viewer-windows — Windows installer + portable zip (windows)
-  #   build-viewer-mac     — macOS Intel + Apple Silicon DMGs (macos)
+  #   build-desktop-linux   — Linux AppImage (ubuntu)
+  #   build-desktop-windows — Windows installer + portable zip (windows)
+  #   build-desktop-mac     — macOS Intel + Apple Silicon DMGs (macos)
   #
   # All artifacts are uploaded as GitHub Actions artifacts and assembled
   # into the GitHub Release in one shot by the `github-release` job.
   #
-  # The viewer jobs are UNCONDITIONAL: every GitHub release is the viewer's
+  # The desktop jobs are UNCONDITIONAL: every GitHub release is the desktop's
   # electron-updater feed, so a release without the installers and the
   # latest.yml / latest-linux.yml feed files breaks update checks for every
   # user whose channel resolves to it (this shipped once, as 0.8.2-rc.1 —
-  # the former skip_viewer "RUNTIME release" mode was removed for this).
+  # the former skip_desktop "RUNTIME release" mode was removed for this).
 
   build-cli:
     name: CLI / ${{ matrix.artifact }}
@@ -230,15 +230,15 @@ jobs:
       matrix:
         include:
           - target: bun-linux-x64
-            artifact: print-md-cli-linux-x64
+            artifact: gutterpress-cli-linux-x64
           - target: bun-linux-arm64
-            artifact: print-md-cli-linux-arm64
+            artifact: gutterpress-cli-linux-arm64
           - target: bun-darwin-x64
-            artifact: print-md-cli-macos-x64
+            artifact: gutterpress-cli-macos-x64
           - target: bun-darwin-arm64
-            artifact: print-md-cli-macos-arm64
+            artifact: gutterpress-cli-macos-arm64
           - target: bun-windows-x64
-            artifact: print-md-cli-windows-x64.exe
+            artifact: gutterpress-cli-windows-x64.exe
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -268,26 +268,26 @@ jobs:
           # test only ran --version. `new` scaffolds from an embedded template,
           # so a broken extraction fails here instead of shipping. `--dir` is the
           # (existing) parent save location; the project lands in a slug subdir.
-          mkdir -p /tmp/pmd-smoke
-          "./${{ matrix.artifact }}" new "Smoke Test Book" --dir /tmp/pmd-smoke --template book --no-git
+          mkdir -p /tmp/gutterpress-smoke
+          "./${{ matrix.artifact }}" new "Smoke Test Book" --dir /tmp/gutterpress-smoke --template book --no-git
           echo "Scaffolded files:"
-          find /tmp/pmd-smoke -maxdepth 3 -type f | sort
+          find /tmp/gutterpress-smoke -maxdepth 3 -type f | sort
           # A scaffolded project must contain at least one markdown file and a
           # manifest — proof the embedded template extracted, not just that the
           # binary ran.
-          test -n "$(find /tmp/pmd-smoke -name '*.md' -print -quit)"
-          test -n "$(find /tmp/pmd-smoke -name 'manifest.yaml' -print -quit)"
+          test -n "$(find /tmp/gutterpress-smoke -name '*.md' -print -quit)"
+          test -n "$(find /tmp/gutterpress-smoke -name 'manifest.yaml' -print -quit)"
           # Exercise the compiled binary's registry installer and direct-entry
           # loader with a real plugin that imports a runtime dependency.
-          "./${{ matrix.artifact }}" plugin add markdown-it-highlightjs@4.3.0 /tmp/pmd-smoke/smoke-test-book
-          test -f /tmp/pmd-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/.print-md-install.json
-          test -f /tmp/pmd-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/node_modules/markdown-it-highlightjs/node_modules/highlight.js/package.json
+          "./${{ matrix.artifact }}" plugin add markdown-it-highlightjs@4.3.0 /tmp/gutterpress-smoke/smoke-test-book
+          test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/.gutterpress-install.json
+          test -f /tmp/gutterpress-smoke/smoke-test-book/plugins/npm/markdown-it-highlightjs/4.3.0/node_modules/markdown-it-highlightjs/node_modules/highlight.js/package.json
           # Cover the two npm archive/module shapes that have broken the
           # compiled installer in practice: @types' legacy tar root and a
           # package whose markdown-it plugin is a named export.
-          "./${{ matrix.artifact }}" plugin add markdown-it-anchor@9.2.1 /tmp/pmd-smoke/smoke-test-book
-          "./${{ matrix.artifact }}" plugin add markdown-it-emoji@3.0.0 /tmp/pmd-smoke/smoke-test-book --export full
-          "./${{ matrix.artifact }}" build /tmp/pmd-smoke/smoke-test-book --format html
+          "./${{ matrix.artifact }}" plugin add markdown-it-anchor@9.2.1 /tmp/gutterpress-smoke/smoke-test-book
+          "./${{ matrix.artifact }}" plugin add markdown-it-emoji@3.0.0 /tmp/gutterpress-smoke/smoke-test-book --export full
+          "./${{ matrix.artifact }}" build /tmp/gutterpress-smoke/smoke-test-book --format html
 
       - name: Upload binary
         uses: actions/upload-artifact@v6
@@ -296,8 +296,8 @@ jobs:
           path: ${{ matrix.artifact }}
           if-no-files-found: error
 
-  build-viewer-linux:
-    name: Viewer / Linux AppImage
+  build-desktop-linux:
+    name: Gutterpress desktop / Linux AppImage
     needs: version
     runs-on: ubuntu-latest
     steps:
@@ -307,7 +307,7 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      # audit F3: pin Node to match the Windows viewer build (which pins 22).
+      # audit F3: pin Node to match the Windows desktop build (which pins 22).
       # electron-builder runs under node/npm (see dist:* note below), so leaving
       # this to the runner's ambient default let the three platforms package
       # under different Node majors.
@@ -322,14 +322,14 @@ jobs:
         run: bun run build
         working-directory: packages/cli
 
-      # IMPORTANT: package the viewer with `npm run`, never `bun run`. The
+      # IMPORTANT: package the desktop with `npm run`, never `bun run`. The
       # `dist:*` scripts invoke electron-builder, which spawns worker processes
       # via `process.execPath`; under Bun that points at the Bun ELF binary and
       # the workers fail (Node can't parse it). Keep electron-builder on
       # node/npm. (See electron-builder.yml `npmRebuild: false` for the related
       # workspace:* guard.)
       - name: Build Linux AppImage
-        working-directory: packages/viewer
+        working-directory: packages/desktop
         run: npm run dist:linux
 
       # latest-linux.yml + .blockmap are the electron-updater feed files —
@@ -337,15 +337,15 @@ jobs:
       - name: Upload AppImage
         uses: actions/upload-artifact@v6
         with:
-          name: viewer-linux
+          name: gutterpress-desktop-linux
           path: |
-            packages/viewer/dist/*.AppImage
-            packages/viewer/dist/*.blockmap
-            packages/viewer/dist/latest-linux.yml
+            packages/desktop/dist/*.AppImage
+            packages/desktop/dist/*.blockmap
+            packages/desktop/dist/latest-linux.yml
           if-no-files-found: error
 
-  build-viewer-windows:
-    name: Viewer / Windows installer + zip
+  build-desktop-windows:
+    name: Gutterpress desktop / Windows installer + zip
     needs: version
     # electron-builder handles Electron download, exe rename, icon embedding, zip.
     # No afterPack hook: the lib ships as a normal node_modules dependency that
@@ -358,28 +358,28 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      # Finding #62: the composite action is the single Windows-viewer
-      # packaging path — also used by viewer-debug-build.yml — so the two
+      # Finding #62: the composite action is the single Windows-desktop
+      # packaging path — also used by the desktop debug workflow — so the two
       # never diverge again (it pins node 22, matching the "never bun run"
       # electron-builder/npm constraint documented above).
       - name: Build Windows installer and zip
-        uses: ./.github/actions/build-viewer-windows-zip
+        uses: ./.github/actions/build-gutterpress-desktop-windows
 
       # latest.yml + the installer .blockmap are the electron-updater feed —
       # they must ship on the GitHub release next to the installer.
       - name: Upload Windows installer and zip
         uses: actions/upload-artifact@v6
         with:
-          name: viewer-windows
+          name: gutterpress-desktop-windows
           path: |
-            packages/viewer/dist/*.exe
-            packages/viewer/dist/*.zip
-            packages/viewer/dist/*.blockmap
-            packages/viewer/dist/latest.yml
+            packages/desktop/dist/*.exe
+            packages/desktop/dist/*.zip
+            packages/desktop/dist/*.blockmap
+            packages/desktop/dist/latest.yml
           if-no-files-found: error
 
-  build-viewer-mac:
-    name: Viewer / macOS DMG
+  build-desktop-mac:
+    name: Gutterpress desktop / macOS DMG
     needs: version
     runs-on: macos-latest
     steps:
@@ -389,7 +389,7 @@ jobs:
 
       - uses: ./.github/actions/bun
 
-      # audit F3: pin Node to match the Windows viewer build (see build-viewer-
+      # audit F3: pin Node to match the Windows desktop build (see build-desktop-
       # linux for rationale) so all three platforms package under the same Node.
       - uses: actions/setup-node@v5
         with:
@@ -406,7 +406,7 @@ jobs:
         working-directory: packages/cli
 
       - name: Build macOS Intel and Apple Silicon DMGs
-        working-directory: packages/viewer
+        working-directory: packages/desktop
         run: npm run dist:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -414,8 +414,8 @@ jobs:
       - name: Upload DMGs
         uses: actions/upload-artifact@v6
         with:
-          name: viewer-mac
-          path: packages/viewer/dist/*.dmg
+          name: gutterpress-desktop-mac
+          path: packages/desktop/dist/*.dmg
           if-no-files-found: error
 
   # ── 4. Publish to npm (skippable) ─────────────────────────────────────────
@@ -425,10 +425,10 @@ jobs:
     # is the one artifact users install unconditionally, so it must never
     # publish a version whose GitHub release could still fail to materialize.
     # Plain `needs` semantics give exactly that: every build job must succeed
-    # or this job is skipped (the viewer jobs are unconditional now, so no
+    # or this job is skipped (the desktop jobs are unconditional now, so no
     # success-or-skipped special-casing is needed anymore).
     needs:
-      [version, build-cli, build-viewer-linux, build-viewer-windows, build-viewer-mac, verify-windows, verify-macos]
+      [version, build-cli, build-desktop-linux, build-desktop-windows, build-desktop-mac, verify-windows, verify-macos]
     if: ${{ !inputs.skip_npm_publish }}
     runs-on: ubuntu-latest
     permissions:
@@ -462,17 +462,17 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          if npm view "@dimm-city/print-md@$VERSION" version &>/dev/null; then
+          if npm view "gutterpress@$VERSION" version &>/dev/null; then
             echo "Version $VERSION already published — skipping."
             echo "ALREADY_PUBLISHED=true" >> "$GITHUB_ENV"
           fi
 
       # Pure OIDC trusted publishing — no NODE_AUTH_TOKEN. The id-token: write
       # permission (above) lets npm mint a short-lived credential. Prerequisite:
-      # @dimm-city/print-md must be configured as a Trusted Publisher for this
+      # gutterpress must be configured as a Trusted Publisher for this
       # repo + workflow on npmjs.com (Settings → Trusted Publishers).
       # Prereleases publish under the `next` dist-tag so `npm install
-      # @dimm-city/print-md` (which resolves `latest`) never picks up a beta.
+      # gutterpress (which resolves `latest`) never picks up a beta.
       - name: Publish to npm
         if: ${{ env.ALREADY_PUBLISHED != 'true' }}
         working-directory: packages/cli
@@ -503,15 +503,15 @@ jobs:
       - name: Download Windows binary
         uses: actions/download-artifact@v6
         with:
-          name: print-md-cli-windows-x64.exe
+          name: gutterpress-cli-windows-x64.exe
           path: dist/
 
       - name: Run --version
         shell: pwsh
         run: |
-          & ".\dist\print-md-cli-windows-x64.exe" --version
+          & ".\dist\gutterpress-cli-windows-x64.exe" --version
           if ($LASTEXITCODE -ne 0) {
-            Write-Error "print-md-cli-windows-x64.exe --version exited with code $LASTEXITCODE"
+            Write-Error "gutterpress-cli-windows-x64.exe --version exited with code $LASTEXITCODE"
             exit 1
           }
 
@@ -526,10 +526,10 @@ jobs:
         include:
           - arch: x64
             runner: macos-15-intel
-            artifact: print-md-cli-macos-x64
+            artifact: gutterpress-cli-macos-x64
           - arch: arm64
             runner: macos-15
-            artifact: print-md-cli-macos-arm64
+            artifact: gutterpress-cli-macos-arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Download macOS binary
@@ -553,9 +553,9 @@ jobs:
     needs:
       - version
       - build-cli
-      - build-viewer-linux
-      - build-viewer-windows
-      - build-viewer-mac
+      - build-desktop-linux
+      - build-desktop-windows
+      - build-desktop-mac
       - publish-npm
       - verify-windows
       - verify-macos
@@ -568,9 +568,9 @@ jobs:
       needs.build-cli.result == 'success' &&
       needs.verify-windows.result == 'success' &&
       needs.verify-macos.result == 'success' &&
-      needs.build-viewer-linux.result == 'success' &&
-      needs.build-viewer-windows.result == 'success' &&
-      needs.build-viewer-mac.result == 'success' &&
+       needs.build-desktop-linux.result == 'success' &&
+       needs.build-desktop-windows.result == 'success' &&
+       needs.build-desktop-mac.result == 'success' &&
       (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
@@ -586,13 +586,13 @@ jobs:
         uses: actions/download-artifact@v6
         with:
           path: artifact-downloads/
-          pattern: "print-md-*"
+          pattern: "gutterpress-cli-*"
 
-      - name: Download viewer artifacts
+      - name: Download desktop artifacts
         uses: actions/download-artifact@v6
         with:
           path: artifact-downloads/
-          pattern: "viewer-*"
+          pattern: "gutterpress-desktop-*"
 
       # download-artifact creates one directory per workflow artifact. Flatten
       # the actual files into the release upload directory, reject duplicate
@@ -601,7 +601,7 @@ jobs:
       - name: Stage release files and generate SHA-256 checksums
         run: node tools/prepare-release-assets.mjs artifact-downloads release-assets
 
-      # Update-feed integrity gate: every release doubles as the viewer's
+      # Update-feed integrity gate: every release doubles as the desktop's
       # electron-updater feed, so a missing feed file or installer must fail
       # HERE, loudly — not ship as a release that 404s every update check
       # (the 0.8.2-rc.1 incident). Checks: all named assets exist, the feed
@@ -616,14 +616,14 @@ jobs:
 
           missing=0
           for f in \
-            print-md-cli-linux-x64 print-md-cli-linux-arm64 \
-            print-md-cli-macos-x64 print-md-cli-macos-arm64 \
-            print-md-cli-windows-x64.exe \
-            "print-md-viewer-$VERSION.AppImage" \
-            print-md-viewer-setup-win-x64.exe \
-            "print-md-viewer-$VERSION-win-x64.zip" \
-            "print-md-viewer-$VERSION-arm64.dmg" \
-            "print-md-viewer-$VERSION-x64.dmg" \
+            gutterpress-cli-linux-x64 gutterpress-cli-linux-arm64 \
+            gutterpress-cli-macos-x64 gutterpress-cli-macos-arm64 \
+            gutterpress-cli-windows-x64.exe \
+            "Gutterpress-$VERSION.AppImage" \
+            Gutterpress-setup-win-x64.exe \
+            "Gutterpress-$VERSION-win-x64.zip" \
+            "Gutterpress-$VERSION-arm64.dmg" \
+            "Gutterpress-$VERSION-x64.dmg" \
             latest.yml latest-linux.yml SHA256SUMS.txt; do
             if [ ! -f "release-assets/$f" ]; then
               echo "::error::Missing release asset: $f"
@@ -632,11 +632,11 @@ jobs:
           done
           [ "$missing" -eq 0 ]
 
-          if [ -f "release-assets/print-md-viewer-$VERSION-win-x64.exe" ]; then
+           if [ -f "release-assets/Gutterpress-$VERSION-win-x64.exe" ]; then
             echo "::error::Windows installer basename regressed to a versioned name"
             exit 1
           fi
-          if ! grep -Fq 'print-md-viewer-setup-win-x64.exe' release-assets/latest.yml; then
+           if ! grep -Fq 'Gutterpress-setup-win-x64.exe' release-assets/latest.yml; then
             echo "::error::latest.yml does not reference the stable Windows installer basename"
             exit 1
           fi
@@ -663,28 +663,28 @@ jobs:
 
           | Product | Native builds | Known compatibility gaps |
           | --- | --- | --- |
-          | Desktop viewer | macOS Apple Silicon (ARM64), macOS Intel (x64), Windows x64, Linux x64 AppImage | Accepted until demand justifies new targets: Windows ARM64 uses x64 emulation; there is no Linux ARM64 viewer. |
+           | Gutterpress desktop | macOS Apple Silicon (ARM64), macOS Intel (x64), Windows x64, Linux x64 AppImage | Accepted until demand justifies new targets: Windows ARM64 uses x64 emulation; there is no Linux ARM64 desktop build. |
           | Standalone CLI | macOS ARM64/x64, Windows x64, Linux ARM64/x64 (glibc) | Accepted until demand justifies new targets: Windows ARM64 uses x64 emulation; Alpine/musl uses the Docker image instead. |
 
-          On Windows, `print-md-viewer-setup-win-x64.exe` is the normal installer and keeps the same basename across releases. `print-md-viewer-<version>-win-x64.zip` is the separate portable extract-and-run build; it is not the installed app's auto-update channel.
+           On Windows, `Gutterpress-setup-win-x64.exe` is the normal installer and keeps the same basename across releases. `Gutterpress-<version>-win-x64.zip` is the separate portable extract-and-run build; it is not the installed app's auto-update channel.
 
           ## Unsigned download notice
 
-          The viewer installers and standalone CLI binaries are intentionally unsigned while code-signing certificates are not affordable. Verify the SHA-256 value below before bypassing an operating-system warning.
+           The desktop installers and standalone CLI binaries are intentionally unsigned while code-signing certificates are not affordable. Verify the SHA-256 value below before bypassing an operating-system warning.
 
           ### macOS Gatekeeper
 
           Try opening the app once, then open **System Settings > Privacy & Security** and choose **Open Anyway**. For a verified download, the command-line alternative is:
 
           ```sh
-          xattr -dr com.apple.quarantine "/Applications/print-md-viewer.app"
+           xattr -dr com.apple.quarantine "/Applications/Gutterpress.app"
           # CLI example:
-          xattr -d com.apple.quarantine /path/to/print-md-cli-macos-arm64
+          xattr -d com.apple.quarantine /path/to/gutterpress-cli-macos-arm64
           ```
 
           ### Windows SmartScreen
 
-          If Windows shows "Windows protected your PC", choose **More info > Run anyway** after verifying the checksum. This applies to both the viewer installer and standalone CLI executable.
+           If Windows shows "Windows protected your PC", choose **More info > Run anyway** after verifying the checksum. This applies to both the desktop installer and standalone CLI executable.
 
           ## SHA-256 checksums
 
@@ -725,7 +725,7 @@ jobs:
 
           gh release create "$TAG" \
             --repo "$REPO" \
-            --title "print-md $TAG" \
+             --title "Gutterpress $TAG" \
             --generate-notes \
             --notes-file release-notes.md \
             --verify-tag \

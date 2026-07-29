@@ -1,17 +1,17 @@
-# print-md installer for Windows
+# Gutterpress installer for Windows
 #
-# Downloads the standalone print-md binary for the current platform from
-# GitHub Releases and drops it in %LOCALAPPDATA%\Programs\print-md. No bun,
+# Downloads the standalone Gutterpress binary for the current platform from
+# GitHub Releases and drops it in %LOCALAPPDATA%\Programs\gutterpress. No bun,
 # node, or git required.
 #
-#   irm https://raw.githubusercontent.com/dimm-city/print-md/main/packages/cli/scripts/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/dimm-city/gutterpress/main/packages/cli/scripts/install.ps1 | iex
 #
 # Optional environment variables:
-#   PRINTMD_VERSION        override the version to install (e.g. v0.2.0-beta.5)
+#   GUTTERPRESS_VERSION     override the version to install (e.g. v0.2.0-beta.5)
 #   GITHUB_TOKEN           auth token (only needed while the repo is private)
-#   PRINTMD_PREFIX         install dir override
-#                          (default: %LOCALAPPDATA%\Programs\print-md)
-#   PRINTMD_LOCAL_BINARY   path to a locally-built print-md.exe. When set,
+#   GUTTERPRESS_PREFIX      install dir override
+#                          (default: %LOCALAPPDATA%\Programs\gutterpress)
+#   GUTTERPRESS_LOCAL_BINARY path to a locally-built gutterpress.exe. When set,
 #                          the script skips the GitHub Release download and
 #                          installs from this path instead. Used by CI to
 #                          verify the binary produced by the current branch.
@@ -21,11 +21,11 @@ $ErrorActionPreference = "Stop"
 
 # ---- configuration ---------------------------------------------------------
 
-$Repo = "dimm-city/print-md"
+$Repo = "dimm-city/gutterpress"
 $GithubToken = $env:GITHUB_TOKEN
-$RequestedVersion = $env:PRINTMD_VERSION
-$DefaultPrefix = Join-Path $env:LOCALAPPDATA "Programs\print-md"
-$InstallPrefix = if ($env:PRINTMD_PREFIX) { $env:PRINTMD_PREFIX } else { $DefaultPrefix }
+$RequestedVersion = $env:GUTTERPRESS_VERSION
+$DefaultPrefix = Join-Path $env:LOCALAPPDATA "Programs\gutterpress"
+$InstallPrefix = if ($env:GUTTERPRESS_PREFIX) { $env:GUTTERPRESS_PREFIX } else { $DefaultPrefix }
 
 # Name of the published checksum manifest. Written by
 # tools/prepare-release-assets.mjs as `<sha256>  <asset name>` lines.
@@ -53,11 +53,11 @@ function Write-Step    {
 # release workflow builds. ARM64 Windows runs x64 binaries via emulation, so
 # we ship the same asset there.
 
-function Get-PrintMdAsset {
+function Get-GutterpressAsset {
     # Must match the release.yml build-cli matrix `artifact` name. The `-cli`
-    # infix distinguishes the standalone CLI binary from the print-md-viewer-*
+    # infix distinguishes the standalone CLI binary from the gutterpress-desktop-*
     # desktop assets in the same release.
-    return "print-md-cli-windows-x64.exe"
+    return "gutterpress-cli-windows-x64.exe"
 }
 
 # ---- HTTP helpers ----------------------------------------------------------
@@ -72,7 +72,7 @@ function New-GhHeaders {
     $headers = @{
         "Accept" = $Accept
         "X-GitHub-Api-Version" = "2022-11-28"
-        "User-Agent" = "print-md-installer"
+        "User-Agent" = "gutterpress-installer"
     }
     if ($GithubToken) {
         $headers["Authorization"] = "Bearer $GithubToken"
@@ -243,13 +243,13 @@ function Test-Checksum {
 function Install-Binary {
     param($Release, [string]$Url, [string]$Tag, [string]$AssetName)
 
-    Write-Step "Downloading print-md $Tag (windows-x64)..."
+    Write-Step "Downloading gutterpress $Tag (windows-x64)..."
 
     if (-not (Test-Path $InstallPrefix)) {
         New-Item -ItemType Directory -Path $InstallPrefix -Force | Out-Null
     }
-    $script:PrintMdBin = Join-Path $InstallPrefix "print-md.exe"
-    $tempPath = "$($script:PrintMdBin).download"
+    $script:GutterpressBin = Join-Path $InstallPrefix "gutterpress.exe"
+    $tempPath = "$($script:GutterpressBin).download"
 
     try {
         Invoke-GhDownload -Url $Url -OutFile $tempPath
@@ -268,37 +268,37 @@ function Install-Binary {
     }
 
     # Windows refuses to delete an executable that is currently running (e.g.
-    # the user has `print-md preview` open), but it WILL let you rename it.
+    # the user has `gutterpress preview` open), but it WILL let you rename it.
     # Move the in-use binary aside, drop the new one in, then best-effort
     # remove the old copy (still running → deletion just fails harmlessly).
-    $backup = "$($script:PrintMdBin).old"
-    if (Test-Path $script:PrintMdBin) {
+    $backup = "$($script:GutterpressBin).old"
+    if (Test-Path $script:GutterpressBin) {
         if (Test-Path $backup) {
             Remove-Item $backup -Force -ErrorAction SilentlyContinue
         }
         try {
-            Remove-Item $script:PrintMdBin -Force -ErrorAction Stop
+            Remove-Item $script:GutterpressBin -Force -ErrorAction Stop
         } catch {
-            Rename-Item -Path $script:PrintMdBin -NewName ([System.IO.Path]::GetFileName($backup)) -Force
+            Rename-Item -Path $script:GutterpressBin -NewName ([System.IO.Path]::GetFileName($backup)) -Force
         }
     }
-    Move-Item -Path $tempPath -Destination $script:PrintMdBin -Force
+    Move-Item -Path $tempPath -Destination $script:GutterpressBin -Force
     if (Test-Path $backup) {
         Remove-Item $backup -Force -ErrorAction SilentlyContinue
     }
-    Write-Success "Installed binary to $($script:PrintMdBin)"
+    Write-Success "Installed binary to $($script:GutterpressBin)"
 }
 
 function Test-Install {
     Write-Step "Verifying installation..."
     try {
-        $version = & $script:PrintMdBin --version 2>&1
+        $version = & $script:GutterpressBin --version 2>&1
         if ($LASTEXITCODE -ne 0) {
-            throw "print-md --version failed with exit code $LASTEXITCODE"
+            throw "gutterpress --version failed with exit code $LASTEXITCODE"
         }
-        Write-Success "print-md is working! ($version)"
+        Write-Success "gutterpress is working! ($version)"
     } catch {
-        throw "print-md installed but failed to run: $_"
+        throw "gutterpress installed but failed to run: $_"
     }
 }
 
@@ -325,26 +325,26 @@ function Add-ToUserPath {
     }
 }
 
-# Create %USERPROFILE%\Documents\print-md and seed it with the bundled
-# examples so the viewer's "Open Project" picker has something to show out of
+# Create %USERPROFILE%\Documents\gutterpress and seed it with the bundled
+# examples so the desktop's "Open Project" picker has something to show out of
 # the box.
-function Initialize-PrintMdDirectory {
+function Initialize-GutterpressDirectory {
     param([string]$Tag)
 
-    Write-Step "Setting up print-md directory..."
+    Write-Step "Setting up gutterpress directory..."
 
     $documentsPath = [Environment]::GetFolderPath("MyDocuments")
     if ([string]::IsNullOrEmpty($documentsPath)) {
         $documentsPath = Join-Path $env:USERPROFILE "Documents"
     }
 
-    $script:PrintMdDir = Join-Path $documentsPath "print-md"
-    if (-not (Test-Path $script:PrintMdDir)) {
-        New-Item -ItemType Directory -Path $script:PrintMdDir -Force | Out-Null
+    $script:GutterpressDir = Join-Path $documentsPath "gutterpress"
+    if (-not (Test-Path $script:GutterpressDir)) {
+        New-Item -ItemType Directory -Path $script:GutterpressDir -Force | Out-Null
     }
-    Write-Info "print-md directory: $($script:PrintMdDir)"
+    Write-Info "gutterpress directory: $($script:GutterpressDir)"
 
-    $examplesDir = Join-Path $script:PrintMdDir "examples"
+    $examplesDir = Join-Path $script:GutterpressDir "examples"
     if (Test-Path $examplesDir) {
         $existing = @(Get-ChildItem -Path $examplesDir -Force -ErrorAction SilentlyContinue)
         if ($existing.Count -gt 0) {
@@ -362,7 +362,7 @@ function Initialize-PrintMdDirectory {
 
     # Pull the source archive for the same tag and extract just `examples/`.
     $archiveUrl = "https://api.github.com/repos/$Repo/zipball/$Tag"
-    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("print-md-archive-" + [System.Guid]::NewGuid().ToString("N"))
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("gutterpress-archive-" + [System.Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
     Write-Info "Downloading examples..."
@@ -411,21 +411,21 @@ function New-DesktopShortcut {
             Write-Info "Desktop directory not found, skipping shortcut"
             return
         }
-        $shortcutPath = Join-Path $desktopPath "Print-md Preview.lnk"
+        $shortcutPath = Join-Path $desktopPath "gutterpress Desktop.lnk"
 
-        $workingDir = if ($script:PrintMdDir -and (Test-Path $script:PrintMdDir)) {
-            $script:PrintMdDir
+        $workingDir = if ($script:GutterpressDir -and (Test-Path $script:GutterpressDir)) {
+            $script:GutterpressDir
         } else {
             [Environment]::GetFolderPath("MyDocuments")
         }
 
         $WScriptShell = New-Object -ComObject WScript.Shell
         $shortcut = $WScriptShell.CreateShortcut($shortcutPath)
-        $shortcut.TargetPath = $script:PrintMdBin
+        $shortcut.TargetPath = $script:GutterpressBin
         $shortcut.Arguments = "preview --open true"
         $shortcut.WorkingDirectory = $workingDir
-        $shortcut.IconLocation = "$($script:PrintMdBin),0"
-        $shortcut.Description = "Start Print-md Preview Server"
+        $shortcut.IconLocation = "$($script:GutterpressBin),0"
+        $shortcut.Description = "Start gutterpress Desktop"
         $shortcut.Save()
 
         Write-Success "Desktop shortcut created: $shortcutPath"
@@ -439,25 +439,25 @@ function New-DesktopShortcut {
 function Main {
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Magenta
-    Write-Host "  print-md Installation" -ForegroundColor Magenta
+    Write-Host "  gutterpress Installation" -ForegroundColor Magenta
     Write-Host "========================================" -ForegroundColor Magenta
     Write-Host ""
 
-    $assetName = Get-PrintMdAsset
+    $assetName = Get-GutterpressAsset
     Write-Info "Detected platform: windows-x64"
 
-    $localBinary = $env:PRINTMD_LOCAL_BINARY
+$localBinary = $env:GUTTERPRESS_LOCAL_BINARY
     if ($localBinary) {
         Write-Step "Installing local binary..."
         if (-not (Test-Path -LiteralPath $localBinary -PathType Leaf)) {
-            throw "PRINTMD_LOCAL_BINARY is set but the file does not exist: $localBinary"
+        throw "GUTTERPRESS_LOCAL_BINARY is set but the file does not exist: $localBinary"
         }
         if (-not (Test-Path $InstallPrefix)) {
             New-Item -ItemType Directory -Path $InstallPrefix -Force | Out-Null
         }
-        $script:PrintMdBin = Join-Path $InstallPrefix "print-md.exe"
-        Copy-Item -LiteralPath $localBinary -Destination $script:PrintMdBin -Force
-        Write-Success "Installed binary to $($script:PrintMdBin)"
+    $script:GutterpressBin = Join-Path $InstallPrefix "gutterpress.exe"
+        Copy-Item -LiteralPath $localBinary -Destination $script:GutterpressBin -Force
+        Write-Success "Installed binary to $($script:GutterpressBin)"
         $tag = "local"
     } else {
         Write-Step "Resolving release..."
@@ -471,7 +471,7 @@ function Main {
     }
     Test-Install
     Add-ToUserPath -Dir $InstallPrefix
-    try { Initialize-PrintMdDirectory -Tag $tag } catch { Write-Info "Examples setup failed: $_" }
+    try { Initialize-GutterpressDirectory -Tag $tag } catch { Write-Info "Examples setup failed: $_" }
     try { New-DesktopShortcut } catch { Write-Info "Shortcut creation failed: $_" }
 
     Write-Host ""
@@ -479,22 +479,22 @@ function Main {
     Write-Host "  Installation Complete!" -ForegroundColor Green
     Write-Host "========================================" -ForegroundColor Green
     Write-Host ""
-    Write-Success "print-md is ready to use!"
-    if ($script:PrintMdDir) {
+    Write-Success "gutterpress is ready to use!"
+    if ($script:GutterpressDir) {
         Write-Host ""
-        Write-Info "Examples are at: $(Join-Path $script:PrintMdDir 'examples')"
+        Write-Info "Examples are at: $(Join-Path $script:GutterpressDir 'examples')"
     }
     Write-Host ""
-    Write-Info "Double-click 'Print-md Preview' on your desktop to start the viewer."
+    Write-Info "Double-click 'gutterpress Desktop' on your desktop to start the desktop."
     Write-Host ""
 
     # Last thing on screen, so an unverified install cannot be missed.
     if ($script:Unverified) {
         Write-Err "WARNING: this download was NOT verified against a checksum."
         Write-Info "Reason: $($script:Unverified)"
-        Write-Info "print-md binaries are unsigned, so nothing has confirmed this file's"
+        Write-Info "gutterpress binaries are unsigned, so nothing has confirmed this file's"
         Write-Info "integrity. To check it by hand, compare the SHA256 of"
-        Write-Info "  $($script:PrintMdBin)"
+        Write-Info "  $($script:GutterpressBin)"
         Write-Info "against the release page:"
         Write-Info "  https://github.com/$Repo/releases/tag/$tag"
         Write-Host ""

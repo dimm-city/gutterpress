@@ -1,7 +1,7 @@
 /**
  * recover-interrupted-merge.ts — abort a merge left unfinished.
  *
- * WHY: print-md itself never leaves a merge half-done (isomorphic-git's merge
+ * WHY: gutterpress itself never leaves a merge half-done (isomorphic-git's merge
  * either completes or aborts in memory and never writes MERGE_HEAD), so this
  * state comes from OUTSIDE the app: the author ran `git merge`/`git pull` in a
  * terminal, hit conflicts, and walked away. The repo then has

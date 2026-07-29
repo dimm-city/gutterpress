@@ -68,7 +68,7 @@ export interface BuildRunnerOptions {
   /**
    * Optional PDF renderer override. When provided, the build uses it instead of
    * launching Chromium via puppeteer, and the Chromium preflight is skipped.
-   * The Electron viewer injects one backed by `webContents.printToPDF`.
+   * The Electron desktop injects one backed by `webContents.printToPDF`.
    */
   pdfRenderer?: PdfRenderer;
   /**
@@ -86,7 +86,7 @@ export interface BuildRunnerResult {
   outDir: string;
   /**
    * The published `book.html`, or `null` for a one-file delivery (`--out x.pdf`,
-   * a viewer export) where only the PDF is delivered and everything else is
+   * a desktop export) where only the PDF is delivered and everything else is
    * discarded with the work dir. Returning a work-dir path here would hand the
    * caller a filename that is already deleted by the time they see it.
    */
@@ -141,11 +141,11 @@ export function splitOutPath(
  * there is no code path that would do it.
  */
 export type PublishTarget =
-  /** print-md's own `dist/<slug>/`. Replaced wholesale, so stale files vanish. */
+  /** gutterpress's own `dist/<slug>/`. Replaced wholesale, so stale files vanish. */
   | { kind: "project"; dir: string }
   /** `--out <dir>`: the user's directory. Files are added; nothing is removed. */
   | { kind: "directory"; dir: string }
-  /** `--out <file.pdf>` / the viewer's Save dialog: ONE file, nothing else. */
+  /** `--out <file.pdf>` / the desktop's Save dialog: ONE file, nothing else. */
   | { kind: "file"; file: string };
 
 export interface BuildContext {
@@ -192,7 +192,7 @@ export async function resolveBuildContext(
   if (manifestPath === null) {
     throw new UsageError(
       `No project manifest found in ${inputDir}. Looked for ${MANIFEST_FILENAMES.join(" or ")}. ` +
-        "Run from your project folder or pass that folder with `print-md build <project-dir>`. " +
+        "Run from your project folder or pass that folder with `gutterpress build <project-dir>`. " +
         "For a custom manifest filename, pass `--manifest <path>`."
     );
   }
@@ -241,7 +241,7 @@ export async function resolveBuildContext(
           path.dirname(target.dir),
           `.${path.basename(target.dir)}-build-${randomBytes(6).toString("hex")}`
         )
-      : path.join(os.tmpdir(), `print-md-build-${randomBytes(6).toString("hex")}`);
+      : path.join(os.tmpdir(), `gutterpress-build-${randomBytes(6).toString("hex")}`);
 
   return { opts, format, inputDir, outDir, workDir, target, manifestDir, config, gates };
 }
@@ -570,11 +570,11 @@ class HtmlOutput implements OutputStrategy {
     }
 
     // A minimal index.html redirects to book.html so static hosts (Azure SWA,
-    // GitHub Pages, etc.) have a default entry point. This is not the viewer
-    // chrome — the Electron viewer loads book.html directly by name.
+    // GitHub Pages, etc.) have a default entry point. This is not the desktop
+    // chrome — the Electron desktop loads book.html directly by name.
     await fsp.writeFile(
       path.join(workDir, "index.html"),
-      `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=book.html"><title>print-md</title></head><body></body></html>\n`,
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=book.html"><title>Gutterpress</title></head><body></body></html>\n`,
       "utf-8"
     );
     return finalizeBuild(
@@ -636,9 +636,9 @@ class PdfOutput implements OutputStrategy {
       log.info("Rendering HTML to PDF via Chromium+Paged.js");
       await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
       // PDF unification: the default renderer prints the PDF and, from the SAME
-      // pagination pass, serializes the static viewer book.html — so the on-screen
+      // pagination pass, serializes the static desktop book.html — so the on-screen
       // pages and the PDF come from one paginated artifact. Injected renderers
-      // (e.g. the Electron viewer) print only.
+      // (e.g. the Electron desktop) print only.
       const staticHtmlRaw = opts.pdfRenderer
         ? undefined
         : path.join(stage, "book-static-raw.html");
@@ -649,11 +649,11 @@ class PdfOutput implements OutputStrategy {
           htmlFile,
           workDir
         );
-        log.success(`Wrote static viewer: ${path.join(outDir, BOOK_HTML)}`);
+        log.success(`Wrote static desktop: ${path.join(outDir, BOOK_HTML)}`);
       }
 
       if (!pdfxMode) {
-        // stampCreator writes /Creator (print-md) into the PDF's Info dict using
+        // stampCreator writes /Creator (Gutterpress) into the PDF's Info dict using
         // pdf-lib (in-process, no system tool). The information is cosmetic — if it
         // fails for any reason, keep the raw Chromium output as the final PDF rather
         // than failing the build. `rawPdf` equals the final `pdfFile` when !pdfxMode.

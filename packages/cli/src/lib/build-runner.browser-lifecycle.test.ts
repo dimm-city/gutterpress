@@ -74,8 +74,8 @@ afterEach(() => {
 });
 
 async function makeBrokenLintProject(): Promise<{ dir: string; outDir: string }> {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-browser-leak-in-"));
-  const outDir = await mkdtemp(join(tmpdir(), "pmd-browser-leak-out-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-browser-leak-in-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-browser-leak-out-"));
   await writeFile(
     join(dir, "manifest.yaml"),
     "title: Leak Test\nstyles:\n  - broken.css\n",
@@ -122,8 +122,8 @@ test("runBuild closes the prewarmed browser when a quality gate throws before pa
 
 test("runBuild closes the browser exactly once on a successful build, even when the pool was never used", async () => {
   installMocks();
-  const dir = await mkdtemp(join(tmpdir(), "pmd-browser-ok-in-"));
-  const outDir = await mkdtemp(join(tmpdir(), "pmd-browser-ok-out-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-browser-ok-in-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-browser-ok-out-"));
   try {
     await writeFile(join(dir, "manifest.yaml"), "title: Browser Lifecycle\n", "utf-8");
     await writeFile(join(dir, "chapter-01.md"), "# Hello\n", "utf-8");

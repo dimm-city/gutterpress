@@ -12,7 +12,7 @@
  *     and tests inject {@link PublishDeps.fetch} / {@link PublishDeps.runCommand}.
  *   - Credentials are keyed by provider host (e.g. "itch.io") in the same
  *     TokenStore the Git remote features use: the CLI's 0600 file store, the
- *     viewer's safeStorage-backed store.
+ *     desktop's safeStorage-backed store.
  *
  * SECURITY INVARIANT: token values never appear in logs, error messages,
  * spawned argv (process lists are world-readable — pass secrets via env), or
@@ -140,7 +140,7 @@ export interface PublishDeps {
   env?: Record<string, string | undefined>;
   /** User config dir override (butler tool cache). Defaults to defaultConfigDir(). */
   configDir?: string;
-  /** Live progress line sink (CLI logger / viewer progress log). */
+  /** Live progress line sink (CLI logger / desktop progress log). */
   onProgress?: (message: string) => void;
   /**
    * The selected NAMED credential (account label) for this operation, when the
@@ -291,7 +291,7 @@ export async function resolvePublishCredential(
 /**
  * Redacted connection status for a provider — the ONE definition of
  * "connected" (env var or stored key) shared by the CLI's `--list` and the
- * viewer's provider cards, so the two surfaces can never disagree.
+ * desktop's provider cards, so the two surfaces can never disagree.
  */
 export async function publishConnectionStatus(
   info: PublishProviderInfo,

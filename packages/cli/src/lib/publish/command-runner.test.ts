@@ -8,7 +8,7 @@ import { defaultCommandRunner, PUBLISH_IDLE_TIMEOUT_MS } from "./command-runner.
 
 // A tiny helper to write an executable shell script into a temp dir.
 function writeScript(body: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "pmd-cmdrun-"));
+  const dir = mkdtempSync(join(tmpdir(), "gutterpress-cmdrun-"));
   const p = join(dir, "script.sh");
   writeFileSync(p, `#!/bin/sh\n${body}\n`);
   chmodSync(p, 0o755);

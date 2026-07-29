@@ -7,7 +7,7 @@
  * pattern that breaks `bun build --compile` (ADR 0001 §1/§3). A small header
  * parser for the formats print authors actually use (PNG, JPEG, TIFF) keeps a
  * single code path that bundles into the standalone binary AND runs in the
- * Electron viewer, with zero system/native dependency.
+ * Electron desktop, with zero system/native dependency.
  *
  * Scope: width/height, x/y DPI, alpha presence, and a coarse color-space token
  * ("srgb" | "gray" | "cmyk"). This matches what the three asset checks consume.

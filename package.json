@@ -1,5 +1,5 @@
 {
-  "name": "print-md-monorepo",
+  "name": "gutterpress",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -10,8 +10,8 @@
     "build": "cd packages/cli && bun run build",
     "test": "bun --filter '*' test",
     "typecheck": "bun --filter '*' typecheck",
-    "viewer:dev": "bun --cwd packages/viewer dev",
-    "viewer:electron": "bun --cwd packages/viewer electron:dev"
+    "desktop:dev": "bun --cwd packages/desktop dev",
+    "desktop:electron": "bun --cwd packages/desktop electron:dev"
   },
   "overrides": {
     "ws": "^8.21.0",

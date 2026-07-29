@@ -46,7 +46,7 @@ describe("Open Design package contract", () => {
     const manifest = await readJson("plugin/open-design.json");
 
     expect(manifest.specVersion).toBe("1.0.0");
-    expect(manifest.name).toBe("print-md-publishing");
+    expect(manifest.name).toBe("gutterpress-publishing");
     expect(manifest.version).toBe("0.2.0");
     expect(manifest.tags).toContain("refine");
     expect(manifest.od.taskKind).toBe("tune-collab");
@@ -79,8 +79,8 @@ describe("Open Design package contract", () => {
     for (const reference of requiredReferences) {
       expect(files).toContain(`references/${reference}`);
     }
-    expect(skill).toContain("<question-form id=\"print-md-brief\">");
-    expect(skill).toContain("[form answers — print-md-brief]");
+    expect(skill).toContain("<question-form id=\"gutterpress-brief\">");
+    expect(skill).toContain("[form answers — gutterpress-brief]");
     expect(skill).toContain("complete workflow contract.");
     expect(skill).not.toContain("Read `references/");
     expect(skill).toContain("Do not add `source.assets` or `output`");
@@ -95,7 +95,7 @@ describe("Open Design package contract", () => {
 
   test("includes behavioral evals for safety-critical workflows", async () => {
     const evals = await readJson("plugin/evals/evals.json");
-    expect(evals.skill_name).toBe("print-md-publishing");
+    expect(evals.skill_name).toBe("gutterpress-publishing");
     expect(evals.evals.map((entry: { id: string }) => entry.id)).toEqual([
       "single-book-theme-change",
       "ambiguous-multi-book-target",
@@ -110,7 +110,7 @@ describe("Open Design package contract", () => {
   });
 });
 
-describe("Print-MD compatibility fixtures", () => {
+describe("Gutterpress compatibility fixtures", () => {
   test("explicit source membership excludes a root design document", async () => {
     const book = path.join(fixturesRoot, "simple-explicit");
     const manifest = await loadManifest(book);

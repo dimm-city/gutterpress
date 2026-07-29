@@ -23,7 +23,7 @@ afterEach(async () => {
 });
 
 async function stageHtml(html: string): Promise<string> {
-  dir = await mkdtemp(join(tmpdir(), "pmd-pagedjs-test-"));
+  dir = await mkdtemp(join(tmpdir(), "gutterpress-pagedjs-test-"));
   const htmlPath = join(dir, "book.html");
   await writeFile(htmlPath, html, "utf8");
   return htmlPath;

@@ -4,7 +4,7 @@
  * Plain `fetch` against the GitHub REST API — deliberately no `@octokit`
  * dependency. Lists every repository the user can access (`GET /user/repos`,
  * the OAuth `repo`-scope model — ADR 0006 D1 amendment 2026-06-10), the
- * branches of a chosen repository, and (via the Git Trees API) the print-md
+ * branches of a chosen repository, and (via the Git Trees API) the gutterpress
  * book projects inside a repo. The two REST listings paginate; the Git Trees
  * call is a single request that handles the API's `truncated` flag instead. All
  * three time out explicitly and map failures to author-friendly messages
@@ -112,7 +112,7 @@ export async function listGitHubRepositories(
   return repos;
 }
 
-/** One print-md book found inside a repository. */
+/** One Gutterpress book found inside a repository. */
 export interface RepoBook {
   /**
    * Folder of the book relative to the repository root, forward-slash form.
@@ -123,7 +123,6 @@ export interface RepoBook {
   name: string;
 }
 
-// Match the exported contract exactly: print-md.yaml does not imply print-md.yml.
 const MANIFEST_NAMES = new Set<string>(MANIFEST_FILENAMES);
 
 function isManifestPath(filePath: string): boolean {
@@ -139,7 +138,7 @@ function bookFromManifestPath(manifestPath: string, repo: string): RepoBook {
 }
 
 /**
- * Find the print-md books inside a repository branch: every directory that
+ * Find the Gutterpress books inside a repository branch: every directory that
  * contains a recognized manifest (from `MANIFEST_FILENAMES`) — the repository
  * root counts, with `path: ""`. Uses one
  * `GET /repos/{owner}/{repo}/git/trees/{branch}

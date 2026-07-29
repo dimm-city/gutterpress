@@ -2,7 +2,7 @@
 
 # Markdown Reference
 
-<div class="lede">Every print-md syntax feature with live examples. This chapter is a complete reference — consult it when you can't remember which marker or attribute to use.</div>
+<div class="lede">Every Gutterpress syntax feature with live examples. This chapter is a complete reference — consult it when you can't remember which marker or attribute to use.</div>
 
 ---
 
@@ -128,7 +128,7 @@ This callout is wrapped in a `@section .no-break` block. Paged.js will push the 
 
 ## Styled Blocks
 
-Print-md has no block-container plugin — every styled block is just a `@section` (or `@page`) carrying the CSS class the stylesheet targets, or raw HTML for content with no page-break requirement.
+Gutterpress has no block-container plugin — every styled block is just a `@section` (or `@page`) carrying the CSS class the stylesheet targets, or raw HTML for content with no page-break requirement.
 
 ### Avoid a Page Break
 

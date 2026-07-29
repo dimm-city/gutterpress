@@ -1,6 +1,6 @@
 # Architecture Documentation
 
-This document describes the architecture, design decisions, and implementation details of print-md.
+This document describes the architecture, design decisions, and implementation details of Gutterpress.
 
 ## Table of Contents
 
@@ -15,14 +15,14 @@ This document describes the architecture, design decisions, and implementation d
 
 ## Overview
 
-**print-md** is a markdown-to-PDF converter for professional print layout. It uses Chromium + Paged.js for PDF generation and Paged.js for live preview. It's designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
+**Gutterpress** is a markdown-to-PDF converter for professional print layout. It uses Chromium + Paged.js for PDF generation and Paged.js for live preview. It's designed as a single-user local application optimized for creating print-ready documents like books, game manuals, and professional reports.
 
 ### Monorepo structure
 
 The repo is a Bun workspace with two packages:
 
-- **`packages/cli/`** (`@dimm-city/print-md`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). Standard build: `bun build` over `src/index.ts` + `src/api/index.ts` + `src/cli.ts` (`--target=node --packages=external --splitting`), with `src/render.ts` compiled as a SEPARATE non-split invocation so the node-free `/render` subpath never shares a chunk with Node code (enforced by `scripts/check-render-pure.mjs`; see `CLAUDE.md` §8), plus `tsc` for `.d.ts`. Also distributed as a standalone compiled binary via `bun build --compile`.
-- **`packages/viewer/`** (`@dimm-city/print-md-viewer`) — Electron + SvelteKit desktop app. Depends on `@dimm-city/print-md` (workspace) and loads its library entry in the Electron main process.
+- **`packages/cli/`** (`gutterpress`) — the single published package: all runtime logic (markdown rendering, preview HTTP server, PDF generation, lint, validation) under `src/`, exposed both as a library (`exports` → `dist/index.js`) and a CLI (`bin` → `dist/cli.js`). Standard build: `bun build` over `src/index.ts` + `src/api/index.ts` + `src/cli.ts` (`--target=node --packages=external --splitting`), with `src/render.ts` compiled as a SEPARATE non-split invocation so the node-free `/render` subpath never shares a chunk with Node code (enforced by `scripts/check-render-pure.mjs`; see `CLAUDE.md` §8), plus `tsc` for `.d.ts`. Also distributed as a standalone compiled binary via `bun build --compile`.
+- **`packages/desktop/`** (`@dimm-city/gutterpress-desktop`) — Electron + SvelteKit desktop app. Depends on `gutterpress` (workspace) and loads its library entry in the Electron main process.
 
 ### Key Features
 
@@ -31,7 +31,7 @@ The repo is a Bun workspace with two packages:
 - **Extensible markdown**: Plugin system for custom syntax
 - **CSS Paged Media**: Full control over print layout
 - **Bun-native**: Fast runtime with native TypeScript support
-- **Desktop app**: Electron viewer with toolbar UI, page navigation, and PDF export
+- **Desktop app**: Electron desktop app with toolbar UI, page navigation, and PDF export
 
 ## Design Principles
 
@@ -81,7 +81,7 @@ packages/cli/src/
 │   ├── audit.ts            # Asset-only validation
 │   ├── preflight.ts        # Structured CI preflight payload
 │   ├── repair.ts           # Diagnose/repair a project's local version history
-│   ├── doctor.ts           # Check system tools used by print-md
+│   ├── doctor.ts           # Check system tools used by Gutterpress
 │   └── plugin.ts           # Manage project markdown-it plugins
 ├── checks/                 # Validation check system
 │   ├── types.ts            # Check interfaces
@@ -110,7 +110,7 @@ packages/cli/src/
 │       ├── images.ts       # Records every image reference the render emits
 │       └── markdown-it-paged.js  # Inlined paged layout plugin
 ├── schema/
-│   └── manifest.types.ts   # PrintMdManifest + ResolvedConfig
+│   └── manifest.types.ts   # GutterpressManifest + ResolvedConfig
 ├── preview/                # Preview server modules
 │   ├── http-server.ts      # node:http + ws WebSocket dev server (static
 │   │                       #   files, the inlined /api/status route, HMR)
@@ -122,7 +122,7 @@ packages/cli/src/
 │   └── logger.ts           # Leveled logger + command-facing log facade
 └── assets/                 # Static assets
     ├── manifest.schema.json # JSON schema
-    └── preview/            # Embedded viewer chrome (Paged.js, pagedjs-interface)
+    └── preview/            # Embedded desktop preview assets (Paged.js, pagedjs-interface)
 ```
 
 ### Data Flow
@@ -201,8 +201,8 @@ Precedence order (highest to lowest):
 ```typescript
 // resolveConfig merges CLI overrides > manifest > preset defaults
 function resolveConfig(
-  cliOverrides: Partial<PrintMdManifest>,
-  manifest: PrintMdManifest
+  cliOverrides: Partial<GutterpressManifest>,
+  manifest: GutterpressManifest
 ): ResolvedConfig {
   const presetName = cliOverrides.preset ?? manifest.preset ?? "dtrpg";
   const preset = PRESETS[presetName] ?? DTRPG_PRESET;
@@ -301,7 +301,7 @@ export async function renderHtmlToPdf(
 
   // 2. Default renderer drives a pooled puppeteer-core Chromium instance
   //    (browser-pool.ts's getBrowser — reused across renders; only the page
-  //    closes after each one). The packaged Electron viewer injects a
+  //    closes after each one). The packaged Electron desktop injects a
   //    different PdfRenderer backed by webContents.printToPDF instead — see
   //    docs/adr/0002-pdf-rendering-and-pure-js-tooling.md.
   await renderer({ url: `http://127.0.0.1:${server.port}/${htmlFilename}`, outPdf, timeoutMs, captureStaticHtmlTo });
@@ -323,7 +323,7 @@ await page.pdf({
 
 **Design Rationale**:
 - A pooled, injectable `PdfRenderer` lets the CLI and the packaged Electron
-  viewer share one render path while using different Chromium sources
+  desktop share one render path while using different Chromium sources
 - A `node:http` local file server avoids file:// protocol issues, and stays
   Node-compatible so the same renderer path runs inside Electron
 - Ghostscript post-processing handles CMYK conversion separately from rendering
@@ -336,18 +336,18 @@ await page.pdf({
 
 Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`
 for live reload) that handles static files, the one `/api/status` route, and a
-`/__print-md-hmr` WebSocket for full-reload broadcasts. It deliberately does
+`/__gutterpress-hmr` WebSocket for full-reload broadcasts. It deliberately does
 **not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
-Electron viewer can run it in-process on Electron's bundled Node (see
+Electron desktop can run it in-process on Electron's bundled Node (see
 `CLAUDE.md`, Monorepo layout section, and §1). There is no toolbar, page
-navigation, or folder picker — those live in the Electron viewer
-(`packages/viewer`).
+navigation, or folder picker — those live in the Electron desktop
+(`packages/desktop`).
 
 ```
-User Browser / Electron Viewer → http://127.0.0.1:{port}
+User Browser / Electron Desktop → http://127.0.0.1:{port}
     ↓
 http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
-    ├─→ /__print-md-hmr  WebSocket upgrade → broadcastReload()
+    ├─→ /__gutterpress-hmr  WebSocket upgrade → broadcastReload()
     │    (subscribers receive {type:"full-reload"} on file change)
     ├─→ GET /api/status  inlined handler — reports hasInput + currentPath
     │    (the only API route; a separate route-table module was removed as
@@ -358,12 +358,12 @@ http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
 ```
 
 **Design Rationale**:
-- The previous Vite-based dev server was the wrong shape: print-md doesn't
+- The previous Vite-based dev server was the wrong shape: Gutterpress doesn't
   bundle anything at preview time, it serves a pre-rendered `book.html`. Vite's
   CSS-as-JS-module pipeline and module-graph HMR were actively bypassed by
   custom plugins.
 - `node:http` + `ws` provides static serving, WebSockets, and request routing
-  natively — exactly the surface print-md needs, with no native bindings to
+  natively — exactly the surface Gutterpress needs, with no native bindings to
   extract under `bun build --compile`, **and** it runs unmodified under
   Electron's bundled Node (the reason it replaced an earlier `Bun.serve`
   implementation — `Bun.serve` is not available outside the Bun runtime).
@@ -425,7 +425,7 @@ function createFileWatcher(state: ServerState): FSWatcher {
 The WebSocket server keeps a `Set<WebSocket>` of connected HMR clients purely
 to broadcast reload messages and `terminate()` them on shutdown — there is no
 idle-timeout auto-shutdown. Instead, `lifecycle.ts` writes the process PID to
-`<tempDir>/.print-md.pid` on startup and, on the *next* preview startup, walks
+`<tempDir>/.gutterpress.pid` on startup and, on the *next* preview startup, walks
 the shared temp-dir base and removes any leftover dir whose recorded PID is no
 longer alive — cleanup for orphaned temp dirs left by a previous run that
 didn't shut down cleanly (crash, SIGKILL, terminal hangup), not a live
@@ -506,15 +506,15 @@ Manifest loading uses `loadManifest()` and `loadManifestWithPath()` which parse 
 
 ```typescript
 // loadManifest searches for manifest.yaml/manifest.yml
-export async function loadManifest(pathOrDir?: string): Promise<PrintMdManifest> {
+export async function loadManifest(pathOrDir?: string): Promise<GutterpressManifest> {
   // Checks path candidates: exact path, then manifest.yaml, then manifest.yml
   // Returns empty object if no manifest found
 }
 
 // resolveConfig ensures every field has a value via cascade
 export function resolveConfig(
-  cliOverrides: Partial<PrintMdManifest>,
-  manifest: PrintMdManifest
+  cliOverrides: Partial<GutterpressManifest>,
+  manifest: GutterpressManifest
 ): ResolvedConfig {
   const preset = PRESETS[presetName] ?? DTRPG_PRESET;
   return {
@@ -584,11 +584,11 @@ export const css = '.my-plugin-class { color: red; }';
 Plugins are resolved in this order:
 1. **Receipt-verified project-local package graph** (`plugins/npm/`, selected by manifest `name` + exact `version`)
 2. **User's project** (`node_modules`, for legacy unpinned manifests)
-3. **print-md's own dependencies** (bundled optional features and legacy entries)
+3. **Gutterpress's own dependencies** (bundled optional features and legacy entries)
 4. **Fail fast** — if a plugin can't be found, the build identifies the manifest entry and points to the explicit installer
 
 The loader does **not** install or access the network. Installation is an
-explicit viewer action or `print-md plugin add` command. Registry metadata is
+explicit desktop action or `gutterpress plugin add` command. Registry metadata is
 resolved to an exact root and dependency graph, each tarball integrity is
 verified, and a bounded nested `node_modules` tree is safely vendored before an
 atomic manifest update. A schema-v2 receipt records provenance, dependency
@@ -613,7 +613,7 @@ plugin variants instead.
 - Fail-fast on missing plugins surfaces misconfiguration immediately rather than silently skipping
 - CSS export support allows plugins to inject styles into rendered output
 
-See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugins.md) for the full authoring guide.
+See [User Guide: Chapter 6 — Plugins](../examples/gutterpress-user-guide/06-plugins.md) for the full authoring guide.
 
 ## Key Design Decisions
 
@@ -646,7 +646,7 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
 **Chosen over**: Vite, webpack-dev-server, `Bun.serve`.
 
 **Reasons**:
-- print-md does not bundle code at preview time — it serves a pre-rendered
+- Gutterpress does not bundle code at preview time — it serves a pre-rendered
   `book.html` and triggers full-reload on file change. A bundler-based dev
   server is the wrong tool.
 - `node:http` + the `ws` package provides everything needed (static files,
@@ -655,14 +655,14 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
 - Unlike `Bun.serve` (an earlier implementation), `node:http` + `ws` also runs
   unmodified under Electron's bundled Node, so the same preview server module
   works both in the compiled CLI binary (under Bun) and in-process inside the
-  packaged viewer (under Node) — see `packages/cli/src/preview/http-server.ts`.
+  packaged desktop (under Node) — see `packages/cli/src/preview/http-server.ts`.
 - The previous Vite setup required two custom plugins solely to *bypass*
   Vite's CSS pipeline and module graph, plus a compile-time regex plugin to
   rewrite `package.json` reads in `node_modules/vite`. Removing Vite
   removed both layers of workarounds.
 - See the "No bundlers at runtime" rule in `CLAUDE.md` §1.
 
-### 4. Why Electron + SvelteKit for the Desktop Viewer?
+### 4. Why Electron + SvelteKit for the Desktop App?
 
 **Chosen over**: extending the CLI preview server with a toolbar
 
@@ -677,11 +677,11 @@ See [User Guide: Chapter 6 — Plugins](../examples/print-md-user-guide/06-plugi
   `fetch("/api/…")`; a narrow `ipcMain`/preload bridge is reserved for push
   streams and calls that must drive a live `BrowserWindow` (see `CLAUDE.md`
   §8 and `docs/adr/0004-platform-abstraction.md`).
-- The lib (`@dimm-city/print-md`) is Node.js-compatible at runtime
+- The lib (`gutterpress`) is Node.js-compatible at runtime
   (`node:http` + `ws` instead of `Bun.serve`, `node:fs` instead of
   `Bun.file`). Electron's bundled Node runs it directly via a dynamic
   `import()` from main.js — no subprocess required.
-- Vite/Rollup in the viewer is intentional (web app build) and does not
+- Vite/Rollup in the desktop app is intentional (web app build) and does not
   conflict with the no-bundlers-at-runtime rule, which applies only to
   `packages/cli/src/`.
 
@@ -788,4 +788,4 @@ the build-time pagination/PDF static servers (`lib/pagination.ts`) use it.
 ---
 
 **Last Updated**: 2026-07-27
-**Version**: 0.8.3 (packages/cli + packages/viewer)
+**Version**: 0.8.3 (packages/cli + packages/desktop)

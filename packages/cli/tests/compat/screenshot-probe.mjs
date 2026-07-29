@@ -18,8 +18,8 @@ for (const name of engines) {
   const browser = await ENGINES[name].launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1000, height: 1400 } });
   await page.addInitScript(() => {
-    window.__pmdRender = { done: false };
-    window.addEventListener("renderingComplete", () => (window.__pmdRender = { done: true }));
+    window.__gutterpressRender = { done: false };
+    window.addEventListener("renderingComplete", () => (window.__gutterpressRender = { done: true }));
   });
   await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
   let frame = null;
@@ -29,7 +29,7 @@ for (const name of engines) {
     if (!frame && page.frames().length === 1) frame = page.mainFrame();
     if (!frame) await page.waitForTimeout(250);
   }
-  await frame.waitForFunction(() => window.__pmdRender && window.__pmdRender.done, null, {
+  await frame.waitForFunction(() => window.__gutterpressRender && window.__gutterpressRender.done, null, {
     timeout: 180_000,
     polling: 250,
   });

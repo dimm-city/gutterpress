@@ -153,15 +153,15 @@ source:
 
 ## Using the Build Command
 
-The standalone `convert` command was removed; `print-md build` now runs
-markdown → HTML rendering, asset copy, and viewer emission in a single
+The standalone `convert` command was removed; `gutterpress build` now runs
+markdown → HTML rendering, asset copy, and desktop emission in a single
 step (and adds a Chromium PDF render with `--format pdf`).
 
 ### With Files Specified
 
 ```bash
 # manifest.yaml has source.files list
-print-md build ./my-book --format html --out ./_site
+gutterpress build ./my-book --format html --out ./_site
 
 # Output shows which files are being used:
 # INFO: Using specified files (5 total)
@@ -171,7 +171,7 @@ print-md build ./my-book --format html --out ./_site
 
 ```bash
 # manifest.yaml omits source.files
-print-md build ./my-book --format html --out ./_site
+gutterpress build ./my-book --format html --out ./_site
 
 # Output shows fallback:
 # INFO: Using all .md files in alphabetical order
@@ -245,5 +245,5 @@ Or just omit `source.files` to get all `.md` files alphabetically.
 ## See Also
 
 - [Schema autocomplete & manifest reference](./schema-autocomplete.md)
-- [Example Manifest](../examples/print-md-user-guide/manifest.yaml)
+- [Example Manifest](../examples/gutterpress-user-guide/manifest.yaml)
 - [Debug Script](../packages/cli/tools/debug-manifest.ts)

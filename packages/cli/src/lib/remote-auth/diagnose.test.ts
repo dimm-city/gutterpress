@@ -15,7 +15,7 @@ async function gitFolder(opts: {
   remoteUrl?: string;
   branch?: string;
 }): Promise<string> {
-  const dir = await tempDir("pmd-diag-");
+  const dir = await tempDir("gutterpress-diag-");
   await mkdir(path.join(dir, ".git"), { recursive: true });
   await writeFile(
     path.join(dir, ".git", "HEAD"),
@@ -29,7 +29,7 @@ async function gitFolder(opts: {
 }
 
 test("plain folder → local-only, no remote, nothing syncable", async () => {
-  const dir = await tempDir("pmd-diag-plain-");
+  const dir = await tempDir("gutterpress-diag-plain-");
   try {
     const diag = await diagnoseProjectRemote(dir);
     expect(diag.classification.type).toBe("local-folder");
@@ -47,7 +47,7 @@ test("a pre-classified source is used as-is — no re-classification (#87)", asy
   // The projectDir deliberately does NOT exist: if diagnoseProjectRemote
   // re-classified instead of honoring options.source, the result would be a
   // remote-less local-folder diagnosis, not the git diagnosis below.
-  const ghost = path.join("/tmp", "pmd-diag-does-not-exist-xyz");
+  const ghost = path.join("/tmp", "gutterpress-diag-does-not-exist-xyz");
   const diag = await diagnoseProjectRemote(ghost, {
     source: {
       type: "local-git-folder",
@@ -80,7 +80,7 @@ test("git folder without a remote → local-only with branch", async () => {
 
 test("HTTPS github remote without credential → connect-github-to-sync", async () => {
   const dir = await gitFolder({ remoteUrl: "https://github.com/octo/book.git" });
-  const storeDir = await tempDir("pmd-diag-store-");
+  const storeDir = await tempDir("gutterpress-diag-store-");
   try {
     const store = new FileTokenStore(path.join(storeDir, "credentials.json"));
     const diag = await diagnoseProjectRemote(dir, { tokenStore: store });
@@ -101,7 +101,7 @@ test("HTTPS gitea remote with stored credential → ready-to-sync + token link",
     remoteUrl: "https://gitea.example.com/octo/book.git",
     branch: "main",
   });
-  const storeDir = await tempDir("pmd-diag-store2-");
+  const storeDir = await tempDir("gutterpress-diag-store2-");
   try {
     const store = new FileTokenStore(path.join(storeDir, "credentials.json"));
     await store.set("gitea.example.com", {
@@ -136,7 +136,7 @@ test("HTTPS non-GitHub remote without credential → https-connect-server", asyn
 
 test("SSH remote → ssh-use-own-tools, never syncable, host still recognized", async () => {
   const dir = await gitFolder({ remoteUrl: "git@github.com:octo/book.git" });
-  const storeDir = await tempDir("pmd-diag-store3-");
+  const storeDir = await tempDir("gutterpress-diag-store3-");
   try {
     const store = new FileTokenStore(path.join(storeDir, "credentials.json"));
     // Even WITH a stored credential, SSH can't sync (HTTPS-only transport).

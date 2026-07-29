@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%sveltekit.assets%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- PWA install manifest (#33). Harmless under Electron's app:// — the
+         desktop shell never installs a PWA and never registers the service
+         worker (SW registration is gated on !isDesktop() in +layout.svelte).
+         Relative href matches paths.relative=true so it resolves under any
+         static host or the app:// root. -->
+    <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+    <meta name="theme-color" content="#5a5a5a" />
+    <title>Gutterpress desktop</title>
+    <script>
+      // No-flash theme injection (#48). Runs before first paint so the app
+      // chrome never flashes the wrong theme on launch. Reads the fast-path
+      // cache written by theme.svelte.ts; falls back to the OS preference for
+      // "system" or first launch. The Svelte theme controller refines this
+      // with the canonical persisted setting + live OS-change tracking once
+      // it mounts.
+      (function () {
+        try {
+          var mode = localStorage.getItem("gutterpress.theme-mode") || "system";
+          var resolved =
+            mode === "light"
+              ? "light"
+              : mode === "dark"
+                ? "dark"
+                : window.matchMedia &&
+                    window.matchMedia("(prefers-color-scheme: dark)").matches
+                  ? "dark"
+                  : "light";
+          document.documentElement.dataset.theme = resolved;
+        } catch (e) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <!-- Boot loader: shows instantly so the window is never a blank dark void
+         while the SPA shell mounts (which can take a moment on a cold start).
+         Removed once the real toolbar renders. -->
+    <div
+      id="gutterpress-boot"
+      style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#1e1e1e;z-index:99999;color:#8a8a8a;font-family:system-ui,-apple-system,sans-serif"
+    >
+      <div style="text-align:center">
+        <div
+          style="width:36px;height:36px;border:3px solid #3a3a3a;border-top-color:#4ea1ff;border-radius:50%;margin:0 auto 14px;animation:gutterpressspin .8s linear infinite"
+        ></div>
+        Loading…
+      </div>
+    </div>
+    <style>
+      @keyframes gutterpressspin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <script>
+      (function () {
+        var done = function () {
+          var b = document.getElementById("gutterpress-boot");
+          if (!b) return;
+          b.style.transition = "opacity .2s";
+          b.style.opacity = "0";
+          setTimeout(function () {
+            b.remove();
+          }, 220);
+        };
+        var t = setInterval(function () {
+          // First-screen signal: the workspace toolbar OR the start screen
+          // (the landing is the first screen on fresh installs / web) — the
+          // boot cover must not be keyed to one workspace-internal element.
+          if (document.querySelector(".toolbar, .landing")) {
+            clearInterval(t);
+            done();
+          }
+        }, 50);
+        setTimeout(function () {
+          clearInterval(t);
+          done();
+        }, 20000);
+      })();
+    </script>
+    <div style="display: contents">%sveltekit.body%</div>
+  </body>
+</html>

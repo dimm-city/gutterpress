@@ -178,7 +178,7 @@ test("execCapture's kill timer is unref'd so it cannot hold the event loop open"
 // fire immediately and the test measures nothing.
 
 function syncFilePath(): string {
-  return join(mkdtempSync(join(tmpdir(), "pmd-exec-")), "started");
+  return join(mkdtempSync(join(tmpdir(), "gutterpress-exec-")), "started");
 }
 
 test("spawnCapture re-arms the flush grace while a grandchild keeps streaming after 'exit'", async () => {

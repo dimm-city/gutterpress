@@ -1,5 +1,5 @@
 /**
- * Tests for the print-md check/validation system.
+ * Tests for the gutterpress check/validation system.
  *
  * Covers: registry, runner, formatter, manifest integration,
  * and individual check modules (unit-level, no external tools required).
@@ -343,7 +343,7 @@ describe("Check Runner", () => {
     const { PDFDocument } = await import("pdf-lib");
     const docu = await PDFDocument.create();
     docu.addPage([612, 792]);
-    const dir = await mkdtemp(join(tmpdir(), "print-md-runnercache-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-runnercache-"));
     const pdfPath = join(dir, "run.pdf");
     await writeFile(pdfPath, await docu.save());
 
@@ -380,14 +380,14 @@ describe("Check Runner", () => {
 
   test("overlapping runs: one run completing must not destroy the other run's documents", async () => {
     // runChecks is a public lib export served by a long-lived host (the
-    // viewer), where two runs CAN overlap — e.g. a Problems-panel lint run
+    // desktop), where two runs CAN overlap — e.g. a Problems-panel lint run
     // and a publish preflight. The completing run's end-of-run cache reclaim
     // must not destroy PDF documents the still-active run is reading, or that
     // run reports spurious "Transport destroyed" errors on a valid PDF.
     const { PDFDocument } = await import("pdf-lib");
     const docu = await PDFDocument.create();
     docu.addPage([612, 792]);
-    const dir = await mkdtemp(join(tmpdir(), "print-md-overlap-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-overlap-"));
     const pdfPath = join(dir, "overlap.pdf");
     await writeFile(pdfPath, await docu.save());
 
@@ -666,7 +666,7 @@ describe("Manifest validate section", () => {
     expect(config.validate.enabled).toBe(false);
     expect(config.validate.assets.maxImageSize).toBe(5_000_000);
     // ARCH #24: a manifest-set allowedCallouts still parses (deprecated field
-    // kept on PrintMdManifest for backward compat) but is dropped, not
+    // kept on GutterpressManifest for compatibility) but is dropped, not
     // resolved — it no longer appears anywhere on ResolvedConfig.
     expect((config.validate.source as Record<string, unknown>).allowedCallouts).toBeUndefined();
     // Other defaults preserved
@@ -739,7 +739,7 @@ describe("Manifest validate section", () => {
 
 describe("Local markdown refs check", () => {
   test("reports missing local link and image refs", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-"));
     const mainFile = join(dir, "main.md");
     await writeFile(join(dir, "ok.md"), "# ok\n");
     await writeFile(
@@ -764,10 +764,10 @@ describe("Local markdown refs check", () => {
   // ARCH: local-refs previously called existsSync on the still-percent-encoded
   // destination, so a correct `![](my%20photo.png)` — the only bracket-less
   // spelling CommonMark renders for a space in a filename — was reported as
-  // missing and hard-failed `print-md build`. Fixed by decoding (via
+  // missing and hard-failed `gutterpress build`. Fixed by decoding (via
   // lib/asset-inline.ts's `decodeRef`) before the existence probe.
   test("percent-decodes a space before probing the filesystem", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-"));
     await writeFile(join(dir, "my photo.png"), "fake-bytes");
     const mainFile = join(dir, "main.md");
     await writeFile(mainFile, "![a photo](my%20photo.png)\n");
@@ -781,7 +781,7 @@ describe("Local markdown refs check", () => {
 
   // Same bug, non-ASCII case: `café.png` is authored as `caf%C3%A9.png`.
   test("percent-decodes a non-ASCII escape before probing the filesystem", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-"));
     await writeFile(join(dir, "café.png"), "fake-bytes");
     const mainFile = join(dir, "main.md");
     await writeFile(mainFile, "![coffee](caf%C3%A9.png)\n");
@@ -800,7 +800,7 @@ describe("Local markdown refs check", () => {
   // against `<chapterDir>/art/cover.png` and reported as missing even though
   // the build resolves — and finds — it fine.
   test("resolves an image ref from a subfolder chapter against the project root", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-"));
     await mkdir(join(dir, "chapters"), { recursive: true });
     await mkdir(join(dir, "art"), { recursive: true });
     await writeFile(join(dir, "art", "cover.png"), "fake-bytes");
@@ -817,7 +817,7 @@ describe("Local markdown refs check", () => {
   // Counterpart: a non-image LINK (e.g. chapter-to-chapter) is never touched
   // by the renderer, so it keeps resolving relative to the LINKING file.
   test("still resolves a non-image link relative to the linking chapter file", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-local-refs-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-local-refs-"));
     await mkdir(join(dir, "chapters"), { recursive: true });
     await writeFile(join(dir, "chapters", "02-next.md"), "# Next\n");
     const chapterFile = join(dir, "chapters", "01-intro.md");
@@ -833,7 +833,7 @@ describe("Local markdown refs check", () => {
 
 describe("Source accessibility checks", () => {
   test("alt-text reports empty image alt text", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-alt-text-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-alt-text-"));
     const mainFile = join(dir, "main.md");
     await writeFile(
       mainFile,
@@ -852,7 +852,7 @@ describe("Source accessibility checks", () => {
   });
 
   test("heading-order reports heading level jumps", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-heading-order-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-heading-order-"));
     const mainFile = join(dir, "main.md");
     await writeFile(
       mainFile,
@@ -1030,7 +1030,7 @@ describe("Source checks skip when tool is disabled", () => {
   });
 
   test("flags remote url() as error and risky print effects as warning", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-stylelint-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-stylelint-"));
 
     try {
       const cssFile = join(dir, "test.css");
@@ -1059,7 +1059,7 @@ describe("Source checks skip when tool is disabled", () => {
   });
 
   test("stylelint flags selectors that will be skipped by Paged.js", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-stylelint-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-stylelint-"));
 
     try {
       const cssFile = join(dir, "test.css");
@@ -1187,7 +1187,7 @@ describe("Tool Check", () => {
       description: "Test check with missing tool",
       category: "source",
       phase: "pre-build",
-      requiredTools: ["__print_md_nonexistent_tool_xyz__"],
+      requiredTools: ["__gutterpress_nonexistent_tool_xyz__"],
       async run() { return []; },
     };
     const unregister = registerCheck(fakeCheck);
@@ -1198,7 +1198,7 @@ describe("Tool Check", () => {
         only: ["test.fake-tool-check"],
       });
 
-      expect(result.missing).toContain("__print_md_nonexistent_tool_xyz__");
+      expect(result.missing).toContain("__gutterpress_nonexistent_tool_xyz__");
       expect(result.skippedChecks).toContain("test.fake-tool-check");
     } finally {
       unregister();
@@ -1271,7 +1271,7 @@ describe("Runner skips checks with missing tools", () => {
 
 describe("In-process source/PDF checks (no external tools)", () => {
   test("markdownlint detects violations via auto-detected YAML config", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-mdlint-"));
     try {
       await writeFile(join(dir, ".markdownlint.yaml"), "default: true\nMD013: false\n");
       const mdFile = join(dir, "doc.md");
@@ -1293,7 +1293,7 @@ describe("In-process source/PDF checks (no external tools)", () => {
   });
 
   test("markdownlint returns [] for clean markdown", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-mdlint-"));
     try {
       await writeFile(join(dir, ".markdownlint.yaml"), "default: true\n");
       const mdFile = join(dir, "doc.md");
@@ -1308,7 +1308,7 @@ describe("In-process source/PDF checks (no external tools)", () => {
   });
 
   test("markdownlint skips silently when no config is present", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-mdlint-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-mdlint-"));
     try {
       const mdFile = join(dir, "doc.md");
       await writeFile(mdFile, "#bad\n");
@@ -1322,7 +1322,7 @@ describe("In-process source/PDF checks (no external tools)", () => {
   });
 
   test("htmlhint detects violations using a .htmlhintrc config", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-htmlhint-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-htmlhint-"));
     try {
       await writeFile(join(dir, ".htmlhintrc"), JSON.stringify({ "tagname-lowercase": true }));
       const htmlFile = join(dir, "page.html");
@@ -1340,7 +1340,7 @@ describe("In-process source/PDF checks (no external tools)", () => {
   });
 
   test("htmlhint uses built-in defaults when config path is set but missing", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-htmlhint-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-htmlhint-"));
     try {
       const htmlFile = join(dir, "page.html");
       await writeFile(htmlFile, "<DIV></DIV>");
@@ -1357,7 +1357,7 @@ describe("In-process source/PDF checks (no external tools)", () => {
   });
 
   test("transparency detects markers via raw byte scan", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdf-"));
     try {
       const pdfFile = join(dir, "t.pdf");
       await writeFile(pdfFile, "%PDF-1.7\n<< /Type /Group /S /Transparency >>\n/SMask 5 0 R\n");
@@ -1375,7 +1375,7 @@ describe("In-process source/PDF checks (no external tools)", () => {
   });
 
   test("color-spaces flags DeviceRGB; /Lab\\b does not match /Label", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdf-"));
     try {
       const pdfFile = join(dir, "c.pdf");
       // Contains /DeviceRGB and /Label — /Label must NOT trip the /Lab rule.
@@ -1391,7 +1391,7 @@ describe("In-process source/PDF checks (no external tools)", () => {
   });
 
   test("color-spaces matches a genuine /Lab color space", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-pdf-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-pdf-"));
     try {
       const pdfFile = join(dir, "lab.pdf");
       await writeFile(pdfFile, "%PDF-1.7\n[/Lab << /WhitePoint [1 1 1] >>]\n");
@@ -1436,7 +1436,7 @@ function buildPng(colorType: number, ppm?: number): Buffer {
 
 describe("Asset image checks (in-process reader)", () => {
   test("alpha-channel flags an RGBA PNG when allowAlpha=false", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-asset-"));
     try {
       await writeFile(join(dir, "rgba.png"), buildPng(6)); // colorType 6 = RGBA
       const config = makeConfig();
@@ -1452,7 +1452,7 @@ describe("Asset image checks (in-process reader)", () => {
   });
 
   test("alpha-channel passes an opaque RGB PNG", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-asset-"));
     try {
       await writeFile(join(dir, "rgb.png"), buildPng(2)); // colorType 2 = RGB
       const config = makeConfig();
@@ -1466,7 +1466,7 @@ describe("Asset image checks (in-process reader)", () => {
   });
 
   test("color-space flags an sRGB PNG when only CMYK/Gray allowed", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-asset-"));
     try {
       await writeFile(join(dir, "rgb.png"), buildPng(2)); // sRGB
       const config = makeConfig();
@@ -1481,7 +1481,7 @@ describe("Asset image checks (in-process reader)", () => {
   });
 
   test("resolution flags a low-DPI image and passes a 300-DPI one", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "print-md-asset-"));
+    const dir = await mkdtemp(join(tmpdir(), "gutterpress-asset-"));
     try {
       await writeFile(join(dir, "low.png"), buildPng(2)); // no pHYs → 72 DPI
       await writeFile(join(dir, "hi.png"), buildPng(2, 11811)); // 300 DPI

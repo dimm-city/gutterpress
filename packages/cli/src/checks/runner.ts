@@ -85,7 +85,7 @@ export async function runChecks(
   }
 
   // Retain the shared parsed-PDF cache for this run's duration. runChecks is
-  // a public lib export served by a long-lived host (the viewer), where runs
+  // a public lib export served by a long-lived host (the desktop), where runs
   // CAN overlap (a Problems-panel lint run + a publish preflight) — an
   // unconditional clear here would destroy documents a concurrent run is
   // mid-read on, making its checks throw "Transport destroyed" on a valid

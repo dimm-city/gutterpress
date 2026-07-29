@@ -34,7 +34,7 @@ async function readFingerprint(outPath: string): Promise<{
 }
 
 test("writeBuildFingerprint records the real lib version via the shared PACKAGE_META, not 'unknown'", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-"));
   try {
     const outPath = await writeBuildFingerprint({
       command: "build",
@@ -52,8 +52,8 @@ test("writeBuildFingerprint records the real lib version via the shared PACKAGE_
       tools: Record<string, string | null>;
     };
 
-    expect(payload.tools["print-md"]).toBe(PACKAGE_META.version);
-    expect(payload.tools["print-md"]).not.toBe("unknown");
+    expect(payload.tools["gutterpress"]).toBe(PACKAGE_META.version);
+    expect(payload.tools["gutterpress"]).not.toBe("unknown");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -62,11 +62,11 @@ test("writeBuildFingerprint records the real lib version via the shared PACKAGE_
 test("writeBuildFingerprint degrades to sourceRevision: null for a non-git directory (no system git spawn involved)", async () => {
   // getGitRevision tries [sourceDir, process.cwd()] as candidates, so a
   // naive in-process call here would find THIS repo via the process.cwd()
-  // fallback (this test file lives inside print-md's own git repo). Run the
+  // fallback (this test file lives inside gutterpress's own git repo). Run the
   // check in a SUBPROCESS whose cwd is also the non-git temp dir, so neither
   // candidate resolves to a repo — a true test of the graceful-null path.
-  const nonGitDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-nogit-"));
-  const outDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-out-"));
+  const nonGitDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-nogit-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-out-"));
   try {
     const buildFingerprintUrl = new URL("./build-fingerprint.ts", import.meta.url).href;
     const runnerPath = join(nonGitDir, "run-fingerprint.mjs");
@@ -108,8 +108,8 @@ test("writeBuildFingerprint degrades to sourceRevision: null for a non-git direc
 });
 
 test("writeBuildFingerprint records root/commit/shortCommit/dirty:false for a clean isomorphic-git repo", async () => {
-  const repoDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-repo-"));
-  const outDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-out-"));
+  const repoDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-repo-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-out-"));
   try {
     // Build a real repo entirely via the provider layer's isomorphic-git
     // backend (source-provider.ts) — no system `git` binary involved.
@@ -150,8 +150,8 @@ test("writeBuildFingerprint resolves a REAL sourceRevision even with no `git` bi
   // degrades to sourceRevision: null when `git` isn't on PATH (see the old
   // "tolerates a missing git binary" test this replaces). The isomorphic-git
   // implementation must still resolve the real commit — it never shells out.
-  const repoDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-nopath-"));
-  const outDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-out-"));
+  const repoDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-nopath-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-out-"));
   try {
     await writeFile(join(repoDir, "chapter-01.md"), "# Hello\n");
     await providerFor({ type: "local-folder", path: repoDir }).initVersionHistory({
@@ -210,8 +210,8 @@ test("writeBuildFingerprint resolves a REAL sourceRevision even with no `git` bi
 });
 
 test("writeBuildFingerprint records dirty:true when the working tree has unsaved changes", async () => {
-  const repoDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-repo-"));
-  const outDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-out-"));
+  const repoDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-repo-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-out-"));
   try {
     await writeFile(join(repoDir, "chapter-01.md"), "# Hello\n");
     await providerFor({ type: "local-folder", path: repoDir }).initVersionHistory({
@@ -245,8 +245,8 @@ test("writeBuildFingerprint records dirty:true when the working tree has unsaved
 });
 
 test("writeBuildFingerprint records dirty:true for STAGED-but-uncommitted changes (code-review: not just WORKDIR-vs-STAGE)", async () => {
-  const repoDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-repo-"));
-  const outDir = await mkdtemp(join(tmpdir(), "print-md-fingerprint-out-"));
+  const repoDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-repo-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-fingerprint-out-"));
   try {
     await writeFile(join(repoDir, "chapter-01.md"), "# Hello\n");
     await providerFor({ type: "local-folder", path: repoDir }).initVersionHistory({

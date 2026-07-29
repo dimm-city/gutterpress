@@ -1,6 +1,6 @@
 # Tools
 
-Standalone utilities for print production tasks that fall outside the `print-md` CLI. These are transformation, authoring, and debugging helpers — not validation checks (those live in `src/checks/`).
+Standalone utilities for print production tasks that fall outside the `gutterpress` CLI. These are transformation, authoring, and debugging helpers — not validation checks (those live in `src/checks/`).
 
 ## validate-images.py
 
@@ -50,7 +50,7 @@ python3 tools/alpha-to-polygon.py image.png --format json
 
 Sets TrimBox, BleedBox, and MediaBox on every page of a PDF. Chromium doesn't reliably produce these boxes, but some print vendors (e.g. DTRPG) may require them.
 
-**When to use:** Your vendor requires TrimBox/BleedBox metadata and the `pdf.print.bleed` validation check is reporting missing boxes. Run this after `print-md build`.
+**When to use:** Your vendor requires TrimBox/BleedBox metadata and the `pdf.print.bleed` validation check is reporting missing boxes. Run this after `gutterpress build`.
 
 **Requires:** Python 3, pikepdf
 

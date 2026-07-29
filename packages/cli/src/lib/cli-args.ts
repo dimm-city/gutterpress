@@ -91,12 +91,12 @@ export function rejectUnknownFlags(
 
   const reject = (option: string): never => {
     throw new UsageError(
-      `print-md ${commandName}: unknown option ${option}`
+      `gutterpress ${commandName}: unknown option ${option}`
     );
   };
   const missingValue = (option: string): never => {
     throw new UsageError(
-      `print-md ${commandName}: option ${option} requires a value`
+      `gutterpress ${commandName}: option ${option} requires a value`
     );
   };
   const isDeclaredOptionBoundary = (token: string): boolean => {
@@ -133,7 +133,7 @@ export function rejectUnknownFlags(
       const definition = directDefinition ?? longFlags.get(name);
 
       if (!definition) throw new UsageError(
-        `print-md ${commandName}: unknown option ${option}`
+        `gutterpress ${commandName}: unknown option ${option}`
       );
       if (
         negated &&
@@ -157,7 +157,7 @@ export function rejectUnknownFlags(
       const alias = body[j]!;
       const definition = shortFlags.get(alias);
       if (!definition) throw new UsageError(
-        `print-md ${commandName}: unknown option ${token}`
+        `gutterpress ${commandName}: unknown option ${token}`
       );
       if (takesValue(definition)) {
         const attached = body.slice(j + 1);
@@ -179,7 +179,7 @@ export function rejectUnknownFlags(
  * `type: "positional"` args have claimed their share — it shifts values off a
  * COPY of `_` for each declared positional arg, but never trims the original
  * array. So a command with one declared positional silently drops a second
- * one instead of erroring, e.g. `print-md build a b` builds `a` and never
+ * one instead of erroring, e.g. `gutterpress build a b` builds `a` and never
  * mentions `b`. Call this near the top of a command's `run()`, passing
  * `(args as { _: unknown[] })._` and how many positionals the command itself
  * declares, to turn that into a named `UsageError` instead.
@@ -192,7 +192,7 @@ export function rejectExtraPositionals(
   const extras = (positionals ?? []).slice(expectedCount);
   if (extras.length > 0) {
     throw new UsageError(
-      `print-md ${commandName}: unexpected extra argument(s): ${extras.join(" ")}`
+      `gutterpress ${commandName}: unexpected extra argument(s): ${extras.join(" ")}`
     );
   }
 }

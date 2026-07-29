@@ -9,7 +9,7 @@
  * each decoder, not parallel copies "kept in sync by spec".
  *
  * classifyFromHealth() is the health-only classifier used by preflight
- * callers (no thrown error yet — e.g. the viewer at project-open): it returns
+ * callers (no thrown error yet — e.g. the desktop at project-open): it returns
  * null for a healthy repo so the caller can skip recovery entirely.
  *
  * This module is pure — no I/O, no side effects.
@@ -60,7 +60,7 @@ export function isRepoNeedsRecoveryError(e: unknown): e is RepoNeedsRecoveryErro
 export class InsecureTransportError extends Error {
   readonly code = "InsecureTransport";
   constructor() {
-    // No literal scheme tokens ("http://") in this copy: the viewer redacts
+    // No literal scheme tokens ("http://") in this copy: the desktop redacts
     // anything matching /https?:\/\/\S+/, which would garble the message.
     super(
       "This online address isn't secure, so the saved connection wasn't sent — " +

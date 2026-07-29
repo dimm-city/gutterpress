@@ -98,11 +98,11 @@ export interface CloneRepositoryResult {
  * Where provider provenance lives: INSIDE `.git/` (untracked by definition,
  * travels with the clone, invisible to the author's files). A tracked sidecar
  * in the worktree was rejected — it would dirty the repo and leak app metadata
- * into the user's published content. The viewer's `viewer-prefs.json` was also
- * rejected: provenance must be written by the LIB (shared by CLI + viewer) and
+ * into the user's published content. The desktop's `desktop-prefs.json` was also
+ * rejected: provenance must be written by the LIB (shared by CLI + desktop) and
  * stay attached to the project folder itself.
  */
-const PROVENANCE_FILE = "print-md-remote.json";
+const PROVENANCE_FILE = "gutterpress-remote.json";
 
 export function provenancePath(projectDir: string): string {
   return path.join(projectDir, ".git", PROVENANCE_FILE);
@@ -154,7 +154,7 @@ function friendlyCloneError(e: unknown): Error {
   // FIRST: the typed withheld-credential error from onAuthFor — an https-vs-
   // http problem no retry can fix, so it must never fall through to the
   // generic "try again" arm. (No literal scheme tokens in the copy: the
-  // viewer redacts /https?:\/\/\S+/ matches, which would garble the message.)
+  // desktop redacts /https?:\/\/\S+/ matches, which would garble the message.)
   if (isInsecureTransportError(e)) {
     return new Error(
       "That repository address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Use a secure address (starting with https), or a local loopback address for a server on this computer.",

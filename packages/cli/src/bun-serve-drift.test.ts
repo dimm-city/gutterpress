@@ -4,7 +4,7 @@
  * CLAUDE.md §1 used to instruct `Bun.serve` for the preview dev server,
  * directly contradicting both the actual implementation
  * (`packages/cli/src/preview/http-server.ts` uses `node:http` + `ws` so it
- * can run under Electron's bundled Node in the packaged viewer) and
+ * can run under Electron's bundled Node in the packaged desktop) and
  * CLAUDE.md's own Node-compatibility requirement (Monorepo layout section:
  * "no `Bun.serve`/`Bun.file`/runtime Bun APIs"). CONTRIBUTING.md and
  * docs/ARCHITECTURE.md repeated the same dead story. All three now describe

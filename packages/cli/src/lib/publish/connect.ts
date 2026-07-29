@@ -1,6 +1,6 @@
 /**
  * Shared connect flow (#35) — one implementation for both front-ends (the CLI
- * `--connect` flag and the viewer's publish:connect route), with the ordering
+ * `--connect` flag and the desktop's publish:connect route), with the ordering
  * that keeps the credential store safe:
  *
  *   1. Resolve the request (manifest parse) BEFORE touching the store — a

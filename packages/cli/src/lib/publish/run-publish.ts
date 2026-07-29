@@ -1,13 +1,13 @@
 /**
  * Publish orchestrator (#35): resolve the project + artifact from the
  * manifest, run the provider's preflight → authenticate → upload pipeline,
- * and return one structured result both front-ends (CLI command, viewer
+ * and return one structured result both front-ends (CLI command, desktop
  * routes) render.
  *
  * The orchestrator does NOT build. Publishing consumes an existing artifact;
  * front-ends that want build-then-publish call `runBuild` (build-runner.ts)
- * themselves first — `print-md publish` has no build flag of its own, and the
- * viewer's export flow builds via its own Save-PDF pipeline before handing the
+ * themselves first — `gutterpress publish` has no build flag of its own, and the
+ * desktop's export flow builds via its own Save-PDF pipeline before handing the
  * chosen path to this module as an explicit `artifactPath`. This keeps
  * puppeteer-core out of the publish path (CLAUDE.md §2).
  */
@@ -116,12 +116,12 @@ export async function resolvePublishRequest(
   };
 }
 
-// Host-neutral build hints — the CLI user runs a command, the viewer user
+// Host-neutral build hints — the CLI user runs a command, the desktop user
 // exports from the app; the message must make sense to both.
 const PDF_HINT =
-  "Build the PDF first (print-md build, or export it from the app).";
+  "Build the PDF first (gutterpress build, or export it from the app).";
 const HTML_HINT =
-  "Build the website export first (print-md build --format html).";
+  "Build the website export first (gutterpress build --format html).";
 
 /** Artifact-existence checks shared by every provider. */
 async function artifactIssues(artifact: PublishArtifact): Promise<PreflightIssue[]> {
@@ -213,7 +213,7 @@ async function htmlDirIssues(dir: string): Promise<PreflightIssue[]> {
       id: "publish/html-dir-extras",
       message:
         `${dir} also contains ${extras.join(" and ")} — everything in the folder is deployed and becomes publicly downloadable. ` +
-        "Use a dedicated output folder for the website (print-md build --format html --out <dir>) if that isn't intended.",
+        "Use a dedicated output folder for the website (gutterpress build --format html --out <dir>) if that isn't intended.",
     });
   }
   return issues;

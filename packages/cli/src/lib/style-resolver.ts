@@ -1,14 +1,14 @@
 /**
  * Stylesheet resolution — the SINGLE source of truth for "which stylesheet(s)
  * does this project use?". Both the renderer (which `<link>`s them into the
- * book) and the viewer's Design/Edit-CSS surface (which edits them) consume
+ * book) and the desktop's Design/Edit-CSS surface (which edits them) consume
  * `resolveActiveStyles`, so the file an author edits is always the file the
  * preview renders. Keeping these in one place is what prevents the
  * "updating the design doesn't change the preview" class of bug.
  *
  * Pure Node fs/path + the lib's manifest parser — NO subprocess, NO bundler, NO
  * runtime package.json reads — so it bundles under `bun build --compile` and
- * runs in the packaged viewer (CLAUDE.md §1/§3).
+ * runs in the packaged desktop (CLAUDE.md §1/§3).
  *
  * - `resolveActiveStyles` → the ACTIVE set (rendered AND edited): the manifest
  *   `styles:` list if present, else the first conventional stylesheet the
@@ -37,7 +37,7 @@ const THEMES_SUBDIR = "themes";
 
 /**
  * Conventional single-stylesheet locations, in priority order, used when a
- * project has no manifest `styles:`. `styles/book.css` is what `print-md new`
+ * project has no manifest `styles:`. `styles/book.css` is what `gutterpress new`
  * and "set up as a book" scaffold; the `css/*` names are the legacy convention.
  */
 const FALLBACK_PRIORITY = [

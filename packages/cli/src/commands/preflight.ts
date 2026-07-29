@@ -141,7 +141,7 @@ export function buildPreflightPayload(
 
 export function toPreflightMarkdown(payload: PreflightPayload): string {
   const lines: string[] = [];
-  lines.push("# print-md preflight");
+  lines.push("# gutterpress preflight");
   lines.push("");
   lines.push(`- Status: **${payload.status}**`);
   lines.push(`- Profile: ${payload.profile ?? "none"}`);

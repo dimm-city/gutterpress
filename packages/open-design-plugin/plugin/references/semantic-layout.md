@@ -1,7 +1,7 @@
 # Semantic layout
 
-The stable Print-MD authoring surface, and the CSS habits that survive
-pagination. Verified against the Print-MD source that ships this package,
+The stable Gutterpress authoring surface, and the CSS habits that survive
+pagination. Verified against the Gutterpress source that ships this package,
 2026-07-28.
 
 ## Markers
@@ -59,8 +59,8 @@ rule.
 
 ## Contextual Cascade
 
-Print-MD's general CSS architecture pattern is documented in
-[`docs/contextual-cascade-principle.md`](https://github.com/dimm-city/print-md/blob/main/docs/contextual-cascade-principle.md),
+Gutterpress's general CSS architecture pattern is documented in
+[`docs/contextual-cascade-principle.md`](https://github.com/dimm-city/gutterpress/blob/main/docs/contextual-cascade-principle.md),
 with a worked example under `examples/with-design-guide/`. The short version:
 a component defines its own defaults, and *context* (an ancestor section, page,
 or chapter class) adjusts them by re-setting custom properties — not by writing
@@ -76,7 +76,7 @@ generated structure:
 - **No page-ordinal targeting.** "The third page" is an output of pagination;
   styling it changes pagination, which changes which page is third.
 
-`print-md lint` additionally flags, as errors:
+`gutterpress lint` additionally flags, as errors:
 
 - **remote `url()`** — `http(s)://` and protocol-relative references, which may
   not be reachable at print time;
@@ -88,7 +88,7 @@ And warns on properties that can force rasterization in print: `filter`,
 `backdrop-filter`, `mix-blend-mode`, `background-blend-mode`, `isolation`,
 `animation`, `transition`, `will-change`, `clip-path`.
 
-Ask the user to run `print-md lint <book>` after a substantial CSS change.
+Ask the user to run `gutterpress lint <book>` after a substantial CSS change.
 
 ## Ownership
 
@@ -97,6 +97,6 @@ Ask the user to run `print-md lint <book>` after a substantial CSS change.
 - **Book-specific positioning and break tuning** belongs to that book's own
   stylesheet, listed last.
 - **Generic authoring behavior** — something broadly useful to any author
-  writing plain Markdown — belongs in Print-MD core, not in a per-book override.
+   writing plain Markdown — belongs in Gutterpress core, not in a per-book override.
   If you find yourself solving the same layout problem in every book, say so in
   your report instead of copying the workaround again.

@@ -34,13 +34,13 @@ check() {
     fi
 }
 
-warn_state() { [ -n "$PRINTMD_UNVERIFIED" ] && echo set || echo empty; }
+warn_state() { [ -n "$GUTTERPRESS_UNVERIFIED" ] && echo set || echo empty; }
 
 # ---- fixtures --------------------------------------------------------------
 
-PRINTMD_TAG="v1.2.3"
-PRINTMD_ASSET="print-md-cli-linux-x64"
-printf 'hello print-md\n' > "$TMP/binary"
+GUTTERPRESS_TAG="v1.2.3"
+GUTTERPRESS_ASSET="gutterpress-cli-linux-x64"
+printf 'hello gutterpress\n' > "$TMP/binary"
 REAL_HASH="$(sha256sum "$TMP/binary" | awk '{print $1}')"
 
 STUB_MODE=""
@@ -62,7 +62,7 @@ gh_curl() {
 }
 
 # Must run in the CURRENT shell, not a $(...) subshell — verify_checksum
-# communicates the skip reason by assigning PRINTMD_UNVERIFIED, and a subshell
+# communicates the skip reason by assigning GUTTERPRESS_UNVERIFIED, and a subshell
 # would discard it. The installer calls it via `if ! verify_checksum`, which
 # likewise stays in the current shell.
 RC=""
@@ -77,12 +77,12 @@ echo "verify_checksum:"
 
 # 1. Hash present and matching -> verified, no warning.
 STUB_MODE=""; STUB_CURL_FAILS=""
-STUB_SUMS="$REAL_HASH  $PRINTMD_ASSET"
+STUB_SUMS="$REAL_HASH  $GUTTERPRESS_ASSET"
 run_verify; check "matching hash exits 0" "0" "$RC"
 check "matching hash records no warning" "empty" "$(warn_state)"
 
 # 2. Hash present and MISMATCHED -> fatal, nothing gets installed.
-STUB_SUMS="0000000000000000000000000000000000000000000000000000000000000000  $PRINTMD_ASSET"
+STUB_SUMS="0000000000000000000000000000000000000000000000000000000000000000  $GUTTERPRESS_ASSET"
 run_verify; check "mismatched hash exits 1 (fatal)" "1" "$RC"
 
 # 3. Release publishes no SHA256SUMS.txt (pre-checksum release) -> warn, continue.
@@ -97,21 +97,21 @@ run_verify; check "unlisted asset exits 0 (continues)" "0" "$RC"
 check "unlisted asset records warning" "set" "$(warn_state)"
 
 # 5. Manifest download fails -> warn, continue.
-STUB_SUMS="$REAL_HASH  $PRINTMD_ASSET"
+STUB_SUMS="$REAL_HASH  $GUTTERPRESS_ASSET"
 STUB_CURL_FAILS="1"
 run_verify; check "manifest fetch failure exits 0 (continues)" "0" "$RC"
 check "manifest fetch failure records warning" "set" "$(warn_state)"
 STUB_CURL_FAILS=""
 
 # 6. Uppercase hash in the manifest still matches (compare is case-insensitive).
-STUB_SUMS="$(printf '%s' "$REAL_HASH" | tr 'a-f' 'A-F')  $PRINTMD_ASSET"
+STUB_SUMS="$(printf '%s' "$REAL_HASH" | tr 'a-f' 'A-F')  $GUTTERPRESS_ASSET"
 run_verify; check "uppercase manifest hash exits 0" "0" "$RC"
 check "uppercase manifest hash records no warning" "empty" "$(warn_state)"
 
 # 7. Multi-line manifest selects the row for our asset, not the first row.
 STUB_SUMS="$(printf '%s  other-asset\n%s  %s\n%s  third-asset' \
     "0000000000000000000000000000000000000000000000000000000000000000" \
-    "$REAL_HASH" "$PRINTMD_ASSET" \
+    "$REAL_HASH" "$GUTTERPRESS_ASSET" \
     "1111111111111111111111111111111111111111111111111111111111111111")"
 run_verify; check "multi-line manifest selects correct row" "0" "$RC"
 check "multi-line manifest records no warning" "empty" "$(warn_state)"

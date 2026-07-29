@@ -86,7 +86,7 @@ test("listPublishAccounts returns the default + named accounts, redacted", async
 
 describe("PublishSelectionsStore — project/global default precedence", () => {
   test("project wins over global; clears fall back correctly", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "pmd-sel-"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "gutterpress-sel-"));
     try {
       const store = new PublishSelectionsStore(path.join(dir, "sel.json"));
       expect(await store.resolve("itch", "/p")).toBeUndefined();
@@ -110,7 +110,7 @@ describe("PublishSelectionsStore — project/global default precedence", () => {
   });
 
   test("a trailing slash on the project path doesn't create a separate bucket", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "pmd-sel-"));
+    const dir = await mkdtemp(path.join(os.tmpdir(), "gutterpress-sel-"));
     try {
       const store = new PublishSelectionsStore(path.join(dir, "sel.json"));
       await store.setProject("/p/", "itch", "work");

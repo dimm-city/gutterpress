@@ -33,7 +33,7 @@ import "../checks/asset/index";
 import "../checks/heuristic/index";
 
 async function makeFixtureDir(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "print-md-phase-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-phase-"));
   await writeFile(
     join(dir, "chapter-01.md"),
     "# Chapter One\n\nSome body text.\n"

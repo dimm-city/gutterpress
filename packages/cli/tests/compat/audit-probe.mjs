@@ -1,7 +1,7 @@
 /**
  * Cross-browser Paged.js audit probe (issue #46).
  *
- * Loads a running print-md preview server in chromium, firefox, and webkit
+ * Loads a running gutterpress preview server in chromium, firefox, and webkit
  * (Playwright engines), waits for the `renderingComplete` CustomEvent that
  * pagedjs-interface.js dispatches on the preview window, and collects
  * per-engine evidence: page count, console errors, and measurements for each
@@ -12,7 +12,7 @@
  *   node audit-probe.mjs --url http://127.0.0.1:4101/ [--engines chromium,firefox,webkit] [--out results.json]
  *
  * The preview server must already be running, e.g.:
- *   bun packages/cli/src/cli.ts preview examples/print-md-user-guide --open false --port 4101
+ *   bun packages/cli/src/cli.ts preview examples/gutterpress-user-guide --open false --port 4101
  *
  * Note: `/` serves the preview shell, which hosts book.html in an iframe.
  * The probe finds the frame that actually contains `.pagedjs_pages` (the
@@ -171,9 +171,9 @@ async function probeEngine(name) {
     // Capture the renderingComplete CustomEvent in EVERY frame (the shell at
     // "/" hosts book.html in an iframe; init scripts run in all frames).
     await page.addInitScript(() => {
-      window.__pmdRender = { done: false };
+      window.__gutterpressRender = { done: false };
       window.addEventListener("renderingComplete", (e) => {
-        window.__pmdRender = { done: true, totalPages: e.detail && e.detail.totalPages };
+        window.__gutterpressRender = { done: true, totalPages: e.detail && e.detail.totalPages };
       });
     });
 
@@ -196,12 +196,12 @@ async function probeEngine(name) {
     }
     if (!target) throw new Error("Could not locate the preview frame (book.html)");
 
-    await target.waitForFunction(() => window.__pmdRender && window.__pmdRender.done, null, {
+    await target.waitForFunction(() => window.__gutterpressRender && window.__gutterpressRender.done, null, {
       timeout: RENDER_TIMEOUT_MS,
       polling: 250,
     });
     result.renderMs = Date.now() - t0;
-    result.eventTotalPages = await target.evaluate(() => window.__pmdRender.totalPages ?? null);
+    result.eventTotalPages = await target.evaluate(() => window.__gutterpressRender.totalPages ?? null);
     result.probes = await target.evaluate(collectProbes);
     result.ok = true;
   } catch (err) {

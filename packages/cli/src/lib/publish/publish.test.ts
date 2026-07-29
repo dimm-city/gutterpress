@@ -44,7 +44,7 @@ function fakeRunner(
 }
 
 async function tempProject(manifest: string): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-publish-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-"));
   await writeFile(path.join(dir, "manifest.yaml"), manifest, "utf8");
   return dir;
 }
@@ -121,7 +121,7 @@ test("every provider declares its author-editable config fields", () => {
 // ── credential resolution ───────────────────────────────────────────────────
 
 test("resolvePublishCredential prefers the CI env var over the store", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-cred-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-cred-"));
   try {
     const deps = await depsFor(dir);
     await deps.tokenStore.set("itch.io", {
@@ -170,8 +170,8 @@ test("resolvePublishRequest anchors the default artifact on the MANIFEST's direc
   // the manifest's own directory — not the unrelated `projectDir` the CLI
   // positional happened to be. Previously it used `projectDir`, so this
   // divergence made a perfectly-built artifact invisible to publish.
-  const projectDir = await mkdtemp(path.join(tmpdir(), "pmd-publish-project-"));
-  const manifestDir = await mkdtemp(path.join(tmpdir(), "pmd-publish-manifest-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-project-"));
+  const manifestDir = await mkdtemp(path.join(tmpdir(), "gutterpress-publish-manifest-"));
   try {
     const manifestPath = path.join(manifestDir, "manifest.yaml");
     await writeFile(manifestPath, "title: Elsewhere Book\nauthors: [A]\n", "utf8");
@@ -301,7 +301,7 @@ test("butlerBrothChannel maps platforms; download url shape is stable", () => {
 });
 
 test("ensureButler honours BUTLER_PATH and PATH lookup before downloading", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-butler-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-butler-"));
   try {
     const fakeButler = path.join(dir, "butler");
     await writeFile(fakeButler, "#!/bin/sh\n");
@@ -324,7 +324,7 @@ test("ensureButler honours BUTLER_PATH and PATH lookup before downloading", asyn
 });
 
 test("ensureButler downloads, extracts, and caches the binary when nothing is installed", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-butler-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-butler-"));
   try {
     const binName = process.platform === "win32" ? "butler.exe" : "butler";
     const archive = zipSync({
@@ -343,7 +343,7 @@ test("ensureButler downloads, extracts, and caches the binary when nothing is in
 });
 
 test("ensureButler maps download failures to friendly messages", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-butler-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-butler-"));
   const failure = async (fetchImpl: typeof fetch): Promise<Error> => {
     const deps = await depsFor(dir, {
       env: {},
@@ -760,7 +760,7 @@ test("connectPublishProvider refuses guided providers and empty tokens", async (
 });
 
 test("publishConnectionStatus is the one shared definition of connected", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "pmd-status-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-status-"));
   try {
     const deps = await depsFor(dir);
     const itch = publishProviderFor("itch").info;

@@ -6,7 +6,7 @@ import { getAssetPath } from "./embedded-assets";
 
 /**
  * HTML string-rewriting for the shippable artifact: turns the raw
- * serialized-paginated DOM that pagination produces into the static viewer HTML
+ * serialized-paginated DOM that pagination produces into the static desktop HTML
  * (or the runtime-pagination fallback). Pure string/fs transforms — no browser.
  *
  * The former `stagePaginationInput` is GONE. It copied `book.html` plus every
@@ -74,7 +74,7 @@ export function injectNavigationScripts(html: string): string {
 }
 
 /**
- * Turn a raw serialized paginated document into the shippable static viewer
+ * Turn a raw serialized paginated document into the shippable static desktop
  * `book.html`: copy the navigation toolbar scripts, strip the pagination engine
  * and the build's ephemeral origin, wire the nav scripts, and write the file.
  * Shared by the HTML format and the PDF unification path.
@@ -138,9 +138,9 @@ export async function shipRuntimePaginatedHtml(
  * Create a unique scratch directory under the OS temp dir. Now used ONLY for
  * PDF/X intermediates (`raw.pdf`, Ghostscript work files) — never for staging
  * assets. Must not be resolved against `process.cwd()`: `runBuild` is exported
- * and called by the viewer host, so writing scratch dirs into the caller's
+ * and called by the desktop host, so writing scratch dirs into the caller's
  * directory is a hidden side effect. Callers remove it in a `finally`.
  */
 export async function createStageRoot(): Promise<string> {
-  return fsp.mkdtemp(path.join(os.tmpdir(), "print-md-stage-"));
+  return fsp.mkdtemp(path.join(os.tmpdir(), "gutterpress-stage-"));
 }

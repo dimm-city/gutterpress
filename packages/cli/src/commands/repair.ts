@@ -1,20 +1,20 @@
 /**
- * `print-md repair [dir]` — diagnose and repair a project's version history.
+ * `gutterpress repair [dir]` — diagnose and repair a project's version history.
  *
- * The CLI front-end for the same recovery subsystem the viewer uses
+ * The CLI front-end for the same recovery subsystem the desktop uses
  * (inspectRepo → classifyFromHealth → recover), with a terminal confirmation
- * gate in place of the viewer's dialog. `print-md new` git-inits projects by
+ * gate in place of the desktop's dialog. `gutterpress new` initializes projects by
  * default, so CLI-only users of the standalone binary need a way out of a
  * stale lock / interrupted operation / damaged repo without git knowledge —
  * this command is that way out (CLAUDE.md §7: no system git required).
  *
  * Modes:
- *   print-md repair            diagnose + prompt before any repair
- *   print-md repair --check    diagnose only; exit 1 when repair is needed
- *   print-md repair --yes      skip the prompt (still prints what will happen)
- *   print-md repair --force    repair even if the app appears to have this open
+ *   gutterpress repair            diagnose + prompt before any repair
+ *   gutterpress repair --check    diagnose only; exit 1 when repair is needed
+ *   gutterpress repair --yes      skip the prompt (still prints what will happen)
+ *   gutterpress repair --force    repair even if the app appears to have this open
  *
- * The app-open guard: the viewer leaves a small liveness marker under the
+ * The app-open guard: the desktop leaves a small liveness marker under the
  * repo's own `.git` dir while a project is open (app-heartbeat.ts). A fresh
  * marker means the app may be mid-write on this same repo right now, so
  * `repair` refuses to mutate anything (still safe to `--check`) unless the
@@ -65,7 +65,7 @@ async function promptYesNo(question: string): Promise<boolean> {
   }
 }
 
-/** Render the confirmation summary the viewer's dialog would show. */
+/** Render the confirmation summary the desktop's dialog would show. */
 function describeRepair(req: RepairConfirmation): string {
   const lines = [
     "",
@@ -127,7 +127,7 @@ const commandArgs = {
   },
   force: {
     type: "boolean",
-    description: "Repair even if the print-md app appears to have this project open",
+        description: "Repair even if the Gutterpress app appears to have this project open",
     default: false,
   },
 } as const;
@@ -199,7 +199,7 @@ export default defineCommand({
     console.log(`Found a problem: ${guidance.userSummary}`);
 
     if (args.check) {
-      console.log(`\nRun \`print-md repair\` to fix it. ${guidance.recommendedNextStep}`);
+      console.log(`\nRun \`gutterpress repair\` to fix it. ${guidance.recommendedNextStep}`);
       process.exitCode = 1;
       return;
     }
@@ -209,7 +209,7 @@ export default defineCommand({
     // on this same project right now — refuse to race it unless overridden.
     if (!args.force && (await isAppHeartbeatFresh(ctx.repoDir))) {
       console.log(
-        "\nThe print-md app appears to have this project open. Close it first, or re-run with --force.",
+        "\nThe Gutterpress app appears to have this project open. Close it first, or re-run with --force.",
       );
       process.exitCode = 1;
       return;

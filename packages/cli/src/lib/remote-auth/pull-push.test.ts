@@ -1,6 +1,6 @@
 /**
  * pullChanges / pushChanges tests — the distinct Pull and Push operations
- * behind the viewer History tab (Fetch stays previewSync).
+ * behind the desktop History tab (Fetch stays previewSync).
  *
  * Runs against the REAL in-process smart-HTTP server (see
  * test-support/git-http-server.ts) — no transport mocks. Covers:
@@ -41,10 +41,10 @@ interface Harness {
 }
 
 async function setupClone(): Promise<Harness> {
-  const serverDir = await tempDir("pmd-pullpush-server-");
+  const serverDir = await tempDir("gutterpress-pullpush-server-");
   await createFixtureRepo(serverDir);
   const server = await startGitServer(serverDir);
-  const parent = await tempDir("pmd-pullpush-client-");
+  const parent = await tempDir("gutterpress-pullpush-client-");
   const projectDir = path.join(parent, "project");
   await cloneRepository({ url: server.url, dir: projectDir });
   return {

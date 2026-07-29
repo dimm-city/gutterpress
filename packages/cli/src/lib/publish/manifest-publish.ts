@@ -1,5 +1,5 @@
 /**
- * Manifest `publish:` section reader/writers (#35) — the viewer's Publish
+ * Manifest `publish:` section reader/writers (#35) — the desktop's Publish
  * panel edits per-provider, NON-SECRET settings (itch target, Shopify shop
  * domain, …) here, keyed by provider id. Same yaml Document round-trip as
  * manifest-config.ts so author comments and formatting survive. Secrets never

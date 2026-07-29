@@ -1,8 +1,8 @@
 # Best Practices
 
-Professional guidelines for creating high-quality print documents with Print-md.
+Professional guidelines for creating high-quality print documents with Gutterpress.
 
-> **For CSS architecture** — variant patterns, component organization, how to express styling intent without scattering classes through markdown — see [The Contextual Cascade Principle](./contextual-cascade-principle.md). It's the recommended pattern for any non-trivial print-md project and the architecture demonstrated in the [design-guide example](../examples/with-design-guide/).
+> **For CSS architecture** — variant patterns, component organization, how to express styling intent without scattering classes through markdown — see [The Contextual Cascade Principle](./contextual-cascade-principle.md). It's the recommended pattern for any non-trivial Gutterpress project and the architecture demonstrated in the [design-guide example](../examples/with-design-guide/).
 
 ## File Organization
 
@@ -179,13 +179,13 @@ my-book/
 
 ```bash
 # Fast iteration during writing (watches by default)
-print-md preview ./my-book
+gutterpress preview ./my-book
 
 # Build for review
-print-md build ./my-book --format html --out ./_review
+gutterpress build ./my-book --format html --out ./_review
 
 # Final production build
-print-md build ./my-book --out final.pdf
+gutterpress build ./my-book --out final.pdf
 ```
 
 ## Testing Checklist
@@ -341,7 +341,7 @@ path relative to the CSS file that loads it.
 
 ## Version Control
 
-Use Git for version control. `print-md new` already scaffolds a `.gitignore`
+Use Git for version control. `gutterpress new` already scaffolds a `.gitignore`
 containing `dist/` (every build's output — HTML, PDF, and PDF/X artifacts all
 land under `dist/<title-slug>/`), so a project it created needs no manual
 `.gitignore` setup. For a project started another way:
@@ -415,7 +415,7 @@ project/
 1. Author writes chapter
 2. Commit to feature branch
 3. Build preview PDF
-4. Share with reviewers
+4. Share with review participants
 5. Incorporate feedback
 6. Merge to main branch
 

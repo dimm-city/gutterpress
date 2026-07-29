@@ -42,7 +42,7 @@ describe('lint-runner lazy glob import', () => {
 
   test('runLint rejects an explicit missing manifest path', async () => {
     const { runLint } = await import('./lint-runner');
-    const missing = join(tmpdir(), `pmd-lint-missing-manifest-${Date.now()}.yaml`);
+    const missing = join(tmpdir(), `gutterpress-lint-missing-manifest-${Date.now()}.yaml`);
 
     await expect(runLint({ manifest: missing })).rejects.toThrow(UsageError);
     await expect(runLint({ manifest: missing })).rejects.toThrow(
@@ -53,7 +53,7 @@ describe('lint-runner lazy glob import', () => {
 
 // ── manifest-driven CSS resolution matches the renderer (2026-07-28 audit) ──
 //
-// Before this, a manifest with no `styles:` made `print-md lint` fall back to
+// Before this, a manifest with no `styles:` made `gutterpress lint` fall back to
 // globbing `.build/**/*.css`, then `example/**/*.css`/`demos/**/*.css` — a
 // fallback chain with nothing to do with any given project (leftover from
 // linting THIS REPO's own dogfooding examples). It now falls back to
@@ -62,7 +62,7 @@ describe('lint-runner lazy glob import', () => {
 describe('runLint resolves the same active stylesheet the renderer would', () => {
   test('a manifest with no styles: lints the conventional styles/book.css, not an unrelated .build/ leftover', async () => {
     const { runLint } = await import('./lint-runner');
-    const tmpDir = await mkdtemp(join(tmpdir(), 'pmd-lint-active-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'gutterpress-lint-active-'));
     try {
       const { mkdir } = await import('fs/promises');
       await mkdir(join(tmpDir, 'styles'), { recursive: true });
@@ -85,7 +85,7 @@ describe('runLint resolves the same active stylesheet the renderer would', () =>
 
   test('a manifest with no styles: and no conventional stylesheet lints nothing (never falls back to example/demos scaffolding)', async () => {
     const { runLint } = await import('./lint-runner');
-    const tmpDir = await mkdtemp(join(tmpdir(), 'pmd-lint-none-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'gutterpress-lint-none-'));
     try {
       const { mkdir } = await import('fs/promises');
       // Only an `example/` dir with a .css file — the removed fallback chain
@@ -107,7 +107,7 @@ describe('runLint resolves the same active stylesheet the renderer would', () =>
 
   test('an explicit manifest styles: list is used verbatim, excluding other project .css files', async () => {
     const { runLint } = await import('./lint-runner');
-    const tmpDir = await mkdtemp(join(tmpdir(), 'pmd-lint-explicit-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'gutterpress-lint-explicit-'));
     try {
       const { mkdir } = await import('fs/promises');
       await mkdir(join(tmpDir, 'css'), { recursive: true });
@@ -130,7 +130,7 @@ test("a configured stylesheet that does not exist FAILS lint instead of reportin
   // existence check, so an unreadable entry here means the author named a file
   // that isn't there. Skipping it silently returned ok:true having inspected
   // nothing — the same silent-green this resolver change exists to remove.
-  const dir = await mkdtemp(join(tmpdir(), "pmd-lint-missing-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-missing-"));
   try {
     await writeFile(
       join(dir, "manifest.yaml"),
@@ -148,7 +148,7 @@ test("a configured stylesheet that does not exist FAILS lint instead of reportin
 });
 
 test("a configured stylesheet that is a DIRECTORY fails lint too", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-lint-dir-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-dir-"));
   try {
     await mkdir(join(dir, "styles", "book.css"), { recursive: true });
     await writeFile(
@@ -166,7 +166,7 @@ test("a configured stylesheet that is a DIRECTORY fails lint too", async () => {
 });
 
 test("filesLinted counts what was actually inspected", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-lint-count-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-lint-count-"));
   try {
     await mkdir(join(dir, "styles"), { recursive: true });
     await writeFile(join(dir, "styles", "book.css"), "body { color: black; }\n", "utf8");

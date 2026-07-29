@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 async function makeProject(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "pmd-styles-integration-"));
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-styles-integration-"));
   dirs.push(dir);
   return dir;
 }

@@ -1,0 +1,199 @@
+/**
+ * Unit tests for WebAdapter persistence (#33, Phase 3) — IndexedDB-backed
+ * handles + recents/favorites/prefs/project-state, exercised against the
+ * in-memory fake store (dependency-injected via the WebAdapter constructor) and
+ * a hand-built mock FSA directory handle with mockable
+ * query/requestPermission.
+ *
+ * GOAL under test: project access + preferences SURVIVE A PAGE RELOAD. A reload
+ * is simulated by building a FRESH WebAdapter (so its in-memory handle registry
+ * is empty) that shares the SAME store — and asserting the persisted handle is
+ * reloaded and re-permissioned when its key is reopened.
+ */
+import { test, expect, beforeEach } from "bun:test";
+import { WebAdapter } from "../../src/lib/platform/web-adapter";
+import { InMemoryWebStore } from "../../src/lib/platform/web-store";
+import { resetRegistry } from "../../src/lib/platform/web-fs";
+
+beforeEach(() => resetRegistry());
+
+// ── A mock FSA directory handle with permission + structured-clone semantics ──
+// Real FileSystemDirectoryHandle is structured-cloneable; the in-memory store
+// keeps object identity, which is a fine stand-in for clone round-tripping.
+class MockDirHandle {
+  readonly kind = "directory" as const;
+  perm: PermissionState;
+  requestResult: PermissionState;
+  queryCalls = 0;
+  requestCalls = 0;
+  constructor(
+    public name: string,
+    opts: { perm?: PermissionState; requestResult?: PermissionState } = {},
+  ) {
+    this.perm = opts.perm ?? "granted";
+    this.requestResult = opts.requestResult ?? "granted";
+  }
+  async queryPermission() {
+    this.queryCalls++;
+    return this.perm;
+  }
+  async requestPermission() {
+    this.requestCalls++;
+    this.perm = this.requestResult;
+    return this.requestResult;
+  }
+}
+
+function makeAdapter(store = new InMemoryWebStore()) {
+  return { adapter: new WebAdapter(store), store };
+}
+
+/** Install a fake window.showDirectoryPicker that returns the given handle. */
+function stubPicker(handle: unknown) {
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => Promise.resolve(handle) };
+}
+function clearPicker() {
+  // @ts-expect-error test global
+  globalThis.window = undefined;
+}
+
+// ── openFolder persists the handle + adds a recents entry ─────────────────────
+
+test("openFolder persists the handle to the store and records a recents entry", async () => {
+  const handle = new MockDirHandle("my-book");
+  stubPicker(handle);
+  try {
+    const { adapter, store } = makeAdapter();
+    const ref = await adapter.openFolder();
+    expect(ref).not.toBeNull();
+    const key = ref!.key;
+
+    // Handle persisted under its key.
+    const persisted = await store.get("handles", key);
+    expect((persisted as { handle: MockDirHandle }).handle).toBe(handle);
+
+    // Recents entry recorded with the contract shape.
+    const recents = await adapter.getRecentFolders();
+    expect(recents).toHaveLength(1);
+    expect(recents[0]!.key).toBe(key);
+    expect(recents[0]!.displayName).toBe("my-book");
+    expect(recents[0]!.exists).toBe(true);
+    expect(typeof recents[0]!.openedAt).toBe("string");
+
+  } finally {
+    clearPicker();
+  }
+});
+
+// ── recents / favorites round-trip ────────────────────────────────────────────
+
+test("toggleFavorite adds then removes a favorite (round-trip via the store)", async () => {
+  const handle = new MockDirHandle("my-book");
+  stubPicker(handle);
+  let key: string;
+  let store: InMemoryWebStore;
+  try {
+    const a = makeAdapter();
+    store = a.store;
+    key = (await a.adapter.openFolder())!.key;
+  } finally {
+    clearPicker();
+  }
+  const { adapter } = makeAdapter(store!);
+
+  const on = await adapter.toggleFavorite(key!, "My Book");
+  expect(on.favorited).toBe(true);
+  let favs = await adapter.getFavorites();
+  expect(favs).toHaveLength(1);
+  expect(favs[0]!.key).toBe(key!);
+  expect(favs[0]!.displayName).toBe("my-book");
+  expect(favs[0]!.title).toBe("My Book");
+  expect(favs[0]!.exists).toBe(true);
+
+  const off = await adapter.toggleFavorite(key!, "My Book");
+  expect(off.favorited).toBe(false);
+  favs = await adapter.getFavorites();
+  expect(favs).toHaveLength(0);
+});
+
+test("removeRecent drops a recents entry", async () => {
+  const handle = new MockDirHandle("my-book");
+  stubPicker(handle);
+  let key: string;
+  let store: InMemoryWebStore;
+  try {
+    const a = makeAdapter();
+    store = a.store;
+    key = (await a.adapter.openFolder())!.key;
+  } finally {
+    clearPicker();
+  }
+  const { adapter } = makeAdapter(store!);
+  expect(await adapter.getRecentFolders()).toHaveLength(1);
+  const res = await adapter.removeRecent(key!);
+  expect(res.ok).toBe(true);
+  expect(await adapter.getRecentFolders()).toHaveLength(0);
+});
+
+test("getRecentFolders returns newest-first", async () => {
+  const h1 = new MockDirHandle("book-a");
+  const h2 = new MockDirHandle("book-b");
+  const store = new InMemoryWebStore();
+  let k1: string;
+  let k2: string;
+  stubPicker(h1);
+  try {
+    k1 = (await new WebAdapter(store).openFolder())!.key;
+  } finally {
+    clearPicker();
+  }
+  await new Promise((r) => setTimeout(r, 2));
+  stubPicker(h2);
+  try {
+    k2 = (await new WebAdapter(store).openFolder())!.key;
+  } finally {
+    clearPicker();
+  }
+  const recents = await new WebAdapter(store).getRecentFolders();
+  expect(recents.map((r) => r.key)).toEqual([k2!, k1!]);
+});
+
+// ── prefs + project-state round-trip ──────────────────────────────────────────
+
+test("getDesktopPrefs/setDesktopPrefs round-trip via the store and merge patches", async () => {
+  const store = new InMemoryWebStore();
+  const a = new WebAdapter(store);
+  // Default before any write: an empty-ish prefs object (not a reject).
+  const initial = await a.getDesktopPrefs();
+  expect(initial).toBeDefined();
+
+  await a.setDesktopPrefs({ sidebarOpen: true });
+  await a.setDesktopPrefs({ lastProjectDir: "web:abc" });
+
+  // Survives "reload": a fresh adapter on the same store sees both fields.
+  const reloaded = new WebAdapter(store);
+  const prefs = await reloaded.getDesktopPrefs();
+  expect(prefs.sidebarOpen).toBe(true);
+  expect(prefs.lastProjectDir).toBe("web:abc");
+});
+
+test("getDesktopProjectState/setDesktopProjectState round-trip keyed by FolderRef.key", async () => {
+  const store = new InMemoryWebStore();
+  const a = new WebAdapter(store);
+
+  expect(await a.getDesktopProjectState("web:a")).toBeNull();
+
+  await a.setDesktopProjectState("web:a", { currentPage: 7 });
+  await a.setDesktopProjectState("web:a", { viewMode: "single" });
+  // A different key is isolated.
+  await a.setDesktopProjectState("web:b", { currentPage: 99 });
+
+  const reloaded = new WebAdapter(store);
+  expect(await reloaded.getDesktopProjectState("web:a")).toEqual({
+    currentPage: 7,
+    viewMode: "single",
+  });
+  expect(await reloaded.getDesktopProjectState("web:b")).toEqual({ currentPage: 99 });
+  expect(await reloaded.getDesktopProjectState("web:c")).toBeNull();
+});

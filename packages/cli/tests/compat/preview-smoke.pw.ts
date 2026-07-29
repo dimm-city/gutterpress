@@ -25,7 +25,7 @@ const PAGE_COUNT_TOLERANCE = 0.2;
 const ENGINES: Record<string, BrowserType> = { chromium, firefox, webkit };
 
 const TARGETS = [
-  { name: "print-md-user-guide", url: "http://127.0.0.1:4111/" },
+  { name: "gutterpress-user-guide", url: "http://127.0.0.1:4111/" },
   { name: "with-design-guide", url: "http://127.0.0.1:4112/" },
   { name: "feature-probe", url: "http://127.0.0.1:4113/" },
 ];
@@ -54,9 +54,9 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
     // this works for both the shell at "/" (book.html in an iframe) and a
     // direct /book.html load.
     await page.addInitScript(() => {
-      (window as any).__pmdRender = { done: false };
+      (window as any).__gutterpressRender = { done: false };
       window.addEventListener("renderingComplete", (e: any) => {
-        (window as any).__pmdRender = { done: true, totalPages: e?.detail?.totalPages ?? null };
+        (window as any).__gutterpressRender = { done: true, totalPages: e?.detail?.totalPages ?? null };
       });
     });
 
@@ -72,7 +72,7 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
     }
     if (!frame) throw new Error("preview frame (book.html) never appeared");
 
-    await frame.waitForFunction(() => (window as any).__pmdRender?.done, null, {
+    await frame.waitForFunction(() => (window as any).__gutterpressRender?.done, null, {
       timeout: RENDER_TIMEOUT_MS,
       polling: 250,
     });
@@ -88,7 +88,7 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
       }).length;
       return {
         pageCount: pages.length,
-        eventTotalPages: (window as any).__pmdRender?.totalPages ?? null,
+        eventTotalPages: (window as any).__gutterpressRender?.totalPages ?? null,
         zeroSizedContentPages,
       };
     });

@@ -150,7 +150,7 @@ describe("plugin loader", () => {
   });
 
   describe("loadPlugin (npm package)", () => {
-    test("loads from print-md's own dependencies", async () => {
+    test("loads from gutterpress's own dependencies", async () => {
       const loaded = await loadPlugin(
         cfg({ name: "markdown-it-footnote" }),
         TMP_ROOT
@@ -306,7 +306,7 @@ describe("plugin loader", () => {
     // module (URL changed / cache-busted) or reused a cached module (URL
     // unchanged / no import performed) — a counter bumped at module scope
     // increments only on a real fresh import.
-    const counterKey = "__pmd_plugin_load_counts__";
+    const counterKey = "__gutterpress_plugin_load_counts__";
 
     beforeEach(() => {
       (globalThis as any)[counterKey] = {};

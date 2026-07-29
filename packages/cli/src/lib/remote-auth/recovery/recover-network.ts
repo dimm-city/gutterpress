@@ -1,7 +1,7 @@
 /**
  * recover-network.ts — Offline: keep local work, schedule retry.
  *
- * WHY this module exists: when print-md can't reach the server (ECONNREFUSED,
+ * WHY this module exists: when gutterpress can't reach the server (ECONNREFUSED,
  * ETIMEDOUT, or any other network error), the right behavior is:
  *
  *   1. Snapshot any unsaved work locally so nothing is lost (sync.ts already

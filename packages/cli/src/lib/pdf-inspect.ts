@@ -52,7 +52,7 @@ const docCache = new Map<string, CacheEntry>();
 /**
  * Cap on distinct cached documents (audit B3). One validation run touches a
  * single PDF across ~13 checks (one entry), so this only bounds accumulation
- * ACROSS runs in a long-lived host (the Electron viewer validating many
+ * ACROSS runs in a long-lived host (the Electron desktop validating many
  * projects over a session). Without it, `docCache` grew one never-freed parsed
  * document per distinct path ever validated. LRU eviction destroys the evicted
  * document so its decoded pages/fonts/images are released, not just unreferenced.
@@ -159,7 +159,7 @@ let activeRetains = 0;
 
 /**
  * Retain the document cache for the duration of a run. The check runner is a
- * public lib export served by a long-lived host (the viewer), where two runs
+ * public lib export served by a long-lived host (the desktop), where two runs
  * CAN overlap — e.g. a Problems-panel lint run and a publish preflight. An
  * unconditional `clearPdfCache()` at either run's end would destroy documents
  * the other run is actively reading (getPage/getOperatorList then throw
@@ -346,7 +346,7 @@ function multiply(m1: number[], m2: number[]): number[] {
 }
 
 /**
- * Decide whether a PDF.js font object is embedded. Chromium (print-md's only
+ * Decide whether a PDF.js font object is embedded. Chromium (Gutterpress's only
  * PDF source) subsets and embeds every font, so the common case is "true".
  * We only report NOT-embedded on a positive signal (`missingFile` /
  * `isStandardFont`) to avoid false alarms on good output — a deliberate

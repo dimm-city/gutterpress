@@ -1,0 +1,131 @@
+appId: city.dimm.gutterpress
+productName: Gutterpress
+
+# The ESM Electron main (out/main/main.js, built by electron-vite) dynamic-
+# imports gutterpress from node_modules at runtime (electron/main.ts
+# loadLib() → its dist/index.js). That package's `files` field ships dist/;
+# electron-builder copies it and its transitive deps (puppeteer-core,
+# markdown-it, isomorphic-git, etc.) automatically from the workspace
+# node_modules via package.json `dependencies` — no manual list, no afterPack.
+files:
+  - out/**
+  - build/**
+  - package.json
+  - build-resources/**
+
+extraResources:
+  - from: build-resources/icon.png
+    to: build-resources/icon.png
+
+extraMetadata:
+  main: out/main/main.js
+
+# A chapter opened from Finder/Explorer resolves to its nearest enclosing
+# manifest-bearing project; unrelated Markdown files get a clear explanation
+# instead of being treated as loose projects.
+fileAssociations:
+  - ext: md
+    name: Gutterpress Markdown chapter
+    description: Markdown chapter in a Gutterpress project
+    mimeType: text/markdown
+    role: Editor
+
+# The desktop depends on gutterpress via `"workspace:*"`.
+# electron-builder must NOT run `npm install --production` during packaging — npm
+# rejects the `workspace:*` protocol (EUNSUPPORTEDPROTOCOL). We rely on the
+# already-installed (bun) workspace node_modules and pure-JS deps (no native
+# addons to rebuild), so disable the rebuild step explicitly.
+npmRebuild: false
+
+# asar (Electron's default) — smaller, faster to scan on Windows. The package
+# reads its embedded assets (favicon, paged.polyfill, ICC) via fs from inside the
+# archive, which Electron's patched fs handles. puppeteer-core is unpacked so it
+# has real on-disk paths when driving system Chrome.
+asar: true
+asarUnpack:
+  - "**/node_modules/puppeteer-core/**"
+
+directories:
+  output: dist
+  buildResources: build-resources
+
+# electron-updater reads the GitHub Releases feed (latest.yml / latest-linux.yml).
+# Declaring the provider here makes electron-builder embed app-update.yml in the
+# packaged app and emit the latest*.yml + .blockmap files into dist/. Publishing
+# itself stays in the release workflow (gh release create) — the dist scripts
+# pass --publish never so a local or CI build can never push to GitHub directly.
+publish:
+  provider: github
+  owner: dimm-city
+  repo: gutterpress
+
+# Native deps and large optionals are installed via the desktop's package.json
+# dependencies (gutterpress → its transitive deps). electron-builder
+# copies them automatically from the workspace node_modules at packaging time.
+#
+# The AppImage is a bare portable executable — it has no installer, so nothing
+# here can put it in the KDE/GNOME application menu. That is opt-in at runtime
+# (Settings → App → Add to application menu, electron/appimage-integration.ts).
+# The keys below are the identity that integration writes into the installed
+# .desktop file, and they MUST stay aligned with it and with package.json's
+# `desktopName` (city.dimm.gutterpress.desktop): appId ↔ StartupWMClass ↔
+# desktop filename ↔ icon basename (#119).
+linux:
+  executableName: gutterpress
+  target:
+    - AppImage
+  icon: build-resources/icon.png
+  category: Office
+  # Derive the AppImage's OWN embedded .desktop basename from package.json's
+  # `desktopName` too (app-builder-lib's LinuxTargetHelper.getDesktopFileName,
+  # consumed by AppImageTarget) — without this it falls back to
+  # `executableName`, leaving the one desktop filename in the pipeline that
+  # ISN'T city.dimm.gutterpress.
+  syncDesktopName: true
+  desktop:
+    entry:
+      Categories: Office;Publishing;
+      # electron-builder ≥26 already derives this from `desktopName`; stated
+      # explicitly so the value is greppable next to the integration that must
+      # match it.
+      StartupWMClass: city.dimm.gutterpress
+
+win:
+  executableName: gutterpress
+  # The ZIP remains versioned because it is a portable snapshot. NSIS overrides
+  # this below with one stable installer basename so unsigned SmartScreen
+  # reputation is not discarded solely because the version changed.
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  icon: build-resources/icon.ico
+
+nsis:
+  artifactName: ${productName}-setup-${os}-${arch}.${ext}
+  # Windows users should be able to download one file and run it. Keep this as
+  # a user-level installer so it works without administrator privileges, while
+  # still creating the normal Start Menu/Desktop entry points.
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Gutterpress
+
+mac:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  target:
+    - target: dmg
+      # Always publish both native variants. macos-latest is ARM64, so relying
+      # on the runner architecture silently drops Intel users.
+      arch:
+        - arm64
+        - x64
+  icon: build-resources/icon.png
+  category: public.app-category.developer-tools

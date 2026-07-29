@@ -28,7 +28,7 @@ if (!ghostscript) {
 testWithGhostscript(
   "real Ghostscript converts an RGB-red PDF to parseable CMYK PDF/X",
   async () => {
-    const stage = await mkdtemp(join(tmpdir(), "pmd-gs-pdfx-integration-"));
+    const stage = await mkdtemp(join(tmpdir(), "gutterpress-gs-pdfx-integration-"));
     try {
       const inputPdf = join(stage, "rgb-red.pdf");
       const outputPdf = join(stage, "cmyk-pdfx.pdf");

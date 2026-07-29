@@ -39,7 +39,7 @@ afterEach(() => {
 
 describe("lint command — manifest-dir vs glob-pattern positional", () => {
   test("a positional directory containing manifest.yaml is treated as the project dir (manifest), not a files glob", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-lint-cmd-dir-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-lint-cmd-dir-"));
     try {
       await writeFile(path.join(dir, "manifest.yaml"), "title: X\n", "utf-8");
       let captured: lintRunnerMod.LintRunnerOptions | undefined;
@@ -71,7 +71,7 @@ describe("lint command — manifest-dir vs glob-pattern positional", () => {
   });
 
   test("a directory WITHOUT a manifest.yaml is passed through as a files glob (not treated as a project dir)", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-lint-cmd-nodir-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-lint-cmd-nodir-"));
     try {
       let captured: lintRunnerMod.LintRunnerOptions | undefined;
       stubRunLint(async (opts) => {
@@ -89,7 +89,7 @@ describe("lint command — manifest-dir vs glob-pattern positional", () => {
   });
 
   test("explicit --manifest overrides the manifest-dir positional inference", async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), "pmd-lint-cmd-override-"));
+    const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-lint-cmd-override-"));
     try {
       await writeFile(path.join(dir, "manifest.yaml"), "title: X\n", "utf-8");
       let captured: lintRunnerMod.LintRunnerOptions | undefined;

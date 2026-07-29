@@ -5,9 +5,9 @@
  * platform's native path separators — backslashes on Windows), then
  * fetches the served book.html and asserts the response is a sane page.
  *
- * The viewer's /api/preview route is a thin wrapper around this call, so
+ * The desktop's /api/preview route is a thin wrapper around this call, so
  * a passing test here proves the directory-load path the user hits in
- * the Electron viewer.
+ * the Electron desktop.
  */
 
 import { describe, it, expect, afterEach } from "bun:test";
@@ -28,14 +28,14 @@ afterEach(async () => {
 });
 
 async function copyFixtureToTemp(): Promise<string> {
-  const root = await mkdtemp(join(tmpdir(), "print-md-itest-"));
+  const root = await mkdtemp(join(tmpdir(), "gutterpress-itest-"));
   // cp recursively to a fresh tempdir — simulates the user opening an
   // arbitrary project directory anywhere on the filesystem.
   await cp(FIXTURE_DIR, root, { recursive: true });
   return root;
 }
 
-describe("startPreviewServer end-to-end (matches viewer's /api/preview path)", () => {
+describe("startPreviewServer end-to-end (matches desktop's /api/preview path)", () => {
   it("loads a directory referenced by its native absolute path and serves book.html", async () => {
     const projectDir = await copyFixtureToTemp();
 
@@ -53,9 +53,9 @@ describe("startPreviewServer end-to-end (matches viewer's /api/preview path)", (
     expect(active.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     expect(active.port).toBeGreaterThan(0);
 
-    // The viewer's iframe loads `book.html` directly. If this returns
+    // The desktop's iframe loads `book.html` directly. If this returns
     // anything other than 200 with a non-trivial HTML body, the Electron
-    // viewer's preview iframe shows a broken page.
+    // desktop's preview iframe shows a broken page.
     const res = await fetch(`${active.url}/book.html`);
     expect(res.status).toBe(200);
     const html = await res.text();
@@ -72,7 +72,7 @@ describe("startPreviewServer end-to-end (matches viewer's /api/preview path)", (
     // is no longer mirrored into a temp root under its basename; it is READ and
     // inlined into book.html, so there is no copy, no flattening, and no second
     // place for it to go missing.
-    const root = await mkdtemp(join(tmpdir(), "print-md-itest-shared-"));
+    const root = await mkdtemp(join(tmpdir(), "gutterpress-itest-shared-"));
     const sharedDir = join(root, "_shared", "css");
     const projectDir = join(root, "book");
     await mkdir(sharedDir, { recursive: true });

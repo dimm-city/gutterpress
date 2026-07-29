@@ -76,12 +76,11 @@ describe("manifest-config", () => {
     // ARCH finding #25: readManifestFields now routes through the shared
     // loadManifestDoc (manifest-doc.ts) instead of re-implementing the
     // resolve+read+parse sequence inline — so it picks up loadManifestDoc's
-    // .yml-fallback behavior for free, same as every other reader in this file.
-    test("reads from manifest.yml when only that file exists (loadManifestDoc routing)", async () => {
+    test("reads from manifest.yaml through loadManifestDoc", async () => {
       const dir = projectDir();
-      writeFileSync(join(dir, "manifest.yml"), "title: Yml Title\n", "utf8");
+      writeFileSync(join(dir, "manifest.yaml"), "title: Yaml Title\n", "utf8");
       const fields = await readManifestFields(dir);
-      expect(fields.title).toBe("Yml Title");
+      expect(fields.title).toBe("Yaml Title");
     });
   });
 
@@ -171,14 +170,13 @@ describe("manifest-config", () => {
       expect(out.title).toBe("Snapshot");
     });
 
-    test("accepts .yml when no .yaml exists", async () => {
+    test("writes the canonical manifest.yaml file", async () => {
       const dir = projectDir();
-      writeFileSync(join(dir, "manifest.yml"), "title: Yml One\n", "utf8");
+      writeFileSync(join(dir, "manifest.yaml"), "title: Yaml One\n", "utf8");
 
-      const out = await setManifestFields(dir, { title: "Yml Two" });
-      expect(out.title).toBe("Yml Two");
-      // The .yml file is the target (no .yaml was created).
-      expect((await import("node:fs")).existsSync(join(dir, "manifest.yaml"))).toBe(false);
+      const out = await setManifestFields(dir, { title: "Yaml Two" });
+      expect(out.title).toBe("Yaml Two");
+      expect((await import("node:fs")).existsSync(join(dir, "manifest.yaml"))).toBe(true);
     });
   });
 

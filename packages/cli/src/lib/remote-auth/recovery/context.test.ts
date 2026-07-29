@@ -1,6 +1,6 @@
 /**
  * Tests for buildRecoveryContext — the single RecoveryContext resolution both
- * hosts (viewer bridge, `print-md repair`) delegate to.
+ * hosts (desktop bridge, `gutterpress repair`) delegate to.
  *
  * The repo-root cases guard against the ancestor-repo bug: resolving with an
  * ancestor-only walk (findEnclosingRepoDir) made a project that IS its own
@@ -23,7 +23,7 @@ import { inspectRepo } from "./inspect.ts";
 const GATE: ConfirmationGate = { confirmRepair: async () => false };
 
 async function tempDir(): Promise<string> {
-  return mkdtemp(path.join(tmpdir(), "pmd-recovery-ctx-"));
+  return mkdtemp(path.join(tmpdir(), "gutterpress-recovery-ctx-"));
 }
 
 async function makeGitDir(
@@ -224,7 +224,7 @@ describe("buildRecoveryContext — branch, credential, slug", () => {
         authorName: "Ada",
         // Recovery handlers commit (rescue snapshots, merge commits), so the
         // context must carry the FULL identity — a name paired with the
-        // print-md default email is not the author's identity.
+        // gutterpress default email is not the author's identity.
         authorEmail: "ada@example.com",
         logFile: "/tmp/op.log",
       });

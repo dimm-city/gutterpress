@@ -72,7 +72,7 @@ try {
 // Scanning build/client must PASS (exit 0); scanning the whole build/ tree must
 // FAIL (exit 1). This proves the check is scoped to the client bundle and that
 // the legitimate server bundle is EXCLUDED — the exact scoping the default
-// buildDir (packages/viewer/build/client) and the CI invocation rely on.
+// buildDir (packages/desktop/build/client) and the CI invocation rely on.
 const buildRoot = mkdtempSync(join(tmpdir(), "render-purity-adapter-node-"));
 try {
   const clientDir = join(buildRoot, "client");
@@ -83,7 +83,7 @@ try {
 
   // Clean browser bundle: no forbidden host/node tokens.
   writeFileSync(join(clientAppDir, "entry.js"), "export const start = () => 'ready';\n");
-  writeFileSync(join(clientDir, "index.html"), "<!doctype html><title>viewer</title>\n");
+  writeFileSync(join(clientDir, "index.html"), "<!doctype html><title>Gutterpress</title>\n");
 
   // Legitimate host Node code the adapter emits — must be excluded when scoped.
   writeFileSync(

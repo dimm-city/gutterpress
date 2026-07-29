@@ -1,6 +1,6 @@
-# Running print-md in Docker
+# Running Gutterpress in Docker
 
-The `print-md` container ships the CLI **and the system tools the full
+The `gutterpress` container ships the CLI **and the system tools the full
 PDF/X pre-print pipeline needs** — Chromium (rendering), Ghostscript and qpdf
 (PDF/X CMYK + validation), and base fonts. Everything else (page/font/image
 validation, markdown/HTML/CSS lint) runs in-process in the bundle, so the image
@@ -15,36 +15,36 @@ nothing to install on the host except Docker.
 
 ```sh
 # Pull the published image…
-docker pull ghcr.io/dimm-city/print-md:latest
+docker pull ghcr.io/dimm-city/gutterpress:latest
 
 # …or build it from this repo
-docker build -t print-md .
+docker build -t gutterpress .
 ```
 
 ## Run
 
-The image's entrypoint **is** the `print-md` binary, so everything after the
+The image's entrypoint **is** the `gutterpress` binary, so everything after the
 image name is forwarded straight to the CLI. Mount your project at `/work`
 (the container's working directory); relative `--out` paths resolve there and
 outputs land back on the host.
 
 ```sh
 # Show CLI help
-docker run --rm ghcr.io/dimm-city/print-md --help
+docker run --rm ghcr.io/dimm-city/gutterpress --help
 
 # Build a PDF from a project folder in the current directory
-docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/print-md \
+docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
     build my-book --out dist/my-book.pdf
 
 # Full pipeline → print-ready PDF/X (CMYK + ICC + post-build validation)
-docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/print-md \
+docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
     build my-book --out dist/my-book.pdf --format pdfx
 
 # Lint only
-docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/print-md lint my-book
+docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress lint my-book
 
 # Validate an already-built PDF
-docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/print-md \
+docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
     validate dist/my-book.pdf
 ```
 
@@ -54,7 +54,7 @@ By default the container runs as root, so files it writes to the mounted
 directory are root-owned on the host. Pass your own uid/gid to avoid that:
 
 ```sh
-docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/dimm-city/print-md \
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
     build my-book --out dist/my-book.pdf --format pdfx
 ```
 
@@ -64,20 +64,20 @@ work under an arbitrary uid.)
 ### A convenience alias
 
 ```sh
-alias print-md='docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/dimm-city/print-md'
+alias gutterpress='docker run --rm -u "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/dimm-city/gutterpress'
 # then just:
-print-md build my-book --out dist/my-book.pdf --format pdfx
+gutterpress build my-book --out dist/my-book.pdf --format pdfx
 ```
 
 ## How it renders
 
 Headless Chromium can't use its sandbox inside a container, so the image sets
-`PRINTMD_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage --disable-gpu"` and
+`GUTTERPRESS_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage --disable-gpu"` and
 `CHROMIUM_PATH=/usr/bin/chromium`. Override either with `-e` if you need to:
 
 ```sh
-docker run --rm -e PRINTMD_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage" \
-    -v "$PWD:/work" ghcr.io/dimm-city/print-md build my-book --out dist/book.pdf
+docker run --rm -e GUTTERPRESS_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage" \
+    -v "$PWD:/work" ghcr.io/dimm-city/gutterpress build my-book --out dist/book.pdf
 ```
 
 If you hit Chromium crashes on very large books, give the container more shared
@@ -90,10 +90,10 @@ The image is ideal for CI — no per-runner tool installation:
 ```yaml
 build-pdf:
   runs-on: ubuntu-latest
-  container: ghcr.io/dimm-city/print-md:latest
+  container: ghcr.io/dimm-city/gutterpress:latest
   steps:
     - uses: actions/checkout@v4
-    - run: print-md build my-book --out dist/my-book.pdf --format pdfx
+    - run: gutterpress build my-book --out dist/my-book.pdf --format pdfx
     - uses: actions/upload-artifact@v4
       with: { name: book, path: dist/my-book.pdf }
 ```
@@ -102,7 +102,7 @@ build-pdf:
 
 | Dependency | Provides |
 |---|---|
-| print-md CLI (Node bundle) | the CLI (lint/build/validate); all in-process checks (page/font/image validation, markdown/HTML/CSS lint) are bundled in |
+| gutterpress CLI (Node bundle) | the CLI (lint/build/validate); all in-process checks (page/font/image validation, markdown/HTML/CSS lint) are bundled in |
 | Chromium | Paged.js PDF rendering (**required for any PDF**) |
 | Ghostscript | PDF/X CMYK conversion + per-page ink-coverage validation |
 | qpdf | PDF/X annotation stripping + OutputIntent/metadata validation |

@@ -209,4 +209,4 @@ See the [Typography chapter](#ch-typography) for body text specifications.
 [CLI Reference](#ch-cli)
 ```
 
-The `#ch-*` IDs are set by the `@chapter #id` marker at the top of each source file. In the PDF viewer, these render as clickable hyperlinks. In a printed PDF, the `a[href]::after` CSS rule in `guide.css` prints the URL fragment in parentheses — suppress this for internal links with `a[href^="#"]::after { content: none; }` (already set in the stylesheet).
+The `#ch-*` IDs are set by the `@chapter #id` marker at the top of each source file. In the PDF preview, these render as clickable hyperlinks. In a printed PDF, the `a[href]::after` CSS rule in `guide.css` prints the URL fragment in parentheses — suppress this for internal links with `a[href^="#"]::after { content: none; }` (already set in the stylesheet).

@@ -141,7 +141,7 @@ async function setupCleanMerge(): Promise<CleanMergeFixture> {
   const author = { name: "Test Author", email: "test@test.local" };
   const localFileContent = "# My Local Chapter\n\nThis is my work.\n";
 
-  const remoteDir = await tempDir("pmd-urh-clean-remote-");
+  const remoteDir = await tempDir("gutterpress-urh-clean-remote-");
   await git.init({ fs, dir: remoteDir, defaultBranch: "main" });
   await writeFile(path.join(remoteDir, "remote-root.md"), "# Remote Root\n\nCompletely unrelated.\n");
   await writeFile(path.join(remoteDir, "remote-manifest.yaml"), "title: Remote Book\n");
@@ -151,7 +151,7 @@ async function setupCleanMerge(): Promise<CleanMergeFixture> {
 
   const server = await startGitServer(remoteDir);
 
-  const localDir = await tempDir("pmd-urh-clean-local-");
+  const localDir = await tempDir("gutterpress-urh-clean-local-");
   await git.init({ fs, dir: localDir, defaultBranch: "main" });
   await writeFile(path.join(localDir, "chapter.md"), localFileContent);
   await writeFile(path.join(localDir, "local-notes.md"), "# Local Notes\n\nMy notes.\n");
@@ -188,7 +188,7 @@ async function setupConflictMerge(): Promise<ConflictMergeFixture> {
   const author = { name: "Test Author", email: "test@test.local" };
   const localFileContent = "# My Local Chapter\n\nThis is my work.\n";
 
-  const remoteDir = await tempDir("pmd-urh-conflict-remote-");
+  const remoteDir = await tempDir("gutterpress-urh-conflict-remote-");
   await git.init({ fs, dir: remoteDir, defaultBranch: "main" });
   await writeFile(path.join(remoteDir, "remote-root.md"), "# Remote Root\n\nCompletely unrelated.\n");
   await writeFile(path.join(remoteDir, "manifest.yaml"), "title: Remote Book\n");
@@ -198,7 +198,7 @@ async function setupConflictMerge(): Promise<ConflictMergeFixture> {
 
   const server = await startGitServer(remoteDir);
 
-  const localDir = await tempDir("pmd-urh-conflict-local-");
+  const localDir = await tempDir("gutterpress-urh-conflict-local-");
   await git.init({ fs, dir: localDir, defaultBranch: "main" });
   await writeFile(path.join(localDir, "chapter.md"), localFileContent);
   await writeFile(path.join(localDir, "manifest.yaml"), "title: My Local Book\n");

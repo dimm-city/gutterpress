@@ -1,19 +1,19 @@
 /**
- * app-heartbeat.ts — detect a running print-md app before a CLI repair
+  * app-heartbeat.ts — detect a running Gutterpress app before a CLI repair
  * mutates the repo.
  *
- * WHY: `print-md repair` and the viewer's own recovery path both call into
+ * WHY: `gutterpress repair` and the desktop's own recovery path both call into
  * the recovery subsystem, but each runs in its own OS process. The per-repo
  * FIFO lock (source-provider.ts) only serializes operations WITHIN a process,
- * so `print-md repair` run from a terminal while the viewer has the same
+ * so `gutterpress repair` run from a terminal while the desktop has the same
  * project open can race a live sync/snapshot. Rather than build a
- * cross-process lock manager, the viewer leaves a small liveness marker
+ * cross-process lock manager, the desktop leaves a small liveness marker
  * behind while a project is open, and `repair` checks it before mutating.
  *
- * The marker lives at `<repoDir>/.git/print-md-app-heartbeat` (NOT in
+ * The marker lives at `<repoDir>/.git/gutterpress-app-heartbeat` (NOT in
  * userData) so `repair`, given only a repo directory, can find it without any
- * knowledge of the viewer's install. It is deliberately NOT a lock:
- *   - It never blocks the viewer itself, or any other repair run with --force.
+ * knowledge of the desktop's install. It is deliberately NOT a lock:
+ *   - It never blocks the desktop itself, or any other repair run with --force.
  *   - It carries no locking semantics — just "an app touched this repo
  *     recently, maybe check before you assume it's idle".
  *   - It is written best-effort (a failed write must never surprise the
@@ -37,7 +37,7 @@ import path from "node:path";
 import { gitDirFor } from "./source-provider.ts";
 
 /** Filename only — never `*.lock` and never under `refs/`, see module doc. */
-const HEARTBEAT_FILENAME = "print-md-app-heartbeat";
+const HEARTBEAT_FILENAME = "gutterpress-app-heartbeat";
 
 /**
  * Fallback freshness window used only when a heartbeat carries no `ttlMs`
@@ -81,7 +81,7 @@ const HEARTBEAT_TTL_BUFFER_MS = 30_000;
  *
  * Standard heartbeat rule: TTL should comfortably exceed the refresh period
  * so one missed/delayed tick doesn't read as "closed". Exported so both the
- * viewer (the writer, which knows its own cadence) and tests can compute it
+ * desktop (the writer, which knows its own cadence) and tests can compute it
  * consistently.
  */
 export function heartbeatTtlMs(periodicMs: number | null): number {
@@ -157,7 +157,7 @@ export async function readAppHeartbeat(repoDir: string): Promise<AppHeartbeat | 
 }
 
 /**
- * True when a FRESH heartbeat exists for this repo — i.e. the print-md app
+ * True when a FRESH heartbeat exists for this repo — i.e. the gutterpress app
  * appears to have this project open right now. Absent/stale/corrupt all read
  * as "not open" (fail open: `repair` should not block on ambiguous signal).
  *

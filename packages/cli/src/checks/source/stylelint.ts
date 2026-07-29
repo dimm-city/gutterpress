@@ -3,7 +3,7 @@ import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { checkCss } from "../../lib/printsafe";
 
-// Print-safety CSS check. Runs print-md's own postcss-based checks (remote
+// Print-safety CSS check. Runs gutterpress's own postcss-based checks (remote
 // URLs, risky print effects, Paged.js crash-prone selectors) — no stylelint.
 // The id and the `validate.source.stylelint` config key are kept for backward
 // compatibility with existing manifests; `false` disables the check.

@@ -1,0 +1,22 @@
+name: Build Gutterpress desktop Windows installer and zip
+description: >
+  Set up Node, install workspace deps, build the lib dist, and package the
+  Gutterpress desktop into packages/desktop/dist/*.exe and packages/desktop/dist/*.zip. Run after the Bun
+  setup action (./.github/actions/bun) so `bun` is on PATH.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v5
+      with:
+        node-version: 22
+    - name: Install workspace deps
+      shell: bash
+      run: bun install --frozen-lockfile
+    - name: Build package dist
+      shell: bash
+      working-directory: packages/cli
+      run: bun run build
+    - name: Package desktop (dist:win)
+      shell: bash
+      working-directory: packages/desktop
+      run: npm run dist:win

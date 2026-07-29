@@ -6,7 +6,7 @@
  *   <os.tmpdir()>/print-sync-recovery/<repo-slug>/<ISO-timestamp>-<reason>.zip
  *
  * The backup root is `os.tmpdir()` (NOT a hardcoded "/tmp") so it is correct on
- * Windows/macOS/Linux — the viewer ships on all three (CLAUDE.md §8). A literal
+ * Windows/macOS/Linux — the desktop ships on all three (CLAUDE.md §8). A literal
  * "/tmp" would make every risky-repair backup throw on Windows.
  *
  * The ZIP bytes are produced by fflate's streaming Zip/ZipPassThrough (STORE

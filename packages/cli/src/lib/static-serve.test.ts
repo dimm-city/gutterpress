@@ -125,7 +125,7 @@ async function startServer(
 }
 
 test("serveFile writes the file with the correct content-type", async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "pmd-static-serve-"));
+  tempDir = await mkdtemp(join(tmpdir(), "gutterpress-static-serve-"));
   const filePath = join(tempDir, "styles.css");
   await writeFile(filePath, "body{color:red}");
 
@@ -140,7 +140,7 @@ test("serveFile writes the file with the correct content-type", async () => {
 });
 
 test("serveFile falls back to application/octet-stream for an unknown extension", async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "pmd-static-serve-"));
+  tempDir = await mkdtemp(join(tmpdir(), "gutterpress-static-serve-"));
   const filePath = join(tempDir, "data.bin");
   await writeFile(filePath, "raw-bytes");
 
@@ -154,7 +154,7 @@ test("serveFile falls back to application/octet-stream for an unknown extension"
 });
 
 test("serveFile returns 404 for a missing file", async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "pmd-static-serve-"));
+  tempDir = await mkdtemp(join(tmpdir(), "gutterpress-static-serve-"));
   const missing = join(tempDir, "nope.txt");
 
   const port = await startServer((_req, res) => {
@@ -182,7 +182,7 @@ test("serveFile returns 404 for a missing file", async () => {
 // legitimate file correctly.
 
 test("resolveStaticPath + serveFile compose to serve a real request end-to-end", async () => {
-  tempDir = await mkdtemp(join(tmpdir(), "pmd-static-serve-"));
+  tempDir = await mkdtemp(join(tmpdir(), "gutterpress-static-serve-"));
   await writeFile(join(tempDir, "book.html"), "<h1>hi</h1>");
 
   const port = await startServer(async (req, res) => {

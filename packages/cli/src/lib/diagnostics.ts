@@ -1,6 +1,6 @@
 /**
  * System diagnostics — surfaces tool availability + versions for the
- * viewer's Help/About dialog and the `print-md doctor` CLI command.
+  * desktop's Help/About dialog and the `gutterpress doctor` CLI command.
  *
  * Reuses `resolveChromiumExecutable`, `findTool`, and `isToolAvailable` for
  * tool detection. Install-hint copy lives in `./install-hints.ts` — the
@@ -24,7 +24,7 @@ export interface ToolStatus {
   /**
    * Stable machine id for this tool, independent of the human-readable
    * `name`/`bin` display strings (e.g. "chromium", "gs", "qpdf"). Consumers
-   * that need to single out a specific tool (the viewer's doctor route
+   * that need to single out a specific tool (the desktop's doctor route
    * excludes the bundled-Chromium entry from the "external tools" list) MUST
    * match on this field, not on `bin`/`name` — those are presentation text
    * and can be reworded without notice (UX L10).
@@ -50,7 +50,7 @@ export interface ToolStatus {
 }
 
 export interface SystemDiagnostics {
-  /** print-md lib version */
+  /** Gutterpress lib version */
   libVersion: string;
   platform: { os: string; arch: string; release: string; node: string };
   tools: ToolStatus[];
@@ -125,8 +125,8 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
   // Chromium gets its own special probe (uses the existing resolver, not just PATH).
   // NOTE: do NOT spawn the browser to read its version — on Windows `chrome.exe
   // --version` launches a visible browser window instead of printing+exiting,
-  // which made opening the viewer's Help/About dialog pop a new Chrome instance.
-  // The browser is a GUI app, so we report only its presence + path. (The viewer
+  // which made opening the desktop's Help/About dialog pop a new Chrome instance.
+  // The browser is a GUI app, so we report only its presence + path. (The desktop
   // surfaces its own bundled Chromium version separately via process.versions.)
   const chromiumPath = await resolveChromiumExecutable();
   const chromiumVersion = undefined;
@@ -188,6 +188,6 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
     },
     tools: [chromium, ...tools],
     configDir: defaultConfigDir(),
-    docsUrl: "https://github.com/dimm-city/print-md/blob/main/examples/print-md-user-guide/08-system-setup.md",
+    docsUrl: "https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md",
   };
 }

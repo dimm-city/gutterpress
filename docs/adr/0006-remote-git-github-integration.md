@@ -2,7 +2,7 @@
 
 > **Note:** reconstructed 2026-07-11 from in-repo citations; original ADR
 > lost. Dozens of comments across `packages/cli/src/lib/remote-auth/`,
-> `packages/viewer/electron/`, and `packages/viewer/src/lib/platform/`
+> `packages/desktop/electron/`, and `packages/desktop/src/lib/platform/`
 > reference specific sub-decisions "D1" through "D7" of this ADR, plus a
 > "release checklist" (`electron.vite.config.ts`, `.github/workflows/
 > release.yml`). This document reconstructs each labeled sub-decision from
@@ -15,7 +15,7 @@ Accepted (as evidenced by the shipped implementation, issues #14/#15).
 
 ## Context
 
-print-md needed remote Git (GitHub) integration for non-technical writers —
+Gutterpress needed remote Git (GitHub) integration for non-technical writers —
 connect a project to GitHub, sync changes, recover from conflicts — while
 honoring `CLAUDE.md` §7 (Node-native git only: no shelling out to a system
 `git` binary or the `gh` CLI; all Git and GitHub operations go through
@@ -48,7 +48,7 @@ honoring `CLAUDE.md` §7 (Node-native git only: no shelling out to a system
   1. The lib defines the `TokenStore` contract only; it never touches an OS
      keychain itself.
   2. Each **host application** supplies the implementation: the Electron
-     viewer uses `safeStorage` (`electron/credential-store.ts`); the CLI uses
+     desktop uses `safeStorage` (`electron/credential-store.ts`); the CLI uses
      a `0600` JSON file under the user config dir (the `gh` CLI model —
      encrypted-at-rest is explicitly **not** required for the CLI, since it
      has no OS keychain to depend on).
@@ -94,9 +94,9 @@ honoring `CLAUDE.md` §7 (Node-native git only: no shelling out to a system
 ## Release checklist
 
 The GitHub OAuth App's client id is public but still an operational
-dependency: it must exist as the `PRINT_MD_GITHUB_CLIENT_ID` repository
+dependency: it must exist as the `GUTTERPRESS_GITHUB_CLIENT_ID` repository
 variable before a release build, because release CI bakes it into both the
-viewer's main-process bundle (`electron.vite.config.ts`'s `define`) and the
+desktop's main-process bundle (`electron.vite.config.ts`'s `define`) and the
 release workflow's env (`.github/workflows/release.yml`). If the registration
 is ever rotated, this variable is the one place that needs updating; when
 unset, both build steps bake `""`, which `resolveGitHubClientId` treats as
@@ -122,11 +122,11 @@ Reconstructed from citations in: `packages/cli/src/lib/remote-auth/{github-auth,
 token-store,clone,sync,transport,diagnose,generic-auth,github-repos,
 resolution-plan,sync-types,conflict-resolution,test-access}.ts` and their
 `recovery/` subfolder, `packages/cli/src/lib/source-provider.ts`,
-`packages/cli/src/lib/publish/types.ts`, `packages/viewer/electron/
-credential-store.ts`, `packages/viewer/electron/export/controller.ts`,
-`packages/viewer/electron/auto-sync/orchestrator.ts`,
-`packages/viewer/electron/main.ts`, `packages/viewer/electron.vite.config.ts`,
-`packages/viewer/src/lib/platform/{contract,shared-types,electron-adapter}.ts`,
-`packages/viewer/src/routes/api/vcs/restore-snapshot/+server.ts`,
-`packages/viewer/src/lib/routes/project-session-controller.svelte.ts`,
+`packages/cli/src/lib/publish/types.ts`, `packages/desktop/electron/
+credential-store.ts`, `packages/desktop/electron/export/controller.ts`,
+`packages/desktop/electron/auto-sync/orchestrator.ts`,
+`packages/desktop/electron/main.ts`, `packages/desktop/electron.vite.config.ts`,
+`packages/desktop/src/lib/platform/{contract,shared-types,electron-adapter}.ts`,
+`packages/desktop/src/routes/api/vcs/restore-snapshot/+server.ts`,
+`packages/desktop/src/lib/routes/project-session-controller.svelte.ts`,
 `docs/publishing.md`, `.github/workflows/release.yml`.

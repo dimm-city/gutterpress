@@ -1,6 +1,6 @@
-# Contributing to print-md
+# Contributing to Gutterpress
 
-Thank you for your interest in contributing to print-md! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to Gutterpress! This document provides guidelines and instructions for contributing to the project.
 
 ## Table of Contents
 
@@ -22,8 +22,8 @@ Thank you for your interest in contributing to print-md! This document provides 
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/dimm-city/print-md.git
-   cd print-md
+   git clone https://github.com/dimm-city/gutterpress.git
+   cd gutterpress
    ```
 
 2. **Install dependencies**
@@ -42,10 +42,10 @@ Thank you for your interest in contributing to print-md! This document provides 
    bun packages/cli/src/cli.ts --help
 
    # Run CLI tests
-   bun --filter @dimm-city/print-md test
+   bun --filter gutterpress test
 
-   # Launch desktop viewer (browser UI, no Electron)
-   bun run viewer:dev
+   # Launch desktop app (browser UI, no Electron)
+   bun run desktop:dev
    ```
 
 ### Development Workflow
@@ -63,11 +63,11 @@ bun run test
 # Type-check all packages
 bun run typecheck
 
-# Launch desktop viewer (SvelteKit dev server, browser at http://localhost:5173)
-bun run viewer:dev
+# Launch desktop app (SvelteKit dev server, browser at http://localhost:5173)
+bun run desktop:dev
 
-# Launch desktop viewer with Electron
-bun run viewer:electron
+# Launch desktop app with Electron
+bun run desktop:electron
 ```
 
 Working inside a single package:
@@ -78,8 +78,8 @@ cd packages/cli
 bun test --watch
 bun run typecheck
 
-# Viewer package
-cd packages/viewer
+# Desktop package
+cd packages/desktop
 bun run dev          # SvelteKit dev server only
 bun run electron:dev # Full Electron + SvelteKit
 ```
@@ -87,9 +87,9 @@ bun run electron:dev # Full Electron + SvelteKit
 ## Project Structure
 
 ```
-print-md/                        # Workspace root (private)
+gutterpress/                     # Workspace root (private)
 ├── packages/
-│   ├── cli/                     # @dimm-city/print-md — library + CLI (all runtime logic + the print-md command)
+│   ├── cli/                     # gutterpress — library + CLI (all runtime logic + the gutterpress command)
 │   │   ├── src/
 │   │   │   ├── cli.ts           # CLI entry point (bin)
 │   │   │   ├── index.ts         # Library entry (exports)
@@ -99,7 +99,7 @@ print-md/                        # Workspace root (private)
 │   │   │   ├── checks/          # Validation check system
 │   │   │   └── preview/         # Headless preview server (node:http + ws + chokidar)
 │   │   └── tests/               # Bun test suite
-│   └── viewer/                  # @dimm-city/print-md-viewer — Electron + SvelteKit desktop app
+│   └── desktop/                 # @dimm-city/gutterpress-desktop — Electron + SvelteKit desktop app
 │       ├── electron/            # Electron main process
 │       └── src/                 # SvelteKit UI + server routes
 ├── examples/                    # Example projects
@@ -114,10 +114,10 @@ print-md/                        # Workspace root (private)
   needs (see `packages/cli/src/preview/http-server.ts`), not Vite/Rollup/esbuild
   and not `Bun.serve` — the lib runtime must stay Node-compatible so Electron's
   bundled Node can run it in-process.
-- **`packages/viewer/`** — Vite/Rollup are intentional here (SvelteKit build).
-  `@dimm-city/print-md` is SSR-external so it is never bundled by Vite.
+- **`packages/desktop/`** — Vite/Rollup are intentional here (SvelteKit build).
+  `gutterpress` is SSR-external so it is never bundled by Vite.
 - **Plugin API** — Plugins are plain `(md, options) => void` markdown-it
-  functions. No print-md-specific plugin API. See [User Guide: Chapter 6 — Plugins](./examples/print-md-user-guide/06-plugins.md).
+  functions. No Gutterpress-specific plugin API. See [User Guide: Chapter 6 — Plugins](./examples/gutterpress-user-guide/06-plugins.md).
 
 ## Coding Standards
 
@@ -268,7 +268,7 @@ describe('Feature name', () => {
 4. **Running Tests**
    ```bash
    # Run CLI tests (from repo root)
-   bun --filter @dimm-city/print-md test
+   bun --filter gutterpress test
 
    # Run specific test file
    bun test packages/cli/tests/integration/cli-build.test.ts
@@ -465,14 +465,14 @@ test(config): add tests for manifest validation
 4. **Publish to npm** (via GitHub Actions OIDC trusted publisher)
    - Tag push triggers the release workflow automatically.
    - The workflow cross-compiles CLI binaries on `ubuntu-latest` and uploads
-     them to GitHub Releases alongside the Electron viewer packages.
+      them to GitHub Releases alongside the Gutterpress desktop package.
 
 ## Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/dimm-city/print-md/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/dimm-city/print-md/discussions)
+- **Issues**: [GitHub Issues](https://github.com/dimm-city/gutterpress/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/dimm-city/gutterpress/discussions)
 - **Documentation**: [/docs](./docs)
 
 ## License
 
-By contributing to print-md, you agree that your contributions will be licensed under the [MPL-2.0 License](./LICENSE).
+By contributing to Gutterpress, you agree that your contributions will be licensed under the [MPL-2.0 License](./LICENSE).

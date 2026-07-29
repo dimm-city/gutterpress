@@ -152,7 +152,7 @@ test("rejectExtraPositionals throws a UsageError naming the command on extras", 
   } catch (err) {
     expect(err).toBeInstanceOf(UsageError);
     expect((err as UsageError).exitCode).toBe(EXIT_CODES.USAGE);
-    expect((err as UsageError).message).toContain("print-md build");
+    expect((err as UsageError).message).toContain("gutterpress build");
     expect((err as UsageError).message).toContain("b");
   }
 });
@@ -188,7 +188,7 @@ test("rejectUnknownFlags rejects an unknown long option as a UsageError", () => 
       testCommandArgs,
       "build"
     )
-  ).toThrow(/print-md build: unknown option --formt/);
+  ).toThrow(/gutterpress build: unknown option --formt/);
 });
 
 test("rejectUnknownFlags does not mistake a positional argument name for a flag", () => {

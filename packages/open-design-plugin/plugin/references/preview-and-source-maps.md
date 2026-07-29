@@ -1,13 +1,13 @@
 # Preview and source metadata
 
-How to read the running Print-MD preview, and how to get from a rendered
-element back to the file that produced it. Verified against the Print-MD source
+How to read the running Gutterpress preview, and how to get from a rendered
+element back to the file that produced it. Verified against the Gutterpress source
 that ships this package, 2026-07-28.
 
 ## The preview is the authority
 
 ```bash
-print-md preview ./books/core-book
+gutterpress preview ./books/core-book
 # Preview server running at http://localhost:3579
 ```
 
@@ -17,7 +17,7 @@ the truth. The runtime brief carries whatever they are actually running.
 The preview uses the same Markdown renderer, inlined CSS, and Paged.js polyfill
 as the build. Judge print layout from its paginated pages, never from ordinary
 browser flow. The live shell is optimized for editing, so wait for its completed
-pagination and confirm page-critical work with the normal Print-MD build before
+pagination and confirm page-critical work with the normal Gutterpress build before
 final delivery.
 
 `GET /api/status` returns `{ hasInput, currentPath }` if you need to confirm the
@@ -48,7 +48,7 @@ until a stylesheet points at it — which is the same edit that makes it matter.
 
 Practical consequence: after a design edit, **wait for the rebuild to land**
 before judging layout. If page counts or boundaries look stale, reload the
-Browser tab, and use a normal Print-MD build for final page-critical approval.
+Browser tab, and use a normal Gutterpress build for final page-critical approval.
 
 ## What Open Design Browser context contains
 
@@ -90,7 +90,7 @@ the element. Which rule styles it comes from the element's semantic classes and
 the ordered `styles:` list; read the stylesheets to find the declaration that
 actually applies.
 
-Print-MD also emits semantic data attributes for layout primitives; those are
+Gutterpress also emits semantic data attributes for layout primitives; those are
 not source coordinates. Do not build a source-map database, a sidecar index, or
 any second metadata format. The two attributes above are the source-attribution
 contract.

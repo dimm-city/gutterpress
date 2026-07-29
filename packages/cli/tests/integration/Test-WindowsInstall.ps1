@@ -1,4 +1,4 @@
-# Test print-md Windows Installation in Docker
+# Test gutterpress Windows Installation in Docker
 # 
 # This script simplifies running the Windows Docker-based installation tests.
 # It handles building the image and running different test scenarios.
@@ -31,7 +31,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Configuration
-$ImageName = "print-md-windows-test"
+$ImageName = "gutterpress-windows-test"
 $DockerfilePath = "tests/integration/Dockerfile.windows"
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
@@ -135,7 +135,7 @@ function Invoke-FullTest {
     Write-Step "Running full installation test suite..."
     
     try {
-        docker run --rm -it $ImageName powershell -File C:\print-md\tests\integration\run-install-test.ps1
+        docker run --rm -it $ImageName powershell -File C:\gutterpress\tests\integration\run-install-test.ps1
         
         if ($LASTEXITCODE -eq 0) {
             Write-Success "All tests passed!"
@@ -154,7 +154,7 @@ function Invoke-QuickTest {
     Write-Step "Running quick installation test..."
     
     try {
-        docker run --rm -it $ImageName powershell -File C:\print-md\tests\integration\run-install-test.ps1 -Quick
+        docker run --rm -it $ImageName powershell -File C:\gutterpress\tests\integration\run-install-test.ps1 -Quick
         
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Quick test completed!"
@@ -218,7 +218,7 @@ function Invoke-Cleanup {
 function Main {
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Magenta
-    Write-Host "  print-md Windows Install Test Runner" -ForegroundColor Magenta
+    Write-Host "  gutterpress Windows Install Test Runner" -ForegroundColor Magenta
     Write-Host "========================================" -ForegroundColor Magenta
     
     # Handle cleanup mode

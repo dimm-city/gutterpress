@@ -1,5 +1,5 @@
 /**
- * End-to-end sync scenario mirroring the packaged viewer's exact topology on
+ * End-to-end sync scenario mirroring the packaged desktop's exact topology on
  * a machine with NO system git (the product's whole point — CLAUDE.md §7):
  *
  *   - a multi-book BARE repository served by the in-test smart-HTTP server
@@ -54,7 +54,7 @@ async function createMultiBookBareRepo(): Promise<{
   workDir: string;
   head: string;
 }> {
-  const workDir = await tempDir("pmd-e2e-fixture-");
+  const workDir = await tempDir("gutterpress-e2e-fixture-");
   await git.init({ fs, dir: workDir, defaultBranch: "main" });
   const files: Record<string, string> = {
     "README.md": "# Multi-book repository\n",
@@ -103,7 +103,7 @@ describe("sync e2e — app-cloned multi-book repo, project is a subfolder", () =
 
   test("full user flow: clone → snapshot → remote moves → preview → pull → history → push", async () => {
     // ── Step 1: the app clones the repo (the user's machine, "computer A") ──
-    const parentA = await tempDir("pmd-e2e-a-");
+    const parentA = await tempDir("gutterpress-e2e-a-");
     cleanupDirs.push(parentA);
     const repoA = path.join(parentA, "my-books");
     const cloneA = await cloneRepository({ url: server.url, dir: repoA });
@@ -139,7 +139,7 @@ describe("sync e2e — app-cloned multi-book repo, project is a subfolder", () =
     expect(localSnap.id).toMatch(/^[0-9a-f]{40}$/);
 
     // ── Step 4: the remote gains 2 commits via a SECOND lib clone ──
-    const parentB = await tempDir("pmd-e2e-b-");
+    const parentB = await tempDir("gutterpress-e2e-b-");
     cleanupDirs.push(parentB);
     const repoB = path.join(parentB, "my-books");
     await cloneRepository({ url: server.url, dir: repoB });

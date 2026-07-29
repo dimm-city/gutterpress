@@ -1,6 +1,6 @@
 title: "Cross-Browser Feature Probe"
 authors:
-  - "print-md compat tests"
+  - "gutterpress compat tests"
 
 styles:
   - styles/probe.css

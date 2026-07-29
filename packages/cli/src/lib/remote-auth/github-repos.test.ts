@@ -112,7 +112,7 @@ function treeResponse(
   });
 }
 
-test("listRepoBooks finds canonical and legacy manifests (root counts)", async () => {
+test("listRepoBooks finds only canonical manifests (root counts)", async () => {
   const requested: string[] = [];
   const fetchImpl = (async (url: string | URL | Request) => {
     const u = String(url);
@@ -123,12 +123,12 @@ test("listRepoBooks finds canonical and legacy manifests (root counts)", async (
       { path: "books/field-guide", type: "tree" },
       { path: "books/field-guide/manifest.yaml", type: "blob" },
       { path: "books/op-manual", type: "tree" },
-      { path: "books/op-manual/manifest.yml", type: "blob" },
+      { path: "books/op-manual/manifest.yaml", type: "blob" },
       { path: "books/op-manual/chapter-01.md", type: "blob" },
-      // The persisted legacy filename matches; similar names do not.
-      { path: "books/notes/not-print-md.yaml", type: "blob" },
-      { path: "books/notes/print-md.yaml", type: "blob" },
-      { path: "books/notes/print-md.yaml.bak", type: "blob" },
+      // Similar names do not match.
+      { path: "books/notes/not-gutterpress.yaml", type: "blob" },
+      { path: "books/notes/gutterpress.yaml", type: "blob" },
+      { path: "books/notes/manifest.yaml.bak", type: "blob" },
     ]);
   }) as unknown as typeof fetch;
 
@@ -136,8 +136,7 @@ test("listRepoBooks finds canonical and legacy manifests (root counts)", async (
   expect(books).toEqual([
     { path: "", name: "books" },
     { path: "books/field-guide", name: "field-guide" },
-    { path: "books/notes", name: "notes" },
-    { path: "books/op-manual", name: "op-manual" },
+     { path: "books/op-manual", name: "op-manual" },
   ]);
   // One recursive tree call against the chosen branch.
   expect(requested.length).toBe(1);
@@ -155,11 +154,11 @@ test("listRepoBooks returns [] when no manifest exists anywhere", async () => {
   expect(books).toEqual([]);
 });
 
-test("listRepoBooks does not infer unsupported print-md.yml", async () => {
+test("listRepoBooks does not infer unsupported gutterpress.yml", async () => {
   const fetchImpl = (async () =>
     treeResponse([
-      { path: "print-md.yml", type: "blob" },
-      { path: "books/unsupported/print-md.yml", type: "blob" },
+      { path: "gutterpress.yml", type: "blob" },
+      { path: "books/unsupported/gutterpress.yml", type: "blob" },
     ])) as unknown as typeof fetch;
 
   const books = await listRepoBooks(CRED, "octocat", "books", "main", { fetchImpl });
@@ -187,7 +186,7 @@ test("listRepoBooks truncated tree → falls back to root + top-level dir scans"
       });
     }
     if (u.includes(`/git/trees/${"b".repeat(40)}`)) {
-      return treeResponse([{ path: "manifest.yml", type: "blob" }]);
+      return treeResponse([{ path: "manifest.yaml", type: "blob" }]);
     }
     if (u.includes(`/git/trees/${"c".repeat(40)}`)) {
       return treeResponse([{ path: "logo.png", type: "blob" }]);

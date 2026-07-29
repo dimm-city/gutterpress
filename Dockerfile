@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# print-md CLI container
+# Gutterpress CLI container
 #
 # A self-contained image with EVERYTHING the lint → build → validate pipeline
 # needs to turn a markdown project into a validated, print-ready PDF — including
 # the full PDF/X (CMYK) pre-print path:
-#   - the print-md CLI (Node bundle: src + @dimm-city/print-md compiled in)
+#   - the Gutterpress CLI (Node bundle: src + gutterpress compiled in)
 #   - Chromium            (PDF rendering via Paged.js — REQUIRED for any PDF)
 #   - Ghostscript         (PDF/X CMYK conversion + ink-coverage validation)
 #   - qpdf                (PDF/X annotation stripping + OutputIntent validation)
@@ -17,8 +17,8 @@
 # installed (see ADR 0002). The remaining three tools exist only to enable the
 # optional PDF/X pre-print pipeline; a plain RGB `build` needs only Chromium.
 #
-# Usage (entrypoint forwards all args to print-md):
-#   docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/print-md \
+# Usage (entrypoint forwards all args to gutterpress):
+#   docker run --rm -v "$PWD:/work" ghcr.io/dimm-city/gutterpress \
 #       build my-book --out dist/my-book.pdf --format pdfx
 #
 # Mount your project at /work; outputs land back on the host. Pass
@@ -122,23 +122,23 @@ RUN npm install --omit=optional --no-package-lock --no-audit --no-fund \
     && npm cache clean --force
 COPY --from=builder /src/packages/cli/dist ./dist
 
-# A `print-md` command on PATH so the image works both as `docker run`
+# A `gutterpress` command on PATH so the image works both as `docker run`
 # (entrypoint) and as a CI `container:` (where the entrypoint is bypassed and
-# steps invoke `print-md` directly).
-RUN printf '#!/bin/sh\nexec node /app/dist/cli.js "$@"\n' > /usr/local/bin/print-md \
-    && chmod +x /usr/local/bin/print-md \
-    && print-md --help >/dev/null
+# steps invoke `gutterpress` directly).
+RUN printf '#!/bin/sh\nexec node /app/dist/cli.js "$@"\n' > /usr/local/bin/gutterpress \
+    && chmod +x /usr/local/bin/gutterpress \
+    && gutterpress --help >/dev/null
 
-# Point print-md at the apt Chromium and give headless Chromium the flags it
+# Point Gutterpress at the apt Chromium and give headless Chromium the flags it
 # needs inside a container (no user namespace / small /dev/shm). HOME=/tmp keeps
 # tools that want a writable home working under `-u <uid>:<gid>`.
 ENV CHROMIUM_PATH=/usr/bin/chromium \
-    PRINTMD_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage --disable-gpu" \
+    GUTTERPRESS_CHROMIUM_ARGS="--no-sandbox --disable-dev-shm-usage --disable-gpu" \
     HOME=/tmp
 
 # Projects are mounted here; relative --out paths resolve against it.
 WORKDIR /work
 
-# tini reaps the Chromium child processes print-md spawns (no zombie PIDs).
-ENTRYPOINT ["/usr/bin/tini", "--", "print-md"]
+# tini reaps the Chromium child processes gutterpress spawns (no zombie PIDs).
+ENTRYPOINT ["/usr/bin/tini", "--", "gutterpress"]
 CMD ["--help"]

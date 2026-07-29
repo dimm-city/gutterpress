@@ -950,9 +950,9 @@ describe("recover detached_head — BUG 2: forced checkout survives a dirty tree
   test("the rescue snapshot commit carries the context's full identity", async () => {
     // Recovery commits are automatic commits: they must record the author's
     // configured name AND email, resolved by the same per-field rule snapshots
-    // use (option -> repo config -> print-md default). Before this was wired,
+    // use (option -> repo config -> gutterpress default). Before this was wired,
     // ctx.authorEmail did not exist and every rescue commit was attributed to
-    // print-md <noreply@print-md.local>.
+    // gutterpress <noreply@gutterpress.local>.
     const dir = await makeTempDir("dh-rescue-identity-");
     const sha = await initRepo(dir);
     await detachHead(dir, sha);

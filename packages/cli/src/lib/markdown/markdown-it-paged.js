@@ -528,7 +528,7 @@ export default function plugin(md, pluginOptions = {}) {
           attrs: { ...(section.meta.attrs || {}) },
         };
         const cls = (contMeta.attrs.class || '').split(/\s+/).filter(Boolean);
-        if (!cls.includes('pmd-continued')) cls.push('pmd-continued');
+        if (!cls.includes('gutterpress-continued')) cls.push('gutterpress-continued');
         contMeta.attrs.class = cls.join(' ');
 
         stack.close('section');
@@ -575,7 +575,7 @@ export default function plugin(md, pluginOptions = {}) {
     }
 
     // At EOF: close every open scope so each file's render produces balanced
-    // HTML. print-md renders chapter files one at a time and concatenates the
+    // HTML. gutterpress renders chapter files one at a time and concatenates the
     // output (src/lib/markdown/index.ts); if any scope leaks across that
     // boundary, the next file's content parses as nested inside the previous
     // file's last unclosed wrapper. closeAll() drains every open frame,
