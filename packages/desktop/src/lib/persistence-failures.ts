@@ -1,7 +1,7 @@
 import type { LastFlushFailure } from "./platform/contract";
 import { basenameOf } from "./platform/paths";
 
-export const PERSISTENCE_FAILURE_NOTICE_THRESHOLD = 3;
+const PERSISTENCE_FAILURE_NOTICE_THRESHOLD = 3;
 
 /** One-session threshold gate for ignored, non-critical persistence failures. */
 export class PersistenceFailureNotifier {

@@ -4,7 +4,7 @@ import { deepMergeSettings } from "$lib/settings-merge";
 import { getPrefsHooks } from '../../../electron/server-bridge/prefs-hooks';
 import { gitIdentityFrom, type GitIdentityArgs } from '../../../electron/git-identity';
 
-export async function readAppSettings(): Promise<AppSettings> {
+async function readAppSettings(): Promise<AppSettings> {
   try {
     const hooks = getPrefsHooks();
     if (!hooks) return DEFAULT_SETTINGS;

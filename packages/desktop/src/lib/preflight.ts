@@ -21,7 +21,7 @@ export type PreflightSeverity = "error" | "warning" | "info";
  *     "Go to" button that reveals it in the editor.
  *   - `none`: a project-level finding with no location — it only explains itself.
  */
-export type PreflightFixable = "none" | "navigate";
+type PreflightFixable = "none" | "navigate";
 
 /**
  * The host-resolved check result the route hands the shaper. Path resolution
@@ -44,7 +44,7 @@ export interface PreflightRawResult {
   provider?: string;
 }
 
-export interface PreflightLocation {
+interface PreflightLocation {
   filePath?: string;
   file?: string;
   line?: number;

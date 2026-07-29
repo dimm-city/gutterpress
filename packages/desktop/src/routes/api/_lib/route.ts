@@ -51,7 +51,7 @@ export function loadApiLib(): Promise<ApiLibModule> {
   return apiLibPromise;
 }
 
-export interface DefineRouteArgs<Body, Hooks> {
+interface DefineRouteArgs<Body, Hooks> {
   body: Body;
   event: RequestEvent;
   hooks: Hooks;

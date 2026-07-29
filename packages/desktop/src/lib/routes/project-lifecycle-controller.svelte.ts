@@ -55,7 +55,7 @@ import type { ProjectBookEntry } from "./project-session-controller.svelte";
 import type { PersistedProjectState } from "./page-types";
 
 /** Minimal toast surface the controller drives (mirrors `SyncController`'s `SyncToast`). */
-export interface ProjectLifecycleToast {
+interface ProjectLifecycleToast {
   info?(message: string): void;
   error(message: string): void;
 }
@@ -74,7 +74,7 @@ export type ProjectLifecyclePreviewResult =
     };
 
 /** Composed `ProjectSessionController` surface (the bits this controller drives/reads). */
-export interface ProjectLifecycleProjectSession {
+interface ProjectLifecycleProjectSession {
   repoRoot: string | null;
   books: ProjectBookEntry[];
   activeBookDir: string | null;
@@ -86,13 +86,13 @@ export interface ProjectLifecycleProjectSession {
 }
 
 /** Composed `PageNavController` surface touched during an open (teardown counters live in `resetExtras`). */
-export interface ProjectLifecyclePageNav {
+interface ProjectLifecyclePageNav {
   totalPages: number;
   currentPage: number;
 }
 
 /** Composed `ZoomViewController` surface touched by per-project restore. */
-export interface ProjectLifecycleZoomView {
+interface ProjectLifecycleZoomView {
   userSetViewMode: boolean;
   restoreSplitRatio(ratio: number): void;
 }

@@ -44,7 +44,7 @@ function selectedText(view: EditorView): string {
  * With a selection: wrap it (or unwrap if already wrapped).
  * Without a selection: insert `marker…marker` with cursor between.
  */
-export function toggleInlineWrap(view: EditorView, marker: string): void {
+function toggleInlineWrap(view: EditorView, marker: string): void {
   const { from, to } = mainSel(view);
   const sel = selectedText(view);
   const mLen = marker.length;
@@ -443,7 +443,7 @@ export const LAYOUT_BLOCK_ITEMS: readonly LayoutBlockItem[] = [
 // the same way the transaction helpers above are.
 
 /** Which visually-grouped section of the always-visible toolbar an item renders in. */
-export type ToolbarGroup = "save" | "primary" | "block" | "insert";
+type ToolbarGroup = "save" | "primary" | "block" | "insert";
 
 /**
  * How an item behaves when activated:
@@ -453,7 +453,7 @@ export type ToolbarGroup = "save" | "primary" | "block" | "insert";
  *   membership, ordering, and group/visibility rules still come from this
  *   array.
  */
-export type ToolbarItemKind = "save" | "action" | "heading" | "table" | "image" | "layout-block";
+type ToolbarItemKind = "save" | "action" | "heading" | "table" | "image" | "layout-block";
 
 export interface ToolbarItemDef {
   /** Stable identity — also the {#each} key. */

@@ -27,20 +27,20 @@ import { buildDesktopStyles, DEBUG_STYLES } from "$lib/iframe-styles";
 import type { PreviewEvent } from "$lib/preview-client";
 
 /** Minimal host-command client surface the controller drives. */
-export interface PreviewEventClient {
+interface PreviewEventClient {
   call<T = unknown>(cmd: string, args?: unknown[]): Promise<T>;
   injectStyles(id: string, css: string): void;
 }
 
 /** Composed PageNavController surface (the bits this router touches). */
-export interface PreviewEventPageNav {
+interface PreviewEventPageNav {
   totalPages: number;
   restoreProjectPage(page: number): void;
   syncPageState(detail: { currentPage?: number; totalPages?: number }): void;
 }
 
 /** Composed ZoomViewController surface (the bits this router touches). */
-export interface PreviewEventZoomView {
+interface PreviewEventZoomView {
   userSetViewMode: boolean;
   applyViewMode(mode: "single" | "two-column", fromUser: boolean): void;
   applyFitWidthZoom(): Promise<void>;
@@ -50,7 +50,7 @@ export interface PreviewEventZoomView {
  * Editor↔preview sync seams for the `sourceLineChanged` branch (preview→editor
  * follow). Grouped so the editor coupling stays behind one injected surface.
  */
-export interface PreviewEventEditorSync {
+interface PreviewEventEditorSync {
   /** Timestamp (ms) before which preview→editor follow is suppressed (echo guard). */
   suppressPreviewSyncUntil: () => number;
   editorPaneOpen: () => boolean;
