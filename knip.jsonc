@@ -1,0 +1,77 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  // `duplicates`: the one duplicate pair is deliberate — applyDtrpgPdfDefaults is
+  // a documented @deprecated alias of applyDefaultPdfStrictChecks
+  // (packages/cli/src/lib/validation-profile.ts), still consumed by
+  // validation-exec.ts. Re-enable this issue type when the alias is retired.
+  "exclude": ["duplicates"],
+  "workspaces": {
+    ".": {
+      "entry": ["tools/*.mjs"],
+      "project": ["tools/**/*.mjs"],
+      // packages/open-design-plugin is a Claude plugin (SKILL.md + evals) whose
+      // test-fixtures are data trees referenced by string from manifest.yaml
+      // files, not by imports — not part of the dead-code surface.
+      "ignore": ["packages/open-design-plugin/**"],
+      // Root deps exist to pin hoisted resolutions from the security-advisory
+      // remediation (see `overrides` and commit 43552e1), not to be imported.
+      "ignoreDependencies": [
+        "electron-builder-squirrel-windows",
+        "js-yaml",
+        "launch-editor",
+        "markdown-it",
+        "tar",
+        "undici",
+        "vite"
+      ]
+    },
+    "packages/cli": {
+      "entry": [
+        "src/cli.ts",
+        "src/index.ts",
+        "src/api/index.ts",
+        "src/render.ts",
+        "scripts/*.mjs",
+        "src/**/*.test.ts",
+        "tests/**/*.test.ts",
+        // Run by CI via `playwright test -c tests/compat/playwright.config.ts`
+        // (.github/workflows/preview-cross-browser.yml).
+        "tests/compat/*.pw.ts",
+        // Check modules are self-registering roots (registerCheck side effect,
+        // loaded via checks/register-builtins). Their `export default check` is
+        // the per-module test seam (see checks/pdf/structured-check-result.test.ts
+        // importing ink-coverage/rasterized-pages/embedded-fonts defaults).
+        "src/checks/{asset,heuristic,pdf,source}/*.ts"
+      ],
+      "project": ["src/**/*.{ts,js,mjs}", "scripts/**/*.mjs", "tests/**/*.{ts,js,mjs}"],
+      // Vendored third-party code (patched Paged.js) — never edited for lint.
+      "ignore": ["src/assets/vendor/**"],
+      // Source for vendor refreshes of src/assets/vendor/paged.polyfill.js —
+      // see src/assets/vendor/PAGEDJS-PATCHES.md.
+      "ignoreDependencies": ["pagedjs"]
+    },
+    "packages/desktop": {
+      "entry": [
+        "src/routes/**/+*.{ts,svelte}",
+        "src/service-worker.{ts,js}",
+        "tools/*.mjs",
+        "tests/**/*.{ts,js,mjs}",
+        // Compile-time type assertion gates: never imported, but type-checked by
+        // `svelte-check` (they live under src/, inside its tsconfig scope).
+        "src/**/*.type-test.ts",
+        // The platform seam + typed api surface are documented scaffolding for
+        // the remaining PWA phases (CLAUDE.md §8, docs/pwa-webadapter-plan.md,
+        // docs/adr/0004-platform-abstraction.md) — intentional export surface,
+        // not dead code.
+        "src/lib/platform/{index,contract,dtos,shared-types,web-store}.ts",
+        "src/lib/api.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,js,svelte,mjs}",
+        "electron/**/*.{ts,js,mjs}",
+        "tools/**/*.mjs",
+        "tests/**/*.{ts,js,mjs}"
+      ]
+    }
+  }
+}
