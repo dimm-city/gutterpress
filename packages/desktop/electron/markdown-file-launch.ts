@@ -14,7 +14,7 @@ export function isMarkdownFilePath(filePath: string): boolean {
 }
 
 /** Convert one OS launch value to a local absolute Markdown path. */
-export function markdownPathFromLaunchValue(
+function markdownPathFromLaunchValue(
   raw: string,
   workingDirectory: string,
 ): string | null {

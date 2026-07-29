@@ -30,11 +30,11 @@ import * as nodeFs from "node:fs/promises";
 /** The app id — shared by the desktop filename, the icon basename, `StartupWMClass`, and package.json's `desktopName`. */
 export const APP_ID = "city.dimm.gutterpress";
 /** The managed AppImage filename. Deliberately distinct from the CLI's `~/.local/bin/Gutterpress`. */
-export const APPIMAGE_FILE_NAME = "gutterpress.AppImage";
+const APPIMAGE_FILE_NAME = "gutterpress.AppImage";
 /** The installed desktop entry's filename — must equal package.json `desktopName`. */
-export const DESKTOP_FILE_NAME = `${APP_ID}.desktop`;
+const DESKTOP_FILE_NAME = `${APP_ID}.desktop`;
 /** The installed icon's basename (the `Icon=` key names it WITHOUT the extension). */
-export const ICON_FILE_NAME = `${APP_ID}.png`;
+const ICON_FILE_NAME = `${APP_ID}.png`;
 
 const APPIMAGE_MODE = 0o755;
 const DATA_FILE_MODE = 0o644;
@@ -395,7 +395,7 @@ export class AppImageIntegration {
 }
 
 /** The user-facing explanation for an unsupported environment. */
-export function unsupportedMessage(reason: UnsupportedReason): string {
+function unsupportedMessage(reason: UnsupportedReason): string {
   switch (reason) {
     case "not-linux":
       return "Application-menu integration is only available on Linux.";

@@ -124,7 +124,7 @@ export function isLinuxBasicTextStorage(platform: string, backend: string): bool
 }
 
 /** True only for Electron's keyring-less Linux fallback. Host-side only. */
-export function usesLinuxBasicTextStorage(): boolean {
+function usesLinuxBasicTextStorage(): boolean {
   if (process.platform !== "linux") return false;
   try {
     return isLinuxBasicTextStorage(

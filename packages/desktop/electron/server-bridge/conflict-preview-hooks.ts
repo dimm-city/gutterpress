@@ -10,7 +10,7 @@ import { getHostServices } from './host-services';
 
 export type ConflictKind = 'both-edited' | 'you-deleted' | 'online-deleted';
 
-export interface ConflictPreviewResult {
+interface ConflictPreviewResult {
   mine: string;
   theirs: string;
   kind: ConflictKind;

@@ -125,7 +125,7 @@ export function isWithinAnyRoot(candidate: string, roots: readonly string[]): bo
  * `readlink` (relative to its own realpath'd parent) and keep resolving from
  * there — only genuinely-absent components fall through to the lexical tail.
  */
-export async function realpathTolerant(p: string): Promise<string> {
+async function realpathTolerant(p: string): Promise<string> {
   return realpathTolerantAt(path.resolve(p), [], 0);
 }
 

@@ -33,7 +33,7 @@ import type { SyncStatusPayload } from "./orchestrator";
 
 /** The follow-up bucket a caller acts on. Mirrors the branches both call sites
  *  historically switched over. */
-export type RecoveryEmitKind = "recovered" | "retry_later" | "conflict" | "auth" | "error";
+type RecoveryEmitKind = "recovered" | "retry_later" | "conflict" | "auth" | "error";
 
 export interface RecoveryEmit {
   /** Which follow-up the caller should apply (latch / retry / resume / none). */

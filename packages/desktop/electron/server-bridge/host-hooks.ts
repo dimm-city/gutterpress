@@ -13,18 +13,18 @@ import type {
   AppImageStatus,
 } from '../appimage-integration';
 
-export interface DialogFilter {
+interface DialogFilter {
   name: string;
   extensions: string[];
 }
 
-export interface OpenDialogOptions {
+interface OpenDialogOptions {
   title?: string;
   properties?: string[];
   filters?: DialogFilter[];
 }
 
-export interface SaveDialogOptions {
+interface SaveDialogOptions {
   title?: string;
   defaultPath?: string;
   filters?: DialogFilter[];
