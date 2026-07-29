@@ -125,7 +125,7 @@
   <div class="dlg-shell" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "help-title" }} use:loadOnOpen>
     <header class="dlg-header">
       <div class="dialog-title-group">
-        <h2 id="help-title">About Print MD</h2>
+        <h2 id="help-title">About Gutterpress</h2>
       </div>
       <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
     </header>

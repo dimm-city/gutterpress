@@ -1,17 +1,17 @@
-# Using Open Design with Print-MD
+# Using Open Design with Gutterpress
 
-Open Design can refine a Print-MD publication directly because both applications work with ordinary files. Open Design edits the repository; Print-MD renders the authoritative paginated preview. There is no conversion step and no Open Design-specific Print-MD project format.
+Open Design can refine a Gutterpress publication directly because both applications work with ordinary files. Open Design edits the repository; Gutterpress renders the authoritative paginated preview. There is no conversion step and no Open Design-specific Gutterpress project format.
 
-This guide uses release candidate 0.2.0 of the **Print-MD Publishing** plugin,
-Open Design 0.16.1, and the unreleased Print-MD source on this branch as of
-2026-07-28. Published Print-MD 0.8.3 does not contain the required preview
+This guide uses release candidate 0.2.0 of the **Gutterpress Publishing** plugin,
+Open Design 0.16.1, and the unreleased Gutterpress source on this branch as of
+2026-07-28. Published Gutterpress 0.8.3 does not contain the required preview
 corrections. Open Design records but does not enforce the plugin's declared
 `>=0.16.1` engine floor, so verify the CLI version manually.
 
 ## Install the Open Design plugin
 
 The plugin is not yet listed in the Open Design marketplace. Install it from a
-Print-MD checkout:
+Gutterpress checkout:
 
 ```bash
 od plugin validate ./packages/open-design-plugin/plugin --no-daemon
@@ -55,7 +55,7 @@ my-book/
 
 ### Multi-book repository
 
-Open the **repository root** in Open Design and the **target book folder** in Print-MD:
+Open the **repository root** in Open Design and the **target book folder** in Gutterpress:
 
 ```text
 publication-project/
@@ -73,11 +73,11 @@ publication-project/
     └── supplement/
 ```
 
-Open Design can see the shared foundation and all books. Print-MD renders only the book you opened.
+Open Design can see the shared foundation and all books. Gutterpress renders only the book you opened.
 
 ## Keep design guidance out of the manuscript
 
-Gutterpress recognizes `manifest.yaml`, `manifest.yml`, and `gutterpress.yaml`.
+Gutterpress recognizes `manifest.yaml`.
 
 When `source.files` is explicit, a root-level `DESIGN.md` is safe:
 
@@ -88,11 +88,11 @@ source:
     - chapters/02-rules.md
 ```
 
-When `source.files` is absent or empty, Print-MD renders every top-level `.md` file in the book folder alphabetically — and only top-level files, so a `chapters/` folder needs an explicit list. Put book-specific guidance under `design/DESIGN.md` when discovery is implicit.
+When `source.files` is absent or empty, Gutterpress renders every top-level `.md` file in the book folder alphabetically — and only top-level files, so a `chapters/` folder needs an explicit list. Put book-specific guidance under `design/DESIGN.md` when discovery is implicit.
 
-The Print-MD Publishing plugin checks this before editing and warns when a control document could enter the publication.
+The Gutterpress Publishing plugin checks this before editing and warns when a control document could enter the publication.
 
-## Start the Print-MD preview
+## Start the Gutterpress preview
 
 Start Preview in the desktop application, or run:
 
@@ -100,24 +100,24 @@ Start Preview in the desktop application, or run:
 gutterpress preview ./books/core-book
 ```
 
-Print-MD prints the actual local URL, normally:
+Gutterpress prints the actual local URL, normally:
 
 ```text
 http://localhost:3579/
 ```
 
-Open that URL in an Open Design Browser tab. The preview uses Print-MD's real
+Open that URL in an Open Design Browser tab. The preview uses Gutterpress's real
 Markdown, CSS, and Paged.js pipeline, so it is the visual authority while
 editing. Wait for pagination to complete and confirm page-critical work with a
-normal Print-MD build before final delivery.
+normal Gutterpress build before final delivery.
 
 When Open Design changes active CSS, fonts, images, page rules, or manuscript
-structure, Print-MD rebuilds before replacing the visible preview. Stylesheet
+structure, Gutterpress rebuilds before replacing the visible preview. Stylesheet
 and Markdown changes both take the full-document pagination path so a changed
 boundary can reflow every following page. Declared shared CSS dependencies are
 watched too.
 
-## Apply the Print-MD Publishing plugin
+## Apply the Gutterpress Publishing plugin
 
 Apply the plugin to the Open Design project bound to the repository and put the
 working brief in the same message. Include these values when they are not
@@ -127,7 +127,7 @@ obvious:
 - **Goal** — the design change to make
 - **Edit scope** — theme, layout, or content
 - **Change ownership** — book-only or shared foundation
-- **Preview URL** — the running Print-MD URL
+- **Preview URL** — the running Gutterpress URL
 
 Open Design 0.16.1 intentionally does not render plugin input fields in an
 existing project's composer. The plugin therefore resolves these values from
@@ -178,7 +178,7 @@ Open Design may also change:
 - `@chapter`, `@page`, `@section`, `@spread`, `@continue`, and related semantic markers;
 - page and column rules;
 - manifest style configuration when required; and
-- authored Print-MD plugin behavior when CSS and semantic Markdown are insufficient.
+- authored Gutterpress plugin behavior when CSS and semantic Markdown are insufficient.
 
 ### Content
 
@@ -186,7 +186,7 @@ Open Design may edit prose and manuscript structure as well as design files. Use
 
 ## Understand themes and styles
 
-Print-MD keeps two different CSS locations:
+Gutterpress keeps two different CSS locations:
 
 - `themes/<id>/` is a selectable theme package containing `theme.css`, optional `theme.json`, and optional theme-owned assets. Built-in, folder, and zip imports copy complete packages; bare CSS and URL imports create only the stylesheet plus metadata, and URL imports do not fetch referenced assets.
 - `styles/` contains ordinary publication CSS such as `book.css` and reusable component rules.
@@ -211,7 +211,7 @@ Later manifest styles win at equal specificity. Open Design integrates accepted 
 
 ## Compose shared and book-local design
 
-A `styles:` entry is a path Print-MD **reads**, not a file it copies. Point a book straight at the shared foundation and list the book's own CSS after it:
+A `styles:` entry is a path Gutterpress **reads**, not a file it copies. Point a book straight at the shared foundation and list the book's own CSS after it:
 
 ```yaml
 source:
@@ -224,7 +224,7 @@ styles:
   - styles/book.css
 ```
 
-Print-MD inlines those files in order into the built book. Each stylesheet's `url()` references resolve **relative to that stylesheet**, so a shared theme's own fonts and images come with it automatically:
+Gutterpress inlines those files in order into the built book. Each stylesheet's `url()` references resolve **relative to that stylesheet**, so a shared theme's own fonts and images come with it automatically:
 
 ```text
 shared/themes/publisher/theme.css
@@ -241,7 +241,7 @@ There is no asset list, no flattening, and no collision rule. To shadow a shared
 
 **One standing rule:** an image used directly in **Markdown prose** must live inside the book folder. A `../` or absolute image reference is a build error asking you to copy the file into the project. Shared art that is referenced from shared **CSS** is fine; shared art referenced from prose must be copied into the book that uses it.
 
-> Manifests written for older Print-MD releases may still carry `source.assets` or `output`. Both were removed; a manifest that still has either fails with a message naming the field. Delete them — assets are discovered from what the book references, and output goes to `dist/<title-slug>/`.
+> Manifests written for older Gutterpress releases may still carry `source.assets` or `output`. Both were removed; a manifest that still has either fails with a message naming the field. Delete them — assets are discovered from what the book references, and output goes to `dist/<title-slug>/`.
 
 ## Choose shared or book-only ownership
 
@@ -285,7 +285,7 @@ unchanged.
 Opening the preview in an Open Design Browser tab supplies URL and title context.
 Open Design 0.16.1 does not attach arbitrary element comments or ancestor
 metadata from an external HTTP page. When the selected agent exposes Browser
-Use automation, it can inspect Print-MD's existing `data-source-line`,
+Use automation, it can inspect Gutterpress's existing `data-source-line`,
 `data-chapter-src`, IDs, and semantic classes. Otherwise, describe or attach a
 screenshot of the visual target and let the plugin confirm ownership from
 source.
@@ -295,12 +295,12 @@ The Browser page is generated output. Direct DOM tuning against the HTTP preview
 - the active theme;
 - shared or local styles;
 - semantic Markdown;
-- authored Print-MD plugin source; or
+- authored Gutterpress plugin source; or
 - the manifest when layout configuration requires it.
 
 Never save generated `book.html` back as publication source.
 
-## Work with Print-MD plugins
+## Work with Gutterpress plugins
 
 ### Authored local plugins
 
@@ -316,7 +316,7 @@ Open Design changes these only in layout or content scope and only when Markdown
 
 ### Registry-installed npm plugins
 
-Install npm plugins through Print-MD:
+Install npm plugins through Gutterpress:
 
 ```bash
 gutterpress plugin add markdown-it-highlightjs@4.3.0 ./books/core-book
@@ -328,9 +328,9 @@ For a package whose plugin function is a named export:
 gutterpress plugin add markdown-it-emoji@3.0.0 ./books/core-book --export full
 ```
 
-Print-MD verifies and vendors the exact runtime graph beneath the book's `plugins/npm/` directory. Commit that managed tree and the manifest entry for reproducible offline team builds. Do not hand-edit it or move it into `shared/`.
+Gutterpress verifies and vendors the exact runtime graph beneath the book's `plugins/npm/` directory. Commit that managed tree and the manifest entry for reproducible offline team builds. Do not hand-edit it or move it into `shared/`.
 
-Use the Print-MD desktop plugin manager for broader inspection, enabling, disabling, importing, or removal. The public CLI currently exposes `plugin add`.
+Use the Gutterpress desktop plugin manager for broader inspection, enabling, disabling, importing, or removal. The public CLI currently exposes `plugin add`.
 
 ## Use the companion design guide
 
@@ -347,7 +347,7 @@ A useful guide covers typography, palette, reusable components, tables, callouts
 1. Confirm that every change has the correct shared or book-local owner.
 2. Remove experiments that were superseded.
 3. Record durable decisions in `DESIGN.md` or `design/notes/`.
-4. Run the normal Print-MD checks.
+4. Run the normal Gutterpress checks.
 
 ```bash
 gutterpress lint ./books/core-book
@@ -358,8 +358,8 @@ Use `gutterpress doctor` when diagnosing missing external tools or installation 
 
 ## Core rules
 
-- Open Design edits source files; Print-MD renders them.
-- Open the repository root in Open Design and the target book in Print-MD.
+- Open Design edits source files; Gutterpress renders them.
+- Open the repository root in Open Design and the target book in Gutterpress.
 - Keep theme packages in `themes/` and ordinary CSS in `styles/`.
 - Keep design guidance nested when manuscript discovery is implicit.
 - Put cross-book work in `shared/`; put book-only work in the book folder.
@@ -368,15 +368,15 @@ Use `gutterpress doctor` when diagnosing missing external tools or installation 
 - Keep one active local theme. A first application defaults to the front;
   replacement preserves its existing cascade position. Do not reorder a valid
   stylesheet list merely to force the theme first.
-- Let Print-MD manage registry-installed packages under `plugins/npm/`.
+- Let Gutterpress manage registry-installed packages under `plugins/npm/`.
 - Never edit generated `book.html` or build output.
-- Use the Print-MD preview as the final authority for pagination.
+- Use the Gutterpress preview as the final authority for pagination.
 
 ## References
 
-- [Print-MD CLI and manifest reference](../../packages/cli/README.md)
+- [Gutterpress CLI and manifest reference](../../packages/cli/README.md)
 - [Gutterpress styling and themes](../../examples/gutterpress-user-guide/04-styling-theming.md)
 - [Gutterpress plugins](../../examples/gutterpress-user-guide/06-plugins.md)
-- [Print-MD companion design guides](../design-guides.md)
+- [Gutterpress companion design guides](../design-guides.md)
 - [Gutterpress compatibility plan for filesystem design tools](./gutterpress-open-design-implementation-plan.md)
 - [Open Design](https://github.com/nexu-io/open-design)

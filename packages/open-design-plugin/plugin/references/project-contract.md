@@ -5,17 +5,15 @@ Verified against the Gutterpress source that ships this package, 2026-07-28.
 
 ## Manifest
 
-Gutterpress looks for these names, in order, and stops at the first one found:
+Gutterpress looks for this manifest name:
 
 ```text
 manifest.yaml
-manifest.yml
-gutterpress.yaml
 ```
 
 Every path inside a manifest resolves from the **manifest's own directory**.
 There is no project-wide search: the `bookPath` you were given is the book. If
-none of the three names exists there, stop without writing anything.
+the manifest does not exist there, stop without writing anything.
 
 ## Manuscript selection
 
