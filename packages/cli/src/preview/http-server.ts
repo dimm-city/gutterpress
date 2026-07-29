@@ -460,6 +460,32 @@ export async function createPreviewServer(
     // no project to serve from either, so every non-book.html path 404s there
     // too.
     const pathname = url.pathname === '/' ? '/book.html' : url.pathname;
+
+    // 4a. Inlined-CSS assets the render could not embed. `asset-inline.ts`
+    // rewrites an oversized image to `assets/<contentHash><ext>` when it lives
+    // OUTSIDE the book — art referenced from a repo-root shared stylesheet,
+    // the normative multi-book layout — and returns a copy plan. The build
+    // executes that plan into its output dir; the preview serves the project
+    // in place and has no such dir, so the rewritten URL used to 404 and
+    // shared art rendered broken in the live preview while building fine.
+    //
+    // `state.cssAssets` IS that plan (see ServerState.cssAssets): an exact
+    // URL→source map rebuilt on every render. Looked up by exact key, so it
+    // adds no traversal surface, and consulted BEFORE the dotfile guard
+    // because the SOURCE may legitimately sit under a dot-directory (a shared
+    // foundation checked out under `~/.local/share/…`) — what makes it safe is
+    // that our own inliner put it there, not where it happens to live.
+    const cssAssetSource = state.cssAssets.get(pathname.replace(/^\/+/, ''));
+    if (cssAssetSource) {
+      await serveStatic(cssAssetSource, res).catch((err: Error) => {
+        if (!res.headersSent) {
+          res.writeHead(500);
+          res.end(`Internal Server Error: ${err.message}`);
+        }
+      });
+      return;
+    }
+
     const servingProjectRoot = pathname !== '/book.html';
     if (servingProjectRoot && (!state.currentInputPath || hasDotSegment(pathname))) {
       res.writeHead(404);

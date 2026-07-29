@@ -160,7 +160,7 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
   const manifest = await loadManifest(newInputPath);
   state.config = resolveConfig({}, manifest);
 
-  await generateAndWriteHtml(newInputPath, state.tempDir, state.config);
+  await generateAndWriteHtml(newInputPath, state.tempDir, state.config, state.cssAssets);
 
   startFileWatcher(state);
 

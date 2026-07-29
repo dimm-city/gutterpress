@@ -52,6 +52,7 @@ function createTestServerState(
     isRebuilding: false,
     previewServer: null,
     isShuttingDown: false,
+    cssAssets: new Map<string, string>(),
   };
 }
 
@@ -106,7 +107,7 @@ describe('generateAndWriteHtml', () => {
 
     const config = resolveConfig({ title: 'Test' }, {});
 
-    await generateAndWriteHtml(testDir, tempDir, config);
+    await generateAndWriteHtml(testDir, tempDir, config, new Map());
 
     // Check that book.html was created
     const outputPath = join(tempDir, 'book.html');
@@ -129,14 +130,14 @@ describe('generateAndWriteHtml', () => {
     const config = resolveConfig({ title: 'Test' }, {});
 
     // First generation
-    await generateAndWriteHtml(testDir, tempDir, config);
+    await generateAndWriteHtml(testDir, tempDir, config, new Map());
     const outputPath = join(tempDir, 'book.html');
     let content = await Bun.file(outputPath).text();
     expect(content).toContain('First Version');
 
     // Update markdown and regenerate
     await writeFile(join(testDir, 'chapter-01.md'), '# Second Version');
-    await generateAndWriteHtml(testDir, tempDir, config);
+    await generateAndWriteHtml(testDir, tempDir, config, new Map());
 
     content = await Bun.file(outputPath).text();
     expect(content).toContain('Second Version');
@@ -149,7 +150,7 @@ describe('generateAndWriteHtml', () => {
 
     const config = resolveConfig({ title: 'Test' }, {});
 
-    await generateAndWriteHtml(testDir, tempDir, config);
+    await generateAndWriteHtml(testDir, tempDir, config, new Map());
 
     const content = await Bun.file(join(tempDir, 'book.html')).text();
     expect(content).toContain('Chapter 1');
@@ -162,7 +163,7 @@ describe('generateAndWriteHtml', () => {
     const previous = process.env.GUTTERPRESS_PREVIEW_INCREMENTAL;
     process.env.GUTTERPRESS_PREVIEW_INCREMENTAL = '0';
     try {
-      await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, {}));
+      await generateAndWriteHtml(testDir, tempDir, resolveConfig({ title: 'Test' }, {}), new Map());
     } finally {
       if (previous === undefined) delete process.env.GUTTERPRESS_PREVIEW_INCREMENTAL;
       else process.env.GUTTERPRESS_PREVIEW_INCREMENTAL = previous;
@@ -191,7 +192,7 @@ describe('generateAndWriteHtml', () => {
     const logSpy = spyOn(console, 'log').mockImplementation(() => {});
     let lines: string[];
     try {
-      await generateAndWriteHtml(testDir, tempDir, config);
+      await generateAndWriteHtml(testDir, tempDir, config, new Map());
       // Read mock.calls BEFORE mockRestore() — bun's mockRestore() clears the
       // recorded call history (mockReset semantics), same as Jest.
       lines = (logSpy.mock.calls as unknown[][]).map((call) => call.join(' '));
@@ -213,7 +214,7 @@ describe('generateAndWriteHtml', () => {
     const logSpy = spyOn(console, 'log').mockImplementation(() => {});
     let callCount: number;
     try {
-      await generateAndWriteHtml(testDir, tempDir, config);
+      await generateAndWriteHtml(testDir, tempDir, config, new Map());
       callCount = logSpy.mock.calls.length;
     } finally {
       logSpy.mockRestore();

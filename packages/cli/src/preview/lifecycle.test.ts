@@ -69,6 +69,7 @@ function makeState(overrides: Partial<ServerState> = {}): ServerState {
     rebuildPromise: null,
     previewServer: null,
     isShuttingDown: false,
+    cssAssets: new Map<string, string>(),
     tempDir: "",
     config: resolveConfig({}, {}),
     options: makeOptions(),

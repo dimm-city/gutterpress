@@ -13,7 +13,7 @@ import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
-import { collectStyleDependencies } from '../lib/asset-inline';
+import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
@@ -68,7 +68,16 @@ export function incrementalPreviewEnabled(): boolean {
 async function renderPreviewBook(
   inputPath: string,
   config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] },
-  opts: { files: string[] | null; wrapChapters: boolean }
+  opts: {
+    files: string[] | null;
+    wrapChapters: boolean;
+    /**
+     * Receives the inliner's copy plan so the HTTP server can resolve the
+     * rewritten asset URLs — see {@link ServerState.cssAssets}. The build
+     * COPIES these files; the preview serves them from their real location.
+     */
+    onCssAssets?: (copies: AssetCopy[]) => void;
+  }
 ): Promise<string> {
   const { plugins, pluginCss } = await loadPluginsWithCss(
     config.plugins,
@@ -82,6 +91,7 @@ async function renderPreviewBook(
     plugins,
     pluginCss,
     wrapChapters: opts.wrapChapters,
+    ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
     // ARCH finding #4: markdown-it-paged's typed, line-numbered author-mistake
     // warnings (env.layoutWarnings) used to be discarded here too — this is the
     // ONE preview render path, so wiring it here surfaces a marker mistake live
@@ -140,22 +150,39 @@ export function injectPreviewScripts(html: string): string {
  *
  * Empty `inputPath` writes a static placeholder — the desktop app (packages/desktop)
  * supplies a real path via its own folder picker.
+ *
+ * `cssAssets` is REQUIRED, not optional: it is the map the HTTP server resolves
+ * the inliner's rewritten asset URLs against (see {@link ServerState.cssAssets}),
+ * so a caller that skipped it would render a book.html whose shared-art URLs
+ * 404 — the exact bug this parameter exists to fix, reintroduced silently.
+ * Every render replaces its contents.
  */
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[] }
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[] },
+  cssAssets: Map<string, string>
 ): Promise<void> {
   if (!inputPath) {
+    cssAssets.clear();
     await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML, "utf-8");
     return;
   }
+  // Collect into a fresh map and swap at the end, so a render that throws
+  // leaves the previous (still-served) book.html's assets resolvable instead
+  // of half-clearing them.
+  const nextAssets = new Map<string, string>();
   const html = await renderPreviewBook(inputPath, config, {
     files: config.source?.files ?? null,
     // Source identity is metadata on existing blocks and is required by both
     // the shell and direct-book HMR paths. It never changes document structure.
     wrapChapters: true,
+    onCssAssets: (copies) => {
+      for (const copy of copies) nextAssets.set(copy.to, copy.from);
+    },
   });
+  cssAssets.clear();
+  for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
     injectPreviewScripts(html),
@@ -498,7 +525,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // preview without another manifest edit or a server restart.
         await syncExternalWatches();
         if (closed) return;
-        await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig);
+        await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets);
         if (closed) return;
 
         state.previewServer?.broadcastReload();
