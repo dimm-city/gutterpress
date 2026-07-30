@@ -10,7 +10,7 @@
 
 <div class="cover-bottom">
 <p class="cover-version">Gutterpress documentation</p>
-<div class="cover-author">The Gutterpress Team</div>
+<div class="cover-author">The Dimm City Team</div>
 </div>
 
 </div>
