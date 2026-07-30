@@ -1686,8 +1686,8 @@
     isLeftPanelPrefsLoaded: () => leftPanelPrefsLoaded,
     applyLeftPanelPrefs: (panelPrefs) => {
       leftPanelPrefsLoaded = true;
-      // Validate against the live tab set — older sessions may have persisted
-      // the retired "config" tab (project settings are a full view now).
+      // Validate against the live tab set: this comes from a JSON file on
+      // disk, so an unknown id must not become the active tab.
       const validTabs: PanelTab[] = ["projects", "toc", "files", "media"];
       if (panelPrefs?.activeTab && (validTabs as string[]).includes(panelPrefs.activeTab)) {
         leftPanelTab = panelPrefs.activeTab as PanelTab;

@@ -41,9 +41,6 @@ This project follows [Semantic Versioning](https://semver.org/).
 - The welcome screen's Accounts and Help tabs could not be scrolled: anything
   past the height of the window was unreachable, and the footer overlapped the
   panel's text.
-- On Linux, adding Gutterpress to the application menu left the pre-rebrand
-  `print-md-viewer` launcher in place beside it. Adding it now removes the old
-  entry, its icon, and its copy of the app.
 
 - The live preview no longer starts every source file on a new page. It was
   injecting a `.pmd-chapter{break-before:page}` rule that `gutterpress build` has

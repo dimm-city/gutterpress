@@ -36,14 +36,6 @@ const DESKTOP_FILE_NAME = `${APP_ID}.desktop`;
 /** The installed icon's basename (the `Icon=` key names it WITHOUT the extension). */
 const ICON_FILE_NAME = `${APP_ID}.png`;
 
-/**
- * The pre-rebrand (print-md-viewer era) managed filenames. An integration
- * installed before the Gutterpress rename left a "print-md-viewer" launcher
- * (and its window-title/menu identity) behind, because the rename changed
- * every managed filename — install() migrates by deleting these exact files.
- */
-const LEGACY_APP_ID = "city.dimm.print-md-viewer";
-const LEGACY_APPIMAGE_FILE_NAME = "print-md-viewer.AppImage";
 
 const APPIMAGE_MODE = 0o755;
 const DATA_FILE_MODE = 0o644;
@@ -153,18 +145,6 @@ export function resolveAppImagePaths(home: string, xdgDataHome?: string | undefi
   };
 }
 
-/** The pre-rebrand managed files install() migrates away (exact paths only). */
-export function resolveLegacyAppImagePaths(
-  home: string,
-  xdgDataHome?: string | undefined,
-): AppImagePaths {
-  const dataHome = resolveXdgDataHome(home, xdgDataHome);
-  return {
-    appImage: path.join(home, ".local", "bin", LEGACY_APPIMAGE_FILE_NAME),
-    desktopEntry: path.join(dataHome, "applications", `${LEGACY_APP_ID}.desktop`),
-    icon: path.join(dataHome, "icons", "hicolor", "512x512", "apps", `${LEGACY_APP_ID}.png`),
-  };
-}
 
 // ── Desktop entry rendering ─────────────────────────────────────────────────
 
@@ -363,17 +343,6 @@ export class AppImageIntegration {
       await this.fs.chmod(desktopTmp, DATA_FILE_MODE);
       await this.fs.rename(desktopTmp, this.paths.desktopEntry);
       temps.pop();
-
-      // Migrate away the print-md-viewer era install: its launcher would
-      // otherwise sit in the menu forever (and launch the outdated copy)
-      // next to the Gutterpress one. Best-effort — a failure to delete a
-      // legacy file must not fail the install that just succeeded.
-      const legacy = resolveLegacyAppImagePaths(this.env.home, this.env.xdgDataHome);
-      await Promise.all(
-        [legacy.desktopEntry, legacy.icon, legacy.appImage].map((file) =>
-          this.fs.rm(file, { force: true }).catch(() => {}),
-        ),
-      );
     } catch (err) {
       await Promise.all(
         temps.map((tmp) => this.fs.rm(tmp, { force: true }).catch(() => {})),

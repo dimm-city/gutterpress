@@ -15,9 +15,7 @@ export const SETTINGS_TAB_IDS = ["app", "editor", "saving", "connections"] as co
 
 export type SettingsTab = (typeof SETTINGS_TAB_IDS)[number];
 
-/** Collapse any unknown value to a real tab id (default "app"). The retired
- *  "advanced" tab id maps to "editor", where its sections now live. */
+/** Collapse any unknown value to a real tab id (default "app"). */
 export function sanitizeSettingsTab(value: unknown): SettingsTab {
-  if (value === "advanced") return "editor";
   return SETTINGS_TAB_IDS.includes(value as SettingsTab) ? (value as SettingsTab) : "app";
 }
