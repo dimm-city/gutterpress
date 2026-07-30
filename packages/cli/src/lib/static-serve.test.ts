@@ -5,7 +5,13 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { STATIC_MIME, resolveStaticPath, resolveWithinRoot, serveFile } from "./static-serve.ts";
+import {
+  STATIC_MIME,
+  hasDotSegment,
+  resolveStaticPath,
+  resolveWithinRoot,
+  serveFile,
+} from "./static-serve.ts";
 
 // ── STATIC_MIME ──────────────────────────────────────────────────────────
 
@@ -101,6 +107,72 @@ test("resolveWithinRoot confines an absolute-looking path under root", () => {
   // real filesystem-root path — same behavior resolveStaticPath gives a URL
   // pathname.
   expect(resolveWithinRoot("/etc/passwd", root)).toBe(join(root, "etc", "passwd"));
+});
+
+// ── hasDotSegment ────────────────────────────────────────────────────────
+//
+// The dotfile guard for any server that resolves request paths against a REAL
+// project tree (preview serve-in-place). Containment alone is not enough
+// there: `.env`/`.git/config` live INSIDE the root, so only this guard keeps
+// them unreachable.
+
+test("hasDotSegment flags a dotfile or dot-directory segment", () => {
+  expect(hasDotSegment("/.env")).toBe(true);
+  expect(hasDotSegment("/.git/config")).toBe(true);
+  expect(hasDotSegment("/sub/.hidden/bar.png")).toBe(true);
+  expect(hasDotSegment("/..")).toBe(true);
+});
+
+test("hasDotSegment passes ordinary paths, including dots inside a name", () => {
+  expect(hasDotSegment("/book.html")).toBe(false);
+  expect(hasDotSegment("/styles/book.css")).toBe(false);
+  expect(hasDotSegment("/chapter-01.md")).toBe(false);
+  expect(hasDotSegment("/")).toBe(false);
+});
+
+test("hasDotSegment decodes percent-encoded dot segments", () => {
+  // A naive check on the RAW pathname would miss these.
+  expect(hasDotSegment("/%2Eenv")).toBe(true);
+  expect(hasDotSegment("/%2e%2e/outside")).toBe(true);
+  expect(hasDotSegment("/%2Egit/config")).toBe(true);
+});
+
+test("hasDotSegment refuses an undecodable path rather than guessing", () => {
+  expect(hasDotSegment("/%E0%A4%A")).toBe(true);
+});
+
+test("hasDotSegment treats a BACKSLASH as a segment separator (Windows bypass)", () => {
+  // The WHATWG URL parser normalizes a RAW backslash in a special-scheme path
+  // to "/", so the only way one survives into `url.pathname` is
+  // percent-encoded: `new URL("/%5C.env", "http://x").pathname` stays
+  // "/%5C.env", which decodes to "/\.env".
+  //
+  // Splitting on "/" alone yields the single segment "\.env", which does not
+  // START with "." — so the guard used to pass it. `path.win32.resolve` DOES
+  // treat "\" as a separator, so the request then resolved to
+  // `<root>\.env` — inside the root, so containment passed too — and the
+  // preview served the project's real `.env` on Windows. Verified:
+  //   path.win32.resolve("C:\\repo\\book", "./\\.env") === "C:\\repo\\book\\.env"
+  //   path.win32.resolve("C:\\repo\\book", ".//sub\\.git\\config")
+  //     === "C:\\repo\\book\\sub\\.git\\config"
+  //
+  // The guard is platform-INDEPENDENT on purpose: it must reject these
+  // spellings when the tests run on POSIX too, since that is the only place
+  // the Windows outcome can be pinned.
+  expect(hasDotSegment("/%5C.env")).toBe(true);
+  expect(hasDotSegment("/%5c.env")).toBe(true);
+  expect(hasDotSegment("/sub%5C.git%5Cconfig")).toBe(true);
+  expect(hasDotSegment("/%5C.git/config")).toBe(true);
+  // Mixed separators, and a dot segment reached only via a backslash hop.
+  expect(hasDotSegment("/sub/%5C.env")).toBe(true);
+  expect(hasDotSegment("/sub%5C..%5Csecret")).toBe(true);
+});
+
+test("hasDotSegment still passes a backslash that is not a dot segment", () => {
+  // A backslash alone is not a secret-leak signal — only a dot segment is.
+  // (Such a path is unreachable from a browser anyway: the URL parser rewrites
+  // raw backslashes, so only a hand-encoded %5C gets here.)
+  expect(hasDotSegment("/sub%5Cchapter.md")).toBe(false);
 });
 
 // ── serveFile (real HTTP round-trip) ────────────────────────────────────

@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
-import { decodeRef } from "../../lib/asset-inline";
+import { decodeRef, proseImageRefError } from "../../lib/asset-inline";
 
 const check: Check = {
   id: "source.links.local-refs",
@@ -33,6 +33,23 @@ const check: Check = {
           if (inFence) continue;
 
           for (const { ref, kind } of extractLocalRefs(line)) {
+            // R5: a prose IMAGE must live inside the book. `proseImageRefError`
+            // is the SAME predicate the build's `planImageCopies` rejects with,
+            // so this pre-build check can't drift from what the build enforces
+            // — it used to green-light an escaping ref that happened to exist and
+            // let the build fail later instead.
+            const escape = kind === "image" ? proseImageRefError(ref, ctx.inputDir) : null;
+            if (escape) {
+              results.push(
+                finding(check.id, {
+                  severity: "error",
+                  message: escape,
+                  file,
+                  line: i + 1,
+                })
+              );
+              continue;
+            }
             if (localRefExists(ref, kind, file, ctx.inputDir)) continue;
             results.push(
               finding(check.id, {
@@ -174,6 +191,7 @@ function isLocalRef(ref: string): boolean {
  *        correct one — the same fail-open bias `isNonFileUrl` already uses
  *        for anything this check can't confidently classify.
  */
+
 function localRefExists(
   ref: string,
   kind: RefKind,

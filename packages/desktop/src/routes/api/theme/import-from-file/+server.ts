@@ -1,5 +1,5 @@
 import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 // #106: import a theme from a `.zip` package or a bare `.css` file. Uses the
@@ -8,8 +8,8 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = defineRoute<{ projectDir: string }, DesktopHooks>({
   hooks: getDesktopHooks,
   hooksUnavailableMessage: 'Desktop hooks not registered',
-  validate: (raw) => ({
-    projectDir: requireAbsolute((raw as { projectDir?: string }).projectDir, 'theme/import-from-file'),
+  validate: async (raw) => ({
+    projectDir: await requireProjectDir((raw as { projectDir?: string }).projectDir, 'theme/import-from-file'),
   }),
   call: async ({ body, hooks }) => {
     const res = await hooks.showOpenDialog({

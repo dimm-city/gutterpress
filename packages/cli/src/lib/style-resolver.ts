@@ -141,16 +141,60 @@ export async function resolveActiveStyles(
 }
 
 /**
+ * Conventional locations for a multi-book repo's SHARED stylesheets, relative to
+ * the repository root. Mirrors the layout the docs prescribe (`shared/styles/`,
+ * `shared/themes/<id>/theme.css`) plus the repo-root equivalents of the
+ * single-project convention.
+ */
+const SHARED_STYLE_ROOTS = ["shared", "."];
+
+/**
+ * Discover the repository's shared stylesheets, as absolute paths.
+ *
+ * `listProjectStyles` used to scan only inside the book (2026-07-29 audit), so a
+ * `../../shared/...` entry showed up in the desktop Styles picker ONLY while it
+ * was listed in the manifest. Unchecking it removed the manifest entry and the
+ * next listing dropped it entirely — no way to re-enable it, or to add one, from
+ * the UI a non-technical author actually uses; hand-editing `manifest.yaml` was
+ * the only way back. Shared stylesheets were second-class in exactly the surface
+ * meant to make them easy.
+ */
+async function discoverSharedCssFiles(repoRoot: string): Promise<string[]> {
+  const found = new Set<string>();
+  for (const rel of SHARED_STYLE_ROOTS) {
+    const base = path.resolve(repoRoot, rel);
+    for (const abs of await discoverCssFiles(base)) found.add(abs);
+  }
+  return [...found];
+}
+
+/**
  * Resolve a project's editable stylesheets for the picker: the ACTIVE set
  * (`resolveActiveStyles`, marked `active: true`) followed by the project's OTHER
  * discovered `.css` files (alphabetical). `projectDir` must be absolute. Returns
  * `[]` for a project with no stylesheets at all.
+ *
+ * Pass `repoRoot` for a book that lives inside a repository: the repo's shared
+ * stylesheets are then offered too (see {@link discoverSharedCssFiles}), named
+ * the way the manifest stores them — project-relative, e.g.
+ * `../../shared/styles/components.css` — so toggling one on writes the right
+ * entry. Omit it (or pass the project itself) for the single-project case, which
+ * behaves exactly as before.
  */
-export async function listProjectStyles(projectDir: string): Promise<ProjectStyle[]> {
-  const [{ manifest }, discoveredAbs] = await Promise.all([
+export async function listProjectStyles(
+  projectDir: string,
+  opts: { repoRoot?: string } = {},
+): Promise<ProjectStyle[]> {
+  const repoRoot =
+    opts.repoRoot && path.resolve(opts.repoRoot) !== path.resolve(projectDir)
+      ? path.resolve(opts.repoRoot)
+      : null;
+  const [{ manifest }, ownCss, sharedCss] = await Promise.all([
     loadManifestWithPath(projectDir),
     discoverCssFiles(projectDir),
+    repoRoot ? discoverSharedCssFiles(repoRoot) : Promise.resolve([]),
   ]);
+  const discoveredAbs = [...new Set([...ownCss, ...sharedCss])];
   const activeRels = await resolveActiveStyles(
     projectDir,
     Array.isArray(manifest.styles) ? manifest.styles : undefined,

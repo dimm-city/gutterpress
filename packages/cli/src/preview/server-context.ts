@@ -31,6 +31,28 @@ export interface ServerState {
   config: ResolvedConfig;
   /** Server options */
   options: PreviewServerOptions;
+  /**
+   * Files the inlined CSS references but could not embed, as
+   * `book.html`-relative URL path → absolute source path.
+   *
+   * `asset-inline.ts` embeds fonts and images up to
+   * `IMAGE_INLINE_MAX_BYTES`; anything larger keeps its project-relative path
+   * (if it lives in the book) or becomes `assets/<contentHash><ext>` (if it
+   * does not — e.g. art referenced from a repo-root shared stylesheet, the
+   * normative multi-book layout). Either way the inliner returns a COPY PLAN,
+   * which the build executes into its output dir.
+   *
+   * The preview serves the project in place and has no output dir, so a
+   * rewritten `assets/<hash>` URL had nothing behind it and shared art
+   * rendered broken in the live preview while building correctly. Keeping the
+   * plan here lets the server resolve those URLs straight from their real
+   * location — same URL as the build, still nothing copied.
+   *
+   * Rebuilt from scratch on every render, so a stylesheet edit that drops an
+   * image drops its URL too. Exact-match lookups only: never a path-traversal
+   * surface.
+   */
+  cssAssets: Map<string, string>;
 }
 
 /**
@@ -53,5 +75,6 @@ export function createServerState(
     tempDir,
     config,
     options,
+    cssAssets: new Map(),
   };
 }

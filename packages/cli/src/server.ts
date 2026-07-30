@@ -77,11 +77,15 @@ export async function startPreviewServer(
   // initializePreviewDirectories for why there is nothing left to copy.
   const tempDir = await initializePreviewDirectories();
 
-  // Generate initial HTML (or a placeholder when there's no input yet)
-  await generateAndWriteHtml(inputPath, tempDir, config);
-
-  // Stage 4: Create state
+  // Stage 4: Create state. BEFORE the initial render, because that render owns
+  // `state.cssAssets` — the map the HTTP server resolves the inliner's
+  // rewritten asset URLs against (see ServerState.cssAssets). Rendering first
+  // and creating state after would leave the FIRST book.html's shared-art URLs
+  // unresolvable until some later edit triggered a rebuild.
   const state = createServerState(inputPath, tempDir, config, options);
+
+  // Generate initial HTML (or a placeholder when there's no input yet)
+  await generateAndWriteHtml(inputPath, tempDir, config, state.cssAssets);
 
   // Stage 5: Define restart function
   const restartPreview = async (newInputPath: string): Promise<void> => {

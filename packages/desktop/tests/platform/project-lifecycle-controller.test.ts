@@ -36,6 +36,12 @@ function deferred<T>() {
 
 interface Harness {
   ctrl: ProjectLifecycleController;
+  /** The classification session the controller retargets through (repoRoot/activeBookDir). */
+  projectSession: {
+    repoRoot: string | null;
+    books: { path: string; title: string }[];
+    activeBookDir: string | null;
+  };
   deps: {
     isDesktop: Spy<[]> & { value: boolean };
     startPreviewHost: Spy<[{ key: string; displayName: string }]>;
@@ -47,6 +53,7 @@ interface Harness {
     setViewModeSetting: Spy<[string]>;
     setSplitRatioSetting: Spy<[number]>;
     setPendingRestore: Spy<[unknown, unknown]>;
+    getDesktopProjectState: Spy<[string]>;
     resetFirstRenderGate: Spy<[]>;
     flushBuffer: Spy<[]>;
     resetBuffer: Spy<[]>;
@@ -70,6 +77,8 @@ interface Harness {
     classifyImpl?: (dir: string) => Promise<void>;
     flushResult: boolean;
     activeBookHasManifest: boolean;
+    /** Per-project persisted state, keyed by the dir it is stored under. */
+    projectStateByDir: Record<string, { currentPage?: number; viewMode?: "single" | "two-column" } | null>;
     flushImpl?: () => Promise<boolean>;
   };
 }
@@ -97,6 +106,7 @@ function make(): Harness {
   const resetExtras = spy<[]>();
   const toastError = spy<[string]>();
   const toastInfo = spy<[string]>();
+  const getDesktopProjectState = spy<[string]>();
 
   const state: Harness["deps"] = {
     isDesktop,
@@ -109,6 +119,7 @@ function make(): Harness {
     setViewModeSetting,
     setSplitRatioSetting,
     setPendingRestore,
+    getDesktopProjectState,
     resetFirstRenderGate,
     flushBuffer,
     resetBuffer,
@@ -127,6 +138,8 @@ function make(): Harness {
     startPreviewResult: { previewStarted: true, url: "preview://book", title: "My Book" },
     flushResult: true,
     activeBookHasManifest: true,
+    /** Per-project persisted state, keyed by the dir it is stored under. */
+    projectStateByDir: {} as Record<string, { currentPage?: number; viewMode?: "single" | "two-column" } | null>,
   };
 
   const projectSession = {
@@ -170,6 +183,10 @@ function make(): Harness {
     setViewModeSetting: (mode) => setViewModeSetting(mode),
     setSplitRatioSetting: (value) => setSplitRatioSetting(value),
     setPendingRestore: (viewMode, page) => setPendingRestore(viewMode, page),
+    getDesktopProjectState: (dir: string) => {
+      getDesktopProjectState(dir);
+      return Promise.resolve(state.projectStateByDir[dir] ?? null);
+    },
     resetFirstRenderGate: () => resetFirstRenderGate(),
     flushBuffer: () => {
       flushBuffer();
@@ -191,7 +208,7 @@ function make(): Harness {
   };
 
   const ctrl = new ProjectLifecycleController(deps);
-  return { ctrl, deps: state };
+  return { ctrl, deps: state, projectSession };
 }
 
 // ── Initial state ────────────────────────────────────────────────────────────
@@ -459,6 +476,7 @@ test("failed open: flushes the buffer BEFORE resetWorkspace, mirroring stopPrevi
     setViewModeSetting: () => {},
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
+    getDesktopProjectState: () => Promise.resolve(null),
     resetFirstRenderGate: () => {},
     flushBuffer: () => {
       order.push("flush");
@@ -520,6 +538,7 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
     setViewModeSetting: () => {},
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
+    getDesktopProjectState: () => Promise.resolve(null),
     resetFirstRenderGate: () => {},
     // ONLY the first invocation (the first open's pre-flush) blocks on
     // flushGate, resolved explicitly below after the second (winning) open
@@ -637,6 +656,7 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
     setViewModeSetting: () => {},
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
+    getDesktopProjectState: () => Promise.resolve(null),
     resetFirstRenderGate: () => {},
     flushBuffer: () => {
       order.push("flush-start");
@@ -713,6 +733,7 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
     setViewModeSetting: () => {},
     setSplitRatioSetting: () => {},
     setPendingRestore: () => {},
+    getDesktopProjectState: () => Promise.resolve(null),
     resetFirstRenderGate: () => {},
     flushBuffer: () => Promise.resolve(true),
     resetBuffer: () => {},
@@ -830,4 +851,52 @@ test("all three teardown paths (stopPreview, openUrl, failed-open catch) call th
   depsC.startPreviewImpl = () => Promise.reject(new Error("boom"));
   await c.startFolderPreview("/x");
   expect(depsC.resetExtras.calls.length).toBe(1);
+});
+
+// ── 2026-07-29 audit: the restore-state key must be the RESOLVED book ─────────
+//
+// The per-project page/view-mode/split state is WRITTEN under the resolved book
+// dir (`lifecycle.currentDir`), but every caller used to READ it under the dir
+// the user PICKED — and those differ exactly when the session retargets: an
+// open keyed to the repo root, or to a folder inside a book. So the read missed
+// and the book silently opened at page 1 with the default view mode.
+//
+// Switching books had a second form of the same bug: `switchBook` passed no
+// restore state at all, so the target book ALWAYS opened at page 1 even when it
+// had saved state — inconsistent with every other way of opening that book.
+
+test("restore state is read for the RESOLVED book dir, not the picked dir", async () => {
+  const h = make();
+  h.projectSession.repoRoot = "/repo";
+  h.projectSession.activeBookDir = "/repo/books/field-guide";
+  h.deps.projectStateByDir["/repo/books/field-guide"] = { currentPage: 7, viewMode: "two-column" };
+  h.deps.projectStateByDir["/repo"] = { currentPage: 1 };
+
+  await h.ctrl.startFolderPreview("/repo");
+
+  expect(h.deps.getDesktopProjectState.calls).toEqual([["/repo/books/field-guide"]]);
+  expect(h.deps.setPendingRestore.calls).toEqual([["two-column", 7]]);
+});
+
+test("switching books restores the TARGET book's saved page and view mode", async () => {
+  const h = make();
+  h.projectSession.repoRoot = "/repo";
+  h.projectSession.activeBookDir = "/repo/books/beta";
+  h.deps.projectStateByDir["/repo/books/beta"] = { currentPage: 4, viewMode: "single" };
+
+  // switchBook's shape: no restore state supplied by the caller.
+  await h.ctrl.startFolderPreview("/repo/books/beta", "Switching book…");
+
+  expect(h.deps.getDesktopProjectState.calls).toEqual([["/repo/books/beta"]]);
+  expect(h.deps.setPendingRestore.calls).toEqual([["single", 4]]);
+});
+
+test("a book with no saved state opens at the defaults, with no restore applied", async () => {
+  const h = make();
+  h.projectSession.activeBookDir = null;
+
+  await h.ctrl.startFolderPreview("/loose-folder");
+
+  expect(h.deps.getDesktopProjectState.calls).toEqual([["/loose-folder"]]);
+  expect(h.deps.setPendingRestore.calls).toEqual([[null, null]]);
 });

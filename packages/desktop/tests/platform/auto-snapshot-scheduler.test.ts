@@ -61,6 +61,10 @@ interface FakeLibOptions {
   onSnapshotFailed?: (dir: string, consecutiveFailures: number, error: unknown) => void;
   /** The `gitIdentity` settings slice the scheduler must honour. */
   gitIdentity?: { authorName?: string; authorEmail?: string };
+  /** The repo root the fake classification reports (a nested book's enclosing repo). */
+  repoRoot?: string;
+  /** The book's path relative to `repoRoot` ("" when the book IS the repo root). */
+  subPath?: string;
 }
 
 interface Harness {
@@ -89,9 +93,11 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
     autoSnapshotDelayMs: () => delay,
     detectProjectSource: async () => ({
       type: opts.sourceType ?? "local-git-folder",
-      subPath: "",
-      repoRoot: DIR,
+      subPath: opts.subPath ?? "",
+      repoRoot: opts.repoRoot ?? DIR,
     }),
+    repoRootForSource: (source: { type?: string; repoRoot?: string }, fallbackDir: string) =>
+      source?.type === "local-git-folder" ? source.repoRoot || fallbackDir : fallbackDir,
     providerFor: () => ({
       snapshot: async (args: unknown) => {
         snapshotCalls.push(args);
@@ -427,4 +433,34 @@ test("(n) onSnapshotFailed is optional — a missing dep never throws from run()
   for (let i = 0; i < AUTO_SNAPSHOT_FAILURE_THRESHOLD + 1; i++) {
     await expect(h.sched.run(DIR)).resolves.toBeUndefined();
   }
+});
+
+// ── 2026-07-29 audit: the operation log identifies the REPO, not the book ─────
+//
+// The log filename was keyed on `path.basename(dir)` — the OPENED BOOK. In a
+// multi-book repo that fragments one repository's sync/snapshot history across
+// a file per book, and two same-named books in different repos interleave into
+// one file — against recovery-paths.ts's own "one file per project so logs from
+// different projects don't interleave", and divergent from the lib's
+// buildRecoveryContext, which slugs `path.basename(repoDir)`.
+//
+// A snapshot is a whole-repo operation (R9), so its log is the repo's log.
+
+test("run() logs a nested book's snapshot under the REPO's slug, not the book's", async () => {
+  const h = makeHarness({ repoRoot: "/repo", subPath: "books/field-guide" });
+  await h.sched.run("/repo/books/field-guide");
+  await settle();
+  expect(h.snapshotCalls.length).toBe(1);
+  expect(h.snapshotCalls[0]).toEqual({
+    projectDir: "/repo/books/field-guide",
+    message: AUTO_SNAPSHOT_MESSAGE,
+    logFile: "/logs/repo.log",
+  });
+});
+
+test("run() still uses the project's own slug when the book IS the repo root", async () => {
+  const h = makeHarness({ repoRoot: DIR, subPath: "" });
+  await h.sched.run(DIR);
+  await settle();
+  expect(h.snapshotCalls[0]).toMatchObject({ logFile: "/logs/book.log" });
 });

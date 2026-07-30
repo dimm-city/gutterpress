@@ -488,6 +488,11 @@
       pendingRestoreViewMode = viewMode;
       pendingRestorePage = page;
     },
+    // Read by the controller for the RESOLVED book dir — the same key every
+    // write below uses (`saveDesktopPrefs`/`setDesktopProjectState` are keyed to
+    // `lifecycle.currentDir`). Callers used to fetch this themselves for the dir
+    // the user PICKED, which silently missed on any retargeted open.
+    getDesktopProjectState: (dir) => api.app.getDesktopProjectState(dir).catch(() => null),
     resetFirstRenderGate: () => previewEvents.resetFirstRenderGate(),
     flushBuffer: () => flushEditorBuffer(),
     resetBuffer: () => buffer?.reset(),
@@ -686,17 +691,17 @@
    * Projects panel, the start screen, the GitHub dialog, and the new-project
    * wizard: leave the start screen, restore the folder's saved per-project
    * state (#43), and hand off to startFolderPreview. There is NO await before
-   * startFolderPreview — the restore-state fetch is passed as a promise and
-   * consumed after the preview starts — so the open epoch is claimed at
-   * user-intent time (last click wins, never last-fetch-resolves wins) and
-   * `lifecycle.busy` covers the whole span with no dead gap.
+   * startFolderPreview, so the open epoch is claimed at user-intent time (last
+   * click wins, never last-fetch-resolves wins) and `lifecycle.busy` covers the
+   * whole span with no dead gap. The per-project restore-state read lives in
+   * the lifecycle controller, which is the only place that knows the RESOLVED
+   * book dir it must be keyed to (2026-07-29 audit).
    */
   function openProjectPath(path: string, label = "Opening your book…"): Promise<boolean> {
     dismissLanding(false); // no-op when the start screen is hidden
     lifecycle.busy = true;
     lifecycle.busyLabel = label;
-    const restoreState = api.app.getDesktopProjectState(path).catch(() => null);
-    return lifecycle.startFolderPreview(path, label, restoreState, basenameOf(path));
+    return lifecycle.startFolderPreview(path, label, basenameOf(path));
   }
 
   // One OS folder picker at a time: a double-click on "Open a folder" must not
@@ -1631,8 +1636,7 @@
       lifecycle.busy = busy;
       lifecycle.busyLabel = label;
     },
-    getDesktopProjectState: (dir) => api.app.getDesktopProjectState(dir).catch(() => null),
-    startFolderPreview: (dir, label, restoreState) => startFolderPreview(dir, label, restoreState),
+    startFolderPreview: (dir, label) => startFolderPreview(dir, label),
   });
 
   let markdownFileLaunchGeneration = 0;
@@ -1971,13 +1975,9 @@
   function startFolderPreview(
     dir: string,
     label = "Starting preview…",
-    restoreState:
-      | PersistedProjectState
-      | null
-      | Promise<PersistedProjectState | null> = null,
     displayName: string | null = null,
   ): Promise<boolean> {
-    return lifecycle.startFolderPreview(dir, label, restoreState, displayName);
+    return lifecycle.startFolderPreview(dir, label, displayName);
   }
 
   /**
@@ -2855,6 +2855,7 @@
     {#key lifecycle.currentDir}
       <ProjectSettingsView
         projectDir={lifecycle.currentDir}
+        repoRoot={projectSession.repoRoot}
         {toast}
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}

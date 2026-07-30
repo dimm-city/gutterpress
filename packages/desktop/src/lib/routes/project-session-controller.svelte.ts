@@ -53,6 +53,35 @@ import type { ProjectClassification, ProjectClassificationBook } from "../platfo
 export type ProjectBookEntry = ProjectClassificationBook;
 
 /**
+ * Normalize a path for comparison: collapse `.`/`..`, unify separators, drop a
+ * trailing separator. Deliberately string-only — this module is in the SPA and
+ * must stay free of `node:path` (§8), and the paths it compares always come
+ * from the same host, so they share a separator convention.
+ */
+function normalizeDirPath(dir: string): string {
+  const unified = dir.replace(/\\/g, "/");
+  const isAbs = unified.startsWith("/");
+  const drive = /^[A-Za-z]:/.exec(unified)?.[0] ?? "";
+  const out: string[] = [];
+  for (const segment of unified.slice(drive.length).split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (out.length > 0) out.pop();
+      continue;
+    }
+    out.push(segment);
+  }
+  const joined = out.join("/");
+  if (drive) return `${drive}/${joined}`.replace(/\/$/, "") || `${drive}/`;
+  return isAbs ? `/${joined}` : joined;
+}
+
+/** True if `candidate` IS `root` or sits under it — separator-aware, so `/a/b2` is not inside `/a/b`. */
+function isSameOrInside(candidate: string, root: string): boolean {
+  return candidate === root || candidate.startsWith(root.endsWith("/") ? root : `${root}/`);
+}
+
+/**
  * Resolve which book is "active" after opening `pickedDir` inside a repo whose
  * books (already sorted by `subPath`) are `books`. Mirrors the C1 design
  * decisions:
@@ -61,9 +90,18 @@ export type ProjectBookEntry = ProjectClassificationBook;
  *  - Exactly one book in the repo: that book is always active, regardless of
  *    which folder was picked (a single-book repo, including a book living at
  *    the repo root, behaves identically to opening it directly today).
- *  - Multiple books: if the picked folder IS one of them, it stays active;
- *    otherwise (the bare repo root was picked) the first book alphabetically
- *    by `subPath` is active until the user switches (#C2).
+ *  - Multiple books: the book that CONTAINS the picked folder is active — the
+ *    deepest one, so nested books resolve to the innermost; otherwise (the bare
+ *    repo root, or a repo-level folder like `shared/` that belongs to no book)
+ *    the first book alphabetically by `subPath` is active until the user
+ *    switches (#C2).
+ *
+ * The containment match replaced an exact `===` compare (2026-07-29 audit).
+ * That compare made the `books[0]` fallback — documented as "the bare repo root
+ * was picked" — fire for ANY non-identical string, so opening a folder INSIDE
+ * book B, or B's own path spelled with a trailing slash, silently opened book A
+ * instead of the book the author pointed at. Matching is separator-aware, so a
+ * prefix sibling (`/repo/beta2` against a `/repo/beta` book) is not "inside" it.
  */
 export function resolveActiveBookDir(
   pickedDir: string,
@@ -72,8 +110,19 @@ export function resolveActiveBookDir(
 ): string {
   if (!repoRoot || books.length === 0) return pickedDir;
   if (books.length === 1) return books[0]!.path;
-  const picked = books.find((b) => b.path === pickedDir);
-  return picked ? picked.path : books[0]!.path;
+  const picked = normalizeDirPath(pickedDir);
+  let best: ProjectBookEntry | undefined;
+  let bestLength = -1;
+  for (const book of books) {
+    const candidate = normalizeDirPath(book.path);
+    if (!isSameOrInside(picked, candidate)) continue;
+    // Deepest match wins, so a book nested inside another resolves to the inner.
+    if (candidate.length > bestLength) {
+      best = book;
+      bestLength = candidate.length;
+    }
+  }
+  return (best ?? books[0]!).path;
 }
 
 export interface ProjectSessionDeps {

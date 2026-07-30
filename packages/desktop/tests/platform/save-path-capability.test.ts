@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { registerHostServices, getHostServices, type HostServices } from "../../electron/server-bridge/host-services";
-import { createSavePathsService } from "../../electron/server-bridge/picked-files";
+import {
+  createPickedFilesService,
+  createSavePathsService,
+} from "../../electron/server-bridge/picked-files";
 import { makeHostServices } from "../support/host-services-fake";
 import { ExportController, type ExportControllerDeps } from "../../electron/export/controller";
 import { POST as savePdfRoute } from "../../src/routes/api/dialog/save-pdf/+server";
@@ -27,6 +30,7 @@ function request(body: unknown = {}): Request {
 
 let savedHostServices: HostServices | null;
 let savePaths: ReturnType<typeof createSavePathsService>;
+let pickedFiles: ReturnType<typeof createPickedFilesService>;
 /** What the mocked native Save dialog returns on its next call. */
 let nextSaveResult: { canceled: boolean; filePath?: string };
 
@@ -37,6 +41,7 @@ beforeEach(() => {
   savedHostServices = getHostServices();
 
   savePaths = createSavePathsService();
+  pickedFiles = createPickedFilesService();
   nextSaveResult = { canceled: true };
   registerHostServices(
     makeHostServices({
@@ -108,6 +113,10 @@ function makeController(): ExportController {
     // The exact seam finding #4 targets: wired to the REAL savePaths
     // service, exactly as electron/main.ts wires it.
     consumeSavePath: (absPath) => savePaths.consume(absPath),
+    // Same faithfulness for the reveal capability (2026-07-29 audit): the
+    // written PDF is registered as a picked path so the export's "Show in
+    // Folder" action can reveal a destination outside the project.
+    registerPickedPath: (absPath) => pickedFiles.register([absPath]),
   };
   return new ExportController(deps);
 }

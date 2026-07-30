@@ -2,6 +2,8 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { registerHostServices } from "../../electron/server-bridge/host-services";
+import { makeHostServices } from "../support/host-services-fake";
 import { POST as readManifest } from "../../src/routes/api/manifest/read/+server";
 import { POST as setManifestFields } from "../../src/routes/api/manifest/set-fields/+server";
 import { POST as setActiveStyles } from "../../src/routes/api/style/set-active/+server";
@@ -34,6 +36,15 @@ beforeEach(async () => {
       "",
     ].join("\n"),
     "utf8",
+  );
+  // manifest/* and style/set-active confine their `projectDir` to the
+  // host-owned `projectRoots()` allow-list (2026-07-29 audit), so these tests
+  // now have to model an OPEN project. Out-of-project rejection itself lives
+  // in route-scoping.test.ts.
+  registerHostServices(
+    makeHostServices({
+      fsGuard: { projectRoots: () => [projectDir], readOnlyRoots: () => [] as string[] },
+    }),
   );
 });
 

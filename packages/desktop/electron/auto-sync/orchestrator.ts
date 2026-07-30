@@ -30,6 +30,7 @@ import {
   type RunAgainDecision,
 } from "../recovery-bridge";
 import { mapRecoveryResultToEmit } from "./recovery-emit";
+import { operationLogSlug } from "../recovery-paths";
 import { gitIdentityFrom, type GitIdentityArgs, type GitIdentitySettings } from "../git-identity";
 import type {
   ConflictFile as ConflictFileInfo,
@@ -498,6 +499,11 @@ export class AutoSyncOrchestrator {
     // future trigger for this project would only ever arm runAgain — wedging
     // auto-sync until the app restarts.
     let lib!: LibModule;
+    // The repo the project belongs to (a nested book's enclosing repository).
+    // Captured in the probe block below so the operation-log slug can identify
+    // the REPO rather than the opened book — see recovery-paths.ts's
+    // operationLogSlug.
+    let repoRoot = dir;
     // Resolved inside the probe block (settings are read there) but needed by
     // the syncProject / recovery calls further down, which are outside it.
     let identity: GitIdentityArgs = {};
@@ -515,6 +521,10 @@ export class AutoSyncOrchestrator {
       // Guard: only local-git-folder projects sync.
       const source = await lib.detectProjectSource(dir);
       if (source.type !== "local-git-folder") return releaseFlight();
+      // The repo whose log this sync belongs to (R9); the lib's helper carries
+      // the "no repo → the project itself" fallback so every caller spells it
+      // one way.
+      repoRoot = lib.repoRootForSource(source, dir);
 
       // Guard: canSync = HTTPS remote + stored credential. Local-only projects never
       // auto-sync (transparent-sync plan §6; ADR 0006 D4). Use the credential-aware
@@ -535,9 +545,10 @@ export class AutoSyncOrchestrator {
     this.deps.emit({ state: "syncing", projectDir: dir, lastSyncAt: this.getLastSyncAt(dir) });
 
     // Compute the operation log path for this project so sync + recovery share
-    // one log file the user can view when something goes wrong.
-    const dirBasename = path.basename(dir);
-    const logFile = this.deps.operationLogPath(dirBasename);
+    // one log file the user can view when something goes wrong. Keyed to the
+    // REPO: a sync is a whole-repository operation, so a monorepo's books share
+    // one log instead of fragmenting it one file per book.
+    const logFile = this.deps.operationLogPath(operationLogSlug(repoRoot));
 
     let outcome: SyncOutcome;
     try {
@@ -847,7 +858,12 @@ export class AutoSyncOrchestrator {
         recovery: { phase: "checking", risk: "none" },
       });
 
-      const preflightLogFile = this.deps.operationLogPath(path.basename(dir));
+      // `source` is already this dir's classification (narrowed to
+      // local-git-folder by the guard above), so derive the repo directly from
+      // it instead of a second detectProjectSource walk of the same dir.
+      const preflightLogFile = this.deps.operationLogPath(
+        operationLogSlug(lib.repoRootForSource(source, dir)),
+      );
       // Recovery can commit (e.g. a rescue snapshot of local work) — carry the
       // author's configured identity, same as every other commit path.
       const preflightIdentity = gitIdentityFrom(await this.deps.readSettings());

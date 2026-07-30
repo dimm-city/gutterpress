@@ -53,6 +53,11 @@
   let templateName = $state("");
   let templateBusy = $state(false);
   let templateError = $state<string | null>(null);
+  // A book nested in a multi-book repo references shared design with
+  // `../../shared/...` paths. Copied verbatim they'd dangle wherever the
+  // template is later scaffolded, so by default the save copies those files in
+  // (keeps the look). Unchecking leaves them out — a book-local-only template.
+  let includeShared = $state(true);
 
   function close() {
     if (templateBusy) return;
@@ -83,8 +88,20 @@
     templateBusy = true;
     templateError = null;
     try {
-      const tpl = await api.tpl.saveAsTemplate({ projectDir, name: templateName.trim() });
-      toast?.success(`Saved “${tpl.label}” as a template.`);
+      const tpl = await api.tpl.saveAsTemplate({
+        projectDir,
+        name: templateName.trim(),
+        sharedRefs: includeShared ? "vendor" : "exclude",
+      });
+      const vendored = tpl.vendoredRefs?.length ?? 0;
+      const excluded = tpl.excludedRefs?.length ?? 0;
+      const note =
+        vendored > 0
+          ? ` Copied in ${vendored} shared file${vendored === 1 ? "" : "s"}.`
+          : excluded > 0
+            ? ` Left out ${excluded} shared reference${excluded === 1 ? "" : "s"}.`
+            : "";
+      toast?.success(`Saved “${tpl.label}” as a template.${note}`);
       onClose();
     } catch (e) {
       templateError = e instanceof Error ? e.message : String(e);
@@ -151,6 +168,13 @@
       <label class="setting setting-col">
         <span class="setting-title">Template name</span>
         <input class="tpl-name" type="text" bind:value={templateName} placeholder="My starter book" disabled={templateBusy} />
+      </label>
+      <label class="setting">
+        <input type="checkbox" bind:checked={includeShared} disabled={templateBusy} />
+        <span class="setting-info">
+          <span class="setting-title">Include shared styles &amp; plugins</span>
+          <span class="setting-desc">Copies any shared design this book references into the template, so it looks the same wherever it's reused. Uncheck for a book-only template.</span>
+        </span>
       </label>
       {#if templateError}
         <p class="tpl-error" role="alert">{templateError}</p>

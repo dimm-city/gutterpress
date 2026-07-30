@@ -1,5 +1,5 @@
 import { getHooks, handlePublishErrors } from '../_hooks';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -9,7 +9,7 @@ import type { RequestHandler } from './$types';
  */
 export const POST: RequestHandler = defineRoute<
   {
-    projectDir?: string;
+    projectDir: string;
     providerId?: string;
     values?: Record<string, unknown>;
   },
@@ -17,9 +17,19 @@ export const POST: RequestHandler = defineRoute<
 >({
   hooks: getHooks,
   hooksUnavailableMessage: 'Publish hooks not available',
+  // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
+  validate: async (raw) => {
+    const body = raw as { projectDir?: unknown; providerId?: unknown; values?: unknown };
+    return {
+      projectDir: await requireProjectDir(body.projectDir, 'publish:setConfig'),
+      ...(typeof body.providerId === 'string' ? { providerId: body.providerId } : {}),
+      ...(body.values && typeof body.values === 'object'
+        ? { values: body.values as Record<string, unknown> }
+        : {}),
+    };
+  },
   call: async ({ body, hooks }) =>
     handlePublishErrors('publish:setConfig', async () => {
-      const projectDir = requireAbsolute(body.projectDir, 'publish:setConfig');
       if (!body.providerId || !body.values || typeof body.values !== 'object') {
         throw new Error('publish:setConfig requires { providerId, values }');
       }
@@ -34,6 +44,6 @@ export const POST: RequestHandler = defineRoute<
       for (const [k, v] of Object.entries(body.values)) {
         if (v === null || typeof v === 'string' || typeof v === 'number') values[k] = v;
       }
-      return lib.setPublishProviderConfig(projectDir, provider.info.id, values);
+      return lib.setPublishProviderConfig(body.projectDir, provider.info.id, values);
     }),
 });

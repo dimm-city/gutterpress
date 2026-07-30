@@ -10,10 +10,17 @@ export const POST: RequestHandler = defineRoute<Record<string, never>, PrefsHook
     const searchRoots = prefs.projectSearchRoots as string[] | undefined;
     const roots =
       searchRoots && searchRoots.length > 0 ? searchRoots : hooks.defaultProjectSearchRoots();
-    const recentFolders = prefs.recentFolders as Array<{ path: string }> | undefined;
+    const recentFolders = prefs.recentFolders as
+      | Array<{ path: string; lastActiveBook?: string }>
+      | undefined;
     const favorites = prefs.favorites as Array<{ path: string }> | undefined;
+    // For a repo-backed entry, `path` is the REPO ROOT while discovery returns
+    // BOOK folders (any dir holding a manifest) — so excluding by `path` alone
+    // never matched, and a book already sitting in Recents was suggested again
+    // under "Discovered" (2026-07-29 audit). `lastActiveBook` is the book that
+    // entry actually reopens, so it belongs in the same exclusion.
     const exclude = new Set<string>([
-      ...(recentFolders ?? []).map((r) => r.path),
+      ...(recentFolders ?? []).flatMap((r) => (r.lastActiveBook ? [r.path, r.lastActiveBook] : [r.path])),
       ...(favorites ?? []).map((f) => f.path),
     ]);
     // M20: a scan failure must NOT resolve as `[]` — that's indistinguishable

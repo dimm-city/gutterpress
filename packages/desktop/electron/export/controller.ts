@@ -113,6 +113,16 @@ export interface ExportControllerDeps {
    * previously trusted with no proof it came from the Save dialog.
    */
   consumeSavePath: (absPath: string) => boolean;
+  /**
+   * Record the PDF path this export actually WROTE as a picked-path capability
+   * (2026-07-29 audit). `shell/show-in-folder` confines its reveal target to
+   * the open project plus the read-only roots, but a Save-dialog destination
+   * is deliberately outside the project — so the export's "Show in Folder"
+   * toast would otherwise be refused. Registering the path the HOST wrote
+   * means the reveal never has to trust a renderer-supplied path. Called only
+   * after the atomic rename succeeds: a failed export authorizes nothing.
+   */
+  registerPickedPath: (absPath: string) => void;
 }
 
 export class ExportController {
@@ -305,6 +315,10 @@ export class ExportController {
         });
         this.deps.throwIfCanceled(exportSession);
         await this.deps.rename(exportSession.tempOutPath, exportSession.outPath);
+        // The PDF now exists at the author's chosen destination — authorize
+        // revealing it (see `registerPickedPath`'s doc comment). After the
+        // rename, so nothing is authorized unless a file was really written.
+        this.deps.registerPickedPath(exportSession.outPath);
         this.deps.sendProgress({
           exportId: exportSession.id,
           state: "success",

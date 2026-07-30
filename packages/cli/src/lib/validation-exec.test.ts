@@ -436,6 +436,66 @@ describe("executeValidation markdown/css file-set resolvers", () => {
   });
 });
 
+// ── 2026-07-29 audit: shared assets that SHIP must be scanned ────────────────
+//
+// `assetDirs = [inputDir]` scanned only the book folder, but a shared repo-root
+// stylesheet's own `url()` closure is embedded into the built PDF (fonts always,
+// images under the inline cap) — so shipped shared fonts and art were never
+// checked for resolution, colour space, TAC, file size, alpha, or font licence.
+// The book-local scan is the same either way; what is added is the directories
+// the ACTIVE stylesheets' out-of-book asset closure actually lives in.
+
+describe("executeValidation assetDirs covers the shared asset closure", () => {
+  test("directories holding out-of-book CSS assets are scanned too", async () => {
+    const repo = await makeDir("gutterpress-vexec-shared-repo-");
+    try {
+      const book = path.join(repo, "books", "field-guide");
+      const sharedFonts = path.join(repo, "shared", "fonts");
+      const sharedThemes = path.join(repo, "shared", "themes");
+      await mkdir(book, { recursive: true });
+      await mkdir(sharedFonts, { recursive: true });
+      await mkdir(sharedThemes, { recursive: true });
+      await writeFile(path.join(sharedFonts, "Publisher.woff2"), "fake", "utf-8");
+      await writeFile(
+        path.join(sharedThemes, "theme.css"),
+        '@font-face { font-family: P; src: url("../fonts/Publisher.woff2"); }\n',
+        "utf-8",
+      );
+      await writeFile(path.join(book, "chapter-01.md"), "# Hi\n", "utf-8");
+      await writeFile(
+        path.join(book, "manifest.yaml"),
+        "title: Field Guide\nstyles:\n  - ../../shared/themes/theme.css\n",
+        "utf-8",
+      );
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: book });
+
+      expect(execution.context.assetDirs).toContain(book);
+      // The shared font's own directory — where the shipped asset lives.
+      expect(execution.context.assetDirs).toContain(sharedFonts);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  test("a book with only in-book assets still scans exactly its own root", async () => {
+    const dir = await makeDir("gutterpress-vexec-shared-none-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      await mkdir(path.join(dir, "styles"), { recursive: true });
+      await writeFile(path.join(dir, "styles", "book.css"), "body{}\n", "utf-8");
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir });
+
+      expect(execution.context.assetDirs).toEqual([dir]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── assetDirs derivation (no more `source.assets` config list) ─────────────
 
 describe("executeValidation assetDirs derivation", () => {

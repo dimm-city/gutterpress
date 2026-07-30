@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import {
   shapePreflight,
   type PreflightRawResult,
@@ -30,10 +30,10 @@ interface PreflightBody {
  * derivation from a location) lives in `$lib/preflight` and is unit-tested.
  */
 export const POST: RequestHandler = defineRoute<PreflightBody>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const r = raw as { projectDir?: string; providerIds?: unknown };
     return {
-      projectDir: requireAbsolute(r.projectDir, 'publish:preflight'),
+      projectDir: await requireProjectDir(r.projectDir, 'publish:preflight'),
       providerIds: Array.isArray(r.providerIds)
         ? r.providerIds.filter((x): x is string => typeof x === 'string')
         : [],

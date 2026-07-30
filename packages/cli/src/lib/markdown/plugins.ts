@@ -880,11 +880,27 @@ function ensureExitCleanupRegistered(): void {
   });
 }
 
+/**
+ * The shadow-link name carries the PROCESS id, not just the plugin's mtime.
+ *
+ * With an mtime-only name (2026-07-29 audit) the path was fully deterministic, so
+ * two preview processes rendering different books that SHARE one authored plugin
+ * — `path: ../../shared/plugins/x.js`, the normative multi-book layout — computed
+ * the SAME shadow path. The first `link()` won; the loser hit EEXIST and fell
+ * through to a plain `import(pluginPath)`, then cached whatever that returned
+ * under the NEW mtime so it was never retried. The ESM registry never evicts, so
+ * from the second collision onward that fallback answers with the PREVIOUS
+ * module: the author edits a shared plugin and one of their two open books keeps
+ * rendering the old one, silently and permanently.
+ */
 function shadowPathFor(pluginPath: string, mtimeMs: number): string {
   const ext = extname(pluginPath);
   const stem = basename(pluginPath, ext);
   const token = String(mtimeMs).replace(/\./g, "-");
-  return join(dirname(pluginPath), `.${stem}.gutterpress-reload-${token}${ext}`);
+  return join(
+    dirname(pluginPath),
+    `.${stem}.gutterpress-reload-${process.pid}-${token}${ext}`,
+  );
 }
 
 /**

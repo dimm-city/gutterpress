@@ -154,6 +154,14 @@ export interface TemplateInfo {
   dir?: string;
 }
 
+/** {@link TemplateInfo} plus what save-as-template did with out-of-book refs. */
+export interface SavedTemplateInfo extends TemplateInfo {
+  /** Book-local paths the `../../shared/...` refs were vendored to (vendor mode). */
+  vendoredRefs?: string[];
+  /** Manifest entries dropped because they pointed outside the book (exclude mode). */
+  excludedRefs?: string[];
+}
+
 export interface SnippetEntry {
   name: string;
   fileName: string;
@@ -399,8 +407,17 @@ export const api = {
     /** List the user's saved/imported custom templates. */
     listCustom: (templatesRoot?: string) =>
       post<TemplateInfo[]>('/api/tpl/custom', templatesRoot !== undefined ? { templatesRoot } : {}),
-    /** Save the open project as a reusable custom template. */
-    saveAsTemplate: (opts: unknown) => post<TemplateInfo>('/api/tpl/save-as-template', opts),
+    /**
+     * Save the open project as a reusable custom template. A repo-nested book's
+     * out-of-book (`../../shared/...`) refs are made portable per `sharedRefs`
+     * (default `"vendor"` — copy them in; `"exclude"` — drop them). The result
+     * reports what happened via `vendoredRefs`/`excludedRefs`.
+     */
+    saveAsTemplate: (opts: {
+      projectDir: string;
+      name: string;
+      sharedRefs?: 'vendor' | 'exclude';
+    }) => post<SavedTemplateInfo>('/api/tpl/save-as-template', opts),
     /** Open a native folder picker and import the selected folder as a template. Resolves null when cancelled. */
     importFromFolder: () => post<TemplateInfo | null>('/api/tpl/import-from-folder', {}),
   },
@@ -479,9 +496,18 @@ export const api = {
   },
 
   project: {
-    /** Resolve the project's editable stylesheets for the CSS editor picker. */
-    listStyles: (projectDir: string) =>
-      post<ProjectStyle[]>('/api/project/list-styles', { projectDir }),
+    /**
+     * Resolve the project's editable stylesheets for the CSS editor picker.
+     *
+     * `repoRoot` (when the open book lives inside a repository) also offers the
+     * repo's SHARED stylesheets, so an author can enable or re-enable one from
+     * the UI instead of hand-editing the manifest (2026-07-29 audit).
+     */
+    listStyles: (projectDir: string, repoRoot?: string | null) =>
+      post<ProjectStyle[]>('/api/project/list-styles', {
+        projectDir,
+        ...(repoRoot ? { repoRoot } : {}),
+      }),
   },
 
   manifest: {

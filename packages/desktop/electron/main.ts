@@ -47,7 +47,7 @@ import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors } from "./server-bridge/friendly-errors";
 import type { ConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
-import type { FsGuardHooks } from "./server-bridge/fs-guard";
+import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import {
   writeRecovery as writeRecoveryStore,
@@ -84,6 +84,7 @@ import {
   handleConfirmResponse,
   rejectAllPendingConfirms,
   buildRecoveryContext,
+  conflictBaseDir,
   getConflictPreviewImpl,
   preExportSyncGateBlockError,
 } from "./recovery-bridge";
@@ -139,6 +140,7 @@ import type {
 import {
   recoveryDir as recoveryDirImpl,
   operationLogPath as operationLogPathImpl,
+  operationLogSlug,
   logsDir as logsDirImpl,
 } from "./recovery-paths";
 import {
@@ -299,7 +301,24 @@ const logsDir = (): string => logsDirImpl(app.getPath("userData"));
 const operationLogPath = (repoSlug: string): string =>
   operationLogPathImpl(app.getPath("userData"), repoSlug);
 
-// A single shallow folder watcher for the open project. fs.watch is coarse and
+/**
+ * The operation-log path for a project directory, keyed to its REPOSITORY.
+ *
+ * Every operation the log records acts on the whole repo (R9), so the log is
+ * the repo's log — see recovery-paths.ts's `operationLogSlug`. Call sites here
+ * only ever hold the ACTIVE project's dir, so the repo root comes from the
+ * host's own `activeRepositoryRoot` (set by the preview-open controller from
+ * `detectProjectSource`); a dir outside it, or a project with no repo at all,
+ * falls back to its own slug.
+ */
+const operationLogPathForDir = (dir: string): string =>
+  operationLogPath(
+    operationLogSlug(
+      activeRepositoryRoot && isWithinRoot(dir, activeRepositoryRoot) ? activeRepositoryRoot : dir,
+    ),
+  );
+
+// A single RECURSIVE folder watcher for the open project. fs.watch is coarse and
 // fires multiple times per save, so changes are debounced before notifying the
 // renderer. Only one project is open at a time, so a single watcher suffices.
 // The watcher/debounce/normalized-dir state + control logic lives in the
@@ -314,11 +333,15 @@ const operationLogPath = (repoSlug: string): string =>
 // open project + folder-watch events) ARMS/RESETS one timer; it fires after N
 // minutes of quiet (settings.versionHistory, default ON / 10 min, floor 5) so
 // each snapshot marks the end of a work burst — never a commit per keystroke.
-// On fire: detect the source; only a `local-git-folder` that IS its own repo
-// root snapshots. A plain folder is NEVER auto-`git init`ed (enabling history
-// stays an explicit opt-in), and a folder nested INSIDE a larger repo (subPath
-// set) is NEVER auto-snapshotted — that would silently commit to the enclosing
-// repo. The lib's per-repo FIFO lock serializes the commit against
+// On fire: detect the source; only a `local-git-folder` snapshots. A plain
+// folder is NEVER auto-`git init`ed (enabling history stays an explicit
+// opt-in). A book nested INSIDE a larger repo DOES snapshot, against that
+// enclosing repo — that is the repo-root session model ("a project is its git
+// repo", R9), and the lib's provider scopes the commit to `repoRoot` itself.
+// (This comment used to say nested folders were never auto-snapshotted; that
+// stopped being true when sessions became repo-rooted, and the scheduler has no
+// subPath check — corrected 2026-07-29.) The lib's per-repo FIFO lock
+// serializes the commit against
 // sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
 // the expected `isNoChangesError` rejection, swallowed below. Silent on success
 // (the history dialog reloads its list on open).
@@ -351,7 +374,7 @@ const autoSnapshot = new AutoSnapshotScheduler({
       state: "error",
       projectDir: dir,
       lastSyncAt: null,
-      logFile: operationLogPath(path.basename(dir)),
+      logFile: operationLogPathForDir(dir),
       guidance: {
         userSummary:
           "Version history needs attention — the last few automatic backups of this project didn't complete.",
@@ -551,7 +574,7 @@ onCredentialChange((host) => {
           state: unsyncedStateFor(diag),
           projectDir: dir,
           lastSyncAt: autoSync.getLastSyncAt(dir),
-          logFile: operationLogPath(path.basename(dir)),
+          logFile: operationLogPathForDir(dir),
         });
       }
     } catch (e) {
@@ -920,6 +943,9 @@ const writeHooksImpl: WriteHooks = {
   scheduleAutoSnapshot,
   scheduleAutoSync: (dir: string) => autoSync.schedule(dir),
   getWatchedDir: () => folderWatch.getWatchedDir(),
+  // Same host-detected root the fs guard authorizes writes against, so "this
+  // write was allowed" and "this write counts as an edit" can never disagree.
+  getRepositoryRoot: () => activeRepositoryRoot,
 };
 const watchHooksImpl: WatchHooks = {
   startFolderWatch,
@@ -1337,7 +1363,7 @@ const remoteHooksImpl: RemoteHooks<LibModule> = {
       localId: args.localId,
       remoteId: args.remoteId,
       tokenStore: electronTokenStore,
-      logFile: operationLogPath(path.basename(dir)),
+      logFile: operationLogPathForDir(dir),
     });
     // §6.1: After successful resolution, clear the conflict latch so auto-sync
     // resumes the transparent flow. The latch was set (and the timer cancelled)
@@ -1472,7 +1498,14 @@ const conflictPreviewHooksImpl: ConflictPreviewHooks = {
     kind: "both-edited" | "you-deleted" | "online-deleted",
   ) => {
     const lib = await loadLib();
-    return getConflictPreviewImpl(projectDir, relativePath, kind, lib.onlineCopyPath);
+    // A conflict is a property of the whole REPOSITORY (R9), and the paths the
+    // sync engine reports are repo-root-relative — so the base comes from
+    // host-detected state, not from the `projectDir` the renderer sent (which
+    // is the opened BOOK folder, and joining a repo-relative path onto it
+    // produced `<repo>/books/<book>/books/<book>/…` and a blank preview in
+    // every multi-book repo). See `conflictBaseDir`.
+    const base = conflictBaseDir(activeRepositoryRoot, activeWorkspaceRoot, projectDir);
+    return getConflictPreviewImpl(base, relativePath, kind, lib.onlineCopyPath);
   },
 };
 
@@ -1687,6 +1720,7 @@ const exportController = new ExportController({
   rename: (from, to) => rename(from, to),
   rm: (p) => rm(p, { force: true }),
   consumeSavePath: (absPath) => savePathsImpl.consume(absPath),
+  registerPickedPath: (absPath) => pickedFilesImpl.register([absPath]),
 });
 
 secureHandle("api:build", (_e, args: ExportBuildArgs) => exportController.build(args));

@@ -49,6 +49,14 @@ describe("ExportDialog — formats and settings", () => {
     expect(src).toContain("Give your template a name.");
   });
 
+  test("the template save offers a shared-refs opt-out wired to sharedRefs (vendor by default)", () => {
+    const src = dialog();
+    expect(src).toContain("Include shared styles");
+    expect(src).toMatch(/sharedRefs:\s*includeShared\s*\?\s*"vendor"\s*:\s*"exclude"/);
+    // Checked by default → vendor is the default behavior.
+    expect(src).toMatch(/let includeShared = \$state\(true\)/);
+  });
+
   test("+page mounts it fresh per open, wired to the toolbar Export button", () => {
     const src = page();
     expect(src).toContain('import ExportDialog from "$lib/components/ExportDialog.svelte"');

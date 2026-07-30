@@ -44,6 +44,10 @@ interface Harness {
 }
 
 interface FakeLibOptions {
+  /** The repo root the fake classification reports (a nested book's enclosing repo). */
+  repoRoot?: string;
+  /** The book's path relative to `repoRoot` ("" when the book IS the repo root). */
+  subPath?: string;
   autoSyncDelayMs?: number | null;
   autoSnapshotDelayMs?: number | null;
   sourceType?: string;
@@ -85,7 +89,15 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
       opts.autoSyncDelayMs === undefined ? 120_000 : opts.autoSyncDelayMs,
     autoSnapshotDelayMs: () =>
       opts.autoSnapshotDelayMs === undefined ? 600_000 : opts.autoSnapshotDelayMs,
-    detectProjectSource: async () => ({ type: opts.sourceType ?? "local-git-folder" }),
+    detectProjectSource: async () => ({
+      type: opts.sourceType ?? "local-git-folder",
+      // The real lib always reports the enclosing repo root for a
+      // local-git-folder; the operation-log slug is derived from it.
+      repoRoot: opts.repoRoot ?? DIR,
+      subPath: opts.subPath ?? "",
+    }),
+    repoRootForSource: (source: { type?: string; repoRoot?: string }, fallbackDir: string) =>
+      source?.type === "local-git-folder" ? source.repoRoot || fallbackDir : fallbackDir,
     diagnoseProjectRemote: async () => {
       if (opts.diagnoseThrows) throw opts.diagnoseThrows;
       return { canSync: opts.canSync ?? true };
@@ -699,4 +711,27 @@ test("runPreflight: a thrown step is non-fatal and always releases the lock", as
   });
   await h.orch.runPreflight(DIR, LOCAL_GIT_SOURCE);
   expect(h.orch.acquire(DIR)).toBe(true); // lock released in the catch branch
+});
+
+// ── 2026-07-29 audit: the operation log identifies the REPO, not the book ─────
+//
+// A sync is a whole-repository operation (R9), so its log is the repository's
+// log. Keying it on `path.basename(dir)` — the opened BOOK — split one repo's
+// sync history across a file per book and made two same-named books in
+// different repos interleave into one file, against recovery-paths.ts's own
+// "one file per project so logs from different projects don't interleave".
+
+test("run() logs a nested book's sync under the REPO's slug, not the book's", async () => {
+  const h = makeHarness({ repoRoot: "/repo", subPath: "books/field-guide" });
+  await h.orch.run(DIR);
+  await tick();
+  expect(h.syncArgs.length).toBe(1);
+  expect((h.syncArgs[0] as { logFile?: string }).logFile).toBe("/logs/repo.log");
+});
+
+test("run() keeps the project's own slug when the book IS the repo root", async () => {
+  const h = makeHarness({ repoRoot: DIR, subPath: "" });
+  await h.orch.run(DIR);
+  await tick();
+  expect((h.syncArgs[0] as { logFile?: string }).logFile).toBe("/logs/book.log");
 });

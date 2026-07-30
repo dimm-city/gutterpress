@@ -276,3 +276,66 @@ test("writeBuildFingerprint records dirty:true for STAGED-but-uncommitted change
     await rm(outDir, { recursive: true, force: true });
   }
 });
+
+// ── 2026-07-29 audit: record the DELIVERED output dir ────────────────────────
+//
+// The build always writes into an ephemeral work dir and only then publishes it
+// atomically over the destination — so the fingerprint file has to be created in
+// the work dir. But `writeBuildFingerprint` used the same value for "where to
+// write" and "what to record", and the build passes the work dir, so shipped
+// `build-fingerprint.json` files recorded `keyConfig.outputDir` as a scratch
+// path (`.dist-build-a1b2c3…`, or an OS temp dir) that does not exist by the time
+// anyone reads them.
+
+test("writeBuildFingerprint records recordedOutputDir while still writing to outputDir", async () => {
+  const workDir = await mkdtemp(join(tmpdir(), "gutterpress-fp-work-"));
+  const finalDir = await mkdtemp(join(tmpdir(), "gutterpress-fp-final-"));
+  try {
+    const written = await writeBuildFingerprint({
+      command: "build",
+      outputDir: workDir,
+      recordedOutputDir: finalDir,
+      args: {},
+      pdfx: {
+        requestedFlavor: null,
+        resolvedFlavor: "x1a",
+        iccPath: null,
+        stripAnnotations: null,
+      },
+    });
+
+    // The FILE lands in the work dir, so the atomic publish carries it along.
+    expect(written).toBe(join(workDir, "build-fingerprint.json"));
+    const payload = JSON.parse(await readFile(written, "utf8")) as {
+      keyConfig: { outputDir: string };
+    };
+    // The RECORDED value is the destination the author can actually open.
+    expect(payload.keyConfig.outputDir).toBe(finalDir);
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+    await rm(finalDir, { recursive: true, force: true });
+  }
+});
+
+test("writeBuildFingerprint falls back to outputDir when no recordedOutputDir is given", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-fp-plain-"));
+  try {
+    const written = await writeBuildFingerprint({
+      command: "build",
+      outputDir: dir,
+      args: {},
+      pdfx: {
+        requestedFlavor: null,
+        resolvedFlavor: "x1a",
+        iccPath: null,
+        stripAnnotations: null,
+      },
+    });
+    const payload = JSON.parse(await readFile(written, "utf8")) as {
+      keyConfig: { outputDir: string };
+    };
+    expect(payload.keyConfig.outputDir).toBe(dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

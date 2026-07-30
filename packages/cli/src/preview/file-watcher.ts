@@ -13,7 +13,7 @@ import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
-import { collectStyleDependencies } from '../lib/asset-inline';
+import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
@@ -68,7 +68,16 @@ export function incrementalPreviewEnabled(): boolean {
 async function renderPreviewBook(
   inputPath: string,
   config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] },
-  opts: { files: string[] | null; wrapChapters: boolean }
+  opts: {
+    files: string[] | null;
+    wrapChapters: boolean;
+    /**
+     * Receives the inliner's copy plan so the HTTP server can resolve the
+     * rewritten asset URLs — see {@link ServerState.cssAssets}. The build
+     * COPIES these files; the preview serves them from their real location.
+     */
+    onCssAssets?: (copies: AssetCopy[]) => void;
+  }
 ): Promise<string> {
   const { plugins, pluginCss } = await loadPluginsWithCss(
     config.plugins,
@@ -82,6 +91,7 @@ async function renderPreviewBook(
     plugins,
     pluginCss,
     wrapChapters: opts.wrapChapters,
+    ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
     // ARCH finding #4: markdown-it-paged's typed, line-numbered author-mistake
     // warnings (env.layoutWarnings) used to be discarded here too — this is the
     // ONE preview render path, so wiring it here surfaces a marker mistake live
@@ -140,22 +150,39 @@ export function injectPreviewScripts(html: string): string {
  *
  * Empty `inputPath` writes a static placeholder — the desktop app (packages/desktop)
  * supplies a real path via its own folder picker.
+ *
+ * `cssAssets` is REQUIRED, not optional: it is the map the HTTP server resolves
+ * the inliner's rewritten asset URLs against (see {@link ServerState.cssAssets}),
+ * so a caller that skipped it would render a book.html whose shared-art URLs
+ * 404 — the exact bug this parameter exists to fix, reintroduced silently.
+ * Every render replaces its contents.
  */
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[] }
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[] },
+  cssAssets: Map<string, string>
 ): Promise<void> {
   if (!inputPath) {
+    cssAssets.clear();
     await fsp.writeFile(path.join(tempDir, BOOK_HTML_FILENAME), EMPTY_BOOK_HTML, "utf-8");
     return;
   }
+  // Collect into a fresh map and swap at the end, so a render that throws
+  // leaves the previous (still-served) book.html's assets resolvable instead
+  // of half-clearing them.
+  const nextAssets = new Map<string, string>();
   const html = await renderPreviewBook(inputPath, config, {
     files: config.source?.files ?? null,
     // Source identity is metadata on existing blocks and is required by both
     // the shell and direct-book HMR paths. It never changes document structure.
     wrapChapters: true,
+    onCssAssets: (copies) => {
+      for (const copy of copies) nextAssets.set(copy.to, copy.from);
+    },
   });
+  cssAssets.clear();
+  for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
     injectPreviewScripts(html),
@@ -200,10 +227,32 @@ export function isDotPathUnderRoot(candidatePath: string, root: string): boolean
 }
 
 /**
+ * Path segments inside the project whose subtrees are GENERATED or VENDORED, and
+ * so are never publication source (R15): `dist/` is build output — one
+ * `gutterpress build` writes a whole book's worth of files there — and
+ * `plugins/npm/`, `node_modules/` are managed dependency trees a plugin install
+ * writes wholesale. Watching them meant a build or an install stormed the
+ * debounce and triggered full preview re-renders for output nobody edited.
+ *
+ * A book's OWN `plugins/*.js` is author-written source and keeps firing; only the
+ * `npm` subtree under it is managed.
+ */
+function isGeneratedProjectPath(relative: string): boolean {
+  const segments = relative.split("/");
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (segment === "dist" || segment === "node_modules") return true;
+    if (segment === "plugins" && segments[i + 1] === "npm") return true;
+  }
+  return false;
+}
+
+/**
  * Whether the watcher should ignore a path.
  *
  * IN-PROJECT paths get the dotfile rule ({@link isDotPathUnderRoot}) — a
- * project's own `.git/`, `.DS_Store`, editor swap files, and so on are noise.
+ * project's own `.git/`, `.DS_Store`, editor swap files, and so on are noise —
+ * plus the generated/vendored-subtree rule ({@link isGeneratedProjectPath}).
  *
  * A path OUTSIDE the project is only ever seen because it is a DECLARED
  * external dependency the manifest named explicitly (see
@@ -216,9 +265,11 @@ export function isDotPathUnderRoot(candidatePath: string, root: string): boolean
 export function isIgnoredWatchPath(candidatePath: string, projectRoot: string): boolean {
   const normalizedRoot = projectRoot.replace(/\\/g, "/").replace(/\/+$/, "");
   const normalizedPath = candidatePath.replace(/\\/g, "/");
-  const inProject =
-    normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + "/");
-  return inProject ? isDotPathUnderRoot(candidatePath, projectRoot) : false;
+  // The root itself is not `<root>/…`, so it falls out here as "not ignored" —
+  // which is what the dotfile rule returned for it anyway.
+  if (!normalizedPath.startsWith(normalizedRoot + "/")) return false;
+  const relative = normalizedPath.slice(normalizedRoot.length + 1);
+  return isDotPathUnderRoot(candidatePath, projectRoot) || isGeneratedProjectPath(relative);
 }
 
 /**
@@ -498,7 +549,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // preview without another manifest edit or a server restart.
         await syncExternalWatches();
         if (closed) return;
-        await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig);
+        await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets);
         if (closed) return;
 
         state.previewServer?.broadcastReload();

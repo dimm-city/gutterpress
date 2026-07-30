@@ -1,11 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; id?: string };
-    const projectDir = requireAbsolute(body.projectDir, 'theme/remove');
+    const projectDir = await requireProjectDir(body.projectDir, 'theme/remove');
     if (typeof body.id !== 'string' || !body.id) {
       error(400, 'theme/remove requires an id');
     }

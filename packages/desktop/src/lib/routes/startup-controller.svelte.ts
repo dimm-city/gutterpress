@@ -28,7 +28,6 @@
 
 import { decideStartupScreen } from "./startup-landing";
 import type { LastFlushFailure } from "../platform/contract";
-import type { PersistedProjectState } from "./page-types";
 
 /** The subset of persisted `DesktopPrefs` this flow reads. */
 export interface StartupPrefs {
@@ -67,14 +66,8 @@ export interface StartupControllerDeps {
   setLandingHold: (hold: boolean) => void;
   setLandingContinueDir: (dir: string | null) => void;
   setBusy: (busy: boolean, label: string) => void;
-  /** Per-project restore-state read, already caught-to-null by the caller. */
-  getDesktopProjectState: (dir: string) => Promise<PersistedProjectState | null>;
   /** The same folder-open pipeline user-initiated opens use. */
-  startFolderPreview: (
-    dir: string,
-    label: string,
-    restoreState: Promise<PersistedProjectState | null>,
-  ) => Promise<boolean>;
+  startFolderPreview: (dir: string, label: string) => Promise<boolean>;
 }
 
 export class StartupController {
@@ -141,13 +134,12 @@ export class StartupController {
       d.setLandingContinueDir(dir);
       // Same pipeline as user-initiated opens, EXCEPT the landing must stay
       // held over the pre-render, so this must not go through
-      // openProjectPath (whose first act is dismissLanding). Raise busy and
-      // hand the restore-state fetch over as a promise so the epoch is
-      // claimed at intent time with no await in between (#43: per-project
-      // restore keyed by folder path).
+      // openProjectPath (whose first act is dismissLanding). Raise busy so the
+      // epoch is claimed at intent time with no await in between. The
+      // per-project restore read (#43) lives in the lifecycle controller, keyed
+      // to the RESOLVED book dir (2026-07-29 audit).
       d.setBusy(true, "Reopening previous folder…");
-      const restorePromise = d.getDesktopProjectState(dir);
-      await d.startFolderPreview(dir, "Reopening previous folder…", restorePromise);
+      await d.startFolderPreview(dir, "Reopening previous folder…");
       // If the saved project no longer opens (moved/renamed/deleted),
       // startFolderPreview sets openError but does NOT throw. The start
       // screen returns on its own (landingVisible derived: workspace is

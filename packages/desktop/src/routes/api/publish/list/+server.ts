@@ -1,5 +1,5 @@
 import { getHooks, handlePublishErrors, type LibPublishProviderInfo } from '../_hooks';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -8,14 +8,17 @@ import type { RequestHandler } from './$types';
  * non-secret `publish.*` manifest settings.
  */
 export const POST: RequestHandler = defineRoute<
-  { projectDir?: string },
+  { projectDir: string },
   NonNullable<ReturnType<typeof getHooks>>
 >({
   hooks: getHooks,
   hooksUnavailableMessage: 'Publish hooks not available',
+  // In `validate`, not `call` — see publish/run's note on handlePublishErrors.
+  validate: async (raw) => ({
+    projectDir: await requireProjectDir((raw as { projectDir?: unknown }).projectDir, 'publish:list'),
+  }),
   call: async ({ body, hooks }) =>
     handlePublishErrors('publish:list', async () => {
-      const projectDir = requireAbsolute(body.projectDir, 'publish:list');
       const lib = await hooks.loadLib();
       if (
         !lib.listPublishProviders ||
@@ -24,7 +27,7 @@ export const POST: RequestHandler = defineRoute<
       ) {
         throw new Error('Publishing is not available in this version of the lib');
       }
-      const settings = await lib.readPublishSettings(projectDir);
+      const settings = await lib.readPublishSettings(body.projectDir);
       const cards = await Promise.all(
         lib.listPublishProviders().map(async (info: LibPublishProviderInfo) => {
           const raw = settings[info.id] ?? {};

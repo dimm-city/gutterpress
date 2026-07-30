@@ -151,7 +151,27 @@ type PublishTarget =
 export interface BuildContext {
   opts: BuildRunnerOptions;
   format: BuildFormat;
+  /**
+   * The directory the author pointed at (`gutterpress build <dir>`). Recorded in
+   * the build fingerprint as the source dir; NOT an anchor for resolving
+   * manifest-relative paths — see {@link BuildContext.renderDir}.
+   */
   inputDir: string;
+  /**
+   * THE anchor every manifest-relative path resolves against: `styles:`,
+   * `source.files`, authored plugin `path:` entries, and the lint gate's own
+   * stylesheet resolution. Equal to {@link BuildContext.manifestDir}.
+   *
+   * These used to resolve against two different roots in one build (2026-07-29
+   * audit): plugins, the lint gate, and the output dir anchored on
+   * `manifestDir`, while `styles:`/`source.files` anchored on `inputDir`. They
+   * are identical in the normative layout (the manifest lives in the book
+   * folder) and diverge only under an explicit `--manifest` pointing outside
+   * `--input` — where the docs are unambiguous that both are manifest-relative,
+   * so the lint gate was checking a different set of stylesheets than the ones
+   * that shipped.
+   */
+  renderDir: string;
   outDir: string;
   manifestDir: string;
   config: ReturnType<typeof resolveConfig>;
@@ -243,7 +263,19 @@ export async function resolveBuildContext(
         )
       : path.join(os.tmpdir(), `gutterpress-build-${randomBytes(6).toString("hex")}`);
 
-  return { opts, format, inputDir, outDir, workDir, target, manifestDir, config, gates };
+  return {
+    opts,
+    format,
+    inputDir,
+    // One anchor for every manifest-relative path (see BuildContext.renderDir).
+    renderDir: manifestDir,
+    outDir,
+    workDir,
+    target,
+    manifestDir,
+    config,
+    gates,
+  };
 }
 
 /**
@@ -253,12 +285,12 @@ export async function resolveBuildContext(
  * (lint=2, pre-validate=1).
  */
 async function runQualityGates(ctx: BuildContext): Promise<void> {
-  const { gates, opts, inputDir } = ctx;
+  const { gates, opts, renderDir } = ctx;
 
   if (gates.lint) {
     log.info("Lint: CSS print-safety");
     const lintResult = await runLint({
-      manifest: opts.manifestPath ?? inputDir,
+      manifest: opts.manifestPath ?? renderDir,
     });
     if (!lintResult.ok) {
       throw new BuildError("CSS lint failed", 2);
@@ -269,7 +301,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
     log.info("Pre-build validation");
     const result = await executeAndReport(
       {
-        input: inputDir,
+        input: renderDir,
         phase: "pre-build",
         manifest: opts.manifestPath,
       },
@@ -296,7 +328,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * without driving the full `runBuild` pagination/PDF machinery.
  */
 export async function renderBook(ctx: BuildContext): Promise<string> {
-  const { config, manifestDir, inputDir, workDir } = ctx;
+  const { config, renderDir, workDir } = ctx;
 
   if (config.source.files && config.source.files.length > 0) {
     log.info(`Using specified files (${config.source.files.length} total)`);
@@ -312,7 +344,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   if (config.plugins.length > 0) {
     log.info(`Loading ${config.plugins.length} plugin(s)...`);
   }
-  const { plugins, pluginCss } = await loadPluginsWithCss(config.plugins, manifestDir);
+  const { plugins, pluginCss } = await loadPluginsWithCss(config.plugins, renderDir);
   if (plugins && plugins.length > 0) {
     log.success(`Loaded ${plugins.length} plugin(s)`);
   }
@@ -324,7 +356,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   const imageRefs: string[] = [];
   const cssAssets: AssetCopy[] = [];
 
-  const htmlFile = await renderChaptersToFile(inputDir, workDir, {
+  const htmlFile = await renderChaptersToFile(renderDir, workDir, {
     title: config.title,
     styles: config.styles,
     files: config.source.files,
@@ -343,7 +375,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   });
   log.success(`Wrote ${htmlFile}`);
 
-  const { copies: imageCopies, errors } = await planImageCopies(inputDir, imageRefs);
+  const { copies: imageCopies, errors } = await planImageCopies(renderDir, imageRefs);
   if (errors.length > 0) {
     throw new BuildError(
       `Cannot resolve ${errors.length} image reference(s):\n` +
@@ -449,7 +481,11 @@ async function finalizeBuild(
 ): Promise<BuildRunnerResult> {
   const workFingerprint = await writeBuildFingerprint({
     ...fingerprint,
+    // The FILE goes into the work dir so the atomic publish carries it along;
+    // the value RECORDED stays the destination the author can actually open
+    // (`fingerprint.outputDir`, set by each output strategy).
     outputDir: ctx.workDir,
+    recordedOutputDir: fingerprint.outputDir,
   });
   await publishBuild(ctx, artifactName);
 
@@ -649,7 +685,13 @@ class PdfOutput implements OutputStrategy {
           htmlFile,
           workDir
         );
-        log.success(`Wrote static desktop: ${path.join(outDir, BOOK_HTML)}`);
+        // A `file` target delivers ONE artifact — the PDF — so book.html stays in
+        // the work dir and is discarded with it. Announcing a path under `outDir`
+        // (the folder chosen in a Save dialog) named a file that was never
+        // written there (2026-07-29 audit).
+        if (ctx.target.kind !== "file") {
+          log.success(`Wrote static desktop: ${path.join(outDir, BOOK_HTML)}`);
+        }
       }
 
       if (!pdfxMode) {

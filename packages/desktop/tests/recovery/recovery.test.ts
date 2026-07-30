@@ -144,3 +144,50 @@ test("listRecovery prunes entries whose snapshot already matches disk", async ()
   expect(await listRecovery(recDir, projDir)).toEqual([]);
   expect(await readIndex(recDir)).toEqual([]);
 });
+
+// ── 2026-07-29 audit: crash drafts for NESTED files must be offered ──────────
+//
+// The filter was `path.dirname(entry.filePath) !== projectDir` — immediate
+// children only. So a crash draft for `styles/book.css`, `themes/<id>/theme.css`,
+// an explicitly-listed `chapters/ch01.md`, or an authorized repo-root shared
+// file was WRITTEN on every edit and then never offered back after a crash —
+// and, being unoffered, was swept as stale on the next listing. Silent data loss
+// for exactly the files a multi-book project shares.
+
+test("listRecovery offers a draft for a NESTED project file, not just immediate children", async () => {
+  const nested = path.join(projDir, "styles", "book.css");
+  await mkdir(path.dirname(nested), { recursive: true });
+  await writeFile(nested, "body{}", "utf-8");
+  const mt = (await stat(nested)).mtimeMs;
+  await writeRecovery(recDir, nested, "body{ color: red }", mt);
+
+  const entries = await listRecovery(recDir, projDir);
+  expect(entries.map((e) => e.filePath)).toEqual([nested]);
+});
+
+test("listRecovery offers a draft for a deeply nested file", async () => {
+  const deep = path.join(projDir, "themes", "publisher", "theme.css");
+  await mkdir(path.dirname(deep), { recursive: true });
+  await writeFile(deep, "body{}", "utf-8");
+  const mt = (await stat(deep)).mtimeMs;
+  await writeRecovery(recDir, deep, "body{ color: blue }", mt);
+
+  const entries = await listRecovery(recDir, projDir);
+  expect(entries.map((e) => e.filePath)).toEqual([deep]);
+});
+
+test("listRecovery still excludes another project's drafts, including a prefix sibling", async () => {
+  const sibling = `${projDir}2`;
+  await mkdir(sibling, { recursive: true });
+  const ours = path.join(projDir, "a.md");
+  const theirs = path.join(sibling, "a.md");
+  await writeFile(ours, "x", "utf-8");
+  await writeFile(theirs, "y", "utf-8");
+  await writeRecovery(recDir, ours, "XX", (await stat(ours)).mtimeMs);
+  await writeRecovery(recDir, theirs, "YY", (await stat(theirs)).mtimeMs);
+
+  const entries = await listRecovery(recDir, projDir);
+  expect(entries.map((e) => e.filePath)).toEqual([ours]);
+
+  await rm(sibling, { recursive: true, force: true });
+});

@@ -1,6 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { isAbsolute } from 'node:path';
-import { defineRoute, loadLib } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 interface Body {
@@ -9,12 +8,14 @@ interface Body {
 }
 
 export const POST: RequestHandler = defineRoute<Body>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string | null; source?: { kind?: string; id?: string } };
     const { projectDir, source } = body;
-    if (projectDir != null && (typeof projectDir !== 'string' || !isAbsolute(projectDir))) {
-      error(400, 'theme/read-css requires an absolute projectDir or null');
-    }
+    // A null projectDir is the built-in-theme read (no project involved); a
+    // non-null one names a directory this route reads a `themes/<id>/theme.css`
+    // out of, so it gets the same containment check as every other
+    // project-scoped route.
+    if (projectDir != null) await requireProjectDir(projectDir, 'theme/read-css');
     if (!source || typeof source.kind !== 'string' || typeof source.id !== 'string') {
       error(400, 'theme/read-css requires a source { kind, id }');
     }

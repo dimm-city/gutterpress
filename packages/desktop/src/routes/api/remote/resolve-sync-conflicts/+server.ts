@@ -7,7 +7,7 @@ import {
   type ResolveSyncConflictsArgs,
   type TokenStore,
 } from '../_hooks';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 const HEX40 = /^[0-9a-f]{40}$/i;
@@ -22,9 +22,9 @@ export const POST: RequestHandler = defineRoute<
 >({
   hooks: getHooks,
   hooksUnavailableMessage: 'Remote hooks not available',
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as Partial<ResolveSyncConflictsArgs> | undefined;
-    const projectDir = requireAbsolute(body?.projectDir, 'remote:resolveSyncConflicts');
+    const projectDir = await requireProjectDir(body?.projectDir, 'remote:resolveSyncConflicts');
     if (
       !body ||
       !Array.isArray(body.resolutions) ||

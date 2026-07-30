@@ -1,13 +1,13 @@
 import { error } from '@sveltejs/kit';
 import { gitIdentityArgs } from '$lib/server/settings';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
-import { defineRoute, loadLib, requireAbsolute } from '../../_lib/route';
+import { defineRoute, loadLib, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = defineRoute<{ projectDir: string; id: string }>({
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; id?: unknown };
-    const projectDir = requireAbsolute(body.projectDir, 'vcs/restore-snapshot');
+    const projectDir = await requireProjectDir(body.projectDir, 'vcs/restore-snapshot');
     // Snapshot ids are full commit SHAs — reject anything else before it
     // reaches the lib (a partial/garbage ref must never hit checkout).
     const id = body.id;

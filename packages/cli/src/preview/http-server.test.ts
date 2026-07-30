@@ -22,6 +22,7 @@ import {
 import { UsageError } from '../lib/cli-args';
 import { BuildError, EXIT_CODES } from '../lib/build-error';
 import { resolveConfig } from '../lib/manifest';
+import { generateAndWriteHtml } from './file-watcher';
 import type { ServerState } from './server-context';
 import type { PreviewServerOptions } from '../types';
 
@@ -50,6 +51,7 @@ function makeState(currentInputPath: string, tempDir: string = currentInputPath)
     isRebuilding: false,
     previewServer: null,
     isShuttingDown: false,
+    cssAssets: new Map<string, string>(),
     tempDir,
     config,
     options,
@@ -334,6 +336,40 @@ describe('createPreviewServer', () => {
     expect(body).not.toContain('do-not-leak-this');
   });
 
+  test('404s a dotfile requested with an encoded BACKSLASH separator (%5C)', async () => {
+    // The Windows bypass. `new URL("/%5C.env", …).pathname` keeps the
+    // percent-encoding (only a RAW backslash gets normalized to "/"), so the
+    // guard saw the single segment "\.env" — which does not start with "." —
+    // and passed it. `path.win32.resolve` then treated "\" as a separator and
+    // landed on `<project>\.env`, INSIDE the root, so containment passed too
+    // and Windows served the secret.
+    //
+    // On POSIX the same request resolves to a file literally NAMED "\.env",
+    // so this test writes that file to make the assertion bite here as well:
+    // before the guard fix this request returned 200 with the file's contents
+    // on every platform; the difference on Windows was only WHICH file it hit.
+    await writeFile(join(projectDir, '\\.env'), 'SECRET_API_KEY=do-not-leak-this');
+
+    const state = makeState(projectDir, tempDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(`http://localhost:${port}/%5C.env`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain('do-not-leak-this');
+  });
+
+  test('404s a dot-directory reached through an encoded backslash (%5C.git%5Cconfig)', async () => {
+    await mkdir(join(projectDir, 'sub'), { recursive: true });
+    await writeFile(join(projectDir, 'sub', '\\.git\\config'), 'url = do-not-leak-this');
+
+    const state = makeState(projectDir, tempDir);
+    server = await createPreviewServer(state, port);
+
+    const res = await fetch(`http://localhost:${port}/sub/%5C.git%5Cconfig`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain('do-not-leak-this');
+  });
+
   test('an ordinary file next to a dotfile still serves normally (the guard is scoped, not overbroad)', async () => {
     await writeFile(join(projectDir, '.env'), 'SECRET=1');
     await writeFile(join(projectDir, 'chapter-01.md'), '# Chapter One');
@@ -344,6 +380,67 @@ describe('createPreviewServer', () => {
     const res = await fetch(`http://localhost:${port}/chapter-01.md`);
     expect(res.status).toBe(200);
     expect(await res.text()).toContain('# Chapter One');
+  });
+
+  test('serves a content-addressed CSS asset from OUTSIDE the project (shared repo-root art)', async () => {
+    // R6: a shared repo-root stylesheet's `url()` closure crosses out of the
+    // book folder, and an image over IMAGE_INLINE_MAX_BYTES is too big to
+    // embed — the inliner rewrites it to `assets/<contentHash><ext>` and
+    // returns a copy plan. The BUILD executes that plan into its output dir;
+    // the preview serves the project in place and has no such dir, so the
+    // rewritten URL used to 404 and shared art rendered broken in the live
+    // preview while building correctly.
+    //
+    // The plan is now an explicit allow-map the server resolves BEFORE the
+    // project-root fallback, so preview and build agree on the URL and neither
+    // copies anything.
+    const repoRoot = await mkdtemp(join(tmpdir(), 'gutterpress-repo-'));
+    try {
+      const book = join(repoRoot, 'books', 'field-guide');
+      const sharedStyles = join(repoRoot, 'shared', 'styles');
+      const sharedArt = join(repoRoot, 'shared', 'images');
+      await mkdir(book, { recursive: true });
+      await mkdir(sharedStyles, { recursive: true });
+      await mkdir(sharedArt, { recursive: true });
+
+      // A PNG over the 512 KB inline threshold.
+      const big = Buffer.alloc(600 * 1024, 7);
+      await writeFile(join(sharedArt, 'backdrop.png'), big);
+      await writeFile(
+        join(sharedStyles, 'components.css'),
+        'body { background-image: url("../images/backdrop.png"); }\n',
+      );
+      await writeFile(join(book, 'chapter-01.md'), '# One\n');
+      await writeFile(
+        join(book, 'manifest.yaml'),
+        ['title: Field Guide', 'styles:', '  - ../../shared/styles/components.css', ''].join('\n'),
+      );
+
+      const state = makeState(book, tempDir);
+      state.config = resolveConfig({}, { title: 'Field Guide', styles: ['../../shared/styles/components.css'] });
+      await generateAndWriteHtml(book, tempDir, state.config, state.cssAssets);
+      server = await createPreviewServer(state, port);
+
+      const bookHtml = await (await fetch(`http://localhost:${port}/book.html`)).text();
+      const match = bookHtml.match(/url\((?:"|')?(assets\/[^"')]+)(?:"|')?\)/);
+      expect(match).not.toBeNull();
+
+      const res = await fetch(`http://localhost:${port}/${match![1]}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/png');
+      expect((await res.arrayBuffer()).byteLength).toBe(big.byteLength);
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+
+  test('a CSS-asset URL the current render did not emit still 404s', async () => {
+    // The map is an exact-match allow-list rebuilt on every render — never a
+    // second traversal surface.
+    const state = makeState(projectDir, tempDir);
+    server = await createPreviewServer(state, port);
+    const res = await fetch(`http://localhost:${port}/assets/deadbeef.png`);
+    expect(res.status).toBe(404);
   });
 
   test('no-input mode (no project root) 404s any non-book.html path instead of erroring', async () => {

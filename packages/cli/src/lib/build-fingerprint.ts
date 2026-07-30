@@ -29,7 +29,21 @@ type PdfxFingerprintConfig = {
 
 export type BuildFingerprintInput = {
   command: "build";
+  /** Where the fingerprint FILE is written — the build's ephemeral work dir. */
   outputDir: string;
+  /**
+   * The output dir to RECORD in `keyConfig.outputDir`. Defaults to
+   * {@link BuildFingerprintInput.outputDir}.
+   *
+   * These are the same for a caller that writes straight to its destination, but
+   * a build always assembles into a scratch work dir and only then publishes it
+   * atomically — so the file must be created in the work dir while the value
+   * anyone later reads has to be the delivered destination. One field served both
+   * roles, so shipped fingerprints recorded a scratch path
+   * (`.dist-build-a1b2c3…`, or an OS temp dir) that no longer existed
+   * (2026-07-29 audit).
+   */
+  recordedOutputDir?: string;
   sourceDir?: string;
   args: Record<string, unknown>;
   pdfx: PdfxFingerprintConfig;
@@ -241,7 +255,9 @@ export async function writeBuildFingerprint(input: BuildFingerprintInput): Promi
         iccPath: input.pdfx.iccPath,
         stripAnnotations: input.pdfx.stripAnnotations,
       },
-      outputDir,
+      outputDir: input.recordedOutputDir
+        ? path.resolve(input.recordedOutputDir)
+        : outputDir,
     },
     sourceRevision,
     tools,

@@ -337,3 +337,38 @@ describe("collectStyleDependencies", () => {
     expect(deps).toContain(path.join(dir, "fonts/absent.woff2"));
   });
 });
+
+// ── 2026-07-29 audit: a bare startsWith("..") over-rejects ───────────────────
+//
+// The escape test was `path.relative(projectDir, abs).startsWith("..")`, which
+// also matches a legitimate project-root file whose NAME begins with two dots
+// (`..cover.png` — unusual, but a valid filename on every platform this ships
+// on). The rejection told the author to "copy the file into your project
+// folder" for a file already sitting in it.
+
+test("planImageCopies accepts a root file whose name starts with two dots", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "gutterpress-dotdot-name-"));
+  try {
+    await writeFile(path.join(dir, "..cover.png"), "fake");
+    const { copies, errors } = await planImageCopies(dir, ["..cover.png"]);
+    expect(errors).toEqual([]);
+    expect(copies.map((c) => c.to)).toEqual(["..cover.png"]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("planImageCopies still rejects a real parent-directory escape", async () => {
+  const base = await mkdtemp(path.join(tmpdir(), "gutterpress-dotdot-escape-"));
+  try {
+    const book = path.join(base, "book");
+    await mkdir(book, { recursive: true });
+    await writeFile(path.join(base, "outside.png"), "fake");
+    const { copies, errors } = await planImageCopies(book, ["../outside.png"]);
+    expect(copies).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("outside the project");
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});

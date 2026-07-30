@@ -247,3 +247,73 @@ test("(h) onWatchedDirChanged fires on every watchedDir set/clear transition", (
     h.events.watchedDirChanged[h.events.watchedDirChanged.length - 1],
   ).toBeNull();
 });
+
+// ── 2026-07-29 audit: nested edits must be observed ──────────────────────────
+//
+// The watch was non-recursive, so its only visible events were the book's
+// TOP-LEVEL entries. An external editor saving `chapters/ch01.md` or
+// `styles/book.css` produced no folderChanged (the editor/file tree never
+// reconciled) and no editSignal (the auto-snapshot/auto-sync debounce never
+// armed) — while the embedded CLI preview watcher, which IS recursive, saw the
+// same edit and rebuilt the preview. Two observers of one project, two answers.
+//
+// Recursive watching also means generated and vendored subtrees now produce
+// events, so they are filtered: they are never publication SOURCE (R15), and a
+// build or a plugin install would otherwise storm the debounce.
+
+test("a nested source file produces a folderChanged + editSignal", () => {
+  const h = makeHarness();
+  h.fw.start(DIR);
+  expect(h.watchCalls[0]?.options).toEqual({ recursive: true });
+
+  h.fireCb("change", "chapters/ch01.md");
+  expect(h.events.editSignal).toEqual([DIR]);
+  h.clock.fireOnly();
+  expect(h.events.folderChanged).toEqual(["chapters/ch01.md"]);
+});
+
+test("a nested stylesheet produces a folderChanged + editSignal", () => {
+  const h = makeHarness();
+  h.fw.start(DIR);
+  h.fireCb("change", "styles/book.css");
+  expect(h.events.editSignal).toEqual([DIR]);
+  h.clock.fireOnly();
+  expect(h.events.folderChanged).toEqual(["styles/book.css"]);
+});
+
+test("a nested .git path is still ignored at any depth", () => {
+  const h = makeHarness();
+  h.fw.start(DIR);
+  for (const f of [".git/objects/ab/cdef", ".git\\refs\\heads\\main"]) {
+    h.fireCb("change", f);
+  }
+  expect(h.events.editSignal).toEqual([]);
+  expect(h.clock.size).toBe(0);
+});
+
+test("generated and vendored subtrees are ignored (dist, plugins/npm, node_modules)", () => {
+  const h = makeHarness();
+  h.fw.start(DIR);
+  for (const f of [
+    "dist/field-guide/field-guide-pdf.pdf",
+    "dist",
+    "plugins/npm/some-plugin/1.0.0/index.js",
+    "node_modules/.bin/x",
+    "dist\\windows\\spelling.pdf",
+  ]) {
+    h.fireCb("change", f);
+  }
+  expect(h.events.editSignal).toEqual([]);
+  expect(h.clock.size).toBe(0);
+});
+
+test("a source file whose name merely STARTS with an ignored segment is not ignored", () => {
+  // "distribution.md" is not "dist/", and "node_modules_notes.md" is not
+  // "node_modules/" — segment-aware matching, not a prefix test.
+  const h = makeHarness();
+  h.fw.start(DIR);
+  h.fireCb("change", "distribution.md");
+  expect(h.events.editSignal).toEqual([DIR]);
+  h.clock.fireOnly();
+  expect(h.events.folderChanged).toEqual(["distribution.md"]);
+});

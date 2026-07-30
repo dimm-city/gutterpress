@@ -144,13 +144,22 @@ export async function clearRecovery(
 }
 
 /**
- * List pending snapshots for `projectDir` (immediate children only), newest
- * first, and only when the snapshot is actually live (its file exists). Entries
- * whose disk file changed since the snapshot's *baseline* (its `baseMtimeMs`)
- * were saved/superseded by another process since the crash and are skipped —
- * those are not "unsaved changes". (Comparing to `baseMtimeMs` rather than the
+ * List pending snapshots for anything UNDER `projectDir`, newest first, and only
+ * when the snapshot is actually live (its file exists). Entries whose disk file
+ * changed since the snapshot's *baseline* (its `baseMtimeMs`) were
+ * saved/superseded by another process since the crash and are skipped — those
+ * are not "unsaved changes". (Comparing to `baseMtimeMs` rather than the
  * snapshot's `savedAt` avoids a fractional-`mtimeMs` vs integer-`Date.now()`
  * collision when the snapshot and the disk write land in the same millisecond.)
+ *
+ * The filter used to be `dirname(entry.filePath) !== projectDir` — immediate
+ * children only (2026-07-29 audit). A crash draft for `styles/book.css`,
+ * `themes/<id>/theme.css`, an explicitly-listed `chapters/ch01.md`, or an
+ * authorized repo-root shared file was written on every edit and then never
+ * offered back after a crash — and, being unoffered, was swept as stale on the
+ * next listing. Silent loss of exactly the files a multi-book project shares.
+ * Matching is separator-aware, so a prefix-sibling project (`<proj>2`) is not
+ * "under" this one.
  */
 export async function listRecovery(
   recoveryDir: string,
@@ -159,8 +168,10 @@ export async function listRecovery(
   const index = await readIndex(recoveryDir);
   const out: RecoveryEntry[] = [];
   const stale: RecoveryEntry[] = [];
+  const root = path.resolve(projectDir);
   for (const entry of index) {
-    if (path.dirname(entry.filePath) !== projectDir) continue;
+    const file = path.resolve(entry.filePath);
+    if (file !== root && !file.startsWith(root + path.sep)) continue;
     // The snapshot bytes must still exist.
     try {
       await stat(entry.recoveryPath);

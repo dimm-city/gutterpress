@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import { gitIdentityArgs } from '$lib/server/settings';
 import { getVcsHooks, type VcsHooks } from '../../../../../electron/server-bridge/vcs-hooks';
 import { friendlyVcsError } from '../../../../../electron/server-bridge/friendly-errors';
-import { defineRoute, requireAbsolute } from '../../_lib/route';
+import { defineRoute, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 interface SnapshotEntry {
@@ -15,6 +15,7 @@ interface SnapshotEntry {
 // Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
 interface LibModule {
   detectProjectSource: (dir: string) => Promise<unknown>;
+  repoRootForSource: (source: unknown, fallbackDir: string) => string;
   providerFor: (source: unknown) => {
     snapshot: (opts: {
       projectDir: string;
@@ -32,9 +33,9 @@ export const POST: RequestHandler = defineRoute<
 >({
   hooks: () => getVcsHooks<LibModule>(),
   hooksUnavailableMessage: 'VCS hooks not registered',
-  validate: (raw) => {
+  validate: async (raw) => {
     const body = raw as { projectDir?: string; message?: unknown };
-    const projectDir = requireAbsolute(body.projectDir, 'vcs/save-snapshot');
+    const projectDir = await requireProjectDir(body.projectDir, 'vcs/save-snapshot');
     const message = typeof body.message === 'string' && body.message.trim()
       ? body.message.trim()
       : 'Saved snapshot';
@@ -43,11 +44,15 @@ export const POST: RequestHandler = defineRoute<
   call: async ({ body, hooks }) => {
     const lib = await hooks.loadLib();
     const source = await lib.detectProjectSource(body.projectDir);
+    // The log identifies the REPO, not the opened book: a snapshot commits the
+    // whole repository, so a monorepo's books share one log file (matching the
+    // lib's own buildRecoveryContext, which slugs the repo dir).
+    const repoRoot = lib.repoRootForSource(source, body.projectDir);
     return lib.providerFor(source).snapshot({
       projectDir: body.projectDir,
       message: body.message,
       ...(await gitIdentityArgs()),
-      logFile: hooks.operationLogPath(basename(body.projectDir)),
+      logFile: hooks.operationLogPath(basename(repoRoot)),
     });
   },
   onError: (e) => friendlyVcsError(e, 'saveSnapshot', 'vcs/save-snapshot'),

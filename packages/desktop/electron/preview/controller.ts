@@ -27,6 +27,7 @@
 
 import path from "node:path";
 import { AUTO_SYNC_OPEN_DELAY_MS, type SyncStatusPayload } from "../auto-sync/orchestrator";
+import { operationLogSlug } from "../recovery-paths";
 import { unsyncedStateFor } from "../auto-sync/unsynced-status";
 import { upsertRecentFolder } from "../recent-folders";
 import type { DesktopPrefs } from "../prefs-store";
@@ -294,7 +295,11 @@ export class PreviewOpenController {
         tokenStore: this.deps.tokenStore,
       });
       if (diag.canSync) return; // sync flow owns the status for syncable repos
-      const logFile = this.deps.operationLogPath(path.basename(openedDir));
+      // Keyed to the REPO (see recovery-paths.ts's operationLogSlug): the log
+      // records whole-repository operations, so a monorepo's books share one.
+      const logFile = this.deps.operationLogPath(
+        operationLogSlug(lib.repoRootForSource(source, openedDir)),
+      );
       // Ensure the log file exists (empty) so the desktop's log dialog shows the
       // intended "No log entries recorded." empty state rather than "The log
       // file could not be found." when no snapshot has been taken yet. appendFile

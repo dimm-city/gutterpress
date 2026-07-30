@@ -127,7 +127,12 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
     },
     vcs: { loadLib: async () => ({}), operationLogPath: () => "/fake/log" },
     watch: { startFolderWatch: noop, stopFolderWatch: noop, getWatchedDir: () => null },
-    write: { scheduleAutoSnapshot: noop, scheduleAutoSync: noop, getWatchedDir: () => null },
+    write: {
+      scheduleAutoSnapshot: noop,
+      scheduleAutoSync: noop,
+      getWatchedDir: () => null,
+      getRepositoryRoot: () => null,
+    },
   } satisfies FakeHostServices;
 
   const services: Record<string, unknown> = { ...base };
