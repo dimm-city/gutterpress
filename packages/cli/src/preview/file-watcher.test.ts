@@ -64,11 +64,47 @@ function wait(ms: number): Promise<void> {
 }
 
 /**
+ * Shared cadence + budget for every "wait until the watcher caught up" loop
+ * below.
+ *
+ * These budgets used to be hand-written per loop at 10s (and a 3s cap on the
+ * watcher-ready wait). A loaded CI runner overruns that: `recovers when a
+ * manifest declares a shared stylesheet before that file exists` has failed at
+ * ~10.28s on `main` as well as on PR branches — a flake, not a regression,
+ * since chokidar's rescan plus the rebuild simply hadn't finished yet.
+ *
+ * Every loop here returns the instant its condition holds, so a larger budget
+ * costs nothing on a healthy machine; it only stops a test giving up while the
+ * work is still in flight. Each enclosing test's timeout is sized above the
+ * sum of the budgets it can spend.
+ */
+const POLL_STEP_MS = 25;
+const POLL_BUDGET_MS = 20_000;
+const POLL_STEPS = Math.ceil(POLL_BUDGET_MS / POLL_STEP_MS);
+
+/**
+ * Poll `ready()` on the shared cadence. Returns as soon as it holds, or once
+ * the budget is spent — deliberately WITHOUT throwing, so the assertion that
+ * follows reports the actual state rather than a bare timeout.
+ */
+async function pollUntil(ready: () => boolean): Promise<void> {
+  for (let i = 0; i < POLL_STEPS; i++) {
+    await wait(POLL_STEP_MS);
+    if (ready()) return;
+  }
+}
+
+/**
  * Wait (bounded) until chokidar finishes its initial scan and is ready to
  * receive events, instead of assuming a fixed 200ms. Resolves on 'ready' (the
  * fast path) or after a safety cap so a missed 'ready' can never hang the test.
  * The watcher is created with ignoreInitial, so 'ready' is the correct signal
  * that manual emits / real fs events will be handled.
+ *
+ * The cap is the shared budget, not the old 3s: expiring here does NOT fail —
+ * the caller proceeds and writes files the watcher may not be listening for
+ * yet, so a cap that expires early turns a slow scan into a missed event and
+ * an unexplained timeout further down.
  */
 function waitForWatcherReady(watcher: ReturnType<typeof createFileWatcher>): Promise<void> {
   return new Promise((resolve) => {
@@ -81,7 +117,8 @@ function waitForWatcherReady(watcher: ReturnType<typeof createFileWatcher>): Pro
     };
     watcher.on("ready", finish);
     void (async () => {
-      for (let i = 0; i < 300 && !done; i++) await wait(10); // ≤3s safety cap
+      const steps = Math.ceil(POLL_BUDGET_MS / 10);
+      for (let i = 0; i < steps && !done; i++) await wait(10);
       finish();
     })();
   });
@@ -509,7 +546,7 @@ describe('createFileWatcher', () => {
     expect(content).toContain('Updated Content');
 
     await watcher.close();
-  }, 10000);
+  }, 30000);
 
   test('ignores dot files', async () => {
     const watcher = createFileWatcher(state);
@@ -525,7 +562,7 @@ describe('createFileWatcher', () => {
     expect(exists).toBe(true);
 
     await watcher.close();
-  }, 10000);
+  }, 30000);
 
   test('a project rooted under a dot-ancestor directory still receives change events', async () => {
     // Regression for the chokidar `ignored`-matcher bug isDotPathUnderRoot
@@ -558,7 +595,7 @@ describe('createFileWatcher', () => {
       await rm(dotAncestorBase, { recursive: true, force: true });
       await rm(dotTempDir, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 50000);
 
   /** Mock preview server that records every broadcast. */
   function attachBroadcastRecorder(s: ServerState) {
@@ -573,10 +610,7 @@ describe('createFileWatcher', () => {
 
   /** Wait until the debounced rebuild has fired and finished. */
   async function waitForRebuild(s: ServerState, calls: { type: string }[]) {
-    for (let i = 0; i < 400; i++) {
-      await wait(25);
-      if (calls.length > 0 && !s.isRebuilding) return;
-    }
+    await pollUntil(() => calls.length > 0 && !s.isRebuilding);
   }
 
   test('single markdown change performs a full-document reload', async () => {
@@ -591,7 +625,7 @@ describe('createFileWatcher', () => {
 
     expect(calls).toEqual([{ type: 'full-reload' }]);
     await watcher.close();
-  }, 30000);
+  }, 50000);
 
   test('multiple files changed in one debounce window trigger a full reload, not a splice', async () => {
     // Simulates a multi-file disk rewrite (version restore / sync merge):
@@ -609,7 +643,7 @@ describe('createFileWatcher', () => {
 
     expect(calls).toEqual([{ type: 'full-reload' }]);
     await watcher.close();
-  }, 30000);
+  }, 50000);
 
   test('css-only burst full-reloads so Paged.js repaginates', async () => {
     await writeFile(join(testDir, 'a.css'), 'body{color:red}');
@@ -627,7 +661,7 @@ describe('createFileWatcher', () => {
     // so the live view must repaginate, not re-link a stale layout.
     expect(calls).toEqual([{ type: 'full-reload' }]);
     await watcher.close();
-  }, 30000);
+  }, 50000);
 
   test('editing a shared stylesheet outside the book rebuilds the preview', async () => {
     // The multi-book layout: books/<book>/ reads ../../shared/styles/*.css.
@@ -670,7 +704,7 @@ describe('createFileWatcher', () => {
       await rm(repo, { recursive: true, force: true });
       await rm(sharedTempDir, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 50000);
 
   test('replacing a shared font referenced only by CSS rebuilds the preview', async () => {
     // The font is never named by the manifest — it is reached through the
@@ -710,7 +744,7 @@ describe('createFileWatcher', () => {
       await rm(repo, { recursive: true, force: true });
       await rm(fontTempDir, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 50000);
 
   test('recovers when a manifest declares a shared stylesheet before that file exists', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'gutterpress-test-late-shared-'));
@@ -736,10 +770,11 @@ describe('createFileWatcher', () => {
 
       // The manifest rebuild fails because late.css is missing, but the updated
       // config and its missing external target must already be under watch.
-      for (let i = 0; i < 400; i++) {
-        await wait(25);
-        if (lateState.config.styles?.includes('../../shared/styles/late.css') && !lateState.isRebuilding) break;
-      }
+      await pollUntil(
+        () =>
+          !!lateState.config.styles?.includes('../../shared/styles/late.css') &&
+          !lateState.isRebuilding,
+      );
       expect(lateState.config.styles).toContain('../../shared/styles/late.css');
       expect(calls).toEqual([]);
 
@@ -754,7 +789,7 @@ describe('createFileWatcher', () => {
       await rm(repo, { recursive: true, force: true });
       await rm(lateTempDir, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 70000);
 
   test('a change arriving during an in-flight rebuild triggers a follow-up rebuild without a new fs event', async () => {
     await writeFile(join(testDir, 'chapter-02.md'), '# Two');
@@ -782,7 +817,7 @@ describe('createFileWatcher', () => {
 
       // First change → debounce fires → rebuild starts and blocks on the gate.
       watcher.emit('all', 'change', join(testDir, 'chapter-01.md'));
-      for (let i = 0; i < 400 && loadCalls === 0; i++) await wait(10);
+      await pollUntil(() => loadCalls > 0);
       expect(loadCalls).toBe(1);
 
       // Second change lands DURING the in-flight rebuild. Its debounce timer
@@ -795,10 +830,7 @@ describe('createFileWatcher', () => {
       release();
 
       // Both rebuilds complete with NO further fs events.
-      for (let i = 0; i < 400; i++) {
-        await wait(25);
-        if (calls.length >= 2 && !state.isRebuilding) break;
-      }
+      await pollUntil(() => calls.length >= 2 && !state.isRebuilding);
       expect(calls.length).toBe(2);
       expect(calls[1]).toEqual({ type: 'full-reload' });
       await watcher.close();
@@ -806,7 +838,7 @@ describe('createFileWatcher', () => {
       // Restore the real module for the remaining tests.
       mock.module('../lib/manifest', () => ({ ...manifestMod }));
     }
-  }, 60000);
+  }, 70000);
 
   test('deleted markdown file triggers a full reload, not a splice', async () => {
     const calls = attachBroadcastRecorder(state);
@@ -819,7 +851,7 @@ describe('createFileWatcher', () => {
 
     expect(calls).toEqual([{ type: 'full-reload' }]);
     await watcher.close();
-  }, 30000);
+  }, 50000);
 
   test('prevents overlapping rebuilds with isRebuilding flag', async () => {
     state.isRebuilding = true;
@@ -835,7 +867,7 @@ describe('createFileWatcher', () => {
     expect(state.isRebuilding).toBe(true);
 
     await watcher.close();
-  }, 10000);
+  }, 30000);
 });
 
 describe('startFileWatcher', () => {
