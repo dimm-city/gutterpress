@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, rmSync, utimesSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync, statSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import MarkdownIt from "markdown-it";
 import {
@@ -349,6 +349,70 @@ describe("plugin loader", () => {
       expect((md2 as any).__version).toBe(2);
       // A genuinely fresh import happened — the module body ran again.
       expect(loadCount(id)).toBe(2);
+    });
+
+    // ── 2026-07-29 audit: the shadow link must be per-PROCESS ────────────────
+    //
+    // The hot-reload shadow hard link was named purely from the plugin's mtime,
+    // in the plugin's own directory — deterministic, with nothing identifying
+    // the process. Two preview processes rendering different books that SHARE
+    // one authored plugin (`path: ../../shared/plugins/x.js`, the normative
+    // multi-book layout) therefore compute the SAME shadow path. The first
+    // link() wins; the loser hits EEXIST and falls through to a plain
+    // `import(pluginPath)` — which the never-evicting ESM registry answers with
+    // the PRE-EDIT module — and then caches that stale module under the NEW
+    // mtime, so it is never retried. The author edits a shared plugin and one of
+    // their two open books silently keeps rendering the old one.
+    test("an edit still reloads when another process already holds the mtime-named shadow path", async () => {
+      const id = "shared-plugin-collision";
+      const file = fixture(`${id}.mjs`, pluginSource(id, 1));
+
+      const first = await loadPlugin(cfg({ path: `${id}.mjs` }), TMP_ROOT);
+      const md1 = new MarkdownIt();
+      applyPlugins(md1, [first]);
+      expect((md1 as any).__version).toBe(1);
+
+      // Edit, with an explicit future mtime (coarse-granularity filesystems).
+      writeFileSync(file, pluginSource(id, 2));
+      const future = new Date(Date.now() + 10_000);
+      utimesSync(file, future, future);
+      const editedMtime = statSync(file).mtimeMs;
+
+      // Simulate the OTHER process: occupy the mtime-only shadow path that a
+      // second preview of the same shared plugin would have claimed.
+      const token = String(editedMtime).replace(/\./g, "-");
+      const foreignShadow = join(TMP_ROOT, `.${id}.gutterpress-reload-${token}.mjs`);
+      writeFileSync(foreignShadow, "// squatted by another preview process\n");
+
+      const squatted: string[] = [foreignShadow];
+      try {
+        const second = await loadPlugin(cfg({ path: `${id}.mjs` }), TMP_ROOT);
+        const md2 = new MarkdownIt();
+        applyPlugins(md2, [second]);
+        // The edit must be live in THIS process regardless of the other one.
+        // (A single collision happens to survive even under the old scheme: the
+        // fallback imports the ORIGINAL path, which had never been imported
+        // before because the first load went through a shadow link.)
+        expect((md2 as any).__version).toBe(2);
+
+        // The second collision is where the old scheme broke. The fallback above
+        // put the ORIGINAL path into the ESM registry, which never evicts — so a
+        // further edit that collides again gets served the previous module.
+        writeFileSync(file, pluginSource(id, 3));
+        const later = new Date(Date.now() + 20_000);
+        utimesSync(file, later, later);
+        const laterToken = String(statSync(file).mtimeMs).replace(/\./g, "-");
+        const foreignShadow2 = join(TMP_ROOT, `.${id}.gutterpress-reload-${laterToken}.mjs`);
+        writeFileSync(foreignShadow2, "// squatted again\n");
+        squatted.push(foreignShadow2);
+
+        const third = await loadPlugin(cfg({ path: `${id}.mjs` }), TMP_ROOT);
+        const md3 = new MarkdownIt();
+        applyPlugins(md3, [third]);
+        expect((md3 as any).__version).toBe(3);
+      } finally {
+        for (const f of squatted) rmSync(f, { force: true });
+      }
     });
 
     test("re-loading an unchanged plugin file reuses the cached module (no re-import, no unbounded growth)", async () => {

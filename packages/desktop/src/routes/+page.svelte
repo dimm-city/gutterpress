@@ -2855,6 +2855,7 @@
     {#key lifecycle.currentDir}
       <ProjectSettingsView
         projectDir={lifecycle.currentDir}
+        repoRoot={projectSession.repoRoot}
         {toast}
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}

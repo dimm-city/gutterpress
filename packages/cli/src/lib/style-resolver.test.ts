@@ -212,3 +212,92 @@ describe("resolveActiveStyles (the one resolver the renderer + editor share)", (
     expect(rendererStyles).toEqual(editorActive);
   });
 });
+
+// ── 2026-07-29 audit: shared stylesheets must stay listable ──────────────────
+//
+// Discovery scanned only inside the book, so a `../../shared/...` entry appeared
+// in the desktop Styles picker ONLY while it was in the manifest. Unchecking it
+// removed the manifest entry, and the next listing dropped it entirely: no way
+// to re-enable it — or to add one — from the UI, which is the surface
+// non-technical authors have. Hand-editing manifest.yaml was the only way back.
+//
+// Given the enclosing repo root, the repo's conventional shared locations are
+// discovered too, as INACTIVE options named exactly the way the manifest stores
+// them (project-relative), so toggling one on writes the right entry.
+
+describe("listProjectStyles with a repo root (multi-book shared styles)", () => {
+  beforeEach(() => {
+    mkdirSync(TMP_ROOT, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(TMP_ROOT, { recursive: true, force: true });
+  });
+
+  function repoWithBook(): { repoRoot: string; book: string } {
+    const repoRoot = join(TMP_ROOT, `repo-${counter++}`);
+    const book = join(repoRoot, "books", "field-guide");
+    mkdirSync(book, { recursive: true });
+    return { repoRoot, book };
+  }
+
+  test("a repo-root shared stylesheet is listed even when NOT in the manifest", async () => {
+    const { repoRoot, book } = repoWithBook();
+    write(repoRoot, "shared/styles/components.css", "/* shared */");
+    write(book, "styles/book.css", "/* book */");
+    write(book, "manifest.yaml", "title: T\nstyles:\n  - styles/book.css\n");
+
+    const styles = await listProjectStyles(book, { repoRoot });
+
+    const names = styles.map((s) => s.displayName);
+    expect(names).toContain("styles/book.css");
+    expect(names).toContain("../../shared/styles/components.css");
+    const shared = styles.find((s) => s.displayName === "../../shared/styles/components.css")!;
+    expect(shared.active).toBe(false);
+  });
+
+  test("a shared stylesheet already in the manifest is listed ONCE, active", async () => {
+    const { repoRoot, book } = repoWithBook();
+    write(repoRoot, "shared/styles/components.css", "/* shared */");
+    write(book, "manifest.yaml", "title: T\nstyles:\n  - ../../shared/styles/components.css\n");
+
+    const styles = await listProjectStyles(book, { repoRoot });
+
+    const matches = styles.filter((s) => s.path.endsWith("components.css"));
+    expect(matches).toHaveLength(1);
+    expect(matches[0]!.active).toBe(true);
+  });
+
+  test("a shared theme's theme.css is discovered", async () => {
+    const { repoRoot, book } = repoWithBook();
+    write(repoRoot, "shared/themes/publisher/theme.css", "/* theme */");
+    write(book, "manifest.yaml", "title: T\n");
+
+    const styles = await listProjectStyles(book, { repoRoot });
+
+    expect(styles.map((s) => s.displayName)).toContain(
+      "../../shared/themes/publisher/theme.css",
+    );
+  });
+
+  test("no repoRoot behaves exactly as before (book-only discovery)", async () => {
+    const { repoRoot, book } = repoWithBook();
+    write(repoRoot, "shared/styles/components.css", "/* shared */");
+    write(book, "styles/book.css", "/* book */");
+    write(book, "manifest.yaml", "title: T\n");
+
+    const styles = await listProjectStyles(book);
+
+    expect(styles.map((s) => s.displayName)).toEqual(["styles/book.css"]);
+  });
+
+  test("a repoRoot equal to the book adds nothing new", async () => {
+    const dir = projectDir();
+    write(dir, "styles/book.css", "/* book */");
+    write(dir, "manifest.yaml", "title: T\n");
+
+    const withRoot = await listProjectStyles(dir, { repoRoot: dir });
+    const without = await listProjectStyles(dir);
+
+    expect(withRoot).toEqual(without);
+  });
+});

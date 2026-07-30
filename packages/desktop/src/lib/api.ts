@@ -479,9 +479,18 @@ export const api = {
   },
 
   project: {
-    /** Resolve the project's editable stylesheets for the CSS editor picker. */
-    listStyles: (projectDir: string) =>
-      post<ProjectStyle[]>('/api/project/list-styles', { projectDir }),
+    /**
+     * Resolve the project's editable stylesheets for the CSS editor picker.
+     *
+     * `repoRoot` (when the open book lives inside a repository) also offers the
+     * repo's SHARED stylesheets, so an author can enable or re-enable one from
+     * the UI instead of hand-editing the manifest (2026-07-29 audit).
+     */
+    listStyles: (projectDir: string, repoRoot?: string | null) =>
+      post<ProjectStyle[]>('/api/project/list-styles', {
+        projectDir,
+        ...(repoRoot ? { repoRoot } : {}),
+      }),
   },
 
   manifest: {

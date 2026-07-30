@@ -310,6 +310,29 @@ test("manifest/read returns the open book's manifest fields", async () => {
   expect(await res.json()).toMatchObject({ title: "Field Guide" });
 });
 
+test("project/list-styles offers the repo's shared stylesheets for a nested book", async () => {
+  // 2026-07-29 audit: shared stylesheets were only listable while they sat in
+  // the manifest, so unchecking one removed it from the UI for good. The route
+  // now forwards the session's repo root — guarded exactly like projectDir, so a
+  // renderer cannot turn it into a directory-enumeration primitive.
+  await writeFile(path.join(repoRoot, "shared", "styles", "components.css"), "body{}", "utf8");
+  const res = (await projectListStyles({
+    request: request({ projectDir: bookDir, repoRoot }),
+  } as Parameters<typeof projectListStyles>[0])) as Response;
+  expect(res.status).toBe(200);
+  const styles = (await res.json()) as Array<{ displayName: string; active: boolean }>;
+  expect(styles.map((s) => s.displayName)).toContain("../../shared/styles/components.css");
+});
+
+test("project/list-styles rejects a repoRoot outside the open project (403)", async () => {
+  const status = await statusOf(
+    projectListStyles({
+      request: request({ projectDir: bookDir, repoRoot: outsideDir }),
+    } as Parameters<typeof projectListStyles>[0]),
+  );
+  expect(status).toBe(403);
+});
+
 test("project/list-styles works for a repo-root-keyed project dir", async () => {
   await writeFile(path.join(repoRoot, "shared", "styles", "components.css"), "body{}", "utf8");
   const res = (await projectListStyles({ request: request({ projectDir: repoRoot }) } as Parameters<

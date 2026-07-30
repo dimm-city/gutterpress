@@ -54,12 +54,15 @@
 
   let {
     projectDir,
+    repoRoot = null,
     toast = null,
     onThemeApplied,
     onEditRawCss,
     onClose,
   }: {
     projectDir: string | null;
+    /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
+    repoRoot?: string | null;
     toast?: ToastController | null;
     /** Fire after a theme apply so the parent can surface the right toast. */
     onThemeApplied?: (themeId: string) => void;
@@ -83,7 +86,7 @@
   //    so it's constructed first. ─────────────────────────────────────────
   const design = new DesignSectionController({
     projectDir: projectDirAccessor,
-    listStyles: (dir) => api.project.listStyles(dir),
+    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
     readFile: (path) => api.fs.readFile(path),
     writeFile: (path, content) => api.fs.writeFile(path, content),
     onError: (msg) => toast?.error?.(msg),
@@ -93,7 +96,7 @@
   // ── Styles — refreshes Design after a toggle. ──────────────────────────
   const styles = new StylesSectionController({
     projectDir: projectDirAccessor,
-    listStyles: (dir) => api.project.listStyles(dir),
+    listStyles: (dir) => api.project.listStyles(dir, repoRoot),
     setActive: (dir, paths) => api.style.setActive(dir, paths),
     onToggled: (on) => toast?.success?.(on ? "Stylesheet enabled." : "Stylesheet disabled."),
     onEditRawCss: (path) => onEditRawCss?.(path),
