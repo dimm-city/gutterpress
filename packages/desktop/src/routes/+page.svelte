@@ -2492,18 +2492,6 @@
   </div>
 {/if}
 
-<!-- The Electron window title follows document.title — keep it in step with
-     the toolbar's document identity (folder title / URL doc title). -->
-<svelte:head>
-  <title>{
-    lifecycle.sourceMode === "url" && lifecycle.currentUrl
-      ? (lifecycle.docTitle ?? lifecycle.currentUrl)
-      : lifecycle.currentDir
-        ? displayTitle
-        : "Gutterpress desktop"
-  }</title>
-</svelte:head>
-
 <!-- inert while the start screen or full-window Settings view is up: the
       workspace keeps rendering, but never accepts interaction underneath. -->
 <div class="app-root" inert={landingVisible || projectSettingsOpen}>
