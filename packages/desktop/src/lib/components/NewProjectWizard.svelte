@@ -4,6 +4,13 @@
   import { api } from "$lib/api";
   import type { TemplateInfo } from "$lib/api";
   import { dialogBehavior, guardedClose } from "$lib/dialog";
+  import { useSettings } from "$lib/settings.svelte";
+  import {
+    PUBLISH_TARGET_CHOICES,
+    PRINT_TOOL_IDS,
+    missingToolsForTargets,
+    toolGapMessage,
+  } from "$lib/publish-targets";
 
   // L4: `open` used to also be an external `$bindable` prop (`bind:open`),
   // but the host never reads it — the ONLY open protocol is the imperative
@@ -34,9 +41,11 @@
   let parentDir = $state<string | null>(null);
   let useVersionHistory = $state(true);
 
-  // Preset choice (ADR 0008): which vendor the book is DESIGNED for. Required,
-  // deliberately NOT preselected — the page size and print rules follow from
-  // it, so the writer must make the call; Create stays disabled until they do.
+  // Preset choice (ADR 0008): which vendor the book is DESIGNED for. The
+  // chosen TEMPLATE seeds this (and the targets below) from the template's
+  // own manifest — the template is the first decision, and everything under
+  // it starts from what that template is for. The writer can still change
+  // any of it before creating.
   // Kept as a local literal (labels are UI copy; the lib's PRESET_IDS is the
   // authoritative id list and scaffoldProject rejects anything unknown).
   type PresetChoice = "dtrpg" | "book" | "custom";
@@ -58,51 +67,74 @@
     },
   ];
   let selectedPreset = $state<PresetChoice | null>(null);
-  // Custom trim, in points (72pt = 1in) — string-typed for the inputs.
-  let pageWidth = $state("");
-  let pageHeight = $state("");
+
+  // Page size for the `custom` preset. Authors think in INCHES, so that is
+  // what they type; the manifest stores points (72pt = 1in) and the named
+  // sizes below carry exact point values (A4/A5 are not round inch numbers).
+  const PT_PER_INCH = 72;
+  interface CommonSize {
+    id: string;
+    label: string;
+    /** Exact trim in points, or null for "I'll type my own". */
+    points: { width: number; height: number } | null;
+  }
+  const COMMON_SIZES: CommonSize[] = [
+    { id: "letter", label: 'US Letter — 8.5 × 11 in', points: { width: 612, height: 792 } },
+    { id: "trade", label: 'Trade paperback — 6 × 9 in', points: { width: 432, height: 648 } },
+    { id: "digest", label: 'Digest — 5.5 × 8.5 in', points: { width: 396, height: 612 } },
+    { id: "a4", label: "A4 — 210 × 297 mm", points: { width: 595, height: 842 } },
+    { id: "a5", label: "A5 — 148 × 210 mm", points: { width: 420, height: 595 } },
+    { id: "custom", label: "My own size…", points: null },
+  ];
+  let sizeChoice = $state<string>("letter");
+  // Free-form trim in INCHES — only used when sizeChoice is "custom".
+  let widthIn = $state("");
+  let heightIn = $state("");
+
+  const namedSize = $derived(COMMON_SIZES.find((s) => s.id === sizeChoice)?.points ?? null);
+  const widthInNum = $derived(Number(widthIn));
+  const heightInNum = $derived(Number(heightIn));
+  const inchesValid = $derived(
+    Number.isFinite(widthInNum) && widthInNum > 0 &&
+    Number.isFinite(heightInNum) && heightInNum > 0
+  );
+  /** The trim in points the manifest will record, or null while incomplete. */
+  const customPagePoints = $derived(
+    namedSize ??
+      (inchesValid
+        ? {
+            // Round to 3dp so 8.27in doesn't land as 595.44000000000005.
+            width: Math.round(widthInNum * PT_PER_INCH * 1000) / 1000,
+            height: Math.round(heightInNum * PT_PER_INCH * 1000) / 1000,
+          }
+        : null)
+  );
 
   // Publish targets (ADR 0008): WHERE the book will be published — each one
   // is a destination's validation policy, recorded explicitly in the new
   // manifest (an unchecked-everything selection is written as `targets: []`,
-  // a visible opt-out, never an accident of omission). Pre-checked from the
-  // preset's defaults, and uncheckable — a writer without qpdf/Ghostscript
-  // can opt out of print checks knowingly instead of hitting required-check
-  // errors later. `tools` lists each destination's external-tool needs
-  // (mirrors the lib's PublishTarget.requiredTools).
-  const TARGET_CHOICES: Array<{
-    id: string;
-    label: string;
-    description: string;
-    tools: string[];
-  }> = [
-    {
-      id: "dtrpg",
-      label: "DriveThruRPG (print)",
-      description: "Checks the finished PDF against DriveThruRPG's print rules.",
-      tools: ["qpdf", "gs"],
-    },
-    {
-      id: "itch",
-      label: "itch.io (digital)",
-      description: "Checks the finished PDF is well-formed with embedded fonts.",
-      tools: [],
-    },
-  ];
-  // Mirrors the lib presets' defaultTargets (dtrpg → [dtrpg]; book/custom → []).
+  // a visible opt-out, never an accident of omission). Seeded from the
+  // template/preset and freely uncheckable — a writer without qpdf/
+  // Ghostscript can opt out of print checks knowingly instead of hitting
+  // required-check errors later. Choices + copy are shared with project
+  // settings ($lib/publish-targets).
+  const TARGET_CHOICES = PUBLISH_TARGET_CHOICES;
+  /** Mirrors the lib presets' defaultTargets (dtrpg → [dtrpg]; else []). */
   function defaultTargetsFor(preset: PresetChoice | null): string[] {
     return preset === "dtrpg" ? ["dtrpg"] : [];
   }
-  // Defaults follow the chosen preset until the writer touches a checkbox;
+  // Defaults follow the template/preset until the writer touches a checkbox;
   // after that their selection is theirs (no $effect — the derived falls
-  // back to the preset only while untouched).
+  // back only while untouched).
   let targetsTouched = $state(false);
   let checkedTargets = $state<string[]>([]);
+  /** The template's own `targets:`, when it declares one. */
+  let templateTargets = $state<string[] | null>(null);
   let effectiveTargets = $derived(
-    targetsTouched ? checkedTargets : defaultTargetsFor(selectedPreset)
+    targetsTouched ? checkedTargets : (templateTargets ?? defaultTargetsFor(selectedPreset))
   );
   function toggleTarget(id: string): void {
-    const base = targetsTouched ? checkedTargets : defaultTargetsFor(selectedPreset);
+    const base = effectiveTargets;
     targetsTouched = true;
     checkedTargets = base.includes(id) ? base.filter((t) => t !== id) : [...base, id];
   }
@@ -116,23 +148,16 @@
     try {
       const doctor = await api.doctor();
       missingTools = (doctor.tools ?? [])
-        .filter((t) => !t.found && (t.id === "qpdf" || t.id === "gs"))
+        .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
         .map((t) => t.id);
     } catch {
       missingTools = [];
     }
   }
-  // The tools a CHECKED destination needs that are missing here — drives the
-  // explanation that compliant PDFs can't be built/verified until installed.
-  let missingNeededTools = $derived(
-    [
-      ...new Set(
-        TARGET_CHOICES.filter((c) => effectiveTargets.includes(c.id)).flatMap((c) => c.tools)
-      ),
-    ].filter((t) => missingTools.includes(t))
-  );
-  let missingToolNames = $derived(
-    missingNeededTools.map((t) => (t === "gs" ? "Ghostscript" : t)).join(" and ")
+  // The explanation for tools a CHECKED destination needs but this computer
+  // lacks — shared verbatim with project settings.
+  let targetToolGap = $derived(
+    toolGapMessage(missingToolsForTargets(effectiveTargets, missingTools))
   );
 
   // Template selection (#29). Built-in + custom templates, loaded on open.
@@ -160,13 +185,31 @@
       }
       templates = [...builtins, ...customs];
       // Default to the "book" built-in (or the first template available).
-      selectedTemplate =
-        templates.find((t) => t.id === "book") ?? templates[0] ?? null;
+      selectTemplate(templates.find((t) => t.id === "book") ?? templates[0] ?? null);
     } catch {
       templates = [];
-      selectedTemplate = null;
+      selectTemplate(null);
       templatesError = "Templates couldn't be loaded.";
     }
+  }
+
+  /**
+   * Choosing a template is the FIRST decision and seeds everything under it:
+   * the design preset and the publish targets both start from what that
+   * template's own manifest declares (falling back to the preset's defaults
+   * when it declares no targets). Any of it can then be changed — this only
+   * moves the starting point, so it runs in the click handler, never an
+   * `$effect`. A writer-touched target selection is reset so the new
+   * template's own choices actually show.
+   */
+  function selectTemplate(tpl: TemplateInfo | null): void {
+    selectedTemplate = tpl;
+    const preset = tpl?.preset;
+    selectedPreset =
+      preset === "dtrpg" || preset === "book" || preset === "custom" ? preset : null;
+    templateTargets = tpl?.targets ?? null;
+    targetsTouched = false;
+    checkedTargets = [];
   }
 
   async function importTemplate() {
@@ -177,7 +220,7 @@
       const imported = await api.tpl.importFromFolder();
       if (imported) {
         await loadTemplates();
-        selectedTemplate = templates.find((t) => t.id === imported.id) ?? imported;
+        selectTemplate(templates.find((t) => t.id === imported.id) ?? imported);
       }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -212,33 +255,39 @@
 
   let nameValid = $derived(name.trim().length > 0 && folderPreview.length > 0);
 
-  // A saved custom template carries its manifest — preset included — as part
-  // of the captured design, so the preset picker doesn't apply to it.
-  let presetApplies = $derived(selectedTemplate?.kind !== "custom");
-  let pageWidthPt = $derived(Number(pageWidth));
-  let pageHeightPt = $derived(Number(pageHeight));
-  let customPageValid = $derived(
-    Number.isFinite(pageWidthPt) && pageWidthPt > 0 &&
-    Number.isFinite(pageHeightPt) && pageHeightPt > 0
-  );
   let presetValid = $derived(
-    !presetApplies ||
-      (selectedPreset !== null && (selectedPreset !== "custom" || customPageValid))
+    selectedPreset !== null && (selectedPreset !== "custom" || customPagePoints !== null)
   );
   let canCreate = $derived(nameValid && !!parentDir && presetValid && !creating);
 
   function reset() {
     name = "";
+    // Prefilled from the author's own name setting below (loadAuthorDefault).
     author = "";
     parentDir = null;
     useVersionHistory = true;
     selectedPreset = null;
-    pageWidth = "";
-    pageHeight = "";
+    sizeChoice = "letter";
+    widthIn = "";
+    heightIn = "";
     targetsTouched = false;
     checkedTargets = [];
+    templateTargets = null;
     creating = false;
     error = null;
+  }
+
+  /**
+   * Prefill "Who's writing it?" from the author's own name setting — the same
+   * `gitIdentity.authorName` recorded on every saved version, so the two can't
+   * disagree by default. Read once at open (not a `$derived` binding), so
+   * editing it here is a one-off choice for this book and never writes back to
+   * the setting.
+   */
+  const settings = useSettings();
+  function loadAuthorDefault(): void {
+    const settingName = settings.current?.gitIdentity?.authorName?.trim();
+    if (settingName) author = settingName;
   }
 
   /**
@@ -298,6 +347,7 @@
   export function show(trigger?: HTMLButtonElement): void {
     if (trigger) triggerEl = trigger;
     reset();
+    loadAuthorDefault();
     open = true;
     void loadTemplates();
     void loadDefaultParentDir();
@@ -355,15 +405,14 @@
             ? (tpl.id as "book" | "zine" | "technical")
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
-        // ADR 0008: the chosen preset, publish targets, and custom trim (in
-        // points) are written into the new manifest. A saved custom template
-        // keeps its own embedded choices instead.
-        preset: presetApplies ? (selectedPreset ?? undefined) : undefined,
-        targets: presetApplies ? [...effectiveTargets] : undefined,
+        // ADR 0008: the preset, publish targets, and custom trim shown in the
+        // dialog are what gets written — including for a saved custom
+        // template, whose own manifest values seeded these fields, so leaving
+        // them alone reproduces the captured design exactly.
+        preset: selectedPreset ?? undefined,
+        targets: [...effectiveTargets],
         customPage:
-          presetApplies && selectedPreset === "custom"
-            ? { width: pageWidthPt, height: pageHeightPt }
-            : undefined,
+          selectedPreset === "custom" && customPagePoints ? customPagePoints : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
       });
       // Remember this location as the default next time (M21) — best-effort,
@@ -436,95 +485,9 @@
         />
       </label>
 
-      {#if presetApplies}
-        <div class="field">
-          <span>What are you designing it for?</span>
-          <ul class="template-list preset-list" role="radiogroup" aria-label="Book preset">
-            {#each PRESET_CHOICES as choice (choice.id)}
-              <li>
-                <button
-                  type="button"
-                  class="template-card"
-                  class:selected={selectedPreset === choice.id}
-                  role="radio"
-                  aria-checked={selectedPreset === choice.id}
-                  onclick={() => (selectedPreset = choice.id)}
-                >
-                  <span class="template-label">{choice.label}</span>
-                  <span class="template-desc">{choice.description}</span>
-                </button>
-              </li>
-            {/each}
-          </ul>
-          {#if selectedPreset === "custom"}
-            <div class="custom-page" role="group" aria-label="Custom page size">
-              <label class="page-field" for="np-page-width">
-                <span>Width (pt)</span>
-                <input
-                  id="np-page-width"
-                  bind:value={pageWidth}
-                  type="number"
-                  min="1"
-                  step="any"
-                  placeholder="612"
-                  autocomplete="off"
-                />
-              </label>
-              <span class="page-times" aria-hidden="true">×</span>
-              <label class="page-field" for="np-page-height">
-                <span>Height (pt)</span>
-                <input
-                  id="np-page-height"
-                  bind:value={pageHeight}
-                  type="number"
-                  min="1"
-                  step="any"
-                  placeholder="792"
-                  autocomplete="off"
-                />
-              </label>
-            </div>
-            <p class="page-hint">
-              In points — 72pt = 1in (US Letter is 612 × 792). This is the page
-              size your finished book is checked against; keep it matching the
-              <code>@page</code> size in your stylesheet.
-            </p>
-          {/if}
-        </div>
-
-        <div class="field">
-          <span>Where will you publish it? <em class="optional">(you can change this later)</em></span>
-          <ul class="target-list" aria-label="Publish targets">
-            {#each TARGET_CHOICES as choice (choice.id)}
-              <li>
-                <label class="target-row">
-                  <input
-                    type="checkbox"
-                    checked={effectiveTargets.includes(choice.id)}
-                    onchange={() => toggleTarget(choice.id)}
-                    disabled={creating}
-                  />
-                  <span class="target-copy">
-                    <span class="target-label">{choice.label}</span>
-                    <span class="target-desc">{choice.description}</span>
-                  </span>
-                </label>
-              </li>
-            {/each}
-          </ul>
-          {#if missingNeededTools.length > 0}
-            <p class="tool-note" role="note">
-              {missingToolNames}
-              {missingNeededTools.length > 1 ? "aren't" : "isn't"} installed on
-              this computer, so a print-compliant (PDF/X) file can't be built or
-              verified until {missingNeededTools.length > 1 ? "they are" : "it is"}.
-              You can keep this checked and install {missingNeededTools.length > 1 ? "them" : "it"}
-              later (see System setup in the Help tab), or uncheck it for now.
-            </p>
-          {/if}
-        </div>
-      {/if}
-
+      <!-- The template comes FIRST: it is the decision the two sections
+           below start from (selectTemplate seeds the preset and the publish
+           targets from the template's own manifest). -->
       {#if templates.length > 0}
         <div class="field">
           <span>Start from a template</span>
@@ -537,7 +500,7 @@
                   class:selected={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
                   role="radio"
                   aria-checked={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
-                  onclick={() => (selectedTemplate = tpl)}
+                  onclick={() => selectTemplate(tpl)}
                 >
                   <span class="template-label">
                     {tpl.label}
@@ -563,6 +526,95 @@
           </div>
         </div>
       {/if}
+
+      <div class="field">
+        <span>What are you designing it for?</span>
+        <ul class="template-list preset-list" role="radiogroup" aria-label="Book preset">
+          {#each PRESET_CHOICES as choice (choice.id)}
+            <li>
+              <button
+                type="button"
+                class="template-card"
+                class:selected={selectedPreset === choice.id}
+                role="radio"
+                aria-checked={selectedPreset === choice.id}
+                onclick={() => (selectedPreset = choice.id)}
+              >
+                <span class="template-label">{choice.label}</span>
+                <span class="template-desc">{choice.description}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+        {#if selectedPreset === "custom"}
+          <label class="field size-field" for="np-page-size">
+            <span>Page size</span>
+            <select id="np-page-size" bind:value={sizeChoice}>
+              {#each COMMON_SIZES as size (size.id)}
+                <option value={size.id}>{size.label}</option>
+              {/each}
+            </select>
+          </label>
+          {#if sizeChoice === "custom"}
+            <div class="custom-page" role="group" aria-label="Page size in inches">
+              <label class="page-field" for="np-page-width">
+                <span>Width (in)</span>
+                <input
+                  id="np-page-width"
+                  bind:value={widthIn}
+                  type="number"
+                  min="0.1"
+                  step="0.25"
+                  placeholder="8.5"
+                  autocomplete="off"
+                />
+              </label>
+              <span class="page-times" aria-hidden="true">×</span>
+              <label class="page-field" for="np-page-height">
+                <span>Height (in)</span>
+                <input
+                  id="np-page-height"
+                  bind:value={heightIn}
+                  type="number"
+                  min="0.1"
+                  step="0.25"
+                  placeholder="11"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+          {/if}
+          <p class="page-hint">
+            This is the page size your finished book is checked against; keep it
+            matching the <code>@page</code> size in your stylesheet.
+          </p>
+        {/if}
+      </div>
+
+      <div class="field">
+        <span>Where will you publish it? <em class="optional">(you can change this later)</em></span>
+        <ul class="target-list" aria-label="Publish targets">
+          {#each TARGET_CHOICES as choice (choice.id)}
+            <li>
+              <label class="target-row">
+                <input
+                  type="checkbox"
+                  checked={effectiveTargets.includes(choice.id)}
+                  onchange={() => toggleTarget(choice.id)}
+                  disabled={creating}
+                />
+                <span class="target-copy">
+                  <span class="target-label">{choice.label}</span>
+                  <span class="target-desc">{choice.description}</span>
+                </span>
+              </label>
+            </li>
+          {/each}
+        </ul>
+        {#if targetToolGap}
+          <p class="tool-note" role="note">{targetToolGap}</p>
+        {/if}
+      </div>
 
       <div class="field">
         <span>Where should we save it?</span>
@@ -686,6 +738,16 @@
     font-size: 13px;
   }
   .page-field input:focus { outline: none; border-color: var(--app-focus-ring); }
+  .size-field { gap: 4px; margin-top: 2px; }
+  .size-field select {
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
+    padding: 7px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .size-field select:focus { outline: none; border-color: var(--app-focus-ring); }
   .page-times { color: var(--app-text-muted); font-size: 13px; padding-bottom: 8px; }
   .page-hint {
     margin: 4px 0 0;

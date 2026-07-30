@@ -10,6 +10,7 @@ import {
   BUILT_IN_TEMPLATE_IDS,
 } from "./project-templates.ts";
 import { scaffoldProject } from "./project-scaffold.ts";
+import { getAssetPath } from "./embedded-assets.ts";
 
 async function tmp(prefix: string): Promise<string> {
   return mkdtemp(path.join(tmpdir(), prefix));
@@ -436,5 +437,120 @@ test("a self-contained book (no escaping refs) is captured unchanged, no shared/
   } finally {
     await rm(project, { recursive: true, force: true });
     await rm(templatesRoot, { recursive: true, force: true });
+  }
+});
+
+// ── ADR 0008: a template carries the preset/targets a new book starts from ──
+//
+// The creation flows (wizard, `gutterpress new`) use these as the starting
+// point for their pickers, so the template's own manifest is the single
+// source of truth for "what kind of book is this".
+
+test("each built-in template exposes the preset its manifest declares", async () => {
+  const templates = await listBuiltInTemplates();
+  for (const t of templates) {
+    const manifestPath = await getAssetPath(`templates/${t.id}/manifest.yaml`);
+    const raw = await readFile(manifestPath, "utf8");
+    const declared = /^preset:\s*(\S+)\s*$/m.exec(raw)?.[1];
+    expect(t.preset).toBe(declared);
+  }
+});
+
+test("a saved custom template carries its project's preset and targets", async () => {
+  const parent = await tmp("gutterpress-tplchoices-src-");
+  const templatesRoot = await tmp("gutterpress-tplchoices-dest-");
+  try {
+    const result = await scaffoldProject({
+      name: "Choice Source",
+      parentDir: parent,
+      preset: "dtrpg",
+      targets: ["dtrpg", "itch"],
+      versionHistory: "none",
+    });
+    await saveProjectAsTemplate({
+      projectDir: result.projectDir,
+      name: "Choices",
+      templatesRoot,
+    });
+
+    const [saved] = await listCustomTemplates(templatesRoot);
+    expect(saved?.preset).toBe("dtrpg");
+    expect(saved?.targets).toEqual(["dtrpg", "itch"]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+    await rm(templatesRoot, { recursive: true, force: true });
+  }
+});
+
+test("a template with no manifest choices simply carries none", async () => {
+  const templatesRoot = await tmp("gutterpress-tplchoices-bare-");
+  try {
+    const dir = path.join(templatesRoot, "bare");
+    await mkdir(dir, { recursive: true });
+    await writeFile(path.join(dir, "manifest.yaml"), 'title: "{{TITLE}}"\n', "utf8");
+
+    const [bare] = await listCustomTemplates(templatesRoot);
+    expect(bare?.preset).toBeUndefined();
+    expect(bare?.targets).toBeUndefined();
+  } finally {
+    await rm(templatesRoot, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject from a templateDir applies an explicit preset override", async () => {
+  const templateDir = await tmp("gutterpress-tploverride-tpl-");
+  const parent = await tmp("gutterpress-tploverride-out-");
+  try {
+    await writeFile(
+      path.join(templateDir, "manifest.yaml"),
+      'title: "{{TITLE}}"\npreset: book\n',
+      "utf8",
+    );
+    await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
+
+    // What the wizard shows is what gets written: its pickers are pre-filled
+    // from the template, so an override here is a deliberate change.
+    const result = await scaffoldProject({
+      name: "Overridden",
+      parentDir: parent,
+      templateDir,
+      preset: "dtrpg",
+      targets: ["itch"],
+      versionHistory: "none",
+    });
+
+    const manifest = await readFile(result.manifestPath, "utf8");
+    expect(manifest).toContain("preset: dtrpg");
+    expect(manifest).toContain("itch");
+  } finally {
+    await rm(templateDir, { recursive: true, force: true });
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject from a templateDir with no preset keeps the template's own", async () => {
+  const templateDir = await tmp("gutterpress-tplkeep-tpl-");
+  const parent = await tmp("gutterpress-tplkeep-out-");
+  try {
+    await writeFile(
+      path.join(templateDir, "manifest.yaml"),
+      'title: "{{TITLE}}"\npreset: book\ntargets:\n  - itch\n',
+      "utf8",
+    );
+    await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
+
+    const result = await scaffoldProject({
+      name: "Kept",
+      parentDir: parent,
+      templateDir,
+      versionHistory: "none",
+    });
+
+    const manifest = await readFile(result.manifestPath, "utf8");
+    expect(manifest).toContain("preset: book");
+    expect(manifest).toContain("- itch");
+  } finally {
+    await rm(templateDir, { recursive: true, force: true });
+    await rm(parent, { recursive: true, force: true });
   }
 });

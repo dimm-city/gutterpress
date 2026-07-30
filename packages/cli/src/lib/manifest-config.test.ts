@@ -218,4 +218,59 @@ describe("manifest-config", () => {
       expect(onDisk).toContain("title: Book");
     });
   });
+
+  // ── ADR 0008: publish targets are an author-facing manifest field ────────
+  describe("targets", () => {
+    test("writes the selected destinations and reads them back", async () => {
+      const dir = projectDir();
+      writeManifest(dir, "title: Book\n");
+
+      const out = await setManifestFields(dir, { targets: ["dtrpg", "itch"] });
+
+      expect(out.targets).toEqual(["dtrpg", "itch"]);
+      expect(readManifest(dir)).toContain("targets:");
+    });
+
+    test("an empty selection is written as an explicit opt-out, not dropped", async () => {
+      const dir = projectDir();
+      writeManifest(dir, "title: Book\ntargets:\n  - dtrpg\n");
+
+      const out = await setManifestFields(dir, { targets: [] });
+
+      // `targets: []` is the visible record of "no destination policies".
+      expect(out.targets).toEqual([]);
+      expect(readManifest(dir)).toContain("targets:");
+    });
+
+    test("dedupes a repeated destination", async () => {
+      const dir = projectDir();
+      writeManifest(dir, "title: Book\n");
+
+      const out = await setManifestFields(dir, { targets: ["itch", "itch"] });
+
+      expect(out.targets).toEqual(["itch"]);
+    });
+
+    test("rejects an unknown destination without touching the manifest", async () => {
+      const dir = projectDir();
+      writeManifest(dir, "title: Book\ntargets:\n  - dtrpg\n");
+
+      await expect(setManifestFields(dir, { targets: ["lulu"] })).rejects.toThrow(
+        /Unknown publish target "lulu"/,
+      );
+      // The bad write never landed.
+      expect(readManifest(dir)).toContain("- dtrpg");
+    });
+
+    test("leaves the key alone when an update omits targets", async () => {
+      const dir = projectDir();
+      writeManifest(dir, "title: Book\ntargets:\n  - dtrpg\n");
+
+      await setManifestFields(dir, { title: "Renamed" });
+
+      const onDisk = readManifest(dir);
+      expect(onDisk).toContain("- dtrpg");
+      expect(onDisk).toContain("Renamed");
+    });
+  });
 });

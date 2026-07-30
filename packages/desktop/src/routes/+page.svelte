@@ -60,6 +60,7 @@
   import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
+  import { clampPanelWidth, viewportWidth } from "$lib/left-panel-width";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -220,7 +221,7 @@
   // State persisted via DesktopPrefs. Keyed separately from per-project state.
   let leftPanelOpen = $state(false);
   let leftPanelTab = $state<PanelTab>("projects");
-  let leftPanelWidth = $state(260);
+  let leftPanelWidth = $state(300);
   let leftPanelToggleBtn = $state<HTMLButtonElement | undefined>(undefined);
   // Set true once we have loaded panel state from prefs (avoids flicker).
   let leftPanelPrefsLoaded = $state(false);
@@ -312,8 +313,6 @@
   // side-by-side split regardless of this value.
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
-  let settingsOpen = $state(false);
-  let settingsInitialTab = $state<SettingsTab>("app");
   // autoOpeningLastProject/lastProjectChecked (Phase 5 slice 2, UX H5 / ARCH
   // #10) now live on `startup` (StartupController) — see its instantiation
   // below.
@@ -362,26 +361,24 @@
   function closeActivityView(): void {
     closePaneView();
   }
-  /** Open the app Settings view, optionally landing on a specific tab
-   *  (the former Advanced setup is consolidated into the Connections tab).
-   *  `tab` is `unknown` on purpose: entry points are click handlers, and an
-   *  `onclick={onOpenSettings}` call site hands the MouseEvent in as `tab` —
-   *  unsanitized, that left NO tab active and an empty settings body. */
+  /**
+   * Open Settings — the start screen's Settings tab, which embeds the WHOLE
+   * settings surface. There is no separate settings window: one surface, one
+   * way in, and closing it returns the author exactly where they were (the
+   * workspace stays mounted, inert, underneath) — the same shape the help
+   * button uses.
+   *
+   * `tab` is `unknown` on purpose: entry points are click handlers, and an
+   * `onclick={onOpenSettings}` call site hands the MouseEvent in as `tab` —
+   * unsanitized, that left NO tab active and an empty settings body.
+   */
   function openSettings(tab: unknown = "app"): void {
-    settingsInitialTab = sanitizeSettingsTab(tab);
-    settingsOpen = true;
-  }
-  function closeSettings(): void {
-    settingsOpen = false;
-    // Connections/Advanced setup live inside Settings now — refresh the sync
-    // state on close, mirroring what the old dialogs' onClosed hook did.
-    if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-      void syncController.refreshSyncDiag(lifecycle.currentDir);
-    }
-    if (landingVisible) landingRef?.focusLayer();
+    landingSettingsTab = sanitizeSettingsTab(tab);
+    landingRef?.showTab("settings");
+    landingForcedOpen = true;
   }
   function toggleSettings(): void {
-    if (settingsOpen) closeSettings();
+    if (landingForcedOpen) dismissLanding();
     else openSettings();
   }
   /**
@@ -641,10 +638,11 @@
   } | null>(null);
   /** Sub-tab the start screen's embedded Settings opens on. */
   let landingSettingsTab = $state<SettingsTab>("app");
-  // The global help button re-opens the landing (Help tab) OVER an open
-  // workspace; closing it returns the author exactly where they left off
-  // (the workspace stays mounted, just inert, underneath).
-  let landingHelpOpen = $state(false);
+  // The global help and settings buttons re-open the landing (on their tab)
+  // OVER an open workspace; closing it returns the author exactly where they
+  // left off (the workspace stays mounted, just inert, underneath). One
+  // flag for both: they are the same affordance pointed at different tabs.
+  let landingForcedOpen = $state(false);
 
   // The landing is the app's ONLY empty state: visible while explicitly held
   // open (startup pre-render behind it) and whenever nothing is open — a
@@ -658,7 +656,7 @@
   const landingVisible: boolean = $derived(
     landingReady &&
       (landingHold ||
-        landingHelpOpen ||
+        landingForcedOpen ||
         shouldReshowLanding({
           busy: lifecycle.busy,
           hasPreviewUrl: !!lifecycle.previewUrl,
@@ -680,7 +678,7 @@
   /** Open the start screen on its Help tab (the global help affordance). */
   function openHelp() {
     landingRef?.showTab("help");
-    landingHelpOpen = true;
+    landingForcedOpen = true;
   }
 
   const landingStatus = $derived(
@@ -732,7 +730,7 @@
     pendingRecoveryScanDir = null;
     if (!landingVisible) return;
     landingHold = false;
-    landingHelpOpen = false;
+    landingForcedOpen = false;
     if (runPendingRecoveryScan && pending && pending === lifecycle.currentDir) {
       void crashRecovery.scan(pending);
     }
@@ -1692,7 +1690,13 @@
       if (panelPrefs?.activeTab && (validTabs as string[]).includes(panelPrefs.activeTab)) {
         leftPanelTab = panelPrefs.activeTab as PanelTab;
       }
-      if (typeof panelPrefs?.width === "number") leftPanelWidth = Math.min(480, Math.max(200, panelPrefs.width));
+      // Same clamp the panel itself applies ($lib/left-panel-width): a width
+      // persisted under the older 200px floor is raised to the readable 300,
+      // and a window too narrow for that gets the relaxed bounds instead. One
+      // shared function, or the two clamps fight each other on restore.
+      if (typeof panelPrefs?.width === "number") {
+        leftPanelWidth = clampPanelWidth(panelPrefs.width, viewportWidth());
+      }
       leftPanelOpen = panelPrefs?.open ?? false;
     },
     setLandingShowPref: (show) => {
@@ -1900,9 +1904,6 @@
         toggleSettings();
         return;
       }
-      // The app Settings view is equally full-window: beyond its own Ctrl+,
-      // toggle above, workspace shortcuts must not act behind it.
-      if (settingsOpen) return;
       // The start screen owns the rest of the keyboard while it's up (its own
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
@@ -1954,9 +1955,9 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the hidden preview behind a full-window settings view
-      // (PageUp/PageDown must scroll the settings body, not the preview).
-      if (settingsOpen || projectSettingsOpen) return;
+      // Never page/zoom the hidden preview behind full-window project
+      // settings (PageUp/PageDown must scroll its body, not the preview).
+      if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
@@ -2505,7 +2506,7 @@
 
 <!-- inert while the start screen or full-window Settings view is up: the
       workspace keeps rendering, but never accepts interaction underneath. -->
-<div class="app-root" inert={landingVisible || settingsOpen || projectSettingsOpen}>
+<div class="app-root" inert={landingVisible || projectSettingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -2903,7 +2904,6 @@
 <WelcomeLanding
   bind:this={landingRef}
   visible={landingVisible}
-  inactive={settingsOpen}
   continueTitle={landingContinueTitle}
   continueDetail={landingContinueDetail}
   status={landingStatus}
@@ -2938,17 +2938,6 @@
   onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
   onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
-{#if settingsOpen}
-  <section class="settings-global-view" aria-label="Settings">
-    <SettingsView
-      projectDir={lifecycle.currentDir}
-      initialTab={settingsInitialTab}
-      onClose={closeSettings}
-      onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
-      onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
-    />
-  </section>
-{/if}
 {#if projectSettingsOpen}
   <!-- Project settings (manifest): full-window like the app settings. Keyed by
        projectDir so a project switch can never leave stale section state
@@ -3101,9 +3090,10 @@
     overflow: hidden;
     position: relative;
   }
-  /* When panel is closed, the LeftPanel has width:260px but translateX(-100%)
+  /* When panel is closed, the LeftPanel keeps its width (300px by default)
+     but translateX(-100%)
      so it's off-screen. Margin-left on .main-content compensates: 0 when open,
-     -260px when closed so main-content fills the full width. */
+     that width when closed so main-content fills the full width. */
   .left-panel-region .main-content {
     display: flex;
     flex-direction: column;
@@ -3115,10 +3105,10 @@
     margin-left: 0;
   }
   /* Panel closed: pull .main-content leftward to fill the panel's "ghost" space.
-     The LeftPanel is always in DOM but translateX(-100%) so its flex width = 260px
+     The LeftPanel is always in DOM but translateX(-100%) so its flex width
      even when off-screen. We compensate with a negative margin-left. */
   .left-panel-region:not(.panel-open) .main-content {
-    margin-left: calc(-1 * var(--left-panel-width, 260px));
+    margin-left: calc(-1 * var(--left-panel-width, 300px));
   }
   /* Narrow screens: panel overlays, so main-content never shifts */
   @media screen and (max-width: 820px) {
@@ -3198,7 +3188,7 @@
       display: none;
     }
     /* LeftPanel is display:none'd above, so drop the negative-margin
-       compensation that assumed its 260px ghost width. */
+       compensation that assumed its ghost width. */
     .shell.focus-mode .left-panel-region .main-content {
       margin-left: 0;
     }

@@ -20,6 +20,8 @@ import {
   writeManifestDoc as writeDoc,
   scalarString,
 } from "./manifest-doc";
+import { TARGETS, TARGET_IDS } from "./targets";
+import { UsageError } from "./cli-args";
 
 /** The author-facing manifest subset the Config view can read + write. */
 export interface ProjectConfigFields {
@@ -27,6 +29,13 @@ export interface ProjectConfigFields {
   authors?: string[];
   /** `source.files` — the markdown inputs (null means "all chapter files"). */
   sourceFiles?: string[] | null;
+  /**
+   * `targets:` — the publish destinations this book is validated against
+   * (ADR 0008). An empty array is written as an explicit `targets: []`, the
+   * visible "no destination policies" opt-out; `undefined` in an update
+   * leaves the key untouched.
+   */
+  targets?: string[];
 }
 
 /** Compute the difference of a partial update (only keys the caller set). */
@@ -60,6 +69,25 @@ export async function setManifestFields(
       doc.delete("authors");
     } else {
       doc.set("authors", a);
+    }
+  }
+
+  if (hasKey(updates, "targets")) {
+    const t = updates.targets;
+    if (t === undefined) {
+      doc.delete("targets");
+    } else {
+      // Unknown ids are rejected before anything is written — a typo must not
+      // land in the manifest and fail every later validation run.
+      const unknown = t.filter((id) => !TARGETS[id]);
+      if (unknown.length > 0) {
+        throw new UsageError(
+          `Unknown publish target${unknown.length > 1 ? "s" : ""} "${unknown.join('", "')}". ` +
+            `Known targets: ${TARGET_IDS.join(", ")}.`,
+        );
+      }
+      // Written even when empty: `targets: []` is the explicit opt-out.
+      doc.set("targets", [...new Set(t)]);
     }
   }
 
@@ -98,6 +126,12 @@ export async function readManifestFields(projectDir: string): Promise<ProjectCon
     const authors = doc.get("authors", true);
     if (isSeq(authors)) {
       out.authors = (authors.items as unknown[]).map((i) => scalarString(i) ?? "");
+    }
+    const targetsNode = doc.get("targets", true);
+    if (isSeq(targetsNode)) {
+      out.targets = (targetsNode.items as unknown[])
+        .map((i) => scalarString(i))
+        .filter((s): s is string => s !== null);
     }
     const filesNode = doc.getIn(["source", "files"], true);
     if (isSeq(filesNode)) {

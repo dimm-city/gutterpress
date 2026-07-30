@@ -337,12 +337,17 @@ export async function scaffoldProject(
   // ADR 0008: creating a book from a built-in template REQUIRES choosing a
   // preset (and a trim size when it's `custom`) — validated before anything
   // touches disk. The publish targets are resolved alongside it, so the
-  // manifest always records both choices explicitly. A saved custom
-  // template is exempt: its manifest carries them as part of the captured
-  // design.
-  const preset = customTemplateDir
-    ? undefined
-    : requirePreset(options.preset, options.customPage);
+  // manifest always records both choices explicitly.
+  //
+  // A saved custom template supplies its OWN preset/targets (its captured
+  // design), so they are optional there: pass them to override — the wizard
+  // pre-fills its pickers from the template and sends back whatever is shown,
+  // so leaving them alone reproduces the template exactly — or omit them to
+  // keep the template's manifest untouched.
+  const preset =
+    customTemplateDir && options.preset === undefined
+      ? undefined
+      : requirePreset(options.preset, options.customPage);
   const targets = preset ? resolveScaffoldTargets(options.targets, preset) : undefined;
 
   // 1. COPY the template files to the target.

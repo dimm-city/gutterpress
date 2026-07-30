@@ -17,6 +17,14 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { ComponentProps } from "svelte";
+  import { onMount } from "svelte";
+  import {
+    PANEL_MIN_W,
+    PANEL_MAX_W,
+    clampPanelWidth,
+    panelWidthBounds,
+    viewportWidth,
+  } from "$lib/left-panel-width";
   type IconName = ComponentProps<typeof Icon>["name"];
   import FileTree from "$lib/components/FileTree.svelte";
   import MediaPanel from "$lib/components/MediaPanel.svelte";
@@ -31,7 +39,7 @@
   let {
     open = $bindable(false),
     activeTab = $bindable<PanelTab>("projects"),
-    width = $bindable(260),
+    width = $bindable(300),
     // Project context
     projectDir = null,
     projectDisplayName = null,
@@ -59,7 +67,8 @@
   }: {
     open?: boolean;
     activeTab?: PanelTab;
-    /** Panel width in px, user-resizable (clamped 200–480), persisted. */
+    /** Panel width in px, user-resizable (clamped 300–480, narrowed only when
+     *  the window can't spare that — see widthBounds()), persisted. */
     width?: number;
     projectDir?: string | null;
     projectDisplayName?: string | null;
@@ -147,12 +156,24 @@
   }
 
   // ── Resizable width ──────────────────────────────────────────────────────
-  const PANEL_MIN_W = 200;
-  const PANEL_MAX_W = 480;
+  // Bounds live in $lib/left-panel-width (pure + unit-tested) because
+  // +page.svelte applies the SAME clamp when it restores the persisted width
+  // — two copies of this math would clamp against each other.
   let resizing = $state(false);
+  let minW = $state(PANEL_MIN_W);
+  let maxW = $state(PANEL_MAX_W);
   function clampWidth(w: number): number {
-    return Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, Math.round(w)));
+    return clampPanelWidth(w, viewportWidth());
   }
+  /** Re-clamp on resize (an event handler, not an `$effect` — §8). */
+  function applyBounds(): void {
+    ({ lo: minW, hi: maxW } = panelWidthBounds(viewportWidth()));
+    const clamped = clampWidth(width);
+    if (clamped !== width) width = clamped;
+  }
+  const onWindowResize = applyBounds;
+  onMount(applyBounds);
+
   function onResizePointerDown(e: PointerEvent) {
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     resizing = true;
@@ -172,8 +193,8 @@
   function onResizeKeydown(e: KeyboardEvent) {
     if (e.key === "ArrowLeft") { e.preventDefault(); width = clampWidth(width - 16); onPanelStateChange?.(); }
     else if (e.key === "ArrowRight") { e.preventDefault(); width = clampWidth(width + 16); onPanelStateChange?.(); }
-    else if (e.key === "Home") { e.preventDefault(); width = PANEL_MIN_W; onPanelStateChange?.(); }
-    else if (e.key === "End") { e.preventDefault(); width = PANEL_MAX_W; onPanelStateChange?.(); }
+    else if (e.key === "Home") { e.preventDefault(); width = clampWidth(0); onPanelStateChange?.(); }
+    else if (e.key === "End") { e.preventDefault(); width = clampWidth(PANEL_MAX_W); onPanelStateChange?.(); }
   }
 
   // Projects first (user request): opening/switching books is the entry-point
@@ -222,6 +243,8 @@
 
 </script>
 
+<svelte:window onresize={onWindowResize} />
+
 <!-- Scrim overlay at narrow widths (panel overlays content) -->
 {#if open}
   <div class="panel-scrim" onclick={close} role="presentation" aria-hidden="true"></div>
@@ -247,8 +270,8 @@
     role="separator"
     aria-orientation="vertical"
     aria-label="Resize panel"
-    aria-valuemin={PANEL_MIN_W}
-    aria-valuemax={PANEL_MAX_W}
+    aria-valuemin={minW}
+    aria-valuemax={maxW}
     aria-valuenow={width}
     tabindex={open ? 0 : -1}
     onpointerdown={onResizePointerDown}

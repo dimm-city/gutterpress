@@ -32,6 +32,24 @@ This project follows [Semantic Versioning](https://semver.org/).
   checkboxes you can turn off. Both choices are written into the new
   manifest as explicit `preset:` and `targets:` lines; projects scaffolded
   from a saved custom template keep the template's own values.
+- Publish targets can be changed later: **Project settings → Details** now
+  has the same checkboxes, with the same explanation when a destination needs
+  a tool this computer doesn't have.
+- The new-book dialog asks for the template FIRST, and the template now sets
+  what follows: picking one selects the design preset and publish targets it
+  declares, which you can then change. A saved template's own choices show
+  pre-filled instead of being hidden, so what the dialog shows is what gets
+  written.
+- Custom page sizes are picked from common trim sizes (US Letter, trade,
+  digest, A4, A5) or typed in **inches** rather than points.
+- "Who's writing it?" starts from the name in your settings.
+- The settings button opens the start screen's Settings tab — one settings
+  surface instead of two, and closing it returns you where you were.
+- The bottom bar is regrouped: the book switcher and Problems on the left,
+  everything about saving and syncing on the right beside the settings and
+  help buttons.
+- The left panel is at least 300px wide when open, so project names and
+  chapter titles stop truncating (narrower on windows too small to spare it).
 - If a chosen destination needs qpdf or Ghostscript and they aren't
   installed, creation says so up front — a print-compliant (PDF/X) file
   can't be built or verified until they are — instead of surfacing it later

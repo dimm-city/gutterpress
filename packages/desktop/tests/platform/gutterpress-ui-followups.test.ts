@@ -60,7 +60,27 @@ test("bottom status uses save icons, slower autosave default, and compact mobile
   // overlay — see ProblemsPanel's own `compact` prop.
   expect(status).toContain('showProblems = $derived(!!projectDir && sourceMode === "folder")');
   expect(status).toContain("compact={isCompact}");
-  expect(status).toContain(".status-right.compact");
+  expect(status).toContain(".status-problems.compact");
+});
+
+test("status bar groups saving/syncing on the right and puts Problems beside the book switcher", () => {
+  const status = read("src/lib/components/StatusBar.svelte");
+  // DOM order IS the layout: book switcher, problems, save/sync, app actions.
+  const order = ["status-left", "status-problems", "status-right", "shell-actions"];
+  const positions = order.map((cls) => status.indexOf(`class="${cls}"`));
+  expect(positions.every((p) => p > -1)).toBe(true);
+  expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+  // The sync pill and save indicator live in the right cluster…
+  const rightIdx = status.indexOf('class="status-right"');
+  const actionsIdx = status.indexOf('class="shell-actions"');
+  const right = status.slice(rightIdx, actionsIdx);
+  expect(right).toContain("<SyncStatusPill");
+  expect(right).toContain("save-indicator");
+  expect(right).toContain("Sync changes now");
+  // …and Problems no longer sits in it.
+  expect(right).not.toContain("<ProblemsPanel");
+  // The right cluster hugs the app actions even with no problems panel.
+  expect(status).toMatch(/\.status-right \{[^}]*margin-left: auto;/s);
 });
 
 test("L9 regression: compact Problems overlay has a reachable close control and closes on select/Escape", () => {

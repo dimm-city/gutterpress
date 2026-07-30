@@ -45,7 +45,7 @@ describe("sanitizeSettingsTab — every value becomes a real tab id", () => {
 describe("both ends sanitize (the regression can't come back via a new caller)", () => {
   test("+page's openSettings routes through sanitizeSettingsTab", () => {
     const page = read("src/routes/+page.svelte");
-    expect(page).toMatch(/function openSettings\([^)]*\)[^{]*\{\s*settingsInitialTab = sanitizeSettingsTab\(/);
+    expect(page).toMatch(/function openSettings\([^)]*\)[^{]*\{\s*landingSettingsTab = sanitizeSettingsTab\(/);
   });
 
   test("SettingsView's initial activeTab is sanitized", () => {

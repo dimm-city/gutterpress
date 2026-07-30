@@ -48,7 +48,9 @@ The report labels each destination's findings (`[dtrpg]`, `[itch]`), so one
 source can be checked for print and digital at the same time. Projects
 created with `gutterpress new` or the desktop app always carry an explicit
 `targets:` list — you choose the destinations at creation time (and can
-uncheck them all, recorded as `targets: []`). In a hand-written manifest
+uncheck them all, recorded as `targets: []`). In the desktop app you can
+change them whenever you like under **Project settings → Details →
+Publish targets**. In a hand-written manifest
 with no `targets:` line, the preset's default applies (the `dtrpg` preset
 validates for DriveThruRPG; `book` and `custom` validate for no
 destination). An explicit empty list (`targets: []`) opts out entirely.

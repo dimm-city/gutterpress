@@ -55,6 +55,7 @@
   import DesignSection from "$lib/components/config/DesignSection.svelte";
   import PluginsSection from "$lib/components/config/PluginsSection.svelte";
   import ProjectConnectionsSection from "$lib/components/ProjectConnectionsSection.svelte";
+  import { PRINT_TOOL_IDS } from "$lib/publish-targets";
 
   let {
     projectDir,
@@ -122,6 +123,16 @@
       api.fs
         .listDir(dir)
         .then((entries) => entries.filter((e) => !e.isDir && /\.md$/i.test(e.name)).map((e) => e.name)),
+    // Which print tools are absent, for the publish-targets note — the same
+    // /api/doctor data the Help tab shows.
+    listMissingPrintTools: () =>
+      api
+        .doctor()
+        .then((d) =>
+          (d.tools ?? [])
+            .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
+            .map((t) => t.id),
+        ),
     onSaved: () => toast?.success?.("Project details saved."),
     onError: (msg) => toast?.error?.(msg),
   });

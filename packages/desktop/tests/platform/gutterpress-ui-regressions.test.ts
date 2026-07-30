@@ -70,16 +70,23 @@ test("closing activity restores the workspace it displaced (no stuck 'Loading co
   expect(src).toContain('editorView = "editor";\n      paneViewRestore = null;');
 });
 
-test("settings opened from the start screen remains above the landing instead of exposing its pre-rendered workspace", () => {
+test("app settings live ONLY on the start screen's Settings tab — no separate window", () => {
   const src = read("src/routes/+page.svelte");
-  // Project settings share the same full-window mechanism, so the inert gate
-  // covers both views.
-  expect(src).toContain('inert={landingVisible || settingsOpen || projectSettingsOpen}');
+  // One settings surface: the settings button opens the landing on its
+  // Settings tab, exactly like the help button. The standalone sheet (and its
+  // `settingsOpen` state) is gone, so there is no second instance to keep
+  // above the landing, and no second inert gate to maintain.
+  expect(src).toContain('inert={landingVisible || projectSettingsOpen}');
   expect(src).toContain('visible={landingVisible}');
-  expect(src).toContain('inactive={settingsOpen}');
-  expect(src).toContain('{#if settingsOpen}');
-  expect(src).toContain('class="settings-global-view"');
+  expect(src).not.toContain("settingsOpen");
   expect(src).not.toContain('editorView === "settings"');
+  // openSettings targets the landing tab and forces the layer open.
+  const openIdx = src.indexOf("function openSettings(");
+  const openBody = src.slice(openIdx, openIdx + 400);
+  expect(openBody).toContain('landingRef?.showTab("settings")');
+  expect(openBody).toContain("landingForcedOpen = true");
+  // Project settings keep their own full-window view.
+  expect(src).toContain('class="settings-global-view"');
 });
 
 test("desktop builds its shared runtime without invoking the CLI entry build", () => {

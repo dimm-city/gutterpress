@@ -105,18 +105,29 @@ never an accident of omission. The preset-derived fallback in
   prints the consequence up front: a print-compliant (PDF/X) file can't be
   built or verified until they're installed, with the `targets: []` opt-out
   named.
-- Desktop wizard: a required preset choice with no preselection (Create
-  stays disabled until one is picked); choosing Custom reveals the
-  width/height form. Below it, a "Where will you publish it?" checkbox
-  list, pre-checked from the preset's defaults and freely uncheckable —
-  when a checked destination's tools are missing (from the same
-  `/api/doctor` data the Help tab shows), the same explanation appears
-  inline, so opting out of print checks is an informed choice rather than a
-  surprise error later.
-- **Saved custom templates are the exception**: a template saved from a
-  real project carries its manifest — preset and targets included — as part
-  of the captured design, so scaffolding from `templateDir` keeps it and
-  the wizard hides both pickers for those.
+- Desktop wizard: the **template comes first** and seeds what follows.
+  `TemplateInfo` carries the `preset`/`targets` its manifest declares (read
+  from the embedded manifest for built-ins, from the saved folder for custom
+  ones), and choosing a template sets the preset choice and the target
+  checkboxes from them. Both stay editable; Create waits on a valid preset.
+  Custom page sizes are chosen from common trim sizes (exact point values —
+  A4/A5 are not round inch numbers) or typed in **inches**, converted to
+  points on write. When a checked destination's tools are missing (from the
+  same `/api/doctor` data the Help tab shows), the tool-gap explanation
+  appears inline, so opting out of print checks is an informed choice rather
+  than a surprise error later.
+- **Saved custom templates pre-fill rather than hide.** A template saved
+  from a real project carries its manifest — preset and targets included —
+  as part of the captured design, so the wizard shows those values and
+  leaving them alone reproduces the template exactly. `scaffoldProject`
+  therefore treats `preset`/`targets` as OPTIONAL with `templateDir`:
+  supplied, they override; omitted, the template's manifest is untouched.
+  What the dialog shows is what gets written, for every template kind.
+- **Changing your mind later**: Project settings → Details manages
+  `targets:` with the same checkboxes and the same tool-gap copy (shared via
+  `$lib/publish-targets`, pinned to the lib registry by a contract test), and
+  writes through the existing `manifest.setFields` seam — which rejects an
+  unknown id before touching the file.
 - `adoptFolder` (turning a loose folder into a book) writes an explicit
   `preset: dtrpg` and `targets: [dtrpg]` — it is a one-click rescue
   affordance, not the primary creation path, and the explicit lines make

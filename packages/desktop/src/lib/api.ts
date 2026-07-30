@@ -152,6 +152,11 @@ export interface TemplateInfo {
   description: string;
   kind: 'builtin' | 'custom';
   dir?: string;
+  /** The `preset:` this template's manifest declares — the starting point
+   *  the new-book wizard seeds its preset choice from (ADR 0008). */
+  preset?: string;
+  /** The `targets:` this template's manifest declares, if any. */
+  targets?: string[];
 }
 
 /** {@link TemplateInfo} plus what save-as-template did with out-of-book refs. */
@@ -190,6 +195,9 @@ export interface ProjectConfigFields {
   authors?: string[];
   /** `source.files` — null is the deliberate "all chapter files" sentinel. */
   sourceFiles?: string[] | null;
+  /** `targets:` — the publish destinations this book is validated against
+   *  (ADR 0008). `[]` is the explicit "no destination policies" opt-out. */
+  targets?: string[];
 }
 
 export interface DirEntry {
