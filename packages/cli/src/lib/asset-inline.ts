@@ -114,6 +114,45 @@ function toPosix(p: string): string {
   return p.split(path.sep).join("/");
 }
 
+/**
+ * True when `absPath` resolves OUTSIDE `projectDir`. Separator-aware, so a
+ * project-root file whose NAME begins with two dots (`..cover.png`) is NOT
+ * treated as an escape, and the `isAbsolute` arm catches a cross-drive Windows
+ * path that `path.relative` returns absolute. THE one containment predicate for
+ * this module's "is this asset in the project" decisions.
+ */
+export function escapesProjectRoot(projectDir: string, absPath: string): boolean {
+  const rel = path.relative(projectDir, absPath);
+  return rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel);
+}
+
+/**
+ * The build-failing reason a prose IMAGE ref cannot be used, or `null` when it
+ * is a usable in-project reference. THE single source of truth both
+ * `planImageCopies` (which rejects at build time) and the pre-build
+ * `source.links.local-refs` check consume, so validation and the build agree
+ * on the rule — an image referenced from Markdown prose must live inside the
+ * book folder — AND on the exact decode (`stripUrlSuffix(decodeRef(...))`) and
+ * wording. They previously hand-rolled this apart and had already drifted (the
+ * check decoded without stripping the `?query`/`#frag` suffix).
+ */
+export function proseImageRefError(ref: string, projectDir: string): string | null {
+  const cleaned = stripUrlSuffix(decodeRef(ref));
+  if (path.isAbsolute(cleaned)) {
+    return (
+      `Image reference must be relative to the project: ${ref}\n` +
+      `  Copy the file into your project folder and reference it from there.`
+    );
+  }
+  if (escapesProjectRoot(projectDir, path.resolve(projectDir, cleaned))) {
+    return (
+      `Image reference points outside the project: ${ref}\n` +
+      `  Copy the file into your project folder and reference it from there.`
+    );
+  }
+  return null;
+}
+
 function mimeFor(ext: string): string {
   return MIME_BY_EXT[ext] ?? "application/octet-stream";
 }
@@ -287,13 +326,8 @@ async function inlineOne(
       // outside the project has no representable relative path, so it is
       // content-addressed (which also makes same-basename files collision-proof).
       const projectRel = path.relative(projectDir, absAsset);
-      // Separator-aware, same reason as planImageCopies below: a CSS asset named
-      // `..hero.png` at the project root IS in-project and keeps its own path
-      // instead of being needlessly content-addressed.
-      const escapesProject =
-        projectRel === ".." || projectRel.startsWith(`..${path.sep}`);
       const dest =
-        projectRel && !escapesProject && !path.isAbsolute(projectRel)
+        projectRel && !escapesProjectRoot(projectDir, absAsset)
           ? toPosix(projectRel)
           : `${HASHED_ASSET_DIR}/${contentHash(bytes)}${ext}`;
       copies.set(dest, { from: absAsset, to: dest });
@@ -435,28 +469,19 @@ export async function planImageCopies(
   for (const ref of refs) {
     if (isNonFileUrl(ref)) continue;
 
-    const cleaned = stripUrlSuffix(decodeRef(ref));
-    if (path.isAbsolute(cleaned)) {
-      errors.push(
-        `Image reference must be relative to the project: ${ref}\n` +
-          `  Copy the file into your project folder and reference it from there.`
-      );
+    // Absolute-ref and escapes-the-book rejection (with the author-facing "copy
+    // it in" message) is shared with the pre-build local-refs check via
+    // `proseImageRefError`, so the two can't drift on the rule, the decode, or
+    // the wording.
+    const refError = proseImageRefError(ref, projectDir);
+    if (refError) {
+      errors.push(refError);
       continue;
     }
 
+    const cleaned = stripUrlSuffix(decodeRef(ref));
     const abs = path.resolve(projectDir, cleaned);
     const rel = path.relative(projectDir, abs);
-    // Separator-aware: a bare `startsWith("..")` also matched a legitimate
-    // project-root file whose NAME begins with two dots (`..cover.png`), and
-    // told the author to copy a file into a folder it was already in.
-    if (rel === ".." || rel.startsWith(`..${path.sep}`)) {
-      errors.push(
-        `Image reference points outside the project: ${ref}\n` +
-          `  Copy the file into your project folder and reference it from there.`
-      );
-      continue;
-    }
-
     const dest = toPosix(rel);
     copies.set(dest, { from: abs, to: dest });
   }

@@ -1,8 +1,6 @@
-import { error } from '@sveltejs/kit';
 import path from 'node:path';
 import { getHooks, handlePublishErrors } from '../_hooks';
-import { defineRoute, requireProjectDir, requireWithinProjectRoot } from '../../_lib/route';
-import { getPickedFilesHooks } from '../../../../../electron/server-bridge/picked-files';
+import { defineRoute, requireContainedOrPicked, requireProjectDir } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -10,51 +8,17 @@ import type { RequestHandler } from './$types';
  * RunPublishResult plus the progress lines captured during the run, so the
  * panel can show the butler/swa log. Long-running by design — the client
  * awaits the response (same model as remote:sync).
+ *
+ * `artifactPath` is the UPLOAD SOURCE (2026-07-29 audit, Theme 1) —
+ * `lib.runPublish` uploads it with the author's stored credential, so an
+ * unchecked value is a local-file-to-network exfiltration primitive, not just
+ * an out-of-project read. It can't be confined to the project either: a desktop
+ * PDF export lands wherever the author chose in the Save dialog, and publishing
+ * that is the common case. So it goes through `requireContainedOrPicked` (the
+ * shared in-project-OR-dialog-picked check). Resolution matches the lib's own
+ * (`run-publish.ts` does `path.resolve(projectDir, artifactPath)`), so a
+ * relative artifact stays project-relative and can't `../` out.
  */
-
-/**
- * Authorize the UPLOAD SOURCE (2026-07-29 audit, Theme 1). `artifactPath` is
- * handed to `lib.runPublish`, which uploads that file to the configured
- * provider using the author's stored credential — so an unchecked
- * renderer-supplied value is a local-file-to-network exfiltration primitive,
- * not just an out-of-project read.
- *
- * It can't simply be confined to the project: a desktop PDF export goes
- * wherever the author chose in the Save dialog, and publishing that file is
- * the documented common case. So this mirrors the `src` policy that
- * `media:importImage`/`fs:copyFile` already use — inside the project is fine;
- * anything outside must be a path a NATIVE picker actually returned
- * (`dialog/pick-pdf-file` / `dialog/open-directory` register their results —
- * see `electron/server-bridge/picked-files.ts`).
- *
- * Resolution matches the lib's own (`run-publish.ts` does
- * `path.resolve(projectDir, artifactPath)`), so a relative artifact is
- * project-relative — and cannot `../` its way out, because the resolved path
- * is what gets checked.
- *
- * The picked-path capability is consumed and immediately RE-REGISTERED: the
- * wizard's "Check readiness" (dryRun) and the real publish are two calls with
- * the same artifact, so a strictly one-time consume would reject the second.
- * Re-registering keeps the property that actually matters — only a path this
- * process's own dialog produced is usable, never one a script invented — while
- * letting the author publish the file they picked more than once.
- */
-async function requireAuthorizedArtifact(
-  artifactPath: string,
-  projectDir: string,
-): Promise<string> {
-  const resolved = path.resolve(projectDir, artifactPath);
-  try {
-    return await requireWithinProjectRoot(resolved, 'publish:run');
-  } catch {
-    const picked = getPickedFilesHooks();
-    if (picked?.consume(resolved)) {
-      picked.register([resolved]);
-      return artifactPath;
-    }
-    error(403, 'publish:run: artifactPath is outside the open project and was not chosen from a file dialog');
-  }
-}
 export const POST: RequestHandler = defineRoute<
   {
     projectDir: string;
@@ -82,7 +46,12 @@ export const POST: RequestHandler = defineRoute<
       projectDir,
       ...(typeof body.providerId === 'string' ? { providerId: body.providerId } : {}),
       ...(typeof body.artifactPath === 'string' && body.artifactPath
-        ? { artifactPath: await requireAuthorizedArtifact(body.artifactPath, projectDir) }
+        ? {
+            artifactPath: await requireContainedOrPicked(
+              path.resolve(projectDir, body.artifactPath),
+              'publish:run',
+            ),
+          }
         : {}),
       ...(body.dryRun ? { dryRun: true } : {}),
     };

@@ -273,6 +273,8 @@ test("fs/delete: with version history, snapshots the working tree BEFORE deletin
         loadLib: async () => ({
           detectProjectSource: async () => ({ type: "local-git-folder" }),
           capabilitiesFor: () => ({ canSnapshot: true }),
+          repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
+            s?.type === "local-git-folder" ? s.repoRoot || d : d,
           providerFor: () => ({
             snapshot: async (opts: { projectDir: string; message: string }) => {
               snapshotCalls.push({ projectDir: opts.projectDir, message: opts.message });
@@ -304,6 +306,8 @@ test("fs/delete: a real 'no changes since last snapshot' rejection is swallowed 
         loadLib: async () => ({
           detectProjectSource: async () => ({ type: "local-git-folder" }),
           capabilitiesFor: () => ({ canSnapshot: true }),
+          repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
+            s?.type === "local-git-folder" ? s.repoRoot || d : d,
           providerFor: () => ({
             snapshot: async () => {
               throw new Error("no changes since the last snapshot");
@@ -330,6 +334,8 @@ test("fs/delete: a REAL snapshot failure aborts the delete — nothing is delete
         loadLib: async () => ({
           detectProjectSource: async () => ({ type: "local-git-folder" }),
           capabilitiesFor: () => ({ canSnapshot: true }),
+          repoRootForSource: (s: { type?: string; repoRoot?: string }, d: string) =>
+            s?.type === "local-git-folder" ? s.repoRoot || d : d,
           providerFor: () => ({
             snapshot: async () => {
               throw new Error("git object database is corrupt");

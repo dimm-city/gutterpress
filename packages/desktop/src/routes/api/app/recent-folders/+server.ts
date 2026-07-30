@@ -19,15 +19,15 @@ export const GET: RequestHandler = defineRoute<Record<string, never>, PrefsHooks
         // alone left a row live and clickable after the recorded book was
         // deleted or renamed, and the click just failed (2026-07-29 audit).
         const repoExists = (await hooks.existingDirectory(r.path)) !== null;
-        if (!r.lastActiveBook) return { ...r, exists: repoExists };
+        // Repo gone → dead row; the book stat below would be wasted work.
+        if (!repoExists) return { ...r, exists: false };
+        if (!r.lastActiveBook) return { ...r, exists: true };
         const bookExists = (await hooks.existingDirectory(r.lastActiveBook)) !== null;
+        if (bookExists) return { ...r, exists: true };
         // Book gone but the repo still there: keep the row usable and let it
         // open the repo, which re-resolves an active book on open.
-        if (!bookExists) {
-          const { lastActiveBook: _dropped, ...rest } = r;
-          return { ...rest, exists: repoExists };
-        }
-        return { ...r, exists: repoExists && bookExists };
+        const { lastActiveBook: _dropped, ...rest } = r;
+        return { ...rest, exists: true };
       }),
     );
   },

@@ -96,6 +96,8 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
       subPath: opts.subPath ?? "",
       repoRoot: opts.repoRoot ?? DIR,
     }),
+    repoRootForSource: (source: { type?: string; repoRoot?: string }, fallbackDir: string) =>
+      source?.type === "local-git-folder" ? source.repoRoot || fallbackDir : fallbackDir,
     providerFor: () => ({
       snapshot: async (args: unknown) => {
         snapshotCalls.push(args);

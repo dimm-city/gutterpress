@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, resolve } from "node:path";
 import { registerCheck } from "../registry";
 import type { Check, CheckContext, CheckResult } from "../types";
 import { finding, inspectionFailed } from "../policy";
-import { decodeRef } from "../../lib/asset-inline";
+import { decodeRef, proseImageRefError } from "../../lib/asset-inline";
 
 const check: Check = {
   id: "source.links.local-refs",
@@ -33,11 +33,12 @@ const check: Check = {
           if (inFence) continue;
 
           for (const { ref, kind } of extractLocalRefs(line)) {
-            // R5: a prose IMAGE must live inside the book. The build enforces
-            // this (planImageCopies), so reporting it HERE is the whole point of
-            // a pre-build check — it used to green-light an escaping ref that
-            // happened to exist and let the build fail later instead.
-            const escape = kind === "image" ? imageRefEscape(ref, ctx.inputDir) : null;
+            // R5: a prose IMAGE must live inside the book. `proseImageRefError`
+            // is the SAME predicate the build's `planImageCopies` rejects with,
+            // so this pre-build check can't drift from what the build enforces
+            // — it used to green-light an escaping ref that happened to exist and
+            // let the build fail later instead.
+            const escape = kind === "image" ? proseImageRefError(ref, ctx.inputDir) : null;
             if (escape) {
               results.push(
                 finding(check.id, {
@@ -190,27 +191,6 @@ function isLocalRef(ref: string): boolean {
  *        correct one — the same fail-open bias `isNonFileUrl` already uses
  *        for anything this check can't confidently classify.
  */
-/**
- * The build-failing reason a prose IMAGE ref is unusable, or null when it is
- * fine. Mirrors `planImageCopies` (lib/asset-inline.ts) — the code that
- * actually rejects these at build time — so validation and build agree:
- * an image referenced from Markdown prose must live inside the book folder, and
- * an absolute or `../`-escaping ref is an error telling the author to copy the
- * file in. (Shared art referenced from shared CSS is a different rule and is
- * handled by the CSS inliner, not here.)
- */
-function imageRefEscape(ref: string, projectRoot: string): string | null {
-  const cleaned = decodeRef(ref);
-  if (isAbsolute(cleaned)) {
-    return `Image reference must be relative to the project: ${ref} — copy the file into your project folder and reference it from there.`;
-  }
-  const abs = resolve(projectRoot, cleaned);
-  const rel = relative(resolve(projectRoot), abs);
-  if (rel === ".." || rel.startsWith(`..${sep}`)) {
-    return `Image reference points outside the project: ${ref} — copy the file into your project folder and reference it from there.`;
-  }
-  return null;
-}
 
 function localRefExists(
   ref: string,

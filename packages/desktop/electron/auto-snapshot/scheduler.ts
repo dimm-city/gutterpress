@@ -173,7 +173,7 @@ export class AutoSnapshotScheduler {
         // Keyed to the REPO, not the opened book: the snapshot commits the whole
         // repository, so a monorepo's books share one log instead of one file
         // each (see recovery-paths.ts's operationLogSlug).
-        logFile: this.deps.operationLogPath(operationLogSlug(source.repoRoot)),
+        logFile: this.deps.operationLogPath(operationLogSlug(lib.repoRootForSource(source, dir))),
         // Attribute the commit to the author, exactly like the manual
         // "Save a version" route does. Without this, automatic snapshots — the
         // overwhelming majority of a project's history — were committed as the

@@ -15,6 +15,7 @@ interface SnapshotEntry {
 // Local type — do NOT import from contract.ts or the lib (keeps SPA bundle clean).
 interface LibModule {
   detectProjectSource: (dir: string) => Promise<unknown>;
+  repoRootForSource: (source: unknown, fallbackDir: string) => string;
   providerFor: (source: unknown) => {
     snapshot: (opts: {
       projectDir: string;
@@ -46,10 +47,7 @@ export const POST: RequestHandler = defineRoute<
     // The log identifies the REPO, not the opened book: a snapshot commits the
     // whole repository, so a monorepo's books share one log file (matching the
     // lib's own buildRecoveryContext, which slugs the repo dir).
-    const repoRoot =
-      (source as { type?: string; repoRoot?: string })?.type === 'local-git-folder'
-        ? ((source as { repoRoot?: string }).repoRoot ?? body.projectDir)
-        : body.projectDir;
+    const repoRoot = lib.repoRootForSource(source, body.projectDir);
     return lib.providerFor(source).snapshot({
       projectDir: body.projectDir,
       message: body.message,

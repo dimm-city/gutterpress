@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { getFsGuardHooks, isWithinAnyRootCanonical } from '../../../../electron/server-bridge/fs-guard';
+import { getPickedFilesHooks } from '../../../../electron/server-bridge/picked-files';
 import { requireAbsolute } from './handler';
 
 // Route-side half of the fs-route project-scoping guard (ARCH review #37).
@@ -77,4 +78,41 @@ export async function requireWithinProjectRoot(
  */
 export async function requireProjectDir(value: unknown, routeName: string): Promise<string> {
   return requireWithinProjectRoot(requireAbsolute(value, routeName), routeName);
+}
+
+/**
+ * Authorize an absolute path that may legitimately be EITHER inside the open
+ * project OR one a native dialog just produced. Returns it, or throws 403.
+ *
+ * This is the shared shape behind `publish:run`'s upload artifact and
+ * `shell:showInFolder`'s reveal target — both accept a path the author picked
+ * in a Save/Open dialog (a PDF on the Desktop, an export destination) that is
+ * deliberately outside the project, yet must reject an arbitrary path a
+ * same-origin script invents. The security-load-bearing subtlety, spelled out
+ * once here instead of twice: on the picked branch the capability is consumed
+ * and IMMEDIATELY re-registered, so a two-call flow with the same path (a
+ * dry-run then a publish; a toast clicked twice) still works, while the
+ * property that matters — only a path THIS process's own dialog produced is
+ * usable — holds. The dialog routes (`dialog/pick-pdf-file`,
+ * `dialog/open-directory`) and the export controller register their results;
+ * see `electron/server-bridge/picked-files.ts`.
+ *
+ * `includeReadOnlyRoots` widens the in-project branch to `readOnlyRoots()`
+ * (the reveal target may be a crash-recovery backup under userData).
+ */
+export async function requireContainedOrPicked(
+  absPath: string,
+  routeName: string,
+  options: { includeReadOnlyRoots?: boolean } = {},
+): Promise<string> {
+  try {
+    return await requireWithinProjectRoot(absPath, routeName, options);
+  } catch {
+    const picked = getPickedFilesHooks();
+    if (picked?.consume(absPath)) {
+      picked.register([absPath]);
+      return absPath;
+    }
+    error(403, `${routeName}: path is outside the open project and was not chosen from a file dialog`);
+  }
 }

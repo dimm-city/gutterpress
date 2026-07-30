@@ -1,7 +1,5 @@
-import { error } from '@sveltejs/kit';
 import { getDesktopHooks, type DesktopHooks } from '$lib/server/host-hooks.js';
-import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
-import { getPickedFilesHooks } from '../../../../../electron/server-bridge/picked-files';
+import { defineRoute, requireAbsolute, requireContainedOrPicked } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
 /**
@@ -18,12 +16,12 @@ import type { RequestHandler } from './$types';
  *      dialog — deliberately OUTSIDE the project
  *
  * So case 3 is authorized the same way `publish:run`'s artifact and
- * `fs:copyFile`'s `src` are: by a path a NATIVE dialog produced in this
- * session (`electron/server-bridge/picked-files.ts`). The export controller
- * registers the PDF it actually wrote once the atomic rename succeeds, so the
- * reveal never has to trust a renderer-supplied path — and the capability is
- * consumed and immediately RE-REGISTERED, because "Show in Folder" is a toast
- * action the author can click more than once.
+ * `fs:copyFile`'s `src` are — via the shared `requireContainedOrPicked`
+ * (in-project, or read-only roots, OR a path a NATIVE dialog produced this
+ * session). The export controller registers the PDF it actually wrote once the
+ * atomic rename succeeds, so the reveal never has to trust a renderer-supplied
+ * path; the shared helper's consume-then-re-register lets the "Show in Folder"
+ * toast be clicked more than once.
  */
 export const POST: RequestHandler = defineRoute<{ filePath: string }, DesktopHooks>({
   hooks: getDesktopHooks,
@@ -31,17 +29,7 @@ export const POST: RequestHandler = defineRoute<{ filePath: string }, DesktopHoo
   validate: async (raw) => {
     const body = raw as { filePath?: unknown };
     const filePath = requireAbsolute(body.filePath, 'shell:showInFolder');
-    try {
-      await requireWithinProjectRoot(filePath, 'shell:showInFolder', {
-        includeReadOnlyRoots: true,
-      });
-    } catch {
-      const picked = getPickedFilesHooks();
-      if (!picked?.consume(filePath)) {
-        error(403, 'shell:showInFolder: path is outside the open project and was not chosen from a file dialog');
-      }
-      picked.register([filePath]);
-    }
+    await requireContainedOrPicked(filePath, 'shell:showInFolder', { includeReadOnlyRoots: true });
     return { filePath };
   },
   call: async ({ body, hooks }) => {

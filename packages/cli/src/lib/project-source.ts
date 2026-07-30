@@ -277,6 +277,20 @@ export async function detectProjectSource(
 }
 
 /**
+ * The repository root a project's git operations act on, or `fallbackDir` when
+ * the project has no repo. THE one answer to "given a classified source, what
+ * repo does its snapshot/sync/log belong to" (R9: a project is its git repo) —
+ * so callers stop re-deriving `source.type === "local-git-folder" ?
+ * source.repoRoot : dir` inline (it was hand-rolled, and double-cast to an
+ * ad-hoc `{ type?; repoRoot? }` in two SvelteKit routes that lacked the type).
+ * A `managed-github` source (never produced by {@link detectProjectSource})
+ * has no local repo root either, so it also falls back. Pure; no I/O.
+ */
+export function repoRootForSource(source: ProjectSource, fallbackDir: string): string {
+  return source.type === "local-git-folder" ? source.repoRoot || fallbackDir : fallbackDir;
+}
+
+/**
  * Map a {@link ProjectSource} to the actions the UI may offer. Pure; no I/O.
  *
  * - `local-folder`: read/write only; version history can be ENABLED (a later

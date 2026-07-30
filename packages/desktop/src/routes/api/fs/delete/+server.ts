@@ -27,6 +27,7 @@ interface ProjectSourceLike {
 interface LibModule {
   detectProjectSource: (dir: string) => Promise<ProjectSourceLike>;
   capabilitiesFor: (source: ProjectSourceLike) => { canSnapshot: boolean };
+  repoRootForSource: (source: ProjectSourceLike, fallbackDir: string) => string;
   providerFor: (source: ProjectSourceLike) => {
     snapshot: (opts: {
       projectDir: string;
@@ -65,10 +66,7 @@ export const POST: RequestHandler = defineRoute<
         // The log identifies the REPO, not the opened book — the snapshot
         // commits the whole repository (see recovery-paths.ts's
         // operationLogSlug).
-        const repoRoot =
-          (source as { type?: string; repoRoot?: string }).type === 'local-git-folder'
-            ? ((source as { repoRoot?: string }).repoRoot ?? body.projectDir)
-            : body.projectDir;
+        const repoRoot = lib.repoRootForSource(source, body.projectDir);
         await lib.providerFor(source).snapshot({
           projectDir: body.projectDir,
           message: `Before deleting ${path.basename(body.path)}`,

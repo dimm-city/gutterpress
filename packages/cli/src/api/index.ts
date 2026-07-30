@@ -64,6 +64,7 @@ export {
   capabilitiesFor,
   findEnclosingRepoDir,
   repoSubPath,
+  repoRootForSource,
 } from "../lib/project-source";
 
 export type {

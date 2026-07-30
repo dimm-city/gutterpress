@@ -521,10 +521,10 @@ export class AutoSyncOrchestrator {
       // Guard: only local-git-folder projects sync.
       const source = await lib.detectProjectSource(dir);
       if (source.type !== "local-git-folder") return releaseFlight();
-      // `|| dir` is a belt-and-braces fallback: the lib always sets repoRoot on
-      // a local-git-folder, and a missing one must degrade to the project's own
-      // slug rather than crash the sync.
-      repoRoot = source.repoRoot || dir;
+      // The repo whose log this sync belongs to (R9); the lib's helper carries
+      // the "no repo → the project itself" fallback so every caller spells it
+      // one way.
+      repoRoot = lib.repoRootForSource(source, dir);
 
       // Guard: canSync = HTTPS remote + stored credential. Local-only projects never
       // auto-sync (transparent-sync plan §6; ADR 0006 D4). Use the credential-aware
@@ -858,10 +858,12 @@ export class AutoSyncOrchestrator {
         recovery: { phase: "checking", risk: "none" },
       });
 
-      const preflightSource = await lib.detectProjectSource(dir).catch(() => null);
-      const preflightRepoRoot =
-        preflightSource?.type === "local-git-folder" ? preflightSource.repoRoot || dir : dir;
-      const preflightLogFile = this.deps.operationLogPath(operationLogSlug(preflightRepoRoot));
+      // `source` is already this dir's classification (narrowed to
+      // local-git-folder by the guard above), so derive the repo directly from
+      // it instead of a second detectProjectSource walk of the same dir.
+      const preflightLogFile = this.deps.operationLogPath(
+        operationLogSlug(lib.repoRootForSource(source, dir)),
+      );
       // Recovery can commit (e.g. a rescue snapshot of local work) — carry the
       // author's configured identity, same as every other commit path.
       const preflightIdentity = gitIdentityFrom(await this.deps.readSettings());

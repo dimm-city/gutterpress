@@ -89,6 +89,8 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
             hasRemote: true,
           }
         : { type: "local-folder" as const, path: "/book" },
+    repoRootForSource: (source: { type?: string; repoRoot?: string }, fallbackDir: string) =>
+      source?.type === "local-git-folder" ? source.repoRoot || fallbackDir : fallbackDir,
     diagnoseProjectRemote: async () => {
       calls.push("diagnoseProjectRemote");
       // Carry the fields unsyncedStateFor reads — a bare {canSync} fake is

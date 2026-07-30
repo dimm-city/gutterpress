@@ -96,6 +96,8 @@ function makeHarness(opts: FakeLibOptions = {}): Harness {
       repoRoot: opts.repoRoot ?? DIR,
       subPath: opts.subPath ?? "",
     }),
+    repoRootForSource: (source: { type?: string; repoRoot?: string }, fallbackDir: string) =>
+      source?.type === "local-git-folder" ? source.repoRoot || fallbackDir : fallbackDir,
     diagnoseProjectRemote: async () => {
       if (opts.diagnoseThrows) throw opts.diagnoseThrows;
       return { canSync: opts.canSync ?? true };

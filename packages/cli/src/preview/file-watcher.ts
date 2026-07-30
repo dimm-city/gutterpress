@@ -265,7 +265,8 @@ function isGeneratedProjectPath(relative: string): boolean {
 export function isIgnoredWatchPath(candidatePath: string, projectRoot: string): boolean {
   const normalizedRoot = projectRoot.replace(/\\/g, "/").replace(/\/+$/, "");
   const normalizedPath = candidatePath.replace(/\\/g, "/");
-  if (normalizedPath === normalizedRoot) return isDotPathUnderRoot(candidatePath, projectRoot);
+  // The root itself is not `<root>/…`, so it falls out here as "not ignored" —
+  // which is what the dotfile rule returned for it anyway.
   if (!normalizedPath.startsWith(normalizedRoot + "/")) return false;
   const relative = normalizedPath.slice(normalizedRoot.length + 1);
   return isDotPathUnderRoot(candidatePath, projectRoot) || isGeneratedProjectPath(relative);

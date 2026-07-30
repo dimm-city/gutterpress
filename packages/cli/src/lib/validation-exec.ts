@@ -1,13 +1,13 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { loadManifestWithPath, resolveConfig } from "./manifest";
 import { resolveOutputDir } from "./output-paths";
 import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./desktop";
 import { UsageError } from "./cli-args";
 import { resolveActiveStyles } from "./style-resolver";
-import { collectStyleDependencies } from "./asset-inline";
+import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline";
 import { resolveActiveMarkdownFiles } from "./markdown/index";
 import { canonicalChapterId } from "./markdown/chapter-id";
 import { formatReport, type OutputFormat } from "../checks/formatter";
@@ -87,11 +87,9 @@ async function sharedAssetDirs(
     const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
     if (!SHIPPED_ASSET_EXTS.has(ext)) continue;
     const dir = dirname(resolve(file));
-    // Already inside the project? The wholesale project scan covers it.
-    const rel = relative(projectRoot, dir);
-    const insideProject = rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`));
-    if (insideProject) continue;
-    dirs.add(dir);
+    // Only dirs OUTSIDE the project; the wholesale project scan already covers
+    // the rest. Same containment predicate the asset inliner uses.
+    if (escapesProjectRoot(projectRoot, dir)) dirs.add(dir);
   }
   return [...dirs];
 }
