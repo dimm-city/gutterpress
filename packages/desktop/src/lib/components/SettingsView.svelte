@@ -285,6 +285,16 @@
             <span class="row-hint" id="appimage-hint">
               {#if appImage.needsRepair}
                 Some of the installed files are missing or out of date — add it again to repair the entry.
+              {:else if appImage.staleCopy}
+                <!-- The failure this exists to catch: the menu entry is a
+                     complete, working install that launches an OLDER app than
+                     the one running now. Nothing else in the UI would ever
+                     say so — "installed" looked healthy, and the launcher
+                     kept opening the previous build after every upgrade. -->
+                Your menu entry launches a different copy of the app than the one
+                you're running{appImage.staleCopy.kind === "version" && appImage.staleCopy.installedVersion
+                  ? ` (version ${appImage.staleCopy.installedVersion}, and you're running ${appImage.staleCopy.runningVersion})`
+                  : ""}. Update it to launch this version from your menu.
               {:else if appImage.installed}
                 Gutterpress desktop is in your application menu, using the copy at {appImage.paths.appImage}.
               {:else}
@@ -298,7 +308,15 @@
               aria-describedby="appimage-hint"
               disabled={appImageBusy}
               onclick={() => runAppImageAction("install")}
-            >{appImageBusy ? "Working…" : appImage.needsRepair ? "Repair menu entry" : appImage.installed ? "Reinstall" : "Add to application menu"}</button>
+            >{appImageBusy
+                ? "Working…"
+                : appImage.needsRepair
+                  ? "Repair menu entry"
+                  : appImage.staleCopy
+                    ? "Update menu entry"
+                    : appImage.installed
+                      ? "Reinstall"
+                      : "Add to application menu"}</button>
             {#if appImage.installed || appImage.needsRepair}
               <button
                 class="action subtle"

@@ -1232,6 +1232,7 @@ const appImageIntegration = new AppImageIntegration({
   home: app.getPath("home"),
   xdgDataHome: process.env.XDG_DATA_HOME,
   iconSourcePath: appIconPath(),
+  appVersion: app.getVersion(),
 });
 const appImageHooksImpl: AppImageHooks = {
   getStatus: () => appImageIntegration.status(),

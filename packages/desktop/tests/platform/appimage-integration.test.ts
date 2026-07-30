@@ -18,6 +18,7 @@ import {
   AppImageIntegration,
   escapeExecArgument,
   nodeAppImageFs,
+  readEntryVersion,
   renderDesktopEntry,
   resolveAppImagePaths,
   resolveXdgDataHome,
@@ -55,6 +56,7 @@ function env(overrides: Partial<AppImageEnv> = {}): AppImageEnv {
     home,
     xdgDataHome: undefined,
     iconSourcePath: sourceIcon,
+    appVersion: "0.9.0",
     ...overrides,
   };
 }
@@ -105,7 +107,7 @@ describe("XDG_DATA_HOME resolution", () => {
 // ── Desktop entry contract ──────────────────────────────────────────────────
 
 describe("desktop entry", () => {
-  const entry = renderDesktopEntry("/home/w/.local/bin/gutterpress.AppImage");
+  const entry = renderDesktopEntry("/home/w/.local/bin/gutterpress.AppImage", "0.9.0");
 
   test("contains exactly the agreed fields", () => {
     expect(entry).toBe(
@@ -123,6 +125,9 @@ describe("desktop entry", () => {
         "MimeType=text/markdown;",
         "StartupNotify=true",
         "StartupWMClass=city.dimm.gutterpress",
+        // Which app version installed this entry — how a menu copy left
+        // behind by an upgrade becomes detectable (see stalenessOf).
+        "X-Gutterpress-Version=0.9.0",
         "",
       ].join("\n"),
     );
@@ -214,7 +219,7 @@ describe("install", () => {
     expect(await readFile(service.paths.appImage, "utf8")).toBe("APPIMAGE-BYTES");
     expect(await readFile(service.paths.icon, "utf8")).toBe("PNG-BYTES");
     expect(await readFile(service.paths.desktopEntry, "utf8")).toBe(
-      renderDesktopEntry(service.paths.appImage),
+      renderDesktopEntry(service.paths.appImage, "0.9.0"),
     );
 
     expect(await modeOf(service.paths.appImage)).toBe(0o755);
@@ -323,7 +328,7 @@ describe("atomic installation", () => {
     await expect(failing.install()).rejects.toThrow("boom: copyFile");
 
     expect(await readFile(good.paths.desktopEntry, "utf8")).toBe(
-      renderDesktopEntry(good.paths.appImage),
+      renderDesktopEntry(good.paths.appImage, "0.9.0"),
     );
     expect((await good.status()).installed).toBe(true);
   });
@@ -358,7 +363,7 @@ describe("status and repair", () => {
     await service.install();
     await writeFile(
       service.paths.desktopEntry,
-      renderDesktopEntry("/somewhere/else/gutterpress.AppImage"),
+      renderDesktopEntry("/somewhere/else/gutterpress.AppImage", "0.9.0"),
     );
 
     expect((await service.status()).needsRepair).toBe(true);
@@ -375,7 +380,7 @@ describe("status and repair", () => {
     expect(repaired.status.needsRepair).toBe(false);
     expect(await readFile(service.paths.icon, "utf8")).toBe("PNG-BYTES");
     expect(await readFile(service.paths.desktopEntry, "utf8")).toBe(
-      renderDesktopEntry(service.paths.appImage),
+      renderDesktopEntry(service.paths.appImage, "0.9.0"),
     );
 
     // And again over a fully healthy install — same result, no error.
@@ -464,5 +469,111 @@ describe("removal", () => {
   test("removing when nothing was ever installed succeeds and reports nothing removed", async () => {
     const result = await new AppImageIntegration(env()).remove();
     expect(result.removed).toEqual([]);
+  });
+});
+
+// ── Stale menu copy (#the print-md incident) ────────────────────────────────
+//
+// The failure this catches: "Add to application menu" copies the AppImage that
+// is RUNNING. Upgrade the app, don't re-run the action, and the menu keeps
+// launching the previous build — while Settings cheerfully reports "installed".
+// The user sees an app that never seems to update, with nothing anywhere
+// saying why.
+
+describe("stale menu copy detection", () => {
+  test("a fresh install reports no staleness", async () => {
+    const service = new AppImageIntegration(env());
+    await service.install();
+    const status = await service.status();
+    expect(status.installed).toBe(true);
+    expect(status.staleCopy).toBeNull();
+  });
+
+  test("running a NEWER version than the entry was installed from is flagged, with both versions", async () => {
+    await new AppImageIntegration(env({ appVersion: "0.9.0" })).install();
+
+    // Same bytes, later release: only the recorded version differs.
+    const status = await new AppImageIntegration(env({ appVersion: "0.9.1" })).status();
+
+    expect(status.installed).toBe(true);
+    expect(status.staleCopy).toEqual({
+      kind: "version",
+      installedVersion: "0.9.0",
+      runningVersion: "0.9.1",
+    });
+  });
+
+  test("a same-version rebuild is flagged by size (the locally-built-over-a-release case)", async () => {
+    await new AppImageIntegration(env()).install();
+
+    // A different binary carrying the same version string — exactly what a
+    // local build installed over a downloaded release looks like.
+    const localBuild = path.join(tmpRoot, "downloads", "local-build.AppImage");
+    await writeFile(localBuild, "APPIMAGE-BYTES-BUT-A-DIFFERENT-BUILD");
+
+    const status = await new AppImageIntegration(env({ appImagePath: localBuild })).status();
+
+    expect(status.staleCopy?.kind).toBe("build");
+    expect(status.staleCopy?.runningVersion).toBe("0.9.0");
+  });
+
+  test("running the managed copy itself is never stale (nothing to compare)", async () => {
+    const service = new AppImageIntegration(env());
+    await service.install();
+    const managed = service.paths.appImage;
+
+    const status = await new AppImageIntegration(
+      env({ appImagePath: managed, appVersion: "99.0.0" }),
+    ).status();
+
+    expect(status.runningManagedCopy).toBe(true);
+    expect(status.staleCopy).toBeNull();
+  });
+
+  test("an unmeasurable managed copy says nothing rather than crying wolf", async () => {
+    const service = new AppImageIntegration(env());
+    await service.install();
+    // Entry + icon still present, but the binary is gone: `installed` drops,
+    // and staleness must not be invented from the missing file.
+    await rm(service.paths.appImage, { force: true });
+
+    const status = await service.status();
+    expect(status.staleCopy).toBeNull();
+  });
+
+  test("an entry written before the version marker existed still detects a changed build", async () => {
+    // Simulate a pre-marker install: the entry text without the X- key.
+    const service = new AppImageIntegration(env());
+    await service.install();
+    const entry = await readFile(service.paths.desktopEntry, "utf8");
+    await writeFile(
+      service.paths.desktopEntry,
+      entry.split("\n").filter((l) => !l.startsWith("X-Gutterpress-Version=")).join("\n"),
+    );
+    const other = path.join(tmpRoot, "downloads", "other.AppImage");
+    await writeFile(other, "DIFFERENT-LENGTH-BYTES-HERE");
+
+    const status = await new AppImageIntegration(env({ appImagePath: other })).status();
+
+    // Still "installed" (the marker is not part of the match), and the size
+    // difference carries the detection on its own.
+    expect(status.installed).toBe(true);
+    expect(status.staleCopy?.kind).toBe("build");
+    expect(status.staleCopy?.installedVersion).toBeNull();
+  });
+
+  test("the version marker is not part of the entry-match, so it can't spuriously demand a repair", async () => {
+    await new AppImageIntegration(env({ appVersion: "0.9.0" })).install();
+    const status = await new AppImageIntegration(env({ appVersion: "0.9.1" })).status();
+    // A version bump alone is NOT a broken install.
+    expect(status.needsRepair).toBe(false);
+  });
+
+  test("install records the running version in the entry", async () => {
+    const service = new AppImageIntegration(env({ appVersion: "1.2.3" }));
+    await service.install();
+    const entry = await readFile(service.paths.desktopEntry, "utf8");
+    expect(entry).toContain("X-Gutterpress-Version=1.2.3");
+    expect(readEntryVersion(entry)).toBe("1.2.3");
   });
 });

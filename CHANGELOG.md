@@ -83,6 +83,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **"Add to application menu" could leave you launching an old version.** The
+  action copies the app you're running, so upgrading and not re-running it
+  left the menu opening the previous build — while Settings still said
+  "installed", with nothing anywhere explaining why the app never seemed to
+  change. Settings now detects it (by recorded version, and by comparing the
+  two copies for a same-version rebuild) and offers **Update menu entry**,
+  naming both versions.
 - Creating a project from any starter template failed in the packaged desktop
   app with a "could not create the project files" error naming a missing file
   inside `app.asar`. The app's own build was inlining a copy of the Gutterpress
