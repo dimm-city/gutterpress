@@ -52,9 +52,9 @@ export const drivethrurpgProvider: PublishProvider = {
     }
     issues.push({
       severity: "info",
-      id: "drivethrurpg/validate-profile",
+      id: "drivethrurpg/validate-target",
       message:
-        "Tip: run `gutterpress validate --profile dtrpg` for DriveThruRPG's print-compliance checks before uploading.",
+        "Tip: run `gutterpress validate --target dtrpg` for DriveThruRPG's print-compliance checks before uploading.",
     });
     return issues;
   },

@@ -13,12 +13,15 @@ import {
   rejectExtraPositionals,
   rejectUnknownFlags,
 } from "../lib/cli-args.ts";
+import { publishTargetFor } from "../lib/targets.ts";
 
 type PreflightStatus = "GO" | "FIX" | "NO-GO";
 
 export interface PreflightPayload {
-  schemaVersion: 1;
-  profile: string | null;
+  /** v2: `profile: string | null` became `targets: string[]`, and required
+   * checks are listed per target (ADR 0008). */
+  schemaVersion: 2;
+  targets: string[];
   status: PreflightStatus;
   pdf: string;
   summary: {
@@ -33,6 +36,7 @@ export interface PreflightPayload {
     skippedChecks: string[];
   };
   requiredChecks: Array<{
+    target: string;
     id: string;
     status: "pass" | "fail" | "skipped";
   }>;
@@ -64,29 +68,27 @@ function severityRank(severity: "error" | "warning" | "info"): number {
 }
 
 function buildRequiredChecks(execution: ValidationExecutionResult): Array<{
+  target: string;
   id: string;
   status: "pass" | "fail" | "skipped";
 }> {
-  if (execution.profile !== "dtrpg") return [];
-
-  const requiredIds = [
-    "pdf.structure.qpdf",
-    "pdf.print.pdfx-markers",
-    "pdf.print.pdfx-metadata",
-    "pdf.print.embedded-fonts",
-  ];
-
   const skipped = new Set(execution.tools.skippedChecks);
-  const failed = new Set(
-    execution.report.errors.map((item) => item.checkId)
-  );
   const passed = new Set(execution.report.passed);
 
-  return requiredIds.map((id) => {
-    if (skipped.has(id)) return { id, status: "skipped" as const };
-    if (failed.has(id)) return { id, status: "fail" as const };
-    if (passed.has(id)) return { id, status: "pass" as const };
-    return { id, status: "fail" as const };
+  return execution.targets.flatMap((targetId) => {
+    // Errors are target-tagged by executeValidation, so a check that failed
+    // for one destination's policy doesn't mark the other destinations' rows.
+    const failed = new Set(
+      execution.report.errors
+        .filter((item) => item.target === undefined || item.target === targetId)
+        .map((item) => item.checkId)
+    );
+    return publishTargetFor(targetId).requiredChecks.map((id) => {
+      if (skipped.has(id)) return { target: targetId, id, status: "skipped" as const };
+      if (failed.has(id)) return { target: targetId, id, status: "fail" as const };
+      if (passed.has(id)) return { target: targetId, id, status: "pass" as const };
+      return { target: targetId, id, status: "fail" as const };
+    });
   });
 }
 
@@ -120,8 +122,8 @@ export function buildPreflightPayload(
   const skippedRequired = requiredChecks.some((check) => check.status === "skipped");
 
   return {
-    schemaVersion: 1,
-    profile: execution.profile ?? null,
+    schemaVersion: 2,
+    targets: [...execution.targets],
     status: computeStatus(
       execution.report.summary.errors,
       execution.report.summary.warnings,
@@ -144,7 +146,7 @@ export function toPreflightMarkdown(payload: PreflightPayload): string {
   lines.push("# gutterpress preflight");
   lines.push("");
   lines.push(`- Status: **${payload.status}**`);
-  lines.push(`- Profile: ${payload.profile ?? "none"}`);
+  lines.push(`- Targets: ${payload.targets.length > 0 ? payload.targets.join(", ") : "none"}`);
   lines.push(`- PDF: ${payload.pdf}`);
   lines.push(
     `- Summary: ${payload.summary.errors} error(s), ${payload.summary.warnings} warning(s), ${payload.summary.passed}/${payload.summary.total} checks passed`
@@ -162,7 +164,7 @@ export function toPreflightMarkdown(payload: PreflightPayload): string {
     lines.push("");
     lines.push("## Required Checks");
     for (const check of payload.requiredChecks) {
-      lines.push(`- ${check.id}: ${check.status}`);
+      lines.push(`- [${check.target}] ${check.id}: ${check.status}`);
     }
   }
 
@@ -203,9 +205,10 @@ export const preflightArgs = {
     type: "string",
     description: "Path to manifest.yaml",
   },
-  profile: {
+  target: {
     type: "string",
-    description: "Validation profile lock (currently: dtrpg)",
+    description:
+      "Publish targets to preflight against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`",
   },
   "report-dir": {
     type: "string",
@@ -240,7 +243,7 @@ export default defineCommand({
         pdf: typeof args.pdf === "string" ? args.pdf : undefined,
         input,
         phase: "post-build",
-        profile: typeof args.profile === "string" ? args.profile : undefined,
+        target: typeof args.target === "string" ? args.target : undefined,
       });
     } catch (error) {
       log.error(error instanceof Error ? error.message : String(error));

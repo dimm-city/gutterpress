@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { loadManifestWithPath, resolveConfig } from "./manifest";
+import { loadManifestWithPath, resolveConfig, resolveConfigForTarget } from "./manifest";
 import { resolveOutputDir } from "./output-paths";
 import { log } from "../utils/logger";
 import { BOOK_HTML_FILENAME } from "./desktop";
@@ -12,7 +12,7 @@ import { resolveActiveMarkdownFiles } from "./markdown/index";
 import { canonicalChapterId } from "./markdown/chapter-id";
 import { formatReport, type OutputFormat } from "../checks/formatter";
 import { runChecks, type RunnerOptions, type RunnerReport } from "../checks/runner";
-import { getChecks, getKnownCategories } from "../checks/registry";
+import { getChecks, getKnownCategories, resolveCheckSelectors } from "../checks/registry";
 import {
   checkToolAvailability,
   reportMissingTools,
@@ -21,11 +21,11 @@ import {
 import type { CheckCategory, CheckContext, CheckPhase, CheckResult } from "../checks/types";
 import {
   applyDefaultPdfStrictChecks,
-  applyValidationProfile,
-  DTRPG_STRICT_PDF_CHECKS,
-  type ValidationProfile,
-} from "./validation-profile";
-import type { ResolvedConfig } from "../schema/manifest.types";
+  publishTargetFor,
+  resolveTargets,
+  type PublishTarget,
+} from "./targets";
+import type { GutterpressManifest, ResolvedConfig } from "../schema/manifest.types";
 
 // Trigger built-in check self-registration (audit B5: one shared entry point,
 // also imported by checks/runner.ts so the registry is never empty).
@@ -39,12 +39,14 @@ export interface ValidationExecutionArgs {
   only?: string;
   skip?: string;
   phase?: string;
-  profile?: string;
+  /** Publish-target ids (CSV) to validate against, overriding the manifest's `targets:` for this run. */
+  target?: string;
 }
 
 export interface ValidationExecutionResult {
   config: ResolvedConfig;
-  profile?: ValidationProfile;
+  /** The publish targets this run validated against (may be empty). */
+  targets: string[];
   context: CheckContext;
   runnerOptions: RunnerOptions;
   tools: ToolCheckResult;
@@ -102,11 +104,6 @@ function parseCsv(value?: string): string[] | undefined {
     .filter((s) => s.length > 0);
 }
 
-function parseProfile(raw?: string): ValidationProfile | undefined {
-  if (!raw) return undefined;
-  if (raw === "dtrpg") return raw;
-  throw new Error(`Unsupported profile: ${raw}. Supported profiles: dtrpg`);
-}
 
 /**
  * Resolve `--phase` to a real {@link CheckPhase} (or `undefined`, meaning "no
@@ -153,25 +150,26 @@ function resolveCategoryArg(raw?: string): CheckCategory[] | undefined {
   return parsed as CheckCategory[];
 }
 
-function withProfileRequiredCheckErrors(
+/**
+ * A target's required check that was SKIPPED because its tools are missing
+ * becomes a synthetic error (ADR 0008): "validated for dtrpg" must never
+ * silently mean "the dtrpg checks didn't run".
+ */
+function withTargetRequiredCheckErrors(
   report: RunnerReport,
   tools: ToolCheckResult,
-  profile?: ValidationProfile
+  target: PublishTarget
 ): RunnerReport {
-  if (!profile) return report;
-
-  const required = profile === "dtrpg" ? DTRPG_STRICT_PDF_CHECKS : [];
-  if (required.length === 0) return report;
-
   const skippedSet = new Set(tools.skippedChecks);
-  const missingRequired = required.filter((checkId) => skippedSet.has(checkId));
+  const missingRequired = target.requiredChecks.filter((checkId) => skippedSet.has(checkId));
   if (missingRequired.length === 0) return report;
 
   const syntheticErrors: CheckResult[] = missingRequired.map((checkId) => ({
     checkId,
+    target: target.id,
     severity: "error",
     message:
-      `Profile ${profile} requires check ${checkId}, but it was skipped because required tools are not available.`,
+      `Target ${target.id} requires check ${checkId}, but it was skipped because required tools are not available.`,
   }));
 
   const results = [...report.results, ...syntheticErrors];
@@ -188,6 +186,159 @@ function withProfileRequiredCheckErrors(
   };
 }
 
+/**
+ * Categories whose findings depend on the destination's policy (color
+ * spaces, ink, PDF/X, bleed…) versus those that are about the source itself.
+ * Multi-target runs execute the independent set once and the dependent set
+ * once per target.
+ */
+const TARGET_INDEPENDENT_CATEGORIES: readonly CheckCategory[] = ["source", "heuristic"];
+const TARGET_DEPENDENT_CATEGORIES: readonly CheckCategory[] = ["asset", "pdf"];
+
+/** One planned invocation of the check runner. */
+interface ValidationRun {
+  /** Target id, or null for the target-independent base run. */
+  targetId: string | null;
+  config: ResolvedConfig;
+  category: CheckCategory[] | undefined;
+  only: string[] | undefined;
+}
+
+/** Tag every result in a report with the target it was produced for. */
+function tagReport(report: RunnerReport, targetId: string): RunnerReport {
+  const tag = (r: CheckResult): CheckResult => ({ ...r, target: targetId });
+  return {
+    results: report.results.map(tag),
+    errors: report.errors.map(tag),
+    warnings: report.warnings.map(tag),
+    infos: report.infos.map(tag),
+    passed: report.passed,
+    summary: report.summary,
+  };
+}
+
+function mergeReports(reports: RunnerReport[]): RunnerReport {
+  const merged: RunnerReport = {
+    results: [],
+    errors: [],
+    warnings: [],
+    infos: [],
+    passed: [],
+    summary: { total: 0, errors: 0, warnings: 0, infos: 0, passed: 0 },
+  };
+  for (const r of reports) {
+    merged.results.push(...r.results);
+    merged.errors.push(...r.errors);
+    merged.warnings.push(...r.warnings);
+    merged.infos.push(...r.infos);
+    merged.passed.push(...r.passed);
+    merged.summary.total += r.summary.total;
+    merged.summary.errors += r.summary.errors;
+    merged.summary.warnings += r.summary.warnings;
+    merged.summary.infos += r.summary.infos;
+    merged.summary.passed += r.summary.passed;
+  }
+  return merged;
+}
+
+function mergeTools(results: ToolCheckResult[]): ToolCheckResult {
+  const available = new Set<string>();
+  const missing = new Set<string>();
+  const skippedChecks = new Set<string>();
+  const toolToChecks = new Map<string, string[]>();
+  for (const r of results) {
+    for (const t of r.available) available.add(t);
+    for (const t of r.missing) missing.add(t);
+    for (const id of r.skippedChecks) skippedChecks.add(id);
+    for (const [tool, ids] of r.toolToChecks) {
+      const merged = new Set([...(toolToChecks.get(tool) ?? []), ...ids]);
+      toolToChecks.set(tool, [...merged]);
+    }
+  }
+  return {
+    available: [...available],
+    missing: [...missing],
+    skippedChecks: [...skippedChecks],
+    toolToChecks,
+  };
+}
+
+/**
+ * Plan the runner invocations for this validation (ADR 0008).
+ *
+ * Zero targets: one run against the base config — exactly the pre-target
+ * behavior. With targets: the target-independent categories run once against
+ * the base config; the target-dependent categories run once per target
+ * against that target's config (cli > manifest > target > preset).
+ *
+ * `--only` resolves to concrete check ids first and each id follows its
+ * category to the run that owns it; unmatched (typo'd) selectors ride with
+ * the base run so the runner's unmatched-selector error fires exactly once.
+ */
+function planRuns(opts: {
+  manifest: GutterpressManifest;
+  baseConfig: ResolvedConfig;
+  targetIds: string[];
+  pdfPath: string | undefined;
+  categories: CheckCategory[] | undefined;
+  only: string[] | undefined;
+}): ValidationRun[] {
+  const { manifest, baseConfig, targetIds, pdfPath, categories, only } = opts;
+
+  const finalize = (config: ResolvedConfig): ResolvedConfig =>
+    pdfPath ? applyDefaultPdfStrictChecks(config) : config;
+
+  if (targetIds.length === 0) {
+    return [{ targetId: null, config: finalize(baseConfig), category: categories, only }];
+  }
+
+  const requested = categories ?? [...TARGET_INDEPENDENT_CATEGORIES, ...TARGET_DEPENDENT_CATEGORIES];
+  const independentCats = requested.filter((c) =>
+    (TARGET_INDEPENDENT_CATEGORIES as readonly string[]).includes(c)
+  );
+  const dependentCats = requested.filter((c) =>
+    (TARGET_DEPENDENT_CATEGORIES as readonly string[]).includes(c)
+  );
+
+  let baseOnly: string[] | undefined;
+  let dependentOnly: string[] | undefined;
+  if (only && only.length > 0) {
+    const { resolved, unmatched } = resolveCheckSelectors(only);
+    const categoryById = new Map(getChecks({}).map((c) => [c.id, c.category]));
+    const independentIds = resolved.filter((id) =>
+      (TARGET_INDEPENDENT_CATEGORIES as readonly string[]).includes(categoryById.get(id) ?? "")
+    );
+    const dependentIds = resolved.filter((id) =>
+      (TARGET_DEPENDENT_CATEGORIES as readonly string[]).includes(categoryById.get(id) ?? "")
+    );
+    baseOnly = [...independentIds, ...unmatched];
+    dependentOnly = dependentIds;
+  }
+
+  const runs: ValidationRun[] = [];
+  const baseWanted = only ? (baseOnly?.length ?? 0) > 0 : independentCats.length > 0;
+  if (baseWanted) {
+    runs.push({
+      targetId: null,
+      config: baseConfig,
+      category: only ? undefined : independentCats,
+      only: baseOnly,
+    });
+  }
+  const dependentWanted = only ? (dependentOnly?.length ?? 0) > 0 : dependentCats.length > 0;
+  if (dependentWanted) {
+    for (const targetId of targetIds) {
+      runs.push({
+        targetId,
+        config: finalize(resolveConfigForTarget({}, manifest, targetId)),
+        category: only ? undefined : dependentCats,
+        only: dependentOnly,
+      });
+    }
+  }
+  return runs;
+}
+
 export async function executeValidation(
   args: ValidationExecutionArgs
 ): Promise<ValidationExecutionResult> {
@@ -197,18 +348,15 @@ export async function executeValidation(
     { explicit: manifestPath !== undefined }
   );
 
-  const profile = parseProfile(typeof args.profile === "string" ? args.profile : undefined);
-
-  let config = resolveConfig({}, manifest);
+  const config = resolveConfig({}, manifest);
+  // Explicit --target overrides the manifest's targets for this run; both go
+  // through the registry so an unknown id fails loudly either way.
+  const targetIds = resolveTargets(
+    parseCsv(typeof args.target === "string" ? args.target : undefined),
+    config.targets
+  );
   const pdfPath = typeof args.pdf === "string" ? resolve(args.pdf) : undefined;
   const inputDir = typeof args.input === "string" ? resolve(args.input) : undefined;
-
-  if (pdfPath) {
-    config = applyDefaultPdfStrictChecks(config);
-  }
-  if (profile) {
-    config = applyValidationProfile(config, profile);
-  }
 
   if (pdfPath && !existsSync(pdfPath)) {
     throw new Error(`File not found: ${pdfPath}`);
@@ -335,17 +483,40 @@ export async function executeValidation(
     skip,
   };
 
-  const tools = await checkToolAvailability(config, runnerOptions);
-  const initialReport = await runChecks(context, {
-    ...runnerOptions,
-    skipMissingTools: tools.skippedChecks,
-  });
+  const runs = planRuns({ manifest, baseConfig: config, targetIds, pdfPath, categories, only });
 
-  const report = withProfileRequiredCheckErrors(initialReport, tools, profile);
+  const reports: RunnerReport[] = [];
+  const toolResults: ToolCheckResult[] = [];
+  for (const run of runs) {
+    const runOptions: RunnerOptions = {
+      category: run.category,
+      phase,
+      only: run.only,
+      skip,
+    };
+    const runTools = await checkToolAvailability(run.config, runOptions);
+    toolResults.push(runTools);
+    let runReport = await runChecks(
+      { ...context, config: run.config },
+      { ...runOptions, skipMissingTools: runTools.skippedChecks }
+    );
+    if (run.targetId !== null) {
+      runReport = withTargetRequiredCheckErrors(
+        runReport,
+        runTools,
+        publishTargetFor(run.targetId)
+      );
+      runReport = tagReport(runReport, run.targetId);
+    }
+    reports.push(runReport);
+  }
+
+  const tools = mergeTools(toolResults);
+  const report = mergeReports(reports);
 
   return {
     config,
-    profile,
+    targets: targetIds,
     context,
     runnerOptions,
     tools,

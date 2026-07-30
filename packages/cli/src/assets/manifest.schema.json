@@ -25,9 +25,15 @@
     },
     "preset": {
       "type": "string",
-      "description": "Vendor preset supplying the defaults for every other section (page geometry, ink limits, PDF/X settings, validation checks). Omitting it defaults to \"dtrpg\" for backward compatibility and logs a warning — set it explicitly.",
-      "enum": ["dtrpg", "book"],
-      "examples": ["dtrpg", "book"]
+      "description": "How the book is designed (ADR 0008): the base defaults for every other section — page geometry, ink limits, PDF/X settings, validation checks — all overridable field-by-field below. \"dtrpg\" = DriveThruRPG print-on-demand (the product default when omitted); \"book\" = neutral 6x9in trade book; \"custom\" = you supply page.width and page.height yourself (required).",
+      "enum": ["dtrpg", "book", "custom"],
+      "examples": ["dtrpg", "book", "custom"]
+    },
+    "targets": {
+      "type": "array",
+      "description": "Where the book is published (ADR 0008): publish targets whose requirements `gutterpress validate` checks the built PDF against — each target is validated separately, so one book can target several destinations. Omitting it uses the preset's default (dtrpg -> [\"dtrpg\"]; book/custom -> []).",
+      "items": { "type": "string", "enum": ["dtrpg", "itch"] },
+      "examples": [["dtrpg"], ["dtrpg", "itch"]]
     },
     "styles": {
       "type": "array",

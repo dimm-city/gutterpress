@@ -260,7 +260,7 @@ gutterpress validate [dir] [options]
   --skip <ids>         Skip these check IDs/selectors (comma-separated)
   --format <fmt>       text (default) | json
   --phase <p>          pre | post | all | pre-build | post-build   (default: all)
-  --profile <p>        Validation profile lock (currently: dtrpg)
+  --target <t>         Publish targets to validate against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`
 ```
 
 ### `gutterpress audit`
@@ -287,7 +287,7 @@ gutterpress preflight [dir] --pdf <path> [options]
   --pdf <path>              Path to the PDF file to preflight   (required)
   --input <dir>             Optional source directory for pre-build checks (overrides the positional directory)
   --manifest <path>         Path to manifest.yaml
-  --profile <p>             Validation profile lock (currently: dtrpg)
+  --target <t>              Publish targets to preflight against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`
   --report-dir <dir>        Output directory for preflight reports (default: alongside the PDF)
   --name <name>             Base filename for report outputs
 ```

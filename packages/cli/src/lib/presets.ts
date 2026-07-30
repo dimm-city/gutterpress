@@ -1,9 +1,33 @@
 import type { ResolvedConfig } from "../schema/manifest.types";
 import { UsageError } from "./cli-args";
 
-export type VendorPreset = Omit<ResolvedConfig, "title" | "authors">;
+/**
+ * A preset is HOW THE BOOK IS DESIGNED (ADR 0008): the base defaults for the
+ * resolved config, chiefly page/trim geometry, plus the publish targets a
+ * book of this kind validates against when the manifest lists none. Where
+ * the book is PUBLISHED is a separate concern — see ./targets.ts.
+ *
+ * Every preset value is overridable from the manifest, leaf by leaf
+ * (resolveConfig's mergeShape; precedence cli > manifest > target > preset).
+ */
+export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "targets" | "page"> {
+  /**
+   * Base page geometry in points, or `null` for `custom` — the one preset
+   * with no built-in trim, which therefore REQUIRES the manifest to supply
+   * `page.width` and `page.height` (resolveConfig enforces it).
+   */
+  page: ResolvedConfig["page"] | null;
+  /** Publish-target ids validated by default when the manifest has no `targets:`. */
+  defaultTargets: readonly string[];
+}
+
+/** The built-in preset ids, in the order pickers should offer them. */
+export const PRESET_IDS = ["dtrpg", "book", "custom"] as const;
+export type PresetId = (typeof PRESET_IDS)[number];
 
 export const DTRPG_PRESET: VendorPreset = {
+  // Books designed for DriveThruRPG validate against it by default.
+  defaultTargets: ["dtrpg"],
   // No default `styles:` (ARCH finding #2) — `resolveActiveStyles`
   // (style-resolver.ts) is the SINGLE source of default-stylesheet truth: the
   // manifest `styles:` list, else `styles/book.css`, else the first
@@ -107,6 +131,9 @@ export const DTRPG_PRESET: VendorPreset = {
  *   distribution.
  */
 export const BOOK_PRESET: VendorPreset = {
+  // A neutral trade book has no default publish target; add `targets:` when
+  // a destination's requirements should be validated.
+  defaultTargets: [],
   // No default `styles:` — see the matching comment on DTRPG_PRESET (ARCH #2).
   plugins: [],
   // No `assets` list and no `output` block: assets are discovered from the
@@ -176,9 +203,22 @@ export const BOOK_PRESET: VendorPreset = {
   },
 };
 
-export const PRESETS: Record<string, VendorPreset> = {
+/**
+ * `custom` — the author supplies the trim. Policy defaults are the neutral
+ * `book` ones (no vendor TAC cap, no PDF/X forcing); geometry is `null`, so
+ * resolveConfig demands explicit `page.width`/`page.height` (points) and
+ * errors, naming the missing fields, when they are absent.
+ */
+export const CUSTOM_PRESET: VendorPreset = {
+  ...BOOK_PRESET,
+  page: null,
+  defaultTargets: [],
+};
+
+export const PRESETS: Record<PresetId, VendorPreset> = {
   dtrpg: DTRPG_PRESET,
   book: BOOK_PRESET,
+  custom: CUSTOM_PRESET,
 };
 
 /**
@@ -219,11 +259,12 @@ export function resetWarnOnce(): void {
  * Resolve a manifest/CLI `preset` value to the {@link VendorPreset} it names
  * (UX finding M48).
  *
- * - Unset (`undefined`): defaults to `dtrpg` for backward compatibility —
- *   flipping the silent default to the new neutral `book` preset would change
- *   output geometry (trim size, TAC cap, PDF/X forcing) for every existing
- *   preset-less project. Emits a one-line warning instead so authors notice
- *   and choose explicitly; a future major version may change the default.
+ * - Unset (`undefined`): defaults to `dtrpg`. That is the PRODUCT default,
+ *   not a compatibility accident (ADR 0008): Gutterpress's primary audience
+ *   is TTRPG authors producing print-on-demand content, and a preset-less
+ *   manifest should come out print-ready for DriveThruRPG. Creation flows
+ *   always write an explicit `preset:`, so this only applies to
+ *   hand-written manifests — a one-line notice says which default applied.
  * - Unknown (typo'd) value: throws a {@link UsageError} naming the known
  *   presets, instead of silently falling back to `dtrpg` — the previous
  *   behavior turned a typo'd `preset: a4` into 621x810pt DriveThruRPG
@@ -233,16 +274,14 @@ export function resolvePreset(presetName: string | undefined): VendorPreset {
   if (presetName === undefined) {
     warnOnce(
       "no-preset-set",
-      "[gutterpress] No `preset` set in manifest.yaml — defaulting to \"dtrpg\" " +
-        "(DriveThruRPG trim size, TAC cap 240, forced PDF/X) for backward " +
-        "compatibility. Set `preset: dtrpg` to keep this explicitly, or " +
-        "`preset: book` for a neutral 6x9in trade-book default with no " +
-        "vendor TAC cap or PDF/X forcing."
+      "[gutterpress] No `preset` in manifest.yaml — using \"dtrpg\" " +
+        "(DriveThruRPG print-ready defaults). Set `preset: dtrpg`, `book`, " +
+        "or `custom` to choose explicitly."
     );
     return DTRPG_PRESET;
   }
 
-  const preset = PRESETS[presetName];
+  const preset = PRESETS[presetName as PresetId];
   if (!preset) {
     throw new UsageError(
       `Unknown preset "${presetName}". Known presets: ${Object.keys(PRESETS).join(", ")}.`

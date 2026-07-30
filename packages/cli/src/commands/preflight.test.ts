@@ -5,7 +5,7 @@ import type { ValidationExecutionResult } from "../index.ts";
 function makeExecution(overrides: Partial<ValidationExecutionResult> = {}): ValidationExecutionResult {
   return {
     config: {} as any,
-    profile: undefined,
+    targets: [],
     context: {
       config: {} as any,
       inputDir: "/tmp/input",
@@ -60,7 +60,7 @@ describe("preflight payload", () => {
 
   test("dtrpg required check skip produces NO-GO", () => {
     const execution = makeExecution({
-      profile: "dtrpg",
+      targets: ["dtrpg"],
       tools: {
         available: [],
         missing: ["qpdf"],
@@ -82,10 +82,45 @@ describe("preflight payload", () => {
     expect(payload.requiredChecks.find((c) => c.id === "pdf.structure.qpdf")?.status).toBe("skipped");
   });
 
-  test("markdown output includes status and summary", () => {
+  test("required checks are listed per target; a target-tagged failure only marks its own target", () => {
+    const failure = {
+      checkId: "pdf.print.pdfx-markers",
+      severity: "error" as const,
+      message: "no PDF/X markers",
+      target: "dtrpg",
+    };
+    const execution = makeExecution({
+      targets: ["dtrpg", "itch"],
+      report: {
+        results: [failure],
+        errors: [failure],
+        warnings: [],
+        infos: [],
+        passed: ["pdf.structure.qpdf", "pdf.print.embedded-fonts", "pdf.print.pdfx-metadata"],
+        summary: { total: 4, errors: 1, warnings: 0, infos: 0, passed: 3 },
+      },
+    });
+
+    const rows = buildPreflightPayload(execution).requiredChecks;
+    expect(rows.filter((r) => r.target === "dtrpg")).toHaveLength(4);
+    expect(
+      rows.find((r) => r.target === "dtrpg" && r.id === "pdf.print.pdfx-markers")?.status
+    ).toBe("fail");
+    // itch never requires PDF/X markers, so the dtrpg-tagged failure must not
+    // bleed into its rows — both of its required checks passed.
+    const itchRows = rows.filter((r) => r.target === "itch");
+    expect(itchRows.map((r) => r.id).sort()).toEqual([
+      "pdf.print.embedded-fonts",
+      "pdf.structure.qpdf",
+    ]);
+    expect(itchRows.every((r) => r.status === "pass")).toBe(true);
+  });
+
+  test("markdown output includes status, targets, and summary", () => {
     const payload = buildPreflightPayload(makeExecution());
     const markdown = toPreflightMarkdown(payload);
     expect(markdown).toContain("# gutterpress preflight");
     expect(markdown).toContain("Status: **GO**");
+    expect(markdown).toContain("- Targets: none");
   });
 });

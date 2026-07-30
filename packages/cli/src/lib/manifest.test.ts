@@ -86,7 +86,7 @@ test(".cjs extension with a separator is also recognized as a file path", () => 
 describe("resolveConfig characterization — merge precedence (finding #24 refactor safety net)", () => {
   test("all-preset (no cli, no manifest overrides) reproduces the dtrpg preset verbatim", () => {
     const config = resolveConfig({}, {});
-    expect(config.page).toEqual(DTRPG_PRESET.page);
+    expect(config.page).toEqual(DTRPG_PRESET.page!);
     expect(config.pdfx).toEqual(DTRPG_PRESET.pdfx);
     expect(config.ink).toEqual(DTRPG_PRESET.ink);
     expect(config.lint).toEqual(DTRPG_PRESET.lint);
@@ -105,7 +105,7 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
 
   test("preset: book selects BOOK_PRESET's geometry/ink/validate wholesale", () => {
     const config = resolveConfig({}, { preset: "book" });
-    expect(config.page).toEqual(BOOK_PRESET.page);
+    expect(config.page).toEqual(BOOK_PRESET.page!);
     expect(config.ink).toEqual(BOOK_PRESET.ink);
     expect(config.validate.checks).toEqual(BOOK_PRESET.validate.checks);
     expect(config.validate.pdf.forbidTransparency).toBe(false);
@@ -124,8 +124,8 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
   test("one-level-deep object (page): manifest sets width only, height/tolerance keep the preset default", () => {
     const config = resolveConfig({}, { page: { width: 500 } });
     expect(config.page.width).toBe(500);
-    expect(config.page.height).toBe(DTRPG_PRESET.page.height);
-    expect(config.page.tolerance).toBe(DTRPG_PRESET.page.tolerance);
+    expect(config.page.height).toBe(DTRPG_PRESET.page!.height);
+    expect(config.page.tolerance).toBe(DTRPG_PRESET.page!.tolerance);
   });
 
   test("one-level-deep object (page): cli width wins over manifest width, manifest height wins over preset", () => {
@@ -135,7 +135,7 @@ describe("resolveConfig characterization — merge precedence (finding #24 refac
     );
     expect(config.page.width).toBe(999);
     expect(config.page.height).toBe(700);
-    expect(config.page.tolerance).toBe(DTRPG_PRESET.page.tolerance);
+    expect(config.page.tolerance).toBe(DTRPG_PRESET.page!.tolerance);
   });
 
   test("one-level-deep object (pdfx): manifest overrides flavor only, icc/stripAnnotations keep preset defaults", () => {

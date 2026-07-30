@@ -643,7 +643,7 @@ describe("Manifest validate section", () => {
     });
     // ARCH #24: allowedCallouts was deprecated-and-ignored (::: syntax
     // removed 2026-05-17) yet still fully resolved into ResolvedConfig — it
-    // has since been deleted from ResolvedConfig/preset/validation-profile
+    // has since been deleted from ResolvedConfig and the presets
     // entirely; the manifest field still parses (for backward compat) but no
     // longer appears on the resolved config at all.
     expect((config.validate.source as Record<string, unknown>).allowedCallouts).toBeUndefined();

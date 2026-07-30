@@ -20,19 +20,19 @@ function formatText(report: RunnerReport): void {
   // when a long report scrolls the terminal. (Previously errors were
   // sandwiched between warnings and infos.)
   for (const r of report.infos) {
-    const loc = formatLocation(r.file, r.line, r.column);
+    const loc = targetPrefix(r.target) + formatLocation(r.file, r.line, r.column);
     log.info(`${loc}${r.message}`);
     if (r.detail) log.info(`  ${r.detail}`);
   }
 
   for (const r of report.warnings) {
-    const loc = formatLocation(r.file, r.line, r.column);
+    const loc = targetPrefix(r.target) + formatLocation(r.file, r.line, r.column);
     log.warn(`${loc}${r.message}`);
     if (r.detail) log.warn(`  ${r.detail}`);
   }
 
   for (const r of report.errors) {
-    const loc = formatLocation(r.file, r.line, r.column);
+    const loc = targetPrefix(r.target) + formatLocation(r.file, r.line, r.column);
     log.error(`${loc}${r.message}`);
     if (r.detail) log.error(`  ${r.detail}`);
   }
@@ -47,6 +47,11 @@ function formatText(report: RunnerReport): void {
   } else {
     log.success("VALIDATION PASSED");
   }
+}
+
+/** `[dtrpg] ` label on multi-target findings; empty otherwise. */
+function targetPrefix(target: string | undefined): string {
+  return target ? `[${target}] ` : "";
 }
 
 function formatJson(report: RunnerReport): void {

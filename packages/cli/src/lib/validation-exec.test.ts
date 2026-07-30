@@ -3,9 +3,9 @@
  * pure `buildPdfSummaryLines` formatter tested (validation-exec-summary.test.ts)
  * and its `--phase` alias resolution tested against the REAL check registry
  * (validation-exec-phase.test.ts). This file covers the remaining execution
- * paths: manifest/input resolution, the `--pdf` existence guard, profile
- * handling (including the `withProfileRequiredCheckErrors` synthetic-error
- * injection, which had zero coverage), phase auto-detection, `htmlPath`
+ * paths: manifest/input resolution, the `--pdf` existence guard, publish-target
+ * handling (including the `withTargetRequiredCheckErrors` synthetic-error
+ * injection, ADR 0008), phase auto-detection, `htmlPath`
  * detection, and `executeAndReport`'s ok/format branching.
  *
  * `checkToolAvailability` (checks/tool-check) and `runChecks` (checks/runner)
@@ -27,7 +27,6 @@ import * as toolCheckMod from "../checks/tool-check";
 import * as runnerMod from "../checks/runner";
 import * as formatterMod from "../checks/formatter";
 import { DTRPG_PRESET } from "./presets";
-import { DTRPG_STRICT_PDF_CHECKS } from "./validation-profile";
 import type { ToolCheckResult } from "../checks/tool-check";
 import type { RunnerReport } from "../checks/runner";
 
@@ -155,56 +154,84 @@ describe("executeValidation --pdf existence guard", () => {
   });
 });
 
-// ── profile handling ─────────────────────────────────────────────────────────
+// ── publish-target handling (ADR 0008) ───────────────────────────────────────
 
-describe("executeValidation profile handling", () => {
-  test("an unsupported --profile value throws naming the supported list", async () => {
+describe("executeValidation publish-target handling", () => {
+  test("an unknown --target value throws naming the registry", async () => {
     stubCheckExecution();
-    await expect(executeValidation({ profile: "bogus-profile" })).rejects.toThrow(
-      'Unsupported profile: bogus-profile. Supported profiles: dtrpg'
+    await expect(executeValidation({ target: "bogus" })).rejects.toThrow(
+      'Unknown publish target "bogus". Known targets: dtrpg, itch.'
     );
   });
 
-  test("profile: dtrpg locks the DTRPG preset geometry/ink/PDF-X defaults onto config", async () => {
-    const dir = await makeDir("gutterpress-vexec-dtrpg-");
+  test("a bare manifest resolves to the dtrpg preset's default target", async () => {
+    const dir = await makeDir("gutterpress-vexec-default-target-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
       stubCheckExecution();
 
-      const execution = await executeValidation({ input: dir, profile: "dtrpg" });
+      const execution = await executeValidation({ input: dir });
 
-      expect(execution.profile).toBe("dtrpg");
-      expect(execution.config.pdfx.flavor).toBe(DTRPG_PRESET.pdfx.flavor);
-      expect(execution.config.ink.maxTac).toBe(DTRPG_PRESET.ink.maxTac);
-      for (const checkId of DTRPG_STRICT_PDF_CHECKS) {
-        expect(execution.config.validate.checks[checkId]).toEqual({
-          enabled: true,
-          severity: "error",
-        });
-      }
+      expect(execution.targets).toEqual(["dtrpg"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
-  test("profile: dtrpg synthesizes an error for each required check skipped due to missing tools", async () => {
-    const dir = await makeDir("gutterpress-vexec-dtrpg-skip-");
+  test("the target-dependent run gets the target's overlaid config; the base run keeps the preset's", async () => {
+    const dir = await makeDir("gutterpress-vexec-target-overlay-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
-      const skippedId = DTRPG_STRICT_PDF_CHECKS[0];
+      // A book-preset manifest validated FOR DriveThruRPG: the destination's
+      // policy must come from the target overlay, not the preset.
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        "title: Crossover\npreset: book\n",
+        "utf-8"
+      );
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir, target: "dtrpg" });
+
+      expect(execution.targets).toEqual(["dtrpg"]);
+      // Base config keeps the book preset's neutral policy…
+      expect(execution.config.ink.maxTac).not.toBe(DTRPG_PRESET.ink.maxTac);
+      // …while the target-dependent run (asset/pdf categories) received the
+      // dtrpg overlay: base run first, then one run per target.
+      const contexts = runChecksSpy!.mock.calls.map(
+        (call: unknown[]) => call[0] as { config: typeof execution.config }
+      );
+      expect(contexts).toHaveLength(2);
+      expect(contexts[1]!.config.ink.maxTac).toBe(DTRPG_PRESET.ink.maxTac);
+      // The book preset disables PDF/X markers; the dtrpg target re-enables
+      // them as errors — the clearest sign the overlay actually applied.
+      expect(contexts[1]!.config.validate.checks["pdf.print.pdfx-markers"]).toEqual({
+        enabled: true,
+        severity: "error",
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a target's required check skipped by missing tools synthesizes a target-tagged error", async () => {
+    const dir = await makeDir("gutterpress-vexec-target-skip-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      const skippedId = "pdf.structure.qpdf";
       stubCheckExecution({
         tools: { missing: ["qpdf"], skippedChecks: [skippedId] },
-        report: {
-          summary: { total: 0, errors: 0, warnings: 0, infos: 0, passed: 0 },
-        },
       });
 
-      const execution = await executeValidation({ input: dir, profile: "dtrpg" });
+      // Bare manifest → dtrpg preset → default target dtrpg, which requires
+      // the qpdf structure check to actually run.
+      const execution = await executeValidation({ input: dir });
 
       const synthetic = execution.report.errors.find((e) => e.checkId === skippedId);
       expect(synthetic).toBeDefined();
+      expect(synthetic!.target).toBe("dtrpg");
       expect(synthetic!.message).toContain(
-        `Profile dtrpg requires check ${skippedId}, but it was skipped`
+        `Target dtrpg requires check ${skippedId}, but it was skipped`
       );
       // The synthetic error must be reflected in the summary count too, or
       // executeAndReport's ok/exit-code decision would silently ignore it.
@@ -214,18 +241,42 @@ describe("executeValidation profile handling", () => {
     }
   });
 
-  test("without a profile, a skipped tool never synthesizes a required-check error", async () => {
-    const dir = await makeDir("gutterpress-vexec-no-profile-skip-");
+  test("with an explicit empty targets list, a skipped tool never synthesizes a required-check error", async () => {
+    const dir = await makeDir("gutterpress-vexec-no-target-skip-");
     try {
       await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      // `targets: []` opts out of every destination policy — the escape hatch
+      // for authors who only want the base checks.
+      await writeFile(
+        path.join(dir, "manifest.yaml"),
+        "title: No Targets\ntargets: []\n",
+        "utf-8"
+      );
       stubCheckExecution({
         tools: { missing: ["qpdf"], skippedChecks: ["pdf.structure.qpdf"] },
       });
 
       const execution = await executeValidation({ input: dir });
 
+      expect(execution.targets).toEqual([]);
       expect(execution.report.errors).toEqual([]);
       expect(execution.report.summary.errors).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("--target with two destinations runs the dependent categories once per target", async () => {
+    const dir = await makeDir("gutterpress-vexec-multi-target-");
+    try {
+      await writeFile(path.join(dir, "chapter-01.md"), "# Hi\n", "utf-8");
+      stubCheckExecution();
+
+      const execution = await executeValidation({ input: dir, target: "dtrpg,itch" });
+
+      expect(execution.targets).toEqual(["dtrpg", "itch"]);
+      // One base run (source/heuristic) + one per target (asset/pdf).
+      expect(runChecksSpy!.mock.calls).toHaveLength(3);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
