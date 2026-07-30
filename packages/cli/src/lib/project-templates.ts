@@ -22,11 +22,13 @@ import { constants as FS, existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { isMap, isScalar, isSeq } from "yaml";
+import type { Document } from "yaml";
 
 import type { ProjectTemplateId } from "./project-scaffold.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc, scalarString } from "./manifest-doc.ts";
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline.ts";
+import { toPosixPath } from "./plugin-vendor.ts";
 import { slugify, prettify } from "./slug.ts";
 
 /** The built-in templates shipped as embedded assets. */
@@ -123,9 +125,46 @@ export interface SaveProjectAsTemplateOptions {
 /** The book-local vendor folder new entries are rewritten under (docs convention). */
 const VENDOR_DIR = "shared";
 
-/** POSIX-separator path, for manifest entries and portability across hosts. */
-function toManifestPath(p: string): string {
-  return p.split(path.sep).join("/");
+/** One out-of-book manifest ref: the yaml node and the (resolvable) path it holds. */
+type EscapingRef = { node: unknown; value: string };
+
+/** Collect the seq nodes whose extracted path escapes the book. */
+function collectEscaping(
+  nodes: readonly unknown[],
+  getValue: (node: unknown) => string | null,
+  escapes: (p: string) => boolean,
+): EscapingRef[] {
+  const out: EscapingRef[] = [];
+  for (const node of nodes) {
+    const value = getValue(node);
+    if (value !== null && escapes(value)) out.push({ node, value });
+  }
+  return out;
+}
+
+/** The file path of a plugins-list entry: `path:` for a map, the scalar otherwise
+ * (npm `name:` entries have no resolvable file and yield `null`). */
+function pluginEntryPath(node: unknown): string | null {
+  return isMap(node) ? scalarString(node.get("path", true)) : scalarString(node);
+}
+
+/** Remove the escaping entries from `seq` in place, deleting an emptied key. */
+function dropEscaping(
+  doc: Document.Parsed,
+  seq: unknown,
+  key: string,
+  escaping: readonly EscapingRef[],
+): void {
+  if (!isSeq(seq)) return;
+  const drop = new Set(escaping.map((e) => e.node));
+  seq.items = seq.items.filter((node) => !drop.has(node));
+  if (seq.items.length === 0) doc.delete(key);
+}
+
+/** Point a styles/plugins entry at a new path (scalar `.value`, or a map's `path:`). */
+function rewriteEntry(node: unknown, newPath: string): void {
+  if (isMap(node)) node.set("path", newPath);
+  else if (isScalar(node)) node.value = newPath;
 }
 
 /**
@@ -184,45 +223,22 @@ async function reconcileSharedRefs(
   const escapes = (p: string): boolean =>
     escapesProjectRoot(sourceProjectDir, path.resolve(sourceProjectDir, p));
 
-  // The escaping `styles:` entries (scalars) and authored-plugin file paths
-  // (a plugin item is a bare string OR a `{ path }` map; npm entries have no
-  // resolvable file and are skipped).
+  // Manifest refs that point OUTSIDE the captured book. A `styles:` entry is a
+  // bare scalar; a plugin entry is a scalar OR a `{ path }` map (npm `name:`
+  // entries have no resolvable file, so `pluginEntryPath` yields `null`).
   const stylesSeq = doc.get("styles", true);
-  const styleNodes = isSeq(stylesSeq) ? stylesSeq.items : [];
-  const escapingStyles = styleNodes
-    .map((node) => ({ node, value: scalarString(node) }))
-    .filter((s): s is { node: (typeof styleNodes)[number]; value: string } =>
-      s.value !== null && escapes(s.value),
-    );
-
   const pluginsSeq = doc.get("plugins", true);
-  const pluginNodes = isSeq(pluginsSeq) ? pluginsSeq.items : [];
-  const escapingPlugins = pluginNodes
-    .map((node) => {
-      const value = isMap(node) ? scalarString(node.get("path", true)) : scalarString(node);
-      return { node, value };
-    })
-    .filter((p): p is { node: (typeof pluginNodes)[number]; value: string } =>
-      p.value !== null && escapes(p.value),
-    );
+  const escapingStyles = collectEscaping(isSeq(stylesSeq) ? stylesSeq.items : [], scalarString, escapes);
+  const escapingPlugins = collectEscaping(isSeq(pluginsSeq) ? pluginsSeq.items : [], pluginEntryPath, escapes);
 
   if (escapingStyles.length === 0 && escapingPlugins.length === 0) {
     return { vendoredRefs: [], excludedRefs: [] };
   }
 
   if (mode === "exclude") {
-    const excludedRefs = [
-      ...escapingStyles.map((s) => s.value),
-      ...escapingPlugins.map((p) => p.value),
-    ];
-    if (isSeq(stylesSeq)) {
-      stylesSeq.items = styleNodes.filter((n) => !escapingStyles.some((s) => s.node === n));
-      if (stylesSeq.items.length === 0) doc.delete("styles");
-    }
-    if (isSeq(pluginsSeq)) {
-      pluginsSeq.items = pluginNodes.filter((n) => !escapingPlugins.some((p) => p.node === n));
-      if (pluginsSeq.items.length === 0) doc.delete("plugins");
-    }
+    const excludedRefs = [...escapingStyles, ...escapingPlugins].map((e) => e.value);
+    dropEscaping(doc, stylesSeq, "styles", escapingStyles);
+    dropEscaping(doc, pluginsSeq, "plugins", escapingPlugins);
     await writeManifestDoc(file, doc);
     return { vendoredRefs: [], excludedRefs };
   }
@@ -245,28 +261,26 @@ async function reconcileSharedRefs(
   const base = commonAncestorDir(externalFiles);
   const vendorDir = pickVendorDir(templateDir, base);
 
-  // Copy every external file that exists, preserving its offset from `base`.
-  for (const abs of externalFiles) {
-    if (!existsSync(abs)) continue; // missing at source — the build reports it
-    const dest = path.join(templateDir, vendorDir, path.relative(base, abs));
-    await mkdir(path.dirname(dest), { recursive: true });
-    await cp(abs, dest);
-  }
+  // Copy every external file that exists, preserving its offset from `base` so
+  // a stylesheet's own relative `url()`/`@import` still resolve after the move.
+  await Promise.all(
+    externalFiles
+      .filter((abs) => existsSync(abs)) // missing at source — the build reports it
+      .map(async (abs) => {
+        const dest = path.join(templateDir, vendorDir, path.relative(base, abs));
+        await mkdir(path.dirname(dest), { recursive: true });
+        await cp(abs, dest);
+      }),
+  );
 
-  // Rewrite each escaping entry to its new book-local path.
+  // Rewrite each escaping entry (style scalar or plugin scalar/`{path}`) to its
+  // new book-local path.
   const bookLocal = (value: string): string =>
-    toManifestPath(path.join(vendorDir, path.relative(base, path.resolve(sourceProjectDir, value))));
+    toPosixPath(path.join(vendorDir, path.relative(base, path.resolve(sourceProjectDir, value))));
   const vendoredRefs: string[] = [];
-  for (const { node, value } of escapingStyles) {
-    if (isScalar(node)) {
-      node.value = bookLocal(value);
-      vendoredRefs.push(node.value as string);
-    }
-  }
-  for (const { node, value } of escapingPlugins) {
+  for (const { node, value } of [...escapingStyles, ...escapingPlugins]) {
     const rewritten = bookLocal(value);
-    if (isMap(node)) node.set("path", rewritten);
-    else if (isScalar(node)) node.value = rewritten;
+    rewriteEntry(node, rewritten);
     vendoredRefs.push(rewritten);
   }
 
