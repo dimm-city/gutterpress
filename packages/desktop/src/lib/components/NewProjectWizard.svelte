@@ -27,12 +27,40 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  // Single screen (UX audit P3#10): name, author, template, folder and history
-  // are one short form — no Continue/Back step split.
+  // Single screen (UX audit P3#10): name, author, preset, template, folder and
+  // history are one short form — no Continue/Back step split.
   let name = $state("");
   let author = $state("");
   let parentDir = $state<string | null>(null);
   let useVersionHistory = $state(true);
+
+  // Preset choice (ADR 0008): which vendor the book is DESIGNED for. Required,
+  // deliberately NOT preselected — the page size and print rules follow from
+  // it, so the writer must make the call; Create stays disabled until they do.
+  // Kept as a local literal (labels are UI copy; the lib's PRESET_IDS is the
+  // authoritative id list and scaffoldProject rejects anything unknown).
+  type PresetChoice = "dtrpg" | "book" | "custom";
+  const PRESET_CHOICES: Array<{ id: PresetChoice; label: string; description: string }> = [
+    {
+      id: "dtrpg",
+      label: "DriveThruRPG print",
+      description: "Print-on-demand ready for DriveThruRPG: trim, ink and PDF checks preset.",
+    },
+    {
+      id: "book",
+      label: "Trade book",
+      description: "A neutral 6×9in book with no print-service rules.",
+    },
+    {
+      id: "custom",
+      label: "Custom size",
+      description: "You set the page size your book is designed for.",
+    },
+  ];
+  let selectedPreset = $state<PresetChoice | null>(null);
+  // Custom trim, in points (72pt = 1in) — string-typed for the inputs.
+  let pageWidth = $state("");
+  let pageHeight = $state("");
 
   // Template selection (#29). Built-in + custom templates, loaded on open.
   let templates = $state<TemplateInfo[]>([]);
@@ -110,13 +138,30 @@
   });
 
   let nameValid = $derived(name.trim().length > 0 && folderPreview.length > 0);
-  let canCreate = $derived(nameValid && !!parentDir && !creating);
+
+  // A saved custom template carries its manifest — preset included — as part
+  // of the captured design, so the preset picker doesn't apply to it.
+  let presetApplies = $derived(selectedTemplate?.kind !== "custom");
+  let pageWidthPt = $derived(Number(pageWidth));
+  let pageHeightPt = $derived(Number(pageHeight));
+  let customPageValid = $derived(
+    Number.isFinite(pageWidthPt) && pageWidthPt > 0 &&
+    Number.isFinite(pageHeightPt) && pageHeightPt > 0
+  );
+  let presetValid = $derived(
+    !presetApplies ||
+      (selectedPreset !== null && (selectedPreset !== "custom" || customPageValid))
+  );
+  let canCreate = $derived(nameValid && !!parentDir && presetValid && !creating);
 
   function reset() {
     name = "";
     author = "";
     parentDir = null;
     useVersionHistory = true;
+    selectedPreset = null;
+    pageWidth = "";
+    pageHeight = "";
     creating = false;
     error = null;
   }
@@ -234,6 +279,14 @@
             ? (tpl.id as "book" | "zine" | "technical")
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
+        // ADR 0008: the chosen preset (and the custom trim, in points) is
+        // written into the new manifest. A saved custom template keeps its
+        // own embedded preset instead.
+        preset: presetApplies ? (selectedPreset ?? undefined) : undefined,
+        customPage:
+          presetApplies && selectedPreset === "custom"
+            ? { width: pageWidthPt, height: pageHeightPt }
+            : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
       });
       // Remember this location as the default next time (M21) — best-effort,
@@ -305,6 +358,63 @@
           onkeydown={(e) => { if (e.key === "Enter" && canCreate) { e.preventDefault(); void create(); } }}
         />
       </label>
+
+      {#if presetApplies}
+        <div class="field">
+          <span>What are you designing it for?</span>
+          <ul class="template-list preset-list" role="radiogroup" aria-label="Book preset">
+            {#each PRESET_CHOICES as choice (choice.id)}
+              <li>
+                <button
+                  type="button"
+                  class="template-card"
+                  class:selected={selectedPreset === choice.id}
+                  role="radio"
+                  aria-checked={selectedPreset === choice.id}
+                  onclick={() => (selectedPreset = choice.id)}
+                >
+                  <span class="template-label">{choice.label}</span>
+                  <span class="template-desc">{choice.description}</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+          {#if selectedPreset === "custom"}
+            <div class="custom-page" role="group" aria-label="Custom page size">
+              <label class="page-field" for="np-page-width">
+                <span>Width (pt)</span>
+                <input
+                  id="np-page-width"
+                  bind:value={pageWidth}
+                  type="number"
+                  min="1"
+                  step="any"
+                  placeholder="612"
+                  autocomplete="off"
+                />
+              </label>
+              <span class="page-times" aria-hidden="true">×</span>
+              <label class="page-field" for="np-page-height">
+                <span>Height (pt)</span>
+                <input
+                  id="np-page-height"
+                  bind:value={pageHeight}
+                  type="number"
+                  min="1"
+                  step="any"
+                  placeholder="792"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+            <p class="page-hint">
+              In points — 72pt = 1in (US Letter is 612 × 792). This is the page
+              size your finished book is checked against; keep it matching the
+              <code>@page</code> size in your stylesheet.
+            </p>
+          {/if}
+        </div>
+      {/if}
 
       {#if templates.length > 0}
         <div class="field">
@@ -430,6 +540,33 @@
   .template-card:hover { background: var(--app-surface-hover); }
   .template-card.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
   .template-card:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .preset-list { grid-template-columns: 1fr 1fr 1fr; }
+  .custom-page {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .page-field { display: flex; flex-direction: column; gap: 4px; }
+  .page-field > span { font-size: 11px; color: var(--app-text-muted); }
+  .page-field input {
+    width: 90px;
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .page-field input:focus { outline: none; border-color: var(--app-focus-ring); }
+  .page-times { color: var(--app-text-muted); font-size: 13px; padding-bottom: 8px; }
+  .page-hint {
+    margin: 4px 0 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--app-text-muted);
+  }
+  .page-hint code { font-family: var(--app-font-mono); font-size: 10px; }
   .template-label { font-size: 13px; font-weight: 600; color: var(--app-text); display: flex; align-items: center; gap: 6px; }
   .template-tag { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 3px; padding: 0 4px; }
   .template-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }

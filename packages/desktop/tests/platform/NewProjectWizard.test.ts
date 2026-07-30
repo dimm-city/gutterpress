@@ -108,9 +108,57 @@ describe("NewProjectWizard — M21 default parentDir", () => {
     expect(src).toContain('{parentDir ? "Change…" : "Choose folder…"}');
   });
 
-  test("canCreate still requires only the title once a folder is prefilled (parentDir + name)", () => {
+  test("canCreate requires name + folder + preset choice (ADR 0008)", () => {
     const src = readSource();
-    expect(src).toMatch(/canCreate\s*=\s*\$derived\(nameValid\s*&&\s*!!parentDir\s*&&\s*!creating\)/);
+    expect(src).toMatch(
+      /canCreate\s*=\s*\$derived\(nameValid\s*&&\s*!!parentDir\s*&&\s*presetValid\s*&&\s*!creating\)/
+    );
+  });
+});
+
+describe("NewProjectWizard — ADR 0008 preset choice", () => {
+  test("the preset is deliberately NOT preselected, and reset() clears it with the trim fields", () => {
+    const src = readSource();
+    expect(src).toMatch(/let selectedPreset = \$state<PresetChoice \| null>\(null\)/);
+    const resetFn = src.slice(src.indexOf("function reset()"), src.indexOf("function parentDirOf"));
+    expect(resetFn).toContain("selectedPreset = null;");
+    expect(resetFn).toContain('pageWidth = "";');
+    expect(resetFn).toContain('pageHeight = "";');
+  });
+
+  test("all three registry presets are offered", () => {
+    const src = readSource();
+    expect(src).toMatch(/id:\s*"dtrpg"/);
+    expect(src).toMatch(/id:\s*"book"/);
+    expect(src).toMatch(/id:\s*"custom"/);
+  });
+
+  test("choosing custom requires a positive width and height before Create enables", () => {
+    const src = readSource();
+    expect(src).toMatch(/selectedPreset !== "custom" \|\| customPageValid/);
+    expect(src).toMatch(/pageWidthPt > 0/);
+    expect(src).toMatch(/pageHeightPt > 0/);
+  });
+
+  test("the picker is hidden for saved custom templates (their manifest carries the preset)", () => {
+    const src = readSource();
+    expect(src).toMatch(/presetApplies = \$derived\(selectedTemplate\?\.kind !== "custom"\)/);
+    expect(src).toContain("{#if presetApplies}");
+    // presetValid must not block Create when the picker doesn't apply.
+    expect(src).toMatch(/presetValid = \$derived\(\s*!presetApplies \|\|/);
+  });
+
+  test("create() forwards the preset and the custom trim in points, gated on presetApplies", () => {
+    const src = readSource();
+    expect(src).toMatch(/preset:\s*presetApplies \? \(selectedPreset \?\? undefined\) : undefined/);
+    expect(src).toMatch(/selectedPreset === "custom"\s*\? \{ width: pageWidthPt, height: pageHeightPt \}/);
+  });
+
+  test("the custom-trim form explains points and the @page contract", () => {
+    const src = readSource();
+    expect(src).toContain("72pt = 1in");
+    expect(src).toContain("612 × 792");
+    expect(src).toMatch(/<code>@page<\/code>/);
   });
 });
 
