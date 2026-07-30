@@ -2492,6 +2492,16 @@
   </div>
 {/if}
 
+<svelte:head>
+  <title>{
+    lifecycle.sourceMode === "url" && lifecycle.currentUrl
+      ? `${lifecycle.docTitle ?? lifecycle.currentUrl} — Gutterpress`
+      : lifecycle.currentDir
+        ? `${displayTitle} — Gutterpress`
+        : "Gutterpress desktop"
+  }</title>
+</svelte:head>
+
 <!-- inert while the start screen or full-window Settings view is up: the
       workspace keeps rendering, but never accepts interaction underneath. -->
 <div class="app-root" inert={landingVisible || projectSettingsOpen}>
