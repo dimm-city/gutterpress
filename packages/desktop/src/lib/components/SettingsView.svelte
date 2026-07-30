@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
+  import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -43,8 +44,7 @@
     { id: "app", label: "App" },
     { id: "editor", label: "Editor" },
     { id: "saving", label: "Saving" },
-    { id: "connections", label: "Connections" },
-    { id: "advanced", label: "Advanced" },
+    { id: "connections", label: "Accounts" },
   ];
   // Mounted fresh per open ({#if settingsOpen}) — the initial value is the
   // requested landing tab; navigation from there is user-driven. Sanitized:
@@ -56,7 +56,6 @@
     editor: undefined,
     saving: undefined,
     connections: undefined,
-    advanced: undefined,
   });
 
   function onTablistKeydown(e: KeyboardEvent) {
@@ -360,6 +359,41 @@
         </div>
       </section>
 
+      <!-- Advanced (for developers) — a section here since the dedicated
+           Advanced tab was retired (2026-07-30): two developer knobs did not
+           justify a whole tab. -->
+      <section class="group advanced">
+        <div class="group-head">
+          <h3>Advanced <span class="advanced-hint">for developers</span></h3>
+          <button class="reset" onclick={() => settings.resetSection("advanced")} title="Reset advanced settings to defaults">Reset</button>
+        </div>
+        <div class="row">
+          <label for="set-watcher">File watcher interval (ms)</label>
+          <input
+            id="set-watcher"
+            type="number"
+            min="50"
+            max="5000"
+            step="50"
+            value={s.advanced.fileWatcherInterval}
+            onchange={(e) => settings.set({ advanced: { fileWatcherInterval: Number((e.currentTarget as HTMLInputElement).value) } })}
+          />
+        </div>
+        <div class="row">
+          <label for="set-loglevel">Log level</label>
+          <select
+            id="set-loglevel"
+            value={s.advanced.logLevel}
+            onchange={(e) => settings.set({ advanced: { logLevel: (e.currentTarget as HTMLSelectElement).value as "error" | "warn" | "info" | "debug" } })}
+          >
+            <option value="error">Error</option>
+            <option value="warn">Warn</option>
+            <option value="info">Info</option>
+            <option value="debug">Debug</option>
+          </select>
+        </div>
+      </section>
+
       {/if}
 
       {#if activeTab === "saving"}
@@ -457,80 +491,19 @@
         </div>
       </section>
 
-      <!-- Your name on saved versions -------------------------------------- -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Your name on saved versions</h3>
-          <button class="reset" onclick={() => settings.resetSection("gitIdentity")} title="Reset the name on saved versions to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-git-author-name">Name</label>
-          <input
-            id="set-git-author-name"
-            type="text"
-            value={s.gitIdentity.authorName}
-            placeholder="Use your existing name"
-            onchange={(e) => settings.set({ gitIdentity: { authorName: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-git-author-email">Email</label>
-          <input
-            id="set-git-author-email"
-            type="email"
-            value={s.gitIdentity.authorEmail}
-            placeholder="Use your existing email"
-            onchange={(e) => settings.set({ gitIdentity: { authorEmail: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
-      </section>
-
       {/if}
 
       {#if activeTab === "connections"}
-      <!-- Connections — the ONE place to manage every stored credential AND
-           this project's sync surface: publishing accounts, GitHub, other Git
-           servers (incl. the former Advanced-setup token flow, diagnostics,
-           and Test Remote Access — consolidated 2026-07-22; the duplicate
+      <!-- Accounts — who you are (git identity, first) plus the ONE place to
+           manage every stored credential AND this project's sync surface:
+           publishing accounts, GitHub, other Git servers (incl. the former
+           Advanced-setup token flow — consolidated 2026-07-22; the duplicate
            connect form and connected-servers list it carried are gone). -->
+      <GitIdentitySection />
       <section class="group">
         <ConnectionsSettings {projectDir} />
       </section>
       {/if}
-
-    {#if activeTab === "advanced"}
-      <section class="group advanced">
-        <div class="group-head">
-          <h3>Advanced <span class="advanced-hint">for developers</span></h3>
-          <button class="reset" onclick={() => settings.resetSection("advanced")} title="Reset advanced settings to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-watcher">File watcher interval (ms)</label>
-          <input
-            id="set-watcher"
-            type="number"
-            min="50"
-            max="5000"
-            step="50"
-            value={s.advanced.fileWatcherInterval}
-            onchange={(e) => settings.set({ advanced: { fileWatcherInterval: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-loglevel">Log level</label>
-          <select
-            id="set-loglevel"
-            value={s.advanced.logLevel}
-            onchange={(e) => settings.set({ advanced: { logLevel: (e.currentTarget as HTMLSelectElement).value as "error" | "warn" | "info" | "debug" } })}
-          >
-            <option value="error">Error</option>
-            <option value="warn">Warn</option>
-            <option value="info">Info</option>
-            <option value="debug">Debug</option>
-          </select>
-        </div>
-      </section>
-    {/if}
   </div>
 </div>
 

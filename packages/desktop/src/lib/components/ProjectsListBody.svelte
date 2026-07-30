@@ -712,7 +712,7 @@
   /* Dimmed = folder not found. Use explicit full-opacity muted colors for legibility;
      opacity dimming makes text fail WCAG AA on hover surfaces. Only the icon is dimmed.
      The border-left color-coding reuses the same found/missing differentiator pattern
-     as HelpDialog's tool-status list (`.tools li.missing`), so unavailable rows read as
+     as HelpContent's tool-status list (`.tools li.missing`), so unavailable rows read as
      unavailable from the non-text cue alone, independent of the "Not found" badge text. */
   .list-row.dimmed {
     cursor: default;

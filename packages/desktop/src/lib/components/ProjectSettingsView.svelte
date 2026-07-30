@@ -13,7 +13,7 @@
    * value import — all `api.*` calls live in the controllers under
    * `$lib/routes/*-section-controller.svelte.ts`.
    *
-   * Three tabs, backed by FIVE controllers (no `$effect`: data loads on mount +
+   * Four tabs, backed by FIVE controllers (no `$effect`: data loads on mount +
    * after mutations, mirroring SettingsView/History):
    *   1. Details       — title, authors, output filename, source files
    *                      (`api.manifest.{read,setFields}`).
@@ -23,6 +23,9 @@
    *                      (UX review M35's writer-shaped merge, unchanged).
    *   3. Plugins       — configured list + toggle + validate + recommended
    *                      built-ins (`api.plugin.*`).
+   *   4. Connections   — this project's sync surface (remote diagnosis +
+   *                      Test Remote Access; `ProjectConnectionsSection`,
+   *                      self-loading — no controller).
    *
    * Cross-section refresh: applying/removing a theme changes the active
    * stylesheet, so Appearance's controller reloads Styles + Design
@@ -51,6 +54,7 @@
   import StylesSection from "$lib/components/config/StylesSection.svelte";
   import DesignSection from "$lib/components/config/DesignSection.svelte";
   import PluginsSection from "$lib/components/config/PluginsSection.svelte";
+  import ProjectConnectionsSection from "$lib/components/ProjectConnectionsSection.svelte";
 
   let {
     projectDir,
@@ -59,6 +63,7 @@
     onThemeApplied,
     onEditRawCss,
     onClose,
+    onOpenAccounts,
   }: {
     projectDir: string | null;
     /** The repo the open book belongs to — lets the pickers offer SHARED styles. */
@@ -71,6 +76,9 @@
     onEditRawCss?: (cssPath: string) => void;
     /** Close the view — return to the workspace. */
     onClose?: () => void;
+    /** Open the app Settings view on the Accounts tab (the parent closes
+     *  this view first). Used by the Connections tab's guidance. */
+    onOpenAccounts?: () => void;
   } = $props();
 
   // Covers the initial parallel load of all sections.
@@ -180,17 +188,19 @@
   const hasProject = $derived(!!projectDir);
 
   // ── Tabs (SettingsView pattern: WAI-ARIA tabs, arrow-key navigation) ──────
-  type ProjectSettingsTab = "details" | "look" | "plugins";
+  type ProjectSettingsTab = "details" | "look" | "plugins" | "connections";
   const TABS: Array<{ id: ProjectSettingsTab; label: string }> = [
     { id: "details", label: "Details" },
     { id: "look", label: "Look & style" },
     { id: "plugins", label: "Plugins" },
+    { id: "connections", label: "Connections" },
   ];
   let activeTab = $state<ProjectSettingsTab>("details");
   let tabEls = $state<Record<ProjectSettingsTab, HTMLButtonElement | undefined>>({
     details: undefined,
     look: undefined,
     plugins: undefined,
+    connections: undefined,
   });
 
   function onTablistKeydown(e: KeyboardEvent) {
@@ -271,6 +281,13 @@
 
       {#if activeTab === "plugins"}
         <PluginsSection controller={plugins} />
+      {/if}
+
+      {#if activeTab === "connections"}
+        <!-- This project's connection details (moved from the app Settings'
+             Connections tab, 2026-07-30). Accounts/credentials stay global in
+             Settings → Accounts; onOpenAccounts routes there. -->
+        <ProjectConnectionsSection {projectDir} {onOpenAccounts} />
       {/if}
     {/if}
   </div>

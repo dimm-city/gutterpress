@@ -15,7 +15,6 @@
   import RecoveryConfirmDialog from "$lib/components/RecoveryConfirmDialog.svelte";
   import RecoveryGuidanceDialog from "$lib/components/RecoveryGuidanceDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
-  import HelpDialog from "$lib/components/HelpDialog.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
@@ -323,7 +322,6 @@
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
-  let helpOpen = $state(false);
   // Operation-log desktop: opened from the StatusBar git/sync pill. Holds the
   // current project's log path (carried on the sync status stream).
   let logFilePath = $state<string | null>(null);
@@ -607,7 +605,14 @@
   // Handle for reclaiming focus after a dialog opened FROM the landing closes
   // without opening a project (the dialogs' triggerEl focus restore targets
   // the inert workspace, which is a spec no-op).
-  let landingRef = $state<{ focusLayer: () => void } | null>(null);
+  let landingRef = $state<{
+    focusLayer: () => void;
+    showTab: (tab: "projects" | "accounts" | "help") => void;
+  } | null>(null);
+  // The global help button re-opens the landing (Help tab) OVER an open
+  // workspace; closing it returns the author exactly where they left off
+  // (the workspace stays mounted, just inert, underneath).
+  let landingHelpOpen = $state(false);
 
   // The landing is the app's ONLY empty state: visible while explicitly held
   // open (startup pre-render behind it) and whenever nothing is open — a
@@ -621,6 +626,7 @@
   const landingVisible: boolean = $derived(
     landingReady &&
       (landingHold ||
+        landingHelpOpen ||
         shouldReshowLanding({
           busy: lifecycle.busy,
           hasPreviewUrl: !!lifecycle.previewUrl,
@@ -629,6 +635,21 @@
           hasUrlPreviewError: !!lifecycle.urlPreviewError,
         })),
   );
+
+  // A workspace exists behind the layer → the landing can be closed to
+  // return to it (X button + Esc). Mirrors shouldReshowLanding's "something
+  // is open" arm, so a dismiss always lands somewhere real.
+  const landingDismissible: boolean = $derived(
+    !!lifecycle.previewUrl ||
+      !!lifecycle.currentDir ||
+      (!!lifecycle.currentUrl && !lifecycle.urlPreviewError),
+  );
+
+  /** Open the start screen on its Help tab (the global help affordance). */
+  function openHelp() {
+    landingRef?.showTab("help");
+    landingHelpOpen = true;
+  }
 
   const landingStatus = $derived(
     continueStatus({
@@ -679,12 +700,30 @@
     pendingRecoveryScanDir = null;
     if (!landingVisible) return;
     landingHold = false;
+    landingHelpOpen = false;
     if (runPendingRecoveryScan && pending && pending === lifecycle.currentDir) {
       void crashRecovery.scan(pending);
     }
     // Focus lands back in the workspace once the inert flag has lifted.
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
+
+  // Launch-time Accounts nudge: an empty git identity means every saved
+  // version would be attributed to a placeholder, so the start screen lands
+  // on its Accounts tab to ask for the two fields once. Runs after the
+  // persisted settings actually load — the in-memory defaults are empty
+  // strings, so checking earlier would always fire.
+  onMount(() => {
+    void _loadSettings().then(() => {
+      const identity = settings.current.gitIdentity;
+      if (
+        landingVisible &&
+        (!identity.authorName.trim() || !identity.authorEmail.trim())
+      ) {
+        landingRef?.showTab("accounts");
+      }
+    });
+  });
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
@@ -922,7 +961,7 @@
 
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
-    "https://github.com/dimm-city/Gutterpress/blob/main/examples/Gutterpress-user-guide/01-getting-started.md";
+    "https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/01-getting-started.md";
 
   function openSetupGuide() {
     api.shell.openExternal(SETUP_GUIDE_URL).catch(() => {});
@@ -2797,7 +2836,7 @@
       }
     }}
     onOpenSettings={openSettings}
-    onOpenHelp={() => (helpOpen = true)}
+    onOpenHelp={openHelp}
   />
 </div>
 </div>
@@ -2817,10 +2856,13 @@
   errorBody={landingErrorBody}
   version={appVersion}
   showAtStartup={landingShowPref}
+  projectDir={lifecycle.currentDir}
+  dismissible={landingDismissible}
   updateReadyVersion={updateController.readyVersion}
   updateAvailableVersion={updateController.availableVersion}
   updateAvailableAction={updateController.availableAction}
   updateDownloading={updateController.downloading}
+  checkingUpdates={updateController.checking}
   onContinue={() => dismissLanding()}
   onOpenPath={(path) => void openProjectPath(path)}
   onSwitchBook={(path) => void switchBook(path)}
@@ -2830,11 +2872,12 @@
   onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
   onOpenGuide={openSetupGuide}
   onOpenSettings={openSettings}
-  onOpenHelp={() => (helpOpen = true)}
   onWhatsNew={openReleaseNotes}
   onToggleShowAtStartup={setLandingStartupPref}
   onUpdateApply={() => updateController.applyNow()}
   onUpdateDownload={() => updateController.download()}
+  onCheckForUpdates={() => updateController.check()}
+  onDismiss={() => dismissLanding()}
 />
 {#if settingsOpen}
   <section class="settings-global-view" aria-label="Settings">
@@ -2859,22 +2902,12 @@
         {toast}
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
+        onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
       />
     {/key}
   </section>
 {/if}
 
-<HelpDialog
-  bind:open={helpOpen}
-  onClose={() => {
-    if (landingVisible) landingRef?.focusLayer();
-  }}
-  onCheckForUpdates={() => updateController.check()}
-  checkingUpdates={updateController.checking}
-  updateReadyVersion={updateController.readyVersion}
-  updateAvailableVersion={updateController.availableVersion}
-  updateAvailableAction={updateController.availableAction}
-/>
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => {

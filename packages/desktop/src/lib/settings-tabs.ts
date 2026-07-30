@@ -11,11 +11,13 @@
  * tests/platform/settings-tabs.test.ts).
  */
 
-export const SETTINGS_TAB_IDS = ["app", "editor", "saving", "connections", "advanced"] as const;
+export const SETTINGS_TAB_IDS = ["app", "editor", "saving", "connections"] as const;
 
 export type SettingsTab = (typeof SETTINGS_TAB_IDS)[number];
 
-/** Collapse any unknown value to a real tab id (default "app"). */
+/** Collapse any unknown value to a real tab id (default "app"). The retired
+ *  "advanced" tab id maps to "editor", where its sections now live. */
 export function sanitizeSettingsTab(value: unknown): SettingsTab {
+  if (value === "advanced") return "editor";
   return SETTINGS_TAB_IDS.includes(value as SettingsTab) ? (value as SettingsTab) : "app";
 }

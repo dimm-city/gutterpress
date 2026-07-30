@@ -273,8 +273,8 @@ test("ARCH #42: dialog.ts exports FOCUSABLE and owns the one private trapFocus i
   expect(a11ySrc).not.toMatch(/export\s+function\s+trapFocus/);
 });
 
-test("About dialog copy reflects current save/export shortcuts", () => {
-  const src = read("src/lib/components/HelpDialog.svelte");
+test("Help content copy reflects current save/export shortcuts", () => {
+  const src = read("src/lib/components/HelpContent.svelte");
   expect(src).toContain("Save source edits");
   expect(src).toContain("{modKey}+S");
   expect(src).toContain("Export PDF");
@@ -290,7 +290,9 @@ test("settings/help live in a bottom-right status toolbar and problems overlay w
   expect(status).toContain("shell-actions");
   expect(status).toContain("z-index: var(--app-z-popover)");
   expect(page).toContain("onOpenSettings={openSettings}");
-  expect(page).toContain("onOpenHelp={() => (helpOpen = true)}");
+  // The help button routes to the welcome screen's Help tab (2026-07-30),
+  // not a modal dialog.
+  expect(page).toContain("onOpenHelp={openHelp}");
 });
 
 test("left sidebar has four content tabs (project settings moved to the full-screen view) and icon-only short tabs", () => {

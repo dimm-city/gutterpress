@@ -27,6 +27,9 @@
   import { tick } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
+  import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
+  import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
+  import HelpContent from "$lib/components/HelpContent.svelte";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
   import type { UpdaterAvailableAction } from "$lib/platform";
@@ -50,12 +53,19 @@
     errorBody = null,
     version = null,
     showAtStartup = true,
+    /** The open project dir (Accounts tab: publishing keys verify against
+     *  the platform, and some checks read the project's settings). */
+    projectDir = null,
+    /** A workspace is open behind the layer, so the landing can be closed to
+     *  return to it (shows the X, and Esc dismisses). */
+    dismissible = false,
     /** Auto-updater state — the workspace banner is inert under this layer,
      *  so the landing carries its own compact update affordance. */
     updateReadyVersion = null,
     updateAvailableVersion = null,
     updateAvailableAction = null,
     updateDownloading = false,
+    checkingUpdates = false,
     onContinue,
     onOpenPath,
     onSwitchBook,
@@ -65,11 +75,12 @@
     onOpenGitHub,
     onOpenGuide,
     onOpenSettings,
-    onOpenHelp,
     onWhatsNew,
     onToggleShowAtStartup,
     onUpdateApply,
     onUpdateDownload,
+    onCheckForUpdates,
+    onDismiss,
   }: {
     visible?: boolean;
     inactive?: boolean;
@@ -82,10 +93,13 @@
     errorBody?: string | null;
     version?: string | null;
     showAtStartup?: boolean;
+    projectDir?: string | null;
+    dismissible?: boolean;
     updateReadyVersion?: string | null;
     updateAvailableVersion?: string | null;
     updateAvailableAction?: UpdaterAvailableAction | null;
     updateDownloading?: boolean;
+    checkingUpdates?: boolean;
     onContinue?: () => void;
     onOpenPath?: (path: string) => void;
     onSwitchBook?: (path: string) => void;
@@ -95,12 +109,51 @@
     onOpenGitHub?: () => void;
     onOpenGuide?: () => void;
     onOpenSettings?: () => void;
-    onOpenHelp?: () => void;
     onWhatsNew?: () => void;
     onToggleShowAtStartup?: (show: boolean) => void;
     onUpdateApply?: () => void;
     onUpdateDownload?: () => void;
+    onCheckForUpdates?: () => void;
+    onDismiss?: () => void;
   } = $props();
+
+  // ── Tabs (Projects / Accounts / Help) ─────────────────────────────────────
+  // The landing is the app's front door: Projects carries the continue card +
+  // quick actions + book list; Accounts carries the author identity (name /
+  // email — git history accuracy) and every stored connection; Help carries
+  // the former help modal's content. The host can land on a specific tab
+  // (help button → "help"; missing identity at launch → "accounts").
+  type LandingTab = "projects" | "accounts" | "help";
+  const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
+    { id: "projects", label: "Projects" },
+    { id: "accounts", label: "Accounts" },
+    { id: "help", label: "Help" },
+  ];
+  let activeTab = $state<LandingTab>("projects");
+  let tabEls = $state<Record<LandingTab, HTMLButtonElement | undefined>>({
+    projects: undefined,
+    accounts: undefined,
+    help: undefined,
+  });
+
+  /** Host-driven tab switch (help button, launch-time accounts nudge). */
+  export function showTab(tab: LandingTab) {
+    activeTab = tab;
+  }
+
+  function onTablistKeydown(e: KeyboardEvent) {
+    const ids = LANDING_TABS.map((tab) => tab.id);
+    const current = ids.indexOf(activeTab);
+    let next: number | undefined;
+    if (e.key === "ArrowRight") next = (current + 1) % ids.length;
+    else if (e.key === "ArrowLeft") next = (current - 1 + ids.length) % ids.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = ids.length - 1;
+    if (next === undefined) return;
+    e.preventDefault();
+    activeTab = ids[next]!;
+    tabEls[activeTab]?.focus();
+  }
 
   let rootEl = $state<HTMLElement | undefined>(undefined);
   let continueBtn = $state<HTMLButtonElement | undefined>(undefined);
@@ -154,8 +207,14 @@
     // Esc inside a field means "cancel my typing", not "leave the start
     // screen" — never hijack it from form controls (e.g. the books search).
     if (isEditableTarget(e.target)) return;
-    // Esc = "get out of my way": same as Continue, but only when there is a
-    // book behind the layer to land on.
+    // Esc = "get out of my way": dismiss whenever there is a workspace behind
+    // the layer to land on (the startup pre-render, or the help overlay's
+    // "return to where you left off").
+    if (dismissible) {
+      e.preventDefault();
+      onDismiss?.();
+      return;
+    }
     if (continueTitle && !errorTitle) {
       e.preventDefault();
       onContinue?.();
@@ -210,14 +269,17 @@
               What's new <Icon name="external-link" size={12} />
             </button>
           {/if}
-          {#if onOpenHelp}
-            <button type="button" class="brand-icon-btn" onclick={onOpenHelp} title="Help & about" aria-label="Help and about">
-              <Icon name="circle-help" size={16} />
-            </button>
-          {/if}
+          <button type="button" class="brand-icon-btn" onclick={() => (activeTab = "help")} title="Help & about" aria-label="Help and about">
+            <Icon name="circle-help" size={16} />
+          </button>
           {#if onOpenSettings}
             <button type="button" class="brand-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
               <Icon name="settings" size={16} />
+            </button>
+          {/if}
+          {#if dismissible}
+            <button type="button" class="brand-icon-btn" onclick={() => onDismiss?.()} title="Close and return to your book (Esc)" aria-label="Close this screen">
+              <Icon name="x" size={16} />
             </button>
           {/if}
         </div>
@@ -233,8 +295,40 @@
           <p class="error-hint">Pick a book below, or open it from its new location.</p>
         </section>
       {:else if continueTitle}
+        <h1 class="landing-h1">Welcome back</h1>
+      {:else}
+        <section class="hero">
+          <h1 class="landing-h1 hero-title">Welcome to Gutterpress</h1>
+          <p class="hero-tagline">Turn your markdown writing into a print-ready book.</p>
+        </section>
+      {/if}
+
+      <div class="tab-bar" role="tablist" aria-label="Start screen sections" onkeydown={onTablistKeydown} tabindex="-1">
+        {#each LANDING_TABS as tab (tab.id)}
+          <button
+            id="landing-tab-{tab.id}"
+            type="button"
+            role="tab"
+            class="tab"
+            class:active={activeTab === tab.id}
+            aria-selected={activeTab === tab.id}
+            aria-controls="landing-panel"
+            tabindex={activeTab === tab.id ? 0 : -1}
+            bind:this={tabEls[tab.id]}
+            onclick={() => (activeTab = tab.id)}
+          >{tab.label}</button>
+        {/each}
+      </div>
+
+      <div
+        id="landing-panel"
+        class="tab-panel"
+        role="tabpanel"
+        aria-labelledby="landing-tab-{activeTab}"
+      >
+      {#if activeTab === "projects"}
+      {#if continueTitle && !errorTitle}
         <section class="continue-sec" aria-label="Continue where you left off">
-          <h1 class="landing-h1">Welcome back</h1>
           <div class="continue-card">
             <span class="cc-icon" aria-hidden="true"><Icon name="book-open" size={28} /></span>
             <div class="cc-info">
@@ -279,11 +373,6 @@
             </div>
           {/if}
         </section>
-      {:else}
-        <section class="hero">
-          <h1 class="landing-h1 hero-title">Welcome to Gutterpress</h1>
-          <p class="hero-tagline">Turn your markdown writing into a print-ready book.</p>
-        </section>
       {/if}
 
       <section class="quick-actions" aria-label="Quick actions">
@@ -318,6 +407,27 @@
           />
         </div>
       </section>
+      {:else if activeTab === "accounts"}
+      <section class="accounts-sec" aria-label="Your accounts">
+        <p class="tab-intro">
+          Add your name and email so your project's saved history shows who
+          made each change, and manage the services Gutterpress connects to.
+        </p>
+        <GitIdentitySection />
+        <ConnectionsSettings {projectDir} />
+      </section>
+      {:else}
+      <section class="help-sec" aria-label="Help and about">
+        <HelpContent
+          {onCheckForUpdates}
+          {checkingUpdates}
+          {updateReadyVersion}
+          {updateAvailableVersion}
+          {updateAvailableAction}
+        />
+      </section>
+      {/if}
+      </div>
 
       <footer class="landing-foot">
         <button type="button" class="landing-link" onclick={onOpenGuide}>
@@ -415,6 +525,40 @@
 
   .landing-h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--app-text); letter-spacing: -0.3px; }
   .landing-h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--app-text-secondary); text-transform: uppercase; letter-spacing: 0.6px; }
+
+  /* ── Tab bar (SettingsView pattern) ────────────────────────────────── */
+  .tab-bar {
+    display: flex;
+    gap: 2px;
+    border-bottom: 1px solid var(--app-border-subtle);
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+  .tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--app-text-muted);
+    font-size: 13px;
+    padding: 8px 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--app-text); }
+  .tab.active {
+    color: var(--app-text);
+    border-bottom-color: var(--app-accent);
+    font-weight: 600;
+  }
+  .tab:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: -2px; }
+  .tab-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    min-height: 0;
+  }
+  .tab-intro { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--app-text-secondary); }
+  .accounts-sec, .help-sec { display: flex; flex-direction: column; gap: 14px; }
 
   /* ── Continue card ─────────────────────────────────────────────────── */
   .continue-sec { display: flex; flex-direction: column; gap: 10px; }

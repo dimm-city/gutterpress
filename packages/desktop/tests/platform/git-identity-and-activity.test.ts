@@ -18,9 +18,14 @@ test("settings schema and dialog expose git author name and email", () => {
   expect(contract).toContain("AppSettings");
   expect(contract).toContain("shared-types");
   // Writer-friendly header (UX follow-up): "Git identity" → plain language.
-  expect(dialog).toContain("Your name on saved versions");
-  expect(dialog).toContain("set-git-author-name");
-  expect(dialog).toContain("set-git-author-email");
+  // The fields live in the shared GitIdentitySection (first section on the
+  // Accounts tab, also rendered by the welcome screen's Accounts tab).
+  const identity = read("src/lib/components/GitIdentitySection.svelte");
+  expect(identity).toContain("Your name &amp; email");
+  expect(identity).toContain("set-git-author-name");
+  expect(identity).toContain("set-git-author-email");
+  expect(dialog).toContain("<GitIdentitySection />");
+  expect(read("src/lib/components/WelcomeLanding.svelte")).toContain("<GitIdentitySection />");
 });
 
 test("snapshot, history enable, and sync routes pass git identity from settings", () => {

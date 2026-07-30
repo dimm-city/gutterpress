@@ -1,24 +1,26 @@
 <script lang="ts">
+  /**
+   * HelpContent — the help & about content (getting started, online-copy
+   * guide, updates, keyboard shortcuts, system info & tool status).
+   *
+   * Extracted from the retired HelpDialog modal (2026-07-30): help now lives
+   * on the welcome screen's Help tab (WelcomeLanding), opened by the global
+   * help button. This component owns its own data load (api.doctor) on mount;
+   * the host passes only the update-check wiring.
+   */
   import { isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
   import type { DoctorDiagnostics } from "$lib/api";
   import Icon from "$lib/components/Icon.svelte";
-  import { dialogBehavior } from "$lib/dialog";
   import type { UpdaterAvailableAction } from "$lib/platform";
 
   let {
-    open = $bindable(false),
-    onClose,
-    triggerEl,
     onCheckForUpdates,
     checkingUpdates = false,
     updateReadyVersion = null,
     updateAvailableVersion = null,
     updateAvailableAction = null,
   }: {
-    open?: boolean;
-    onClose?: () => void;
-    triggerEl?: HTMLButtonElement | undefined;
     /** Relocated from the toolbar: triggers the manual update check. */
     onCheckForUpdates?: () => void;
     checkingUpdates?: boolean;
@@ -35,8 +37,8 @@
   async function load() {
     loading = true;
     error = null;
-      try {
-        if (!isDesktop()) {
+    try {
+      if (!isDesktop()) {
         error = "Desktop system details are only available in the desktop app.";
         return;
       }
@@ -48,14 +50,8 @@
     }
   }
 
-  function loadOnOpen(_el: HTMLElement) {
+  function loadOnMount(_el: HTMLElement) {
     if (!data && !loading) load();
-  }
-
-  function close() {
-    // Focus restoration to `triggerEl` is handled by the dialogBehavior action.
-    open = false;
-    onClose?.();
   }
 
   function osLabel(os: string) {
@@ -119,190 +115,162 @@
   }
 </script>
 
-{#if open}
-  <div class="dlg-backdrop" onclick={close} role="presentation"></div>
+<div class="help-content" use:loadOnMount>
+  {#if loading}
+    <p class="status">Checking system…</p>
+  {:else if error}
+    <p class="status error">{error}</p>
+    <button class="retry app-btn-primary" onclick={load}>Retry</button>
+  {:else if data}
+    <section class="version-strip" aria-label="Loaded versions">
+      <div><strong>Desktop:</strong> {data.desktopVersion}</div>
+      <div><strong>Lib:</strong> {data.libVersion}</div>
+    </section>
 
-  <div class="dlg-shell" use:dialogBehavior={{ onClose: close, triggerEl, labelledBy: "help-title" }} use:loadOnOpen>
-    <header class="dlg-header">
-      <div class="dialog-title-group">
-        <h2 id="help-title">About Gutterpress</h2>
-      </div>
-      <button class="dlg-close" onclick={close} title="Close (Esc)" aria-label="Close"><Icon name="x" size={16} /></button>
-    </header>
+    <section class="getting-started">
+      <h3>Getting Started</h3>
+      <ol class="steps">
+        <li><strong>Open your project folder</strong> — click <em>Open</em> in the toolbar and choose the folder that contains your <code>manifest.yaml</code> file.</li>
+        <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
+        <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes auto-save, and {modKey}+S or the editor save button saves immediately.</li>
+        <li><strong>Keep a history of your work</strong> — click the sync/status pill to see your project's saved history and activity log.</li>
+        <li><strong>Export PDF</strong> — click <em>Export</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
+      </ol>
+      <p class="gs-note">Don't have a project yet? Visit the <button class="inline-link" onclick={openDocs}>online setup guide</button> to create one.</p>
+    </section>
 
-    <div class="dialog-body">
-      {#if loading}
-        <p class="status">Checking system…</p>
-      {:else if error}
-        <p class="status error">{error}</p>
-        <button class="dlg-primary app-btn-primary dlg-retry" onclick={load}>Retry</button>
-      {:else if data}
-        <section class="version-strip" aria-label="Loaded versions">
-          <div><strong>Desktop:</strong> {data.desktopVersion}</div>
-          <div><strong>Lib:</strong> {data.libVersion}</div>
-        </section>
+    <section class="online-copy">
+      <h3>Work with an Online Copy</h3>
+      <ul class="steps">
+        <li><strong>Open from GitHub</strong> — click <em>Open</em>, then <em>Open from GitHub…</em> to connect your GitHub account, choose a repository, and download a copy of the project to your computer.</li>
+        <li><strong>Sync Changes</strong> — when your project has an online copy, click <em>Sync</em> to send your latest work to it. If you're offline, your work stays saved on this computer and it will sync when you're back online. If your copy and the online copy both changed, Gutterpress lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
+        <li><strong>Other hosting services</strong> — if your project lives somewhere other than GitHub, open <em>Settings &gt; Accounts</em> to connect a Git server (such as Gitea or Forgejo).</li>
+      </ul>
+    </section>
 
-        <section class="getting-started">
-          <h3>Getting Started</h3>
-          <ol class="steps">
-            <li><strong>Open your project folder</strong> — click <em>Open</em> in the toolbar and choose the folder that contains your <code>manifest.yaml</code> file.</li>
-            <li><strong>Browse your document</strong> — use the arrow keys or Page Up/Down to flip through pages. Use <em>Single / Two-page</em> to switch between one page and two pages side by side.</li>
-            <li><strong>Edit your pages</strong> — click <em>Edit</em> (or press {modKey}+E) to open the markdown editor beside the preview. Your changes auto-save, and {modKey}+S or the editor save button saves immediately.</li>
-            <li><strong>Keep a history of your work</strong> — click the sync/status pill to see your project's saved history and activity log.</li>
-            <li><strong>Export PDF</strong> — click <em>Export</em> (or press {modKey}+Shift+E) when your layout looks right.</li>
-          </ol>
-          <p class="gs-note">Don't have a project yet? Visit the <button class="inline-link" onclick={openDocs}>online setup guide</button> to create one.</p>
-        </section>
+    {#if isDesktop() && onCheckForUpdates}
+      <section class="updates">
+        <h3>Updates</h3>
+        <p class="updates-note">
+          {#if updateReadyVersion}
+            An update (v{updateReadyVersion}) is ready to apply — use the update button at the top of this screen.
+          {:else if updateAvailableVersion}
+            An update (v{updateAvailableVersion}) is available — use the update button at the top of this screen to {updateAvailableAction === "open-release" ? "download it from GitHub" : "download it"}.
+          {:else}
+            Gutterpress checks for updates automatically. You can also check now.
+          {/if}
+        </p>
+        <button
+          class="update-check"
+          onclick={() => onCheckForUpdates?.()}
+          disabled={checkingUpdates}
+        >
+          <span class="update-check-icon" class:spinning={checkingUpdates}><Icon name="refresh-cw" /></span>
+          {checkingUpdates ? "Checking for updates…" : "Check for updates"}
+        </button>
+      </section>
+    {/if}
 
-        <section class="online-copy">
-          <h3>Work with an Online Copy</h3>
-          <ul class="steps">
-            <li><strong>Open from GitHub</strong> — click <em>Open</em>, then <em>Open from GitHub…</em> to connect your GitHub account, choose a repository, and download a copy of the project to your computer.</li>
-            <li><strong>Sync Changes</strong> — when your project has an online copy, click <em>Sync</em> to send your latest work to it. If you're offline, your work stays saved on this computer and it will sync when you're back online. If your copy and the online copy both changed, Gutterpress lists each file that differs and lets you choose: keep your version, use the online version, or keep both copies.</li>
-            <li><strong>Other hosting services</strong> — if your project lives somewhere other than GitHub, open the <em>More</em> menu and choose <em>Advanced setup</em> to connect a Git server (such as Gitea or Forgejo).</li>
-          </ul>
-        </section>
+    <section class="shortcuts">
+      <h3>Keyboard Shortcuts</h3>
+      <table>
+        <thead>
+          <tr><th>Action</th><th>Keys</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Navigate pages</td><td>Left / Right arrow keys, Page Up/Down</td></tr>
+          <tr><td>First / Last page</td><td>Home / End</td></tr>
+          <tr><td>Zoom in / out</td><td>+ / -</td></tr>
+          <tr><td>Fit to width</td><td>F</td></tr>
+          <tr><td>Open folder</td><td>{modKey}+O</td></tr>
+          <tr><td>Toggle editor</td><td>{modKey}+E</td></tr>
+          <tr><td>Focus mode (editor only)</td><td>{modKey}+Shift+F</td></tr>
+          <tr><td>Save source edits</td><td>{modKey}+S</td></tr>
+          <tr><td>Export PDF</td><td>{modKey}+Shift+E</td></tr>
+          <tr><td>Settings</td><td>{modKey}+,</td></tr>
+        </tbody>
+      </table>
+    </section>
 
-        {#if isDesktop() && onCheckForUpdates}
-          <section class="updates">
-            <h3>Updates</h3>
-            <p class="updates-note">
-              {#if updateReadyVersion}
-                An update (v{updateReadyVersion}) is ready to apply — close this dialog and use the banner at the top of the window.
-              {:else if updateAvailableVersion}
-                An update (v{updateAvailableVersion}) is available — close this dialog and use the banner at the top of the window to {updateAvailableAction === "open-release" ? "download it from GitHub" : "download it"}.
-              {:else}
-                Gutterpress checks for updates automatically. You can also check now.
+    <details class="system-info">
+      <summary><span class="summary-marker" aria-hidden="true"><Icon name="chevron-right" size={11} /></span>System info &amp; tool status</summary>
+
+      <section class="versions">
+        <div><strong>Desktop:</strong> {data.desktopVersion}</div>
+        <div><strong>Lib:</strong> {data.libVersion}</div>
+        <div>
+          <strong>Runtime:</strong>
+          Electron {data.electronVersion} · Chromium {data.chromeVersion} · Node {data.platform.node}
+        </div>
+        <div>
+          <strong>Platform:</strong>
+          {osLabel(data.platform.os)} {data.platform.arch} ({data.platform.release})
+        </div>
+        <div><strong>CLI config directory:</strong> <code>{data.configDir}</code></div>
+      </section>
+
+      <section class="tools">
+        <h3>Optional system tools</h3>
+        <p class="hint">
+          Gutterpress renders your preview using the built-in browser engine. The standard <strong>Export</strong> feature needs no extra tools. The optional <strong>pre-press PDF export</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
+        </p>
+        <ul>
+          {#each data.tools as t (t.bin)}
+            <li class:found={t.found} class:missing={!t.found}>
+              <div class="tool-row">
+                <span class="status-icon"><span class="status-word">{t.found ? "Found" : "Missing"}</span></span>
+                <span class="tool-name">{t.name}</span>
+                <span class="tool-version">
+                  {#if t.found}
+                    {t.version ?? "(installed)"}
+                  {:else}
+                    not found
+                  {/if}
+                </span>
+              </div>
+              {#if t.path}
+                <div class="tool-path"><code>{t.path}</code></div>
               {/if}
-            </p>
-            <button
-              class="update-check"
-              onclick={() => onCheckForUpdates?.()}
-              disabled={checkingUpdates}
-            >
-              <span class="update-check-icon" class:spinning={checkingUpdates}><Icon name="refresh-cw" /></span>
-              {checkingUpdates ? "Checking for updates…" : "Check for updates"}
-            </button>
-          </section>
-        {/if}
+              <div class="used-by">
+                {#each t.usedBy as u}
+                  <span class="badge {u.severity}">{u.severity === 'required' ? 'needed for:' : 'used by:'}</span>
+                  <span>{u.feature}</span><br />
+                {/each}
+              </div>
+              {#if !t.found}
+                <details class="install-hint">
+                  <summary>Install</summary>
+                  {#if data.platform.os === 'win32'}
+                    <p class="install-note">Run in Command Prompt or PowerShell as Administrator, or download the installer from the tool's website.</p>
+                  {:else if data.platform.os === 'darwin'}
+                    <p class="install-note">Run in Terminal. Homebrew must be installed first for brew commands.</p>
+                  {/if}
+                  <pre>{getInstallHint(t.installHint, data.platform.os)}</pre>
+                </details>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </section>
+    </details>
 
-        <section class="shortcuts">
-          <h3>Keyboard Shortcuts</h3>
-          <table>
-            <thead>
-              <tr><th>Action</th><th>Keys</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Navigate pages</td><td>Left / Right arrow keys, Page Up/Down</td></tr>
-              <tr><td>First / Last page</td><td>Home / End</td></tr>
-              <tr><td>Zoom in / out</td><td>+ / -</td></tr>
-              <tr><td>Fit to width</td><td>F</td></tr>
-              <tr><td>Open folder</td><td>{modKey}+O</td></tr>
-              <tr><td>Toggle editor</td><td>{modKey}+E</td></tr>
-              <tr><td>Focus mode (editor only)</td><td>{modKey}+Shift+F</td></tr>
-              <tr><td>Save source edits</td><td>{modKey}+S</td></tr>
-              <tr><td>Export PDF</td><td>{modKey}+Shift+E</td></tr>
-              <tr><td>Settings</td><td>{modKey}+,</td></tr>
-            </tbody>
-          </table>
-        </section>
-
-        <details class="system-info">
-          <summary><span class="summary-marker" aria-hidden="true"><Icon name="chevron-right" size={11} /></span>System info &amp; tool status</summary>
-
-        <section class="versions">
-          <div><strong>Desktop:</strong> {data.desktopVersion}</div>
-          <div><strong>Lib:</strong> {data.libVersion}</div>
-          <div>
-            <strong>Runtime:</strong>
-            Electron {data.electronVersion} · Chromium {data.chromeVersion} · Node {data.platform.node}
-          </div>
-          <div>
-            <strong>Platform:</strong>
-            {osLabel(data.platform.os)} {data.platform.arch} ({data.platform.release})
-          </div>
-          <div><strong>CLI config directory:</strong> <code>{data.configDir}</code></div>
-        </section>
-
-        <section class="tools">
-          <h3>Optional system tools</h3>
-          <p class="hint">
-            Gutterpress renders your preview using the built-in browser engine. The standard <strong>Export</strong> feature needs no extra tools. The optional <strong>pre-press PDF export</strong> (for professional print shops) additionally needs Ghostscript and qpdf.
-          </p>
-          <ul>
-            {#each data.tools as t (t.bin)}
-              <li class:found={t.found} class:missing={!t.found}>
-                <div class="tool-row">
-                  <span class="status-icon"><span class="status-word">{t.found ? "Found" : "Missing"}</span></span>
-                  <span class="tool-name">{t.name}</span>
-                  <span class="tool-version">
-                    {#if t.found}
-                      {t.version ?? "(installed)"}
-                    {:else}
-                      not found
-                    {/if}
-                  </span>
-                </div>
-                {#if t.path}
-                  <div class="tool-path"><code>{t.path}</code></div>
-                {/if}
-                <div class="used-by">
-                  {#each t.usedBy as u}
-                    <span class="badge {u.severity}">{u.severity === 'required' ? 'needed for:' : 'used by:'}</span>
-                    <span>{u.feature}</span><br />
-                  {/each}
-                </div>
-                {#if !t.found}
-                  <details class="install-hint">
-                    <summary>Install</summary>
-                    {#if data.platform.os === 'win32'}
-                      <p class="install-note">Run in Command Prompt or PowerShell as Administrator, or download the installer from the tool's website.</p>
-                    {:else if data.platform.os === 'darwin'}
-                      <p class="install-note">Run in Terminal. Homebrew must be installed first for brew commands.</p>
-                    {/if}
-                    <pre>{getInstallHint(t.installHint, data.platform.os)}</pre>
-                  </details>
-                {/if}
-              </li>
-            {/each}
-          </ul>
-        </section>
-        </details>
-
-        <footer class="dlg-actions">
-          <button class="dlg-ghost" onclick={copyReport} title="Copy system info to clipboard — useful when asking for support">
-            {copied ? "Copied!" : "Copy diagnostic info"}
-          </button>
-          <button class="dlg-ghost" onclick={openDocs}>View setup guide</button>
-          <button class="dlg-primary app-btn-primary" onclick={close}>Close</button>
-        </footer>
-      {/if}
-    </div>
-  </div>
-{/if}
+    <footer class="help-actions">
+      <button class="ghost" onclick={copyReport} title="Copy system info to clipboard — useful when asking for support">
+        {copied ? "Copied!" : "Copy diagnostic info"}
+      </button>
+      <button class="ghost" onclick={openDocs}>View setup guide</button>
+    </footer>
+  {/if}
+</div>
 
 <style>
-  @import "$lib/styles/dialog-shell.css";
-
-  /* Help/About is the widest dialog (versions, tables, tool lists). */
-  .dlg-shell {
-    width: min(720px, 92vw);
-    max-height: 88vh;
-  }
-  /* Footer is the last item INSIDE the scrolling body here, not a pinned
-     sibling — restore its original in-flow spacing (see SettingsView for
-     the same note). */
-  .dlg-actions {
-    padding: 16px 0 0;
-    margin-top: 8px;
-  }
-  .dialog-title-group { display: flex; align-items: baseline; gap: 10px; }
-  .dialog-body {
-    padding: 16px 18px;
-    overflow-y: auto;
-  }
+  .help-content { font-size: 13px; color: var(--app-text-secondary); }
   .status { margin: 8px 0; }
   .status.error { color: var(--app-error-text); font-family: var(--app-font-mono); font-size: 12px; }
+  .retry {
+    padding: 6px 14px; font-size: 13px; border-radius: 4px;
+    border-width: 1px; border-style: solid; cursor: pointer;
+  }
 
   /* Getting Started + Work with an Online Copy sections (same treatment) */
   .getting-started, .online-copy { margin-bottom: 18px; }
@@ -422,14 +390,9 @@
     overflow-wrap: anywhere;
     text-align: right;
   }
-  /* In-body Retry sits outside the .dlg-actions footer — restate its geometry. */
-  .dlg-retry {
-    padding: 6px 14px; font-size: 13px; border-radius: 4px;
-    border-width: 1px; border-style: solid; cursor: pointer;
-  }
 
-  /* 640px: this dialog's two-column shortcut table collapses well before the
-     app-wide 820px breakpoint — dialog-local layout, not an app tier. */
+  /* 640px: the two-column shortcut table collapses well before the app-wide
+     820px breakpoint — component-local layout, not an app tier. */
   @media (max-width: 640px) {
     .version-strip {
       grid-template-columns: 1fr;
@@ -469,4 +432,23 @@
     white-space: pre-wrap;
   }
   .install-note { font-size: 11px; color: var(--app-text-muted); margin: 0 0 6px; }
+
+  .help-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 16px 0 0;
+    margin-top: 8px;
+    border-top: 1px solid var(--app-border-subtle);
+  }
+  .help-actions .ghost {
+    background: transparent;
+    border: 1px solid var(--app-border);
+    color: var(--app-text-muted);
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .help-actions .ghost:hover { background: var(--app-surface-hover); color: var(--app-text); }
 </style>
