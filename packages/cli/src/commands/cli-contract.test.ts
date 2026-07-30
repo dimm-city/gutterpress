@@ -430,6 +430,8 @@ describe("parse-time usage errors keep the documented exit code", () => {
       const { exitCode, stderr } = runCli([
         "new",
         "Dash Value",
+        "--preset",
+        "book",
         "--author",
         "--draft",
         "--dir",

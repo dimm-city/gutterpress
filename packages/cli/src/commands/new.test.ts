@@ -73,6 +73,8 @@ describe("new command — arg mapping onto scaffoldProject", () => {
     await runCommand(newCommand, {
       rawArgs: [
         "My First Book",
+        "--preset",
+        "dtrpg",
         "--author",
         "Jane Author",
         "--dir",
@@ -84,6 +86,7 @@ describe("new command — arg mapping onto scaffoldProject", () => {
     });
 
     expect(captured?.name).toBe("My First Book");
+    expect(captured?.preset).toBe("dtrpg");
     expect(captured?.author).toBe("Jane Author");
     expect(captured?.parentDir).toBe(path.resolve("/tmp/parent"));
     expect(captured?.folderName).toBe("custom-folder");
@@ -98,7 +101,7 @@ describe("new command — arg mapping onto scaffoldProject", () => {
       return fakeResult();
     });
 
-    await runCommand(newCommand, { rawArgs: ["My Book"] });
+    await runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book"] });
 
     expect(captured?.versionHistory).toBe("local-git");
   });
@@ -111,7 +114,7 @@ describe("new command — arg mapping onto scaffoldProject", () => {
       return fakeResult();
     });
 
-    await runCommand(newCommand, { rawArgs: ["My Book"] });
+    await runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book"] });
 
     expect(captured?.parentDir).toBe(process.cwd());
   });
@@ -124,9 +127,86 @@ describe("new command — arg mapping onto scaffoldProject", () => {
       return fakeResult();
     });
 
-    await runCommand(newCommand, { rawArgs: ["My Book", "--template", "zine"] });
+    await runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book", "--template", "zine"] });
 
     expect(captured?.template).toBe("zine");
+  });
+});
+
+describe("new command — preset requirement (ADR 0008)", () => {
+  test("a missing --preset errors (exit 2) before scaffoldProject is called", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+
+    await expect(
+      runCommand(newCommand, { rawArgs: ["My Book"] })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+    expect(scaffoldSpy).not.toHaveBeenCalled();
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("--preset");
+  });
+
+  test("an unknown --preset errors (exit 2) naming the choices", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+
+    await expect(
+      runCommand(newCommand, { rawArgs: ["My Book", "--preset", "a4"] })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+    expect(scaffoldSpy).not.toHaveBeenCalled();
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("dtrpg, book, custom");
+  });
+
+  test("--preset custom without --page-width/--page-height errors (exit 2)", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+
+    await expect(
+      runCommand(newCommand, { rawArgs: ["My Book", "--preset", "custom"] })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+    expect(scaffoldSpy).not.toHaveBeenCalled();
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("72pt = 1in");
+  });
+
+  test("--preset custom with page flags maps onto customPage (points)", async () => {
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    let captured: CreateProjectOptions | undefined;
+    stubScaffold(async (opts) => {
+      captured = opts;
+      return fakeResult();
+    });
+
+    await runCommand(newCommand, {
+      rawArgs: [
+        "My Book",
+        "--preset",
+        "custom",
+        "--page-width",
+        "612",
+        "--page-height",
+        "792",
+        "--page-tolerance",
+        "1.5",
+      ],
+    });
+
+    expect(captured?.preset).toBe("custom");
+    expect(captured?.customPage).toEqual({ width: 612, height: 792, tolerance: 1.5 });
+  });
+
+  test("a non-numeric --page-width errors (exit 2) before scaffoldProject is called", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+
+    await expect(
+      runCommand(newCommand, {
+        rawArgs: ["My Book", "--preset", "custom", "--page-width", "six", "--page-height", "792"],
+      })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+    expect(scaffoldSpy).not.toHaveBeenCalled();
   });
 });
 
@@ -169,7 +249,7 @@ describe("new command — validation and exit codes", () => {
       throw makeCreateProjectError("scaffold-io", "disk write failed");
     });
 
-    await expect(runCommand(newCommand, { rawArgs: ["My Book"] })).rejects.toThrow(
+    await expect(runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book"] })).rejects.toThrow(
       new RegExp(`process\\.exit\\(${EXIT_CODES.PIPELINE}\\)`)
     );
   });
@@ -183,7 +263,7 @@ describe("new command — validation and exit codes", () => {
         throw makeCreateProjectError(code, `simulated ${code}`);
       });
 
-      await expect(runCommand(newCommand, { rawArgs: ["My Book"] })).rejects.toThrow(
+      await expect(runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book"] })).rejects.toThrow(
         new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`)
       );
     }
@@ -194,7 +274,7 @@ describe("new command — validation and exit codes", () => {
     consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
     stubScaffold(async () => fakeResult());
 
-    await runCommand(newCommand, { rawArgs: ["My Book"] });
+    await runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book"] });
 
     expect(exitSpy).not.toHaveBeenCalled();
   });

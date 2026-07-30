@@ -244,6 +244,7 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
         const result = await scaffoldProject({
           name: `Preset Check ${id}`,
           parentDir: parent,
+          preset: "book",
           template: id,
           versionHistory: "none",
         });

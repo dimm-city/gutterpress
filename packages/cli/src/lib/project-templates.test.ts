@@ -35,6 +35,7 @@ test("each built-in template scaffolds into a valid project", async () => {
         name: `Demo ${id}`,
         author: "Tester",
         parentDir: parent,
+        preset: "book",
         template: id,
         versionHistory: "none",
       });
@@ -59,6 +60,7 @@ test("saveProjectAsTemplate captures an existing project as a reusable template"
     const result = await scaffoldProject({
       name: "My Source",
       parentDir: parent,
+      preset: "book",
       template: "book",
       versionHistory: "none",
     });
@@ -190,6 +192,7 @@ test("saveProjectAsTemplate slugs the id across diacritics and punctuation", asy
     const result = await scaffoldProject({
       name: "Slug Src",
       parentDir: parent,
+      preset: "book",
       versionHistory: "none",
     });
     const saved = await saveProjectAsTemplate({
@@ -227,6 +230,7 @@ test("listCustomTemplates returns saved templates and [] for an empty root", asy
       const result = await scaffoldProject({
         name: "Src",
         parentDir: parent,
+        preset: "book",
         versionHistory: "none",
       });
       await saveProjectAsTemplate({

@@ -64,7 +64,7 @@ uses its bundled browser for standard PDF export.
 
 ```sh
 # Scaffold a new project (manifest + starter chapter + stylesheet)
-  gutterpress new "My First Book"
+  gutterpress new "My First Book" --preset dtrpg
 
 # Build a PDF from a project directory
   gutterpress build ./my-book
@@ -143,16 +143,20 @@ source.
 
 ### `gutterpress new`
 
-Scaffold a new project from an embedded starter template — the fastest way to start writing (see [Quick start](#quick-start)).
+Scaffold a new project from an embedded starter template — the fastest way to start writing (see [Quick start](#quick-start)). Every new book picks the vendor preset it's designed for: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
 
 ```sh
-gutterpress new <name> [options]
+gutterpress new <name> --preset <id> [options]
 
-  --author <name>     Author name to record in the project
-  --dir <path>         Parent directory to create the project in (default: current directory)
-  --folder <name>      Folder name to create (default: a slug of the project name)
-  --template <id>      Starter template: book, zine, technical (default: book)
-  --git                Initialise local version history (default: true; use --no-git to skip)
+  --preset <id>            Vendor preset the book is designed for: dtrpg, book, custom (required)
+  --author <name>          Author name to record in the project
+  --dir <path>             Parent directory to create the project in (default: current directory)
+  --folder <name>          Folder name to create (default: a slug of the project name)
+  --template <id>          Starter template: book, zine, technical (default: book)
+  --page-width <pt>        Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)
+  --page-height <pt>       Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)
+  --page-tolerance <pt>    Allowed trim deviation when validating a built PDF (default: 0.5)
+  --git                    Initialise local version history (default: true; use --no-git to skip)
   --no-git
 ```
 

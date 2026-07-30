@@ -1,7 +1,7 @@
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
-import { scaffoldProject, BUILT_IN_TEMPLATE_IDS } from "../index.ts";
-import type { CreateProjectError, ProjectTemplateId } from "../index.ts";
+import { scaffoldProject, BUILT_IN_TEMPLATE_IDS, PRESET_IDS } from "../index.ts";
+import type { CreateProjectError, PresetId, ProjectTemplateId } from "../index.ts";
 import {
   EXIT_CODES,
   UsageError,
@@ -15,13 +15,17 @@ import {
  * A thin front-end over the shared lib's `scaffoldProject` (#25): the same
  * function the desktop wizard calls. Works fully headless — no desktop required.
  *
- *   gutterpress new "My First Book" --author "Jane" --dir ~/Books [--no-git]
+ *   gutterpress new "My First Book" --preset dtrpg --author "Jane" --dir ~/Books [--no-git]
  */
 export const newArgs = {
   name: {
     type: "positional",
     description: "Project name (becomes the title and folder name)",
     required: true,
+  },
+  preset: {
+    type: "string",
+    description: `Vendor preset the book is designed for: ${PRESET_IDS.join(", ")} (required; custom also needs --page-width/--page-height)`,
   },
   author: {
     type: "string",
@@ -39,12 +43,35 @@ export const newArgs = {
     type: "string",
     description: `Starter template: ${BUILT_IN_TEMPLATE_IDS.join(", ")} (default: book)`,
   },
+  "page-width": {
+    type: "string",
+    description: "Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)",
+  },
+  "page-height": {
+    type: "string",
+    description: "Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)",
+  },
+  "page-tolerance": {
+    type: "string",
+    description: "Allowed trim deviation in points when validating a built PDF (default: 0.5)",
+  },
   git: {
     type: "boolean",
     description: "Initialise local version history (default: true; use --no-git to skip)",
     default: true,
   },
 } as const;
+
+/** Parse a points flag ("612", "612.5") or exit 2 with a usable message. */
+function parsePoints(raw: unknown, flag: string): number | undefined {
+  if (typeof raw !== "string" || raw === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    console.error(`Invalid ${flag} value: "${raw}". Expected a positive number of points (72pt = 1in).`);
+    process.exit(EXIT_CODES.USAGE);
+  }
+  return value;
+}
 
 export default defineCommand({
   meta: {
@@ -80,6 +107,35 @@ export default defineCommand({
       template = args.template as ProjectTemplateId;
     }
 
+    // ADR 0008: creating a book requires choosing the preset it's designed
+    // for. Validated here for a first-class CLI message; scaffoldProject
+    // enforces the same rule for every caller.
+    const preset = typeof args.preset === "string" && args.preset ? args.preset : undefined;
+    if (!preset || !(PRESET_IDS as readonly string[]).includes(preset)) {
+      console.error(
+        preset
+          ? `Unknown preset "${preset}". Choose one of: ${PRESET_IDS.join(", ")}.`
+          : `A preset is required: --preset <${PRESET_IDS.join("|")}>. ` +
+              `Use "dtrpg" for DriveThruRPG print-on-demand, "book" for a neutral 6x9in trade book, ` +
+              `or "custom" with --page-width/--page-height (points; 72pt = 1in).`,
+      );
+      process.exit(EXIT_CODES.USAGE);
+    }
+
+    const pageWidth = parsePoints(args["page-width"], "--page-width");
+    const pageHeight = parsePoints(args["page-height"], "--page-height");
+    const pageTolerance = parsePoints(args["page-tolerance"], "--page-tolerance");
+    const customPage =
+      pageWidth !== undefined && pageHeight !== undefined
+        ? { width: pageWidth, height: pageHeight, ...(pageTolerance !== undefined ? { tolerance: pageTolerance } : {}) }
+        : undefined;
+    if (preset === "custom" && !customPage) {
+      console.error(
+        "The custom preset needs a trim size: --page-width and --page-height in points (72pt = 1in — e.g. US Letter is 612 x 792).",
+      );
+      process.exit(EXIT_CODES.USAGE);
+    }
+
     try {
       const result = await scaffoldProject({
         name,
@@ -87,6 +143,8 @@ export default defineCommand({
         parentDir,
         folderName: typeof args.folder === "string" && args.folder ? args.folder : undefined,
         template,
+        preset: preset as PresetId,
+        customPage,
         versionHistory: args.git === false ? "none" : "local-git",
       });
 

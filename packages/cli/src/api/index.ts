@@ -84,11 +84,20 @@ export type {
   ProjectTemplateId,
   ProjectVersionHistoryMode,
   CreateProjectOptions,
+  CustomPageOptions,
   AdoptFolderOptions,
   CreateProjectResult,
   CreateProjectErrorCode,
   CreateProjectError,
 } from "../lib/project-scaffold.ts";
+
+// ── Presets & publish targets (ADR 0008) ─────────────────────────────────────
+// The registries are the single source of truth for pickers (the desktop
+// wizard's preset choice, target selectors) and for CLI flag validation.
+export { PRESET_IDS, PRESETS } from "../lib/presets.ts";
+export type { PresetId, VendorPreset } from "../lib/presets.ts";
+export { TARGETS, TARGET_IDS, publishTargetFor } from "../lib/targets.ts";
+export type { PublishTarget, TargetOverlay } from "../lib/targets.ts";
 
 // ── Project templates (#29) ───────────────────────────────────────────────────
 export {
