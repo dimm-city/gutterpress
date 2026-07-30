@@ -5,7 +5,31 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Publish targets** (ADR 0008): where a book is *published* is now separate
+  from how it is *designed*. `targets:` in the manifest (or
+  `validate`/`preflight --target <id[,id]>`) names the destinations to
+  validate against — `dtrpg` (DriveThruRPG print-on-demand) and `itch`
+  (itch.io digital) — and one run checks every destination, labeling each
+  finding with its target. Your own manifest settings always override a
+  target's policy. `--profile` is replaced by `--target`; the preflight
+  report's `profile` field became `targets` with per-target required checks
+  (schema v2).
+- A **`custom` preset**: for books that aren't a DriveThruRPG title or a 6×9in
+  trade book, `preset: custom` takes your own trim via `page.width`/
+  `page.height` (points), and tells you exactly what to add when they're
+  missing.
+
 ### Changed
+
+- Creating a book now asks what you're designing it for. `gutterpress new`
+  requires `--preset <dtrpg|book|custom>` (custom also takes
+  `--page-width`/`--page-height`), and the desktop's new-book dialog has a
+  required preset choice that reveals a page-size form when Custom is picked.
+  The choice is written into the new manifest as an explicit `preset:` line;
+  projects scaffolded from a saved custom template keep the template's own
+  preset.
 
 - Your name and email now lead the settings panel's **Accounts** tab (renamed
   from Connections), with your GitHub account directly beneath them — the two

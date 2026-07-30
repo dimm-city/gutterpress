@@ -29,8 +29,15 @@ version history) in one command, so you never have to hand-write a manifest
 just to get going:
 
 ```bash
-gutterpress new "My Book"
+gutterpress new "My Book" --preset dtrpg
 ```
+
+The `--preset` names what the book is *designed for* — it sets the page size
+and print rules the project starts with, and it is required:
+
+- `dtrpg` — DriveThruRPG print-on-demand: letter-with-bleed page (621×810pt = 8.625×11.25in), print-ready checks on by default
+- `book` — a neutral 6×9in trade book, no print-service rules
+- `custom` — you supply the trim: add `--page-width` and `--page-height` (points; 72pt = 1in)
 
 This creates a `my-book/` folder in the current directory:
 
@@ -50,10 +57,12 @@ local version history with no credentials and no remote required. Pass
 Useful flags:
 
 ```bash
-gutterpress new "My Book" --author "Jane Doe"   # record an author
-gutterpress new "My Book" --dir ~/Books         # choose a parent directory
-gutterpress new "My Book" --template zine       # book | zine | technical
-gutterpress new "My Book" --no-git              # skip local version history
+gutterpress new "My Book" --preset dtrpg --author "Jane Doe"   # record an author
+gutterpress new "My Book" --preset dtrpg --dir ~/Books         # choose a parent directory
+gutterpress new "My Book" --preset dtrpg --template zine       # book | zine | technical
+gutterpress new "My Book" --preset dtrpg --no-git              # skip local version history
+gutterpress new "My Zine" --preset custom \
+  --page-width 396 --page-height 612                            # your own trim size, in points
 ```
 
 ## Basic Workflow
@@ -116,7 +125,15 @@ authors:
   - "Jane Doe"
   - "John Smith"
 
-# Page format (values in points: 72pt = 1in)
+# What the book is designed for: dtrpg | book | custom.
+# Fills in page geometry and print-rule defaults; anything you set
+# explicitly below always wins over the preset.
+preset: book
+
+# Page validation bounds (values in points: 72pt = 1in). The actual trim
+# comes from your stylesheet's @page rule — these are the size the built
+# PDF is checked against, so keep the two matching. Required (width and
+# height) when `preset: custom`; optional overrides otherwise.
 page:
   width: 432
   height: 648

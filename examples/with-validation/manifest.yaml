@@ -5,8 +5,19 @@ authors:
 styles:
   - styles/main.css
 
+# How the book is designed: the DriveThruRPG print-on-demand preset.
+preset: dtrpg
 
-# Page dimensions (DTRPG standard)
+# Where it will be published: each target is a destination's validation
+# policy, so one source can be checked for several destinations in one run
+# (e.g. [dtrpg, itch] validates print AND digital). `--target` on the CLI
+# overrides this list for a single run.
+targets:
+  - dtrpg
+
+# Page validation bounds (DTRPG standard letter-with-bleed). These match the
+# preset default — kept explicit here for demonstration; your own values
+# always win over the preset's.
 page:
   width: 621
   height: 810
@@ -14,7 +25,7 @@ page:
 
 # ---------- Validation Configuration ----------
 # This section demonstrates all validation options.
-# When omitted, the DTRPG preset defaults apply automatically.
+# When omitted, the preset's defaults apply automatically.
 #
 # Missing external tools are detected automatically before checks run.
 # Checks whose tools aren't installed are skipped with a warning.

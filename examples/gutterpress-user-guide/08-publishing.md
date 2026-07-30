@@ -50,7 +50,7 @@ gutterpress publish --provider itch
 @section .callout-tip
 
 **Tip:** DriveThruRPG has strict print requirements. Run `gutterpress validate
---profile dtrpg` before uploading — it checks bleed, ink density and more.
+--target dtrpg` before uploading — it checks bleed, ink density and more.
 
 @end-section
 

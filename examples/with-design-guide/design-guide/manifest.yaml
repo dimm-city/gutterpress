@@ -2,6 +2,10 @@ title: "Your Book Title — Design Guide"
 authors:
   - Your Name
 
+# How the book is designed: the neutral trade-book preset (no print-service
+# rules). The explicit `page:` below overrides the preset's 6x9in default.
+preset: book
+
 # The single stylesheet used by both this design guide and the book.
 # Edit § 1 BRAND TOKENS in styles/guide.css to apply your branding.
 styles:
