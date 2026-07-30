@@ -46,7 +46,7 @@ This project follows [Semantic Versioning](https://semver.org/).
   entry, its icon, and its copy of the app.
 
 - The live preview no longer starts every source file on a new page. It was
-  injecting a `.pmd-chapter{break-before:page}` rule that `print-md build` has
+  injecting a `.pmd-chapter{break-before:page}` rule that `gutterpress build` has
   no equivalent for, so any project that splits one chapter across several
   source files previewed with different page boundaries than the PDF it
   produced. Preview and build now break only where project CSS or a
