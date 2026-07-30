@@ -581,7 +581,7 @@ figcaption {
 /* ── Cover page ── */
 .cover-page {
   page: cover;
-  height: 9in;
+  min-height: 11in;
   background-color: var(--color-accent);
   padding: 1.5in 1in 1.25in;
   display: flex;
