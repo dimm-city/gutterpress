@@ -394,8 +394,23 @@
    * ungated check would flash the banner on every launch in the window before
    * the persisted values arrive.
    */
+  /**
+   * "Not now" — session-scoped, like the adopt-a-folder banner's own dismiss.
+   *
+   * The check below reads the APP setting only, while the lib's
+   * `resolveGitAuthor` falls back per field to the project's own
+   * `.git/config` before using the placeholder. So an author whose repo
+   * already carries a `user.name` / `user.email` is attributed correctly and
+   * does not need this notice (Codex review, PR #134). Rather than teach the
+   * renderer to resolve the effective identity — a host round-trip per
+   * project, for a notice — the notice is simply dismissible: anyone it is
+   * wrong for silences it, and it returns next launch in case the setting
+   * still matters to them.
+   */
+  let identityNoticeDismissed = $state(false);
   const needsGitIdentity = $derived(
     settings.loaded &&
+      !identityNoticeDismissed &&
       (!settings.current.gitIdentity.authorName.trim() ||
         !settings.current.gitIdentity.authorEmail.trim()),
   );
@@ -2502,10 +2517,13 @@
   </div>
 {/if}
 
-<!-- Missing author identity — a persistent notice, not a toast: it stays until
+<!-- Missing author identity — a standing notice, not a toast: it stays until
      the two fields exist, because every version saved without them records the
      wrong author. role="status" (not "alert"): a standing condition the author
-     can act on whenever, never an interruption to announce over their typing. -->
+     can act on whenever, never an interruption to announce over their typing.
+     Dismissible, because the check reads the app setting only and a project's
+     own .git/config may already supply the identity — see the
+     identityNoticeDismissed note above. -->
 {#if needsGitIdentity}
   <div class="identity-banner" role="status">
     <span class="identity-banner-msg">
@@ -2513,6 +2531,9 @@
     </span>
     <button class="identity-action" onclick={() => openSettings("connections")}>
       Add your name &amp; email
+    </button>
+    <button class="identity-dismiss" onclick={() => (identityNoticeDismissed = true)}>
+      Not now
     </button>
   </div>
 {/if}
@@ -3481,6 +3502,18 @@
     white-space: nowrap;
   }
   .identity-action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  /* "Not now" reads as the quieter of the two: no border of its own. Fill and
+     text still come from the shared non-primary rule (see above), so only the
+     border is declared here. */
+  .identity-dismiss {
+    border: none;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .identity-dismiss:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
   /* ---- Small-screen single-pane layout (#responsive) ----
      Below NARROW_QUERY (820px) the editor + preview can't sit side by side.
