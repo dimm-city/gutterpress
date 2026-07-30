@@ -94,8 +94,10 @@ components/controllers.
 
 ```
 gutterpress/
-├── Welcome / start screen                     SHIPPED  (WelcomeLanding: continue card,
-│                                                        recents/favorites/discovered via ProjectsListBody)
+├── Welcome / start screen                     SHIPPED  (WelcomeLanding: Projects / Accounts / Help
+│                                                        tabs — continue card + recents/favorites/
+│                                                        discovered via ProjectsListBody, author
+│                                                        identity + connections, and in-app help)
 ├── New project wizard / templates             SHIPPED  (NewProjectWizard, #25; templates from the
 │                                                        shared lib scaffolding — see Onboarding)
 ├── Open dialog (recents/favorites, URLs)      SHIPPED  (#10, #27)
@@ -281,8 +283,10 @@ the plan wins.**
 
 **Layer 1 — first run (SHIPPED baseline):**
 
-- `WelcomeLanding`: continue card (live pre-render status) + recents /
-  favorites / discovered projects. `NewProjectWizard`: **4 built-in
+- `WelcomeLanding`: three tabs — **Projects** (continue card with live
+  pre-render status + recents / favorites / discovered projects), **Accounts**
+  (author name/email + stored connections), and **Help**. It opens on Accounts
+  when no name/email is saved yet, so saved versions carry a real author. `NewProjectWizard`: **3 built-in
   templates** (Book, Zine, Technical document), custom
   templates, save-as-template, import-from-folder.
 - Templates come from the **shared lib scaffolding** in
@@ -299,7 +303,9 @@ the plan wins.**
 
 **Layer 2 — contextual help (PARTIAL):**
 
-- `HelpDialog` (toolbar, shortcuts + workflow docs) is SHIPPED. PROPOSED:
+- In-app help (shortcuts + workflow docs) is SHIPPED, as the start screen's
+  **Help** tab (`HelpContent`, reached from the status-bar help button; the
+  former `HelpDialog` modal was retired 2026-07-30). PROPOSED:
   per-panel "?" entry points opening the in-app help drawer (never an
   external browser tab), and hover/focus tooltips shown max once per session
   per control (tooltip-seen state persists via the settings store).
@@ -473,7 +479,7 @@ no-unaccepted-mutations constraint below stands.
 Binding constraints (regardless of final design):
 
 - **Off by default.** AI activates only after the user enables it and
-  configures a provider (Settings → Connections). With AI off, all AI entry
+  configures a provider (Settings → Accounts). With AI off, all AI entry
   points (toolbar button, `/ai`, chat panel) are **hidden**, not greyed out;
   the drawer, if reached, shows a one-card empty state ("Connect a provider
   to enable AI").
@@ -972,7 +978,7 @@ explicit width/height (never scaled by `font-size`). Icon-only buttons:
 | Tooltips that vanish on mouse move | Motor-impaired users | ≥300ms hide delay; persists while hovered |
 | Auto-advancing feature tours | Patronizing | On-demand contextual help |
 | Hiding features behind unlock gates | Contradicts escape-hatch principle; regresses shipped UI | Soft emphasis: Advanced badge, never hidden (§4) |
-| Opening help in an external browser tab | Breaks flow; offline failure | In-app help drawer (HelpDialog) |
+| Opening help in an external browser tab | Breaks flow; offline failure | In-app help: the start screen's Help tab (`HelpContent`) |
 | Print-tool "modes" (pointer/text/frame tools) | Wrong mental model | Markdown-first; properties in inspector |
 | Requiring save before preview | Breaks the live loop | Shipped: 500ms debounced save + live preview |
 | Raw Paged.js / `@page` errors shown to authors | Opaque, frightening | Plain-language Problems entries (shipped, §10) |

@@ -1,11 +1,49 @@
 # Changelog
 
-All notable changes to print-md are documented here.
+All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Your name and email now lead the settings panel's **Accounts** tab (renamed
+  from Connections), with your GitHub account directly beneath them — the two
+  things that decide who your saved versions are credited to, together and
+  first. If either is blank, a notice across the top of the window offers to
+  fill them in, and disappears once they are set.
+- The welcome screen is now tabbed: **Projects** (continue where you left off,
+  plus your books), **Accounts**, and **Help**. It opens on Accounts the first
+  time you have no name or email saved, so your history is attributed to you
+  from your first save.
+- Help moved out of its pop-up dialog onto that Help tab. The help button at
+  the bottom right opens it, and closing it returns you exactly where you were.
+- A project's own connection details — its online repository, branch, and the
+  Test Remote Access check — moved to **Project settings → Connections**.
+  Accounts you sign in to stay in the app settings, where they apply to every
+  project.
+- The two developer settings (file-watcher interval, log level) are a section
+  on the Editor tab instead of a tab of their own.
+
+### Removed
+
+- The TTRPG starter template and the TTRPG Supplement theme, along with the
+  user guide's TTRPG chapter. Stat blocks, dice notation, and read-aloud boxes
+  never needed a plugin or a dedicated template — tables, layout markers, and
+  CSS classes cover them, as the rest of the guide shows.
+
 ### Fixed
+
+- Creating a project from any starter template failed in the packaged desktop
+  app with a "could not create the project files" error naming a missing file
+  inside `app.asar`. The app's own build was inlining a copy of the Gutterpress
+  library without the template, theme, and schema files it reads at runtime.
+- The welcome screen's Accounts and Help tabs could not be scrolled: anything
+  past the height of the window was unreachable, and the footer overlapped the
+  panel's text.
+- On Linux, adding Gutterpress to the application menu left the pre-rebrand
+  `print-md-viewer` launcher in place beside it. Adding it now removes the old
+  entry, its icon, and its copy of the app.
 
 - The live preview no longer starts every source file on a new page. It was
   injecting a `.pmd-chapter{break-before:page}` rule that `print-md build` has
