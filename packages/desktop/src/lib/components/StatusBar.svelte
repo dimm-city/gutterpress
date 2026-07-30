@@ -556,7 +556,7 @@
   .save-summary {
     position: absolute;
     bottom: calc(100% + 6px);
-    left: 0;
+    right: 0;
     min-width: 240px;
     padding: 8px;
     background: var(--app-surface-raised);
