@@ -25,7 +25,10 @@ test("settings schema and dialog expose git author name and email", () => {
   expect(identity).toContain("set-git-author-name");
   expect(identity).toContain("set-git-author-email");
   expect(dialog).toContain("<GitIdentitySection />");
-  expect(read("src/lib/components/WelcomeLanding.svelte")).toContain("<GitIdentitySection />");
+  // The start screen reaches the same fields by embedding the WHOLE settings
+  // view on its Settings tab (2026-07-30) rather than re-hosting the section
+  // itself, so there is still exactly one definition of these controls.
+  expect(read("src/lib/components/WelcomeLanding.svelte")).toContain("<SettingsView");
 });
 
 test("snapshot, history enable, and sync routes pass git identity from settings", () => {

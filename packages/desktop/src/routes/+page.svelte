@@ -637,8 +637,10 @@
   // the inert workspace, which is a spec no-op).
   let landingRef = $state<{
     focusLayer: () => void;
-    showTab: (tab: "projects" | "accounts" | "help") => void;
+    showTab: (tab: "projects" | "settings" | "help") => void;
   } | null>(null);
+  /** Sub-tab the start screen's embedded Settings opens on. */
+  let landingSettingsTab = $state<SettingsTab>("app");
   // The global help button re-opens the landing (Help tab) OVER an open
   // workspace; closing it returns the author exactly where they left off
   // (the workspace stays mounted, just inert, underneath).
@@ -738,19 +740,23 @@
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
 
-  // Launch-time Accounts nudge: an empty git identity means every saved
-  // version would be attributed to a placeholder, so the start screen lands
-  // on its Accounts tab to ask for the two fields once. Runs after the
+  // Launch-time identity nudge: an empty git identity means every saved
+  // version would be attributed to a placeholder, so the start screen lands on
+  // Settings → Accounts to ask for the two fields once. Runs after the
   // persisted settings actually load — the in-memory defaults are empty
   // strings, so checking earlier would always fire.
+  //
+  // Deliberately NOT gated on `landingVisible`: the settings read and the
+  // startup prefs read race, and when settings win the landing is not "ready"
+  // yet, so gating silently dropped the nudge (caught in a browser run of the
+  // built app). Selecting a tab on a hidden layer is free — it is simply what
+  // the layer shows whenever it next appears.
   onMount(() => {
     void _loadSettings().then(() => {
       const identity = settings.current.gitIdentity;
-      if (
-        landingVisible &&
-        (!identity.authorName.trim() || !identity.authorEmail.trim())
-      ) {
-        landingRef?.showTab("accounts");
+      if (!identity.authorName.trim() || !identity.authorEmail.trim()) {
+        landingSettingsTab = "connections";
+        landingRef?.showTab("settings");
       }
     });
   });
@@ -2922,13 +2928,15 @@
   onNewProject={() => newProjectWizardRef?.show()}
   onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
   onOpenGuide={openSetupGuide}
-  onOpenSettings={openSettings}
   onWhatsNew={openReleaseNotes}
   onToggleShowAtStartup={setLandingStartupPref}
   onUpdateApply={() => updateController.applyNow()}
   onUpdateDownload={() => updateController.download()}
   onCheckForUpdates={() => updateController.check()}
   onDismiss={() => dismissLanding()}
+  settingsTab={landingSettingsTab}
+  onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
+  onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
 {#if settingsOpen}
   <section class="settings-global-view" aria-label="Settings">

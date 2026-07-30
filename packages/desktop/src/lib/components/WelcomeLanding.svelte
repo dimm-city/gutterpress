@@ -27,12 +27,12 @@
   import { tick } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
-  import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
-  import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
+  import SettingsView from "$lib/components/SettingsView.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
   import type { UpdaterAvailableAction } from "$lib/platform";
+  import type { SettingsTab } from "$lib/settings-tabs";
 
   let {
     visible = false,
@@ -53,12 +53,15 @@
     errorBody = null,
     version = null,
     showAtStartup = true,
-    /** The open project dir (Accounts tab: publishing keys verify against
-     *  the platform, and some checks read the project's settings). */
+    /** The open project dir (Settings > Accounts: publishing keys verify
+     *  against the platform, and some checks read the project's settings). */
     projectDir = null,
     /** A workspace is open behind the layer, so the landing can be closed to
      *  return to it (shows the X, and Esc dismisses). */
     dismissible = false,
+    /** Sub-tab the embedded Settings opens on (the launch-time identity
+     *  nudge lands on Accounts). */
+    settingsTab = "app",
     /** Auto-updater state — the workspace banner is inert under this layer,
      *  so the landing carries its own compact update affordance. */
     updateReadyVersion = null,
@@ -74,13 +77,14 @@
     onNewProject,
     onOpenGitHub,
     onOpenGuide,
-    onOpenSettings,
     onWhatsNew,
     onToggleShowAtStartup,
     onUpdateApply,
     onUpdateDownload,
     onCheckForUpdates,
     onDismiss,
+    onViewModeChange,
+    onCrashRecoveryChange,
   }: {
     visible?: boolean;
     inactive?: boolean;
@@ -95,6 +99,7 @@
     showAtStartup?: boolean;
     projectDir?: string | null;
     dismissible?: boolean;
+    settingsTab?: SettingsTab;
     updateReadyVersion?: string | null;
     updateAvailableVersion?: string | null;
     updateAvailableAction?: UpdaterAvailableAction | null;
@@ -108,35 +113,39 @@
     onNewProject?: () => void;
     onOpenGitHub?: () => void;
     onOpenGuide?: () => void;
-    onOpenSettings?: () => void;
     onWhatsNew?: () => void;
     onToggleShowAtStartup?: (show: boolean) => void;
     onUpdateApply?: () => void;
     onUpdateDownload?: () => void;
     onCheckForUpdates?: () => void;
     onDismiss?: () => void;
+    /** Forwarded to the embedded Settings so a view-mode change reaches the
+     *  live preview immediately, exactly as the full-window sheet does. */
+    onViewModeChange?: (mode: "single" | "two-column") => void;
+    onCrashRecoveryChange?: (enabled: boolean) => void;
   } = $props();
 
-  // ── Tabs (Projects / Accounts / Help) ─────────────────────────────────────
+  // ── Tabs (Projects / Settings / Help) ─────────────────────────────────────
   // The landing is the app's front door: Projects carries the continue card +
-  // quick actions + book list; Accounts carries the author identity (name /
-  // email — git history accuracy) and every stored connection; Help carries
-  // the former help modal's content. The host can land on a specific tab
-  // (help button → "help"; missing identity at launch → "accounts").
-  type LandingTab = "projects" | "accounts" | "help";
+  // quick actions + book list; Settings embeds the WHOLE settings surface,
+  // sub-tabs and all; Help carries the former help modal's content. Because
+  // both are tabs here, the brand row no longer needs its own settings and
+  // help buttons. The host can land on a specific tab (help button → "help";
+  // missing identity at launch → "settings" on its Accounts sub-tab).
+  type LandingTab = "projects" | "settings" | "help";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
     { id: "projects", label: "Projects" },
-    { id: "accounts", label: "Accounts" },
+    { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
   ];
   let activeTab = $state<LandingTab>("projects");
   let tabEls = $state<Record<LandingTab, HTMLButtonElement | undefined>>({
     projects: undefined,
-    accounts: undefined,
+    settings: undefined,
     help: undefined,
   });
 
-  /** Host-driven tab switch (help button, launch-time accounts nudge). */
+  /** Host-driven tab switch (help button, launch-time identity nudge). */
   export function showTab(tab: LandingTab) {
     activeTab = tab;
   }
@@ -290,14 +299,6 @@
               What's new <Icon name="external-link" size={12} />
             </button>
           {/if}
-          <button type="button" class="brand-icon-btn" onclick={() => (activeTab = "help")} title="Help & about" aria-label="Help and about">
-            <Icon name="circle-help" size={16} />
-          </button>
-          {#if onOpenSettings}
-            <button type="button" class="brand-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
-              <Icon name="settings" size={16} />
-            </button>
-          {/if}
           {#if dismissible}
             <button type="button" class="brand-icon-btn" onclick={() => onDismiss?.()} title="Close and return to your book (Esc)" aria-label="Close this screen">
               <Icon name="x" size={16} />
@@ -430,14 +431,21 @@
           />
         </div>
       </section>
-      {:else if activeTab === "accounts"}
-      <section class="accounts-sec" aria-label="Your accounts">
-        <p class="tab-intro">
-          Add your name and email so your project's saved history shows who
-          made each change, and manage the services Gutterpress connects to.
-        </p>
-        <GitIdentitySection />
-        <ConnectionsSettings {projectDir} />
+      {:else if activeTab === "settings"}
+      <section class="settings-sec" aria-label="Settings">
+        <!-- The WHOLE settings surface, sub-tabs and all — not a copy of a
+             slice of it. `embedded` drops its sheet chrome so the landing
+             column stays the one scroller; `idPrefix` keeps its tab/panel ids
+             distinct from the full-window sheet, which can be open over this
+             layer at the same time. -->
+        <SettingsView
+          embedded
+          idPrefix="landing-settings"
+          initialTab={settingsTab}
+          {projectDir}
+          {onViewModeChange}
+          {onCrashRecoveryChange}
+        />
       </section>
       {:else}
       <section class="help-sec" aria-label="Help and about">
@@ -591,8 +599,7 @@
     gap: 22px;
     min-height: 0;
   }
-  .tab-intro { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--app-text-secondary); }
-  .accounts-sec, .help-sec { display: flex; flex-direction: column; gap: 14px; }
+  .settings-sec, .help-sec { display: flex; flex-direction: column; gap: 14px; }
 
   /* ── Continue card ─────────────────────────────────────────────────── */
   .continue-sec { display: flex; flex-direction: column; gap: 10px; }

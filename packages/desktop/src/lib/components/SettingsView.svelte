@@ -15,6 +15,8 @@
     initialTab = "app",
     onViewModeChange,
     onCrashRecoveryChange,
+    embedded = false,
+    idPrefix = "settings",
   }: {
     onClose?: () => void;
     /** The open project dir (Connections tab: adding a publishing key verifies
@@ -27,6 +29,15 @@
     onViewModeChange?: (mode: "single" | "two-column") => void;
     /** Called immediately when the user toggles crash recovery. */
     onCrashRecoveryChange?: (enabled: boolean) => void;
+    /** Rendered INSIDE another surface (the start screen's Settings tab)
+     *  rather than as the full-window sheet: drops the title bar and close
+     *  button — that surface has its own — and stops owning a scroll region,
+     *  so the host scrolls as one page. */
+    embedded?: boolean;
+    /** Element-id namespace. Two instances can be mounted at once (the
+     *  start screen's tab and the full-window sheet opened over it), and
+     *  duplicate ids would break the tab/panel aria wiring for both. */
+    idPrefix?: string;
   } = $props();
 
   const settings = useSettings();
@@ -124,21 +135,23 @@
   const s = $derived(settings.current);
 </script>
 
-<div class="settings-view">
-  <header class="settings-header">
-    <h2 id="settings-title">Settings</h2>
-    <button class="settings-close" onclick={close} title="Close settings" aria-label="Close settings"><Icon name="x" size={16} /></button>
-  </header>
+<div class="settings-view" class:embedded>
+  {#if !embedded}
+    <header class="settings-header">
+      <h2 id="{idPrefix}-title">Settings</h2>
+      <button class="settings-close" onclick={close} title="Close settings" aria-label="Close settings"><Icon name="x" size={16} /></button>
+    </header>
+  {/if}
 
   <div class="tab-bar" role="tablist" aria-label="Settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
-        id="settings-tab-{tab.id}"
+        id="{idPrefix}-tab-{tab.id}"
         role="tab"
         class="tab"
         class:active={activeTab === tab.id}
         aria-selected={activeTab === tab.id}
-        aria-controls="settings-panel"
+        aria-controls="{idPrefix}-panel"
         tabindex={activeTab === tab.id ? 0 : -1}
         bind:this={tabEls[tab.id]}
         onclick={() => (activeTab = tab.id)}
@@ -147,10 +160,10 @@
   </div>
 
   <div
-    id="settings-panel"
+    id="{idPrefix}-panel"
     class="settings-body"
     role="tabpanel"
-    aria-labelledby="settings-tab-{activeTab}"
+    aria-labelledby="{idPrefix}-tab-{activeTab}"
   >
       <!-- App appearance (light/dark chrome) --------------------------------
            UX review M38: named "Appearance" here, but the config panel also
@@ -550,6 +563,21 @@
     min-height: 0;
     padding: 16px 18px;
     overflow-y: auto;
+  }
+  /* Embedded in the start screen's Settings tab: the landing column is the
+     scroller and owns the horizontal rhythm, so this instance sizes to its
+     content and adds no chrome of its own. */
+  .settings-view.embedded {
+    height: auto;
+    background: transparent;
+  }
+  .settings-view.embedded .settings-body {
+    flex: none;
+    overflow-y: visible;
+    padding: 16px 0 0;
+  }
+  .settings-view.embedded .tab-bar {
+    padding: 0;
   }
   /* ── Tab bar ── */
   .tab-bar {
