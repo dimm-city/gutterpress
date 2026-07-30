@@ -1,15 +1,18 @@
 # Styling & Theming {#ch-styling}
 
-<div class="lede">Gutterpress uses plain CSS for all styling. Control colors, fonts, and layout through CSS custom properties. Add your own stylesheets on top of any built-in theme.</div>
+@section .lede
+
+Gutterpress uses plain CSS for all styling. Control colors, fonts, and layout through CSS custom properties. Add your own stylesheets on top of any built-in theme.
+
+@end-section
 
 ## Built-in Themes
 
-Gutterpress ships four built-in themes, embedded in the CLI binary and library:
+Gutterpress ships three built-in themes, embedded in the CLI binary and library:
 
 | Theme id | Description |
 |----------|-------------|
 | `clean-book` | A calm, classic book look: serif body, generous margins, restrained accents. |
-| `ttrpg-supplement` | Bold display headings, warm parchment fills, and boxed stat blocks for game books. |
 | `zine` | High-contrast, punchy sans-serif look for short photocopier-friendly zines. |
 | `technical-doc` | Clean sans-serif manual look with clear hierarchy, code styling, and tidy tables. |
 

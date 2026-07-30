@@ -1,6 +1,10 @@
 # Writing Your Content {#ch-writing}
 
-<div class="lede">Gutterpress renders standard GitHub-flavored markdown to print-quality HTML. This chapter covers headings, text, tables, and the `@`-prefixed layout markers that control how content flows across pages — and calls out, wherever it matters, which behaviors are core Gutterpress and which come from this guide's own <code>guide.css</code>.</div>
+@section .lede
+
+Gutterpress renders standard GitHub-flavored markdown to print-quality HTML. This chapter covers headings, text, tables, and the `@`-prefixed layout markers that control how content flows across pages — and calls out, wherever it matters, which behaviors are core Gutterpress and which come from this guide's own `guide.css`.
+
+@end-section
 
 ## Headings
 

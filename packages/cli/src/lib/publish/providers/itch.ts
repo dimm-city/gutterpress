@@ -32,7 +32,7 @@ const info: PublishProviderInfo = {
   kind: "api",
   format: "pdf",
   description:
-    "Upload the PDF to your itch.io project page (games, TTRPG supplements, zines).",
+    "Upload the PDF to your itch.io project page (games, zines, and other printable projects).",
   configFields: [
     { key: "target", label: "Project (user/game)", placeholder: "you/your-book" },
     { key: "channel", label: "Channel", placeholder: "pdf" },

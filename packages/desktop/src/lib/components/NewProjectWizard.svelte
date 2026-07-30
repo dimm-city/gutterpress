@@ -45,7 +45,7 @@
   // load failure can render its own Retry without touching the create form.
   let templatesError = $state<string | null>(null);
 
-  const BUILTIN_IDS = ["book", "ttrpg", "zine", "technical"];
+  const BUILTIN_IDS = ["book", "zine", "technical"];
 
   async function loadTemplates() {
     templatesError = null;
@@ -231,7 +231,7 @@
         // Built-in templates pass an id; custom templates pass the directory.
         template:
           tpl && tpl.kind === "builtin" && BUILTIN_IDS.includes(tpl.id)
-            ? (tpl.id as "book" | "ttrpg" | "zine" | "technical")
+            ? (tpl.id as "book" | "zine" | "technical")
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",

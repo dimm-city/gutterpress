@@ -1,6 +1,10 @@
 # Validation & Best Practices {#ch-validation}
 
-<div class="lede">Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 33 built-in checks, CLI usage, and production workflow recommendations.</div>
+@section .lede
+
+Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 33 built-in checks, CLI usage, and production workflow recommendations.
+
+@end-section
 
 ## Validation Overview
 

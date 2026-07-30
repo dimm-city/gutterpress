@@ -212,8 +212,16 @@ h1 {
   padding-top: 0.5in;
   break-before: page;
   page: chapter;
-  counter-increment: chapter;
 }
+
+/* Only real chapters count: every chapter h1 carries an `{#ch-...}` id
+   (markdown-it-attrs); the cover and TOC h1s have none. Paged.js's counter
+   pass matches increments by selector, and `counter-increment: none` does
+   NOT cancel an increment there — so the increment itself is scoped instead
+   of overridden. This also makes the opener badges match the TOC's own
+   01–08 numbers (the old TOC h1 bumped the counter, so openers read one
+   ahead). */
+h1[id] { counter-increment: chapter; }
 
 h1::before {
   content: counter(chapter, decimal-leading-zero);
@@ -388,13 +396,17 @@ tr:nth-child(even) td { background-color: #f7fafc; }
 
 img { max-width: 100%; display: block; }
 
-figure {
+figure,
+.figure {
   margin: 0.9em 0 1.4em;
   break-inside: avoid;
   page-break-inside: avoid;
 }
 
-figcaption {
+.figure > p { margin: 0; }
+
+figcaption,
+.figure > p.figcaption {
   font-family: var(--font-display);
   font-size: var(--fs-small);
   color: var(--color-ink-muted);
@@ -501,7 +513,17 @@ figcaption {
   margin: 0;
 }
 
-/* ── Lede / intro paragraph ── */
+/* ── Lede / intro paragraph ──
+   Authored as `@section .lede` (a wrapper div holding one markdown
+   paragraph); the wrapper owns the spacing, so inner paragraphs are
+   flattened. */
+.lede p { margin: 0; }
+
+/* Ledes read as one quiet italic block: auto-linked bare domains keep the
+   lede's color and never print URL annotations. */
+.lede a { color: inherit; }
+.lede a::after { content: none; }
+
 .lede, .intro {
   font-family: var(--font-display);
   font-size: 12pt;
@@ -592,7 +614,11 @@ figcaption {
 
 .cover-top { display: block; }
 
-.cover-title {
+/* The title is the cover's markdown h1. `inline-size: min-content` wraps it
+   after "Gutterpress" (the widest word), reproducing the old two-line
+   title. (No id on this h1 → it stays out of the chapter numbering; see the
+   `h1[id]` counter rule.) */
+.cover-page h1 {
   font-family: var(--font-display);
   font-size: var(--fs-display);
   font-weight: 700;
@@ -600,11 +626,14 @@ figcaption {
   line-height: 1.1;
   letter-spacing: -0.02em;
   margin: 0 0 0.25em;
+  padding-top: 0;
+  inline-size: min-content;
   break-before: auto;
+  page-break-before: auto;
   page: cover;
 }
 
-.cover-subtitle {
+.cover-top p {
   font-family: var(--font-display);
   font-size: var(--fs-h2);
   font-weight: 300;
@@ -612,16 +641,17 @@ figcaption {
   margin: 0 0 1.25em;
 }
 
-.cover-rule {
+.cover-top hr {
   width: 2in;
   height: 2.5pt;
+  border: none;
   background: var(--color-accent-alt);
   margin: 0;
 }
 
 .cover-bottom { display: block; }
 
-.cover-version {
+.cover-bottom p:first-child {
   font-family: var(--font-display);
   font-size: var(--fs-small);
   color: rgba(255,255,255,0.5);
@@ -630,7 +660,7 @@ figcaption {
   margin: 0 0 0.6em;
 }
 
-.cover-author {
+.cover-bottom p:last-child {
   font-family: var(--font-display);
   font-size: var(--fs-body);
   font-weight: 600;
@@ -722,7 +752,6 @@ figcaption {
    ───────────────────────────────────────────────────────────────────────────── */
 
 /* ── Cover: no chapter counter before h1 ── */
-.cover-title::before,
 #ch-cover h1::before { content: none; }
 
 /* ── TOC: no forced page break, no counter ── */
@@ -735,6 +764,10 @@ figcaption {
 #ch-toc h1::before { content: none; }
 
 /* ── TOC: chapter entry links ── */
+/* A TOC line never prints URL annotations (bare domains like itch.io
+   auto-link via linkify; the annotation belongs in body prose only). */
+#ch-toc a::after { content: none; }
+
 #ch-toc ol { margin-left: 0; padding: 0; list-style: none; margin-bottom: 1.5em; }
 
 #ch-toc ol li {

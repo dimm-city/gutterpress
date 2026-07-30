@@ -38,7 +38,7 @@ import { slugify } from "./slug.ts";
  * into the binary via `embedded-assets.ts`. `"book"` is the default; the others
  * give non-technical authors a head start for common formats (#29).
  */
-export type ProjectTemplateId = "book" | "ttrpg" | "zine" | "technical";
+export type ProjectTemplateId = "book" | "zine" | "technical";
 
 /**
  * The bundled theme each built-in template scaffolds as its starter
@@ -49,7 +49,6 @@ export type ProjectTemplateId = "book" | "ttrpg" | "zine" | "technical";
  */
 const STARTER_THEME_FOR_TEMPLATE: Record<ProjectTemplateId, string> = {
   book: "clean-book",
-  ttrpg: "ttrpg-supplement",
   zine: "zine",
   technical: "technical-doc",
 };

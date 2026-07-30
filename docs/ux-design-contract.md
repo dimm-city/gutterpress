@@ -68,7 +68,7 @@ in the app or drop to the CLI.
 | Persona | Name | Goals | Pain Points | Technical Level |
 |---|---|---|---|---|
 | Self-publisher | Maya | Write novel, export KDP-ready PDF | Word formatting chaos, PDF confusion | Low |
-| TTRPG creator | Kai | Produce zine/supplement with custom layout | InDesign cost, asset management | Medium |
+| Indie print creator | Kai | Produce zine/supplement with custom layout | InDesign cost, asset management | Medium |
 | Technical author | Sam | Produce a printed manual / handbook / rulebook with consistent styling | Toolchain fragmentation, theme drift | High |
 | Indie author | Rosa | Publish across itch.io + Amazon KDP | Format juggling, proof corrections | Low–Medium |
 | Power user | Dev | Automate, extend, build plugins | Black-box tooling, no escape hatches | Developer |
@@ -283,7 +283,7 @@ the plan wins.**
 
 - `WelcomeLanding`: continue card (live pre-render status) + recents /
   favorites / discovered projects. `NewProjectWizard`: **4 built-in
-  templates** (Book, TTRPG supplement, Zine, Technical document), custom
+  templates** (Book, Zine, Technical document), custom
   templates, save-as-template, import-from-folder.
 - Templates come from the **shared lib scaffolding** in
   `gutterpress` (same set behind `gutterpress new`; CLAUDE.md §7 "one
@@ -453,7 +453,7 @@ the header red.)
 ### 7. AI writing assistant
 
 **Status: PROPOSED — tracked in #36 (open).** #36 already defines the chat
-sidebar, selection actions (rewrite / expand / shrink / fix), TTRPG helpers,
+sidebar, selection actions (rewrite / expand / shrink / fix), genre helpers,
 and provider-agnostic configuration (OpenAI / Anthropic / local Ollama, keys
 in the OS keychain, per-user). This section defers to #36 for all of that;
 divergences below are labeled.

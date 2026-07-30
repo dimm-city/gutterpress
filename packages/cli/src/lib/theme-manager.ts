@@ -9,8 +9,8 @@
  * Two sources, one {@link ThemeInfo} shape:
  *
  *   - BUILT-IN: shipped as embedded assets (`assets/themes/<id>/`), baked into
- *     the CLI binary via `embedded-assets.ts` (CLAUDE.md §4). Four ship:
- *     clean-book, ttrpg-supplement, zine, technical-doc.
+ *     the CLI binary via `embedded-assets.ts` (CLAUDE.md §4). Three ship:
+ *     clean-book, zine, technical-doc.
  *
  *   - PROJECT: a theme that lives inside the open project under `themes/<id>/`.
  *     These appear after the author APPLIES a built-in theme or IMPORTS one
@@ -48,7 +48,6 @@ export const THEMES_DIR = "themes";
 /** The built-in themes shipped as embedded assets (ids are folder names). */
 export const BUILT_IN_THEME_IDS = [
   "clean-book",
-  "ttrpg-supplement",
   "zine",
   "technical-doc",
 ] as const;
@@ -98,10 +97,6 @@ const BUILT_IN_FALLBACK_META: Record<BuiltInThemeId, { name: string; description
   "clean-book": {
     name: "Clean Book",
     description: "A calm, classic book look: serif body, generous margins.",
-  },
-  "ttrpg-supplement": {
-    name: "TTRPG Supplement",
-    description: "Bold display headings, parchment fills, boxed stat blocks.",
   },
   zine: {
     name: "Zine",

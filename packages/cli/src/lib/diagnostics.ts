@@ -188,6 +188,6 @@ export async function getSystemDiagnostics(): Promise<SystemDiagnostics> {
     },
     tools: [chromium, ...tools],
     configDir: defaultConfigDir(),
-    docsUrl: "https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md",
+    docsUrl: "https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md",
   };
 }

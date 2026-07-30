@@ -106,7 +106,7 @@ with these sections and add to them as the manuscript grows:
 - **Palette** — the small set of colors the book is allowed to use, with
   hex (and CMYK if heading to print).
 - **Plugin components** — anything provided by `markdown-it` plugins
-  loaded via the manifest (TTRPG modules, dimm-city, custom plugins).
+  loaded via the manifest (project-specific and custom plugins).
 
 ## Build the static site
 

@@ -1,6 +1,10 @@
 # Publishing {#ch-publishing}
 
-<div class="lede">When your book is built, Gutterpress can send it to the places readers buy it — itch.io, DriveThruRPG, Amazon KDP, a website on Azure, or your Shopify store — without leaving the app.</div>
+@section .lede
+
+When your book is built, Gutterpress can send it to the places readers buy it — itch.io, DriveThruRPG, Amazon KDP, a website on Azure, or your Shopify store — without leaving the app.
+
+@end-section
 
 ## Two Kinds of Publishing
 

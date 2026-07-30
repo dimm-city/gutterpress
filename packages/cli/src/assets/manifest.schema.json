@@ -517,12 +517,12 @@
       }
     },
     {
-      "title": "TTRPG Supplement",
-      "authors": ["Game Master"],
+      "title": "Print-Ready Supplement",
+      "authors": ["Author Name"],
       "preset": "dtrpg",
       "plugins": [
         {
-          "path": "plugins/dimm-city-plugin.js",
+          "path": "plugins/my-plugin.js",
           "priority": 100
         }
       ],

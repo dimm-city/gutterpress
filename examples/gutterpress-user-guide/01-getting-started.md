@@ -1,6 +1,10 @@
 # Getting Started {#ch-getting-started}
 
-<div class="lede">Gutterpress converts markdown files into professional print PDFs. It is designed for books, manuals, rulebooks, and any print-first document — using Chromium and Paged.js for rendering.</div>
+@section .lede
+
+Gutterpress converts markdown files into professional print PDFs. It is designed for books, manuals, rulebooks, and any print-first document — using Chromium and Paged.js for rendering.
+
+@end-section
 
 ## Installation
 
@@ -48,7 +52,7 @@ Useful flags:
 ```bash
 gutterpress new "My Book" --author "Jane Doe"   # record an author
 gutterpress new "My Book" --dir ~/Books         # choose a parent directory
-gutterpress new "My Book" --template ttrpg      # book | ttrpg | zine | technical
+gutterpress new "My Book" --template zine       # book | zine | technical
 gutterpress new "My Book" --no-git              # skip local version history
 ```
 
@@ -129,7 +133,7 @@ source:
     - "02-chapter-two.md"
 ```
 
-Plugins are optional and most projects don't need any — see Chapter 6, *Plugins*, for the `plugins:` manifest key and the bundled, no-install-required plugins.
+Plugins are optional and most projects don't need any — see Chapter 5, *Plugins*, for the `plugins:` manifest key and the bundled, no-install-required plugins.
 
 ### Page Size Reference
 
@@ -192,4 +196,4 @@ With your project set up, the following chapters cover how to write content, con
 
 > **Chapter 2** covers the full markdown syntax and layout directives — `@page`, `@section`, `@column-break`, and more.
 
-> **Chapter 7** covers the validation system that checks your project for print compliance before and after the PDF build.
+> **Chapter 6** covers the validation system that checks your project for print compliance before and after the PDF build.

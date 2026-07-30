@@ -82,7 +82,7 @@ export async function preflightBuildTools(
     .map((m) => `  • ${m.name}\n${m.installHint}`)
     .join("\n\n");
   throw new BuildError(
-    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set GHOSTSCRIPT_PATH, CHROMIUM_PATH, or system PATH so gutterpress can find them. See the User Guide Chapter 8 (System Setup) at examples/gutterpress-user-guide/08-system-setup.md for the full per-feature matrix.`,
+    `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set GHOSTSCRIPT_PATH, CHROMIUM_PATH, or system PATH so gutterpress can find them. See the User Guide Chapter 7 (System Setup) at examples/gutterpress-user-guide/07-system-setup.md for the full per-feature matrix.`,
     2
   );
 }

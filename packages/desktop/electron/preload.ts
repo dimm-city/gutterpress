@@ -51,7 +51,7 @@ interface CreateProjectOptions {
   author?: string;
   parentDir: string;
   folderName?: string;
-  template?: "book" | "ttrpg" | "zine" | "technical";
+  template?: "book" | "zine" | "technical";
   templateDir?: string;
   versionHistory?: "local-git" | "none";
 }
@@ -59,7 +59,7 @@ interface AdoptFolderOptions {
   dir: string;
   title?: string;
   author?: string;
-  template?: "book" | "ttrpg" | "zine" | "technical";
+  template?: "book" | "zine" | "technical";
   versionHistory?: "local-git" | "none";
 }
 interface CreateProjectResult {

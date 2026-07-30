@@ -53,10 +53,9 @@ describe("theme-manager", () => {
         expect(typeof t.description).toBe("string");
         expect(t.kind).toBe("builtin");
       }
-      // The four documented starter themes are present.
+      // The three documented starter themes are present.
       const ids = themes.map((t) => t.id);
       expect(ids).toContain("clean-book");
-      expect(ids).toContain("ttrpg-supplement");
       expect(ids).toContain("zine");
       expect(ids).toContain("technical-doc");
     });

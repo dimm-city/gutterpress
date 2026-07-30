@@ -82,4 +82,4 @@ built in** — no tools to install. The only optional system tools are for the
 
 Or skip installing anything and run the full PDF/X pipeline via the
 [Docker image](../../docs/docker.md). Rendering any PDF also needs a
-Chromium-based browser (see [System Setup](../gutterpress-user-guide/08-system-setup.md)).
+Chromium-based browser (see [System Setup](../gutterpress-user-guide/07-system-setup.md)).

@@ -7,6 +7,6 @@ source:
     - 02-beta.md
     - 03-gamma.md
 styles:
-  - themes/ttrpg-supplement/theme.css
+  - themes/parchment/theme.css
 plugins:
   - name: markdown-it-mark

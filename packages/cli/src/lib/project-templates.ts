@@ -4,7 +4,7 @@
  * Two kinds of template share one shape ({@link TemplateInfo}):
  *
  *   - BUILT-IN: shipped as embedded assets (`assets/templates/<id>/`), baked into
- *     the CLI binary via `embedded-assets.ts`. There are four: book, ttrpg, zine,
+ *     the CLI binary via `embedded-assets.ts`. There are three: book, zine,
  *     technical. Listing them is metadata-only (no fs scan needed).
  *
  *   - CUSTOM: saved by the author from an existing project ("Save as template")
@@ -34,7 +34,6 @@ import { slugify, prettify } from "./slug.ts";
 /** The built-in templates shipped as embedded assets. */
 export const BUILT_IN_TEMPLATE_IDS = [
   "book",
-  "ttrpg",
   "zine",
   "technical",
 ] as const satisfies readonly ProjectTemplateId[];
@@ -60,10 +59,6 @@ const BUILT_IN_META: Record<
   book: {
     label: "Book",
     description: "A clean starting point for a novel, memoir, or any long-form book.",
-  },
-  ttrpg: {
-    label: "TTRPG supplement",
-    description: "Rules, stat blocks, and tables for a tabletop roleplaying supplement.",
   },
   zine: {
     label: "Zine",

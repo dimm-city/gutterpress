@@ -124,9 +124,9 @@ describe("new command — arg mapping onto scaffoldProject", () => {
       return fakeResult();
     });
 
-    await runCommand(newCommand, { rawArgs: ["My Book", "--template", "ttrpg"] });
+    await runCommand(newCommand, { rawArgs: ["My Book", "--template", "zine"] });
 
-    expect(captured?.template).toBe("ttrpg");
+    expect(captured?.template).toBe("zine");
   });
 });
 

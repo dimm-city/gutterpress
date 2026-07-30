@@ -640,7 +640,7 @@ plugin variants instead.
 - Fail-fast on missing plugins surfaces misconfiguration immediately rather than silently skipping
 - CSS export support allows plugins to inject styles into rendered output
 
-See [User Guide: Chapter 6 — Plugins](../examples/gutterpress-user-guide/06-plugins.md) for the full authoring guide.
+See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md) for the full authoring guide.
 
 ## Key Design Decisions
 

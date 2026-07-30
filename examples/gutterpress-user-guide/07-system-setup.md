@@ -1,6 +1,10 @@
 # System Setup {#ch-system}
 
-<div class="lede">Gutterpress does almost everything in-process. It needs only a Chromium-based browser to render PDFs, plus — for the optional PDF/X (CMYK) pre-print pipeline — Ghostscript and qpdf. This chapter explains what each tool is for, how to install it, and how the Docker image gives you the whole pipeline with nothing to install.</div>
+@section .lede
+
+Gutterpress does almost everything in-process. It needs only a Chromium-based browser to render PDFs, plus — for the optional PDF/X (CMYK) pre-print pipeline — Ghostscript and qpdf. This chapter explains what each tool is for, how to install it, and how the Docker image gives you the whole pipeline with nothing to install.
+
+@end-section
 
 ## Quick Reference
 

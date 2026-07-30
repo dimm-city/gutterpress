@@ -167,14 +167,11 @@ test("resolvePreset's 'no preset set' notice respects resetWarnOnce (no leftover
 // ── Maintainer review (P4, presets.ts:236): every built-in template manifest
 // must declare an explicit `preset` so a fresh `gutterpress new` project never
 // silently falls through resolvePreset's undefined-preset path (which
-// defaults to dtrpg's vendor geometry/TAC/PDF/X forcing) unless the template
-// actually wants dtrpg — as `ttrpg` genuinely does (it IS the DriveThruRPG
-// use case the dtrpg preset exists for). `book`/`technical`/`zine` get the
-// neutral `book` preset.
+// defaults to dtrpg's vendor geometry/TAC/PDF/X forcing).
+// `book`/`technical`/`zine` all get the neutral `book` preset.
 describe("built-in template manifests declare an explicit preset (maintainer review, presets.ts:236)", () => {
   const EXPECTED_TEMPLATE_PRESET: Record<(typeof BUILT_IN_TEMPLATE_IDS)[number], string> = {
     book: "book",
-    ttrpg: "dtrpg",
     technical: "book",
     zine: "book",
   };

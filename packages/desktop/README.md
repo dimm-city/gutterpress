@@ -70,7 +70,7 @@ removed:
   - macOS: `brew install ghostscript`
   - Linux: `apt install ghostscript` / `dnf install ghostscript`
 
-See [User Guide: Chapter 8 — System Setup](../../examples/gutterpress-user-guide/08-system-setup.md) for the full per-feature matrix of what
+See [User Guide: Chapter 7 — System Setup](../../examples/gutterpress-user-guide/07-system-setup.md) for the full per-feature matrix of what
 tools each user-visible action requires.
 
 ## Development

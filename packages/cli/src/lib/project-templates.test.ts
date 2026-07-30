@@ -15,11 +15,11 @@ async function tmp(prefix: string): Promise<string> {
   return mkdtemp(path.join(tmpdir(), prefix));
 }
 
-test("listBuiltInTemplates returns at least the 4 shipped templates", async () => {
+test("listBuiltInTemplates returns at least the 3 shipped templates", async () => {
   const templates = await listBuiltInTemplates();
   const ids = templates.map((t) => t.id).sort();
   expect(ids).toEqual([...BUILT_IN_TEMPLATE_IDS].sort());
-  expect(ids.length).toBeGreaterThanOrEqual(4);
+  expect(ids.length).toBeGreaterThanOrEqual(3);
   // Each carries author-friendly display metadata.
   for (const t of templates) {
     expect(t.label.length).toBeGreaterThan(0);

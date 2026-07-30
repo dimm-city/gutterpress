@@ -1,6 +1,10 @@
 # Plugins {#ch-plugins}
 
-<div class="lede">Gutterpress uses standard markdown-it plugins. Pure-JavaScript plugins published to npm with the signature <code>(md, options) =&gt; void</code> work without a Gutterpress-specific plugin API.</div>
+@section .lede
+
+Gutterpress uses standard markdown-it plugins. Pure-JavaScript plugins published to npm with the signature `(md, options) => void` work without a Gutterpress-specific plugin API.
+
+@end-section
 
 ## Adding a Plugin
 
@@ -176,7 +180,7 @@ These run automatically before any user plugins and do not need to be declared i
 > with no plugins configured will print `> [!NOTE]` as a literal blockquote
 > starting with the text `[!NOTE]`. For a callout that core renders on its
 > own, use `@section .callout-tip` … `@end-section` (see
-> [Chapter 9 — Publishing](./09-publishing.md)) or a plain `>` blockquote.
+> [Chapter 8 — Publishing](./08-publishing.md)) or a plain `>` blockquote.
 
 > The `markdown-it-container` (`:::name ... :::`) block syntax was removed in 2026-05-17. Use `@`-prefixed markers instead — a named block like `::: callout-note ... :::` becomes `@section .callout-note ... @end-section`.
 
