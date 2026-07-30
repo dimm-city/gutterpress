@@ -39,6 +39,14 @@ and print rules the project starts with, and it is required:
 - `book` — a neutral 6×9in trade book, no print-service rules
 - `custom` — you supply the trim: add `--page-width` and `--page-height` (points; 72pt = 1in)
 
+The command also records *where* you'll publish (the manifest's `targets:`
+list — see Chapter 6): the preset's default (`dtrpg` validates for
+DriveThruRPG; `book`/`custom` for nothing), or your own choice via
+`--targets dtrpg,itch` / `--targets none`. If a chosen destination needs
+qpdf or Ghostscript and they aren't installed, the command tells you up
+front that a print-compliant PDF can't be built or verified until they are
+— you can install them later (Chapter 7) or opt out with `--targets none`.
+
 This creates a `my-book/` folder in the current directory:
 
 ```

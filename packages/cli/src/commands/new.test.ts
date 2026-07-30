@@ -210,6 +210,65 @@ describe("new command — preset requirement (ADR 0008)", () => {
   });
 });
 
+describe("new command — publish targets (ADR 0008)", () => {
+  test("--targets CSV maps onto CreateProjectOptions.targets", async () => {
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    let captured: CreateProjectOptions | undefined;
+    stubScaffold(async (opts) => {
+      captured = opts;
+      return fakeResult();
+    });
+
+    await runCommand(newCommand, {
+      rawArgs: ["My Book", "--preset", "book", "--targets", "dtrpg,itch"],
+    });
+
+    expect(captured?.targets).toEqual(["dtrpg", "itch"]);
+  });
+
+  test("--targets none maps to an explicit empty list (informed opt-out)", async () => {
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    let captured: CreateProjectOptions | undefined;
+    stubScaffold(async (opts) => {
+      captured = opts;
+      return fakeResult();
+    });
+
+    await runCommand(newCommand, {
+      rawArgs: ["My Book", "--preset", "dtrpg", "--targets", "none"],
+    });
+
+    expect(captured?.targets).toEqual([]);
+  });
+
+  test("omitting --targets leaves targets undefined so the lib records the preset default", async () => {
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    let captured: CreateProjectOptions | undefined;
+    stubScaffold(async (opts) => {
+      captured = opts;
+      return fakeResult();
+    });
+
+    await runCommand(newCommand, { rawArgs: ["My Book", "--preset", "book"] });
+
+    expect(captured?.targets).toBeUndefined();
+  });
+
+  test("an unknown --targets value errors (exit 2) before scaffoldProject is called", async () => {
+    stubExit();
+    consoleErrorSpy = spyOn(console, "error").mockImplementation(() => {});
+    stubScaffold(async () => fakeResult());
+
+    await expect(
+      runCommand(newCommand, {
+        rawArgs: ["My Book", "--preset", "book", "--targets", "lulu"],
+      })
+    ).rejects.toThrow(new RegExp(`process\\.exit\\(${EXIT_CODES.USAGE}\\)`));
+    expect(scaffoldSpy).not.toHaveBeenCalled();
+    expect(String(consoleErrorSpy?.mock.calls[0]?.[0])).toContain("dtrpg, itch");
+  });
+});
+
 describe("new command — validation and exit codes", () => {
   test("an unknown --template errors (exit 2) before scaffoldProject is called", async () => {
     stubExit();

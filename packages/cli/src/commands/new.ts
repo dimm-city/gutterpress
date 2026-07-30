@@ -1,6 +1,13 @@
 import { defineCommand } from "citty";
 import { resolve } from "node:path";
-import { scaffoldProject, BUILT_IN_TEMPLATE_IDS, PRESET_IDS } from "../index.ts";
+import {
+  scaffoldProject,
+  BUILT_IN_TEMPLATE_IDS,
+  PRESET_IDS,
+  PRESETS,
+  TARGETS,
+  TARGET_IDS,
+} from "../index.ts";
 import type { CreateProjectError, PresetId, ProjectTemplateId } from "../index.ts";
 import {
   EXIT_CODES,
@@ -8,6 +15,8 @@ import {
   rejectExtraPositionals,
   rejectUnknownFlags,
 } from "../lib/cli-args.ts";
+import { isToolAvailable } from "../lib/tool-probe.ts";
+import { resolveGhostscript } from "../lib/ghostscript.ts";
 
 /**
  * `gutterpress new` — scaffold a new project from an embedded starter template.
@@ -42,6 +51,10 @@ export const newArgs = {
   template: {
     type: "string",
     description: `Starter template: ${BUILT_IN_TEMPLATE_IDS.join(", ")} (default: book)`,
+  },
+  targets: {
+    type: "string",
+    description: `Publish targets recorded in the manifest (comma-separated: ${TARGET_IDS.join(", ")}; or "none") — default: the preset's`,
   },
   "page-width": {
     type: "string",
@@ -122,6 +135,24 @@ export default defineCommand({
       process.exit(EXIT_CODES.USAGE);
     }
 
+    // Publish targets (ADR 0008): recorded explicitly in the new manifest.
+    // Omitted = the preset's defaults; "none" = an explicit empty list.
+    let targets: string[] | undefined;
+    if (typeof args.targets === "string" && args.targets) {
+      targets =
+        args.targets.trim().toLowerCase() === "none"
+          ? []
+          : args.targets.split(",").map((s) => s.trim()).filter(Boolean);
+      const unknown = targets.filter((id) => !TARGETS[id]);
+      if (unknown.length > 0) {
+        console.error(
+          `Unknown publish target${unknown.length > 1 ? "s" : ""} "${unknown.join('", "')}". ` +
+            `Choose from: ${TARGET_IDS.join(", ")} — or "none" for no destination policies.`,
+        );
+        process.exit(EXIT_CODES.USAGE);
+      }
+    }
+
     const pageWidth = parsePoints(args["page-width"], "--page-width");
     const pageHeight = parsePoints(args["page-height"], "--page-height");
     const pageTolerance = parsePoints(args["page-tolerance"], "--page-tolerance");
@@ -144,12 +175,16 @@ export default defineCommand({
         folderName: typeof args.folder === "string" && args.folder ? args.folder : undefined,
         template,
         preset: preset as PresetId,
+        targets,
         customPage,
         versionHistory: args.git === false ? "none" : "local-git",
       });
 
+      const effectiveTargets = targets ?? [...PRESETS[preset as PresetId].defaultTargets];
+
       console.log(`Created project: ${result.projectDir}`);
       console.log(`  manifest: ${result.manifestPath}`);
+      console.log(`  publish targets: ${effectiveTargets.length > 0 ? effectiveTargets.join(", ") : "none"}`);
       console.log(`  start writing in: ${result.openFile}`);
       if (result.versionHistory === "local-git") {
         console.log("  version history: enabled (local snapshots)");
@@ -158,6 +193,35 @@ export default defineCommand({
           `  version history: not enabled (${result.versionHistoryError})`,
         );
       }
+
+      // A chosen destination whose pipeline tools are missing gets the
+      // explanation up front (ADR 0008): the target stays recorded — the
+      // author chose it knowingly — but a compliant file can't be produced
+      // or verified until the tools are installed.
+      const neededTools = [
+        ...new Set(effectiveTargets.flatMap((id) => TARGETS[id]?.requiredTools ?? [])),
+      ];
+      const missingTools: string[] = [];
+      for (const tool of neededTools) {
+        const found =
+          tool === "gs" ? !!(await resolveGhostscript()) : await isToolAvailable(tool);
+        if (!found) missingTools.push(tool === "gs" ? "Ghostscript (gs)" : tool);
+      }
+      if (missingTools.length > 0) {
+        const plural = missingTools.length > 1;
+        console.log("");
+        console.log(
+          `  note: ${missingTools.join(" and ")} ${plural ? "are" : "is"} not installed — a ` +
+            `print-compliant (PDF/X) file can't be built or verified until ${plural ? "they are" : "it is"}.`,
+        );
+        console.log(
+          "        Install them (User Guide, Chapter 7 — System Setup), or set `targets: []` in",
+        );
+        console.log(
+          "        manifest.yaml to skip destination checks for now.",
+        );
+      }
+
       console.log("");
       console.log(`Next: gutterpress preview "${result.projectDir}"`);
     } catch (e) {

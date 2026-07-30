@@ -153,6 +153,7 @@ gutterpress new <name> --preset <id> [options]
   --dir <path>             Parent directory to create the project in (default: current directory)
   --folder <name>          Folder name to create (default: a slug of the project name)
   --template <id>          Starter template: book, zine, technical (default: book)
+  --targets <ids>          Publish targets recorded in the manifest (comma-separated: dtrpg, itch; or "none") — default: the preset's
   --page-width <pt>        Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)
   --page-height <pt>       Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)
   --page-tolerance <pt>    Allowed trim deviation when validating a built PDF (default: 0.5)

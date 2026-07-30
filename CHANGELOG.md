@@ -23,13 +23,20 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Creating a book now asks what you're designing it for. `gutterpress new`
-  requires `--preset <dtrpg|book|custom>` (custom also takes
-  `--page-width`/`--page-height`), and the desktop's new-book dialog has a
-  required preset choice that reveals a page-size form when Custom is picked.
-  The choice is written into the new manifest as an explicit `preset:` line;
-  projects scaffolded from a saved custom template keep the template's own
-  preset.
+- Creating a book now asks what you're designing it for — and where it will
+  be published. `gutterpress new` requires `--preset <dtrpg|book|custom>`
+  (custom also takes `--page-width`/`--page-height`) and records the publish
+  targets explicitly (`--targets <ids|none>`, default: the preset's); the
+  desktop's new-book dialog has a required preset choice that reveals a
+  page-size form when Custom is picked, plus pre-checked publish-target
+  checkboxes you can turn off. Both choices are written into the new
+  manifest as explicit `preset:` and `targets:` lines; projects scaffolded
+  from a saved custom template keep the template's own values.
+- If a chosen destination needs qpdf or Ghostscript and they aren't
+  installed, creation says so up front — a print-compliant (PDF/X) file
+  can't be built or verified until they are — instead of surfacing it later
+  as validation errors. Unchecking the destination (or `--targets none`)
+  records the opt-out in the manifest, where it's easy to revisit.
 
 - Your name and email now lead the settings panel's **Accounts** tab (renamed
   from Connections), with your GitHub account directly beneath them — the two

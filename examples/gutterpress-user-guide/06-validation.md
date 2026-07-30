@@ -45,12 +45,22 @@ targets:
 ```
 
 The report labels each destination's findings (`[dtrpg]`, `[itch]`), so one
-source can be checked for print and digital at the same time. With no
-`targets:` in the manifest, the preset's default applies (the `dtrpg` preset
-validates for DriveThruRPG; `book` and `custom` validate for no destination).
-An explicit empty list (`targets: []`) opts out entirely. Your own manifest
-settings always win over a target's policy — a target only fills in what you
-haven't set.
+source can be checked for print and digital at the same time. Projects
+created with `gutterpress new` or the desktop app always carry an explicit
+`targets:` list — you choose the destinations at creation time (and can
+uncheck them all, recorded as `targets: []`). In a hand-written manifest
+with no `targets:` line, the preset's default applies (the `dtrpg` preset
+validates for DriveThruRPG; `book` and `custom` validate for no
+destination). An explicit empty list (`targets: []`) opts out entirely.
+Your own manifest settings always win over a target's policy — a target
+only fills in what you haven't set.
+
+The `dtrpg` target's checks need qpdf and Ghostscript installed (Chapter
+7). With the target selected but the tools missing, validation reports the
+required checks as errors rather than silently skipping them — that's
+deliberate: "validated for DriveThruRPG" must mean the checks actually ran.
+If you're not ready to install them, set `targets: []` until you are. The
+`itch` target needs no external tools.
 
 ## CLI Usage
 

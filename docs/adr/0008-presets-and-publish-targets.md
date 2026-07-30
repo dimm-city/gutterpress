@@ -81,7 +81,7 @@ book renders — only what the validator demands of the output. Ids today:
   checks stay errors; PDF/X markers/metadata, CMYK-only color spaces, and
   the TAC cap do not apply.
 
-### Creation requires a preset
+### Creation requires a preset — and records the targets
 
 `scaffoldProject` (the one implementation behind `gutterpress new` and the
 desktop wizard) refuses to scaffold a built-in template without a `preset`,
@@ -90,19 +90,37 @@ preset is `custom`. The chosen preset (and custom geometry) is written into
 the generated manifest through the comment-preserving YAML document
 helpers, overwriting the template's placeholder value.
 
+**Publish targets are recorded explicitly at creation too.** The scaffold
+always writes a `targets:` list — the caller's choice, else the preset's
+`defaultTargets` — including an explicit `targets: []` when nothing is
+selected, so "no destination policies" is a visible, editable decision and
+never an accident of omission. The preset-derived fallback in
+`resolveConfig` therefore only ever applies to hand-written manifests.
+
 - CLI: `gutterpress new --preset <dtrpg|book|custom>` is required;
-  `--page-width`/`--page-height` (points) required with `custom`.
+  `--page-width`/`--page-height` (points) required with `custom`;
+  `--targets <ids|none>` overrides the preset's default list. When a chosen
+  target's `requiredTools` (a declared field on `PublishTarget` — qpdf/gs
+  for dtrpg, nothing for itch) are missing on the machine, the command
+  prints the consequence up front: a print-compliant (PDF/X) file can't be
+  built or verified until they're installed, with the `targets: []` opt-out
+  named.
 - Desktop wizard: a required preset choice with no preselection (Create
   stays disabled until one is picked); choosing Custom reveals the
-  width/height form.
+  width/height form. Below it, a "Where will you publish it?" checkbox
+  list, pre-checked from the preset's defaults and freely uncheckable —
+  when a checked destination's tools are missing (from the same
+  `/api/doctor` data the Help tab shows), the same explanation appears
+  inline, so opting out of print checks is an informed choice rather than a
+  surprise error later.
 - **Saved custom templates are the exception**: a template saved from a
-  real project carries its manifest — preset included — as part of the
-  captured design, so scaffolding from `templateDir` keeps it and the
-  wizard hides the preset picker for those.
+  real project carries its manifest — preset and targets included — as part
+  of the captured design, so scaffolding from `templateDir` keeps it and
+  the wizard hides both pickers for those.
 - `adoptFolder` (turning a loose folder into a book) writes an explicit
-  `preset: dtrpg` — it is a one-click rescue affordance, not the primary
-  creation path, and the explicit line makes the default visible and
-  editable rather than implicit.
+  `preset: dtrpg` and `targets: [dtrpg]` — it is a one-click rescue
+  affordance, not the primary creation path, and the explicit lines make
+  the defaults visible and editable rather than implicit.
 
 ## Consequences
 

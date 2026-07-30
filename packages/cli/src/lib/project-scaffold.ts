@@ -31,7 +31,8 @@ import path from "node:path";
 import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc } from "./manifest-doc.ts";
-import { PRESET_IDS, type PresetId } from "./presets.ts";
+import { PRESET_IDS, PRESETS, type PresetId } from "./presets.ts";
+import { TARGETS, TARGET_IDS } from "./targets.ts";
 import { slugify } from "./slug.ts";
 
 /**
@@ -101,6 +102,16 @@ export interface CreateProjectOptions {
    */
   preset?: PresetId;
   /**
+   * Publish-target ids written into the generated manifest as an explicit
+   * `targets:` list (ADR 0008). Defaults to the chosen preset's
+   * `defaultTargets`; pass `[]` to opt out of every destination policy
+   * (e.g. when the tools a destination's checks need aren't installed).
+   * Like `preset`, the creation flow always records the choice explicitly —
+   * the preset-derived fallback exists for hand-written manifests only.
+   * Ignored with `templateDir` (the saved template's manifest is kept).
+   */
+  targets?: string[];
+  /**
    * Page geometry written into the generated manifest (points; 72pt = 1in).
    * REQUIRED when `preset` is `"custom"` (it has no built-in trim); allowed
    * with any preset to override its trim. These are the validation bounds
@@ -154,6 +165,7 @@ export type CreateProjectErrorCode =
   | "invalid-name"
   | "preset-required"
   | "custom-page-required"
+  | "invalid-targets"
   | "scaffold-io";
 
 export interface CreateProjectError extends Error {
@@ -239,6 +251,27 @@ function requirePreset(
 }
 
 /**
+ * Resolve the explicit target list a scaffold records (ADR 0008): the
+ * caller's choice when given, else the preset's defaults — validated and
+ * deduped so an unknown id fails before anything touches disk.
+ */
+function resolveScaffoldTargets(
+  requested: string[] | undefined,
+  preset: PresetId,
+): string[] {
+  const ids = requested ?? [...PRESETS[preset].defaultTargets];
+  const unknown = ids.filter((id) => !TARGETS[id]);
+  if (unknown.length > 0) {
+    throw new CreateProjectErrorImpl(
+      "invalid-targets",
+      `Unknown publish target${unknown.length > 1 ? "s" : ""} "${unknown.join('", "')}". ` +
+        `Known targets: ${TARGET_IDS.join(", ")}.`,
+    );
+  }
+  return [...new Set(ids)];
+}
+
+/**
  * Scaffold a new gutterpress project. Resolves with a {@link CreateProjectResult};
  * throws a {@link CreateProjectError} on any precondition failure.
  */
@@ -303,11 +336,14 @@ export async function scaffoldProject(
 
   // ADR 0008: creating a book from a built-in template REQUIRES choosing a
   // preset (and a trim size when it's `custom`) — validated before anything
-  // touches disk. A saved custom template is exempt: its manifest carries a
-  // preset as part of the captured design.
+  // touches disk. The publish targets are resolved alongside it, so the
+  // manifest always records both choices explicitly. A saved custom
+  // template is exempt: its manifest carries them as part of the captured
+  // design.
   const preset = customTemplateDir
     ? undefined
     : requirePreset(options.preset, options.customPage);
+  const targets = preset ? resolveScaffoldTargets(options.targets, preset) : undefined;
 
   // 1. COPY the template files to the target.
   try {
@@ -381,9 +417,12 @@ export async function scaffoldProject(
     if (preset) {
       // Overwrite the template's placeholder `preset:` with the author's
       // choice (and their trim, for `custom` or an explicit override) via the
-      // comment-preserving YAML document helpers.
+      // comment-preserving YAML document helpers. The target list is always
+      // written — an explicit `targets: []` is the visible, editable record
+      // of "no destination policies", not an accident of omission.
       const { doc, file } = await loadManifestDoc(projectDir);
       doc.set("preset", preset);
+      doc.set("targets", doc.createNode(targets ?? []));
       if (options.customPage) {
         const page: Record<string, number> = {
           width: options.customPage.width,
@@ -537,14 +576,15 @@ export async function adoptFolder(options: AdoptFolderOptions): Promise<CreatePr
     // `output:` block: output location is a convention (lib/output-paths.ts —
     // `dist/<title-slug>/`), and resolveConfig THROWS a UsageError if a
     // manifest still carries one.
-    // An explicit `preset:` (ADR 0008): adoption is a one-click rescue
-    // affordance, so it takes the product default — but written out, visible
-    // and editable, never implicit.
+    // Explicit `preset:` and `targets:` (ADR 0008): adoption is a one-click
+    // rescue affordance, so it takes the product default — but written out,
+    // visible and editable, never implicit.
     const filesYaml = mdFiles.map((f) => `    - "${escapeYamlScalar(f)}"`).join("\n");
     const manifest =
       `title: "${escapeYamlScalar(title)}"\n` +
       `authors:\n  - "${escapeYamlScalar(author)}"\n` +
       `preset: dtrpg\n` +
+      `targets:\n  - dtrpg\n` +
       `source:\n  files:\n${filesYaml}\n` +
       `styles:\n  - styles/book.css\n`;
     await writeFile(path.join(dir, MANIFEST_FILENAMES[0]), manifest, "utf8");

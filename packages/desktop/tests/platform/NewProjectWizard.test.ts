@@ -162,6 +162,48 @@ describe("NewProjectWizard — ADR 0008 preset choice", () => {
   });
 });
 
+describe("NewProjectWizard — ADR 0008 publish targets", () => {
+  test("both registry targets are offered as checkboxes, with their tool needs mirrored", () => {
+    const src = readSource();
+    expect(src).toMatch(/id:\s*"dtrpg",\s*\n\s*label:\s*"DriveThruRPG \(print\)"/);
+    expect(src).toMatch(/id:\s*"itch",\s*\n\s*label:\s*"itch\.io \(digital\)"/);
+    expect(src).toMatch(/tools:\s*\["qpdf",\s*"gs"\]/);
+    expect(src).toContain("Where will you publish it?");
+  });
+
+  test("checkbox defaults follow the chosen preset until the writer touches one", () => {
+    const src = readSource();
+    expect(src).toMatch(
+      /effectiveTargets = \$derived\(\s*targetsTouched \? checkedTargets : defaultTargetsFor\(selectedPreset\)/
+    );
+    // toggleTarget seeds from the preset defaults on first touch, so the
+    // first uncheck doesn't wipe the other pre-checked boxes.
+    expect(src).toMatch(/const base = targetsTouched \? checkedTargets : defaultTargetsFor\(selectedPreset\)/);
+  });
+
+  test("reset() clears the target selection with the rest of the form", () => {
+    const src = readSource();
+    const resetFn = src.slice(src.indexOf("function reset()"), src.indexOf("function parentDirOf"));
+    expect(resetFn).toContain("targetsTouched = false;");
+    expect(resetFn).toContain("checkedTargets = [];");
+  });
+
+  test("create() forwards an explicit targets list, gated on presetApplies", () => {
+    const src = readSource();
+    expect(src).toMatch(/targets:\s*presetApplies \? \[\.\.\.effectiveTargets\] : undefined/);
+  });
+
+  test("missing qpdf/gs shows the can't-build-compliant-PDFs explanation, from real doctor data", () => {
+    const src = readSource();
+    expect(src).toContain("api.doctor()");
+    expect(src).toMatch(/t\.id === "qpdf" \|\| t\.id === "gs"/);
+    expect(src).toContain("can't be built or");
+    expect(src).toContain("or uncheck it for now");
+    // The note only fires for tools a CHECKED destination actually needs.
+    expect(src).toMatch(/effectiveTargets\.includes\(c\.id\)/);
+  });
+});
+
 describe("NewProjectWizard — M20 template-load failure surfaces instead of silently omitting the section", () => {
   test("tracks a templatesError surface separate from the create-flow `error` state", () => {
     const src = readSource();

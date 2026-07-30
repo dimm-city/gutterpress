@@ -49,6 +49,16 @@ export interface PublishTarget {
    * environment gaps, not deliberate configuration.)
    */
   requiredChecks: readonly string[];
+  /**
+   * External system tools this destination's full pipeline depends on —
+   * building the compliant output AND running the required checks. Creation
+   * flows use this to warn, at target-selection time, that a compliant file
+   * can't be produced or verified until these are installed. Must cover at
+   * least the union of {@link requiredChecks}' own `requiredTools`
+   * (enforced by targets.test.ts); may add build-time tools the checks
+   * alone don't reveal (e.g. Ghostscript for the PDF/X conversion).
+   */
+  requiredTools: readonly string[];
 }
 
 /**
@@ -89,6 +99,10 @@ const DTRPG_TARGET: PublishTarget = {
     "pdf.print.pdfx-metadata",
     "pdf.print.embedded-fonts",
   ],
+  // qpdf: PDF/X marker/metadata verification (and annotation stripping at
+  // build time); gs: the PDF/X CMYK conversion itself plus ink-coverage.
+  // Without these a print-compliant file can't be built or verified.
+  requiredTools: ["qpdf", "gs"],
 };
 
 /**
@@ -120,6 +134,10 @@ const ITCH_TARGET: PublishTarget = {
     },
   },
   requiredChecks: ["pdf.structure.qpdf", "pdf.print.embedded-fonts"],
+  // Both required checks run in-process (the qpdf id is historical — the
+  // structure gate is a pure-JS parse now), so a digital release needs no
+  // external tools at all.
+  requiredTools: [],
 };
 
 export const TARGETS: Record<string, PublishTarget> = {

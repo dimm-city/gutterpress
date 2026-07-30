@@ -62,6 +62,79 @@
   let pageWidth = $state("");
   let pageHeight = $state("");
 
+  // Publish targets (ADR 0008): WHERE the book will be published — each one
+  // is a destination's validation policy, recorded explicitly in the new
+  // manifest (an unchecked-everything selection is written as `targets: []`,
+  // a visible opt-out, never an accident of omission). Pre-checked from the
+  // preset's defaults, and uncheckable — a writer without qpdf/Ghostscript
+  // can opt out of print checks knowingly instead of hitting required-check
+  // errors later. `tools` lists each destination's external-tool needs
+  // (mirrors the lib's PublishTarget.requiredTools).
+  const TARGET_CHOICES: Array<{
+    id: string;
+    label: string;
+    description: string;
+    tools: string[];
+  }> = [
+    {
+      id: "dtrpg",
+      label: "DriveThruRPG (print)",
+      description: "Checks the finished PDF against DriveThruRPG's print rules.",
+      tools: ["qpdf", "gs"],
+    },
+    {
+      id: "itch",
+      label: "itch.io (digital)",
+      description: "Checks the finished PDF is well-formed with embedded fonts.",
+      tools: [],
+    },
+  ];
+  // Mirrors the lib presets' defaultTargets (dtrpg → [dtrpg]; book/custom → []).
+  function defaultTargetsFor(preset: PresetChoice | null): string[] {
+    return preset === "dtrpg" ? ["dtrpg"] : [];
+  }
+  // Defaults follow the chosen preset until the writer touches a checkbox;
+  // after that their selection is theirs (no $effect — the derived falls
+  // back to the preset only while untouched).
+  let targetsTouched = $state(false);
+  let checkedTargets = $state<string[]>([]);
+  let effectiveTargets = $derived(
+    targetsTouched ? checkedTargets : defaultTargetsFor(selectedPreset)
+  );
+  function toggleTarget(id: string): void {
+    const base = targetsTouched ? checkedTargets : defaultTargetsFor(selectedPreset);
+    targetsTouched = true;
+    checkedTargets = base.includes(id) ? base.filter((t) => t !== id) : [...base, id];
+  }
+
+  // qpdf/Ghostscript availability on this computer (from the same /api/doctor
+  // data the Help tab shows), for the can't-build-compliant-PDFs note below.
+  // Best-effort: a failed probe just shows no note.
+  let missingTools = $state<string[]>([]);
+  async function loadToolStatus(): Promise<void> {
+    if (!isDesktop()) return;
+    try {
+      const doctor = await api.doctor();
+      missingTools = (doctor.tools ?? [])
+        .filter((t) => !t.found && (t.id === "qpdf" || t.id === "gs"))
+        .map((t) => t.id);
+    } catch {
+      missingTools = [];
+    }
+  }
+  // The tools a CHECKED destination needs that are missing here — drives the
+  // explanation that compliant PDFs can't be built/verified until installed.
+  let missingNeededTools = $derived(
+    [
+      ...new Set(
+        TARGET_CHOICES.filter((c) => effectiveTargets.includes(c.id)).flatMap((c) => c.tools)
+      ),
+    ].filter((t) => missingTools.includes(t))
+  );
+  let missingToolNames = $derived(
+    missingNeededTools.map((t) => (t === "gs" ? "Ghostscript" : t)).join(" and ")
+  );
+
   // Template selection (#29). Built-in + custom templates, loaded on open.
   let templates = $state<TemplateInfo[]>([]);
   let selectedTemplate = $state<TemplateInfo | null>(null);
@@ -162,6 +235,8 @@
     selectedPreset = null;
     pageWidth = "";
     pageHeight = "";
+    targetsTouched = false;
+    checkedTargets = [];
     creating = false;
     error = null;
   }
@@ -226,6 +301,7 @@
     open = true;
     void loadTemplates();
     void loadDefaultParentDir();
+    void loadToolStatus();
   }
 
   /**
@@ -279,10 +355,11 @@
             ? (tpl.id as "book" | "zine" | "technical")
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
-        // ADR 0008: the chosen preset (and the custom trim, in points) is
-        // written into the new manifest. A saved custom template keeps its
-        // own embedded preset instead.
+        // ADR 0008: the chosen preset, publish targets, and custom trim (in
+        // points) are written into the new manifest. A saved custom template
+        // keeps its own embedded choices instead.
         preset: presetApplies ? (selectedPreset ?? undefined) : undefined,
+        targets: presetApplies ? [...effectiveTargets] : undefined,
         customPage:
           presetApplies && selectedPreset === "custom"
             ? { width: pageWidthPt, height: pageHeightPt }
@@ -414,6 +491,38 @@
             </p>
           {/if}
         </div>
+
+        <div class="field">
+          <span>Where will you publish it? <em class="optional">(you can change this later)</em></span>
+          <ul class="target-list" aria-label="Publish targets">
+            {#each TARGET_CHOICES as choice (choice.id)}
+              <li>
+                <label class="target-row">
+                  <input
+                    type="checkbox"
+                    checked={effectiveTargets.includes(choice.id)}
+                    onchange={() => toggleTarget(choice.id)}
+                    disabled={creating}
+                  />
+                  <span class="target-copy">
+                    <span class="target-label">{choice.label}</span>
+                    <span class="target-desc">{choice.description}</span>
+                  </span>
+                </label>
+              </li>
+            {/each}
+          </ul>
+          {#if missingNeededTools.length > 0}
+            <p class="tool-note" role="note">
+              {missingToolNames}
+              {missingNeededTools.length > 1 ? "aren't" : "isn't"} installed on
+              this computer, so a print-compliant (PDF/X) file can't be built or
+              verified until {missingNeededTools.length > 1 ? "they are" : "it is"}.
+              You can keep this checked and install {missingNeededTools.length > 1 ? "them" : "it"}
+              later (see System setup in the Help tab), or uncheck it for now.
+            </p>
+          {/if}
+        </div>
       {/if}
 
       {#if templates.length > 0}
@@ -541,6 +650,24 @@
   .template-card.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
   .template-card:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
   .preset-list { grid-template-columns: 1fr 1fr 1fr; }
+  .target-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .target-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 13px; color: var(--app-text-secondary); cursor: pointer;
+  }
+  .target-row input { margin-top: 2px; flex-shrink: 0; }
+  .target-copy { display: flex; flex-direction: column; gap: 1px; }
+  .target-label { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
+  .tool-note {
+    margin: 4px 0 0;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--app-warning-text);
+  }
   .custom-page {
     display: flex;
     align-items: flex-end;

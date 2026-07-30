@@ -16,6 +16,8 @@ import {
   publishTargetFor,
   resolveTargets,
 } from "./targets";
+import { getCheckById } from "../checks/registry";
+import "../checks/register-builtins";
 
 describe("target registry", () => {
   test("registers exactly dtrpg and itch", () => {
@@ -27,6 +29,24 @@ describe("target registry", () => {
     expect(() => publishTargetFor("lulu")).toThrow(
       'Unknown publish target "lulu". Known targets: dtrpg, itch.'
     );
+  });
+
+  test("every target's requiredTools covers its required checks' external tools", () => {
+    // A target that requires a check whose tool it doesn't declare would let
+    // creation-time tool warnings under-report what validation later demands.
+    for (const target of Object.values(TARGETS)) {
+      for (const id of target.requiredChecks) {
+        const check = getCheckById(id);
+        expect(check).toBeDefined();
+        for (const tool of check?.requiredTools ?? []) {
+          expect(target.requiredTools).toContain(tool);
+        }
+      }
+    }
+  });
+
+  test("itch needs no external tools — a digital release validates in-process", () => {
+    expect(publishTargetFor("itch").requiredTools).toEqual([]);
   });
 
   test("every registered target's requiredChecks are enabled as errors by its own overlay", () => {
