@@ -228,6 +228,26 @@
   function onOutroStart(e: Event) {
     (e.currentTarget as HTMLElement).style.pointerEvents = "none";
   }
+
+  // Only the {#if visible} block is torn down on dismissal — this component
+  // stays mounted, so `activeTab` would otherwise survive it. The layer is
+  // also the app's empty state: it comes back on its own whenever nothing is
+  // open (a failed open, a closed project). Without this reset, someone who
+  // read the Help tab and closed it would meet the NEXT empty state on Help,
+  // with the book list and recovery actions hidden behind a tab they never
+  // chose.
+  //
+  // Reset on outro END, not at dismiss time, so the tab never visibly flips
+  // while the layer is still fading out. `outroend` is a real Svelte 5
+  // element event (typed in svelte/elements.d.ts, dispatched by the
+  // transition runtime) — but it only fires because this section carries
+  // `transition:fade`. COUPLED ON PURPOSE, and pinned by
+  // tests/platform/welcome-landing-tabs.test.ts: removing the transition
+  // would silently strand the tab on Help, so the test fails if the handler
+  // and the transition stop travelling together.
+  function onOutroEnd() {
+    activeTab = "projects";
+  }
 </script>
 
 {#if visible}
@@ -244,6 +264,7 @@
     onkeydown={onKeydown}
     transition:fade={{ duration: 180 }}
     onoutrostart={onOutroStart}
+    onoutroend={onOutroEnd}
   >
     <div class="landing-col">
       <header class="brand-row">
@@ -294,9 +315,11 @@
           {#if errorBody}<p class="error-body">{errorBody}</p>{/if}
           <p class="error-hint">Pick a book below, or open it from its new location.</p>
         </section>
-      {:else if continueTitle}
-        <h1 class="landing-h1">Welcome back</h1>
-      {:else}
+      {:else if !continueTitle}
+        <!-- No greeting over the continue card: the card already names the book
+             it is offering to reopen, and the tabs below say what the screen
+             is for. The first-run hero stays — with nothing to continue, the
+             screen does need to introduce itself. -->
         <section class="hero">
           <h1 class="landing-h1 hero-title">Welcome to Gutterpress</h1>
           <p class="hero-tagline">Turn your markdown writing into a print-ready book.</p>
