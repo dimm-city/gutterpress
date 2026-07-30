@@ -7,7 +7,8 @@
  *
  * Storage model mirrors {@link plugin-manager.ts} / {@link theme-manager.ts}:
  * the yaml `Document` API is used so existing comments + formatting round-trip
- * cleanly, and writes go to `manifest.yaml` (or `.yml` when only that exists).
+ * cleanly, and writes go to `manifest.yaml` — the ONE recognized filename
+ * (`MANIFEST_FILENAMES`). This used to claim a `.yml` fallback; there is none.
  * Host-side (node:fs); the renderer reaches it through SvelteKit server routes.
  *
  * Bundle-safe (CLAUDE.md §1/§3): no runtime package.json reads, no computed

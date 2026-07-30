@@ -948,3 +948,43 @@ describe('stopFileWatcher', () => {
     expect(rebuildStarted).toBe(false);
   }, 10000);
 });
+
+// ── 2026-07-29 audit: generated output is not a source edit ──────────────────
+//
+// The in-project ignore rule was the dotfile rule alone, so `gutterpress build`
+// (which writes a whole book's worth of files into `dist/`) and a plugin install
+// (which vendors a tree under `plugins/npm/`) both stormed the watcher and
+// triggered full preview re-renders for output nobody edited. Generated and
+// vendored trees are never publication SOURCE (R15).
+
+describe("isIgnoredWatchPath — generated and vendored subtrees", () => {
+  const root = "/book";
+
+  test("ignores build output under dist/", () => {
+    expect(isIgnoredWatchPath("/book/dist/field-guide/field-guide-pdf.pdf", root)).toBe(true);
+    expect(isIgnoredWatchPath("/book/dist", root)).toBe(true);
+    expect(isIgnoredWatchPath("/book/dist/book.html", root)).toBe(true);
+  });
+
+  test("ignores the vendored npm plugin tree", () => {
+    expect(isIgnoredWatchPath("/book/plugins/npm/some-plugin/1.0.0/index.js", root)).toBe(true);
+    expect(isIgnoredWatchPath("/book/node_modules/.bin/x", root)).toBe(true);
+  });
+
+  test("does NOT ignore a book's own authored plugin source", () => {
+    // `plugins/*.js` is author-written source; only `plugins/npm/**` is managed.
+    expect(isIgnoredWatchPath("/book/plugins/components.js", root)).toBe(false);
+  });
+
+  test("does NOT ignore a source file whose name merely starts with an ignored segment", () => {
+    expect(isIgnoredWatchPath("/book/distribution.md", root)).toBe(false);
+    expect(isIgnoredWatchPath("/book/chapters/distant-shores.md", root)).toBe(false);
+  });
+
+  test("still ignores dotfiles, and still leaves OUT-of-project paths alone", () => {
+    expect(isIgnoredWatchPath("/book/.env", root)).toBe(true);
+    // A declared external dependency under a dot-prefixed ancestor must keep
+    // firing — the regression isDotPathUnderRoot exists for.
+    expect(isIgnoredWatchPath("/home/u/.local/share/shared/styles/x.css", root)).toBe(false);
+  });
+});

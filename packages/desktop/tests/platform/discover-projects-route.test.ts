@@ -92,3 +92,40 @@ test("a scan failure propagates as an error response — NOT a silent [] indisti
   expect(status).toBeGreaterThanOrEqual(400);
   expect(message).toBe("EACCES: permission denied");
 });
+
+// ── 2026-07-29 audit: exclude a recent's ACTIVE BOOK, not just its key ───────
+//
+// For a repo-backed entry `recentFolders[].path` is the REPO ROOT, while
+// discovery returns BOOK folders (any dir holding a manifest). Excluding by
+// `path` alone therefore never matched, and a book already sitting in Recents
+// was suggested again under "Discovered". `lastActiveBook` is the folder that
+// entry actually reopens, so it belongs in the same exclusion set.
+
+test("the exclusion set carries each recent's lastActiveBook alongside its repo root", async () => {
+  let seen: Set<string> | null = null;
+  registerHostServices(
+    makeHostServices({
+      prefs: {
+        defaultProjectSearchRoots: () => ["/fake/root"],
+        readPrefs: async () => ({
+          recentFolders: [
+            { path: "/repo", title: "repo", lastActiveBook: "/repo/books/field-guide" },
+            { path: "/plain-book", title: "plain" },
+          ],
+          favorites: [{ path: "/fav-repo", title: "fav" }],
+        }),
+        scanForProjects: async (_roots: string[], exclude: Set<string>) => {
+          seen = exclude;
+          return [];
+        },
+      },
+    }),
+  );
+
+  await discoverProjectsRoute({ request: request() } as never);
+
+  expect(seen).not.toBeNull();
+  expect([...seen!].sort()).toEqual(
+    ["/fav-repo", "/plain-book", "/repo", "/repo/books/field-guide"].sort(),
+  );
+});

@@ -227,10 +227,32 @@ export function isDotPathUnderRoot(candidatePath: string, root: string): boolean
 }
 
 /**
+ * Path segments inside the project whose subtrees are GENERATED or VENDORED, and
+ * so are never publication source (R15): `dist/` is build output — one
+ * `gutterpress build` writes a whole book's worth of files there — and
+ * `plugins/npm/`, `node_modules/` are managed dependency trees a plugin install
+ * writes wholesale. Watching them meant a build or an install stormed the
+ * debounce and triggered full preview re-renders for output nobody edited.
+ *
+ * A book's OWN `plugins/*.js` is author-written source and keeps firing; only the
+ * `npm` subtree under it is managed.
+ */
+function isGeneratedProjectPath(relative: string): boolean {
+  const segments = relative.split("/");
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    if (segment === "dist" || segment === "node_modules") return true;
+    if (segment === "plugins" && segments[i + 1] === "npm") return true;
+  }
+  return false;
+}
+
+/**
  * Whether the watcher should ignore a path.
  *
  * IN-PROJECT paths get the dotfile rule ({@link isDotPathUnderRoot}) — a
- * project's own `.git/`, `.DS_Store`, editor swap files, and so on are noise.
+ * project's own `.git/`, `.DS_Store`, editor swap files, and so on are noise —
+ * plus the generated/vendored-subtree rule ({@link isGeneratedProjectPath}).
  *
  * A path OUTSIDE the project is only ever seen because it is a DECLARED
  * external dependency the manifest named explicitly (see
@@ -243,9 +265,10 @@ export function isDotPathUnderRoot(candidatePath: string, root: string): boolean
 export function isIgnoredWatchPath(candidatePath: string, projectRoot: string): boolean {
   const normalizedRoot = projectRoot.replace(/\\/g, "/").replace(/\/+$/, "");
   const normalizedPath = candidatePath.replace(/\\/g, "/");
-  const inProject =
-    normalizedPath === normalizedRoot || normalizedPath.startsWith(normalizedRoot + "/");
-  return inProject ? isDotPathUnderRoot(candidatePath, projectRoot) : false;
+  if (normalizedPath === normalizedRoot) return isDotPathUnderRoot(candidatePath, projectRoot);
+  if (!normalizedPath.startsWith(normalizedRoot + "/")) return false;
+  const relative = normalizedPath.slice(normalizedRoot.length + 1);
+  return isDotPathUnderRoot(candidatePath, projectRoot) || isGeneratedProjectPath(relative);
 }
 
 /**

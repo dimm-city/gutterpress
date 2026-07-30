@@ -318,7 +318,7 @@ const operationLogPathForDir = (dir: string): string =>
     ),
   );
 
-// A single shallow folder watcher for the open project. fs.watch is coarse and
+// A single RECURSIVE folder watcher for the open project. fs.watch is coarse and
 // fires multiple times per save, so changes are debounced before notifying the
 // renderer. Only one project is open at a time, so a single watcher suffices.
 // The watcher/debounce/normalized-dir state + control logic lives in the
@@ -333,11 +333,15 @@ const operationLogPathForDir = (dir: string): string =>
 // open project + folder-watch events) ARMS/RESETS one timer; it fires after N
 // minutes of quiet (settings.versionHistory, default ON / 10 min, floor 5) so
 // each snapshot marks the end of a work burst — never a commit per keystroke.
-// On fire: detect the source; only a `local-git-folder` that IS its own repo
-// root snapshots. A plain folder is NEVER auto-`git init`ed (enabling history
-// stays an explicit opt-in), and a folder nested INSIDE a larger repo (subPath
-// set) is NEVER auto-snapshotted — that would silently commit to the enclosing
-// repo. The lib's per-repo FIFO lock serializes the commit against
+// On fire: detect the source; only a `local-git-folder` snapshots. A plain
+// folder is NEVER auto-`git init`ed (enabling history stays an explicit
+// opt-in). A book nested INSIDE a larger repo DOES snapshot, against that
+// enclosing repo — that is the repo-root session model ("a project is its git
+// repo", R9), and the lib's provider scopes the commit to `repoRoot` itself.
+// (This comment used to say nested folders were never auto-snapshotted; that
+// stopped being true when sessions became repo-rooted, and the scheduler has no
+// subPath check — corrected 2026-07-29.) The lib's per-repo FIFO lock
+// serializes the commit against
 // sync/restore, and its no-empty-snapshot guard turns a clean-tree fire into
 // the expected `isNoChangesError` rejection, swallowed below. Silent on success
 // (the history dialog reloads its list on open).

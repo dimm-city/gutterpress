@@ -110,6 +110,16 @@ export function hasDotSegment(urlPathname: string): boolean {
  *
  * Containment only — a caller serving a real project tree must ALSO run
  * {@link hasDotSegment}, since dotfiles are contained but must stay unreachable.
+ *
+ * LEXICAL, deliberately: it normalizes `..`/`.` but does not resolve symlinks, so
+ * a symlink INSIDE the served root that points outside it resolves to its target
+ * when the file is read. That is a considered choice, not an oversight (reviewed
+ * 2026-07-29): these are localhost preview/pagination servers reading a tree the
+ * author owns and controls, and a project-local symlink into a shared foundation
+ * is a legitimate authoring layout — the desktop's own fs routes, which serve
+ * renderer-supplied paths and therefore face a real attacker, use the
+ * canonicalizing `isWithinAnyRootCanonical` instead. If this guard is ever reused
+ * for a path an untrusted party supplies, canonicalize first.
  */
 export function resolveStaticPath(urlPathname: string, root: string): string | null {
   let decoded: string;

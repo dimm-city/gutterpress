@@ -1,5 +1,12 @@
 # File-operations audit: repo-root orientation & multi-project support (2026-07-29)
 
+> **Status: RESOLVED (2026-07-30).** Every finding below was worked through
+> test-first — a failing test that reproduces the defect, then the fix. Two were
+> refuted on closer inspection and one is deferred pending a product decision;
+> both are called out inline and summarised in [Resolution](#resolution) at the
+> end. The findings text is kept in its original form as the record of what was
+> found; read the Resolution section for what changed.
+
 Scope: every surface that resolves paths, copies files, watches, serves, or runs
 git — reviewed against the multi-project contract in `docs/open-design/*`,
 `docs/design-guides.md`, `docs/ARCHITECTURE.md`, `docs/best-practices.md`,
@@ -243,3 +250,127 @@ R13 Implicit manuscript discovery is top-level-only per book. R14 One active
 local theme per book; replacement preserves cascade position. R15 Generated
 output is never source. R16 (conflict) `docs/ARCHITECTURE.md`'s preview/watch
 sections still describe the pre-serve-in-place model and need a rewrite.
+
+---
+
+## Resolution
+
+Worked through 2026-07-29/30, test-first: each defect got a test that reproduces
+it and fails, then the fix. Repo-wide state after: **4208 tests pass, 0 fail**
+(CLI 2130 + desktop 2071 + plugin contract), `svelte-check` 0 errors, both
+typechecks clean, eslint clean, the desktop SPA build's renderer-purity gate OK,
+and the Electron main build OK.
+
+### Theme 1 — the guard rollout
+
+One named check, `requireProjectDir` (absolute **and** inside the host-owned
+`projectRoots()` allow-list), now covers all 36 `projectDir` routes:
+`vcs/*`, `remote/{sync,resolve-sync-conflicts,diagnose-project}`, `publish/*`,
+`theme/*`, `style/set-active`, `project/list-styles`, `manifest/*`,
+`plugin/{set-enabled,list,add-local,validate}`, `snip/*`,
+`tpl/save-as-template`, `lint/project`. Pre-session routes
+(classify/adopt/create/discover, clone destination, userData stores) are
+deliberately excluded and documented — `projectRoots()` is empty until a project
+opens, so they fail closed by design.
+
+Two paths that are not a `projectDir` needed their own policy, both resolved the
+way `fs:copyFile`'s `src` already was — inside the project, or a path a native
+dialog produced this session:
+
+- `publish/run`'s `artifactPath` (the upload source, and so the actual
+  exfiltration primitive). `pick-pdf-file`/`open-directory` register their
+  results; the capability is consumed and re-registered so the wizard's
+  dry-run → publish sequence still works.
+- `shell/show-in-folder`, which had no validation at all. The export controller
+  registers the PDF it actually wrote after the atomic rename, so the reveal
+  never trusts a renderer path and a failed export authorizes nothing.
+
+The five publish routes also moved path validation out of the handler body into
+`validate`: `handlePublishErrors` maps any non-`Error` throwable to a generic
+500, so a 400/403 raised inside the body had been reaching the client as
+"Publishing could not be completed."
+
+### Theme 2 — shared-asset parity
+
+- The inliner's CSS asset plan is kept on `ServerState.cssAssets` and resolved by
+  the preview server before the project-root fallback, so a >512 KB shared image
+  loads from its real location at the same URL the build uses. Making the
+  parameter **required** immediately exposed the same bug in the initial render
+  (`server.ts` rendered before `createServerState`) as a compile error.
+- `listProjectStyles` takes the enclosing repo root and offers the repo's shared
+  stylesheets as inactive options, named the way the manifest stores them — so
+  unchecking one no longer removes it from the UI forever.
+- Asset validation additionally scans the directories the active stylesheets'
+  out-of-book asset closure lives in (asset files' own directories only).
+- `listRecovery` offers drafts for anything **under** the project, not just
+  immediate children, separator-aware.
+
+### Theme 3 — change detection
+
+- `scheduleAutoWriteEffects` accepts a write anywhere in the project's write
+  scope (book **or** repository), using the same host-detected root the fs guard
+  authorizes against, so "allowed to write" and "counts as an edit" can no longer
+  diverge. The debounce is still scheduled for the watched dir.
+- The desktop folder watch is recursive, with an ignore list for subtrees that
+  are never source — `.git` at any depth, `dist`, `plugins/npm`,
+  `node_modules` — matched segment-aware on both separators. The CLI preview
+  watcher got the same in-project exclusions, so a build no longer triggers a
+  spurious re-render.
+- **Not** done: watching the whole repository recursively. External edits to
+  shared files are covered for rendering by the preview watcher's
+  declared-dependency closure and for history by periodic sync plus the
+  project-close flush; a recursive repo watch is a cost this change did not take
+  on.
+
+### Theme 4 — repo-root keys
+
+- Conflict previews resolve against the host-detected repo root
+  (`conflictBaseDir`), never the renderer's `projectDir`, and the host's
+  containment check is canonical so the P1 symlink escape stays closed.
+- One `operationLogSlug` helper keys the operation log to the repo, applied at
+  all seven call sites.
+- `resolveActiveBookDir` matches by containment, deepest book first,
+  separator-aware — so opening a folder inside book B opens B.
+- The per-project restore-state read moved into the lifecycle controller, the
+  only place that knows the resolved target; this fixed both the wrong-key read
+  and `switchBook` dropping the state, and removed a parameter three callers were
+  getting wrong.
+- **Refuted:** the pre-export sync-conflict gate. It does read the latch under
+  the export dir, but `cancelAll()` clears every latch on project switch and the
+  gate independently re-runs the repo-scoped `syncProject` and blocks on its
+  outcome — the "latch from book A misses book B" scenario does not reproduce.
+
+### Theme 5 — CLI anchors and path bugs
+
+- The `%5C` dotfile bypass is closed: the guard moved to `lib/static-serve.ts`
+  as `hasDotSegment` and splits on both separators on every platform, which is
+  also what lets a POSIX test run pin the Windows outcome.
+- `BuildContext.renderDir` is the single anchor for every manifest-relative path;
+  `validation-exec` follows it, so the lint gate and the render see the same
+  stylesheets.
+- The pre-build `local-refs` check now enforces R5 with the same wording as the
+  build, for images only — a relative link to a sibling document stays legal.
+- Both escape tests stopped over-rejecting a project-root file whose name begins
+  with two dots.
+
+### Doc drift and remaining hardening
+
+Rewritten: `docs/ARCHITECTURE.md`'s Preview Server and File Watching sections
+(serve-in-place, the two watchers, the dependency closure, the dotfile guard).
+Corrected: the `manifest.yml` fallback claim in `manifest-config.ts`, and
+`main.ts`'s "nested folders are NEVER auto-snapshotted" and "shallow watcher"
+comments. Fixed: `build-fingerprint.json` recording the ephemeral work dir as
+`keyConfig.outputDir` (`recordedOutputDir` separates where the file is written
+from what it records); discovery/recents dedup missing `lastActiveBook`, so a
+book already in Recents was suggested again; the recents `exists` badge checking
+the repo root while the row opens the book; and a `--out file.pdf` build logging
+a `book.html` path it never delivered. Documented as a deliberate choice:
+`resolveWithinRoot`'s lexical containment, with a pointer to the canonicalizing
+guard the desktop fs routes use.
+
+**Deferred, needs a product decision:** `saveProjectAsTemplate` copies a book's
+manifest verbatim, so a template saved from a repo-nested book keeps
+`../../shared/...` entries that cannot resolve once scaffolded elsewhere. The
+three plausible answers — drop the entries and warn, copy the shared files in and
+rewrite them local, or refuse to template such a project — are product calls, not
+bug fixes, so this one is left flagged rather than guessed at.

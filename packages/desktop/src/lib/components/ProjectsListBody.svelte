@@ -204,10 +204,13 @@
   let expandedForFilter = $state<string | null>(null);
 
   let filteredDiscovered = $derived.by<DiscoveredProject[]>(() => {
-    // #49: dedup discovered against recents/favorites by FolderRef.key.
+    // #49: dedup discovered against recents/favorites by FolderRef.key — plus
+    // each recent's `lastActiveBook`. For a repo-backed entry `key` is the REPO
+    // ROOT while discovery returns BOOK folders, so keys alone never matched and
+    // a book already in Recents was listed again below (2026-07-29 audit).
     const shown = new Set<string>([
       ...filteredFavorites.map((f) => f.key),
-      ...filteredRecents.map((r) => r.key),
+      ...filteredRecents.flatMap((r) => (r.lastActiveBook ? [r.key, r.lastActiveBook] : [r.key])),
     ]);
     return discovered.filter(
       (d) => !shown.has(d.path) && matchesFilter(d.path, d.title, effectiveFilter)

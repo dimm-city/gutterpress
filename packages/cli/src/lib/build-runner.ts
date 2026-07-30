@@ -481,7 +481,11 @@ async function finalizeBuild(
 ): Promise<BuildRunnerResult> {
   const workFingerprint = await writeBuildFingerprint({
     ...fingerprint,
+    // The FILE goes into the work dir so the atomic publish carries it along;
+    // the value RECORDED stays the destination the author can actually open
+    // (`fingerprint.outputDir`, set by each output strategy).
     outputDir: ctx.workDir,
+    recordedOutputDir: fingerprint.outputDir,
   });
   await publishBuild(ctx, artifactName);
 
@@ -681,7 +685,13 @@ class PdfOutput implements OutputStrategy {
           htmlFile,
           workDir
         );
-        log.success(`Wrote static desktop: ${path.join(outDir, BOOK_HTML)}`);
+        // A `file` target delivers ONE artifact — the PDF — so book.html stays in
+        // the work dir and is discarded with it. Announcing a path under `outDir`
+        // (the folder chosen in a Save dialog) named a file that was never
+        // written there (2026-07-29 audit).
+        if (ctx.target.kind !== "file") {
+          log.success(`Wrote static desktop: ${path.join(outDir, BOOK_HTML)}`);
+        }
       }
 
       if (!pdfxMode) {

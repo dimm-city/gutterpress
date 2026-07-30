@@ -352,10 +352,33 @@ http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
     ├─→ GET /api/status  inlined handler — reports hasInput + currentPath
     │    (the only API route; a separate route-table module was removed as
     │    unneeded scaffolding for one hard-coded endpoint)
-    └─→ /*               readFile (node:fs/promises) from state.tempDir
-         ("/" redirects to book.html; HTML responses get a tiny inline
-          HMR client injected before </body>; `..` traversal returns 404)
+    ├─→ /vendor/*, /preview/scripts/*, /favicon.ico
+    │                    the process-wide embedded-assets dir, with a
+    │                    version ETag (the ~900 KB Paged.js polyfill is
+    │                    never copied per project)
+    ├─→ assets/<hash>.*  the inliner's CSS asset plan (state.cssAssets) —
+    │                    an exact URL→source map for images too large to
+    │                    embed that live OUTSIDE the book (art referenced
+    │                    from a repo-root shared stylesheet). Served from
+    │                    their real location; nothing is copied.
+    └─→ /*               SERVE-IN-PLACE:
+         · /book.html (and "/")  → state.tempDir, the ONE generated file
+         · everything else       → state.currentInputPath, the REAL project
+                                   directory
+         HTML responses get a tiny inline HMR client injected before </body>.
+         `..` traversal returns 404 (resolveStaticPath), and so does any
+         dot-segment request — `/.env`, `/.git/config`, their percent-encoded
+         spellings, and `%5C`-separated ones, which `path.resolve` honors on
+         Windows (hasDotSegment, lib/static-serve.ts).
 ```
+
+Serving the project in place — instead of copying the whole tree into `tempDir`
+at startup — is what makes preview asset resolution identical to the build's BY
+CONSTRUCTION: both read straight off the same real project tree, so a reference
+that works in one works in the other. The temp dir holds only generated output.
+The dotfile guard is load-bearing precisely because of that: the old whole-tree
+copy leaked a project's `.env` into a throwaway directory nobody could name,
+while this reads the real thing.
 
 **Design Rationale**:
 - The previous Vite-based dev server was the wrong shape: Gutterpress doesn't
@@ -374,49 +397,53 @@ http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
 
 **Location**: `packages/cli/src/preview/file-watcher.ts`
 
-Uses **Chokidar** for cross-platform file watching:
+Uses **Chokidar**, in TWO instances:
 
-```typescript
-function createFileWatcher(state: ServerState): FSWatcher {
-  const watcher = watch(state.currentInputPath, {
-    persistent: true,
-    ignoreInitial: true,
-    ignored: /(^|[\/\\])\../,  // Ignore dot files
-    awaitWriteFinish: {
-      stabilityThreshold: 100,
-      pollInterval: 50,
-    },
-  });
+1. **The book root** (`state.currentInputPath`), recursively. Its `ignored`
+   matcher is `isIgnoredWatchPath`, which applies the dotfile rule only to the
+   path RELATIVE to the watch root. Chokidar tests matchers against the
+   fully-qualified absolute path, so the older `ignored: /(^|[\/\\])\../` also
+   matched every dot-prefixed ANCESTOR — a project under `~/.local/share/...`
+   had every event rejected, silently disabling the watcher with no error.
+2. **Declared external dependencies**, watched PER FILE (never per directory, so
+   the set stays exact and cannot pull in a large sibling tree). This is what a
+   multi-book repo needs: a book's `styles:` entry may point at
+   `../../shared/styles/components.css`, and an authored plugin `path:` at
+   `../../shared/plugins/components.js`.
 
-  let rebuildTimer: NodeJS.Timeout | null = null;
+The external set is the stylesheets' full DEPENDENCY CLOSURE, not just the
+declared entries: `collectStyleDependencies` follows every active stylesheet's
+`@import` chain and each local `url()` it references, over ALL active
+stylesheets (a book-local sheet can reference a shared font just as easily), and
+only the results that land outside the book are added. A shared theme's
+`url("../../fonts/Publisher.woff2")` is a file a design tool can replace without
+touching one line of CSS; watching only `theme.css` would leave the preview stale
+after that swap with nothing downstream to correct it. Targets that do not exist
+yet are watched via their nearest existing ancestor, so declaring a file before
+creating it recovers on creation instead of requiring a restart.
 
-  watcher.on('all', async (event, filePath) => {
-    if (rebuildTimer) clearTimeout(rebuildTimer);
-    rebuildTimer = setTimeout(async () => {
-      if (state.isRebuilding) return;
-      state.isRebuilding = true;
-      // Re-copy changed file, reload config, regenerate HTML
-      const manifest = await loadManifest(state.currentInputPath);
-      state.config = resolveConfig({}, manifest);
-      await generateAndWriteHtml(state.currentInputPath, state.tempDir, state.config);
-      state.isRebuilding = false;
-    }, DEBOUNCE.FILE_WATCH);
-  });
-
-  return watcher;
-}
-```
+**Rebuild path**: every burst — including a CSS-only one — re-renders
+`book.html`, because CSS is INLINED into it at render time, so skipping the
+re-render would serve stale styles until some later markdown edit. The manifest
+is reloaded first and the external subscriptions are re-synced BEFORE rendering,
+so a newly declared shared file that does not exist yet is already being watched
+when its creation fixes the render. Nothing is copied anywhere: the project is
+served in place and stylesheets are inlined, so an external dependency needs
+watching, not staging.
 
 **Features**:
-- Debounced rebuilds (configurable via `DEBOUNCE.FILE_WATCH` constant)
-- Prevents overlapping builds via `isRebuilding` guard
-- Watches markdown, CSS, and manifest.yaml
-- Re-copies changed files to temp directory before regenerating
+- Debounced rebuilds (configurable via `DEBOUNCE.FILE_WATCH` constant),
+  coalescing a multi-file rewrite into one full-document rebuild
+- Prevents overlapping builds via `isRebuilding`; changes that arrive DURING a
+  rebuild stay pending and re-arm the timer rather than being orphaned
+- Watches the book recursively plus each declared external dependency's closure
 
 **Design Rationale**:
 - Chokidar handles platform differences
 - Debouncing prevents excessive rebuilds
 - Stability threshold waits for file writes to complete
+- Two watchers, not one: watching a missing external target's nearest existing
+  ancestor must never unwatch or duplicate the book root
 
 ### Client Connection Tracking
 
