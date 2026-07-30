@@ -244,3 +244,193 @@ test("listCustomTemplates returns saved templates and [] for an empty root", asy
     await rm(root, { recursive: true, force: true });
   }
 });
+
+// ── Shared-ref reconciliation (repo-nested book → portable template) ─────────
+//
+// A book that lives inside a multi-book repo references shared design with
+// `../../shared/...` manifest entries. Copied verbatim into a template, those
+// escape the template folder and can't resolve once scaffolded elsewhere. The
+// default `sharedRefs: "vendor"` copies the referenced files (and a
+// stylesheet's whole url()/@import closure) into the template book-local and
+// rewrites the entries; `"exclude"` drops them instead.
+
+/**
+ * Build `<repo>/shared/...` plus a nested book that references it, and return
+ * the book dir. The shared theme pulls in a font (`url`) and a partial
+ * (`@import`), so the closure is more than the one declared file.
+ */
+async function makeRepoWithNestedBook(repo: string): Promise<string> {
+  const book = path.join(repo, "books", "field-guide");
+  await mkdir(path.join(repo, "shared", "themes", "publisher"), { recursive: true });
+  await mkdir(path.join(repo, "shared", "fonts"), { recursive: true });
+  await mkdir(path.join(repo, "shared", "plugins"), { recursive: true });
+  await mkdir(book, { recursive: true });
+
+  await writeFile(
+    path.join(repo, "shared", "themes", "publisher", "theme.css"),
+    '@import "./local.css";\n@font-face { font-family: P; src: url("../../fonts/P.woff2"); }\nbody { color: black }\n',
+    "utf8",
+  );
+  await writeFile(
+    path.join(repo, "shared", "themes", "publisher", "local.css"),
+    "h1 { letter-spacing: 0.02em }\n",
+    "utf8",
+  );
+  await writeFile(path.join(repo, "shared", "fonts", "P.woff2"), "font-bytes", "utf8");
+  await writeFile(path.join(repo, "shared", "plugins", "components.js"), "export default () => {};\n", "utf8");
+
+  await writeFile(path.join(book, "book.css"), "p { margin: 0 }\n", "utf8");
+  await writeFile(path.join(book, "chapter-01.md"), "# One\n", "utf8");
+  await writeFile(
+    path.join(book, "manifest.yaml"),
+    [
+      "title: Field Guide",
+      "authors:",
+      "  - A. Writer",
+      "styles:",
+      "  - ../../shared/themes/publisher/theme.css",
+      "  - book.css",
+      "plugins:",
+      "  - path: ../../shared/plugins/components.js",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  return book;
+}
+
+test("saveProjectAsTemplate vendors the shared style closure + plugin book-local by default", async () => {
+  const repo = await tmp("gutterpress-vendor-repo-");
+  const templatesRoot = await tmp("gutterpress-vendor-dest-");
+  try {
+    const book = await makeRepoWithNestedBook(repo);
+
+    const saved = await saveProjectAsTemplate({
+      projectDir: book,
+      name: "Field Template",
+      templatesRoot,
+    });
+
+    // The escaping entries were rewritten book-local — no `../` survives.
+    const manifest = await readFile(path.join(saved.dir!, "manifest.yaml"), "utf8");
+    expect(manifest).not.toContain("../");
+    expect(manifest).toContain("shared/themes/publisher/theme.css");
+    expect(manifest).toContain("book.css"); // the in-book entry is untouched
+    expect(manifest).toContain("shared/plugins/components.js");
+
+    // The declared file, its @import partial, its url() font, and the plugin
+    // were all copied in — preserving the layout so the CSS's own relative
+    // refs still resolve.
+    const themeCss = await readFile(
+      path.join(saved.dir!, "shared", "themes", "publisher", "theme.css"),
+      "utf8",
+    );
+    expect(themeCss).toContain('url("../../fonts/P.woff2")'); // untouched, still valid
+    for (const rel of [
+      "shared/themes/publisher/theme.css",
+      "shared/themes/publisher/local.css",
+      "shared/fonts/P.woff2",
+      "shared/plugins/components.js",
+    ]) {
+      expect(await readFile(path.join(saved.dir!, rel), "utf8")).toBeTruthy();
+    }
+
+    expect(saved.vendoredRefs).toContain("shared/themes/publisher/theme.css");
+    expect(saved.vendoredRefs).toContain("shared/plugins/components.js");
+    expect(saved.excludedRefs ?? []).toHaveLength(0);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(templatesRoot, { recursive: true, force: true });
+  }
+});
+
+test("a template vendored from a nested book scaffolds with resolvable styles (no escapes)", async () => {
+  const repo = await tmp("gutterpress-vendor-scaffold-repo-");
+  const templatesRoot = await tmp("gutterpress-vendor-scaffold-dest-");
+  const out = await tmp("gutterpress-vendor-scaffold-out-");
+  try {
+    const book = await makeRepoWithNestedBook(repo);
+    const saved = await saveProjectAsTemplate({ projectDir: book, name: "Portable", templatesRoot });
+
+    // Scaffold the saved template into a fresh, UNRELATED location — the case
+    // that used to leave `../../shared/...` dangling.
+    const scaffolded = await scaffoldProject({
+      name: "New Book",
+      parentDir: out,
+      templateDir: saved.dir!,
+      versionHistory: "none",
+    });
+
+    // Every vendored file lands inside the scaffolded project, and the manifest
+    // points at them book-local.
+    const manifest = await readFile(path.join(scaffolded.projectDir, "manifest.yaml"), "utf8");
+    expect(manifest).not.toContain("../");
+    expect(
+      await readFile(
+        path.join(scaffolded.projectDir, "shared", "themes", "publisher", "theme.css"),
+        "utf8",
+      ),
+    ).toBeTruthy();
+    expect(
+      await readFile(path.join(scaffolded.projectDir, "shared", "fonts", "P.woff2"), "utf8"),
+    ).toBeTruthy();
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(templatesRoot, { recursive: true, force: true });
+    await rm(out, { recursive: true, force: true });
+  }
+});
+
+test('saveProjectAsTemplate with sharedRefs:"exclude" drops the escaping entries and copies nothing', async () => {
+  const repo = await tmp("gutterpress-exclude-repo-");
+  const templatesRoot = await tmp("gutterpress-exclude-dest-");
+  try {
+    const book = await makeRepoWithNestedBook(repo);
+
+    const saved = await saveProjectAsTemplate({
+      projectDir: book,
+      name: "Lean Template",
+      templatesRoot,
+      sharedRefs: "exclude",
+    });
+
+    const manifest = await readFile(path.join(saved.dir!, "manifest.yaml"), "utf8");
+    expect(manifest).not.toContain("../");
+    expect(manifest).not.toContain("shared/"); // nothing vendored
+    expect(manifest).toContain("book.css"); // the in-book style survives
+    // No shared tree copied in.
+    await expect(readdir(path.join(saved.dir!, "shared"))).rejects.toThrow();
+
+    expect(saved.excludedRefs).toContain("../../shared/themes/publisher/theme.css");
+    expect(saved.excludedRefs).toContain("../../shared/plugins/components.js");
+    expect(saved.vendoredRefs ?? []).toHaveLength(0);
+  } finally {
+    await rm(repo, { recursive: true, force: true });
+    await rm(templatesRoot, { recursive: true, force: true });
+  }
+});
+
+test("a self-contained book (no escaping refs) is captured unchanged, no shared/ folder", async () => {
+  const project = await tmp("gutterpress-noescape-src-");
+  const templatesRoot = await tmp("gutterpress-noescape-dest-");
+  try {
+    await writeFile(path.join(project, "book.css"), "body{}\n", "utf8");
+    await writeFile(path.join(project, "chapter-01.md"), "# One\n", "utf8");
+    await writeFile(
+      path.join(project, "manifest.yaml"),
+      ["title: Solo", "styles:", "  - book.css", ""].join("\n"),
+      "utf8",
+    );
+
+    const saved = await saveProjectAsTemplate({ projectDir: project, name: "Solo", templatesRoot });
+
+    expect(saved.vendoredRefs ?? []).toHaveLength(0);
+    expect(saved.excludedRefs ?? []).toHaveLength(0);
+    await expect(readdir(path.join(saved.dir!, "shared"))).rejects.toThrow();
+    const manifest = await readFile(path.join(saved.dir!, "manifest.yaml"), "utf8");
+    expect(manifest).toContain("book.css");
+  } finally {
+    await rm(project, { recursive: true, force: true });
+    await rm(templatesRoot, { recursive: true, force: true });
+  }
+});

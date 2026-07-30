@@ -368,9 +368,15 @@ a `book.html` path it never delivered. Documented as a deliberate choice:
 `resolveWithinRoot`'s lexical containment, with a pointer to the canonicalizing
 guard the desktop fs routes use.
 
-**Deferred, needs a product decision:** `saveProjectAsTemplate` copies a book's
-manifest verbatim, so a template saved from a repo-nested book keeps
-`../../shared/...` entries that cannot resolve once scaffolded elsewhere. The
-three plausible answers — drop the entries and warn, copy the shared files in and
-rewrite them local, or refuse to template such a project — are product calls, not
-bug fixes, so this one is left flagged rather than guessed at.
+**Resolved 2026-07-30 (was a deferred product decision):**
+`saveProjectAsTemplate` copied a book's manifest verbatim, so a template saved
+from a repo-nested book kept `../../shared/...` entries that couldn't resolve
+once scaffolded elsewhere. The chosen behavior is **vendor-by-default**: the
+save copies each escaping style's whole `@import`/`url()` closure (and authored
+plugin file) into the template book-local — preserving layout so the CSS's own
+relative refs still resolve — and rewrites the manifest entries, so the template
+keeps its look as a self-contained fork of the shared design. The Export
+dialog's "Include shared styles &amp; plugins" checkbox offers the opt-out
+(`sharedRefs: "exclude"`), which drops the escaping entries for a
+book-local-only template. See `SharedRefMode` in
+`packages/cli/src/lib/project-templates.ts`.
