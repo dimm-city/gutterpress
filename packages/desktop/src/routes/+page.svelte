@@ -2493,7 +2493,7 @@
 {/if}
 
 <svelte:head>
-  <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress desktop"}</title>
+  <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
 <!-- inert while the start screen or full-window Settings view is up: the
