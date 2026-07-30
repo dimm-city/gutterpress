@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
    * Settings → Accounts — the ONE central place to see and manage every
-   * stored credential. Section order (owner request 2026-07-22): publishing
-   * accounts first, then the GitHub account, then Git servers. The open
+   * stored credential. Section order (owner request 2026-07-30): GitHub
+   * first — it sits directly under the author's name & email, the identity
+   * it carries — then publishing accounts, then other Git servers. The open
    * project's sync diagnostics (the "This project" section) moved to
    * Project settings → Connections (ProjectConnectionsSection.svelte,
    * 2026-07-30); the diagnosis is still fetched here because the Git-server
@@ -300,7 +301,45 @@
   {:else}
     {#if loadError}<p class="error" role="alert">{loadError}</p>{/if}
 
-    <!-- Publishing accounts (first — the most-used section) -->
+    <!-- GitHub (writing sync) — FIRST, directly under the author's name &
+         email on both Accounts surfaces (owner request 2026-07-30): signing
+         in to GitHub is the step that makes that identity travel with the
+         work. -->
+    <section class="conn-group">
+      <h4>GitHub</h4>
+      <p class="hint">Keeps your books synced with repositories on GitHub.</p>
+      {#if github?.connected}
+        <div class="conn-row">
+          <span class="conn-name"><Icon name="github" size={14} />{github.username ? `Connected as @${github.username}` : "Connected"}</span>
+          {#if confirmRemove["github.com"]}
+            <span class="confirm-pair">
+              <button class="danger" onclick={disconnectGitHub}>Really disconnect?</button>
+              <button class="ghost" onclick={() => cancelRemove("github.com")}>Keep</button>
+            </span>
+          {:else}
+            <!-- Arms the two-step confirm; the armed branch routes through the
+                 dedicated disconnectGitHub flow, not the raw-key delete. -->
+            <button class="ghost" onclick={() => requestRemove("github.com")} disabled={!!removing}>Disconnect</button>
+          {/if}
+        </div>
+      {:else}
+        <div class="conn-row">
+          <span class="conn-name muted">Not connected</span>
+          <button class="ghost" onclick={connectGitHub} disabled={ghBusy}>
+            {ghBusy ? "Waiting for GitHub…" : "Connect GitHub…"}
+          </button>
+        </div>
+        {#if ghCode}
+          <p class="hint code-hint">
+            Enter this code on the GitHub page that opened:
+            <strong class="user-code">{ghCode.userCode}</strong>
+          </p>
+        {/if}
+        {#if ghError}<p class="error" role="alert">{ghError}</p>{/if}
+      {/if}
+    </section>
+
+    <!-- Publishing accounts -->
     <section class="conn-group">
       <h4>Publishing accounts</h4>
       <p class="hint">API keys used to publish your books (itch.io, Azure Static Web Apps, Shopify…). Keys are stored once and available to every project.</p>
@@ -343,41 +382,6 @@
       {/if}
       {#if pubNotice}<p class="notice">{pubNotice}</p>{/if}
       {#if pubError}<p class="error" role="alert">{pubError}</p>{/if}
-    </section>
-
-    <!-- GitHub (writing sync) -->
-    <section class="conn-group">
-      <h4>GitHub</h4>
-      <p class="hint">Keeps your books synced with repositories on GitHub.</p>
-      {#if github?.connected}
-        <div class="conn-row">
-          <span class="conn-name"><Icon name="github" size={14} />{github.username ? `Connected as @${github.username}` : "Connected"}</span>
-          {#if confirmRemove["github.com"]}
-            <span class="confirm-pair">
-              <button class="danger" onclick={disconnectGitHub}>Really disconnect?</button>
-              <button class="ghost" onclick={() => cancelRemove("github.com")}>Keep</button>
-            </span>
-          {:else}
-            <!-- Arms the two-step confirm; the armed branch routes through the
-                 dedicated disconnectGitHub flow, not the raw-key delete. -->
-            <button class="ghost" onclick={() => requestRemove("github.com")} disabled={!!removing}>Disconnect</button>
-          {/if}
-        </div>
-      {:else}
-        <div class="conn-row">
-          <span class="conn-name muted">Not connected</span>
-          <button class="ghost" onclick={connectGitHub} disabled={ghBusy}>
-            {ghBusy ? "Waiting for GitHub…" : "Connect GitHub…"}
-          </button>
-        </div>
-        {#if ghCode}
-          <p class="hint code-hint">
-            Enter this code on the GitHub page that opened:
-            <strong class="user-code">{ghCode.userCode}</strong>
-          </p>
-        {/if}
-        {#if ghError}<p class="error" role="alert">{ghError}</p>{/if}
-      {/if}
     </section>
 
     <!-- Other Git servers — the ONE connect-a-server surface (the former

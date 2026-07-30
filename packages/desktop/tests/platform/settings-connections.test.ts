@@ -76,16 +76,23 @@ describe("Connections tab — central credential management", () => {
     expect(conn).toContain("Publishing accounts");
     expect(conn).toContain("Git servers");
   });
-  test("publishing accounts are the FIRST section (owner request 2026-07-22)", () => {
+  test("GitHub is the FIRST section (owner request 2026-07-30)", () => {
+    // GitHub sits directly under the author's name & email — the identity it
+    // carries — on both Accounts surfaces (Settings and the welcome screen).
     // Compare the section headings' positions in the template.
-    const pub = conn.indexOf("<h4>Publishing accounts</h4>");
     const gh = conn.indexOf("<h4>GitHub</h4>");
+    const pub = conn.indexOf("<h4>Publishing accounts</h4>");
     const git = conn.indexOf("<h4>Git servers</h4>");
-    expect(pub).toBeGreaterThan(-1);
     expect(gh).toBeGreaterThan(-1);
+    expect(pub).toBeGreaterThan(-1);
     expect(git).toBeGreaterThan(-1);
-    expect(pub).toBeLessThan(gh);
-    expect(gh).toBeLessThan(git);
+    expect(gh).toBeLessThan(pub);
+    expect(pub).toBeLessThan(git);
+  });
+  test("Accounts is the FIRST settings tab (owner request 2026-07-30)", () => {
+    const view = read("src/lib/components/SettingsView.svelte");
+    const tabs = view.slice(view.indexOf("const TABS"), view.indexOf("];", view.indexOf("const TABS")));
+    expect(tabs.indexOf('label: "Accounts"')).toBeLessThan(tabs.indexOf('label: "App"'));
   });
   test("classifies publish entries by compound keys and provider hosts", () => {
     expect(conn).toContain('e.host.includes("#")');

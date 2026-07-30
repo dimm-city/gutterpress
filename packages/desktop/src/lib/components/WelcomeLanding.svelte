@@ -455,6 +455,13 @@
     overflow-y: auto;
     display: flex;
     justify-content: center;
+    /* flex-start, NOT the default stretch: stretch pinned .landing-col to
+       exactly the viewport height, so a tab taller than the window (Accounts
+       and Help both are) overflowed the column with NOTHING to scroll — the
+       footer landed on top of the panel's own text and the rest was
+       unreachable. Sized to its content, the column makes THIS fixed layer
+       the scroller its overflow-y already promised. */
+    align-items: flex-start;
     outline: none;
     /* Self-contained font stack: the layer sits outside the workspace shell,
        so it must not inherit the browser's default serif. */
@@ -463,7 +470,11 @@
   }
 
   .landing-col {
-    width: min(660px, calc(100vw - 32px));
+    /* 100% (the scroller's content box), never 100vw — vw includes the
+       vertical scrollbar the tall tabs now raise, which would push the
+       column wider than the space it has and scroll the layer sideways. */
+    width: min(660px, calc(100% - 32px));
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 22px;

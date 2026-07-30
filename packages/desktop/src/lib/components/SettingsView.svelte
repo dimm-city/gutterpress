@@ -41,10 +41,10 @@
   // cohesive slice. The active tab persists across opens within a session —
   // reopening lands where the user last was.
   const TABS: Array<{ id: SettingsTab; label: string }> = [
+    { id: "connections", label: "Accounts" },
     { id: "app", label: "App" },
     { id: "editor", label: "Editor" },
     { id: "saving", label: "Saving" },
-    { id: "connections", label: "Accounts" },
   ];
   // Mounted fresh per open ({#if settingsOpen}) — the initial value is the
   // requested landing tab; navigation from there is user-driven. Sanitized:
