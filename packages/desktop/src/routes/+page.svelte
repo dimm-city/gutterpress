@@ -384,6 +384,21 @@
     if (settingsOpen) closeSettings();
     else openSettings();
   }
+  /**
+   * No author name/email yet: every version this project saves would be
+   * attributed to a placeholder, so the workspace carries a persistent notice
+   * with a one-click route to Settings → Accounts. It clears itself the moment
+   * both fields are filled.
+   *
+   * Gated on `settings.loaded`: the in-memory defaults ARE empty strings, so an
+   * ungated check would flash the banner on every launch in the window before
+   * the persisted values arrive.
+   */
+  const needsGitIdentity = $derived(
+    settings.loaded &&
+      (!settings.current.gitIdentity.authorName.trim() ||
+        !settings.current.gitIdentity.authorEmail.trim()),
+  );
   /** After a successful snapshot restore (H2): reconcile the open editor
    * buffer against disk — same reconciliation the folder watcher runs for any
    * external change (see `startFolderWatch`/`onSyncFilesChanged`) — and
@@ -2487,6 +2502,21 @@
   </div>
 {/if}
 
+<!-- Missing author identity — a persistent notice, not a toast: it stays until
+     the two fields exist, because every version saved without them records the
+     wrong author. role="status" (not "alert"): a standing condition the author
+     can act on whenever, never an interruption to announce over their typing. -->
+{#if needsGitIdentity}
+  <div class="identity-banner" role="status">
+    <span class="identity-banner-msg">
+      Add your name and email so the versions you save show who made each change.
+    </span>
+    <button class="identity-action" onclick={() => openSettings("connections")}>
+      Add your name &amp; email
+    </button>
+  </div>
+{/if}
+
 <div class="shell" class:focus-mode={focusMode}>
   <AppToolbar
     bind:panelToggleEl={leftPanelToggleBtn}
@@ -3420,6 +3450,37 @@
     cursor: pointer;
   }
   .update-later:hover { background: var(--app-scrim-strong); }
+
+  /* Missing-identity notice — same banner geometry as the updater's, in the
+     warning palette so the two never read as the same kind of message. */
+  .identity-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--app-warning-bg);
+    border-bottom: 1px solid var(--app-warning-border);
+    color: var(--app-warning-text);
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .identity-banner-msg { flex: 1; }
+  /* Geometry only. `button:not(.app-btn-primary):not(.active)` above owns the
+     fill, border-COLOR and text of every non-primary button in this file and
+     wins on specificity (0,3,1 vs a scoped class's 0,2,0) — so this action
+     takes the same neutral control look the update banner's buttons do, and
+     restating those three properties here would be dead CSS. Border width and
+     style still have to be declared: the shared rule sets only the color. */
+  .identity-action {
+    border: 1px solid;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .identity-action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
   /* ---- Small-screen single-pane layout (#responsive) ----
      Below NARROW_QUERY (820px) the editor + preview can't sit side by side.

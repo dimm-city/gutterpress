@@ -89,10 +89,14 @@ describe("Connections tab — central credential management", () => {
     expect(gh).toBeLessThan(pub);
     expect(pub).toBeLessThan(git);
   });
-  test("Accounts is the FIRST settings tab (owner request 2026-07-30)", () => {
+  test("App leads, Accounts sits second (owner request 2026-07-30)", () => {
     const view = read("src/lib/components/SettingsView.svelte");
     const tabs = view.slice(view.indexOf("const TABS"), view.indexOf("];", view.indexOf("const TABS")));
-    expect(tabs.indexOf('label: "Accounts"')).toBeLessThan(tabs.indexOf('label: "App"'));
+    expect(tabs.indexOf('label: "App"')).toBeLessThan(tabs.indexOf('label: "Accounts"'));
+    expect(tabs.indexOf('label: "Accounts"')).toBeLessThan(tabs.indexOf('label: "Editor"'));
+    // App stays the tab Settings opens on — the missing-identity nudge is the
+    // workspace banner (+page's `needsGitIdentity`), not a re-ordered default.
+    expect(view).toContain('initialTab = "app"');
   });
   test("classifies publish entries by compound keys and provider hosts", () => {
     expect(conn).toContain('e.host.includes("#")');
