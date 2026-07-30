@@ -94,10 +94,10 @@ components/controllers.
 
 ```
 gutterpress/
-├── Welcome / start screen                     SHIPPED  (WelcomeLanding: Projects / Accounts / Help
+├── Welcome / start screen                     SHIPPED  (WelcomeLanding: Projects / Settings / Help
 │                                                        tabs — continue card + recents/favorites/
-│                                                        discovered via ProjectsListBody, author
-│                                                        identity + connections, and in-app help)
+│                                                        discovered via ProjectsListBody, the WHOLE
+│                                                        settings surface, and in-app help)
 ├── New project wizard / templates             SHIPPED  (NewProjectWizard, #25; templates from the
 │                                                        shared lib scaffolding — see Onboarding)
 ├── Open dialog (recents/favorites, URLs)      SHIPPED  (#10, #27)
@@ -122,8 +122,9 @@ gutterpress/
 │                                                        GitHubDialog, sync status)
 ├── Media panel                                SHIPPED  (MediaPanel, #47)
 ├── Crash recovery                             SHIPPED  (RecoveryOverlay / CrashRecoveryDialog)
-├── Settings                                   SHIPPED  (SettingsDialog: App / Editor / Saving /
-│                                                        Connections / Advanced)
+├── Settings                                   SHIPPED  (SettingsView, embedded in the start
+│                                                        screen's Settings tab: App / Editor /
+│                                                        Saving / Accounts)
 ├── Visual layout editor                       PROPOSED (#37 — milestone placeholder; sub-issues first)
 └── AI Assistant                               PROPOSED (#36)
 ```
@@ -284,11 +285,14 @@ the plan wins.**
 **Layer 1 — first run (SHIPPED baseline):**
 
 - `WelcomeLanding`: three tabs — **Projects** (continue card with live
-  pre-render status + recents / favorites / discovered projects), **Accounts**
-  (author name/email + stored connections), and **Help**. It opens on Accounts
-  when no name/email is saved yet, so saved versions carry a real author. `NewProjectWizard`: **3 built-in
-  templates** (Book, Zine, Technical document), custom
-  templates, save-as-template, import-from-folder.
+  pre-render status + recents / favorites / discovered projects),
+  **Settings** (the entire settings surface, sub-tabs and all — there is no
+  separate settings window), and **Help**. It opens on Settings → Accounts
+  when no name/email is saved yet, so saved versions carry a real author.
+  `NewProjectWizard`: template first (**3 built-in templates** — Book, Zine,
+  Technical document — plus custom templates, save-as-template,
+  import-from-folder), and the chosen template seeds the book's design
+  preset and publish targets (ADR 0008), both of which stay editable.
 - Templates come from the **shared lib scaffolding** in
   `gutterpress` (same set behind `gutterpress new`; CLAUDE.md §7 "one
   implementation, two thin front-ends") — the picker is a front-end over the
@@ -324,8 +328,12 @@ the plan wins.**
 - The **Theme selector is core to a good first PDF and is never gated**; only
   power-user surfaces (theme importer, visual layout editor #37, AI #36) get
   the Advanced badge.
-- Settings tabs are the shipped **App / Editor / Saving / Connections /
-  Advanced** ("for developers"); any regrouping is a PROPOSED delta.
+- Settings tabs are the shipped **App / Editor / Saving / Accounts**; the
+  former "Advanced" ("for developers") tab is a section on Editor, and the
+  whole surface lives on the start screen's Settings tab rather than in a
+  window of its own (one settings surface, reached from the status bar's
+  settings button or `Cmd/Ctrl+,`). Any further regrouping is a PROPOSED
+  delta.
 
 Anti-patterns: full-screen onboarding carousels; auto-advancing tours; empty
 workspaces with no guidance; requiring account creation (there are no
@@ -398,7 +406,7 @@ navigation UI and a Problems-panel entry with the page number.
 detail lives in `docs/publishing.md`. Shipped: toolbar **Publish** button →
 `PublishWizard` (choose destinations → one setup step per destination →
 publish), five built-in providers, saved named credentials (`safeStorage`) with
-an account picker, Settings → **Connections** tab.
+an account picker, Settings → **Accounts** tab.
 
 **Provider model (binding):** providers are **built into the lib's publish
 registry** (`packages/cli/src/lib/publish/`) — they are *not plugins* and there
