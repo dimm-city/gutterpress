@@ -103,7 +103,7 @@ win:
     - target: zip
       arch:
         - x64
-  icon: build-resources/icon.ico
+  icon: build-resources/icon.png
 
 nsis:
   artifactName: ${productName}-setup-${os}-${arch}.${ext}

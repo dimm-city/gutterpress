@@ -34,7 +34,6 @@
    * PWA-clean (§8): type-only imports, zero host/Node code.
    */
   import Icon from "$lib/components/Icon.svelte";
-  import BrandMark from "$lib/components/BrandMark.svelte";
   import { adjacentTab, type MobileTab } from "$lib/editor/mobile-layout";
   import type { PageNavController } from "$lib/routes/page-nav-controller.svelte";
 
@@ -199,7 +198,7 @@
       <!-- Folder source: show the title/name; full path is the hover tooltip. -->
       <span class="doc-title" title={folderTooltip ?? folderTitle}>{folderTitle}</span>
     {:else}
-      <span class="path no-project"><BrandMark size={18} /> Gutterpress</span>
+      <span class="path no-project">Gutterpress</span>
     {/if}
   </div>
 
@@ -768,9 +767,6 @@
     flex-shrink: 1;
   }
   .no-project {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
     font-weight: 700;
     color: var(--app-text-secondary);
   }

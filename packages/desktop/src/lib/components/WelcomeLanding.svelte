@@ -279,7 +279,7 @@
     <div class="landing-col">
       <header class="brand-row">
         <div class="brand-left">
-          <BrandMark size={24} />
+          <BrandMark size={64} />
           <span class="brand-name">Gutterpress</span>
           {#if version}<span class="brand-version">v{version}</span>{/if}
         </div>
@@ -521,7 +521,7 @@
     justify-content: space-between;
     gap: 12px;
   }
-  .brand-left { display: flex; align-items: baseline; gap: 8px; }
+  .brand-left { display: flex; align-items: center; gap: 12px; }
   .brand-right { display: flex; align-items: center; gap: 10px; }
   .brand-icon-btn {
     background: none;
@@ -534,7 +534,7 @@
   }
   .brand-icon-btn:hover { color: var(--app-text); background: var(--app-control-hover-bg); }
   .brand-icon-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  .brand-name { font-size: 15px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
+  .brand-name { font-size: 20px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
   .brand-version { font-size: 11px; color: var(--app-text-muted); }
 
   .update-chip {
