@@ -13,8 +13,21 @@
    */
   import Icon from "$lib/components/Icon.svelte";
   import type { DetailsSectionController } from "$lib/routes/details-section-controller.svelte";
+  import {
+    PUBLISH_TARGET_CHOICES,
+    missingToolsForTargets,
+    toolGapMessage,
+  } from "$lib/publish-targets";
 
   let { controller }: { controller: DetailsSectionController } = $props();
+
+  // The tool-gap explanation for the CHECKED destinations (null when nothing
+  // checked needs a tool this computer lacks).
+  const targetToolGap = $derived(
+    toolGapMessage(
+      missingToolsForTargets(controller.targetsDraft, controller.missingTools),
+    ),
+  );
 
   // ── Source-files drag-and-drop reorder (HTML5 DnD; the up/down buttons are
   //    the keyboard-accessible equivalent). The pure reorder model lives in
@@ -135,6 +148,37 @@
       <span class="hint">Drag rows (or use the arrows) to set the chapter order. Unchecked files are left out of the book.</span>
     {/if}
   </div>
+  <!-- Publish targets (ADR 0008): WHERE this book is published — each one is
+       a destination's validation policy. Same choices and wording as the
+       new-book wizard (shared $lib/publish-targets), so the two surfaces
+       never describe a destination differently. -->
+  <div class="field">
+    <span class="lbl">Publish targets</span>
+    <ul class="target-list">
+      {#each PUBLISH_TARGET_CHOICES as choice (choice.id)}
+        <li>
+          <label class="target-row">
+            <input
+              type="checkbox"
+              checked={controller.targetsDraft.includes(choice.id)}
+              onchange={() => controller.toggleTarget(choice.id)}
+            />
+            <span class="target-copy">
+              <span class="target-label">{choice.label}</span>
+              <span class="target-desc">{choice.description}</span>
+            </span>
+          </label>
+        </li>
+      {/each}
+    </ul>
+    {#if targetToolGap}
+      <p class="tool-note" role="note">{targetToolGap}</p>
+    {/if}
+    <span class="hint">
+      Checked destinations are validated when you build. With none checked,
+      only the general print checks run.
+    </span>
+  </div>
   <button class="primary small app-btn-primary" onclick={controller.saveDetails} disabled={controller.detailsSaving}>
     {controller.detailsSaving ? "Saving…" : "Save details"}
   </button>
@@ -142,6 +186,14 @@
 
 <style>
   @import "$lib/styles/config-section-shared.css";
+
+  .target-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .target-row { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+  .target-row input { margin-top: 2px; flex-shrink: 0; }
+  .target-copy { display: flex; flex-direction: column; gap: 1px; }
+  .target-label { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
+  .tool-note { margin: 4px 0 0; font-size: 11px; line-height: 1.45; color: var(--app-warning-text); }
 
   .authors { display: flex; flex-direction: column; gap: 4px; }
   .author-row { display: flex; gap: 4px; align-items: center; }

@@ -745,7 +745,7 @@ function createWindow() {
   // ARCH review finding #1: no flow in this app actually needs an in-app
   // popup window — GitHub device-flow connect and every external link
   // already go through `shell.openExternal` (see ConnectionsSettings,
-  // GitHubDialog, HelpDialog, +page.svelte; a grep for
+  // GitHubDialog, HelpContent, +page.svelte; a grep for
   // `window.open`/`target="_blank"` across src/ and electron/ has zero
   // hits). The previous handler granted `window.open`/`target="_blank"`
   // requests a full BrowserWindow for ANY https URL — and because
@@ -1232,6 +1232,7 @@ const appImageIntegration = new AppImageIntegration({
   home: app.getPath("home"),
   xdgDataHome: process.env.XDG_DATA_HOME,
   iconSourcePath: appIconPath(),
+  appVersion: app.getVersion(),
 });
 const appImageHooksImpl: AppImageHooks = {
   getStatus: () => appImageIntegration.status(),

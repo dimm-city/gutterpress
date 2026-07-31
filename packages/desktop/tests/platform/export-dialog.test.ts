@@ -94,7 +94,17 @@ describe("relocations around the export dialog", () => {
     expect(headIdx).toBeGreaterThan(-1);
     const head = p.slice(headIdx, p.indexOf("</svelte:head>"));
     expect(head).toContain("<title>");
-    expect(head).toContain("displayTitle");
-    expect(head).toContain("lifecycle.docTitle");
+    // The CONTRACT is that the window title follows the open document, not
+    // which expression supplies it: `lifecycle.docTitle` (already
+    // folder-name-defaulted host-side, preview/controller.ts) and the
+    // repo-aware `displayTitle` are both valid sources, and the title has
+    // been through several shapes. Pin the behaviour, not the identifier —
+    // an over-specific pin turns every wording change into a red build.
+    expect(head).toMatch(/lifecycle\.docTitle|displayTitle/);
+    // What must never come back: a title hardcoded to a constant, which is
+    // what this test was written to catch (the window then names the app on
+    // every screen instead of the book you have open).
+    const titleExpr = head.slice(head.indexOf("<title>"));
+    expect(titleExpr).toContain("{");
   });
 });

@@ -54,7 +54,7 @@ working after you move or delete the file you originally downloaded.
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=gutterpress
+Name=Gutterpress
 Comment=Write books in Markdown and export print-ready PDFs
 Exec="/home/you/.local/bin/gutterpress.AppImage"
 TryExec=/home/you/.local/bin/gutterpress.AppImage

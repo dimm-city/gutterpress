@@ -1,14 +1,105 @@
 # Changelog
 
-All notable changes to print-md are documented here.
+All notable changes to Gutterpress are documented here.
 This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Publish targets** (ADR 0008): where a book is *published* is now separate
+  from how it is *designed*. `targets:` in the manifest (or
+  `validate`/`preflight --target <id[,id]>`) names the destinations to
+  validate against — `dtrpg` (DriveThruRPG print-on-demand) and `itch`
+  (itch.io digital) — and one run checks every destination, labeling each
+  finding with its target. Your own manifest settings always override a
+  target's policy. `--profile` is replaced by `--target`; the preflight
+  report's `profile` field became `targets` with per-target required checks
+  (schema v2).
+- A **`custom` preset**: for books that aren't a DriveThruRPG title or a 6×9in
+  trade book, `preset: custom` takes your own trim via `page.width`/
+  `page.height` (points), and tells you exactly what to add when they're
+  missing.
+
+### Changed
+
+- Creating a book now asks what you're designing it for — and where it will
+  be published. `gutterpress new` requires `--preset <dtrpg|book|custom>`
+  (custom also takes `--page-width`/`--page-height`) and records the publish
+  targets explicitly (`--targets <ids|none>`, default: the preset's); the
+  desktop's new-book dialog has a required preset choice that reveals a
+  page-size form when Custom is picked, plus pre-checked publish-target
+  checkboxes you can turn off. Both choices are written into the new
+  manifest as explicit `preset:` and `targets:` lines; projects scaffolded
+  from a saved custom template keep the template's own values.
+- Publish targets can be changed later: **Project settings → Details** now
+  has the same checkboxes, with the same explanation when a destination needs
+  a tool this computer doesn't have.
+- The new-book dialog asks for the template FIRST, and the template now sets
+  what follows: picking one selects the design preset and publish targets it
+  declares, which you can then change. A saved template's own choices show
+  pre-filled instead of being hidden, so what the dialog shows is what gets
+  written.
+- Custom page sizes are picked from common trim sizes (US Letter, trade,
+  digest, A4, A5) or typed in **inches** rather than points.
+- "Who's writing it?" starts from the name in your settings.
+- The settings button opens the start screen's Settings tab — one settings
+  surface instead of two, and closing it returns you where you were.
+- The bottom bar is regrouped: the book switcher and Problems on the left,
+  everything about saving and syncing on the right beside the settings and
+  help buttons.
+- The left panel is at least 300px wide when open, so project names and
+  chapter titles stop truncating (narrower on windows too small to spare it).
+- If a chosen destination needs qpdf or Ghostscript and they aren't
+  installed, creation says so up front — a print-compliant (PDF/X) file
+  can't be built or verified until they are — instead of surfacing it later
+  as validation errors. Unchecking the destination (or `--targets none`)
+  records the opt-out in the manifest, where it's easy to revisit.
+
+- Your name and email now lead the settings panel's **Accounts** tab (renamed
+  from Connections), with your GitHub account directly beneath them — the two
+  things that decide who your saved versions are credited to, together and
+  first. If either is blank, a notice across the top of the window offers to
+  fill them in, and disappears once they are set.
+- The welcome screen is now tabbed: **Projects** (continue where you left off,
+  plus your books), **Accounts**, and **Help**. It opens on Accounts the first
+  time you have no name or email saved, so your history is attributed to you
+  from your first save.
+- Help moved out of its pop-up dialog onto that Help tab. The help button at
+  the bottom right opens it, and closing it returns you exactly where you were.
+- A project's own connection details — its online repository, branch, and the
+  Test Remote Access check — moved to **Project settings → Connections**.
+  Accounts you sign in to stay in the app settings, where they apply to every
+  project.
+- The two developer settings (file-watcher interval, log level) are a section
+  on the Editor tab instead of a tab of their own.
+
+### Removed
+
+- The TTRPG starter template and the TTRPG Supplement theme, along with the
+  user guide's TTRPG chapter. Stat blocks, dice notation, and read-aloud boxes
+  never needed a plugin or a dedicated template — tables, layout markers, and
+  CSS classes cover them, as the rest of the guide shows.
+
 ### Fixed
 
+- **"Add to application menu" could leave you launching an old version.** The
+  action copies the app you're running, so upgrading and not re-running it
+  left the menu opening the previous build — while Settings still said
+  "installed", with nothing anywhere explaining why the app never seemed to
+  change. Settings now detects it (by recorded version, and by comparing the
+  two copies for a same-version rebuild) and offers **Update menu entry**,
+  naming both versions.
+- Creating a project from any starter template failed in the packaged desktop
+  app with a "could not create the project files" error naming a missing file
+  inside `app.asar`. The app's own build was inlining a copy of the Gutterpress
+  library without the template, theme, and schema files it reads at runtime.
+- The welcome screen's Accounts and Help tabs could not be scrolled: anything
+  past the height of the window was unreachable, and the footer overlapped the
+  panel's text.
+
 - The live preview no longer starts every source file on a new page. It was
-  injecting a `.pmd-chapter{break-before:page}` rule that `print-md build` has
+  injecting a `.pmd-chapter{break-before:page}` rule that `gutterpress build` has
   no equivalent for, so any project that splits one chapter across several
   source files previewed with different page boundaries than the PDF it
   produced. Preview and build now break only where project CSS or a

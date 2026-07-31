@@ -48,9 +48,10 @@ const commandArgs = {
     description:
       'Run checks for phase: pre | post | all | pre-build | post-build (default: all)',
   },
-  profile: {
+  target: {
     type: "string",
-    description: "Validation profile lock (currently: dtrpg)",
+    description:
+      "Publish targets to validate against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`",
   },
 } as const;
 
@@ -85,7 +86,7 @@ export default defineCommand({
           only: typeof args.only === "string" ? args.only : undefined,
           skip: typeof args.skip === "string" ? args.skip : undefined,
           phase: typeof args.phase === "string" ? args.phase : undefined,
-          profile: typeof args.profile === "string" ? args.profile : undefined,
+          target: typeof args.target === "string" ? args.target : undefined,
         },
         format
       );

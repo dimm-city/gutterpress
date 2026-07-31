@@ -62,7 +62,7 @@ describe("validate command — positional/--input precedence (M46) and arg mappi
     expect(capturedArgs?.input).toBe("./flag-dir");
   });
 
-  test("category/only/skip/phase/profile/pdf/manifest all reach executeAndReport", async () => {
+  test("category/only/skip/phase/target/pdf/manifest all reach executeAndReport", async () => {
     let capturedArgs: ValidationExecutionArgs | undefined;
     let capturedFormat: string | undefined;
     execSpy = spyOn(validationExecMod, "executeAndReport").mockImplementation((async (
@@ -89,8 +89,8 @@ describe("validate command — positional/--input precedence (M46) and arg mappi
         "asset.image-extension",
         "--phase",
         "post",
-        "--profile",
-        "dtrpg",
+        "--target",
+        "dtrpg,itch",
         "--format",
         "json",
       ],
@@ -102,7 +102,7 @@ describe("validate command — positional/--input precedence (M46) and arg mappi
     expect(capturedArgs?.only).toBe("pdf.structure.qpdf");
     expect(capturedArgs?.skip).toBe("asset.image-extension");
     expect(capturedArgs?.phase).toBe("post");
-    expect(capturedArgs?.profile).toBe("dtrpg");
+    expect(capturedArgs?.target).toBe("dtrpg,itch");
     expect(capturedFormat).toBe("json");
   });
 

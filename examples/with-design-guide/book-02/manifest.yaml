@@ -2,6 +2,10 @@ title: My Book (part 2)
 authors:
   - Author Name
 
+# How the book is designed: the neutral trade-book preset (no print-service
+# rules). The explicit `page:` below overrides the preset's 6x9in default.
+preset: book
+
 # The book and the companion design guide (../design-guide/) both consume the
 # same stylesheet, so the guide always documents what the book actually ships.
 #

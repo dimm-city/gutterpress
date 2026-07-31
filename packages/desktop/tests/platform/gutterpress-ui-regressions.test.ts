@@ -70,16 +70,23 @@ test("closing activity restores the workspace it displaced (no stuck 'Loading co
   expect(src).toContain('editorView = "editor";\n      paneViewRestore = null;');
 });
 
-test("settings opened from the start screen remains above the landing instead of exposing its pre-rendered workspace", () => {
+test("app settings live ONLY on the start screen's Settings tab — no separate window", () => {
   const src = read("src/routes/+page.svelte");
-  // Project settings share the same full-window mechanism, so the inert gate
-  // covers both views.
-  expect(src).toContain('inert={landingVisible || settingsOpen || projectSettingsOpen}');
+  // One settings surface: the settings button opens the landing on its
+  // Settings tab, exactly like the help button. The standalone sheet (and its
+  // `settingsOpen` state) is gone, so there is no second instance to keep
+  // above the landing, and no second inert gate to maintain.
+  expect(src).toContain('inert={landingVisible || projectSettingsOpen}');
   expect(src).toContain('visible={landingVisible}');
-  expect(src).toContain('inactive={settingsOpen}');
-  expect(src).toContain('{#if settingsOpen}');
-  expect(src).toContain('class="settings-global-view"');
+  expect(src).not.toContain("settingsOpen");
   expect(src).not.toContain('editorView === "settings"');
+  // openSettings targets the landing tab and forces the layer open.
+  const openIdx = src.indexOf("function openSettings(");
+  const openBody = src.slice(openIdx, openIdx + 400);
+  expect(openBody).toContain('landingRef?.showTab("settings")');
+  expect(openBody).toContain("landingForcedOpen = true");
+  // Project settings keep their own full-window view.
+  expect(src).toContain('class="settings-global-view"');
 });
 
 test("desktop builds its shared runtime without invoking the CLI entry build", () => {
@@ -273,8 +280,8 @@ test("ARCH #42: dialog.ts exports FOCUSABLE and owns the one private trapFocus i
   expect(a11ySrc).not.toMatch(/export\s+function\s+trapFocus/);
 });
 
-test("About dialog copy reflects current save/export shortcuts", () => {
-  const src = read("src/lib/components/HelpDialog.svelte");
+test("Help content copy reflects current save/export shortcuts", () => {
+  const src = read("src/lib/components/HelpContent.svelte");
   expect(src).toContain("Save source edits");
   expect(src).toContain("{modKey}+S");
   expect(src).toContain("Export PDF");
@@ -290,7 +297,9 @@ test("settings/help live in a bottom-right status toolbar and problems overlay w
   expect(status).toContain("shell-actions");
   expect(status).toContain("z-index: var(--app-z-popover)");
   expect(page).toContain("onOpenSettings={openSettings}");
-  expect(page).toContain("onOpenHelp={() => (helpOpen = true)}");
+  // The help button routes to the welcome screen's Help tab (2026-07-30),
+  // not a modal dialog.
+  expect(page).toContain("onOpenHelp={openHelp}");
 });
 
 test("left sidebar has four content tabs (project settings moved to the full-screen view) and icon-only short tabs", () => {

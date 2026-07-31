@@ -15,7 +15,6 @@
   import RecoveryConfirmDialog from "$lib/components/RecoveryConfirmDialog.svelte";
   import RecoveryGuidanceDialog from "$lib/components/RecoveryGuidanceDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
-  import HelpDialog from "$lib/components/HelpDialog.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
   import NewProjectWizard from "$lib/components/NewProjectWizard.svelte";
@@ -61,6 +60,7 @@
   import { splitTemplateColumns, shouldRefitPreview } from "$lib/editor/preview-layout";
   import { useSettings, _loadSettings, settingsChangeGuard, onSettingsChange } from "$lib/settings.svelte";
   import { sanitizeSettingsTab, type SettingsTab } from "$lib/settings-tabs";
+  import { clampPanelWidth, viewportWidth } from "$lib/left-panel-width";
   import LeftPanel from "$lib/components/LeftPanel.svelte";
   import type { PanelTab } from "$lib/components/LeftPanel.svelte";
   import WelcomeLanding from "$lib/components/WelcomeLanding.svelte";
@@ -221,7 +221,7 @@
   // State persisted via DesktopPrefs. Keyed separately from per-project state.
   let leftPanelOpen = $state(false);
   let leftPanelTab = $state<PanelTab>("projects");
-  let leftPanelWidth = $state(260);
+  let leftPanelWidth = $state(300);
   let leftPanelToggleBtn = $state<HTMLButtonElement | undefined>(undefined);
   // Set true once we have loaded panel state from prefs (avoids flicker).
   let leftPanelPrefsLoaded = $state(false);
@@ -313,8 +313,6 @@
   // side-by-side split regardless of this value.
   let paneMode = $derived(settings.current.preview.paneMode);
   let debug = $state(false);
-  let settingsOpen = $state(false);
-  let settingsInitialTab = $state<SettingsTab>("app");
   // autoOpeningLastProject/lastProjectChecked (Phase 5 slice 2, UX H5 / ARCH
   // #10) now live on `startup` (StartupController) — see its instantiation
   // below.
@@ -323,7 +321,6 @@
 
   // Toast controller (populated by Toast.svelte via bind:api)
   let toast = $state<ToastController | null>(null);
-  let helpOpen = $state(false);
   // Operation-log desktop: opened from the StatusBar git/sync pill. Holds the
   // current project's log path (carried on the sync status stream).
   let logFilePath = $state<string | null>(null);
@@ -364,28 +361,56 @@
   function closeActivityView(): void {
     closePaneView();
   }
-  /** Open the app Settings view, optionally landing on a specific tab
-   *  (the former Advanced setup is consolidated into the Connections tab).
-   *  `tab` is `unknown` on purpose: entry points are click handlers, and an
-   *  `onclick={onOpenSettings}` call site hands the MouseEvent in as `tab` —
-   *  unsanitized, that left NO tab active and an empty settings body. */
+  /**
+   * Open Settings — the start screen's Settings tab, which embeds the WHOLE
+   * settings surface. There is no separate settings window: one surface, one
+   * way in, and closing it returns the author exactly where they were (the
+   * workspace stays mounted, inert, underneath) — the same shape the help
+   * button uses.
+   *
+   * `tab` is `unknown` on purpose: entry points are click handlers, and an
+   * `onclick={onOpenSettings}` call site hands the MouseEvent in as `tab` —
+   * unsanitized, that left NO tab active and an empty settings body.
+   */
   function openSettings(tab: unknown = "app"): void {
-    settingsInitialTab = sanitizeSettingsTab(tab);
-    settingsOpen = true;
-  }
-  function closeSettings(): void {
-    settingsOpen = false;
-    // Connections/Advanced setup live inside Settings now — refresh the sync
-    // state on close, mirroring what the old dialogs' onClosed hook did.
-    if (lifecycle.currentDir && lifecycle.sourceMode === "folder") {
-      void syncController.refreshSyncDiag(lifecycle.currentDir);
-    }
-    if (landingVisible) landingRef?.focusLayer();
+    landingSettingsTab = sanitizeSettingsTab(tab);
+    landingRef?.showTab("settings");
+    landingForcedOpen = true;
   }
   function toggleSettings(): void {
-    if (settingsOpen) closeSettings();
+    if (landingForcedOpen) dismissLanding();
     else openSettings();
   }
+  /**
+   * No author name/email yet: every version this project saves would be
+   * attributed to a placeholder, so the workspace carries a persistent notice
+   * with a one-click route to Settings → Accounts. It clears itself the moment
+   * both fields are filled.
+   *
+   * Gated on `settings.loaded`: the in-memory defaults ARE empty strings, so an
+   * ungated check would flash the banner on every launch in the window before
+   * the persisted values arrive.
+   */
+  /**
+   * "Not now" — session-scoped, like the adopt-a-folder banner's own dismiss.
+   *
+   * The check below reads the APP setting only, while the lib's
+   * `resolveGitAuthor` falls back per field to the project's own
+   * `.git/config` before using the placeholder. So an author whose repo
+   * already carries a `user.name` / `user.email` is attributed correctly and
+   * does not need this notice (Codex review, PR #134). Rather than teach the
+   * renderer to resolve the effective identity — a host round-trip per
+   * project, for a notice — the notice is simply dismissible: anyone it is
+   * wrong for silences it, and it returns next launch in case the setting
+   * still matters to them.
+   */
+  let identityNoticeDismissed = $state(false);
+  const needsGitIdentity = $derived(
+    settings.loaded &&
+      !identityNoticeDismissed &&
+      (!settings.current.gitIdentity.authorName.trim() ||
+        !settings.current.gitIdentity.authorEmail.trim()),
+  );
   /** After a successful snapshot restore (H2): reconcile the open editor
    * buffer against disk — same reconciliation the folder watcher runs for any
    * external change (see `startFolderWatch`/`onSyncFilesChanged`) — and
@@ -607,7 +632,17 @@
   // Handle for reclaiming focus after a dialog opened FROM the landing closes
   // without opening a project (the dialogs' triggerEl focus restore targets
   // the inert workspace, which is a spec no-op).
-  let landingRef = $state<{ focusLayer: () => void } | null>(null);
+  let landingRef = $state<{
+    focusLayer: () => void;
+    showTab: (tab: "projects" | "settings" | "help") => void;
+  } | null>(null);
+  /** Sub-tab the start screen's embedded Settings opens on. */
+  let landingSettingsTab = $state<SettingsTab>("app");
+  // The global help and settings buttons re-open the landing (on their tab)
+  // OVER an open workspace; closing it returns the author exactly where they
+  // left off (the workspace stays mounted, just inert, underneath). One
+  // flag for both: they are the same affordance pointed at different tabs.
+  let landingForcedOpen = $state(false);
 
   // The landing is the app's ONLY empty state: visible while explicitly held
   // open (startup pre-render behind it) and whenever nothing is open — a
@@ -621,6 +656,7 @@
   const landingVisible: boolean = $derived(
     landingReady &&
       (landingHold ||
+        landingForcedOpen ||
         shouldReshowLanding({
           busy: lifecycle.busy,
           hasPreviewUrl: !!lifecycle.previewUrl,
@@ -629,6 +665,21 @@
           hasUrlPreviewError: !!lifecycle.urlPreviewError,
         })),
   );
+
+  // A workspace exists behind the layer → the landing can be closed to
+  // return to it (X button + Esc). Mirrors shouldReshowLanding's "something
+  // is open" arm, so a dismiss always lands somewhere real.
+  const landingDismissible: boolean = $derived(
+    !!lifecycle.previewUrl ||
+      !!lifecycle.currentDir ||
+      (!!lifecycle.currentUrl && !lifecycle.urlPreviewError),
+  );
+
+  /** Open the start screen on its Help tab (the global help affordance). */
+  function openHelp() {
+    landingRef?.showTab("help");
+    landingForcedOpen = true;
+  }
 
   const landingStatus = $derived(
     continueStatus({
@@ -679,12 +730,34 @@
     pendingRecoveryScanDir = null;
     if (!landingVisible) return;
     landingHold = false;
+    landingForcedOpen = false;
     if (runPendingRecoveryScan && pending && pending === lifecycle.currentDir) {
       void crashRecovery.scan(pending);
     }
     // Focus lands back in the workspace once the inert flag has lifted.
     void tick().then(() => leftPanelToggleBtn?.focus());
   }
+
+  // Launch-time identity nudge: an empty git identity means every saved
+  // version would be attributed to a placeholder, so the start screen lands on
+  // Settings → Accounts to ask for the two fields once. Runs after the
+  // persisted settings actually load — the in-memory defaults are empty
+  // strings, so checking earlier would always fire.
+  //
+  // Deliberately NOT gated on `landingVisible`: the settings read and the
+  // startup prefs read race, and when settings win the landing is not "ready"
+  // yet, so gating silently dropped the nudge (caught in a browser run of the
+  // built app). Selecting a tab on a hidden layer is free — it is simply what
+  // the layer shows whenever it next appears.
+  onMount(() => {
+    void _loadSettings().then(() => {
+      const identity = settings.current.gitIdentity;
+      if (!identity.authorName.trim() || !identity.authorEmail.trim()) {
+        landingSettingsTab = "connections";
+        landingRef?.showTab("settings");
+      }
+    });
+  });
 
   /**
    * The ONE open-a-project-folder pipeline behind the folder picker, the
@@ -922,7 +995,7 @@
 
   // Official setup guide for first-time writers (MVP "Download starter template").
   const SETUP_GUIDE_URL =
-    "https://github.com/dimm-city/Gutterpress/blob/main/examples/Gutterpress-user-guide/01-getting-started.md";
+    "https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/01-getting-started.md";
 
   function openSetupGuide() {
     api.shell.openExternal(SETUP_GUIDE_URL).catch(() => {});
@@ -1611,13 +1684,19 @@
     isLeftPanelPrefsLoaded: () => leftPanelPrefsLoaded,
     applyLeftPanelPrefs: (panelPrefs) => {
       leftPanelPrefsLoaded = true;
-      // Validate against the live tab set — older sessions may have persisted
-      // the retired "config" tab (project settings are a full view now).
+      // Validate against the live tab set: this comes from a JSON file on
+      // disk, so an unknown id must not become the active tab.
       const validTabs: PanelTab[] = ["projects", "toc", "files", "media"];
       if (panelPrefs?.activeTab && (validTabs as string[]).includes(panelPrefs.activeTab)) {
         leftPanelTab = panelPrefs.activeTab as PanelTab;
       }
-      if (typeof panelPrefs?.width === "number") leftPanelWidth = Math.min(480, Math.max(200, panelPrefs.width));
+      // Same clamp the panel itself applies ($lib/left-panel-width): a width
+      // persisted under the older 200px floor is raised to the readable 300,
+      // and a window too narrow for that gets the relaxed bounds instead. One
+      // shared function, or the two clamps fight each other on restore.
+      if (typeof panelPrefs?.width === "number") {
+        leftPanelWidth = clampPanelWidth(panelPrefs.width, viewportWidth());
+      }
       leftPanelOpen = panelPrefs?.open ?? false;
     },
     setLandingShowPref: (show) => {
@@ -1825,9 +1904,6 @@
         toggleSettings();
         return;
       }
-      // The app Settings view is equally full-window: beyond its own Ctrl+,
-      // toggle above, workspace shortcuts must not act behind it.
-      if (settingsOpen) return;
       // The start screen owns the rest of the keyboard while it's up (its own
       // Esc handling); workspace shortcuts must not act on the inert UI
       // behind it.
@@ -1879,9 +1955,9 @@
       if (e.defaultPrevented) return;
       // Never page/zoom the pre-rendering preview from behind the start screen.
       if (landingVisible) return;
-      // Never page/zoom the hidden preview behind a full-window settings view
-      // (PageUp/PageDown must scroll the settings body, not the preview).
-      if (settingsOpen || projectSettingsOpen) return;
+      // Never page/zoom the hidden preview behind full-window project
+      // settings (PageUp/PageDown must scroll its body, not the preview).
+      if (projectSettingsOpen) return;
       // Don't intercept when focus is in a form control or the CodeMirror
       // editor (#38) — preview-nav keys (arrows, Home/End, +/-/=, f) must
       // never hijack editing. Shared guard: $lib/a11y isEditableTarget.
@@ -2416,21 +2492,13 @@
   </div>
 {/if}
 
-<!-- The Electron window title follows document.title — keep it in step with
-     the toolbar's document identity (folder title / URL doc title). -->
 <svelte:head>
-  <title>{
-    lifecycle.sourceMode === "url" && lifecycle.currentUrl
-      ? (lifecycle.docTitle ?? lifecycle.currentUrl)
-      : lifecycle.currentDir
-        ? displayTitle
-        : "Gutterpress desktop"
-  }</title>
+  <title>{lifecycle.docTitle ? `${lifecycle.docTitle} — Gutterpress` : "Gutterpress"}</title>
 </svelte:head>
 
 <!-- inert while the start screen or full-window Settings view is up: the
       workspace keeps rendering, but never accepts interaction underneath. -->
-<div class="app-root" inert={landingVisible || settingsOpen || projectSettingsOpen}>
+<div class="app-root" inert={landingVisible || projectSettingsOpen}>
 {#if (updateController.readyVersion || updateController.availableVersion) && !updateController.bannerDismissed}
   <div class="update-banner" role="status" aria-live="polite">
     {#if updateController.readyVersion}
@@ -2445,6 +2513,27 @@
       </button>
     {/if}
     <button class="update-later" onclick={() => updateController.dismissBanner()}>Later</button>
+  </div>
+{/if}
+
+<!-- Missing author identity — a standing notice, not a toast: it stays until
+     the two fields exist, because every version saved without them records the
+     wrong author. role="status" (not "alert"): a standing condition the author
+     can act on whenever, never an interruption to announce over their typing.
+     Dismissible, because the check reads the app setting only and a project's
+     own .git/config may already supply the identity — see the
+     identityNoticeDismissed note above. -->
+{#if needsGitIdentity}
+  <div class="identity-banner" role="status">
+    <span class="identity-banner-msg">
+      Add your name and email so the versions you save show who made each change.
+    </span>
+    <button class="identity-action" onclick={() => openSettings("connections")}>
+      Add your name &amp; email
+    </button>
+    <button class="identity-dismiss" onclick={() => (identityNoticeDismissed = true)}>
+      Not now
+    </button>
   </div>
 {/if}
 
@@ -2797,7 +2886,7 @@
       }
     }}
     onOpenSettings={openSettings}
-    onOpenHelp={() => (helpOpen = true)}
+    onOpenHelp={openHelp}
   />
 </div>
 </div>
@@ -2807,7 +2896,6 @@
 <WelcomeLanding
   bind:this={landingRef}
   visible={landingVisible}
-  inactive={settingsOpen}
   continueTitle={landingContinueTitle}
   continueDetail={landingContinueDetail}
   status={landingStatus}
@@ -2817,10 +2905,13 @@
   errorBody={landingErrorBody}
   version={appVersion}
   showAtStartup={landingShowPref}
+  projectDir={lifecycle.currentDir}
+  dismissible={landingDismissible}
   updateReadyVersion={updateController.readyVersion}
   updateAvailableVersion={updateController.availableVersion}
   updateAvailableAction={updateController.availableAction}
   updateDownloading={updateController.downloading}
+  checkingUpdates={updateController.checking}
   onContinue={() => dismissLanding()}
   onOpenPath={(path) => void openProjectPath(path)}
   onSwitchBook={(path) => void switchBook(path)}
@@ -2829,24 +2920,16 @@
   onNewProject={() => newProjectWizardRef?.show()}
   onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
   onOpenGuide={openSetupGuide}
-  onOpenSettings={openSettings}
-  onOpenHelp={() => (helpOpen = true)}
   onWhatsNew={openReleaseNotes}
   onToggleShowAtStartup={setLandingStartupPref}
   onUpdateApply={() => updateController.applyNow()}
   onUpdateDownload={() => updateController.download()}
+  onCheckForUpdates={() => updateController.check()}
+  onDismiss={() => dismissLanding()}
+  settingsTab={landingSettingsTab}
+  onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
+  onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
-{#if settingsOpen}
-  <section class="settings-global-view" aria-label="Settings">
-    <SettingsView
-      projectDir={lifecycle.currentDir}
-      initialTab={settingsInitialTab}
-      onClose={closeSettings}
-      onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
-      onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
-    />
-  </section>
-{/if}
 {#if projectSettingsOpen}
   <!-- Project settings (manifest): full-window like the app settings. Keyed by
        projectDir so a project switch can never leave stale section state
@@ -2859,22 +2942,12 @@
         {toast}
         onClose={closeProjectSettings}
         onEditRawCss={(path) => { closeProjectSettings(); openStyleFile(path); }}
+        onOpenAccounts={() => { closeProjectSettings(); openSettings("connections"); }}
       />
     {/key}
   </section>
 {/if}
 
-<HelpDialog
-  bind:open={helpOpen}
-  onClose={() => {
-    if (landingVisible) landingRef?.focusLayer();
-  }}
-  onCheckForUpdates={() => updateController.check()}
-  checkingUpdates={updateController.checking}
-  updateReadyVersion={updateController.readyVersion}
-  updateAvailableVersion={updateController.availableVersion}
-  updateAvailableAction={updateController.availableAction}
-/>
 <GitHubDialog
   bind:open={githubOpen}
   onOpened={(projectDir) => {
@@ -3009,9 +3082,10 @@
     overflow: hidden;
     position: relative;
   }
-  /* When panel is closed, the LeftPanel has width:260px but translateX(-100%)
+  /* When panel is closed, the LeftPanel keeps its width (300px by default)
+     but translateX(-100%)
      so it's off-screen. Margin-left on .main-content compensates: 0 when open,
-     -260px when closed so main-content fills the full width. */
+     that width when closed so main-content fills the full width. */
   .left-panel-region .main-content {
     display: flex;
     flex-direction: column;
@@ -3023,10 +3097,10 @@
     margin-left: 0;
   }
   /* Panel closed: pull .main-content leftward to fill the panel's "ghost" space.
-     The LeftPanel is always in DOM but translateX(-100%) so its flex width = 260px
+     The LeftPanel is always in DOM but translateX(-100%) so its flex width
      even when off-screen. We compensate with a negative margin-left. */
   .left-panel-region:not(.panel-open) .main-content {
-    margin-left: calc(-1 * var(--left-panel-width, 260px));
+    margin-left: calc(-1 * var(--left-panel-width, 300px));
   }
   /* Narrow screens: panel overlays, so main-content never shifts */
   @media screen and (max-width: 820px) {
@@ -3106,7 +3180,7 @@
       display: none;
     }
     /* LeftPanel is display:none'd above, so drop the negative-margin
-       compensation that assumed its 260px ghost width. */
+       compensation that assumed its ghost width. */
     .shell.focus-mode .left-panel-region .main-content {
       margin-left: 0;
     }
@@ -3387,6 +3461,49 @@
     cursor: pointer;
   }
   .update-later:hover { background: var(--app-scrim-strong); }
+
+  /* Missing-identity notice — same banner geometry as the updater's, in the
+     warning palette so the two never read as the same kind of message. */
+  .identity-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    background: var(--app-warning-bg);
+    border-bottom: 1px solid var(--app-warning-border);
+    color: var(--app-warning-text);
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .identity-banner-msg { flex: 1; }
+  /* Geometry only. `button:not(.app-btn-primary):not(.active)` above owns the
+     fill, border-COLOR and text of every non-primary button in this file and
+     wins on specificity (0,3,1 vs a scoped class's 0,2,0) — so this action
+     takes the same neutral control look the update banner's buttons do, and
+     restating those three properties here would be dead CSS. Border width and
+     style still have to be declared: the shared rule sets only the color. */
+  .identity-action {
+    border: 1px solid;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .identity-action:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
+  /* "Not now" reads as the quieter of the two: no border of its own. Fill and
+     text still come from the shared non-primary rule (see above), so only the
+     border is declared here. */
+  .identity-dismiss {
+    border: none;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .identity-dismiss:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 2px; }
 
   /* ---- Small-screen single-pane layout (#responsive) ----
      Below NARROW_QUERY (820px) the editor + preview can't sit side by side.

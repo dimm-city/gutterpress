@@ -35,6 +35,9 @@ const APPIMAGE_FILE_NAME = "gutterpress.AppImage";
 const DESKTOP_FILE_NAME = `${APP_ID}.desktop`;
 /** The installed icon's basename (the `Icon=` key names it WITHOUT the extension). */
 const ICON_FILE_NAME = `${APP_ID}.png`;
+/** Private desktop-entry key recording which app version installed the entry. */
+const VERSION_KEY = "X-Gutterpress-Version";
+
 
 const APPIMAGE_MODE = 0o755;
 const DATA_FILE_MODE = 0o644;
@@ -56,6 +59,8 @@ export interface AppImageEnv {
   xdgDataHome?: string | undefined;
   /** Absolute path of the packaged 512×512 icon (`build-resources/icon.png`). */
   iconSourcePath: string;
+  /** `app.getVersion()` — recorded in the entry so a stale menu copy is detectable. */
+  appVersion: string;
 }
 
 /** The three fixed per-user destinations. Never renderer-supplied. */
@@ -63,6 +68,17 @@ export interface AppImagePaths {
   appImage: string;
   desktopEntry: string;
   icon: string;
+}
+
+/** Why the managed copy is out of date, with both sides named. */
+export interface StaleCopy {
+  /** `"version"`: the entry records a different app version.
+   *  `"build"`: same (or unknown) version, but a different binary. */
+  kind: "version" | "build";
+  /** Version the menu entry was installed from, when it recorded one. */
+  installedVersion: string | null;
+  /** Version running right now. */
+  runningVersion: string;
 }
 
 export interface AppImageStatus {
@@ -76,6 +92,13 @@ export interface AppImageStatus {
   needsRepair: boolean;
   /** The process is already running the managed copy (so a menu launch is what the user is using). */
   runningManagedCopy: boolean;
+  /**
+   * Set when the menu entry launches a DIFFERENT build than the one running
+   * now — the app you upgraded to is not the app your launcher opens.
+   * `null` when they match, when nothing is installed, or when it cannot be
+   * determined. Re-running install replaces the managed copy.
+   */
+  staleCopy: StaleCopy | null;
   /** The fixed destinations, for display. Present even when unsupported (they are pure path math). */
   paths: AppImagePaths;
 }
@@ -106,12 +129,15 @@ export interface AppImageFs {
   rm(file: string, options: { force: true }): Promise<void>;
   readFile(file: string, encoding: "utf8"): Promise<string>;
   access(file: string): Promise<void>;
+  /** Byte size of a file, for comparing the managed copy with the running one. */
+  size(file: string): Promise<number>;
 }
 
 /** The real `node:fs/promises` implementation — the default, and the base a test wrapper decorates. */
 export const nodeAppImageFs: AppImageFs = {
   mkdir: (dir, options) => nodeFs.mkdir(dir, options),
   copyFile: (src, dest) => nodeFs.copyFile(src, dest),
+  size: (file) => nodeFs.stat(file).then((st) => st.size),
   writeFile: (file, data) => nodeFs.writeFile(file, data),
   chmod: (file, mode) => nodeFs.chmod(file, mode),
   rename: (from, to) => nodeFs.rename(from, to),
@@ -143,6 +169,7 @@ export function resolveAppImagePaths(home: string, xdgDataHome?: string | undefi
     icon: path.join(dataHome, "icons", "hicolor", "512x512", "apps", ICON_FILE_NAME),
   };
 }
+
 
 // ── Desktop entry rendering ─────────────────────────────────────────────────
 
@@ -184,7 +211,7 @@ export function escapeExecArgument(argument: string): string {
  * derived application id so KDE/GNOME group the running window under this
  * launcher on both X11 and Wayland.
  */
-export function renderDesktopEntry(appImagePath: string): string {
+export function renderDesktopEntry(appImagePath: string, appVersion = ""): string {
   return [
     "[Desktop Entry]",
     "Version=1.0",
@@ -199,8 +226,33 @@ export function renderDesktopEntry(appImagePath: string): string {
     "MimeType=text/markdown;",
     "StartupNotify=true",
     `StartupWMClass=${APP_ID}`,
+    // The app version this entry was installed FROM. `X-` keys are the
+    // spec's private-extension space, so this is a legal entry and every
+    // launcher ignores it. Without it a menu entry installed from an older
+    // build keeps launching that build after an upgrade, with nothing in the
+    // UI ever saying so — see `stalenessOf`.
+    `${VERSION_KEY}=${escapeValue(appVersion)}`,
     "",
   ].join("\n");
+}
+
+/** The entry minus its version marker — the part that must match verbatim. */
+function stripVersionKey(entry: string): string {
+  return entry
+    .split("\n")
+    .filter((line) => !line.startsWith(`${VERSION_KEY}=`))
+    .join("\n");
+}
+
+/** Read `X-Gutterpress-Version` back out of an installed entry (`null` if absent). */
+export function readEntryVersion(entry: string): string | null {
+  for (const line of entry.split("\n")) {
+    if (line.startsWith(`${VERSION_KEY}=`)) {
+      const value = line.slice(VERSION_KEY.length + 1).trim();
+      return value.length > 0 ? value : null;
+    }
+  }
+  return null;
 }
 
 // ── The service ─────────────────────────────────────────────────────────────
@@ -259,6 +311,7 @@ export class AppImageIntegration {
         installed: false,
         needsRepair: false,
         runningManagedCopy: false,
+        staleCopy: null,
         paths: this.paths,
       };
     }
@@ -271,8 +324,13 @@ export class AppImageIntegration {
 
     // A desktop entry that no longer matches what we would write (an older
     // Exec path, a renamed key) is stale, not installed — re-running the
-    // action rewrites it.
-    const desktopMatches = desktopContent === renderDesktopEntry(this.paths.appImage);
+    // action rewrites it. The version marker is compared SEPARATELY (see
+    // `stalenessOf`): an entry from an older build is a complete, working
+    // install that simply points at the wrong binary, so treating it as "not
+    // installed" would offer a repair without ever saying what is wrong.
+    const desktopMatches =
+      desktopContent !== null &&
+      stripVersionKey(desktopContent) === stripVersionKey(renderDesktopEntry(this.paths.appImage));
     const installed = appImageExists && iconExists && desktopMatches;
     // "Needs repair" keys off the two MENU files only — deliberately NOT the
     // leftover managed AppImage. `remove()` leaves that binary in place by
@@ -288,8 +346,48 @@ export class AppImageIntegration {
       installed,
       needsRepair: menuFilePresent && !installed,
       runningManagedCopy: this.isRunningManagedCopy(),
+      staleCopy: installed ? await this.stalenessOf(desktopContent) : null,
       paths: this.paths,
     };
+  }
+
+  /**
+   * Is the installed menu copy a different build than the one running now?
+   *
+   * Two independent signals, because either alone misses a real case:
+   *   - the recorded version differs from `app.getVersion()` — the ordinary
+   *     "you upgraded and forgot to re-add to the menu" case; and
+   *   - the versions agree (or the entry predates the marker) but the two
+   *     files differ in SIZE — a same-version rebuild, e.g. a locally built
+   *     AppImage installed over a release download.
+   *
+   * Returns `null` when they match, when the running process IS the managed
+   * copy (nothing to compare), or when either file can't be measured — this
+   * powers an advisory notice, so an unreadable file must never invent one.
+   */
+  private async stalenessOf(entry: string | null): Promise<StaleCopy | null> {
+    if (this.isRunningManagedCopy()) return null;
+    const runningVersion = this.env.appVersion;
+    const installedVersion = entry ? readEntryVersion(entry) : null;
+
+    if (installedVersion && runningVersion && installedVersion !== runningVersion) {
+      return { kind: "version", installedVersion, runningVersion };
+    }
+
+    const running = (this.env.appImagePath ?? "").trim();
+    if (!running) return null;
+    try {
+      const [managedSize, runningSize] = await Promise.all([
+        this.fs.size(this.paths.appImage),
+        this.fs.size(running),
+      ]);
+      if (managedSize !== runningSize) {
+        return { kind: "build", installedVersion, runningVersion };
+      }
+    } catch {
+      // Unmeasurable — say nothing rather than cry wolf.
+    }
+    return null;
   }
 
   /**
@@ -337,7 +435,10 @@ export class AppImageIntegration {
 
       const desktopTmp = tempSibling(this.paths.desktopEntry);
       temps.push(desktopTmp);
-      await this.fs.writeFile(desktopTmp, renderDesktopEntry(this.paths.appImage));
+      await this.fs.writeFile(
+        desktopTmp,
+        renderDesktopEntry(this.paths.appImage, this.env.appVersion),
+      );
       await this.fs.chmod(desktopTmp, DATA_FILE_MODE);
       await this.fs.rename(desktopTmp, this.paths.desktopEntry);
       temps.pop();

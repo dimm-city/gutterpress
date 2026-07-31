@@ -1,6 +1,10 @@
 # Publishing {#ch-publishing}
 
-<div class="lede">When your book is built, Gutterpress can send it to the places readers buy it — itch.io, DriveThruRPG, Amazon KDP, a website on Azure, or your Shopify store — without leaving the app.</div>
+@section .lede
+
+When your book is built, Gutterpress can send it to the places readers buy it — itch.io, DriveThruRPG, Amazon KDP, a website on Azure, or your Shopify store — without leaving the app.
+
+@end-section
 
 ## Two Kinds of Publishing
 
@@ -46,7 +50,7 @@ gutterpress publish --provider itch
 @section .callout-tip
 
 **Tip:** DriveThruRPG has strict print requirements. Run `gutterpress validate
---profile dtrpg` before uploading — it checks bleed, ink density and more.
+--target dtrpg` before uploading — it checks bleed, ink density and more.
 
 @end-section
 

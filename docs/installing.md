@@ -70,7 +70,7 @@ Linux systems are not supported by the standalone binaries; use the
 
 The CLI needs a Chromium-based browser for PDF rendering. Some PDF/X and
 validation features also need Ghostscript or qpdf; see [System
-Setup](../examples/gutterpress-user-guide/08-system-setup.md).
+Setup](../examples/gutterpress-user-guide/07-system-setup.md).
 
 ## Verify downloads
 

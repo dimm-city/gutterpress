@@ -1,6 +1,10 @@
 # Validation & Best Practices {#ch-validation}
 
-<div class="lede">Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 33 built-in checks, CLI usage, and production workflow recommendations.</div>
+@section .lede
+
+Gutterpress's validation system checks your project for print compliance at two points in the pipeline — before the PDF build and after. This chapter covers the 33 built-in checks, CLI usage, and production workflow recommendations.
+
+@end-section
 
 ## Validation Overview
 
@@ -20,6 +24,46 @@ The final `validate:post-build` phase runs for `--format pdfx` only — a plain
 `--format pdf` build stops after the build step. Everything before it runs for
 both formats.
 
+## Publish Targets
+
+Where you *publish* is a separate decision from how your book is *designed*
+(the `preset:` — see Chapter 1). A **target** is a destination's validation
+policy: what its platform demands of the finished PDF. Targets never change
+how the book renders — only what the validator checks.
+
+- `dtrpg` — DriveThruRPG print-on-demand: PDF/X markers and metadata,
+  CMYK/Grayscale art, the 240% ink limit, embedded fonts.
+- `itch` — itch.io digital release: a well-formed PDF with embedded fonts;
+  print-only rules (PDF/X, ink limits, CMYK-only art) don't apply.
+
+List them in your manifest to validate every destination in one run:
+
+```yaml
+targets:
+  - dtrpg
+  - itch
+```
+
+The report labels each destination's findings (`[dtrpg]`, `[itch]`), so one
+source can be checked for print and digital at the same time. Projects
+created with `gutterpress new` or the desktop app always carry an explicit
+`targets:` list — you choose the destinations at creation time (and can
+uncheck them all, recorded as `targets: []`). In the desktop app you can
+change them whenever you like under **Project settings → Details →
+Publish targets**. In a hand-written manifest
+with no `targets:` line, the preset's default applies (the `dtrpg` preset
+validates for DriveThruRPG; `book` and `custom` validate for no
+destination). An explicit empty list (`targets: []`) opts out entirely.
+Your own manifest settings always win over a target's policy — a target
+only fills in what you haven't set.
+
+The `dtrpg` target's checks need qpdf and Ghostscript installed (Chapter
+7). With the target selected but the tools missing, validation reports the
+required checks as errors rather than silently skipping them — that's
+deliberate: "validated for DriveThruRPG" must mean the checks actually ran.
+If you're not ready to install them, set `targets: []` until you are. The
+`itch` target needs no external tools.
+
 ## CLI Usage
 
 ### Validate a PDF
@@ -31,15 +75,18 @@ gutterpress validate --pdf dist/my-book/my-book-pdf.pdf
 # With a manifest for project-specific settings
 gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --manifest ./manifest.yaml
 
-# Lock deterministic DTRPG thresholds
-gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --profile dtrpg
+# Validate against a specific publish target's requirements
+gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --target dtrpg
+
+# One source, two destinations: check DriveThruRPG print AND itch.io digital
+gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --target dtrpg,itch
 ```
 
 ### Preflight report
 
 ```bash
 # Run post-build checks and write JSON + markdown reports
-gutterpress preflight --pdf dist/my-book/my-book-pdf.pdf --profile dtrpg
+gutterpress preflight --pdf dist/my-book/my-book-pdf.pdf --target dtrpg
 
 # Custom report location
 gutterpress preflight --pdf dist/my-book/my-book-pdf.pdf --report-dir .reviews --name release-preflight
@@ -91,7 +138,7 @@ gutterpress validate --pdf dist/my-book/my-book-pdf.pdf --format json
 | `--skip` | Skip these check IDs |
 | `--format` | Output format: `text` (default) or `json` |
 | `--phase` | Override phase: `pre-build` or `post-build` |
-| `--profile` | `dtrpg` for deterministic print-on-demand thresholds |
+| `--target` | Publish targets to validate against (comma-separated: `dtrpg`, `itch`), overriding the manifest's `targets:` |
 
 @end-section
 
@@ -221,7 +268,7 @@ This runs the full pipeline including both pre-build and post-build validation.
 ### 4. Preflight for submission
 
 ```bash
-gutterpress preflight --pdf dist/my-book/my-book-pdfx.pdf --profile dtrpg
+gutterpress preflight --pdf dist/my-book/my-book-pdfx.pdf --target dtrpg
 ```
 
 Generates deterministic JSON and markdown reports suitable for archival or submission evidence.
@@ -239,7 +286,7 @@ Before final print submission:
 - [ ] No unexpected blank pages
 - [ ] Running headers are correct on all pages
 - [ ] Page numbers start at the right page and run correctly
-- [ ] Validate passes with `--profile dtrpg` (or your target platform's equivalent)
+- [ ] Validate passes for every destination you publish to (`--target dtrpg,itch`, or your manifest's `targets:` list)
 
 @end-section
 

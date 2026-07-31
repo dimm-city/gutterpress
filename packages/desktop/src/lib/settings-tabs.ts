@@ -11,7 +11,7 @@
  * tests/platform/settings-tabs.test.ts).
  */
 
-export const SETTINGS_TAB_IDS = ["app", "editor", "saving", "connections", "advanced"] as const;
+export const SETTINGS_TAB_IDS = ["app", "editor", "saving", "connections"] as const;
 
 export type SettingsTab = (typeof SETTINGS_TAB_IDS)[number];
 

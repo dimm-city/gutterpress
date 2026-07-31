@@ -4,6 +4,13 @@
   import { api } from "$lib/api";
   import type { TemplateInfo } from "$lib/api";
   import { dialogBehavior, guardedClose } from "$lib/dialog";
+  import { useSettings } from "$lib/settings.svelte";
+  import {
+    PUBLISH_TARGET_CHOICES,
+    PRINT_TOOL_IDS,
+    missingToolsForTargets,
+    toolGapMessage,
+  } from "$lib/publish-targets";
 
   // L4: `open` used to also be an external `$bindable` prop (`bind:open`),
   // but the host never reads it — the ONLY open protocol is the imperative
@@ -27,12 +34,131 @@
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
 
-  // Single screen (UX audit P3#10): name, author, template, folder and history
-  // are one short form — no Continue/Back step split.
+  // Single screen (UX audit P3#10): name, author, preset, template, folder and
+  // history are one short form — no Continue/Back step split.
   let name = $state("");
   let author = $state("");
   let parentDir = $state<string | null>(null);
   let useVersionHistory = $state(true);
+
+  // Preset choice (ADR 0008): which vendor the book is DESIGNED for. The
+  // chosen TEMPLATE seeds this (and the targets below) from the template's
+  // own manifest — the template is the first decision, and everything under
+  // it starts from what that template is for. The writer can still change
+  // any of it before creating.
+  // Kept as a local literal (labels are UI copy; the lib's PRESET_IDS is the
+  // authoritative id list and scaffoldProject rejects anything unknown).
+  type PresetChoice = "dtrpg" | "book" | "custom";
+  const PRESET_CHOICES: Array<{ id: PresetChoice; label: string; description: string }> = [
+    {
+      id: "dtrpg",
+      label: "DriveThruRPG print",
+      description: "Print-on-demand ready for DriveThruRPG: trim, ink and PDF checks preset.",
+    },
+    {
+      id: "book",
+      label: "Trade book",
+      description: "A neutral 6×9in book with no print-service rules.",
+    },
+    {
+      id: "custom",
+      label: "Custom size",
+      description: "You set the page size your book is designed for.",
+    },
+  ];
+  let selectedPreset = $state<PresetChoice | null>(null);
+
+  // Page size for the `custom` preset. Authors think in INCHES, so that is
+  // what they type; the manifest stores points (72pt = 1in) and the named
+  // sizes below carry exact point values (A4/A5 are not round inch numbers).
+  const PT_PER_INCH = 72;
+  interface CommonSize {
+    id: string;
+    label: string;
+    /** Exact trim in points, or null for "I'll type my own". */
+    points: { width: number; height: number } | null;
+  }
+  const COMMON_SIZES: CommonSize[] = [
+    { id: "letter", label: 'US Letter — 8.5 × 11 in', points: { width: 612, height: 792 } },
+    { id: "trade", label: 'Trade paperback — 6 × 9 in', points: { width: 432, height: 648 } },
+    { id: "digest", label: 'Digest — 5.5 × 8.5 in', points: { width: 396, height: 612 } },
+    { id: "a4", label: "A4 — 210 × 297 mm", points: { width: 595, height: 842 } },
+    { id: "a5", label: "A5 — 148 × 210 mm", points: { width: 420, height: 595 } },
+    { id: "custom", label: "My own size…", points: null },
+  ];
+  let sizeChoice = $state<string>("letter");
+  // Free-form trim in INCHES — only used when sizeChoice is "custom".
+  let widthIn = $state("");
+  let heightIn = $state("");
+
+  const namedSize = $derived(COMMON_SIZES.find((s) => s.id === sizeChoice)?.points ?? null);
+  const widthInNum = $derived(Number(widthIn));
+  const heightInNum = $derived(Number(heightIn));
+  const inchesValid = $derived(
+    Number.isFinite(widthInNum) && widthInNum > 0 &&
+    Number.isFinite(heightInNum) && heightInNum > 0
+  );
+  /** The trim in points the manifest will record, or null while incomplete. */
+  const customPagePoints = $derived(
+    namedSize ??
+      (inchesValid
+        ? {
+            // Round to 3dp so 8.27in doesn't land as 595.44000000000005.
+            width: Math.round(widthInNum * PT_PER_INCH * 1000) / 1000,
+            height: Math.round(heightInNum * PT_PER_INCH * 1000) / 1000,
+          }
+        : null)
+  );
+
+  // Publish targets (ADR 0008): WHERE the book will be published — each one
+  // is a destination's validation policy, recorded explicitly in the new
+  // manifest (an unchecked-everything selection is written as `targets: []`,
+  // a visible opt-out, never an accident of omission). Seeded from the
+  // template/preset and freely uncheckable — a writer without qpdf/
+  // Ghostscript can opt out of print checks knowingly instead of hitting
+  // required-check errors later. Choices + copy are shared with project
+  // settings ($lib/publish-targets).
+  const TARGET_CHOICES = PUBLISH_TARGET_CHOICES;
+  /** Mirrors the lib presets' defaultTargets (dtrpg → [dtrpg]; else []). */
+  function defaultTargetsFor(preset: PresetChoice | null): string[] {
+    return preset === "dtrpg" ? ["dtrpg"] : [];
+  }
+  // Defaults follow the template/preset until the writer touches a checkbox;
+  // after that their selection is theirs (no $effect — the derived falls
+  // back only while untouched).
+  let targetsTouched = $state(false);
+  let checkedTargets = $state<string[]>([]);
+  /** The template's own `targets:`, when it declares one. */
+  let templateTargets = $state<string[] | null>(null);
+  let effectiveTargets = $derived(
+    targetsTouched ? checkedTargets : (templateTargets ?? defaultTargetsFor(selectedPreset))
+  );
+  function toggleTarget(id: string): void {
+    const base = effectiveTargets;
+    targetsTouched = true;
+    checkedTargets = base.includes(id) ? base.filter((t) => t !== id) : [...base, id];
+  }
+
+  // qpdf/Ghostscript availability on this computer (from the same /api/doctor
+  // data the Help tab shows), for the can't-build-compliant-PDFs note below.
+  // Best-effort: a failed probe just shows no note.
+  let missingTools = $state<string[]>([]);
+  async function loadToolStatus(): Promise<void> {
+    if (!isDesktop()) return;
+    try {
+      const doctor = await api.doctor();
+      missingTools = (doctor.tools ?? [])
+        .filter((t) => !t.found && PRINT_TOOL_IDS.includes(t.id))
+        .map((t) => t.id);
+    } catch {
+      missingTools = [];
+    }
+  }
+  // The explanation for tools a CHECKED destination needs but this computer
+  // lacks — shared verbatim with project settings.
+  let targetToolGap = $derived(
+    toolGapMessage(missingToolsForTargets(effectiveTargets, missingTools))
+  );
 
   // Template selection (#29). Built-in + custom templates, loaded on open.
   let templates = $state<TemplateInfo[]>([]);
@@ -45,7 +171,7 @@
   // load failure can render its own Retry without touching the create form.
   let templatesError = $state<string | null>(null);
 
-  const BUILTIN_IDS = ["book", "ttrpg", "zine", "technical"];
+  const BUILTIN_IDS = ["book", "zine", "technical"];
 
   async function loadTemplates() {
     templatesError = null;
@@ -59,13 +185,31 @@
       }
       templates = [...builtins, ...customs];
       // Default to the "book" built-in (or the first template available).
-      selectedTemplate =
-        templates.find((t) => t.id === "book") ?? templates[0] ?? null;
+      selectTemplate(templates.find((t) => t.id === "book") ?? templates[0] ?? null);
     } catch {
       templates = [];
-      selectedTemplate = null;
+      selectTemplate(null);
       templatesError = "Templates couldn't be loaded.";
     }
+  }
+
+  /**
+   * Choosing a template is the FIRST decision and seeds everything under it:
+   * the design preset and the publish targets both start from what that
+   * template's own manifest declares (falling back to the preset's defaults
+   * when it declares no targets). Any of it can then be changed — this only
+   * moves the starting point, so it runs in the click handler, never an
+   * `$effect`. A writer-touched target selection is reset so the new
+   * template's own choices actually show.
+   */
+  function selectTemplate(tpl: TemplateInfo | null): void {
+    selectedTemplate = tpl;
+    const preset = tpl?.preset;
+    selectedPreset =
+      preset === "dtrpg" || preset === "book" || preset === "custom" ? preset : null;
+    templateTargets = tpl?.targets ?? null;
+    targetsTouched = false;
+    checkedTargets = [];
   }
 
   async function importTemplate() {
@@ -76,7 +220,7 @@
       const imported = await api.tpl.importFromFolder();
       if (imported) {
         await loadTemplates();
-        selectedTemplate = templates.find((t) => t.id === imported.id) ?? imported;
+        selectTemplate(templates.find((t) => t.id === imported.id) ?? imported);
       }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -110,15 +254,40 @@
   });
 
   let nameValid = $derived(name.trim().length > 0 && folderPreview.length > 0);
-  let canCreate = $derived(nameValid && !!parentDir && !creating);
+
+  let presetValid = $derived(
+    selectedPreset !== null && (selectedPreset !== "custom" || customPagePoints !== null)
+  );
+  let canCreate = $derived(nameValid && !!parentDir && presetValid && !creating);
 
   function reset() {
     name = "";
+    // Prefilled from the author's own name setting below (loadAuthorDefault).
     author = "";
     parentDir = null;
     useVersionHistory = true;
+    selectedPreset = null;
+    sizeChoice = "letter";
+    widthIn = "";
+    heightIn = "";
+    targetsTouched = false;
+    checkedTargets = [];
+    templateTargets = null;
     creating = false;
     error = null;
+  }
+
+  /**
+   * Prefill "Who's writing it?" from the author's own name setting — the same
+   * `gitIdentity.authorName` recorded on every saved version, so the two can't
+   * disagree by default. Read once at open (not a `$derived` binding), so
+   * editing it here is a one-off choice for this book and never writes back to
+   * the setting.
+   */
+  const settings = useSettings();
+  function loadAuthorDefault(): void {
+    const settingName = settings.current?.gitIdentity?.authorName?.trim();
+    if (settingName) author = settingName;
   }
 
   /**
@@ -178,9 +347,11 @@
   export function show(trigger?: HTMLButtonElement): void {
     if (trigger) triggerEl = trigger;
     reset();
+    loadAuthorDefault();
     open = true;
     void loadTemplates();
     void loadDefaultParentDir();
+    void loadToolStatus();
   }
 
   /**
@@ -231,9 +402,17 @@
         // Built-in templates pass an id; custom templates pass the directory.
         template:
           tpl && tpl.kind === "builtin" && BUILTIN_IDS.includes(tpl.id)
-            ? (tpl.id as "book" | "ttrpg" | "zine" | "technical")
+            ? (tpl.id as "book" | "zine" | "technical")
             : undefined,
         templateDir: tpl && tpl.kind === "custom" ? tpl.dir : undefined,
+        // ADR 0008: the preset, publish targets, and custom trim shown in the
+        // dialog are what gets written — including for a saved custom
+        // template, whose own manifest values seeded these fields, so leaving
+        // them alone reproduces the captured design exactly.
+        preset: selectedPreset ?? undefined,
+        targets: [...effectiveTargets],
+        customPage:
+          selectedPreset === "custom" && customPagePoints ? customPagePoints : undefined,
         versionHistory: useVersionHistory ? "local-git" : "none",
       });
       // Remember this location as the default next time (M21) — best-effort,
@@ -306,6 +485,9 @@
         />
       </label>
 
+      <!-- The template comes FIRST: it is the decision the two sections
+           below start from (selectTemplate seeds the preset and the publish
+           targets from the template's own manifest). -->
       {#if templates.length > 0}
         <div class="field">
           <span>Start from a template</span>
@@ -318,7 +500,7 @@
                   class:selected={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
                   role="radio"
                   aria-checked={selectedTemplate?.id === tpl.id && selectedTemplate?.kind === tpl.kind}
-                  onclick={() => (selectedTemplate = tpl)}
+                  onclick={() => selectTemplate(tpl)}
                 >
                   <span class="template-label">
                     {tpl.label}
@@ -344,6 +526,95 @@
           </div>
         </div>
       {/if}
+
+      <div class="field">
+        <span>What are you designing it for?</span>
+        <ul class="template-list preset-list" role="radiogroup" aria-label="Book preset">
+          {#each PRESET_CHOICES as choice (choice.id)}
+            <li>
+              <button
+                type="button"
+                class="template-card"
+                class:selected={selectedPreset === choice.id}
+                role="radio"
+                aria-checked={selectedPreset === choice.id}
+                onclick={() => (selectedPreset = choice.id)}
+              >
+                <span class="template-label">{choice.label}</span>
+                <span class="template-desc">{choice.description}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+        {#if selectedPreset === "custom"}
+          <label class="field size-field" for="np-page-size">
+            <span>Page size</span>
+            <select id="np-page-size" bind:value={sizeChoice}>
+              {#each COMMON_SIZES as size (size.id)}
+                <option value={size.id}>{size.label}</option>
+              {/each}
+            </select>
+          </label>
+          {#if sizeChoice === "custom"}
+            <div class="custom-page" role="group" aria-label="Page size in inches">
+              <label class="page-field" for="np-page-width">
+                <span>Width (in)</span>
+                <input
+                  id="np-page-width"
+                  bind:value={widthIn}
+                  type="number"
+                  min="0.1"
+                  step="0.25"
+                  placeholder="8.5"
+                  autocomplete="off"
+                />
+              </label>
+              <span class="page-times" aria-hidden="true">×</span>
+              <label class="page-field" for="np-page-height">
+                <span>Height (in)</span>
+                <input
+                  id="np-page-height"
+                  bind:value={heightIn}
+                  type="number"
+                  min="0.1"
+                  step="0.25"
+                  placeholder="11"
+                  autocomplete="off"
+                />
+              </label>
+            </div>
+          {/if}
+          <p class="page-hint">
+            This is the page size your finished book is checked against; keep it
+            matching the <code>@page</code> size in your stylesheet.
+          </p>
+        {/if}
+      </div>
+
+      <div class="field">
+        <span>Where will you publish it? <em class="optional">(you can change this later)</em></span>
+        <ul class="target-list" aria-label="Publish targets">
+          {#each TARGET_CHOICES as choice (choice.id)}
+            <li>
+              <label class="target-row">
+                <input
+                  type="checkbox"
+                  checked={effectiveTargets.includes(choice.id)}
+                  onchange={() => toggleTarget(choice.id)}
+                  disabled={creating}
+                />
+                <span class="target-copy">
+                  <span class="target-label">{choice.label}</span>
+                  <span class="target-desc">{choice.description}</span>
+                </span>
+              </label>
+            </li>
+          {/each}
+        </ul>
+        {#if targetToolGap}
+          <p class="tool-note" role="note">{targetToolGap}</p>
+        {/if}
+      </div>
 
       <div class="field">
         <span>Where should we save it?</span>
@@ -430,6 +701,61 @@
   .template-card:hover { background: var(--app-surface-hover); }
   .template-card.selected { border-color: var(--app-focus-ring); background: var(--app-surface-hover); }
   .template-card:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
+  .preset-list { grid-template-columns: 1fr 1fr 1fr; }
+  .target-list {
+    list-style: none; margin: 0; padding: 0;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .target-row {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 13px; color: var(--app-text-secondary); cursor: pointer;
+  }
+  .target-row input { margin-top: 2px; flex-shrink: 0; }
+  .target-copy { display: flex; flex-direction: column; gap: 1px; }
+  .target-label { font-size: 13px; font-weight: 600; color: var(--app-text); }
+  .target-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }
+  .tool-note {
+    margin: 4px 0 0;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--app-warning-text);
+  }
+  .custom-page {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .page-field { display: flex; flex-direction: column; gap: 4px; }
+  .page-field > span { font-size: 11px; color: var(--app-text-muted); }
+  .page-field input {
+    width: 90px;
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .page-field input:focus { outline: none; border-color: var(--app-focus-ring); }
+  .size-field { gap: 4px; margin-top: 2px; }
+  .size-field select {
+    background: var(--app-surface-sunken);
+    border: 1px solid var(--app-border);
+    color: var(--app-text-secondary);
+    padding: 7px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .size-field select:focus { outline: none; border-color: var(--app-focus-ring); }
+  .page-times { color: var(--app-text-muted); font-size: 13px; padding-bottom: 8px; }
+  .page-hint {
+    margin: 4px 0 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--app-text-muted);
+  }
+  .page-hint code { font-family: var(--app-font-mono); font-size: 10px; }
   .template-label { font-size: 13px; font-weight: 600; color: var(--app-text); display: flex; align-items: center; gap: 6px; }
   .template-tag { font-size: 10px; font-style: normal; text-transform: uppercase; letter-spacing: 0.04em; color: var(--app-text-muted); border: 1px solid var(--app-border); border-radius: 3px; padding: 0 4px; }
   .template-desc { font-size: 11px; color: var(--app-text-muted); line-height: 1.35; }

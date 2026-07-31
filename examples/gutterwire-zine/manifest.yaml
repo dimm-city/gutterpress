@@ -1,9 +1,9 @@
-title: "{{TITLE}}"
+title: "gutterwire-zine"
 authors:
-  - "{{AUTHOR}}"
+  - "Anonymous"
 source:
   files:
     - chapter-01.md
 styles:
   - styles/book.css
-preset: dtrpg
+preset: book

@@ -54,7 +54,7 @@ the repository and run `bun install` when contributing to Gutterpress itself.
 
 ## System requirements
 
-The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md) for the full per-feature requirements matrix.
+The CLI needs a Chromium-based browser for PDF generation, and a few external tools for PDF post-processing and validation depending on which features you use. See [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md) for the full per-feature requirements matrix.
 
 The short version: CLI PDF rendering needs a Chromium-based browser. Optional
 PDF/X output additionally needs **Ghostscript** and **qpdf**; the desktop app
@@ -64,7 +64,7 @@ uses its bundled browser for standard PDF export.
 
 ```sh
 # Scaffold a new project (manifest + starter chapter + stylesheet)
-  gutterpress new "My First Book"
+  gutterpress new "My First Book" --preset dtrpg
 
 # Build a PDF from a project directory
   gutterpress build ./my-book
@@ -143,16 +143,21 @@ source.
 
 ### `gutterpress new`
 
-Scaffold a new project from an embedded starter template — the fastest way to start writing (see [Quick start](#quick-start)).
+Scaffold a new project from an embedded starter template — the fastest way to start writing (see [Quick start](#quick-start)). Every new book picks the vendor preset it's designed for: `dtrpg` (DriveThruRPG print-on-demand), `book` (neutral 6x9in trade book), or `custom` (you supply the trim size in points).
 
 ```sh
-gutterpress new <name> [options]
+gutterpress new <name> --preset <id> [options]
 
-  --author <name>     Author name to record in the project
-  --dir <path>         Parent directory to create the project in (default: current directory)
-  --folder <name>      Folder name to create (default: a slug of the project name)
-  --template <id>      Starter template: book, ttrpg, zine, technical (default: book)
-  --git                Initialise local version history (default: true; use --no-git to skip)
+  --preset <id>            Vendor preset the book is designed for: dtrpg, book, custom (required)
+  --author <name>          Author name to record in the project
+  --dir <path>             Parent directory to create the project in (default: current directory)
+  --folder <name>          Folder name to create (default: a slug of the project name)
+  --template <id>          Starter template: book, zine, technical (default: book)
+  --targets <ids>          Publish targets recorded in the manifest (comma-separated: dtrpg, itch; or "none") — default: the preset's
+  --page-width <pt>        Trim width in points, 72pt = 1in (required with --preset custom; optional override otherwise)
+  --page-height <pt>       Trim height in points, 72pt = 1in (required with --preset custom; optional override otherwise)
+  --page-tolerance <pt>    Allowed trim deviation when validating a built PDF (default: 0.5)
+  --git                    Initialise local version history (default: true; use --no-git to skip)
   --no-git
 ```
 
@@ -245,7 +250,7 @@ Common print-unsafe patterns the plugin flags: remote `url(...)` references in C
 
 ### `gutterpress validate`
 
-Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 7 — Validation](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-validation.md) for the full check list and [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md) for which external tools each check needs.
+Run the validation pipeline (pre-build source checks and/or post-build PDF checks). Tools that aren't installed are skipped with a warning — they don't fail the run. See [User Guide: Chapter 6 — Validation](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/06-validation.md) for the full check list and [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md) for which external tools each check needs.
 
 The positional directory and `--pdf`/`--input` are independent: the positional (or `--input`) sets the pre-build source directory, `--pdf` separately points at a built PDF for post-build checks. `--input` overrides the positional if both are given.
 
@@ -260,7 +265,7 @@ gutterpress validate [dir] [options]
   --skip <ids>         Skip these check IDs/selectors (comma-separated)
   --format <fmt>       text (default) | json
   --phase <p>          pre | post | all | pre-build | post-build   (default: all)
-  --profile <p>        Validation profile lock (currently: dtrpg)
+  --target <t>         Publish targets to validate against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`
 ```
 
 ### `gutterpress audit`
@@ -287,7 +292,7 @@ gutterpress preflight [dir] --pdf <path> [options]
   --pdf <path>              Path to the PDF file to preflight   (required)
   --input <dir>             Optional source directory for pre-build checks (overrides the positional directory)
   --manifest <path>         Path to manifest.yaml
-  --profile <p>             Validation profile lock (currently: dtrpg)
+  --target <t>              Publish targets to preflight against (comma-separated, e.g. dtrpg,itch), overriding the manifest's `targets:`
   --report-dir <dir>        Output directory for preflight reports (default: alongside the PDF)
   --name <name>             Base filename for report outputs
 ```
@@ -385,7 +390,7 @@ privileges.
 Use the manifest `export` field, or `plugin add --export <name>`, for packages
 that expose a named plugin function instead of a default export.
 
-See [User Guide: Chapter 6 — Plugins](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/06-plugins.md) for authoring custom plugins.
+See [User Guide: Chapter 5 — Plugins](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/05-plugins.md) for authoring custom plugins.
 
 ## CI / scripting
 
@@ -401,11 +406,11 @@ The standalone binary is the easiest way — drop it in a GitHub Actions step an
     ./gutterpress build ./my-book --out dist/my-book.pdf
 ```
 
-The binary is self-contained except for the system tools described in [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md). On a runner with Chrome and Ghostscript present, you don't need a separate Node or Bun install.
+The binary is self-contained except for the system tools described in [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md). On a runner with Chrome and Ghostscript present, you don't need a separate Node or Bun install.
 
 ## Troubleshooting
 
-- **`Ghostscript executable not found`** — Ghostscript is required only for PDF/X and ink-coverage checks. Standard Windows installs are auto-detected; for a non-standard install, set `GHOSTSCRIPT_PATH` to the full path of `gs`, `gswin64c.exe`, or `gswin32c.exe`. See [User Guide: Chapter 8 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/08-system-setup.md).
+- **`Ghostscript executable not found`** — Ghostscript is required only for PDF/X and ink-coverage checks. Standard Windows installs are auto-detected; for a non-standard install, set `GHOSTSCRIPT_PATH` to the full path of `gs`, `gswin64c.exe`, or `gswin32c.exe`. See [User Guide: Chapter 7 — System Setup](https://github.com/dimm-city/gutterpress/blob/main/examples/gutterpress-user-guide/07-system-setup.md).
 - **`No Chrome or Chromium binary found`** — install a Chromium-based browser or set `CHROMIUM_PATH=/path/to/chrome`. The desktop app includes its own browser and needs no separate browser install.
 - **`Tool "X" not found — skipping`** during validate — that's the graceful path; the check requires `X` and isn't available. Install the tool or accept the skip.
 - **All validate checks skipped on Windows** — was a bug pre-0.1.7 (used `which`, which isn't on stock Windows); fixed to use `where.exe`.

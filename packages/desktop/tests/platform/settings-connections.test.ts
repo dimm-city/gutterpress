@@ -30,18 +30,36 @@ describe("Toolbar Save button — flush all pending changes beside Export", () =
 
 describe("Settings panel — tabbed layout", () => {
   const dlg = read("src/lib/components/SettingsView.svelte");
-  test("five tabs incl. Connections; sections render per-tab", () => {
+  test("four tabs incl. Accounts; sections render per-tab", () => {
     expect(dlg).toContain('class="settings-view"');
     expect(dlg).not.toContain('class="dlg-shell"');
     expect(dlg).not.toContain("dialogBehavior");
     expect(dlg).toContain('role="tablist"');
-    for (const label of ['label: "App"', 'label: "Editor"', 'label: "Saving"', 'label: "Connections"', 'label: "Advanced"']) {
+    // The Connections tab id survives (deep links keep working) but reads
+    // "Accounts"; the Advanced tab folded into Editor (owner request
+    // 2026-07-30).
+    for (const label of ['label: "App"', 'label: "Editor"', 'label: "Saving"', 'label: "Accounts"']) {
       expect(dlg).toContain(label);
     }
+    expect(dlg).not.toContain('label: "Advanced"');
+    expect(dlg).not.toContain('label: "Connections"');
     expect(dlg).toContain('{#if activeTab === "app"}');
     expect(dlg).toContain('{#if activeTab === "connections"}');
     expect(dlg).toContain("<ConnectionsSettings {projectDir} />");
     expect(dlg).not.toContain("<details class=\"group advanced\">");
+    // The Advanced sections now render inside the Editor tab.
+    const editorTab = dlg.slice(dlg.indexOf('{#if activeTab === "editor"}'), dlg.indexOf('{#if activeTab === "saving"}'));
+    expect(editorTab).toContain('class="group advanced"');
+    expect(editorTab).toContain("set-watcher");
+    expect(editorTab).toContain("set-loglevel");
+  });
+  test("the author's name/email is the FIRST section on the Accounts tab", () => {
+    const accountsTab = dlg.slice(dlg.indexOf('{#if activeTab === "connections"}'));
+    const identity = accountsTab.indexOf("<GitIdentitySection />");
+    const connections = accountsTab.indexOf("<ConnectionsSettings");
+    expect(identity).toBeGreaterThan(-1);
+    expect(connections).toBeGreaterThan(-1);
+    expect(identity).toBeLessThan(connections);
   });
   test("the page passes the open project dir through", () => {
     const page = read("src/routes/+page.svelte");
@@ -58,16 +76,27 @@ describe("Connections tab — central credential management", () => {
     expect(conn).toContain("Publishing accounts");
     expect(conn).toContain("Git servers");
   });
-  test("publishing accounts are the FIRST section (owner request 2026-07-22)", () => {
+  test("GitHub is the FIRST section (owner request 2026-07-30)", () => {
+    // GitHub sits directly under the author's name & email — the identity it
+    // carries — on both Accounts surfaces (Settings and the welcome screen).
     // Compare the section headings' positions in the template.
-    const pub = conn.indexOf("<h4>Publishing accounts</h4>");
     const gh = conn.indexOf("<h4>GitHub</h4>");
+    const pub = conn.indexOf("<h4>Publishing accounts</h4>");
     const git = conn.indexOf("<h4>Git servers</h4>");
-    expect(pub).toBeGreaterThan(-1);
     expect(gh).toBeGreaterThan(-1);
+    expect(pub).toBeGreaterThan(-1);
     expect(git).toBeGreaterThan(-1);
-    expect(pub).toBeLessThan(gh);
-    expect(gh).toBeLessThan(git);
+    expect(gh).toBeLessThan(pub);
+    expect(pub).toBeLessThan(git);
+  });
+  test("App leads, Accounts sits second (owner request 2026-07-30)", () => {
+    const view = read("src/lib/components/SettingsView.svelte");
+    const tabs = view.slice(view.indexOf("const TABS"), view.indexOf("];", view.indexOf("const TABS")));
+    expect(tabs.indexOf('label: "App"')).toBeLessThan(tabs.indexOf('label: "Accounts"'));
+    expect(tabs.indexOf('label: "Accounts"')).toBeLessThan(tabs.indexOf('label: "Editor"'));
+    // App stays the tab Settings opens on — the missing-identity nudge is the
+    // workspace banner (+page's `needsGitIdentity`), not a re-ordered default.
+    expect(view).toContain('initialTab = "app"');
   });
   test("classifies publish entries by compound keys and provider hosts", () => {
     expect(conn).toContain('e.host.includes("#")');
@@ -137,13 +166,22 @@ describe("Advanced setup consolidated into the Connections tab (owner request 20
     expect(conn).toContain('"https-connect-server"');
   });
 
-  test("project diagnostics + Test remote access live on in the consolidated tab", () => {
-    expect(conn).toContain("diagnoseProjectRemote");
-    expect(conn).toContain("testRemoteAccess");
-    expect(conn).toContain("<h4>This project</h4>");
-    expect(conn).toContain("Test remote access");
+  test("project diagnostics + Test remote access live on Project settings > Connections", () => {
+    // Moved out of the app-level Accounts tab (2026-07-30): the diagnosis is
+    // about ONE project, so it renders as ProjectSettingsView's Connections
+    // tab. ConnectionsSettings keeps fetching the diagnosis for its
+    // connect-form prefill/validation, but no longer renders the section.
+    const proj = read("src/lib/components/ProjectConnectionsSection.svelte");
+    expect(proj).toContain("diagnoseProjectRemote");
+    expect(proj).toContain("testRemoteAccess");
+    expect(proj).toContain("Test remote access");
     // The explicit-click-only contract survives the move: no automatic probe.
-    expect(conn).toMatch(/onclick=\{runRemoteTest\}/);
+    expect(proj).toMatch(/onclick=\{runRemoteTest\}/);
+    expect(conn).toContain("diagnoseProjectRemote");
+    expect(conn).not.toContain("testRemoteAccess");
+    const view = read("src/lib/components/ProjectSettingsView.svelte");
+    expect(view).toContain('{ id: "connections", label: "Connections" }');
+    expect(view).toContain("<ProjectConnectionsSection");
   });
 
   test("provider guidance (how to get a token, SSH limits) survives, once", () => {

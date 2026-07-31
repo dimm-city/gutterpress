@@ -45,30 +45,10 @@ const DESKTOP_API = 5;
 
 // ── Types used only in preload (not shared with the renderer contract) ────
 
-// New-project scaffold (#25). Mirrors the lib's CreateProjectOptions/Result.
-interface CreateProjectOptions {
-  name: string;
-  author?: string;
-  parentDir: string;
-  folderName?: string;
-  template?: "book" | "ttrpg" | "zine" | "technical";
-  templateDir?: string;
-  versionHistory?: "local-git" | "none";
-}
-interface AdoptFolderOptions {
-  dir: string;
-  title?: string;
-  author?: string;
-  template?: "book" | "ttrpg" | "zine" | "technical";
-  versionHistory?: "local-git" | "none";
-}
-interface CreateProjectResult {
-  projectDir: string;
-  manifestPath: string;
-  openFile: string;
-  versionHistory: "local-git" | "none";
-  versionHistoryError?: string;
-}
+// New-project scaffold types (CreateProjectOptions/AdoptFolderOptions/
+// CreateProjectResult) removed — app:createProject/app:adoptFolder migrated
+// to server routes (Phase 2B), leaving the local mirrors unreferenced; the
+// real shapes live in the lib's project-scaffold.ts.
 
 // plugin:*, theme:*, project:listStyles types removed — migrated to server
 // routes (Phase 2E). This block used to also declare module-local

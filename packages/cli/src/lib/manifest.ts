@@ -3,7 +3,8 @@ import { existsSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import type { GutterpressManifest, ResolvedConfig, PluginConfig, ResolvedPluginConfig } from "../schema/manifest.types";
-import { resolvePreset, warnOnce } from "./presets";
+import { resolvePreset, warnOnce, type VendorPreset } from "./presets";
+import { overlayPreset, publishTargetFor, resolveTargets } from "./targets";
 import { UsageError } from "./cli-args";
 
 /**
@@ -230,7 +231,61 @@ export function resolveConfig(
   manifest: GutterpressManifest
 ): ResolvedConfig {
   const presetName = cliOverrides.preset ?? manifest.preset;
+  return resolveWithPreset(cliOverrides, manifest, resolvePreset(presetName));
+}
+
+/**
+ * Resolve the config AS ONE PUBLISH TARGET SEES IT (ADR 0008): the target's
+ * policy overlay is merged onto the preset before the manifest merges over
+ * both, giving the single precedence chain cli > manifest > target > preset.
+ * The author's explicit manifest values always beat the target's policy —
+ * the same sovereignty rule presets follow.
+ */
+export function resolveConfigForTarget(
+  cliOverrides: Partial<GutterpressManifest>,
+  manifest: GutterpressManifest,
+  targetId: string
+): ResolvedConfig {
+  const presetName = cliOverrides.preset ?? manifest.preset;
   const preset = resolvePreset(presetName);
+  return resolveWithPreset(cliOverrides, manifest, overlayPreset(preset, publishTargetFor(targetId)));
+}
+
+/**
+ * `custom` supplies no geometry, so the manifest (or CLI) must: width and
+ * height in points are required, tolerance defaults to 0.5pt. The error
+ * names exactly what to add — this is the contract that makes
+ * `preset: custom` safe to offer non-technical authors.
+ */
+function resolveCustomPage(
+  c: Partial<GutterpressManifest>,
+  m: GutterpressManifest
+): ResolvedConfig["page"] {
+  const width = c.page?.width ?? m.page?.width;
+  const height = c.page?.height ?? m.page?.height;
+  const missing = [
+    width === undefined ? "page.width" : null,
+    height === undefined ? "page.height" : null,
+  ].filter((f): f is string => f !== null);
+  if (missing.length > 0) {
+    throw new UsageError(
+      `preset: custom requires ${missing.join(" and ")} in manifest.yaml ` +
+        "(points; 72pt = 1in). Example for US Letter:\n" +
+        "  page:\n    width: 612\n    height: 792"
+    );
+  }
+  return {
+    width: width!,
+    height: height!,
+    tolerance: c.page?.tolerance ?? m.page?.tolerance ?? 0.5,
+  };
+}
+
+function resolveWithPreset(
+  cliOverrides: Partial<GutterpressManifest>,
+  manifest: GutterpressManifest,
+  preset: VendorPreset
+): ResolvedConfig {
 
   const m = manifest;
   const c = cliOverrides;
@@ -286,9 +341,10 @@ export function resolveConfig(
     // defeated that documented fallback chain on every real render path.
     styles: c.styles ?? m.styles,
     plugins,
+    targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),
     source: mergeShape(c.source, m.source, preset.source),
     pdfx: mergeShape(c.pdfx, m.pdfx, preset.pdfx),
-    page: mergeShape(c.page, m.page, preset.page),
+    page: preset.page ? mergeShape(c.page, m.page, preset.page) : resolveCustomPage(c, m),
     ink: mergeShape(c.ink, m.ink, preset.ink),
     lint: mergeShape(c.lint, m.lint, preset.lint),
     validate: {

@@ -2,6 +2,10 @@ title: "Gutterpress User Guide"
 authors:
   - "The Gutterpress Team"
 
+# How the book is designed: the neutral trade-book preset (no print-service
+# rules). The explicit `page:` below overrides the preset's 6x9in default.
+preset: book
+
 styles:
   - styles/guide.css
 
@@ -13,11 +17,10 @@ source:
     - 02-writing-content.md
     - 03-visual-elements.md
     - 04-styling-theming.md
-    - 05-ttrpg-extensions.md
-    - 06-plugins.md
-    - 07-validation.md
-    - 08-system-setup.md
-    - 09-publishing.md
+    - 05-plugins.md
+    - 06-validation.md
+    - 07-system-setup.md
+    - 08-publishing.md
 
 # US Letter — 8.5 × 11 in
 page:

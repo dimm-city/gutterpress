@@ -31,7 +31,7 @@ import { build, files, version } from "$service-worker";
 const CACHE = `Gutterpress-cache-${version}`;
 
 // The app shell: hashed JS/CSS chunks (`build`) + prerendered static assets
-// (`files` — index.html, manifest.webmanifest, favicon, icons). Add the vendored
+// (`files` — index.html, manifest.webmanifest, icons). Add the vendored
 // paged.js explicitly so in-browser preview works offline even though it lives
 // under static/ (it IS in `files`, but list it defensively in case a future
 // adapter config changes what `files` enumerates).

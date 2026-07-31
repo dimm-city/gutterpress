@@ -7,11 +7,22 @@ import { defineConfig } from "vite";
 // fetch("/api/...") against src/routes/api/**/+server.ts routes; a narrow
 // ipcMain/preload bridge (window.electron.*) is reserved for push-event
 // streams and calls that must drive a live BrowserWindow — see CLAUDE.md §8.
-// This config only builds the SvelteKit app itself; no externals / noExternal
-// config needed here (electron.vite.config.ts handles the main/preload build).
+// (electron.vite.config.ts handles the main/preload build.)
 export default defineConfig({
   plugins: [sveltekit()],
   server: {
     fs: { allow: [".."] },
+  },
+  ssr: {
+    // Vite bundles LINKED (workspace) deps into the SSR output by default.
+    // That breaks the lib's embedded assets: gutterpress's dist carries
+    // `with { type: "file" }` assets as sibling files referenced by relative
+    // string paths resolved against the module's own dirname
+    // (packages/cli/src/lib/embedded-assets.ts). Bundling moved the module
+    // into build/server/chunks/ WITHOUT the asset files, so every scaffold/
+    // theme/schema read failed in the packaged app ("favicon-….ico not found
+    // in app.asar"). Externalized, the routes load the real package from
+    // node_modules — the same copy Electron main already imports.
+    external: ["gutterpress"],
   },
 });

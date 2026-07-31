@@ -43,6 +43,9 @@ export interface DetailsSectionDeps {
   /** List the project's markdown files (project-relative paths) — the
    *  universe the source-files include/exclude list is built from. */
   listMarkdownFiles: (projectDir: string) => Promise<string[]>;
+  /** Which of the print tools (`qpdf`/`gs`) are missing on this computer.
+   *  Best-effort: a rejection just means no tool note is shown. */
+  listMissingPrintTools?: () => Promise<string[]>;
   /** Fired after a successful save (the panel wires this to a toast). */
   onSaved?: () => void;
   /** Fired after a load/save failure (the panel wires this to a toast). */
@@ -65,6 +68,12 @@ export class DetailsSectionController {
   /** The source-files list: every project markdown file, ordered, each row
    *  included or excluded (the DnD editor's model — see source-files.ts). */
   sourceFiles = $state<SourceFileEntry[]>([]);
+  /** Editable publish-target selection (ADR 0008) — the destinations this
+   *  book is validated against. Saved with the rest of the details. */
+  targetsDraft = $state<string[]>([]);
+  /** Tool ids (`qpdf`/`gs`) missing on this computer, for the note beside a
+   *  checked destination that needs them. Empty when the probe failed. */
+  missingTools = $state<string[]>([]);
 
   /** The markdown files found on disk at load time (toManifestFiles's
    *  "is this the all-files default?" reference). */
@@ -95,15 +104,32 @@ export class DetailsSectionController {
       this.fields = f;
       this.titleDraft = f.title ?? "";
       this.authorsDraft = f.authors ?? [];
+      this.targetsDraft = f.targets ?? [];
       this.scanOk = scan.ok;
       // Failed scan: fall back to the manifest's own entries as the universe
       // so they stay editable without every row being flagged "missing".
       this.allMarkdownFiles = scan.ok ? scan.files : (f.sourceFiles ?? []);
       this.sourceFiles = buildSourceList(this.allMarkdownFiles, f.sourceFiles ?? null);
+      // Independent + best-effort: the tool probe must never fail the load.
+      void this.deps
+        .listMissingPrintTools?.()
+        .then((tools) => {
+          this.missingTools = tools;
+        })
+        .catch(() => {
+          this.missingTools = [];
+        });
     } catch (e) {
       this.detailsError = e instanceof Error ? e.message : String(e);
     }
   }
+
+  // ── Publish-target intents (ADR 0008) ───────────────────────────────────────
+  toggleTarget = (id: string): void => {
+    this.targetsDraft = this.targetsDraft.includes(id)
+      ? this.targetsDraft.filter((t) => t !== id)
+      : [...this.targetsDraft, id];
+  };
 
   // ── Author-list intents ──────────────────────────────────────────────────────
   addAuthor = (): void => {
@@ -147,6 +173,9 @@ export class DetailsSectionController {
         title: this.titleDraft.trim(),
         authors: trimmedAuthors,
         sourceFiles: src,
+        // Always sent, empty included: `targets: []` is the explicit "no
+        // destination policies" opt-out, not an omission.
+        targets: [...this.targetsDraft],
       });
       this.fields = out;
       this.deps.onSaved?.();

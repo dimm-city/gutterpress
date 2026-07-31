@@ -1,6 +1,10 @@
 # Getting Started {#ch-getting-started}
 
-<div class="lede">Gutterpress converts markdown files into professional print PDFs. It is designed for books, manuals, rulebooks, and any print-first document — using Chromium and Paged.js for rendering.</div>
+@section .lede
+
+Gutterpress converts markdown files into professional print PDFs. It is designed for books, manuals, rulebooks, and any print-first document — using Chromium and Paged.js for rendering.
+
+@end-section
 
 ## Installation
 
@@ -25,8 +29,23 @@ version history) in one command, so you never have to hand-write a manifest
 just to get going:
 
 ```bash
-gutterpress new "My Book"
+gutterpress new "My Book" --preset dtrpg
 ```
+
+The `--preset` names what the book is *designed for* — it sets the page size
+and print rules the project starts with, and it is required:
+
+- `dtrpg` — DriveThruRPG print-on-demand: letter-with-bleed page (621×810pt = 8.625×11.25in), print-ready checks on by default
+- `book` — a neutral 6×9in trade book, no print-service rules
+- `custom` — you supply the trim: add `--page-width` and `--page-height` (points; 72pt = 1in)
+
+The command also records *where* you'll publish (the manifest's `targets:`
+list — see Chapter 6): the preset's default (`dtrpg` validates for
+DriveThruRPG; `book`/`custom` for nothing), or your own choice via
+`--targets dtrpg,itch` / `--targets none`. If a chosen destination needs
+qpdf or Ghostscript and they aren't installed, the command tells you up
+front that a print-compliant PDF can't be built or verified until they are
+— you can install them later (Chapter 7) or opt out with `--targets none`.
 
 This creates a `my-book/` folder in the current directory:
 
@@ -46,10 +65,12 @@ local version history with no credentials and no remote required. Pass
 Useful flags:
 
 ```bash
-gutterpress new "My Book" --author "Jane Doe"   # record an author
-gutterpress new "My Book" --dir ~/Books         # choose a parent directory
-gutterpress new "My Book" --template ttrpg      # book | ttrpg | zine | technical
-gutterpress new "My Book" --no-git              # skip local version history
+gutterpress new "My Book" --preset dtrpg --author "Jane Doe"   # record an author
+gutterpress new "My Book" --preset dtrpg --dir ~/Books         # choose a parent directory
+gutterpress new "My Book" --preset dtrpg --template zine       # book | zine | technical
+gutterpress new "My Book" --preset dtrpg --no-git              # skip local version history
+gutterpress new "My Zine" --preset custom \
+  --page-width 396 --page-height 612                            # your own trim size, in points
 ```
 
 ## Basic Workflow
@@ -112,7 +133,15 @@ authors:
   - "Jane Doe"
   - "John Smith"
 
-# Page format (values in points: 72pt = 1in)
+# What the book is designed for: dtrpg | book | custom.
+# Fills in page geometry and print-rule defaults; anything you set
+# explicitly below always wins over the preset.
+preset: book
+
+# Page validation bounds (values in points: 72pt = 1in). The actual trim
+# comes from your stylesheet's @page rule — these are the size the built
+# PDF is checked against, so keep the two matching. Required (width and
+# height) when `preset: custom`; optional overrides otherwise.
 page:
   width: 432
   height: 648
@@ -129,7 +158,7 @@ source:
     - "02-chapter-two.md"
 ```
 
-Plugins are optional and most projects don't need any — see Chapter 6, *Plugins*, for the `plugins:` manifest key and the bundled, no-install-required plugins.
+Plugins are optional and most projects don't need any — see Chapter 5, *Plugins*, for the `plugins:` manifest key and the bundled, no-install-required plugins.
 
 ### Page Size Reference
 
@@ -192,4 +221,4 @@ With your project set up, the following chapters cover how to write content, con
 
 > **Chapter 2** covers the full markdown syntax and layout directives — `@page`, `@section`, `@column-break`, and more.
 
-> **Chapter 7** covers the validation system that checks your project for print compliance before and after the PDF build.
+> **Chapter 6** covers the validation system that checks your project for print compliance before and after the PDF build.

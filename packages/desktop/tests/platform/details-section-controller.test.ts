@@ -171,6 +171,9 @@ test("saveDetails trims authors and writes the ordered included source files", a
       authors: ["Ada", "Grace"],
       // a.md + b.md included (manifest), c.md excluded → explicit list.
       sourceFiles: ["a.md", "b.md"],
+      // ADR 0008: always sent, so an empty selection lands as the explicit
+      // `targets: []` opt-out rather than leaving a stale list behind.
+      targets: [],
     },
   });
   expect(h.ctrl.detailsSaving).toBe(false);
@@ -208,4 +211,31 @@ test("a failed save surfaces detailsError + onError and clears detailsSaving", a
   expect(h.onError.calls.length).toBe(1);
   expect(String(h.onError.calls[0][0])).toContain("disk full");
   expect(h.onSaved.calls.length).toBe(0);
+});
+
+// ── Publish targets (ADR 0008) ────────────────────────────────────────────
+
+test("loadDetails seeds the target draft from the manifest", async () => {
+  const h = make({ fields: { targets: ["dtrpg"] } });
+  await h.ctrl.loadDetails();
+  expect(h.ctrl.targetsDraft).toEqual(["dtrpg"]);
+});
+
+test("toggleTarget adds and removes a destination", async () => {
+  const h = make({ fields: { targets: ["dtrpg"] } });
+  await h.ctrl.loadDetails();
+
+  h.ctrl.toggleTarget("itch");
+  expect(h.ctrl.targetsDraft).toEqual(["dtrpg", "itch"]);
+
+  h.ctrl.toggleTarget("dtrpg");
+  expect(h.ctrl.targetsDraft).toEqual(["itch"]);
+});
+
+test("saveDetails writes the edited target selection", async () => {
+  const h = make({ fields: { targets: ["dtrpg"] } });
+  await h.ctrl.loadDetails();
+  h.ctrl.toggleTarget("dtrpg");
+  await h.ctrl.saveDetails();
+  expect(h.writeCalls[0]!.updates.targets).toEqual([]);
 });

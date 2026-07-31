@@ -20,10 +20,10 @@ See the **[Gutterpress User Guide](../examples/gutterpress-user-guide/)** for al
 - **Chapter 2: Writing Your Content** — Headings, text formatting, lists, blockquotes, tables, layout directives
 - **Chapter 3: Visual Elements** — Callouts, images, artwork, print-safe requirements
 - **Chapter 4: Styling & Theming** — CSS custom properties, themes, fonts, page templates
-- **Chapter 5: TTRPG Extensions** — Stat blocks, dice notation, cross-references, challenge ratings
-- **Chapter 6: Plugins** — Adding and writing markdown-it plugins
-- **Chapter 7: Validation** — Source/asset/PDF checks, configuration, workflows
-- **Chapter 8: System Setup** — Tool installation, environment variables, troubleshooting
+- **Chapter 5: Plugins** — Adding and writing markdown-it plugins
+- **Chapter 6: Validation** — Source/asset/PDF checks, configuration, workflows
+- **Chapter 7: System Setup** — Tool installation, environment variables, troubleshooting
+- **Chapter 8: Publishing** — Sending a finished book to publishing platforms
 
 The user guide is authored as a complete professional book and serves as the canonical reference for all features.
 
@@ -46,9 +46,6 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 **Include photos or artwork**
 → [User Guide: Chapter 3 — Images](../examples/gutterpress-user-guide/03-visual-elements.md#images)
 
-**Create an RPG rulebook**
-→ [User Guide: Chapter 5 — TTRPG Extensions](../examples/gutterpress-user-guide/05-ttrpg-extensions.md)
-
 **Customize colors and fonts**
 → [User Guide: Chapter 4 — Styling & Theming](../examples/gutterpress-user-guide/04-styling-theming.md)
 
@@ -56,13 +53,13 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 → [The Contextual Cascade Principle](./contextual-cascade-principle.md)
 
 **Validate my project for print**
-→ [User Guide: Chapter 7 — Validation](../examples/gutterpress-user-guide/07-validation.md)
+→ [User Guide: Chapter 6 — Validation](../examples/gutterpress-user-guide/06-validation.md)
 
 **Prepare for professional printing**
-→ [User Guide: Chapter 8 — System Setup](../examples/gutterpress-user-guide/08-system-setup.md)
+→ [User Guide: Chapter 7 — System Setup](../examples/gutterpress-user-guide/07-system-setup.md)
 
 **Diagnose a missing-tool error (`spawn gs ENOENT`, "No Chromium found", etc)**
-→ [User Guide: Chapter 8 — System Setup / Troubleshooting](../examples/gutterpress-user-guide/08-system-setup.md)
+→ [User Guide: Chapter 7 — System Setup / Troubleshooting](../examples/gutterpress-user-guide/07-system-setup.md)
 
 **Use the CLI from a terminal or CI**
 → [CLI README](../packages/cli/README.md)
@@ -111,9 +108,9 @@ See the [Gutterpress User Guide](../examples/gutterpress-user-guide/) for all to
 > **Plugin required:** `> [!note]`-style GitHub alert syntax is **not** part
 > of core Gutterpress — it lives in the separate, Dimm City plugin.
 > Without that plugin configured, these print as literal blockquote text
-> (`[!note] ...`). See [User Guide: Chapter 6 — Plugins](../examples/gutterpress-user-guide/06-plugins.md)
+> (`[!note] ...`). See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-plugins.md)
 > to add it, or use `@section .callout-tip` … `@end-section` (a plain marker
-> core always renders — see [User Guide: Chapter 9 — Publishing](../examples/gutterpress-user-guide/09-publishing.md))
+> core always renders — see [User Guide: Chapter 8 — Publishing](../examples/gutterpress-user-guide/08-publishing.md))
 > or a plain `>` blockquote for a core-only callout.
 
 ```markdown

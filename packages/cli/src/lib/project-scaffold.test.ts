@@ -39,6 +39,7 @@ test("scaffoldProject (no git) creates a valid project tree", async () => {
       name: "Test Book",
       author: "Jane Writer",
       parentDir: parent,
+      preset: "book",
       versionHistory: "none",
     });
 
@@ -86,6 +87,7 @@ test("scaffoldProject blank author falls back to a friendly default", async () =
     const result = await scaffoldProject({
       name: "No Author Book",
       parentDir: parent,
+      preset: "book",
       versionHistory: "none",
     });
     const manifest = await readFile(result.manifestPath, "utf8");
@@ -98,10 +100,10 @@ test("scaffoldProject blank author falls back to a friendly default", async () =
 test("scaffoldProject refuses to overwrite an existing target", async () => {
   const parent = await tmpParent();
   try {
-    await scaffoldProject({ name: "Dup", parentDir: parent, versionHistory: "none" });
+    await scaffoldProject({ name: "Dup", parentDir: parent, preset: "book", versionHistory: "none" });
     let err: CreateProjectError | undefined;
     try {
-      await scaffoldProject({ name: "Dup", parentDir: parent, versionHistory: "none" });
+      await scaffoldProject({ name: "Dup", parentDir: parent, preset: "book", versionHistory: "none" });
     } catch (e) {
       err = e as CreateProjectError;
     }
@@ -117,12 +119,233 @@ test("scaffoldProject rejects an unusable name", async () => {
   try {
     let err: CreateProjectError | undefined;
     try {
-      await scaffoldProject({ name: "!!!", parentDir: parent, versionHistory: "none" });
+      await scaffoldProject({ name: "!!!", parentDir: parent, preset: "book", versionHistory: "none" });
     } catch (e) {
       err = e as CreateProjectError;
     }
     expect(err?.code).toBe("invalid-name");
   } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// ADR 0008 — creating a book requires choosing a preset; `custom` requires a
+// trim size; the choice is written into the generated manifest explicitly.
+// ---------------------------------------------------------------------------
+
+test("scaffoldProject without a preset refuses with code preset-required", async () => {
+  const parent = await tmpParent();
+  try {
+    let err: CreateProjectError | undefined;
+    try {
+      await scaffoldProject({ name: "No Preset", parentDir: parent, versionHistory: "none" });
+    } catch (e) {
+      err = e as CreateProjectError;
+    }
+    expect(err?.code).toBe("preset-required");
+    expect(err?.message).toContain("dtrpg, book, custom");
+    // Nothing was created.
+    expect(existsSync(path.join(parent, "no-preset"))).toBe(false);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject with preset custom but no trim refuses with code custom-page-required", async () => {
+  const parent = await tmpParent();
+  try {
+    let err: CreateProjectError | undefined;
+    try {
+      await scaffoldProject({
+        name: "Custom No Trim",
+        parentDir: parent,
+        preset: "custom",
+        versionHistory: "none",
+      });
+    } catch (e) {
+      err = e as CreateProjectError;
+    }
+    expect(err?.code).toBe("custom-page-required");
+    expect(err?.message).toContain("72pt = 1in");
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject writes the chosen preset into the manifest (overwriting the template's)", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "DTRPG Book",
+      parentDir: parent,
+      preset: "dtrpg",
+      versionHistory: "none",
+    });
+    const manifest = await readFile(result.manifestPath, "utf8");
+    expect(manifest).toContain("preset: dtrpg");
+    // The preset's default target list is recorded EXPLICITLY, like the
+    // preset itself — the preset-derived fallback is for hand-written
+    // manifests only.
+    expect(manifest).toContain("targets:");
+    const parsed = await loadManifest(result.projectDir);
+    expect(parsed.targets).toEqual(["dtrpg"]);
+    const config = resolveConfig({}, parsed);
+    expect(config.page.width).toBe(621);
+    expect(config.targets).toEqual(["dtrpg"]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject records an explicit empty targets list for the book preset", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "Neutral Book",
+      parentDir: parent,
+      preset: "book",
+      versionHistory: "none",
+    });
+    const parsed = await loadManifest(result.projectDir);
+    // Explicit `targets: []` — the visible record of "no destination
+    // policies", not an accident of omission.
+    expect(parsed.targets).toEqual([]);
+    expect(resolveConfig({}, parsed).targets).toEqual([]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject targets: [] opts a dtrpg book out of destination checks", async () => {
+  const parent = await tmpParent();
+  try {
+    // The informed opt-out: a writer without qpdf/Ghostscript keeps the
+    // dtrpg DESIGN (trim, base policy) but records no destination policy,
+    // so missing tools skip checks with a warning instead of erroring.
+    const result = await scaffoldProject({
+      name: "Tools Later",
+      parentDir: parent,
+      preset: "dtrpg",
+      targets: [],
+      versionHistory: "none",
+    });
+    const parsed = await loadManifest(result.projectDir);
+    expect(parsed.preset).toBe("dtrpg");
+    expect(parsed.targets).toEqual([]);
+    expect(resolveConfig({}, parsed).targets).toEqual([]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject accepts an explicit targets override (deduped)", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "Both Stores",
+      parentDir: parent,
+      preset: "book",
+      targets: ["dtrpg", "itch", "dtrpg"],
+      versionHistory: "none",
+    });
+    const parsed = await loadManifest(result.projectDir);
+    expect(parsed.targets).toEqual(["dtrpg", "itch"]);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject rejects an unknown target id with code invalid-targets, before touching disk", async () => {
+  const parent = await tmpParent();
+  try {
+    let err: CreateProjectError | undefined;
+    try {
+      await scaffoldProject({
+        name: "Bad Target",
+        parentDir: parent,
+        preset: "book",
+        targets: ["lulu"],
+        versionHistory: "none",
+      });
+    } catch (e) {
+      err = e as CreateProjectError;
+    }
+    expect(err?.code).toBe("invalid-targets");
+    expect(err?.message).toContain("dtrpg, itch");
+    expect(existsSync(path.join(parent, "bad-target"))).toBe(false);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject preset custom writes preset + page into a manifest that resolves", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "Custom Trim Book",
+      parentDir: parent,
+      preset: "custom",
+      customPage: { width: 612, height: 792 },
+      versionHistory: "none",
+    });
+    const manifest = await readFile(result.manifestPath, "utf8");
+    expect(manifest).toContain("preset: custom");
+    const parsed = await loadManifest(result.projectDir);
+    const config = resolveConfig({}, parsed);
+    expect(config.page.width).toBe(612);
+    expect(config.page.height).toBe(792);
+    expect(config.page.tolerance).toBe(0.5);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject customPage overrides a non-custom preset's trim", async () => {
+  const parent = await tmpParent();
+  try {
+    const result = await scaffoldProject({
+      name: "Digest Book",
+      parentDir: parent,
+      preset: "dtrpg",
+      customPage: { width: 396, height: 612, tolerance: 1 },
+      versionHistory: "none",
+    });
+    const parsed = await loadManifest(result.projectDir);
+    const config = resolveConfig({}, parsed);
+    // Author's explicit trim wins over the preset's 621x810 (ADR 0008
+    // sovereignty rule) while the dtrpg policy stays.
+    expect(config.page.width).toBe(396);
+    expect(config.page.height).toBe(612);
+    expect(config.page.tolerance).toBe(1);
+    expect(config.ink.maxTac).toBe(240);
+  } finally {
+    await rm(parent, { recursive: true, force: true });
+  }
+});
+
+test("scaffoldProject from a saved templateDir keeps the template's own preset", async () => {
+  const templateDir = await mkdtemp(path.join(tmpdir(), "gutterpress-tpl-preset-"));
+  const parent = await tmpParent();
+  try {
+    await writeFile(
+      path.join(templateDir, "manifest.yaml"),
+      'title: "{{TITLE}}"\npreset: book\n',
+      "utf8",
+    );
+    await writeFile(path.join(templateDir, "chapter-01.md"), "# {{TITLE}}\n", "utf8");
+
+    // No preset passed — the saved template's manifest already carries one.
+    const result = await scaffoldProject({
+      name: "From Saved",
+      parentDir: parent,
+      templateDir,
+      versionHistory: "none",
+    });
+    const manifest = await readFile(result.manifestPath, "utf8");
+    expect(manifest).toContain("preset: book");
+  } finally {
+    await rm(templateDir, { recursive: true, force: true });
     await rm(parent, { recursive: true, force: true });
   }
 });
@@ -134,6 +357,7 @@ test("scaffoldProject default initialises local git version history", async () =
       name: "Versioned Book",
       author: "Git Writer",
       parentDir: parent,
+      preset: "book",
       // default versionHistory: local-git
     });
     expect(result.versionHistory).toBe("local-git");
@@ -156,6 +380,7 @@ test("provider snapshot + restore round-trips the working tree", async () => {
     const result = await scaffoldProject({
       name: "Snap Book",
       parentDir: parent,
+      preset: "book",
     });
     const source = await detectProjectSource(result.projectDir);
     const provider = providerFor(source);
@@ -193,6 +418,7 @@ test("scaffoldProject inside an already-versioned folder reports a friendly noti
     const result = await scaffoldProject({
       name: "Second Book",
       parentDir: parent,
+      preset: "book",
       // default versionHistory: local-git
     });
 
@@ -229,6 +455,10 @@ test("adoptFolder: uses existing markdown + scaffolds manifest/book.css in place
   expect(manifest).toContain("02-body.md");
   expect(manifest).toContain("intro.md");
   expect(manifest).toContain("styles/book.css");
+  // ADR 0008: adoption writes the product defaults explicitly — visible and
+  // editable, never implicit.
+  expect(manifest).toContain("preset: dtrpg");
+  expect(manifest).toContain("targets:\n  - dtrpg");
   // No chapter-01.md scaffolded when the folder already has markdown.
   expect(existsSync(path.join(dir, "chapter-01.md"))).toBe(false);
 
@@ -276,6 +506,7 @@ test("scaffoldProject writes a .gitignore excluding dist/", async () => {
     const result = await scaffoldProject({
       name: "Ignore Book",
       parentDir: parent,
+      preset: "book",
       versionHistory: "none",
     });
     const gitignore = await readFile(path.join(result.projectDir, ".gitignore"), "utf8");

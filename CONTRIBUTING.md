@@ -117,7 +117,7 @@ gutterpress/                     # Workspace root (private)
 - **`packages/desktop/`** — Vite/Rollup are intentional here (SvelteKit build).
   `gutterpress` is SSR-external so it is never bundled by Vite.
 - **Plugin API** — Plugins are plain `(md, options) => void` markdown-it
-  functions. No Gutterpress-specific plugin API. See [User Guide: Chapter 6 — Plugins](./examples/gutterpress-user-guide/06-plugins.md).
+  functions. No Gutterpress-specific plugin API. See [User Guide: Chapter 5 — Plugins](./examples/gutterpress-user-guide/05-plugins.md).
 
 ## Coding Standards
 

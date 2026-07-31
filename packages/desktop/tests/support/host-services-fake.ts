@@ -53,6 +53,7 @@ const unsupportedAppImageStatus = (): AppImageStatus => ({
   installed: false,
   needsRepair: false,
   runningManagedCopy: false,
+      staleCopy: null,
   paths: {
     appImage: "/fake/home/.local/bin/gutterpress.AppImage",
     desktopEntry: "/fake/home/.local/share/applications/city.dimm.gutterpress.desktop",

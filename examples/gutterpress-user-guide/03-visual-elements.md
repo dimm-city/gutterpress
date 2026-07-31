@@ -1,6 +1,10 @@
 # Visual Elements {#ch-visual}
 
-<div class="lede">Callouts highlight critical information. Images bring pages to life. This chapter covers both — from basic syntax to full-bleed artwork and print-safe image requirements.</div>
+@section .lede
+
+Callouts highlight critical information. Images bring pages to life. This chapter covers both — from basic syntax to full-bleed artwork and print-safe image requirements.
+
+@end-section
 
 ## Callouts
 
@@ -145,11 +149,18 @@ Keep a group of images together on one page using `@section`:
 
 ### Figure with caption
 
+Wrap the image and its caption in `@section .figure` so they stay together on
+one page, and tag the caption paragraph with the `.figcaption` class (via
+`markdown-it-attrs`, always available — see Chapter 5):
+
 ```markdown
-<figure>
-  <img src="assets/diagram.png" alt="Architecture diagram">
-  <figcaption>Figure 1: System architecture overview</figcaption>
-</figure>
+@section .figure
+
+![Architecture diagram](assets/diagram.png)
+
+Figure 1: System architecture overview {.figcaption}
+
+@end-section
 ```
 
 ## Print-Safe Images

@@ -67,7 +67,15 @@ export interface GutterpressManifest {
   title?: string;
   authors?: string[];
   publish?: PublishSettings;
-  preset?: "dtrpg" | "book";
+  /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
+  preset?: "dtrpg" | "book" | "custom";
+  /**
+   * Where the book is published (ADR 0008): publish-target ids whose
+   * validation policies this book is checked against. Absent = the preset's
+   * defaults (`dtrpg` -> ["dtrpg"]; `book`/`custom` -> []). The registry in
+   * lib/targets.ts is authoritative.
+   */
+  targets?: string[];
   styles?: string[];
   plugins?: (string | PluginConfig)[];
   source?: {
@@ -157,6 +165,8 @@ export interface ResolvedPluginConfig {
 export interface ResolvedConfig {
   title: string;
   authors: string[];
+  /** Validated publish-target ids for this book (may be empty). */
+  targets: string[];
   styles?: string[];
   plugins: ResolvedPluginConfig[];
   source: {

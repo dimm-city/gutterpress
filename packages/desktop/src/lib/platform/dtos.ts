@@ -401,7 +401,17 @@ export interface AppImageIntegrationStatus {
   needsRepair: boolean;
   /** The running process is already the managed copy. */
   runningManagedCopy: boolean;
+  /** Set when the menu entry launches a DIFFERENT build than the running one. */
+  staleCopy: AppImageStaleCopy | null;
   paths: AppImageIntegrationPaths;
+}
+
+/** Why the menu copy is out of date, with both sides named. */
+export interface AppImageStaleCopy {
+  /** `"version"`: a different app version. `"build"`: same version, different binary. */
+  kind: "version" | "build";
+  installedVersion: string | null;
+  runningVersion: string;
 }
 
 /** Fields both `POST` actions return. */

@@ -108,9 +108,124 @@ describe("NewProjectWizard — M21 default parentDir", () => {
     expect(src).toContain('{parentDir ? "Change…" : "Choose folder…"}');
   });
 
-  test("canCreate still requires only the title once a folder is prefilled (parentDir + name)", () => {
+  test("canCreate requires name + folder + preset choice (ADR 0008)", () => {
     const src = readSource();
-    expect(src).toMatch(/canCreate\s*=\s*\$derived\(nameValid\s*&&\s*!!parentDir\s*&&\s*!creating\)/);
+    expect(src).toMatch(
+      /canCreate\s*=\s*\$derived\(nameValid\s*&&\s*!!parentDir\s*&&\s*presetValid\s*&&\s*!creating\)/
+    );
+  });
+});
+
+describe("NewProjectWizard — ADR 0008 template drives preset + targets", () => {
+  test("the template section is rendered ABOVE the preset and target sections", () => {
+    const src = readSource();
+    const tplIdx = src.indexOf("Start from a template");
+    const presetIdx = src.indexOf("What are you designing it for?");
+    const targetIdx = src.indexOf("Where will you publish it?");
+    expect(tplIdx).toBeGreaterThan(-1);
+    expect(tplIdx).toBeLessThan(presetIdx);
+    expect(presetIdx).toBeLessThan(targetIdx);
+  });
+
+  test("choosing a template seeds the preset and targets from the template's own manifest", () => {
+    const src = readSource();
+    // Every template click routes through selectTemplate (never a bare
+    // assignment), so the seeding can't be bypassed by a new call site.
+    expect(src).toContain("onclick={() => selectTemplate(tpl)}");
+    expect(src).not.toMatch(/onclick=\{\(\) => \(selectedTemplate = tpl\)\}/);
+    const fn = src.slice(src.indexOf("function selectTemplate("), src.indexOf("async function importTemplate("));
+    expect(fn).toContain("selectedTemplate = tpl;");
+    expect(fn).toContain("const preset = tpl?.preset;");
+    expect(fn).toContain("templateTargets = tpl?.targets ?? null;");
+    // A stale writer-touched selection must not survive a template change.
+    expect(fn).toContain("targetsTouched = false;");
+  });
+
+  test("an unrecognised template preset leaves the choice unmade rather than guessing", () => {
+    const src = readSource();
+    const fn = src.slice(src.indexOf("function selectTemplate("), src.indexOf("async function importTemplate("));
+    expect(fn).toMatch(/preset === "dtrpg" \|\| preset === "book" \|\| preset === "custom" \? preset : null/);
+  });
+
+  test("all three registry presets are offered, and Create needs a valid one", () => {
+    const src = readSource();
+    expect(src).toMatch(/id:\s*"dtrpg"/);
+    expect(src).toMatch(/id:\s*"book"/);
+    expect(src).toMatch(/id:\s*"custom"/);
+    expect(src).toMatch(
+      /canCreate\s*=\s*\$derived\(nameValid\s*&&\s*!!parentDir\s*&&\s*presetValid\s*&&\s*!creating\)/
+    );
+    expect(src).toMatch(/selectedPreset !== "custom" \|\| customPagePoints !== null/);
+  });
+
+  test("a saved custom template keeps its captured design by pre-filling, not by hiding the pickers", () => {
+    const src = readSource();
+    // The old presetApplies gate is gone: what the dialog shows is what gets
+    // written, for built-in and saved templates alike.
+    expect(src).not.toContain("presetApplies");
+    expect(src).toMatch(/preset:\s*selectedPreset \?\? undefined/);
+    expect(src).toMatch(/targets:\s*\[\.\.\.effectiveTargets\]/);
+  });
+
+  test("reset() clears the template-seeded choices with the rest of the form", () => {
+    const src = readSource();
+    const resetFn = src.slice(src.indexOf("function reset()"), src.indexOf("function loadAuthorDefault"));
+    expect(resetFn).toContain("selectedPreset = null;");
+    expect(resetFn).toContain("templateTargets = null;");
+    expect(resetFn).toContain("targetsTouched = false;");
+    expect(resetFn).toContain("checkedTargets = [];");
+  });
+});
+
+describe("NewProjectWizard — ADR 0008 page size in inches", () => {
+  test("common trim sizes are offered as exact point values", () => {
+    const src = readSource();
+    // Named sizes carry POINTS, not inches: A4/A5 are not round inch numbers,
+    // so converting them would land 595.44pt instead of the real 595.
+    expect(src).toMatch(/id: "letter".*points: \{ width: 612, height: 792 \}/);
+    expect(src).toMatch(/id: "trade".*points: \{ width: 432, height: 648 \}/);
+    expect(src).toMatch(/id: "a4".*points: \{ width: 595, height: 842 \}/);
+    expect(src).toMatch(/id: "custom".*points: null/);
+  });
+
+  test("a free-form size is typed in INCHES and converted to points", () => {
+    const src = readSource();
+    expect(src).toContain("const PT_PER_INCH = 72;");
+    expect(src).toContain("<span>Width (in)</span>");
+    expect(src).toContain("<span>Height (in)</span>");
+    expect(src).toMatch(/width: Math\.round\(widthInNum \* PT_PER_INCH \* 1000\) \/ 1000/);
+    // The inputs only appear for the "my own size" option.
+    expect(src).toContain('{#if sizeChoice === "custom"}');
+  });
+
+  test("the size hint still ties the page size to the stylesheet's @page", () => {
+    const src = readSource();
+    expect(src).toMatch(/<code>@page<\/code>/);
+  });
+});
+
+describe("NewProjectWizard — ADR 0008 publish targets", () => {
+  test("the choices and tool-gap copy come from the shared module, not a local copy", () => {
+    const src = readSource();
+    expect(src).toMatch(/import \{[\s\S]*?PUBLISH_TARGET_CHOICES[\s\S]*?\} from "\$lib\/publish-targets"/);
+    expect(src).toContain("const TARGET_CHOICES = PUBLISH_TARGET_CHOICES;");
+    expect(src).toMatch(/toolGapMessage\(missingToolsForTargets\(effectiveTargets, missingTools\)\)/);
+  });
+
+  test("checkbox defaults follow the template's targets, then the preset's, until touched", () => {
+    const src = readSource();
+    expect(src).toMatch(
+      /effectiveTargets = \$derived\(\s*targetsTouched \? checkedTargets : \(templateTargets \?\? defaultTargetsFor\(selectedPreset\)\)/
+    );
+    // First touch seeds from what is currently shown, so unchecking one box
+    // doesn't wipe the others.
+    expect(src).toContain("const base = effectiveTargets;");
+  });
+
+  test("the missing-tool probe reads real doctor data for the print tools", () => {
+    const src = readSource();
+    expect(src).toContain("api.doctor()");
+    expect(src).toContain("PRINT_TOOL_IDS.includes(t.id)");
   });
 });
 
@@ -130,7 +245,7 @@ describe("NewProjectWizard — M20 template-load failure surfaces instead of sil
     expect(fn).toMatch(/async function loadTemplates\(\)\s*\{\s*templatesError = null;/);
     const catchBlock = fn.slice(fn.lastIndexOf("} catch {"), fn.lastIndexOf("}"));
     expect(catchBlock).toContain("templates = [];");
-    expect(catchBlock).toContain("selectedTemplate = null;");
+    expect(catchBlock).toContain("selectTemplate(null);");
     expect(catchBlock).toMatch(/templatesError\s*=\s*["'].+["'];/);
   });
 

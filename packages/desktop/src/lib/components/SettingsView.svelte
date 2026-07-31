@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
   import ConnectionsSettings from "$lib/components/ConnectionsSettings.svelte";
+  import GitIdentitySection from "$lib/components/GitIdentitySection.svelte";
   import { useSettings } from "$lib/settings.svelte";
   import { setThemeMode } from "$lib/theme.svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
@@ -14,6 +15,8 @@
     initialTab = "app",
     onViewModeChange,
     onCrashRecoveryChange,
+    embedded = false,
+    idPrefix = "settings",
   }: {
     onClose?: () => void;
     /** The open project dir (Connections tab: adding a publishing key verifies
@@ -26,6 +29,15 @@
     onViewModeChange?: (mode: "single" | "two-column") => void;
     /** Called immediately when the user toggles crash recovery. */
     onCrashRecoveryChange?: (enabled: boolean) => void;
+    /** Rendered INSIDE another surface (the start screen's Settings tab)
+     *  rather than as the full-window sheet: drops the title bar and close
+     *  button — that surface has its own — and stops owning a scroll region,
+     *  so the host scrolls as one page. */
+    embedded?: boolean;
+    /** Element-id namespace. Two instances can be mounted at once (the
+     *  start screen's tab and the full-window sheet opened over it), and
+     *  duplicate ids would break the tab/panel aria wiring for both. */
+    idPrefix?: string;
   } = $props();
 
   const settings = useSettings();
@@ -41,10 +53,9 @@
   // reopening lands where the user last was.
   const TABS: Array<{ id: SettingsTab; label: string }> = [
     { id: "app", label: "App" },
+    { id: "connections", label: "Accounts" },
     { id: "editor", label: "Editor" },
     { id: "saving", label: "Saving" },
-    { id: "connections", label: "Connections" },
-    { id: "advanced", label: "Advanced" },
   ];
   // Mounted fresh per open ({#if settingsOpen}) — the initial value is the
   // requested landing tab; navigation from there is user-driven. Sanitized:
@@ -56,7 +67,6 @@
     editor: undefined,
     saving: undefined,
     connections: undefined,
-    advanced: undefined,
   });
 
   function onTablistKeydown(e: KeyboardEvent) {
@@ -125,21 +135,23 @@
   const s = $derived(settings.current);
 </script>
 
-<div class="settings-view">
-  <header class="settings-header">
-    <h2 id="settings-title">Settings</h2>
-    <button class="settings-close" onclick={close} title="Close settings" aria-label="Close settings"><Icon name="x" size={16} /></button>
-  </header>
+<div class="settings-view" class:embedded>
+  {#if !embedded}
+    <header class="settings-header">
+      <h2 id="{idPrefix}-title">Settings</h2>
+      <button class="settings-close" onclick={close} title="Close settings" aria-label="Close settings"><Icon name="x" size={16} /></button>
+    </header>
+  {/if}
 
   <div class="tab-bar" role="tablist" aria-label="Settings sections" onkeydown={onTablistKeydown} tabindex="-1">
     {#each TABS as tab (tab.id)}
       <button
-        id="settings-tab-{tab.id}"
+        id="{idPrefix}-tab-{tab.id}"
         role="tab"
         class="tab"
         class:active={activeTab === tab.id}
         aria-selected={activeTab === tab.id}
-        aria-controls="settings-panel"
+        aria-controls="{idPrefix}-panel"
         tabindex={activeTab === tab.id ? 0 : -1}
         bind:this={tabEls[tab.id]}
         onclick={() => (activeTab = tab.id)}
@@ -148,10 +160,10 @@
   </div>
 
   <div
-    id="settings-panel"
+    id="{idPrefix}-panel"
     class="settings-body"
     role="tabpanel"
-    aria-labelledby="settings-tab-{activeTab}"
+    aria-labelledby="{idPrefix}-tab-{activeTab}"
   >
       <!-- App appearance (light/dark chrome) --------------------------------
            UX review M38: named "Appearance" here, but the config panel also
@@ -273,6 +285,16 @@
             <span class="row-hint" id="appimage-hint">
               {#if appImage.needsRepair}
                 Some of the installed files are missing or out of date — add it again to repair the entry.
+              {:else if appImage.staleCopy}
+                <!-- The failure this exists to catch: the menu entry is a
+                     complete, working install that launches an OLDER app than
+                     the one running now. Nothing else in the UI would ever
+                     say so — "installed" looked healthy, and the launcher
+                     kept opening the previous build after every upgrade. -->
+                Your menu entry launches a different copy of the app than the one
+                you're running{appImage.staleCopy.kind === "version" && appImage.staleCopy.installedVersion
+                  ? ` (version ${appImage.staleCopy.installedVersion}, and you're running ${appImage.staleCopy.runningVersion})`
+                  : ""}. Update it to launch this version from your menu.
               {:else if appImage.installed}
                 Gutterpress desktop is in your application menu, using the copy at {appImage.paths.appImage}.
               {:else}
@@ -286,7 +308,15 @@
               aria-describedby="appimage-hint"
               disabled={appImageBusy}
               onclick={() => runAppImageAction("install")}
-            >{appImageBusy ? "Working…" : appImage.needsRepair ? "Repair menu entry" : appImage.installed ? "Reinstall" : "Add to application menu"}</button>
+            >{appImageBusy
+                ? "Working…"
+                : appImage.needsRepair
+                  ? "Repair menu entry"
+                  : appImage.staleCopy
+                    ? "Update menu entry"
+                    : appImage.installed
+                      ? "Reinstall"
+                      : "Add to application menu"}</button>
             {#if appImage.installed || appImage.needsRepair}
               <button
                 class="action subtle"
@@ -357,6 +387,41 @@
             value={s.editor.spellCheckLanguage}
             onchange={(e) => settings.set({ editor: { spellCheckLanguage: (e.currentTarget as HTMLInputElement).value } })}
           />
+        </div>
+      </section>
+
+      <!-- Advanced (for developers) — a section here since the dedicated
+           Advanced tab was retired (2026-07-30): two developer knobs did not
+           justify a whole tab. -->
+      <section class="group advanced">
+        <div class="group-head">
+          <h3>Advanced <span class="advanced-hint">for developers</span></h3>
+          <button class="reset" onclick={() => settings.resetSection("advanced")} title="Reset advanced settings to defaults">Reset</button>
+        </div>
+        <div class="row">
+          <label for="set-watcher">File watcher interval (ms)</label>
+          <input
+            id="set-watcher"
+            type="number"
+            min="50"
+            max="5000"
+            step="50"
+            value={s.advanced.fileWatcherInterval}
+            onchange={(e) => settings.set({ advanced: { fileWatcherInterval: Number((e.currentTarget as HTMLInputElement).value) } })}
+          />
+        </div>
+        <div class="row">
+          <label for="set-loglevel">Log level</label>
+          <select
+            id="set-loglevel"
+            value={s.advanced.logLevel}
+            onchange={(e) => settings.set({ advanced: { logLevel: (e.currentTarget as HTMLSelectElement).value as "error" | "warn" | "info" | "debug" } })}
+          >
+            <option value="error">Error</option>
+            <option value="warn">Warn</option>
+            <option value="info">Info</option>
+            <option value="debug">Debug</option>
+          </select>
         </div>
       </section>
 
@@ -457,80 +522,19 @@
         </div>
       </section>
 
-      <!-- Your name on saved versions -------------------------------------- -->
-      <section class="group">
-        <div class="group-head">
-          <h3>Your name on saved versions</h3>
-          <button class="reset" onclick={() => settings.resetSection("gitIdentity")} title="Reset the name on saved versions to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-git-author-name">Name</label>
-          <input
-            id="set-git-author-name"
-            type="text"
-            value={s.gitIdentity.authorName}
-            placeholder="Use your existing name"
-            onchange={(e) => settings.set({ gitIdentity: { authorName: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-git-author-email">Email</label>
-          <input
-            id="set-git-author-email"
-            type="email"
-            value={s.gitIdentity.authorEmail}
-            placeholder="Use your existing email"
-            onchange={(e) => settings.set({ gitIdentity: { authorEmail: (e.currentTarget as HTMLInputElement).value } })}
-          />
-        </div>
-      </section>
-
       {/if}
 
       {#if activeTab === "connections"}
-      <!-- Connections — the ONE place to manage every stored credential AND
-           this project's sync surface: publishing accounts, GitHub, other Git
-           servers (incl. the former Advanced-setup token flow, diagnostics,
-           and Test Remote Access — consolidated 2026-07-22; the duplicate
+      <!-- Accounts — who you are (git identity, first) plus the ONE place to
+           manage every stored credential AND this project's sync surface:
+           publishing accounts, GitHub, other Git servers (incl. the former
+           Advanced-setup token flow — consolidated 2026-07-22; the duplicate
            connect form and connected-servers list it carried are gone). -->
+      <GitIdentitySection />
       <section class="group">
         <ConnectionsSettings {projectDir} />
       </section>
       {/if}
-
-    {#if activeTab === "advanced"}
-      <section class="group advanced">
-        <div class="group-head">
-          <h3>Advanced <span class="advanced-hint">for developers</span></h3>
-          <button class="reset" onclick={() => settings.resetSection("advanced")} title="Reset advanced settings to defaults">Reset</button>
-        </div>
-        <div class="row">
-          <label for="set-watcher">File watcher interval (ms)</label>
-          <input
-            id="set-watcher"
-            type="number"
-            min="50"
-            max="5000"
-            step="50"
-            value={s.advanced.fileWatcherInterval}
-            onchange={(e) => settings.set({ advanced: { fileWatcherInterval: Number((e.currentTarget as HTMLInputElement).value) } })}
-          />
-        </div>
-        <div class="row">
-          <label for="set-loglevel">Log level</label>
-          <select
-            id="set-loglevel"
-            value={s.advanced.logLevel}
-            onchange={(e) => settings.set({ advanced: { logLevel: (e.currentTarget as HTMLSelectElement).value as "error" | "warn" | "info" | "debug" } })}
-          >
-            <option value="error">Error</option>
-            <option value="warn">Warn</option>
-            <option value="info">Info</option>
-            <option value="debug">Debug</option>
-          </select>
-        </div>
-      </section>
-    {/if}
   </div>
 </div>
 
@@ -577,6 +581,21 @@
     min-height: 0;
     padding: 16px 18px;
     overflow-y: auto;
+  }
+  /* Embedded in the start screen's Settings tab: the landing column is the
+     scroller and owns the horizontal rhythm, so this instance sizes to its
+     content and adds no chrome of its own. */
+  .settings-view.embedded {
+    height: auto;
+    background: transparent;
+  }
+  .settings-view.embedded .settings-body {
+    flex: none;
+    overflow-y: visible;
+    padding: 16px 0 0;
+  }
+  .settings-view.embedded .tab-bar {
+    padding: 0;
   }
   /* ── Tab bar ── */
   .tab-bar {

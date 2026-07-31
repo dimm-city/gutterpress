@@ -4,7 +4,7 @@
  * Two kinds of template share one shape ({@link TemplateInfo}):
  *
  *   - BUILT-IN: shipped as embedded assets (`assets/templates/<id>/`), baked into
- *     the CLI binary via `embedded-assets.ts`. There are four: book, ttrpg, zine,
+ *     the CLI binary via `embedded-assets.ts`. There are three: book, zine,
  *     technical. Listing them is metadata-only (no fs scan needed).
  *
  *   - CUSTOM: saved by the author from an existing project ("Save as template")
@@ -21,10 +21,11 @@ import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises"
 import { constants as FS, existsSync } from "node:fs";
 import { access } from "node:fs/promises";
 import path from "node:path";
-import { isMap, isScalar, isSeq } from "yaml";
+import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import type { Document } from "yaml";
 
 import type { ProjectTemplateId } from "./project-scaffold.ts";
+import { getAssetPath } from "./embedded-assets.ts";
 import { MANIFEST_FILENAMES } from "./manifest.ts";
 import { loadManifestDoc, writeManifestDoc, scalarString } from "./manifest-doc.ts";
 import { collectStyleDependencies, escapesProjectRoot } from "./asset-inline.ts";
@@ -34,7 +35,6 @@ import { slugify, prettify } from "./slug.ts";
 /** The built-in templates shipped as embedded assets. */
 export const BUILT_IN_TEMPLATE_IDS = [
   "book",
-  "ttrpg",
   "zine",
   "technical",
 ] as const satisfies readonly ProjectTemplateId[];
@@ -51,6 +51,41 @@ export interface TemplateInfo {
   kind: "builtin" | "custom";
   /** For custom templates: absolute directory the files live in. */
   dir?: string;
+  /**
+   * The `preset:` this template's manifest declares (ADR 0008), when it has
+   * one. Creation flows use it as the starting point for the preset choice —
+   * the template says what kind of book it is, so choosing one seeds
+   * everything under it.
+   */
+  preset?: string;
+  /** The `targets:` this template's manifest declares, when it has one. */
+  targets?: string[];
+}
+
+/**
+ * Read the `preset:`/`targets:` a template's manifest declares. Best-effort
+ * and never throws: a template with no (or an unreadable) manifest simply
+ * carries no starting point, and the caller falls back to its own defaults.
+ */
+async function readTemplateChoices(
+  manifestPath: string,
+): Promise<{ preset?: string; targets?: string[] }> {
+  try {
+    const text = await readFile(manifestPath, "utf8");
+    const doc = parseDocument(text);
+    const out: { preset?: string; targets?: string[] } = {};
+    const preset = doc.get("preset");
+    if (typeof preset === "string" && preset) out.preset = preset;
+    const targets = doc.get("targets", true);
+    if (isSeq(targets)) {
+      out.targets = (targets.items as unknown[])
+        .map((i) => scalarString(i))
+        .filter((s): s is string => s !== null);
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 const BUILT_IN_META: Record<
@@ -60,10 +95,6 @@ const BUILT_IN_META: Record<
   book: {
     label: "Book",
     description: "A clean starting point for a novel, memoir, or any long-form book.",
-  },
-  ttrpg: {
-    label: "TTRPG supplement",
-    description: "Rules, stat blocks, and tables for a tabletop roleplaying supplement.",
   },
   zine: {
     label: "Zine",
@@ -75,14 +106,21 @@ const BUILT_IN_META: Record<
   },
 };
 
-/** List the built-in templates (metadata only — no fs access). */
+/**
+ * List the built-in templates. The `preset`/`targets` each one starts a book
+ * from are read from that template's own embedded manifest — one source of
+ * truth, so changing a template's manifest changes what the wizard offers.
+ */
 export async function listBuiltInTemplates(): Promise<TemplateInfo[]> {
-  return BUILT_IN_TEMPLATE_IDS.map((id) => ({
-    id,
-    label: BUILT_IN_META[id].label,
-    description: BUILT_IN_META[id].description,
-    kind: "builtin" as const,
-  }));
+  return Promise.all(
+    BUILT_IN_TEMPLATE_IDS.map(async (id) => ({
+      id,
+      label: BUILT_IN_META[id].label,
+      description: BUILT_IN_META[id].description,
+      kind: "builtin" as const,
+      ...(await readTemplateChoices(await getAssetPath(`templates/${id}/manifest.yaml`))),
+    })),
+  );
 }
 
 /** Directory entries we never copy into a template (build output, git, etc.). */
@@ -418,7 +456,16 @@ export async function listCustomTemplates(
     } catch {
       // No/!valid sidecar — keep the prettified id.
     }
-    out.push({ id: entry.name, label, description: "Your saved template.", kind: "custom", dir });
+    out.push({
+      id: entry.name,
+      label,
+      description: "Your saved template.",
+      kind: "custom",
+      dir,
+      // A saved template's captured design includes its preset/targets — the
+      // wizard shows them pre-filled so leaving them alone reproduces it.
+      ...(await readTemplateChoices(path.join(dir, MANIFEST_FILENAMES[0]))),
+    });
   }
   out.sort((a, b) => a.label.localeCompare(b.label));
   return out;

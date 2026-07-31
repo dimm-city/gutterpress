@@ -150,8 +150,8 @@ describe("+page.svelte — full-window mount, teardown, prefs migration", () => 
     expect(mount).toContain('class="settings-global-view"');
     expect(mount).toContain("{#key lifecycle.currentDir}");
     expect(mount).toContain("<ProjectSettingsView");
-    // The workspace behind the view goes inert, like the app settings.
-    expect(src).toMatch(/inert=\{landingVisible \|\| settingsOpen \|\| projectSettingsOpen\}/);
+    // The workspace behind the view goes inert, like the start screen.
+    expect(src).toMatch(/inert=\{landingVisible \|\| projectSettingsOpen\}/);
   });
 
   test("project teardown closes the view (resetExtras)", () => {
@@ -179,10 +179,11 @@ describe("+page.svelte — full-window mount, teardown, prefs migration", () => 
     // view, Ctrl+Shift+F toggles focus mode behind it, etc.
     expect(body).toMatch(/if \(projectSettingsOpen\) \{[\s\S]{0,300}?closeProjectSettings\(\);[\s\S]{0,100}?return;/);
     expect(body.indexOf("if (projectSettingsOpen)")).toBeLessThan(body.indexOf("resolveGlobalShortcut"));
-    // Preview paging/zoom keys must not act on the hidden preview behind
-    // either full-window settings surface.
+    // Preview paging/zoom keys must not act on the hidden preview behind the
+    // full-window project settings (app settings live on the start screen,
+    // which the landingVisible guard above already covers).
     const navIdx = src.indexOf("function onPreviewNavKey");
-    expect(src.slice(navIdx, navIdx + 700)).toContain("if (settingsOpen || projectSettingsOpen) return;");
+    expect(src.slice(navIdx, navIdx + 700)).toContain("if (projectSettingsOpen) return;");
   });
 
   test("a persisted activeTab of 'config' from an older session falls back to a live tab", () => {

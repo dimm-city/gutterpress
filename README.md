@@ -15,7 +15,7 @@ Gutterpress is a desktop application (with a CLI for power users) that turns a f
 | **macOS Intel** | `gutterpress-<version>-x64.dmg` | Open the disk image, then drag the app to Applications. |
 | **Linux** | `gutterpress-<version>.AppImage` | `chmod +x` the file, then double-click or run it. To get it in your KDE/GNOME application menu, open **Settings → App → Desktop integration → Add to application menu** — see [Desktop integration](./docs/desktop-shortcut.md#linux-appimage-application-menu-integration-desktop-app). |
 
-The desktop app is fully self-contained — no Bun, Node, Chromium, or other runtime to install. **Save PDF** renders through Electron's own bundled Chromium (`webContents.printToPDF`), so there's nothing extra to set up. (The separate `gutterpress` CLI, for scripting and CI, does need a Chromium-based browser on the machine it runs on — see [User Guide: Chapter 8 — System Setup](./examples/gutterpress-user-guide/08-system-setup.md) if you're using that instead.)
+The desktop app is fully self-contained — no Bun, Node, Chromium, or other runtime to install. **Save PDF** renders through Electron's own bundled Chromium (`webContents.printToPDF`), so there's nothing extra to set up. (The separate `gutterpress` CLI, for scripting and CI, does need a Chromium-based browser on the machine it runs on — see [User Guide: Chapter 7 — System Setup](./examples/gutterpress-user-guide/07-system-setup.md) if you're using that instead.)
 
 The downloads are currently unsigned. Each new release includes SHA-256
 checksums plus macOS Gatekeeper and Windows SmartScreen instructions. See the
@@ -52,14 +52,13 @@ For richer projects (cover art, fonts, a multi-chapter book with running headers
 | Understand markdown extensions (page breaks, columns, callouts) | [User Guide: Chapter 2 — Writing Your Content](./examples/gutterpress-user-guide/02-writing-content.md) |
 | Style your book with CSS (fonts, colors, page size, margins) | [User Guide: Chapter 4 — Styling & Theming](./examples/gutterpress-user-guide/04-styling-theming.md) |
 | **Structure your CSS like a pro** — the recommended pattern for variant assignment | [Contextual Cascade Principle](./docs/contextual-cascade-principle.md) |
-| Write TTRPG/game content (stat blocks, dice notation, read-aloud boxes) — no plugin required | [User Guide: Chapter 5 — TTRPG Extensions](./examples/gutterpress-user-guide/05-ttrpg-extensions.md) |
 | **Use the CLI** for scripting, CI builds, or batch work | [CLI README](./packages/cli/README.md) |
 | **Install or verify a download** | [Installation and supported platforms](./docs/installing.md) |
 | **Run the whole pipeline in Docker** (all print tools pre-installed) | [Docker guide](./docs/docker.md) |
-| Add custom markdown plugins | [User Guide: Chapter 6 — Plugins](./examples/gutterpress-user-guide/06-plugins.md) |
+| Add custom markdown plugins | [User Guide: Chapter 5 — Plugins](./examples/gutterpress-user-guide/05-plugins.md) |
 | Refine a publication with Open Design | [Using Open Design with Gutterpress](./docs/open-design/using-open-design-with-gutterpress.md) |
-| Validate output for print production (TAC, ICC, PDF/X) | [User Guide: Chapter 7 — Validation](./examples/gutterpress-user-guide/07-validation.md) |
-| Set up system tools (Chromium, Ghostscript, qpdf, etc) | [User Guide: Chapter 8 — System Setup](./examples/gutterpress-user-guide/08-system-setup.md) |
+| Validate output for print production (TAC, ICC, PDF/X) | [User Guide: Chapter 6 — Validation](./examples/gutterpress-user-guide/06-validation.md) |
+| Set up system tools (Chromium, Ghostscript, qpdf, etc) | [User Guide: Chapter 7 — System Setup](./examples/gutterpress-user-guide/07-system-setup.md) |
 | Develop / contribute to Gutterpress itself | [CONTRIBUTING](./CONTRIBUTING.md) · [Architecture](./docs/ARCHITECTURE.md) |
 
 See [docs/](./docs/) for technical architecture and developer references.

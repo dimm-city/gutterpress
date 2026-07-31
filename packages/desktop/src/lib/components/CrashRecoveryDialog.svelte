@@ -224,7 +224,7 @@
   /* Dialog is now a sibling of the backdrop (not a child), so the dialog
      element itself can own the ARIA dialog role/aria-modal via the shared
      action (M12) instead of the backdrop owning them — matches the
-     ConflictChoicesDialog/HelpDialog centering pattern. */
+     ConflictChoicesDialog centering pattern. */
   .cr-dialog {
     position: fixed;
     top: 50%;

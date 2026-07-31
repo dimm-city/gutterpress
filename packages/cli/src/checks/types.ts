@@ -5,6 +5,12 @@ export type CheckCategory = "source" | "pdf" | "asset" | "heuristic";
 export type CheckPhase = "pre-build" | "post-build";
 
 export interface CheckResult {
+  /**
+   * Publish-target id this result was produced for (ADR 0008). Set only on
+   * multi-target runs, where the same check can legitimately pass for one
+   * destination and fail for another; absent on target-independent results.
+   */
+  target?: string;
   checkId: string;
   severity: CheckSeverity;
   message: string;

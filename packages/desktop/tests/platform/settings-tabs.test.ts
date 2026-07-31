@@ -45,7 +45,7 @@ describe("sanitizeSettingsTab — every value becomes a real tab id", () => {
 describe("both ends sanitize (the regression can't come back via a new caller)", () => {
   test("+page's openSettings routes through sanitizeSettingsTab", () => {
     const page = read("src/routes/+page.svelte");
-    expect(page).toMatch(/function openSettings\([^)]*\)[^{]*\{\s*settingsInitialTab = sanitizeSettingsTab\(/);
+    expect(page).toMatch(/function openSettings\([^)]*\)[^{]*\{\s*landingSettingsTab = sanitizeSettingsTab\(/);
   });
 
   test("SettingsView's initial activeTab is sanitized", () => {
@@ -54,13 +54,26 @@ describe("both ends sanitize (the regression can't come back via a new caller)",
   });
 
   test("no component passes a DOM event into onOpenSettings", () => {
-    for (const rel of [
-      "src/lib/components/WelcomeLanding.svelte",
-      "src/lib/components/StatusBar.svelte",
-    ]) {
-      const src = read(rel);
-      expect(src).not.toContain("onclick={onOpenSettings}");
-      expect(src).toContain("onclick={() => onOpenSettings?.()}");
-    }
+    // StatusBar is the last remaining caller: the start screen dropped its
+    // settings button once Settings became one of its own tabs (2026-07-30),
+    // so it cannot poison the tab id at all any more — asserted below.
+    const src = read("src/lib/components/StatusBar.svelte");
+    expect(src).not.toContain("onclick={onOpenSettings}");
+    expect(src).toContain("onclick={() => onOpenSettings?.()}");
+  });
+
+  test("the start screen has no settings/help buttons — both are tabs", () => {
+    const landing = read("src/lib/components/WelcomeLanding.svelte");
+    expect(landing).not.toContain("onOpenSettings");
+    // The gear and question-mark icon buttons are gone from the brand row.
+    // (The Help TAB PANEL still carries aria-label="Help and about" — that is
+    // the panel, not a button, so match on the icons instead.)
+    expect(landing).not.toContain('name="circle-help"');
+    expect(landing).not.toContain('name="settings"');
+    // It embeds the whole settings surface instead, namespaced so it can
+    // coexist with the full-window sheet.
+    expect(landing).toContain("<SettingsView");
+    expect(landing).toContain('idPrefix="landing-settings"');
+    expect(landing).toContain('label: "Settings"');
   });
 });

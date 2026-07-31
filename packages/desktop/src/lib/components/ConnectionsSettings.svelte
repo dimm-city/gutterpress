@@ -1,17 +1,19 @@
 <script lang="ts">
   /**
-   * Settings → Connections — the ONE central place to see and manage every
-   * stored credential AND this project's sync surface. Section order (owner
-   * request 2026-07-22): publishing accounts first, then the GitHub account,
-   * then Git servers, then the open project's sync diagnostics.
+   * Settings → Accounts — the ONE central place to see and manage every
+   * stored credential. Section order (owner request 2026-07-30): GitHub
+   * first — it sits directly under the author's name & email, the identity
+   * it carries — then publishing accounts, then other Git servers. The open
+   * project's sync diagnostics (the "This project" section) moved to
+   * Project settings → Connections (ProjectConnectionsSection.svelte,
+   * 2026-07-30); the diagnosis is still fetched here because the Git-server
+   * connect form uses it for host prefill and repo-scoped validation.
    *
    * The former Advanced Setup dialog (#14, ADR 0006) is consolidated here:
    * its duplicate connect-a-Git-server form and connected-servers list are
    * gone; its unique pieces live on in the single Git-servers section (the
    * debounced token-URL helper, the repo-scoped validation against the open
-   * project's remote, the host prefill, the provider guidance) and in the
-   * "This project" section (remote diagnostics + the explicit-click-only
-   * Test Remote Access probe).
+   * project's remote, the host prefill, the provider guidance).
    *
    * Everything here reads REDACTED entries only (host/username/label —
    * never token values). Removal deletes by the entry's RAW store key via
@@ -40,7 +42,6 @@
     RemoteConnection,
     DeviceCodeInfo,
     ProjectRemoteDiagnosis,
-    RemoteAccessResult,
   } from "$lib/platform/contract";
   import { requestInlineConfirm, cancelInlineConfirm, type InlineConfirmState } from "$lib/dialog";
 
@@ -77,10 +78,6 @@
   let pubBusy = $state(false);
   let pubError = $state<string | null>(null);
   let pubNotice = $state<string | null>(null);
-
-  // Test Remote Access — only ever runs on explicit click.
-  let testing = $state(false);
-  let testResult = $state<RemoteAccessResult | null>(null);
 
   // Two-step Remove confirm (L2 — a stored token is the most painful thing
   // to re-acquire, so removal arms in place and confirms on a second click).
@@ -294,63 +291,6 @@
   }
 
   const selectedProvider = $derived(providers.find((p) => p.id === pubProviderId) ?? null);
-
-  // ── This project (diagnostics + Test Remote Access) ────────────────────────
-  async function runRemoteTest() {
-    if (!diag?.remoteUrl || testing) return;
-    testing = true;
-    testResult = null;
-    try {
-      testResult = (await api.remote.testRemoteAccess(diag.remoteUrl)) as RemoteAccessResult;
-    } catch (e) {
-      testResult = {
-        ok: false,
-        reason: "unknown",
-        message: friendlyHostError(e instanceof Error ? e.message : String(e)),
-      };
-    } finally {
-      testing = false;
-    }
-  }
-
-  const folderLabel = $derived.by(() => {
-    if (!diag) return "—";
-    if (diag.classification.type === "local-folder") return "Plain folder";
-    return diag.remoteUrl
-      ? "Connected folder (has an online repository)"
-      : "Local version history";
-  });
-
-  const guidanceCopy = $derived.by(() => {
-    if (!diag) return null;
-    switch (diag.guidance) {
-      case "local-only":
-        return "This project lives only on this computer. Everything works without a Git server.";
-      case "connect-github-to-sync":
-        return "This project's online repository is on GitHub. Use Connect GitHub above so Gutterpress can sync for you.";
-      case "https-connect-server":
-        return "This project's online repository is on a Git server Gutterpress doesn't know yet. Connect that server above to prepare it for syncing.";
-      case "ready-to-sync":
-        return "This server is connected. Use Sync Changes in the toolbar to send your work to the online repository.";
-      case "ssh-use-own-tools":
-        return "This project's online address uses SSH (git@…). Everything on this computer works — preview, snapshots, history, restore. To sync, use your usual Git tool.";
-    }
-  });
-
-  function testLabel(result: RemoteAccessResult): string {
-    if (result.ok) {
-      const branch = result.defaultBranch ? ` Main version: ${result.defaultBranch}.` : "";
-      return `Working — Gutterpress reached the online repository.${branch}`;
-    }
-    // Defence in depth: the lib's messages are URL-free by construction, but a
-    // raw transport string could slip through the catch path — hide any URL
-    // (which may carry credentials) and keep the message a readable length.
-    const safe = (result.message ?? "")
-      .replace(/https?:\/\/\S+/g, "(address hidden)")
-      .slice(0, 200)
-      .trim();
-    return safe || "The connection test failed. See the app log for details.";
-  }
 </script>
 
 <div class="connections">
@@ -361,7 +301,45 @@
   {:else}
     {#if loadError}<p class="error" role="alert">{loadError}</p>{/if}
 
-    <!-- Publishing accounts (first — the most-used section) -->
+    <!-- GitHub (writing sync) — FIRST, directly under the author's name &
+         email on both Accounts surfaces (owner request 2026-07-30): signing
+         in to GitHub is the step that makes that identity travel with the
+         work. -->
+    <section class="conn-group">
+      <h4>GitHub</h4>
+      <p class="hint">Keeps your books synced with repositories on GitHub.</p>
+      {#if github?.connected}
+        <div class="conn-row">
+          <span class="conn-name"><Icon name="github" size={14} />{github.username ? `Connected as @${github.username}` : "Connected"}</span>
+          {#if confirmRemove["github.com"]}
+            <span class="confirm-pair">
+              <button class="danger" onclick={disconnectGitHub}>Really disconnect?</button>
+              <button class="ghost" onclick={() => cancelRemove("github.com")}>Keep</button>
+            </span>
+          {:else}
+            <!-- Arms the two-step confirm; the armed branch routes through the
+                 dedicated disconnectGitHub flow, not the raw-key delete. -->
+            <button class="ghost" onclick={() => requestRemove("github.com")} disabled={!!removing}>Disconnect</button>
+          {/if}
+        </div>
+      {:else}
+        <div class="conn-row">
+          <span class="conn-name muted">Not connected</span>
+          <button class="ghost" onclick={connectGitHub} disabled={ghBusy}>
+            {ghBusy ? "Waiting for GitHub…" : "Connect GitHub…"}
+          </button>
+        </div>
+        {#if ghCode}
+          <p class="hint code-hint">
+            Enter this code on the GitHub page that opened:
+            <strong class="user-code">{ghCode.userCode}</strong>
+          </p>
+        {/if}
+        {#if ghError}<p class="error" role="alert">{ghError}</p>{/if}
+      {/if}
+    </section>
+
+    <!-- Publishing accounts -->
     <section class="conn-group">
       <h4>Publishing accounts</h4>
       <p class="hint">API keys used to publish your books (itch.io, Azure Static Web Apps, Shopify…). Keys are stored once and available to every project.</p>
@@ -404,41 +382,6 @@
       {/if}
       {#if pubNotice}<p class="notice">{pubNotice}</p>{/if}
       {#if pubError}<p class="error" role="alert">{pubError}</p>{/if}
-    </section>
-
-    <!-- GitHub (writing sync) -->
-    <section class="conn-group">
-      <h4>GitHub</h4>
-      <p class="hint">Keeps your books synced with repositories on GitHub.</p>
-      {#if github?.connected}
-        <div class="conn-row">
-          <span class="conn-name"><Icon name="github" size={14} />{github.username ? `Connected as @${github.username}` : "Connected"}</span>
-          {#if confirmRemove["github.com"]}
-            <span class="confirm-pair">
-              <button class="danger" onclick={disconnectGitHub}>Really disconnect?</button>
-              <button class="ghost" onclick={() => cancelRemove("github.com")}>Keep</button>
-            </span>
-          {:else}
-            <!-- Arms the two-step confirm; the armed branch routes through the
-                 dedicated disconnectGitHub flow, not the raw-key delete. -->
-            <button class="ghost" onclick={() => requestRemove("github.com")} disabled={!!removing}>Disconnect</button>
-          {/if}
-        </div>
-      {:else}
-        <div class="conn-row">
-          <span class="conn-name muted">Not connected</span>
-          <button class="ghost" onclick={connectGitHub} disabled={ghBusy}>
-            {ghBusy ? "Waiting for GitHub…" : "Connect GitHub…"}
-          </button>
-        </div>
-        {#if ghCode}
-          <p class="hint code-hint">
-            Enter this code on the GitHub page that opened:
-            <strong class="user-code">{ghCode.userCode}</strong>
-          </p>
-        {/if}
-        {#if ghError}<p class="error" role="alert">{ghError}</p>{/if}
-      {/if}
     </section>
 
     <!-- Other Git servers — the ONE connect-a-server surface (the former
@@ -527,60 +470,6 @@
       </details>
     </section>
 
-    <!-- This project — sync diagnostics + the explicit remote-access probe
-         (the surviving half of the former Advanced setup). -->
-    <section class="conn-group">
-      <h4>This project</h4>
-      {#if !projectDir}
-        <p class="hint muted">Open a project folder to see its sync status here.</p>
-      {:else if !diag}
-        <p class="hint muted">Could not read this folder's status.</p>
-      {:else}
-        <dl class="status-grid">
-          <dt>Folder</dt>
-          <dd>{folderLabel}</dd>
-          <dt>Online repository</dt>
-          <dd class="mono">{diag.remoteUrl ?? "None"}</dd>
-          {#if diag.branch}
-            <dt>Branch</dt>
-            <dd class="mono">{diag.branch}</dd>
-          {/if}
-          {#if diag.remoteUrl}
-            <dt>Address type</dt>
-            <dd>{diag.remoteProtocol === "ssh" ? "SSH (git@…)" : "Web (HTTPS)"}</dd>
-            <dt>Server connection</dt>
-            <dd>{diag.credentialPresent ? "Saved on this computer" : "Not saved yet"}</dd>
-          {/if}
-        </dl>
-        {#if guidanceCopy}
-          <p class="hint guidance">{guidanceCopy}</p>
-        {/if}
-        {#if diag.guidance === "ssh-use-own-tools" && diag.provider && diag.provider !== "generic"}
-          <p class="hint muted">
-            Tip: this address points at a server Gutterpress can work with. If you
-            switch the project's address to the web (HTTPS) form with your Git
-            tool, Gutterpress will be able to sync once you connect the server.
-          </p>
-        {/if}
-        {#if diag.remoteUrl}
-          <p class="hint muted">
-            Checks whether Gutterpress can reach this project's online repository.
-            Nothing is changed or uploaded.
-          </p>
-          <div class="test-row">
-            <button class="ghost" onclick={runRemoteTest} disabled={testing}>
-              {testing ? "Testing…" : "Test remote access"}
-            </button>
-            {#if testResult}
-              <p class="test-result" class:ok={testResult.ok} class:fail={!testResult.ok} role="status">
-                {testLabel(testResult)}
-              </p>
-            {/if}
-          </div>
-        {/if}
-      {/if}
-    </section>
-
     {#if removeError}<p class="error" role="alert">{removeError}</p>{/if}
   {/if}
 </div>
@@ -599,7 +488,6 @@
   }
   .hint { font-size: 11px; line-height: 1.4; color: var(--app-text-muted); margin: 4px 0 8px; }
   .hint.muted { font-style: italic; }
-  .hint.guidance { color: var(--app-text); font-size: 12px; }
   .notice { font-size: 12px; color: var(--app-success-text); margin: 6px 0 0; }
   .error { font-size: 12px; color: var(--app-error-text); margin: 6px 0 0; }
   .conn-row {
@@ -665,19 +553,4 @@
   .provider-list dt { font-weight: 600; color: var(--app-text); margin-top: 8px; }
   .provider-list dt:first-child { margin-top: 0; }
   .provider-list dd { margin: 2px 0 0; color: var(--app-text-secondary); }
-  /* This-project status grid (ported from the former Advanced setup). */
-  .status-grid {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 4px 14px;
-    margin: 6px 0 0;
-    font-size: 13px;
-  }
-  .status-grid dt { color: var(--app-text-muted); }
-  .status-grid dd { margin: 0; }
-  .mono { font-family: var(--app-font-mono); font-size: 12px; word-break: break-all; }
-  .test-row { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
-  .test-result { margin: 0; font-size: 13px; line-height: 1.5; }
-  .test-result.ok { color: var(--app-text); }
-  .test-result.fail { color: var(--app-error-text); }
 </style>

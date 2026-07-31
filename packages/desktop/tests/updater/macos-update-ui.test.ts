@@ -24,7 +24,7 @@ test("macOS update UI remains PWA-clean", () => {
     "src/lib/update/update-controller.svelte.ts",
     "src/routes/+page.svelte",
     "src/lib/components/WelcomeLanding.svelte",
-    "src/lib/components/HelpDialog.svelte",
+    "src/lib/components/HelpContent.svelte",
   ]) {
     const contents = source(path);
     expect(contents).not.toMatch(/from ["']node:/);

@@ -202,7 +202,7 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
     every skip is surfaced loudly. Rationale: one uninstalled plugin must not
     blank a non-technical author's entire preview.
 
-Authoring guide lives in [User Guide: Chapter 6 — Plugins](./examples/gutterpress-user-guide/06-plugins.md).
+Authoring guide lives in [User Guide: Chapter 5 — Plugins](./examples/gutterpress-user-guide/05-plugins.md).
 
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
 removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,

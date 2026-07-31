@@ -45,8 +45,48 @@ test("resolvePreset throws a UsageError naming the known presets for an unknown 
   }
 });
 
-test("PRESETS catalog contains exactly dtrpg and book", () => {
-  expect(Object.keys(PRESETS).sort()).toEqual(["book", "dtrpg"]);
+test("PRESETS catalog contains exactly dtrpg, book, and custom", () => {
+  expect(Object.keys(PRESETS).sort()).toEqual(["book", "custom", "dtrpg"]);
+});
+
+// ── ADR 0008 — the custom preset and publish targets ────────────────────────
+
+test("custom preset requires page.width and page.height, naming what's missing", () => {
+  expect(() => resolveConfig({}, { preset: "custom" })).toThrow(
+    /page\.width and page\.height/
+  );
+  expect(() => resolveConfig({}, { preset: "custom", page: { width: 612 } })).toThrow(
+    /page\.height/
+  );
+});
+
+test("custom preset resolves the author's geometry; tolerance defaults to 0.5", () => {
+  const config = resolveConfig({}, { preset: "custom", page: { width: 500, height: 700 } });
+  expect(config.page).toEqual({ width: 500, height: 700, tolerance: 0.5 });
+  // Policy defaults are the neutral book ones.
+  expect(config.ink.maxTac).toBe(400);
+  expect(config.targets).toEqual([]);
+});
+
+test("each preset carries its default publish targets into the resolved config", () => {
+  expect(resolveConfig({}, { preset: "dtrpg" }).targets).toEqual(["dtrpg"]);
+  expect(resolveConfig({}, { preset: "book" }).targets).toEqual([]);
+});
+
+test("manifest targets override the preset's defaults and are validated", () => {
+  const config = resolveConfig({}, { preset: "book", targets: ["dtrpg", "itch"] });
+  expect(config.targets).toEqual(["dtrpg", "itch"]);
+  expect(() => resolveConfig({}, { preset: "book", targets: ["kdp-express"] })).toThrow(
+    /Unknown publish target/
+  );
+});
+
+test("manifest page values override any preset's geometry (author sovereignty)", () => {
+  const config = resolveConfig({}, { preset: "dtrpg", page: { width: 432, height: 648 } });
+  expect(config.page.width).toBe(432);
+  expect(config.page.height).toBe(648);
+  // Tolerance falls through to the preset where not overridden.
+  expect(config.page.tolerance).toBe(DTRPG_PRESET.page!.tolerance);
 });
 
 // ── resolveConfig integration: unknown preset errors, never silently falls
@@ -58,16 +98,16 @@ test("resolveConfig throws for an unknown manifest preset instead of silently us
 
 test("resolveConfig with no preset set still resolves to dtrpg geometry (unchanged default)", () => {
   const config = resolveConfig({}, {});
-  expect(config.page.width).toBe(DTRPG_PRESET.page.width);
-  expect(config.page.height).toBe(DTRPG_PRESET.page.height);
+  expect(config.page.width).toBe(DTRPG_PRESET.page!.width);
+  expect(config.page.height).toBe(DTRPG_PRESET.page!.height);
   expect(config.ink.maxTac).toBe(240);
 });
 
 // ── book preset geometry (UX finding M48) ───────────────────────────────────
 
 test("book preset uses standard 6x9in trade geometry (432x648pt)", () => {
-  expect(BOOK_PRESET.page.width).toBe(432);
-  expect(BOOK_PRESET.page.height).toBe(648);
+  expect(BOOK_PRESET.page!.width).toBe(432);
+  expect(BOOK_PRESET.page!.height).toBe(648);
 });
 
 test("book preset has no vendor TAC cap (400% — the physical ceiling)", () => {
@@ -100,15 +140,15 @@ test("resolveConfig with preset: book resolves the book preset's geometry", () =
 
 test("book preset differs from dtrpg on the vendor-specific fields (sanity check they're not aliases)", () => {
   expect(BOOK_PRESET).not.toBe(DTRPG_PRESET);
-  expect(BOOK_PRESET.page.width).not.toBe(DTRPG_PRESET.page.width);
+  expect(BOOK_PRESET.page!.width).not.toBe(DTRPG_PRESET.page!.width);
   expect(BOOK_PRESET.ink.maxTac).not.toBe(DTRPG_PRESET.ink.maxTac);
 });
 
 // ── ARCH finding #2 — no more preset-level styles default ──────────────────
 
 test("neither preset declares a `styles` default (resolveActiveStyles owns that fallback chain now)", () => {
-  expect((DTRPG_PRESET as Record<string, unknown>).styles).toBeUndefined();
-  expect((BOOK_PRESET as Record<string, unknown>).styles).toBeUndefined();
+  expect((DTRPG_PRESET as unknown as Record<string, unknown>).styles).toBeUndefined();
+  expect((BOOK_PRESET as unknown as Record<string, unknown>).styles).toBeUndefined();
 });
 
 // ── ARCH finding #24 — warnOnce / resetWarnOnce replace raw module-level
@@ -167,14 +207,11 @@ test("resolvePreset's 'no preset set' notice respects resetWarnOnce (no leftover
 // ── Maintainer review (P4, presets.ts:236): every built-in template manifest
 // must declare an explicit `preset` so a fresh `gutterpress new` project never
 // silently falls through resolvePreset's undefined-preset path (which
-// defaults to dtrpg's vendor geometry/TAC/PDF/X forcing) unless the template
-// actually wants dtrpg — as `ttrpg` genuinely does (it IS the DriveThruRPG
-// use case the dtrpg preset exists for). `book`/`technical`/`zine` get the
-// neutral `book` preset.
+// defaults to dtrpg's vendor geometry/TAC/PDF/X forcing).
+// `book`/`technical`/`zine` all get the neutral `book` preset.
 describe("built-in template manifests declare an explicit preset (maintainer review, presets.ts:236)", () => {
   const EXPECTED_TEMPLATE_PRESET: Record<(typeof BUILT_IN_TEMPLATE_IDS)[number], string> = {
     book: "book",
-    ttrpg: "dtrpg",
     technical: "book",
     zine: "book",
   };
@@ -207,6 +244,7 @@ describe("built-in template manifests declare an explicit preset (maintainer rev
         const result = await scaffoldProject({
           name: `Preset Check ${id}`,
           parentDir: parent,
+          preset: "book",
           template: id,
           versionHistory: "none",
         });
@@ -249,7 +287,7 @@ describe("a scaffolded project's stylesheet reaches the build output (maintainer
   test("neither preset carries an asset list or an output block any more", () => {
     for (const preset of [DTRPG_PRESET, BOOK_PRESET]) {
       expect(preset.source).toEqual({ files: null });
-      expect((preset as Record<string, unknown>).output).toBeUndefined();
+      expect((preset as unknown as Record<string, unknown>).output).toBeUndefined();
     }
   });
 

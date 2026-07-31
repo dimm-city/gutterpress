@@ -4,7 +4,12 @@
    * pill, save indicator, and the Problems panel toggle/body (VS Code-style).
    *
    * Layout (left → right):
-   *   [book switcher] [sync pill] [saving indicator] ············ [Problems toggle]
+   *   [book switcher] [Problems toggle] ··· [sync pill] [saving indicator] [settings] [help]
+   *
+   * The project you picked comes first, then what's wrong with it; everything
+   * about saving and syncing is grouped at the far right beside the app
+   * actions. Problems takes the slack in between — its expanded body needs
+   * the bar's middle width.
    *
    * The bar is always visible when a project is open (the saving indicator shows
    * "All changes saved" at rest, never blank), so both pieces of status are
@@ -303,14 +308,33 @@
 <svelte:window onresize={updateCompact} onpointerdown={onWindowPointerDown} />
 
 <div class="status-bar" role="status" aria-label="Application status">
-  <!-- Left cluster: [book switcher] | [sync refresh icon] [sync pill] | [save indicator] [Save now] -->
+  <!-- Left cluster: [book switcher]. The problems panel sits directly to its
+       right (the project you picked, then what's wrong with it); everything
+       about SAVING and SYNCING is grouped at the far right, next to the
+       settings and help buttons. -->
   <div class="status-left">
     {#if showBookSwitcher}
       <BookSwitcher {books} {activeBookDir} onSelect={(path) => onSwitchBook?.(path)} />
-      {#if showSync || showForceSync || fileOpen}
-        <span class="status-sep" aria-hidden="true"></span>
-      {/if}
     {/if}
+  </div>
+
+  <!-- Problems: immediately right of the book switcher, and the element that
+       takes up the slack — its expanded body needs the bar's middle width. -->
+  {#if showProblems}
+    <div class="status-problems" class:compact={isCompact}>
+      <ProblemsPanel
+        {problems}
+        loading={problemsLoading}
+        error={problemsError}
+        bind:open={problemsOpen}
+        onSelect={onProblemSelect}
+        compact={isCompact}
+      />
+    </div>
+  {/if}
+
+  <!-- Right cluster: [sync refresh icon] [sync pill] | [save indicator] [Save now] -->
+  <div class="status-right">
     {#if showForceSync}
       <!-- Sync now — a bare refresh icon at the far left; spins while syncing. -->
       <button
@@ -382,19 +406,6 @@
     {/if}
   </div>
 
-  <!-- Right cluster: problems panel toggle embedded in the bar -->
-  {#if showProblems}
-    <div class="status-right" class:compact={isCompact}>
-      <ProblemsPanel
-        {problems}
-        loading={problemsLoading}
-        error={problemsError}
-        bind:open={problemsOpen}
-        onSelect={onProblemSelect}
-        compact={isCompact}
-      />
-    </div>
-  {/if}
   <div class="shell-actions" aria-label="Application actions">
     <button class="status-icon-btn" onclick={() => onOpenSettings?.()} title="Settings (Ctrl+,)" aria-label="Settings">
       <Icon name="settings" size={14} />
@@ -420,7 +431,7 @@
     overflow: visible;
   }
 
-  /* ── Left cluster ─────────────────────────────────────────────────────── */
+  /* ── Left cluster (book switcher) ─────────────────────────────────────── */
   .status-left {
     display: flex;
     align-items: center;
@@ -428,9 +439,26 @@
     padding: 0 10px;
     min-height: 28px;
     flex: 0 0 auto;
-    /* Reserve space even when the sync pill / save indicator are absent
-       so the bar height stays constant and the layout never jumps. */
     min-width: 0;
+  }
+  /* Empty when no book switcher shows — drop its padding so the problems
+     panel starts flush at the left edge instead of behind a phantom gap. */
+  .status-left:empty {
+    padding: 0;
+  }
+
+  /* ── Right cluster (sync + save) ──────────────────────────────────────── */
+  .status-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    min-height: 28px;
+    flex: 0 0 auto;
+    min-width: 0;
+    /* Hugs the right even when the problems panel (the flex-grower) is
+       absent, so the save/sync group always sits beside the app actions. */
+    margin-left: auto;
   }
 
   /* Vertical separator between sync pill and save indicator. */
@@ -528,7 +556,7 @@
   .save-summary {
     position: absolute;
     bottom: calc(100% + 6px);
-    left: 0;
+    right: 0;
     min-width: 240px;
     padding: 8px;
     background: var(--app-surface-raised);
@@ -570,7 +598,7 @@
   }
 
   @media screen and (max-width: 820px) {
-    .status-left :global(.sync-pill),
+    .status-right :global(.sync-pill),
     .save-text,
     .status-sep,
     .status-action {
@@ -578,12 +606,12 @@
     }
   }
 
-  /* ── Right cluster ────────────────────────────────────────────────────── */
-  /* The right cluster takes all remaining width so the Problems toggle always
-     sits at the right edge of the bar. ProblemsPanel is full-width within it.
-     The panel body expands upward out of the bar via position:absolute on the
-     panel, so the bar height stays fixed at 28px whether or not the panel is open. */
-  .status-right {
+  /* ── Problems panel ───────────────────────────────────────────────────── */
+  /* The panel body expands upward out of the bar via position:absolute, so the
+     bar height stays fixed at 28px whether or not the panel is open.
+     The problems panel takes the bar's slack: its expanded body needs the
+     middle width, and growing here keeps the save/sync cluster pinned right. */
+  .status-problems {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
@@ -600,20 +628,20 @@
      status bar provides the bar's top border — avoid double borders on the
      right side of the bar. ProblemsPanel styles are scoped in its own
      component; we target the wrapper here via :global. */
-  .status-right :global(.problems-panel) {
+  .status-problems :global(.problems-panel) {
     border-top: none;
     /* panel body expands upward */
     flex-direction: column-reverse;
   }
 
-  /* The toggle strip inside ProblemsPanel must show a separator on the LEFT
-     so it reads as a distinct group from the save indicator. */
-  .status-right :global(.toggle-strip) {
+  /* The toggle strip inside ProblemsPanel shows a separator on the LEFT so it
+     reads as a distinct group from the book switcher beside it. */
+  .status-problems :global(.toggle-strip) {
     border-left: 1px solid var(--app-border);
   }
 
   /* Expanded panel body: absolute, grows upward from the top of the status bar. */
-  .status-right :global(.panel-body) {
+  .status-problems :global(.panel-body) {
     position: absolute;
     bottom: 100%;
     left: 0;
@@ -631,7 +659,7 @@
      useful — reposition the expanded body as a full-viewport overlay instead
      (below the toolbar, above everything else short of app dialogs). The
      compact toggle strip itself (icon + count badge) stays inline in the bar. */
-  .status-right.compact :global(.panel-body) {
+  .status-problems.compact :global(.panel-body) {
     position: fixed;
     top: 56px;
     right: 0;
