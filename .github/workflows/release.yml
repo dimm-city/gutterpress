@@ -269,7 +269,7 @@ jobs:
           # so a broken extraction fails here instead of shipping. `--dir` is the
           # (existing) parent save location; the project lands in a slug subdir.
           mkdir -p /tmp/gutterpress-smoke
-          "./${{ matrix.artifact }}" new "Smoke Test Book" --dir /tmp/gutterpress-smoke --template book --no-git
+          "./${{ matrix.artifact }}" new "Smoke Test Book" --dir /tmp/gutterpress-smoke --preset book --no-git
           echo "Scaffolded files:"
           find /tmp/gutterpress-smoke -maxdepth 3 -type f | sort
           # A scaffolded project must contain at least one markdown file and a
