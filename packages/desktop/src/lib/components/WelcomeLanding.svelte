@@ -28,6 +28,7 @@
   import Icon from "$lib/components/Icon.svelte";
   import ProjectsListBody from "$lib/components/ProjectsListBody.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
+  import BrandMark from "$lib/components/BrandMark.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
@@ -278,7 +279,7 @@
     <div class="landing-col">
       <header class="brand-row">
         <div class="brand-left">
-          <span class="brand-icon" aria-hidden="true"><Icon name="book-open" size={20} /></span>
+          <BrandMark size={24} />
           <span class="brand-name">Gutterpress</span>
           {#if version}<span class="brand-version">v{version}</span>{/if}
         </div>
@@ -533,8 +534,6 @@
   }
   .brand-icon-btn:hover { color: var(--app-text); background: var(--app-control-hover-bg); }
   .brand-icon-btn:focus-visible { outline: 2px solid var(--app-focus-ring); outline-offset: 1px; }
-  /* SVG icon (was an emoji): self-center against the baseline-aligned row. */
-  .brand-icon { display: inline-flex; align-self: center; }
   .brand-name { font-size: 15px; font-weight: 700; color: var(--app-text); letter-spacing: -0.2px; }
   .brand-version { font-size: 11px; color: var(--app-text-muted); }
 

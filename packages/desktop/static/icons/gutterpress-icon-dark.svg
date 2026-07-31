@@ -1,0 +1,17 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" role="img">
+<title>Gutterpress icon</title>
+<desc>Stamped GP monogram, light ink on transparent background, for use on dark surfaces.</desc>
+
+<path d="M0 14 Q4 0 18 0 L200 0 L200 200 L0 200 Z" fill="none" stroke="#e8d9b0" stroke-width="2" opacity="0.55"/>
+<path d="M184 0 L200 0 L200 18" fill="none" stroke="#e8d9b0" stroke-width="2" opacity="0.55"/>
+
+<g transform="translate(40,40) rotate(-3)">
+<text x="0" y="70" font-family="Georgia, serif" font-size="92" font-weight="700" fill="#e8d9b0" opacity="0.94">G</text>
+</g>
+<g transform="translate(100,52) rotate(2)">
+<text x="0" y="70" font-family="Georgia, serif" font-size="92" font-weight="700" fill="#e8d9b0" opacity="0.88">P</text>
+</g>
+
+<rect x="15" y="15" width="170" height="170" fill="none" stroke="#e8d9b0" stroke-width="1.5" opacity="0.3" transform="rotate(-1 100 100)"/>
+
+</svg>

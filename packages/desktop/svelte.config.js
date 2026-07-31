@@ -11,8 +11,8 @@ const config = {
     // is used directly (unchanged). Host capabilities are exposed as +server.ts
     // routes; the bridge surface is limited to push-events and build-pipeline IPC.
     adapter: adapter({ out: "build" }),
-    // Emit relative asset URLs so app://-served pages don't try to load
-    // /favicon.ico from the protocol root.
+    // Emit relative asset URLs so app://-served pages don't request static
+    // assets from the protocol root.
     paths: { relative: true },
     // The same build serves both the web PWA and Electron's app:// origin.
     // Register manually in +layout.svelte so app:// never attempts to use a SW.
