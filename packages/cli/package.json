@@ -1,6 +1,6 @@
 {
   "name": "gutterpress",
-  "version": "0.9.0-beta.1",
+  "version": "0.9.0-alpha.1",
   "description": "Markdown-to-PDF converter for professional print layout using Paged.js and Ghostscript.",
   "author": "itlackey",
   "license": "MPL-2.0",
