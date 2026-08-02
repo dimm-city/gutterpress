@@ -214,6 +214,20 @@ test("renderingComplete singular page copy for a one-page book", () => {
   expect(h.log).toContain("toast:Your book is ready — 1 page");
 });
 
+test("hot-reload completion stays ambient without reapplying settled presentation", async () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 6, hotReload: true } });
+  expect(h.log).toContain("overlay:false");
+  expect(h.log).not.toContain("overlay:true");
+  await flush();
+  expect(h.log).not.toContain("reveal");
+  expect(h.log.some((entry) => entry.startsWith("inject:"))).toBe(false);
+  expect(h.log.some((entry) => entry.startsWith("applyViewMode:"))).toBe(false);
+  expect(h.client.calls).toEqual([]);
+  expect(h.log).toContain("refreshOutline");
+  expect(h.log).toContain("refreshProblems");
+});
+
 // ── renderingComplete: first-render-only toast gate (M3) ─────────────────────
 // The success toast must fire once per project session — not on every
 // watcher-triggered rebuild (500ms auto-save debounce), which would otherwise

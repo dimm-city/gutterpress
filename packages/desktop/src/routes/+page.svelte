@@ -1235,6 +1235,7 @@
     if (!buffer) {
       buffer = new EditorBuffer({
         platform: getPlatform(),
+        saveDelayMs: settings.current.editor.autoSaveDelay,
         recoveryEnabled: settings.current.editor.crashRecovery,
         onError: (msg) => toast?.error(msg),
         // Single content-replacement path (#H1): every place the buffer
@@ -1282,12 +1283,13 @@
   // the store header; the store's replaceState choke point owns the notify, so
   // the old forgot-to-notify hazard is structurally gone). Each sink is
   // wrapped in settingsChangeGuard so it fires only when ITS field changed:
-  // - crashRecovery → the live buffer's recovery toggle (#45); the buffer's
-  //   own constructor seeds recoveryEnabled, so a fresh buffer needs no push.
+  // - autoSaveDelay/crashRecovery → the live buffer's save/recovery settings;
+  //   the buffer's own constructor seeds both, so a fresh buffer needs no push.
   // - previewBg → re-inject desktop canvas styles; initial injection happens in
   //   the renderingComplete handler, this catches live changes. The ready()
   //   check keeps a pre-mount change from being dropped (it re-fires once the
   //   preview client exists).
+  const autoSaveDelaySink = settingsChangeGuard<number>((delay) => buffer?.setSaveDelayMs(delay));
   const recoverySink = settingsChangeGuard<boolean>((enabled) => buffer?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
     (bg) => client?.injectStyles("desktop-canvas", buildDesktopStyles(bg)),
@@ -1301,6 +1303,7 @@
   const splitRatioSink = settingsChangeGuard<number>((r) => zoomView.restoreSplitRatio(r));
   onMount(() =>
     onSettingsChange((s) => {
+      autoSaveDelaySink(s.editor.autoSaveDelay);
       recoverySink(s.editor.crashRecovery);
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
@@ -2400,15 +2403,12 @@
   });
 
   /**
-   * M2: Hide the render-progress overlay — and ONLY hide it. This backs the
-   * variant="pane" overlay, which is shown during EVERY watcher-triggered
-   * rebuild while the author is actively editing, not just a project's first
-   * render — routing this through stopPreview() (as it used to) silently
-   * closed the whole project on a routine auto-save rebuild, with no
-   * confirmation. The render itself is NOT aborted: it continues invisibly
-   * and finishes harmlessly (the iframe stays mounted and VISIBLE — do NOT
-   * set opacity or hide it, that would re-trigger the Chromium 1fps
-   * cross-origin throttle). lifecycle.currentDir/editor/buffer are left untouched.
+   * M2: Hide the render-progress overlay, and ONLY hide it. This backs the
+   * pane overlay used for an initial/retry render; save-triggered hot reloads
+   * are double-buffered and remain ambient. Routing this through stopPreview()
+   * (as it used to) would silently close the whole project. The render itself
+   * is NOT aborted: the iframe stays mounted and visible to avoid Chromium's
+   * cross-origin throttle. lifecycle.currentDir/editor/buffer stay untouched.
    *
    * Real cancel-and-close is offered only on the INITIAL open, before a
    * project session/preview exists yet — see handleCancelOpen below, wired
@@ -2717,6 +2717,7 @@
                 filePath={editorFilePath}
                 content={editorContent}
                 onChange={onEditorChange}
+                onSave={() => void handleForceSave()}
                 onAnchorLine={(line, origin) => editorSync.onEditorAnchorLine(line, origin)}
               />
             {:else if editorModuleFailed}
@@ -2812,11 +2813,9 @@
              (which has position:relative). Covers ONLY the preview area; the
              editor pane, toolbar, and all dialogs remain fully interactive.
              z-index:10 (above the iframe, below any stacking context above).
-             M2: onCancel (handleCancelRender) only HIDES the overlay — it does
-             NOT tear down the project. This overlay reappears on every
-             watcher-triggered rebuild, not just a session's first render, so
-             a full teardown here would silently close the project on a
-             routine auto-save. -->
+             M2: onCancel (handleCancelRender) only HIDES the overlay; it does
+             NOT tear down the project. Save-triggered reloads use the ambient
+             double-buffered shell and do not mount this overlay. -->
         <LoadingOverlay
           visible={lifecycle.rendering || lifecycle.renderCompleteOverlay}
           label={lifecycle.renderCompleteOverlay ? "Rendering complete…" : lifecycle.renderProgressPage > 0 ? `Laying out page ${lifecycle.renderProgressPage}…` : "Rendering…"}

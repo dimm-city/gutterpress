@@ -46,8 +46,8 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 
 /**
  * Whether the double-buffered preview shell is active. The historical env name
- * is retained because users may already set it; chapter splicing is gone and
- * every source change now performs a full-document pagination.
+ * is retained because users may already set it; every source change performs an
+ * atomic full-document pagination.
  */
 export function incrementalPreviewEnabled(): boolean {
   return process.env.GUTTERPRESS_PREVIEW_INCREMENTAL !== "0";
@@ -440,28 +440,85 @@ export function createFileWatcher(state: ServerState): FSWatcher {
   // coalesced into one full-document rebuild.
   const pendingChanges = new Map<string, string>(); // filePath -> last event
   const suppressInitialExternalAdds = new Set<string>();
+  const settledWrites = new Map<string, { content: string; expiresAt: number }>();
+  let immediatePending = false;
 
   /** (Re-)arm the debounced rebuild timer. */
   function scheduleRebuild(): void {
     if (closed) return;
     if (state.rebuildTimer) clearTimeout(state.rebuildTimer);
-    state.rebuildTimer = setTimeout(runRebuild, DEBOUNCE.FILE_WATCH);
+    const timer = setTimeout(() => {
+      if (state.rebuildTimer === timer) state.rebuildTimer = null;
+      void runRebuild();
+    }, DEBOUNCE.FILE_WATCH);
+    state.rebuildTimer = timer;
   }
 
-  function recordChange(event: string, filePath: string): void {
+  async function recordChange(event: string, filePath: string): Promise<void> {
     if (closed) return;
-    debug(`File ${event}: ${filePath}`);
-    pendingChanges.set(path.resolve(filePath), event);
+    const target = path.resolve(filePath);
+    const settled = settledWrites.get(target);
+    if (settled && event !== 'unlink' && Date.now() <= settled.expiresAt) {
+      const diskContent = await fsp.readFile(target, 'utf8').catch(() => null);
+      if (closed) return;
+      if (settledWrites.get(target) === settled && diskContent === settled.content) {
+        debug(`Suppressed settled-write watcher echo: ${target}`);
+        return;
+      }
+    }
+    if (settledWrites.get(target) === settled) settledWrites.delete(target);
+    debug(`File ${event}: ${target}`);
+    pendingChanges.set(target, event);
     scheduleRebuild();
   }
 
-  watcher.on('all', recordChange);
+  watcher.on('all', (event, filePath) => { void recordChange(event, filePath); });
   externalWatcher.on('all', (event, filePath) => {
     const target = path.resolve(filePath);
     if (!desiredExternals.has(target)) return;
     if (event === 'add' && suppressInitialExternalAdds.delete(target)) return;
-    recordChange(event, target);
+    void recordChange(event, target);
   });
+
+  function isWatchedSource(target: string): boolean {
+    const rel = path.relative(inputResolved, target);
+    const inProject =
+      rel === '' ||
+      (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+    if (inProject) return !isIgnoredWatchPath(target, inputResolved);
+    return desiredExternals.has(target);
+  }
+
+  function acceptSettledWrite(target: string, writtenContent: string): void {
+    const settled = { content: writtenContent, expiresAt: Date.now() + 2000 };
+    settledWrites.set(target, settled);
+    const expiry = setTimeout(() => {
+      if (settledWrites.get(target) === settled) settledWrites.delete(target);
+    }, 2000);
+    expiry.unref?.();
+    pendingChanges.set(target, 'change');
+    immediatePending = true;
+    if (state.rebuildTimer) {
+      clearTimeout(state.rebuildTimer);
+      state.rebuildTimer = null;
+    }
+    if (!state.isRebuilding) void runRebuild();
+  }
+
+  state.notifySettledWrite = (filePath, writtenContent) => {
+    if (closed) return;
+    const target = path.resolve(filePath);
+    if (isWatchedSource(target)) {
+      acceptSettledWrite(target, writtenContent);
+      return;
+    }
+    // Initial discovery of declared shared dependencies is asynchronous. Recheck
+    // once that scan settles so a save immediately after preview startup cannot
+    // fall between direct notification and the external watcher's initial add.
+    void syncQueue.then(() => {
+      if (!closed && isWatchedSource(target)) acceptSettledWrite(target, writtenContent);
+    });
+  };
 
   /**
    * Declared external dependencies currently under watch. A separate watcher
@@ -519,6 +576,10 @@ export function createFileWatcher(state: ServerState): FSWatcher {
 
   async function runRebuild(): Promise<void> {
       if (closed || state.isRebuilding) return;
+      if (state.rebuildTimer) {
+        clearTimeout(state.rebuildTimer);
+        state.rebuildTimer = null;
+      }
 
       // Snapshot + clear AFTER the isRebuilding guard so changes skipped by an
       // in-flight rebuild stay pending until the rebuild's finally re-arms the
@@ -526,6 +587,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       const changes = [...pendingChanges.entries()];
       pendingChanges.clear();
       if (changes.length === 0) return;
+      immediatePending = false;
 
       state.isRebuilding = true;
       let resolveInFlight!: () => void;
@@ -567,13 +629,18 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // Changes that arrived DURING this rebuild had their debounce timer
         // fire into the isRebuilding guard above — with no further fs event
         // they would be orphaned forever. Re-arm the timer so they rebuild.
-        if (!closed && pendingChanges.size > 0) scheduleRebuild();
+        if (!closed && pendingChanges.size > 0) {
+          if (immediatePending) void runRebuild();
+          else scheduleRebuild();
+        }
       }
   }
 
   const closeBookWatcher = watcher.close.bind(watcher);
   watcher.close = async () => {
     closed = true;
+    state.notifySettledWrite = null;
+    settledWrites.clear();
     await syncQueue.catch(() => {});
     await state.rebuildPromise?.catch(() => {});
     await externalWatcher.close();

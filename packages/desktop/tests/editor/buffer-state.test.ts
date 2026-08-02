@@ -65,6 +65,24 @@ function makeBuffer(platform: MemoryPlatform, events: string[] = []): EditorBuff
   });
 }
 
+test("changing the autosave delay reschedules a pending edit", async () => {
+  const platform = new MemoryPlatform({ "/book/chapter.md": "original" });
+  const buffer = makeBuffer(platform);
+
+  await buffer.load("/book/chapter.md");
+  buffer.edit("edited");
+  expect(platform.getContent("/book/chapter.md")).toBe("original");
+  expect(buffer.phase).toBe("dirty");
+
+  buffer.setSaveDelayMs(0);
+  for (let attempt = 0; attempt < 20 && buffer.phase !== "clean"; attempt++) {
+    await Bun.sleep(5);
+  }
+
+  expect(platform.getContent("/book/chapter.md")).toBe("edited");
+  expect(buffer.phase).toBe("clean");
+});
+
 test("flush refuses to overwrite disk content that changed after the buffer loaded", async () => {
   const platform = new MemoryPlatform({ "/book/chapter.md": "old local text" });
   const events: string[] = [];

@@ -152,51 +152,44 @@ export class PreviewEventController {
 
   private onRenderingComplete(detail: PreviewEvent["detail"]): void {
     const d = this.deps;
+    const hotReload = detail.hotReload === true;
     const n = detail.totalPages ?? 0;
     d.pageNav.totalPages = n;
     d.setRenderProgressPage(n);
     d.setRendering(false);
-    // Keep the overlay up while the post-render layout settles. The pages stay
-    // invisible (iframe opacity 0) through the view-mode switch AND the async
-    // zoom round-trips; only once the zoom is actually applied do we cross-fade
-    // — see the revealSettledPages() call at the end of the settle sequence
-    // below. This is what prevents the visible page JUMP: we never reveal
-    // before the layout has stopped moving.
-    d.setRenderCompleteOverlay(true);
-    // Inject canvas styles now that Paged.js is done.
-    const client = d.client();
-    client?.injectStyles("desktop-canvas", buildDesktopStyles(d.bgColor()));
-    client?.injectStyles("debug", DEBUG_STYLES);
-    // Set initial view mode (auto if the user hasn't chosen).
-    const auto = d.viewportWidth() < 1280 ? "single" : "two-column";
-    const { page: restorePage, viewMode: restoreMode } = d.consumePendingRestore();
-    const mode = restoreMode ?? (d.zoomView.userSetViewMode ? d.viewMode() : auto);
-    const zoom = d.zoom();
-    // Drive the whole settle sequence to completion, THEN reveal. The reveal is
-    // gated on the zoom promise resolving — not a magic timer — so the fade
-    // always uncovers a completely still layout. Reveal is in a finally so the
-    // pages are never stranded invisible if a zoom call rejects.
-    void (async () => {
-      d.zoomView.applyViewMode(mode, false);
-      try {
-        // "Fit to width" must ALWAYS measure-and-fit, never assume 100% fits.
-        // A two-page spread (~1656px) overflows a 1400px pane at 100%, clipping
-        // the right page — so fit even on wide screens. Awaiting
-        // applyFitWidthZoom() waits for both postMessage round-trips
-        // (getPageDimensions + setZoom), i.e. until the JUMP has happened.
-        if (zoom === "fit-width") {
-          await d.zoomView.applyFitWidthZoom();
-        } else {
-          await client?.call("setZoom", [Number(zoom)]);
+    // Keep the translucent overlay up while the post-render layout settles. The
+    // iframe itself stays visible at opacity 1 (hiding it triggers Chromium's
+    // cross-origin throttle); revealSettledPages() fades only the overlay after
+    // the async zoom round-trip has stopped moving the layout.
+    d.setRenderCompleteOverlay(!hotReload);
+    // The shell copies settled presentation into a hot replacement before
+    // reveal. Reapplying styles/view/zoom here would add another visible reflow
+    // and unnecessary settings writes.
+    if (!hotReload) {
+      const client = d.client();
+      client?.injectStyles("desktop-canvas", buildDesktopStyles(d.bgColor()));
+      client?.injectStyles("debug", DEBUG_STYLES);
+      const auto = d.viewportWidth() < 1280 ? "single" : "two-column";
+      const { page: restorePage, viewMode: restoreMode } = d.consumePendingRestore();
+      const mode = restoreMode ?? (d.zoomView.userSetViewMode ? d.viewMode() : auto);
+      const zoom = d.zoom();
+      void (async () => {
+        d.zoomView.applyViewMode(mode, false);
+        try {
+          if (zoom === "fit-width") {
+            await d.zoomView.applyFitWidthZoom();
+          } else {
+            await client?.call("setZoom", [Number(zoom)]);
+          }
+        } catch {
+          // Zoom failed; still dismiss the overlay below.
+        } finally {
+          d.revealSettledPages();
         }
-      } catch {
-        // Zoom failed — still reveal below so pages aren't stranded hidden.
-      } finally {
-        d.revealSettledPages();
+      })();
+      if (restorePage && restorePage > 1) {
+        d.scheduleMicrotask(() => d.pageNav.restoreProjectPage(restorePage));
       }
-    })();
-    if (restorePage && restorePage > 1) {
-      d.scheduleMicrotask(() => d.pageNav.restoreProjectPage(restorePage));
     }
     // UX-011: improved success toast copy. M3: only the FIRST render of a
     // session toasts — later watcher-triggered rebuilds stay ambient.

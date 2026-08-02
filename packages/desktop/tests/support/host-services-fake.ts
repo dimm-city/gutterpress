@@ -131,6 +131,7 @@ export function makeHostServices(overrides: HostServicesOverrides = {}): HostSer
     write: {
       scheduleAutoSnapshot: noop,
       scheduleAutoSync: noop,
+      notifyPreviewSettledWrite: noop,
       getWatchedDir: () => null,
       getRepositoryRoot: () => null,
     },

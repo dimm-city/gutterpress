@@ -25,8 +25,8 @@
 </script>
 
 {#if visible}
-  <!-- Snaps in when work starts; fades OUT over 400ms when it ends, so on render
-       completion it dissolves while the preview iframe fades in (a cross-fade).
+  <!-- Snaps in when work starts; fades OUT over 400ms when it ends, revealing
+       the settled, always-visible preview beneath it.
        variant="pane"  → position:absolute inside .preview-pane (covers preview only).
        variant="app"   → position:fixed below toolbar, z-index --app-z-overlay (below dialogs). -->
   <div
@@ -74,10 +74,8 @@
     /* The scrim is informational chrome, not an input barrier: it must NEVER
        swallow wheel/pointer input meant for the content underneath. In the
        pane variant the preview iframe below stays fully visible through the
-       translucent scrim, so a user WILL try to scroll it — and the overlay is
-       up for the whole re-layout after every debounced auto-save, and
-       indefinitely if a renderingComplete is ever lost (paged.js mid-layout
-       crash). Blocking here is what made "scrolling in the desktop completely
+       translucent scrim, so a user may try to scroll it during an initial or
+       retry render. Blocking here is what made "scrolling in the desktop completely
        broken while everything else works" (scroll-dead-preview regression;
        pinned by tests/platform/preview-scroll-regression.test.ts). Only the
        spinner card below restores pointer-events for its Cancel button. */

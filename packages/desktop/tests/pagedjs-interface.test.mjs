@@ -21,7 +21,7 @@ function makePage(offsetTop, offsetWidth = 400, offsetHeight = 600) {
   };
 }
 
-function loadPreviewApi(pages, pagesWidth = 808) {
+function loadPreviewApi(pages, pagesWidth = 808, search = "") {
   const listeners = new Map();
   const bodyClasses = new Set();
   const pagesEl = { scrollWidth: pagesWidth };
@@ -54,6 +54,7 @@ function loadPreviewApi(pages, pagesWidth = 808) {
     scrollY: 0,
     previewAPI: undefined,
     PagedConfig: {},
+    location: { search },
     __PAGED_RENDERED__: false,
     parent: { postMessage() {} },
     print() {},
@@ -174,6 +175,8 @@ async function main() {
     const pages = [makePage(0), makePage(0), makePage(1000), makePage(1000)];
     const { api } = loadPreviewApi(pages);
     api.goToPage(3);
+    assert.equal(api.setZoom("1.25"), undefined);
+    assert.equal(api.getCurrentPage(), 3);
     api.setViewMode("single");
     assert.equal(api.getCurrentPage(), 3);
     api.setViewMode("two-column");

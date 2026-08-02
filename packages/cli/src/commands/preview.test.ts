@@ -64,6 +64,7 @@ test("preview reports its resolved default format before starting the server", a
     inputPath: "",
     stop: async () => {},
     restart: async () => {},
+    notifySettledWrite: () => {},
   });
 
   await runCommand(previewCommand, { rawArgs: ["--no-open"] });
@@ -82,6 +83,7 @@ test("preview --no-watch passes noWatch: true to startPreviewServer", async () =
     inputPath: "",
     stop: async () => {},
     restart: async () => {},
+    notifySettledWrite: () => {},
   });
 
   await runCommand(previewCommand, { rawArgs: ["--no-watch", "--no-open"] });

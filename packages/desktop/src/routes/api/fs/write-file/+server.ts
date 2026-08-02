@@ -1,7 +1,10 @@
 import { error } from '@sveltejs/kit';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { scheduleAutoWriteEffects } from '../../../../../electron/server-bridge/write-hooks';
+import {
+  notifyPreviewSettledWrite,
+  scheduleAutoWriteEffects,
+} from '../../../../../electron/server-bridge/write-hooks';
 import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
@@ -17,6 +20,7 @@ export const POST: RequestHandler = defineRoute<{ path: string; content: string 
   call: async ({ body }) => {
     await mkdir(path.dirname(body.path), { recursive: true });
     await writeFile(body.path, body.content, 'utf-8');
+    notifyPreviewSettledWrite(body.path, body.content);
 
     // Trigger auto-snapshot/sync debounce for edits inside the open project.
     scheduleAutoWriteEffects(body.path);

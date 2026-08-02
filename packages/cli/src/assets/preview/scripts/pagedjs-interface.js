@@ -148,6 +148,27 @@
     return { el: el, line: line };
   }
 
+  function preserveViewport(change) {
+    refreshPages();
+    var position = visibleSourcePosition();
+    var anchor = position ? {
+      el: position.el,
+      top: position.el.getBoundingClientRect().top
+    } : null;
+    change();
+    refreshPages();
+    if (!anchor) {
+      scrollToCurrentPage();
+      return;
+    }
+    ignoreScrollUntil = Date.now() + 300;
+    var delta = anchor.el.getBoundingClientRect().top - anchor.top;
+    if (delta) {
+      window.scrollBy({ top: delta, behavior: 'instant' });
+    }
+    currentPage = detectVisiblePage();
+  }
+
   // Resolve a {line, chapter?} target to its enclosing annotated block PLUS the
   // following annotated block, so callers can interpolate within long blocks
   // (markdown-it-source-map only annotates top-level *_open tokens, so a target
@@ -205,16 +226,19 @@
     prevPage: function (mode) { return api.goToPage(currentPage - pageStep(mode)); },
     nextPage: function (mode) { return api.goToPage(currentPage + pageStep(mode)); },
     lastPage: function () { refreshPages(); return api.goToPage(pages.length); },
-    setViewMode: function (mode) {
-      refreshPages();
-      currentViewMode = mode || 'two-column';
-      document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
-      if (mode) document.body.classList.add('view-' + mode);
-      scrollToCurrentPage();
-      return api.notifyPageChange();
+    setViewMode: function (mode, silent) {
+      preserveViewport(function () {
+        currentViewMode = mode || 'two-column';
+        document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
+        if (mode) document.body.classList.add('view-' + mode);
+      });
+      if (!silent) return api.notifyPageChange();
     },
-    setZoom: function (z) {
-      document.documentElement.style.setProperty('--gutterpress-zoom', z);
+    setZoom: function (z, silent) {
+      preserveViewport(function () {
+        document.documentElement.style.setProperty('--gutterpress-zoom', z);
+      });
+      if (!silent) api.notifyPageChange();
     },
     toggleDebugMode: function () {
       debugMode = !debugMode;

@@ -1,11 +1,9 @@
 /**
  * Preview wheel-scroll regression (scroll-dead-preview): the pane-scoped
  * LoadingOverlay sits over the cross-origin preview iframe whenever
- * `lifecycle.rendering || lifecycle.renderCompleteOverlay` is true — i.e. for
- * the WHOLE re-layout after every debounced auto-save, and indefinitely if a
- * `renderingComplete` is ever lost (paged.js mid-layout crash). Because the
+ * `lifecycle.rendering || lifecycle.renderCompleteOverlay` is true. Because the
  * scrim is translucent, the book stays fully visible while every wheel event
- * is swallowed by the overlay div — "scrolling in the desktop is completely
+ * would otherwise be swallowed by the overlay div — "scrolling in the desktop is completely
  * broken but works in other areas" (proven live: elementFromPoint over the
  * pane returned the overlay's spinner and wheel deltas were 0 while it was
  * mounted).

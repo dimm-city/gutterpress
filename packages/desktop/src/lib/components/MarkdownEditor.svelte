@@ -84,11 +84,13 @@
     filePath = null,
     content = "",
     onChange,
+    onSave,
     onAnchorLine,
   }: {
     filePath?: string | null;
     content?: string;
     onChange?: (value: string) => void;
+    onSave?: () => void;
     /**
      * Editor→preview sync. Fires with the 1-based "anchor" source line: the top
      * visible line on scroll, or the caret line on a deliberate (non-typing)
@@ -274,6 +276,7 @@
         markdownCompletionCompartment.of(markdownCompletionExtensions(lang)),
          syntaxHighlighting(gutterpressHighlight, { fallback: true }),
         keymap.of([
+          { key: "Mod-s", run: () => { onSave?.(); return true; } },
           ...defaultKeymap,
           ...historyKeymap,
           indentWithTab,

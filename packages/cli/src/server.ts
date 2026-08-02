@@ -29,7 +29,9 @@ export interface PreviewServerHandle {
   stop: () => Promise<void>;
   /** Switch the watched directory and regenerate HTML. */
   restart: (newInputPath: string) => Promise<void>;
-  }
+  /** Rebuild immediately after a host-managed write has fully settled. */
+  notifySettledWrite: (filePath: string, writtenContent: string) => void;
+}
 
 export interface StartPreviewServerOptions extends PreviewServerOptions {
   /**
@@ -133,5 +135,8 @@ export async function startPreviewServer(
       await shutdownServer(state);
     },
     restart: restartPreview,
+    notifySettledWrite: (filePath, writtenContent) => {
+      state.notifySettledWrite?.(filePath, writtenContent);
+    },
   };
 }

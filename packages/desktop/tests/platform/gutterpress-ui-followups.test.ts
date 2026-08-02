@@ -39,6 +39,7 @@ test("files tab no longer has configure project button and embedded panels own t
 
 test("bottom status uses save icons, slower autosave default, and compact mobile rules", () => {
   const status = read("src/lib/components/StatusBar.svelte");
+  const page = read("src/routes/+page.svelte");
   const contract = read("src/lib/platform/contract.ts");
   // DEFAULT_SETTINGS is the single shared copy in shared-types.ts (#29);
   // contract.ts and electron/settings-store.ts both import it from there
@@ -46,6 +47,9 @@ test("bottom status uses save icons, slower autosave default, and compact mobile
   const sharedTypes = read("src/lib/platform/shared-types.ts");
   const settingsStore = read("electron/settings-store.ts");
   expect(sharedTypes).toContain("autoSaveDelay: 2500");
+  expect(page).toContain("saveDelayMs: settings.current.editor.autoSaveDelay");
+  expect(page).toContain("buffer?.setSaveDelayMs(delay)");
+  expect(page).toContain("autoSaveDelaySink(s.editor.autoSaveDelay)");
   expect(contract).toContain("DEFAULT_SETTINGS");
   expect(contract).toContain("shared-types");
   expect(settingsStore).toContain("DEFAULT_SETTINGS");

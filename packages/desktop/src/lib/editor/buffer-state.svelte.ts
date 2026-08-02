@@ -123,6 +123,16 @@ export class EditorBuffer {
     }
   }
 
+  /** Update the autosave delay and restart any pending dirty-buffer timer. */
+  setSaveDelayMs(delayMs: number): void {
+    if (this.opts.saveDelayMs === delayMs) return;
+    this.opts.saveDelayMs = delayMs;
+    if (!this.saveTimer) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    if (this.isDirty) this.scheduleSave();
+  }
+
   /**
    * Load a file from disk into the buffer, clearing any prior pending state.
    *
@@ -204,6 +214,7 @@ export class EditorBuffer {
   private scheduleSave(): void {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
       // Debounced saves report through onError; explicit flush() callers need
       // the rejection, but a timer has no caller to receive it.
       void this.doSave().catch(() => {});

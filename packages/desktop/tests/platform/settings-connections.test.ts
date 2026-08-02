@@ -13,6 +13,7 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
 describe("Toolbar Save button — flush all pending changes beside Export", () => {
   const page = read("src/routes/+page.svelte");
   const toolbar = read("src/lib/components/AppToolbar.svelte");
+  const editor = read("src/lib/components/MarkdownEditor.svelte");
   test("wired to the same force-save the status bar uses, disabled when clean", () => {
     // The button markup lives in the extracted AppToolbar; +page wires the
     // intent (onSave → handleForceSave) and the clean-state disable.
@@ -25,6 +26,11 @@ describe("Toolbar Save button — flush all pending changes beside Export", () =
     expect(page).toMatch(/saveDisabled=\{[^}]*editorSavePhase === "clean"/);
     // Sits after the Export button — Save is the right-most action.
     expect(idx).toBeGreaterThan(toolbar.indexOf('class="export-btn'));
+  });
+  test("CodeMirror handles Cmd/Ctrl+S directly through the same force-save path", () => {
+    expect(editor).toContain('{ key: "Mod-s"');
+    expect(editor).toContain("onSave?.()");
+    expect(page).toContain("onSave={() => void handleForceSave()}");
   });
 });
 

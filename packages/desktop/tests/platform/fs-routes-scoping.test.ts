@@ -172,6 +172,30 @@ test("fs/write-file: a path inside the open project is allowed", async () => {
   expect(await readFile(target, "utf8")).toBe("# New");
 });
 
+test("fs/write-file: notifies the active preview after the write is settled", async () => {
+  const target = path.join(projectDir, "saved-chapter.md");
+  const notifications: Array<{ path: string; content: string }> = [];
+  registerHostServices(
+    makeHostServices({
+      fsGuard: { projectRoots: () => [projectDir], readOnlyRoots: () => [recoveryDir] },
+      pickedFiles,
+      write: {
+        notifyPreviewSettledWrite: (writtenPath: string, content: string) => {
+          notifications.push({ path: writtenPath, content });
+        },
+      },
+    }),
+  );
+
+  const res = await writeFileRoute({
+    request: request({ path: target, content: "# Saved now" }),
+  } as Parameters<typeof writeFileRoute>[0]);
+
+  expect(res.status).toBe(200);
+  expect(await readFile(target, "utf8")).toBe("# Saved now");
+  expect(notifications).toEqual([{ path: target, content: "# Saved now" }]);
+});
+
 test("fs/write-file: a sibling dir with a shared string prefix is rejected (403), file untouched", async () => {
   const target = path.join(siblingDir, "overwrite.md");
   const { status, message } = await caught(

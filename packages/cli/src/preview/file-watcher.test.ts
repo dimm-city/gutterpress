@@ -627,6 +627,30 @@ describe('createFileWatcher', () => {
     await watcher.close();
   }, 50000);
 
+  test('a host-confirmed settled write rebuilds immediately and suppresses its watcher echo', async () => {
+    const chapter = join(testDir, 'chapter-01.md');
+    const content = '# Saved directly by the desktop';
+    await writeFile(chapter, content);
+    const calls = attachBroadcastRecorder(state);
+    const watcher = createFileWatcher(state);
+    state.currentWatcher = watcher;
+    await waitForWatcherReady(watcher);
+
+    const notify = (state as ServerState & {
+      notifySettledWrite?: (filePath: string, writtenContent: string) => void;
+    }).notifySettledWrite;
+    expect(typeof notify).toBe('function');
+    notify?.(chapter, content);
+    expect(state.isRebuilding).toBe(true);
+    await waitForRebuild(state, calls);
+    expect(calls).toEqual([{ type: 'full-reload' }]);
+
+    watcher.emit('all', 'change', chapter);
+    await wait(400);
+    expect(calls).toEqual([{ type: 'full-reload' }]);
+    await watcher.close();
+  }, 50000);
+
   test('multiple files changed in one debounce window trigger a full reload, not a splice', async () => {
     // Simulates a multi-file disk rewrite (version restore / sync merge):
     // a burst of events inside one debounce window must NOT collapse into a
@@ -832,7 +856,7 @@ describe('createFileWatcher', () => {
       // Both rebuilds complete with NO further fs events.
       await pollUntil(() => calls.length >= 2 && !state.isRebuilding);
       expect(calls.length).toBe(2);
-      expect(calls[1]).toEqual({ type: 'full-reload' });
+      expect(calls).toEqual([{ type: 'full-reload' }, { type: 'full-reload' }]);
       await watcher.close();
     } finally {
       // Restore the real module for the remaining tests.

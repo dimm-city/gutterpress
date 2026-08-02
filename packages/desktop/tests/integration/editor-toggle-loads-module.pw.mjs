@@ -24,7 +24,7 @@
  * Exit 0 on pass, 1 on fail.
  */
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -34,6 +34,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const desktopDir = resolve(here, "..", "..");
 const require_ = createRequire(join(desktopDir, "package.json"));
 const PORT = 9900 + Math.floor(Math.random() * 150);
+const MAX_SAVE_TO_VISIBLE_MS = 3000;
 
 const log = (m) => console.log(`[editor-toggle] ${m}`);
 let child = null;
@@ -106,6 +107,10 @@ child.stdout.on("data", () => {});
 child.stderr.on("data", () => {});
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const withTimeout = (promise, ms, label) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+]);
 
 // ── 3. CDP attach ────────────────────────────────────────────────────────────
 async function getWsUrl() {
@@ -168,6 +173,18 @@ for (let i = 0; i < 120; i++) {
 if (!projectOpen) fail("project never opened (no file/TOC items in 120s)");
 log("project opened — editor module NOT yet loaded (no file clicked)");
 
+// Auto-open leaves the welcome layer over the pre-rendered workspace. Dismiss
+// it before exercising real keyboard input; the layer correctly makes the
+// workspace inert while visible, and programmatic .click() alone bypasses that.
+await evalJs(`document.querySelector('button[aria-label="Close this screen"]')?.click(); true`);
+for (let i = 0; i < 20; i++) {
+  if (!(await evalJs(`!!document.querySelector('.app-root[inert]')`))) break;
+  await sleep(50);
+}
+if (await evalJs(`!!document.querySelector('.app-root[inert]')`)) {
+  fail("welcome layer did not release the workspace before editor interaction");
+}
+
 // Confirm the editor pane shows "Loading editor…" BEFORE the toggle click —
 // this would have been visible forever in the beta.6 regression.
 const moduleLoadedPreClick = await evalJs(`!!document.querySelector('.cm-editor')`);
@@ -203,6 +220,201 @@ if (stuckOnLoading) {
   fail('"Loading editor…" still visible alongside .cm-editor — unexpected state');
 }
 
-log("PASS — .cm-editor appeared within 10s of toggle click; loadEditorModule() was called");
+// ── 8. packaged source-save path ─────────────────────────────────────────────
+// The configured default is 2.5 s. A regression left EditorBuffer on its 500 ms
+// fallback, making the main Save button look permanently disabled and turning
+// Ctrl+S into an apparent no-op because autosave had already won the race.
+const chapterName = readdirSync(bookDir).sort().find((name) => name.endsWith(".md") && name !== "README.md");
+if (!chapterName) fail(`fixture has no markdown chapter under ${bookDir}`);
+const chapterPath = join(bookDir, chapterName);
+const chapterBefore = readFileSync(chapterPath, "utf8");
+const marker = `packaged-save-${Date.now()}`;
+const editorPoint = await evalJs(`(() => {
+  const rect = document.querySelector('.cm-content').getBoundingClientRect();
+  return { x: rect.left + Math.min(80, rect.width / 2), y: rect.top + Math.min(20, rect.height / 2) };
+})()`);
+await send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...editorPoint });
+await send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...editorPoint });
+const documentEndKey = process.platform === "darwin"
+  ? { key: "ArrowDown", code: "ArrowDown", windowsVirtualKeyCode: 40, modifiers: 4 }
+  : { key: "End", code: "End", windowsVirtualKeyCode: 35, modifiers: 2 };
+await send("Input.dispatchKeyEvent", { type: "keyDown", ...documentEndKey });
+await send("Input.dispatchKeyEvent", { type: "keyUp", ...documentEndKey });
+await send("Input.insertText", { text: `\n\n${marker}\n` });
+const editorReceivedMarker = await evalJs(
+  `document.querySelector('.cm-content')?.textContent.includes(${JSON.stringify(marker)})`,
+);
+if (!editorReceivedMarker) {
+  const diagnostics = await evalJs(`(() => {
+    const content = document.querySelector('.cm-content');
+    return {
+      activeClass: document.activeElement?.className ?? null,
+      contentEditable: content?.getAttribute('contenteditable') ?? null,
+      inertAncestor: !!content?.closest('[inert]'),
+      rect: content ? { width: content.getBoundingClientRect().width, height: content.getBoundingClientRect().height } : null,
+    };
+  })()`);
+  fail(`CDP text insertion did not change the CodeMirror document (${JSON.stringify(diagnostics)})`);
+}
+
+// Wait past the old hard-coded 500 ms fallback while remaining well inside the
+// configured 2.5 s window. Save must still be available and disk untouched.
+await sleep(750);
+let saveEnabled = false;
+for (let i = 0; i < 20; i++) {
+  saveEnabled = await evalJs(`document.querySelector('header.toolbar button.save-btn')?.disabled === false`);
+  if (saveEnabled) break;
+  await sleep(25);
+}
+if (!saveEnabled) fail("main Save button did not enable after a CodeMirror edit");
+if (readFileSync(chapterPath, "utf8") !== chapterBefore) {
+  fail("chapter autosaved before the configured 2.5 s delay elapsed");
+}
+
+await evalJs(`(() => {
+  window.__gutterpressSavePreviewProbe = { startedAt: performance.now(), result: null, sequence: 0 };
+  if (window.__gutterpressSavePreviewProbeInstalled) return;
+  window.__gutterpressSavePreviewProbeInstalled = true;
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    const probe = window.__gutterpressSavePreviewProbe;
+    if (probe && data?.type === 'gutterpress:event' && data.name === 'renderingComplete' && data.detail?.hotReload === true) {
+      probe.sequence++;
+      probe.result = {
+        saveToVisibleMs: performance.now() - probe.startedAt,
+        hotReloadMs: Number(data.detail.hotReloadMs),
+        sequence: probe.sequence,
+      };
+    }
+  });
+})()`);
+
+const saveModifier = process.platform === "darwin" ? 4 : 2;
+await send("Input.dispatchKeyEvent", {
+  type: "keyDown",
+  key: "s",
+  code: "KeyS",
+  windowsVirtualKeyCode: 83,
+  modifiers: saveModifier,
+});
+await send("Input.dispatchKeyEvent", {
+  type: "keyUp",
+  key: "s",
+  code: "KeyS",
+  windowsVirtualKeyCode: 83,
+  modifiers: saveModifier,
+});
+
+let sourceSaved = false;
+for (let i = 0; i < 80; i++) {
+  if (readFileSync(chapterPath, "utf8").includes(marker)) {
+    sourceSaved = true;
+    break;
+  }
+  await sleep(25);
+}
+if (!sourceSaved) fail("Ctrl+S did not write the CodeMirror edit to disk");
+
+async function queryActivePreviewForMarker() {
+  return evalJs(`new Promise((resolve) => {
+  const frame = document.querySelector('.preview-pane > iframe');
+  if (!frame?.contentWindow) return resolve({ hasMarker: false, error: 'preview frame missing' });
+  const origin = new URL(frame.src).origin;
+  const id = 900000000 + Math.floor(Math.random() * 1000000);
+  const timeout = setTimeout(() => {
+    window.removeEventListener('message', onMessage);
+    resolve({ hasMarker: false, error: 'query timed out' });
+  }, 10000);
+  function onMessage(event) {
+    const data = event.data;
+    if (event.source !== frame.contentWindow || event.origin !== origin || data?.type !== 'gutterpress:reply' || data.id !== id) return;
+    clearTimeout(timeout);
+    window.removeEventListener('message', onMessage);
+    const text = Array.isArray(data.result) ? data.result.map((row) => row.text || '').join(' ') : '';
+    resolve({
+      hasMarker: data.ok === true && text.includes(${JSON.stringify(marker)}),
+      textLength: text.length,
+      textEnd: text.slice(-500),
+      error: data.error || null,
+    });
+  }
+  window.addEventListener('message', onMessage);
+  frame.contentWindow.postMessage({
+    type: 'gutterpress:cmd', id, cmd: 'queryDom',
+    args: [{ selector: 'body', fields: ['text'], limit: 1 }],
+  }, origin);
+})`);
+}
+
+let previewResult = null;
+let previewMarkerResult = null;
+let observedSequence = 0;
+for (let i = 0; i < 1200; i++) {
+  const candidate = await evalJs(`window.__gutterpressSavePreviewProbe?.result ?? null`);
+  if (Number.isFinite(candidate?.saveToVisibleMs) && candidate.sequence > observedSequence) {
+    observedSequence = candidate.sequence;
+    previewMarkerResult = await queryActivePreviewForMarker();
+    if (previewMarkerResult?.hasMarker) {
+      previewResult = candidate;
+      break;
+    }
+  }
+  await sleep(25);
+}
+if (!Number.isFinite(previewResult?.saveToVisibleMs)) {
+  if (observedSequence === 0) {
+    fail("Ctrl+S wrote the source file but no atomic preview update arrived within 30 s");
+  }
+  fail(
+    `the atomic preview updated ${observedSequence} time(s) without the saved source marker: ` +
+    JSON.stringify(previewMarkerResult),
+  );
+}
+if (!previewMarkerResult?.hasMarker) {
+  fail(`the atomic preview update completed without the saved source marker: ${JSON.stringify(previewMarkerResult)}`);
+}
+const saveToVisibleMs = Math.round(previewResult.saveToVisibleMs);
+const hotReloadMs = Math.round(previewResult.hotReloadMs);
+const preShellMs = Math.max(0, saveToVisibleMs - hotReloadMs);
+if (saveToVisibleMs > MAX_SAVE_TO_VISIBLE_MS) {
+  fail(
+    `Ctrl+S → visible preview took ${saveToVisibleMs}ms (limit ${MAX_SAVE_TO_VISIBLE_MS}ms; ` +
+    `pre-shell ${preShellMs}ms, shell ${hotReloadMs}ms)`,
+  );
+}
+
+// renderingComplete is not sufficient if its follow-up outline/lint work wedges
+// the renderer. Let those tasks run, then prove the SPA, host route, toolbar,
+// and preview bridge all still respond.
+await sleep(1500);
+let responsive;
+try {
+  responsive = await withTimeout(evalJs(`(async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const button = document.querySelector('button[aria-label="Toggle markdown editor"]');
+    if (!button) return { error: 'editor toggle missing' };
+    const before = button.getAttribute('aria-pressed');
+    button.click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const after = button.getAttribute('aria-pressed');
+    button.click();
+    const status = await fetch('/api/status');
+    return { toggled: before !== after, status: status.status };
+  })()`), 5000, "post-render UI responsiveness");
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
+if (!responsive?.toggled || responsive.status !== 200) {
+  fail(`the app stopped responding after renderingComplete: ${JSON.stringify(responsive)}`);
+}
+const latePreviewResult = await queryActivePreviewForMarker();
+if (!latePreviewResult?.hasMarker) {
+  fail(`the preview bridge stopped responding after renderingComplete: ${JSON.stringify(latePreviewResult)}`);
+}
+
+log(
+  `PASS — Save enabled, Ctrl+S wrote source, preview updated in ${saveToVisibleMs}ms, and the app remained responsive ` +
+  `(pre-shell ${preShellMs}ms, shell ${hotReloadMs}ms)`,
+);
 cleanup();
 process.exit(0);

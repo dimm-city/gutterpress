@@ -43,6 +43,7 @@ export interface PreviewHandle {
   port: number;
   inputPath: string;
   stop: () => Promise<void>;
+  notifySettledWrite: (filePath: string, writtenContent: string) => void;
 }
 
 export interface PreviewOpenArgs {

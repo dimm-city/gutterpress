@@ -18,6 +18,10 @@ export interface PreviewEvent {
     chapter?: string | null;
     /** sourceLineChanged: page the top-visible block sits on. */
     page?: number;
+    /** renderingComplete: true for an atomic save-triggered shell swap. */
+    hotReload?: boolean;
+    /** renderingComplete: browser-side pagination/swap latency for a hot reload. */
+    hotReloadMs?: number;
     /** elementActivated: clicked element id / tag, if any. */
     id?: string | null;
     tag?: string;

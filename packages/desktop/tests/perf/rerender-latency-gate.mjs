@@ -18,15 +18,15 @@
  *      --remote-debugging-port, a throwaway HOME, and xvfb-run when no DISPLAY.
  *      Run `npm run build && npm run electron:build` FIRST.
  *   3. Opens the temp project and waits for the INITIAL layout to finish.
- *   4. WARM RE-RENDER LOOP: rewrites a chapter .md (the file watcher picks it
- *      up exactly like an author's auto-save), then times the render window —
- *      from when layout goes active to when the page counter reappears. Takes
- *      the median over several iterations (first is a discarded warm-up).
+ *   4. WARM RE-RENDER LOOP: rewrites a chapter through the desktop write route
+ *      (the same settled-write handoff as editor save), then measures both write →
+ *      visible replacement and the browser-side pagination/swap suffix reported
+ *      by the preview shell. Takes the median over several iterations (first is
+ *      a discarded warm-up).
  *
- * Metric definition: we time the RENDER-ACTIVE window (layout start → layout
- * complete), which excludes the OS watcher debounce so the number reflects the
- * pagination cost itself — the thing the ≤300ms contract targets — and stays
- * reproducible across machines.
+ * Primary metric: fixture write → atomic replacement reveal. The shell's own
+ * full-reload receipt → reveal duration is retained as a diagnostic, so the
+ * difference exposes watcher/debounce/server-side regeneration time.
  *
  * Baseline refresh (deliberate, maintainer-only): run
  *   npm run rerender-baseline      # -> node rerender-latency-gate.mjs --write-baseline
@@ -35,10 +35,11 @@
  *
  * Usage:
  *   node tests/perf/rerender-latency-gate.mjs [--iterations <n>] [--write-baseline]
+ *     [--fixture <project>] [--chapter <file>]
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, existsSync, cpSync, writeFileSync, readFileSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { mkdtempSync, rmSync, existsSync, cpSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
+import { join, dirname, resolve, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -61,7 +62,9 @@ const START_CAP_S = 180; // initial layout must finish within this
 const RENDER_ACTIVE_CAP_S = 60; // a single re-render must complete within this
 const PORT = 9000 + Math.floor(Math.random() * 800);
 
-const FIXTURE_SRC = join(here, "bench", "novel-50p");
+const fixtureArg = arg("--fixture", "");
+const FIXTURE_SRC = fixtureArg ? resolve(fixtureArg) : join(here, "bench", "novel-50p");
+const FIXTURE_NAME = basename(FIXTURE_SRC);
 const BASELINE_PATH = join(here, "bench", "perf-baseline.json");
 
 const log = (m) => console.log(`[rerender-gate] ${m}`);
@@ -102,7 +105,7 @@ const bail = (m) => {
 let baseline = null;
 if (existsSync(BASELINE_PATH)) {
   try {
-    const b = JSON.parse(readFileSync(BASELINE_PATH, "utf8"))?.["novel-50p"] ?? null;
+    const b = JSON.parse(readFileSync(BASELINE_PATH, "utf8"))?.[FIXTURE_NAME] ?? null;
     // A placeholder baseline (rerenderMs<=0 / measuredAt "pending") is treated
     // as "no baseline yet" so the ratio reads n/a instead of Infinity.
     baseline = b && Number(b.rerenderMs) > 0 ? b : null;
@@ -114,11 +117,13 @@ if (existsSync(BASELINE_PATH)) {
 // ── 1. copy fixture to a throwaway dir ───────────────────────────────────────
 if (!existsSync(join(FIXTURE_SRC, "manifest.yaml"))) bail(`fixture missing at ${FIXTURE_SRC}`);
 workRoot = mkdtempSync(join(tmpdir(), "rerender-gate-work-"));
-const projectDir = join(workRoot, "novel-50p");
+const projectDir = join(workRoot, FIXTURE_NAME);
 cpSync(FIXTURE_SRC, projectDir, { recursive: true });
 // Do not carry the generator into the opened project.
 try { rmSync(join(projectDir, "generate.mjs"), { force: true }); } catch {}
-const chapterToPoke = join(projectDir, "01-chapter.md");
+const chapterName = arg("--chapter", "") || readdirSync(projectDir).sort().find((name) => name.endsWith(".md") && name !== "README.md");
+if (!chapterName) bail(`fixture has no markdown chapter under ${projectDir}`);
+const chapterToPoke = join(projectDir, chapterName);
 const chapterBase = readFileSync(chapterToPoke, "utf8").replace(/\n<!-- rerender-tick \d+ -->\n?$/, "");
 log(`fixture copied to: ${projectDir}`);
 
@@ -233,11 +238,8 @@ await evalJs(`(async () => {
 })()`);
 log("projects panel driven; waiting for initial layout to finish…");
 
-// Same DOM signals as render-gate: the "Laying out page" overlay text plus the
-// page select's data-total-pages seam (AppToolbar.svelte) — a select's option
-// text never appears in innerText, so the old "Page X / Y" pill scrape is gone.
-const layoutActive = () =>
-  evalJs(`/Laying out page \\d+|Rendering(\\u2026|\\.\\.\\.| complete)/.test(document.body.innerText)`);
+// Same completion seam as render-gate for the initial open. Hot reloads do not
+// mount loading chrome; their timing comes from Page frame events below.
 const finishedInfo = () =>
   evalJs(`(() => {
     if (/Laying out page \\d+|Rendering(\\u2026|\\.\\.\\.| complete)/.test(document.body.innerText)) return null;
@@ -261,39 +263,65 @@ async function waitFinished(capMs, label) {
 const totalPages = await waitFinished(START_CAP_S * 1000, "initial layout");
 log(`initial layout finished: ${totalPages} pages`);
 
+await evalJs(`(() => {
+  window.__gutterpressHotReloadProbe = null;
+  if (window.__gutterpressHotReloadProbeInstalled) return;
+  window.__gutterpressHotReloadProbeInstalled = true;
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (data?.type === 'gutterpress:event' && data.name === 'renderingComplete' && data.detail?.hotReload === true) {
+      const probe = window.__gutterpressHotReloadProbe;
+      if (probe && typeof probe.startedAt === 'number') {
+        probe.result = {
+          writeToVisibleMs: performance.now() - probe.startedAt,
+          hotReloadMs: Number(data.detail.hotReloadMs),
+        };
+      }
+    }
+  });
+})()`);
+
 // ── 6. warm re-render loop ───────────────────────────────────────────────────
-// Each iteration rewrites 01-chapter.md (author auto-save analogue). The folder
-// watcher (150ms debounce) notifies the renderer, which re-runs pagination. We
-// time the render-active window: layout-active -> counter-reappears.
+// Each iteration uses the same host route as editor save. The route's completed
+// write notifies preview directly, avoiding watcher settling and debounce.
 const samples = [];
+const hotReloadSamples = [];
+const preShellSamples = [];
 for (let it = 0; it < ITERATIONS; it++) {
   await waitFinished(RENDER_ACTIVE_CAP_S * 1000, `pre-iteration ${it}`);
-  // trigger: change file content (unique marker each time so the watcher fires)
-  writeFileSync(chapterToPoke, `${chapterBase}\n<!-- rerender-tick ${it} -->\n`);
+  const nextContent = `${chapterBase}\n<!-- rerender-tick ${it} -->\n`;
+  const writeResult = await evalJs(`(async () => {
+    window.__gutterpressHotReloadProbe = { startedAt: performance.now(), result: null };
+    const response = await fetch('/api/fs/write-file', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: ${JSON.stringify(chapterToPoke)}, content: ${JSON.stringify(nextContent)} }),
+    });
+    return { ok: response.ok, status: response.status, body: response.ok ? '' : await response.text() };
+  })()`);
+  if (!writeResult?.ok) bail(`desktop write route failed (${writeResult?.status}): ${writeResult?.body}`);
 
-  // wait for the render to go active
-  let activeStart = null;
-  const activeDeadline = Date.now() + 8000;
-  while (Date.now() < activeDeadline) {
-    if (await layoutActive()) { activeStart = Date.now(); break; }
+  const finDeadline = Date.now() + RENDER_ACTIVE_CAP_S * 1000;
+  let result = null;
+  while (Date.now() < finDeadline) {
+    result = await evalJs(`window.__gutterpressHotReloadProbe?.result ?? null`);
+    if (Number.isFinite(result?.writeToVisibleMs) && Number.isFinite(result?.hotReloadMs)) break;
     await sleep(10);
   }
-  if (activeStart == null) {
-    log(`iteration ${it}: render window not observed (completed faster than sampling) — skipping`);
+  if (!Number.isFinite(result?.writeToVisibleMs) || !Number.isFinite(result?.hotReloadMs)) {
+    log(`iteration ${it}: shell hot-reload completion was not observed — skipping`);
     continue;
   }
-  // wait for it to finish
-  let end = null;
-  const finDeadline = activeStart + RENDER_ACTIVE_CAP_S * 1000;
-  while (Date.now() < finDeadline) {
-    if (!(await layoutActive()) && (await finishedInfo()) != null) { end = Date.now(); break; }
-    await sleep(10);
-  }
-  if (end == null) { log(`iteration ${it}: render did not complete within cap — skipping`); continue; }
-  const ms = end - activeStart;
+  const ms = Math.round(result.writeToVisibleMs);
+  const hotReloadMs = Math.round(result.hotReloadMs);
+  const preShellMs = Math.max(0, ms - hotReloadMs);
   const warm = it === 0 ? " (warm-up, discarded)" : "";
-  log(`iteration ${it}: re-render ${ms}ms${warm}`);
-  if (it > 0) samples.push(ms);
+  log(`iteration ${it}: write → visible ${ms}ms (pre-shell ${preShellMs}ms, shell ${hotReloadMs}ms)${warm}`);
+  if (it > 0) {
+    samples.push(ms);
+    hotReloadSamples.push(hotReloadMs);
+    preShellSamples.push(preShellMs);
+  }
 }
 
 // restore the chapter so nothing lingers (temp copy is deleted anyway)
@@ -302,7 +330,11 @@ try { writeFileSync(chapterToPoke, chapterBase); } catch {}
 if (samples.length === 0) bail("no re-render samples were collected");
 
 samples.sort((a, b) => a - b);
+hotReloadSamples.sort((a, b) => a - b);
+preShellSamples.sort((a, b) => a - b);
 const median = samples[Math.floor(samples.length / 2)];
+const hotReloadMedian = hotReloadSamples[Math.floor(hotReloadSamples.length / 2)];
+const preShellMedian = preShellSamples[Math.floor(preShellSamples.length / 2)];
 const min = samples[0];
 const max = samples[samples.length - 1];
 
@@ -311,13 +343,14 @@ const baseMs = baseline?.rerenderMs ?? null;
 const ratio = baseMs ? median / baseMs : null;
 const ratioStr = ratio != null ? `${ratio.toFixed(2)}x` : "n/a (no baseline)";
 log(
-  `median re-render: ${median}ms (min ${min}ms, max ${max}ms, n=${samples.length}) | ` +
+  `median write → visible: ${median}ms (pre-shell ${preShellMedian}ms, shell ${hotReloadMedian}ms; ` +
+    `min ${min}ms, max ${max}ms, n=${samples.length}) | ` +
     `baseline ${baseMs != null ? baseMs + "ms" : "none"} | ratio ${ratioStr} | target ≤${TARGET_MS}ms`,
 );
 
 if (WRITE_BASELINE) {
   const doc = existsSync(BASELINE_PATH) ? JSON.parse(readFileSync(BASELINE_PATH, "utf8")) : {};
-  doc["novel-50p"] = {
+  doc[FIXTURE_NAME] = {
     rerenderMs: median,
     measuredAt: new Date().toISOString().slice(0, 10),
     note: `median of ${samples.length} warm re-renders (${min}-${max}ms), ${useXvfb ? "xvfb headless" : "display " + process.env.DISPLAY}, ${totalPages}pp`,
