@@ -119,6 +119,13 @@ jobs:
         run: bun run build
         working-directory: packages/cli
 
+      # Keep this explicit even though the full desktop suite also runs it. If
+      # the suite wiring changes, CI must still protect active-frame identity,
+      # page-count-changing splices, and standalone Paged.js page metadata.
+      - name: Run instant-preview splice contract
+        run: node tests/preview-shell-regression.test.mjs
+        working-directory: packages/desktop
+
       - name: Run desktop tests
         run: bun run test
         working-directory: packages/desktop

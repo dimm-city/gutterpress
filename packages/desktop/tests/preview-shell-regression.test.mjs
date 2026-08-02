@@ -159,12 +159,15 @@ async function main() {
   };
   let deferNextFrameLoad = false;
   let deferredFrame = null;
+  let lastChapterFrameSrc = null;
 
   const appendChild = document.body.appendChild.bind(document.body);
   document.body.appendChild = (node) => {
     const result = appendChild(node);
     if (node.tagName === "IFRAME" && node !== active) {
-      installBook(node, String(node.src).includes("/__chapter") ? UPDATED_CHAPTER : BOOK);
+      const isChapterFrame = String(node.src).includes("/__chapter");
+      if (isChapterFrame) lastChapterFrameSrc = String(node.src);
+      installBook(node, isChapterFrame ? UPDATED_CHAPTER : BOOK);
       const refresh = node.contentWindow.previewAPI.refresh;
       node.contentWindow.previewAPI.refresh = () => {
         const result = refresh();
@@ -272,6 +275,7 @@ async function main() {
   assert.equal(typeof hotReloadDetail?.hotReloadMs, "number");
   assert.equal(hotReloadDetail.hotReloadMs >= 0, true);
   assert.equal(hotReloadDetail?.revision, 1);
+  assert.equal(hotReloadDetail?.updateMode, "full-reload");
 
   // Presentation changes and delayed scroll delivery after the atomic swap must
   // not report the restored viewport as fresh reader navigation.
@@ -393,6 +397,7 @@ async function main() {
   });
   const afterSplice = document.getElementById("gutterpress-active");
   assert.equal(afterSplice, beforeSplice, "a chapter update preserves the active iframe identity");
+  assert.match(lastChapterFrameSrc ?? "", /\/__chapter\?/, "a chapter update paginates through /__chapter");
   assert.equal(
     afterSplice.contentDocument.body.textContent.includes("Updated chapter two anchor"),
     true,
@@ -436,6 +441,7 @@ async function main() {
   assert.equal(spliceComplete?.detail?.hotReload, true);
   assert.equal(spliceComplete?.detail?.revision, 2);
   assert.equal(spliceComplete?.detail?.totalPages, 4);
+  assert.equal(spliceComplete?.detail?.updateMode, "chapter-splice");
 
   // A second source update arriving before the first chapter pagination
   // completes must reconcile through the latest authoritative full book. It

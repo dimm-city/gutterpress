@@ -20,6 +20,7 @@ on:
       - "packages/desktop/electron/**"
       - "packages/cli/src/preview/**"
       - "packages/cli/src/assets/preview/**"
+      - "packages/cli/src/lib/markdown/**"
       - "packages/desktop/tests/perf/**"
       - ".github/workflows/render-perf-gate.yml"
   workflow_dispatch:
@@ -59,13 +60,9 @@ jobs:
         # No DISPLAY on the runner → the gate wraps electron in xvfb-run itself.
         run: node tests/perf/render-gate.mjs
 
-      # Issue #107 v1: preview RE-RENDER latency gate. ADVISORY ONLY — the
-      # script always exits 0 and emits ::notice::/::warning:: annotations, so
-      # it never turns this check red (kept off the required-checks path,
-      # per CLAUDE.md / the perf map). Reuses the app already built above.
-      - name: Run re-render latency gate (advisory)
+      # v0.8.3 fast-path contract: a Markdown save must render /__chapter in
+      # place, not request a replacement book.html, and must stay far below the
+      # multi-second full-document regression. Reuses the app built above.
+      - name: Run instant-preview regression gate
         working-directory: packages/desktop
-        # `if: always()` so a hard fail of the throughput gate above still lets
-        # the advisory number get reported; the step itself cannot fail CI.
-        if: always()
-        run: node tests/perf/rerender-latency-gate.mjs
+        run: node tests/perf/rerender-latency-gate.mjs --strict --max-ms 1000

@@ -35,6 +35,7 @@
           var startedAt = hotReloadFrame.__gutterpressReloadStartedAt;
           detail.hotReloadMs = typeof startedAt === 'number' ? Math.max(0, Date.now() - startedAt) : 0;
           detail.revision = hotReloadFrame.__gutterpressRevision;
+          detail.updateMode = 'full-reload';
           data = { type: data.type, name: data.name, detail: detail };
           hotReloadFrame = null;
         }
@@ -210,7 +211,8 @@
         totalPages: api && typeof api.getTotalPages === 'function' ? api.getTotalPages() : 0,
         hotReload: true,
         hotReloadMs: Math.max(0, Date.now() - startedAt),
-        revision: revision
+        revision: revision,
+        updateMode: 'chapter-splice'
       }
     }, '*');
   }

@@ -1,15 +1,13 @@
 #!/usr/bin/env node
 /**
- * ADVISORY perf gate: preview RE-RENDER latency (GitHub issue #107, v1).
+ * Preview RE-RENDER latency and mechanism gate (GitHub issue #107).
  *
  * Sibling of render-gate.mjs. Where render-gate measures paged.js layout
  * THROUGHPUT (pages/sec) to catch the hidden-iframe throttle and HARD-FAILS,
  * this script measures how long a warm PREVIEW RE-RENDER takes for a fixed
- * ~50-page project (bench/novel-50p) and is ADVISORY ONLY — it never exits
- * non-zero. It prints the measured ms, the ratio vs the committed baseline
- * (bench/perf-baseline.json), and the ≤300ms contract target, and emits GitHub
- * workflow annotations (::notice:: / ::warning::) so a regression surfaces on
- * the PR without turning the check red.
+ * ~50-page project (bench/novel-50p). It is advisory by default for local use;
+ * `--strict` makes missing measurements, the wrong update mechanism, and the
+ * configured latency ceiling fail CI.
  *
  * What it does:
  *   1. Copies the committed fixture bench/novel-50p to a throwaway temp dir
@@ -20,12 +18,14 @@
  *   3. Opens the temp project and waits for the INITIAL layout to finish.
  *   4. WARM RE-RENDER LOOP: rewrites a chapter through the desktop write route
  *      (the same settled-write handoff as editor save), then measures both write →
- *      visible replacement and the browser-side pagination/swap suffix reported
+ *      visible chapter splice and the browser-side pagination suffix reported
  *      by the preview shell. Takes the median over several iterations (first is
- *      a discarded warm-up).
+ *      a discarded warm-up). Server evidence must report `Chapter updated`,
+ *      never the `Preview updated` full-document path. The shell's unit
+ *      regression separately pins the `/__chapter` request and iframe identity.
  *
- * Primary metric: fixture write → atomic replacement reveal. The shell's own
- * full-reload receipt → reveal duration is retained as a diagnostic, so the
+ * Primary metric: fixture write → visible chapter update. The shell's own
+ * update receipt → reveal duration is retained as a diagnostic, so the
  * difference exposes watcher/debounce/server-side regeneration time.
  *
  * Baseline refresh (deliberate, maintainer-only): run
@@ -35,7 +35,7 @@
  *
  * Usage:
  *   node tests/perf/rerender-latency-gate.mjs [--iterations <n>] [--write-baseline]
- *     [--fixture <project>] [--chapter <file>]
+ *     [--fixture <project>] [--chapter <file>] [--strict] [--max-ms <n>]
  */
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, existsSync, cpSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
@@ -56,7 +56,10 @@ function arg(name, dflt) {
 }
 const ITERATIONS = Math.max(2, Number(arg("--iterations", 5))); // incl. 1 warm-up
 const WRITE_BASELINE = process.argv.includes("--write-baseline");
+const STRICT = process.argv.includes("--strict");
 const TARGET_MS = 300; // ≤300ms contract target (issue #107) — advisory
+const strictMaxArg = Number(arg("--max-ms", 1000));
+const STRICT_MAX_MS = Number.isFinite(strictMaxArg) && strictMaxArg > 0 ? strictMaxArg : 1000;
 const WARN_RATIO = 1.5; // annotate ::warning:: when measured > this * baseline
 const START_CAP_S = 180; // initial layout must finish within this
 const RENDER_ACTIVE_CAP_S = 60; // a single re-render must complete within this
@@ -69,6 +72,7 @@ const BASELINE_PATH = join(here, "bench", "perf-baseline.json");
 
 const log = (m) => console.log(`[rerender-gate] ${m}`);
 const childOutput = [];
+let childText = "";
 let lastCdpList = null;
 // Hoisted so cleanup()/bail() are safe even when we skip before spawning.
 let cleaned = false;
@@ -85,12 +89,13 @@ function cleanup() {
 process.on("exit", cleanup);
 process.on("SIGINT", () => { cleanup(); process.exit(130); });
 
-// ADVISORY: this gate never fails the build. `bail` logs, emits a ::warning::
-// annotation, cleans up, and exits 0 so an environment problem (no built app,
-// no CDP, headless flakiness) degrades to "no measurement", not a red check.
+// Local runs remain advisory. In CI, `--strict` turns an unavailable or invalid
+// measurement into a hard failure; a green gate must prove the fast path ran.
 const bail = (m) => {
-  console.error(`[rerender-gate] SKIP: ${m}`);
-  console.log(`::warning title=Re-render latency::skipped — ${m}`);
+  const label = STRICT ? "FAIL" : "SKIP";
+  const annotation = STRICT ? "error" : "warning";
+  console.error(`[rerender-gate] ${label}: ${m}`);
+  console.log(`::${annotation} title=Re-render latency::${STRICT ? "failed" : "skipped"} — ${m}`);
   if (lastCdpList !== null) console.error(`[rerender-gate] last CDP /json/list: ${JSON.stringify(lastCdpList)}`);
   if (childOutput.length) {
     console.error(`[rerender-gate] --- captured app stdout/stderr (last ${childOutput.length} chunk(s)) ---`);
@@ -98,7 +103,7 @@ const bail = (m) => {
     console.error(`\n[rerender-gate] --- end app output ---`);
   }
   cleanup();
-  process.exit(0);
+  process.exit(STRICT ? 1 : 0);
 };
 
 // ── 0. baseline ──────────────────────────────────────────────────────────────
@@ -158,7 +163,12 @@ child = spawn(cmd, cmdArgs, {
     XDG_DATA_HOME: join(fakeHome, ".local", "share"),
   },
 });
-const bufferChunk = (d) => { childOutput.push(d.toString()); if (childOutput.length > 300) childOutput.shift(); };
+const bufferChunk = (d) => {
+  const text = d.toString();
+  childText += text;
+  childOutput.push(text);
+  if (childOutput.length > 300) childOutput.shift();
+};
 child.stdout.on("data", bufferChunk);
 child.stderr.on("data", bufferChunk);
 
@@ -239,7 +249,7 @@ await evalJs(`(async () => {
 log("projects panel driven; waiting for initial layout to finish…");
 
 // Same completion seam as render-gate for the initial open. Hot reloads do not
-// mount loading chrome; their timing comes from Page frame events below.
+// mount loading chrome; their timing comes from the shell completion event below.
 const finishedInfo = () =>
   evalJs(`(() => {
     if (/Laying out page \\d+|Rendering(\\u2026|\\.\\.\\.| complete)/.test(document.body.innerText)) return null;
@@ -275,6 +285,7 @@ await evalJs(`(() => {
         probe.result = {
           writeToVisibleMs: performance.now() - probe.startedAt,
           hotReloadMs: Number(data.detail.hotReloadMs),
+          updateMode: data.detail.updateMode,
         };
       }
     }
@@ -287,9 +298,11 @@ await evalJs(`(() => {
 const samples = [];
 const hotReloadSamples = [];
 const preShellSamples = [];
+const mechanismSamples = [];
 for (let it = 0; it < ITERATIONS; it++) {
   await waitFinished(RENDER_ACTIVE_CAP_S * 1000, `pre-iteration ${it}`);
   const nextContent = `${chapterBase}\n<!-- rerender-tick ${it} -->\n`;
+  const outputStart = childText.length;
   const writeResult = await evalJs(`(async () => {
     window.__gutterpressHotReloadProbe = { startedAt: performance.now(), result: null };
     const response = await fetch('/api/fs/write-file', {
@@ -309,14 +322,42 @@ for (let it = 0; it < ITERATIONS; it++) {
     await sleep(10);
   }
   if (!Number.isFinite(result?.writeToVisibleMs) || !Number.isFinite(result?.hotReloadMs)) {
+    if (STRICT) bail(`iteration ${it} shell hot-reload completion was not observed`);
     log(`iteration ${it}: shell hot-reload completion was not observed — skipping`);
     continue;
   }
   const ms = Math.round(result.writeToVisibleMs);
   const hotReloadMs = Math.round(result.hotReloadMs);
   const preShellMs = Math.max(0, ms - hotReloadMs);
+  // The server logs immediately after broadcasting, but its piped stdout can
+  // arrive after the browser's completion event. Give that evidence a brief,
+  // bounded drain window so process scheduling cannot make the gate flaky.
+  const outputDeadline = Date.now() + 1000;
+  let iterationOutput = childText.slice(outputStart);
+  while (
+    !iterationOutput.includes("Chapter updated:") &&
+    !iterationOutput.includes("Preview updated") &&
+    Date.now() < outputDeadline
+  ) {
+    await sleep(10);
+    iterationOutput = childText.slice(outputStart);
+  }
+  const chapterUpdate = iterationOutput.includes(`Chapter updated: ${chapterName}`);
+  const fullReload = iterationOutput.includes("Preview updated");
+  const spliceOk = result.updateMode === "chapter-splice" && chapterUpdate && !fullReload;
+  mechanismSamples.push({
+    iteration: it,
+    updateMode: result.updateMode,
+    chapterUpdate,
+    fullReload,
+    spliceOk,
+  });
   const warm = it === 0 ? " (warm-up, discarded)" : "";
-  log(`iteration ${it}: write → visible ${ms}ms (pre-shell ${preShellMs}ms, shell ${hotReloadMs}ms)${warm}`);
+  log(
+    `iteration ${it}: write → visible ${ms}ms (pre-shell ${preShellMs}ms, shell ${hotReloadMs}ms; ` +
+      `shell ${result.updateMode ?? "unknown"}, chapter update ${chapterUpdate ? "yes" : "no"}, ` +
+      `full reload ${fullReload ? "yes" : "no"})${warm}`,
+  );
   if (it > 0) {
     samples.push(ms);
     hotReloadSamples.push(hotReloadMs);
@@ -337,6 +378,7 @@ const hotReloadMedian = hotReloadSamples[Math.floor(hotReloadSamples.length / 2)
 const preShellMedian = preShellSamples[Math.floor(preShellSamples.length / 2)];
 const min = samples[0];
 const max = samples[samples.length - 1];
+const mechanismFailures = mechanismSamples.filter((sample) => !sample.spliceOk);
 
 // ── 7. report + baseline compare ─────────────────────────────────────────────
 const baseMs = baseline?.rerenderMs ?? null;
@@ -347,6 +389,13 @@ log(
     `min ${min}ms, max ${max}ms, n=${samples.length}) | ` +
     `baseline ${baseMs != null ? baseMs + "ms" : "none"} | ratio ${ratioStr} | target ≤${TARGET_MS}ms`,
 );
+
+if (STRICT && mechanismFailures.length > 0) {
+  bail(`incremental splice contract failed: ${JSON.stringify(mechanismFailures)}`);
+}
+if (STRICT && median > STRICT_MAX_MS) {
+  bail(`median write → visible ${median}ms exceeds strict ${STRICT_MAX_MS}ms ceiling`);
+}
 
 if (WRITE_BASELINE) {
   const doc = existsSync(BASELINE_PATH) ? JSON.parse(readFileSync(BASELINE_PATH, "utf8")) : {};
@@ -371,4 +420,4 @@ if (regressed) {
 }
 
 cleanup();
-process.exit(0); // ADVISORY — always green
+process.exit(0); // Advisory by default; strict failures exit through bail().

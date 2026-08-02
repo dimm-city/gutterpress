@@ -18,12 +18,14 @@ export interface PreviewEvent {
     chapter?: string | null;
     /** sourceLineChanged: page the top-visible block sits on. */
     page?: number;
-    /** renderingComplete: true for an atomic save-triggered shell swap. */
+    /** renderingComplete: true for a save-triggered shell update. */
     hotReload?: boolean;
-    /** renderingComplete: browser-side pagination/swap latency for a hot reload. */
+    /** renderingComplete: browser-side pagination/update latency for a hot reload. */
     hotReloadMs?: number;
     /** renderingComplete: acknowledged preview content revision. */
     revision?: number;
+    /** renderingComplete: whether the shell spliced one chapter or replaced the book frame. */
+    updateMode?: "chapter-splice" | "full-reload";
     /** elementActivated: clicked element id / tag, if any. */
     id?: string | null;
     tag?: string;
