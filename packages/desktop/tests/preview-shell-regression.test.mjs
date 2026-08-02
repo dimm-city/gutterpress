@@ -23,6 +23,20 @@ const BOOK = `
     </div></div>
   </div>`;
 
+const UPDATED_CHAPTER = `
+  <div class="pagedjs_pages">
+    <div id="page-1" data-page-number="1" class="pagedjs_page pagedjs_first_page pagedjs_right_page">
+      <div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+        <p data-source-line="1">Updated chapter two start</p>
+      </div>
+    </div>
+    <div id="page-2" data-page-number="2" class="pagedjs_page pagedjs_left_page">
+      <div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+        <p data-source-line="20">Updated chapter two anchor</p>
+      </div>
+    </div>
+  </div>`;
+
 function installBook(frame, markup = BOOK) {
   const frameWindow = frame.contentWindow;
   const frameDocument = frame.contentDocument;
@@ -36,8 +50,14 @@ function installBook(frame, markup = BOOK) {
   Object.defineProperty(frameWindow, "scrollY", { configurable: true, get: () => scroll.y });
   frameWindow.scrollBy = (xOrOptions, y) => {
     const top = typeof xOrOptions === "number" ? y : xOrOptions?.top;
-    scroll.y += typeof top === "number" ? top : 0;
-    frameDocument.documentElement.scrollTop = scroll.y;
+    const apply = () => {
+      scroll.y += typeof top === "number" ? top : 0;
+      frameDocument.documentElement.scrollTop = scroll.y;
+    };
+    // Model `scroll-behavior: smooth`: the numeric overload is asynchronous,
+    // while the explicit instant behavior used by restoration is synchronous.
+    if (typeof xOrOptions === "number") setTimeout(apply, 20);
+    else apply();
   };
   frameDocument.documentElement.scrollTop = 0;
   const setProperty = frameDocument.documentElement.style.setProperty.bind(frameDocument.documentElement.style);
@@ -115,19 +135,31 @@ async function main() {
   active.contentDocument.head.appendChild(desktopStyle);
 
   let onChange;
+  const acknowledgedRevisions = [];
+  outer.__GUTTERPRESS_INSTANCE = "instance-a";
+  outer.__GUTTERPRESS_REVISION = 0;
   outer.__GUTTERPRESS_CHANGE_SOURCE = {
     subscribe(callback) {
       onChange = callback;
       return () => {};
     },
+    acknowledge(instance, revision) {
+      acknowledgedRevisions.push(`${instance}:${revision}`);
+    },
   };
-  outer.requestAnimationFrame = (callback) => callback();
+  const animationFrames = [];
+  outer.requestAnimationFrame = (callback) => animationFrames.push(callback);
+  const flushAnimationFrames = () => {
+    while (animationFrames.length) animationFrames.shift()();
+  };
+  let deferNextFrameLoad = false;
+  let deferredFrame = null;
 
   const appendChild = document.body.appendChild.bind(document.body);
   document.body.appendChild = (node) => {
     const result = appendChild(node);
     if (node.tagName === "IFRAME" && node !== active) {
-      installBook(node);
+      installBook(node, String(node.src).includes("/__chapter") ? UPDATED_CHAPTER : BOOK);
       const refresh = node.contentWindow.previewAPI.refresh;
       node.contentWindow.previewAPI.refresh = () => {
         const result = refresh();
@@ -142,15 +174,23 @@ async function main() {
         outer.dispatchEvent(event);
         return result;
       };
-      node.dispatchEvent(new outer.Event("load"));
+      if (deferNextFrameLoad) {
+        deferNextFrameLoad = false;
+        deferredFrame = node;
+      } else {
+        node.dispatchEvent(new outer.Event("load"));
+      }
     }
     return result;
   };
 
   const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
   runShell(outer, document, (callback) => callback(), clearTimeout);
+  active.dispatchEvent(new outer.Event("load"));
 
-  onChange?.({ type: "full-reload" });
+  onChange?.({ type: "reload-state", instance: "instance-a", revision: 0 });
+  assert.equal(document.getElementById("gutterpress-active"), active, "current revision does not reload");
+  onChange?.({ type: "full-reload", instance: "instance-a", revision: 1 });
 
   const fresh = [...document.querySelectorAll("iframe")].find((frame) => frame !== active);
   assert.ok(fresh, "full-reload swaps in a freshly paginated iframe");
@@ -183,6 +223,26 @@ async function main() {
     totalPages: 3,
   }, "refresh pageChanged is relayed from the active frame");
 
+  // The bridge posts asynchronously. A reader event published just before the
+  // swap may reach the shell after `active` changes, so the retiring frame stays
+  // eligible for source-event relay until its two-frame removal.
+  const queuedOutgoingEvent = new outer.Event("message");
+  Object.defineProperties(queuedOutgoingEvent, {
+    data: { value: { type: "gutterpress:event", name: "sourceLineChanged", detail: {
+      sourceLine: 20,
+      chapter: "chapter-2.md",
+      page: 3,
+    } } },
+    source: { value: active.contentWindow },
+  });
+  outer.dispatchEvent(queuedOutgoingEvent);
+  assert.deepEqual(
+    hostEvents.find((message) => message?.name === "sourceLineChanged")?.detail,
+    { sourceLine: 20, chapter: "chapter-2.md", page: 3 },
+    "a queued source event from the retiring frame is not lost",
+  );
+  flushAnimationFrames();
+
   const staleReadyEvent = new outer.Event("message");
   Object.defineProperties(staleReadyEvent, {
     data: { value: { type: "gutterpress:event", name: "ready", detail: {} } },
@@ -206,11 +266,13 @@ async function main() {
   assert.equal(hotReloadDetail?.hotReload, true);
   assert.equal(typeof hotReloadDetail?.hotReloadMs, "number");
   assert.equal(hotReloadDetail.hotReloadMs >= 0, true);
+  assert.equal(hotReloadDetail?.revision, 1);
 
-  // This is the normal renderingComplete settle call made by the desktop host.
-  let sourceLineChanged;
+  // Presentation changes and delayed scroll delivery after the atomic swap must
+  // not report the restored viewport as fresh reader navigation.
+  const sourceChanges = [];
   fresh.contentWindow.addEventListener("sourceLineChanged", (event) => {
-    sourceLineChanged = event.detail;
+    sourceChanges.push(event.detail);
   });
   for (const mode of ["single", "two-column", "single", "two-column"]) {
     api.setViewMode(mode);
@@ -233,21 +295,162 @@ async function main() {
   await new Promise((resolve) => setTimeout(resolve, 320));
   fresh.contentWindow.dispatchEvent(new fresh.contentWindow.Event("scroll"));
   await new Promise((resolve) => setTimeout(resolve, 170));
-  assert.deepEqual({
-    visible: api.getVisibleSource(),
-    emitted: sourceLineChanged,
-  }, {
-    visible: {
-      sourceLine: 20,
-      chapter: "chapter-2.md",
-      page: 3,
-    },
-    emitted: {
-      sourceLine: 20,
-      chapter: "chapter-2.md",
-      page: 3,
-    },
-  }, "post-render view-mode application must preserve the chapter-2/page-3 anchor in the viewer and editor sync event");
+  assert.deepEqual(api.getVisibleSource(), {
+    sourceLine: 20,
+    chapter: "chapter-2.md",
+    page: 3,
+  }, "post-render presentation changes preserve the chapter-2/page-3 anchor");
+  assert.deepEqual(sourceChanges, [], "the restored viewport is the source-sync baseline");
+
+  // Genuine reader movement still emits. Chapter is part of the baseline because
+  // every source file restarts its line numbering.
+  const chapterTwoStart = fresh.contentDocument.querySelector(
+    '[data-chapter-src="chapter-2.md"] [data-source-line="1"]',
+  );
+  fresh.contentWindow.scrollBy({ top: chapterTwoStart.getBoundingClientRect().top });
+  fresh.contentWindow.dispatchEvent(new fresh.contentWindow.Event("scroll"));
+  await new Promise((resolve) => setTimeout(resolve, 170));
+  assert.deepEqual(sourceChanges[0], {
+    sourceLine: 1,
+    chapter: "chapter-2.md",
+    page: 2,
+  }, "reader movement to another source position emits");
+
+  const chapterOneStart = fresh.contentDocument.querySelector(
+    '[data-chapter-src="chapter-1.md"] [data-source-line="1"]',
+  );
+  fresh.contentWindow.scrollBy({ top: chapterOneStart.getBoundingClientRect().top });
+  fresh.contentWindow.dispatchEvent(new fresh.contentWindow.Event("scroll"));
+  await new Promise((resolve) => setTimeout(resolve, 170));
+  assert.deepEqual(sourceChanges[1], {
+    sourceLine: 1,
+    chapter: "chapter-1.md",
+    page: 1,
+  }, "the same line number in a different chapter still emits");
+
+  const revisionOneFrame = document.getElementById("gutterpress-active");
+  onChange?.({ type: "reload-state", instance: "instance-a", revision: 1 });
+  assert.equal(
+    document.getElementById("gutterpress-active"),
+    revisionOneFrame,
+    "an acknowledged revision is idempotent",
+  );
+  onChange?.({ type: "reload-state", instance: "instance-a", revision: 2 });
+  assert.notEqual(
+    document.getElementById("gutterpress-active"),
+    revisionOneFrame,
+    "a newer state observed after reconnect catches up the visible frame",
+  );
+  flushAnimationFrames();
+  assert.equal(acknowledgedRevisions.includes("instance-a:0"), true);
+  assert.equal(acknowledgedRevisions.includes("instance-a:1"), true);
+  assert.equal(
+    acknowledgedRevisions.at(-1),
+    "instance-a:2",
+    "the shell acknowledges its initial, applied, duplicate, and recovered revisions",
+  );
+
+  const oldInstanceFrame = document.getElementById("gutterpress-active");
+  onChange?.({ type: "reload-state", instance: "instance-b", revision: 0 });
+  assert.notEqual(
+    document.getElementById("gutterpress-active"),
+    oldInstanceFrame,
+    "a restarted server applies its new instance even when its revision resets",
+  );
+  assert.equal(acknowledgedRevisions.at(-1), "instance-b:0");
+  flushAnimationFrames();
+
+  // A reader can scroll while a long replacement is paginating. If that scroll
+  // is still inside the interface debounce when the swap finishes, the shell
+  // must flush and relay it before the outgoing frame stops being active.
+  const beforePendingScroll = hostEvents.length;
+  const instanceBFrame = document.getElementById("gutterpress-active");
+  const pendingTarget = instanceBFrame.contentDocument.querySelector(
+    '[data-chapter-src="chapter-2.md"] [data-source-line="1"]',
+  );
+  instanceBFrame.contentWindow.scrollBy({ top: pendingTarget.getBoundingClientRect().top });
+  instanceBFrame.contentWindow.dispatchEvent(new instanceBFrame.contentWindow.Event("scroll"));
+  onChange?.({ type: "full-reload", instance: "instance-b", revision: 1 });
+  assert.deepEqual(
+    hostEvents.slice(beforePendingScroll).find((message) => message?.name === "sourceLineChanged")?.detail,
+    { sourceLine: 1, chapter: "chapter-2.md", page: 2 },
+    "the swap preserves pending reader movement for editor synchronization",
+  );
+  flushAnimationFrames();
+
+  const beforeSplice = document.getElementById("gutterpress-active");
+  const beforeSpliceEvents = hostEvents.length;
+  onChange?.({
+    type: "content-update",
+    instance: "instance-b",
+    revision: 2,
+    file: "chapter-2.md",
+  });
+  const afterSplice = document.getElementById("gutterpress-active");
+  assert.equal(afterSplice, beforeSplice, "a chapter update preserves the active iframe identity");
+  assert.equal(
+    afterSplice.contentDocument.body.textContent.includes("Updated chapter two anchor"),
+    true,
+    "the edited chapter's fresh pages are visible",
+  );
+  assert.equal(
+    afterSplice.contentDocument.body.textContent.includes("Chapter two anchor"),
+    false,
+    "the edited chapter's stale pages are removed",
+  );
+  assert.equal(
+    afterSplice.contentDocument.body.textContent.includes("Chapter one"),
+    true,
+    "unmodified chapter pages remain in place",
+  );
+  const reindexedPages = [...afterSplice.contentDocument.querySelectorAll(".pagedjs_page")];
+  assert.deepEqual(
+    reindexedPages.map((page) => [page.id, page.getAttribute("data-page-number")]),
+    [["page-1", "1"], ["page-2", "2"], ["page-3", "3"]],
+    "spliced pages retain globally unique page identities",
+  );
+  assert.deepEqual(
+    reindexedPages.map((page) => [
+      page.classList.contains("pagedjs_left_page"),
+      page.classList.contains("pagedjs_right_page"),
+    ]),
+    [[false, true], [true, false], [false, true]],
+    "spliced pages inherit global left/right parity",
+  );
+  assert.equal(acknowledgedRevisions.at(-1), "instance-b:2");
+  const spliceComplete = hostEvents.slice(beforeSpliceEvents).find(
+    (message) => message?.name === "renderingComplete",
+  );
+  assert.equal(spliceComplete?.detail?.hotReload, true);
+  assert.equal(spliceComplete?.detail?.revision, 2);
+  assert.equal(spliceComplete?.detail?.totalPages, 3);
+
+  // A second source update arriving before the first chapter pagination
+  // completes must reconcile through the latest authoritative full book. It
+  // cannot cancel chapter A, splice chapter B, and acknowledge both.
+  deferNextFrameLoad = true;
+  onChange?.({
+    type: "content-update",
+    instance: "instance-b",
+    revision: 3,
+    file: "chapter-2.md",
+  });
+  assert.ok(deferredFrame?.isConnected, "the first rapid update is still paginating");
+  const beforeOverlapRecovery = document.getElementById("gutterpress-active");
+  onChange?.({
+    type: "content-update",
+    instance: "instance-b",
+    revision: 4,
+    file: "chapter-1.md",
+  });
+  assert.equal(deferredFrame.isConnected, false, "the superseded chapter frame is discarded");
+  assert.notEqual(
+    document.getElementById("gutterpress-active"),
+    beforeOverlapRecovery,
+    "overlapping chapter updates recover through a full-book swap",
+  );
+  assert.equal(acknowledgedRevisions.at(-1), "instance-b:4");
+  flushAnimationFrames();
 
 }
 

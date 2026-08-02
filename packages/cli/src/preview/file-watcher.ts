@@ -11,6 +11,7 @@ import path from 'path';
 import { info, debug, warn, error as logError } from '../utils/logger';
 import { DEBOUNCE } from '../constants';
 import { renderChapters } from '../lib/markdown/index';
+import { canonicalChapterId } from '../lib/markdown/chapter-id';
 import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
 import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
@@ -45,9 +46,9 @@ const EMPTY_BOOK_HTML = `<!doctype html>
 `;
 
 /**
- * Whether the double-buffered preview shell is active. The historical env name
- * is retained because users may already set it; every source change performs an
- * atomic full-document pagination.
+ * Whether the incremental preview shell is active. The historical env name is
+ * retained because users may already set it. A single Markdown edit paginates
+ * only that source file; geometry-wide changes still swap a full document.
  */
 export function incrementalPreviewEnabled(): boolean {
   return process.env.GUTTERPRESS_PREVIEW_INCREMENTAL !== "0";
@@ -188,6 +189,84 @@ export async function generateAndWriteHtml(
     injectPreviewScripts(html),
     "utf-8"
   );
+}
+
+/**
+ * Render one source file with the same CSS, plugins, source metadata, and
+ * preview scripts as the full book. The shell paginates this small document in
+ * a hidden iframe and replaces only the edited source file's pages.
+ */
+export async function renderChapterPreviewHtml(
+  inputPath: string,
+  file: string,
+  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
+): Promise<string> {
+  const html = await renderPreviewBook(inputPath, config, {
+    files: [canonicalChapterId(file)],
+    wrapChapters: true,
+  });
+  return injectPreviewScripts(html);
+}
+
+/** One changed project file, named for the preview broadcast decision. */
+export interface ChangedFile {
+  relativePath: string;
+  ext: string;
+  event: string;
+}
+
+/**
+ * Describe in-project changes using the same canonical path form emitted in
+ * `data-chapter-src`. Declared external dependencies intentionally drop out;
+ * their presence in the original change count forces a full reload.
+ */
+export function describeChanges(
+  changes: [filePath: string, event: string][],
+  inputResolved: string
+): ChangedFile[] {
+  const files: ChangedFile[] = [];
+  for (const [changedPath, event] of changes) {
+    const relative = path.relative(inputResolved, path.resolve(changedPath));
+    if (
+      relative === '' ||
+      relative === '..' ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    ) continue;
+    files.push({
+      relativePath: canonicalChapterId(relative),
+      ext: path.extname(changedPath).toLowerCase(),
+      event,
+    });
+  }
+  return files;
+}
+
+export type BroadcastDecision =
+  | { kind: 'chapter-splice'; chapterId: string; relativePath: string }
+  | { kind: 'full-reload' };
+
+/** A single surviving Markdown edit can be paginated independently. */
+export function decideBroadcast(
+  files: ChangedFile[],
+  changeCount: number,
+  incremental: boolean
+): BroadcastDecision {
+  const only = files.length === 1 ? files[0]! : null;
+  if (
+    incremental &&
+    changeCount === 1 &&
+    only?.ext === '.md' &&
+    only.event !== 'unlink' &&
+    only.event !== 'unlinkDir'
+  ) {
+    return {
+      kind: 'chapter-splice',
+      chapterId: canonicalChapterId(only.relativePath),
+      relativePath: only.relativePath,
+    };
+  }
+  return { kind: 'full-reload' };
 }
 
 /**
@@ -437,7 +516,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
   let closed = false;
 
   // Paths changed during the current debounce window. Multi-file rewrites are
-  // coalesced into one full-document rebuild.
+  // coalesced into one full-document rebuild; one Markdown save can splice.
   const pendingChanges = new Map<string, string>(); // filePath -> last event
   const suppressInitialExternalAdds = new Set<string>();
   const settledWrites = new Map<string, { content: string; expiresAt: number }>();
@@ -614,12 +693,22 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets);
         if (closed) return;
 
-        state.previewServer?.broadcastReload();
-        info(
-          changes.length > 1
-            ? `Preview updated (${changes.length} files changed — full reload)`
-            : 'Preview updated'
+        const decision = decideBroadcast(
+          describeChanges(changes, inputResolved),
+          changes.length,
+          incrementalPreviewEnabled(),
         );
+        if (decision.kind === 'chapter-splice') {
+          state.previewServer?.broadcastContentUpdate(decision.chapterId);
+          info(`Chapter updated: ${decision.relativePath}`);
+        } else {
+          state.previewServer?.broadcastReload();
+          info(
+            changes.length > 1
+              ? `Preview updated (${changes.length} files changed — full reload)`
+              : 'Preview updated'
+          );
+        }
       } catch (err) {
         logError('Failed to regenerate preview:', err);
       } finally {

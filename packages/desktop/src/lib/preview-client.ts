@@ -22,6 +22,8 @@ export interface PreviewEvent {
     hotReload?: boolean;
     /** renderingComplete: browser-side pagination/swap latency for a hot reload. */
     hotReloadMs?: number;
+    /** renderingComplete: acknowledged preview content revision. */
+    revision?: number;
     /** elementActivated: clicked element id / tag, if any. */
     id?: string | null;
     tag?: string;

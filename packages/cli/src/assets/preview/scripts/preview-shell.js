@@ -1,11 +1,20 @@
 // Gutterpress preview shell controller (shared by the CLI preview and Electron).
-// Every source change takes one correctness-first path: paginate a fresh hidden
-// full document, then swap it in without flashing unpaginated content.
+// A Markdown edit paginates only that source file and replaces its live pages;
+// geometry-wide changes paginate and atomically swap a fresh full document.
 (function () {
   'use strict';
   var active = document.getElementById('gutterpress-active');
   var building = null;
   var hotReloadFrame = null;
+  var retiring = null;
+  var initialInstance = window.__GUTTERPRESS_INSTANCE;
+  var initialRevision = Number(window.__GUTTERPRESS_REVISION);
+  var appliedInstance = typeof initialInstance === 'string' ? initialInstance : '';
+  var appliedRevision = Number.isSafeInteger(initialRevision) && initialRevision >= 0 ? initialRevision : 0;
+  var desiredInstance = appliedInstance;
+  var desiredRevision = appliedRevision;
+  var reportAppliedState = function () {};
+  var activeReady = false;
   if (!active) return;
 
   // Transparent bridge relay: forward host-toolbar commands to the active book
@@ -25,10 +34,19 @@
           detail.hotReload = true;
           var startedAt = hotReloadFrame.__gutterpressReloadStartedAt;
           detail.hotReloadMs = typeof startedAt === 'number' ? Math.max(0, Date.now() - startedAt) : 0;
+          detail.revision = hotReloadFrame.__gutterpressRevision;
           data = { type: data.type, name: data.name, detail: detail };
           hotReloadFrame = null;
         }
         window.parent.postMessage(data, '*');
+      } else if (retiring && e.source === retiring.contentWindow && window.parent !== window) {
+        var retiringData = e.data;
+        if (
+          retiringData &&
+          (retiringData.type === 'gutterpress:reply' ||
+            (retiringData.type === 'gutterpress:event' &&
+              retiringData.name === 'sourceLineChanged'))
+        ) window.parent.postMessage(retiringData, '*');
       }
     } catch (_) {}
   });
@@ -85,7 +103,136 @@
       var diff = Math.abs(line - wanted);
       if (diff < bestDiff) { bestDiff = diff; el = els[i]; }
     }
-    if (el) w.scrollBy(0, el.getBoundingClientRect().top - anchor.offset);
+    if (el) w.scrollBy({
+      top: el.getBoundingClientRect().top - anchor.offset,
+      behavior: 'instant'
+    });
+  }
+
+  // Paged.js preserves data-chapter-src on cloned flow fragments. Record every
+  // source file represented on each page so an edit can locate its live range.
+  function tagPages(frame) {
+    var d = fdoc(frame); if (!d) return;
+    var pages = d.querySelectorAll('.pagedjs_page');
+    for (var i = 0; i < pages.length; i++) {
+      if (pages[i].getAttribute('data-chapter-srcs')) continue;
+      var nodes = pages[i].querySelectorAll('[data-chapter-src]');
+      var chapters = [];
+      for (var j = 0; j < nodes.length; j++) {
+        var chapter = nodes[j].getAttribute('data-chapter-src');
+        if (chapter && chapters.indexOf(chapter) === -1) chapters.push(chapter);
+      }
+      if (!chapters.length) continue;
+      pages[i].setAttribute('data-chapter-src', chapters[0]);
+      pages[i].setAttribute('data-chapter-srcs', chapters.join('\n'));
+    }
+  }
+
+  function pageChapters(page) {
+    var value = page.getAttribute('data-chapter-srcs') ||
+      page.getAttribute('data-chapter-src') || '';
+    return value ? value.split('\n') : [];
+  }
+
+  function normId(value) {
+    var result = String(value || '').replace(/\\/g, '/').replace(/\/{2,}/g, '/');
+    while (result.indexOf('./') === 0) result = result.slice(2);
+    return result;
+  }
+
+  function liveChapterIds(d) {
+    var pages = d.querySelectorAll('.pagedjs_page'), ids = [];
+    for (var i = 0; i < pages.length; i++) {
+      var chapters = pageChapters(pages[i]);
+      for (var j = 0; j < chapters.length; j++) {
+        if (ids.indexOf(chapters[j]) === -1) ids.push(chapters[j]);
+      }
+    }
+    return ids;
+  }
+
+  function resolveChapterId(d, file) {
+    var ids = liveChapterIds(d);
+    if (ids.indexOf(file) !== -1) return file;
+    var wanted = normId(file), matches = [];
+    for (var i = 0; i < ids.length; i++) {
+      if (normId(ids[i]) === wanted) matches.push(ids[i]);
+    }
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function pagesFor(d, file) {
+    var pages = d.querySelectorAll('.pagedjs_page');
+    var owned = [], shared = [], first = -1, last = -1;
+    for (var i = 0; i < pages.length; i++) {
+      var chapters = pageChapters(pages[i]);
+      if (chapters.indexOf(file) === -1) continue;
+      if (first === -1) first = i;
+      last = i;
+      if (chapters.length > 1) shared.push(pages[i]);
+    }
+    for (i = first; i !== -1 && i <= last; i++) {
+      var pageIds = pageChapters(pages[i]);
+      // Blank pages generated inside a source range carry no source element.
+      // Keep them with the range so an incremental replacement cannot move a
+      // recto/verso blank from the middle to the end of the chapter.
+      if (pageIds.indexOf(file) !== -1 || pageIds.length === 0) owned.push(pages[i]);
+    }
+    return { owned: owned, shared: shared };
+  }
+
+  // Remove only top-level fragments for this source. Ignoring nested matches
+  // avoids removing a parent and then attempting to remove its descendants.
+  function removeChapterFragments(page, file) {
+    var nodes = page.querySelectorAll('[data-chapter-src]');
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getAttribute('data-chapter-src') !== file) continue;
+      var ancestor = nodes[i].parentElement, nested = false;
+      while (ancestor && ancestor !== page) {
+        if (ancestor.getAttribute('data-chapter-src') === file) { nested = true; break; }
+        ancestor = ancestor.parentElement;
+      }
+      if (!nested && nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
+    }
+  }
+
+  // Imported standalone pages begin at page 1. Reindex the combined live DOM
+  // so IDs, page-number selectors, parity classes, and total-page counters stay
+  // globally coherent after a splice.
+  function reindexPages(d) {
+    var pages = d.querySelectorAll('.pagedjs_page');
+    var container = d.querySelector('.pagedjs_pages');
+    if (container) container.style.setProperty('--pagedjs-page-count', pages.length);
+    for (var i = 0; i < pages.length; i++) {
+      var number = i + 1;
+      pages[i].id = 'page-' + number;
+      pages[i].setAttribute('data-page-number', String(number));
+      if (i === 0) pages[i].classList.add('pagedjs_first_page');
+      else pages[i].classList.remove('pagedjs_first_page');
+      var wantedParity = i % 2 === 0 ? 'pagedjs_right_page' : 'pagedjs_left_page';
+      var otherParity = i % 2 === 0 ? 'pagedjs_left_page' : 'pagedjs_right_page';
+      pages[i].classList.remove(otherParity);
+      if (!pages[i].classList.contains(wantedParity)) pages[i].classList.add(wantedParity);
+    }
+  }
+
+  function reportIncrementalComplete(instance, revision, startedAt) {
+    appliedInstance = instance;
+    appliedRevision = revision;
+    activeReady = true;
+    reportAppliedState(appliedInstance, appliedRevision);
+    if (window.parent === window) return;
+    var api = fwin(active) && fwin(active).previewAPI;
+    window.parent.postMessage({
+      type: 'gutterpress:event',
+      name: 'renderingComplete',
+      detail: {
+        totalPages: api && typeof api.getTotalPages === 'function' ? api.getTotalPages() : 0,
+        hotReload: true,
+        hotReloadMs: Math.max(0, Date.now() - startedAt),
+        revision: revision
+      }
+    }, '*');
   }
 
   // Carry desktop canvas/debug CSS and view state into the hidden replacement
@@ -111,7 +258,7 @@
     if (api && zoom) api.setZoom(zoom, true);
   }
 
-  function onReady(frame, callback, onTimeout) {
+  function onReady(frame, callback, onTimeout, timeoutMs) {
     var w = fwin(frame), d = fdoc(frame);
     if (!w || !d) { callback(); return function () {}; }
     var done = false, timer = null;
@@ -125,7 +272,7 @@
       cleanup();
       callback();
     }
-    var hasPaged = !!d.querySelector('script[src*="paged.polyfill"], script[src*="pagedjs"]');
+    var hasPaged = !!d.querySelector('script[src*="paged.polyfill"]');
     if (hasPaged) {
       w.addEventListener('renderingComplete', finish);
       if (w.__PAGED_RENDERED__ === true) setTimeout(finish, 0);
@@ -134,7 +281,7 @@
         done = true;
         cleanup();
         if (onTimeout) onTimeout();
-      }, 180000);
+      }, timeoutMs || 180000);
     } else {
       var attempts = 0;
       (function poll() {
@@ -160,14 +307,17 @@
     building = null;
   }
 
-  function swap() {
+  function swap(instance, revision) {
     discardBuilding();
     var frame = document.createElement('iframe');
     frame.style.visibility = 'hidden';
     frame.setAttribute('aria-hidden', 'true');
     frame.title = active.title || 'preview';
     frame.__gutterpressReloadStartedAt = Date.now();
-    frame.src = '/book.html?gutterpressshell=1&bust=' + Date.now();
+    frame.__gutterpressInstance = instance;
+    frame.__gutterpressRevision = revision;
+    frame.src = '/book.html?gutterpressshell=1&instance=' + encodeURIComponent(instance)
+      + '&revision=' + revision + '&bust=' + Date.now();
     building = frame;
 
     var finished = false;
@@ -175,22 +325,40 @@
       if (finished || building !== frame) return;
       finished = true;
       frame.__gutterpressCancelReady = null;
+      var activeApi = fwin(active) && fwin(active).previewAPI;
+      var pendingSource = activeApi && typeof activeApi.flushScroll === 'function'
+        ? activeApi.flushScroll(true)
+        : null;
+      if (pendingSource && window.parent !== window) {
+        window.parent.postMessage({
+          type: 'gutterpress:event',
+          name: 'sourceLineChanged',
+          detail: pendingSource
+        }, '*');
+      }
       var anchor = capture(active);
       copyPresentation(active, frame);
       restore(frame, anchor);
       var old = active;
       old.removeAttribute('id');
       frame.id = 'gutterpress-active';
+      retiring = old;
       active = frame;
       hotReloadFrame = frame;
       building = null;
+      tagPages(frame);
       var api = fwin(frame) && fwin(frame).previewAPI;
       if (api && typeof api.refresh === 'function') api.refresh();
       frame.style.visibility = 'visible';
       frame.removeAttribute('aria-hidden');
+      appliedInstance = instance;
+      appliedRevision = revision;
+      activeReady = true;
+      reportAppliedState(appliedInstance, appliedRevision);
       requestAnimationFrame(function () {
         requestAnimationFrame(function () {
           if (old && old.parentNode) old.parentNode.removeChild(old);
+          if (retiring === old) retiring = null;
         });
       });
     }
@@ -205,21 +373,232 @@
     document.body.appendChild(frame);
   }
 
-  function connectChanges(onMessage) {
-    var source = window.__GUTTERPRESS_CHANGE_SOURCE;
-    if (source && typeof source.subscribe === 'function') return source.subscribe(onMessage);
-    var wsPath = window.__GUTTERPRESS_HMR || '/__gutterpress-hmr';
-    var ws = new WebSocket(location.origin.replace(/^http/, 'ws') + wsPath);
-    ws.onmessage = function (event) {
-      var message;
-      try { message = JSON.parse(event.data); } catch (_) { return; }
-      onMessage(message);
-    };
-    return function () { try { ws.close(); } catch (_) {} };
+  function spliceChapter(file, instance, revision) {
+    discardBuilding();
+    tagPages(active);
+    var activeDocument = fdoc(active);
+    var liveId = activeDocument ? resolveChapterId(activeDocument, file) : null;
+    if (!liveId) {
+      if (window.console) {
+        console.warn('[gutterpress] chapter not found in live pages; using full reload:', file);
+      }
+      swap(instance, revision);
+      return;
+    }
+
+    var startedAt = Date.now();
+    var frame = document.createElement('iframe');
+    frame.style.visibility = 'hidden';
+    frame.setAttribute('aria-hidden', 'true');
+    frame.title = 'updated chapter';
+    frame.src = '/__chapter?file=' + encodeURIComponent(file) + '&revision=' + revision +
+      '&bust=' + Date.now();
+    building = frame;
+
+    function finish() {
+      if (building !== frame) return;
+      frame.__gutterpressCancelReady = null;
+      try {
+        var ad = fdoc(active), sourceDocument = fdoc(frame);
+        if (!ad || !sourceDocument) throw new Error('chapter frame is unavailable');
+        var activeApi = fwin(active) && fwin(active).previewAPI;
+        var pendingSource = activeApi && typeof activeApi.flushScroll === 'function'
+          ? activeApi.flushScroll(true)
+          : null;
+        if (pendingSource && window.parent !== window) {
+          window.parent.postMessage({
+            type: 'gutterpress:event',
+            name: 'sourceLineChanged',
+            detail: pendingSource
+          }, '*');
+        }
+        var anchor = capture(active);
+        var container = ad.querySelector('.pagedjs_pages') || ad.body;
+        var found = pagesFor(ad, liveId);
+        var allNewPages = Array.prototype.slice.call(
+          sourceDocument.querySelectorAll('.pagedjs_page')
+        );
+        var firstContentPage = -1, lastContentPage = -1;
+        for (var pageIndex = 0; pageIndex < allNewPages.length; pageIndex++) {
+          if (!allNewPages[pageIndex].querySelector('[data-chapter-src]')) continue;
+          if (firstContentPage === -1) firstContentPage = pageIndex;
+          lastContentPage = pageIndex;
+        }
+        var newPages = firstContentPage === -1
+          ? []
+          : allNewPages.slice(firstContentPage, lastContentPage + 1);
+        if (!found.owned.length) throw new Error('chapter is absent from the live page range');
+        if (!newPages.length) throw new Error('chapter pagination produced no pages');
+        if (found.shared.length) throw new Error('chapter shares a page with another source');
+        if (newPages.length !== found.owned.length) {
+          throw new Error('chapter page count changed');
+        }
+
+        var first = found.owned[0];
+        var firstIsShared = found.shared.indexOf(first) !== -1;
+        var firstOrder = pageChapters(first);
+        var at = firstIsShared && firstOrder.indexOf(liveId) > 0
+          ? first.nextElementSibling
+          : first;
+        var exclusive = [];
+        for (var i = 0; i < found.owned.length; i++) {
+          if (found.shared.indexOf(found.owned[i]) === -1) exclusive.push(found.owned[i]);
+        }
+
+        for (i = 0; i < found.shared.length; i++) {
+          removeChapterFragments(found.shared[i], liveId);
+          var remaining = pageChapters(found.shared[i]).filter(function (chapter) {
+            return chapter !== liveId;
+          });
+          if (remaining.length) {
+            found.shared[i].setAttribute('data-chapter-src', remaining[0]);
+            found.shared[i].setAttribute('data-chapter-srcs', remaining.join('\n'));
+          } else {
+            found.shared[i].removeAttribute('data-chapter-src');
+            found.shared[i].removeAttribute('data-chapter-srcs');
+          }
+        }
+
+        for (i = 0; i < newPages.length; i++) {
+          var imported = ad.importNode(newPages[i], true);
+          imported.setAttribute('data-chapter-src', liveId);
+          imported.setAttribute('data-chapter-srcs', liveId);
+          container.insertBefore(imported, at);
+        }
+        for (i = 0; i < exclusive.length; i++) {
+          if (exclusive[i].parentNode) exclusive[i].parentNode.removeChild(exclusive[i]);
+        }
+
+        reindexPages(ad);
+        restore(active, anchor);
+        var api = fwin(active) && fwin(active).previewAPI;
+        if (api && typeof api.refresh === 'function') api.refresh();
+        building = null;
+        if (frame.parentNode) frame.parentNode.removeChild(frame);
+        reportIncrementalComplete(instance, revision, startedAt);
+      } catch (error) {
+        building = null;
+        if (frame.parentNode) frame.parentNode.removeChild(frame);
+        if (window.console) console.warn('[gutterpress] chapter splice failed; using full reload:', error);
+        swap(instance, revision);
+      }
+    }
+
+    frame.addEventListener('load', function () {
+      if (building !== frame) return;
+      var loadedDocument = fdoc(frame);
+      if (!loadedDocument || (
+        !loadedDocument.querySelector('script[src*="paged.polyfill"]') &&
+        !loadedDocument.querySelector('.pagedjs_page')
+      )) {
+        discardBuilding();
+        swap(instance, revision);
+        return;
+      }
+      frame.__gutterpressCancelReady = onReady(frame, finish, function () {
+        if (building !== frame) return;
+        discardBuilding();
+        if (window.console) console.warn('[gutterpress] chapter pagination timed out; using full reload');
+        swap(instance, revision);
+      }, 15000);
+    });
+    document.body.appendChild(frame);
   }
 
-  connectChanges(function (message) {
-    if (!message || !message.type) return;
-    if (message.type === 'full-reload' || message.type === 'content-update') swap();
+  function tagInitialPages() {
+    onReady(active, function () {
+      tagPages(active);
+      activeReady = true;
+      reportAppliedState(appliedInstance, appliedRevision);
+    });
+  }
+  if (active.contentDocument && active.contentDocument.readyState === 'complete') tagInitialPages();
+  active.addEventListener('load', tagInitialPages);
+
+  function connectChanges(onMessage) {
+    var source = window.__GUTTERPRESS_CHANGE_SOURCE;
+    if (source && typeof source.subscribe === 'function') {
+      reportAppliedState = function (instance, revision) {
+        if (typeof source.acknowledge === 'function') source.acknowledge(instance, revision);
+      };
+      var unsubscribe = source.subscribe(onMessage);
+      return typeof unsubscribe === 'function' ? unsubscribe : function () {};
+    }
+    var wsPath = window.__GUTTERPRESS_HMR || '/__gutterpress-hmr';
+    var ws = null;
+    var reconnectTimer = null;
+    var reconnectDelay = 250;
+    var stopped = false;
+
+    reportAppliedState = function (instance, revision) {
+      if (!ws || ws.readyState !== 1) return;
+      try {
+        ws.send(JSON.stringify({ type: 'reload-applied', instance: instance, revision: revision }));
+      } catch (_) {}
+    };
+
+    function connect() {
+      if (stopped) return;
+      ws = new WebSocket(location.origin.replace(/^http/, 'ws') + wsPath);
+      ws.onopen = function () {
+        reconnectDelay = 250;
+        if (activeReady) reportAppliedState(appliedInstance, appliedRevision);
+      };
+      ws.onmessage = function (event) {
+        var message;
+        try { message = JSON.parse(event.data); } catch (_) { return; }
+        onMessage(message);
+      };
+      ws.onclose = function () {
+        ws = null;
+        if (stopped || reconnectTimer !== null) return;
+        reconnectTimer = setTimeout(function () {
+          reconnectTimer = null;
+          connect();
+        }, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+      };
+      ws.onerror = function () { try { ws.close(); } catch (_) {} };
+    }
+
+    connect();
+    return function () {
+      stopped = true;
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+      try { if (ws) ws.close(); } catch (_) {}
+    };
+  }
+
+  var disconnectChanges = connectChanges(function (message) {
+    if (!message || (
+      message.type !== 'reload-state' &&
+      message.type !== 'full-reload' &&
+      message.type !== 'content-update'
+    )) return;
+    var instance = typeof message.instance === 'string' ? message.instance : null;
+    var revision = Number(message.revision);
+    if (!instance || !Number.isSafeInteger(revision) || revision < 0) return;
+    if (instance === appliedInstance && revision <= appliedRevision) {
+      if (activeReady) reportAppliedState(appliedInstance, appliedRevision);
+      return;
+    }
+    if (
+      instance === desiredInstance &&
+      (revision < desiredRevision || (revision === desiredRevision && building))
+    ) return;
+    var updateOverlaps = !!building;
+    desiredInstance = instance;
+    desiredRevision = revision;
+    if (
+      message.type === 'content-update' &&
+      typeof message.file === 'string' &&
+      message.file &&
+      !updateOverlaps
+    ) {
+      spliceChapter(message.file, instance, revision);
+    } else {
+      swap(instance, revision);
+    }
   });
+  window.addEventListener('beforeunload', disconnectChanges);
 })();

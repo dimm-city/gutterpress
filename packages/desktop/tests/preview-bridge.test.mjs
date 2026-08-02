@@ -50,10 +50,10 @@ const HTML = `
   </div>
 </div>`;
 
-function setup() {
+function setup(markup = HTML) {
   const window = new Window({ url: "http://localhost/" });
   const document = window.document;
-  document.body.innerHTML = HTML;
+  document.body.innerHTML = markup;
 
   // happy-dom does no layout, so synthesise a vertical stack: each source-mapped
   // block sits 100px below the previous; each page 1000px. `scrollY` slides the
@@ -192,6 +192,39 @@ async function main() {
     assert.ok(detail, "sourceLineChanged fired on scroll");
     assert.equal(detail.chapter, "b.md");
     assert.equal(detail.sourceLine, 1);
+  }
+
+  // ── 6. Interpolation never crosses a chapter boundary ─────────────────────
+  {
+    const crossChapterLines = `
+      <div class="pagedjs_pages">
+        <div class="pagedjs_page"><div data-chapter-src="a.md">
+          <p data-source-line="9">end of a</p>
+        </div></div>
+        <div class="pagedjs_page"><div data-chapter-src="b.md">
+          <p data-source-line="20">b starts after front matter</p>
+        </div></div>
+      </div>`;
+    const { api, state } = setup(crossChapterLines);
+    state.scrollY = 50;
+    assert.deepEqual(api.getVisibleSource(), {
+      sourceLine: 9,
+      chapter: "a.md",
+      page: 1,
+    }, "a numerically higher line in the next chapter is not an interpolation endpoint");
+  }
+
+  // ── 7. A reader scroll during a programmatic guard is deferred, not lost ──
+  {
+    const { api, window, state } = setup();
+    let detail = null;
+    window.addEventListener("sourceLineChanged", (e) => (detail = e.detail));
+    api.setZoom("0.8");
+    state.scrollY = 300;
+    window.dispatchEvent(new window.Event("scroll"));
+    await new Promise((r) => setTimeout(r, 380));
+    assert.equal(detail?.chapter, "b.md");
+    assert.equal(detail?.sourceLine, 1);
   }
 
   console.log("preview-bridge.test.mjs: all assertions passed");

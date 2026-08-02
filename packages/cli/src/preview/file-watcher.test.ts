@@ -10,6 +10,7 @@ import { tmpdir } from 'os';
 import { join, parse } from 'path';
 import {
   generateAndWriteHtml,
+  renderChapterPreviewHtml,
   createFileWatcher,
   startFileWatcher,
   stopFileWatcher,
@@ -19,6 +20,9 @@ import {
   isExternalWatchCandidate,
   isDotPathUnderRoot,
   isIgnoredWatchPath,
+  describeChanges,
+  decideBroadcast,
+  type ChangedFile,
 } from './file-watcher';
 import { pagedjsPolyfillTag } from '../lib/pagedjs-marker';
 import { resolveConfig } from '../lib/manifest';
@@ -194,6 +198,22 @@ describe('generateAndWriteHtml', () => {
     expect(content).toContain('Chapter 2');
   }, 60000);
 
+  test('renders one source file for an incremental chapter update', async () => {
+    await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
+    await writeFile(join(testDir, 'chapter-02.md'), '# Chapter 2');
+
+    const content = await renderChapterPreviewHtml(
+      testDir,
+      'chapter-02.md',
+      resolveConfig({ title: 'Test' }, {}),
+    );
+
+    expect(content).toContain('Chapter 2');
+    expect(content).toContain('data-chapter-src="chapter-02.md"');
+    expect(content).not.toContain('Chapter 1');
+    expect(content).toContain('/vendor/paged.polyfill.js');
+  }, 60000);
+
   test('keeps chapter source metadata when the legacy preview shell is disabled', async () => {
     await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
     await writeFile(join(testDir, 'chapter-02.md'), '# Chapter 2');
@@ -279,6 +299,39 @@ describe('injectPreviewScripts', () => {
     expect(out).not.toContain('break-before');
     expect(out).not.toContain('.gutterpress-chapter');
     expect(out).not.toContain('data-preview-chapter-wrappers');
+  });
+});
+
+describe('incremental broadcast decision', () => {
+  const markdown = (relativePath: string, event = 'change'): ChangedFile => ({
+    relativePath,
+    ext: '.md',
+    event,
+  });
+
+  test('uses a chapter splice for one surviving Markdown edit', () => {
+    expect(decideBroadcast([markdown('chapters/one.md')], 1, true)).toEqual({
+      kind: 'chapter-splice',
+      chapterId: 'chapters/one.md',
+      relativePath: 'chapters/one.md',
+    });
+  });
+
+  test('uses a full reload for deletion, multi-file, external, and disabled cases', () => {
+    expect(decideBroadcast([markdown('one.md', 'unlink')], 1, true)).toEqual({ kind: 'full-reload' });
+    expect(decideBroadcast([markdown('one.md'), markdown('two.md')], 2, true)).toEqual({ kind: 'full-reload' });
+    expect(decideBroadcast([], 1, true)).toEqual({ kind: 'full-reload' });
+    expect(decideBroadcast([markdown('one.md')], 1, false)).toEqual({ kind: 'full-reload' });
+  });
+
+  test('describes in-project paths with canonical forward slashes', () => {
+    const root = join(tmpdir(), 'gutterpress-change-root');
+    expect(describeChanges([[join(root, 'sub\\chapter.md'), 'change']], root)).toEqual([{
+      relativePath: 'sub/chapter.md',
+      ext: '.md',
+      event: 'change',
+    }]);
+    expect(describeChanges([[join(root, '..', 'shared', 'theme.css'), 'change']], root)).toEqual([]);
   });
 });
 
@@ -589,7 +642,7 @@ describe('createFileWatcher', () => {
       await writeFile(join(dotProjectDir, 'chapter-01.md'), '# Updated under a dot ancestor');
       await waitForRebuild(dotState, calls);
 
-      expect(calls).toEqual([{ type: 'full-reload' }]);
+      expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
     } finally {
       await watcher.close();
       await rm(dotAncestorBase, { recursive: true, force: true });
@@ -604,6 +657,7 @@ describe('createFileWatcher', () => {
       port: 0,
       async close() {},
       broadcastReload() { calls.push({ type: 'full-reload' }); },
+      broadcastContentUpdate(file: string) { calls.push({ type: 'content-update', arg: file }); },
     } as any;
     return calls;
   }
@@ -613,7 +667,7 @@ describe('createFileWatcher', () => {
     await pollUntil(() => calls.length > 0 && !s.isRebuilding);
   }
 
-  test('single markdown change performs a full-document reload', async () => {
+  test('single markdown change broadcasts a chapter update', async () => {
     await writeFile(join(testDir, 'chapter-02.md'), '# Two');
     const calls = attachBroadcastRecorder(state);
     const watcher = createFileWatcher(state);
@@ -623,7 +677,7 @@ describe('createFileWatcher', () => {
     watcher.emit('all', 'change', join(testDir, 'chapter-02.md'));
     await waitForRebuild(state, calls);
 
-    expect(calls).toEqual([{ type: 'full-reload' }]);
+    expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-02.md' }]);
     await watcher.close();
   }, 50000);
 
@@ -643,11 +697,11 @@ describe('createFileWatcher', () => {
     notify?.(chapter, content);
     expect(state.isRebuilding).toBe(true);
     await waitForRebuild(state, calls);
-    expect(calls).toEqual([{ type: 'full-reload' }]);
+    expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
 
     watcher.emit('all', 'change', chapter);
     await wait(400);
-    expect(calls).toEqual([{ type: 'full-reload' }]);
+    expect(calls).toEqual([{ type: 'content-update', arg: 'chapter-01.md' }]);
     await watcher.close();
   }, 50000);
 
@@ -856,7 +910,10 @@ describe('createFileWatcher', () => {
       // Both rebuilds complete with NO further fs events.
       await pollUntil(() => calls.length >= 2 && !state.isRebuilding);
       expect(calls.length).toBe(2);
-      expect(calls).toEqual([{ type: 'full-reload' }, { type: 'full-reload' }]);
+      expect(calls).toEqual([
+        { type: 'content-update', arg: 'chapter-01.md' },
+        { type: 'content-update', arg: 'chapter-02.md' },
+      ]);
       await watcher.close();
     } finally {
       // Restore the real module for the remaining tests.

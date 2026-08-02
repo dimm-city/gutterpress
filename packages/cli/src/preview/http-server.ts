@@ -10,16 +10,23 @@
 
 import http from 'node:http';
 import net from 'node:net';
+import { randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
 import { info } from '../utils/logger.ts';
 import { openPath } from '../lib/open-path.ts';
 import { getAssetPath } from '../lib/embedded-assets.ts';
-import { STATIC_MIME, hasDotSegment, resolveStaticPath } from '../lib/static-serve.ts';
+import {
+  STATIC_MIME,
+  hasDotSegment,
+  resolveStaticPath,
+  resolveWithinRoot,
+} from '../lib/static-serve.ts';
 import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
-import { incrementalPreviewEnabled } from './file-watcher.ts';
+import { incrementalPreviewEnabled, renderChapterPreviewHtml } from './file-watcher.ts';
+import { canonicalChapterId } from '../lib/markdown/chapter-id.ts';
 import { resolvePort, UsageError } from '../lib/cli-args.ts';
 import { BuildError } from '../lib/build-error.ts';
 
@@ -29,10 +36,11 @@ import { BuildError } from '../lib/build-error.ts';
 const HMR_PATH = '/__gutterpress-hmr';
 
 /**
- * Tiny client snippet injected into served HTML. Listens for `full-reload`
- * messages on the HMR WebSocket and reloads the page.
+ * Tiny client snippet injected into served HTML. Reconciles the visible page
+ * to the server's latest rendered revision across reloads and reconnects.
  */
-const HMR_CLIENT_SNIPPET = `
+function hmrClientSnippet(initialRevision: number, instanceId: string): string {
+  return `
 <script>
   (function () {
     // When loaded by the preview SHELL (iframe double-buffer), the shell loads us
@@ -42,6 +50,10 @@ const HMR_CLIENT_SNIPPET = `
     // for scroll-anchor and reload.
     if (/[?&]gutterpressshell=1/.test(location.search)) return;
   var ANCHOR_KEY = 'gutterpress-scroll-anchor';
+  var appliedRevision = ${initialRevision};
+  var appliedInstance = ${JSON.stringify(instanceId)};
+  var readyToAcknowledge = false;
+  var reloadRequested = false;
 
     // Find the element nearest the top of the viewport that carries a source
     // line (markdown-it-source-map emits data-source-line on block elements).
@@ -92,7 +104,13 @@ const HMR_CLIENT_SNIPPET = `
           }
         }
         if (el) {
-          window.scrollBy(0, el.getBoundingClientRect().top - a.offset);
+          window.scrollBy({
+            top: el.getBoundingClientRect().top - a.offset,
+            behavior: 'instant'
+          });
+          if (window.previewAPI && typeof window.previewAPI.refresh === 'function') {
+            window.previewAPI.refresh();
+          }
           return;
         }
         if (tries++ < 240) setTimeout(attempt, 25); // wait for pagination
@@ -100,52 +118,107 @@ const HMR_CLIENT_SNIPPET = `
     }
     var restored = false;
     function restoreOnce() { if (restored) return; restored = true; restoreAnchor(); }
+    function finishInitialRender() {
+      restoreOnce();
+      readyToAcknowledge = true;
+      acknowledge();
+    }
     // CRITICAL ordering: when the Paged.js polyfill is present it re-paginates on
-    // load and its PagedConfig.after calls scrollTo(0,0) THEN fires
+    // load and its PagedConfig.after scrolls to the document start THEN fires
     // 'renderingComplete'. So in engine mode we MUST wait for that event —
-    // restoring earlier would be wiped by the scrollTo(0,0). In static mode (no
+    // restoring earlier would be wiped by that initial scroll. In static mode (no
     // engine) the content is final immediately, so restore right after load.
-    var hasEngine = !!document.querySelector('script[src*="paged.polyfill"], script[src*="pagedjs"]');
-    window.addEventListener('renderingComplete', restoreOnce);
+    var hasEngine = !!document.querySelector('script[src*="paged.polyfill"]');
+    window.addEventListener('renderingComplete', finishInitialRender);
     if (!hasEngine) {
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () { setTimeout(restoreOnce, 50); });
+        document.addEventListener('DOMContentLoaded', function () { setTimeout(finishInitialRender, 50); });
       } else {
-        setTimeout(restoreOnce, 50);
+        setTimeout(finishInitialRender, 50);
       }
     }
-    setTimeout(restoreOnce, 10000); // safety net if renderingComplete never fires
+    var ws = null;
+    var reconnectTimer = null;
+    var reconnectDelay = 250;
+    var stopped = false;
 
-    var ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '${HMR_PATH}');
-    ws.onmessage = function (e) {
-      var msg;
-      try { msg = JSON.parse(e.data); } catch (_) { return; }
-      if (msg.type === 'full-reload') {
+    function acknowledge() {
+      if (!readyToAcknowledge || !ws || ws.readyState !== 1) return;
+      try {
+        ws.send(JSON.stringify({
+          type: 'reload-applied',
+          instance: appliedInstance,
+          revision: appliedRevision
+        }));
+      } catch (_) {}
+    }
+
+    function connect() {
+      if (stopped) return;
+      ws = new WebSocket(location.origin.replace(/^http/, 'ws') + '${HMR_PATH}');
+      ws.onopen = function () {
+        reconnectDelay = 250;
+        acknowledge();
+      };
+      ws.onmessage = function (e) {
+        var msg;
+        try { msg = JSON.parse(e.data); } catch (_) { return; }
+        if (
+          msg.type !== 'reload-state' &&
+          msg.type !== 'full-reload' &&
+          msg.type !== 'content-update'
+        ) return;
+        var instance = typeof msg.instance === 'string' ? msg.instance : null;
+        var revision = Number(msg.revision);
+        if (!instance || !Number.isSafeInteger(revision) || revision < 0) return;
+        if (instance === appliedInstance && revision <= appliedRevision) {
+          acknowledge();
+          return;
+        }
+        if (reloadRequested) return;
+        reloadRequested = true;
         try { var a = captureAnchor(); if (a) sessionStorage.setItem(ANCHOR_KEY, JSON.stringify(a)); } catch (_) {}
         location.reload();
-        return;
-      }
-    };
+      };
+      ws.onclose = function () {
+        ws = null;
+        if (stopped || reconnectTimer !== null) return;
+        reconnectTimer = setTimeout(function () {
+          reconnectTimer = null;
+          connect();
+        }, reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+      };
+      ws.onerror = function () { try { ws.close(); } catch (_) {} };
+    }
+
+    window.addEventListener('beforeunload', function () {
+      stopped = true;
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+    });
+    connect();
   })();
 </script>
 `;
+}
 
 /**
  * Preview shell (enabled by default; legacy opt-out is
  * GUTTERPRESS_PREVIEW_INCREMENTAL=0). Hosts book.html in an iframe and
- * double-buffers every reload: paginate a second hidden full document, then
- * swap it in atomically and restore the scroll anchor. The visible page never
- * flickers through an unpaginated state.
+ * paginates one edited Markdown source in a hidden frame, while geometry-wide
+ * changes still double-buffer and swap a full document.
  */
-const SHELL_HTML = `<!doctype html>
+function shellHtml(initialRevision: number, instanceId: string): string {
+  return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>gutterpress preview</title>
 <style>html,body{margin:0;height:100%;background:#fff;overflow:hidden}
 iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}</style>
 </head><body>
 <iframe id="gutterpress-active" src="/book.html?gutterpressshell=1" title="preview"></iframe>
-<script>window.__GUTTERPRESS_HMR=${JSON.stringify(HMR_PATH)};</script>
+<script>window.__GUTTERPRESS_HMR=${JSON.stringify(HMR_PATH)};window.__GUTTERPRESS_INSTANCE=${JSON.stringify(instanceId)};window.__GUTTERPRESS_REVISION=${initialRevision};</script>
 <script src="/preview/scripts/preview-shell.js"></script>
 </body></html>`;
+}
 
 /**
  * Public handle for the running preview server.
@@ -156,10 +229,13 @@ export interface PreviewServer {
   /** Stop the server and close all connections. */
   close(): Promise<void>;
   /**
-   * Broadcast a `{ type: "full-reload" }` message to every connected HMR
-   * client. Safe to call after `close()` (no-op).
+   * Advance the rendered revision and notify every connected HMR client.
+   * Disconnected clients reconcile to the latest revision when they reconnect.
+   * Safe to call after `close()` (no-op).
    */
   broadcastReload(): void;
+  /** Paginate and replace one edited Markdown source in connected shells. */
+  broadcastContentUpdate(file: string): void;
 }
 
 /**
@@ -243,10 +319,11 @@ export async function findAvailablePort(
 /**
  * Inject the HMR client snippet just before the closing `</body>` tag.
  */
-function injectHmrClient(html: string): string {
+function injectHmrClient(html: string, revision: number, instanceId: string): string {
+  const snippet = hmrClientSnippet(revision, instanceId);
   const closingBody = html.lastIndexOf('</body>');
-  if (closingBody === -1) return html + HMR_CLIENT_SNIPPET;
-  return html.slice(0, closingBody) + HMR_CLIENT_SNIPPET + html.slice(closingBody);
+  if (closingBody === -1) return html + snippet;
+  return html.slice(0, closingBody) + snippet + html.slice(closingBody);
 }
 
 /**
@@ -272,6 +349,8 @@ async function serveStatic(
   res: http.ServerResponse,
   cacheControl: string = 'no-store',
   extraHeaders: Record<string, string> = {},
+  hmrRevision: number = 0,
+  hmrInstance: string = '',
 ): Promise<void> {
   let filePath = absPath;
 
@@ -296,7 +375,7 @@ async function serveStatic(
 
   const isHtml = filePath.endsWith('.html') || filePath.endsWith('.htm');
   if (isHtml) {
-    const withHmr = injectHmrClient(data.toString('utf-8'));
+    const withHmr = injectHmrClient(data.toString('utf-8'), hmrRevision, hmrInstance);
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(withHmr);
     return;
@@ -357,12 +436,97 @@ export async function createPreviewServer(
   state: ServerState,
   port: number,
 ): Promise<PreviewServer> {
-  const clients = new Set<WebSocket>();
+  const ACK_RETRY_MS = 2000;
+  const MAX_ACK_RETRIES = 95;
+  const instanceId = randomUUID();
+  let reloadRevision = 0;
+  const clients = new Map<WebSocket, {
+    acknowledgedRevision: number;
+    retryAttempts: number;
+    retryTimer: ReturnType<typeof setTimeout> | null;
+  }>();
+
+  function sendRevision(
+    ws: WebSocket,
+    type: 'reload-state' | 'full-reload' | 'content-update',
+    file?: string,
+  ): void {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send(JSON.stringify({
+        type,
+        instance: instanceId,
+        revision: reloadRevision,
+        ...(file ? { file } : {}),
+      }));
+    } catch {
+      // The close handler removes the client; a reconnect receives current state.
+    }
+  }
+
+  function waitForAcknowledgement(ws: WebSocket): void {
+    const client = clients.get(ws);
+    if (!client) return;
+    if (client.acknowledgedRevision >= reloadRevision) {
+      if (client.retryTimer !== null) clearTimeout(client.retryTimer);
+      client.retryTimer = null;
+      client.retryAttempts = 0;
+      return;
+    }
+    if (client.retryTimer !== null) return;
+    client.retryTimer = setTimeout(() => {
+      const current = clients.get(ws);
+      if (!current) return;
+      current.retryTimer = null;
+      if (current.retryAttempts >= MAX_ACK_RETRIES) {
+        ws.terminate();
+        return;
+      }
+      current.retryAttempts++;
+      sendRevision(ws, 'reload-state');
+      waitForAcknowledgement(ws);
+    }, ACK_RETRY_MS);
+    client.retryTimer.unref?.();
+  }
+
+  function removeClient(ws: WebSocket): void {
+    const client = clients.get(ws);
+    if (client && client.retryTimer !== null) clearTimeout(client.retryTimer);
+    clients.delete(ws);
+  }
 
   const wss = new WebSocketServer({ noServer: true });
   wss.on('connection', (ws) => {
-    clients.add(ws);
-    ws.on('close', () => clients.delete(ws));
+    clients.set(ws, { acknowledgedRevision: -1, retryAttempts: 0, retryTimer: null });
+    ws.on('message', (raw) => {
+      let message: unknown;
+      try {
+        message = JSON.parse(raw.toString());
+      } catch {
+        return;
+      }
+      if (!message || typeof message !== 'object') return;
+      const payload = message as { type?: unknown; instance?: unknown; revision?: unknown };
+      if (payload.type !== 'reload-applied') return;
+      const revision = Number(payload.revision);
+      if (
+        payload.instance !== instanceId ||
+        !Number.isSafeInteger(revision) ||
+        revision < 0 ||
+        revision > reloadRevision
+      ) return;
+      const client = clients.get(ws);
+      if (!client) return;
+      client.acknowledgedRevision = Math.max(client.acknowledgedRevision, revision);
+      waitForAcknowledgement(ws);
+    });
+    ws.on('close', () => removeClient(ws));
+    ws.on('error', () => {
+      removeClient(ws);
+      ws.terminate();
+    });
+    sendRevision(ws, 'reload-state');
+    waitForAcknowledgement(ws);
   });
 
   const server = http.createServer(async (req, res) => {
@@ -396,7 +560,52 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3. Embedded assets (vendor + desktop scripts) — served from the
+    // 3. Render one source file for the shell's fast Markdown-update path.
+    if (url.pathname === '/__chapter' && req.method === 'GET') {
+      const rawFile = url.searchParams.get('file');
+      const file = rawFile ? canonicalChapterId(rawFile) : '';
+      const revision = Number(url.searchParams.get('revision'));
+      const configuredFiles = state.config.source?.files;
+      if (
+        !file ||
+        !state.currentInputPath ||
+        !incrementalPreviewEnabled() ||
+        !Number.isSafeInteger(revision) ||
+        revision !== reloadRevision ||
+        path.extname(file).toLowerCase() !== '.md' ||
+        hasDotSegment(file) ||
+        !resolveWithinRoot(file, state.currentInputPath) ||
+        (Array.isArray(configuredFiles) && configuredFiles.length > 0 &&
+          !configuredFiles.some((configured) => canonicalChapterId(configured) === file))
+      ) {
+        res.writeHead(400);
+        res.end('Bad Request');
+        return;
+      }
+      try {
+        const html = await renderChapterPreviewHtml(
+          state.currentInputPath,
+          file,
+          state.config,
+        );
+        if (revision !== reloadRevision) {
+          res.writeHead(409);
+          res.end('Superseded');
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(html);
+      } catch (error) {
+        res.writeHead(500);
+        res.end(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+
+    // 4. Embedded assets (vendor + desktop scripts) — served from the
     // process-wide extracted assets dir, with a long, immutable cache header
     // (EMBEDDED_CACHE_CONTROL). These never change within a process
     // lifetime, so we never copy them into per-project tempDirs (avoids
@@ -427,14 +636,14 @@ export async function createPreviewServer(
       return;
     }
 
-    // 3. Preview shell: serve the double-buffered full-reload shell at "/".
+    // 5. Preview shell: serve the incremental/double-buffered shell at "/".
     if (url.pathname === '/' && incrementalPreviewEnabled()) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(SHELL_HTML);
+      res.end(shellHtml(reloadRevision, instanceId));
       return;
     }
 
-    // 4. Static file fallback: book.html vs the project root.
+    // 6. Static file fallback: book.html vs the project root.
     // Treat bare "/" as book.html — the desktop app (packages/desktop) wraps
     // book.html in its own iframe-based toolbar.
     //
@@ -499,7 +708,7 @@ export async function createPreviewServer(
       res.end('Not Found');
       return;
     }
-    await serveStatic(absPath, res).catch((err: Error) => {
+    await serveStatic(absPath, res, 'no-store', {}, reloadRevision, instanceId).catch((err: Error) => {
       if (!res.headersSent) {
         res.writeHead(500);
         res.end(`Internal Server Error: ${err.message}`);
@@ -533,13 +742,23 @@ export async function createPreviewServer(
 
   let stopped = false;
 
-  // Single fan-out helper for reload notifications.
-  const broadcast = (payload: Record<string, unknown>): void => {
+  const broadcastUpdate = (
+    type: 'full-reload' | 'content-update',
+    file?: string,
+  ): void => {
     if (stopped) return;
-    const message = JSON.stringify(payload);
-    for (const ws of clients) {
-      if (ws.readyState === WebSocket.OPEN) ws.send(message);
+    reloadRevision++;
+    for (const [ws] of clients) {
+      sendRevision(ws, type, file);
+      waitForAcknowledgement(ws);
     }
+  };
+
+  const updateInFlight = (): boolean => {
+    for (const client of clients.values()) {
+      if (client.acknowledgedRevision < reloadRevision) return true;
+    }
+    return false;
   };
 
   return {
@@ -547,7 +766,10 @@ export async function createPreviewServer(
     async close() {
       if (stopped) return;
       stopped = true;
-      for (const ws of clients) ws.terminate();
+      for (const [ws, client] of clients) {
+        if (client.retryTimer !== null) clearTimeout(client.retryTimer);
+        ws.terminate();
+      }
       clients.clear();
       wss.close();
       await new Promise<void>((resolve) => {
@@ -559,7 +781,14 @@ export async function createPreviewServer(
       });
     },
     broadcastReload() {
-      broadcast({ type: 'full-reload' });
+      broadcastUpdate('full-reload');
+    },
+    broadcastContentUpdate(file: string) {
+      // Revisions are cumulative. If any visible client is still applying an
+      // older update, a second isolated splice could omit it; the latest
+      // authoritative book.html safely subsumes both changes.
+      if (updateInFlight()) broadcastUpdate('full-reload');
+      else broadcastUpdate('content-update', canonicalChapterId(file));
     },
   };
 }

@@ -258,6 +258,8 @@ describe('createPreviewServer', () => {
     const body = await res.text();
     expect(body).toContain('/book.html?gutterpressshell=1');
     expect(body).toContain('preview-shell.js');
+    expect(body).toContain('window.__GUTTERPRESS_INSTANCE=');
+    expect(body).toContain('window.__GUTTERPRESS_REVISION=0');
     // The shell is a loader, not the book itself.
     expect(body).not.toContain('<h1>Hi</h1>');
   });
@@ -282,6 +284,9 @@ describe('createPreviewServer', () => {
     expect(body).toContain('<h1>Hi</h1>');
     expect(body).toContain('__gutterpress-hmr');
     expect(body).toContain('full-reload');
+    expect(body).toContain('content-update');
+    expect(body).toContain('reload-state');
+    expect(body).toContain('reload-applied');
     expect(body).toContain("closest('[data-chapter-src]')");
     expect(body).toContain('chapterId === a.chapter');
   });
@@ -474,39 +479,93 @@ describe('createPreviewServer', () => {
     expect(res.status).toBe(404);
   });
 
-  test('broadcastReload publishes full-reload over WebSocket', async () => {
+  test('reload revisions are acknowledged and recover after a disconnected broadcast', async () => {
     const state = makeState(tempDir);
     server = await createPreviewServer(state, port);
 
     const ws = new WebSocket(`ws://localhost:${port}/__gutterpress-hmr`);
-
-    // Wait for connection.
+    const initialState = new Promise<string>((resolve) => {
+      ws.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
+    });
     await new Promise<void>((resolve, reject) => {
       ws.onopen = () => resolve();
       ws.onerror = (e) => reject(e);
     });
+    const initial = JSON.parse(await initialState);
+    expect(initial.type).toBe('reload-state');
+    expect(typeof initial.instance).toBe('string');
+    expect(initial.instance.length).toBeGreaterThan(0);
+    expect(initial.revision).toBe(0);
+    ws.send(JSON.stringify({ type: 'reload-applied', instance: initial.instance, revision: 0 }));
 
-    const messagePromise = new Promise<string>((resolve) => {
+    const reloadMessage = new Promise<string>((resolve) => {
       ws.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
     });
-
-    // Bun.serve.publish needs the WS to be subscribed first; the `open` handler
-    // subscribes synchronously, but give the loop a tick to be safe.
-    await new Promise((r) => setTimeout(r, 50));
-
     server.broadcastReload();
-
     const data = await Promise.race([
-      messagePromise,
+      reloadMessage,
       new Promise<string>((_, reject) =>
         setTimeout(() => reject(new Error('timeout waiting for HMR message')), 2000)
       ),
     ]);
+    expect(JSON.parse(data)).toEqual({
+      type: 'full-reload',
+      instance: initial.instance,
+      revision: 1,
+    });
 
-    const parsed = JSON.parse(data);
-    expect(parsed.type).toBe('full-reload');
+    ws.send(JSON.stringify({ type: 'reload-applied', instance: initial.instance, revision: 1 }));
+    await new Promise((resolve) => setTimeout(resolve, 25));
 
-    ws.close();
+    const chapterMessage = new Promise<string>((resolve) => {
+      ws.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
+    });
+    server.broadcastContentUpdate('chapters/one.md');
+    expect(JSON.parse(await chapterMessage)).toEqual({
+      type: 'content-update',
+      instance: initial.instance,
+      revision: 2,
+      file: 'chapters/one.md',
+    });
+
+    const cumulativeMessage = new Promise<string>((resolve) => {
+      ws.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
+    });
+    server.broadcastContentUpdate('chapters/two.md');
+    expect(JSON.parse(await cumulativeMessage)).toEqual({
+      type: 'full-reload',
+      instance: initial.instance,
+      revision: 3,
+    });
+    ws.send(JSON.stringify({ type: 'reload-applied', instance: initial.instance, revision: 3 }));
+
+    await new Promise<void>((resolve) => {
+      ws.onclose = () => resolve();
+      ws.close();
+    });
+
+    // No client receives this edge. A new connection still learns the current
+    // revision and can update, which is the stale-view recovery contract.
+    server.broadcastContentUpdate('chapters/three.md');
+    const reconnected = new WebSocket(`ws://localhost:${port}/__gutterpress-hmr`);
+    const recoveredState = new Promise<string>((resolve) => {
+      reconnected.onmessage = (e) => resolve(typeof e.data === 'string' ? e.data : '');
+    });
+    await new Promise<void>((resolve, reject) => {
+      reconnected.onopen = () => resolve();
+      reconnected.onerror = (e) => reject(e);
+    });
+    expect(JSON.parse(await recoveredState)).toEqual({
+      type: 'reload-state',
+      instance: initial.instance,
+      revision: 4,
+    });
+    reconnected.send(JSON.stringify({
+      type: 'reload-applied',
+      instance: initial.instance,
+      revision: 4,
+    }));
+    reconnected.close();
   });
 
   test('serves files from nested subdirectories of the project root', async () => {
@@ -522,7 +581,7 @@ describe('createPreviewServer', () => {
   });
 });
 
-describe('removed /__chapter route', () => {
+describe('/__chapter route', () => {
   let workDir: string;
   let server: PreviewServer | null;
   let port: number;
@@ -541,19 +600,47 @@ describe('removed /__chapter route', () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  test('does not expose standalone chapter rendering', async () => {
+  test('renders one source file with chapter metadata and preview scripts', async () => {
     const projectDir = join(workDir, 'project');
     await mkdir(projectDir, { recursive: true });
     await writeFile(join(projectDir, 'chapter1.md'), '# Hello Chapter');
+    await writeFile(join(projectDir, 'chapter2.md'), '# Other Chapter');
 
     const state = makeState(projectDir);
     server = await createPreviewServer(state, port);
 
     const res = await fetch(
       `http://localhost:${port}/__chapter?file=${encodeURIComponent('chapter1.md')}`
+        + '&revision=0'
     );
-    expect(res.status).toBe(404);
-    expect(await res.text()).not.toContain('Hello Chapter');
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('Hello Chapter');
+    expect(body).toContain('data-chapter-src="chapter1.md"');
+    expect(body).toContain('/vendor/paged.polyfill.js');
+    expect(body).not.toContain('Other Chapter');
+  });
+
+  test('rejects a source outside the configured file list and a stale revision', async () => {
+    const projectDir = join(workDir, 'project');
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(join(projectDir, 'chapter1.md'), '# Configured');
+    await writeFile(join(projectDir, 'private.md'), '# Not Configured');
+
+    const state = makeState(projectDir);
+    state.config = resolveConfig({}, { source: { files: ['chapter1.md'] } });
+    server = await createPreviewServer(state, port);
+
+    const unconfigured = await fetch(
+      `http://localhost:${port}/__chapter?file=private.md&revision=0`,
+    );
+    expect(unconfigured.status).toBe(400);
+    expect(await unconfigured.text()).not.toContain('Not Configured');
+
+    const stale = await fetch(
+      `http://localhost:${port}/__chapter?file=chapter1.md&revision=1`,
+    );
+    expect(stale.status).toBe(400);
   });
 
   test('rejects a path-traversal file param that escapes the project root', async () => {
@@ -570,7 +657,6 @@ describe('removed /__chapter route', () => {
     const res = await fetch(
       `http://localhost:${port}/__chapter?file=${encodeURIComponent('../outside/secret.md')}`
     );
-    // The retired route must never become a path traversal surface again.
     expect(res.status).not.toBe(200);
     expect([400, 404]).toContain(res.status);
     const body = await res.text();
@@ -578,8 +664,7 @@ describe('removed /__chapter route', () => {
   });
 
   test('rejects a backslash-based path-traversal file param', async () => {
-    // Keep the Windows-spelled traversal regression covered even though the
-    // endpoint no longer exists.
+    // The render sink canonicalizes backslashes before reading the file.
     const projectDir = join(workDir, 'project');
     const outsideDir = join(workDir, 'outside');
     await mkdir(projectDir, { recursive: true });

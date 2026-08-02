@@ -10,6 +10,8 @@
   var debugMode = false;
   var currentViewMode = 'two-column';
   var ignoreScrollUntil = 0;
+  var lastSourceLine = -1;
+  var lastSourceChapter = null;
 
   function refreshPages() {
     pages = Array.from(document.querySelectorAll('.pagedjs_page'));
@@ -51,6 +53,7 @@
     currentPage = page;
     ignoreScrollUntil = Date.now() + 300;
     pages[page - 1].scrollIntoView({ behavior: 'instant', block: 'start', inline: 'nearest' });
+    recordVisibleSource();
   }
 
   function pageStep(mode) {
@@ -129,11 +132,13 @@
     var top = el.getBoundingClientRect().top;
     if (top < ref) {
       // Find the next annotated sibling-in-flow (document order, higher line —
-      // a higher line also guarantees we haven't crossed into the next chapter,
-      // where data-source-line restarts).
+      // explicitly constrained to this chapter because source lines restart per
+      // file and a following chapter may begin at any line after front matter).
       var blocks = sourcedBlocks();
       var idx = blocks.indexOf(el);
+      var chapter = chapterOf(el);
       for (var i = idx + 1; i < blocks.length; i++) {
+        if (chapterOf(blocks[i]) !== chapter) break;
         var nl = lineOf(blocks[i]);
         if (nl == null) continue;
         if (nl <= line) break;
@@ -146,6 +151,12 @@
       }
     }
     return { el: el, line: line };
+  }
+
+  function recordVisibleSource() {
+    var pos = visibleSourcePosition();
+    lastSourceLine = pos && pos.line != null ? pos.line : -1;
+    lastSourceChapter = pos ? chapterOf(pos.el) : null;
   }
 
   function preserveViewport(change) {
@@ -167,6 +178,7 @@
       window.scrollBy({ top: delta, behavior: 'instant' });
     }
     currentPage = detectVisiblePage();
+    recordVisibleSource();
   }
 
   // Resolve a {line, chapter?} target to its enclosing annotated block PLUS the
@@ -261,13 +273,23 @@
     refresh: function () {
       refreshPages();
       currentPage = detectVisiblePage();
+      recordVisibleSource();
       return api.notifyPageChange();
     },
 
     // ── ADR 0005 generic primitives ─────────────────────────────────────────
     // Bumped whenever a command/event is added so a hot-updated SPA can
     // feature-detect against an older bundled lib.
-    getProtocolVersion: function () { return 2; },
+    getProtocolVersion: function () { return 3; },
+
+    // Publish any debounced reader movement before a host atomically replaces
+    // this frame. `silent` lets the shell relay the returned event itself so a
+    // queued postMessage from the outgoing frame cannot arrive after the swap.
+    flushScroll: function (silent) {
+      if (scrollTimer) clearTimeout(scrollTimer);
+      scrollTimer = null;
+      return publishScrollPosition(true, silent === true);
+    },
 
     // Heading tree with page + source line — powers chapter jump (UX-013), TOC,
     // minimap, scrollspy. Page math needs same-origin paged.js access, so it
@@ -337,6 +359,7 @@
       }
       var page = pageIndexOf(el);
       if (page) currentPage = page;
+      if (!opts.smooth) recordVisibleSource();
       return { page: page || currentPage, sourceLine: lineOf(el) };
     },
 
@@ -393,6 +416,7 @@
       if (spec.scroll && els[0]) {
         ignoreScrollUntil = Date.now() + 350;
         els[0].scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' });
+        recordVisibleSource();
       }
       if (spec.transient && els.length) {
         setTimeout(function () {
@@ -482,28 +506,38 @@
 
   // Scroll tracking
   var scrollTimer = null;
-  var lastSourceLine = -1;
-  window.addEventListener('scroll', function () {
+  function publishScrollPosition(force, silent) {
+    scrollTimer = null;
+    var remainingGuard = ignoreScrollUntil - Date.now();
+    if (!force && remainingGuard > 0) {
+      scrollTimer = setTimeout(publishScrollPosition, remainingGuard);
+      return null;
+    }
     if (pages.length === 0) refreshPages();
-    if (pages.length === 0) return;
+    if (pages.length === 0) return null;
+    var page = detectVisiblePage();
+    if (page !== currentPage) {
+      currentPage = page;
+      if (!silent) api.notifyPageChange();
+    }
+    // Emit finer-grained source position for editor sync (ADR 0005).
+    var pos = visibleSourcePosition();
+    var sl = pos ? pos.line : null;
+    var chapter = pos ? chapterOf(pos.el) : null;
+    if (sl != null && (sl !== lastSourceLine || chapter !== lastSourceChapter)) {
+      lastSourceLine = sl;
+      lastSourceChapter = chapter;
+      var detail = { sourceLine: sl, chapter: chapter, page: pageIndexOf(pos.el) };
+      if (!silent) {
+        window.dispatchEvent(new CustomEvent('sourceLineChanged', { detail: detail }));
+      }
+      return detail;
+    }
+    return null;
+  }
+  window.addEventListener('scroll', function () {
     if (scrollTimer) clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(function () {
-      if (Date.now() < ignoreScrollUntil) return;
-      var page = detectVisiblePage();
-      if (page !== currentPage) {
-        currentPage = page;
-        api.notifyPageChange();
-      }
-      // Emit finer-grained source position for editor sync (ADR 0005).
-      var pos = visibleSourcePosition();
-      var sl = pos ? pos.line : null;
-      if (sl != null && sl !== lastSourceLine) {
-        lastSourceLine = sl;
-        window.dispatchEvent(new CustomEvent('sourceLineChanged', {
-          detail: { sourceLine: sl, chapter: chapterOf(pos.el), page: pageIndexOf(pos.el) }
-        }));
-      }
-    }, 150);
+    scrollTimer = setTimeout(publishScrollPosition, 150);
   });
 
   // Paged.js calls this when rendering is complete
@@ -514,7 +548,8 @@
     pageObserver.disconnect();
     currentPage = 1;
     ignoreScrollUntil = Date.now() + 300;
-    window.scrollTo(0, 0);
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    recordVisibleSource();
     console.log('Paged.js rendered ' + pages.length + ' pages');
     api.notifyRenderingComplete();
     setTimeout(api.notifyPageChange, 0);
