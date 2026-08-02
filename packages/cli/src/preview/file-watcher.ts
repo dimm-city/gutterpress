@@ -120,28 +120,26 @@ async function renderPreviewBook(
  *          serving it from a stable disk path lets the OS file-cache
  *          and Defender hash-cache stay warm across sessions.
  *
- * PAGINATION FIDELITY: this injects NO page-break rule. It used to add
- * `<style>.gutterpress-chapter{break-before:page}</style>` whenever the incremental
- * preview was on (i.e. by default), which started EVERY source file on a new
- * page in the live view. `gutterpress build` emits no such rule — assembleBookHtml
- * in lib/markdown/assemble.ts concatenates source files flat into <body> and
- * breaks only where project CSS or a markdown-it-paged marker says to — so any
- * project that splits one chapter across several source files previewed with
- * different page boundaries than the PDF it built. Preview and build now take
- * their breaks from exactly the same rules.
- *
- * Chapter identity is attached to existing source-mapped blocks. No wrapper or
- * preview-only CSS is emitted, so selectors see exactly the same document tree
- * as the build.
+ * With `pageIsolateChapters`, each source wrapper starts on a fresh page. This
+ * is the v0.8.3 incremental-preview invariant: a standalone source render owns
+ * the same page boundary as that source in the live preview and can be spliced
+ * without paginating the full document.
  */
-export function injectPreviewScripts(html: string): string {
+export function injectPreviewScripts(html: string, pageIsolateChapters: boolean): string {
   const iface =
     '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
     + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  return html.replace(
+  let output = html.replace(
     pagedjsPolyfillTagRegex(),
     iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
   );
+  if (pageIsolateChapters && /<\/head>/i.test(output)) {
+    output = output.replace(
+      /<\/head>/i,
+      '<style>.gutterpress-chapter{break-before:page}</style>\n</head>'
+    );
+  }
+  return output;
 }
 
 /**
@@ -173,11 +171,10 @@ export async function generateAndWriteHtml(
   // leaves the previous (still-served) book.html's assets resolvable instead
   // of half-clearing them.
   const nextAssets = new Map<string, string>();
+  const incremental = incrementalPreviewEnabled();
   const html = await renderPreviewBook(inputPath, config, {
     files: config.source?.files ?? null,
-    // Source identity is metadata on existing blocks and is required by both
-    // the shell and direct-book HMR paths. It never changes document structure.
-    wrapChapters: true,
+    wrapChapters: incremental,
     onCssAssets: (copies) => {
       for (const copy of copies) nextAssets.set(copy.to, copy.from);
     },
@@ -186,7 +183,7 @@ export async function generateAndWriteHtml(
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html),
+    injectPreviewScripts(html, incremental),
     "utf-8"
   );
 }
@@ -205,7 +202,7 @@ export async function renderChapterPreviewHtml(
     files: [canonicalChapterId(file)],
     wrapChapters: true,
   });
-  return injectPreviewScripts(html);
+  return injectPreviewScripts(html, true);
 }
 
 /** One changed project file, named for the preview broadcast decision. */

@@ -93,7 +93,7 @@ test("assembleBookHtml wrapChapters parity with renderChapters", async () => {
     });
     expect(pureHtml).toBe(nodeHtml);
     expect(pureHtml).toContain('data-chapter-src="01-intro.md"');
-    expect(pureHtml).not.toContain('class="gutterpress-chapter"');
+    expect(pureHtml).toContain('class="gutterpress-chapter"');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -116,7 +116,7 @@ test("chapter metadata preserves plugins that wrap md.render", async () => {
   });
 
   expect(html).toContain("<section data-plugin-render>");
-  expect(html).toContain('data-chapter-src="chapter.md"');
+  expect(html).toContain('<div class="gutterpress-chapter" data-chapter-src="chapter.md">');
 });
 
 test("assembleBookHtml throws on empty file list", async () => {

@@ -5,7 +5,7 @@
  * boundary: project-root-relative, forward slashes, no `./` prefix, no
  * duplicate slashes. This single form is used by:
  *
- *   - preview source blocks' `data-chapter-src` tagging
+ *   - preview source wrappers' `data-chapter-src` tagging
  *     (lib/markdown/assemble.ts assembleBookHtml — index.ts's renderChapters
  *     is now just the thin node:fs wrapper around it)
  *   - preview source inspection and chapter-scoped scroll restoration

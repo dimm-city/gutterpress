@@ -58,12 +58,10 @@ export interface AssembleBookHtmlOptions {
   plugins?: LoadedPlugin[];
   pluginCss?: string;
   /**
-   * Add `data-chapter-src="<file>"` to the same source-mapped block elements
-   * that receive `data-source-line`. The historical option name is retained as
-   * public API, but no wrapper is emitted: even `display: contents` changes CSS
-   * selector relationships such as `body > *`, `:first-child`, and cross-file
-   * siblings, which can change pagination. Off by default; build output is
-   * unaffected.
+   * Wrap each source file in `<div class="gutterpress-chapter"
+   * data-chapter-src="<file>">`. Used only by incremental preview so one
+   * source can be paginated and replaced independently. Off by default; build
+   * output is unaffected.
    */
   wrapChapters?: boolean;
   /**
@@ -108,31 +106,13 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   }
 
   const md = createMarkdownRenderer(opts.plugins);
-  let sourceChapter: string | null = null;
-  if (opts.wrapChapters) {
-    const renderToken = md.renderer.renderToken.bind(md.renderer);
-    md.renderer.renderToken = (tokens, idx, options) => {
-      const token = tokens[idx]!;
-      // Keep this predicate aligned with markdown-it-source-map: those are
-      // exactly the elements that receive data-source-line during rendering.
-      if (
-        sourceChapter !== null &&
-        token.level === 0 &&
-        token.map !== null &&
-        token.type.endsWith("_open")
-      ) {
-        token.attrSet("data-chapter-src", sourceChapter);
-      }
-      return renderToken(tokens, idx, options);
-    };
-  }
 
-  // Source files concatenate directly into the body. @chapter is a CORE
-  // markdown-it-paged marker (parsed + wrapped + labeled by
+  // Build source files concatenate directly into the body. Incremental preview
+  // adds one file-level wrapper so each source can be page-isolated. @chapter is
+  // a CORE markdown-it-paged marker (parsed + wrapped + labeled by
   // `markdown-it-paged.js`'s `openChapter`, not any project-specific plugin —
-  // see CLAUDE.md's "frozen chapter-opener" note) that owns chapter wrappers
-  // and IDs; gutterpress core itself does not impose a separate file-level
-  // wrapper on top of that.
+  // see CLAUDE.md's "frozen chapter-opener" note) that owns author-facing
+  // chapter wrappers and IDs; the preview wrapper is internal-only.
   let bodyContent = "";
   const imageRefs = new Set<string>();
   for (const file of files) {
@@ -155,20 +135,19 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     // author-mistake diagnostics (§6: the plugin still owns computing them)
     // observable to a caller.
     const env: { layoutWarnings?: LayoutWarning[] } & ImageRefEnv = {};
-    sourceChapter = opts.wrapChapters ? chapterId : null;
-    let rendered: string;
-    try {
-      // Always use the public render path: standard markdown-it plugins may
-      // legitimately wrap md.render(), and preview/build must both observe it.
-      rendered = md.render(content, env);
-    } finally {
-      sourceChapter = null;
-    }
+    // Always use the public render path: standard markdown-it plugins may
+    // legitimately wrap md.render(), and preview/build must both observe it.
+    const rendered = md.render(content, env);
     if (env.layoutWarnings && env.layoutWarnings.length > 0) {
       opts.onChapterWarnings?.(chapterId, env.layoutWarnings);
     }
     for (const ref of env.imageRefs ?? []) imageRefs.add(ref);
-    bodyContent += rendered + "\n";
+    if (opts.wrapChapters) {
+      const safe = chapterId.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+      bodyContent += `<div class="gutterpress-chapter" data-chapter-src="${safe}">\n${rendered}\n</div>\n`;
+    } else {
+      bodyContent += rendered + "\n";
+    }
   }
 
   // Raw HTML <img> (author-written or plugin-emitted) never passes through the

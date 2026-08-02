@@ -35,6 +35,11 @@ const UPDATED_CHAPTER = `
         <p data-source-line="20">Updated chapter two anchor</p>
       </div>
     </div>
+    <div id="page-3" data-page-number="3" class="pagedjs_page pagedjs_right_page">
+      <div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+        <p data-source-line="40">Updated chapter two ending</p>
+      </div>
+    </div>
   </div>`;
 
 function installBook(frame, markup = BOOK) {
@@ -79,8 +84,8 @@ function installBook(frame, markup = BOOK) {
       height: 900 * zoom,
     });
   });
-  blocks.forEach((block, index) => {
-    const page = index === 0 ? 0 : index === 1 ? 1 : 2;
+  blocks.forEach((block) => {
+    const page = pages.indexOf(block.closest(".pagedjs_page"));
     block.getBoundingClientRect = () => ({
       top: (page * 1000 + 20) * zoom - frameWindow.scrollY,
       bottom: (page * 1000 + 60) * zoom - frameWindow.scrollY,
@@ -394,6 +399,11 @@ async function main() {
     "the edited chapter's fresh pages are visible",
   );
   assert.equal(
+    afterSplice.contentDocument.body.textContent.includes("Updated chapter two ending"),
+    true,
+    "a page-count-changing update keeps every fresh page",
+  );
+  assert.equal(
     afterSplice.contentDocument.body.textContent.includes("Chapter two anchor"),
     false,
     "the edited chapter's stale pages are removed",
@@ -403,19 +413,21 @@ async function main() {
     true,
     "unmodified chapter pages remain in place",
   );
-  const reindexedPages = [...afterSplice.contentDocument.querySelectorAll(".pagedjs_page")];
+  const updatedPages = [...afterSplice.contentDocument.querySelectorAll(
+    '.pagedjs_page[data-chapter-src="chapter-2.md"]',
+  )];
   assert.deepEqual(
-    reindexedPages.map((page) => [page.id, page.getAttribute("data-page-number")]),
+    updatedPages.map((page) => [page.id, page.getAttribute("data-page-number")]),
     [["page-1", "1"], ["page-2", "2"], ["page-3", "3"]],
-    "spliced pages retain globally unique page identities",
+    "spliced pages retain the standalone pagination metadata",
   );
   assert.deepEqual(
-    reindexedPages.map((page) => [
+    updatedPages.map((page) => [
       page.classList.contains("pagedjs_left_page"),
       page.classList.contains("pagedjs_right_page"),
     ]),
     [[false, true], [true, false], [false, true]],
-    "spliced pages inherit global left/right parity",
+    "spliced pages retain the standalone left/right classes",
   );
   assert.equal(acknowledgedRevisions.at(-1), "instance-b:2");
   const spliceComplete = hostEvents.slice(beforeSpliceEvents).find(
@@ -423,7 +435,7 @@ async function main() {
   );
   assert.equal(spliceComplete?.detail?.hotReload, true);
   assert.equal(spliceComplete?.detail?.revision, 2);
-  assert.equal(spliceComplete?.detail?.totalPages, 3);
+  assert.equal(spliceComplete?.detail?.totalPages, 4);
 
   // A second source update arriving before the first chapter pagination
   // completes must reconcile through the latest authoritative full book. It

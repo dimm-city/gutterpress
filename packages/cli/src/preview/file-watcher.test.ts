@@ -196,6 +196,8 @@ describe('generateAndWriteHtml', () => {
     const content = await Bun.file(join(tempDir, 'book.html')).text();
     expect(content).toContain('Chapter 1');
     expect(content).toContain('Chapter 2');
+    expect(content).toContain('class="gutterpress-chapter"');
+    expect(content).toContain('<style>.gutterpress-chapter{break-before:page}</style>');
   }, 60000);
 
   test('renders one source file for an incremental chapter update', async () => {
@@ -209,12 +211,14 @@ describe('generateAndWriteHtml', () => {
     );
 
     expect(content).toContain('Chapter 2');
+    expect(content).toContain('class="gutterpress-chapter"');
     expect(content).toContain('data-chapter-src="chapter-02.md"');
     expect(content).not.toContain('Chapter 1');
+    expect(content).toContain('<style>.gutterpress-chapter{break-before:page}</style>');
     expect(content).toContain('/vendor/paged.polyfill.js');
   }, 60000);
 
-  test('keeps chapter source metadata when the legacy preview shell is disabled', async () => {
+  test('omits incremental wrappers when the incremental preview is disabled', async () => {
     await writeFile(join(testDir, 'chapter-01.md'), '# Chapter 1');
     await writeFile(join(testDir, 'chapter-02.md'), '# Chapter 2');
     const previous = process.env.GUTTERPRESS_PREVIEW_INCREMENTAL;
@@ -227,8 +231,9 @@ describe('generateAndWriteHtml', () => {
     }
 
     const content = await Bun.file(join(tempDir, 'book.html')).text();
-    expect(content).toContain('data-chapter-src="chapter-01.md"');
-    expect(content).toContain('data-chapter-src="chapter-02.md"');
+    expect(content).not.toContain('class="gutterpress-chapter"');
+    expect(content).not.toContain('data-chapter-src');
+    expect(content).not.toContain('.gutterpress-chapter{break-before:page}');
   }, 60000);
 
   // ARCH finding #4 — preview terminal surfacing. Before this fix, the
@@ -285,20 +290,17 @@ describe('injectPreviewScripts', () => {
   const html = `<!doctype html>\n<html><head><title>t</title>\n  ${pagedjsPolyfillTag()}\n</head><body></body></html>`;
 
   test('swaps the polyfill slot for the interface scripts + served polyfill', () => {
-    const out = injectPreviewScripts(html);
+    const out = injectPreviewScripts(html, false);
     expect(out).toContain('/preview/scripts/pagedjs-interface.js');
     expect(out).toContain('/preview/scripts/pagedjs-bridge.js');
     expect(out).toContain('/vendor/paged.polyfill.js');
     expect(out).not.toContain('data-pagedjs-polyfill');
   });
 
-  // PAGINATION FIDELITY: chapter metadata lives on existing blocks. The preview
-  // must inject neither a forced break nor a wrapper-related selector rule.
-  test('injects no preview-only chapter layout CSS', () => {
-    const out = injectPreviewScripts(html);
-    expect(out).not.toContain('break-before');
-    expect(out).not.toContain('.gutterpress-chapter');
-    expect(out).not.toContain('data-preview-chapter-wrappers');
+  test('page-isolates source wrappers only for incremental preview', () => {
+    const isolate = '<style>.gutterpress-chapter{break-before:page}</style>';
+    expect(injectPreviewScripts(html, true)).toContain(isolate);
+    expect(injectPreviewScripts(html, false)).not.toContain(isolate);
   });
 });
 

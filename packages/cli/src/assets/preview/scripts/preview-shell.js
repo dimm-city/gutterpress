@@ -109,14 +109,14 @@
     });
   }
 
-  // Paged.js preserves data-chapter-src on cloned flow fragments. Record every
-  // source file represented on each page so an edit can locate its live range.
+  // Paged.js preserves source wrappers on cloned flow fragments. Record every
+  // source represented on each page so an edit can locate its live range.
   function tagPages(frame) {
     var d = fdoc(frame); if (!d) return;
     var pages = d.querySelectorAll('.pagedjs_page');
     for (var i = 0; i < pages.length; i++) {
       if (pages[i].getAttribute('data-chapter-srcs')) continue;
-      var nodes = pages[i].querySelectorAll('[data-chapter-src]');
+      var nodes = pages[i].querySelectorAll('.gutterpress-chapter[data-chapter-src]');
       var chapters = [];
       for (var j = 0; j < nodes.length; j++) {
         var chapter = nodes[j].getAttribute('data-chapter-src');
@@ -184,7 +184,7 @@
   // Remove only top-level fragments for this source. Ignoring nested matches
   // avoids removing a parent and then attempting to remove its descendants.
   function removeChapterFragments(page, file) {
-    var nodes = page.querySelectorAll('[data-chapter-src]');
+    var nodes = page.querySelectorAll('.gutterpress-chapter[data-chapter-src]');
     for (var i = 0; i < nodes.length; i++) {
       if (nodes[i].getAttribute('data-chapter-src') !== file) continue;
       var ancestor = nodes[i].parentElement, nested = false;
@@ -193,26 +193,6 @@
         ancestor = ancestor.parentElement;
       }
       if (!nested && nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
-    }
-  }
-
-  // Imported standalone pages begin at page 1. Reindex the combined live DOM
-  // so IDs, page-number selectors, parity classes, and total-page counters stay
-  // globally coherent after a splice.
-  function reindexPages(d) {
-    var pages = d.querySelectorAll('.pagedjs_page');
-    var container = d.querySelector('.pagedjs_pages');
-    if (container) container.style.setProperty('--pagedjs-page-count', pages.length);
-    for (var i = 0; i < pages.length; i++) {
-      var number = i + 1;
-      pages[i].id = 'page-' + number;
-      pages[i].setAttribute('data-page-number', String(number));
-      if (i === 0) pages[i].classList.add('pagedjs_first_page');
-      else pages[i].classList.remove('pagedjs_first_page');
-      var wantedParity = i % 2 === 0 ? 'pagedjs_right_page' : 'pagedjs_left_page';
-      var otherParity = i % 2 === 0 ? 'pagedjs_left_page' : 'pagedjs_right_page';
-      pages[i].classList.remove(otherParity);
-      if (!pages[i].classList.contains(wantedParity)) pages[i].classList.add(wantedParity);
     }
   }
 
@@ -429,10 +409,6 @@
           : allNewPages.slice(firstContentPage, lastContentPage + 1);
         if (!found.owned.length) throw new Error('chapter is absent from the live page range');
         if (!newPages.length) throw new Error('chapter pagination produced no pages');
-        if (found.shared.length) throw new Error('chapter shares a page with another source');
-        if (newPages.length !== found.owned.length) {
-          throw new Error('chapter page count changed');
-        }
 
         var first = found.owned[0];
         var firstIsShared = found.shared.indexOf(first) !== -1;
@@ -469,7 +445,6 @@
           if (exclusive[i].parentNode) exclusive[i].parentNode.removeChild(exclusive[i]);
         }
 
-        reindexPages(ad);
         restore(active, anchor);
         var api = fwin(active) && fwin(active).previewAPI;
         if (api && typeof api.refresh === 'function') api.refresh();

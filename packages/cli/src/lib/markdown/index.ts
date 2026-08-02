@@ -54,7 +54,7 @@ export async function renderChapters(
     files?: string[] | null;
     plugins?: LoadedPlugin[];
     pluginCss?: string;
-    /** Add chapter identity to source-mapped blocks for preview inspection. */
+    /** Wrap each source file for incremental preview pagination. */
     wrapChapters?: boolean;
     /**
      * ARCH finding #4: per-chapter author-mistake warnings computed by
