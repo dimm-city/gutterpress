@@ -12,7 +12,6 @@
    * (`npm run lint` enforces this via `tools/check-app-tokens.mjs`).
    */
   import type { ContextMenuController, ContextMenuItem } from "$lib/routes/context-menu-controller.svelte";
-  import { onMount } from "svelte";
 
   let { controller }: { controller: ContextMenuController } = $props();
 
@@ -86,17 +85,40 @@
     controller.close();
   }
 
-  onMount(() => {
+  /**
+   * Svelte ACTION (not `onMount`), deliberately: `<ContextMenu>` itself is
+   * mounted once, unconditionally, for the app's whole lifetime — it's
+   * `+page.svelte`'s `{#if isDesktop()}` guard, not `controller.open`, that
+   * gates it. `onMount` therefore only ever fires once, at app boot, long
+   * before any real menu ever opens — its `requestAnimationFrame` capture
+   * of `document.activeElement` and its own `.focus()` call were running
+   * against an EMPTY, not-yet-open menu and then never running again for any
+   * actual open. That was the root cause of the keyboard-focus bug: it
+   * looked like ".focus() is a silent no-op against the cross-origin
+   * iframe" (manual `.focus()` calls in a live app prove that theory false —
+   * a bare `el.focus()` reliably steals focus from the iframe when it
+   * actually runs), but the real defect was that the intended per-open logic
+   * never ran a second time at all.
+   *
+   * `use:` actions are scoped to the DOM NODE they're attached to, not the
+   * component instance — Svelte calls the action function once per node
+   * creation. The `.context-menu` div this is attached to lives inside
+   * `{#if controller.open}`, so Svelte creates/destroys that exact node on
+   * every open/close cycle, which makes this action re-run on every open —
+   * exactly the semantics `onMount` was reaching for.
+   */
+  function menuLifecycle(node: HTMLDivElement): { destroy(): void } {
     previouslyFocused = document.activeElement as HTMLElement | null;
-    if (menuEl) {
-      const rect = menuEl.getBoundingClientRect();
-      controller.reportMenuSize(rect.width, rect.height);
-    }
+    if (!menuEl) menuEl = node;
+    const rect = node.getBoundingClientRect();
+    controller.reportMenuSize(rect.width, rect.height);
     requestAnimationFrame(focusFirstEnabled);
-    return () => {
-      previouslyFocused?.focus?.();
+    return {
+      destroy() {
+        previouslyFocused?.focus?.();
+      },
     };
-  });
+  }
 </script>
 
 <svelte:window onmousedown={onWindowMousedown} onblur={onWindowBlur} />
@@ -110,6 +132,7 @@
     tabindex="-1"
     style="left: {controller.x}px; top: {controller.y}px;"
     onkeydown={onKeydown}
+    use:menuLifecycle
   >
     {#each controller.items as item (item.id)}
       <button
