@@ -361,3 +361,38 @@ test("C2: recents for a repo-backed project key on the repo root, remembering th
   expect(controller).toContain('path: source?.type === "local-git-folder" ? source.repoRoot : openedDir');
   expect(controller).toContain("lastActiveBook: openedDir");
 });
+
+test("ContextMenu focus-on-open runs per menu-open, not once at app boot (keyboard-focus regression)", () => {
+  // Root cause (found via live-app instrumentation, not guesswork): <ContextMenu>
+  // itself is mounted ONCE, unconditionally, by +page.svelte's `{#if isDesktop()}`
+  // guard — NOT by `controller.open`. A plain `onMount(...)` at the component's
+  // top level therefore only ever fires once, at app boot, long before any real
+  // menu ever opens: `document.activeElement` was empty/irrelevant, the item
+  // buttons didn't exist yet (menu wasn't open), and the callback never ran
+  // again for any actual right-click / Shift+F10. That's why focus never landed
+  // in the menu — NOT because `.focus()` silently no-ops against the cross-
+  // origin preview iframe (manually driving `.focus()` in the live app proves
+  // that theory false; a bare `el.focus()` reliably steals focus from the
+  // iframe when it actually runs).
+  //
+  // The fix moves the focus-management code into a Svelte ACTION (`use:`)
+  // attached to the `.context-menu` div that lives inside `{#if controller.open}`
+  // — Svelte creates/destroys that exact DOM node on every open/close cycle, so
+  // the action re-runs on every real open. This test pins that structure: it
+  // fails loudly if someone "simplifies" this back to a top-level `onMount`,
+  // which would silently reintroduce the bug (the smoke test that originally
+  // caught it — tests/integration/inline-editing.pw.mjs step 4 — is not CI-gated).
+  const src = read("src/lib/components/ContextMenu.svelte");
+  expect(src).not.toMatch(/\bimport\s*\{[^}]*\bonMount\b[^}]*\}\s*from\s*["']svelte["']/);
+  expect(src).not.toMatch(/\bonMount\s*\(/);
+  // The action must be declared and attached to the menu div specifically —
+  // not e.g. only defined-but-unused, and not attached to some other element
+  // outside the `{#if controller.open}` block (which would reintroduce the
+  // same once-at-boot bug via a different route).
+  expect(src).toContain("function menuLifecycle(node: HTMLDivElement)");
+  const openBlockIdx = src.indexOf("{#if controller.open}");
+  expect(openBlockIdx).toBeGreaterThan(-1);
+  const menuDiv = src.slice(openBlockIdx, src.indexOf("</div>", openBlockIdx));
+  expect(menuDiv).toContain("use:menuLifecycle");
+  expect(menuDiv).toContain('class="context-menu"');
+});
