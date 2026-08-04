@@ -428,6 +428,34 @@
     view?.focus();
   }
 
+  /**
+   * The file path this view's current document belongs to, or null when no
+   * file is open. Additive export for the commit engine (inline-editing plan
+   * §4.7 Step 4) — the engine asks the EDITOR for its applied path rather
+   * than inferring it from `buffer.filePath` alone, since a mounted editor
+   * can be showing a different file than whatever the buffer most recently
+   * loaded (e.g. mid-switch). `appliedPath` is real, private, internal state,
+   * updated synchronously inside `switchFile()`/`onMount` above.
+   */
+  export function getAppliedPath(): string | null {
+    return appliedPath;
+  }
+
+  /**
+   * Apply a `[from, to)` character-range edit as a single undoable
+   * transaction (inline-editing plan §4.7 Step 4 / commit-engine.ts). This is
+   * the ONLY way the commit engine mutates a file that has a live CodeMirror
+   * view mounted on it — the edit lands through `view.dispatch`, so it shares
+   * this view's undo history exactly like a toolbar action
+   * (`runToolbarAction` above) or a typed keystroke. A no-op when no view is
+   * mounted (the caller is expected to have already checked
+   * `getAppliedPath()` first).
+   */
+  export function applyRangeEdit(from: number, to: number, insert: string): void {
+    if (!view) return;
+    view.dispatch({ changes: { from, to, insert } });
+  }
+
   /** Current selection text (empty string when there is no selection) (#29). */
   export function getSelectionText(): string {
     if (!view) return "";
