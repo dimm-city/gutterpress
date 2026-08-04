@@ -63,6 +63,16 @@ interface PreviewEventEditorSync {
   revealEditorLine: (line: number) => void;
   /** Open a different chapter's file and reveal the line once it loads. */
   followChapterInEditor: (chapter: string, line: number) => void;
+  /**
+   * Open (mount) the editor pane when it is closed/unmounted — lazy-loads the
+   * editor module and moves focus into it. Used by `elementActivated`: a
+   * click on a preview block is an explicit "go here" intent that must never
+   * silently no-op just because the pane isn't open. `ensureFile` mirrors
+   * `+page.svelte`'s `openEditorPane` option — pass `false` when the caller is
+   * about to target a specific chapter itself (via `followChapterInEditor`)
+   * so the pane's own default-file pick doesn't race it.
+   */
+  openEditorPane: (opts: { focus: boolean; ensureFile: boolean }) => void;
 }
 
 export interface PreviewEventDeps {
@@ -140,6 +150,9 @@ export class PreviewEventController {
         break;
       case "sourceLineChanged":
         this.onSourceLineChanged(e.detail);
+        break;
+      case "elementActivated":
+        this.onElementActivated(e.detail);
         break;
       case "pageChanged":
         this.onPageChanged(e.detail);
@@ -226,6 +239,55 @@ export class PreviewEventController {
           es.followChapterInEditor(chap, line);
         }
       }
+    }
+  }
+
+  /**
+   * `elementActivated`: the author clicked a `[data-source-line]` block in the
+   * preview — an explicit "go to source" intent (PR 0 of the inline-editing
+   * plan; `docs/inline-editing-plan.md`). Mirrors `onSourceLineChanged`'s
+   * chapter-match / cross-chapter / dirty-buffer logic, plus one addition: a
+   * closed/unmounted editor pane is opened rather than silently dropping the
+   * click. `data-source-line` is level-0-only today, so this jumps to a LINE;
+   * it cannot select the clicked block (that precision arrives with the
+   * `data-source-range` primitive in a later PR — not retrofitted here).
+   *
+   * Unlike `onSourceLineChanged`, this is not gated behind the echo-suppression
+   * window (`suppressPreviewSyncUntil`) — that guard exists to swallow scroll
+   * events that are themselves an echo of an editor-driven `scrollTo`, but a
+   * click is always genuine author intent, never an echo.
+   */
+  private onElementActivated(detail: PreviewEvent["detail"]): void {
+    const d = this.deps;
+    const es = d.editorSync;
+    const line = detail.sourceLine;
+    const chap = detail.chapter;
+    if (typeof line !== "number") return;
+
+    const wasOpen = es.editorPaneOpen();
+    if (!wasOpen) {
+      // Explicit "go here" click: open the pane instead of no-op'ing.
+      // ensureFile:false — when a chapter is known, followChapterInEditor
+      // below targets it directly, so the pane's own default first-file pick
+      // would only race it and flash the wrong file.
+      es.openEditorPane({ focus: true, ensureFile: !chap });
+    }
+
+    if (wasOpen && chap === es.editorChapter()) {
+      // Already open on this chapter: reveal directly (mirrors sourceLineChanged).
+      es.revealEditorLine(line);
+      return;
+    }
+    if (chap && es.currentDir() && (!wasOpen || !es.bufferDirty())) {
+      // Either the pane just opened — even a same-chapter reveal must wait for
+      // the editor ref to actually mount, which followChapterInEditor's poll
+      // loop already does — or this is a genuine cross-chapter jump with a
+      // clean buffer. A dirty buffer skips the cross-chapter switch exactly
+      // like sourceLineChanged, but only when the pane was ALREADY open and
+      // visibly mid-edit; a closed pane has nothing visible to yank away, and
+      // followChapterInEditor's own file-select flushes any dirty buffer
+      // safely before switching.
+      es.followChapterInEditor(chap, line);
     }
   }
 
