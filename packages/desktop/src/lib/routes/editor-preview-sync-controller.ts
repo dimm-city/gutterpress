@@ -17,6 +17,7 @@
  * `suppressPreviewSyncUntil` and calls `followChapterInEditor` back through this
  * controller.
  */
+import { chapterPath } from "$lib/editor/chapter-path";
 
 /** Minimal preview-client surface the sync machine drives. */
 export interface EditorPreviewSyncClient {
@@ -90,14 +91,13 @@ export class EditorPreviewSyncController {
   followChapterInEditor(chapter: string, line: number): void {
     const currentDir = this.deps.currentDir();
     if (!currentDir) return;
-    const dir = currentDir.replace(/[\\/]+$/, "");
     this.crossChapterReveal = { chapter, line, tries: 0, nudges: 0 };
-    // Join with the directory's own separator: on Windows currentDir uses
-    // backslashes, and a mixed-separator path still LOADS (Win32 accepts it)
-    // but never string-equals the host-native paths from listDir — so the
-    // FileTree active highlight silently desyncs after a cross-chapter jump.
-    const sep = dir.includes("\\") ? "\\" : "/";
-    this.deps.selectEditorFile(`${dir}${sep}${chapter.replaceAll("/", sep)}`);
+    // Join with the directory's own separator (shared `chapterPath` helper,
+    // plan §4.8): on Windows currentDir uses backslashes, and a mixed-
+    // separator path still LOADS (Win32 accepts it) but never string-equals
+    // the host-native paths from listDir — so the FileTree active highlight
+    // silently desyncs after a cross-chapter jump.
+    this.deps.selectEditorFile(chapterPath(currentDir, chapter));
     this.pumpCrossChapterReveal();
   }
 

@@ -132,6 +132,13 @@ export interface AppSettings {
      * as `viewMode` relates to `ProjectState.viewMode` below.
      */
     splitRatio: number;
+    /**
+     * Right-click (or Shift+F10) context menu over the paginated preview
+     * (inline-editing plan §4.5). Default true — an explicit-invocation
+     * affordance, not seamless WYSIWYG, so the UX contract's opt-in rule for
+     * the latter does not apply here.
+     */
+    contextMenu: boolean;
   };
   updates: {
     /** Release stream for desktop update checks (see UpdateChannel above). */
@@ -199,6 +206,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // Matches DEFAULT_SPLIT_RATIO in src/lib/editor/preview-layout.ts so the
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,
+    contextMenu: true,
   },
   updates: {
     channel: "stable",

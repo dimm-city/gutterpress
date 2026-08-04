@@ -33,6 +33,9 @@
   import { ZoomViewController } from "$lib/routes/zoom-view-controller.svelte";
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
+  import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
+  import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import { CommitEngine } from "$lib/editor/commit-engine";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
   import { ProjectLifecycleController } from "$lib/routes/project-lifecycle-controller.svelte";
@@ -229,6 +232,10 @@
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
+  // Ref to the mounted PreviewFrame component so callers can reach its own
+  // <iframe> element (getBoundingClientRect for context-menu positioning,
+  // clientWidth for fit-width zoom) instead of `document.querySelector("iframe")`.
+  let previewFrameRef = $state<{ getIframe: () => HTMLIFrameElement | undefined } | null>(null);
   // Page-navigation FSM (Phase 5): owns currentPage/totalPages/
   // restoringSavedState + the host-driven navigation intents (including the
   // toolbar page-select's selectPage).
@@ -264,7 +271,7 @@
     persistSplitRatio: (value) => settings.set({ preview: { splitRatio: value } }),
     saveDesktopPrefs: (patch) => saveDesktopPrefs(patch),
     measureContainerWidth: () => {
-      const iframe = document.querySelector<HTMLIFrameElement>("iframe");
+      const iframe = previewFrameRef?.getIframe();
       return iframe?.clientWidth ?? window.innerWidth;
     },
     measureWorkspaceRect: () => {
@@ -1027,6 +1034,12 @@
      * the buffer's open file changes; MarkdownEditor has no reactive effect
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
+    /** The file path this view's current document belongs to, or null
+     * (inline-editing plan §4.7 Step 4 — commit-engine.ts). */
+    getAppliedPath: () => string | null;
+    /** Apply a `[from, to)` character-range edit as one undoable transaction
+     * (inline-editing plan §4.7 Step 4 — commit-engine.ts). */
+    applyRangeEdit: (from: number, to: number, insert: string) => void;
   } | null>(null);
 
   // Snippet picker (#29) — opened via the toolbar button or Ctrl/Cmd+Shift+S.
@@ -1035,6 +1048,7 @@
 
   function openSnippetPicker() {
     if (!isDesktop() || !lifecycle.currentDir) return;
+    contextMenu.close();
     snippetPickerRef?.show();
   }
 
@@ -1056,6 +1070,7 @@
       toast?.info?.("Project configuration is available in the desktop app for now.");
       return;
     }
+    contextMenu.close();
     projectSettingsOpen = true;
   }
 
@@ -1301,12 +1316,20 @@
   // change won't clobber a per-project ratio applied at project-open, and the
   // controller's own persist writes this same value back (idempotent).
   const splitRatioSink = settingsChangeGuard<number>((r) => zoomView.restoreSplitRatio(r));
+  // Context menu (inline-editing plan §4.5): imperative teardown on toggle —
+  // if the author flips the setting off while the menu happens to be open,
+  // close it immediately rather than leaving a now-disabled affordance on
+  // screen until the next dismissal event.
+  const contextMenuSettingSink = settingsChangeGuard<boolean>((enabled) => {
+    if (!enabled) contextMenu.close();
+  });
   onMount(() =>
     onSettingsChange((s) => {
       autoSaveDelaySink(s.editor.autoSaveDelay);
       recoverySink(s.editor.crashRecovery);
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
+      contextMenuSettingSink(s.preview.contextMenu);
     }),
   );
 
@@ -1526,6 +1549,29 @@
     loadEditorModule();
     if (ensureFile) void ensureEditorFile();
     if (focus) focusEditorWhenReady();
+  }
+
+  /**
+   * Reveal a chapter/line in the editor, opening the pane if needed — the
+   * context menu's "Go to source"/"Edit block in editor" destination
+   * (inline-editing plan §4.4). Mirrors `PreviewEventController`'s
+   * `onElementActivated` handling (PR 0) exactly: same-chapter reveals
+   * directly; a closed pane is opened rather than silently no-op'ing; a
+   * cross-chapter jump is skipped only when the pane was ALREADY open and
+   * visibly mid-edit (a closed pane has nothing visible to yank away).
+   */
+  function goToSource(chapter: string, line: number): void {
+    const wasOpen = editorPaneOpen;
+    if (!wasOpen) {
+      openEditorPane({ focus: true, ensureFile: false });
+    }
+    if (wasOpen && chapter === editorChapter) {
+      editorRef?.revealLine(line);
+      return;
+    }
+    if (lifecycle.currentDir && (!wasOpen || !buffer?.isDirty)) {
+      editorSync.followChapterInEditor(chapter, line);
+    }
   }
 
   function toggleEditor() {
@@ -1793,6 +1839,71 @@
   });
 
   // ----------------------------------------------------------------
+  // Commit engine (inline-editing plan §4.7) — the single write path for
+  // context-menu (and, later, block-overlay) mutations. Pure logic + injected
+  // seams; never writes a file itself (buffer.edit/flush + applyRangeEdit do
+  // that, exactly like every other write path in the app).
+  // ----------------------------------------------------------------
+  const commitEngine = new CommitEngine({
+    currentDir: () => lifecycle.currentDir,
+    rendering: () => lifecycle.rendering,
+    buffer: () => buffer,
+    selectEditorFile: (path) => selectEditorFile(path),
+    getAppliedPath: () => editorRef?.getAppliedPath() ?? null,
+    applyRangeEdit: (from, to, insert) => editorRef?.applyRangeEdit(from, to, insert),
+  });
+
+  /** A small native modal text prompt (plan §4.4's marker/image/link edits). */
+  async function promptText(opts: { title: string; label: string; initialValue: string }): Promise<string | null> {
+    if (typeof window === "undefined") return null;
+    return window.prompt(`${opts.title} — ${opts.label}`, opts.initialValue);
+  }
+
+  async function copyToClipboard(text: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      toast?.error?.("Couldn't copy to the clipboard.");
+    }
+  }
+
+  function openMediaPanel(): void {
+    leftPanelOpen = true;
+    leftPanelTab = "media";
+  }
+
+  // ----------------------------------------------------------------
+  // Preview right-click / Shift+F10 context menu (inline-editing plan
+  // §4.1-4.5). Subscribes to the preview client via its OWN client.on()
+  // listener — separate from previewEvents' switch below (PR 0 already owns
+  // the elementActivated case there).
+  // ----------------------------------------------------------------
+  const contextMenu = new ContextMenuController({
+    client: () => client,
+    enabled: () => settings.current.preview.contextMenu,
+    rendering: () => lifecycle.rendering,
+    currentDir: () => lifecycle.currentDir,
+    buffer: () => buffer,
+    readFile: (path) => getPlatform().readFile(path),
+    commitEngine,
+    getIframeOrigin: () => {
+      const rect = previewFrameRef?.getIframe()?.getBoundingClientRect();
+      return rect ? { left: rect.left, top: rect.top } : null;
+    },
+    getWorkspaceRect: () => {
+      if (!workspaceEl) return null;
+      const rect = workspaceEl.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    },
+    promptText,
+    goToSource,
+    openMediaPanel,
+    copyToClipboard,
+    toastSuccess: (message) => toast?.success(message),
+    toastError: (message) => toast?.error(message),
+  });
+
+  // ----------------------------------------------------------------
   // Preview-frame event router. Owns the post-render settle sequence (view-mode
   // auto-selection, the fit-width-vs-numeric-zoom reveal race, page restore,
   // outline rebuild, re-lint) + the preview→editor
@@ -1861,6 +1972,7 @@
     }
     c.setExpectedOrigin(lifecycle.previewUrl);
     previewEvents.subscribe(c);
+    contextMenu.subscribe(c);
   }
 
   // ----------------------------------------------------------------
@@ -1999,14 +2111,17 @@
           break;
         case "zoom-in":
           e.preventDefault();
+          contextMenu.close();
           zoomView.stepZoom(0.25);
           break;
         case "zoom-out":
           e.preventDefault();
+          contextMenu.close();
           zoomView.stepZoom(-0.25);
           break;
         case "fit-width":
           e.preventDefault();
+          contextMenu.close();
           zoomView.applyZoom("fit-width");
           break;
         // UX-004: 'D' shortcut for debug removed — non-technical writers should
@@ -2561,8 +2676,8 @@
     {viewMode}
     {zoom}
     previewControlsDisabled={!lifecycle.previewUrl}
-    onApplyViewMode={(mode) => zoomView.applyViewMode(mode, true)}
-    onApplyZoom={(val) => zoomView.applyZoom(val)}
+    onApplyViewMode={(mode) => { contextMenu.close(); zoomView.applyViewMode(mode, true); }}
+    onApplyZoom={(val) => { contextMenu.close(); zoomView.applyZoom(val); }}
     {previewHidden}
     previewToggleDisabled={!lifecycle.previewUrl || !toolbarProjectOpen}
     onTogglePreview={togglePreview}
@@ -2616,8 +2731,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => (githubOpen = true) : undefined}
-      onNewProject={() => newProjectWizardRef?.show()}
+      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); githubOpen = true; } : undefined}
+      onNewProject={() => { contextMenu.close(); newProjectWizardRef?.show(); }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -2775,6 +2890,7 @@
         {#if lifecycle.previewUrl}
           {#key lifecycle.previewUrl}
             <PreviewFrame
+              bind:this={previewFrameRef}
               url={lifecycle.previewUrl}
               bind:client
               onClientReady={onClientReady}
@@ -2823,6 +2939,9 @@
           onCancel={lifecycle.rendering ? handleCancelRender : undefined}
           variant="pane"
         />
+        {#if isDesktop()}
+          <ContextMenu controller={contextMenu} />
+        {/if}
         <!-- Recovery overlay: pane-scoped, position:absolute, TRANSLUCENT scrim.
              Non-dismissable during repair; auto-dismisses after ~1.8s on success.
              Hard rule (memory: never hide cross-origin preview iframe): scrim is

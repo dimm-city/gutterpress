@@ -12,6 +12,17 @@
 
   let frame = $state<HTMLIFrameElement | undefined>(undefined);
 
+  /**
+   * The mounted `<iframe>` element, or undefined before mount / after unmount.
+   * Exported so callers stop reaching for `document.querySelector("iframe")`
+   * (the pattern `+page.svelte`'s `measureContainerWidth`/context-menu
+   * positioning used) — this component owns the one iframe on the page, so it
+   * should be the one source of its element.
+   */
+  export function getIframe(): HTMLIFrameElement | undefined {
+    return frame;
+  }
+
   onMount(() => {
     if (!frame) return;
     const c = new PreviewClient();
