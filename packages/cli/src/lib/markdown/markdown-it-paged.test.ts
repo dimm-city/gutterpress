@@ -49,6 +49,38 @@ function renderPaged(
   return { html, env };
 }
 
+/**
+ * Parse (not render) markdown through a bare MarkdownIt + markdown-it-paged
+ * instance, for tests that inspect `token.meta` directly (source-line
+ * threading — §2.1 of docs/inline-editing-plan.md) rather than rendered HTML.
+ */
+function parsePaged(
+  src: string,
+  options: Record<string, unknown> = {},
+  env: PagedEnv = {}
+): { tokens: import("markdown-it/lib/token.mjs").default[]; env: PagedEnv } {
+  const md = new MarkdownIt({ html: true });
+  md.use(markdownItPaged, options);
+  const tokens = md.parse(src, env);
+  return { tokens, env };
+}
+
+/** First token of a given `type` in a token array, or undefined. */
+function findToken(
+  tokens: import("markdown-it/lib/token.mjs").default[],
+  type: string
+) {
+  return tokens.find((t) => t.type === type);
+}
+
+/** All tokens of a given `type` in a token array, in document order. */
+function findTokens(
+  tokens: import("markdown-it/lib/token.mjs").default[],
+  type: string
+) {
+  return tokens.filter((t) => t.type === type);
+}
+
 /** Extract the value of one HTML attribute from a single opening tag string. */
 function attr(html: string, name: string): string | null {
   const m = html.match(new RegExp(`${name}="([^"]*)"`));
@@ -60,6 +92,89 @@ function classList(html: string, name = "class"): string[] {
   const v = attr(html, name);
   return v ? v.split(/\s+/).filter(Boolean) : [];
 }
+
+describe("token.meta.line threading (source-range primitive, plan §2.1)", () => {
+  test("layout_chapter_open carries the 1-based marker line, and token.map stays null", () => {
+    const { tokens } = parsePaged("Intro\n\n@chapter C.01\nHi\n");
+    const t = findToken(tokens, "layout_chapter_open")!;
+    expect(t.meta).toEqual({ line: 3 });
+    // Do NOT set token.map here — see the inline comment at the assignment
+    // site (markdown-it-paged.js) and ADR 0009: setting map would make
+    // markdown-it-source-map stamp data-source-line on this wrapper too,
+    // breaking preview scroll-sync's rect tie-break.
+    expect(t.map).toBeNull();
+  });
+
+  test("layout_spread_open carries the 1-based marker line", () => {
+    const { tokens } = parsePaged("@spread\nHi\n");
+    const t = findToken(tokens, "layout_spread_open")!;
+    expect(t.meta).toEqual({ line: 1 });
+    expect(t.map).toBeNull();
+  });
+
+  test("layout_page_open carries the 1-based marker line", () => {
+    const { tokens } = parsePaged("@chapter\n@page MyPage\nHi\n");
+    const t = findToken(tokens, "layout_page_open")!;
+    expect(t.meta.line).toBe(2);
+    expect(t.map).toBeNull();
+  });
+
+  test("layout_page_open carries the marker line even on the implicit-page synthetic-meta path", () => {
+    // implicitPage: true makes a bare @section synthesize an implicit
+    // @page — openPage({ name: 'auto', attrs: {}, __line: line }) — whose
+    // __line must still thread through to token.meta.line.
+    const { tokens } = parsePaged("@section\nHi\n", { implicitPage: true });
+    const t = findToken(tokens, "layout_page_open")!;
+    expect(t.meta.line).toBe(1);
+  });
+
+  test("layout_section_open carries the marker line alongside hasColumnBreak", () => {
+    const { tokens } = parsePaged("@page\n@section S\nHi\n");
+    const t = findToken(tokens, "layout_section_open")!;
+    expect(t.meta).toEqual({ hasColumnBreak: false, line: 2 });
+    expect(t.map).toBeNull();
+  });
+
+  test("layout_page_break carries the marker line", () => {
+    const { tokens } = parsePaged("A\n\n@page-break\n\nB\n");
+    const t = findToken(tokens, "layout_page_break")!;
+    expect(t.meta).toEqual({ line: 3 });
+    expect(t.map).toBeNull();
+  });
+
+  test("layout_column_break carries the marker line", () => {
+    const { tokens } = parsePaged(
+      "@section .col-split\nA\n@column-break\nB\n@end-section\n"
+    );
+    const t = findToken(tokens, "layout_column_break")!;
+    expect(t.meta).toEqual({ line: 3 });
+    expect(t.map).toBeNull();
+  });
+
+  test("@continue fix: the continuation section gets a FINITE meta.line (regression test for the dropped-__line bug)", () => {
+    const { tokens } = parsePaged(
+      "@section S\nA\n@continue\nB\n@end-section\n"
+    );
+    const sections = findTokens(tokens, "layout_section_open");
+    expect(sections).toHaveLength(2);
+    const [original, continuation] = sections;
+    // original @section is on line 1
+    expect(original!.meta.line).toBe(1);
+    // @continue itself is on line 3 — the continuation section must inherit
+    // THAT line, not undefined/NaN (contMeta only copied name/attrs before
+    // the fix, silently dropping __line).
+    expect(continuation!.meta.line).toBe(3);
+    expect(Number.isFinite(continuation!.meta.line)).toBe(true);
+  });
+
+  test("@continue chained twice: every continuation section gets its own finite line", () => {
+    const { tokens } = parsePaged(
+      "@section S\nA\n@continue\nB\n@continue\nC\n@end-section\n"
+    );
+    const sections = findTokens(tokens, "layout_section_open");
+    expect(sections.map((t) => t.meta.line)).toEqual([1, 3, 5]);
+  });
+});
 
 describe("marker grammar (parsed via rendered output + warnings)", () => {
   describe("bare markers (no name, no attrs)", () => {
