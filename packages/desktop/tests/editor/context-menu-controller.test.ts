@@ -468,19 +468,368 @@ describe("selection kind", () => {
     expect(h.goToSourceCalls).toEqual([["ch1.md", 3]]);
   });
 
-  test("single-block selection only offers 'Edit block in editor' (formatting is PR 4)", async () => {
+  test("single-block selection offers the formatting row plus 'Edit block in editor' (PR 4)", async () => {
     const h = make();
+    h.readFileMap["/proj/ch1.md"] = "before\na phrase here\nafter\n";
     h.client.emit({
       name: "contextMenuRequested",
       detail: detail({
         kind: "selection",
         chapter: "ch1.md",
         range: [2, 3],
-        selection: { text: "a phrase", withinSingleBlock: true, range: [2, 3], chapter: "ch1.md" },
+        selection: { text: "a phrase", withinSingleBlock: true, range: [1, 2], chapter: "ch1.md" },
       }),
     });
     await flush();
-    expect(h.ctrl.items.map((i) => i.id)).toEqual(["edit-block-editor"]);
+    expect(h.ctrl.items.map((i) => i.id)).toEqual([
+      "format-bold",
+      "format-italic",
+      "format-strike",
+      "format-code",
+      "format-link",
+      "edit-block-editor",
+    ]);
+    expect(h.ctrl.items.every((i) => i.enabled)).toBe(true);
+  });
+});
+
+describe("selection formatting (plan §4.6, PR 4)", () => {
+  test("Bold commits the block slice wrapped in **…** through the commit engine", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "before\na phrase here\nafter\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        chapter: "point.md", // deliberately different from selection.chapter
+        range: [9, 9],
+        selection: { text: "a phrase", withinSingleBlock: true, range: [1, 2], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
+    expect(bold.enabled).toBe(true);
+    await h.ctrl.runItem(bold);
+    expect(h.commitEngine.calls).toEqual([
+      {
+        chapter: "ch1.md",
+        range: [1, 2],
+        expected: "a phrase here\n",
+        replacement: "**a phrase** here\n",
+        expectedGeneration: 0,
+      },
+    ]);
+  });
+
+  test("Italic wraps only the matched region, preserving surrounding text", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a phrase here\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "phrase", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const italic = h.ctrl.items.find((i) => i.id === "format-italic")!;
+    await h.ctrl.runItem(italic);
+    const call = h.commitEngine.calls[0] as { replacement: string };
+    expect(call.replacement).toBe("a *phrase* here\n");
+  });
+
+  test("Strikethrough and Inline code wrap correctly", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a phrase here\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "phrase", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const strike = h.ctrl.items.find((i) => i.id === "format-strike")!;
+    await h.ctrl.runItem(strike);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe("a ~~phrase~~ here\n");
+
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "phrase", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const code = h.ctrl.items.find((i) => i.id === "format-code")!;
+    await h.ctrl.runItem(code);
+    expect((h.commitEngine.calls[1] as { replacement: string }).replacement).toBe("a `phrase` here\n");
+  });
+
+  test("whitespace across a hard-wrapped source line matches", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a phrase\nspanning a line break here\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: {
+          text: "phrase spanning",
+          withinSingleBlock: true,
+          range: [0, 2],
+          chapter: "ch1.md",
+        },
+      }),
+    });
+    await flush();
+    const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
+    expect(bold.enabled).toBe(true);
+    await h.ctrl.runItem(bold);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      "a **phrase\nspanning** a line break here\n",
+    );
+  });
+
+  test("typographer substitutions (em dash, smart quotes) match the ASCII source", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = 'She said "wait---really" then left.\n';
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: {
+          text: "“wait—really”",
+          withinSingleBlock: true,
+          range: [0, 1],
+          chapter: "ch1.md",
+        },
+      }),
+    });
+    await flush();
+    const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
+    expect(bold.enabled).toBe(true);
+    await h.ctrl.runItem(bold);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      'She said **"wait---really"** then left.\n',
+    );
+  });
+
+  test("a selection spanning an already-bold word matches with delimiters stripped", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a **bold** word here\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "a bold word", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    // Bolding a region that already contains ** would be invalid nesting.
+    const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
+    expect(bold.enabled).toBe(false);
+    expect(bold.disabledReason).toMatch(/already contains bold/);
+    // A DIFFERENT delimiter over the same matched region is fine.
+    const italic = h.ctrl.items.find((i) => i.id === "format-italic")!;
+    expect(italic.enabled).toBe(true);
+    await h.ctrl.runItem(italic);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      "*a **bold** word* here\n",
+    );
+  });
+
+  test("Make link… prompts for a URL and wraps the matched region", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a phrase here\n";
+    h.promptResult = "https://example.com";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "phrase", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const link = h.ctrl.items.find((i) => i.id === "format-link")!;
+    await h.ctrl.runItem(link);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      "a [phrase](https://example.com) here\n",
+    );
+  });
+
+  test("Make link… does nothing when the prompt is cancelled", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a phrase here\n";
+    h.promptResult = null;
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "phrase", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const link = h.ctrl.items.find((i) => i.id === "format-link")!;
+    await h.ctrl.runItem(link);
+    expect(h.commitEngine.calls.length).toBe(0);
+  });
+
+  test("zero matches (text not found in source) disables every format item with the ambiguity reason", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "nothing matches this at all\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "a phrase", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const formatItems = h.ctrl.items.filter((i) => i.id !== "edit-block-editor");
+    expect(formatItems.length).toBe(5);
+    for (const item of formatItems) {
+      expect(item.enabled).toBe(false);
+      expect(item.disabledReason).toBe(
+        "Couldn't locate this text uniquely in the source — open the editor",
+      );
+    }
+    expect(h.ctrl.items.find((i) => i.id === "edit-block-editor")!.enabled).toBe(true);
+  });
+
+  test("multiple matches (ambiguous) disables every format item", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a phrase here and a phrase there\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "a phrase", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
+    expect(bold.enabled).toBe(false);
+  });
+
+  test("collapsed-punctuation needle (ellipsis) disables every format item", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "wait... really\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "wait… really", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
+    expect(bold.enabled).toBe(false);
+    expect(bold.disabledReason).toBe(
+      "Couldn't locate this text uniquely in the source — open the editor",
+    );
+  });
+
+  test("a selection spanning INTO a code span (matched text includes a backtick) disables ALL format items", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "see `code` here\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        // No match at all is also possible here (backticks aren't stripped,
+        // breaking substring contiguity for a wider selection) — this case
+        // specifically covers the narrower guarantee: IF a match is found
+        // whose matched text itself contains a backtick, every item blocks.
+        selection: { text: "`code`", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    for (const id of ["format-bold", "format-italic", "format-strike", "format-code", "format-link"]) {
+      const item = h.ctrl.items.find((i) => i.id === id)!;
+      expect(item.enabled).toBe(false);
+      expect(item.disabledReason).toBe(
+        "This selection includes code or link syntax — edit it in the editor.",
+      );
+    }
+  });
+
+  test("a selection landing ENTIRELY INSIDE a code span (no backtick in the matched text itself) still disables every item", async () => {
+    // The dangerous case: selection.text is "code" (the code span's plain
+    // rendered content — no backticks, since inline code doesn't render its
+    // delimiters). A naive check of the matched text alone would find no
+    // backtick and wave this through, silently nesting **markup** INSIDE the
+    // code span (which never parses nested markdown) instead of formatting
+    // it. `touchesStructuralSyntax` must catch this via backtick adjacency.
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "see `code` here\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "code", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    for (const id of ["format-bold", "format-italic", "format-strike", "format-code", "format-link"]) {
+      const item = h.ctrl.items.find((i) => i.id === id)!;
+      expect(item.enabled).toBe(false);
+      expect(item.disabledReason).toBe(
+        "This selection includes code or link syntax — edit it in the editor.",
+      );
+    }
+  });
+
+  test("a selection landing entirely inside a link's text (no bracket in the matched text) still disables every item", async () => {
+    // Same failure class as the code-span case above: selecting just "a
+    // link" out of `[a link](https://x)` matches without ever showing a
+    // bracket in the matched text.
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "see [a link](https://x) here\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        selection: { text: "a link", withinSingleBlock: true, range: [0, 1], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const bold = h.ctrl.items.find((i) => i.id === "format-bold")!;
+    expect(bold.enabled).toBe(false);
+    expect(bold.disabledReason).toBe(
+      "This selection includes code or link syntax — edit it in the editor.",
+    );
+  });
+
+  test("'Edit block in editor' jumps to the selection's block, not the right-click point's block", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "before\na phrase here\nafter\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        chapter: "point.md",
+        range: [9, 9],
+        selection: { text: "a phrase", withinSingleBlock: true, range: [1, 2], chapter: "ch1.md" },
+      }),
+    });
+    await flush();
+    const editItem = h.ctrl.items.find((i) => i.id === "edit-block-editor")!;
+    await h.ctrl.runItem(editItem);
+    expect(h.goToSourceCalls).toEqual([["ch1.md", 2]]);
+  });
+
+  test("cross-block selection still offers only Copy / Edit in editor — no formatting row", async () => {
+    const h = make();
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "selection",
+        range: [2, 3],
+        selection: { text: "spans two blocks", withinSingleBlock: false, range: null, chapter: null },
+      }),
+    });
+    await flush();
+    expect(h.ctrl.items.map((i) => i.id)).toEqual(["selection-copy", "selection-edit"]);
   });
 });
 
