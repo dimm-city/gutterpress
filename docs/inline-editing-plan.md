@@ -15,14 +15,15 @@
 > through two cycles of three independent critical reviews each; the material
 > corrections from all six reviews are folded in.
 
-**TL;DR.** Six PRs. PR 0 ships click-to-source on plumbing that already
-exists. PR 1 adds a `data-source-range` attribute to rendered blocks (shared
-lib). PR 2 adds two bridge events/commands (protocol v4). PR 3 ships the
-commit engine **and** the right-click context menu (image/link/block/marker
-actions). PR 4 adds selected-text formatting. PR 5 ships the click-to-edit
-block overlay (protocol v5). Deferred with their own issues: touch long-press,
-editor-pane live preview (Tier 2), any WYSIWYG mode (Tier 3). Open items live
-in §7.6; governance/tracking issues in §7.7.
+**TL;DR.** Six PRs, all targeting **`release/0.10.0`** (§7.8). PR 0 ships
+click-to-source on plumbing that already exists. PR 1 adds a
+`data-source-range` attribute to rendered blocks (shared lib). PR 2 adds two
+bridge events/commands (protocol v4). PR 3 ships the commit engine **and**
+the right-click context menu (image/link/block/marker actions). PR 4 adds
+selected-text formatting. PR 5 ships the click-to-edit block overlay
+(protocol v5). Deferred with their own issues: touch long-press, editor-pane
+live preview (Tier 2), any WYSIWYG mode (Tier 3). Open items live in §7.6;
+governance/tracking issues in §7.7.
 
 **Complexity justification (CLAUDE.md Primary Goals).** This plan adds real
 engineering complexity — a render-core annotation rule, a bridge protocol
@@ -1029,6 +1030,8 @@ injection, so a future FSA-backed web write path slots in per
 Dependencies: PR 0 independent; PR 1 → PR 2 → PR 3 linear; PR 4 and PR 5
 depend on PR 3, not on each other.
 
+**Every PR in this table targets `release/0.10.0`, not `main`** — see §7.8.
+
 ### 7.6 Open decisions
 
 Resolved during review (recorded here so they are not reopened): raw-HTML
@@ -1052,6 +1055,33 @@ cross-reference them from each PR:
 
 Contract-update PRs (§8) are cross-referenced from these issues per the
 contract's own deviation process.
+
+### 7.8 Branching and release target
+
+**All six PRs target `release/0.10.0`.** This work ships as a 0.10.0
+feature set, alongside the other 0.10.0-milestone items (e.g. issue #37,
+the visual layout editor) — it is not a series of independent
+main-targeting changes.
+
+- **The branch does not exist yet** (`git ls-remote --heads origin` shows
+  only `main` and working branches as of 2026-08-04). Create it from `main`
+  before PR 0: `git checkout -b release/0.10.0 main && git push -u origin
+  release/0.10.0`.
+- Feature branches follow the CONTRIBUTING.md convention
+  (`feature/<name>`), cut **from `release/0.10.0`** rather than `main`, and
+  open their PR against `release/0.10.0`.
+- Each PR's base must be verified at open time — a PR silently opened
+  against `main` would ship a half-built feature (e.g. the bridge protocol
+  bump without its consumer) into an unrelated release.
+- `release/0.10.0` merges to `main` once the tier is complete; the
+  `CHANGELOG.md` Unreleased entries (§8) accumulate on the release branch
+  and land as one 0.10.0 section.
+- **Rebase, don't diverge:** the linear dependency chain (PR 1 → PR 2 →
+  PR 3) means each PR should be rebased onto the current
+  `release/0.10.0` before review, so reviewers see only that PR's diff.
+- Deferred work (Tier 2 live preview, touch long-press) is **not** part of
+  this release branch — those issues get their own branches against
+  whatever release is current when they are scheduled.
 
 ---
 
