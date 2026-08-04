@@ -216,6 +216,63 @@ Proposed refinements:
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that
   cause layout shift.
 
+### 1b. Inline editing in the preview
+
+**Status: SHIPPED** (0.10.0 — tracked by **#135** Tier 0 and **#136** Tier 1;
+implementation plan `docs/inline-editing-plan.md`, rationale
+`docs/adr/0009-inline-editing-source-ranges.md`).
+
+The paginated preview is an editing surface, not only a viewer. This does
+**not** supersede the opt-in WYSIWYG rule above: these are explicit,
+user-invoked actions on a specific target, not a seamless typing surface.
+The source pane remains the default editing model.
+
+Shipped behavior:
+
+- **Click-to-source.** Clicking a block in the preview reveals it in the
+  editor, opening the editor pane if it is closed. Always on — navigation,
+  not mutation.
+- **Context menu** on right-click, with items matched to the target:
+  image (alt text, width, position, replace, reveal in Media panel), link
+  (edit, copy target), selected text (bold, italic, strikethrough, inline
+  code, make link), block (edit this block, insert page break
+  before/after, go to source), and `@marker` (edit marker, go to source).
+  Gated by the `preview.contextMenu` setting, default on.
+- **Block overlay.** "Edit this block" opens that block's **markdown
+  source** in place over the preview; commit on `Ctrl/Cmd+Enter` or blur,
+  cancel on `Escape`.
+
+Rules (normative):
+
+- **Keyboard parity is required, not optional.** `Shift+F10` / the menu key
+  opens the menu, satisfying the Accessibility checklist's "context menus
+  reachable via keyboard menu key / `Shift+F10`". The listener necessarily
+  lives inside the preview iframe — keystrokes focused in a cross-origin
+  iframe never reach the SPA, so an app-side listener cannot satisfy this.
+- **Page furniture keeps native behavior.** Right-clicks on margin boxes,
+  running headers, and page numbers do not open the menu and do not
+  suppress the native one; that text is real, selectable content.
+- **Never guess an edit.** When a chapter has unsaved changes, or the
+  rendered selection cannot be mapped back to source unambiguously, the
+  affected item is **disabled with a stated reason** and the author is
+  directed to the editor. A wrong edit in an author's book is the worst
+  outcome this surface can produce; a refused action is always preferable.
+- **No destructive items** while an unmounted editor means no undo. Marker
+  removal is deliberately absent from v1.
+- Edits flow through the same buffer as the editor pane, so save,
+  crash-recovery, external-edit conflict handling, and undo (when the
+  editor is mounted) are identical.
+
+Deferred, with tracking issues: **touch long-press invocation** (the
+Accessibility checklist's "long-press on touch" applies once the menu
+reaches touch layouts — it is not registered there in 0.10.0); Tier 2
+editor-pane live preview, which remains governed by the opt-in WYSIWYG
+rule in §1.
+
+Anti-patterns: opening a menu with no keyboard path; suppressing the
+native menu without offering a replacement; silently applying an edit
+whose source location was inferred rather than verified.
+
 ### 2. Toolbar
 
 **Status: SHIPPED baseline** (`EditorToolbar`, #31 — fixed compact bar above
