@@ -368,6 +368,63 @@
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
+  // ── Block-overlay geometry + masking (protocol v5) ──────────────────────────
+  // docs/inline-editing-plan.md §5.3 / ADR 0009. A block split across pages
+  // exists as MULTIPLE DOM fragments that duplicate every data attribute
+  // (§3.5's split-fragment gotcha applies here too) — `data-ref` is the one
+  // identity Paged.js keeps stable across them, so every command below groups
+  // by `data-ref`, never by `id` (Paged.js strips it from all fragments but
+  // the first) and never by uniqueness of `data-source-range` alone.
+
+  // All elements anywhere in the document carrying the given data-ref value.
+  // Built via filter (not a `[data-ref="…"]` selector) so a ref value can
+  // never be mis-parsed as CSS — the value is host-controlled today, but this
+  // stays robust regardless.
+  function elementsByRef(ref) {
+    if (!ref) return [];
+    var all = Array.from(document.querySelectorAll('[data-ref]'));
+    return all.filter(function (el) { return el.getAttribute('data-ref') === ref; });
+  }
+
+  function rangedBlocks() {
+    return Array.from(document.querySelectorAll('[data-source-range]'));
+  }
+
+  function rangedBlocksInChapter(chapter) {
+    if (!chapter) return rangedBlocks();
+    return rangedBlocks().filter(function (el) { return chapterOf(el) === chapter; });
+  }
+
+  // Resolve a getRectsFor()/setEditMask() spec to {ref, els}. Two mutually
+  // exclusive forms (§5.3):
+  //   {ref}              — the FAST path: data-ref survived from the moment
+  //                         the overlay opened (menu open, pageChanged/zoom
+  //                         re-anchor within the SAME render).
+  //   {chapter, range}    — the POST-SPLICE FALLBACK: a fresh render mints
+  //                         fresh data-refs, so after `renderingComplete` the
+  //                         overlay must re-resolve by the one thing that
+  //                         still identifies the block — its source range —
+  //                         and read back whatever data-ref the fresh DOM
+  //                         assigned it.
+  function resolveBlockGroup(spec) {
+    spec = spec || {};
+    if (spec.ref) {
+      var byRef = elementsByRef(spec.ref);
+      return { ref: byRef.length ? spec.ref : null, els: byRef };
+    }
+    if (spec.chapter != null && spec.range) {
+      var candidates = rangedBlocksInChapter(spec.chapter).filter(function (el) {
+        var r = sourceRangeOf(el);
+        return r && r[0] === spec.range[0] && r[1] === spec.range[1];
+      });
+      if (!candidates.length) return { ref: null, els: [] };
+      var targetRef = candidates[0].getAttribute('data-ref') || null;
+      if (!targetRef) return { ref: null, els: candidates };
+      return { ref: targetRef, els: elementsByRef(targetRef) };
+    }
+    return { ref: null, els: [] };
+  }
+
   var api = {
     getTotalPages: function () { refreshPages(); return pages.length; },
     getCurrentPage: function () { return currentPage; },
@@ -433,15 +490,57 @@
     // ── ADR 0005 generic primitives ─────────────────────────────────────────
     // Bumped whenever a command/event is added so a hot-updated SPA can
     // feature-detect against an older bundled lib.
-    // v4 (docs/inline-editing-plan.md §3, ADR 0009): getContextTargetAt() +
-    // the contextMenuRequested event.
-    getProtocolVersion: function () { return 4; },
+    // v5 (docs/inline-editing-plan.md §5.3, ADR 0009): getRectsFor() +
+    // setEditMask() for the click-to-edit block overlay.
+    getProtocolVersion: function () { return 5; },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.
     getContextTargetAt: function (spec) {
       spec = spec || {};
       return buildContextTarget(elementAtPoint(spec.x, spec.y));
+    },
+
+    // All fragment rects for one logical block (protocol v5, §5.3). `ref` is
+    // returned alongside the rects (not just each rect's geometry) because a
+    // post-splice {chapter, range} lookup resolves a FRESH data-ref the
+    // caller has no other way to learn — the block overlay needs it to
+    // target the matching setEditMask() call after a re-anchor. Pure read;
+    // never mutates the DOM. Plain, JSON-cloneable objects only (§3.5) — no
+    // DOMRect instances.
+    getRectsFor: function (spec) {
+      var resolved = resolveBlockGroup(spec);
+      var rects = resolved.els.map(function (el) {
+        var r = plainRect(el);
+        if (!r) return null;
+        r.page = pageIndexOf(el);
+        return r;
+      }).filter(function (r) { return r != null; });
+      return { ref: resolved.ref, rects: rects };
+    },
+
+    // Toggle a masking class on EVERY fragment of a block, plus a scroll lock
+    // on the book document element (protocol v5, §5.1/§5.3). Purely cosmetic
+    // and fully reversible — Paged.js never re-layouts after a mutation
+    // (spike-verified), so nothing here may touch anything layout-affecting;
+    // see the class definitions below and ADR 0009. `masked: false` always
+    // removes the lock class too, even if this particular ref has zero live
+    // fragments (e.g. called defensively during teardown after a splice) —
+    // it is a document-level toggle, not scoped per-block, and there is at
+    // most one overlay open at a time.
+    setEditMask: function (spec) {
+      spec = spec || {};
+      var els = elementsByRef(spec.ref);
+      for (var i = 0; i < els.length; i++) {
+        if (spec.masked) els[i].classList.add('gutterpress-edit-mask');
+        else els[i].classList.remove('gutterpress-edit-mask');
+      }
+      var root = document.documentElement;
+      if (root && root.classList) {
+        if (spec.masked) root.classList.add('gutterpress-edit-scroll-lock');
+        else root.classList.remove('gutterpress-edit-scroll-lock');
+      }
+      return { count: els.length };
     },
 
     // Publish any debounced reader movement before a host atomically replaces
@@ -617,6 +716,25 @@
         'transition:outline-color .2s,background .2s;}';
       (document.head || document.documentElement).appendChild(hlStyle);
     } catch (_e) { /* non-fatal: highlight just renders unstyled */ }
+  }
+
+  // Block-overlay mask + scroll-lock style (protocol v5, plan §5.1/§5.3).
+  // Preview-only, never part of the PDF build path. Purely cosmetic: dims the
+  // masked fragment(s) so stale rendered text doesn't show behind/beside the
+  // overlay, and disables the book document's own scroll while an overlay is
+  // open (the overlay is positioned in host-SPA coordinates from a rect
+  // snapshot; an unlocked scroll would silently drift it over unrelated
+  // content — see BlockOverlayController). Exact visual treatment (dim vs.
+  // blank) is a placeholder pending design review (plan §7.6 open item).
+  if (typeof document.createElement === 'function') {
+    try {
+      var maskStyle = document.createElement('style');
+      maskStyle.textContent =
+        '.gutterpress-edit-mask{opacity:.2;filter:saturate(.4);pointer-events:none;' +
+        'transition:opacity .12s,filter .12s;}' +
+        'html.gutterpress-edit-scroll-lock{overflow:hidden !important;}';
+      (document.head || document.documentElement).appendChild(maskStyle);
+    } catch (_e) { /* non-fatal: mask just renders unstyled */ }
   }
 
   // Click-to-source: emit elementActivated when the user clicks a source-mapped
