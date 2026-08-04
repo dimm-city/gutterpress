@@ -35,6 +35,8 @@
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
+  import { BlockOverlayController } from "$lib/routes/block-overlay-controller.svelte";
+  import BlockEditOverlay from "$lib/components/BlockEditOverlay.svelte";
   import { CommitEngine } from "$lib/editor/commit-engine";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
@@ -1023,6 +1025,12 @@
   let focusMode = $state(false);
   let focusRestore: { editorOpen: boolean; paneMode: "edit" | "view" } | null = null;
   let workspaceEl = $state<HTMLElement | undefined>(undefined);
+  /** `.preview-pane`'s own element — the block overlay clamps its geometry to
+   *  this rect (inline-editing plan §5.1), not the whole workspace the
+   *  context menu clamps to: `.preview-pane` can itself scroll, so an
+   *  unclamped overlay could engage that scrollbar. */
+  let previewPaneEl = $state<HTMLElement | undefined>(undefined);
+  let blockOverlayRef = $state<{ commitNow: () => void } | null>(null);
   let editorRef = $state<{
     focus: () => void;
     revealLine: (line: number) => void;
@@ -1049,6 +1057,7 @@
   function openSnippetPicker() {
     if (!isDesktop() || !lifecycle.currentDir) return;
     contextMenu.close();
+    blockOverlayRef?.commitNow(); // plan §5.1 dismissal: opening a dialog commits
     snippetPickerRef?.show();
   }
 
@@ -1071,6 +1080,7 @@
       return;
     }
     contextMenu.close();
+    blockOverlayRef?.commitNow(); // plan §5.1 dismissal: opening a dialog commits
     projectSettingsOpen = true;
   }
 
@@ -1873,6 +1883,30 @@
   }
 
   // ----------------------------------------------------------------
+  // Click-to-edit block overlay (inline-editing plan §5, PR 5). Owns its own
+  // geometry/dismissal-event subscription; the "Edit this block" context-menu
+  // item (below) is its only entry point.
+  // ----------------------------------------------------------------
+  const blockOverlay = new BlockOverlayController({
+    client: () => client,
+    currentDir: () => lifecycle.currentDir,
+    buffer: () => buffer,
+    readFile: (path) => getPlatform().readFile(path),
+    commitEngine,
+    getIframeOrigin: () => {
+      const rect = previewFrameRef?.getIframe()?.getBoundingClientRect();
+      return rect ? { left: rect.left, top: rect.top } : null;
+    },
+    getPaneRect: () => {
+      if (!previewPaneEl) return null;
+      const rect = previewPaneEl.getBoundingClientRect();
+      return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+    },
+    toastError: (message) => toast?.error(message),
+    toastInfo: (message) => toast?.info?.(message),
+  });
+
+  // ----------------------------------------------------------------
   // Preview right-click / Shift+F10 context menu (inline-editing plan
   // §4.1-4.5). Subscribes to the preview client via its OWN client.on()
   // listener — separate from previewEvents' switch below (PR 0 already owns
@@ -1901,6 +1935,7 @@
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
+    openBlockOverlay: (chapter, range, ref) => void blockOverlay.show({ chapter, range, ref }),
   });
 
   // ----------------------------------------------------------------
@@ -1973,6 +2008,7 @@
     c.setExpectedOrigin(lifecycle.previewUrl);
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
+    blockOverlay.subscribe(c);
   }
 
   // ----------------------------------------------------------------
@@ -2731,8 +2767,8 @@
       onInsertImage={(payload) => insertImageIntoChapter(payload)}
       onProjectChosen={(path) => void openProjectPath(path)}
       onOpenUrl={openUrl}
-      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); githubOpen = true; } : undefined}
-      onNewProject={() => { contextMenu.close(); newProjectWizardRef?.show(); }}
+      onOpenGitHub={isDesktop() ? () => { contextMenu.close(); blockOverlayRef?.commitNow(); githubOpen = true; } : undefined}
+      onNewProject={() => { contextMenu.close(); blockOverlayRef?.commitNow(); newProjectWizardRef?.show(); }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />
@@ -2880,6 +2916,7 @@
       {/if}
       <section
         class="pane preview-pane"
+        bind:this={previewPaneEl}
         use:previewPaneResize
         id="mobile-panel-preview"
         role={isNarrow ? "tabpanel" : undefined}
@@ -2941,6 +2978,9 @@
         />
         {#if isDesktop()}
           <ContextMenu controller={contextMenu} />
+        {/if}
+        {#if isDesktop() && blockOverlay.open}
+          <BlockEditOverlay controller={blockOverlay} bind:this={blockOverlayRef} />
         {/if}
         <!-- Recovery overlay: pane-scoped, position:absolute, TRANSLUCENT scrim.
              Non-dismissable during repair; auto-dismisses after ~1.8s on success.

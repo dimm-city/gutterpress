@@ -409,10 +409,13 @@ async function main() {
     assert.equal(detail.selection.chapter, null);
   }
 
-  // getProtocolVersion() bumped to 4.
+  // getProtocolVersion() is at least 4 (getContextTargetAt's own protocol
+  // floor) — the exact current value is asserted once, definitively, by the
+  // "protocol v5" check further down; this just pins the v4 floor here so a
+  // future regression in THIS section's own feature set is caught locally.
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 4);
+    assert.ok(api.getProtocolVersion() >= 4);
   }
 
   console.log("[desktop-test] PASS getContextTargetAt kind precedence + protocol v4");
@@ -498,6 +501,117 @@ async function main() {
   }
 
   console.log("[desktop-test] PASS contextMenuRequested mouse + keyboard listeners");
+
+  // ── getRectsFor / setEditMask (protocol v5) ──────────────────────────────────
+  // docs/inline-editing-plan.md §5.3.
+  const overlayHtml = `
+    <div class="pagedjs_pages">
+      <div class="pagedjs_page">
+        <div class="chapter" data-chapter-src="a.md" data-source-range="0:10" data-ref="chapter-ref">
+          <p id="p1" data-source-range="0:1" data-ref="p1-ref">Solo block</p>
+          <p id="frag1" data-source-range="1:3" data-ref="split-ref">first half</p>
+        </div>
+      </div>
+      <div class="pagedjs_page">
+        <div class="chapter" data-chapter-src="a.md" data-source-range="0:10" data-ref="chapter-ref">
+          <p id="frag2" data-source-range="1:3" data-ref="split-ref" data-split-from="split-ref">second half</p>
+        </div>
+      </div>
+    </div>`;
+
+  // getRectsFor({ref}) groups every fragment sharing the SAME data-ref, across
+  // pages, and reports each fragment's own page index.
+  {
+    const { document, api } = loadInterfaceWithDom(overlayHtml);
+    const frag1 = document.getElementById("frag1");
+    const frag2 = document.getElementById("frag2");
+    frag1.getBoundingClientRect = () => ({ top: 100, left: 10, bottom: 140, right: 200, width: 190, height: 40 });
+    frag2.getBoundingClientRect = () => ({ top: 20, left: 10, bottom: 60, right: 200, width: 190, height: 40 });
+    // pageIndexOf() needs the page list refreshed + closest('.pagedjs_page') to resolve.
+    const result = api.getRectsFor({ ref: "split-ref" });
+    assert.equal(result.ref, "split-ref");
+    assert.equal(result.rects.length, 2, "both split fragments are returned");
+    assert.deepEqual(result.rects[0], { top: 100, left: 10, width: 190, height: 40, page: 1 });
+    assert.deepEqual(result.rects[1], { top: 20, left: 10, width: 190, height: 40, page: 2 });
+    // JSON-cloneable (§3.5) — no DOMRect instances.
+    assert.deepEqual(JSON.parse(JSON.stringify(result)), result);
+  }
+
+  // getRectsFor({ref}) for an unknown/stale ref (e.g. a splice already
+  // replaced the DOM) returns an empty, ref:null result rather than throwing.
+  {
+    const { api } = loadInterfaceWithDom(overlayHtml);
+    const result = api.getRectsFor({ ref: "does-not-exist" });
+    assert.deepEqual(result, { ref: null, rects: [] });
+  }
+
+  // getRectsFor({chapter, range}) — the POST-SPLICE FALLBACK: a fresh render
+  // mints fresh data-refs, so resolution must go by source range + chapter,
+  // reading back whatever data-ref the fresh DOM assigned.
+  {
+    const { document, api } = loadInterfaceWithDom(overlayHtml);
+    const p1 = document.getElementById("p1");
+    p1.getBoundingClientRect = () => ({ top: 5, left: 0, bottom: 25, right: 200, width: 200, height: 20 });
+    const result = api.getRectsFor({ chapter: "a.md", range: [0, 1] });
+    assert.equal(result.ref, "p1-ref", "resolves the CURRENT data-ref via the range match");
+    assert.equal(result.rects.length, 1);
+    assert.deepEqual(result.rects[0], { top: 5, left: 0, width: 200, height: 20, page: 1 });
+  }
+
+  // getRectsFor({chapter, range}) with no matching range: empty result, no throw.
+  {
+    const { api } = loadInterfaceWithDom(overlayHtml);
+    const result = api.getRectsFor({ chapter: "a.md", range: [99, 100] });
+    assert.deepEqual(result, { ref: null, rects: [] });
+  }
+
+  // setEditMask: masks EVERY fragment sharing a data-ref + applies the scroll
+  // lock, and unmasking fully reverts both — reversible, no residue.
+  {
+    const { document, api } = loadInterfaceWithDom(overlayHtml);
+    const frag1 = document.getElementById("frag1");
+    const frag2 = document.getElementById("frag2");
+    const root = document.documentElement;
+
+    const onResult = api.setEditMask({ ref: "split-ref", masked: true });
+    assert.equal(onResult.count, 2);
+    assert.ok(frag1.classList.contains("gutterpress-edit-mask"));
+    assert.ok(frag2.classList.contains("gutterpress-edit-mask"));
+    assert.ok(root.classList.contains("gutterpress-edit-scroll-lock"));
+    // An unmasked, unrelated fragment is untouched.
+    const p1 = document.getElementById("p1");
+    assert.equal(p1.classList.contains("gutterpress-edit-mask"), false);
+
+    const offResult = api.setEditMask({ ref: "split-ref", masked: false });
+    assert.equal(offResult.count, 2);
+    assert.equal(frag1.classList.contains("gutterpress-edit-mask"), false);
+    assert.equal(frag2.classList.contains("gutterpress-edit-mask"), false);
+    assert.equal(root.classList.contains("gutterpress-edit-scroll-lock"), false, "scroll lock fully reverted");
+  }
+
+  // setEditMask({masked:false}) for a ref with zero live fragments (e.g. a
+  // splice already replaced the DOM) still clears the document-level scroll
+  // lock — defense-in-depth teardown must not depend on the ref resolving.
+  {
+    const { document, api } = loadInterfaceWithDom(overlayHtml);
+    api.setEditMask({ ref: "split-ref", masked: true });
+    assert.ok(document.documentElement.classList.contains("gutterpress-edit-scroll-lock"));
+    const result = api.setEditMask({ ref: "gone-ref", masked: false });
+    assert.equal(result.count, 0);
+    assert.equal(
+      document.documentElement.classList.contains("gutterpress-edit-scroll-lock"),
+      false,
+      "scroll lock is a document-level toggle, not scoped to the (now unresolved) ref"
+    );
+  }
+
+  // getProtocolVersion() bumped to 5.
+  {
+    const { api } = loadInterfaceWithDom("<p>x</p>");
+    assert.equal(api.getProtocolVersion(), 5);
+  }
+
+  console.log("[desktop-test] PASS getRectsFor / setEditMask / protocol v5");
 }
 
 main().catch((error) => {

@@ -82,6 +82,7 @@ interface Harness {
   toastErrorCalls: string[];
   workspaceRect: { left: number; top: number; width: number; height: number } | null;
   iframeOrigin: { left: number; top: number } | null;
+  openBlockOverlayCalls: Array<[string, [number, number], string | null]>;
 }
 
 function make(): Harness {
@@ -104,6 +105,7 @@ function make(): Harness {
     toastErrorCalls: [],
     workspaceRect: { left: 0, top: 0, width: 1000, height: 800 },
     iframeOrigin: { left: 10, top: 20 },
+    openBlockOverlayCalls: [],
   };
   const deps: ContextMenuDeps = {
     client: () => client,
@@ -126,6 +128,7 @@ function make(): Harness {
     },
     toastSuccess: (m) => h.toastSuccessCalls.push(m),
     toastError: (m) => h.toastErrorCalls.push(m),
+    openBlockOverlay: (chapter, range, ref) => h.openBlockOverlayCalls.push([chapter, range, ref]),
   };
   h.ctrl = new ContextMenuController(deps);
   h.ctrl.subscribe(client);
@@ -310,13 +313,15 @@ describe("block kind", () => {
     ]);
   });
 
-  test("Edit this block is disabled (PR 5)", async () => {
+  test("Edit this block opens the block overlay and closes the menu (PR 5)", async () => {
     const h = make();
-    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block" }) });
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block", range: [3, 5], ref: "b-ref" }) });
     await flush();
     const item = h.ctrl.items.find((i) => i.id === "block-edit")!;
-    expect(item.enabled).toBe(false);
-    expect(item.disabledReason).toBeTruthy();
+    expect(item.enabled).toBe(true);
+    await h.ctrl.runItem(item);
+    expect(h.openBlockOverlayCalls).toEqual([["ch1.md", [3, 5], "b-ref"]]);
+    expect(h.ctrl.open).toBe(false);
   });
 
   test("Go to source calls goToSource with range[0]+1 and closes the menu", async () => {
@@ -831,9 +836,15 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
 describe("runItem", () => {
   test("does not run a disabled item", async () => {
     const h = make();
-    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block" }) });
+    // No readFileMap entry for ch1.md: the source read fails, so the block
+    // slice is unavailable and link-edit resolves disabled (§4.4 degrade).
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "link", range: [0, 1], link: { href: "https://example.com", text: "x" } }),
+    });
     await flush();
-    const item = h.ctrl.items.find((i) => i.id === "block-edit")!;
+    const item = h.ctrl.items.find((i) => i.id === "link-edit")!;
+    expect(item.enabled).toBe(false);
     await h.ctrl.runItem(item);
     expect(h.commitEngine.calls.length).toBe(0);
   });

@@ -93,6 +93,13 @@ export interface ContextMenuDeps {
   copyToClipboard: (text: string) => Promise<void>;
   toastSuccess: (message: string) => void;
   toastError: (message: string) => void;
+  /**
+   * Open the click-to-edit block overlay on this block (PR 5,
+   * `block-overlay-controller.svelte.ts`) — the "Edit this block" item's
+   * destination, closing the menu itself is this controller's job, not the
+   * overlay's.
+   */
+  openBlockOverlay: (chapter: string, range: SourceRange, ref: string | null) => void;
 }
 
 export interface ContextMenuItem {
@@ -583,9 +590,11 @@ export class ContextMenuController {
       {
         id: "block-edit",
         label: "Edit this block",
-        enabled: false,
-        disabledReason: "Coming in a later update.",
-        run: () => {},
+        enabled: true,
+        run: () => {
+          this.deps.openBlockOverlay(chapter, range, target.ref);
+          this.close();
+        },
       },
       {
         id: "block-break-before",

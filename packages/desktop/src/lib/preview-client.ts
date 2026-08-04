@@ -98,6 +98,37 @@ export interface ContextTarget {
   selection: ContextTargetSelection | null;
 }
 
+/**
+ * A single fragment's geometry from `getRectsFor()` (protocol v5, inline-
+ * editing plan §5.3, ADR 0009) — plain and JSON-cloneable, `page` is the
+ * fragment's own 1-based page number (a split block's fragments can land on
+ * different pages).
+ */
+export interface PreviewRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+  page: number;
+}
+
+/**
+ * `getRectsFor()`'s result: every fragment rect for one logical block, plus
+ * the `data-ref` that grouped them. `ref` is echoed back even for a
+ * `{chapter, range}` lookup — the post-splice fallback resolves a FRESH
+ * data-ref the caller has no other way to learn, and the block overlay needs
+ * it to target the matching `setEditMask()` call after a re-anchor. `ref` is
+ * null (and `rects` empty) when nothing resolves — a stale ref, or a range
+ * that no longer matches anything in `chapter` (the block was deleted/moved).
+ */
+export interface RectsForResult {
+  ref: string | null;
+  rects: PreviewRect[];
+}
+
+/** Target form for `getRectsFor()` — exactly one of the two forms (§5.3). */
+export type RectsForTarget = { ref: string } | { chapter: string; range: SourceRange };
+
 /** A heading from getOutline() — see ADR 0005. */
 export interface OutlineEntry {
   level: number;
@@ -279,6 +310,28 @@ export class PreviewClient {
   /** Resolve the annotated element/selection at a viewport point (protocol v4, context menu). */
   getContextTargetAt(point: { x: number; y: number }): Promise<ContextTarget> {
     return this.call<ContextTarget>("getContextTargetAt", [point]);
+  }
+
+  /**
+   * All fragment rects for one logical block, keyed by `data-ref` (protocol
+   * v5, block overlay — inline-editing plan §5.3). Pass `{ref}` when the ref
+   * from the SAME render is still known; pass `{chapter, range}` (the
+   * post-splice fallback) after a `renderingComplete` re-render, whose fresh
+   * DOM mints fresh `data-ref`s.
+   */
+  getRectsFor(target: RectsForTarget): Promise<RectsForResult> {
+    return this.call<RectsForResult>("getRectsFor", [target]);
+  }
+
+  /**
+   * Toggle a masking class on every fragment sharing `ref`, plus the book
+   * document's own scroll lock (protocol v5, block overlay — inline-editing
+   * plan §5.1/§5.3). Purely cosmetic and reversible; `masked: false` clears
+   * the scroll lock even when `ref` no longer resolves to any live fragment
+   * (defense-in-depth teardown after a splice already replaced the DOM).
+   */
+  setEditMask(spec: { ref: string; masked: boolean }): Promise<{ count: number }> {
+    return this.call<{ count: number }>("setEditMask", [spec]);
   }
 
   /** Read-only DOM extraction (figures, links, footnotes, search candidates…). */
