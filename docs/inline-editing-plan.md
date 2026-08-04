@@ -675,6 +675,19 @@ export function findUniqueRange(...): [number, number] | null;
   - If the matched raw region contains a backtick or link syntax
     (`[`/`](…)`), the item is disabled (code spans render escaped text and
     link text/URL duality is ambiguous — do not fuzzy-match those).
+    **Containment is not sufficient — check delimiter ADJACENCY too**
+    (corrected during PR 4 implementation; the original spec here was
+    unsafe). A selection landing entirely *inside* a code span or link text
+    — selecting `code` out of `` `code` ``, or `hello` out of
+    `[hello](url)` — matches as a clean substring with **no delimiter
+    characters in the matched text at all**, so a containment-only check
+    waves it through. Wrapping it yields `` `**code**` ``, which renders as
+    the literal characters `**code**` in monospace because backticks never
+    parse nested markdown; for links it nests an invalid link. The check
+    must therefore test whether `[start, end)` falls inside a
+    backtick-run pair or a `[text](` region, pairing backtick runs in
+    document order. Ambiguous pairing must err toward flagging — a false
+    positive is safe, a miss is not.
   - If the matched raw region already contains the **same** delimiter being
     applied (bolding a region that contains `**`), disable — nesting the
     same emphasis is invalid markdown. A **different** delimiter is fine:
