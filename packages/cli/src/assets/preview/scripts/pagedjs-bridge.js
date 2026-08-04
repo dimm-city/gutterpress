@@ -74,6 +74,11 @@
   window.addEventListener('elementActivated', function (e) {
     post({ type: 'gutterpress:event', name: 'elementActivated', detail: e.detail });
   });
+  // docs/inline-editing-plan.md §3.1/§3.2 (protocol v4): right-click / keyboard
+  // context-menu target request.
+  window.addEventListener('contextMenuRequested', function (e) {
+    post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
+  });
 
   // Announce readiness as soon as previewAPI is defined.
   function announceReady() {

@@ -8,7 +8,8 @@ export interface PreviewEvent {
     | "renderingComplete"
     | "ready"
     | "sourceLineChanged"
-    | "elementActivated";
+    | "elementActivated"
+    | "contextMenuRequested";
   detail: {
     currentPage?: number;
     totalPages?: number;
@@ -29,7 +30,72 @@ export interface PreviewEvent {
     /** elementActivated: clicked element id / tag, if any. */
     id?: string | null;
     tag?: string;
+    /** contextMenuRequested: what kind of thing is at the resolved target — see ADR 0009. */
+    kind?: ContextTargetKind;
+    /** contextMenuRequested: data-source-range [start, end) of the innermost annotated block. */
+    range?: SourceRange | null;
+    /** contextMenuRequested: tag name of the innermost annotated block (e.g. "code" for a fence). */
+    blockTag?: string | null;
+    /** contextMenuRequested: true when the target fragment carries data-split-from/-to. */
+    split?: boolean;
+    /** contextMenuRequested: data-ref — the one identity Paged.js keeps stable across split fragments. */
+    ref?: string | null;
+    /** contextMenuRequested: the target fragment's rect (post-zoom, plain object — no DOMRect). */
+    rect?: PlainRect | null;
+    /** contextMenuRequested: populated whenever the point is on/in an <img>, regardless of `kind`. */
+    image?: { src: string | null; alt: string | null } | null;
+    /** contextMenuRequested: populated whenever the point is on/in an <a>, regardless of `kind`. */
+    link?: { href: string | null; text: string } | null;
+    /** contextMenuRequested: populated whenever a non-collapsed selection exists, regardless of `kind`. */
+    selection?: ContextTargetSelection | null;
+    /** contextMenuRequested: viewport point the menu was requested at. */
+    x?: number;
+    /** contextMenuRequested: viewport point the menu was requested at. */
+    y?: number;
+    /** contextMenuRequested: how the menu was invoked. */
+    via?: "mouse" | "keyboard";
   };
+}
+
+/** A `data-source-range` value — token.map's own 0-based half-open `[start, end)` convention. */
+export type SourceRange = [number, number];
+
+/** `getContextTargetAt()` / `contextMenuRequested`'s `kind` (protocol v4, ADR 0009). Precedence:
+ * selection -> image -> link -> marker -> block -> none. */
+export type ContextTargetKind = "selection" | "image" | "link" | "marker" | "block" | "none";
+
+/** A JSON-cloneable rect — never a DOMRect (the payload crosses two postMessage boundaries). */
+export interface PlainRect {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+/** `getContextTargetAt()`'s `selection` field — populated for any non-collapsed selection. */
+export interface ContextTargetSelection {
+  /** `selection.toString()` — NEVER `Range.toString()` (cross-page ranges pick up structural whitespace). */
+  text: string;
+  /** True only when both selection endpoints resolve to the same annotated block. */
+  withinSingleBlock: boolean;
+  /** That block's source range — only set when `withinSingleBlock`. */
+  range: SourceRange | null;
+  /** That block's chapter — only set when `withinSingleBlock`. */
+  chapter: string | null;
+}
+
+/** The full payload returned by `getContextTargetAt()` (protocol v4, ADR 0009). */
+export interface ContextTarget {
+  kind: ContextTargetKind;
+  chapter: string | null;
+  range: SourceRange | null;
+  blockTag: string | null;
+  split: boolean;
+  ref: string | null;
+  rect: PlainRect | null;
+  image: { src: string | null; alt: string | null } | null;
+  link: { href: string | null; text: string } | null;
+  selection: ContextTargetSelection | null;
 }
 
 /** A heading from getOutline() — see ADR 0005. */
@@ -208,6 +274,11 @@ export class PreviewClient {
   /** Source line + page of the block at the top of the viewport. */
   getVisibleSource(): Promise<{ sourceLine: number | null; page: number } | null> {
     return this.call("getVisibleSource");
+  }
+
+  /** Resolve the annotated element/selection at a viewport point (protocol v4, context menu). */
+  getContextTargetAt(point: { x: number; y: number }): Promise<ContextTarget> {
+    return this.call<ContextTarget>("getContextTargetAt", [point]);
   }
 
   /** Read-only DOM extraction (figures, links, footnotes, search candidates…). */
