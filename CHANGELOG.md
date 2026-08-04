@@ -7,6 +7,28 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Inline editing in the preview** (ADR 0009): the paginated preview is now an
+  editing surface, not just a viewer.
+  - **Right-click context menu** over the preview, with actions matched to what
+    was clicked — image (alt text, width, position, replace), link (edit, copy
+    target), selected text (bold, italic, strikethrough, inline code, make
+    link), block (insert page break, go to source) and `@marker`. Reachable by
+    keyboard via `Shift+F10` / the menu key. Right-clicks on page furniture
+    (running headers, page numbers) keep native behavior. Toggled by the new
+    `preview.contextMenu` setting.
+  - **Click-to-edit block overlay** — "Edit this block" opens the block's
+    markdown source in place over the preview.
+  - **Click-to-source** — clicking a block in the preview reveals it in the
+    editor, opening the editor pane if it is closed.
+  - Every edit flows through the existing editor buffer, so saves, crash
+    recovery, external-edit conflict handling, and undo behave exactly as they
+    do in the editor pane. Only the edited block's bytes change, keeping
+    snapshot diffs minimal. When a chapter has unsaved changes or the source
+    can't be located unambiguously, actions degrade to "open in editor" rather
+    than guessing.
+  - Rendered blocks now carry `data-source-range` (markdown-it `token.map`
+    verbatim), and the preview bridge is at protocol v5.
+
 - **Publish targets** (ADR 0008): where a book is *published* is now separate
   from how it is *designed*. `targets:` in the manifest (or
   `validate`/`preflight --target <id[,id]>`) names the destinations to
