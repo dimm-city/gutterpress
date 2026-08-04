@@ -14,7 +14,7 @@ name: Gutterpress render-perf gate
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "release/**"]
     paths:
       - "packages/desktop/src/**"
       - "packages/desktop/electron/**"

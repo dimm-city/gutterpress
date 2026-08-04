@@ -124,6 +124,10 @@ function make(): Harness {
       updateActiveOutline: (line) => log.push(`updateActiveOutline:${line}`),
       revealEditorLine: (line) => log.push(`revealEditorLine:${line}`),
       followChapterInEditor: (chapter, line) => log.push(`follow:${chapter}:${line}`),
+      openEditorPane: (opts) => {
+        h.editorPaneOpen = true;
+        log.push(`openEditorPane:${opts.focus}:${opts.ensureFile}`);
+      },
     },
     zoom: () => h.zoom,
     viewMode: () => h.viewMode,
@@ -389,6 +393,97 @@ test("sourceLineChanged does NOT yank the file when the buffer is dirty", () => 
   h.bufferDirty = true;
   h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 8, chapter: "ch2.md" } });
   expect(h.log.some((l) => l.startsWith("follow:"))).toBe(false);
+});
+
+// ── elementActivated (PR 0 — click-to-source) ─────────────────────────────────
+
+test("elementActivated reveals the line directly when the pane is already open on that chapter", () => {
+  const h = make();
+  h.editorPaneOpen = true;
+  h.editorChapter = "ch1.md";
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
+  expect(h.log).toContain("revealEditorLine:12");
+  expect(h.log.some((l) => l.startsWith("openEditorPane:"))).toBe(false);
+  expect(h.log.some((l) => l.startsWith("follow:"))).toBe(false);
+});
+
+test("elementActivated follows into a different chapter when the pane is open and the buffer is clean", () => {
+  const h = make();
+  h.editorPaneOpen = true;
+  h.editorChapter = "ch1.md";
+  h.bufferDirty = false;
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 8, chapter: "ch2.md" } });
+  expect(h.log).toContain("follow:ch2.md:8");
+  expect(h.log.some((l) => l.startsWith("openEditorPane:"))).toBe(false);
+});
+
+test("elementActivated does NOT yank the file into a different chapter when the pane is open and dirty", () => {
+  const h = make();
+  h.editorPaneOpen = true;
+  h.editorChapter = "ch1.md";
+  h.bufferDirty = true;
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 8, chapter: "ch2.md" } });
+  expect(h.log.some((l) => l.startsWith("follow:"))).toBe(false);
+  expect(h.log.some((l) => l.startsWith("revealEditorLine:"))).toBe(false);
+});
+
+test("elementActivated is NOT gated by the preview→editor echo-suppression window (unlike sourceLineChanged)", () => {
+  const h = make();
+  h.editorPaneOpen = true;
+  h.editorChapter = "ch1.md";
+  h.suppressUntil = h.now + 1000; // would block sourceLineChanged, but a click is real intent
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
+  expect(h.log).toContain("revealEditorLine:12");
+});
+
+test("elementActivated opens a closed pane and follows to the clicked chapter", () => {
+  const h = make();
+  h.editorPaneOpen = false;
+  h.editorChapter = null;
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: "ch3.md" } });
+  expect(h.log).toContain("openEditorPane:true:false");
+  expect(h.log).toContain("follow:ch3.md:5");
+  // Reveal is not called directly — follow's own poll loop handles the mount wait.
+  expect(h.log.some((l) => l.startsWith("revealEditorLine:"))).toBe(false);
+});
+
+test("elementActivated opens a closed pane and follows even when it lands on the chapter already in the buffer (waits for mount)", () => {
+  const h = make();
+  h.editorPaneOpen = false;
+  h.editorChapter = "ch1.md"; // buffer already has this chapter loaded, pane just isn't mounted
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: "ch1.md" } });
+  expect(h.log).toContain("openEditorPane:true:false");
+  expect(h.log).toContain("follow:ch1.md:5");
+  expect(h.log.some((l) => l.startsWith("revealEditorLine:"))).toBe(false);
+});
+
+test("elementActivated opens a closed pane and follows regardless of a dirty buffer (nothing visible to yank)", () => {
+  const h = make();
+  h.editorPaneOpen = false;
+  h.editorChapter = "ch1.md";
+  h.bufferDirty = true;
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: "ch2.md" } });
+  expect(h.log).toContain("openEditorPane:true:false");
+  expect(h.log).toContain("follow:ch2.md:5");
+});
+
+test("elementActivated with a closed pane and no known chapter still opens the pane with a default file", () => {
+  const h = make();
+  h.editorPaneOpen = false;
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: null } });
+  expect(h.log).toContain("openEditorPane:true:true");
+  expect(h.log.some((l) => l.startsWith("follow:"))).toBe(false);
+});
+
+test("elementActivated no-ops on a missing/null sourceLine", () => {
+  const h = make();
+  h.editorPaneOpen = false;
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: null, chapter: "ch1.md" } });
+  expect(h.log).toEqual([]);
+
+  const h2 = make();
+  h2.ctrl.handleEvent({ name: "elementActivated", detail: { chapter: "ch1.md" } });
+  expect(h2.log).toEqual([]);
 });
 
 // ── subscribe wiring ─────────────────────────────────────────────────────────

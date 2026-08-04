@@ -1812,6 +1812,7 @@
       updateActiveOutline: (line) => updateActiveOutline(line),
       revealEditorLine: (line) => editorRef?.revealLine(line),
       followChapterInEditor: (chapter, line) => editorSync.followChapterInEditor(chapter, line),
+      openEditorPane: (opts) => openEditorPane(opts),
     },
     zoom: () => zoom,
     viewMode: () => viewMode,
