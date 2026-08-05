@@ -331,8 +331,8 @@ export function fillLeaders(contentWidthPx: number): number {
  * Apply synthesized generated content (cross-reference text) by element id.
  *
  * `css` comes from `generatedContentCss()` in Node — it must out-specify the
- * author's own `::after` rule, which since Chrome 151 survives the cascade even
- * though `target-counter()` computes to nothing (see the shared module).
+ * author's own `::after` rule, which survives the cascade even though
+ * `target-counter()` computes to nothing (see the shared module).
  */
 export function setGenerated(
   entries: Array<{ id: string; where: string; text: string }>,

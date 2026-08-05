@@ -11,7 +11,7 @@ The input is **not** hand-written for either engine: `compare/stage-book.ts`
 calls the shipped Gutterpress library (`loadManifestWithPath` → `resolveConfig`
 → `renderChaptersToFile`) to produce the exact pre-pagination `book.html` that
 the current build hands to Paged.js, and Folio compiles that same file. Both
-engines also run in the same headless Chromium (141).
+engines also run in the same headless Chrome (151, Folio's pinned engine).
 
 Subject: `examples/gutterpress-user-guide` — ~2,100 lines of markdown, 10
 chapters, a cover, a TOC, named pages (`cover`/`toc`/`chapter`), mirrored

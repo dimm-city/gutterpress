@@ -176,14 +176,12 @@ export function leaderFillCount(gapPx: number, gluePx: number): number {
  *
  * Folio resolves `target-counter()` / `target-text()` / `leader()` into a
  * `data-folio-after|before` attribute and renders it with `content: attr(…)`.
- * That used to be safe by default: Chromium dropped the author's unsupported
- * declaration entirely, so ANY rule of Folio's won.
  *
- * It stopped being safe in Chrome 151, which PARSES `target-counter()` (and
- * `CSS.supports()` reports it as supported) but computes the whole `content`
- * value to `none` — nothing renders. The author's declaration now survives the
- * cascade, and `a.xref::after` (0,1,1) outranks a bare
- * `[data-folio-after]::after` (0,1,0), so the author's empty value wins and the
+ * The pinned engine PARSES `target-counter()` (and `CSS.supports()` reports it
+ * as supported) but computes the whole `content` value to `none` — nothing
+ * renders. So the author's declaration SURVIVES the cascade, and
+ * `a.xref::after` (0,1,1) outranks a bare `[data-folio-after]::after` (0,1,0):
+ * a lower-specificity override loses to the author's empty value and the
  * cross-reference silently disappears.
  *
  * The fix is to out-specify the author on their own terms: reuse their selector

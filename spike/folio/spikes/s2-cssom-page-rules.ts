@@ -76,16 +76,17 @@ export async function run(browser: Browser) {
     !probe.h1StringSet.stringSet,
     `h1 cssText = ${JSON.stringify(probe.h1StringSet.cssText)}`,
   );
-  // Chrome 141 dropped this declaration; Chrome 151 keeps it (it parses
-  // target-counter() but computes it to none). Either way gcpm-extract reads
-  // the text, so extraction is unaffected — but a SURVIVING declaration
-  // outranks a bare `[data-folio-after]::after` override, which is what makes
-  // `generatedContentCss()` reuse the author's own selector.
+  // The pinned engine RETAINS this declaration (it parses target-counter() but
+  // computes it to none). A surviving declaration outranks a bare
+  // `[data-folio-after]::after` override, which is precisely why
+  // `generatedContentCss()` reuses the author's own selector. Assert it: if an
+  // engine goes back to dropping it, the override could be simplified, and
+  // that should be a finding rather than a silent non-event.
   s.check(
-    "target-counter() content is either dropped or retained — extraction is unaffected either way",
-    true,
+    "CSSOM RETAINS target-counter() content — Folio's override must out-specify it",
+    Boolean(probe.xrefContent),
     probe.xrefContent
-      ? `retained: ${JSON.stringify(probe.xrefContent)} — Folio must out-specify it`
+      ? `retained: ${JSON.stringify(probe.xrefContent)}`
       : "dropped by the parser",
   );
 

@@ -2,12 +2,17 @@
 
 Every row here was **measured**, not read from a spec or a compatibility table,
 and each names the spike that re-measures it on every run. If you are building
-anything on Chromium's print path, this is the ground truth to build against —
-and the parts that changed between Chrome 141 and 151 are the reason it is
-re-measured rather than remembered.
+anything on Chromium's print path, this is the ground truth to build against.
 
-Measured on Chromium **141.0.7390.37** and Chrome **151.0.7922.75**.
-Re-run everything with `bun run spikes` (15 spikes, 211 checks, ~18 s).
+**Folio is pinned to Chrome 151** (`REQUIRED_MILESTONE` in
+`src/shared/cdp.ts`; launching an older engine throws). Everything below is a
+property of *that engine*, not of "Chromium" in general — §2 is a worked example
+of a milestone bump silently disabling a shim with no error anywhere, which is
+why the version is pinned and why these facts are re-measured rather than
+remembered.
+
+Measured on Chrome **151.0.7922.75**. Re-run with `bun run spikes`
+(15 spikes, 212 checks, ~19 s).
 
 ---
 
@@ -51,32 +56,38 @@ printing does — 331/331 blocks across five documents (`s1`).
 
 ### `target-counter()` / `target-text()` — and why `CSS.supports` cannot be trusted
 
-This one changed under us, and the way it changed is the important part.
+On the pinned engine, all three of these are true at once:
 
-| | Chrome 141 | Chrome 151 |
-| --- | --- | --- |
-| `CSS.supports('content','target-counter(…)')` | `false` | **`true`** |
-| Declaration retained in CSSOM | no — dropped | **yes** |
-| Actually renders | no | **no** — computes to `none` |
+| | Chrome 151 |
+| --- | --- |
+| `CSS.supports('content','target-counter(…)')` | **`true`** |
+| Declaration retained in CSSOM | **yes** |
+| Actually renders | **no** — computes to `none` |
 
-So on 151 the browser *claims* support, *keeps* the declaration, and *renders
-nothing*. Two consequences, both of which bit us:
+The browser *claims* support, *keeps* the declaration, and *renders nothing*.
+Two consequences, both load-bearing:
 
 1. **`CSS.supports` is not a usable feature detector for these.** A shim gated on
-   it would have switched itself off on 151 and silently dropped every
-   cross-reference. The only honest detector is a render probe: set the property
-   on a probe element and read back `getComputedStyle(el, '::after').content`.
-   `s0` does exactly this.
+   it would switch itself off and silently drop every cross-reference. The only
+   honest detector is a render probe: set the property on a probe element and
+   read back `getComputedStyle(el, '::after').content`. `s0` does exactly this,
+   and asserts both halves — that it does not render, *and* that it falsely
+   claims support.
 2. **A surviving declaration wins the cascade.** The author's
    `a.xref::after` (specificity 0,1,1) outranks a generated
-   `[data-folio-after]::after` (0,1,0), so the author's *empty* value won and
-   the shim's text never appeared. A generated override must out-specify the
+   `[data-folio-after]::after` (0,1,0), so the author's *empty* value wins and
+   the shim's text never appears. A generated override must out-specify the
    author's own rule — see [`ARCHITECTURE.md`](./ARCHITECTURE.md) §4.
 
-The general lesson: **a browser upgrade can silently disable a shim without any
-error, in either direction** — by implementing a feature, or by half-implementing
-it. Pin the version, and keep a parity harness in CI that renders rather than
-introspects.
+**Why the engine is pinned.** Chrome 141 did *not* parse `target-counter()`; it
+dropped the declaration, so any override of Folio's won by default. The 151
+change flipped that with no error, no console warning, and no failing feature
+check — output silently went from `"See target (p. 2)"` to `"See target"`. That
+is the whole argument for `REQUIRED_MILESTONE`: an engine upgrade can disable a
+shim in either direction, by implementing a feature *or* by half-implementing
+it, and a shim cannot defend itself by asking whether the feature exists. Treat
+a milestone bump as a code change: raise the pin deliberately, re-run the
+spikes, and read every changed measurement as a finding.
 
 ---
 
@@ -134,10 +145,11 @@ Two practical consequences:
 
 - **Fractional page metrics make it worse** — the same content produced 35 drift
   events at 6×9in and 78 at 210×297mm. Presets should prefer pt/px-clean sizes.
-- **The browser version changes which boundaries flip.** A corpus that was
-  331/331 on Chrome 141 is 330/331 on 151 — one block moves to the *adjacent*
-  page. Assert the property that is actually true (page counts exact,
-  disagreement only ever adjacent, ≤1 %), not an exact match that will rot.
+- **Which boundaries flip is a property of the engine version** — a second
+  reason the version is pinned. The generated corpus sits at 330/331 blocks on
+  151, the one divergence being an adjacent-page move. Assert the property that
+  is actually true (page counts exact, disagreement only ever adjacent, ≤1 %),
+  not an exact match that will rot on the next bump.
 
 The posture that follows: **the PDF is ground truth.** Printed page numbers must
 come from compiler measurement, never from the screen preview's page map.

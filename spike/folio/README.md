@@ -37,15 +37,16 @@ The two rules worth knowing before touching the code, both learned the hard way:
 1. **Every synthesis decision is one shared pure function** — there is no
    compiler-side copy and viewer-side copy to keep in sync, because a twin
    silently rots the moment one side changes (`ARCHITECTURE.md` §1).
-2. **`CSS.supports` is not a feature detector here.** Chrome 151 reports
+2. **`CSS.supports` is not a feature detector here.** The engine reports
    `target-counter()` as supported while rendering nothing. Render-probe
-   (`ENGINE.md` §2).
+   (`ENGINE.md` §2). This is also why Folio pins its engine rather than
+   feature-detecting: the failure had no error and no detectable signal.
 
 ## Run it
 
 ```bash
 bun install
-bun run spikes            # all 15 spikes against a real browser (~18s, 211 checks)
+bun run spikes            # all 15 spikes against a real browser (~19s, 212 checks)
 bun run compare           # current Gutterpress vs this spike, same book
 bun compare/diff-report.ts a.pdf b.pdf   # content-aligned artifact diff
 bun spikes/run-all.ts s1  # just one
@@ -53,9 +54,11 @@ bun test                  # unit tests for the shared modules
 bunx tsc --noEmit -p tsconfig.json
 ```
 
-The spikes need a Chromium/Chrome binary. Resolution order: `$FOLIO_CHROMIUM`,
-`$PUPPETEER_EXECUTABLE_PATH`, `/opt/pw-browsers/chromium`, `/usr/bin/chromium`,
-`/usr/bin/chromium-browser`, `/usr/bin/google-chrome`.
+The spikes need a **Chrome/Chromium 151 or newer** binary — Folio is pinned to
+151 (`REQUIRED_MILESTONE` in `src/shared/cdp.ts`) and refuses to launch an older
+one rather than paginate differently without saying so. Resolution order:
+`$FOLIO_CHROMIUM`, `$PUPPETEER_EXECUTABLE_PATH`, `/opt/pw-browsers/chromium`,
+`/usr/bin/chromium`, `/usr/bin/chromium-browser`, `/usr/bin/google-chrome`.
 
 PDF verification uses an independent reader — PyMuPDF if importable, poppler
 (`pdftotext`/`pdfinfo`/`pdffonts`/`pdftoppm`) otherwise; `probe.ts` picks one

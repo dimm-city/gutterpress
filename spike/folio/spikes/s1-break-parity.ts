@@ -135,9 +135,9 @@ export async function run(browser: Browser) {
     );
     // Blocks must agree, with ONE documented exception: a knife-edge boundary
     // (see F7) can round the other way, moving a single block to the ADJACENT
-    // page. That is an engine property, not a Folio decision — and it moves
-    // with the browser version: this corpus was 331/331 on Chrome 141 and is
-    // 330/331 on 151. The assertion therefore permits adjacent-page
+    // page. That is an engine property, not a Folio decision, and WHICH
+    // boundaries flip is a property of the pinned version — which is part of
+    // why the version is pinned. The assertion permits adjacent-page
     // disagreement at ≤1% of blocks, and nothing else: a page-count change, a
     // non-adjacent move, or a cluster of them still fails.
     const adjacent = diffs.filter((d) => Math.abs(d.print - d.screen) === 1);

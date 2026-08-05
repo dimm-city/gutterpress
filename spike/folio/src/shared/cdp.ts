@@ -28,6 +28,23 @@ export function findChromium(): string {
   );
 }
 
+/**
+ * Folio targets exactly one engine.
+ *
+ * Chromium's Paged Media behaviour is not stable across milestones, and it
+ * changes in ways that produce NO error: 151 began parsing `target-counter()`
+ * while still computing it to `none`, which made the author's declaration
+ * survive the cascade and silently outrank Folio's override — every
+ * cross-reference in the document disappeared, quietly. A shim cannot defend
+ * against that class of change by feature-detection, because the feature
+ * reports itself as present.
+ *
+ * So the version is pinned rather than probed, and running on anything else is
+ * an error rather than a guess. Raising this floor means re-running
+ * `bun run spikes` and treating every changed measurement as a finding.
+ */
+export const REQUIRED_MILESTONE = 151;
+
 export interface Browser {
   wsUrl: string;
   version: string;
@@ -75,6 +92,25 @@ export async function launchChromium(
   const version = await conn.send<{ product: string }>("Browser.getVersion", {});
   const milestone = Number(/Chrome\/(\d+)/.exec(version.product)?.[1] ?? 0);
 
+  // Teardown must WAIT for the process to exit before removing its data dir —
+  // Chromium keeps writing on the way down, so an immediate rmSync races it and
+  // leaves the directory behind (measured: 3 rejected launches → 3 orphan dirs).
+  // One implementation, used by both the version-reject path and close().
+  const teardown = async () => {
+    conn.close();
+    proc.kill("SIGKILL");
+    await new Promise((r) => proc.once("exit", r));
+    rmSync(userDataDir, { recursive: true, force: true });
+  };
+
+  if (milestone < REQUIRED_MILESTONE) {
+    await teardown();
+    throw new Error(
+      `Folio requires Chromium ${REQUIRED_MILESTONE}+; found ${version.product} at ${bin}.\n` +
+        `Set FOLIO_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
+    );
+  }
+
   return {
     wsUrl,
     version: version.product,
@@ -93,12 +129,7 @@ export async function launchChromium(
       await s.send("Runtime.enable");
       return s;
     },
-    async close() {
-      conn.close();
-      proc.kill("SIGKILL");
-      await new Promise((r) => proc.once("exit", r));
-      rmSync(userDataDir, { recursive: true, force: true });
-    },
+    close: teardown,
   };
 }
 

@@ -230,8 +230,8 @@ Measured: `useObjectStreams: true` is 41 % smaller AND 2.5× faster to save
 (979 KB/225 ms → 579 KB/89 ms), identical structure to both pdf-lib and PyMuPDF
 readers. The clobbering was pdf-lib's `load()` default (`updateMetadata: true`
 stamps pdf-lib as Producer); postprocess now loads with `updateMetadata: false`
-and only writes fields the caller provided. Output: 593 KB with Producer
-`Skia/PDF m141` preserved — smaller than the current pipeline's 594 KB while
+and only writes fields the caller provided. Output: 593 KB with Chromium's own
+`Skia/PDF` Producer preserved — smaller than the current pipeline's 594 KB while
 carrying the 155-entry outline.
 
 ### F7 — viewer drift at scale — **root-caused; inherent; documented**
@@ -407,11 +407,16 @@ knife-edge class, in a document that also contains an overheight element. `s14`
 now asserts what `s1` does: page counts exact, disagreement only ever adjacent,
 and the overheight element must have been flagged by the audit.
 
-### Also found: Chrome 151 vs 141
+### Also found: the engine upgrade that bought the version pin
 
-Not one of the three areas, but the browser on this machine is newer and it
-silently broke cross-references and leaders — see the F-list entry for
-`generatedContentCss`. The short version: `CSS.supports()` now reports
-`target-counter()` as supported while it computes to `none`, and the author's
-surviving declaration out-specified Folio's override. **`CSS.supports` is not a
-usable feature detector for the GCPM shims** — s0 render-probes instead.
+Not one of the three areas. Moving to a newer browser silently broke
+cross-references and leaders — see the F-list entry for `generatedContentCss`.
+The short version: `CSS.supports()` reports `target-counter()` as supported
+while it computes to `none`, so the author's surviving declaration
+out-specified Folio's override and the text vanished with no error.
+
+Two things came out of it. **`CSS.supports` is not a usable feature detector for
+the GCPM shims** — s0 render-probes instead. And **Folio now pins its engine**
+(`REQUIRED_MILESTONE = 151`, enforced at launch) rather than supporting a range,
+because this class of break is undetectable from inside the page. See
+[`ENGINE.md`](./ENGINE.md) §2.

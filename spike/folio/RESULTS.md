@@ -11,14 +11,16 @@ real browser, two of them only after the spike found and fixed a genuine
 divergence. Six findings amend the proposal; none of them is existential, and
 one of them (F1) makes Tier 3 materially simpler than proposed.
 
-- Runtime: Chromium **141.0.7390.37** headless (proposal floor: 131), Bun 1.3.11
-- Suite: `bun run spikes` — **15/15 spikes, ~18 s wall clock** (s11 covers leaders, `target-text`, `string(which)` and measurement neutrality)
+- Runtime: Chrome **151.0.7922.75** headless, Bun 1.3.11. Folio is **pinned to
+  151** — the proposal's "floor 131" is superseded; see [`ENGINE.md`](./ENGINE.md) §2
+  for the milestone change that made a floor untenable.
+- Suite: `bun run spikes` — **15/15 spikes, 212 checks, ~19 s wall clock** (s11 covers leaders, `target-text`, `string(which)` and measurement neutrality)
 - Evidence regenerated on every run into `out/results.json` / `out/results.md`;
   PDFs, generated CSS and fixtures land in `out/` too.
 
 | spike | proposal ref | what it proves | verdict |
 | --- | --- | --- | --- |
-| s0 | §4 | Chromium's native Paged Media baseline is real | PASS 29/29 |
+| s0 | §4 | Chromium's native Paged Media baseline is real | PASS 30/30 |
 | s1 | §11.1 | multicol ↔ print break parity (**the load-bearing one**) | PASS 19/19 |
 | s2 | §11.2 | CSSOM exposure of `@page` internals | PASS 9/9 |
 | s3 | §11.3 | `@counter-style` fixed maps inside margin boxes | PASS 7/7 |
@@ -26,13 +28,13 @@ one of them (F1) makes Tier 3 materially simpler than proposed.
 | s5 | §11.5 | `<thead>` repetition: per page vs per column | PASS 8/8 |
 | s6 | §11.6 | named page + pseudo-page combinators | PASS 6/6 |
 | s7 | new | layout-neutral instrumentation for Tier 3 | PASS 5/5 |
-| s8 | §8, M1/M3 | compiler: tiers 1–3, bleed/marks, boxes, signatures | PASS 19/19 |
+| s8 | §8, M1/M3 | compiler: tiers 1–3, bleed/marks, boxes, signatures | PASS 20/20 |
 | s9 | §2, §10 | DX and performance claims | PASS 9/9 |
-| s10 | new | recto/verso forced breaks + `@page :blank` | PASS 11/11 |
-| s11 | new | leaders, target-text, string(which), neutral measurement | PASS 9/9 |
-| s12 | §8 hand-off | Ghostscript PDF/X-1a via the real gutterpress converter | PASS 24/24 |
-| s13 | §6, §8 | POD bleed/marks geometry across 5 trim sizes | PASS |
-| s14 | new | image-heavy books: parity, fidelity, postprocess safety | PASS |
+| s10 | new | recto/verso forced breaks + `@page :blank` | PASS 12/12 |
+| s11 | new | leaders, target-text, string(which), neutral measurement | PASS 8/8 |
+| s12 | §8 hand-off | Ghostscript PDF/X-1a via the real gutterpress converter | PASS 25/25 |
+| s13 | §6, §8 | POD bleed/marks geometry across 5 trim sizes | PASS 36/36 |
+| s14 | new | image-heavy books: parity, fidelity, postprocess safety | PASS 12/12 |
 
 ---
 

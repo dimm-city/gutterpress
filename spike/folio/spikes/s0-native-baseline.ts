@@ -7,7 +7,7 @@
  * downstream of it.
  */
 import { join } from "node:path";
-import { launchChromium, type Browser } from "../src/shared/cdp.ts";
+import { launchChromium, REQUIRED_MILESTONE, type Browser } from "../src/shared/cdp.ts";
 import { inspectPdf, PT_PER_IN } from "../src/shared/pdf-inspect.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 import { pdfText, pdfInfo } from "./probe.ts";
@@ -30,11 +30,19 @@ const filler = (n: number, tag = "p") =>
 export async function run(browser: Browser) {
   const s = new Spike("s0-native-baseline", "Chromium native Paged Media baseline (§4)");
   s.data.chromium = browser.version;
+  // Everything measured below is a property of ONE engine version. Folio is
+  // pinned to it (see REQUIRED_MILESTONE) because these properties change
+  // silently between milestones.
   s.check(
-    "Chromium >= 131 (margin boxes)",
-    browser.milestone >= 131,
+    `Chromium >= pinned milestone ${REQUIRED_MILESTONE}`,
+    browser.milestone >= REQUIRED_MILESTONE,
     `${browser.version} (milestone ${browser.milestone})`,
   );
+  if (browser.milestone > REQUIRED_MILESTONE)
+    s.note(
+      `Running ABOVE the pin (${browser.milestone} > ${REQUIRED_MILESTONE}). Every measurement ` +
+        `below was taken at ${REQUIRED_MILESTONE}; treat any change as a finding, not noise.`,
+    );
 
   const page = await browser.newPage();
 
@@ -218,7 +226,7 @@ export async function run(browser: Browser) {
         return /bleed/.test(ss.cssRules[0].cssText);
       })(),
       targetCounter: CSS.supports('content', 'target-counter(attr(href url), page)'),
-      // CSS.supports lies for these: Chrome 151 PARSES target-counter() and
+      // CSS.supports lies here: the pinned engine PARSES target-counter() and
       // reports support, then computes the whole content value to none.
       // The only honest detector is a render probe.
       targetCounterRenders: (() => {
@@ -250,25 +258,27 @@ export async function run(browser: Browser) {
       !support.bleedDescriptor,
       `CSSOM retains bleed = ${support.bleedDescriptor}`,
     );
-    // The requirement is that Tier 3 is still REQUIRED, i.e. the browser does
-    // not actually RENDER a cross-reference. Whether it parses the syntax is
-    // irrelevant — and since Chrome 151 parses it while computing the value to
-    // `none`, a parse-level check would have quietly declared victory and
-    // (had the shim been feature-gated on it) disabled a shim still needed.
+    // Two SEPARATE facts about the pinned engine, both load-bearing and both
+    // asserted rather than hedged:
+    //
+    //  1. it does not RENDER a cross-reference, so Tier 3 is still required;
+    //  2. it nonetheless CLAIMS support, so CSS.supports must never gate the
+    //     shim — and the author's declaration survives the cascade, which is
+    //     why generatedContentCss() reuses the author's own selector.
+    //
+    // If a future engine renders it, (1) fails and Tier 3 can be retired. If
+    // one stops claiming support, (2) fails and the override can go back to a
+    // bare attribute selector. Either way the change surfaces here first.
     s.check(
       "target-counter() still does not RENDER (Tier 3 required)",
       !support.targetCounterRenders,
-      `CSS.supports says ${support.targetCounter}; computed ::after content ` +
-        `${support.targetCounterRenders ? "renders" : "is none"}`,
+      `computed ::after content ${support.targetCounterRenders ? "renders" : "is none"}`,
     );
-    if (support.targetCounter && !support.targetCounterRenders)
-      s.note(
-        "CSS.supports('content','target-counter(…)') is TRUE on this build but the value computes " +
-          "to none, so nothing renders. Feature-detecting the GCPM shims with CSS.supports would " +
-          "silently disable a shim that is still needed. Worse, the author's declaration now " +
-          "SURVIVES the cascade and outranks a bare `[data-folio-after]::after` override — which " +
-          "is why generatedContentCss() reuses the author's own selector.",
-      );
+    s.check(
+      "CSS.supports claims target-counter() despite it not rendering (so it cannot gate the shim)",
+      support.targetCounter,
+      `CSS.supports = ${support.targetCounter}`,
+    );
     s.note(
       `float:footnote=${support.floatFootnote}, @page :nth()=${support.nthPage} (both v1 non-goals / fallbacks)`,
     );

@@ -99,14 +99,17 @@ build; `s11` checks the cover and TOC carry no head.
 `a.xref::after` → `a.xref[data-folio-after]::after` (0,2,1 beats 0,1,1).
 
 **The bug.** The shim used a bare `[data-folio-after]::after` (0,1,0). That was
-safe only because Chromium *dropped* the author's unsupported declaration
-entirely. Chrome 151 started parsing `target-counter()` while computing it to
-`none` — so the author's declaration survived, outranked the override, and every
-cross-reference and dot leader silently vanished. Output went from
-`"See target (p. 2) and its name [TARGETHEADING]."` to `"See target and its
-name."` with no error anywhere.
+safe only because the engine of the day *dropped* the author's unsupported
+declaration entirely. When Chromium started parsing `target-counter()` while
+still computing it to `none`, the author's declaration survived, outranked the
+override, and every cross-reference and dot leader silently vanished — output
+went from `"See target (p. 2) and its name [TARGETHEADING]."` to `"See target
+and its name."` with no error anywhere.
 
-Never rely on "the browser will drop the thing I'm replacing."
+Never rely on "the browser will drop the thing I'm replacing." This is also the
+bug that bought the engine pin ([`ENGINE.md`](./ENGINE.md) §2): the failure was
+invisible to every form of feature detection, so the defence is a fixed engine
+plus a harness that renders.
 
 **What keeps it honest.** `s0` render-probes instead of trusting `CSS.supports`;
 `s11` asserts the rendered reference text.
@@ -189,11 +192,16 @@ Two anti-patterns cost real time here:
   sub-print-quality"` passed by asserting the *fixture* was 72 DPI, while its
   detail string said Folio did not warn. It could never fail. It now asserts the
   audit actually fires.
-- **A test loosened to go green.** When Chrome 151 moved one block to an adjacent
-  page, the temptation was to relax the assertion. What went in instead is the
-  property that is *actually* true and still catches regressions: page counts
-  exact, disagreement only ever adjacent-page, ≤1 % of blocks. A non-adjacent
-  move, a cluster, or a page-count change still fails.
+- **A test loosened to go green.** When an engine bump moved one block to an
+  adjacent page, the temptation was to relax the assertion. What went in instead
+  is the property that is *actually* true and still catches regressions: page
+  counts exact, disagreement only ever adjacent-page, ≤1 % of blocks. A
+  non-adjacent move, a cluster, or a page-count change still fails.
+- **A check that hedged across engines.** `"target-counter() content is either
+  dropped or retained"` was hard-coded to `true` so it would pass on both
+  versions in play. Pinning the engine let it become the real assertion —
+  *retained*, therefore the override must out-specify the author — which now
+  fails if a future engine changes its mind.
 
 The rule: when a test fails, first establish whether the code or the test is
 wrong. Both happened repeatedly here, and the difference is only ever settled by
