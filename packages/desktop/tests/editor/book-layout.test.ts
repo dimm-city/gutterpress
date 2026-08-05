@@ -2,6 +2,7 @@ import { expect, test, describe } from "bun:test";
 import { EditorState } from "@codemirror/state";
 import {
   buildBookDoc,
+  bookLayoutsEqual,
   collapsedSegments,
   globalLineFor,
   localLineFor,
@@ -30,10 +31,11 @@ import {
  *
  * Two properties carry the whole feature and both are pinned here:
  *
- *  1. **Round trip** — every chapter's bytes come back out of the document
- *     exactly as they went in, including files with no trailing newline and
- *     empty files (which are shown padded so they have a line to live on).
- *     A failure here silently rewrites the author's files.
+ *  1. **Round trip** — every chapter's content comes back out of the document,
+ *     aside from CodeMirror's standard LF line-ending normalization, including
+ *     files with no trailing newline and empty files (which are shown padded
+ *     so they have a line to live on). A failure here silently rewrites the
+ *     author's files.
  *  2. **Boundary mapping** — the segment table is positions mapped through
  *     CodeMirror's own change sets, not separator text, so an edit anywhere in
  *     the book still attributes every chapter's content to the right file.
@@ -57,8 +59,8 @@ describe("buildBookDoc", () => {
     const { doc, layout } = buildBookDoc(sections(["01.md", "no newline"], ["02.md", "next\n"]));
     expect(doc).toBe("no newline\nnext\n");
     expect(layout.segments[0]!.padded).toBe(true);
-    // The file round trips byte-for-byte — it must not be marked dirty (and
-    // then rewritten with an extra newline) merely by being opened.
+    // The file keeps its trailing-newline state — it must not be marked dirty
+    // (and then rewritten with an extra newline) merely by being opened.
     expect(segmentText(doc, layout, 0)).toBe("no newline");
     expect(segmentText(doc, layout, 1)).toBe("next\n");
   });
@@ -83,12 +85,59 @@ describe("buildBookDoc", () => {
     });
   });
 
+  test("normalizes line endings before calculating CodeMirror segment offsets", () => {
+    const { doc, layout } = buildBookDoc(
+      sections(["01.md", "one\r\ntwo\nthree\r"], ["02.md", "four\r\nfive\r\n"]),
+    );
+    const state = EditorState.create({ doc, extensions: [bookFieldInit(layout)] });
+    const live = bookLayout(state)!;
+
+    expect(state.doc.toString()).toBe("one\ntwo\nthree\nfour\nfive\n");
+    expect(live.segments[1]!.from).toBe(14);
+    expect(state.doc.lineAt(live.segments[1]!.from).text).toBe("four");
+    expect(texts(state)).toEqual({
+      "01.md": "one\ntwo\nthree\n",
+      "02.md": "four\nfive\n",
+    });
+  });
+
   test("an empty book is an empty document", () => {
     const { doc, layout } = buildBookDoc([]);
     expect(doc).toBe("");
     expect(layout.segments).toEqual([]);
     expect(segmentIndexForPos(layout, 0)).toBe(-1);
     expect(localLineFor(layout, 1)).toBeNull();
+  });
+});
+
+describe("bookLayoutsEqual", () => {
+  test("rejects equal aggregate text with different file boundaries", () => {
+    const first = buildBookDoc(sections(["01.md", "a\n"], ["02.md", "b\nc\n"]));
+    const second = buildBookDoc(sections(["01.md", "a\nb\n"], ["02.md", "c\n"]));
+    expect(first.doc).toBe(second.doc);
+    expect(bookLayoutsEqual(first.layout, second.layout)).toBe(false);
+  });
+
+  test("includes path, chapter, and synthetic padding ownership", () => {
+    const { layout } = buildBookDoc(sections(["01.md", "a"]));
+    expect(bookLayoutsEqual(layout, { segments: layout.segments.map((s) => ({ ...s })) })).toBe(
+      true,
+    );
+    expect(
+      bookLayoutsEqual(layout, {
+        segments: [{ ...layout.segments[0]!, path: "/proj/renamed.md" }],
+      }),
+    ).toBe(false);
+    expect(
+      bookLayoutsEqual(layout, {
+        segments: [{ ...layout.segments[0]!, chapter: "renamed.md" }],
+      }),
+    ).toBe(false);
+    expect(
+      bookLayoutsEqual(layout, {
+        segments: [{ ...layout.segments[0]!, padded: false }],
+      }),
+    ).toBe(false);
   });
 });
 

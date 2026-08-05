@@ -28,8 +28,9 @@
  * newline or the next chapter's first line would render glued to this one. A
  * file whose on-disk content doesn't end in `\n` (including an EMPTY file) is
  * displayed with one appended and flagged `padded`; {@link segmentText} strips
- * exactly one trailing newline back off a padded segment, so the file round
- * trips byte-for-byte and is never marked dirty just for being opened.
+ * exactly one trailing newline back off a padded segment. CodeMirror
+ * canonicalizes line endings to LF, but opening a file alone still never marks
+ * it dirty or writes it back.
  *
  * Pure string/array math — no CodeMirror, no DOM, no `node:*` (CLAUDE.md §8 /
  * ADR 0004). Unit-tested in `tests/editor/book-layout.test.ts`.
@@ -69,6 +70,31 @@ export interface BookLayout {
   segments: BookSegment[];
 }
 
+/**
+ * CodeMirror stores every supported line ending as one `\n`. Segment offsets
+ * must be calculated from that same representation or each preceding `\r\n`
+ * shifts every later chapter boundary by one character.
+ */
+export function normalizeEditorText(text: string): string {
+  return text.replace(/\r\n?/g, "\n");
+}
+
+/** Exact identity for a book document's file ownership and geometry. */
+export function bookLayoutsEqual(a: BookLayout | null, b: BookLayout | null): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.segments.length !== b.segments.length) return false;
+  return a.segments.every((segment, index) => {
+    const other = b.segments[index]!;
+    return (
+      segment.path === other.path &&
+      segment.chapter === other.chapter &&
+      segment.from === other.from &&
+      segment.startLine === other.startLine &&
+      segment.padded === other.padded
+    );
+  });
+}
+
 /** 1-based line number of `pos` within `text`. */
 export function lineNumberAt(text: string, pos: number): number {
   let line = 1;
@@ -88,8 +114,9 @@ export function buildBookDoc(sections: BookSection[]): { doc: string; layout: Bo
   let doc = "";
   let line = 1;
   for (const section of sections) {
-    const padded = !section.content.endsWith("\n");
-    const text = padded ? `${section.content}\n` : section.content;
+    const content = normalizeEditorText(section.content);
+    const padded = !content.endsWith("\n");
+    const text = padded ? `${content}\n` : content;
     segments.push({
       path: section.path,
       chapter: section.chapter,

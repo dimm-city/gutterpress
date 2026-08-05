@@ -70,9 +70,11 @@
     setBookLayout,
   } from "$lib/editor/book-field";
   import {
+    bookLayoutsEqual,
     buildBookDoc,
     globalLineFor,
     localLineFor,
+    normalizeEditorText,
     segmentEnd,
     segmentIndexForPath,
     touchedSegments,
@@ -436,7 +438,7 @@
     // single one to resolve a language from.
     const lang = layout ? "markdown" : languageForPath(forPath);
     return EditorState.create({
-      doc,
+      doc: normalizeEditorText(doc),
       extensions: [
         bookFieldInit(layout),
         bookLineNumbers(),
@@ -554,7 +556,8 @@
     activeSectionPath = newPath;
     currentLanguage = languageForPath(newPath);
     if (newPath == null) return; // nothing open — template hides the host
-    restoreOrBuild(newPath, newContent, () => buildState(newContent, newPath));
+    const doc = normalizeEditorText(newContent);
+    restoreOrBuild(newPath, doc, () => buildState(doc, newPath));
   }
 
   /**
@@ -583,15 +586,14 @@
     stashCurrent();
     appliedPath = BOOK_KEY;
     currentLanguage = "markdown";
-    restoreOrBuild(BOOK_KEY, doc, () => buildState(doc, null, layout));
+    restoreOrBuild(BOOK_KEY, doc, () => buildState(doc, null, layout), layout);
     activeSectionPath = sections[0]?.path ?? null;
   }
 
   /** Whether the live document already holds exactly these chapters, in order. */
   function sameBook(next: BookLayout): boolean {
     const current = view ? bookLayout(view.state) : null;
-    if (!current || current.segments.length !== next.segments.length) return false;
-    return current.segments.every((s, i) => s.path === next.segments[i]!.path);
+    return bookLayoutsEqual(current, next);
   }
 
   /** Stash the outgoing document's state + scroll under its cache key. */
@@ -609,13 +611,21 @@
    * — i.e. nothing changed underneath while the author was away — otherwise
    * build fresh. A stale cached doc must never resurrect over fresh content.
    */
-  function restoreOrBuild(key: string, expectedDoc: string, build: () => EditorState): void {
+  function restoreOrBuild(
+    key: string,
+    expectedDoc: string,
+    build: () => EditorState,
+    expectedLayout?: BookLayout,
+  ): void {
     if (!view) return;
     const cached = stateCache.get(key);
     let nextState: EditorState;
     let scrollTop = 0;
     let scrollLeft = 0;
-    if (cached && cached.state.doc.toString() === expectedDoc) {
+    const cachedLayoutMatches =
+      expectedLayout === undefined ||
+      (cached ? bookLayoutsEqual(bookLayout(cached.state), expectedLayout) : false);
+    if (cached && cached.state.doc.toString() === expectedDoc && cachedLayoutMatches) {
       nextState = cached.state;
       scrollTop = cached.scrollTop;
       scrollLeft = cached.scrollLeft;
@@ -658,13 +668,15 @@
     if (index < 0) return false;
     const segment = layout.segments[index]!;
     const end = segmentEnd(view.state.doc.length, layout, index);
-    const padded = !nextContent.endsWith("\n");
-    const text = padded ? `${nextContent}\n` : nextContent;
-    if (view.state.doc.sliceString(segment.from, end) === text) return true;
+    const content = normalizeEditorText(nextContent);
+    const padded = !content.endsWith("\n");
+    const text = padded ? `${content}\n` : content;
+    const textMatches = view.state.doc.sliceString(segment.from, end) === text;
+    if (textMatches && segment.padded === padded) return true;
     applyingExternal = true;
     try {
       view.dispatch({
-        changes: { from: segment.from, to: end, insert: text },
+        changes: textMatches ? undefined : { from: segment.from, to: end, insert: text },
         effects: setBookLayout.of(
           withSegmentReplaced(layout, index, end - segment.from, text.length, padded),
         ),
@@ -684,6 +696,7 @@
    */
   export function updateContent(nextDoc: string): void {
     if (!view) return;
+    nextDoc = normalizeEditorText(nextDoc);
     const current = view.state.doc.toString();
     if (current === nextDoc) return;
     applyingExternal = true;
