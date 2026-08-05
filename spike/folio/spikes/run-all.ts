@@ -7,6 +7,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ensureBundles } from "../src/bundles.ts";
 import { launchChromium } from "../src/shared/cdp.ts";
 import { banner, OUT_DIR, type SpikeResult } from "./harness.ts";
 
@@ -27,6 +28,9 @@ const filter = process.argv.slice(2);
 const selected = filter.length
   ? SPIKES.filter((s) => filter.some((f) => s.id.startsWith(f.replace(/^s?/, "s"))))
   : SPIKES;
+
+const built = await ensureBundles();
+if (built.length) console.log(`built ${built.join(", ")}`);
 
 const browser = await launchChromium();
 const results: SpikeResult[] = [];

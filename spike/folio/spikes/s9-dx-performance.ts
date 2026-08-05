@@ -10,12 +10,14 @@ import { gzipSync } from "node:zlib";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import WebSocket from "ws";
+import { ensureBundles } from "../src/bundles.ts";
 import { launchChromium, type Browser } from "../src/shared/cdp.ts";
 import { build } from "../src/compiler/build.ts";
 import { bookHtml } from "../fixtures/make-book.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 
 const ROOT = join(import.meta.dir, "..");
+await ensureBundles();
 const VIEWER = readFileSync(join(ROOT, "dist", "folio.js"), "utf8");
 
 export async function run(browser: Browser) {

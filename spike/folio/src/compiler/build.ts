@@ -18,13 +18,11 @@ import { launchChromium, type Browser, type Session } from "../shared/cdp.ts";
 import { extract, type GcpmModel } from "../shared/gcpm-extract.ts";
 import { evaluate, needsMeasurement, parseContent } from "../shared/content-value.ts";
 import { inspectPdf } from "../shared/pdf-inspect.ts";
+import { ensureBundles } from "../bundles.ts";
 import { classify, synthesize, type Tier2Output } from "./tier2.ts";
 import { postprocess, type PostprocessResult } from "./postprocess.ts";
 
-const AGENT = readFileSync(
-  join(import.meta.dir, "..", "..", "dist", "folio-agent.js"),
-  "utf8",
-);
+const AGENT_PATH = join(import.meta.dir, "..", "..", "dist", "folio-agent.js");
 
 export interface BuildOptions {
   input: string;
@@ -57,6 +55,8 @@ export interface BuildResult {
 
 export async function build(opts: BuildOptions): Promise<BuildResult> {
   const log = opts.onProgress ?? (() => {});
+  await ensureBundles();
+  const AGENT = readFileSync(AGENT_PATH, "utf8");
   const browser = opts.browser ?? (await launchChromium());
   const ownsBrowser = !opts.browser;
   const page = await browser.newPage();

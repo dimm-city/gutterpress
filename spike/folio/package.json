@@ -5,9 +5,11 @@
   "type": "module",
   "description": "M0 spike: standard-CSS pagination on native Chromium fragmentation (paged.js replacement).",
   "scripts": {
+    "bundles": "bun src/bundles.ts",
     "spikes": "bun spikes/run-all.ts",
-    "build": "bun src/cli.ts build",
-    "test": "bun test"
+    "folio": "bun src/cli.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "pdf-lib": "^1.17.1",
