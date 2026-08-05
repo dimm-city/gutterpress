@@ -8,7 +8,16 @@
  *     and document outline to learn "which page is element X on", with no text
  *     heuristics.
  */
-import { PDFDocument, PDFName, PDFDict, PDFArray, PDFNumber, PDFRef } from "pdf-lib";
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFHexString,
+  PDFName,
+  PDFNumber,
+  PDFRef,
+  PDFString,
+} from "pdf-lib";
 
 export const PT_PER_IN = 72;
 
@@ -59,6 +68,36 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfFacts> {
     return undefined;
   };
 
+  // ---- named destinations (/Names /Dests name tree) ----------------------
+  // Resolved first: an annotation's /Dest may be a NAME into this tree rather
+  // than an explicit array.
+  const namedDests: Record<string, number> = {};
+  const catalog = doc.catalog;
+  const walkNameTree = (node: PDFDict | undefined) => {
+    if (!node) return;
+    const names = node.lookupMaybe(PDFName.of("Names"), PDFArray);
+    if (names) {
+      for (let i = 0; i + 1 < names.size(); i += 2) {
+        const key = names.lookup(i);
+        const val = names.lookup(i + 1);
+        const idx = resolvePageIndex(val);
+        if (idx !== undefined)
+          namedDests[String(key).replace(/^\((.*)\)$/, "$1")] = idx;
+      }
+    }
+    const kids = node.lookupMaybe(PDFName.of("Kids"), PDFArray);
+    if (kids) for (let i = 0; i < kids.size(); i++) walkNameTree(kids.lookup(i, PDFDict));
+  };
+  const namesDict = catalog.lookupMaybe(PDFName.of("Names"), PDFDict);
+  walkNameTree(namesDict?.lookupMaybe(PDFName.of("Dests"), PDFDict));
+  const legacyDests = catalog.lookupMaybe(PDFName.of("Dests"), PDFDict);
+  if (legacyDests) {
+    for (const [k, v] of legacyDests.entries()) {
+      const idx = resolvePageIndex(doc.context.lookup(v));
+      if (idx !== undefined) namedDests[k.asString().replace(/^\//, "")] = idx;
+    }
+  }
+
   // ---- link annotations: source annot -> destination page ----------------
   const linkTargets: Record<string, number> = {};
   for (const page of pages) {
@@ -67,17 +106,25 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfFacts> {
     for (let i = 0; i < annots.size(); i++) {
       const a = annots.lookup(i, PDFDict);
       if (!a) continue;
-      const subtype = a.get(PDFName.of("Subtype"));
-      if (subtype?.toString() !== "/Link") continue;
-      let dest = a.get(PDFName.of("Dest"));
-      if (dest) dest = a.lookupMaybe?.(PDFName.of("Dest"), PDFArray) ?? dest;
+      if (a.get(PDFName.of("Subtype"))?.toString() !== "/Link") continue;
+
+      let dest: any = a.get(PDFName.of("Dest"));
       if (!dest) {
-        const action = a.lookupMaybe?.(PDFName.of("A"), PDFDict);
-        if (action) dest = action.lookupMaybe?.(PDFName.of("D"), PDFArray) ?? action.get(PDFName.of("D"));
+        const action = a.lookup(PDFName.of("A"));
+        if (action instanceof PDFDict) dest = action.get(PDFName.of("D"));
       }
-      const target = resolvePageIndex(dest instanceof PDFRef ? doc.context.lookup(dest) : dest);
+      if (dest instanceof PDFRef) dest = doc.context.lookup(dest);
+
+      let target: number | undefined;
+      if (dest instanceof PDFName || dest instanceof PDFString || dest instanceof PDFHexString) {
+        const key = String(dest).replace(/^[/(]|\)$/g, "");
+        target = namedDests[key];
+      } else {
+        target = resolvePageIndex(dest);
+      }
       if (target === undefined) continue;
-      const rect = a.lookupMaybe?.(PDFName.of("Rect"), PDFArray);
+
+      const rect = a.lookupMaybe(PDFName.of("Rect"), PDFArray);
       const key = rect
         ? rect
             .asArray()
@@ -85,38 +132,6 @@ export async function inspectPdf(bytes: Uint8Array): Promise<PdfFacts> {
             .join(",")
         : `annot-${Object.keys(linkTargets).length}`;
       linkTargets[key] = target;
-    }
-  }
-
-  // ---- named destinations (/Names /Dests name tree) ----------------------
-  const namedDests: Record<string, number> = {};
-  const catalog = doc.catalog;
-  const walkNameTree = (node: PDFDict | undefined) => {
-    if (!node) return;
-    const names = node.lookupMaybe(PDFName.of("Names"), PDFArray);
-    if (names) {
-      for (let i = 0; i + 1 < names.size(); i += 2) {
-        const name = names.lookup(i);
-        const val = names.lookup(i + 1);
-        const idx = resolvePageIndex(val);
-        if (idx !== undefined) {
-          namedDests[String(name).replace(/^\((.*)\)$/, "$1")] = idx;
-        }
-      }
-    }
-    const kids = node.lookupMaybe(PDFName.of("Kids"), PDFArray);
-    if (kids) {
-      for (let i = 0; i < kids.size(); i++) walkNameTree(kids.lookup(i, PDFDict));
-    }
-  };
-  const namesDict = catalog.lookupMaybe(PDFName.of("Names"), PDFDict);
-  walkNameTree(namesDict?.lookupMaybe(PDFName.of("Dests"), PDFDict));
-  // legacy /Dests dictionary
-  const legacyDests = catalog.lookupMaybe(PDFName.of("Dests"), PDFDict);
-  if (legacyDests) {
-    for (const [k, v] of legacyDests.entries()) {
-      const idx = resolvePageIndex(doc.context.lookup(v));
-      if (idx !== undefined) namedDests[k.asString().replace(/^\//, "")] = idx;
     }
   }
 

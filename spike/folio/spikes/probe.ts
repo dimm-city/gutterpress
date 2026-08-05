@@ -38,6 +38,10 @@ export function pdfRender(path: string, outdir: string, dpi = 96): any {
   return run(["render", path, outdir, String(dpi)]);
 }
 
+export function pdfDrawings(path: string, page = 0): any {
+  return run(["drawings", path, String(page)]);
+}
+
 /** First page (1-based) whose text contains `needle`, or 0. */
 export function pageOf(t: { pages: PdfPageText[] }, needle: string): number {
   const p = t.pages.find((p) => p.text.includes(needle));

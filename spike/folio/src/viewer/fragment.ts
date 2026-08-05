@@ -217,89 +217,120 @@ export function compensateRepeatedHeaders(
 ): { tables: number; passes: number; warnings: string[] } {
   const warnings: string[] = [];
   let passes = 0;
-  let tables = 0;
+  let touched = 0;
 
   for (const strip of strips) {
-    const stride = strideOf(strip.el);
-    const colOf = (r: DOMRect) =>
-      Math.floor((r.left - (strip.el.getBoundingClientRect().left - strip.el.scrollLeft) + 1) / stride);
-
-    for (const table of Array.from(strip.el.querySelectorAll("table"))) {
-      const head = table.tHead;
-      if (!head) continue;
+    const tables = Array.from(strip.el.querySelectorAll("table")).filter((t) => t.tHead);
+    if (!tables.length) continue;
+    for (const table of tables) {
       for (const shim of Array.from(table.querySelectorAll("tr.folio-thead-shim")))
         shim.remove();
       table.style.breakBefore = "";
-      const headRect = head.getBoundingClientRect();
-      if (!headRect.height) continue;
-      const rows = () =>
-        Array.from(table.querySelectorAll<HTMLTableRowElement>("tbody > tr")).filter(
-          (r) => !r.classList.contains("folio-thead-shim"),
-        );
-      if (rows().length === 0) continue;
-      const cells = Math.max(
-        1,
-        ...rows().map((r) => r.cells.length),
-      );
       if (table.tFoot)
         warnings.push(
-          `table${table.id ? "#" + table.id : ""} has a <tfoot>; screen preview does not reserve the repeated footer (print does).`,
+          `table${table.id ? "#" + table.id : ""} has a <tfoot>; the screen preview does not reserve the repeated footer (print does).`,
         );
+    }
 
-      let previous = "";
-      for (let pass = 0; pass < maxPasses; pass++) {
-        passes = Math.max(passes, pass + 1);
-        const list = rows();
-        const cols = list.map((r) => colOf(r.getClientRects()[0] ?? r.getBoundingClientRect()));
-        const firstCol = cols[0];
+    // A push is sticky for the rest of this run: once the table has moved, the
+    // header is no longer stranded, so re-deriving `push` from the moved state
+    // would just undo it (and oscillate).
+    const pushed = new Set<HTMLTableElement>();
+    let previous = "";
+    for (let pass = 0; pass < maxPasses; pass++) {
+      passes = Math.max(passes, pass + 1);
 
-        // Print never leaves a repeated header stranded: a header fragment must
-        // be followed by at least one row, else the whole table moves on.
-        // Multicol will happily park a lone header at the bottom of a column,
-        // so push the table instead (verified against print in S5).
-        const headCol = colOf(head.getClientRects()[0] ?? headRect);
-        if (headCol < firstCol) {
-          table.style.breakBefore = "column";
-          continue;
-        }
-        const breakRows = list.filter((_, i) => i > 0 && cols[i] > cols[i - 1]);
-        const key = breakRows.map((r) => r.rowIndex).join(",");
-        if (key === previous) break;
-        previous = key;
-        for (const shim of Array.from(table.querySelectorAll("tr.folio-thead-shim")))
+      // READ phase — one layout for the whole strip, then pure reads. Reading
+      // and writing per table instead costs a forced relayout of the entire
+      // book per table (measured: ~5ms × table count).
+      const stride = strideOf(strip.el);
+      const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
+      const colOf = (r: DOMRect) => Math.floor((r.left - stripLeft + 1) / stride);
+      const plans: Array<{
+        table: HTMLTableElement;
+        push: boolean;
+        headHeight: number;
+        breakRows: HTMLTableRowElement[];
+        cells: number;
+      }> = [];
+
+      for (const table of tables) {
+        const head = table.tHead!;
+        const headRect = head.getClientRects()[0];
+        if (!headRect?.height) continue;
+        const rows = Array.from(
+          table.querySelectorAll<HTMLTableRowElement>("tbody > tr"),
+        ).filter((r) => !r.classList.contains("folio-thead-shim"));
+        if (!rows.length) continue;
+        const cols = rows.map((r) => colOf(r.getClientRects()[0] ?? r.getBoundingClientRect()));
+        plans.push({
+          table,
+          // Print never strands a repeated header: a header fragment must be
+          // followed by at least one row, else the whole table moves on.
+          push: colOf(headRect) < cols[0],
+          headHeight: headRect.height,
+          breakRows: rows.filter((_, i) => i > 0 && cols[i] > cols[i - 1]),
+          cells: Math.max(1, ...rows.map((r) => r.cells.length)),
+        });
+      }
+
+      const signature = plans
+        .map(
+          (p) =>
+            `${p.push || pushed.has(p.table) ? "P" : ""}${p.breakRows
+              .map((r) => r.rowIndex)
+              .join(".")}`,
+        )
+        .join("|");
+      if (signature === previous) break;
+      previous = signature;
+
+      // WRITE phase
+      for (const plan of plans) {
+        for (const shim of Array.from(plan.table.querySelectorAll("tr.folio-thead-shim")))
           shim.remove();
-        for (const row of breakRows) {
-          // A clone of the header, not a blank spacer: the screen then SHOWS the
-          // repeated header print would draw, and consumes the same height.
-          const shim = document.createElement("tr");
-          shim.className = "folio-thead-shim";
-          shim.setAttribute("aria-hidden", "true");
-          shim.style.height = `${headRect.height}px`;
-          const source = head.rows[0];
-          if (source) {
-            for (const cell of Array.from(source.cells)) {
-              const td = document.createElement("td");
-              td.colSpan = cell.colSpan;
-              td.innerHTML = cell.innerHTML;
-              const cs = getComputedStyle(cell);
-              td.style.cssText = `font:${cs.font};text-align:${cs.textAlign};padding:${cs.padding};border:${cs.border};background:${cs.backgroundColor};`;
-              shim.appendChild(td);
-            }
-          } else {
-            const td = document.createElement("td");
-            td.colSpan = cells;
-            td.style.cssText = `height:${headRect.height}px;padding:0;border:0;`;
-            shim.appendChild(td);
-          }
-          row.before(shim);
+        if (plan.push && !pushed.has(plan.table)) {
+          pushed.add(plan.table);
+          plan.table.style.breakBefore = "column";
+          touched++;
+          continue; // its fragments are re-derived next pass, from the new position
         }
-        void firstCol;
-        if (breakRows.length === 0) break;
-        tables++;
+        for (const row of plan.breakRows) {
+          row.before(headerShim(plan.table.tHead!, plan.headHeight, plan.cells));
+          touched++;
+        }
       }
     }
   }
-  return { tables, passes, warnings };
+  return { tables: touched, passes, warnings };
+}
+
+/**
+ * A clone of the header, not a blank spacer: the screen then SHOWS the repeated
+ * header print would draw, and consumes exactly the same height.
+ */
+function headerShim(head: HTMLTableSectionElement, height: number, cells: number): HTMLTableRowElement {
+  const shim = document.createElement("tr");
+  shim.className = "folio-thead-shim";
+  shim.setAttribute("aria-hidden", "true");
+  shim.style.height = `${height}px`;
+  const source = head.rows[0];
+  if (source) {
+    for (const cell of Array.from(source.cells)) {
+      const td = document.createElement("td");
+      td.colSpan = cell.colSpan;
+      td.innerHTML = cell.innerHTML;
+      const cs = getComputedStyle(cell);
+      td.style.cssText = `font:${cs.font};text-align:${cs.textAlign};padding:${cs.padding};border:${cs.border};background:${cs.backgroundColor};`;
+      shim.appendChild(td);
+    }
+  } else {
+    const td = document.createElement("td");
+    td.colSpan = cells;
+    td.style.cssText = `height:${height}px;padding:0;border:0;`;
+    shim.appendChild(td);
+  }
+  return shim;
 }
 
 /** One geometry read per strip; no per-node measurement. */

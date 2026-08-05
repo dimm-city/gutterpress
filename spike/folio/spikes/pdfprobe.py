@@ -82,6 +82,24 @@ def cmd_render(path, outdir, dpi="96"):
     print(json.dumps({"files": files}))
 
 
+def cmd_drawings(path, page="0"):
+    """Vector drawing rects on a page — used to verify crop marks."""
+    doc = fitz.open(path)
+    page = doc[int(page)]
+    items = []
+    for d in page.get_drawings():
+        r = d["rect"]
+        items.append(
+            {
+                "rect": [round(v, 2) for v in [r.x0, r.y0, r.x1, r.y1]],
+                "type": d.get("type"),
+                "width": d.get("width"),
+            }
+        )
+    print(json.dumps({"count": len(items), "items": items,
+                      "page": [round(v, 2) for v in list(page.rect)]}))
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
-    {"text": cmd_text, "info": cmd_info, "render": cmd_render}[cmd](*sys.argv[2:])
+    {"text": cmd_text, "info": cmd_info, "render": cmd_render, "drawings": cmd_drawings}[cmd](*sys.argv[2:])
