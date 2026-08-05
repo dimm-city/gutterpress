@@ -162,6 +162,16 @@ export function applyRectoSpacers(ids: string[], pageName: string): number {
   return inserted;
 }
 
+/** Text of the elements cross-references point at, for `target-text()`. */
+export function targetTexts(ids: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) out[id] = (el.textContent ?? "").trim().replace(/\s+/g, " ");
+  }
+  return out;
+}
+
 /** Cross-reference sites: `<a href="#...">` matched by a target-* content rule. */
 export function xrefSites(selectors: string[]): Array<{ id: string; href: string; selector: string }> {
   const out: Array<{ id: string; href: string; selector: string }> = [];
@@ -241,6 +251,7 @@ const api = {
   applyRectoSpacers,
   stringSources,
   xrefSites,
+  targetTexts,
   instrument,
   addCss,
   setGenerated,

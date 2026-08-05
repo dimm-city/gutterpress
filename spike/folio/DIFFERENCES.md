@@ -133,12 +133,41 @@ bleed/marks geometry.
 The compiler's copy went away with the renaming (F2); only the viewer's
 `pageNameOf` remains, and it is the only consumer.
 
-### F4 — `string()` position keywords are only half implemented
+### F4 — `string()` position keywords are only half implemented — **still open**
 
 The viewer implements `first` / `start` / `last` / `first-except`; the
-compiler's Tier 2 carries one literal per run and ignores the keyword entirely.
-A document using `string(chapter-title, last)` gets different text on screen and
-in print.
+compiler's counter-style map always uses `first` semantics (first assignment on
+the page, else carry forward). A document using `string(chapter-title, last)`
+gets different text on screen and in print. Contained: the map builder already
+walks the page/value pairs, so the other three keywords are a few lines each.
+
+### F12 — `leader()` printed a literal placeholder — **FIXED**
+
+`leader(".")` evaluated to the string `LEADER` (wrapped in stray `\x01`
+control characters, which also landed in the PDF). TOC lines came out as
+`Chapter Target␁LEADER␁2`. It now renders as nothing and the build reports
+`leader() is not implemented`. A real leader fills the space remaining on the
+line, which needs layout — the honest options are a CSS-only dot-fill in the
+presets or a Tier 3 measured fill.
+
+### F13 — `target-text()` was unimplemented in the compiler — **FIXED**
+
+`target-text(attr(href url))` rendered as an empty string in print while the
+viewer resolved it. The agent now returns the text of every measured target
+alongside the page map, so both renderers produce the same string.
+
+### F14 — the viewer did not reproduce the blank pages F1 adds — **FIXED**
+
+Implementing recto/verso breaks in the compiler (F1) immediately created a new
+viewer/print divergence: the PDF gained blank pages the screen did not, so page
+numbers drifted for exactly the books F1 was meant to fix (measured: viewer 5
+pages, chapters on 2 and 4; print 6 pages, chapters on 3 and 5). The viewer now
+inserts the same blanks, by the same analytic rule, and matches print again
+(6 pages, chapters on 3 and 5).
+
+Worth noting as a pattern: **every compiler-side synthesis needs a viewer-side
+twin**, or the parity claim quietly rots. The same is true of the header
+compensation (which does have one) and would be true of any future shim.
 
 ### F5 — synthesis must never move content — **now asserted**
 
@@ -201,19 +230,35 @@ to re-check it. Worth a `--pad-to-signature` reminder in the migration notes;
 
 | | |
 | --- | --- |
-| **fixed** | D1 (cover full-bleed), F1 (recto/verso + `@page :blank`), F11 (instrumentation ids), F5 (now asserted) |
+| **fixed** | D1 (cover full-bleed), F1 (recto/verso + `@page :blank`), F11 (instrumentation ids), F12 (`leader()` placeholder), F13 (`target-text()`), F14 (viewer blank pages), F5 (now asserted) |
 | **deleted** | F2 (page renaming), F3 (duplicate run detection) |
 | **worked around** | F10 (cross-stylesheet `@page` cascade) |
-| **open** | F4 (`string()` keywords in the compiler), F6 (metadata/object streams), F7 (viewer drift at ~200pp), F8 (`<tfoot>`), F9 (density is a migration consideration) |
+| **open** | F4 (`string()` keywords), F6 (metadata/object streams), F7 (viewer drift at ~200pp), F8 (`<tfoot>`), F9 (density is a migration consideration), F15 (leaders), F16 (unexercised surface) |
 
-The compile path costs one more print pass than before (0.9 s → 2.2 s warm on a
-61-page book, against 5.5 s for the current pipeline) and 342 fewer lines of
-compiler.
+### F15 — leaders have no implementation at all — **open**
+
+See F12: `leader()` now renders as nothing rather than garbage, but a TOC that
+relies on dot leaders will print without them. This is the last GCPM construct
+in the proposal's scope with no story.
+
+### F16 — surface that no test or comparison exercises — **open**
+
+Honest inventory of what is written but unproven: `@page :first` on real
+content; `@page` rules inside `@media print`; `@page :blank` on a book that also
+uses named pages; `bleed`/`marks` against a real POD spec (s8 checks the boxes,
+not a printer's acceptance); the Ghostscript / PDF-X hand-off (no `gs` in this
+environment); multi-column author layouts (`columns:` inside the flow, nested in
+the viewer's own multicol); and any book with images heavy enough to matter —
+the comparison corpus has none.
+
+The compile path costs one more print pass than before (0.9 s → 2.2–3.2 s warm
+on a 61-page book, against 5.5–6.8 s for the current pipeline) and 342 fewer
+lines of compiler.
 
 ## What I'd do next, in order
 
 1. Finish `string()` position keywords in the compiler (F4) — the viewer already
-   has them.
+   has them — and decide what `leader()` should do (F15).
 2. Fix the small stuff: metadata preservation, object streams (D5/D6).
 3. Run `compare/run.ts` against a book that actually uses recto starts and
    `@page :blank` end to end — s10 covers the mechanism, but no real project in

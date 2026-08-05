@@ -335,6 +335,68 @@ function headerShim(head: HTMLTableSectionElement, height: number, cells: number
   return shim;
 }
 
+/**
+ * Screen-mode synthesis for recto/verso forced breaks.
+ *
+ * `break-before: right|recto|left|verso` is a plain break in Chromium (S10), so
+ * the compiler inserts blank pages to honour it. The viewer has to insert the
+ * same blanks or its page numbers drift from the PDF for every book that opens
+ * chapters on a right-hand page.
+ *
+ * Same analytic rule as the compiler: walk the sites in document order carrying
+ * a running count of blanks inserted so far, because each blank shifts every
+ * later page by exactly one.
+ */
+export function compensateRectoBreaks(
+  model: GcpmModel,
+  strips: StripInfo[],
+): number {
+  const decls = model.breaks.filter(
+    (b) => b.prop === "break-before" && /^(right|recto|left|verso)$/.test(b.value.trim()),
+  );
+  for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+    spacer.remove();
+  if (!decls.length) return 0;
+
+  const sites: Array<{ el: Element; wantsRecto: boolean }> = [];
+  for (const d of decls) {
+    let els: Element[] = [];
+    try {
+      els = Array.from(document.querySelectorAll(d.selector));
+    } catch {
+      continue;
+    }
+    for (const el of els)
+      sites.push({ el, wantsRecto: /^(right|recto)$/.test(d.value.trim()) });
+  }
+  sites.sort((a, b) =>
+    a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+  );
+
+  // Read every page BEFORE mutating: inserting a spacer reflows immediately, so
+  // a later read already includes the shift and adding it again double-counts.
+  const pages = sites.map((site) => pageOf(site.el, strips) + 1);
+
+  let shift = 0;
+  let inserted = 0;
+  for (const [i, site] of sites.entries()) {
+    const page = pages[i]; // 1-based, page 1 is a recto
+    if (page <= 0) continue;
+    const effective = page + shift;
+    const wrong = site.wantsRecto ? effective % 2 === 0 : effective % 2 === 1;
+    if (!wrong) continue;
+    const spacer = document.createElement("div");
+    spacer.className = "folio-recto-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    spacer.style.cssText =
+      "break-before: column; break-after: column; height: 0; margin: 0; padding: 0; border: 0;";
+    site.el.before(spacer);
+    shift++;
+    inserted++;
+  }
+  return inserted;
+}
+
 /** One geometry read per strip; no per-node measurement. */
 export function measure(strips: StripInfo[]): LayoutResult {
   let offset = 0;
@@ -396,6 +458,8 @@ export interface FolioViewerApi {
   totalPages: number;
   /** fidelity warnings raised during fragmentation (screen-mode limits) */
   warnings: string[];
+  /** blank pages inserted to honour recto/verso forced breaks */
+  blankPages: number;
   pageOf(sel: string | Element): number;
   pageRangeOf(sel: string | Element): [number, number];
   relayout(): LayoutResult;
@@ -410,6 +474,8 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
   measure(strips);
+  const blanks = compensateRectoBreaks(model, strips);
+  if (blanks) measure(strips);
   const headers =
     opts.compensateHeaders === false
       ? { tables: 0, passes: 0, warnings: [] }
@@ -420,12 +486,14 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
     strips,
     totalPages,
     warnings: [...new Set([...authoring, ...headers.warnings])],
+    blankPages: blanks,
     pageOf: (sel) =>
       pageOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
     pageRangeOf: (sel) =>
       pageRangeOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
     relayout: () => {
       measure(strips);
+      api.blankPages = compensateRectoBreaks(model, strips);
       if (opts.compensateHeaders !== false)
         api.warnings = [
           ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings]),

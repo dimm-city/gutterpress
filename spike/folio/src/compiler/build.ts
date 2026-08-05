@@ -160,6 +160,14 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       await page.evaluate(
         `window.__folio.instrument(${JSON.stringify([...targets])})`,
       );
+      const targetText = await page.evaluate<Record<string, string>>(
+        `window.__folio.targetTexts(${JSON.stringify([...targets])})`,
+      );
+      if (model.xrefs.some((x) => /\bleader\s*\(/.test(x.content))) {
+        notes.push(
+          "leader() is not implemented: the space it should fill needs layout, so it renders as nothing.",
+        );
+      }
 
       // ---- recto/verso placement, before anything quotes a page number ----
       // A blank page shifts every later page by exactly one and changes no
@@ -249,7 +257,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           const text = evaluate(decl.content, {
             attr: (n) => (n === "href" ? site.href : undefined),
             targetPage: (u) => pageMap[u.replace(/^#/, "")],
-            targetText: () => undefined,
+            targetText: (u) => targetText[u.replace(/^#/, "")],
           });
           generated.push({ id: site.id, where, text });
         }

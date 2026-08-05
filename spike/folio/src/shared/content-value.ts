@@ -204,7 +204,9 @@ export function evaluateContent(parts: ContentPart[], ctx: EvalContext): string 
         out += ctx.text ?? "";
         break;
       case "leader":
-        out += "LEADER";
+        // Unimplemented: a real leader fills the space remaining on the line,
+        // which needs layout. A placeholder would print literal garbage into
+        // the PDF, so it renders as nothing and the compiler warns instead.
         break;
       case "keyword":
         if (p.value === "normal" || p.value === "none") break;
