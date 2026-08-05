@@ -157,7 +157,15 @@ export async function run(browser: Browser) {
     );
     s.data.proofMs = proofMs;
   } finally {
-    proc.kill("SIGKILL");
+    // SIGTERM, not SIGKILL: the dev server holds a warm Chromium that only its
+    // own shutdown handler can close, and SIGKILL cannot be trapped. Killing it
+    // outright orphaned a browser + profile dir on every suite run.
+    const exited = new Promise<void>((r) => proc.once("exit", () => r()));
+    proc.kill("SIGTERM");
+    await Promise.race([
+      exited,
+      new Promise((r) => setTimeout(r, 5_000)).then(() => proc.kill("SIGKILL")),
+    ]);
   }
 
   return s.finish();

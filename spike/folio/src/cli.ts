@@ -150,6 +150,22 @@ async function cmdDev(positional: string[], flags: Record<string, any>) {
     }
   });
 
+  // The warm browser outlives every request, so the ONLY thing that can close
+  // it is process shutdown. Without this, every `folio dev` session leaks a
+  // headless Chromium and its profile dir for as long as the machine is up.
+  let closing = false;
+  const shutdown = async () => {
+    if (closing) return;
+    closing = true;
+    server.close();
+    const b = browser;
+    browser = undefined;
+    if (b) await b.close();
+    process.exit(0);
+  };
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"] as const)
+    process.once(sig, shutdown);
+
   server.listen(port, () => {
     console.log(`folio dev → http://localhost:${port}/  (proof at /proof.pdf)`);
   });

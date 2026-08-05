@@ -92,14 +92,30 @@ export async function launchChromium(
   const version = await conn.send<{ product: string }>("Browser.getVersion", {});
   const milestone = Number(/Chrome\/(\d+)/.exec(version.product)?.[1] ?? 0);
 
-  // Teardown must WAIT for the process to exit before removing its data dir —
-  // Chromium keeps writing on the way down, so an immediate rmSync races it and
-  // leaves the directory behind (measured: 3 rejected launches → 3 orphan dirs).
-  // One implementation, used by both the version-reject path and close().
+  /**
+   * Shut the browser down, then remove its user-data dir.
+   *
+   * `Browser.close` asks Chromium to exit cleanly so it reaps its own
+   * renderer/gpu/zygote children; SIGKILL is the fallback if it does not. The
+   * directory is removed only after the process is gone, because Chromium
+   * writes on the way down and an earlier rmSync races it.
+   *
+   * One implementation, used by both the version-reject path and close().
+   */
   const teardown = async () => {
+    const exited = new Promise<void>((r) => proc.once("exit", () => r()));
+    try {
+      await Promise.race([
+        conn.send("Browser.close").then(() => exited),
+        new Promise<void>((_, rej) =>
+          setTimeout(() => rej(new Error("Browser.close timed out")), 5_000),
+        ),
+      ]);
+    } catch {
+      proc.kill("SIGKILL");
+      await exited;
+    }
     conn.close();
-    proc.kill("SIGKILL");
-    await new Promise((r) => proc.once("exit", r));
     rmSync(userDataDir, { recursive: true, force: true });
   };
 
