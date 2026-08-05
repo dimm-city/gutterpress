@@ -9,7 +9,8 @@
     "spikes": "bun spikes/run-all.ts",
     "folio": "bun src/cli.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "compare": "bun compare/run.ts"
   },
   "dependencies": {
     "pdf-lib": "^1.17.1",

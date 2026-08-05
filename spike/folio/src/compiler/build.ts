@@ -96,6 +96,12 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       );
       log(`tier 2: ${tier2.chapters.length} generated page templates`);
     }
+    if (tier2.renames.length) {
+      const applied = await page.evaluate<number>(
+        `window.__folio.applyPageNames(${JSON.stringify(tier2.renames)})`,
+      );
+      log(`tier 2: ${applied} element(s) moved onto generated page names`);
+    }
 
     let tier: 1 | 2 | 3 =
       tier2.chapters.length > 0 || tier2.geometry.bleed > 0 || tier2.geometry.slug > 0

@@ -48,15 +48,31 @@ export interface ChapterString {
 export interface Tier2Input {
   model: GcpmModel;
   /** chapter runs discovered in the DOM (from the browser) */
-  chapters: Array<{ hook: string; page?: string; strings: Record<string, string> }>;
+  chapters: Array<{
+    hook: string;
+    page?: string;
+    strings: Record<string, string>;
+    /** every page name used inside the run (stamped as data-folio-page) */
+    names?: string[];
+  }>;
   /** finishing options; CSS values win when both exist (§10) */
   marks?: boolean;
   slugPt?: number;
   bleedPt?: number;
 }
 
+export interface PageRename {
+  hook: string;
+  /** author page name stamped on the element */
+  from: string;
+  /** generated page name for this run */
+  to: string;
+}
+
 export interface Tier2Output {
   css: string;
+  /** applied inline by the agent, so the cascade can't strand an element */
+  renames: PageRename[];
   geometry: PageTrim;
   /** true when the document uses constructs that need Tier 3 */
   needsTier3: boolean;
@@ -93,6 +109,13 @@ export function classify(model: GcpmModel): {
       tier3Reasons.push(`\`${x.selector}\` uses ${x.fn}() — requires measurement`);
   }
   return { tier2Strings, tier3Strings, tier3Reasons };
+}
+
+/** Pseudo-pages the author actually used, e.g. ["left", "right", "blank"]. */
+export function pseudoVariants(model: GcpmModel): string[] {
+  const set = new Set<string>();
+  for (const rule of model.pageRules) for (const p of rule.pseudos) set.add(p);
+  return [...set];
 }
 
 /** String names referenced by a `string()` in some margin box. */
@@ -199,42 +222,81 @@ export function synthesize(input: Tier2Input): Tier2Output {
 
   // ---- 2. chapter-granularity running strings ---------------------------
   const chapters: ChapterString[] = [];
+  const renames: PageRename[] = [];
   const consumers = model.pageRules.filter((r) =>
     Object.values(r.marginBoxes).some((d) =>
       d.content ? parseContent(d.content).some((p) => p.type === "string") : false,
     ),
   );
 
-  for (const [i, chapter] of input.chapters.entries()) {
+  // GCPM `string(x)` on a page with no assignment carries the value forward, so
+  // a chapter's BODY run (which sets nothing) still has to head with the
+  // chapter's title. Tier 2 threads the running values through the runs in
+  // document order and gives every run the values in effect on it.
+  let carried: Record<string, string> = {};
+
+  for (const [i, run] of input.chapters.entries()) {
+    carried = { ...carried, ...run.strings };
+    const chapter = { ...run, strings: carried };
     if (!Object.keys(chapter.strings).length) continue;
     const base = chapter.page;
-    const pageName = `${base ?? "folio"}--${i + 1}`;
-    const applicable = consumers.filter((r) => (r.name ? r.name === base : true));
-    if (!applicable.length) continue;
 
-    for (const rule of applicable) {
-      const pseudo = rule.pseudos.length ? `:${rule.pseudos.join(":")}` : "";
-      const boxes = Object.entries(rule.marginBoxes)
-        .map(([name, decls]) => {
-          const resolved: Declarations = { ...decls };
-          if (decls.content) {
-            resolved.content = literalise(decls.content, chapter.strings);
-          }
-          Object.assign(resolved, marginBoxInset(name, inset));
-          return `  ${name} {\n${declsToCss(resolved)}\n  }`;
-        })
-        .join("\n");
-      const own = declsToCss(withInset(rule.decls, inset, model), "  ");
-      out.push(`@page ${pageName}${pseudo} {`, own, boxes, `}`);
+    // Renaming a run's page is only worth it when some margin box on it
+    // actually reads a `string()`.
+    const consumesHere = consumers.filter((r) => (r.name ? r.name === base : true));
+    if (!consumesHere.length) continue;
+
+    const suffix = `--${i + 1}`;
+    const generatedName = (name?: string) => `${name ?? "folio"}${suffix}`;
+
+    /**
+     * Emit one merged block per pseudo-page variant of `<name><suffix>`.
+     *
+     * Copying the author's rules verbatim into the generated name would invert
+     * the spec's page-selector specificity: an unnamed `@page :left` copied to
+     * `@page chapter--3:left` suddenly outranks the named `@page chapter--3`
+     * it was supposed to lose to, and a cover would get its folio back. So the
+     * cascade is resolved HERE (the same resolver the viewer uses) and the
+     * result is emitted as a single flat block per variant.
+     */
+    const emit = (name: string | undefined) => {
+      const variants = [[] as string[], ...pseudoVariants(model).map((p) => [p])];
+      for (const pseudos of variants) {
+        const resolved = resolvePage(model, { name, pseudos });
+        const boxes = Object.entries(resolved.marginBoxes)
+          .map(([box, decls]) => {
+            const out: Declarations = { ...decls };
+            if (decls.content) out.content = literalise(decls.content, chapter.strings);
+            Object.assign(out, marginBoxInset(box, inset));
+            return `  ${box} {\n${declsToCss(out)}\n  }`;
+          })
+          .join("\n");
+        const own = declsToCss(withInset(resolved.decls, inset, model), "  ");
+        const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
+        out.push(`@page ${generatedName(name)}${pseudo} {`, own, boxes, `}`);
+      }
+    };
+
+    // Every page name used inside the run is renamed together, so the run's
+    // internal page-name changes (and therefore its breaks) stay as authored.
+    const names = chapter.names?.length ? chapter.names : base ? [base] : [];
+    for (const name of names) {
+      emit(name);
+      renames.push({ hook: chapter.hook, from: name, to: generatedName(name) });
     }
-    out.push(`[data-folio-run="${chapter.hook}"] { page: ${pageName}; }`);
-    chapters.push({ pageName, basePage: base, hook: chapter.hook, strings: chapter.strings });
+    if (!names.length) {
+      emit(base);
+      out.push(`[data-folio-run="${chapter.hook}"] { page: ${generatedName(base)}; }`);
+    }
+
+    chapters.push({ pageName: generatedName(base), basePage: base, hook: chapter.hook, strings: chapter.strings });
   }
   if (chapters.length)
     notes.push(`generated ${chapters.length} chapter page templates with literal running heads`);
 
   return {
     css: out.join("\n") + "\n",
+    renames,
     geometry,
     needsTier3: tier3Reasons.length > 0,
     chapters,

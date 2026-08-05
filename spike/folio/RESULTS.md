@@ -98,22 +98,36 @@ Two constraints, both measured:
 Measured: cross-references reach a fixpoint in **2 passes**, and the resulting
 page map matches where every target actually printed.
 
-### F2 — the proposal's own §6 example does the wrong thing (s1, s6)
+### F2 — `page:` on a heading is a chapter-opener, not a chapter template (s1, s6)
+
+> Revised after running the real Gutterpress user-guide theme through both
+> engines (see [`COMPARISON.md`](./COMPARISON.md)): Chromium and Paged.js treat
+> `h1 { page: chapter }` identically, and themes use it deliberately to style
+> the opener page. The finding is narrower than first written — the pattern does
+> not put the whole chapter on the template, which is what §6's example implies.
+
 
 ```css
 h1 { page: chapter; string-set: chapter-title content(); }   /* §6 as written */
 ```
 
 In print this puts the **heading alone on a `chapter` page** and breaks straight
-back to the default page for the body — so the running header appears on one
-page per chapter, and the book grows a page per chapter. Verified: 19pp with
-`page:` on `h1` vs 17pp with `page:` on the container, and the PDF's first page
-contains nothing but the heading.
+back to the default page for the body. Verified two ways: on a generated fixture,
+19pp with `page:` on `h1` vs 17pp with it on the container, the first PDF page
+containing nothing but the heading; and on the real user-guide theme, where the
+same construct produces the intended chapter-opener page in BOTH engines.
 
-The correct authoring is `section { page: chapter }`. The viewer now detects the
-descendant form and reports it with the fix instead of silently diverging, and
-the fixtures/README use the container form. **§6 and the `@folio/paper` presets
-must be corrected.**
+The trap is what §6 implies it does. `@page chapter { @top-right { content:
+string(chapter-title) } }` reads as "this chapter's pages carry this head", but
+only the opener page is a `chapter` page — the body pages are default pages that
+depend on `string()` carrying forward.
+
+If the whole chapter should carry the template, `page:` belongs on the
+container; if it is an opener, the output is already right. The viewer reports
+which reading it applied instead of silently diverging, the compiler carries
+running strings across the following default pages (so the head still appears on
+body pages either way), and the fixtures/README use the container form.
+**§6 should say which of the two it means.**
 
 ### F3 — `<thead>` repeats per print page but not per multicol column (s5)
 
@@ -210,15 +224,25 @@ warm browser across edits, which is what makes it possible.
 ## 6. What this spike does not answer
 
 - `float: footnote` (a v1 non-goal) — untouched.
-- Real-content validation: fixtures are generated, not a real Dimm City chapter.
-  The parity harness takes any HTML, so pointing it at real content is the next
-  step and the right gate before M2.
+- Real-content validation: the spike's own fixtures are generated. Real content
+  IS now covered for the compiler by `compare/run.ts` (the user guide), but not
+  yet for the viewer's break-parity harness against a Dimm City chapter.
 - Cross-platform Chromium: one Linux build, one version. The proposal's
   version-pin + parity-in-CI mitigation is exactly right, and this suite is
   already the CI job (32 s).
 - The PDF/X hand-off: the compiler's output contract (RGB, correct boxes,
   embedded fonts) is verified, but the Ghostscript stage was not exercised — no
   `gs` in this environment.
+
+## 6b. Head-to-head against the current pipeline
+
+[`COMPARISON.md`](./COMPARISON.md) runs the current Paged.js pipeline and the
+Folio compiler over the same staged `book.html` from
+`examples/gutterpress-user-guide`: 4.8 s → 1.4 s to build, 1.16 s → 0.11 s to
+paginate in the browser, 901 KB → 23 KB of engine, 3.7× → 1.14× DOM growth, and
+61 pages instead of 64 for the same content (Paged.js leaves a median 110 pt
+unused at the foot of a page; native leaves 60 pt). That exercise also found and
+fixed four Tier 2 bugs that generated fixtures never triggered.
 
 ## 7. Recommended next steps
 
@@ -227,5 +251,6 @@ warm browser across edits, which is what makes it possible.
    rect-ordering machinery from the Tier 3 design.
 3. Run the parity harness against a real Dimm City chapter before committing to
    M2's fidelity claims; keep drift-per-100-pages as the metric.
+   (`examples/gutterpress-user-guide` is already covered by `compare/run.ts`.)
 4. Wire `bun run spikes` into CI against a pinned Chromium and against latest, as
    the upstream-regression alarm §9 asks for.

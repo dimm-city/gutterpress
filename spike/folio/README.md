@@ -19,12 +19,15 @@ pagination engine.
 
 Everything here is verified against a real Chromium by the spikes in `spikes/`.
 Results and the verdict on the proposal: [`RESULTS.md`](./RESULTS.md).
+Head-to-head against the current Paged.js pipeline on the same book:
+[`COMPARISON.md`](./COMPARISON.md).
 
 ## Run it
 
 ```bash
 bun install
-bun run spikes            # all 10 spikes against a real Chromium (~35s)
+bun run spikes            # all 10 spikes against a real Chromium (~25s)
+bun run compare           # current Gutterpress vs this spike, same book
 bun spikes/run-all.ts s1  # just one
 bun test                  # unit tests for the shared modules
 bunx tsc --noEmit -p tsconfig.json
@@ -89,6 +92,7 @@ src/viewer/      fragment (strips + page map), decorate, viewer.css, entries
 src/compiler/    tier2 (synthesis), build (tiers 1–3 + fixpoint), postprocess, agent
 src/cli.ts       folio build | dev | export
 spikes/          s0…s9, the harness, and the PyMuPDF probe
+compare/         head-to-head vs the current Paged.js pipeline (same input)
 fixtures/        deterministic book generator (tokenised so pages can be diffed)
 out/             artifacts: PDFs, generated CSS, results.json, results.md
 ```

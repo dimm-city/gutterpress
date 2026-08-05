@@ -12,6 +12,14 @@ export interface RunInfo {
   page?: string;
   /** string-set name -> literal value for this run */
   strings: Record<string, string>;
+  /**
+   * Every page name that appears anywhere in this run (container or
+   * descendants), each already stamped onto its elements as
+   * `data-folio-page`. Tier 2 has to rename ALL of them together: if the
+   * container moves to a generated page name and a descendant keeps the
+   * author's, the mismatch becomes a page break print never had.
+   */
+  names: string[];
 }
 
 export interface StringSource {
@@ -27,6 +35,14 @@ export interface StringSource {
 
 function flowRoot(): HTMLElement {
   return (document.querySelector("main") as HTMLElement) ?? document.body;
+}
+
+/** Rough CSS specificity: ids*100 + classes/attrs/pseudo-classes*10 + types. */
+function specificity(selector: string): number {
+  const ids = (selector.match(/#[\w-]+/g) ?? []).length;
+  const classes = (selector.match(/\.[\w-]+|\[[^\]]+\]|:(?!:)[\w-]+/g) ?? []).length;
+  const types = (selector.match(/(^|[\s>+~])[a-zA-Z][\w-]*/g) ?? []).length;
+  return ids * 100 + classes * 10 + types;
 }
 
 let uid = 0;
@@ -74,15 +90,26 @@ export function discoverRuns(
 ): RunInfo[] {
   const root = flowRoot();
   const children = Array.from(root.children) as HTMLElement[];
+  /**
+   * The page name assigned to the ELEMENT ITSELF, by the winning declaration
+   * (highest specificity, last on a tie). Descendant assignments are not the
+   * container's page — they are reported separately as `inner`, because in
+   * print they are exactly where the page context (and therefore a break)
+   * changes inside the run.
+   */
   const pageOf = (el: Element): string | undefined => {
-    for (const a of assignments) {
+    let best: { page: string; score: number; order: number } | undefined;
+    assignments.forEach((a, order) => {
       try {
-        if (el.matches(a.selector) || el.querySelector(a.selector)) return a.page;
+        if (!el.matches(a.selector)) return;
       } catch {
-        /* ignore invalid selector */
+        return;
       }
-    }
-    return undefined;
+      const score = specificity(a.selector);
+      if (!best || score > best.score || (score === best.score && order > best.order))
+        best = { page: a.page, score, order };
+    });
+    return best?.page;
   };
 
   const setsAString = (el: Element) =>
@@ -126,7 +153,19 @@ export function discoverRuns(
         }
       }
     }
-    return { hook, page: run.page, strings };
+    // Stamp the winning page name on every element that has one, so the
+    // rename can be applied per element (inline, cascade-proof) rather than by
+    // replaying the author's selectors at a guessed specificity.
+    const names = new Set<string>();
+    for (const node of run.nodes) {
+      for (const el of [node, ...Array.from(node.querySelectorAll<HTMLElement>("*"))]) {
+        const name = pageOf(el);
+        if (!name) continue;
+        el.setAttribute("data-folio-page", name);
+        names.add(name);
+      }
+    }
+    return { hook, page: run.page, strings, names: [...names] };
   });
 }
 
@@ -207,6 +246,34 @@ export function instrument(ids: string[]): number {
   return ids.length;
 }
 
+/**
+ * Apply Tier 2's generated page names as INLINE styles.
+ *
+ * Inline beats every author rule regardless of specificity, so a generated
+ * name can never lose a cascade fight with (say) `#ch-toc h1 { page: toc }`
+ * and leave one element on the old name — which would read as a spurious page
+ * break. The compiler only ever mutates the page it is printing; author files
+ * are untouched.
+ */
+export function applyPageNames(
+  entries: Array<{ hook: string; from: string; to: string }>,
+): number {
+  let applied = 0;
+  for (const entry of entries) {
+    for (const el of Array.from(
+      document.querySelectorAll<HTMLElement>(`[data-folio-run="${entry.hook}"]`),
+    )) {
+      const targets = [el, ...Array.from(el.querySelectorAll<HTMLElement>("*"))];
+      for (const target of targets) {
+        if (target.getAttribute("data-folio-page") !== entry.from) continue;
+        target.style.setProperty("page", entry.to);
+        applied++;
+      }
+    }
+  }
+  return applied;
+}
+
 export function addCss(id: string, css: string): void {
   let style = document.getElementById(id) as HTMLStyleElement | null;
   if (!style) {
@@ -240,6 +307,7 @@ declare global {
 const api = {
   collectCss,
   discoverRuns,
+  applyPageNames,
   stringSources,
   xrefSites,
   instrument,

@@ -111,12 +111,13 @@ export function injectBreakMapping(model: GcpmModel, doc: Document = document): 
 /**
  * Named page that applies to a top-level flow child.
  *
- * A `page:` assignment on a DESCENDANT (the `h1 { page: chapter }` shape) does
- * NOT mean "this chapter uses the chapter template" in print — it means the
- * heading alone gets a `chapter` page and the body immediately breaks back to
- * the default page. Verified in S1. The viewer cannot reproduce that without
- * chunking the DOM, so it reports it instead of silently diverging: the fix is
- * to put `page:` on the chapter container.
+ * A `page:` assignment on a DESCENDANT (the `h1 { page: chapter }` shape) gives
+ * the HEADING's page that template and breaks back to the default page right
+ * after it — which is exactly how a "chapter opener" template is written, and
+ * how both Chromium and Paged.js behave (verified against the Gutterpress user
+ * guide theme). What it does NOT do is put the whole chapter on that template.
+ * The viewer cannot reproduce a mid-container page change without chunking the
+ * DOM, so it says so rather than diverging silently.
  */
 function pageNameOf(
   el: Element,
@@ -135,9 +136,10 @@ function pageNameOf(
       const inner = el.querySelector(a.selector);
       if (!inner) continue;
       warnings.push(
-        `\`${a.selector} { page: ${a.page} }\` targets a descendant, not the chapter container: ` +
-          `in print that puts ${a.selector} alone on a "${a.page}" page and breaks back to the default page ` +
-          `immediately after. Move the \`page\` declaration to the containing element.`,
+        `\`${a.selector} { page: ${a.page} }\` sits on a descendant, so in print only ${a.selector}'s own ` +
+          `page uses the "${a.page}" template (the opener idiom) and the rest of the run returns to the ` +
+          `default page. The screen preview applies it to the whole run. If the whole run was meant to use ` +
+          `the template, move \`page\` to the container; if this is a chapter opener, the PDF is correct.`,
       );
       return a.page;
     } catch {
