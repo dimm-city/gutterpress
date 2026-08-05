@@ -1,5 +1,11 @@
 # Folio M0 spike — results
 
+> This is the verdict on the **original proposal**, finding by finding. The
+> durable engine knowledge it produced has been consolidated into
+> [`ENGINE.md`](./ENGINE.md) (what Chromium actually does) and
+> [`ARCHITECTURE.md`](./ARCHITECTURE.md) (the design rules each bug forced).
+> Read those first if you want the lessons rather than the chronology.
+
 **Verdict: the proposal holds.** Every load-bearing claim was verified against a
 real browser, two of them only after the spike found and fixed a genuine
 divergence. Six findings amend the proposal; none of them is existential, and

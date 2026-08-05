@@ -1,5 +1,9 @@
 # Output differences: current Gutterpress (Paged.js) vs Folio — full inventory
 
+> The defect ledger and the measurements behind it. The rules that came out of
+> these defects live in [`ARCHITECTURE.md`](./ARCHITECTURE.md); the browser
+> behaviour they are built on lives in [`ENGINE.md`](./ENGINE.md).
+
 Second pass, triggered by the cover looking narrow in the first screenshot. It
 was narrow, and it was a Folio bug (D1).
 

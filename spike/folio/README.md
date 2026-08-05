@@ -14,20 +14,38 @@ pagination engine.
   over raw CDP, fills the spec gaps Chromium hasn't shipped by synthesizing
   standard CSS, and post-processes the PDF (boxes, crop marks, signatures).
 - **shared** (`src/shared/`) — `gcpm-extract` (the only code that reads CSS, and
-  it never rewrites the author's files), the content-value evaluator, the CDP
+  it never rewrites the author's files), `synthesis` (every rule that *decides*
+  something, shared by both renderers), the content-value evaluator, the CDP
   client and the PDF reader.
 
-Everything here is verified against a real Chromium by the spikes in `spikes/`.
-Results and the verdict on the proposal: [`RESULTS.md`](./RESULTS.md).
-Head-to-head against the current Paged.js pipeline on the same book:
-[`COMPARISON.md`](./COMPARISON.md), with the exhaustive artifact diff and the
-open defect list in [`DIFFERENCES.md`](./DIFFERENCES.md).
+Everything here is verified against a real browser by the spikes in `spikes/`.
+
+## The documentation
+
+Read in this order depending on what you need.
+
+| Document | What it is |
+| --- | --- |
+| [`ENGINE.md`](./ENGINE.md) | **What Chromium actually does** with CSS Paged Media — every claim measured, not read off a compatibility table. The durable part: useful to anyone building on the native print path, Folio or not. |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | **The design rules and the bug that taught each one.** Why synthesis lives in one shared module, why measurement must be invisible, why generated CSS is emitted fully resolved. |
+| [`RESULTS.md`](./RESULTS.md) | The M0 verdict on the original proposal, spike by spike, with the findings that amend it. |
+| [`COMPARISON.md`](./COMPARISON.md) | Head-to-head against the current Paged.js pipeline on the same book. |
+| [`DIFFERENCES.md`](./DIFFERENCES.md) | The exhaustive artifact diff, the full defect ledger (fixed / deleted / inherent), and the three previously-untested areas. |
+
+The two rules worth knowing before touching the code, both learned the hard way:
+
+1. **Every synthesis decision is one shared pure function** — there is no
+   compiler-side copy and viewer-side copy to keep in sync, because a twin
+   silently rots the moment one side changes (`ARCHITECTURE.md` §1).
+2. **`CSS.supports` is not a feature detector here.** Chrome 151 reports
+   `target-counter()` as supported while rendering nothing. Render-probe
+   (`ENGINE.md` §2).
 
 ## Run it
 
 ```bash
 bun install
-bun run spikes            # all 12 spikes against a real Chromium (~28s)
+bun run spikes            # all 15 spikes against a real browser (~18s, 211 checks)
 bun run compare           # current Gutterpress vs this spike, same book
 bun compare/diff-report.ts a.pdf b.pdf   # content-aligned artifact diff
 bun spikes/run-all.ts s1  # just one
@@ -35,9 +53,14 @@ bun test                  # unit tests for the shared modules
 bunx tsc --noEmit -p tsconfig.json
 ```
 
-The spikes need a Chromium binary. Resolution order: `$FOLIO_CHROMIUM`,
+The spikes need a Chromium/Chrome binary. Resolution order: `$FOLIO_CHROMIUM`,
 `$PUPPETEER_EXECUTABLE_PATH`, `/opt/pw-browsers/chromium`, `/usr/bin/chromium`,
 `/usr/bin/chromium-browser`, `/usr/bin/google-chrome`.
+
+PDF verification uses an independent reader — PyMuPDF if importable, poppler
+(`pdftotext`/`pdfinfo`/`pdffonts`/`pdftoppm`) otherwise; `probe.ts` picks one
+automatically. The PDF/X spike (`s12`) needs `ghostscript` and skips cleanly
+without it; `s13` renders with poppler and needs `PIL`.
 `spikes/pdfprobe.py` (PyMuPDF) is the independent PDF reader used to check
 Chromium's output — verification only, never part of the runtime.
 
@@ -93,7 +116,7 @@ src/shared/      gcpm-extract, content-value, cdp, pdf-inspect   (+ unit tests)
 src/viewer/      fragment (strips + page map), decorate, viewer.css, entries
 src/compiler/    tier2 (synthesis), build (tiers 1–3 + fixpoint), postprocess, agent
 src/cli.ts       folio build | dev | export
-spikes/          s0…s9, the harness, and the PyMuPDF probe
+spikes/          s0…s14, the harness, and the PDF probes (PyMuPDF + poppler)
 compare/         head-to-head vs the current Paged.js pipeline (same input)
 fixtures/        deterministic book generator (tokenised so pages can be diffed)
 out/             artifacts: PDFs, generated CSS, results.json, results.md
