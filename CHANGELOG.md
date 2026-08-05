@@ -45,6 +45,25 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The editor holds the whole book, not one chapter at a time.** Every
+  markdown file the book builds from is open at once, in `source.files` order,
+  as one continuous manuscript: scrolling runs from the first line to the last
+  instead of stopping dead at the end of each file, and a chapter divider names
+  each file where it begins. Line numbers restart at 1 in every chapter, so the
+  gutter matches what the preview and `gutterpress validate` report.
+  - **The editor and the preview now stay in step everywhere.** Scrolling the
+    preview across a chapter boundary follows in the editor immediately — no
+    file to open, nothing to wait for — and it keeps following while you have
+    unsaved changes, which it used to stop doing. Clicking a block, jumping to
+    a heading, and opening a problem all land in the same place.
+  - Each chapter still saves as its own file, with its own autosave, crash
+    recovery, and external-change handling; the status bar now reports the
+    whole book's save state rather than just the chapter you're typing in, so
+    unsaved work a few chapters back can't look saved.
+  - Stylesheets, and markdown files the book doesn't build from, still open on
+    their own. Switching between them and the manuscript no longer discards
+    anything — your place, undo history, and any pending save all survive.
+
 - Creating a book now asks what you're designing it for — and where it will
   be published. `gutterpress new` requires `--preset <dtrpg|book|custom>`
   (custom also takes `--page-width`/`--page-height`) and records the publish

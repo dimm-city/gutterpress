@@ -45,12 +45,6 @@ export interface ContextMenuClient {
   on(fn: (e: PreviewEvent) => void): () => void;
 }
 
-/** The live editor buffer's minimal surface the controller peeks at (never mutates). */
-export interface ContextMenuBuffer {
-  filePath: string | null;
-  content: string;
-}
-
 /** A `getBoundingClientRect()`-shaped rect, spread into a plain object. */
 export interface ContextMenuRect {
   left: number;
@@ -68,8 +62,14 @@ export interface ContextMenuDeps {
   rendering: () => boolean;
   /** The open project directory, or null when none is loaded. */
   currentDir: () => string | null;
-  /** The live editor buffer, or null before it has been constructed. */
-  buffer: () => ContextMenuBuffer | null;
+  /**
+   * The live in-editor content of a file, or null when it isn't open. With the
+   * whole book open as one document a chapter can carry unsaved edits while the
+   * caret sits somewhere else entirely, so this must be asked per PATH — a
+   * check against "the open file" would fall through to the stale disk copy for
+   * every chapter but one.
+   */
+  openContent: (path: string) => string | null;
   /**
    * Read a chapter's file DIRECTLY — NOT through `selectEditorFile`. Menu
    * open must never disturb which file the editor pane shows; this is used
@@ -287,8 +287,8 @@ export class ContextMenuController {
     const dir = this.deps.currentDir();
     if (!dir || !isSafeChapterId(chapter)) return null;
     const absPath = chapterPath(dir, chapter);
-    const buf = this.deps.buffer();
-    if (buf && buf.filePath === absPath) return buf.content;
+    const open = this.deps.openContent(absPath);
+    if (open != null) return open;
     try {
       return await this.deps.readFile(absPath);
     } catch {

@@ -56,14 +56,18 @@ export interface CommitEngineDeps {
    */
   selectEditorFile: (path: string) => Promise<boolean>;
   /**
-   * The mounted editor's currently-applied file path, or null when no editor
-   * is mounted / it is showing a different file. Ask the EDITOR
-   * (`MarkdownEditor.getAppliedPath()`) — never infer this from
+   * Whether the mounted editor's live document actually holds this file — the
+   * book document holds every chapter at once, a single-file document holds
+   * one. Ask the EDITOR (`MarkdownEditor.hasFile()`) — never infer this from
    * `buffer.filePath` alone (plan §4.7 Step 4).
    */
-  getAppliedPath: () => string | null;
-  /** Dispatch a range edit into the live CodeMirror view (shared undo history). */
-  applyRangeEdit: (from: number, to: number, insert: string) => void;
+  editorHasFile: (path: string) => boolean;
+  /**
+   * Dispatch a range edit into the live CodeMirror view (shared undo history).
+   * `from`/`to` are offsets into `path`'s OWN content — the editor rebases them
+   * onto that chapter's segment when the document is the whole book.
+   */
+  applyRangeEdit: (path: string, from: number, to: number, insert: string) => void;
 }
 
 export interface CommitPatch {
@@ -285,13 +289,12 @@ export class CommitEngine {
       return fail("mismatch", "This block changed — reopen to make this change.");
     }
 
-    // ── Step 4 — apply through whichever path is live. Ask the EDITOR for
-    // its applied path (never infer from buffer.filePath alone) so an editor
-    // mounted on a DIFFERENT file never receives a transaction meant for the
-    // buffer-only path.
-    const appliedPath = this.deps.getAppliedPath();
-    if (appliedPath === absPath) {
-      this.deps.applyRangeEdit(from, to, patch.replacement);
+    // ── Step 4 — apply through whichever path is live. Ask the EDITOR whether
+    // its document holds this file (never infer from buffer.filePath alone) so
+    // an editor showing something else never receives a transaction meant for
+    // the buffer-only path.
+    if (this.deps.editorHasFile(absPath)) {
+      this.deps.applyRangeEdit(absPath, from, to, patch.replacement);
     } else {
       buf.edit(buf.content.slice(0, from) + patch.replacement + buf.content.slice(to));
     }

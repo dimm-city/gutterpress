@@ -61,8 +61,9 @@ interface Harness {
   selectEditorFileResult: boolean;
   /** When set, selectEditorFile "switches" the live buffer to this instance. */
   selectEditorFileSwitchTo: FakeBuffer | null;
-  getAppliedPathValue: string | null;
-  applyRangeEditCalls: Array<{ from: number; to: number; insert: string }>;
+  /** Files the mounted editor's live document holds (the whole book, or one file). */
+  editorFiles: string[];
+  applyRangeEditCalls: Array<{ path: string; from: number; to: number; insert: string }>;
 }
 
 function make(): Harness {
@@ -76,7 +77,7 @@ function make(): Harness {
     selectEditorFileCalls: [],
     selectEditorFileResult: true,
     selectEditorFileSwitchTo: null,
-    getAppliedPathValue: null,
+    editorFiles: [],
     applyRangeEditCalls: [],
   };
   const deps: CommitEngineDeps = {
@@ -88,9 +89,9 @@ function make(): Harness {
       if (h.selectEditorFileSwitchTo) liveBuffer = h.selectEditorFileSwitchTo;
       return h.selectEditorFileResult;
     },
-    getAppliedPath: () => h.getAppliedPathValue,
-    applyRangeEdit: (from, to, insert) => {
-      h.applyRangeEditCalls.push({ from, to, insert });
+    editorHasFile: (path) => h.editorFiles.includes(path),
+    applyRangeEdit: (path, from, to, insert) => {
+      h.applyRangeEditCalls.push({ path, from, to, insert });
     },
   };
   h.engine = new CommitEngine(deps);
@@ -136,7 +137,7 @@ describe("GATE 0a — path resolution", () => {
       rendering: () => false,
       buffer: () => h.buf,
       selectEditorFile: async () => true,
-      getAppliedPath: () => null,
+      editorHasFile: () => false,
       applyRangeEdit: () => {},
     });
     const outcome = await engine.commitRangePatch(patch());
@@ -365,27 +366,29 @@ describe("Step 4 — apply path", () => {
   test("editor-mounted on the target file: applies via applyRangeEdit, not buffer.edit", async () => {
     const h = make();
     loadClean(h.buf, "/proj/ch1.md", "a\nline two\nc\n");
-    h.getAppliedPathValue = "/proj/ch1.md";
+    h.editorFiles = ["/proj/ch1.md"];
     const outcome = await h.engine.commitRangePatch(patch());
     expect(outcome.ok).toBe(true);
-    expect(h.applyRangeEditCalls).toEqual([{ from: 2, to: 11, insert: "line TWO\n" }]);
+    expect(h.applyRangeEditCalls).toEqual([
+      { path: "/proj/ch1.md", from: 2, to: 11, insert: "line TWO\n" },
+    ]);
     expect(h.buf.editCalls.length).toBe(0);
   });
 
-  test("editor mounted on a DIFFERENT file: applies via buffer.edit, not applyRangeEdit", async () => {
+  test("editor's document does NOT hold the target file: applies via buffer.edit", async () => {
     const h = make();
     loadClean(h.buf, "/proj/ch1.md", "a\nline two\nc\n");
-    h.getAppliedPathValue = "/proj/some-other-file.md";
+    h.editorFiles = ["/proj/some-other-file.md"];
     const outcome = await h.engine.commitRangePatch(patch());
     expect(outcome.ok).toBe(true);
     expect(h.applyRangeEditCalls.length).toBe(0);
     expect(h.buf.editCalls).toEqual(["a\nline TWO\nc\n"]);
   });
 
-  test("no editor mounted (getAppliedPath null): applies via buffer.edit", async () => {
+  test("no editor mounted: applies via buffer.edit", async () => {
     const h = make();
     loadClean(h.buf, "/proj/ch1.md", "a\nline two\nc\n");
-    h.getAppliedPathValue = null;
+    h.editorFiles = [];
     const outcome = await h.engine.commitRangePatch(patch());
     expect(outcome.ok).toBe(true);
     expect(h.buf.editCalls).toEqual(["a\nline TWO\nc\n"]);
