@@ -46,7 +46,31 @@ html { font: 11pt/1.45 'DejaVu Serif', serif } body { margin: 0 }
   const r2 = await build({ input: chaptered, browser, signature: 4, title: "Folio spike", author: "Gutterpress" });
   writeArtifact(join(OUT_DIR, "s8-tier2.pdf"), r2.bytes);
   writeArtifact(join(OUT_DIR, "s8-tier2.gen.css"), r2.genCss);
-  s.check("chaptered document takes Tier 2 (synthesis, still one pass)", r2.tier === 2 && r2.passes === 1, `tier ${r2.tier}, ${r2.passes} pass(es)`);
+  // Running heads are produced by the measurement path (the page-renaming
+  // shim was removed — see DIFFERENCES.md), so a document with `string()` in a
+  // margin box costs one extra print pass and pays for it with the author's
+  // `@page` cascade left completely alone.
+  s.check(
+    "a document with running heads measures, and converges immediately",
+    r2.tier === 3 && r2.passes <= 2 && r2.converged,
+    `tier ${r2.tier}, ${r2.passes} pass(es), converged=${r2.converged}`,
+  );
+
+  // INVARIANT: synthesis must never change where content falls. Ground truth is
+  // the same document printed by Chromium with no Folio at all.
+  {
+    const p = await browser.newPage();
+    await p.navigate(`file://${chaptered}`);
+    await p.waitForReady();
+    const nativeBytes = await p.printToPDF();
+    await p.close();
+    const nativePages = (await inspectPdf(nativeBytes)).pageCount;
+    s.check(
+      "synthesis does not change pagination (vs a plain Chromium print)",
+      nativePages === r2.pageCount - r2.post.padded,
+      `native ${nativePages}pp, folio ${r2.pageCount - r2.post.padded}pp before signature padding`,
+    );
+  }
 
   const t2 = pdfText(join(OUT_DIR, "s8-tier2.pdf"));
   const titles = ["Chapter 1", "Chapter 2", "Chapter 3"];

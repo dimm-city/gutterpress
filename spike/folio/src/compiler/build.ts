@@ -15,14 +15,23 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { launchChromium, type Browser, type Session } from "../shared/cdp.ts";
-import { extract, type GcpmModel } from "../shared/gcpm-extract.ts";
+import { extract, resolvePage, type GcpmModel } from "../shared/gcpm-extract.ts";
 import { evaluate, needsMeasurement, parseContent } from "../shared/content-value.ts";
 import { inspectPdf } from "../shared/pdf-inspect.ts";
 import { ensureBundles } from "../bundles.ts";
-import { classify, synthesize, type Tier2Output } from "./tier2.ts";
+import {
+  classify,
+  consumedStrings,
+  pseudoVariants,
+  synthesize,
+  type Tier2Output,
+} from "./tier2.ts";
 import { postprocess, type PostprocessResult } from "./postprocess.ts";
 
 const AGENT_PATH = join(import.meta.dir, "..", "..", "dist", "folio-agent.js");
+
+/** Generated page name carrying the author's `@page :blank` rules. */
+const BLANK_PAGE = "folio--blank";
 
 export interface BuildOptions {
   input: string;
@@ -75,45 +84,39 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     const model: GcpmModel = extract(cssText);
     const { tier3Reasons } = classify(model);
 
-    // ---- Tier 2: chapter runs + synthesis -------------------------------
-    const runs = await page.evaluate<any[]>(
-      `window.__folio.discoverRuns(${JSON.stringify(model.pageAssignments)}, ${JSON.stringify(
-        model.stringSets.map((s) => ({ selector: s.selector, name: s.name })),
-      )})`,
-    );
+    // ---- Tier 2: geometry synthesis (bleed / marks) ---------------------
     const tier2 = synthesize({
       model,
-      chapters: runs,
       marks: opts.marks,
       slugPt: opts.slugPt,
       bleedPt: opts.bleedPt,
     });
     notes.push(...tier2.notes);
     let genCss = tier2.css;
-    if (genCss.trim()) {
+    if (genCss.trim().length > 200) {
       await page.evaluate(
         `window.__folio.addCss("folio-gen-css", ${JSON.stringify(genCss)})`,
       );
-      log(`tier 2: ${tier2.chapters.length} generated page templates`);
-    }
-    if (tier2.renames.length) {
-      const applied = await page.evaluate<number>(
-        `window.__folio.applyPageNames(${JSON.stringify(tier2.renames)})`,
-      );
-      log(`tier 2: ${applied} element(s) moved onto generated page names`);
+      log(`tier 2: bleed/marks geometry`);
     }
 
+    // Running heads, cross-references and recto/verso placement all need to
+    // know which page things landed on, so all three go through the
+    // measure -> synthesize -> fixpoint loop.
+    const rectoDecls = model.breaks.filter(
+      (b) => b.prop === "break-before" && /^(right|recto|left|verso)$/.test(b.value.trim()),
+    );
+    const needsMeasure =
+      tier3Reasons.length > 0 || consumedStrings(model).size > 0 || rectoDecls.length > 0;
     let tier: 1 | 2 | 3 =
-      tier2.chapters.length > 0 || tier2.geometry.bleed > 0 || tier2.geometry.slug > 0
-        ? 2
-        : 1;
+      tier2.geometry.bleed > 0 || tier2.geometry.slug > 0 ? 2 : 1;
     let passes = 1;
     let pageMap: Record<string, number> = {};
     let converged = true;
     let bytes = await printPdf(page);
 
     // ---- Tier 3: measure -> synthesize -> fixpoint -----------------------
-    if (tier3Reasons.length) {
+    if (needsMeasure) {
       tier = 3;
       const maxPasses = opts.maxPasses ?? 4;
       const sources = await page.evaluate<any[]>(
@@ -121,6 +124,29 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           model.stringSets.map((s) => ({ selector: s.selector, name: s.name })),
         )})`,
       );
+      // recto/verso forced breaks: Chromium treats them as plain page breaks
+      // (s10), so the blank pages have to be synthesized from the measured
+      // page numbers, inside this same fixpoint.
+      const rectoSites = rectoDecls.length
+        ? await page.evaluate<any[]>(
+            `window.__folio.forcedBreakSites(${JSON.stringify(rectoDecls)})`,
+          )
+        : [];
+      // The blank pages Folio inserts must be styled by the author's
+      // `@page :blank` rules, which Chromium never matches on its own (s10).
+      // Emitted LAST, in the same sheet as the running-string rewrite: a
+      // generated rule in an earlier sheet loses to a later one regardless of
+      // page-selector specificity (see counterStyleCss).
+      let blankCss = "";
+      if (rectoSites.length) {
+        const blank = resolvePage(model, { pseudos: ["blank"] });
+        const boxes = Object.entries(blank.marginBoxes)
+          .filter(([, d]) => d.content !== undefined)
+          .map(([box, d]) => `  ${box} { content: ${d.content}; }`)
+          .join("\n");
+        blankCss = `@page ${BLANK_PAGE} {\n${boxes || "  /* author declared no @page :blank */"}\n}`;
+      }
+
       const xrefSelectors = model.xrefs
         .filter((x) => needsMeasurement(x.content))
         .map((x) => x.selector);
@@ -130,9 +156,72 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       const targets = new Set<string>();
       for (const s of sources) targets.add(s.id);
       for (const s of sites) if (s.href.startsWith("#")) targets.add(s.href.slice(1));
+      for (const s of rectoSites) targets.add(s.id);
       await page.evaluate(
         `window.__folio.instrument(${JSON.stringify([...targets])})`,
       );
+
+      // ---- recto/verso placement, before anything quotes a page number ----
+      // A blank page shifts every later page by exactly one and changes no
+      // content, so the whole set can be computed from ONE clean measurement:
+      // walk the sites in document order, keeping a running count of blanks
+      // inserted so far. Toggling them one pass at a time instead oscillates —
+      // the spacer fixes the parity, the next pass sees it fixed and removes it.
+      if (rectoSites.length) {
+        const measure = async () => {
+          const facts = await inspectPdf(await printPdf(page));
+          return Object.fromEntries(
+            Object.entries(facts.namedDests).map(([k, v]) => [k, v + 1]),
+          ) as Record<string, number>;
+        };
+        let map = await measure();
+        const wantsRecto = (v: string) => /^(right|recto)$/.test(v.trim());
+        const wrong = (site: { value: string }, p: number) =>
+          wantsRecto(site.value) ? p % 2 === 0 : p % 2 === 1;
+
+        let shift = 0;
+        const planned: string[] = [];
+        for (const site of rectoSites) {
+          const base = map[site.id];
+          if (!base) continue;
+          if (wrong(site, base + shift)) {
+            planned.push(site.id);
+            shift++;
+          }
+        }
+        if (planned.length && blankCss) {
+          await page.evaluate(
+            `window.__folio.addCss("folio-gen-strings", ${JSON.stringify(blankCss)})`,
+          );
+        }
+        if (planned.length) {
+          await page.evaluate(
+            `window.__folio.applyRectoSpacers(${JSON.stringify(planned)}, ${JSON.stringify(BLANK_PAGE)})`,
+          );
+          log(`tier 3: ${planned.length} blank page(s) so forced breaks land on the right side`);
+          // verify, and repair any site the plan missed (bounded)
+          for (let attempt = 0; attempt < 3; attempt++) {
+            map = await measure();
+            const bad = rectoSites.filter((site) => {
+              const p = map[site.id];
+              return p ? wrong(site, p) : false;
+            });
+            if (!bad.length) break;
+            for (const site of bad) {
+              const i = planned.indexOf(site.id);
+              if (i >= 0) planned.splice(i, 1);
+              else planned.push(site.id);
+            }
+            await page.evaluate(
+              `window.__folio.applyRectoSpacers(${JSON.stringify(planned)}, ${JSON.stringify(BLANK_PAGE)})`,
+            );
+            if (attempt === 2)
+              notes.push(
+                `Could not place ${bad.length} recto/verso break(s) after 3 attempts.`,
+              );
+          }
+        }
+      }
 
       let previous = "";
       converged = false;
@@ -170,12 +259,14 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           );
 
         // (b) page-granular running strings via a fixed counter-style map
-        const mapCss = counterStyleCss(model, sources, pageMap, facts.pageCount, tier2.chapters);
+        const mapCss = [counterStyleCss(model, sources, pageMap, facts.pageCount), blankCss]
+          .filter(Boolean)
+          .join("\n");
         if (mapCss) {
           await page.evaluate(
             `window.__folio.addCss("folio-gen-strings", ${JSON.stringify(mapCss)})`,
           );
-          genCss += `\n/* Tier 3 */\n${mapCss}`;
+          genCss = genCss.split("\n/* Tier 3 */")[0] + `\n/* Tier 3 */\n${mapCss}`;
         }
       }
       if (!converged) {
@@ -184,8 +275,24 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         );
         log(`tier 3: NOT converged after ${passes} passes`);
       }
-      // final print with the last synthesis applied
+      // Take the instrumentation back out before the final print: the ids it
+      // assigns are visible to author selectors (`h1[id] { counter-increment }`
+      // in a real theme), so leaving them in would print a different document
+      // than the author wrote.
+      const removed = await page.evaluate<{ ids: number; hosts: number }>(
+        `window.__folio.deinstrument()`,
+      );
+      const before = (await inspectPdf(bytes)).pageCount;
       bytes = await printPdf(page);
+      const after = (await inspectPdf(bytes)).pageCount;
+      if (removed.ids) log(`tier 3: removed ${removed.ids} instrumentation id(s)`);
+      if (before !== after) {
+        notes.push(
+          `Instrumentation changed the layout: ${before} pages while measuring, ${after} after removing it. ` +
+            `The page map may be one pass stale — check for selectors that depend on \`[id]\`.`,
+        );
+        log(`tier 3: WARNING instrumentation shifted the layout (${before} -> ${after} pages)`);
+      }
     }
 
     // ---- postprocess -----------------------------------------------------
@@ -225,28 +332,37 @@ async function printPdf(page: Session): Promise<Uint8Array> {
 }
 
 /**
- * Per-page running strings: emit one symbol per page and consume it as
- * `counter(page, folio-<name>)` — verified in S3, keeps rendering inside
- * Chromium with the document's own fonts.
+ * Per-page running strings, without touching page names.
+ *
+ * `string-set`/`string()` is unimplemented in Chromium, so the value a margin
+ * box should show changes page by page with nothing in CSS to express it. The
+ * fix is a generated `@counter-style { system: fixed; symbols: … }` with one
+ * symbol per page, consumed as `counter(page, folio-<name>)` — verified in S3.
+ * Rendering stays inside Chromium with the document's own fonts, and the
+ * author's `@page` rules are never renamed or rewritten.
+ *
+ * Every page context is emitted with its FULLY RESOLVED content, including the
+ * suppressions (`content: none`). That is not defensive style: Chromium does
+ * not apply page-selector specificity ACROSS stylesheets, so an `@page :left {
+ * @top-center { content: none } }` in the author's sheet does not beat a plain
+ * `@page { @top-center { … } }` in the generated sheet — the head would be
+ * drawn twice. Resolving here removes the dependency entirely.
  */
 export function counterStyleCss(
   model: GcpmModel,
   sources: Array<{ name: string; id: string; text: string }>,
   pageMap: Record<string, number>,
   pageCount: number,
-  generatedPages: Array<{ pageName: string; basePage?: string }> = [],
 ): string {
-  const consumers = model.pageRules.filter((r) =>
-    Object.values(r.marginBoxes).some((d) =>
-      d.content ? parseContent(d.content).some((p) => p.type === "string") : false,
-    ),
-  );
-  if (!consumers.length) return "";
+  const consumed = consumedStrings(model);
+  if (!consumed.size) return "";
 
+  // symbol maps: one entry per page, carrying the value forward (GCPM's
+  // `string()` keeps the last assignment until the next one)
   const byName = new Map<string, Array<{ page: number; text: string }>>();
   for (const s of sources) {
     const page = pageMap[s.id];
-    if (!page) continue;
+    if (!page || !consumed.has(s.name)) continue;
     const list = byName.get(s.name) ?? [];
     list.push({ page, text: s.text });
     byName.set(s.name, list);
@@ -258,54 +374,51 @@ export function counterStyleCss(
     entries.sort((a, b) => a.page - b.page);
     const symbols: string[] = [];
     let current = "";
-    let cursor = 0;
     for (let p = 1; p <= pageCount; p++) {
-      // GCPM `string(x)` default is `first`: the first value SET on the page,
-      // else the value carried over from earlier pages.
       const onPage = entries.filter((e) => e.page === p);
       if (onPage.length) current = onPage[0].text;
-      else {
-        const before = entries.filter((e) => e.page < p);
-        current = before.length ? before[before.length - 1].text : current;
-      }
       symbols.push(current);
-      cursor++;
     }
-    void cursor;
     out.push(
       `@counter-style folio-${name} { system: fixed; suffix: ""; symbols: ${symbols
-        .map((s) => `"${s.replace(/["\\]/g, "\\$&")}"`)
+        .map((sym) => `"${sym.replace(/["\\]/g, "\\$&")}"`)
         .join(" ")}; }`,
     );
   }
 
-  for (const rule of consumers) {
-    const pseudo = rule.pseudos.length ? `:${rule.pseudos.join(":")}` : "";
-    const boxes = Object.entries(rule.marginBoxes)
-      .filter(([, d]) => d.content && /\bstring\s*\(/.test(d.content))
-      .map(([box, d]) => {
-        const content = parseContent(d.content!)
-          .map((p) => {
-            if (p.type === "string") return `counter(page, folio-${p.name})`;
-            if (p.type === "literal") return `"${p.value.replace(/["\\]/g, "\\$&")}"`;
-            if (p.type === "counter")
-              return `counter(${p.name}${p.style !== "decimal" ? `, ${p.style}` : ""})`;
-            return "";
-          })
-          .filter(Boolean)
-          .join(" ");
-        return `  ${box} { content: ${content}; }`;
+  const rewrite = (content: string): string =>
+    parseContent(content)
+      .map((part) => {
+        if (part.type === "string") return `counter(page, folio-${part.name})`;
+        if (part.type === "literal") return `"${part.value.replace(/["\\]/g, "\\$&")}"`;
+        if (part.type === "counter")
+          return `counter(${part.name}${part.style !== "decimal" ? `, ${part.style}` : ""})`;
+        if (part.type === "keyword") return part.value;
+        return "";
       })
-      .join("\n");
-    if (!boxes) continue;
-    const names = [
-      rule.name ?? "",
-      // Tier 2 may already have moved these pages onto generated names; the
-      // rewrite has to follow them there or it lands on dead rules.
-      ...generatedPages.filter((g) => (g.basePage ?? "") === (rule.name ?? "")).map((g) => g.pageName),
-    ];
-    for (const name of names)
-      out.push(`@page ${name}${pseudo} {\n${boxes}\n}`.replace("@page  ", "@page "));
+      .filter(Boolean)
+      .join(" ");
+
+  // One flat block per page context, carrying EVERY margin box's resolved
+  // content — including the suppressions. A context that needs no rewrite
+  // still has to be emitted: the generated unnamed `@page` block would
+  // otherwise leak onto it (cross-stylesheet cascade, above) and put a running
+  // head on the cover or the TOC.
+  const names: Array<string | undefined> = [undefined, ...model.pageNames];
+  const variants = [[] as string[], ...pseudoVariants(model).map((p) => [p])];
+  for (const name of names) {
+    for (const pseudos of variants) {
+      const resolved = resolvePage(model, { name, pseudos });
+      const lines: string[] = [];
+      for (const [box, decls] of Object.entries(resolved.marginBoxes)) {
+        if (!decls.content) continue;
+        const hasString = /\bstring\s*\(/.test(decls.content);
+        lines.push(`  ${box} { content: ${hasString ? rewrite(decls.content) : decls.content}; }`);
+      }
+      if (!lines.length) continue;
+      const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
+      out.push(`@page ${name ?? ""}${pseudo} {\n${lines.join("\n")}\n}`.replace("@page  ", "@page "));
+    }
   }
   return out.join("\n");
 }

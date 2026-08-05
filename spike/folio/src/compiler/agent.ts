@@ -7,21 +7,6 @@
  * one implementation of each.
  */
 
-export interface RunInfo {
-  hook: string;
-  page?: string;
-  /** string-set name -> literal value for this run */
-  strings: Record<string, string>;
-  /**
-   * Every page name that appears anywhere in this run (container or
-   * descendants), each already stamped onto its elements as
-   * `data-folio-page`. Tier 2 has to rename ALL of them together: if the
-   * container moves to a generated page name and a descendant keeps the
-   * author's, the mismatch becomes a page break print never had.
-   */
-  names: string[];
-}
-
 export interface StringSource {
   /** string name */
   name: string;
@@ -46,9 +31,37 @@ function specificity(selector: string): number {
 }
 
 let uid = 0;
+/**
+ * Ids assigned BY Folio, so they can be taken back off before the final print.
+ *
+ * An id is not inert: `h1[id] { counter-increment: chapter }` is real theme CSS
+ * (the Gutterpress user guide), so instrumenting the document changed the
+ * chapter numbers. Measurement must leave no trace in the printed artifact.
+ */
+const assignedIds: Element[] = [];
 function ensureId(el: Element): string {
-  if (!el.id) el.id = `folio-m-${++uid}`;
+  if (!el.id) {
+    el.id = `folio-m-${++uid}`;
+    assignedIds.push(el);
+  }
   return el.id;
+}
+
+/** Remove every trace of the measurement pass. */
+export function deinstrument(): { ids: number; hosts: number } {
+  let ids = 0;
+  for (const el of assignedIds) {
+    el.removeAttribute("id");
+    ids++;
+  }
+  assignedIds.length = 0;
+  let hosts = 0;
+  for (const host of Array.from(document.querySelectorAll("#folio-instrumentation"))) {
+    host.remove();
+    hosts++;
+  }
+  // spacers stay: they are output, not instrumentation
+  return { ids, hosts };
 }
 
 export async function collectCss(): Promise<string> {
@@ -66,107 +79,6 @@ export async function collectCss(): Promise<string> {
     }
   }
   return out;
-}
-
-/**
- * Group top-level flow children into named-page runs and tag them, so Tier 2
- * can give each run its own generated `@page` with literal running heads.
- */
-const FORCED = /^(page|always|left|right|recto|verso)$/;
-
-/** Does this box, or the first descendant that starts it, force a break? */
-function startsWithForcedBreak(el: Element): boolean {
-  let cur: Element | null = el;
-  for (let depth = 0; cur && depth < 4; depth++) {
-    if (FORCED.test(getComputedStyle(cur).breakBefore)) return true;
-    cur = cur.firstElementChild;
-  }
-  return false;
-}
-
-export function discoverRuns(
-  assignments: Array<{ selector: string; page: string }>,
-  stringSets: Array<{ selector: string; name: string }>,
-): RunInfo[] {
-  const root = flowRoot();
-  const children = Array.from(root.children) as HTMLElement[];
-  /**
-   * The page name assigned to the ELEMENT ITSELF, by the winning declaration
-   * (highest specificity, last on a tie). Descendant assignments are not the
-   * container's page — they are reported separately as `inner`, because in
-   * print they are exactly where the page context (and therefore a break)
-   * changes inside the run.
-   */
-  const pageOf = (el: Element): string | undefined => {
-    let best: { page: string; score: number; order: number } | undefined;
-    assignments.forEach((a, order) => {
-      try {
-        if (!el.matches(a.selector)) return;
-      } catch {
-        return;
-      }
-      const score = specificity(a.selector);
-      if (!best || score > best.score || (score === best.score && order > best.order))
-        best = { page: a.page, score, order };
-    });
-    return best?.page;
-  };
-
-  const setsAString = (el: Element) =>
-    stringSets.some((d) => {
-      try {
-        return el.matches(d.selector) || !!el.querySelector(d.selector);
-      } catch {
-        return false;
-      }
-    });
-
-  // A run is a maximal sequence of top-level children sharing a page context
-  // AND a set of running-string values. A child that re-sets a string starts a
-  // new run ONLY if it also forces a break — otherwise a generated page name
-  // would introduce a page break print would not have. (Strings that change
-  // without a forced break are page-granular: Tier 3's job.)
-  const runs: Array<{ page?: string; nodes: HTMLElement[] }> = [];
-  for (const child of children) {
-    const page = pageOf(child);
-    const last = runs[runs.length - 1];
-    const rebinds = setsAString(child) && startsWithForcedBreak(child);
-    if (last && last.page === page && !rebinds) last.nodes.push(child);
-    else runs.push({ page, nodes: [child] });
-  }
-
-  return runs.map((run, i) => {
-    const hook = `r${i + 1}`;
-    for (const n of run.nodes) n.setAttribute("data-folio-run", hook);
-    const strings: Record<string, string> = {};
-    for (const decl of stringSets) {
-      for (const node of run.nodes) {
-        let el: Element | null = null;
-        try {
-          el = node.matches(decl.selector) ? node : node.querySelector(decl.selector);
-        } catch {
-          continue;
-        }
-        if (el) {
-          strings[decl.name] = (el.textContent ?? "").trim().replace(/\s+/g, " ");
-          break;
-        }
-      }
-    }
-    // Stamp the winning page name on every element that has one, so the
-    // rename can be applied per element (inline, cascade-proof) rather than by
-    // replaying the author's selectors at a guessed specificity.
-    const names = new Set<string>();
-    for (const node of run.nodes) {
-      for (const el of [node, ...Array.from(node.querySelectorAll<HTMLElement>("*"))]) {
-        const name = pageOf(el);
-        if (!name) continue;
-        el.setAttribute("data-folio-page", name);
-        names.add(name);
-      }
-    }
-    return { hook, page: run.page, strings, names: [...names] };
-  });
 }
 
 /** Every element that sets a string, in document order, with an id to measure. */
@@ -202,6 +114,52 @@ export function stringSources(
     return rel & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
   });
   return out;
+}
+
+/**
+ * Elements with a recto/verso forced break (`break-before: right|recto|…`),
+ * which Chromium treats as a plain page break (S10). They need ids so the
+ * compiler can learn which page they landed on.
+ */
+export function forcedBreakSites(
+  decls: Array<{ selector: string; prop: string; value: string }>,
+): Array<{ id: string; prop: string; value: string; selector: string }> {
+  const out: Array<{ id: string; prop: string; value: string; selector: string }> = [];
+  for (const d of decls) {
+    let els: Element[] = [];
+    try {
+      els = Array.from(document.querySelectorAll(d.selector));
+    } catch {
+      continue;
+    }
+    for (const el of els) out.push({ id: ensureId(el), prop: d.prop, value: d.value, selector: d.selector });
+  }
+  return out;
+}
+
+/**
+ * Insert or remove the blank pages a recto/verso break implies.
+ *
+ * `entries` lists the elements that must move to the next page; a zero-height
+ * spacer before each forces the extra break and carries the generated blank
+ * page name so the author's `@page :blank` rules still style it (Chromium never
+ * matches `:blank` itself).
+ */
+export function applyRectoSpacers(ids: string[], pageName: string): number {
+  for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+    spacer.remove();
+  let inserted = 0;
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const spacer = document.createElement("div");
+    spacer.className = "folio-recto-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    spacer.style.cssText = `break-before: page; break-after: page; height: 0; margin: 0; padding: 0; border: 0; page: ${pageName};`;
+    el.before(spacer);
+    inserted++;
+  }
+  return inserted;
 }
 
 /** Cross-reference sites: `<a href="#...">` matched by a target-* content rule. */
@@ -246,34 +204,6 @@ export function instrument(ids: string[]): number {
   return ids.length;
 }
 
-/**
- * Apply Tier 2's generated page names as INLINE styles.
- *
- * Inline beats every author rule regardless of specificity, so a generated
- * name can never lose a cascade fight with (say) `#ch-toc h1 { page: toc }`
- * and leave one element on the old name — which would read as a spurious page
- * break. The compiler only ever mutates the page it is printing; author files
- * are untouched.
- */
-export function applyPageNames(
-  entries: Array<{ hook: string; from: string; to: string }>,
-): number {
-  let applied = 0;
-  for (const entry of entries) {
-    for (const el of Array.from(
-      document.querySelectorAll<HTMLElement>(`[data-folio-run="${entry.hook}"]`),
-    )) {
-      const targets = [el, ...Array.from(el.querySelectorAll<HTMLElement>("*"))];
-      for (const target of targets) {
-        if (target.getAttribute("data-folio-page") !== entry.from) continue;
-        target.style.setProperty("page", entry.to);
-        applied++;
-      }
-    }
-  }
-  return applied;
-}
-
 export function addCss(id: string, css: string): void {
   let style = document.getElementById(id) as HTMLStyleElement | null;
   if (!style) {
@@ -306,8 +236,9 @@ declare global {
 
 const api = {
   collectCss,
-  discoverRuns,
-  applyPageNames,
+  deinstrument,
+  forcedBreakSites,
+  applyRectoSpacers,
   stringSources,
   xrefSites,
   instrument,

@@ -67,7 +67,7 @@ chapters on right-hand pages would regress badly on a straight swap.
 
 Ordered by how much damage they'd do in production.
 
-### F1 — `break-before: right|left|recto|verso` is a plain page break in Chromium (spike `s10`) — **highest risk, not fixed**
+### F1 — `break-before: right|left|recto|verso` is a plain page break in Chromium (spike `s10`) — **FIXED**
 
 Chromium ignores the recto/verso semantics: with `h1 { break-before: right }`,
 chapters land wherever they fall (3 pages, CH2 on a verso). Paged.js implements
@@ -78,37 +78,60 @@ functional regression a swap would introduce.
 Also: **`@page :blank` never matches** — Chromium doesn't apply it even to a
 page containing only an empty spacer.
 
-Both are shimmable, and s10 verifies the shim: a zero-height spacer with
-`break-before/after: page` carrying a generated page name that copies the
-author's `:blank` rules reproduces **Paged.js page-for-page**, with genuinely
-blank blanks. It needs measurement (which page did the element land on), so it
-belongs in the Tier 3 fixpoint. Not implemented yet.
+Both are now shimmed in the compiler, and s10 checks the whole chain: the
+engine gap, what Paged.js does, the synthesis in isolation (matches Paged.js
+page-for-page), and `folio build` end to end (both chapters on a recto, the
+inserted page genuinely blank, converged in 2 passes).
 
-### F2 — the Tier 2 page-renaming machinery is the fragile part of the compiler
+How it works: `break-before: right|recto|left|verso` declarations are collected
+by `gcpm-extract`, their elements instrumented and measured (the existing
+`/Dests` channel), then the **whole spacer set is computed analytically from one
+clean measurement** — walk the sites in document order carrying a running count
+of blanks inserted so far, because each blank shifts every later page by exactly
+one and changes no content. Toggling them one pass at a time oscillates instead:
+the spacer fixes the parity, the next pass sees it fixed and removes it. Each
+spacer carries `page: folio--blank`, a generated name holding the author's
+resolved `@page :blank` declarations, emitted last so the cross-stylesheet
+cascade (F10) can't override it.
 
-Four separate bugs, all found on first contact with a real theme, all fixed:
-generated templates dropped the author's non-string `@page` rules; the rename
-lost cascade fights and stranded elements (now applied as inline styles);
-copying rules verbatim inverted page-selector specificity; running strings
-weren't carried across runs. That is a lot of defects in one mechanism.
+### F2 — the page-renaming machinery — **DELETED**
 
-Worth investigating whether the rename can be **deleted** rather than hardened:
-if Chromium ever ships `string-set`, all of it goes away. An interim option is
-to reduce it to "one generated page per (page name × run) with a fully resolved
-flat declaration block", which is roughly where it landed anyway.
+It was never a Paged.js carry-over. It existed for one reason: `string-set` /
+`string()` is unimplemented in Chromium, so a margin box that should read
+"Chapter 3" has no way to say so in CSS. Giving each chapter its own generated
+`@page chapter--N { @top-right { content: "…" } }` and moving that run's boxes
+onto it was one way to express "this page's header differs from that page's".
 
-Unverified pieces of it: `@page :blank` variants are emitted but never match
-(F1); `:first` combined with a generated name is untested on real content;
-`@page` rules inside `@media print` are extracted but the rename path hasn't
-been exercised with them.
+It was also the single most defect-prone thing in the compiler: four bugs on
+first contact with a real theme (dropped non-string rules, lost cascade fights,
+inverted page-selector specificity, no string carry-over).
 
-### F3 — two implementations of "which page does this element belong to"
+**A/B measured on the user guide, same input, both strategies:**
 
-The viewer (`fragment.ts` `pageNameOf`) matches self-then-descendant; the
-compiler (`agent.ts` `pageOf`) matches self-only with a specificity comparison
-and reports descendants separately. They already disagree by construction, and
-they are the input to both renderers' run splitting. Should be one shared
-function with one test suite.
+| | page renaming | counter-style map |
+| --- | --- | --- |
+| pages | 61 | 61 (61/61 content-aligned, **0 geometry differences**) |
+| generated CSS | 64.5 KB | **4.7 KB** |
+| print passes | 1 | 2 |
+| build time | 0.9 s | 2.2 s |
+| author's `@page` rules | rewritten into generated names | **untouched** |
+
+The only content difference was one running head, and there the counter-style
+output is the more correct one: renaming was extending the `toc` template past
+the page the author named. So renaming buys one print pass and costs a
+reimplementation of the `@page` cascade — deleted (−342 lines across the
+compiler; `discoverRuns`, `applyPageNames`, the generated templates and the
+literal-substitution path are all gone).
+
+Running heads now come from the same `@counter-style { system: fixed; symbols: … }`
+map that Tier 3 already used for page-granular strings (verified in s3): one
+symbol per page, consumed as `counter(page, folio-<name>)`. Tier 2 is now only
+bleed/marks geometry.
+
+### F3 — two implementations of "which page does this element belong to" — **resolved by deletion**
+
+The compiler's copy went away with the renaming (F2); only the viewer's
+`pageNameOf` remains, and it is the only consumer.
 
 ### F4 — `string()` position keywords are only half implemented
 
@@ -117,14 +140,40 @@ compiler's Tier 2 carries one literal per run and ignores the keyword entirely.
 A document using `string(chapter-title, last)` gets different text on screen and
 in print.
 
-### F5 — Tier 2 renames runs onto generated page names, which is a break risk
+### F5 — synthesis must never move content — **now asserted**
 
-Every run with a running string gets a *named* page where the author had the
-default page. Named-page changes force breaks, so this is only safe because runs
-are split exactly at forced breaks. That invariant lives in `agent.ts` and is
-not asserted anywhere. Evidence it currently holds: Folio's page count equals
-plain Chromium's (61 = 61) on the user guide. It should be a check in `s8`:
-Tier 2 must never change the page count relative to Tier 1.
+`s8` prints the same document with plain Chromium (no Folio) and requires the
+compiled page count to match. With renaming gone the risk mostly evaporates —
+nothing is renamed, so nothing can introduce a page-name change — but the check
+stays as the guard for future synthesis.
+
+### F10 — Chromium does not apply `@page` selector specificity ACROSS stylesheets — **new, worked around**
+
+Within one stylesheet, Chromium ranks page selectors correctly: `@page :left`
+beats `@page`, a named page beats both, regardless of source order (measured).
+Put the same rules in **two separate `<style>` elements** and that stops being
+true — a plain `@page { @top-center { … } }` in the later sheet overrides
+`@page :left { @top-center { content: none } }` in the earlier one, and the
+running head is drawn twice.
+
+That matters for any tool that injects generated `@page` CSS, which is exactly
+what Folio does. The workaround is to depend on it as little as possible: every
+generated page context is emitted with its **fully resolved** content, including
+the suppressions, so nothing has to win a cross-sheet cascade. Worth reporting
+upstream.
+
+### F11 — instrumentation was visible to the author's CSS — **FIXED**
+
+The measurement pass assigns `id` attributes to the elements it measures. Ids
+are not inert: the user-guide theme has `h1[id] { counter-increment: chapter }`,
+so measuring the document renumbered every chapter (openers read `03`, `04`
+instead of `01`, `02`).
+
+The compiler now removes every id it assigned (and the hidden link container)
+before the final print, and compares the page count before and after removal —
+if instrumentation moved anything, that is a warning, not a silent difference.
+S7's "layout-neutral instrumentation" claim covered page counts, not selector
+matching; this is the gap it missed.
 
 ### F6 — metadata clobbering (D6) and `useObjectStreams: false` (D5)
 
@@ -148,13 +197,25 @@ to re-check it. Worth a `--pad-to-signature` reminder in the migration notes;
 
 ---
 
+## Status after this pass
+
+| | |
+| --- | --- |
+| **fixed** | D1 (cover full-bleed), F1 (recto/verso + `@page :blank`), F11 (instrumentation ids), F5 (now asserted) |
+| **deleted** | F2 (page renaming), F3 (duplicate run detection) |
+| **worked around** | F10 (cross-stylesheet `@page` cascade) |
+| **open** | F4 (`string()` keywords in the compiler), F6 (metadata/object streams), F7 (viewer drift at ~200pp), F8 (`<tfoot>`), F9 (density is a migration consideration) |
+
+The compile path costs one more print pass than before (0.9 s → 2.2 s warm on a
+61-page book, against 5.5 s for the current pipeline) and 342 fewer lines of
+compiler.
+
 ## What I'd do next, in order
 
-1. Implement the F1 shim in the compiler (spacer + generated blank page name) —
-   it is the one difference that breaks real books, and s10 already proves the
-   mechanism.
-2. Add the F5 invariant check to `s8` (Tier 2 must not change page count).
-3. Unify the run-detection code (F3) and finish `string()` keywords (F4).
-4. Fix the small stuff: metadata, object streams (D5/D6).
-5. Re-run `compare/run.ts` against a book that uses recto starts and
-   `@page :blank` — the user guide does not exercise either.
+1. Finish `string()` position keywords in the compiler (F4) — the viewer already
+   has them.
+2. Fix the small stuff: metadata preservation, object streams (D5/D6).
+3. Run `compare/run.ts` against a book that actually uses recto starts and
+   `@page :blank` end to end — s10 covers the mechanism, but no real project in
+   this repo exercises it.
+4. Report F10 upstream, and keep the resolved-context emission either way.

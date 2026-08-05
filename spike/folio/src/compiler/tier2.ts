@@ -34,49 +34,19 @@ export interface PageTrim {
   marks: string[];
 }
 
-export interface ChapterString {
-  /** generated page name, e.g. "chapter--2" */
-  pageName: string;
-  /** the author's page name this run belongs to (undefined = default page) */
-  basePage?: string;
-  /** DOM hook attribute value */
-  hook: string;
-  /** string name -> literal value for this run */
-  strings: Record<string, string>;
-}
-
 export interface Tier2Input {
   model: GcpmModel;
-  /** chapter runs discovered in the DOM (from the browser) */
-  chapters: Array<{
-    hook: string;
-    page?: string;
-    strings: Record<string, string>;
-    /** every page name used inside the run (stamped as data-folio-page) */
-    names?: string[];
-  }>;
   /** finishing options; CSS values win when both exist (§10) */
   marks?: boolean;
   slugPt?: number;
   bleedPt?: number;
 }
 
-export interface PageRename {
-  hook: string;
-  /** author page name stamped on the element */
-  from: string;
-  /** generated page name for this run */
-  to: string;
-}
-
 export interface Tier2Output {
   css: string;
-  /** applied inline by the agent, so the cascade can't strand an element */
-  renames: PageRename[];
   geometry: PageTrim;
   /** true when the document uses constructs that need Tier 3 */
   needsTier3: boolean;
-  chapters: ChapterString[];
   notes: string[];
 }
 
@@ -220,107 +190,20 @@ export function synthesize(input: Tier2Input): Tier2Output {
     );
   }
 
-  // ---- 2. chapter-granularity running strings ---------------------------
-  const chapters: ChapterString[] = [];
-  const renames: PageRename[] = [];
-  const consumers = model.pageRules.filter((r) =>
-    Object.values(r.marginBoxes).some((d) =>
-      d.content ? parseContent(d.content).some((p) => p.type === "string") : false,
-    ),
-  );
-
-  // GCPM `string(x)` on a page with no assignment carries the value forward, so
-  // a chapter's BODY run (which sets nothing) still has to head with the
-  // chapter's title. Tier 2 threads the running values through the runs in
-  // document order and gives every run the values in effect on it.
-  let carried: Record<string, string> = {};
-
-  for (const [i, run] of input.chapters.entries()) {
-    carried = { ...carried, ...run.strings };
-    const chapter = { ...run, strings: carried };
-    if (!Object.keys(chapter.strings).length) continue;
-    const base = chapter.page;
-
-    // Renaming a run's page is only worth it when some margin box on it
-    // actually reads a `string()`.
-    const consumesHere = consumers.filter((r) => (r.name ? r.name === base : true));
-    if (!consumesHere.length) continue;
-
-    const suffix = `--${i + 1}`;
-    const generatedName = (name?: string) => `${name ?? "folio"}${suffix}`;
-
-    /**
-     * Emit one merged block per pseudo-page variant of `<name><suffix>`.
-     *
-     * Copying the author's rules verbatim into the generated name would invert
-     * the spec's page-selector specificity: an unnamed `@page :left` copied to
-     * `@page chapter--3:left` suddenly outranks the named `@page chapter--3`
-     * it was supposed to lose to, and a cover would get its folio back. So the
-     * cascade is resolved HERE (the same resolver the viewer uses) and the
-     * result is emitted as a single flat block per variant.
-     */
-    const emit = (name: string | undefined) => {
-      const variants = [[] as string[], ...pseudoVariants(model).map((p) => [p])];
-      for (const pseudos of variants) {
-        const resolved = resolvePage(model, { name, pseudos });
-        const boxes = Object.entries(resolved.marginBoxes)
-          .map(([box, decls]) => {
-            const out: Declarations = { ...decls };
-            if (decls.content) out.content = literalise(decls.content, chapter.strings);
-            Object.assign(out, marginBoxInset(box, inset));
-            return `  ${box} {\n${declsToCss(out)}\n  }`;
-          })
-          .join("\n");
-        const own = declsToCss(pageDecls(resolved, inset), "  ");
-        const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
-        out.push(`@page ${generatedName(name)}${pseudo} {`, own, boxes, `}`);
-      }
-    };
-
-    // Every page name used inside the run is renamed together, so the run's
-    // internal page-name changes (and therefore its breaks) stay as authored.
-    const names = chapter.names?.length ? chapter.names : base ? [base] : [];
-    for (const name of names) {
-      emit(name);
-      renames.push({ hook: chapter.hook, from: name, to: generatedName(name) });
-    }
-    if (!names.length) {
-      emit(base);
-      out.push(`[data-folio-run="${chapter.hook}"] { page: ${generatedName(base)}; }`);
-    }
-
-    chapters.push({ pageName: generatedName(base), basePage: base, hook: chapter.hook, strings: chapter.strings });
-  }
-  if (chapters.length)
-    notes.push(`generated ${chapters.length} chapter page templates with literal running heads`);
+  // Running heads are NOT synthesized here. They used to be: each run got a
+  // generated `@page <name>--N` carrying literal text, which meant the compiler
+  // had to re-implement the `@page` cascade (four separate bugs, see
+  // DIFFERENCES.md). They are now produced by the Tier 3 counter-style map,
+  // which leaves the author's `@page` rules exactly as written. Measured on the
+  // Gutterpress user guide: identical output, 64.5 KB of generated CSS down to
+  // 4.7 KB, at the cost of one extra print pass.
 
   return {
     css: out.join("\n") + "\n",
-    renames,
     geometry,
     needsTier3: tier3Reasons.length > 0,
-    chapters,
     notes: [...notes, ...tier3Reasons],
   };
-}
-
-/** Replace `string(name)` with the run's literal text; keep everything else. */
-export function literalise(content: string, strings: Record<string, string>): string {
-  const parts = parseContent(content);
-  return parts
-    .map((p) => {
-      if (p.type === "string") {
-        const v = strings[p.name] ?? "";
-        return `"${v.replace(/["\\]/g, "\\$&")}"`;
-      }
-      if (p.type === "literal") return `"${p.value.replace(/["\\]/g, "\\$&")}"`;
-      if (p.type === "counter")
-        return `counter(${p.name}${p.style && p.style !== "decimal" ? `, ${p.style}` : ""})`;
-      if (p.type === "keyword") return p.value;
-      return "";
-    })
-    .filter(Boolean)
-    .join(" ");
 }
 
 /**

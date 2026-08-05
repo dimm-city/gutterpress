@@ -12,8 +12,9 @@
  * a zero-height spacer that forces the extra break and carries a generated
  * page name copying the author's `@page :blank` rules.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { build } from "../src/compiler/build.ts";
 import { launchChromium, type Browser, type Session } from "../src/shared/cdp.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 import { pdfText } from "./probe.ts";
@@ -156,6 +157,43 @@ export async function run(browser: Browser) {
     "`@page :blank` does NOT style a content-free page (generated name required)",
     unstyled.blanks === 0,
     `${unstyled.blanks} pages matched :blank; the empty page still carries "${unstyled.texts[1]}"`,
+  );
+
+  // ---- 5. the compiler does it, end to end ------------------------------
+  const bookPath = join(OUT_DIR, "s10-book.html");
+  writeFileSync(
+    bookPath,
+    doc(
+      "",
+      `<main><p>Front matter.</p>
+       <h1>CHAPTERTWO</h1>${Array.from({ length: 12 }, (_, i) => `<p>Two body ${i}. Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor.</p>`).join("")}
+       <h1>CHAPTERTHREE</h1>${Array.from({ length: 12 }, (_, i) => `<p>Three body ${i}. Lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor.</p>`).join("")}
+       </main>`,
+    ).replace("h1 { break-before: right; }", "h1 { break-before: right; string-set: t content(); }"),
+  );
+  const built = await build({ input: bookPath, browser });
+  writeArtifact(join(OUT_DIR, "s10-compiled.pdf"), built.bytes);
+  const compiled = pdfText(join(OUT_DIR, "s10-compiled.pdf"));
+  const pageOfText = (needle: string) =>
+    compiled.pages.findIndex((pg) => pg.text.includes(needle)) + 1;
+  const c2 = pageOfText("CHAPTERTWO");
+  const c3 = pageOfText("CHAPTERTHREE");
+  const blanks = compiled.pages.filter((pg) => !pg.text.trim()).length;
+  s.data.compiled = { pages: compiled.pageCount, c2, c3, blanks, passes: built.passes };
+  s.check(
+    "`folio build` starts both chapters on a recto",
+    c2 % 2 === 1 && c3 % 2 === 1,
+    `CH2 on p${c2}, CH3 on p${c3} of ${compiled.pageCount}`,
+  );
+  s.check(
+    "the blank pages it inserts carry the author's `@page :blank` rules",
+    blanks >= 1,
+    `${blanks} genuinely blank page(s) (no running head, no folio)`,
+  );
+  s.check(
+    "and it converges",
+    built.converged,
+    `${built.passes} passes, converged=${built.converged}`,
   );
 
   s.note(

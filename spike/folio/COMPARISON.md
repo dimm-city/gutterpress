@@ -24,7 +24,7 @@ chapters, a cover, a TOC, named pages (`cover`/`toc`/`chapter`), mirrored
 
 | | current (Paged.js) | Folio spike |
 | --- | --- | --- |
-| build a 60-page book | **4.8–6.9 s** | **1.4 s cold, 0.95 s warm** |
+| build a 60-page book | **4.8–6.9 s** | **2.9 s cold, 2.2 s warm** |
 | paginate in the browser | **1.16 s** | **0.11 s** (0.04 s on hot reload) |
 | engine shipped to the page | **901 KB** `paged.polyfill.js` | **23 KB** (9 KB gzipped) |
 | DOM after pagination | 1,645 → **6,070 nodes (3.7×)** | 1,645 → **1,880 nodes (1.14×)** |
@@ -41,14 +41,18 @@ Cover, TOC and every chapter-opener page come out **visually identical**
 ## A. Compile
 
 ```
-gutterpress: 4.79s → gutterpress-user-guide-pdf.pdf (594 KB), 64 pages
-folio:       1.42s cold / 0.95s warm → folio.pdf (996 KB), 61 pages, tier 2
+gutterpress: 5.50s → gutterpress-user-guide-pdf.pdf (594 KB), 64 pages
+folio:       2.95s cold / 2.20s warm → folio.pdf (997 KB), 61 pages, tier 3
 ```
+
+(Folio's numbers include the measurement pass its running heads now use; the
+one-pass page-renaming shim was removed in favour of it — see `DIFFERENCES.md`
+F2 for the A/B.)
 
 Both produce 612×792 pt pages, the same 10 named destinations and 11 link
 annotations. Two differences worth naming:
 
-- **Speed.** Folio is ~3.4× faster cold and ~5× faster warm. It never loads a
+- **Speed.** Folio is ~1.9× faster cold and ~2.5× faster warm. It never loads a
   pagination engine, never rebuilds the DOM, and prints once.
 - **PDF outline.** The current build's PDF has no bookmarks; Folio's has 155.
   This is **not** a Paged.js limitation — printing the Paged.js-rebuilt DOM with

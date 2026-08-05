@@ -22,7 +22,7 @@ one of them (F1) makes Tier 3 materially simpler than proposed.
 | s7 | new | layout-neutral instrumentation for Tier 3 | PASS 5/5 |
 | s8 | §8, M1/M3 | compiler: tiers 1–3, bleed/marks, boxes, signatures | PASS 19/19 |
 | s9 | §2, §10 | DX and performance claims | PASS 9/9 |
-| s10 | new | recto/verso forced breaks + `@page :blank` | PASS 8/8 |
+| s10 | new | recto/verso forced breaks + `@page :blank` | PASS 11/11 |
 
 ---
 
@@ -78,6 +78,21 @@ after such an event are off by one.
 
 ## 3. Findings that amend the proposal
 
+### F0 — the compiler no longer renames pages, and Tier 2 shrank to geometry
+
+The proposal's Tier 2 produces chapter running heads with **no measurement**, by
+giving each chapter run a generated `@page` name carrying literal text. That
+mechanism was implemented, and then measured against the alternative (the Tier 3
+`@counter-style` map, which needs one extra print pass): **identical pagination,
+64.5 KB of generated CSS down to 4.7 KB, and the author's `@page` rules left
+completely alone**. It was also the source of four defects on first contact with
+real theme CSS.
+
+Renaming is gone (−342 lines). Tier 2 is now bleed/marks geometry only; running
+heads, cross-references and recto/verso placement all share one measurement
+fixpoint. §8's tier table should be updated: "running headers at chapter
+granularity, no measurement" is achievable but not worth what it costs.
+
 ### F1 — Tier 3's measurement channel is simpler than proposed (s4, s7)
 
 The proposal expects to "inject zero-size internal anchors … harvest the
@@ -90,11 +105,13 @@ Two constraints, both measured:
 
 1. Only ids that something *links to* appear in `/Dests` — so Tier 3 must still
    instrument what it measures.
-2. Instrumentation is free: links inside a `display:none` container still
-   produce the destinations, and the page count is unchanged (s7 checked four
-   forms; all four are layout-neutral). **Tier 3's measurement provably cannot
-   perturb the layout it measures** — the fixpoint loop only has to converge on
-   injected *content*.
+2. Instrumentation is free *for layout*: links inside a `display:none`
+   container still produce the destinations, and the page count is unchanged
+   (s7 checked four forms). It is **not** free for selector matching, though —
+   the ids it assigns are visible to the author's CSS, and
+   `h1[id] { counter-increment: chapter }` in a real theme renumbered every
+   chapter while measuring. The compiler now removes its ids before the final
+   print and warns if the page count moved.
 
 Measured: cross-references reach a fixpoint in **2 passes**, and the resulting
 page map matches where every target actually printed.
@@ -243,12 +260,14 @@ Found by comparing against the current pipeline, not by the proposal — §4 lis
 treated by Chromium as a plain page break. Paged.js implements them. A straight
 swap would stop every book that opens chapters on a recto from doing so.
 
-Shimmable, and s10 verifies the shim reproduces Paged.js page-for-page: a
-zero-height spacer forcing the extra break, carrying a generated page name that
-copies the author's `@page :blank` rules (Chromium never matches `:blank`
-itself, even on a page containing only an empty spacer). Placement depends on
-measurement, so it belongs in the Tier 3 fixpoint. **Not implemented yet** — see
-[`DIFFERENCES.md`](./DIFFERENCES.md) F1.
+Now implemented, in the Tier 3 fixpoint: a zero-height spacer forcing the extra
+break, carrying a generated page name that holds the author's resolved
+`@page :blank` declarations (Chromium never matches `:blank` itself, even on a
+page containing only an empty spacer). The spacer set is computed analytically
+from one clean measurement — a blank shifts every later page by exactly one, so
+toggling them pass by pass oscillates. s10 verifies the engine gap, Paged.js's
+behaviour, the synthesis in isolation (page-for-page identical to Paged.js) and
+`folio build` end to end.
 
 ## 6b. Head-to-head against the current pipeline
 
