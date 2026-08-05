@@ -48,7 +48,7 @@ test("bottom status uses save icons, slower autosave default, and compact mobile
   const settingsStore = read("electron/settings-store.ts");
   expect(sharedTypes).toContain("autoSaveDelay: 2500");
   expect(page).toContain("saveDelayMs: settings.current.editor.autoSaveDelay");
-  expect(page).toContain("buffer?.setSaveDelayMs(delay)");
+  expect(page).toContain("book?.setSaveDelayMs(delay)");
   expect(page).toContain("autoSaveDelaySink(s.editor.autoSaveDelay)");
   expect(contract).toContain("DEFAULT_SETTINGS");
   expect(contract).toContain("shared-types");

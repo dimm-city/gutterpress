@@ -5,11 +5,18 @@ import {
 } from "../../src/lib/routes/editor-preview-sync-controller";
 
 /**
- * The editor↔preview sync timing machine (cross-chapter reveal pump + the
- * Date.now() echo-suppression window + anchor-line follow) used to be an
- * untestable setTimeout polling loop living inline in `+page.svelte`. Extracted
- * into a controller with an injected clock (`now`) + scheduler (`schedule`) so
- * every timing branch is deterministic under a fake queue.
+ * The editor↔preview sync timing machine. It used to be an untestable
+ * setTimeout polling loop living inline in `+page.svelte`; it was extracted
+ * into a controller with an injected clock and scheduler so every timing branch
+ * was deterministic.
+ *
+ * The scheduler is gone with the loop it drove. Once the editor holds the WHOLE
+ * BOOK as one document, following the preview across a chapter boundary is not
+ * a file open — the line is already in the document — so there is nothing to
+ * poll for, nothing to retry, and no nudge sequence to fight a scroll reset.
+ * What survives is the echo-suppression window (still clock-injected) and the
+ * editor→preview anchor follow, which now carries the chapter the editor
+ * resolved from its own segment table.
  */
 
 /** Flush the microtask/macrotask queue so `.then().catch()` chains settle. */
@@ -40,71 +47,29 @@ const spy = <A extends unknown[] = unknown[]>(): Spy<A> => {
   return fn;
 };
 
-/** A deterministic replacement for setTimeout — callbacks queue and drain on demand. */
-class FakeScheduler {
-  queue: Array<() => void> = [];
-  scheduleCount = 0;
-  schedule = (fn: () => void, _delay: number): void => {
-    this.scheduleCount++;
-    this.queue.push(fn);
-  };
-  /** Run the next queued callback (may enqueue more). */
-  step(): void {
-    const fn = this.queue.shift();
-    fn?.();
-  }
-  /** Drain the queue until it self-terminates (bounded so a runaway loop fails loud). */
-  drain(max = 1000): void {
-    let n = 0;
-    while (this.queue.length && n++ < max) this.step();
-    if (n >= max) throw new Error("scheduler did not terminate");
-  }
-}
-
 interface Harness {
   ctrl: EditorPreviewSyncController;
   client: FakeClient | undefined;
-  scheduler: FakeScheduler;
   time: number;
   rendering: boolean;
-  currentDir: string | null;
-  editorChapter: string | null;
-  hasEditorRef: boolean;
-  selectEditorFile: Spy<[string]>;
-  revealEditorLine: Spy<[number]>;
   syncPageAfterScroll: Spy<[number]>;
 }
 
 function make(over: Partial<{ hasClient: boolean }> = {}): Harness {
   const client = over.hasClient === false ? undefined : new FakeClient();
-  const scheduler = new FakeScheduler();
-  const selectEditorFile = spy<[string]>();
-  const revealEditorLine = spy<[number]>();
   const syncPageAfterScroll = spy<[number]>();
   const h: Harness = {
     client,
-    scheduler,
     time: 1000,
     rendering: false,
-    currentDir: "/proj",
-    editorChapter: "ch1.md",
-    hasEditorRef: true,
-    selectEditorFile,
-    revealEditorLine,
     syncPageAfterScroll,
     ctrl: undefined as unknown as EditorPreviewSyncController,
   };
   h.ctrl = new EditorPreviewSyncController({
     client: () => h.client,
     rendering: () => h.rendering,
-    currentDir: () => h.currentDir,
-    editorChapter: () => h.editorChapter,
-    hasEditorRef: () => h.hasEditorRef,
-    selectEditorFile: (p) => selectEditorFile(p),
-    revealEditorLine: (line) => revealEditorLine(line),
     syncPageAfterScroll: (page) => syncPageAfterScroll(page),
     now: () => h.time,
-    schedule: scheduler.schedule,
   });
   return h;
 }
@@ -131,8 +96,7 @@ test("suppressFor sets the window to now + ms using the injected clock", () => {
 test("onEditorAnchorLine sets a 400ms echo window and CENTERs a caret anchor", async () => {
   const h = make();
   h.time = 2000;
-  h.editorChapter = "ch1.md";
-  h.ctrl.onEditorAnchorLine(10, "caret");
+  h.ctrl.onEditorAnchorLine(10, "caret", "ch1.md");
   expect(h.ctrl.suppressPreviewSyncUntil).toBe(2400);
   expect((h.client as FakeClient).calls).toEqual([
     { target: { line: 10, chapter: "ch1.md" }, opts: { block: "center" } },
@@ -142,15 +106,37 @@ test("onEditorAnchorLine sets a 400ms echo window and CENTERs a caret anchor", a
 
 test("onEditorAnchorLine anchors a scroll origin to the TOP (start)", async () => {
   const h = make();
-  h.ctrl.onEditorAnchorLine(7, "scroll");
+  h.ctrl.onEditorAnchorLine(7, "scroll", "ch1.md");
   expect((h.client as FakeClient).calls[0]?.opts).toEqual({ block: "start" });
+  await flush();
+});
+
+test("a scroll that crossed into another chapter just carries that chapter", async () => {
+  const h = make();
+  // The editor resolves the chapter from the book document's segment table, so
+  // crossing a boundary mid-scroll is not a special case here — it is the same
+  // call with a different chapter. This is what the cross-chapter open/poll/
+  // retry pump used to exist for.
+  h.ctrl.onEditorAnchorLine(3, "scroll", "ch1.md");
+  h.ctrl.onEditorAnchorLine(1, "scroll", "ch2.md");
+  expect((h.client as FakeClient).calls.map((c) => c.target)).toEqual([
+    { line: 3, chapter: "ch1.md" },
+    { line: 1, chapter: "ch2.md" },
+  ]);
+  await flush();
+});
+
+test("onEditorAnchorLine passes a null chapter through for a single-file document", async () => {
+  const h = make();
+  h.ctrl.onEditorAnchorLine(4, "caret", null);
+  expect((h.client as FakeClient).calls[0]?.target).toEqual({ line: 4, chapter: null });
   await flush();
 });
 
 test("onEditorAnchorLine reflects the scrollTo page into the toolbar", async () => {
   const h = make();
   (h.client as FakeClient).page = 4;
-  h.ctrl.onEditorAnchorLine(10, "caret");
+  h.ctrl.onEditorAnchorLine(10, "caret", "ch1.md");
   await flush();
   expect(h.syncPageAfterScroll.calls).toEqual([[4]]);
 });
@@ -158,7 +144,7 @@ test("onEditorAnchorLine reflects the scrollTo page into the toolbar", async () 
 test("onEditorAnchorLine does not sync a page when scrollTo returns none", async () => {
   const h = make();
   (h.client as FakeClient).page = null;
-  h.ctrl.onEditorAnchorLine(10, "caret");
+  h.ctrl.onEditorAnchorLine(10, "caret", "ch1.md");
   await flush();
   expect(h.syncPageAfterScroll.calls.length).toBe(0);
 });
@@ -166,99 +152,21 @@ test("onEditorAnchorLine does not sync a page when scrollTo returns none", async
 test("onEditorAnchorLine swallows a rejected scrollTo", async () => {
   const h = make();
   (h.client as FakeClient).reject = true;
-  h.ctrl.onEditorAnchorLine(10, "caret");
+  h.ctrl.onEditorAnchorLine(10, "caret", "ch1.md");
   await flush();
   expect(h.syncPageAfterScroll.calls.length).toBe(0);
 });
 
 test("onEditorAnchorLine no-ops with no client (window untouched)", () => {
   const h = make({ hasClient: false });
-  h.ctrl.onEditorAnchorLine(10, "caret");
+  h.ctrl.onEditorAnchorLine(10, "caret", "ch1.md");
   expect(h.ctrl.suppressPreviewSyncUntil).toBe(0);
 });
 
 test("onEditorAnchorLine no-ops while rendering", () => {
   const h = make();
   h.rendering = true;
-  h.ctrl.onEditorAnchorLine(10, "caret");
+  h.ctrl.onEditorAnchorLine(10, "caret", "ch1.md");
   expect(h.ctrl.suppressPreviewSyncUntil).toBe(0);
   expect((h.client as FakeClient).calls.length).toBe(0);
-});
-
-// ── cross-chapter reveal pump ─────────────────────────────────────────────────
-
-test("followChapterInEditor no-ops without a project directory", () => {
-  const h = make();
-  h.currentDir = null;
-  h.ctrl.followChapterInEditor("ch2.md", 42);
-  expect(h.selectEditorFile.calls.length).toBe(0);
-  expect(h.scheduler.scheduleCount).toBe(0);
-});
-
-test("followChapterInEditor opens the chapter file with a posix separator", () => {
-  const h = make();
-  h.currentDir = "/proj/";
-  h.editorChapter = "ch1.md"; // mismatch → pump waits, doesn't reveal yet
-  h.ctrl.followChapterInEditor("ch2.md", 42);
-  expect(h.selectEditorFile.calls).toEqual([["/proj/ch2.md"]]);
-});
-
-test("followChapterInEditor joins with a Windows separator when the dir uses backslashes", () => {
-  const h = make();
-  h.currentDir = "C:\\proj\\";
-  h.editorChapter = "ch1.md";
-  h.ctrl.followChapterInEditor("sub/ch2.md", 42);
-  expect(h.selectEditorFile.calls).toEqual([["C:\\proj\\sub\\ch2.md"]]);
-});
-
-test("pump reveals the line and re-issues the reveal up to 5 nudges once the chapter swaps", () => {
-  const h = make();
-  h.editorChapter = "ch2.md"; // already the target chapter → reveal immediately
-  h.time = 3000;
-  h.ctrl.followChapterInEditor("ch2.md", 42);
-  // First pump ran synchronously inside followChapterInEditor (nudge 1).
-  h.scheduler.drain();
-  // Nudges 1..5 each reveal the same line, then the pump stops.
-  expect(h.revealEditorLine.calls).toEqual([[42], [42], [42], [42], [42]]);
-  // Each matched pump re-arms the echo window at now + 300.
-  expect(h.ctrl.suppressPreviewSyncUntil).toBe(3300);
-});
-
-test("pump waits (no reveal) while the buffer has not yet swapped to the target chapter", () => {
-  const h = make();
-  h.editorChapter = "ch1.md"; // never matches ch2.md
-  h.ctrl.followChapterInEditor("ch2.md", 42);
-  h.scheduler.drain();
-  // Chapter never swapped → the line is never revealed, and the pump caps out.
-  expect(h.revealEditorLine.calls.length).toBe(0);
-});
-
-test("pump does not reveal until an editor ref is present", () => {
-  const h = make();
-  h.editorChapter = "ch2.md";
-  h.hasEditorRef = false; // matched chapter but no editor mounted yet
-  h.ctrl.followChapterInEditor("ch2.md", 42);
-  h.scheduler.drain();
-  expect(h.revealEditorLine.calls.length).toBe(0);
-});
-
-test("pump caps its wait retries so it always terminates", () => {
-  const h = make();
-  h.editorChapter = "ch1.md";
-  h.ctrl.followChapterInEditor("ch2.md", 42);
-  // drain() throws if the loop never terminates; a clean return proves the cap.
-  h.scheduler.drain();
-  expect(h.scheduler.queue.length).toBe(0);
-});
-
-test("a chapter that swaps mid-wait then reveals and nudges to completion", () => {
-  const h = make();
-  h.editorChapter = "ch1.md";
-  h.ctrl.followChapterInEditor("ch2.md", 42);
-  // Simulate the async file load completing after a couple of poll cycles.
-  h.scheduler.step();
-  h.scheduler.step();
-  h.editorChapter = "ch2.md";
-  h.scheduler.drain();
-  expect(h.revealEditorLine.calls).toEqual([[42], [42], [42], [42], [42]]);
 });

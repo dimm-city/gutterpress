@@ -3,7 +3,6 @@ import {
   ContextMenuController,
   type ContextMenuClient,
   type ContextMenuDeps,
-  type ContextMenuBuffer,
 } from "../../src/lib/routes/context-menu-controller.svelte";
 import type { CommitEngine } from "$lib/editor/commit-engine";
 import type { PreviewEvent } from "$lib/preview-client";
@@ -72,7 +71,8 @@ interface Harness {
   enabled: boolean;
   rendering: boolean;
   currentDir: string | null;
-  buffer: ContextMenuBuffer | null;
+  /** Live in-editor content by path (the book document's open chapters). */
+  openContent: Map<string, string>;
   readFileMap: Record<string, string>;
   promptResult: string | null;
   goToSourceCalls: Array<[string, number]>;
@@ -95,7 +95,7 @@ function make(): Harness {
     enabled: true,
     rendering: false,
     currentDir: "/proj",
-    buffer: null,
+    openContent: new Map<string, string>(),
     readFileMap: {},
     promptResult: "edited",
     goToSourceCalls: [],
@@ -112,7 +112,7 @@ function make(): Harness {
     enabled: () => h.enabled,
     rendering: () => h.rendering,
     currentDir: () => h.currentDir,
-    buffer: () => h.buffer,
+    openContent: (path: string) => h.openContent.get(path) ?? null,
     readFile: async (path: string) => {
       if (path in h.readFileMap) return h.readFileMap[path]!;
       throw new Error(`not found: ${path}`);

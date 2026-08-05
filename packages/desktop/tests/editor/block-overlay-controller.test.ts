@@ -4,7 +4,6 @@ import {
   splitTrailingBlankRun,
   type BlockOverlayClient,
   type BlockOverlayDeps,
-  type BlockOverlayBuffer,
 } from "../../src/lib/routes/block-overlay-controller.svelte";
 import type { CommitEngine } from "$lib/editor/commit-engine";
 import type { PreviewEvent, RectsForResult, SourceRange } from "$lib/preview-client";
@@ -70,7 +69,8 @@ interface Harness {
   client: FakeClient;
   commitEngine: FakeCommitEngine;
   currentDir: string | null;
-  buffer: BlockOverlayBuffer | null;
+  /** Live in-editor content by path (the book document's open chapters). */
+  openContent: Map<string, string>;
   readFileMap: Record<string, string>;
   toastErrorCalls: string[];
   toastInfoCalls: string[];
@@ -86,7 +86,7 @@ function make(): Harness {
     client,
     commitEngine,
     currentDir: "/proj",
-    buffer: null,
+    openContent: new Map<string, string>(),
     readFileMap: {},
     toastErrorCalls: [],
     toastInfoCalls: [],
@@ -96,7 +96,7 @@ function make(): Harness {
   const deps: BlockOverlayDeps = {
     client: () => client,
     currentDir: () => h.currentDir,
-    buffer: () => h.buffer,
+    openContent: (path: string) => h.openContent.get(path) ?? null,
     readFile: async (path: string) => {
       if (path in h.readFileMap) return h.readFileMap[path]!;
       throw new Error(`not found: ${path}`);
@@ -129,7 +129,7 @@ describe("show", () => {
 
   test("prefers the live buffer over readFile when it's the same chapter", async () => {
     const h = make();
-    h.buffer = { filePath: "/proj/ch1.md", content: "line one\nline two\n" };
+    h.openContent.set("/proj/ch1.md", "line one\nline two\n");
     h.readFileMap["/proj/ch1.md"] = "STALE\n";
     await h.ctrl.show({ chapter: "ch1.md", range: [1, 2], ref: null });
     expect(h.ctrl.initialText).toBe("line two\n");

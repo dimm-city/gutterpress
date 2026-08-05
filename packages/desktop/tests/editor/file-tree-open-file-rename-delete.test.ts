@@ -243,7 +243,7 @@ test("a failed pre-delete flush preserves the dirty file buffer for retry", asyn
 // +page.svelte itself (a large .svelte SFC) can't be imported/driven by
 // bun:test directly (no Svelte compiler in this harness — see
 // buffer-state.test.ts's header comment on the same limitation). This pins
-// that the three handlers above are actually DEFINED and WIRED to LeftPanel,
+// that the four handlers above are actually DEFINED and WIRED to LeftPanel,
 // same convention as git-identity-and-activity.test.ts's route-wiring checks
 // in this file.
 test("+page.svelte defines and wires the FileTree open-file rename/delete handlers", () => {
@@ -253,34 +253,37 @@ test("+page.svelte defines and wires the FileTree open-file rename/delete handle
   expect(page).toContain("function onTreeBeforeDelete");
   expect(page).toContain("function onTreeFileRenamed");
   expect(page).toContain("function onTreeFileDeleted");
-  expect(page).toContain("flushEditorBuffer(buffer)");
-  expect(page).toContain("selectEditorFile(newPath");
-  expect(page).toContain("buffer?.reset()");
-  // The rename/delete handlers must treat a renamed/deleted DIRECTORY as
-  // affecting an open file nested inside it (code-review), not only an exact
-  // path match — the containment predicate is unit-tested in paths.test.ts.
-  expect(page).toContain("isPathAtOrUnder(editorFilePath, oldPath)");
-  expect(page).toContain("isPathAtOrUnder(editorFilePath, path)");
+  expect(page).toContain("book?.forget(filePath)");
+  expect(page).toContain("loadBookDocument(true)");
+  // The delete handler must treat a deleted DIRECTORY as affecting every open
+  // file nested inside it (code-review), not only an exact path match — the
+  // containment predicate is unit-tested in paths.test.ts.
+  expect(page).toContain("isPathAtOrUnder(filePath, path)");
+  expect(page).toContain("isPathAtOrUnder(active, oldPath)");
   expect(page).toContain("onBeforeRenameOpenFile={onTreeBeforeRename}");
   expect(page).toContain("onBeforeDeleteOpenFile={onTreeBeforeDelete}");
   expect(page).toContain("onFileRenamed={onTreeFileRenamed}");
   expect(page).toContain("onFileDeleted={onTreeFileDeleted}");
 });
 
-// Maintainer review finding #8: the pre-rename FLUSH must match on
-// containment too, not only an exact path — renaming a FOLDER that contains
-// the dirty open file never equals `buffer.filePath` exactly, so an
-// exact-match-only check silently skips the flush and the edit is carried
-// away, unsaved, moving out from under the buffer's still-old path. This
-// asserts `onTreeBeforeRename`'s own body (not just anywhere in the file)
-// uses `isPathAtOrUnder`, symmetric with `onTreeFileRenamed`/
-// `onTreeFileDeleted` above.
-test("+page.svelte's onTreeBeforeRename flushes on containment (isPathAtOrUnder), not exact path match only", () => {
+// Maintainer review finding #8: the pre-rename FLUSH must not be skipped for
+// a dirty file the rename affects. It used to be conditional — matched
+// against "the one open file" — and an exact-match-only check silently
+// skipped the flush when a FOLDER containing the dirty file was renamed, so
+// the edit was carried away unsaved under the buffer's still-old path. With
+// the whole book open, the editor can hold unsaved edits in several chapters
+// at once and any of them may be under the renamed path, so the handler
+// flushes EVERYTHING unconditionally — strictly stronger than the containment
+// check it replaced, and nothing left for a predicate to get wrong.
+test("+page.svelte's rename/delete pre-hooks flush unconditionally", () => {
   const root = path.resolve(import.meta.dir, "../..");
   const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
-  const match = page.match(/async function onTreeBeforeRename\([\s\S]*?\n  \}/);
-  expect(match).not.toBeNull();
-  const body = match![0];
-  expect(body).toContain("isPathAtOrUnder(");
-  expect(body).not.toContain("buffer.filePath === path");
+  for (const name of ["onTreeBeforeRename", "onTreeBeforeDelete"]) {
+    const match = page.match(new RegExp(`async function ${name}\\([\\s\\S]*?\\n  \\}`));
+    expect(match).not.toBeNull();
+    const body = match![0];
+    expect(body).toContain("return flushEditorBuffer();");
+    // No condition guarding the flush — that is the whole point.
+    expect(body).not.toContain("if (");
+  }
 });
