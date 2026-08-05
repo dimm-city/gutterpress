@@ -1,0 +1,90 @@
+/* Folio viewer chrome. The author's content CSS is untouched; everything here
+   is scoped to Folio's own wrappers/layers. */
+
+.folio-stage {
+  --folio-sheet-bg: #fff;
+  --folio-stage-bg: #4a4a52;
+  --folio-guide: #e5484d;
+  --folio-safe: #30a46c;
+  background: var(--folio-stage-bg);
+  padding: 32px;
+  overflow: auto;
+}
+
+/* One flow strip per named-page run. Chromium fragments its content into
+   columns; each column IS a page's content area. */
+.folio-strip {
+  position: relative;
+  width: var(--folio-content-w);
+  height: var(--folio-content-h);
+  column-width: var(--folio-content-w);
+  column-gap: calc(
+    var(--folio-margin-right) + var(--folio-margin-left) + var(--folio-sheet-gap)
+  );
+  column-fill: auto;
+  overflow: hidden;
+  margin: 0 0 var(--folio-sheet-gap);
+  /* strip sits inside the first sheet's content box */
+  transform: translate(var(--folio-margin-left), var(--folio-margin-top));
+}
+
+/* Sheets/margin boxes are painted behind/around the strip by the decoration
+   layer; the strip itself must stay transparent so they show through. */
+.folio-strip > * {
+  break-inside: auto;
+}
+
+.folio-run {
+  position: relative;
+  margin: 0 0 var(--folio-sheet-gap);
+}
+
+.folio-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.folio-sheet {
+  position: absolute;
+  top: 0;
+  width: var(--folio-page-w);
+  height: var(--folio-page-h);
+  background: var(--folio-sheet-bg);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
+}
+
+.folio-marginbox {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: pre;
+  font: inherit;
+  color: inherit;
+}
+
+.folio-marginbox[data-align="start"] { justify-content: flex-start; }
+.folio-marginbox[data-align="center"] { justify-content: center; }
+.folio-marginbox[data-align="end"] { justify-content: flex-end; }
+
+/* designer mode ------------------------------------------------------- */
+.folio-stage[data-designer="on"] .folio-guide-trim,
+.folio-stage[data-designer="on"] .folio-guide-safe {
+  position: absolute;
+  pointer-events: none;
+}
+
+.folio-guide-trim { outline: 1px dashed var(--folio-guide); }
+.folio-guide-safe { outline: 1px dashed var(--folio-safe); }
+
+.folio-warning {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  background: var(--folio-guide);
+  color: #fff;
+  font: 600 10px/1.4 ui-sans-serif, system-ui, sans-serif;
+  padding: 2px 6px;
+  border-radius: 3px;
+}

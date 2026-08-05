@@ -1,0 +1,16 @@
+{
+  "name": "@folio/spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M0 spike: standard-CSS pagination on native Chromium fragmentation (paged.js replacement).",
+  "scripts": {
+    "spikes": "bun spikes/run-all.ts",
+    "build": "bun src/cli.ts build",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "ws": "^8.21.0"
+  }
+}
