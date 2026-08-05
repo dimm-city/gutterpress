@@ -113,7 +113,8 @@ function make(): Harness {
       suppressPreviewSyncUntil: () => h.suppressUntil,
       editorPaneOpen: () => h.editorPaneOpen,
       updateActiveOutline: (line) => log.push(`updateActiveOutline:${line}`),
-      revealEditorLine: (chapter, line) => log.push(`revealEditorLine:${chapter}:${line}`),
+      revealEditorLine: (chapter, line, deliberate) =>
+        log.push(`revealEditorLine:${chapter}:${line}:${deliberate ? "deliberate" : "passive"}`),
       openEditorPane: (opts) => {
         h.editorPaneOpen = true;
         log.push(`openEditorPane:${opts.focus}:${opts.ensureFile}`);
@@ -365,7 +366,7 @@ test("sourceLineChanged always updates the active outline", () => {
 test("sourceLineChanged reveals the scrolled line in the editor", () => {
   const h = make();
   h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 12, chapter: "ch1.md" } });
-  expect(h.log).toContain("revealEditorLine:ch1.md:12");
+  expect(h.log).toContain("revealEditorLine:ch1.md:12:passive");
 });
 
 test("sourceLineChanged reveals a line in ANY chapter — no cross-chapter branch", () => {
@@ -374,7 +375,7 @@ test("sourceLineChanged reveals a line in ANY chapter — no cross-chapter branc
   // chapter's file behind a clean-buffer gate.
   const h = make();
   h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log).toContain("revealEditorLine:ch2.md:8");
+  expect(h.log).toContain("revealEditorLine:ch2.md:8:passive");
 });
 
 test("sourceLineChanged follows even with unsaved edits — nothing is yanked away", () => {
@@ -383,7 +384,7 @@ test("sourceLineChanged follows even with unsaved edits — nothing is yanked aw
   // protect the author from, so the follow always happens.
   const h = make();
   h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log).toContain("revealEditorLine:ch2.md:8");
+  expect(h.log).toContain("revealEditorLine:ch2.md:8:passive");
 });
 
 test("sourceLineChanged does not follow while the pane is closed", () => {
@@ -400,7 +401,7 @@ test("elementActivated reveals the clicked line when the pane is already open", 
   const h = make();
   h.editorPaneOpen = true;
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
-  expect(h.log).toContain("revealEditorLine:ch1.md:12");
+  expect(h.log).toContain("revealEditorLine:ch1.md:12:deliberate");
   expect(h.log.some((l) => l.startsWith("openEditorPane:"))).toBe(false);
 });
 
@@ -408,7 +409,7 @@ test("elementActivated reveals into another chapter with no file open behind it"
   const h = make();
   h.editorPaneOpen = true;
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log).toContain("revealEditorLine:ch2.md:8");
+  expect(h.log).toContain("revealEditorLine:ch2.md:8:deliberate");
   expect(h.log.some((l) => l.startsWith("openEditorPane:"))).toBe(false);
 });
 
@@ -417,7 +418,7 @@ test("elementActivated is NOT gated by the preview→editor echo-suppression win
   h.editorPaneOpen = true;
   h.suppressUntil = h.now + 1000; // would block sourceLineChanged, but a click is real intent
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
-  expect(h.log).toContain("revealEditorLine:ch1.md:12");
+  expect(h.log).toContain("revealEditorLine:ch1.md:12:deliberate");
 });
 
 test("elementActivated opens a closed pane and reveals the clicked chapter", () => {
@@ -427,7 +428,21 @@ test("elementActivated opens a closed pane and reveals the clicked chapter", () 
   // ensureFile:false — the reveal targets the clicked chapter itself, so the
   // pane's own default first-file pick would only race it.
   expect(h.log).toContain("openEditorPane:true:false");
-  expect(h.log).toContain("revealEditorLine:ch3.md:5");
+  expect(h.log).toContain("revealEditorLine:ch3.md:5:deliberate");
+});
+
+test("a scroll follow is PASSIVE, a click is DELIBERATE", () => {
+  // The flag decides what happens when the editor is showing something that
+  // isn't the book (a stylesheet), where a chapter-local line has no meaning: a
+  // click brings the book back, a scroll leaves the author in their file.
+  const h = make();
+  h.editorPaneOpen = true;
+  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 1, chapter: "ch1.md" } });
+  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 2, chapter: "ch1.md" } });
+  expect(h.log.filter((l) => l.startsWith("revealEditorLine:"))).toEqual([
+    "revealEditorLine:ch1.md:1:passive",
+    "revealEditorLine:ch1.md:2:deliberate",
+  ]);
 });
 
 test("elementActivated with no known chapter still opens the pane and reveals the line", () => {
@@ -435,7 +450,7 @@ test("elementActivated with no known chapter still opens the pane and reveals th
   h.editorPaneOpen = false;
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: null } });
   expect(h.log).toContain("openEditorPane:true:false");
-  expect(h.log).toContain("revealEditorLine:null:5");
+  expect(h.log).toContain("revealEditorLine:null:5:deliberate");
 });
 
 test("elementActivated no-ops on a missing/null sourceLine", () => {

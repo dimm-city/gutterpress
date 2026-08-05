@@ -207,7 +207,21 @@ export class BookDocument {
     // Per-file load errors are reported together below, not as one toast each.
     this.opening = true;
     try {
-      await Promise.all(refs.map((ref, i) => buffers[i]!.load(ref.path)));
+      await Promise.all(
+        refs.map((ref, i) => {
+          // NEVER re-read over unsaved work. A rebuild is triggered by the
+          // book's SHAPE changing — a chapter added, deleted, or reordered —
+          // which says nothing about the content of a chapter the author is
+          // mid-edit in. Reloading it would discard an edit still inside the
+          // autosave debounce, and the folder watcher's own reconciliation
+          // deliberately skips a file with a save outstanding (any change while
+          // one is in flight is definitionally its own echo), so nothing else
+          // would catch it either.
+          const buffer = buffers[i]!;
+          if (buffer.filePath === ref.path && buffer.hasPendingSave) return;
+          return buffer.load(ref.path);
+        }),
+      );
     } finally {
       this.opening = false;
     }
@@ -221,11 +235,23 @@ export class BookDocument {
       else usable.push({ path: ref.path, chapter: ref.chapter, content: buffer.content });
     });
 
-    this.dropBuffersExcept(usable.map((s) => s.path));
+    // A file that is BOTH a section and a standalone (the author added the file
+    // they had open to `source.files`) belongs to the book from here on.
+    const sectionPaths = new Set(usable.map((s) => s.path));
+    const standalone = this.standalonePaths.filter((p) => !sectionPaths.has(p));
+    // Standalone buffers survive a rebuild. Dropping them would `reset()` a
+    // stylesheet the author is editing, cancelling its pending save — the book
+    // changing shape has nothing to do with a file that isn't in the book.
+    this.dropBuffersExcept([...sectionPaths, ...standalone]);
     this.requestedPaths = requested;
     this.sections = usable.map((s) => ({ path: s.path, chapter: s.chapter }));
-    this.standalonePaths = [];
-    this.activePath = usable[0]?.path ?? null;
+    this.standalonePaths = standalone;
+    // Keep the author where they are whenever that file is still open.
+    const active = this.activePath;
+    this.activePath =
+      active && (sectionPaths.has(active) || standalone.includes(active))
+        ? active
+        : (usable[0]?.path ?? standalone[0] ?? null);
     if (unavailable.length > 0) this.opts.onSectionsUnavailable?.(unavailable);
     return usable;
   }

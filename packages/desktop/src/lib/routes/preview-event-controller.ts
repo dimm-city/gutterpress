@@ -60,8 +60,14 @@ interface PreviewEventEditorSync {
    * as one document, so this is just a scroll — there is no file to open and
    * nothing to wait for, whether or not the line is in the chapter the caret
    * currently sits in.
+   *
+   * `deliberate` says whether the author ASKED to go there (a click) or merely
+   * scrolled the preview. It decides what happens when the editor is showing
+   * something that isn't the book — a stylesheet — where a chapter-local line
+   * has no meaning: a deliberate jump brings the book back, a passive follow
+   * leaves the author in the file they are working in.
    */
-  revealEditorLine: (chapter: string | null, line: number) => void;
+  revealEditorLine: (chapter: string | null, line: number, deliberate: boolean) => void;
   /**
    * Open (mount) the editor pane when it is closed/unmounted — lazy-loads the
    * editor module and moves focus into it. Used by `elementActivated`: a
@@ -230,7 +236,7 @@ export class PreviewEventController {
     // dirty-buffer gate that skipped the follow entirely (so the editor stopped
     // tracking the reader mid-edit — the "sporadic" complaint). None of them
     // have anything left to guard.
-    es.revealEditorLine(chap ?? null, line);
+    es.revealEditorLine(chap ?? null, line, false);
   }
 
   /**
@@ -257,7 +263,7 @@ export class PreviewEventController {
     // below targets the clicked chapter itself, so the pane's own default
     // first-file pick would only race it and flash the wrong place.
     if (!es.editorPaneOpen()) es.openEditorPane({ focus: true, ensureFile: false });
-    es.revealEditorLine(detail.chapter ?? null, line);
+    es.revealEditorLine(detail.chapter ?? null, line, true);
   }
 
   private onPageChanged(detail: PreviewEvent["detail"]): void {

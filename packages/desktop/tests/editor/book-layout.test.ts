@@ -288,6 +288,27 @@ describe("bookField", () => {
   });
 });
 
+describe("revealing across document shapes", () => {
+  // The editor-side half of the guard `+page.svelte`'s `revealInEditor` relies
+  // on: a chapter-local line is meaningless to a single-file document, and
+  // applying it anyway would scroll whatever IS open (a stylesheet) to that
+  // line number — the wrong document entirely.
+  test("a chapter's line resolves against the book document", () => {
+    const state = bookState(["01.md", "a\nb\n"], ["02.md", "c\nd\n"]);
+    expect(globalLineFor(bookLayout(state)!, "02.md", 2)).toBe(4);
+  });
+
+  test("a single-file document has no layout to resolve a chapter against", () => {
+    const state = EditorState.create({
+      doc: "p { color: red }\n.x { color: blue }\n",
+      extensions: [bookFieldInit(null)],
+    });
+    // No segment table at all — there is nothing for a chapter id to mean here,
+    // which is exactly why revealLine refuses a chapter-scoped reveal.
+    expect(bookLayout(state)).toBeNull();
+  });
+});
+
 describe("collapse repair", () => {
   test("nothing to repair while every chapter has content", () => {
     expect(repairCollapsedSegments(bookState(["01.md", "a\n"], ["02.md", "b\n"]))).toBeNull();

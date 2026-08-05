@@ -166,6 +166,71 @@ describe("open", () => {
     expect(h.book.matchesSections(refs("01.md", "missing.md", "03.md"))).toBe(false);
   });
 
+  test("a rebuild does NOT re-read a chapter with unsaved edits", async () => {
+    // A rebuild is triggered by the book's SHAPE changing (a chapter added or
+    // deleted on disk, `source.files` reordered) — which says nothing about the
+    // content of a chapter the author is mid-edit in. Reloading it would
+    // discard an edit still inside the autosave debounce, and the folder
+    // watcher's own reconciliation deliberately skips a file with a save
+    // outstanding, so nothing else would catch it.
+    const h = make({ "/book/01.md": "one\n", "/book/02.md": "two\n", "/book/03.md": "three\n" });
+    await h.book.open(refs("01.md", "02.md"));
+    h.book.applyEdit("/book/01.md", "UNSAVED\n");
+    await h.book.open(refs("01.md", "02.md", "03.md"));
+    expect(h.book.contentFor("/book/01.md")).toBe("UNSAVED\n");
+    expect(h.book.bufferFor("/book/01.md")!.isDirty).toBe(true);
+    // Clean chapters still pick up whatever is on disk now.
+    expect(h.book.contentFor("/book/02.md")).toBe("two\n");
+  });
+
+  test("a rebuild keeps standalone buffers and their pending saves", async () => {
+    // Dropping them would reset() a stylesheet the author is editing, silently
+    // cancelling its debounced save. The book changing shape has nothing to do
+    // with a file that isn't in the book.
+    const h = make({ "/book/01.md": "a\n", "/book/02.md": "b\n", "/book/style.css": "css\n" });
+    await h.book.open(refs("01.md"));
+    await h.book.openStandalone("/book/style.css");
+    h.book.applyEdit("/book/style.css", "edited css\n");
+
+    await h.book.open(refs("01.md", "02.md"));
+
+    expect(h.book.standalonePaths).toEqual(["/book/style.css"]);
+    expect(h.book.contentFor("/book/style.css")).toBe("edited css\n");
+    expect(h.book.bufferFor("/book/style.css")!.hasPendingSave).toBe(true);
+    await h.book.flushAll();
+    expect(h.platform.getContent("/book/style.css")).toBe("edited css\n");
+  });
+
+  test("a rebuild keeps the author on the file they had active", async () => {
+    const h = make({ "/book/01.md": "a\n", "/book/02.md": "b\n", "/book/style.css": "css\n" });
+    await h.book.open(refs("01.md", "02.md"));
+    await h.book.openStandalone("/book/style.css");
+    await h.book.open(refs("01.md", "02.md"));
+    expect(h.book.activePath).toBe("/book/style.css");
+
+    h.book.setActive("/book/02.md");
+    await h.book.open(refs("01.md", "02.md"));
+    expect(h.book.activePath).toBe("/book/02.md");
+  });
+
+  test("a standalone file the author adds to source.files becomes a section", async () => {
+    const h = make({ "/book/01.md": "a\n", "/book/notes.md": "notes\n" });
+    await h.book.open(refs("01.md"));
+    await h.book.openStandalone("/book/notes.md");
+    await h.book.open(refs("01.md", "notes.md"));
+    expect(h.book.isSection("/book/notes.md")).toBe(true);
+    expect(h.book.standalonePaths).toEqual([]);
+    expect(h.book.activePath).toBe("/book/notes.md");
+  });
+
+  test("a rebuild that loses the active file falls back to the first chapter", async () => {
+    const h = make({ "/book/01.md": "a\n", "/book/02.md": "b\n" });
+    await h.book.open(refs("01.md", "02.md"));
+    h.book.setActive("/book/02.md");
+    await h.book.open(refs("01.md"));
+    expect(h.book.activePath).toBe("/book/01.md");
+  });
+
   test("re-opening drops buffers for files that left the book", async () => {
     const h = make({ "/book/01.md": "one\n", "/book/02.md": "two\n" });
     await h.book.open(refs("01.md", "02.md"));

@@ -1459,6 +1459,60 @@
   }
 
   /**
+   * Whether the editor is showing the BOOK (rather than a standalone document
+   * like a stylesheet). The document's shape is derived from the active file in
+   * `pushEditorDocument`, so this is the same question answered from the page's
+   * side without another editor export.
+   */
+  function editorShowsBook(): boolean {
+    const active = book?.activePath;
+    return !!active && !!book?.isSection(active);
+  }
+
+  /**
+   * The ONE way anything reveals a source line in the editor.
+   *
+   * `chapter` is a chapter-local coordinate and only means something to the
+   * book document, so this has to know which document is on screen. The
+   * difference between the two callers matters:
+   *
+   * - **Passive follow** (`deliberate: false`) — the reader scrolled the
+   *   preview. If the author has a stylesheet open, do NOTHING: revealing would
+   *   either scroll the wrong document (a chapter line applied to CSS) or yank
+   *   them out of the file they are working in, neither of which they asked
+   *   for by scrolling.
+   * - **Deliberate** (`deliberate: true`) — a click on a block, an outline
+   *   jump, a problem, "go to source". That IS a request to go somewhere, so
+   *   put the book back on screen, make the chapter active, and reveal.
+   */
+  function revealInEditor(
+    chapter: string | null,
+    line: number,
+    deliberate = false,
+  ): void {
+    if (!chapter) {
+      // No chapter to resolve — only meaningful for a standalone document.
+      if (!editorShowsBook()) whenEditorReady(() => editorRef?.revealLine(line));
+      return;
+    }
+    if (editorShowsBook()) {
+      whenEditorReady(() => editorRef?.revealLine(line, chapter));
+      return;
+    }
+    if (!deliberate) return;
+    // Bring the book back (loadBookDocument no-ops when it is already loaded,
+    // so this costs nothing in the normal case) before resolving the chapter.
+    void loadBookDocument().then(() => {
+      const path = book?.pathForChapter(chapter);
+      if (!path || !book?.setActive(path)) return;
+      whenEditorReady(() => {
+        pushEditorDocument();
+        editorRef?.revealLine(line, chapter);
+      });
+    });
+  }
+
+  /**
    * (Re)build the book document from the manifest's chapter list. Cheap to call
    * repeatedly: it no-ops when the resolved chapter list is unchanged, which is
    * the common case for the folder watcher (an ordinary save).
@@ -1716,7 +1770,7 @@
    */
   function goToSource(chapter: string, line: number): void {
     if (!editorPaneOpen) openEditorPane({ focus: true, ensureFile: false });
-    whenEditorReady(() => editorRef?.revealLine(line, chapter));
+    revealInEditor(chapter, line, true);
   }
 
   function toggleEditor() {
@@ -1816,9 +1870,13 @@
       editorOpen = true;
       loadEditorModule();
     }
-    const rel = p.file ?? basenameOf(p.filePath);
-    void selectEditorFile(p.filePath, { reveal: false }).then(() => {
-      if (p.line) whenEditorReady(() => editorRef?.revealLine(p.line!, rel));
+    const filePath = p.filePath;
+    void selectEditorFile(filePath, { reveal: false }).then(() => {
+      // A problem can point at a stylesheet as easily as a chapter. chapterFor
+      // returns null for the former, which routes to the single-file reveal —
+      // resolving by PATH, never by the report's file label, so a stylesheet is
+      // never mistaken for a chapter that happens to share its name.
+      if (p.line) revealInEditor(book?.chapterFor(filePath) ?? null, p.line, true);
     });
     focusEditorWhenReady();
   }
@@ -2089,8 +2147,8 @@
       suppressPreviewSyncUntil: () => editorSync.suppressPreviewSyncUntil,
       editorPaneOpen: () => editorPaneOpen,
       updateActiveOutline: (line) => updateActiveOutline(line),
-      revealEditorLine: (chapter, line) =>
-        whenEditorReady(() => editorRef?.revealLine(line, chapter)),
+      revealEditorLine: (chapter, line, deliberate) =>
+        revealInEditor(chapter, line, deliberate),
       openEditorPane: (opts) => openEditorPane(opts),
     },
     zoom: () => zoom,
@@ -2454,7 +2512,7 @@
     // editor is left on the old file (they desync).
     editorSync.suppressFor(400);
     if (entry.sourceLine != null && editorPaneOpen) {
-      editorRef?.revealLine(entry.sourceLine, entry.chapter);
+      revealInEditor(entry.chapter, entry.sourceLine, true);
     }
     client
       .scrollTo(target, { block: "start" })

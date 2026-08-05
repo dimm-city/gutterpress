@@ -851,6 +851,13 @@
       const global = globalLineFor(layout, chapter, line);
       if (global == null) return; // a chapter this book doesn't (any longer) build from
       target = global;
+    } else if (chapter) {
+      // A chapter-local line means nothing to a single-file document. Revealing
+      // it anyway would scroll whatever IS open — a stylesheet, say — to that
+      // line number, which is simply the wrong document. The caller is expected
+      // to put the book back on screen first (see `+page.svelte`'s
+      // `revealInEditor`).
+      return;
     }
     const clamped = Math.max(1, Math.min(target, doc.lines));
     const pos = doc.line(clamped).from;
