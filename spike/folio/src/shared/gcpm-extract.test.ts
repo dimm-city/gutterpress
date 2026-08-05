@@ -189,3 +189,33 @@ describe("scanner primitives", () => {
     ]);
   });
 });
+
+describe("margin cascade (regression: full-bleed cover)", () => {
+  // `@page cover { margin: 0 }` must beat `@page :right { margin-left: .75in }`:
+  // the named rule is stronger, so resolving the merged map afterwards (apply
+  // shorthand, then apply longhands) inverts the cascade and insets the cover.
+  const css = `
+    @page { size: 8.5in 11in; margin: 0.875in 0.875in 1in; }
+    @page :left  { margin-left: 1in;    margin-right: 0.75in; }
+    @page :right { margin-left: 0.75in; margin-right: 1in; }
+    @page cover  { margin: 0; }
+  `;
+  const model = extract(css);
+
+  test("a named shorthand beats a weaker rule's longhand", () => {
+    const cover = resolvePage(model, { name: "cover", pseudos: ["right"] });
+    expect(cover.geometry.margin).toEqual({ top: 0, right: 0, bottom: 0, left: 0 });
+  });
+
+  test("…and the pseudo-page longhands still apply to unnamed pages", () => {
+    const recto = resolvePage(model, { pseudos: ["right"] });
+    expect(recto.geometry.margin).toEqual({ top: 63, right: 72, bottom: 72, left: 54 });
+  });
+
+  test("a longhand after a shorthand inside the SAME rule still wins", () => {
+    const m = extract(`@page { margin: 1in; margin-left: 2in; }`);
+    expect(resolvePage(m).geometry.margin).toEqual({
+      top: 72, right: 72, bottom: 72, left: 144,
+    });
+  });
+});

@@ -18,7 +18,7 @@ import {
   toPt,
   type Declarations,
   type GcpmModel,
-  type PageRule,
+  type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { needsMeasurement, parseContent } from "../shared/content-value.ts";
 
@@ -271,7 +271,7 @@ export function synthesize(input: Tier2Input): Tier2Output {
             return `  ${box} {\n${declsToCss(out)}\n  }`;
           })
           .join("\n");
-        const own = declsToCss(withInset(resolved.decls, inset, model), "  ");
+        const own = declsToCss(pageDecls(resolved, inset), "  ");
         const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
         out.push(`@page ${generatedName(name)}${pseudo} {`, own, boxes, `}`);
       }
@@ -321,6 +321,29 @@ export function literalise(content: string, strings: Record<string, string>): st
     })
     .filter(Boolean)
     .join(" ");
+}
+
+/**
+ * Declarations for a generated `@page`: the RESOLVED geometry as longhands
+ * (never the author's shorthand/longhand mix, which would re-introduce the
+ * cascade order problem inside a single flat block), plus everything else the
+ * author declared, minus the descriptors the compiler consumes itself.
+ */
+function pageDecls(
+  resolved: { decls: Declarations; geometry: PageGeometry },
+  inset: number,
+): Declarations {
+  const out: Declarations = {};
+  for (const [prop, value] of Object.entries(resolved.decls)) {
+    if (prop === "margin" || prop.startsWith("margin-") || prop === "size") continue;
+    if (prop === "bleed" || prop === "marks") continue;
+    out[prop] = value;
+  }
+  const g = resolved.geometry;
+  out.size = `${round(g.width + 2 * inset)}pt ${round(g.height + 2 * inset)}pt`;
+  for (const side of ["top", "right", "bottom", "left"] as const)
+    out[`margin-${side}`] = `${round(g.margin[side] + inset)}pt`;
+  return out;
 }
 
 /** Named-page rules must carry the author's margins + the bleed inset. */

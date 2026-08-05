@@ -142,6 +142,22 @@ identically (opener page gets the template, body returns to the default page).
 What it does not do is put the whole chapter on that template — the viewer now
 says exactly that instead of calling it a mistake.
 
+## Follow-up pass
+
+[`DIFFERENCES.md`](./DIFFERENCES.md) is the exhaustive artifact diff: every
+difference between the two PDFs, content-aligned so a single inserted page
+doesn't smear across the rest of the book, plus a third baseline (plain Chromium
+printing the same HTML with no Folio at all). Headlines from it:
+
+- Folio reproduces plain Chromium **61/61 pages**, adding only the running heads
+  it synthesizes — so every remaining difference is Chromium↔Paged.js, not Folio.
+- The cover in the first screenshot really was narrow: a margin shorthand vs
+  longhand cascade bug in `resolvePage` insets full-bleed covers. Fixed, with
+  regression tests.
+- `break-before: right|recto` is a plain page break in Chromium and
+  `@page :blank` never matches — Paged.js implements both. Highest-risk gap for
+  a swap; shim verified in spike `s10`, not yet implemented.
+
 ## Caveats
 
 - One example project. The zine example (1 page) also matches; the design-guide

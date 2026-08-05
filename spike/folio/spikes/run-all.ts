@@ -22,11 +22,12 @@ const SPIKES: Array<{ id: string; load: () => Promise<{ run: Function }> }> = [
   { id: "s7", load: () => import("./s7-instrumentation.ts") },
   { id: "s8", load: () => import("./s8-compiler.ts") },
   { id: "s9", load: () => import("./s9-dx-performance.ts") },
+  { id: "s10", load: () => import("./s10-recto-breaks.ts") },
 ];
 
 const filter = process.argv.slice(2);
 const selected = filter.length
-  ? SPIKES.filter((s) => filter.some((f) => s.id.startsWith(f.replace(/^s?/, "s"))))
+  ? SPIKES.filter((s) => filter.some((f) => s.id === (f.startsWith("s") ? f : `s${f}`)))
   : SPIKES;
 
 const built = await ensureBundles();

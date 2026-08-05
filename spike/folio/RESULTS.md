@@ -6,7 +6,7 @@ divergence. Six findings amend the proposal; none of them is existential, and
 one of them (F1) makes Tier 3 materially simpler than proposed.
 
 - Runtime: Chromium **141.0.7390.37** headless (proposal floor: 131), Bun 1.3.11
-- Suite: `bun run spikes` — **10/10 spikes, 117 checks, ~32 s wall clock**
+- Suite: `bun run spikes` — **11/11 spikes, 125 checks, ~25 s wall clock**
 - Evidence regenerated on every run into `out/results.json` / `out/results.md`;
   PDFs, generated CSS and fixtures land in `out/` too.
 
@@ -22,6 +22,7 @@ one of them (F1) makes Tier 3 materially simpler than proposed.
 | s7 | new | layout-neutral instrumentation for Tier 3 | PASS 5/5 |
 | s8 | §8, M1/M3 | compiler: tiers 1–3, bleed/marks, boxes, signatures | PASS 19/19 |
 | s9 | §2, §10 | DX and performance claims | PASS 9/9 |
+| s10 | new | recto/verso forced breaks + `@page :blank` | PASS 8/8 |
 
 ---
 
@@ -234,6 +235,21 @@ warm browser across edits, which is what makes it possible.
   embedded fonts) is verified, but the Ghostscript stage was not exercised — no
   `gs` in this environment.
 
+### F7 — `break-before: right|left|recto|verso` is NOT native, and `@page :blank` never matches (s10)
+
+Found by comparing against the current pipeline, not by the proposal — §4 lists
+`break-before/after` as native, and the page *selectors* `:left`/`:right` are
+(s0), but the break *values* that start a chapter on a right-hand page are
+treated by Chromium as a plain page break. Paged.js implements them. A straight
+swap would stop every book that opens chapters on a recto from doing so.
+
+Shimmable, and s10 verifies the shim reproduces Paged.js page-for-page: a
+zero-height spacer forcing the extra break, carrying a generated page name that
+copies the author's `@page :blank` rules (Chromium never matches `:blank`
+itself, even on a page containing only an empty spacer). Placement depends on
+measurement, so it belongs in the Tier 3 fixpoint. **Not implemented yet** — see
+[`DIFFERENCES.md`](./DIFFERENCES.md) F1.
+
 ## 6b. Head-to-head against the current pipeline
 
 [`COMPARISON.md`](./COMPARISON.md) runs the current Paged.js pipeline and the
@@ -243,6 +259,12 @@ paginate in the browser, 901 KB → 23 KB of engine, 3.7× → 1.14× DOM growth
 61 pages instead of 64 for the same content (Paged.js leaves a median 110 pt
 unused at the foot of a page; native leaves 60 pt). That exercise also found and
 fixed four Tier 2 bugs that generated fixtures never triggered.
+
+A second pass ([`DIFFERENCES.md`](./DIFFERENCES.md)) diffed the artifacts
+exhaustively — content-aligned, page by page, plus a third baseline (plain
+Chromium, no Folio). **Folio reproduces plain Chromium 61/61 pages**, adding
+only the running heads it synthesizes. That pass found and fixed a margin
+cascade bug that was insetting full-bleed covers, and surfaced F7 above.
 
 ## 7. Recommended next steps
 

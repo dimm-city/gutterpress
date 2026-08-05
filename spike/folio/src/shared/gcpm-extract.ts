@@ -461,20 +461,29 @@ export function resolvePage(
 
   const decls: Declarations = {};
   const marginBoxes: Record<string, Declarations> = {};
+  // Margins are accumulated IN CASCADE ORDER, shorthand and longhands
+  // interleaved exactly as written. Resolving the merged map afterwards
+  // ("apply `margin`, then apply any `margin-*`") makes a longhand from a
+  // WEAKER rule beat a shorthand from a stronger one: `@page :right {
+  // margin-left: .75in }` would override `@page cover { margin: 0 }` and inset
+  // a full-bleed cover by three quarters of an inch. (Observed in the
+  // Gutterpress user-guide theme; see compare/COMPARISON.md.)
+  const margin = { top: 72, right: 72, bottom: 72, left: 72 };
   for (const rule of applicable) {
+    for (const [prop, value] of Object.entries(rule.decls)) {
+      if (prop === "margin") Object.assign(margin, parseMargin(value));
+      else if (prop === "margin-top" || prop === "margin-right" ||
+               prop === "margin-bottom" || prop === "margin-left") {
+        const side = prop.slice(7) as "top" | "right" | "bottom" | "left";
+        margin[side] = toPt(value) ?? margin[side];
+      }
+    }
     Object.assign(decls, rule.decls);
     for (const [box, d] of Object.entries(rule.marginBoxes)) {
       marginBoxes[box] = { ...(marginBoxes[box] ?? {}), ...d };
     }
   }
   const size = parseSize(decls.size ?? "letter") ?? { width: 612, height: 792 };
-  const margin = decls.margin
-    ? parseMargin(decls.margin)
-    : { top: 72, right: 72, bottom: 72, left: 72 };
-  for (const side of ["top", "right", "bottom", "left"] as const) {
-    const v = decls[`margin-${side}`];
-    if (v !== undefined) margin[side] = toPt(v) ?? margin[side];
-  }
   return {
     decls,
     marginBoxes,

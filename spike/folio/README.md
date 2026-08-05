@@ -20,14 +20,16 @@ pagination engine.
 Everything here is verified against a real Chromium by the spikes in `spikes/`.
 Results and the verdict on the proposal: [`RESULTS.md`](./RESULTS.md).
 Head-to-head against the current Paged.js pipeline on the same book:
-[`COMPARISON.md`](./COMPARISON.md).
+[`COMPARISON.md`](./COMPARISON.md), with the exhaustive artifact diff and the
+open defect list in [`DIFFERENCES.md`](./DIFFERENCES.md).
 
 ## Run it
 
 ```bash
 bun install
-bun run spikes            # all 10 spikes against a real Chromium (~25s)
+bun run spikes            # all 11 spikes against a real Chromium (~25s)
 bun run compare           # current Gutterpress vs this spike, same book
+bun compare/diff-report.ts a.pdf b.pdf   # content-aligned artifact diff
 bun spikes/run-all.ts s1  # just one
 bun test                  # unit tests for the shared modules
 bunx tsc --noEmit -p tsconfig.json
