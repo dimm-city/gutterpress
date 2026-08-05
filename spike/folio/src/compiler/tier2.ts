@@ -139,6 +139,24 @@ const declsToCss = (d: Declarations, indent = "    ") =>
     .join("\n");
 
 /**
+ * The emitted page margin for one side.
+ *
+ * Normally the authored margin plus the bleed+slug the compiler added to the
+ * page size, so content stays where the author put it RELATIVE TO TRIM.
+ *
+ * A zero authored margin is different in kind: it means "content fills the
+ * page", and inflating it would put a white border exactly where the author
+ * asked for full-bleed art — the one thing bleed exists for. Chromium clips
+ * content to the content box (measured: nothing paints outside it, not even
+ * `html { background }`), so a bleeding page must have a content box that
+ * REACHES the bleed area. Emitting the slug alone makes the content box
+ * exactly the bleed box: art fills it, crop marks stay clear.
+ */
+export function bleedMargin(authored: number, g: PageTrim): number {
+  return authored === 0 ? g.slug : authored + g.bleed + g.slug;
+}
+
+/**
  * Shift a margin box's content back toward the trim box by `inset` pt, so the
  * bleed/slug the compiler added to the page size does not push running heads
  * and folios outward.
@@ -167,15 +185,43 @@ export function synthesize(input: Tier2Input): Tier2Output {
 
   // ---- 1. bleed / marks geometry ----------------------------------------
   if (inset > 0) {
-    out.push(
-      `@page {`,
-      `  size: ${round(geometry.media.width)}pt ${round(geometry.media.height)}pt;`,
-    );
-    const base = resolvePage(model);
-    for (const side of ["top", "right", "bottom", "left"] as const) {
-      out.push(`  margin-${side}: ${round(base.geometry.margin[side] + inset)}pt;`);
+    // One block per page CONTEXT, not a single unnamed block.
+    //
+    // Chromium does not apply page-selector specificity across stylesheets, so
+    // a generated unnamed `@page { margin-* }` silently beats the author's
+    // `@page :left`/`:right` gutters — every page of a bound book collapses to
+    // the same margin and the book mirrors the wrong way. Resolving each
+    // context here and emitting it explicitly is the same fix the running-head
+    // rewrite uses (see counterStyleCss).
+    const names: Array<string | undefined> = [undefined, ...model.pageNames];
+    const variants = [[] as string[], ...pseudoVariants(model).map((p) => [p])];
+    for (const name of names) {
+      for (const pseudos of variants) {
+        // The base context is always emitted (it carries the new page size);
+        // every other context only if the author actually wrote it, so the
+        // generated sheet stays small and never invents a page context.
+        const isBase = name === undefined && pseudos.length === 0;
+        const authorWroteIt = model.pageRules.some(
+          (r) =>
+            r.name === name &&
+            r.pseudos.length === pseudos.length &&
+            r.pseudos.every((p) => pseudos.includes(p)),
+        );
+        if (!isBase && !authorWroteIt) continue;
+        const resolved = resolvePage(model, { name, pseudos });
+        const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
+        const lines = [
+          `  size: ${round(geometry.media.width)}pt ${round(geometry.media.height)}pt;`,
+        ];
+        for (const side of ["top", "right", "bottom", "left"] as const) {
+          lines.push(
+            `  margin-${side}: ${round(bleedMargin(resolved.geometry.margin[side], geometry))}pt;`,
+          );
+        }
+        out.push(`@page ${name ?? ""}${pseudo} {`, ...lines, `}`.replace("@page  ", "@page "));
+      }
     }
-    out.push(`}`);
+
     // margin boxes must stay where the author put them relative to trim
     const seen = new Set<string>();
     for (const rule of model.pageRules)
@@ -188,6 +234,12 @@ export function synthesize(input: Tier2Input): Tier2Output {
     notes.push(
       `bleed ${round(geometry.bleed)}pt + slug ${round(geometry.slug)}pt: media ${round(geometry.media.width)}×${round(geometry.media.height)}pt, trim ${round(geometry.trim.width)}×${round(geometry.trim.height)}pt`,
     );
+    if (geometry.bleed > 0)
+      notes.push(
+        "Chromium clips page content to the content box, so art can only reach the bleed area on " +
+          "pages whose authored margin is 0 (covers, plates) — those keep a slug-only margin so the " +
+          "content box IS the bleed box. On pages with real margins, bleed is geometry only.",
+      );
   }
 
   // Running heads are NOT synthesized here. They used to be: each run got a

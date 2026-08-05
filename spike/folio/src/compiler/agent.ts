@@ -166,6 +166,56 @@ export function applyRectoSpacers(ids: string[], pageName: string): number {
   return inserted;
 }
 
+export interface ContentWarning {
+  kind: "overheight" | "low-dpi";
+  what: string;
+  detail: string;
+}
+
+/**
+ * Print-quality audit of the document, run once against the real layout.
+ *
+ * Two things a print pipeline must not accept silently:
+ *  - a block taller than the page content box (Chromium splits images across
+ *    pages in print but the viewer's multicol clips them, so these are exactly
+ *    the elements where screen and print disagree), and
+ *  - a raster whose natural resolution lands below the print bar once scaled
+ *    to its printed size — invisible on screen, muddy on paper.
+ */
+export function auditContent(contentHeightPx: number, dpiFloor: number): ContentWarning[] {
+  const out: ContentWarning[] = [];
+  const name = (el: Element) =>
+    el.tagName.toLowerCase() +
+    (el.id ? `#${el.id}` : "") +
+    (el.className && typeof el.className === "string" ? `.${el.className.split(/\s+/)[0]}` : "");
+
+  for (const el of Array.from(document.querySelectorAll<HTMLElement>("figure,img,table,pre,svg,div"))) {
+    const h = el.getBoundingClientRect().height;
+    if (h > contentHeightPx + 1 && el.children.length === 0) {
+      out.push({
+        kind: "overheight",
+        what: name(el),
+        detail: `${Math.round(h)}px tall on a ${Math.round(contentHeightPx)}px content box`,
+      });
+    }
+  }
+
+  for (const img of Array.from(document.querySelectorAll<HTMLImageElement>("img"))) {
+    const rect = img.getBoundingClientRect();
+    if (!rect.width || !img.naturalWidth) continue;
+    // CSS px are 1/96in; effective DPI = source pixels per printed inch
+    const dpi = img.naturalWidth / (rect.width / 96);
+    if (dpi < dpiFloor) {
+      out.push({
+        kind: "low-dpi",
+        what: name(img),
+        detail: `${img.naturalWidth}px wide printed at ${(rect.width / 96).toFixed(2)}in = ${Math.round(dpi)} DPI`,
+      });
+    }
+  }
+  return out;
+}
+
 /** Text of the elements cross-references point at, for `target-text()`. */
 export function targetTexts(ids: string[]): Record<string, string> {
   const out: Record<string, string> = {};
@@ -303,6 +353,7 @@ declare global {
 }
 
 const api = {
+  auditContent,
   collectCss,
   forcedBreakSites,
   applyRectoSpacers,

@@ -56,6 +56,8 @@ export interface BuildOptions {
   title?: string;
   author?: string;
   maxPasses?: number;
+  /** raster resolution below which the audit warns; 0 disables. Default 300. */
+  dpiFloor?: number;
   /** reuse a warm browser (dev server) */
   browser?: Browser;
   onProgress?: (msg: string) => void;
@@ -304,6 +306,26 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // or through injected zero-size <folio-anchor> children), so the last
       // printed bytes ARE the output. The measured document and the shipped
       // document cannot diverge, structurally.
+    }
+
+    // Print-quality audit against the settled layout, just before the artifact
+    // is final: content taller than the page (where screen and print diverge)
+    // and rasters below the print resolution bar.
+    {
+      const base = resolvePage(model);
+      const contentHeightPx =
+        ((base.geometry.height - base.geometry.margin.top - base.geometry.margin.bottom) * 96) / 72;
+      const audit = await page.evaluate<Array<{ kind: string; what: string; detail: string }>>(
+        `window.__folio.auditContent(${contentHeightPx}, ${opts.dpiFloor ?? 300})`,
+      );
+      for (const w of audit) {
+        notes.push(
+          w.kind === "overheight"
+            ? `${w.what} is taller than the page content box (${w.detail}): print splits it across pages, the screen preview clips it — they will not agree here.`
+            : `${w.what} is below the ${opts.dpiFloor ?? 300} DPI print bar (${w.detail}).`,
+        );
+      }
+      if (audit.length) log(`audit: ${audit.length} print-quality warning(s)`);
     }
 
     bytes ??= await printPdf(page);

@@ -274,7 +274,7 @@ to re-check it. Worth a `--pad-to-signature` reminder in the migration notes;
 | **worked around** | F10 (cross-stylesheet `@page` cascade — generated contexts emitted fully resolved) |
 | **inherent, documented** | F7 (viewer drift at knife-edge boundaries, ≈1 event/60 pp worst case; PDF is ground truth) |
 | **migration considerations** | F9/D2 (denser output: 61 vs 64 pages), D3 (nested `page:` breaks per spec) |
-| **still unexercised** | POD acceptance of bleed/marks, Ghostscript/PDF-X hand-off, image-heavy books |
+| **now tested** | PDF/X hand-off (s12) · POD bleed/marks geometry (s13) · image-heavy books (s14) — see below |
 
 ### F15 — leaders have no implementation at all — **open**
 
@@ -310,3 +310,104 @@ lines of compiler.
    `@page :blank` end to end — s10 covers the mechanism, but no real project in
    this repo exercises it.
 4. Report F10 upstream, and keep the resolved-context emission either way.
+
+
+---
+
+## Part 3 — the three previously-untested areas (real print toolchain)
+
+Run on a machine with Ghostscript 10.06, poppler, Chrome 151 and a FOGRA39L
+CMYK profile. Three subagents tested in parallel; every finding below was
+re-verified independently before acting on it.
+
+### Ghostscript / PDF-X hand-off — **works** (spike `s12`)
+
+The real `convertToPdfxCmyk` from `packages/cli/src/lib/ghostscript.ts`, run
+against a Folio-built PDF with the FOGRA39L profile: 24 checks pass.
+`/GTS_PDFXVersion (PDF/X-1:2001)`, `/GTS_PDFXConformance (PDF/X-1a:2001)`,
+`/Trapped /False`, a resolving `/OutputIntent` → `/DestOutputProfile`. Page
+geometry identical before/after (MediaBox/TrimBox/BleedBox ±0pt on every page
+checked), `pdftotext` output byte-identical, 47 RGB fill ops → 0 `/DeviceRGB`
+and 34 CMYK ops, all fonts embedded, no transparency. Both x1a and x3 flavors.
+Failure modes are loud: a missing or malformed ICC makes gs throw and no file
+is written.
+
+Operational note, not a Folio defect: Ghostscript rejects `/Link` annotations
+under `-dPDFX`, so `qpdf`'s `stripAnnotations` is a hard requirement for any
+document with cross-references — already asserted by `build-preflight.ts`.
+**Folio's own measurement adds no annotations**: verified that instrumentation
+emits `/Dests` but ZERO `/Link` and ZERO `/Annots`, because the source links are
+`display:none` and never painted.
+
+### POD bleed/marks geometry — **two real bugs, both fixed** (spike `s13`)
+
+Correct across 6×9, 8.5×11, 5.5×8.5, A5 and 7×10 at 0 / 0.125in / 3mm bleed:
+TrimBox exactly the authored trim and centred in MediaBox on all four sides;
+BleedBox = trim + 2×bleed; mm→pt exact (3mm → 8.504pt); 8 crop marks, 18pt
+long, offset 9pt from the trim corner, entirely outside BleedBox; signature
+padding blank with identical boxes; worst live-matter clearance 0.314in
+(> the 0.25in industry minimum).
+
+**Bug 1 — mirrored gutters were destroyed whenever bleed was active.** `synthesize()`
+resolved margins once with no pseudo context and emitted a single unnamed
+`@page { margin-* }`. Because Chromium ignores page-selector specificity across
+stylesheets (F10), that generated rule beat the author's `@page :left`/`:right`
+on every page: measured all-45pt margins instead of 63/45 alternating — any
+bound book with bleed *and* gutters mirrors wrong and is unprintable. Fixed by
+emitting one resolved block per page context, the same shape `counterStyleCss`
+already used. Verified: verso 45pt, recto 81pt, correctly alternating.
+
+**Bug 2 — Folio's own transform made bleed art impossible.** Measured engine
+limit first: Chromium clips page content to the CONTENT BOX. Nothing paints
+outside it — not `position:fixed`, not a negative margin, not even
+`html { background }` (a spec deviation: per CSS Paged Media the root background
+should fill the page box). Ink stops at 80.6pt on a page whose bleed edge is at
+18pt. **But with `margin: 0` the content box IS the page, and art reaches every
+edge** (measured `0,0,449,665` on a 450×666pt media).
+
+Folio was inflating *every* margin by bleed+slug — including an authored `0`.
+So `@page cover { margin: 0 }` plus `bleed: 0.125in` produced a 27pt white
+border exactly where the author asked for full-bleed art: Folio turned a
+working full-bleed cover into a broken one. Fixed in `bleedMargin()` — a zero
+authored margin stays at slug only, so the content box is exactly the bleed box
+and art fills it with the crop marks still clear.
+
+The residual limit is the engine's, and is now stated rather than implied:
+**bleed art is only possible on zero-margin pages.** Presets must put covers and
+full-page plates on their own `@page name { margin: 0 }` and inset live matter
+with padding.
+
+### Image-heavy books — **fidelity is solid; diagnostics were missing** (spike `s14`)
+
+Fidelity and postprocess safety are clean: 10 rasters embed at their exact
+source resolution (300 DPI source → 300 DPI, 600 → 600, 72 → 72, ±2 DPI by
+poppler); the pdf-lib re-save leaves all 11 image rows byte-identical
+(size/encoding/colorspace), PNG alpha survives as a soft mask, JPEG stays JPEG.
+Performance is linear: 10/50/150 deduped images → 169/215/399ms; distinct
+images ≈33KB and ≈23ms each; viewer 0.22–0.76 ms/page, better than the
+text-only baseline.
+
+The gap was diagnostics, and it is now closed: a **print-quality audit** runs
+against the settled layout and reports content taller than the page content box
+(where screen and print genuinely diverge, because print splits an image across
+pages) and any raster below the 300 DPI print bar (`--dpi-floor`, 0 disables).
+On the image fixture it flags the 9in image on a 7.5in content box and two
+under-resolution rasters — including a 200 DPI one the original report missed.
+
+One caveat on the reported "viewer clips overheight images" divergence: it did
+not reproduce in nine isolated configurations (bare image and figure-wrapped,
+with and without `break-inside: avoid`, at four fill offsets) — the figure
+fragments across two columns in the viewer just as it splits across two pages in
+print. The observed divergence is adjacent-page, i.e. the documented F7
+knife-edge class, in a document that also contains an overheight element. `s14`
+now asserts what `s1` does: page counts exact, disagreement only ever adjacent,
+and the overheight element must have been flagged by the audit.
+
+### Also found: Chrome 151 vs 141
+
+Not one of the three areas, but the browser on this machine is newer and it
+silently broke cross-references and leaders — see the F-list entry for
+`generatedContentCss`. The short version: `CSS.supports()` now reports
+`target-counter()` as supported while it computes to `none`, and the author's
+surviving declaration out-specified Folio's override. **`CSS.supports` is not a
+usable feature detector for the GCPM shims** — s0 render-probes instead.
