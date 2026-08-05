@@ -27,7 +27,7 @@ open defect list in [`DIFFERENCES.md`](./DIFFERENCES.md).
 
 ```bash
 bun install
-bun run spikes            # all 11 spikes against a real Chromium (~25s)
+bun run spikes            # all 12 spikes against a real Chromium (~28s)
 bun run compare           # current Gutterpress vs this spike, same book
 bun compare/diff-report.ts a.pdf b.pdf   # content-aligned artifact diff
 bun spikes/run-all.ts s1  # just one

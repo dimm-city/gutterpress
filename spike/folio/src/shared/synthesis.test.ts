@@ -1,0 +1,140 @@
+import { describe, expect, test } from "bun:test";
+import {
+  counterStyleName,
+  cssQuote,
+  isRectoVersoBreak,
+  parseWhich,
+  planRectoBlanks,
+  stringSymbols,
+  stringValueAt,
+  wantsRecto,
+} from "./synthesis.ts";
+
+describe("planRectoBlanks", () => {
+  test("no sites, no blanks", () => {
+    expect(planRectoBlanks([])).toEqual([]);
+  });
+
+  test("chapter already on a recto needs nothing", () => {
+    expect(planRectoBlanks([{ page: 3, wantsRecto: true }])).toEqual([false]);
+  });
+
+  test("chapter on a verso gets a blank", () => {
+    expect(planRectoBlanks([{ page: 2, wantsRecto: true }])).toEqual([true]);
+  });
+
+  test("each inserted blank shifts every later site by one", () => {
+    // ch1 on p2 (verso, wants recto -> blank, now p3), ch2 measured on p4
+    // (with the shift it is EFFECTIVELY p5, a recto -> no blank)
+    expect(
+      planRectoBlanks([
+        { page: 2, wantsRecto: true },
+        { page: 4, wantsRecto: true },
+      ]),
+    ).toEqual([true, false]);
+  });
+
+  test("cascading shifts: the s10 book", () => {
+    // front matter p1; CH2 measured p2 (verso -> blank, lands p3);
+    // CH3 measured p4 -> effective p5 (recto) -> no blank. 6 pages total.
+    expect(
+      planRectoBlanks([
+        { page: 2, wantsRecto: true },
+        { page: 4, wantsRecto: true },
+      ]),
+    ).toEqual([true, false]);
+    // and the converse phase: CH2 on p3 (fine), CH3 on p4 -> blank
+    expect(
+      planRectoBlanks([
+        { page: 3, wantsRecto: true },
+        { page: 4, wantsRecto: true },
+      ]),
+    ).toEqual([false, true]);
+  });
+
+  test("verso starts invert the parity test", () => {
+    expect(planRectoBlanks([{ page: 3, wantsRecto: false }])).toEqual([true]);
+    expect(planRectoBlanks([{ page: 2, wantsRecto: false }])).toEqual([false]);
+  });
+
+  test("unmeasured sites (page 0) are skipped and do not shift", () => {
+    expect(
+      planRectoBlanks([
+        { page: 0, wantsRecto: true },
+        { page: 2, wantsRecto: true },
+      ]),
+    ).toEqual([false, true]);
+  });
+
+  test("declaration classification", () => {
+    expect(isRectoVersoBreak({ prop: "break-before", value: "right" })).toBe(true);
+    expect(isRectoVersoBreak({ prop: "break-before", value: " recto " })).toBe(true);
+    expect(isRectoVersoBreak({ prop: "break-before", value: "page" })).toBe(false);
+    expect(isRectoVersoBreak({ prop: "break-after", value: "right" })).toBe(false);
+    expect(wantsRecto("right")).toBe(true);
+    expect(wantsRecto("verso")).toBe(false);
+  });
+});
+
+describe("stringValueAt — GCPM string() position semantics", () => {
+  // chapter titles: ch1 set on p2, ch2 set on p5, two h2s set on p5 too
+  const entries = [
+    { page: 2, value: "One" },
+    { page: 5, value: "Two" },
+    { page: 5, value: "Two-B" },
+  ];
+
+  test("first: first assignment on the page, else carry", () => {
+    expect(stringValueAt(entries, 1, "first")).toBe("");
+    expect(stringValueAt(entries, 2, "first")).toBe("One");
+    expect(stringValueAt(entries, 3, "first")).toBe("One");
+    expect(stringValueAt(entries, 5, "first")).toBe("Two");
+    expect(stringValueAt(entries, 6, "first")).toBe("Two-B");
+  });
+
+  test("start: value in effect at the top of the page", () => {
+    expect(stringValueAt(entries, 2, "start")).toBe("");
+    expect(stringValueAt(entries, 3, "start")).toBe("One");
+    expect(stringValueAt(entries, 5, "start")).toBe("One");
+    expect(stringValueAt(entries, 6, "start")).toBe("Two-B");
+  });
+
+  test("last: last assignment on the page, else carry", () => {
+    expect(stringValueAt(entries, 5, "last")).toBe("Two-B");
+    expect(stringValueAt(entries, 2, "last")).toBe("One");
+    expect(stringValueAt(entries, 4, "last")).toBe("One");
+  });
+
+  test("first-except: empty on assignment pages (the opener idiom)", () => {
+    expect(stringValueAt(entries, 2, "first-except")).toBe("");
+    expect(stringValueAt(entries, 3, "first-except")).toBe("One");
+    expect(stringValueAt(entries, 5, "first-except")).toBe("");
+    expect(stringValueAt(entries, 6, "first-except")).toBe("Two-B");
+  });
+
+  test("symbols sample every page", () => {
+    expect(stringSymbols(entries, 6, "first")).toEqual([
+      "", "One", "One", "One", "Two", "Two-B",
+    ]);
+    expect(stringSymbols(entries, 6, "first-except")).toEqual([
+      "", "", "One", "One", "", "Two-B",
+    ]);
+  });
+
+  test("which parsing defaults to first", () => {
+    expect(parseWhich(undefined)).toBe("first");
+    expect(parseWhich(" last ")).toBe("last");
+    expect(parseWhich("bogus")).toBe("first");
+  });
+});
+
+describe("css emission helpers", () => {
+  test("cssQuote escapes quotes and backslashes", () => {
+    expect(cssQuote(`a "b" \\ c`)).toBe(`"a \\"b\\" \\\\ c"`);
+  });
+
+  test("counter-style names are stable and collision-free", () => {
+    expect(counterStyleName("chapter-title", "first")).toBe("folio-chapter-title");
+    expect(counterStyleName("chapter-title", "last")).toBe("folio-chapter-title--last");
+  });
+});

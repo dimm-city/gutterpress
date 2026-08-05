@@ -3,9 +3,10 @@
  * evaluated in the page the compiler is about to print.
  *
  * It only reads the DOM and applies what the compiler computed — all policy
- * (CSS extraction, tier routing, synthesis) stays in Node so there is exactly
- * one implementation of each.
+ * (CSS extraction, tier routing, synthesis) stays in Node/shared modules so
+ * there is exactly one implementation of each.
  */
+import { leaderFillCount, LEADER_RE } from "../shared/synthesis.ts";
 
 export interface StringSource {
   /** string name */
@@ -32,36 +33,38 @@ function specificity(selector: string): number {
 
 let uid = 0;
 /**
- * Ids assigned BY Folio, so they can be taken back off before the final print.
+ * Measurement id for an element, WITHOUT mutating the element itself.
  *
- * An id is not inert: `h1[id] { counter-increment: chapter }` is real theme CSS
- * (the Gutterpress user guide), so instrumenting the document changed the
- * chapter numbers. Measurement must leave no trace in the printed artifact.
+ * Assigning an id to an author element is not inert — `h1[id]
+ * { counter-increment: chapter }` is real theme CSS, and the old design had to
+ * strip its ids and reprint, praying the clean document paginated identically
+ * to the measured one. Instead: an element that already has an id is measured
+ * through it (no mutation at all); one that doesn't gets a zero-size
+ * `<folio-anchor id=…>` injected as its first child. Custom tag + absolute
+ * positioning keep it invisible to layout, `::first-letter`, and (verified
+ * against hostile `[id]`/`::before`/counter CSS) to author selectors — so the
+ * instrumented document IS the shipped document and no final reprint exists.
+ *
+ * Residual risk, accepted and documented: a `parent > :first-child` rule could
+ * observe the injected child. Elements with author ids — the common case, since
+ * markdown renderers id their headings — never get an anchor at all.
  */
-const assignedIds: Element[] = [];
-function ensureId(el: Element): string {
-  if (!el.id) {
-    el.id = `folio-m-${++uid}`;
-    assignedIds.push(el);
-  }
-  return el.id;
+function ensureAnchor(el: Element): string {
+  if (el.id) return el.id;
+  const existing = el.firstElementChild;
+  if (existing?.tagName === "FOLIO-ANCHOR" && existing.id) return existing.id;
+  const anchor = document.createElement("folio-anchor");
+  anchor.id = `folio-m-${++uid}`;
+  anchor.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden");
+  el.insertBefore(anchor, el.firstChild);
+  return anchor.id;
 }
 
-/** Remove every trace of the measurement pass. */
-export function deinstrument(): { ids: number; hosts: number } {
-  let ids = 0;
-  for (const el of assignedIds) {
-    el.removeAttribute("id");
-    ids++;
-  }
-  assignedIds.length = 0;
-  let hosts = 0;
-  for (const host of Array.from(document.querySelectorAll("#folio-instrumentation"))) {
-    host.remove();
-    hosts++;
-  }
-  // spacers stay: they are output, not instrumentation
-  return { ids, hosts };
+/** The element a measurement id stands for (the anchor's host, or itself). */
+function anchorHost(id: string): Element | null {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  return el.tagName === "FOLIO-ANCHOR" ? el.parentElement : el;
 }
 
 export async function collectCss(): Promise<string> {
@@ -99,7 +102,7 @@ export function stringSources(
       for (const a of Array.from(el.attributes)) attrs[a.name] = a.value;
       out.push({
         name: decl.name,
-        id: ensureId(el),
+        id: ensureAnchor(el),
         text: (el.textContent ?? "").trim().replace(/\s+/g, " "),
         attrs,
         order: order++,
@@ -132,7 +135,8 @@ export function forcedBreakSites(
     } catch {
       continue;
     }
-    for (const el of els) out.push({ id: ensureId(el), prop: d.prop, value: d.value, selector: d.selector });
+    for (const el of els)
+      out.push({ id: ensureAnchor(el), prop: d.prop, value: d.value, selector: d.selector });
   }
   return out;
 }
@@ -150,7 +154,7 @@ export function applyRectoSpacers(ids: string[], pageName: string): number {
     spacer.remove();
   let inserted = 0;
   for (const id of ids) {
-    const el = document.getElementById(id);
+    const el = anchorHost(id);
     if (!el) continue;
     const spacer = document.createElement("div");
     spacer.className = "folio-recto-spacer";
@@ -166,7 +170,7 @@ export function applyRectoSpacers(ids: string[], pageName: string): number {
 export function targetTexts(ids: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const id of ids) {
-    const el = document.getElementById(id);
+    const el = anchorHost(id);
     if (el) out[id] = (el.textContent ?? "").trim().replace(/\s+/g, " ");
   }
   return out;
@@ -185,7 +189,7 @@ export function xrefSites(selectors: string[]): Array<{ id: string; href: string
     }
     for (const el of els) {
       const href = el.getAttribute("href") ?? "";
-      out.push({ id: ensureId(el), href, selector });
+      out.push({ id: ensureAnchor(el), href, selector });
     }
   }
   return out;
@@ -224,10 +228,59 @@ export function addCss(id: string, css: string): void {
   style.textContent = css;
 }
 
+/**
+ * Replace leader markers in generated content with a measured run of glue.
+ *
+ * Runs under print geometry: the body is constrained to the page content width
+ * so lines wrap exactly where print wraps, each marked element is measured with
+ * the marker collapsed (title + page number, no dots), and the marker becomes
+ * `leaderFillCount(gap, glueWidth)` repetitions of the glue. Re-runnable —
+ * `setGenerated` rewrites the attribute with a fresh marker every pass.
+ */
+export function fillLeaders(contentWidthPx: number): number {
+  const marked: Array<{ el: Element; attr: string; raw: string }> = [];
+  for (const attr of ["data-folio-after", "data-folio-before"]) {
+    for (const el of Array.from(document.querySelectorAll(`[${attr}]`))) {
+      const raw = el.getAttribute(attr) ?? "";
+      if (LEADER_RE.test(raw)) marked.push({ el, attr, raw });
+    }
+  }
+  if (!marked.length) return 0;
+
+  const prevWidth = document.body.style.width;
+  document.body.style.width = `${contentWidthPx}px`;
+  const canvas = document.createElement("canvas");
+  const cx = canvas.getContext("2d")!;
+  try {
+    // measure with the marker collapsed to nothing
+    for (const m of marked) m.el.setAttribute(m.attr, m.raw.replace(LEADER_RE, ""));
+    document.body.offsetHeight; // one forced layout for the whole batch
+    for (const m of marked) {
+      const match = LEADER_RE.exec(m.raw)!;
+      const glue = match[1] || ".";
+      const host = m.el as HTMLElement;
+      const block = host.parentElement ?? document.body;
+      const blockRect = block.getBoundingClientRect();
+      const cs = getComputedStyle(block);
+      const contentRight =
+        blockRect.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
+      const rects = host.getClientRects();
+      const last = rects.length ? rects[rects.length - 1] : host.getBoundingClientRect();
+      cx.font = getComputedStyle(host).font;
+      const glueW = cx.measureText(glue).width;
+      const n = leaderFillCount(contentRight - last.right, glueW);
+      m.el.setAttribute(m.attr, m.raw.replace(LEADER_RE, glue.repeat(n)));
+    }
+  } finally {
+    document.body.style.width = prevWidth;
+  }
+  return marked.length;
+}
+
 /** Apply synthesized generated content (cross-reference text) by element id. */
 export function setGenerated(entries: Array<{ id: string; where: string; text: string }>): number {
   for (const e of entries) {
-    const el = document.getElementById(e.id);
+    const el = anchorHost(e.id);
     if (el) el.setAttribute(`data-folio-${e.where}`, e.text);
   }
   addCss(
@@ -246,12 +299,12 @@ declare global {
 
 const api = {
   collectCss,
-  deinstrument,
   forcedBreakSites,
   applyRectoSpacers,
   stringSources,
   xrefSites,
   targetTexts,
+  fillLeaders,
   instrument,
   addCss,
   setGenerated,

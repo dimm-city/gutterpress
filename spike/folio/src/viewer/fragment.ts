@@ -7,10 +7,12 @@
 import VIEWER_CSS from "./viewer.css" with { type: "text" };
 import {
   extract,
+  mediaPrintBodies,
   resolvePage,
   type GcpmModel,
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
+import { isRectoVersoBreak, planRectoBlanks, wantsRecto } from "../shared/synthesis.ts";
 
 export const PX_PER_PT = 96 / 72;
 
@@ -215,29 +217,34 @@ export function buildStrips(
  */
 export function compensateRepeatedHeaders(
   strips: StripInfo[],
-  maxPasses = 4,
+  maxPasses = 24,
 ): { tables: number; passes: number; warnings: string[] } {
   const warnings: string[] = [];
   let passes = 0;
   let touched = 0;
 
   for (const strip of strips) {
-    const tables = Array.from(strip.el.querySelectorAll("table")).filter((t) => t.tHead);
+    const tables = Array.from(strip.el.querySelectorAll("table")).filter(
+      (t) => t.tHead || t.tFoot,
+    );
     if (!tables.length) continue;
     for (const table of tables) {
-      for (const shim of Array.from(table.querySelectorAll("tr.folio-thead-shim")))
+      for (const shim of Array.from(
+        table.querySelectorAll("tr.folio-thead-shim, tr.folio-tfoot-shim"),
+      ))
         shim.remove();
       table.style.breakBefore = "";
-      if (table.tFoot)
-        warnings.push(
-          `table${table.id ? "#" + table.id : ""} has a <tfoot>; the screen preview does not reserve the repeated footer (print does).`,
-        );
     }
 
-    // A push is sticky for the rest of this run: once the table has moved, the
-    // header is no longer stranded, so re-deriving `push` from the moved state
-    // would just undo it (and oscillate).
+    // Push and foot claims are STICKY for the rest of this run: a fix removes
+    // the symptom it was derived from, so re-deriving from the fixed state
+    // would undo it and oscillate. Claims only grow; the loop ends when a pass
+    // adds nothing new.
     const pushed = new Set<HTMLTableElement>();
+    // row -> shim height: the shim FILLS the space from the last kept row to
+    // the column bottom (>= footHeight by the intruder rule), so the reserve
+    // genuinely sits at the bottom and rows fill exactly to print's line.
+    const footClaims = new Map<HTMLTableElement, Map<HTMLTableRowElement, number>>();
     let previous = "";
     for (let pass = 0; pass < maxPasses; pass++) {
       passes = Math.max(passes, pass + 1);
@@ -248,30 +255,71 @@ export function compensateRepeatedHeaders(
       const stride = strideOf(strip.el);
       const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
       const colOf = (r: DOMRect) => Math.floor((r.left - stripLeft + 1) / stride);
+      const stripTop = strip.el.getBoundingClientRect().top;
+      const colBottom = strip.el.clientHeight;
       const plans: Array<{
         table: HTMLTableElement;
         push: boolean;
         headHeight: number;
+        footHeight: number;
         breakRows: HTMLTableRowElement[];
+        footRows: Array<[HTMLTableRowElement, number]>;
+        grew: boolean;
         cells: number;
       }> = [];
 
       for (const table of tables) {
-        const head = table.tHead!;
-        const headRect = head.getClientRects()[0];
-        if (!headRect?.height) continue;
+        const head = table.tHead;
+        const headRect = head?.getClientRects()[0];
+        const footHeight = table.tFoot?.getBoundingClientRect().height ?? 0;
         const rows = Array.from(
           table.querySelectorAll<HTMLTableRowElement>("tbody > tr"),
-        ).filter((r) => !r.classList.contains("folio-thead-shim"));
+        ).filter(
+          (r) =>
+            !r.classList.contains("folio-thead-shim") &&
+            !r.classList.contains("folio-tfoot-shim"),
+        );
         if (!rows.length) continue;
-        const cols = rows.map((r) => colOf(r.getClientRects()[0] ?? r.getBoundingClientRect()));
+        const rects = rows.map((r) => r.getClientRects()[0] ?? r.getBoundingClientRect());
+        const cols = rects.map(colOf);
+
+        // Print reserves the repeated footer at the BOTTOM of every fragment:
+        // a row whose bottom edge intrudes into that reserve moves to the next
+        // page. Multicol reserves nothing, so the first intruding row of each
+        // column (except the table's last fragment) gets a foot-clone shim
+        // inserted before it — the shim occupies the reserve, the row moves.
+        // One NEW foot claim per table per pass: the first unclaimed row whose
+        // bottom edge intrudes into the reserve. Later columns shift once the
+        // shim lands, so only the first new claim is derived from settled
+        // geometry — the rest come from subsequent passes.
+        const claims = footClaims.get(table) ?? new Map<HTMLTableRowElement, number>();
+        footClaims.set(table, claims);
+        let newClaim: HTMLTableRowElement | undefined;
+        if (footHeight > 0) {
+          const lastCol = cols[cols.length - 1];
+          for (let i = 0; i < rows.length; i++) {
+            if (cols[i] === lastCol || claims.has(rows[i])) continue;
+            const bottom = rects[i].bottom - stripTop;
+            if (bottom > colBottom - footHeight + 0.5) {
+              newClaim = rows[i];
+              claims.set(rows[i], colBottom - (rects[i].top - stripTop));
+              break;
+            }
+          }
+        }
+
         plans.push({
           table,
           // Print never strands a repeated header: a header fragment must be
           // followed by at least one row, else the whole table moves on.
-          push: colOf(headRect) < cols[0],
-          headHeight: headRect.height,
-          breakRows: rows.filter((_, i) => i > 0 && cols[i] > cols[i - 1]),
+          push: headRect ? colOf(headRect) < cols[0] : false,
+          headHeight: headRect?.height ?? 0,
+          footHeight,
+          breakRows: headRect
+            ? rows.filter((_, i) => i > 0 && cols[i] > cols[i - 1])
+            : [],
+          footRows: [...claims.entries()],
+          grew: newClaim !== undefined,
           cells: Math.max(1, ...rows.map((r) => r.cells.length)),
         });
       }
@@ -281,15 +329,18 @@ export function compensateRepeatedHeaders(
           (p) =>
             `${p.push || pushed.has(p.table) ? "P" : ""}${p.breakRows
               .map((r) => r.rowIndex)
-              .join(".")}`,
+              .join(".")}~${p.footRows.map(([r]) => r.rowIndex).join(".")}`,
         )
         .join("|");
-      if (signature === previous) break;
+      const anyGrowth = plans.some((p) => p.grew);
+      if (!anyGrowth && signature === previous) break;
       previous = signature;
 
       // WRITE phase
       for (const plan of plans) {
-        for (const shim of Array.from(plan.table.querySelectorAll("tr.folio-thead-shim")))
+        for (const shim of Array.from(
+          plan.table.querySelectorAll("tr.folio-thead-shim, tr.folio-tfoot-shim"),
+        ))
           shim.remove();
         if (plan.push && !pushed.has(plan.table)) {
           pushed.add(plan.table);
@@ -299,6 +350,10 @@ export function compensateRepeatedHeaders(
         }
         for (const row of plan.breakRows) {
           row.before(headerShim(plan.table.tHead!, plan.headHeight, plan.cells));
+          touched++;
+        }
+        for (const [row, height] of plan.footRows) {
+          row.before(sectionShim(plan.table.tFoot!, height, plan.cells, "folio-tfoot-shim"));
           touched++;
         }
       }
@@ -312,11 +367,24 @@ export function compensateRepeatedHeaders(
  * header print would draw, and consumes exactly the same height.
  */
 function headerShim(head: HTMLTableSectionElement, height: number, cells: number): HTMLTableRowElement {
+  return sectionShim(head, height, cells, "folio-thead-shim");
+}
+
+/** Clone of a thead/tfoot row reserving `height`, drawn where print draws it. */
+function sectionShim(
+  section: HTMLTableSectionElement,
+  height: number,
+  cells: number,
+  className: string,
+): HTMLTableRowElement {
   const shim = document.createElement("tr");
-  shim.className = "folio-thead-shim";
+  shim.className = className;
   shim.setAttribute("aria-hidden", "true");
   shim.style.height = `${height}px`;
-  const source = head.rows[0];
+  // a foot shim may be taller than the foot itself (it fills to the column
+  // bottom); pin the cloned content to the bottom edge, where print draws it
+  if (className === "folio-tfoot-shim") shim.style.verticalAlign = "bottom";
+  const source = section.rows[0];
   if (source) {
     for (const cell of Array.from(source.cells)) {
       const td = document.createElement("td");
@@ -351,9 +419,7 @@ export function compensateRectoBreaks(
   model: GcpmModel,
   strips: StripInfo[],
 ): number {
-  const decls = model.breaks.filter(
-    (b) => b.prop === "break-before" && /^(right|recto|left|verso)$/.test(b.value.trim()),
-  );
+  const decls = model.breaks.filter(isRectoVersoBreak);
   for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
     spacer.remove();
   if (!decls.length) return 0;
@@ -366,8 +432,7 @@ export function compensateRectoBreaks(
     } catch {
       continue;
     }
-    for (const el of els)
-      sites.push({ el, wantsRecto: /^(right|recto)$/.test(d.value.trim()) });
+    for (const el of els) sites.push({ el, wantsRecto: wantsRecto(d.value) });
   }
   sites.sort((a, b) =>
     a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
@@ -375,23 +440,20 @@ export function compensateRectoBreaks(
 
   // Read every page BEFORE mutating: inserting a spacer reflows immediately, so
   // a later read already includes the shift and adding it again double-counts.
-  const pages = sites.map((site) => pageOf(site.el, strips) + 1);
-
-  let shift = 0;
+  // The plan itself is the shared policy the compiler uses on its PDF-measured
+  // pages — same input shape, same decision.
+  const plan = planRectoBlanks(
+    sites.map((site) => ({ page: pageOf(site.el, strips) + 1, wantsRecto: site.wantsRecto })),
+  );
   let inserted = 0;
   for (const [i, site] of sites.entries()) {
-    const page = pages[i]; // 1-based, page 1 is a recto
-    if (page <= 0) continue;
-    const effective = page + shift;
-    const wrong = site.wantsRecto ? effective % 2 === 0 : effective % 2 === 1;
-    if (!wrong) continue;
+    if (!plan[i]) continue;
     const spacer = document.createElement("div");
     spacer.className = "folio-recto-spacer";
     spacer.setAttribute("aria-hidden", "true");
     spacer.style.cssText =
       "break-before: column; break-after: column; height: 0; margin: 0; padding: 0; border: 0;";
     site.el.before(spacer);
-    shift++;
     inserted++;
   }
   return inserted;
@@ -469,6 +531,15 @@ export interface FolioViewerApi {
 export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioViewerApi> {
   const css = await loadStyleSources();
   injectViewerCss();
+  // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
+  // as screen rules, since the browser won't apply them outside print emulation
+  const printOnly = mediaPrintBodies(css).join("\n");
+  if (printOnly && !document.getElementById("folio-media-print")) {
+    const style = document.createElement("style");
+    style.id = "folio-media-print";
+    style.textContent = printOnly;
+    document.head.appendChild(style);
+  }
   const model = extract(css);
   injectBreakMapping(model);
   const authoring: string[] = [];

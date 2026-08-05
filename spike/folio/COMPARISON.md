@@ -24,7 +24,7 @@ chapters, a cover, a TOC, named pages (`cover`/`toc`/`chapter`), mirrored
 
 | | current (Paged.js) | Folio spike |
 | --- | --- | --- |
-| build a 60-page book | **4.8–6.9 s** | **2.9 s cold, 2.2 s warm** |
+| build a 60-page book | **4.8–6.9 s** | **2.2 s cold, 1.8 s warm** |
 | paginate in the browser | **1.16 s** | **0.11 s** (0.04 s on hot reload) |
 | engine shipped to the page | **901 KB** `paged.polyfill.js` | **23 KB** (9 KB gzipped) |
 | DOM after pagination | 1,645 → **6,070 nodes (3.7×)** | 1,645 → **1,880 nodes (1.14×)** |
@@ -41,13 +41,15 @@ Cover, TOC and every chapter-opener page come out **visually identical**
 ## A. Compile
 
 ```
-gutterpress: 5.50s → gutterpress-user-guide-pdf.pdf (594 KB), 64 pages
-folio:       2.95s cold / 2.20s warm → folio.pdf (997 KB), 61 pages, tier 3
+gutterpress: 5.30s → gutterpress-user-guide-pdf.pdf (594 KB), 64 pages
+folio:       2.24s cold / 1.77s warm → folio.pdf (593 KB), 61 pages, tier 3
 ```
 
-(Folio's numbers include the measurement pass its running heads now use; the
-one-pass page-renaming shim was removed in favour of it — see `DIFFERENCES.md`
-F2 for the A/B.)
+(Tier 3 costs exactly 2 prints: measurement is neutral — elements are measured
+through their own ids or injected zero-size anchors — so the measured document
+IS the shipped document and no clean-up reprint exists. The PDF is also now
+SMALLER than the current pipeline's despite carrying the 155-entry outline:
+object streams + preserved metadata, see DIFFERENCES.md F6.)
 
 Both produce 612×792 pt pages, the same 10 named destinations and 11 link
 annotations. Two differences worth naming:
@@ -60,8 +62,8 @@ annotations. Two differences worth naming:
   (measured). The current pipeline's `page.pdf()` call in
   `packages/cli/src/lib/pagination.ts` simply doesn't ask for them. That's a
   one-line improvement available today, independent of this spike.
-- **File size.** Folio's PDF is larger (996 KB vs 594 KB) because it is tagged
-  and carries the outline. Untagged, the two are comparable.
+- **File size.** 593 KB vs 594 KB — effectively identical, with Folio's
+  carrying the outline and tags.
 
 ## B. In-browser pagination (the preview loop)
 

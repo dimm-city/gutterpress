@@ -23,6 +23,7 @@ const SPIKES: Array<{ id: string; load: () => Promise<{ run: Function }> }> = [
   { id: "s8", load: () => import("./s8-compiler.ts") },
   { id: "s9", load: () => import("./s9-dx-performance.ts") },
   { id: "s10", load: () => import("./s10-recto-breaks.ts") },
+  { id: "s11", load: () => import("./s11-gcpm-complete.ts") },
 ];
 
 const filter = process.argv.slice(2);

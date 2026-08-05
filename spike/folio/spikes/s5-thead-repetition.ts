@@ -49,7 +49,7 @@ async function viewerRows(page: Session, doc: string, compensate: boolean) {
     const left = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
     const colOf = (r) => Math.floor((r.left - left + 1) / stride);
     const perCol = {};
-    for (const tr of document.querySelectorAll('tbody tr:not(.folio-thead-shim)')) {
+    for (const tr of document.querySelectorAll('tbody tr:not(.folio-thead-shim):not(.folio-tfoot-shim)')) {
       const c = colOf(tr.getClientRects()[0]); perCol[c] = (perCol[c] || 0) + 1;
     }
     const headCols = {};
@@ -132,14 +132,15 @@ export async function run(browser: Browser) {
   const ft = pdfText(fp);
   const printFeet = ft.pages.map((pg) => (pg.text.match(/FOOTCELL/g) ?? []).length);
   const footView = await viewerRows(page, footDoc, true);
+  const printFootRows = ft.pages.map((pg) => (pg.text.match(/R\d{3}/g) ?? []).length);
   s.check(
-    "<tfoot> divergence is reported as a warning rather than silently wrong",
-    footView.warnings.some((w: string) => /tfoot/.test(w)),
-    JSON.stringify(footView.warnings),
+    "<tfoot> reservation matches print's rows-per-page",
+    JSON.stringify(Object.values(footView.perCol)) === JSON.stringify(printFootRows),
+    `print ${JSON.stringify(printFootRows)} vs screen ${JSON.stringify(Object.values(footView.perCol))}`,
   );
   s.note(
-    `print repeats <tfoot> per page (${JSON.stringify(printFeet)}); the screen preview does not reserve it — ` +
-      `documented screen-mode limit, surfaced in designer mode.`,
+    `print repeats <tfoot> per page (${JSON.stringify(printFeet)}); the screen preview reserves the same ` +
+      `space with a bottom-filling foot clone per column.`,
   );
   s.data = { printHeads, printRows, printFeet, raw, fixed, footView };
 

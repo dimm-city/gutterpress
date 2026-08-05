@@ -32,6 +32,12 @@ export interface EvalContext {
   targetText?: (url: string, which: string) => string | undefined;
   /** the element the declaration hangs off (for attr()/content()) */
   attr?: (name: string) => string | undefined;
+  /**
+   * leader() support: return placeholder text for a leader with this glue
+   * string (the renderers insert a marker here and later replace it with a
+   * measured run of glue). Absent = leaders render as nothing.
+   */
+  leader?: (glue: string) => string;
   text?: string;
 }
 
@@ -204,9 +210,10 @@ export function evaluateContent(parts: ContentPart[], ctx: EvalContext): string 
         out += ctx.text ?? "";
         break;
       case "leader":
-        // Unimplemented: a real leader fills the space remaining on the line,
-        // which needs layout. A placeholder would print literal garbage into
-        // the PDF, so it renders as nothing and the compiler warns instead.
+        // A real leader needs layout: the renderer that knows the line's free
+        // space supplies ctx.leader and later replaces the marker with a
+        // measured run of glue. With no hook it renders as nothing.
+        out += ctx.leader?.(p.glue) ?? "";
         break;
       case "keyword":
         if (p.value === "normal" || p.value === "none") break;

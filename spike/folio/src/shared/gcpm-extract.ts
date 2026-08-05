@@ -245,6 +245,26 @@ function indexOfTopLevel(s: string, ch: string): number {
 // extraction
 // ---------------------------------------------------------------------------
 
+/**
+ * The raw bodies of `@media print` blocks. The viewer re-injects these as
+ * screen styles: the preview must render the print stylesheet, and the browser
+ * won't apply print-media rules on screen (verified: `break-before` computes to
+ * `auto` until print emulation is on, which a plain document can't switch on).
+ */
+export function mediaPrintBodies(css: string): string[] {
+  const out: string[] = [];
+  for (const rule of scanRules(css)) {
+    if ("statement" in rule) continue;
+    if (/^@media/i.test(rule.prelude)) {
+      // crude media-query match is fine here: `print` present and `not print`
+      // absent — anything fancier and the author is off the paved path
+      const q = rule.prelude.replace(/^@media/i, "").trim();
+      if (/print/i.test(q) && !/not\s+print/i.test(q)) out.push(rule.body);
+    }
+  }
+  return out;
+}
+
 export function extract(css: string): GcpmModel {
   const model: GcpmModel = {
     pageRules: [],

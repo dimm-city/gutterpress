@@ -16,6 +16,18 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { launchChromium, type Browser, type Session } from "../shared/cdp.ts";
 import { extract, resolvePage, type GcpmModel } from "../shared/gcpm-extract.ts";
+import {
+  counterStyleName,
+  cssQuote,
+  isRectoVersoBreak,
+  leaderMarker,
+  parseWhich,
+  planRectoBlanks,
+  stringSymbols,
+  wantsRecto,
+  type StringEntry,
+  type StringWhich,
+} from "../shared/synthesis.ts";
 import { evaluate, needsMeasurement, parseContent } from "../shared/content-value.ts";
 import { inspectPdf } from "../shared/pdf-inspect.ts";
 import { ensureBundles } from "../bundles.ts";
@@ -103,9 +115,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // Running heads, cross-references and recto/verso placement all need to
     // know which page things landed on, so all three go through the
     // measure -> synthesize -> fixpoint loop.
-    const rectoDecls = model.breaks.filter(
-      (b) => b.prop === "break-before" && /^(right|recto|left|verso)$/.test(b.value.trim()),
-    );
+    const rectoDecls = model.breaks.filter(isRectoVersoBreak);
     const needsMeasure =
       tier3Reasons.length > 0 || consumedStrings(model).size > 0 || rectoDecls.length > 0;
     let tier: 1 | 2 | 3 =
@@ -113,7 +123,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     let passes = 1;
     let pageMap: Record<string, number> = {};
     let converged = true;
-    let bytes = await printPdf(page);
+    // Tier 1/2 print exactly once. When measurement runs, the loop's first
+    // pass produces the first print — an up-front print here would be
+    // discarded unread.
+    let bytes: Uint8Array | undefined;
 
     // ---- Tier 3: measure -> synthesize -> fixpoint -----------------------
     if (needsMeasure) {
@@ -163,11 +176,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       const targetText = await page.evaluate<Record<string, string>>(
         `window.__folio.targetTexts(${JSON.stringify([...targets])})`,
       );
-      if (model.xrefs.some((x) => /\bleader\s*\(/.test(x.content))) {
-        notes.push(
-          "leader() is not implemented: the space it should fill needs layout, so it renders as nothing.",
-        );
-      }
+
 
       // ---- recto/verso placement, before anything quotes a page number ----
       // A blank page shifts every later page by exactly one and changes no
@@ -183,20 +192,18 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           ) as Record<string, number>;
         };
         let map = await measure();
-        const wantsRecto = (v: string) => /^(right|recto)$/.test(v.trim());
         const wrong = (site: { value: string }, p: number) =>
           wantsRecto(site.value) ? p % 2 === 0 : p % 2 === 1;
 
-        let shift = 0;
-        const planned: string[] = [];
-        for (const site of rectoSites) {
-          const base = map[site.id];
-          if (!base) continue;
-          if (wrong(site, base + shift)) {
-            planned.push(site.id);
-            shift++;
-          }
-        }
+        const plan = planRectoBlanks(
+          rectoSites.map((site: any) => ({
+            page: map[site.id] ?? 0,
+            wantsRecto: wantsRecto(site.value),
+          })),
+        );
+        const planned: string[] = rectoSites
+          .filter((_: any, i: number) => plan[i])
+          .map((site: any) => site.id);
         if (planned.length && blankCss) {
           await page.evaluate(
             `window.__folio.addCss("folio-gen-strings", ${JSON.stringify(blankCss)})`,
@@ -258,13 +265,20 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             attr: (n) => (n === "href" ? site.href : undefined),
             targetPage: (u) => pageMap[u.replace(/^#/, "")],
             targetText: (u) => targetText[u.replace(/^#/, "")],
+            leader: leaderMarker,
           });
           generated.push({ id: site.id, where, text });
         }
-        if (generated.length)
+        if (generated.length) {
           await page.evaluate(
             `window.__folio.setGenerated(${JSON.stringify(generated)})`,
           );
+          const g = tier2.geometry;
+          const contentWidthPx =
+            ((g.trim.width - resolvePage(model).geometry.margin.left -
+              resolvePage(model).geometry.margin.right) * 96) / 72;
+          await page.evaluate(`window.__folio.fillLeaders(${contentWidthPx})`);
+        }
 
         // (b) page-granular running strings via a fixed counter-style map
         const mapCss = [counterStyleCss(model, sources, pageMap, facts.pageCount), blankCss]
@@ -283,25 +297,14 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         );
         log(`tier 3: NOT converged after ${passes} passes`);
       }
-      // Take the instrumentation back out before the final print: the ids it
-      // assigns are visible to author selectors (`h1[id] { counter-increment }`
-      // in a real theme), so leaving them in would print a different document
-      // than the author wrote.
-      const removed = await page.evaluate<{ ids: number; hosts: number }>(
-        `window.__folio.deinstrument()`,
-      );
-      const before = (await inspectPdf(bytes)).pageCount;
-      bytes = await printPdf(page);
-      const after = (await inspectPdf(bytes)).pageCount;
-      if (removed.ids) log(`tier 3: removed ${removed.ids} instrumentation id(s)`);
-      if (before !== after) {
-        notes.push(
-          `Instrumentation changed the layout: ${before} pages while measuring, ${after} after removing it. ` +
-            `The page map may be one pass stale — check for selectors that depend on \`[id]\`.`,
-        );
-        log(`tier 3: WARNING instrumentation shifted the layout (${before} -> ${after} pages)`);
-      }
+      // No de-instrumentation, no final reprint: measurement never touches an
+      // author-visible attribute (elements are measured through their own ids
+      // or through injected zero-size <folio-anchor> children), so the last
+      // printed bytes ARE the output. The measured document and the shipped
+      // document cannot diverge, structurally.
     }
+
+    bytes ??= await printPdf(page);
 
     // ---- postprocess -----------------------------------------------------
     const post = await postprocess(bytes, {
@@ -365,31 +368,38 @@ export function counterStyleCss(
   const consumed = consumedStrings(model);
   if (!consumed.size) return "";
 
-  // symbol maps: one entry per page, carrying the value forward (GCPM's
-  // `string()` keeps the last assignment until the next one)
-  const byName = new Map<string, Array<{ page: number; text: string }>>();
+  const byName = new Map<string, StringEntry[]>();
   for (const s of sources) {
     const page = pageMap[s.id];
     if (!page || !consumed.has(s.name)) continue;
     const list = byName.get(s.name) ?? [];
-    list.push({ page, text: s.text });
+    list.push({ page, value: s.text });
     byName.set(s.name, list);
   }
   if (!byName.size) return "";
+  for (const entries of byName.values()) entries.sort((a, b) => a.page - b.page);
+
+  // A `string(name, which)` needs one fixed-symbol map per (name, which) pair
+  // actually consumed — the shared `stringValueAt` policy sampled at every
+  // page (the viewer evaluates the same function live).
+  const pairs = new Map<string, { name: string; which: StringWhich }>();
+  for (const rule of model.pageRules) {
+    for (const decls of Object.values(rule.marginBoxes)) {
+      if (!decls.content) continue;
+      for (const part of parseContent(decls.content)) {
+        if (part.type !== "string" || !byName.has(part.name)) continue;
+        const which = parseWhich(part.which);
+        pairs.set(counterStyleName(part.name, which), { name: part.name, which });
+      }
+    }
+  }
 
   const out: string[] = [];
-  for (const [name, entries] of byName) {
-    entries.sort((a, b) => a.page - b.page);
-    const symbols: string[] = [];
-    let current = "";
-    for (let p = 1; p <= pageCount; p++) {
-      const onPage = entries.filter((e) => e.page === p);
-      if (onPage.length) current = onPage[0].text;
-      symbols.push(current);
-    }
+  for (const [styleName, pair] of pairs) {
+    const symbols = stringSymbols(byName.get(pair.name)!, pageCount, pair.which);
     out.push(
-      `@counter-style folio-${name} { system: fixed; suffix: ""; symbols: ${symbols
-        .map((sym) => `"${sym.replace(/["\\]/g, "\\$&")}"`)
+      `@counter-style ${styleName} { system: fixed; suffix: ""; symbols: ${symbols
+        .map(cssQuote)
         .join(" ")}; }`,
     );
   }
@@ -397,8 +407,9 @@ export function counterStyleCss(
   const rewrite = (content: string): string =>
     parseContent(content)
       .map((part) => {
-        if (part.type === "string") return `counter(page, folio-${part.name})`;
-        if (part.type === "literal") return `"${part.value.replace(/["\\]/g, "\\$&")}"`;
+        if (part.type === "string")
+          return `counter(page, ${counterStyleName(part.name, parseWhich(part.which))})`;
+        if (part.type === "literal") return cssQuote(part.value);
         if (part.type === "counter")
           return `counter(${part.name}${part.style !== "decimal" ? `, ${part.style}` : ""})`;
         if (part.type === "keyword") return part.value;
@@ -410,8 +421,8 @@ export function counterStyleCss(
   // One flat block per page context, carrying EVERY margin box's resolved
   // content — including the suppressions. A context that needs no rewrite
   // still has to be emitted: the generated unnamed `@page` block would
-  // otherwise leak onto it (cross-stylesheet cascade, above) and put a running
-  // head on the cover or the TOC.
+  // otherwise leak onto it (Chromium ignores page-selector specificity across
+  // stylesheets) and put a running head on the cover or the TOC.
   const names: Array<string | undefined> = [undefined, ...model.pageNames];
   const variants = [[] as string[], ...pseudoVariants(model).map((p) => [p])];
   for (const name of names) {

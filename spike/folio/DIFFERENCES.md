@@ -133,22 +133,24 @@ bleed/marks geometry.
 The compiler's copy went away with the renaming (F2); only the viewer's
 `pageNameOf` remains, and it is the only consumer.
 
-### F4 — `string()` position keywords are only half implemented — **still open**
+### F4 — `string()` position keywords — **FIXED, one shared implementation**
 
-The viewer implements `first` / `start` / `last` / `first-except`; the
-compiler's counter-style map always uses `first` semantics (first assignment on
-the page, else carry forward). A document using `string(chapter-title, last)`
-gets different text on screen and in print. Contained: the map builder already
-walks the page/value pairs, so the other three keywords are a few lines each.
+`stringValueAt()` in `src/shared/synthesis.ts` implements all four GCPM
+position keywords (`first`/`start`/`last`/`first-except`); the viewer evaluates
+it live and the compiler samples it per page into one `@counter-style` map per
+(name, which) pair actually consumed. Spike s11 verifies `first-except` (empty
+head on the opener) and `last` in the printed PDF.
 
-### F12 — `leader()` printed a literal placeholder — **FIXED**
+### F12/F15 — `leader()` — **IMPLEMENTED (measured glue fill)**
 
-`leader(".")` evaluated to the string `LEADER` (wrapped in stray `\x01`
-control characters, which also landed in the PDF). TOC lines came out as
-`Chapter Target␁LEADER␁2`. It now renders as nothing and the build reports
-`leader() is not implemented`. A real leader fills the space remaining on the
-line, which needs layout — the honest options are a CSS-only dot-fill in the
-presets or a Tier 3 measured fill.
+`leader(".")` now fills: generated content carries a private-use marker; the
+renderer measures the line's free space under print geometry (the compiler
+constrains the body to the page content width so wrapping matches; the viewer's
+strips already are that width), gets the glue width from canvas `measureText`,
+and replaces the marker with `floor(gap/glue) − 1` repetitions — one short so a
+rounding error can never wrap the line. Measured in print: page numbers land
+4–6.5 pt from the content edge (≈1 glue width) on straight, wrapped and
+near-full lines; idempotent across passes. Spike s11 locks it in.
 
 ### F13 — `target-text()` was unimplemented in the compiler — **FIXED**
 
@@ -156,7 +158,18 @@ presets or a Tier 3 measured fill.
 viewer resolved it. The agent now returns the text of every measured target
 alongside the page map, so both renderers produce the same string.
 
-### F14 — the viewer did not reproduce the blank pages F1 adds — **FIXED**
+### F14 — twins eliminated: one shared policy module — **RESOLVED STRUCTURALLY**
+
+The concern "every compiler-side synthesis needs a viewer-side twin, or the
+parity claim quietly rots" is now closed by construction, not discipline:
+`src/shared/synthesis.ts` holds every DECISION as a pure function —
+`planRectoBlanks` (blank-page placement), `stringValueAt`/`stringSymbols`
+(running-string semantics), `leaderFillCount` + the marker protocol,
+`isRectoVersoBreak`/`wantsRecto`. The renderers differ only in how they measure
+(client rects vs the PDF's `/Dests`) and how they apply (DOM writes vs the
+agent); neither contains policy. 16 unit tests cover the module directly.
+
+### F14b — the viewer did not reproduce the blank pages F1 adds — **FIXED**
 
 Implementing recto/verso breaks in the compiler (F1) immediately created a new
 viewer/print divergence: the PDF gained blank pages the screen did not, so page
@@ -191,31 +204,57 @@ generated page context is emitted with its **fully resolved** content, including
 the suppressions, so nothing has to win a cross-sheet cascade. Worth reporting
 upstream.
 
-### F11 — instrumentation was visible to the author's CSS — **FIXED**
+### F11 — instrumentation was visible to the author's CSS — **FIXED at the root**
 
-The measurement pass assigns `id` attributes to the elements it measures. Ids
-are not inert: the user-guide theme has `h1[id] { counter-increment: chapter }`,
-so measuring the document renumbered every chapter (openers read `03`, `04`
-instead of `01`, `02`).
+The measurement pass no longer touches author-visible attributes at all.
+Elements with their own ids are measured through them; elements without get a
+zero-size `<folio-anchor id=…>` injected as first child (custom tag,
+absolutely positioned). Verified against hostile CSS (`h2[id]
+{ counter-increment }`, `::before` counters, `a[href]::after`): 12/12
+page-accurate `/Dests`, page count and every counter identical to a folio-free
+print. Because measurement is now provably neutral, the old de-instrument +
+final-reprint pass is DELETED — the compiler measures exactly the document it
+ships, and a Tier 3 build costs 2 prints instead of 4 (user guide: 3.1 s →
+1.8 s warm). s11 asserts neutrality against a plain-Chromium baseline on every
+run. Residual risk, documented: a `parent > :first-child` author rule could
+observe the injected child; elements with author ids (the common case —
+markdown renderers id their headings) never get an anchor.
 
-The compiler now removes every id it assigned (and the hidden link container)
-before the final print, and compares the page count before and after removal —
-if instrumentation moved anything, that is a warning, not a silent difference.
-S7's "layout-neutral instrumentation" claim covered page counts, not selector
-matching; this is the gap it missed.
+### F6 — metadata clobbering (D6) and object streams (D5) — **FIXED**
 
-### F6 — metadata clobbering (D6) and `useObjectStreams: false` (D5)
+Measured: `useObjectStreams: true` is 41 % smaller AND 2.5× faster to save
+(979 KB/225 ms → 579 KB/89 ms), identical structure to both pdf-lib and PyMuPDF
+readers. The clobbering was pdf-lib's `load()` default (`updateMetadata: true`
+stamps pdf-lib as Producer); postprocess now loads with `updateMetadata: false`
+and only writes fields the caller provided. Output: 593 KB with Producer
+`Skia/PDF m141` preserved — smaller than the current pipeline's 594 KB while
+carrying the 155-entry outline.
 
-Small, contained: the postprocess should preserve an existing Creator/Producer
-and re-enable object streams unless a downstream tool needs them off.
+### F7 — viewer drift at scale — **root-caused; inherent; documented**
 
-### F7 — one drift event per ~200 pages in the viewer (open from `RESULTS.md`)
+Measured precisely: at the diverging boundary print keeps a line with 1.17 pt
+(1.56 px) of slack; boundaries decided by <2 px can round either way between
+page fragmentation and multicol. Not a container-geometry bug (strip height is
+exactly the print content height; snapping to the 1/64 px LayoutUnit grid
+changes nothing). Not fixable by an epsilon: +0.5 px removed 77 % of drift
+events on the 6×9 book and exactly matched its page count, but did nothing for
+an A4/mm book (78 → 73 events) — the bias is not constant. Fractional page
+metrics make it worse (35 events → 78 on the same content), so presets should
+prefer pt/px-clean sizes. Posture unchanged and now evidence-backed: the PDF is
+ground truth, printed page numbers always come from compiler measurement, and
+the viewer's fidelity statement is "exact at chapter scale, knife-edge
+boundaries may differ at 100+ pages".
 
-Unchanged by this pass. Screen-only; the PDF is ground truth.
+### F8 — `<tfoot>` reservation on screen — **IMPLEMENTED**
 
-### F8 — `<tfoot>` reservation on screen (open, documented limit)
-
-The viewer compensates repeated `<thead>` but not `<tfoot>`; it warns instead.
+Print reserves the repeated footer at the bottom of every fragment; the viewer
+now does the equivalent: the first row intruding into the bottom `footH`
+reserve of each column gets a foot-clone shim that FILLS the space from the
+last kept row to the column bottom (content pinned to the bottom edge, where
+print draws it). Claims are sticky across passes — a fix removes the symptom it
+was derived from, so re-deriving would oscillate. Verified: rows-per-page match
+print exactly for 1-row and 2-row footers, with the repeated `<thead>` active
+at the same time (s5).
 
 ### F9 — density difference is a *behaviour* change, not a defect, but it is visible
 
@@ -230,10 +269,12 @@ to re-check it. Worth a `--pad-to-signature` reminder in the migration notes;
 
 | | |
 | --- | --- |
-| **fixed** | D1 (cover full-bleed), F1 (recto/verso + `@page :blank`), F11 (instrumentation ids), F12 (`leader()` placeholder), F13 (`target-text()`), F14 (viewer blank pages), F5 (now asserted) |
-| **deleted** | F2 (page renaming), F3 (duplicate run detection) |
-| **worked around** | F10 (cross-stylesheet `@page` cascade) |
-| **open** | F4 (`string()` keywords), F6 (metadata/object streams), F7 (viewer drift at ~200pp), F8 (`<tfoot>`), F9 (density is a migration consideration), F15 (leaders), F16 (unexercised surface) |
+| **fixed** | D1 cover full-bleed · F1 recto/verso + `:blank` · F4 `string(which)` · F5 asserted · F6/D5/D6 postprocess · F8 `<tfoot>` · F11 neutral measurement (reprint deleted) · F12/F15 leaders · F13 `target-text()` · F14 shared policy module · F16 `@media print` on screen |
+| **deleted** | F2 (page renaming), F3 (duplicate run detection), the de-instrument reprint |
+| **worked around** | F10 (cross-stylesheet `@page` cascade — generated contexts emitted fully resolved) |
+| **inherent, documented** | F7 (viewer drift at knife-edge boundaries, ≈1 event/60 pp worst case; PDF is ground truth) |
+| **migration considerations** | F9/D2 (denser output: 61 vs 64 pages), D3 (nested `page:` breaks per spec) |
+| **still unexercised** | POD acceptance of bleed/marks, Ghostscript/PDF-X hand-off, image-heavy books |
 
 ### F15 — leaders have no implementation at all — **open**
 
@@ -241,15 +282,20 @@ See F12: `leader()` now renders as nothing rather than garbage, but a TOC that
 relies on dot leaders will print without them. This is the last GCPM construct
 in the proposal's scope with no story.
 
-### F16 — surface that no test or comparison exercises — **open**
+### F16 — unexercised surface — **MEASURED, one gap fixed**
 
-Honest inventory of what is written but unproven: `@page :first` on real
-content; `@page` rules inside `@media print`; `@page :blank` on a book that also
-uses named pages; `bleed`/`marks` against a real POD spec (s8 checks the boxes,
-not a printer's acceptance); the Ghostscript / PDF-X hand-off (no `gs` in this
-environment); multi-column author layouts (`columns:` inside the flow, nested in
-the viewer's own multicol); and any book with images heavy enough to matter —
-the comparison corpus has none.
+- **Author multi-column blocks** (`columns: 2` nested inside the viewer's own
+  multicol): 30/30 tokens on the same page as print, page counts equal. Works.
+- **`@page` inside `@media print`**: prints correctly, but the browser does not
+  apply print-media rules on screen (`break-before` computes to `auto`), so the
+  preview was missing print-only styling. Fixed: the viewer re-injects
+  `@media print` block bodies as screen rules via the existing scanner.
+- **Recto spacers inside named-page runs** (`section { page: chapter }` with
+  different chapter margins): chapters land on rectos, inserted pages genuinely
+  blank, converges. Works.
+
+Still unexercised: `bleed`/`marks` against a real POD acceptance, the
+Ghostscript/PDF-X hand-off (no `gs` here), image-heavy books.
 
 The compile path costs one more print pass than before (0.9 s → 2.2–3.2 s warm
 on a 61-page book, against 5.5–6.8 s for the current pipeline) and 342 fewer

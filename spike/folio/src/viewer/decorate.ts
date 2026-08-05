@@ -15,6 +15,7 @@ import {
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { evaluate, needsMeasurement } from "../shared/content-value.ts";
+import { leaderFillCount, leaderMarker, LEADER_RE, parseWhich, stringValueAt } from "../shared/synthesis.ts";
 import {
   PX_PER_PT,
   pageRangeOf,
@@ -106,21 +107,9 @@ export function decorate(
     }
   }
 
+  /** Shared GCPM string() semantics — the same function the compiler samples. */
   function stringAt(name: string, which: string, page: number): string {
-    const entries = api.stringMap.get(name) ?? [];
-    const onPage = entries.filter((e) => e.page === page);
-    const before = entries.filter((e) => e.page < page);
-    const carry = before.length ? before[before.length - 1].value : "";
-    switch (which) {
-      case "start":
-        return carry;
-      case "last":
-        return onPage.length ? onPage[onPage.length - 1].value : carry;
-      case "first-except":
-        return onPage.length ? "" : carry;
-      default: // "first"
-        return onPage.length ? onPage[0].value : carry;
-    }
+    return stringValueAt(api.stringMap.get(name) ?? [], page, parseWhich(which));
   }
 
   /** Fill `target-counter()` text in the author's own DOM (screen path). */
@@ -141,10 +130,12 @@ export function decorate(
           targetPage: (url) => api.targets.get(url),
           targetText: (url) =>
             (document.querySelector(url)?.textContent ?? "").trim() || undefined,
+          leader: leaderMarker,
         });
         el.setAttribute(`data-folio-${pseudo}`, text);
       }
     }
+    fillLeaders();
     let style = document.getElementById("folio-xref-style");
     if (!style) {
       style = document.createElement("style");
@@ -153,6 +144,38 @@ export function decorate(
     }
     style.textContent = `[data-folio-after]::after { content: attr(data-folio-after); }
 [data-folio-before]::before { content: attr(data-folio-before); }`;
+  }
+
+  /**
+   * Measured leader fill — the strip is already at print content width, so
+   * unlike the compiler no geometry sandbox is needed; same fill policy.
+   */
+  function fillLeaders() {
+    const marked: Array<{ el: HTMLElement; attr: string; raw: string }> = [];
+    for (const attr of ["data-folio-after", "data-folio-before"]) {
+      for (const el of Array.from(document.querySelectorAll<HTMLElement>(`[${attr}]`))) {
+        const raw = el.getAttribute(attr) ?? "";
+        if (LEADER_RE.test(raw)) marked.push({ el, attr, raw });
+      }
+    }
+    if (!marked.length) return;
+    const canvas = document.createElement("canvas");
+    const cx = canvas.getContext("2d")!;
+    for (const m of marked) m.el.setAttribute(m.attr, m.raw.replace(LEADER_RE, ""));
+    document.body.offsetHeight;
+    for (const m of marked) {
+      const glue = LEADER_RE.exec(m.raw)![1] || ".";
+      const block = m.el.parentElement ?? document.body;
+      const blockRect = block.getBoundingClientRect();
+      const cs = getComputedStyle(block);
+      const contentRight =
+        blockRect.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
+      const rects = m.el.getClientRects();
+      const last = rects.length ? rects[rects.length - 1] : m.el.getBoundingClientRect();
+      cx.font = getComputedStyle(m.el).font;
+      const n = leaderFillCount(contentRight - last.right, cx.measureText(glue).width);
+      m.el.setAttribute(m.attr, m.raw.replace(LEADER_RE, glue.repeat(n)));
+    }
   }
 
   function draw() {

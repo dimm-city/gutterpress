@@ -6,7 +6,7 @@ divergence. Six findings amend the proposal; none of them is existential, and
 one of them (F1) makes Tier 3 materially simpler than proposed.
 
 - Runtime: Chromium **141.0.7390.37** headless (proposal floor: 131), Bun 1.3.11
-- Suite: `bun run spikes` — **11/11 spikes, 125 checks, ~25 s wall clock**
+- Suite: `bun run spikes` — **12/12 spikes, ~28 s wall clock** (s11 covers leaders, `target-text`, `string(which)` and measurement neutrality)
 - Evidence regenerated on every run into `out/results.json` / `out/results.md`;
   PDFs, generated CSS and fixtures land in `out/` too.
 
@@ -23,6 +23,7 @@ one of them (F1) makes Tier 3 materially simpler than proposed.
 | s8 | §8, M1/M3 | compiler: tiers 1–3, bleed/marks, boxes, signatures | PASS 19/19 |
 | s9 | §2, §10 | DX and performance claims | PASS 9/9 |
 | s10 | new | recto/verso forced breaks + `@page :blank` | PASS 11/11 |
+| s11 | new | leaders, target-text, string(which), neutral measurement | PASS 9/9 |
 
 ---
 
