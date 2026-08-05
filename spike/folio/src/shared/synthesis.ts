@@ -166,3 +166,49 @@ export function leaderFillCount(gapPx: number, gluePx: number): number {
   if (!(gluePx > 0) || !(gapPx > 0)) return 0;
   return Math.max(0, Math.floor(gapPx / gluePx) - 1);
 }
+
+// ---------------------------------------------------------------------------
+// generated content (cross-references, leaders)
+// ---------------------------------------------------------------------------
+
+/**
+ * CSS that makes Folio's computed text win over the author's own rule.
+ *
+ * Folio resolves `target-counter()` / `target-text()` / `leader()` into a
+ * `data-folio-after|before` attribute and renders it with `content: attr(…)`.
+ * That used to be safe by default: Chromium dropped the author's unsupported
+ * declaration entirely, so ANY rule of Folio's won.
+ *
+ * It stopped being safe in Chrome 151, which PARSES `target-counter()` (and
+ * `CSS.supports()` reports it as supported) but computes the whole `content`
+ * value to `none` — nothing renders. The author's declaration now survives the
+ * cascade, and `a.xref::after` (0,1,1) outranks a bare
+ * `[data-folio-after]::after` (0,1,0), so the author's empty value wins and the
+ * cross-reference silently disappears.
+ *
+ * The fix is to out-specify the author on their own terms: reuse their selector
+ * and add Folio's attribute to it, so the override is strictly more specific
+ * than the rule it must beat, whatever that rule looks like. The bare rules are
+ * kept as a fallback for content Folio generates on elements no author selector
+ * mentions.
+ */
+export function generatedContentCss(selectors: Iterable<string>): string {
+  const rules = new Set<string>();
+  for (const raw of selectors) {
+    for (const one of raw.split(",")) {
+      const selector = one.trim();
+      if (!selector) continue;
+      const m = /^(.*?)(::?)(after|before)\s*$/i.exec(selector);
+      if (!m) continue;
+      const [, base, colons, pseudo] = m;
+      const where = pseudo.toLowerCase();
+      rules.add(
+        `${base.trim()}[data-folio-${where}]${colons}${where} { content: attr(data-folio-${where}); }`,
+      );
+    }
+  }
+  // fallback for elements no author selector named (specificity 0,1,0)
+  rules.add(`[data-folio-after]::after { content: attr(data-folio-after); }`);
+  rules.add(`[data-folio-before]::before { content: attr(data-folio-before); }`);
+  return [...rules].join("\n");
+}

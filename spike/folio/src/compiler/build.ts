@@ -19,6 +19,7 @@ import { extract, resolvePage, type GcpmModel } from "../shared/gcpm-extract.ts"
 import {
   counterStyleName,
   cssQuote,
+  generatedContentCss,
   isRectoVersoBreak,
   leaderMarker,
   parseWhich,
@@ -270,8 +271,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           generated.push({ id: site.id, where, text });
         }
         if (generated.length) {
+          const contentCss = generatedContentCss(model.xrefs.map((x) => x.selector));
           await page.evaluate(
-            `window.__folio.setGenerated(${JSON.stringify(generated)})`,
+            `window.__folio.setGenerated(${JSON.stringify(generated)}, ${JSON.stringify(contentCss)})`,
           );
           const g = tier2.geometry;
           const contentWidthPx =

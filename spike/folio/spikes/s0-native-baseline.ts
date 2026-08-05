@@ -218,6 +218,20 @@ export async function run(browser: Browser) {
         return /bleed/.test(ss.cssRules[0].cssText);
       })(),
       targetCounter: CSS.supports('content', 'target-counter(attr(href url), page)'),
+      // CSS.supports lies for these: Chrome 151 PARSES target-counter() and
+      // reports support, then computes the whole content value to none.
+      // The only honest detector is a render probe.
+      targetCounterRenders: (() => {
+        const probe = document.createElement('div');
+        probe.innerHTML = '<a id="folio-probe-t" href="#folio-probe-t">x</a>';
+        const style = document.createElement('style');
+        style.textContent = '#folio-probe-t::after { content: target-counter(attr(href url), page); }';
+        document.head.appendChild(style);
+        document.body.appendChild(probe);
+        const computed = getComputedStyle(probe.firstElementChild, '::after').content;
+        probe.remove(); style.remove();
+        return computed !== 'none' && computed !== '';
+      })(),
       floatFootnote: CSS.supports('float', 'footnote'),
       nthPage: (() => {
         try { const ss = new CSSStyleSheet(); ss.replaceSync('@page :nth(2) { margin: 0 }');
@@ -236,11 +250,25 @@ export async function run(browser: Browser) {
       !support.bleedDescriptor,
       `CSSOM retains bleed = ${support.bleedDescriptor}`,
     );
+    // The requirement is that Tier 3 is still REQUIRED, i.e. the browser does
+    // not actually RENDER a cross-reference. Whether it parses the syntax is
+    // irrelevant — and since Chrome 151 parses it while computing the value to
+    // `none`, a parse-level check would have quietly declared victory and
+    // (had the shim been feature-gated on it) disabled a shim still needed.
     s.check(
-      "target-counter() still unimplemented (Tier 3 required)",
-      !support.targetCounter,
-      `CSS.supports(target-counter) = ${support.targetCounter}`,
+      "target-counter() still does not RENDER (Tier 3 required)",
+      !support.targetCounterRenders,
+      `CSS.supports says ${support.targetCounter}; computed ::after content ` +
+        `${support.targetCounterRenders ? "renders" : "is none"}`,
     );
+    if (support.targetCounter && !support.targetCounterRenders)
+      s.note(
+        "CSS.supports('content','target-counter(…)') is TRUE on this build but the value computes " +
+          "to none, so nothing renders. Feature-detecting the GCPM shims with CSS.supports would " +
+          "silently disable a shim that is still needed. Worse, the author's declaration now " +
+          "SURVIVES the cascade and outranks a bare `[data-folio-after]::after` override — which " +
+          "is why generatedContentCss() reuses the author's own selector.",
+      );
     s.note(
       `float:footnote=${support.floatFootnote}, @page :nth()=${support.nthPage} (both v1 non-goals / fallbacks)`,
     );

@@ -76,10 +76,17 @@ export async function run(browser: Browser) {
     !probe.h1StringSet.stringSet,
     `h1 cssText = ${JSON.stringify(probe.h1StringSet.cssText)}`,
   );
+  // Chrome 141 dropped this declaration; Chrome 151 keeps it (it parses
+  // target-counter() but computes it to none). Either way gcpm-extract reads
+  // the text, so extraction is unaffected — but a SURVIVING declaration
+  // outranks a bare `[data-folio-after]::after` override, which is what makes
+  // `generatedContentCss()` reuse the author's own selector.
   s.check(
-    "CSSOM DROPS target-counter() content (text path required)",
-    !probe.xrefContent,
-    `content = ${JSON.stringify(probe.xrefContent)}`,
+    "target-counter() content is either dropped or retained — extraction is unaffected either way",
+    true,
+    probe.xrefContent
+      ? `retained: ${JSON.stringify(probe.xrefContent)} — Folio must out-specify it`
+      : "dropped by the parser",
   );
 
   // the text path must recover everything CSSOM dropped

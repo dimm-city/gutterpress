@@ -2,7 +2,17 @@
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-const SCRIPT = join(import.meta.dir, "pdfprobe.py");
+/**
+ * PyMuPDF where available, poppler otherwise.
+ *
+ * Both backends expose the same CLI and the same JSON shapes; the spikes never
+ * learn which one answered. PyMuPDF needs pip (absent on some print boxes);
+ * poppler-utils ships everywhere and is already a Gutterpress build dependency.
+ */
+const PYMUPDF = spawnSync("python3", ["-c", "import fitz"]).status === 0;
+const SCRIPT = join(import.meta.dir, PYMUPDF ? "pdfprobe.py" : "pdfprobe-poppler.py");
+
+export const probeBackend = PYMUPDF ? "pymupdf" : "poppler";
 
 function run(args: string[]): any {
   const r = spawnSync("python3", [SCRIPT, ...args], {

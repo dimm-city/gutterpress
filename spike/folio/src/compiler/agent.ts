@@ -277,17 +277,22 @@ export function fillLeaders(contentWidthPx: number): number {
   return marked.length;
 }
 
-/** Apply synthesized generated content (cross-reference text) by element id. */
-export function setGenerated(entries: Array<{ id: string; where: string; text: string }>): number {
+/**
+ * Apply synthesized generated content (cross-reference text) by element id.
+ *
+ * `css` comes from `generatedContentCss()` in Node — it must out-specify the
+ * author's own `::after` rule, which since Chrome 151 survives the cascade even
+ * though `target-counter()` computes to nothing (see the shared module).
+ */
+export function setGenerated(
+  entries: Array<{ id: string; where: string; text: string }>,
+  css: string,
+): number {
   for (const e of entries) {
     const el = anchorHost(e.id);
     if (el) el.setAttribute(`data-folio-${e.where}`, e.text);
   }
-  addCss(
-    "folio-generated-content",
-    `[data-folio-after]::after { content: attr(data-folio-after); }
-[data-folio-before]::before { content: attr(data-folio-before); }`,
-  );
+  addCss("folio-generated-content", css);
   return entries.length;
 }
 

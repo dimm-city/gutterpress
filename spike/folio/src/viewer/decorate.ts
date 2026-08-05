@@ -15,7 +15,14 @@ import {
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { evaluate, needsMeasurement } from "../shared/content-value.ts";
-import { leaderFillCount, leaderMarker, LEADER_RE, parseWhich, stringValueAt } from "../shared/synthesis.ts";
+import {
+  generatedContentCss,
+  leaderFillCount,
+  leaderMarker,
+  LEADER_RE,
+  parseWhich,
+  stringValueAt,
+} from "../shared/synthesis.ts";
 import {
   PX_PER_PT,
   pageRangeOf,
@@ -142,8 +149,7 @@ export function decorate(
       style.id = "folio-xref-style";
       document.head.appendChild(style);
     }
-    style.textContent = `[data-folio-after]::after { content: attr(data-folio-after); }
-[data-folio-before]::before { content: attr(data-folio-before); }`;
+    style.textContent = generatedContentCss(model.xrefs.map((x) => x.selector));
   }
 
   /**
