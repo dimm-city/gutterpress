@@ -374,6 +374,125 @@ mechanism is plausible, but making it real requires:
 None of this is unusually hard *individually*; it is unbuilt, and every item
 routes back through the same packaging gap as the PDF path's finding #1.
 
+### Preview wiring — DONE (2026-08-06 follow-up)
+
+Decision #5 is now met: the engine is a **per-project flag**, read by both
+`build` and `preview`. Added `engine: paged | native` to
+`GutterpressManifest`/`ResolvedConfig` (`packages/cli/src/schema/
+manifest.types.ts`), resolved in `lib/manifest.ts`'s `resolveWithPreset`
+(`c.engine ?? m.engine ?? "paged"`, validated, thrown `UsageError` on a typo)
+— the same cli > manifest > preset-default cascade every other field uses.
+`--engine` on both `build` and `preview` (shared `parseEngine` in
+`lib/cli-args.ts`) feeds `resolveConfig` as the top of that cascade; a bare
+`--engine paged` still overrides a manifest default of `native` (the earlier
+`build`-only flag couldn't distinguish "not passed" from "explicitly paged").
+`build-runner.ts` now reads `ctx.config.engine`, not `opts.engine`, at every
+branch point (markdown assembly's polyfill-tag omission, the PDF renderer
+choice) — `opts.engine` is now documented as "the CLI override INPUT to
+resolveConfig," not the decision itself.
+
+Preview: `preview/file-watcher.ts`'s `injectPreviewScripts` now branches on
+`engine`. `"paged"` is **unchanged code, byte-for-byte** (verified below —
+this was the hard constraint, since the function is shared by every
+project). `"native"` injects one `<script src="/engine/folio.js"></script>`
+before `</head>` instead of the pagedjs-interface/bridge/BREAK_INSIDE_HANDLER/
+polyfill quartet — no swap-in-place needed because `assembleBookHtml` already
+omits the polyfill marker slot entirely for `engine: "native"` (existing
+`--engine native` build behavior, reused as-is). The engine viewer bundle was
+**already embedded** (`lib/embedded-assets.ts`'s `"engine/folio.js"` /
+`"engine/folio-agent.js"` entries, added when the engine was promoted out of
+`spike/folio` — see the finding #1 resolution above); the only serving change
+needed was adding `/engine/` to `preview/http-server.ts`'s
+`EMBEDDED_PREFIXES` so `GET /engine/folio.js` resolves. The engine viewer
+self-mounts on `DOMContentLoaded` (`engine/viewer/index.ts`) with no manual
+`mount()` call needed from the injected tag, so no new preview-side
+bootstrapping code was required beyond the tag itself. The websocket
+full-reload client (`http-server.ts`'s `hmrClientSnippet`) is untouched and
+project/engine-agnostic — it is injected at serve time via string-splice on
+`</body>`, independent of which engine assembled the document, so "one
+mechanism, both engines" was true before this change and stays true after it.
+`preview`'s one-shot `--format pdf|pdfx` affordance (`commands/preview.ts`)
+now threads the same resolved `--engine` value into its `runBuild()` call —
+one CLI flag, read once, instead of a second decision point.
+
+**Verification (measured, not assumed):**
+- `engine: paged` preview HTML is **byte-identical to pre-change HEAD**
+  (`git stash`/`stash pop` A/B on `examples/gutterpress-user-guide`, served
+  from `gutterpress preview`) modulo the per-process-random HMR
+  `instanceId` UUID — the one value that was already expected to differ
+  between two server starts.
+- `engine: native` preview HTML: `grep` on the served `book.html` finds
+  **zero** `paged.polyfill` script tags, zero `BREAK_INSIDE_HANDLER`
+  occurrences, zero `pagedjs-interface.js`/`pagedjs-bridge.js` tags; exactly
+  one `<script src="/engine/folio.js"></script>`, served `200` from the new
+  `/engine/` embedded route.
+- Driving real headless Chromium (`engine/shared/cdp.ts`'s `launchChromium`)
+  at the served native preview URL: **zero `.pagedjs_*` classes** anywhere in
+  the mounted DOM (`document.querySelectorAll('[class*="pagedjs"]')` empty).
+  With the default incremental-preview shell disabled
+  (`GUTTERPRESS_PREVIEW_INCREMENTAL=0` — isolates the measurement from the
+  unrelated per-chapter `break-before:page` the incremental shell forces
+  for source-splicing, which inflates page count for BOTH engines'
+  previews and predates this change), the engine self-mounted and
+  paginated to **65 pages** (`window.folio.totalPages`; 17 `.folio-strip`
+  contexts, `--folio-pages` custom properties summed) — this **exactly
+  reproduces** the earlier hand-probe number recorded above under "Wiring
+  preview was time-boxed out." With the incremental shell at its default
+  (on), the same project measured **73 pages** — expected and orthogonal to
+  the engine choice: the shell forces a break before every source-file
+  wrapper it injects for independent chapter splicing (existing v0.8.3
+  behavior, `injectPreviewScripts`'s `pageIsolateChapters` branch, applied
+  identically for both engines), which is not representative of the printed
+  layout for either engine and was never claimed to be.
+- `gutterpress build --engine native` (now via the manifest's `engine:
+  native` field, no `--engine` flag needed — confirming the manifest half of
+  the cascade) on the same project: **61 pages** (`pdfinfo`), matching every
+  prior measurement of this document in this file exactly.
+- Preview vs. PDF agreement (Decision #5's actual question): **65pp
+  (non-incremental preview) vs. 61pp (PDF)** — the same ~6.5% viewer/print
+  knife-edge gap already documented throughout this file as expected
+  (predict/verify divergence, not a defect); the two numbers are close
+  because they are now driven by the **same engine reading the same
+  resolved config**, which was the entire point of Decision #5. Before this
+  change there was no native preview number to compare at all.
+- `--engine paged` on the CLI still overrides a manifest `engine: native`
+  back to Paged.js: same project, `gutterpress build --engine paged`
+  (manifest says `native`) rendered via "Chromium+Paged.js" per the build
+  log, **64 pages** — matching Paged.js's own already-documented number for
+  this project, confirming cli > manifest precedence in both directions.
+- Gates: `packages/cli` — `bun test` 2299 pass / 0 fail (2300 total, 1
+  pre-existing skip), `bunx tsc --noEmit` clean, `bun run build` clean
+  (`check-render-pure` passed, `dist/render.js` node-free). `spike/folio` —
+  `bun run spikes` 15/15 (212 checks, unaffected — no spike/folio files
+  touched by this task), `bunx tsc --noEmit` clean.
+
+**Remaining (explicitly out of scope for this task):**
+- `packages/desktop`'s preview integration (its own iframe/toolbar host,
+  `pagedjs-interface.js`/`pagedjs-bridge.js` postMessage consumers) was not
+  touched — it still assumes the Paged.js scripts unconditionally. Wiring it
+  to the new per-project `engine` field, and deciding what (if anything) the
+  desktop toolbar's postMessage API becomes for `engine: "native"`, is a
+  later, separate step.
+- `--format html` (the static-site pre-SSG build) was not re-examined for
+  `engine: "native"` — `HtmlOutput.finish` in `build-runner.ts` still always
+  pre-paginates via Chromium+Paged.js (`paginateToStaticHtml`) regardless of
+  `config.engine`. This is a pre-existing gap (the assembler already omits
+  the polyfill tag for `engine: "native"` today, independent of this task's
+  changes), not something introduced here, and `--format pdf`/`pdfx` +
+  `preview` — the surfaces Decision #5 actually names — are unaffected by it.
+- The preview HMR client's scroll-anchor-restore timing
+  (`http-server.ts`'s `hmrClientSnippet`) special-cases waiting for Paged.js's
+  `renderingComplete` event before restoring scroll position; it has no
+  equivalent wait for the engine viewer's `folio:layout` event, so on
+  `engine: "native"` the anchor restore can race the viewer's async
+  fragmentation. Left alone deliberately: fixing it would require
+  parameterizing a function that must stay byte-identical for `engine:
+  "paged"` projects, and the full-reload/reconnect mechanism itself (the
+  thing Decision #5 and this task's item 2 actually require to "work
+  identically for both engines") is unaffected — only the anchor's restore
+  offset could occasionally be off after a live edit, until the engine
+  finishes fragmenting.
+
 ### Measured
 
 - **Page count agreement (the success criterion this spike could actually

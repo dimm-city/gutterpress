@@ -232,6 +232,13 @@ Vendor preset supplying the defaults for every other section — page geometry, 
 preset: book
 ```
 
+#### `engine` (string)
+Pagination engine. `"paged"` (default) is the shipped Chromium+Paged.js pipeline; `"native"` routes both `gutterpress build` and `gutterpress preview` through the Gutterpress engine — native Chromium pagination, no Paged.js polyfill. Preview and PDF always use the same engine for a given project (they switch together, never independently). The CLI `--engine` flag overrides this per invocation for either command.
+
+```yaml
+engine: native
+```
+
 #### `styles` (array of strings)
 CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css`, then `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, then the first `.css` it finds, then none.
 

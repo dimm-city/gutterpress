@@ -132,10 +132,11 @@ export async function validateInputPath(inputPath: string): Promise<void> {
  */
 export async function initializeConfiguration(
   inputPath: string,
+  engine?: "paged" | "native",
 ): Promise<ResolvedConfig> {
-  if (!inputPath) return resolveConfig({}, {});
+  if (!inputPath) return resolveConfig({ engine }, {});
   const manifest = await loadManifest(inputPath);
-  return resolveConfig({}, manifest);
+  return resolveConfig({ engine }, manifest);
 }
 
 /**
@@ -158,7 +159,7 @@ export async function restartPreview(newInputPath: string, state: ServerState): 
   state.currentInputPath = newInputPath;
 
   const manifest = await loadManifest(newInputPath);
-  state.config = resolveConfig({}, manifest);
+  state.config = resolveConfig({ engine: state.options.engine }, manifest);
 
   await generateAndWriteHtml(newInputPath, state.tempDir, state.config, state.cssAssets);
 

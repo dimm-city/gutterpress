@@ -29,6 +29,13 @@
       "enum": ["dtrpg", "book", "custom"],
       "examples": ["dtrpg", "book", "custom"]
     },
+    "engine": {
+      "type": "string",
+      "description": "Pagination engine. \"paged\" (default) is the shipped Chromium+Paged.js pipeline; \"native\" routes both `gutterpress build` and `gutterpress preview` through the Gutterpress engine (native Chromium pagination, no Paged.js polyfill). Preview and PDF always use the same engine for a given project — never independently. `--engine` on the CLI overrides this per invocation.",
+      "enum": ["paged", "native"],
+      "default": "paged",
+      "examples": ["paged", "native"]
+    },
     "targets": {
       "type": "array",
       "description": "Where the book is published (ADR 0008): publish targets whose requirements `gutterpress validate` checks the built PDF against — each target is validated separately, so one book can target several destinations. Omitting it uses the preset's default (dtrpg -> [\"dtrpg\"]; book/custom -> []).",

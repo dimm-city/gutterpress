@@ -68,7 +68,7 @@ export function incrementalPreviewEnabled(): boolean {
  */
 async function renderPreviewBook(
   inputPath: string,
-  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] },
+  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[]; engine?: "paged" | "native" },
   opts: {
     files: string[] | null;
     wrapChapters: boolean;
@@ -91,6 +91,7 @@ async function renderPreviewBook(
     files: opts.files,
     plugins,
     pluginCss,
+    engine: config.engine,
     wrapChapters: opts.wrapChapters,
     ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
     // ARCH finding #4: markdown-it-paged's typed, line-numbered author-mistake
@@ -106,7 +107,10 @@ async function renderPreviewBook(
 }
 
 /**
- * Rewrite rendered book HTML for the live preview. Injects, in order:
+ * Rewrite rendered book HTML for the live preview.
+ *
+ * `engine: "paged"` (default) injects, in order, replacing the polyfill
+ * marker slot `assembleBookHtml` emits:
  *   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
  *   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (desktop)
  *   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
@@ -120,19 +124,39 @@ async function renderPreviewBook(
  *          serving it from a stable disk path lets the OS file-cache
  *          and Defender hash-cache stay warm across sessions.
  *
+ * `engine: "native"` injects ONE script instead: the Gutterpress engine's
+ * viewer bundle (`/engine/folio.js`, embedded the same way as the polyfill —
+ * see lib/embedded-assets.ts). It self-mounts on DOMContentLoaded and
+ * paginates the document client-side via multicol — no Paged.js polyfill, no
+ * BREAK_INSIDE_HANDLER, no pagedjs-interface/bridge (MIGRATION.md Step 3:
+ * preview and PDF must use the same engine, never independently). There is
+ * no polyfill marker slot to replace — `assembleBookHtml` omits it entirely
+ * for `engine: "native"` — so the viewer script is inserted before `</head>`.
+ *
  * With `pageIsolateChapters`, each source wrapper starts on a fresh page. This
  * is the v0.8.3 incremental-preview invariant: a standalone source render owns
  * the same page boundary as that source in the live preview and can be spliced
  * without paginating the full document.
  */
-export function injectPreviewScripts(html: string, pageIsolateChapters: boolean): string {
-  const iface =
-    '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
-    + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  let output = html.replace(
-    pagedjsPolyfillTagRegex(),
-    iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
-  );
+export function injectPreviewScripts(
+  html: string,
+  pageIsolateChapters: boolean,
+  engine: "paged" | "native" = "paged",
+): string {
+  let output: string;
+  if (engine === "native") {
+    output = /<\/head>/i.test(html)
+      ? html.replace(/<\/head>/i, '  <script src="/engine/folio.js"></script>\n</head>')
+      : html + '<script src="/engine/folio.js"></script>';
+  } else {
+    const iface =
+      '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
+      + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
+    output = html.replace(
+      pagedjsPolyfillTagRegex(),
+      iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
+    );
+  }
   if (pageIsolateChapters && /<\/head>/i.test(output)) {
     output = output.replace(
       /<\/head>/i,
@@ -159,7 +183,7 @@ export function injectPreviewScripts(html: string, pageIsolateChapters: boolean)
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[] },
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[]; engine?: "paged" | "native" },
   cssAssets: Map<string, string>
 ): Promise<void> {
   if (!inputPath) {
@@ -183,7 +207,7 @@ export async function generateAndWriteHtml(
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, incremental),
+    injectPreviewScripts(html, incremental, config.engine),
     "utf-8"
   );
 }
@@ -196,13 +220,13 @@ export async function generateAndWriteHtml(
 export async function renderChapterPreviewHtml(
   inputPath: string,
   file: string,
-  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
+  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[]; engine?: "paged" | "native" }
 ): Promise<string> {
   const html = await renderPreviewBook(inputPath, config, {
     files: [canonicalChapterId(file)],
     wrapChapters: true,
   });
-  return injectPreviewScripts(html, true);
+  return injectPreviewScripts(html, true, config.engine);
 }
 
 /** One changed project file, named for the preview broadcast decision. */
@@ -679,7 +703,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // styles until some later markdown edit happened to force one.
         const manifest = await loadManifest(inputResolved);
         if (closed) return;
-        const updatedConfig = resolveConfig({}, manifest);
+        const updatedConfig = resolveConfig({ engine: state.options.engine }, manifest);
         state.config = updatedConfig;
         // Subscribe from the new manifest BEFORE rendering it. A newly declared
         // shared file may not exist yet, which correctly makes this render fail;

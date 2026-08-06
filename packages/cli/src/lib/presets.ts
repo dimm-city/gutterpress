@@ -10,7 +10,7 @@ import { UsageError } from "./cli-args";
  * Every preset value is overridable from the manifest, leaf by leaf
  * (resolveConfig's mergeShape; precedence cli > manifest > target > preset).
  */
-export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "targets" | "page"> {
+export interface VendorPreset extends Omit<ResolvedConfig, "title" | "authors" | "targets" | "page" | "engine"> {
   /**
    * Base page geometry in points, or `null` for `custom` — the one preset
    * with no built-in trim, which therefore REQUIRES the manifest to supply

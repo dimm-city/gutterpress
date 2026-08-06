@@ -397,7 +397,7 @@ async function serveStatic(
  * response across reloads within the same preview session instead of
  * re-fetching the ~900 KB polyfill on every load.
  */
-const EMBEDDED_PREFIXES = ['/vendor/', '/preview/scripts/'];
+const EMBEDDED_PREFIXES = ['/vendor/', '/preview/scripts/', '/engine/'];
 const EMBEDDED_EXACT = new Set(['/favicon.ico']);
 
 /**

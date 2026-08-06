@@ -72,7 +72,7 @@ export async function startPreviewServer(
   }
 
   // Stage 2: Initialize configuration
-  const config = await initializeConfiguration(inputPath);
+  const config = await initializeConfiguration(inputPath, options.engine);
 
   // Stage 3: Set up the temp dir. No longer takes inputPath/config — it only
   // ever creates the (now generated-files-only) temp dir; see lifecycle.ts's

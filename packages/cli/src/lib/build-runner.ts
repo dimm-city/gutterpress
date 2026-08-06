@@ -81,11 +81,16 @@ export interface BuildRunnerOptions {
   keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
   /**
-   * "paged" (default) is the shipped Chromium+Paged.js pipeline; "native"
-   * routes both the assembled HTML (no Paged.js polyfill tag) and the PDF
-   * render (via `./engine.ts`'s `buildNativePdf`) through the Gutterpress
-   * engine at `src/engine/` — native Chromium pagination, no polyfill. See
-   * `engine.ts`'s header for the seams this bypasses and why.
+   * CLI `--engine` override, fed into {@link resolveConfig} as the top of the
+   * cli > manifest > default("paged") cascade (MIGRATION.md Decision #5).
+   * `undefined` means "no CLI override" — the manifest's `engine:` field (or
+   * "paged") decides. The actually-resolved engine for this build lives on
+   * `BuildContext.config.engine`, NOT this field — read that downstream, not
+   * `opts.engine`. "native" routes both the assembled HTML (no Paged.js
+   * polyfill tag) and the PDF render (via `./engine.ts`'s `buildNativePdf`)
+   * through the Gutterpress engine at `src/engine/` — native Chromium
+   * pagination, no polyfill. See `engine.ts`'s header for the seams this
+   * bypasses and why.
    */
   engine?: "paged" | "native";
 }
@@ -238,6 +243,7 @@ export async function resolveBuildContext(
     {
       title: opts.title,
       pdfx: pdfxConfigOverride,
+      engine: opts.engine,
     },
     manifest
   );
@@ -370,7 +376,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     files: config.source.files,
     plugins,
     pluginCss,
-    engine: opts.engine,
+    engine: config.engine,
     onChapterWarnings: (file, warnings) => {
       for (const w of warnings) {
         log.warn(`  ${file}, line ${w.line}: ${w.message}`);
@@ -691,10 +697,10 @@ class PdfOutput implements OutputStrategy {
       // gets its own direct call, on the plain file (no HTTP staging, no
       // polyfill overlay at all) — see engine.ts's module doc for detail.
       const staticHtmlRaw =
-        opts.pdfRenderer || opts.engine === "native"
+        opts.pdfRenderer || config.engine === "native"
           ? undefined
           : path.join(stage, "book-static-raw.html");
-      if (opts.engine === "native") {
+      if (config.engine === "native") {
         log.info("Rendering HTML to PDF via the Gutterpress engine (native Chromium pagination)");
         const { buildNativePdf } = await import("./engine");
         await buildNativePdf(htmlFile, rawPdf);

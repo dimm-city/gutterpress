@@ -323,6 +323,14 @@ function resolveWithPreset(
     );
   }
 
+  // Pagination engine (MIGRATION.md Decision #5 — preview and PDF switch
+  // together, per project, behind one flag): cli > manifest > default
+  // "paged". Both `build` and `preview` read this one resolved value.
+  const engine = c.engine ?? m.engine ?? "paged";
+  if (engine !== "paged" && engine !== "native") {
+    throw new UsageError(`Unknown engine "${String(engine)}". Expected: paged | native`);
+  }
+
   // Resolve plugins from CLI overrides or manifest. A plugin entry with
   // `enabled: false` (#30 per-project toggle) stays in the manifest but is
   // skipped here so it is never loaded at build/preview time.
@@ -335,6 +343,7 @@ function resolveWithPreset(
   return {
     title: c.title ?? m.title ?? "Document",
     authors: c.authors ?? m.authors ?? [],
+    engine,
     // ARCH #2: no preset fallback here — resolveActiveStyles (style-resolver.ts)
     // is the single source of default-stylesheet truth (styles/book.css, else
     // the first discovered .css, else []). Baking a preset default in here
