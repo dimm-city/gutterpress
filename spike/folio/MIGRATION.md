@@ -47,7 +47,7 @@ the pipeline shipping today.
 
 | fix | why | evidence |
 | --- | --- | --- |
-| **Mirrored binding gutters** | The book declares a 0.125in binding offset; Paged.js applies **none**. Inner margins run short on every other page and text creeps toward the spine. | Folio 55pt recto / 46pt verso; Gutterpress 52/53pt either parity (`compare/ab-report.py`) |
+| **Mirrored binding gutters** | The book declares a 0.125in binding offset via `var(--binding-margin, …)`; Paged.js silently drops that declaration. Root-caused to Paged.js itself (not `packages/cli`) — see below. Not fixed; documented. | Folio 55pt recto / 46pt verso; Gutterpress 52/53pt either parity (`compare/ab-report.py`) |
 | **`generateDocumentOutline`** | Shipped PDFs have no bookmarks; the same DOM printed with the flag yields 155. One line in `pagination.ts`. | COMPARISON.md §A |
 | **Scope `filter:`** | ~90% of build time on **both** engines, and it silently rasterizes card text to 300 DPI bitmaps — not selectable, searchable or accessible in the released PDF. | 57.0s → 6.2s over 60pp; [`ENGINE.md`](./ENGINE.md) §10 |
 | **Explain the 1.364× scale** | Paged.js typesets the book at a scale its stylesheet never asks for, so every `pt` value in the CSS is a lie and the design is un-reasonable-about. | `body{zoom:1.5}` reproduces Paged.js on 921/921 words ±0.15pt |
@@ -55,6 +55,63 @@ the pipeline shipping today.
 The scale item is the gate for everything after it. Do not migrate away from a
 mechanism nobody can explain — and it is worth knowing whether it is a Paged.js
 behaviour or something in how the pipeline drives it.
+
+### Mirrored binding gutters — root cause (Paged.js, not `packages/cli`)
+
+Investigated in `packages/cli`: `pagination.ts` drives the polyfill with
+`page.setViewport`/`page.goto`/`page.pdf({ margin: 0, … })` and never touches
+`@page` margins itself; `pagedjs.ts` only injects the polyfill `<script>` and a
+`break-inside` handler, never rewrites CSS. Two fixtures, run through the exact
+shipped `renderHtmlToPdf()` path, isolate the cause to the vendored polyfill:
+
+1. A fixture with **literal** `@page :left { margin-left: 1in; margin-right: 0.5in }`
+   / `@page :right { margin-left: 0.5in; margin-right: 1in }` mirrors correctly
+   end-to-end — measured recto/verso left text edges 36pt / 72pt against
+   declared 0.5in/1in (both exact). The same declarations, run through
+   `examples/with-design-guide/book-01` via the real `gutterpress build` CLI
+   (its `design-guide/styles/guide.css` already declares `@page :left`/`:right`
+   with literal `0.75in`/`1in`), also mirror correctly: 54pt / 72pt.
+2. The field guide's actual `page-rules.css` (read-only, from a local checkout
+   used only for measurement) expresses the binding side as
+   `margin-right: var(--binding-margin, 0.75in)` / `margin-left: var(--binding-margin, 0.75in)`
+   — a **custom-property function**, not a literal length. Reproducing only
+   that one change (literal → `var(--binding-margin, 1in)`, with
+   `--binding-margin: 1in` on `:root`) in the same fixture, through the same
+   shipped code path, reproduces the defect: the `var()`-declared side is
+   silently **dropped**, not fallback-substituted — the page falls through to
+   the base (unmirrored) `@page` margin instead. Measured: recto (literal
+   `margin-left: 0.5in`) still correct at 36pt; verso (`var()` side) lands at
+   54pt, which is the fixture's **base `@page` `margin-right/left: 0.75in`**,
+   not the declared `1in`, not even the `var()`'s own `0.75in` fallback text.
+
+The mechanism, confirmed by reading the vendored source
+(`packages/cli/src/assets/vendor/paged.polyfill.js`): the `@page` declaration
+walker (`parsed.margin[m] = declaration.value.children.first();`, ~line 28123)
+takes the first CSS value node of a longhand `margin-*` declaration without
+checking its type. For `margin-left: var(--binding-margin, .75in)` that node is
+a `Function` (`var`), not a `Dimension`. `addMarginVars()` (~line 28499) then
+guards on `typeof margin[m].value !== "undefined"` — a `Function` node has no
+`.value` — so the declaration is dropped outright: no `--pagedjs-margin-*`
+override is emitted for that side, and the page inherits the base `@page`
+value instead. Verified directly in a real field-guide PDF's serialized
+`book.html`: `.pagedjs_left_page{--pagedjs-margin-left:0.625in}` and
+`.pagedjs_right_page{--pagedjs-margin-right:0.625in}` — each rule overrides
+**only the side declared as a literal length**; the `var()`-declared side is
+absent from both rules, so both parities fall back to the base `@page`'s
+`0.625in`/`0.625in` — which is exactly the near-symmetric 52/53pt measured by
+`ab-report.py` (45pt page-box margin + normal glyph inset).
+
+This is a Paged.js defect in its own `@page` AST parser, not a `packages/cli`
+driving-code defect — literal-valued mirrored margins already work correctly
+end-to-end today. Per this task's instructions, it is **documented, not
+patched**: a fix would mean either forking the vendored polyfill (ruled out) or
+adding a bespoke CSS custom-property resolution pass to `packages/cli` solely
+to work around a parser gap in code already slated for removal — a new
+repair-layer for a shrinking-lifetime dependency, working against the "reduce
+complexity" mandate. Authors can work around it today by giving `@page
+:left`/`:right` margin declarations literal values (no `var()`); Folio does not
+have this limitation (see `ENGINE.md` §3, which documents Folio's own
+unrelated cascade-order cause of the same *symptom*).
 
 ---
 

@@ -107,6 +107,19 @@ running heads, and mirrored gutters collapsing to a single margin on every page.
 The fix is to never depend on the cross-sheet cascade — resolve every page
 context and emit it flat (`ARCHITECTURE.md` §3).
 
+**Not the same bug as the shipped Paged.js pipeline's gutter defect.** The
+current `packages/cli` pipeline shows the identical *symptom* (mirrored gutters
+collapsing to one margin) for a completely different, Paged.js-native reason:
+its `@page` declaration walker takes a longhand `margin-*` value's first AST
+node without checking its type, so a `var(--custom-prop, fallback)` value (a
+`Function` node, no `.value`) is silently dropped rather than resolved or
+fallback-substituted — the page falls through to the *unmirrored* base `@page`
+margin instead. Root-caused with fixtures and vendored-source line references
+in [`MIGRATION.md`](./MIGRATION.md)'s Step 1 section. Do not conflate the two:
+Folio's is a cross-stylesheet cascade-order bug (fixed by flat resolution,
+above); Paged.js's is a parser gap on `var()` inside `@page` (inherent to the
+polyfill, not fixed — see that section for why).
+
 ### Shorthand and longhand must be resolved in cascade order
 
 `@page cover { margin: 0 }` must beat `@page :right { margin-left: .75in }`
