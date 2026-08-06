@@ -123,13 +123,17 @@ function hmrClientSnippet(initialRevision: number, instanceId: string): string {
       readyToAcknowledge = true;
       acknowledge();
     }
-    // CRITICAL ordering: when the Paged.js polyfill is present it re-paginates on
-    // load and its PagedConfig.after scrolls to the document start THEN fires
-    // 'renderingComplete'. So in engine mode we MUST wait for that event —
-    // restoring earlier would be wiped by that initial scroll. In static mode (no
-    // engine) the content is final immediately, so restore right after load.
-    var hasEngine = !!document.querySelector('script[src*="paged.polyfill"]');
+    // CRITICAL ordering: when a pagination engine is present it restructures
+    // the DOM after load, so restoring the scroll anchor early would target
+    // pre-pagination geometry (or be wiped by Paged.js's initial scroll).
+    // Paged.js fires 'renderingComplete'; the Gutterpress engine viewer
+    // fires 'folio:layout' when its pagination completes — wait for
+    // whichever engine is on the page. In static mode (no engine) the
+    // content is final immediately, so restore right after load.
+    var hasEngine = !!document.querySelector('script[src*="paged.polyfill"]')
+      || !!document.querySelector('script[src*="/engine/folio.js"]');
     window.addEventListener('renderingComplete', finishInitialRender);
+    window.addEventListener('folio:layout', finishInitialRender, { once: true });
     if (!hasEngine) {
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () { setTimeout(finishInitialRender, 50); });
