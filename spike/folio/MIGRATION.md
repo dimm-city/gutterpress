@@ -50,23 +50,19 @@ the pipeline shipping today.
 | **Mirrored binding gutters** | The book declares a 0.125in binding offset via `var(--binding-margin, …)`; Paged.js silently drops that declaration. Root-caused to Paged.js itself (not `packages/cli`) — see below. Not fixed; documented. | Folio 55pt recto / 46pt verso; Gutterpress 52/53pt either parity (`compare/ab-report.py`) |
 | **`generateDocumentOutline`** | ✅ **DONE** (`bfcbd15`): `outline: true` in `pagination.ts`'s `page.pdf()` call. 0 → 155 bookmarks, all 155 destinations landing on a page whose text contains the bookmark title (verified with two readers that share no code with our pipeline). ⚠️ Correction: `tagged: true` is a **no-op** — `/StructTreeRoot` and `/MarkInfo <</Marked true>>` were already present before the commit. Bookmarks are the whole delta. The desktop export path (`packages/desktop/electron/pdf-export.ts`) still has neither flag. | COMPARISON.md §A |
 | **Scope `filter:`** | ~90% of build time on **both** engines, and it silently rasterizes card text to 300 DPI bitmaps — not selectable, searchable or accessible in the released PDF. ⚠️ **Partially done**: `packages/cli/src/lib/printsafe.ts` now emits a print-safety **warning** (`printsafe/no-risky-print-effects`) naming these exact measured consequences whenever `filter:` appears in author CSS — see its test in `printsafe.test.ts`. The actual scoping — rewriting the design guide's CSS so `filter:` applies to the smallest possible selector — is unchanged and out of scope for this repo: it lives in the book's own CSS, owned by `dc-op-manual`. | 57.0s → 6.2s over 60pp; [`ENGINE.md`](./ENGINE.md) §10 |
-| **Explain the 1.364× scale** | ⚠️ **STILL OPEN — the first answer was refuted.** "Paged.js inflates, triggered by `@font-face` rule order" is WRONG: that ablation was measuring a font substitution (LiberationSerif vs TitilliumWeb glyph boxes), and the discriminating experiment shows Paged.js and script-stripped plain Chromium render the full field-guide stylesheet **identically** (18.252pt both ways). Paged.js applies no scale. The 1.364× is Chromium **print shrink-to-fit compressing the PLAIN render** (960px content vs ~705pt printable). Whether Folio's leg is compressed the same way is **unmeasured**. | `ENGINE.md` §9, both the retraction and the probe (58.453 / 79.734 = 1/1.364) |
+| **Explain the 1.364× scale** | ✅ **RESOLVED — and it inverts the headline.** "Paged.js inflates, triggered by `@font-face` rule order" was refuted (font substitution, not a scale). The follow-up finding — "the 1.364× is Chromium print shrink-to-fit compressing the PLAIN render" — is correct as far as it went, but the open question it left ("is Folio's leg compressed the same way?") is now answered: **yes, identically.** `folio build()`'s only `Page.printToPDF()` call (`src/compiler/build.ts`'s `printPdf()`, used at every tier) is a bare CDP print of the raw document with no width-fitting of its own — the multicol fragmentation that would make it immune belongs to Folio's on-screen *viewer*, not its PDF build path. Measured on the real staged field guide: Folio's real body-text "chapters" prints **13.38pt**, matching plain Chromium's compressed **13.381pt** — not the shipped Paged.js PDF's **18.26pt** (re-confirmed), and Folio's own build lands at **201 pages**, same as the plain-Chromium leg, both short of Paged.js's 301. Paged.js's number is the honest one here: pagination removes the over-wide trigger by construction; Folio's native-print path does not. | `ENGINE.md` §9 (resolved subsection); four-leg synthetic table (53.15/79.73pt, ratio 0.6666 on both engines) + the field-guide re-measurement (13.38pt Folio vs 13.381pt plain vs 18.26pt Paged.js) |
 
-The scale item is the gate for everything after it, and **the gate is still
-shut.** Do not migrate away from — or retune tokens against — a mechanism
-nobody can explain. The first explanation was committed as fact and then
-refuted by independent re-measurement; treat the current shrink-to-fit finding
-the same way until someone runs the Folio leg.
-
-**The next measurement, precisely.** Determine whether Folio's field-guide
-render is itself shrink-to-fit-compressed. Folio paginates content into
-page-sized fragments, so it *should* be immune where the plain un-paginated
-print is not — but that is a prediction, not a measurement. Use the same
-injected-probe technique (`96px` serif probe, compare against a control page
-with identical `@page` geometry and no over-wide content). **If Folio's numbers
-came from a compressed render, `COMPARISON.md`'s headline conclusion — "Folio
-typesets at the size the CSS declares, Paged.js does not" — inverts, and Step 2
-is built on sand.** Nothing downstream should move until this lands.
+The scale item was the gate for everything after it, and **the gate is now
+closed — with the opposite result Step 2 was written expecting.** Do not
+retune tokens against Folio's *current* numbers on the field guide: they are
+compressed the same way the discredited "plain Chromium" baseline was.
+Paged.js's 18.25pt is the uncompressed, honest 12pt-CSS rendering on this
+book; Folio matches it only once the field guide's over-wide layout (960px
+content against ~705pt printable) is fixed, or Folio gains an explicit
+pre-print width check it does not have today. Until one of those happens, a
+Folio PDF of the field guide as currently authored will silently under-size
+text the same way the old "plain Chromium" measurement did — this is a defect
+to fix, not a scale to design tokens around.
 
 ### Mirrored binding gutters — root cause (Paged.js, not `packages/cli`)
 
@@ -129,8 +125,30 @@ unrelated cascade-order cause of the same *symptom*).
 
 ## Step 2 — Decide the type size, deliberately
 
-Under Folio, `12pt` means 12pt. The tokens become honest, which is the whole
-point — but it forces a decision that has been made implicitly until now.
+**Premise correction (measured, see Step 1's scale row and `ENGINE.md` §9):**
+"Under Folio, `12pt` means 12pt" is **not true on the field guide as currently
+authored.** Folio's own build of the field guide renders body text at 13.38pt
+for a 12pt declaration — the same shrink-to-fit-compressed value the
+discredited "plain Chromium" baseline gave, because Folio's PDF path is a
+bare native print with no width-fitting, and the guide's content is ~960px
+wide against ~705pt printable. The book's *honest* 12pt-declared size, on
+this document, is Paged.js's 18.25pt — the number pagination happens to
+protect and Folio's native-print path does not. Do not set Step 2's tokens
+from a Folio proof of the field guide until the over-wide layout is fixed (or
+Folio gains a pre-print width check); a Folio proof taken today would be
+tuning against the same compressed numbers this whole investigation
+originated to root out.
+
+For a document that is NOT over-wide, the original premise holds: Folio
+prints at the size the CSS declares (confirmed on this task's synthetic
+control fixture, `folio build()` matching plain Chromium's uncompressed
+79.73pt probe exactly). The paragraph below still describes the right
+*process* for a correctly-fitted document; it no longer describes what a
+Folio proof of the field guide *as it stands today* would show.
+
+Under Folio, `12pt` means 12pt once a document is not over-wide. The tokens
+become honest, which is the whole point — but it forces a decision that has
+been made implicitly until now.
 
 **Do not pick the size by matching today's output.** Every visual judgment in
 the book so far was made through a 1.364× distortion, so "what it looks like

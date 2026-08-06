@@ -410,7 +410,7 @@ Two measured facts about `zoom` in the print path:
 > Chromium 151 with every `<script>` stripped produce the **identical**
 > 18.252pt / 44.400pt. **Paged.js applies no scale.**
 
-### What the 1.364× actually is — and why it is now an OPEN question
+### What the 1.364× actually is — RESOLVED: Folio is compressed identically, not immune
 
 The 1.364× *is* real on the field guide, and it is uniform in both axes on the
 same word in the same font: Gutterpress `18.252pt × 41.508`, plain Chromium on
@@ -426,12 +426,74 @@ injected at the top of the real staged body prints **58.453pt**; the same probe
 on a control page with identical `@page` geometry where nothing is over-wide
 prints **79.734pt**. 58.453 / 79.734 = 0.733 = **1 / 1.364**.
 
-**This is the gate for Step 2 and it is not closed.** If the plain-Chromium
-13.38pt baseline is shrink-to-fit-compressed, then the same question must be
-asked of Folio's leg before any type token is retuned, and — if Folio's numbers
-were taken from a compressed render — `COMPARISON.md`'s "Folio typesets at the
-size the CSS declares" conclusion inverts. Nobody has measured that yet. Do not
-retune a token until it is measured. The historical (refuted) reasoning follows.
+**The open question is closed: Folio's PDF leg is compressed exactly the same
+way, not immune.** `folio build()`'s print step (`src/compiler/build.ts`'s
+`printPdf()`, the ONLY function that calls `Page.printToPDF()`, used
+identically at every tier — Tier 1, Tier 2, and every Tier 3 measurement pass)
+is a bare CDP print of the raw document, exactly like the "plain Chromium"
+leg. The multicol fragmentation this document previously assumed would make
+Folio immune (`src/viewer/fragment.ts`, "the same LayoutNG block-fragmentation
+engine print use[s]... on screen") belongs to Folio's **interactive on-screen
+viewer**, not to its PDF build path — `build.ts` never touches multicol, never
+constrains content width before printing, and does no width-fitting of its
+own. It leans on Chromium's native `@page` fragmentation the same way a plain
+`page.printToPDF()` call does, so it inherits the same shrink-to-fit trigger.
+
+Four legs, same technique, same `96px` serif probe, same wrapper-copy
+discipline (nothing in the guide's own files edited):
+
+| leg | tool / command | probe glyph height |
+| --- | --- | --- |
+| synthetic control (no over-wide element) | plain Chromium `printToPDF()` | **79.73pt** |
+| synthetic over-wide (1020px box on an 8.5×11in page) | plain Chromium `printToPDF()` | **53.15pt** (0.6666× the control) |
+| same synthetic control | `folio build()` | **79.73pt** — byte-identical to plain |
+| same synthetic over-wide | `folio build()` | **53.15pt** — byte-identical to plain (0.6666× control) |
+| real staged field guide (`/tmp/cmp-fg/staged/book.probed.html`, probe injected via a wrapper copy) | plain Chromium `printToPDF()` | **58.45pt** (matches the 58.453pt established above) |
+| same real staged field guide | `folio build()` | **58.45pt** — byte-identical to plain |
+
+Both synthetic legs stayed at **1 page** — Chromium does not clip or overflow
+the over-wide element onto a second page or strip; it scales the *entire* page
+geometry down uniformly so everything, including the offending box, fits on
+one sheet. That is the overflow behaviour for both engines: silent uniform
+shrink, not clip, not reflow.
+
+The real-document leg is the decisive one, because it measures actual body
+text, not just the injected probe: on `F-folio-fieldguide.pdf` the real word
+"chapters" (not the probe) in the table of contents measures **13.38pt** —
+matching plain Chromium's established **13.381pt** to three decimals, and
+**not** the shipped Paged.js production PDF's **18.26pt** (re-measured here
+against `/tmp/cmp-fg/gp/dimm-city-field-guide-pdf.pdf`, confirming the
+previously-recorded 18.252pt). Folio's own field-guide build also lands at
+**201 pages** — the same page count as the plain-Chromium leg, both far short
+of the shipped Paged.js PDF's 301 pages, because both under-fit the content
+against the same broken, over-wide layout.
+
+**This inverts `COMPARISON.md`'s headline as currently written.** "Folio
+typesets at the size the CSS declares, Paged.js does not" is backwards on
+*this* document: Paged.js's 18.25pt is the honest, uncompressed 12pt-CSS
+rendering (pagination removes the over-wide trigger by construction — nothing
+in a `.pagedjs_page` fragment is ever wider than the page). Folio's 13.38pt is
+the *compressed* number, identical to the plain render this project already
+established was wrong. Folio brings no page-width safety net: on a
+correctly-fitted document (the synthetic control) it types at the honest
+size, same as plain Chromium; on an over-wide one (the field guide, as
+currently authored) it silently shrinks, same as plain Chromium. The
+difference between the two engines on this specific book is not fidelity —
+it is that Paged.js's fragmentation happens to hide an authoring bug (content
+960px wide against ~705pt printable) that Folio's native-print path does not.
+Fixing the field guide's over-wide layout (or giving Folio an explicit
+pre-print width check) would presumably make both agree at the honest
+~18.25pt; nobody should retune Step 2's tokens off either engine's *current*
+number on this book until that authoring defect is understood or fixed — see
+`MIGRATION.md`.
+
+Reproduce: fixtures and script under `/tmp/cmp-fg/probe-test/` (throwaway,
+not committed) — `control.html`/`overwide.html` for the synthetic legs,
+`measure.ts` for legs A–D; `/tmp/cmp-fg/staged/book.probed.html` (a wrapper
+copy of the staged real book with a `96px` probe `<div>` injected right after
+`<body>`, produced by `spike/folio/compare/stage-book.ts` then a small
+Python append — the guide's own `book.html` was never edited) and
+`measure-fg.ts` for legs E/F.
 
 ### The mechanism: `@font-face` rule ORDER, not a scale property (A3 finding — REFUTED, see above)
 
