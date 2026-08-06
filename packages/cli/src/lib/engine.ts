@@ -54,7 +54,14 @@ export async function buildNativePdf(htmlFile: string, outPdf: string): Promise<
   try {
     const pooled = await getBrowser(RENDER_TIMEOUT_MS);
     const engineBrowser = await connectChromium(pooled.wsEndpoint());
-    result = await build({ input: htmlFile, browser: engineBrowser });
+    try {
+      result = await build({ input: htmlFile, browser: engineBrowser });
+    } finally {
+      // Drops OUR websocket only (connectChromium's close never touches the
+      // pooled browser). Without this, every build in a long-lived process
+      // (preview server, desktop) leaks one CDP connection.
+      await engineBrowser.close();
+    }
   } catch (err) {
     throw new BuildError(
       `--engine native failed: ${err instanceof Error ? err.message : String(err)}`

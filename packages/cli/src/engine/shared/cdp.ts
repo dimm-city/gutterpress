@@ -157,7 +157,7 @@ async function checkMilestoneAndWrap(
   if (milestone < REQUIRED_MILESTONE) {
     await teardown();
     throw new Error(
-      `Folio requires Chromium ${REQUIRED_MILESTONE}+; found ${version.product} ${origin}.\n` +
+      `The Gutterpress engine requires Chromium ${REQUIRED_MILESTONE}+; found ${version.product} ${origin}.\n` +
         `Set FOLIO_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
     );
   }
