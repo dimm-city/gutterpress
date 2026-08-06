@@ -104,6 +104,25 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     const model: GcpmModel = extract(cssText);
     const { tier3Reasons } = classify(model);
 
+    // ---- deterministic viewport = the sheet -----------------------------
+    // Viewport-relative units (vw/vh — 143 uses in one real book) resolve
+    // against the LAYOUT viewport even in print, so print output silently
+    // depends on whatever window/emulation state the browser happens to be
+    // in: an engine-launched window, a pooled puppeteer default, or the
+    // width check's cleared override each gave DIFFERENT sizes — measured
+    // as a 0.84x shrink-to-fit on one path and none on another, for the
+    // same document. Pin the viewport to the author's page size (what the
+    // Paged.js pipeline has always laid out at) before anything measures
+    // or prints, and keep it pinned for the build's whole life.
+    const baseGeom = resolvePage(model).geometry;
+    const sheetViewport = {
+      width: Math.max(1, Math.round((baseGeom.width * 96) / 72)),
+      height: Math.max(1, Math.round((baseGeom.height * 96) / 72)),
+      deviceScaleFactor: 1,
+      mobile: false,
+    };
+    await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
+
 
     // ---- Tier 2: geometry synthesis (bleed / marks) ---------------------
     const tier2 = synthesize({
@@ -134,6 +153,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       page,
       model,
       2 * (tier2.geometry.bleed + tier2.geometry.slug),
+      sheetViewport,
     );
     const describe = (list: Array<{ desc: string; px: number }>) =>
       list
@@ -360,13 +380,20 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // guess holds — the shipped bytes. `predicted` is null only if the
       // predict page itself fails (e.g. a malformed document); the fixpoint
       // loop below is unchanged and is the fallback either way.
-      const predicted = await predictPageMap(browser, url, AGENT, VIEWER, {
-        stringSets: model.stringSets.map((s) => ({ selector: s.selector, name: s.name })),
-        rectoDecls,
-        xrefSelectors,
-        resets: model.counterResets,
-        targets: [...targets],
-      });
+      const predicted = await predictPageMap(
+        browser,
+        url,
+        AGENT,
+        VIEWER,
+        {
+          stringSets: model.stringSets.map((s) => ({ selector: s.selector, name: s.name })),
+          rectoDecls,
+          xrefSelectors,
+          resets: model.counterResets,
+          targets: [...targets],
+        },
+        sheetViewport,
+      );
       let previous = "";
       if (predicted) {
         log(
@@ -525,6 +552,7 @@ async function findWidthOffenders(
   page: Session,
   model: GcpmModel,
   bleedSlugExtensionPt: number,
+  restoreViewport: Record<string, unknown>,
 ): Promise<{
   limitPx: number;
   boxes: Array<{ desc: string; px: number }>;
@@ -599,7 +627,10 @@ async function findWidthOffenders(
     );
     return { limitPx, boxes, intrinsics: replaced };
   } finally {
-    await page.send("Emulation.clearDeviceMetricsOverride");
+    // Restore the pinned sheet viewport — never clear: a cleared override
+    // reverts to the browser's window size, and vw/vh units make print
+    // layout depend on it (the measured 0.84x path divergence).
+    await page.send("Emulation.setDeviceMetricsOverride", restoreViewport);
   }
 }
 
@@ -648,11 +679,15 @@ async function predictPageMap(
     resets: Array<{ selector: string; start: number }>;
     targets: string[];
   },
+  sheetViewport: Record<string, unknown>,
 ): Promise<PredictedPageMap | null> {
   const t0 = performance.now();
   let page: Session | undefined;
   try {
     page = await browser.newPage();
+    // Same pinned viewport as the print page — vw/vh-sized content must
+    // measure identically on both sides or the prediction always misses.
+    await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
     await page.navigate(url);
     await page.evaluate(agentScript);
     await page.waitForReady();
