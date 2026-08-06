@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { pagedjsPolyfillTagRegex } from "./pagedjs-marker";
+import { resolvePageVarsInHtml } from "./page-var-resolve";
 
 /**
  * Inline script that polyfills Paged.js's missing break-inside: avoid support.
@@ -132,6 +133,12 @@ export function patchHtmlStringForPagedjs(html: string, vendorPath: string): str
   // WITHOUT the polyfill script, so Paged.js never loaded and
   // __PAGED_RENDERED__ never fired (see finding #22 / the 60-minute stall).
   const inject = `${BREAK_INSIDE_HANDLER}\n<script src="${vendorPath.replace(/\\/g, "/")}"></script>`;
+
+  // Paged.js silently DISCARDS `var()` values inside `@page` declarations
+  // (its walker takes the first AST node of a longhand value untyped — the
+  // mirrored-binding-gutter defect). Substitute :root/html token values into
+  // `@page` blocks so the polyfill only sees literal lengths.
+  html = resolvePageVarsInHtml(html);
 
   const match = html.match(pagedjsPolyfillTagRegex());
   if (match) {

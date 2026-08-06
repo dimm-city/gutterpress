@@ -10,10 +10,11 @@ name: Folio migration fixtures
 # builds it with --kitchen-sink, which this job never passes — so this job
 # stays fast (~10-20s of fixture builds, plus install/setup).
 #
-# Three of the fixtures (03b-mirrored-binding-var, 04-folio-restart,
-# 08-recto-verso-blank) are EXPECTED to fail their assertion on Paged.js
-# today — documented, measured reasons in
-# spike/folio/fixtures/migration/README.md's "Divergences" section.
+# Two of the fixtures (04-folio-restart, 08-recto-verso-blank) are EXPECTED
+# to fail their assertion on Paged.js today — documented, measured reasons in
+# spike/folio/fixtures/migration/README.md's "Divergences" section. (03b was
+# a third until packages/cli's page-var-resolve.ts fixed the shipped
+# pipeline's var()-in-@page handling.)
 # `runner.ts` itself knows about these (its KNOWN_DIVERGENCES allowlist) and
 # only sets a nonzero exit code for an UNEXPECTED failure — a build crash, a
 # probe crash, any other fixture failing, or a known-divergent fixture

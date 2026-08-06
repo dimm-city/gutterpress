@@ -604,7 +604,9 @@ async function main() {
   // (fails on an UNEXPECTED break) instead of permanently red on findings
   // this spike already recorded on purpose.
   const KNOWN_DIVERGENCES: Record<string, "folio" | "pagedjs"> = {
-    "03b-mirrored-binding-var": "pagedjs",
+    // 03b (var()-declared binding margin) was here until packages/cli's
+    // page-var-resolve.ts started substituting :root tokens into @page
+    // blocks before the CSS reaches Paged.js — both engines now PASS it.
     "04-folio-restart": "pagedjs",
     "08-recto-verso-blank": "pagedjs",
   };

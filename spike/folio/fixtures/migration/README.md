@@ -48,7 +48,7 @@ fixture small and fast; nothing about the constructs depends on page size.
 | 01-filter-clip-path | 1 | 0.42s | PASS | 1 | 1.65s | PASS |
 | 02-fullbleed-running-heads | 4 | 0.23s | PASS | 4 | 1.09s | PASS |
 | 03-mirrored-binding | 5 | 0.12s | PASS | 5 | 1.16s | PASS |
-| 03b-mirrored-binding-var | 5 | 0.24s | PASS | 5 | 1.23s | **FAIL** |
+| 03b-mirrored-binding-var | 5 | 0.24s | PASS | 5 | 1.23s | PASS (fixed by page-var-resolve.ts) |
 | 04-folio-restart | 6 | 0.28s | PASS | 6 | 1.10s | **FAIL** |
 | 05-margin-box-furniture | 3 | 0.13s | PASS | 3 | 1.08s | PASS |
 | 06-xref-toc | 4 | 0.22s | PASS | 4 | 1.08s | PASS |
@@ -56,15 +56,26 @@ fixture small and fast; nothing about the constructs depends on page size.
 | 08-recto-verso-blank | 5 | 0.29s | PASS | 3 | 1.07s | **FAIL** |
 | 99-kitchen-sink | 29 (tier 3, 2 passes) | 0.72s | — | 27 | 1.41s | — |
 
-5/9 same page count on both engines. Four fixtures diverge (03b, 04, 07, 08),
-each with a documented, MEASURED reason below — not a guess. Fixture 07's
-divergence was introduced by an independent-verification fix (its assertion
-originally could not fail, see "Assertion could not fail" below) and is a
-genuine PASS/PASS page-count gap, not an assertion failure like 03b/04/08.
+Three fixtures diverge (04, 07, 08), each with a documented, MEASURED reason
+below — not a guess. 03b diverged until `packages/cli`'s page-var-resolve.ts
+fixed the shipped pipeline (see its section). Fixture 07's divergence was
+introduced by an independent-verification fix (its assertion originally could
+not fail, see "Assertion could not fail" below) and is a genuine PASS/PASS
+page-count gap, not an assertion failure like 04/08.
 
 ## Divergences, with the documented reason MIGRATION.md's success criteria ask for
 
-### Fixture 3b — binding margin via var(): Folio PASSES; Paged.js FAILS
+### Fixture 3b — binding margin via var(): NOW PASSES ON BOTH ENGINES (fixed)
+
+> **RESOLVED (2026-08-06):** `packages/cli/src/lib/page-var-resolve.ts` now
+> substitutes `:root`/`html` custom-property values into `@page` declarations
+> before the HTML reaches Paged.js (`patchHtmlStringForPagedjs` applies it),
+> so the polyfill only ever sees literal lengths — which it handles
+> correctly. Measured: Paged.js moved from 54.0pt (`dropped`) to 90.0pt
+> (`correct`), identical to Folio; 03b was removed from KNOWN_DIVERGENCES.
+> The polyfill itself is unchanged (still unforked); the analysis below is
+> kept as the record of the underlying Paged.js defect the resolver works
+> around.
 
 This is the fixture that covers the ACTUAL A1 defect (P1a). Fixture 3 uses
 only literal lengths on the binding side — the case MIGRATION.md's own
