@@ -21,8 +21,8 @@
  */
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { build } from "../src/compiler/build.ts";
-import { type Browser } from "../src/shared/cdp.ts";
+import { build } from "../../../packages/cli/src/engine/compiler/build.ts";
+import { type Browser } from "../../../packages/cli/src/engine/shared/cdp.ts";
 import { imageBookHtml, standardImages } from "../fixtures/make-images.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 import { pdfText } from "./probe.ts";
@@ -310,7 +310,7 @@ export async function run(browser: Browser) {
 }
 
 if (import.meta.main) {
-  const { launchChromium } = await import("../src/shared/cdp.ts");
+  const { launchChromium } = await import("../../../packages/cli/src/engine/shared/cdp.ts");
   const b = await launchChromium();
   try {
     const r = await run(b);

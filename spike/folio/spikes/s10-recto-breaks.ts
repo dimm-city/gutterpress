@@ -14,8 +14,8 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { build } from "../src/compiler/build.ts";
-import { launchChromium, type Browser, type Session } from "../src/shared/cdp.ts";
+import { build } from "../../../packages/cli/src/engine/compiler/build.ts";
+import { launchChromium, type Browser, type Session } from "../../../packages/cli/src/engine/shared/cdp.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 import { pdfText } from "./probe.ts";
 

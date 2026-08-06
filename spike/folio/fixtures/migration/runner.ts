@@ -5,8 +5,8 @@
  * engines and prints a per-fixture table: pages, geometry, assertion result,
  * wall time.
  *
- *   - Folio:   `build()` from `../src/compiler/build.ts` — the same function
- *              `spike/folio/src/cli.ts build` calls (see `cli.ts` line ~74).
+ *   - Folio:   `build()` from `packages/cli/src/engine/compiler/build.ts` —
+ *              the Gutterpress engine, promoted out of this spike 2026-08-06.
  *   - Paged.js: `renderHtmlToPdf()` from the SHIPPED
  *              `packages/cli/src/lib/pagination.ts` — the exact function the
  *              real `gutterpress build` pipeline uses to drive Paged.js and
@@ -30,8 +30,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { launchChromium, type Browser } from "../../src/shared/cdp.ts";
-import { build } from "../../src/compiler/build.ts";
+import { launchChromium, type Browser } from "../../../../packages/cli/src/engine/shared/cdp.ts";
+import { build } from "../../../../packages/cli/src/engine/compiler/build.ts";
 import { pdfText, pdfInfo, probeBackend } from "../../spikes/probe.ts";
 
 const HERE = import.meta.dir;

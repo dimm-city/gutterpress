@@ -11,8 +11,8 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensureBundles } from "../src/bundles.ts";
-import { launchChromium, type Browser, type Session } from "../src/shared/cdp.ts";
+import { ensureBundles } from "./bundles.ts";
+import { launchChromium, type Browser, type Session } from "../../../packages/cli/src/engine/shared/cdp.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 import { pdfText } from "./probe.ts";
 

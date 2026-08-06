@@ -2,37 +2,44 @@
 
 **Standard CSS in, pages out. No layout engine shipped.**
 
+> Engine source promoted 2026-08-06 to `packages/cli/src/engine/` — per the
+> ratified naming decision, "Folio" is retired as a project name and is now
+> **the Gutterpress engine**, core to Gutterpress rendering rather than a
+> separate package. This directory remains the spike/verification harness
+> (`spikes/`, `fixtures/`, `compare/`) that exercises it; see
+> `src/README.md` for exactly what moved where.
+
 A working spike of the paged.js replacement proposed for Gutterpress: two thin
 programs around Chromium's *native* fragmentation instead of a JavaScript
 pagination engine.
 
-- **viewer** (`src/viewer/`) — a browser document that lets Chromium fragment
-  content into pages on screen with multicol, then decorates the result with
-  page sheets, the 16 margin boxes, running strings and cross-references.
-  27 KB minified / 10 KB gzipped, zero runtime dependencies.
-- **compiler** (`src/compiler/`) — a Bun CLI that drives the *system* Chromium
-  over raw CDP, fills the spec gaps Chromium hasn't shipped by synthesizing
-  standard CSS, and post-processes the PDF (boxes, crop marks, signatures).
-- **shared** (`src/shared/`) — `gcpm-extract` (the only code that reads CSS, and
-  it never rewrites the author's files), `synthesis` (every rule that *decides*
-  something, shared by both renderers), the content-value evaluator, the CDP
-  client and the PDF reader.
+- **viewer** (`packages/cli/src/engine/viewer/`) — a browser document that lets
+  Chromium fragment content into pages on screen with multicol, then decorates
+  the result with page sheets, the 16 margin boxes, running strings and
+  cross-references. 27 KB minified / 10 KB gzipped, zero runtime dependencies.
+- **compiler** (`packages/cli/src/engine/compiler/`) — a Bun CLI that drives
+  the *system* Chromium over raw CDP, fills the spec gaps Chromium hasn't
+  shipped by synthesizing standard CSS, and post-processes the PDF (boxes,
+  crop marks, signatures).
+- **shared** (`packages/cli/src/engine/shared/`) — `gcpm-extract` (the only
+  code that reads CSS, and it never rewrites the author's files), `synthesis`
+  (every rule that *decides* something, shared by both renderers), the
+  content-value evaluator, the CDP client and the PDF reader.
 
 Everything here is verified against a real browser by the spikes in `spikes/`.
 
 ## Status (2026-08-06)
 
 **The engine question is settled in Folio's favor; the next work is
-integration, not pagination.** The final field-guide A/B (COMPARISON.md) shows
-the two engines agree to 1.3% in pages with glyph-identical type once the
-confounds are shimmed away, Folio is the more standards-faithful renderer
-(mirrored binding gutters that Paged.js drops; type at the size the CSS
-declares), and the numbers reproduce exactly on `release/0.10.0`. Two known
-Folio gaps remain (front-matter folio restart; export is 2 print passes), both
-with identified mechanisms. **Start at [`MIGRATION.md`](./MIGRATION.md)** — it
-records the ratified decisions (notably: the A/B `zoom` shim is never shipped;
-CSS tokens get retuned instead), the ordered plan, and every measurement
-pitfall this spike paid for.
+integration, not pagination.** The field guide's over-wide layout that used to
+require an A/B scale shim is fixed upstream (`dc-op-manual` `fc12278`); the
+honest, shim-free A/B (COMPARISON.md "HONEST A/B REPORT") shows the two
+engines agree to 2% in pages with byte-identical type, both now mirror binding
+gutters and both now restart front-matter folio numbering. **Start at
+[`MIGRATION.md`](./MIGRATION.md)** — it records the ratified decisions
+(notably: no production stylesheet ships `body { zoom }` — moot now that the
+confound is fixed upstream, but still the rule), the ordered plan, and every
+measurement pitfall this spike paid for.
 
 ## The documentation
 
@@ -65,13 +72,21 @@ bun run spikes            # all 15 spikes against a real browser (~19s, 217 chec
 bun run compare           # current Gutterpress vs this spike, same book
 bun compare/diff-report.ts a.pdf b.pdf   # content-aligned artifact diff
 bun spikes/run-all.ts s1  # just one
-bun test                  # unit tests for the shared modules
 bunx tsc --noEmit -p tsconfig.json
 
-# Shimmed A/B against a Paged.js-coupled book (full recipe: COMPARISON.md):
-bun compare/apply-shim.ts <staged>/book.html          # writes book.shimmed.html
-FOLIO_INPUT=<staged>/book.shimmed.html bun compare/run.ts <project>
+# the engine's own unit tests now live with its source, in packages/cli:
+(cd ../../packages/cli && bun test src/engine)
+
+# Honest A/B against a Paged.js-coupled book, no shim needed (COMPARISON.md
+# "HONEST A/B REPORT" has the full recipe — stage once, build both engines
+# from the same book.html, read back with ab-report.py):
+bun compare/stage-book.ts <project> <outdir>
 python3 compare/ab-report.py <gp.pdf> <folio.pdf>     # poppler-only readback
+
+# compare/apply-shim.ts still exists for furniture-only comparisons (the
+# field guide styles Paged.js's DOM directly for its brick sheet/chips —
+# fg-shim.css has standard-CSS equivalents), but is no longer part of the
+# default recipe now that the scale confound is fixed upstream.
 ```
 
 On big books, expect the Gutterpress leg to take ~4.5 min and each Folio print
@@ -79,7 +94,7 @@ pass ~3.5 min; stage B (Paged.js in-browser) has never completed on a 300-page
 book — kill the run after the compile legs and use `ab-report.py`.
 
 The spikes need a **Chrome/Chromium 151 or newer** binary — Folio is pinned to
-151 (`REQUIRED_MILESTONE` in `src/shared/cdp.ts`) and refuses to launch an older
+151 (`REQUIRED_MILESTONE` in `packages/cli/src/engine/shared/cdp.ts`) and refuses to launch an older
 one rather than paginate differently without saying so. Resolution order:
 `$FOLIO_CHROMIUM`, `$PUPPETEER_EXECUTABLE_PATH`, `/opt/pw-browsers/chromium`,
 `/usr/bin/chromium`, `/usr/bin/chromium-browser`, `/usr/bin/google-chrome`.
@@ -96,23 +111,29 @@ Chromium's output — verification only, never part of the runtime.
 ```bash
 bun fixtures/make-book.ts                     # generate the test book
 
-# compile to PDF (tier is chosen automatically)
-bun src/cli.ts build fixtures/book-named.html -o out/book.pdf \
+# compile to PDF (tier is chosen automatically) — the standalone dev CLI now
+# lives at packages/cli/src/engine/dev-cli.ts (promoted with the rest of the
+# engine); `spikes/bundles.ts` rebuilds this dir's own dist/ copy on demand.
+DEV_CLI=../../packages/cli/src/engine/dev-cli.ts
+bun $DEV_CLI build fixtures/book-named.html -o out/book.pdf \
     --signature 4 --emit-css --title "A Book"
 
 # live preview: static serve + hot reload + /proof.pdf off a warm Chromium
-bun src/cli.ts dev fixtures/book-named.html --port 4321
+bun $DEV_CLI dev fixtures/book-named.html --port 4321
 
 # static, embeddable viewer bundle (the embed contract is an iframe)
-bun src/cli.ts export fixtures/book-named.html -o dist/viewer
+bun $DEV_CLI export fixtures/book-named.html -o dist/viewer
 ```
 
-The viewer bundles are built with:
+The viewer bundles are built with (this repo's own copy, via `spikes/bundles.ts`;
+`packages/cli` ships its OWN prebuilt/embedded copy — see
+`packages/cli/scripts/build-engine-bundles.mjs`):
 
 ```bash
-bun build src/viewer/global.ts   --target=browser --format=iife --outfile=dist/folio.js
-bun build src/viewer/global.ts   --target=browser --format=iife --minify --outfile=dist/folio.min.js
-bun build src/compiler/agent.ts  --target=browser --format=iife --outfile=dist/folio-agent.js
+ENGINE=../../packages/cli/src/engine
+bun build $ENGINE/viewer/global.ts   --target=browser --format=iife --outfile=dist/folio.js
+bun build $ENGINE/viewer/global.ts   --target=browser --format=iife --minify --outfile=dist/folio.min.js
+bun build $ENGINE/compiler/agent.ts  --target=browser --format=iife --outfile=dist/folio-agent.js
 ```
 
 ## What the author writes
@@ -139,10 +160,11 @@ No `.page` divs, no manual `padding: margin + bleed` maths, no per-page
 ## Layout of the spike
 
 ```
-src/shared/      gcpm-extract, content-value, cdp, pdf-inspect   (+ unit tests)
-src/viewer/      fragment (strips + page map), decorate, viewer.css, entries
-src/compiler/    tier2 (synthesis), build (tiers 1–3 + fixpoint), postprocess, agent
-src/cli.ts       folio build | dev | export
+packages/cli/src/engine/shared/    gcpm-extract, content-value, cdp, pdf-inspect (+ unit tests)
+packages/cli/src/engine/viewer/    fragment (strips + page map), decorate, viewer.css, entries
+packages/cli/src/engine/compiler/  tier2 (synthesis), build (tiers 1–3 + fixpoint), postprocess, agent
+packages/cli/src/engine/dev-cli.ts standalone dev CLI: build | dev | export
+src/                                (this dir) empty — see src/README.md
 spikes/          s0…s14, the harness, and the PDF probes (PyMuPDF + poppler)
 compare/         head-to-head vs the current Paged.js pipeline (same input)
 fixtures/        deterministic book generator (tokenised so pages can be diffed)

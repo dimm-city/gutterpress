@@ -7,8 +7,8 @@
  */
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensureBundles } from "../src/bundles.ts";
-import { launchChromium } from "../src/shared/cdp.ts";
+import { ensureBundles } from "./bundles.ts";
+import { launchChromium } from "../../../packages/cli/src/engine/shared/cdp.ts";
 import { banner, OUT_DIR, type SpikeResult } from "./harness.ts";
 
 const SPIKES: Array<{ id: string; load: () => Promise<{ run: Function }> }> = [

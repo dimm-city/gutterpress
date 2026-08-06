@@ -8,8 +8,8 @@
  * it measures and the fixpoint loop gets much harder to trust.
  */
 import { join } from "node:path";
-import { launchChromium, type Browser } from "../src/shared/cdp.ts";
-import { inspectPdf } from "../src/shared/pdf-inspect.ts";
+import { launchChromium, type Browser } from "../../../packages/cli/src/engine/shared/cdp.ts";
+import { inspectPdf } from "../../../packages/cli/src/engine/shared/pdf-inspect.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 
 const N = 12;

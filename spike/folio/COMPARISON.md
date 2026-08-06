@@ -1,21 +1,18 @@
-# Current Gutterpress (Paged.js) vs the Folio spike — same book, both engines
+# Current Gutterpress (Paged.js) vs the Gutterpress engine (spiked as "Folio") — same book, both engines
 
-> [!WARNING]
-> **CORRECTION (2026-08-06): the type-scale conclusion in this file is
-> refuted.** This document attributes the field guide's 1.364× type-size gap to
-> Paged.js scaling the book up. Independent re-measurement proved the opposite:
-> Paged.js applies **no scale** (it renders identically to script-stripped
-> plain Chromium on the full field-guide stylesheet), and the smaller type on
-> the plain/Folio legs is **Chromium print shrink-to-fit compressing those
-> renders** — the un-paginated document lays out ~960px wide against ~705pt
-> printable, and Folio's own PDF build is compressed **identically** (probe:
-> 58.45pt on both legs vs 79.73pt uncompressed control). So "Folio typesets at
-> the 12pt the CSS declares" is **wrong on this book**: 13.38pt is the
-> compressed size, and Paged.js's 18.25pt is the *uncompressed* rendering.
-> The pagination-agreement, gutter-fidelity, drift-profile and `filter:`
-> findings below are unaffected. Authoritative account: `ENGINE.md` §9
-> ("What the 1.364× actually is") and `MIGRATION.md` Step 1/Step 2.
-> Sections below are left as written; read them against this correction.
+> [!NOTE]
+> **The field guide's over-wide layout was fixed upstream** (`dc-op-manual`
+> commit `fc12278`, on its `main`) — the ~960px-wide content that was
+> triggering Chromium print shrink-to-fit no longer overflows the ~705pt
+> printable width. That compression was the confound behind an earlier,
+> retracted claim in this file ("Folio typesets at the 12pt the CSS
+> declares, Paged.js inflates it") — see the historical section below for
+> the full, preserved account of how that was measured, believed, and then
+> caught. With the confound gone, this file's field-guide numbers are now a
+> clean, shim-free A/B: no `body { zoom }`, no furniture substitution,
+> both engines built from the identical corrected `book.html`. Current
+> numbers are in "HONEST A/B REPORT" under "Second subject: the DC Field
+> Guide" below.
 
 Reproduce with:
 
@@ -203,12 +200,135 @@ Run on `dc-op-manual/field-guide` — ~1.9 MB of staged HTML, 1.2 MB of CSS acro
 seven layers, a custom markdown-it plugin, 102 MB of art. An order of magnitude
 harder than the user guide, and it produced findings the user guide could not.
 
-| | current (Paged.js) | Folio |
+## HONEST A/B REPORT (2026-08-06) — no shim, confound fixed upstream
+
+The first field-guide A/B run against the *fixed* book, with **no shim of any
+kind** — not the scale line, not the furniture substitution. Both engines
+built from the exact same staged `book.html`
+(`bun compare/stage-book.ts /tmp/fg-cmp-parent/field-guide /tmp/fg-honest/staged`
+— the corrected-copy fallback path, since the field guide's checked-out state
+still has the four broken image refs documented below; `dc-op-manual`'s CSS
+under `/tmp/fg-cmp-parent/dc-design-guide/css/` was confirmed byte-identical to
+`dc-op-manual`'s `main` at `fc12278` before the run — nothing hand-edited).
+Gutterpress via the shipped CLI (`gutterpress build … --format pdf
+--skip-pre-validate`); the engine leg via `build()` from
+`packages/cli/src/engine/compiler/build.ts` directly on the staged
+`book.html` (this moved from `spike/folio/src/compiler/build.ts` mid-session —
+see the note at the end of this section). Stage B (Paged.js in-browser) was
+not run, per standing guidance — it has never completed on this book.
+
+| | Gutterpress (Paged.js) | Gutterpress engine (Folio) |
 | --- | --- | --- |
-| build | **260 s** | **404 s** |
-| pages | 296 printed / 302 PDF | 200 printed / 201 PDF |
-| PDF | 167 MB | 144 MB |
-| body type as rendered | **~16.4 pt** | **12.0 pt** |
+| build | **278.5 s** | **664.8 s** (tier 3, single cold build) |
+| pages (`pdfinfo`) | **303** | **297** (ratio 1.020) |
+| PDF size | 171,635,926 B (163.7 MiB) | 169,261,639 B (161.4 MiB) |
+| page size | 621.12 × 810 pt | 621 × 810 pt |
+| body type, "chapters" (`pdftotext -bbox`) | **18.252 pt** | **18.252 pt** |
+| body type, "origins," (`pdftotext -bbox`) | **17.488 pt** | **17.488 pt** |
+| type scale agreement (`ab-report.py`, 4,510 words) | — | **4,474/4,510 within ±1.2% (99.2%)**, median ratio 1.0000 |
+| mirrored binding gutters, keyed to **printed** folio (not PDF page) | recto 53 pt / verso 61 pt | recto 45 pt / verso 54 pt |
+| front-matter folio restart | first printed folio **3** | first printed folio **3** |
+
+Reproduce: `python3 compare/ab-report.py /tmp/fg-honest/gp/dimm-city-field-guide-pdf.pdf /tmp/fg-honest/folio.pdf`
+(page/type-scale/drift numbers); the gutter row above is **not** `ab-report.py`'s
+own "mirrored gutters" line — that check buckets by raw PDF-page-index parity,
+which is off by the front-matter restart's 5-page offset (an odd number), so
+its "recto"/"verso" labels are swapped relative to the printed folio. Re-measured
+directly with `pdftotext -bbox`, bucketing by the **printed** `P. NN` chip
+(pages 20–45, past the front-matter noise) instead of PDF-page parity — this
+is the pitfall `MIGRATION.md` already names ("PDF page parity ≠ printed page
+parity"), and it is still live even though both engines now restart.
+
+**Type is now identical, not scaled.** The 1.364× gap this document used to
+report is gone: "chapters" and "origins," measure to the thousandth of a point
+the same on both engines, because the shrink-to-fit trigger (the over-wide
+content) no longer exists to compress either the plain or the Folio leg. This
+retires the open question `ENGINE.md` §9 and `MIGRATION.md` Step 1/2 left
+hanging: the honest 12pt-declared body text on this book is **18.25pt**
+rendered, on both engines, once the layout is fit to fit.
+
+**Gutters now mirror on both engines.** The historical section below found
+Folio mirroring (55/46pt) and Gutterpress not (52/53pt either way) — that was
+*before* `packages/cli/src/lib/page-var-resolve.ts` (Step 1's "Mirrored
+binding gutters" fix) shipped. It has shipped since: Gutterpress now mirrors
+53pt recto / 61pt verso (8pt split), Folio 45pt recto / 54pt verso (9pt split,
+matching the book's declared `0.75in − 0.625in = 0.125in = 9pt` exactly).
+Binding gutters are no longer a differentiator between the two engines.
+
+**Front-matter folio restart now works on both.** The historical A/B's "one
+open functional gap" (Folio prints the raw PDF index; Gutterpress restarts)
+is closed — `MIGRATION.md`'s "Current state of the two known Folio gaps" #1
+already recorded this as built and fixture-tested; this run is the first
+confirmation on the *real* book: both PDFs' first printed body folio is `3`.
+
+**Drift profile: long constant-offset runs, not scatter** (2,076 shared
+anchor lines, `ab-report.py`'s anchor-tracking, cross-checked with a
+run-length encoding of the per-anchor delta):
+
+| delta | Gutterpress page range | anchor count |
+| --- | --- | --- |
+| 0 | 1–7 | 90 |
+| +2 | 11–34 | ~360 |
+| +1 | 8–10, 41–43 | ~70 |
+| −6 | 216–303 | ~1,290 |
+
+Same shape as the pre-fix shimmed run: near-exact agreement through the front
+matter and early chapters, then one dominant offset (here, folio 6 pages
+*ahead* — fewer total pages — from roughly the book's midpoint on) that
+accounts for almost the entire net page-count gap. This is the fixture-7
+density difference (below), not scattered per-page disagreement.
+
+**Residual density difference — fixture 7's root cause, not a new one.** The
+6-page late-book offset matches the mechanism already root-caused in
+`spike/folio/fixtures/migration/README.md` (fixture 7,
+`07-multicol-break-avoid.html`): in a `columns: 2` region where a
+`break-inside: avoid` block cannot share a column with its neighbor,
+**Paged.js's own break-avoidance moves the break to a new PAGE instead of the
+next COLUMN**, abandoning the second column for the rest of that run — one
+card per page instead of two. Native Chromium's LayoutNG (and therefore the
+Gutterpress engine) moves the same break to the next column and keeps packing
+both columns. Confirmed Paged.js-internal by driving the raw vendored
+polyfill with no injected handler at all (same result). This is a measured
+Paged.js defect, not a `packages/cli` driving-code defect, and it is the main
+remaining source of density difference between the two engines on this book's
+card-heavy chapters — not a scale artifact, not a font issue, and not
+something either engine's `@page`/binding-margin handling explains.
+
+**Which staging path was used, and why.** `bun compare/stage-book.ts
+../dc-op-manual/field-guide /tmp/fg-honest/staged` hard-fails on this task's
+first try — `dc-op-manual/field-guide` as checked out today still has the
+four broken image references documented below
+(`images/chapter-02/cybersurgeon.png`, `images/chapter-03/etherlock.png`,
+`images/chapter-01/proxy.jpg`, and a fourth). Fell back to the corrected copy
+at `/tmp/fg-cmp-parent/field-guide` (fixed image refs; its
+`dc-design-guide/css/*.css` and the plugin were diffed byte-identical against
+`dc-op-manual`'s `main` at `fc12278` before use, so the honest run reflects
+today's real, fixed upstream CSS, not a stale snapshot).
+
+**Mid-session engine relocation.** While this task's builds were running, a
+concurrent process in this same working tree staged (uncommitted) the
+promotion `MIGRATION.md`'s integration-spike findings called for: `spike/folio/src/{compiler,shared,viewer}`
+moved to `packages/cli/src/engine/`. This section's build imports from the
+promoted path (`packages/cli/src/engine/compiler/build.ts`) because that is
+what is on disk; it is not this task's change, and the promotion is left
+exactly as staged. `spike/folio/spikes/bundles.ts` (formerly
+`spike/folio/src/bundles.ts`) documents the move in its own header.
+
+---
+
+## Historical: the pre-fix, shimmed field-guide A/B (superseded 2026-08-06)
+
+Everything from here through "Re-verified on `release/0.10.0`" was measured
+**before** `dc-op-manual` commit `fc12278` fixed the field guide's over-wide
+layout. It is kept in full, unedited, because it documents a real
+investigation and a real caught mistake — a wrong conclusion ("Folio typesets
+at the size the CSS declares, Paged.js inflates it"), the retraction, and the
+root-causing that followed — not because its numbers are still current. Use
+the "HONEST A/B REPORT" section above for today's numbers. The pagination
+agreement, gutter-fidelity mechanism (pre-Step-1-fix), drift-profile method
+and `filter:` cost findings below were never dependent on the scale confound
+and remain accurate; only the type-scale and absolute-page-count numbers are
+superseded.
 
 ### The type is 1.36× larger under Paged.js — verified three ways
 
@@ -381,14 +501,14 @@ python3 compare/ab-report.py <gutterpress.pdf> /tmp/cmp-fg/folio.pdf
 
 ---
 
-# FINAL A/B REPORT — field guide, shimmed
+### FINAL A/B REPORT — field guide, shimmed
 
 Both engines on the same staged book with the same assets; Gutterpress on the
 original, Folio on the shimmed copy (`FOLIO_INPUT=book.shimmed.html`). All
 numbers read back out of the two PDFs with poppler — Folio never grades its own
 homework. Regenerate with `python3 compare/ab-report.py <gp.pdf> <folio.pdf>`.
 
-## Headline
+### Headline
 
 | | Gutterpress (Paged.js) | Folio |
 | --- | --- | --- |
@@ -404,7 +524,7 @@ homework. Regenerate with `python3 compare/ab-report.py <gp.pdf> <folio.pdf>`.
 and type is now glyph-identical (median ratio 1.0000). What remains is a real
 engine comparison rather than an artefact of scale and dead CSS.
 
-## Pagination agreement
+### Pagination agreement
 
 1,477 shared anchor lines. The per-anchor page delta is **not** noise — it
 collapses into a handful of long constant runs:
@@ -434,7 +554,7 @@ is one offset applied to a long run, not 1,400 independent disagreements.
   because this band is the Type-3-font card content that `pdftotext` cannot
   recover from **either** PDF.
 
-## Two correctness differences, in opposite directions
+### Two correctness differences, in opposite directions
 
 **Folio is right: mirrored binding gutters.** The book declares
 `@page :left/:right` with `--binding-margin: 0.75in` against a 0.625in outer
@@ -456,7 +576,7 @@ because its counter lives in the DOM. Folio *can* do it — its counter-style ma
 is an arbitrary per-page symbol list, so `i, ii, 1, 2, 3…` is just a different
 list — but it does not today. **This is the one open functional gap.**
 
-## Speed
+### Speed
 
 Folio is **3.1× slower** here (806 s vs 263 s), worse than the 1.6× measured
 pre-shim because the shim makes Folio paginate the same ~300-page book instead
@@ -468,7 +588,7 @@ faster than cold (815 vs 806 s), confirming browser startup is noise.
 Note this cost is shared: the same `filter:` expense is in Gutterpress's 263 s.
 Folio simply pays the print twice.
 
-## Not measured
+### Not measured
 
 - **Stage B (in-browser pagination).** Paged.js did not finish paginating this
   book in >2 h in an earlier run; this run was stopped before stage B rather
@@ -478,7 +598,7 @@ Folio simply pays the print twice.
   used here returns 0 for both and proves nothing either way.
 - **Visual quality side by side** at print resolution.
 
-## Verdict on the A/B question
+### Verdict on the A/B question
 
 With the confounds removed, **the two engines agree on pagination**: same page
 count to 1.3%, identical type, and long runs of constant offset rather than
@@ -499,6 +619,14 @@ The remaining decisions — **since resolved; the authoritative record is
    Folio gaps").
 3. **Build time** — predict-then-verify is the sketched fix; export-only cost
    (`ARCHITECTURE.md` §10).
+
+**End of the historical, pre-fix section.** The `filter:` cost mechanism below
+was measured on the pre-fix book and is architectural, not scale-dependent —
+it remains the dominant cost on the honest, fixed build too (the honest run's
+278.5 s / 664.8 s totals are broadly consistent with the pre-fix 260 s / 404 s
+totals scaled up by the honest run's larger page count, 297pp vs the pre-fix
+run's 201pp), but the absolute per-page timings quoted below were not
+re-measured against the fixed book as part of this task.
 
 ---
 
@@ -554,7 +682,7 @@ pass.
 
 ---
 
-## Re-verified on `release/0.10.0`
+## Re-verified on `release/0.10.0` (historical — validates the pre-fix, shimmed numbers)
 
 `release/0.10.0` merged into the spike branch (clean, no conflicts) and the
 whole A/B re-run against the 0.10.0 implementation.

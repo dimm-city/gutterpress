@@ -6,8 +6,8 @@
  * compiler has to expand them into equivalent supported rules.
  */
 import { join } from "node:path";
-import { launchChromium, type Browser } from "../src/shared/cdp.ts";
-import { inspectPdf, PT_PER_IN as IN } from "../src/shared/pdf-inspect.ts";
+import { launchChromium, type Browser } from "../../../packages/cli/src/engine/shared/cdp.ts";
+import { inspectPdf, PT_PER_IN as IN } from "../../../packages/cli/src/engine/shared/pdf-inspect.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 import { pdfText } from "./probe.ts";
 

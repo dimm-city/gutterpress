@@ -1,11 +1,15 @@
 # Migration plan — Paged.js → Folio
 
-The engine question is answered (see [`COMPARISON.md`](./COMPARISON.md) "FINAL
-A/B REPORT"): with the confounds removed the two engines agree on pagination to
-1.3%, and Folio is the more faithful renderer. Verified twice — the numbers
-reproduce **exactly** on `release/0.10.0` (byte-identical extracted text for
-both engines). What is **not** measured is the integration cost, and that is
-now the largest risk in the project.
+The engine question is answered (see [`COMPARISON.md`](./COMPARISON.md)
+"HONEST A/B REPORT"): the field guide's over-wide layout that used to require
+an A/B scale shim is fixed upstream (`dc-op-manual` `fc12278`), and a
+shim-free run against the fixed book shows the two engines agree on
+pagination to 2% (303 vs 297 pages), with byte-identical type, mirrored
+binding gutters on both, and matching front-matter folio restarts on both.
+Folio is the more faithful renderer where the two still differ (a residual
+density gap traced to fixture 7's `break-inside: avoid` root cause, not a
+scale or fidelity issue). What is **not** measured is the integration cost,
+and that is now the largest risk in the project.
 
 This plan is ordered so that the first step pays for itself whether or not
 Folio is ever adopted.
@@ -17,15 +21,27 @@ Folio is ever adopted.
 These were ratified by the project owner (2026-08-05/06). If work seems to
 conflict with one of them, the work is wrong, not the decision.
 
-1. **The `zoom: 1.5` shim is NOT carried forward. Ever.** It exists solely to
-   make A/B measurements comparable and is deleted on adoption. The permanent
-   fix is **adjusting the CSS tokens** to the sizes the team actually wants, so
-   that `pt` values mean what they say. Depending on a "mysterious zoom" was
-   explicitly rejected. See Step 2 for how the new sizes get chosen, and
-   [`ENGINE.md`](./ENGINE.md) §9 for what the 1.5× actually is.
-2. **The reflow is accepted.** Retuning the tokens will change the page count
-   from today's 296 printed pages toward wherever the honest sizes land
-   (200–296). That is expected, not a regression.
+1. **The `zoom: 1.5` shim is NOT carried forward. Ever.** ✅ **DONE
+   (2026-08-06).** It existed solely to make A/B measurements comparable while
+   the field guide's layout was over-wide (Chromium print shrink-to-fit was
+   compressing the un-shimmed comparison); that layout defect is now fixed
+   upstream (`dc-op-manual` `fc12278`), so the shim is no longer needed for
+   A/B work at all, and it has been deleted: `compare/fg-shim.css` no longer
+   contains `body { zoom }` (retitled as the field guide's page-furniture
+   starting point — HALF 2 of the old file, unchanged), and no stylesheet in
+   this repo contains `body { zoom }`. The permanent fix was never "adjusting
+   the CSS tokens to compensate for a scale" — that framing is now moot too:
+   with the layout fixed, `12pt` in the book's CSS renders as the honest,
+   uncompressed **18.25pt** (this book's fonts + layout at 12pt-declared,
+   fitting the page) on both engines identically. See Step 2 for what's left,
+   and [`ENGINE.md`](./ENGINE.md) §9 for the retired mechanism.
+2. **The reflow is accepted.** Moot as originally framed — there is no
+   scale-vs-authored-size decision left to retune around; both engines now
+   render the book's declared sizes at the same honest measurement (see
+   Decision #1). The two engines still land at slightly different page
+   counts (303 vs 297, ~2%) from a real, understood density difference, not a
+   scale choice — see `COMPARISON.md`'s "HONEST A/B REPORT" and the fixture-7
+   root cause.
 3. **Guiding priorities, in order: output quality, standards compliance /
    WYSIWYG (the HTML+CSS means what it says), and DX.** When a trade-off
    appears, resolve it toward these. This is why the zoom was rejected and why
@@ -125,49 +141,28 @@ unrelated cascade-order cause of the same *symptom*).
 
 ## Step 2 — Decide the type size, deliberately
 
-**Premise correction (measured, see Step 1's scale row and `ENGINE.md` §9):**
-"Under Folio, `12pt` means 12pt" is **not true on the field guide as currently
-authored.** Folio's own build of the field guide renders body text at 13.38pt
-for a 12pt declaration — the same shrink-to-fit-compressed value the
-discredited "plain Chromium" baseline gave, because Folio's PDF path is a
-bare native print with no width-fitting, and the guide's content is ~960px
-wide against ~705pt printable. The book's *honest* 12pt-declared size, on
-this document, is Paged.js's 18.25pt — the number pagination happens to
-protect and Folio's native-print path does not. Do not set Step 2's tokens
-from a Folio proof of the field guide until the over-wide layout is fixed (or
-Folio gains a pre-print width check); a Folio proof taken today would be
-tuning against the same compressed numbers this whole investigation
-originated to root out.
+**Measurement is done.** The over-wide layout that used to make this section's
+premise false (`ENGINE.md` §9's shrink-to-fit finding) is fixed upstream
+(`dc-op-manual` `fc12278`). With it fixed, `12pt` means 12pt on both engines:
+the honest, uncompressed rendering of this book's `--fs-body: 12pt` token,
+its fonts and its layout is **18.25pt** glyph height — measured identically on
+Gutterpress (Paged.js) and the Gutterpress engine (`COMPARISON.md`'s "HONEST
+A/B REPORT", `pdftotext -bbox` on "chapters"/"origins," — 18.252pt / 17.488pt,
+both engines, to the thousandth of a point). There is no engine-artifact scale
+left to correct for and nothing left to measure.
 
-For a document that is NOT over-wide, the original premise holds: Folio
-prints at the size the CSS declares (confirmed on this task's synthetic
-control fixture, `folio build()` matching plain Chromium's uncompressed
-79.73pt probe exactly). The paragraph below still describes the right
-*process* for a correctly-fitted document; it no longer describes what a
-Folio proof of the field guide *as it stands today* would show.
+**What's left is a one-sentence editorial decision, not a technical task:**
+keep the sizes as they render today (18.25pt-ish body text, ~300 printed
+pages — this makes the decision a no-op, since that is what's shipping now)
+or shrink the tokens toward the nominally-declared 12pt and accept a shorter,
+denser book. Either is legitimate; neither requires more measurement. This is
+the project owner's call, not an engineering one — record the decision here
+once made, but this task does not make it.
 
-Under Folio, `12pt` means 12pt once a document is not over-wide. The tokens
-become honest, which is the whole point — but it forces a decision that has
-been made implicitly until now.
-
-**The "distortion" framing this section was written under is dead** (see the
-premise correction above): today's shipped output is the *uncompressed*,
-honest rendering of the CSS — the visual judgments made against it were made
-at the real size, and its ~18.25pt-glyph body text is what a 12pt declaration
-plus this book's fonts and layout genuinely produce **when the content fits
-the page**. What changes under Folio is not the size but the fragility: fix
-the over-wide layout first, then take the proof at true size and set the
-tokens from it. If the proofed size matches today's output, no retune is
-needed at all; if the team wants different sizes, that is a design choice made
-deliberately, not a correction of an engine artifact. Either way, set the
-tokens from a proof at real size, then accept the page count.
-
-The `body { zoom: 1.5 }` shim in `compare/fg-shim.css` exists **only** to make
-A/B measurements comparable. **Decision 1 above: it is deleted on adoption,
-never migrated, and no production stylesheet may contain it.** The furniture
-half of that shim (brick via margin boxes, chips, suppressions) is different —
-it becomes the *starting point* for the field guide's real Folio CSS when that
-book eventually migrates.
+The `body { zoom: 1.5 }` shim that used to live in `compare/fg-shim.css` is
+retired (Decision #1, done). The furniture half of that file — margin-box
+brick, chips, suppressions — is unchanged and remains the *starting point*
+for the field guide's real Folio CSS when that book eventually migrates.
 
 ---
 
@@ -329,6 +324,26 @@ never opened.
    `packages/cli`'s. Worked around with an untyped dynamic `import()` (`any`)
    — meaning the bridge has **zero type safety across the boundary**, which a
    real integration could not ship.
+
+**Finding #1 resolved (2026-08-06): the engine is promoted.** Per the
+ratified naming decision, "Folio" is retired as a project name — it is now
+**the Gutterpress engine**, promoted into `packages/cli/src/engine/` (not a
+new workspace package; the finding's framing of "give Folio its own
+`package.json`" was superseded by "it isn't a separate thing"). This closes
+findings #1 and #4 directly: `packages/cli/src/lib/engine.ts` (renamed from
+`folio-engine.ts`) is now an ordinary same-package import — no relative
+cross-directory reach, no `spike/` dependency in either shipping target, full
+type safety across the former boundary (no `any`, `bunx tsc --noEmit` clean
+under `packages/cli`'s own strict tsconfig, `noUncheckedIndexedAccess`
+included). The engine's browser bundles (viewer + compiler agent) are
+prebuilt by `packages/cli/scripts/build-engine-bundles.mjs` and embedded via
+`with { type: "file" }` (root `CLAUDE.md` §4), so both the source checkout
+and the `bun build --compile` binary carry them — closing the "never bundles
+`spike/`" half of finding #1. Findings #2 (the separate Chromium launcher)
+and #3 (the `PdfRenderer` staging seam) are **still open** — this promotion
+moved the engine's location, it did not reconcile the browser-launch layer or
+the staging seam. The `--engine folio` flag is renamed `--engine native`
+throughout. See `spike/folio/src/README.md` for exactly what moved where.
 
 ### What was NOT touched — Decision #5 is currently VIOLATED by this spike
 

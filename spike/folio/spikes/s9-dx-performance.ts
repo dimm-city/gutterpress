@@ -10,9 +10,9 @@ import { gzipSync } from "node:zlib";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import WebSocket from "ws";
-import { ensureBundles } from "../src/bundles.ts";
-import { launchChromium, type Browser } from "../src/shared/cdp.ts";
-import { build } from "../src/compiler/build.ts";
+import { ensureBundles } from "./bundles.ts";
+import { launchChromium, type Browser } from "../../../packages/cli/src/engine/shared/cdp.ts";
+import { build } from "../../../packages/cli/src/engine/compiler/build.ts";
 import { bookHtml } from "../fixtures/make-book.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
 
@@ -107,9 +107,10 @@ export async function run(browser: Browser) {
 
   // ---- dev server --------------------------------------------------------
   const port = 4399;
+  const devCli = join(ROOT, "..", "..", "packages", "cli", "src", "engine", "dev-cli.ts");
   const proc = spawn(
     "bun",
-    [join(ROOT, "src", "cli.ts"), "dev", bigPath, "--port", String(port)],
+    [devCli, "dev", bigPath, "--port", String(port)],
     { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] },
   );
   const ready = new Promise<void>((res, rej) => {

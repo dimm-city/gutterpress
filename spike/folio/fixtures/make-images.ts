@@ -15,7 +15,7 @@
  * its caption, which the print PDF can see and the DOM id can locate.
  */
 import { deflateSync } from "node:zlib";
-import type { Session } from "../src/shared/cdp.ts";
+import type { Session } from "../../../packages/cli/src/engine/shared/cdp.ts";
 
 // ---- tiny PNG encoder ------------------------------------------------------
 

@@ -6,8 +6,8 @@
  * its text path. Fallback (text path) is already implemented, so this is a
  * "how much can we skip" probe, not a go/no-go.
  */
-import { launchChromium, type Browser } from "../src/shared/cdp.ts";
-import { extract } from "../src/shared/gcpm-extract.ts";
+import { launchChromium, type Browser } from "../../../packages/cli/src/engine/shared/cdp.ts";
+import { extract } from "../../../packages/cli/src/engine/shared/gcpm-extract.ts";
 import { Spike } from "./harness.ts";
 
 const CSS = `
