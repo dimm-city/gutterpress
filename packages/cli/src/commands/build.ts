@@ -29,6 +29,12 @@ const commandArgs = {
   engine: { type: "string", description: "Pagination engine: paged (default) | folio [Section D spike]" },
 } as const;
 
+function parseEngine(value: unknown): "folio" | undefined {
+  if (value === undefined || value === "paged") return undefined;
+  if (value === "folio") return "folio";
+  throw new UsageError(`Unknown --engine "${String(value)}". Expected: paged | folio`);
+}
+
 export default defineCommand({
   meta: {
     name: "build",
@@ -61,7 +67,7 @@ export default defineCommand({
         skipLint: !!args["skip-lint"],
         skipPreValidate: !!args["skip-pre-validate"],
         skipPostValidate: !!args["skip-post-validate"],
-        engine: args.engine === "folio" ? "folio" : undefined,
+        engine: parseEngine(args.engine),
         rawArgs: args as Record<string, unknown>,
       });
     } catch (error) {

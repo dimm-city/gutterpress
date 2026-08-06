@@ -27,7 +27,9 @@
  * integration spike results".
  */
 import { writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { BuildError } from "./build-error.ts";
 
 // Relative import out of the workspace — see module doc comment above.
 const FOLIO_BUILD_PATH = path.resolve(
@@ -41,6 +43,13 @@ const FOLIO_BUILD_PATH = path.resolve(
  * own Chromium process per call (see module doc comment for why).
  */
 export async function buildFolioPdf(htmlFile: string, outPdf: string): Promise<void> {
+  if (!existsSync(FOLIO_BUILD_PATH)) {
+    throw new BuildError(
+      `--engine folio is a spike-only flag: it needs the Folio compiler at ${FOLIO_BUILD_PATH}, ` +
+        `which only exists in a source checkout of the gutterpress repo. ` +
+        `It is not available in the compiled binary or an installed package.`
+    );
+  }
   // Deliberately untyped: a `typeof import("../../../../spike/folio/...")`
   // cast (tried first) pulls spike/folio's ENTIRE module graph into
   // packages/cli's `tsc --noEmit` program, which then fails under

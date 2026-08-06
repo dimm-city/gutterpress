@@ -48,16 +48,25 @@ the pipeline shipping today.
 | fix | why | evidence |
 | --- | --- | --- |
 | **Mirrored binding gutters** | The book declares a 0.125in binding offset via `var(--binding-margin, …)`; Paged.js silently drops that declaration. Root-caused to Paged.js itself (not `packages/cli`) — see below. Not fixed; documented. | Folio 55pt recto / 46pt verso; Gutterpress 52/53pt either parity (`compare/ab-report.py`) |
-| **`generateDocumentOutline`** | Shipped PDFs have no bookmarks; the same DOM printed with the flag yields 155. One line in `pagination.ts`. | COMPARISON.md §A |
+| **`generateDocumentOutline`** | ✅ **DONE** (`bfcbd15`): `outline: true` in `pagination.ts`'s `page.pdf()` call. 0 → 155 bookmarks, all 155 destinations landing on a page whose text contains the bookmark title (verified with two readers that share no code with our pipeline). ⚠️ Correction: `tagged: true` is a **no-op** — `/StructTreeRoot` and `/MarkInfo <</Marked true>>` were already present before the commit. Bookmarks are the whole delta. The desktop export path (`packages/desktop/electron/pdf-export.ts`) still has neither flag. | COMPARISON.md §A |
 | **Scope `filter:`** | ~90% of build time on **both** engines, and it silently rasterizes card text to 300 DPI bitmaps — not selectable, searchable or accessible in the released PDF. | 57.0s → 6.2s over 60pp; [`ENGINE.md`](./ENGINE.md) §10 |
-| **Explain the 1.364× scale** | Paged.js typesets the book at a scale its stylesheet never asks for. Root-caused (not just reproduced): triggered by `@font-face` rules appearing BEFORE `:root`/the rest of the stylesheet — the field guide's own authoring order. Confirmed Paged.js-internal (not `packages/cli`); not fixed, documented. | `body{zoom:1.5}` reproduces Paged.js on 921/921 words ±0.15pt; `ENGINE.md` §9 |
+| **Explain the 1.364× scale** | ⚠️ **STILL OPEN — the first answer was refuted.** "Paged.js inflates, triggered by `@font-face` rule order" is WRONG: that ablation was measuring a font substitution (LiberationSerif vs TitilliumWeb glyph boxes), and the discriminating experiment shows Paged.js and script-stripped plain Chromium render the full field-guide stylesheet **identically** (18.252pt both ways). Paged.js applies no scale. The 1.364× is Chromium **print shrink-to-fit compressing the PLAIN render** (960px content vs ~705pt printable). Whether Folio's leg is compressed the same way is **unmeasured**. | `ENGINE.md` §9, both the retraction and the probe (58.453 / 79.734 = 1/1.364) |
 
-The scale item is the gate for everything after it. Do not migrate away from a
-mechanism nobody can explain — and it is worth knowing whether it is a Paged.js
-behaviour or something in how the pipeline drives it. **Answered**: it is a
-Paged.js behaviour, triggered by `@font-face` rule order — see
-[`ENGINE.md`](./ENGINE.md) §9 for the isolated trigger condition and the
-fixture matrix that confirms it.
+The scale item is the gate for everything after it, and **the gate is still
+shut.** Do not migrate away from — or retune tokens against — a mechanism
+nobody can explain. The first explanation was committed as fact and then
+refuted by independent re-measurement; treat the current shrink-to-fit finding
+the same way until someone runs the Folio leg.
+
+**The next measurement, precisely.** Determine whether Folio's field-guide
+render is itself shrink-to-fit-compressed. Folio paginates content into
+page-sized fragments, so it *should* be immune where the plain un-paginated
+print is not — but that is a prediction, not a measurement. Use the same
+injected-probe technique (`96px` serif probe, compare against a control page
+with identical `@page` geometry and no over-wide content). **If Folio's numbers
+came from a compressed render, `COMPARISON.md`'s headline conclusion — "Folio
+typesets at the size the CSS declares, Paged.js does not" — inverts, and Step 2
+is built on sand.** Nothing downstream should move until this lands.
 
 ### Mirrored binding gutters — root cause (Paged.js, not `packages/cli`)
 

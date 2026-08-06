@@ -356,7 +356,54 @@ Two measured facts about `zoom` in the print path:
   reproduce Paged.js boundaries, and it quantifies the reflow a faithful
   engine causes.
 
-### The mechanism: `@font-face` rule ORDER, not a scale property (A3 finding)
+### RETRACTED: the `@font-face` rule ORDER mechanism (A3, first attempt)
+
+> [!WARNING]
+> **Everything in this subsection is WRONG and is kept only so the mistake is
+> not made twice.** It was refuted by independent re-measurement on 2026-08-06
+> (see "What the 1.364× actually is" below). Do not build on it, and do not
+> re-derive it — the ablation table measures a *font substitution*, not a scale.
+>
+> Two errors compounded. (1) The fixtures that "pass" at 13.289pt and "fail" at
+> 18.252pt are not rendering at different scales; they are rendering in
+> **different fonts** — `pdffonts` reports `LiberationSerif` on the 13.289
+> variants and `TitilliumWeb-Regular` on the 18.252 ones, and forcing
+> `font-family: serif` on the *failing* fixture returns it to 13.289pt to three
+> decimals. The CSS delta between the bisect pair that "flips" is
+> `body{font-family:var(--font-body)}` — the rule that first applies Titillium
+> Web — not an `@font-face` reordering. Glyph bounding boxes differ between
+> typefaces at the same type size; the PDF text-state size is `Tf 16` (12pt) in
+> **every** variant in the table.
+> (2) The conclusion "Paged.js inflates" does not survive its own discriminating
+> experiment: the full field-guide stylesheet (all 7,143 lines, faces-first as
+> authored) rendered through the shipped Paged.js path and rendered by plain
+> Chromium 151 with every `<script>` stripped produce the **identical**
+> 18.252pt / 44.400pt. **Paged.js applies no scale.**
+
+### What the 1.364× actually is — and why it is now an OPEN question
+
+The 1.364× *is* real on the field guide, and it is uniform in both axes on the
+same word in the same font: Gutterpress `18.252pt × 41.508`, plain Chromium on
+the same staged `book.html` `13.381pt × 30.430` (18.252/13.381 = 1.3641;
+41.508/30.430 = 1.3640). A uniform geometric scale of the whole render.
+
+The measured direction is the opposite of what this document previously
+claimed: **Chromium's print shrink-to-fit is compressing the PLAIN render, not
+Paged.js inflating the paginated one.** The un-paginated document lays out
+~960px wide (one 1020px `h1`) against ~705pt of printable width, so Chromium
+scales the whole page down to fit. Probe evidence: a `96px` serif probe
+injected at the top of the real staged body prints **58.453pt**; the same probe
+on a control page with identical `@page` geometry where nothing is over-wide
+prints **79.734pt**. 58.453 / 79.734 = 0.733 = **1 / 1.364**.
+
+**This is the gate for Step 2 and it is not closed.** If the plain-Chromium
+13.38pt baseline is shrink-to-fit-compressed, then the same question must be
+asked of Folio's leg before any type token is retuned, and — if Folio's numbers
+were taken from a compressed render — `COMPARISON.md`'s "Folio typesets at the
+size the CSS declares" conclusion inverts. Nobody has measured that yet. Do not
+retune a token until it is measured. The historical (refuted) reasoning follows.
+
+### The mechanism: `@font-face` rule ORDER, not a scale property (A3 finding — REFUTED, see above)
 
 Instrumented in `packages/cli`: `pagination.ts` sets a plain 1920×1080
 viewport (irrelevant to print — `page.pdf()` prints at the explicit
