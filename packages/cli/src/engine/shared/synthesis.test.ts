@@ -199,7 +199,7 @@ describe("toFolioPage — physical page -> the folio it actually prints (F3)", (
     const pageCount = 6;
     const values = pageCounterValues([{ page: 5, start: 1 }], pageCount);
     for (let physical = 1; physical <= pageCount; physical++) {
-      expect(toFolioPage(physical, values)).toBe(values[physical - 1]);
+      expect(toFolioPage(physical, values)).toBe(values[physical - 1]!);
     }
   });
 

@@ -169,5 +169,5 @@ export function ptToIn(pt: number): number {
 
 export function boxesEqual(a: number[] | undefined, b: number[], tol = 0.05): boolean {
   if (!a || a.length !== b.length) return false;
-  return a.every((v, i) => Math.abs(v - b[i]) <= tol);
+  return a.every((v, i) => Math.abs(v - b[i]!) <= tol);
 }

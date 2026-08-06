@@ -47,21 +47,21 @@ describe("gcpm-extract", () => {
       "@page :right",
       "@page chapter",
     ]);
-    expect(model.pageRules[1].pseudos).toEqual(["left"]);
-    expect(model.pageRules[3].name).toBe("chapter");
+    expect(model.pageRules[1]!.pseudos).toEqual(["left"]);
+    expect(model.pageRules[3]!.name).toBe("chapter");
   });
 
   test("keeps the descriptors CSSOM drops", () => {
-    expect(model.pageRules[0].decls.bleed).toBe("0.125in");
-    expect(model.pageRules[0].decls.marks).toBe("crop");
+    expect(model.pageRules[0]!.decls.bleed).toBe("0.125in");
+    expect(model.pageRules[0]!.decls.marks).toBe("crop");
   });
 
   test("captures margin boxes with their declarations", () => {
-    expect(model.pageRules[0].marginBoxes["@bottom-center"]).toEqual({
+    expect(model.pageRules[0]!.marginBoxes["@bottom-center"]).toEqual({
       content: "counter(page)",
       "font-size": "9pt",
     });
-    expect(model.pageRules[3].marginBoxes["@top-right"].content).toBe(
+    expect(model.pageRules[3]!.marginBoxes["@top-right"]!.content).toBe(
       "string(chapter-title)",
     );
   });
@@ -91,7 +91,7 @@ describe("gcpm-extract", () => {
 
   test("string() inside content is detected as a GCPM construct", () => {
     const m = extract(`@page x { @top-left { content: string(t) " — " counter(page); } }`);
-    expect(m.pageRules[0].marginBoxes["@top-left"].content).toContain("string(t)");
+    expect(m.pageRules[0]!.marginBoxes["@top-left"]!.content).toContain("string(t)");
   });
 
   test("descends into @media/@supports/@layer", () => {
@@ -108,7 +108,7 @@ describe("gcpm-extract", () => {
       @page { size: 5in 8in; }
     `);
     expect(m.pageRules).toHaveLength(1);
-    expect(m.pageRules[0].decls.size).toBe("5in 8in");
+    expect(m.pageRules[0]!.decls.size).toBe("5in 8in");
   });
 
   test("does not mistake a selector containing 'page' for an @page rule", () => {
@@ -159,8 +159,8 @@ describe("geometry", () => {
     expect(left.geometry.margin.left).toBe(45); // 0.625in
 
     const chapter = resolvePage(model, { name: "chapter", pseudos: ["right"] });
-    expect(chapter.marginBoxes["@top-right"].content).toBe("string(chapter-title)");
-    expect(chapter.marginBoxes["@bottom-center"].content).toBe("counter(page)");
+    expect(chapter.marginBoxes["@top-right"]!.content).toBe("string(chapter-title)");
+    expect(chapter.marginBoxes["@bottom-center"]!.content).toBe("counter(page)");
     // `@page :right { margin: .75in .625in .75in .375in }` -> right 45, left 27
     expect(chapter.geometry.margin.right).toBe(45);
     expect(chapter.geometry.margin.left).toBe(27);

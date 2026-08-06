@@ -106,11 +106,11 @@ export function stringValueAt(
     case "start":
       return entry;
     case "last":
-      return onPage.length ? onPage[onPage.length - 1] : entry;
+      return onPage.length ? onPage[onPage.length - 1]! : entry;
     case "first-except":
       return onPage.length ? "" : entry;
     case "first":
-      return onPage.length ? onPage[0] : entry;
+      return onPage.length ? onPage[0]! : entry;
   }
 }
 
@@ -277,6 +277,7 @@ export function generatedContentCss(selectors: Iterable<string>): string {
       const m = /^(.*?)(::?)(after|before)\s*$/i.exec(selector);
       if (!m) continue;
       const [, base, colons, pseudo] = m;
+      if (base === undefined || colons === undefined || pseudo === undefined) continue;
       const where = pseudo.toLowerCase();
       rules.add(
         `${base.trim()}[data-folio-${where}]${colons}${where} { content: attr(data-folio-${where}); }`,

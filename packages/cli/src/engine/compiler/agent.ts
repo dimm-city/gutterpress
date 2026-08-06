@@ -337,7 +337,7 @@ export function fillLeaders(contentWidthPx: number): number {
       const contentRight =
         blockRect.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
       const rects = host.getClientRects();
-      const last = rects.length ? rects[rects.length - 1] : host.getBoundingClientRect();
+      const last = rects.length ? rects[rects.length - 1]! : host.getBoundingClientRect();
       cx.font = getComputedStyle(host).font;
       const glueW = cx.measureText(glue).width;
       const n = leaderFillCount(contentRight - last.right, glueW);

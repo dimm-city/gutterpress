@@ -218,7 +218,7 @@ export function decorate(
       const contentRight =
         blockRect.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth);
       const rects = m.el.getClientRects();
-      const last = rects.length ? rects[rects.length - 1] : m.el.getBoundingClientRect();
+      const last = rects.length ? rects[rects.length - 1]! : m.el.getBoundingClientRect();
       cx.font = getComputedStyle(m.el).font;
       const n = leaderFillCount(contentRight - last.right, cx.measureText(glue).width);
       m.el.setAttribute(m.attr, m.raw.replace(LEADER_RE, glue.repeat(n)));

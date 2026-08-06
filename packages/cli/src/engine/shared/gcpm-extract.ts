@@ -364,7 +364,8 @@ function parseQualifiedRule(selector: string, body: string, model: GcpmModel) {
     if (prop === "string-set") {
       for (const entry of splitTopLevel(value, ",")) {
         const m = /^\s*([A-Za-z_][\w-]*)\s+(.+)$/.exec(entry);
-        if (m) model.stringSets.push({ selector, name: m[1], value: m[2].trim() });
+        if (m && m[1] !== undefined && m[2] !== undefined)
+          model.stringSets.push({ selector, name: m[1], value: m[2].trim() });
       }
     } else if (prop === "page") {
       if (value && value !== "auto")
@@ -461,8 +462,8 @@ export function parseSize(value: string): { width: number; height: number } | un
   }
   let w: number, h: number;
   if (named) [w, h] = named;
-  else if (lens.length === 1) [w, h] = [lens[0], lens[0]];
-  else if (lens.length >= 2) [w, h] = [lens[0], lens[1]];
+  else if (lens.length === 1) [w, h] = [lens[0]!, lens[0]!];
+  else if (lens.length >= 2) [w, h] = [lens[0]!, lens[1]!];
   else return undefined;
   if (landscape && h > w) [w, h] = [h, w];
   return { width: w, height: h };
@@ -475,7 +476,10 @@ export function parseMargin(value: string): {
   left: number;
 } {
   const parts = value.trim().split(/\s+/).map((p) => toPt(p) ?? 0);
-  const [a, b = a, c = a, d = b] = parts;
+  const a = parts[0] ?? 0;
+  const b = parts[1] ?? a;
+  const c = parts[2] ?? a;
+  const d = parts[3] ?? b;
   return { top: a, right: b, bottom: c, left: d };
 }
 

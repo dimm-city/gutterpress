@@ -48,7 +48,7 @@ export function parseContent(value: string): ContentPart[] {
   let i = 0;
   const s = value.trim();
   while (i < s.length) {
-    const c = s[i];
+    const c = s[i]!;
     if (/\s/.test(c)) {
       i++;
       continue;
@@ -61,7 +61,7 @@ export function parseContent(value: string): ContentPart[] {
     }
     const rest = s.slice(i);
     const fn = FUNC.exec(rest);
-    if (fn) {
+    if (fn && fn[1] !== undefined) {
       const open = i + fn[0].length - 1;
       const close = matchParen(s, open);
       const args = splitTopLevel(s.slice(open + 1, close), ",");
@@ -95,7 +95,7 @@ function toPart(name: string, args: string[]): ContentPart {
       return { type: "leader", glue: unquote(args[0] ?? '"."') };
     case "attr": {
       const [a, as] = (args[0] ?? "").split(/\s+/);
-      return { type: "attr", name: a, as };
+      return { type: "attr", name: a ?? "", as };
     }
     case "content":
       return { type: "content", which: args[0] ?? "text" };
@@ -138,7 +138,7 @@ export function unquote(s: string): string {
 /** `attr(href url)` inside target-counter() -> the element's href. */
 export function resolveUrlArg(arg: string, ctx: EvalContext): string {
   const m = /^attr\(\s*([\w-]+)(?:\s+url)?\s*\)$/i.exec(arg.trim());
-  if (m) return ctx.attr?.(m[1]) ?? "";
+  if (m && m[1] !== undefined) return ctx.attr?.(m[1]) ?? "";
   return unquote(arg);
 }
 

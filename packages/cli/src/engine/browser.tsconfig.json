@@ -1,0 +1,22 @@
+{
+  // Isolated typecheck program for the Gutterpress engine's browser-side
+  // sources: the viewer (bundled to `folio.js`) and the compiler agent
+  // (bundled to `folio-agent.js`) — see scripts/build-engine-bundles.mjs.
+  // These run inside the page being paginated, never inside packages/cli's
+  // own Node process, and are never imported by any Node-side TS file (the
+  // compiler calls them only as prebuilt bundle TEXT via embedded-assets.ts).
+  //
+  // Split into its own program instead of adding "DOM" to the package's main
+  // tsconfig.json: TypeScript's `lib` option is program-global, not scoped
+  // per file, so a DOM lib addition there would leak DOM's `Response`/
+  // `Uint8Array`/`fetch` overloads into every Node file in the package
+  // (../../tsconfig.json's comment on `exclude` has the measured regression).
+  // Same strictness as the main program (noUncheckedIndexedAccess included) —
+  // this is not a looser gate, only a different `lib`.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  },
+  "include": ["viewer/**/*.ts", "compiler/agent.ts", "../markdown-shims.d.ts"],
+  "exclude": []
+}

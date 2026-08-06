@@ -195,7 +195,7 @@ export function buildStrips(
     strip.style.setProperty("--folio-margin-right", `${pt(geometry.margin.right)}px`);
     strip.style.setProperty("--folio-margin-bottom", `${pt(geometry.margin.bottom)}px`);
     strip.style.setProperty("--folio-margin-left", `${pt(geometry.margin.left)}px`);
-    run.nodes[0].before(strip);
+    run.nodes[0]!.before(strip);
     for (const n of run.nodes) strip.appendChild(n);
     strips.push({ el: strip, page: run.page, geometry, pages: 0, offset: 0 });
   }
@@ -298,11 +298,12 @@ export function compensateRepeatedHeaders(
         if (footHeight > 0) {
           const lastCol = cols[cols.length - 1];
           for (let i = 0; i < rows.length; i++) {
-            if (cols[i] === lastCol || claims.has(rows[i])) continue;
-            const bottom = rects[i].bottom - stripTop;
+            const row = rows[i]!;
+            if (cols[i] === lastCol || claims.has(row)) continue;
+            const bottom = rects[i]!.bottom - stripTop;
             if (bottom > colBottom - footHeight + 0.5) {
-              newClaim = rows[i];
-              claims.set(rows[i], colBottom - (rects[i].top - stripTop));
+              newClaim = row;
+              claims.set(row, colBottom - (rects[i]!.top - stripTop));
               break;
             }
           }
@@ -312,11 +313,11 @@ export function compensateRepeatedHeaders(
           table,
           // Print never strands a repeated header: a header fragment must be
           // followed by at least one row, else the whole table moves on.
-          push: headRect ? colOf(headRect) < cols[0] : false,
+          push: headRect ? colOf(headRect) < cols[0]! : false,
           headHeight: headRect?.height ?? 0,
           footHeight,
           breakRows: headRect
-            ? rows.filter((_, i) => i > 0 && cols[i] > cols[i - 1])
+            ? rows.filter((_, i) => i > 0 && cols[i]! > cols[i - 1]!)
             : [],
           footRows: [...claims.entries()],
           grew: newClaim !== undefined,
@@ -492,7 +493,7 @@ export function pageOf(el: Element, strips: StripInfo[]): number {
   const stride = strideOf(strip.el);
   const rects = el.getClientRects();
   const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
-  const first = rects.length ? rects[0] : (el as HTMLElement).getBoundingClientRect();
+  const first = rects.length ? rects[0]! : (el as HTMLElement).getBoundingClientRect();
   const idx = Math.floor((first.left - stripLeft + 1) / stride);
   return strip.offset + Math.max(0, Math.min(strip.pages - 1, idx));
 }
