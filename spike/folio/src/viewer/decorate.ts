@@ -23,6 +23,7 @@ import {
   pageCounterValues,
   parseWhich,
   stringValueAt,
+  toFolioPage,
   type PageCounterReset,
 } from "../shared/synthesis.ts";
 import {
@@ -119,20 +120,13 @@ export function decorate(
       entries.sort((a, b) => a.page - b.page);
       api.stringMap.set(decl.name, entries);
     }
-    // cross-reference targets: any id that is linked to
-    const linked = new Set<string>();
-    for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href^='#']")))
-      linked.add(a.getAttribute("href")!);
-    for (const href of linked) {
-      const el = document.querySelector(href.replace(/^#/, "#"));
-      if (!el) continue;
-      const [page] = pageRangeOf(el, layout.strips);
-      if (page >= 0) api.targets.set(href, page + 1);
-    }
     // front-matter -> body folio restart (`counter-reset: page N`,
     // MIGRATION.md gap #1): the same `pageCounterValues` policy the compiler
     // applies via a generated `@counter-style`, applied here by overriding the
     // `page` fed to `evaluate()` — no CSS synthesis needed on this side.
+    // Computed BEFORE the cross-reference targets below (F3), so
+    // `target-counter()` can be converted through the SAME restarted numbers
+    // a page's own margin box prints, instead of the raw physical page.
     const resets: PageCounterReset[] = [];
     for (const r of model.counterResets) {
       let els: Element[] = [];
@@ -147,6 +141,18 @@ export function decorate(
       }
     }
     api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages) : [];
+    const pageValues = api.pageNumbers.length ? api.pageNumbers : null;
+
+    // cross-reference targets: any id that is linked to
+    const linked = new Set<string>();
+    for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href^='#']")))
+      linked.add(a.getAttribute("href")!);
+    for (const href of linked) {
+      const el = document.querySelector(href.replace(/^#/, "#"));
+      if (!el) continue;
+      const [page] = pageRangeOf(el, layout.strips);
+      if (page >= 0) api.targets.set(href, toFolioPage(page + 1, pageValues));
+    }
   }
 
   /** Shared GCPM string() semantics — the same function the compiler samples. */

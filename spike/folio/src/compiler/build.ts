@@ -22,12 +22,12 @@ import {
   generatedContentCss,
   isRectoVersoBreak,
   leaderMarker,
-  pageCounterValues,
   parseWhich,
   planRectoBlanks,
+  restartedPageValues,
   stringSymbols,
+  toFolioPage,
   wantsRecto,
-  type PageCounterReset,
   type StringEntry,
   type StringWhich,
 } from "../shared/synthesis.ts";
@@ -161,18 +161,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         : [];
       // The blank pages Folio inserts must be styled by the author's
       // `@page :blank` rules, which Chromium never matches on its own (s10).
-      // Emitted LAST, in the same sheet as the running-string rewrite: a
-      // generated rule in an earlier sheet loses to a later one regardless of
-      // page-selector specificity (see counterStyleCss).
-      let blankCss = "";
-      if (rectoSites.length) {
-        const blank = resolvePage(model, { pseudos: ["blank"] });
-        const boxes = Object.entries(blank.marginBoxes)
-          .filter(([, d]) => d.content !== undefined)
-          .map(([box, d]) => `  ${box} { content: ${d.content}; }`)
-          .join("\n");
-        blankCss = `@page ${BLANK_PAGE} {\n${boxes || "  /* author declared no @page :blank */"}\n}`;
-      }
+      // Emitted LAST, in the same sheet as the running-string rewrite, and
+      // through `counterStyleCss`'s shared rewrite (F1) so a restarted folio
+      // counter or running string on a blank page agrees with print/viewer —
+      // never a verbatim copy of the author's raw declarations.
+      const hasBlankSites = rectoSites.length > 0;
 
       const xrefSelectors = model.xrefs
         .filter((x) => needsMeasurement(x.content))
@@ -228,10 +221,13 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         const planned: string[] = rectoSites
           .filter((_: any, i: number) => plan[i])
           .map((site: any) => site.id);
-        if (planned.length && blankCss) {
-          await page.evaluate(
-            `window.__folio.addCss("folio-gen-strings", ${JSON.stringify(blankCss)})`,
-          );
+        if (planned.length) {
+          const earlyBlankCss = counterStyleCss(model, [], {}, 0, [], true);
+          if (earlyBlankCss) {
+            await page.evaluate(
+              `window.__folio.addCss("folio-gen-strings", ${JSON.stringify(earlyBlankCss)})`,
+            );
+          }
         }
         if (planned.length) {
           await page.evaluate(
@@ -268,6 +264,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // loop, the fallback path). Same function either way (ARCHITECTURE.md
       // §1): the two callers differ only in where the map came from.
       const applySynthesis = async (map: Record<string, number>, pageCount: number) => {
+        // `target-counter(attr(href), page)` must resolve to the SAME folio
+        // the target page's own margin box prints, not the raw physical page
+        // (F3) — one shared conversion, `restartedPageValues`/`toFolioPage`,
+        // also used by `counterStyleCss` below for the folios themselves.
+        const pageValues = restartedPageValues(resetSites, map, pageCount);
         // (a) cross-reference text at the reference site
         const generated: Array<{ id: string; where: string; text: string }> = [];
         for (const site of sites) {
@@ -276,7 +277,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           const where = /::?before$/.test(site.selector) ? "before" : "after";
           const text = evaluate(decl.content, {
             attr: (n) => (n === "href" ? site.href : undefined),
-            targetPage: (u) => map[u.replace(/^#/, "")],
+            targetPage: (u) => {
+              const physical = map[u.replace(/^#/, "")];
+              return physical === undefined ? undefined : toFolioPage(physical, pageValues);
+            },
             targetText: (u) => targetText[u.replace(/^#/, "")],
             leader: leaderMarker,
           });
@@ -295,12 +299,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         }
 
         // (b) page-granular running strings via a fixed counter-style map
-        const mapCss = [
-          counterStyleCss(model, sources, map, pageCount, resetSites),
-          blankCss,
-        ]
-          .filter(Boolean)
-          .join("\n");
+        // (the folio--blank named page is emitted through this SAME call —
+        // F1 — so a restarted folio counter agrees on the inserted blanks).
+        const mapCss = counterStyleCss(model, sources, map, pageCount, resetSites, hasBlankSites);
         if (mapCss) {
           await page.evaluate(
             `window.__folio.addCss("folio-gen-strings", ${JSON.stringify(mapCss)})`,
@@ -329,7 +330,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           `tier 3: predicted page map from the viewer in ${predicted.ms.toFixed(0)}ms (${predicted.pageCount}pp)`,
         );
         await applySynthesis(predicted.pageMap, predicted.pageCount);
-        previous = mapSignature(predicted.pageMap);
+        previous = mapSignature(predicted.pageMap, predicted.pageCount);
       }
 
       converged = false;
@@ -350,7 +351,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             .filter(([k]) => targets.has(k))
             .map(([k, v]) => [k, v + 1]),
         );
-        const signature = mapSignature(pageMap);
+        const signature = mapSignature(pageMap, facts.pageCount);
         if (signature === previous) {
           converged = true;
           log(
@@ -437,12 +438,21 @@ async function printPdf(page: Session): Promise<Uint8Array> {
   return page.printToPDF();
 }
 
-/** Canonical (key-order-independent) signature for a page map, for fixpoint comparison. */
-function mapSignature(map: Record<string, number>): string {
-  return Object.keys(map)
-    .sort()
-    .map((k) => `${k}=${map[k]}`)
-    .join("|");
+/**
+ * Canonical (key-order-independent) signature for a page map, for fixpoint
+ * comparison. Includes `pageCount` (F2): the id->page map can stabilize
+ * while the total page count is still one print behind (an under-predicted
+ * count sizes the fixed @counter-style symbol lists too short, and a page
+ * beyond the list silently degrades to a decimal fallback) — the loop must
+ * not call that a fixpoint.
+ */
+function mapSignature(map: Record<string, number>, pageCount: number): string {
+  return (
+    Object.keys(map)
+      .sort()
+      .map((k) => `${k}=${map[k]}`)
+      .join("|") + `|pageCount=${pageCount}`
+  );
 }
 
 interface PredictedPageMap {
@@ -552,6 +562,7 @@ export function counterStyleCss(
   pageMap: Record<string, number>,
   pageCount: number,
   resetSites: Array<{ id: string; start: number }> = [],
+  hasBlank = false,
 ): string {
   const consumed = consumedStrings(model);
 
@@ -570,13 +581,14 @@ export function counterStyleCss(
   // formats it per the `counter(page[, style])` style each context actually
   // requests, so `folio-page--lower-roman` and `folio-page--decimal` can carry
   // the SAME restarted numbering with different symbols.
-  const resets: PageCounterReset[] = resetSites
-    .map((s) => ({ page: pageMap[s.id] ?? 0, start: s.start }))
-    .filter((r) => r.page > 0);
-  const pageValues = resets.length ? pageCounterValues(resets, pageCount) : null;
+  const pageValues = restartedPageValues(resetSites, pageMap, pageCount);
 
-  if (!consumed.size && !pageValues) return "";
-  if (!byName.size && !pageValues) return "";
+  // `hasBlank` keeps this function from bailing out early when the ONLY
+  // thing it needs to emit is the `folio--blank` named page's rewritten
+  // content (F1): a document with no running strings/restart still needs
+  // its inserted blanks routed through the same rewrite as everything else.
+  if (!consumed.size && !pageValues && !hasBlank) return "";
+  if (!byName.size && !pageValues && !hasBlank) return "";
 
   // A `string(name, which)` needs one fixed-symbol map per (name, which) pair
   // actually consumed — the shared `stringValueAt` policy sampled at every
@@ -653,6 +665,29 @@ export function counterStyleCss(
       out.push(`@page ${name ?? ""}${pseudo} {\n${lines.join("\n")}\n}`.replace("@page  ", "@page "));
     }
   }
+
+  // The blank spacer pages Folio inserts for forced recto/verso breaks are
+  // assigned `page: folio--blank` (s10: Chromium never matches the native
+  // `:blank` pseudo against our own synthetic breaks), so the author's
+  // `@page :blank` content has to be re-emitted under that name — through
+  // the SAME `rewrite` used above, not a verbatim copy (F1: a verbatim copy
+  // never gets the counter(page)->@counter-style rewrite and prints the raw
+  // physical page number instead of the restarted folio).
+  if (hasBlank) {
+    const blank = resolvePage(model, { pseudos: ["blank"] });
+    const lines: string[] = [];
+    for (const [box, decls] of Object.entries(blank.marginBoxes)) {
+      if (!decls.content) continue;
+      const hasString = /\bstring\s*\(/.test(decls.content);
+      const hasPageCounter = pageValues && /\bcounter\(\s*page\b(?!s)/.test(decls.content);
+      const needsRewrite = hasString || hasPageCounter;
+      lines.push(`  ${box} { content: ${needsRewrite ? rewrite(decls.content) : decls.content}; }`);
+    }
+    out.push(
+      `@page ${BLANK_PAGE} {\n${lines.length ? lines.join("\n") : "  /* author declared no @page :blank */"}\n}`,
+    );
+  }
+
   for (const [styleName, symbols] of pageCounterStyles) {
     out.push(
       `@counter-style ${styleName} { system: fixed; suffix: ""; symbols: ${symbols

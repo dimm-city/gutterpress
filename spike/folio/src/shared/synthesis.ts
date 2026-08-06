@@ -185,6 +185,38 @@ export function pageCounterValues(resets: PageCounterReset[], pageCount: number)
   return values;
 }
 
+/**
+ * `resetSites` (id + declared start) -> `pageCounterValues`'s input shape,
+ * resolved against a measured id->page map. Both the compiler's folio-CSS
+ * synthesis (`counterStyleCss`) and its `target-counter()` resolution
+ * (`applySynthesis`) need this same resets->values step — one function, so
+ * a page's own folio and a cross-reference TO that page can never disagree
+ * (F2/F3). Returns `null` when the document declares no restart, so a
+ * caller can fall back to the raw physical page number.
+ */
+export function restartedPageValues(
+  resetSites: Array<{ id: string; start: number }>,
+  pageMap: Record<string, number>,
+  pageCount: number,
+): number[] | null {
+  const resets: PageCounterReset[] = resetSites
+    .map((s) => ({ page: pageMap[s.id] ?? 0, start: s.start }))
+    .filter((r) => r.page > 0);
+  return resets.length ? pageCounterValues(resets, pageCount) : null;
+}
+
+/**
+ * A 1-based PHYSICAL page number -> the folio it actually prints, honoring a
+ * `counter-reset: page N` restart (F3: `target-counter(attr(href), page)`
+ * must resolve to the SAME folio the target page's own margin box prints,
+ * not the raw physical page). `pageValues` is the array `pageCounterValues`
+ * (or `restartedPageValues`) produced; `null` means no restart is in play.
+ */
+export function toFolioPage(physicalPage: number, pageValues: number[] | null): number {
+  if (!pageValues) return physicalPage;
+  return pageValues[physicalPage - 1] ?? physicalPage;
+}
+
 // ---------------------------------------------------------------------------
 // leader() glue fill
 // ---------------------------------------------------------------------------

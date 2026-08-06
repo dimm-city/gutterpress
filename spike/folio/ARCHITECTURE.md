@@ -312,6 +312,28 @@ section's scope — it is a pre-existing, separately-documented viewer
 limitation, not a predict-then-verify defect, and the fallback already handles
 it correctly.
 
+**Fixed by review (F2): `mapSignature()` used to compare only the id->page
+map, not the page COUNT.** `applySynthesis`'s generated `@counter-style`
+symbol lists are sized by `pageCount` (one symbol per page), so an
+under-predicted `pageCount` that happens to still produce the same id->page
+map as the next real print was wrongly accepted as a fixpoint — the symbol
+list stayed too short and a page beyond it silently fell back to plain
+decimal instead of the author's requested style. `mapSignature()` now folds
+`pageCount` into the comparison, so a pageCount mismatch alone forces another
+pass through the loop (verified against the print's own measured
+`facts.pageCount`, never a predicted or assumed value); `s8-compiler`'s C2
+gate (below) asserts this with a deterministic case.
+
+**C2 regression gate (added by review).** Two `s8-compiler` checks close the
+"1-print win has zero coverage" gap: (a) the running-heads fixture (no
+cover-page opener idiom) asserts `prints === 1` EXACTLY — not `<= 2` — so a
+regression back to the pre-C2 two-print cost on a document that used to hit
+is no longer invisible; (b) a fixture built with the `.cover-page h1 { page:
+cover }` idiom deterministically MISSES (the same limitation measured above),
+asserting `prints >= 2`, `converged === true`, and — read back with the
+poppler-backed `pdfText`, an independent reader — that the shipped
+cross-reference resolves to the page the target actually printed on.
+
 **This cost is export-only.** The viewer contains zero print/CDP code — it
 paginates with multicol and `getBoundingClientRect()`, feeding the same shared
 `synthesis.ts` functions. Printing happens only in `build()`, reached from

@@ -7,8 +7,10 @@ import {
   pageCounterValues,
   parseWhich,
   planRectoBlanks,
+  restartedPageValues,
   stringSymbols,
   stringValueAt,
+  toFolioPage,
   wantsRecto,
 } from "./synthesis.ts";
 import { formatCounter } from "./content-value.ts";
@@ -155,6 +157,52 @@ describe("pageCounterValues — front-matter -> body folio restart (MIGRATION.md
     const shifted = clean.page + (plan[0] ? 1 : 0);
     const correct = pageCounterValues([{ page: shifted, start: 1 }], 6);
     expect(correct).toEqual([1, 2, 3, 4, 1, 2]);
+  });
+});
+
+describe("restartedPageValues — resetSites + measured pageMap -> pageCounterValues (F1/F3)", () => {
+  test("no reset sites: null (caller falls back to the raw physical page)", () => {
+    expect(restartedPageValues([], { a: 1 }, 5)).toBeNull();
+  });
+
+  test("resolves resetSites against the measured id->page map, same as pageCounterValues", () => {
+    // front matter 4pp, restart element measured on physical page 5
+    const result = restartedPageValues([{ id: "ch1", start: 1 }], { ch1: 5 }, 6);
+    expect(result).toEqual(pageCounterValues([{ page: 5, start: 1 }], 6));
+  });
+
+  test("an id absent from the map (unmeasured) is dropped, like pageCounterValues' page<=0", () => {
+    expect(restartedPageValues([{ id: "missing", start: 1 }], {}, 4)).toBeNull();
+  });
+});
+
+describe("toFolioPage — physical page -> the folio it actually prints (F3)", () => {
+  test("no restart in play: identity", () => {
+    expect(toFolioPage(7, null)).toBe(7);
+  });
+
+  test("restarted: looks up the physical page's restarted value", () => {
+    const values = pageCounterValues([{ page: 5, start: 1 }], 6); // [1,2,3,4,1,2]
+    expect(toFolioPage(1, values)).toBe(1);
+    expect(toFolioPage(4, values)).toBe(4);
+    expect(toFolioPage(5, values)).toBe(1); // the restart itself
+    expect(toFolioPage(6, values)).toBe(2);
+  });
+
+  test("a target-counter() reference and the target page's own folio must agree", () => {
+    // this is the F3 contract: whatever pageValues[physical-1] the target
+    // page's own margin box prints, target-counter() pointing AT that page
+    // must resolve to the exact same value.
+    const pageCount = 6;
+    const values = pageCounterValues([{ page: 5, start: 1 }], pageCount);
+    for (let physical = 1; physical <= pageCount; physical++) {
+      expect(toFolioPage(physical, values)).toBe(values[physical - 1]);
+    }
+  });
+
+  test("out-of-range physical page falls back to the raw number", () => {
+    const values = pageCounterValues([{ page: 2, start: 1 }], 3);
+    expect(toFolioPage(99, values)).toBe(99);
   });
 });
 

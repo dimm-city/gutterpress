@@ -509,6 +509,18 @@ Harness/process traps:
    should assert exactly this shape (roman front matter, a recto-forced
    chapter start that requires a blank, arabic body restarting at 1) and that
    viewer and print agree on every folio, not just the page count.
+   **Review found a second instance of the same gap (F1, fixed):** a blank
+   inserted for a recto/verso break AFTER the restart already took effect was
+   built from a verbatim copy of the author's `@page :blank` rules in
+   `build.ts`, bypassing `counterStyleCss`'s `counter(page)`->`@counter-style`
+   rewrite entirely — it printed the raw physical page while the viewer (which
+   always went through `pageCounterValues`) showed the restarted folio.
+   `counterStyleCss` now owns the `folio--blank` block too, through the same
+   rewrite (`ENGINE.md` §8 has the full account). **A related gap (F3, fixed):**
+   `target-counter()` pointing at a restarted page resolved the physical page,
+   not the folio that page itself prints; `synthesis.ts`'s new
+   `restartedPageValues`/`toFolioPage` close it on both the compiler
+   (`applySynthesis`) and the viewer (`decorate.ts`'s `buildMaps`).
 2. **Export time (predict-then-verify)** — built. `predictPageMap()` in
    `build.ts` runs the viewer's own `fragmentDocument()` on a SEPARATE
    page/tab (never the page about to print) to guess the Tier 3 page map,
@@ -532,6 +544,15 @@ Harness/process traps:
    — the preview never prints ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §10) —
    and ~90% of each print is `filter:`, which Step 1's scoping shrinks for
    both engines.
+   **Review found a convergence gap (F2, fixed):** the fixpoint loop's
+   `mapSignature()` compared only the id->page map, not `pageCount` — an
+   under-predicted page count could stabilize on the same id->page map as the
+   next real print and be accepted as a fixpoint, sizing the fixed
+   `@counter-style` symbol lists too short (a page beyond the list silently
+   fell back to plain decimal). `mapSignature()` now folds `pageCount` in;
+   `s8-compiler` gates both the 1-print hit (exact count, not `<= 2`) and a
+   deterministic miss (this same cover-page idiom) that proves the fallback
+   fires and still ships correct output — see `ARCHITECTURE.md` §10.
 
 ---
 

@@ -340,6 +340,36 @@ two contexts actually format differently — exactly this feature. Fixed by
 OWN fragment position (not `strip.page`) so `decorate.ts`'s `pageContext` can
 resolve it the same isolated way the compiler does.
 
+**A second, compiler-only instance of the same class of bug (found by review,
+now fixed)**: `build.ts` built the `folio--blank` named page's CSS separately
+from `counterStyleCss`, copying the author's `@page :blank` declarations
+VERBATIM instead of through the `counter(page)`->`@counter-style` rewrite. A
+blank inserted for a recto/verso break AFTER the restart is already in effect
+(not just the "before the restart" case above) printed the raw PHYSICAL page
+number — the viewer, which always went through the shared `pageCounterValues`
+path, showed the correct restarted folio, so print and viewer disagreed on the
+one page in the book that is hardest to spot (it carries no other content).
+`counterStyleCss` now owns the `folio--blank` block too (a `hasBlank`
+parameter), through the exact same `rewrite` closure every other page context
+uses — one function, verified with an independent reader (`pdftotext`): a
+fixture with 3pp roman front matter, a restart, and a SECOND forced-recto
+break inside the already-restarted body prints the inserted blank as the next
+number in the restarted sequence (`…1, 2[blank], 3…`), not the physical page.
+
+**`target-counter()` also has to cross the restart.** A cross-reference
+pointing at a page whose folio was restarted used to resolve `target-counter()`
+to the MEASURED (physical) page number, while the target page's own margin box
+printed the restarted folio — `(p. 7)` pointing at a page that itself prints
+folio `4`. Fixed the same way: `synthesis.ts` exports `restartedPageValues`
+(resolves `resetSites` against a measured id->page map into the same array
+`pageCounterValues` produces) and `toFolioPage` (looks up one physical page in
+that array, identity when there is no restart). Both `build.ts`'s
+`applySynthesis` (the `targetPage` callback fed to `evaluate()`) and
+`decorate.ts`'s `buildMaps` (the `api.targets` map, now built AFTER the
+restart's `pageNumbers` so it can convert through them) call the same two
+functions — the page a `target-counter()` reference reports can no longer
+disagree with the page it points at.
+
 ## 9. `body { zoom }` under print — and what Paged.js's scale actually is
 
 Two measured facts about `zoom` in the print path:

@@ -181,6 +181,15 @@ html { font: 11pt/1.45 'DejaVu Serif', serif } body { margin: 0 }
     r3.converged,
     `${r3.passes} passes, converged=${r3.converged}`,
   );
+  // C2 GATE (a): this fixture has no viewer↔print parity idiom, so §10's
+  // predict-then-verify should HIT — an EXACT value, not `<= 2`, so a
+  // regression from 1 print back to 2 (silently falling back to the pre-C2
+  // cost on a document that used to hit) is caught rather than invisible.
+  s.check(
+    "§10 predict-then-verify HITS on this fixture: exactly one print",
+    r3.prints === 1,
+    `${r3.prints} print(s)`,
+  );
 
   const t3 = pdfText(join(OUT_DIR, "s8-tier3.pdf"));
   const refs = [...t3.pages.flatMap((p) => [...p.text.matchAll(/\(p\.\s*(\d+)\)/g)])];
@@ -208,10 +217,65 @@ html { font: 11pt/1.45 'DejaVu Serif', serif } body { margin: 0 }
     `${mapOk}/${chapterRefs.length} chapter anchors correct`,
   );
 
+  // C2 GATE (b): a deterministic MISS, proving the fixpoint fallback fires
+  // (ARCHITECTURE.md §10) and still ships correct output. The
+  // `.cover-page h1 { page: cover }` descendant-named-page idiom is the
+  // viewer's own already-documented parity limitation (`fragment.ts`'s
+  // `pageNameOf()`: print applies the "cover" template only to the h1's own
+  // page, the multicol viewer applies it to the whole run) — not something
+  // this gate should "fix" by loosening the predictor, just a fixture that
+  // reliably makes it wrong so the fallback path gets exercised on purpose.
+  const missFiller = (n: number, prefix: string) =>
+    Array.from(
+      { length: n },
+      (_, i) =>
+        `<p id="${prefix}${i}">Filler paragraph ${i} lorem ipsum dolor sit amet consectetur adipiscing elit sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>`,
+    ).join("\n");
+  const missDoc = join(OUT_DIR, "s8-predict-miss.html");
+  writeFileSync(
+    missDoc,
+    `<!doctype html><meta charset="utf-8"><style>
+@page { size: 6in 9in; margin: 0.75in; @bottom-center { content: counter(page); } }
+@page cover { margin: 3in; }
+.cover-page h1 { page: cover; }
+a.xref::after { content: " (p. " target-counter(attr(href), page) ")"; }
+html { font: 11pt/1.4 'DejaVu Serif', serif; } body { margin: 0; } p { margin: 0 0 8pt; }
+</style>
+<body><main>
+<section class="cover-page"><h1 id="cover">Cover Title</h1>${missFiller(12, "cov")}</section>
+<p id="target">TARGET paragraph.</p>
+${missFiller(20, "mid")}
+<p>See <a class="xref" href="#target">target</a> for details.</p>
+</main></body>`,
+  );
+  const rMiss = await build({ input: missDoc, browser });
+  writeArtifact(join(OUT_DIR, "s8-predict-miss.pdf"), rMiss.bytes);
+  s.check(
+    "predict-then-verify MISSES on the descendant-named-page idiom (fallback exercised)",
+    rMiss.prints >= 2,
+    `${rMiss.prints} print(s), ${rMiss.passes} pass(es)`,
+  );
+  s.check(
+    "…and the fallback still reaches a fixpoint",
+    rMiss.converged,
+    `converged=${rMiss.converged}`,
+  );
+  const tMiss = pdfText(join(OUT_DIR, "s8-predict-miss.pdf"));
+  const targetPrintedPage = tMiss.pages.findIndex((p) => p.text.includes("TARGET paragraph")) + 1;
+  const missRefs = tMiss.pages.flatMap((p) => [...p.text.matchAll(/\(p\.\s*(\d+)\)/g)]);
+  s.check(
+    "…and the shipped output is correct: the xref resolves to the page the target ACTUALLY printed on",
+    targetPrintedPage > 0 &&
+      missRefs.length === 1 &&
+      Number(missRefs[0][1]) === targetPrintedPage,
+    `target on p${targetPrintedPage}, xref says (p. ${missRefs[0]?.[1] ?? "?"})`,
+  );
+
   s.data = {
     tier1: { tier: r1.tier, pages: r1.pageCount },
     tier2: { tier: r2.tier, pages: r2.pageCount, padded: r2.post.padded, notes: r2.notes },
-    tier3: { tier: r3.tier, passes: r3.passes, converged: r3.converged, refs: refs.length },
+    tier3: { tier: r3.tier, passes: r3.passes, converged: r3.converged, refs: refs.length, prints: r3.prints },
+    predictMiss: { prints: rMiss.prints, passes: rMiss.passes, converged: rMiss.converged },
   };
   return s.finish();
 }
