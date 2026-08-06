@@ -117,8 +117,12 @@ fallback-substituted — the page falls through to the *unmirrored* base `@page`
 margin instead. Root-caused with fixtures and vendored-source line references
 in [`MIGRATION.md`](./MIGRATION.md)'s Step 1 section. Do not conflate the two:
 Folio's is a cross-stylesheet cascade-order bug (fixed by flat resolution,
-above); Paged.js's is a parser gap on `var()` inside `@page` (inherent to the
-polyfill, not fixed — see that section for why).
+above); Paged.js's is a parser gap on `var()` inside `@page` — inherent to the
+polyfill, but **neutralized in the shipped pipeline** (2026-08-06):
+`packages/cli/src/lib/page-var-resolve.ts` substitutes `:root`/`html` token
+values into `@page` declarations before the polyfill sees the CSS, so it only
+ever parses literal lengths (fixture 03b: Paged.js `dropped` 54pt →
+`correct` 90pt, identical to Folio).
 
 ### Shorthand and longhand must be resolved in cascade order
 
