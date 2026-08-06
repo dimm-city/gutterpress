@@ -18,8 +18,12 @@ const inputDir = path.resolve(process.argv[2] ?? "examples/gutterpress-user-guid
 const outDir = path.resolve(process.argv[3] ?? "/tmp/cmp/staged");
 
 const { manifest, manifestPath } = await loadManifestWithPath(inputDir);
-const config = resolveConfig(manifest, { inputDir, manifestPath });
-const renderDir = path.dirname(manifestPath);
+// resolveConfig's contract is (cliOverrides, manifest) — the old call passed
+// the manifest as overrides and a junk object as the manifest, which worked
+// only because every real value rode in through the overrides slot. Surfaced
+// the moment compare/ entered the typecheck program.
+const config = resolveConfig({}, manifest);
+const renderDir = manifestPath ? path.dirname(manifestPath) : inputDir;
 const { plugins, pluginCss } = await loadPluginsWithCss(config.plugins, renderDir);
 
 mkdirSync(outDir, { recursive: true });

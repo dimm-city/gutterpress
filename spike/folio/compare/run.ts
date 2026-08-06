@@ -17,11 +17,11 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { ensureBundles } from "../src/bundles.ts";
-import { launchChromium } from "../src/shared/cdp.ts";
-import { build } from "../src/compiler/build.ts";
-import { inspectPdf } from "../src/shared/pdf-inspect.ts";
-import { extract, resolvePage } from "../src/shared/gcpm-extract.ts";
+import { ensureBundles } from "../spikes/bundles.ts";
+import { launchChromium } from "../../../packages/cli/src/engine/shared/cdp.ts";
+import { build } from "../../../packages/cli/src/engine/compiler/build.ts";
+import { inspectPdf } from "../../../packages/cli/src/engine/shared/pdf-inspect.ts";
+import { extract, resolvePage } from "../../../packages/cli/src/engine/shared/gcpm-extract.ts";
 import { pdfText } from "../spikes/probe.ts";
 
 const REPO = resolve(import.meta.dir, "..", "..", "..");

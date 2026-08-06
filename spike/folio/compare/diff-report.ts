@@ -10,7 +10,7 @@
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { inspectPdf } from "../src/shared/pdf-inspect.ts";
+import { inspectPdf } from "../../../packages/cli/src/engine/shared/pdf-inspect.ts";
 import { readFileSync } from "node:fs";
 import { pdfText, type PdfPageText } from "../spikes/probe.ts";
 

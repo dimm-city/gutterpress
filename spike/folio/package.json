@@ -7,7 +7,7 @@
   "scripts": {
     "bundles": "bun spikes/bundles.ts",
     "spikes": "bun spikes/run-all.ts",
-    "test": "bun test",
+    "test": "cd ../../packages/cli && bun test src/engine",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "compare": "bun compare/run.ts",
     "migration-fixtures": "bun fixtures/migration/runner.ts"
