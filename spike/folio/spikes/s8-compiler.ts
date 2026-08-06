@@ -282,6 +282,40 @@ ${missFiller(20, "mid")}
     `target on p${targetPrintedPage}, xref says (p. ${missRefs[0]?.[1] ?? "?"})`,
   );
 
+  // ------------------------------------------- pre-print width check
+  // Chromium native print silently scales the whole document down when any
+  // box's min-content width exceeds the page content box (ENGINE.md §9 —
+  // the 1.364x field-guide "scale" was exactly this). A book must never
+  // ship at a mystery scale: build() must REFUSE, name the offender, and
+  // only proceed under allowShrink.
+  const wide = join(OUT_DIR, "s8-overwide.html");
+  writeFileSync(
+    wide,
+    `<!doctype html><meta charset="utf-8"><style>
+@page { size: 6in 9in; margin: 0.75in; }
+html { font: 11pt/1.45 serif } body { margin: 0 }
+</style><main><p>Fits fine.</p><div class="too-wide" style="width:1020px;height:20px;background:#eee"></div></main>`,
+  );
+  let widthError = "";
+  try {
+    await build({ input: wide, browser });
+  } catch (e) {
+    widthError = String(e);
+  }
+  s.check(
+    "an over-wide box FAILS the build (shrink-to-fit refused)",
+    widthError.includes("shrink-to-fit") && widthError.includes("too-wide"),
+    widthError.slice(0, 120) || "build did not throw",
+  );
+  const rShrink = await build({ input: wide, browser, allowShrink: true });
+  s.check(
+    "…and allowShrink builds anyway, with the compromise recorded in notes",
+    rShrink.pageCount > 0 && rShrink.notes.some((n) => n.includes("allowShrink")),
+    `${rShrink.pageCount}pp, notes: ${rShrink.notes.join(" | ")}`,
+  );
+  // The fitted documents built earlier in this spike (r1/r2/r3) are the
+  // pass case: they reached here without tripping the check.
+
   s.data = {
     tier1: { tier: r1.tier, pages: r1.pageCount },
     tier2: { tier: r2.tier, pages: r2.pageCount, padded: r2.post.padded, notes: r2.notes },

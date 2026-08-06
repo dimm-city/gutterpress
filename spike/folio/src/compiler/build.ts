@@ -62,6 +62,8 @@ export interface BuildOptions {
   maxPasses?: number;
   /** raster resolution below which the audit warns; 0 disables. Default 300. */
   dpiFloor?: number;
+  /** downgrade the pre-print width check from a build error to a warning */
+  allowShrink?: boolean;
   /** reuse a warm browser (dev server) */
   browser?: Browser;
   onProgress?: (msg: string) => void;
@@ -107,6 +109,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     const model: GcpmModel = extract(cssText);
     const { tier3Reasons } = classify(model);
 
+
     // ---- Tier 2: geometry synthesis (bleed / marks) ---------------------
     const tier2 = synthesize({
       model,
@@ -121,6 +124,35 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         `window.__folio.addCss("folio-gen-css", ${JSON.stringify(genCss)})`,
       );
       log(`tier 2: bleed/marks geometry`);
+    }
+
+    // ---- pre-print width check ------------------------------------------
+    // Chromium's native print SILENTLY scales the whole document down when
+    // any box's preferred (min-content) width exceeds the page content box
+    // — measured 1.364x on a real book, with `pt` values quietly meaning
+    // 73% of what they say (ENGINE.md §9). A book must never ship at a
+    // mystery scale: fail loudly, name the offenders, and let the author
+    // fix the CSS (or pass allowShrink to proceed eyes-open). Runs after
+    // tier-2 synthesis so the limit includes the bleed/slug extension —
+    // bleed art on a zero-margin page is LEGITIMATELY trim+2*bleed wide.
+    const widthOffenders = await findWidthOffenders(
+      page,
+      model,
+      2 * (tier2.geometry.bleed + tier2.geometry.slug),
+    );
+    if (widthOffenders.list.length) {
+      const detail = widthOffenders.list
+        .map((o) => `  ${o.desc} — min-content ${Math.round(o.px)}px > ${Math.round(widthOffenders.limitPx)}px content box`)
+        .join("\n");
+      const msg =
+        `content wider than the page content box triggers Chromium print ` +
+        `shrink-to-fit (the WHOLE book scales down, silently):\n${detail}`;
+      if (opts.allowShrink) {
+        notes.push(`width check (allowShrink): ${widthOffenders.list.length} over-wide element(s) — output may be scaled down`);
+        log(`WARNING: ${msg}`);
+      } else {
+        throw new Error(`${msg}\nFix the offending widths, or pass allowShrink to build anyway.`);
+      }
     }
 
     // Running heads, cross-references and recto/verso placement all need to
@@ -446,6 +478,68 @@ async function printPdf(page: Session): Promise<Uint8Array> {
  * beyond the list silently degrades to a decimal fallback) — the loop must
  * not call that a fixpoint.
  */
+/**
+ * Pre-print width check. Lays the document out at a 10px viewport so every
+ * block sits at its MIN-CONTENT width (this is what Chromium's shrink-to-fit
+ * actually responds to — a clamped `max-width: 100%` image still contributes
+ * its intrinsic width, so scanning laid-out overflow misses real triggers),
+ * then reports the deepest elements wider than the largest page content box
+ * in the author's model. Viewport emulation only — the DOM is never touched
+ * (ARCHITECTURE.md §2), and the override is cleared before any print.
+ *
+ * Known approximation, on purpose: elements are compared against the WIDEST
+ * page context (a margin-0 full-bleed page raises the limit for the whole
+ * document), because mapping each element to its eventual page before any
+ * print exists would cost a measurement pass. An element wider than its own
+ * page but narrower than the widest context escapes this check; the fixture
+ * gate in s8 covers the common case.
+ */
+async function findWidthOffenders(
+  page: Session,
+  model: GcpmModel,
+  bleedSlugExtensionPt: number,
+): Promise<{ limitPx: number; list: Array<{ desc: string; px: number }> }> {
+  const contexts = [
+    resolvePage(model),
+    ...model.pageNames.map((n) => resolvePage(model, { name: n })),
+  ];
+  const maxContentPt =
+    Math.max(
+      ...contexts.map((c) => c.geometry.width - c.geometry.margin.left - c.geometry.margin.right),
+    ) + bleedSlugExtensionPt;
+  const limitPx = (maxContentPt * 96) / 72;
+  await page.send("Emulation.setDeviceMetricsOverride", {
+    width: 10,
+    height: 1080,
+    deviceScaleFactor: 1,
+    mobile: false,
+  });
+  try {
+    const raw = await page.evaluate<string>(`(() => {
+      const LIMIT = ${limitPx} + 1;
+      const out = [];
+      for (const el of document.querySelectorAll("*")) {
+        const r = el.getBoundingClientRect();
+        if (r.width <= LIMIT) continue;
+        let deepest = true;
+        for (const c of el.children) {
+          if (c.getBoundingClientRect().width >= r.width - 1) { deepest = false; break; }
+        }
+        if (!deepest) continue;
+        const cls = typeof el.className === "string" && el.className
+          ? "." + el.className.trim().split(/\\s+/).join(".") : "";
+        const src = el.tagName === "IMG" ? " src=" + (el.getAttribute("src") || "").slice(-40) : "";
+        out.push({ desc: el.tagName.toLowerCase() + cls + src, px: r.width });
+        if (out.length >= 20) break;
+      }
+      return JSON.stringify(out);
+    })()`);
+    return { limitPx, list: JSON.parse(raw) };
+  } finally {
+    await page.send("Emulation.clearDeviceMetricsOverride");
+  }
+}
+
 export function mapSignature(map: Record<string, number>, pageCount: number): string {
   return (
     Object.keys(map)
