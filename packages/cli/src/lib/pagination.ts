@@ -469,6 +469,18 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
       width: pagedInfo.width ?? "8.625in",
       height: pagedInfo.height ?? "11.25in",
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      // Bookmarks (from heading structure) and accessibility tagging. Both
+      // are backed by CDP's Page.printToPDF generateDocumentOutline /
+      // generateTaggedPDF params (puppeteer-core's `outline` / `tagged`
+      // PDFOptions) and require Chromium's `--generate-pdf-document-outline`
+      // / `--export-tagged-pdf` launch flags — puppeteer-core adds both by
+      // default (see ChromeLauncher's default chromeArguments), so no
+      // browser-pool.ts change is needed. `tagged` already defaults to
+      // `true` in this puppeteer-core version; `outline` defaults to
+      // `false` and must be requested explicitly (COMPARISON.md §A: 0 -> 155
+      // bookmarks on the same DOM).
+      outline: true,
+      tagged: true,
     });
 
     // Unification: serialize the SAME printed DOM to static HTML so the on-screen
