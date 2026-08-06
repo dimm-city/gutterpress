@@ -824,11 +824,11 @@ export async function runBuild(
   // Without this we'd discover missing tools deep in the pipeline (30-90s in
   // for a real book) when ENOENT bubbles up from a child_process spawn. A 50ms
   // probe at the top gives an actionable error immediately.
-  // engine: "native" drives its OWN Chromium via src/engine's `launchChromium`
-  // (see ./engine.ts) — it never touches this file's puppeteer pool, so the
-  // pool preflight/prewarm below is skipped exactly as it already is for an
-  // injected `pdfRenderer`.
-  if (ctx.format !== "html" && opts.engine !== "native") {
+  // engine: "native" now reuses this file's puppeteer pool too (see
+  // ./engine.ts — it connects the engine's raw-CDP client to the pool's
+  // browser instead of launching its own), so it needs the same Chromium
+  // preflight as the Paged.js path. Only an injected `pdfRenderer` skips it.
+  if (ctx.format !== "html" && !opts.pdfRenderer) {
     await preflightBuildTools(ctx.format, opts, ctx.config);
   }
 
@@ -836,9 +836,10 @@ export async function runBuild(
   // cold start overlaps with lint + validation + markdown render + asset staging
   // below, instead of sitting on the critical path at pagination time. Only when
   // this build will actually paginate in Chromium: a PDF/PDFX build with no
-  // injected renderer, or an HTML build with a browser available.
+  // injected renderer (Paged.js or native — both now draw from the same pool),
+  // or an HTML build with a browser available.
   const willPaginateInChromium =
-    (ctx.format !== "html" && !opts.pdfRenderer && opts.engine !== "native") ||
+    (ctx.format !== "html" && !opts.pdfRenderer) ||
     (ctx.format === "html" && !!(await resolveChromiumExecutable()));
   if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 

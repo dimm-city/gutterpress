@@ -89,8 +89,6 @@ export async function launchChromium(
   const proc = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"] });
   const wsUrl = await readDevToolsUrl(proc);
   const conn = await Connection.open(wsUrl);
-  const version = await conn.send<{ product: string }>("Browser.getVersion", {});
-  const milestone = Number(/Chrome\/(\d+)/.exec(version.product)?.[1] ?? 0);
 
   /**
    * Shut the browser down, then remove its user-data dir.
@@ -119,10 +117,47 @@ export async function launchChromium(
     rmSync(userDataDir, { recursive: true, force: true });
   };
 
+  return checkMilestoneAndWrap(conn, wsUrl, `at ${bin}`, teardown);
+}
+
+/**
+ * Attach to an ALREADY-RUNNING Chromium (a pooled/pre-warmed browser owned by
+ * the caller, e.g. `browser-pool.ts`'s puppeteer instance via
+ * `browser.wsEndpoint()`) instead of spawning a new process.
+ *
+ * Deliberately the mirror image of `launchChromium`: same version pin, same
+ * `Session`/`newPage` machinery (`checkMilestoneAndWrap`, shared below), but
+ * `close()` only drops OUR websocket connection — it never sends
+ * `Browser.close`, kills a process, or removes a profile dir, because this
+ * function didn't create any of those. Ownership of the underlying browser's
+ * lifecycle stays entirely with whoever handed us `wsUrl`.
+ */
+export async function connectChromium(wsUrl: string): Promise<Browser> {
+  const conn = await Connection.open(wsUrl);
+  return checkMilestoneAndWrap(conn, wsUrl, "via connected browser", async () => {
+    conn.close();
+  });
+}
+
+/**
+ * Shared by `launchChromium` and `connectChromium`: verify the pin (same
+ * error message shape either way, per ARCHITECTURE.md §1 — one function owns
+ * the check), then wrap the raw `Connection` in the public `Browser` shape.
+ * `teardown` is the only thing that differs between the two callers.
+ */
+async function checkMilestoneAndWrap(
+  conn: Connection,
+  wsUrl: string,
+  origin: string,
+  teardown: () => Promise<void>,
+): Promise<Browser> {
+  const version = await conn.send<{ product: string }>("Browser.getVersion", {});
+  const milestone = Number(/Chrome\/(\d+)/.exec(version.product)?.[1] ?? 0);
+
   if (milestone < REQUIRED_MILESTONE) {
     await teardown();
     throw new Error(
-      `Folio requires Chromium ${REQUIRED_MILESTONE}+; found ${version.product} at ${bin}.\n` +
+      `Folio requires Chromium ${REQUIRED_MILESTONE}+; found ${version.product} ${origin}.\n` +
         `Set FOLIO_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
     );
   }
