@@ -304,6 +304,20 @@ class SessionImpl implements Session {
     })()`);
   }
 
+  /**
+   * Print to PDF, streaming the result back.
+   *
+   * `ReturnAsStream` rather than `ReturnAsBase64` because base64 does not scale:
+   * the whole PDF comes back inside ONE CDP message, so a 141 MB book arrives as
+   * a ~188 MB base64 string that has to be buffered and `JSON.parse`d in one go.
+   * Measured on a real art-heavy book (301pp): streaming took 203 s end to end,
+   * while the identical base64 print had not returned after 600 s. It reads as a
+   * hang, not as slowness — there is no progress and no error.
+   *
+   * Streaming costs almost nothing: of those 203 s, generation is 197 s and
+   * draining the stream is 5.5 s. The transfer was never the expensive part;
+   * base64 just made it pathological at size.
+   */
   async printToPDF(opts: Record<string, unknown> = {}): Promise<Uint8Array> {
     const res = await this.send<{ data: string; stream?: string }>(
       "Page.printToPDF",
@@ -312,11 +326,29 @@ class SessionImpl implements Session {
         preferCSSPageSize: true,
         generateTaggedPDF: true,
         generateDocumentOutline: true,
-        transferMode: "ReturnAsBase64",
+        transferMode: "ReturnAsStream",
         ...opts,
       },
     );
-    return Uint8Array.from(Buffer.from(res.data, "base64"));
+    // A caller that overrides transferMode still gets the inline path.
+    if (!res.stream) return Uint8Array.from(Buffer.from(res.data, "base64"));
+
+    const chunks: Buffer[] = [];
+    try {
+      for (;;) {
+        const c = await this.send<{
+          data: string;
+          base64Encoded?: boolean;
+          eof: boolean;
+        }>("IO.read", { handle: res.stream, size: 8 * 1024 * 1024 });
+        if (c.data)
+          chunks.push(Buffer.from(c.data, c.base64Encoded ? "base64" : "binary"));
+        if (c.eof) break;
+      }
+    } finally {
+      await this.send("IO.close", { handle: res.stream }).catch(() => {});
+    }
+    return new Uint8Array(Buffer.concat(chunks));
   }
 
   async close() {

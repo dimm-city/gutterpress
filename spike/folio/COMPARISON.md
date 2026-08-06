@@ -177,3 +177,89 @@ printing the same HTML with no Folio at all). Headlines from it:
   unused in this book, but it is engine-coupled CSS: under Folio those variables
   are undefined and the helper falls back to `0px`. A native replacement would
   be a plain negative margin.
+
+---
+
+## Second subject: the DC Field Guide (art-heavy, 7 CSS layers)
+
+Run on `dc-op-manual/field-guide` — ~1.9 MB of staged HTML, 1.2 MB of CSS across
+seven layers, a custom markdown-it plugin, 102 MB of art. An order of magnitude
+harder than the user guide, and it produced findings the user guide could not.
+
+| | current (Paged.js) | Folio |
+| --- | --- | --- |
+| build | **260 s** | **404 s** |
+| pages | 296 printed / 302 PDF | 200 printed / 201 PDF |
+| PDF | 167 MB | 144 MB |
+| body type as rendered | **~16.4 pt** | **12.0 pt** |
+
+### The type is 1.36× larger under Paged.js — verified three ways
+
+The book's CSS authors body text as `--fs-body: 12pt`, declared exactly once and
+at top level (not inside `@media print`). Measuring the *same words* on the
+*same content* in three renderings of the *same* `book.html`:
+
+| word | plain Chromium | Folio | Gutterpress |
+| --- | --- | --- | --- |
+| chapters | 13.38 pt | **13.38 pt** | 18.25 pt |
+| origins, | 12.82 pt | **12.82 pt** | 17.49 pt |
+
+Folio matches bare Chromium **to the decimal**; Paged.js is a constant
+**1.364×** on every word measured. Both PDFs are the same physical page
+(621×810 pt) with the same text column (516 vs 522 pt), so this is not a layout
+difference — it is a uniform scale applied to the type.
+
+That single factor explains the whole page-count gap: same column, larger
+glyphs → fewer characters per line → 296 pages where the CSS as written yields
+200. Anchor tracking through the book shows the drift accumulating smoothly to a
+stable 1.50× page ratio by mid-book, not jumping at any one construct.
+
+**This is the migration risk, and it is not a Folio defect.** The field guide is
+typeset at ~136 % of what its stylesheet specifies, so its `pt` values do not
+mean what they say. Adopting Folio would reflow the entire book to 200 pages at
+genuinely-12 pt type. Whether the fix is to re-tune the tokens (≈16.4 pt to
+preserve today's appearance) or to accept the smaller type is an editorial
+decision, not a technical one — but it must be made deliberately, and it is
+invisible until something renders the CSS faithfully. The scale originates in
+Paged.js's layout, not in the book: no `.pagedjs_*` rule sets `font-size`,
+`zoom`, `transform` or `scale`, and Gutterpress prints with explicit
+`width`/`height` from the sheet's computed style rather than `preferCSSPageSize`
+(`packages/cli/src/lib/pagination.ts`).
+
+### Folio is 1.6× SLOWER here, and the reason is structural
+
+Not a regression — an inversion. Tier 3 costs **two full print passes**; a
+single print of this book measures 197 s, and 2 × 197 ≈ the 404 s observed
+(`warm` is no faster than `cold`, confirming browser startup is noise at this
+scale). On the 60-page user guide, printing is cheap and Folio's win came from
+replacing Paged.js's JS pagination (1.16 s → 0.11 s). Here rasterisation
+dominates at ~1 s/page — driven by the 1.2 MB of CSS, not the art (hiding every
+image changed the PDF from 41.5 MB to 12.6 MB and the time not at all) — and
+Folio pays it twice while Gutterpress pays it once.
+
+**Folio's advantage does not shrink as documents get heavier; it inverts.**
+Any future work on Tier 3 cost should target the second pass, since on
+print-dominated books that pass *is* the build.
+
+### Three bugs this subject exposed
+
+1. **`printToPDF` hung on large books.** `ReturnAsBase64` returns the whole PDF
+   in ONE CDP message: a 141 MB book arrives as a ~188 MB base64 string to be
+   buffered and `JSON.parse`d at once. Measured: streaming 203 s end-to-end,
+   base64 still not returned after 600 s — with no progress and no error, so it
+   reads as a hang. Now `ReturnAsStream` (generate 197 s + drain 5.5 s); the
+   transfer was never the expensive part. Verified byte-identical output.
+2. **The harness staged `book.html` with no assets.** Folio built the entire
+   book with zero art, and *every aggregate metric looked like a real engine
+   difference* — 184 vs 301 pages, 3.9× file size, Folio showing more words,
+   Gutterpress showing 168 near-blank pages. Rendering one page refuted all of
+   it. `stage-book.ts` now mirrors the shipped asset step (49 assets, 102 MB).
+3. **Text-extraction metrics are unusable on this book.** Card text uses Type 3
+   fonts (`AAAAAA+Lixdu`) that `pdftotext` cannot recover, in BOTH PDFs — so
+   word counts and "near-blank page" counts are measuring the font, not the
+   layout. Use glyph bounding boxes (`pdftotext -bbox`) and rasters instead.
+
+Content bugs found in the book itself (unchanged; run used a corrected copy):
+four broken image references, three of them path typos —
+`images/chapter-02/cybersurgeon.png`, `./images/chapter-03/etherlock.png`,
+`images/chapter-01/proxy.jpg`. These hard-fail the build today.

@@ -66,7 +66,20 @@ rmSync(gpOut, { recursive: true, force: true });
 const t0 = performance.now();
 const gp = spawnSync(
   "bun",
-  [join(REPO, "packages/cli/src/cli.ts"), "build", PROJECT, "--format", "pdf", "--out", gpOut],
+  // --skip-pre-validate: what is being compared is PAGINATION. Folio has no
+  // content-validation gate at all, so leaving Gutterpress's on would just
+  // abort the run on pre-existing content bugs (e.g. the field guide's four
+  // broken image refs) before either engine lays out a single page.
+  [
+    join(REPO, "packages/cli/src/cli.ts"),
+    "build",
+    PROJECT,
+    "--format",
+    "pdf",
+    "--out",
+    gpOut,
+    "--skip-pre-validate",
+  ],
   { cwd: REPO, env, encoding: "utf8", timeout: 900_000 },
 );
 const gpMs = performance.now() - t0;
