@@ -174,7 +174,31 @@ and 1in margins — the content box is 72…360pt:
 root element's background propagates to the canvas and should cover the whole
 page box, margins included.
 
-### Therefore: bleed art only works on zero-margin pages
+### But a full-bleed page IS achievable with margins — paint the margin boxes
+
+The clipping rule above says content cannot reach the page edge. It does **not**
+say the *page* cannot be covered, because margin boxes paint in their own bands
+and there are sixteen of them. Painting all 16 plus the content area covers the
+whole page, and the margin boxes remain available for running heads at the same
+time. Measured on a 6×9in page with 0.5in margins: ink box `0,0 → 215,323` on a
+216×324 raster — **edge to edge** — while `@top-center` still carried a correct
+per-page string (`CH-ONE`/`CH-TWO`/`CH-THREE` via a counter-style map).
+
+A **tiled texture** stays continuous across the seventeen painting areas if each
+box's `background-position` is offset by its own page coordinates
+(`background-position: -Xpt -Ypt`). Verified with a 16px checker at 72dpi: no
+visible discontinuity at any box boundary. Those offsets are pure page geometry,
+so a compiler can emit them — this is the same class of synthesis Tier 2 already
+does for bleed.
+
+This matters because it removes what looked like a hard either/or: a design
+wanting a full-bleed page background *and* CSS running heads on every page can
+have both. What you cannot do is get there with `@page { margin: 0 }`, because
+that deletes the margin boxes the heads live in — and a positioned element is no
+substitute: fixed-position elements DO repeat on every page, but `counter(page)`
+resolves to `0` outside a margin box, so they cannot know which page they are on.
+
+### Bleed art in the CONTENT flow still only works on zero-margin pages
 
 With `@page { margin: 0 }` the content box *is* the page, and art reaches every
 edge — measured `0,0 → 449,665` on a 450×666pt media box.
@@ -194,9 +218,10 @@ fills it, crop marks stay clear. Everything else keeps trim-relative positioning
 Covers and full-page plates belong on their own `@page name { margin: 0 }`, with
 live matter inset by padding.
 
-This is also the one place the Paged.js approach is structurally more capable:
-it builds `.page` divs in the DOM, so "bleed" is just an element inside a div and
-no page box is involved.
+Paged.js reaches this more easily — it builds `.page` divs, so "bleed" is just an
+element in a div and no page box is involved. But per the section above, the
+margin-box route gets a real page box to full coverage too, so this is a
+difference in how much the compiler must synthesize, not in what is achievable.
 
 ---
 

@@ -234,8 +234,12 @@ Chromium 61/61 pages, adding only the running heads it synthesizes.
 
 Three things Folio cannot do, written down rather than left to be discovered:
 
-- **Bleed art only works on zero-margin pages** — Chromium clips content to the
-  content box ([`ENGINE.md`](./ENGINE.md) §5).
+- **Bleed art in the content flow only works on zero-margin pages** — Chromium
+  clips content to the content box ([`ENGINE.md`](./ENGINE.md) §5). Note the
+  bound is narrower than it first looks: a full-bleed *page* is achievable WITH
+  margins by painting the 16 margin boxes, which also keeps running heads
+  available. This entry used to claim the two were mutually exclusive; measuring
+  it disproved that (`ENGINE.md` §5).
 - **Knife-edge boundaries can differ between preview and print** — inherent, not
   fixable by an epsilon, worse with fractional page metrics. The PDF is ground
   truth; printed page numbers always come from compiler measurement.
