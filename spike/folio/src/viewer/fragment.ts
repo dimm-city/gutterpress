@@ -497,6 +497,25 @@ export function pageOf(el: Element, strips: StripInfo[]): number {
   return strip.offset + Math.max(0, Math.min(strip.pages - 1, idx));
 }
 
+/**
+ * Book-wide (0-based) page index of every recto/verso blank spacer, read from
+ * its OWN fragment position — not inherited from `strip.page`.
+ *
+ * A blank spacer sits inside whichever named-page run happens to contain the
+ * site it precedes (it is a DOM sibling, not a strip boundary — recto/verso
+ * breaks split PAGES, not runs), but the compiler gives every blank page its
+ * own isolated context (`page: folio--blank`, ENGINE.md §8 / `counterStyleCss`
+ * in `build.ts`), decoupled from the surrounding run. `pageContext` in
+ * `decorate.ts` needs this list to do the same, or a blank page picks up the
+ * WRONG context's geometry and content — exactly the recto/verso parity class
+ * of bug (`ARCHITECTURE.md` §1).
+ */
+export function blankPageIndices(strips: StripInfo[]): number[] {
+  return Array.from(document.querySelectorAll(".folio-recto-spacer")).map((el) =>
+    pageOf(el, strips),
+  );
+}
+
 /** Page range [firstPage, lastPage] an element spans (0-based, book-wide). */
 export function pageRangeOf(el: Element, strips: StripInfo[]): [number, number] {
   const strip = strips.find((s) => s.el.contains(el));
@@ -522,6 +541,8 @@ export interface FolioViewerApi {
   warnings: string[];
   /** blank pages inserted to honour recto/verso forced breaks */
   blankPages: number;
+  /** book-wide (0-based) index of every inserted blank page */
+  blankPageIndices: number[];
   pageOf(sel: string | Element): number;
   pageRangeOf(sel: string | Element): [number, number];
   relayout(): LayoutResult;
@@ -558,6 +579,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
     totalPages,
     warnings: [...new Set([...authoring, ...headers.warnings])],
     blankPages: blanks,
+    blankPageIndices: blankPageIndices(strips),
     pageOf: (sel) =>
       pageOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
     pageRangeOf: (sel) =>
@@ -571,6 +593,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
         ];
       const r = measure(strips);
       api.totalPages = r.totalPages;
+      api.blankPageIndices = blankPageIndices(strips);
       return r;
     },
   };

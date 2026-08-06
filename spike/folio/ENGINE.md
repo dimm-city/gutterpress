@@ -297,6 +297,36 @@ symbol list is per-page and arbitrary, so `i, ii, iii, 1, 2, 3…` is just a
 different symbol list. Paged.js gets it "for free" only because its page
 counter lives in the DOM.
 
+**Built** (`src/shared/synthesis.ts`'s `pageCounterValues`, MIGRATION.md gap
+#1). `gcpm-extract.ts` records every `counter-reset: page N` declaration
+(`GcpmModel.counterResets`); the compiler measures which page each one's
+element lands on (`agent.ts`'s `counterResetSites`, same `/Dests` measurement
+channel as every other Tier 3 site) and `pageCounterValues` replays the
+restart as a plain per-page number list — analytic, one pass, the same trick
+`planRectoBlanks` uses for blanks. `counterStyleCss` (`build.ts`) then rewrites
+every `counter(page[, style])` found in ANY page context into
+`counter(page, folio-page--<style>)`, one generated `@counter-style` per
+distinct style keyword actually used (`lower-roman`, plain decimal, …) — so
+front matter and body can display the SAME restarted number sequence in
+different symbols without the compiler ever having to know which named
+context is "active" on which page (Chromium's own cascade still does that
+part). The viewer applies the identical `pageCounterValues` output by
+overriding the `page` field it feeds `evaluate()` — no CSS synthesis needed
+screen-side, since the number substitution can happen directly in JS.
+
+**The interaction that actually broke first**: a recto/verso blank page
+inserted before the restart. The blank spacer is a DOM sibling of the element
+it precedes, so on screen it falls inside THAT element's named-page run (front
+matter or body) — but the compiler gives every blank its own isolated context
+(`page: folio--blank`, resolved with no name and only the `blank` pseudo). The
+viewer used to have no equivalent: a blank landing right before a restart
+picked up the WRONG run's format (`counter(page)` decimal instead of the
+unnamed context's `counter(page, lower-roman)`), which is invisible unless the
+two contexts actually format differently — exactly this feature. Fixed by
+`fragment.ts`'s `blankPageIndices()`, which locates each inserted blank by its
+OWN fragment position (not `strip.page`) so `decorate.ts`'s `pageContext` can
+resolve it the same isolated way the compiler does.
+
 ## 9. `body { zoom }` under print — and what Paged.js's scale actually is
 
 Two measured facts about `zoom` in the print path:

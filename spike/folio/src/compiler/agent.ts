@@ -142,6 +142,28 @@ export function forcedBreakSites(
 }
 
 /**
+ * Elements carrying `counter-reset: page N` in content flow. Chromium does not
+ * apply this restart to `counter(page)` (ENGINE.md §8), so the compiler needs
+ * the page each one lands on to synthesize the restart via a counter-style map
+ * (`counterStyleCss`).
+ */
+export function counterResetSites(
+  resets: Array<{ selector: string; start: number }>,
+): Array<{ id: string; start: number; selector: string }> {
+  const out: Array<{ id: string; start: number; selector: string }> = [];
+  for (const r of resets) {
+    let els: Element[] = [];
+    try {
+      els = Array.from(document.querySelectorAll(r.selector));
+    } catch {
+      continue;
+    }
+    for (const el of els) out.push({ id: ensureAnchor(el), start: r.start, selector: r.selector });
+  }
+  return out;
+}
+
+/**
  * Insert or remove the blank pages a recto/verso break implies.
  *
  * `entries` lists the elements that must move to the next page; a zero-height
@@ -356,6 +378,7 @@ const api = {
   auditContent,
   collectCss,
   forcedBreakSites,
+  counterResetSites,
   applyRectoSpacers,
   stringSources,
   xrefSites,

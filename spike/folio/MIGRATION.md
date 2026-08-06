@@ -216,11 +216,29 @@ Harness/process traps:
 
 ## Current state of the two known Folio gaps
 
-1. **Front-matter folio restart** — not built. Mechanism identified: the
-   counter-style map is an arbitrary per-page symbol list, so
-   `i, ii, iii, 1, 2, 3…` is just a different list; the compiler needs to
-   detect the restart intent (the book's `counter-reset` on
-   `.page-chapter-start`) and emit it. Fixture 4 in Step 3 is its test.
+1. **Front-matter folio restart** — built. `gcpm-extract.ts` records the
+   author's `counter-reset: page N` (`GcpmModel.counterResets`); the compiler
+   measures which page each declaring element lands on and
+   `src/shared/synthesis.ts`'s `pageCounterValues` (the ONE shared function,
+   `ARCHITECTURE.md` §1) replays the restart as a per-page number list, same
+   trick the counter-style map already used for `string()`. `counterStyleCss`
+   rewrites every `counter(page[, style])` in every page context into a
+   generated `@counter-style` keyed by style, so `lower-roman` front matter and
+   plain-decimal body show the SAME restarted numbering in different symbols.
+   The viewer applies the identical function by overriding the `page` value it
+   feeds `evaluate()` — no CSS synthesis needed screen-side. Fixed a real
+   viewer/print divergence surfaced by this: a recto/verso blank inserted right
+   before the restart used to inherit the WRONG named-page run's format on
+   screen (`fragment.ts`'s `blankPageIndices()` now isolates it, matching the
+   compiler's `folio--blank` context — `ENGINE.md` §8). Verified end-to-end
+   through `src/cli.ts` on a throwaway fixture (3pp roman front matter, recto
+   chapter start, 3pp arabic body) with an independent reader (`pdftotext`):
+   printed folios `i, ii, iii, iv, 1, 2, 3` — page 4 is the inserted blank,
+   correctly still roman. Viewer margin-box text matched print folio-for-folio
+   on the same fixture. Fixture 4 in Step 3 is the formal acceptance test; it
+   should assert exactly this shape (roman front matter, a recto-forced
+   chapter start that requires a blank, arabic body restarting at 1) and that
+   viewer and print agree on every folio, not just the page count.
 2. **Export time** — 2 print passes ≈ 13.5 min on the field guide. Design
    sketched, not built: predict the page map from the viewer (0.11 s), apply
    synthesis, print once, verify against that print's `/Dests` (free);

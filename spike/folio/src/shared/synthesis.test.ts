@@ -4,12 +4,14 @@ import {
   generatedContentCss,
   cssQuote,
   isRectoVersoBreak,
+  pageCounterValues,
   parseWhich,
   planRectoBlanks,
   stringSymbols,
   stringValueAt,
   wantsRecto,
 } from "./synthesis.ts";
+import { formatCounter } from "./content-value.ts";
 
 describe("planRectoBlanks", () => {
   test("no sites, no blanks", () => {
@@ -74,6 +76,85 @@ describe("planRectoBlanks", () => {
     expect(isRectoVersoBreak({ prop: "break-after", value: "right" })).toBe(false);
     expect(wantsRecto("right")).toBe(true);
     expect(wantsRecto("verso")).toBe(false);
+  });
+});
+
+describe("pageCounterValues — front-matter -> body folio restart (MIGRATION.md gap #1)", () => {
+  test("no restart declared: identity, 1..N", () => {
+    expect(pageCounterValues([], 5)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  test("one restart: roman-shaped front matter, arabic body from 1", () => {
+    // 4pp front matter, body restarts to 1 on page 5, 6 total pages
+    expect(pageCounterValues([{ page: 5, start: 1 }], 6)).toEqual([1, 2, 3, 4, 1, 2]);
+    // formatted with the author's own counter-style per segment (a separate
+    // concern this function deliberately leaves to the caller)
+    const values = pageCounterValues([{ page: 5, start: 1 }], 6);
+    expect(values.slice(0, 4).map((v) => formatCounter(v, "lower-roman"))).toEqual([
+      "i",
+      "ii",
+      "iii",
+      "iv",
+    ]);
+    expect(values.slice(4).map((v) => formatCounter(v, "decimal"))).toEqual(["1", "2"]);
+  });
+
+  test("multiple restarts: front matter, body, appendix all restart", () => {
+    // p1-3 front matter (1,2,3), p4-6 body restarts to 1, p7-8 appendix
+    // restarts to 1 again (e.g. a new counter-style for appendix folios)
+    expect(
+      pageCounterValues(
+        [
+          { page: 4, start: 1 },
+          { page: 7, start: 1 },
+        ],
+        8,
+      ),
+    ).toEqual([1, 2, 3, 1, 2, 3, 1, 2]);
+  });
+
+  test("restart to a non-1 value (e.g. continuing a prior volume)", () => {
+    expect(pageCounterValues([{ page: 3, start: 100 }], 5)).toEqual([1, 2, 100, 101, 102]);
+  });
+
+  test("two resets on the same page: last one (document order) wins", () => {
+    expect(
+      pageCounterValues(
+        [
+          { page: 3, start: 1 },
+          { page: 3, start: 50 },
+        ],
+        4,
+      ),
+    ).toEqual([1, 2, 50, 51]);
+  });
+
+  test("page <= 0 is ignored (unmatched/unmeasured element)", () => {
+    expect(pageCounterValues([{ page: 0, start: 1 }], 3)).toEqual([1, 2, 3]);
+  });
+
+  test("interaction with recto/verso blank insertion: the reset page must be the POST-blank page", () => {
+    // A chapter opener wants recto and also restarts the counter. Measured
+    // clean (no blanks) it lands on page 4 (even -> verso); planRectoBlanks
+    // says insert a blank so it moves to page 5. pageCounterValues must be
+    // fed the FINAL (post-blank) page, or the restart lands one page early
+    // and the blank page itself gets the wrong (post-restart) number.
+    const clean = { page: 4, wantsRecto: true };
+    const plan = planRectoBlanks([clean]);
+    expect(plan).toEqual([true]); // blank needed: 4 is even (verso)
+
+    // pre-blank (WRONG): restart appears to land on page 4 — the blank page
+    // (now page 4) would incorrectly read "1", and the chapter's own first
+    // page (page 5) would read "2".
+    const wrong = pageCounterValues([{ page: clean.page, start: 1 }], 6);
+    expect(wrong).toEqual([1, 2, 3, 1, 2, 3]);
+
+    // post-blank (CORRECT): the blank is inserted at page 4, shifting the
+    // chapter (and its restart) to page 5 — page 4 keeps front-matter
+    // numbering, page 5 is where "1" belongs.
+    const shifted = clean.page + (plan[0] ? 1 : 0);
+    const correct = pageCounterValues([{ page: shifted, start: 1 }], 6);
+    expect(correct).toEqual([1, 2, 3, 4, 1, 2]);
   });
 });
 

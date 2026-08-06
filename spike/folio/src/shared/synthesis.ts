@@ -140,6 +140,52 @@ export function counterStyleName(name: string, which: StringWhich): string {
 }
 
 // ---------------------------------------------------------------------------
+// page-counter restart (`counter-reset: page N`)
+// ---------------------------------------------------------------------------
+
+export interface PageCounterReset {
+  /** 1-based page (after recto/verso blank insertion) the reset takes effect on */
+  page: number;
+  /** the value `counter-reset: page N` sets */
+  start: number;
+}
+
+/**
+ * One numeric `counter(page)` value per page, honoring `counter-reset: page N`
+ * restarts the author declared in content flow.
+ *
+ * Native Chromium print ignores this restart entirely (ENGINE.md §8: the
+ * element sits on page 3, the margin box still reads 3) — front-matter (roman)
+ * → body (arabic from 1) is therefore not expressible in the author's content,
+ * so the compiler replays the restart as a fixed per-page value list, the same
+ * trick `stringSymbols` uses for `string()`. Formatting (`lower-roman` front
+ * matter vs decimal body) is a separate, per-`@page`-context concern the
+ * caller applies with `formatCounter` — this function only fixes the NUMBER,
+ * so one map serves every context regardless of which style each requests.
+ *
+ * Pure and analytic, like `planRectoBlanks`: one pass, no fixpoint. A blank
+ * page inserted before a restart site shifts `page` by exactly one, which is
+ * why `page` must be the FINAL (post-blank) page number — the caller resolves
+ * that the same way it resolves every other measured page (`ENGINE.md` §6).
+ *
+ * Multiple resets on the same page keep the LAST one in `resets` order,
+ * matching `counter-reset`'s own last-write-wins cascade. `resets` need not be
+ * pre-sorted.
+ */
+export function pageCounterValues(resets: PageCounterReset[], pageCount: number): number[] {
+  const byPage = new Map<number, number>();
+  for (const r of resets) if (r.page >= 1) byPage.set(r.page, r.start);
+  const values: number[] = [];
+  let value = 0;
+  for (let p = 1; p <= pageCount; p++) {
+    if (byPage.has(p)) value = byPage.get(p)! - 1;
+    value++;
+    values.push(value);
+  }
+  return values;
+}
+
+// ---------------------------------------------------------------------------
 // leader() glue fill
 // ---------------------------------------------------------------------------
 

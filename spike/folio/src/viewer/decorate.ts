@@ -20,8 +20,10 @@ import {
   leaderFillCount,
   leaderMarker,
   LEADER_RE,
+  pageCounterValues,
   parseWhich,
   stringValueAt,
+  type PageCounterReset,
 } from "../shared/synthesis.ts";
 import {
   PX_PER_PT,
@@ -40,6 +42,8 @@ export interface DecorationApi {
   stringMap: Map<string, Array<{ page: number; value: string }>>;
   /** "#id" -> 1-based page */
   targets: Map<string, number>;
+  /** the restarted `counter(page)` value for each 0-based book page, honoring `counter-reset: page N` */
+  pageNumbers: number[];
   warnings: string[];
 }
 
@@ -57,16 +61,29 @@ export function decorate(
 ): DecorationApi {
   const model: GcpmModel = layout.model;
   const sheets = new Map<number, HTMLElement>();
+  let blankPages = new Set<number>();
   const warnings: string[] = [];
   const api: DecorationApi = {
     redraw: () => draw(),
     sheetFor: (p) => sheets.get(p),
     stringMap: new Map(),
     targets: new Map(),
+    pageNumbers: [],
     warnings,
   };
 
   function pageContext(strip: StripInfo, indexInStrip: number, bookIndex: number): PageCtx {
+    // A recto/verso blank spacer is a DOM sibling of whatever it precedes, so
+    // it sits inside that element's named-page run — but the compiler gives
+    // every blank page its OWN isolated context (`page: folio--blank`,
+    // resolved with no name, pseudo `blank` only: see `counterStyleCss` in
+    // `build.ts`). Matching that here is what keeps a blank page's geometry
+    // and content off the surrounding run's context (ARCHITECTURE.md §1).
+    if (blankPages.has(bookIndex)) {
+      const pseudos = ["blank"];
+      const { geometry, marginBoxes } = resolvePage(model, { pseudos });
+      return { index: bookIndex, strip, pseudos, geometry, marginBoxes };
+    }
     const pseudos: string[] = [];
     if (bookIndex === 0) pseudos.push("first");
     if (indexInStrip === 0) pseudos.push("nth-first-of-run");
@@ -112,6 +129,24 @@ export function decorate(
       const [page] = pageRangeOf(el, layout.strips);
       if (page >= 0) api.targets.set(href, page + 1);
     }
+    // front-matter -> body folio restart (`counter-reset: page N`,
+    // MIGRATION.md gap #1): the same `pageCounterValues` policy the compiler
+    // applies via a generated `@counter-style`, applied here by overriding the
+    // `page` fed to `evaluate()` — no CSS synthesis needed on this side.
+    const resets: PageCounterReset[] = [];
+    for (const r of model.counterResets) {
+      let els: Element[] = [];
+      try {
+        els = Array.from(document.querySelectorAll(r.selector));
+      } catch {
+        continue;
+      }
+      for (const el of els) {
+        const [page] = pageRangeOf(el, layout.strips);
+        if (page >= 0) resets.push({ page: page + 1, start: r.start });
+      }
+    }
+    api.pageNumbers = resets.length ? pageCounterValues(resets, layout.totalPages) : [];
   }
 
   /** Shared GCPM string() semantics — the same function the compiler samples. */
@@ -187,6 +222,7 @@ export function decorate(
   function draw() {
     sheets.clear();
     warnings.length = 0;
+    blankPages = new Set(layout.blankPageIndices);
     buildMaps();
     fillXrefs();
 
@@ -228,7 +264,7 @@ export function decorate(
       const decls = ctx.marginBoxes[`@${name}`];
       if (!decls?.content) continue;
       const text = evaluate(decls.content, {
-        page: ctx.index + 1,
+        page: api.pageNumbers[ctx.index] ?? ctx.index + 1,
         pages: totalPages,
         strings: (n, w) => stringAt(n, w, ctx.index),
         targetPage: (url) => api.targets.get(url),

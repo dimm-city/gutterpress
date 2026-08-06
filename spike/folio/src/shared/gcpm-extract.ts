@@ -51,6 +51,13 @@ export interface XrefDecl {
   fn: "target-counter" | "target-text" | "leader" | "string";
 }
 
+export interface CounterResetDecl {
+  /** selector the reset hangs off, e.g. ".page-chapter-start" */
+  selector: string;
+  /** the value `counter-reset: page N` sets */
+  start: number;
+}
+
 export interface Length {
   value: number;
   unit: string;
@@ -71,6 +78,8 @@ export interface GcpmModel {
   pageAssignments: PageAssignment[];
   breaks: BreakDecl[];
   xrefs: XrefDecl[];
+  /** `counter-reset: page N` declarations — native print ignores this restart (ENGINE.md §8) */
+  counterResets: CounterResetDecl[];
   /** page names referenced by either `@page name` or a `page:` assignment */
   pageNames: string[];
   warnings: string[];
@@ -272,6 +281,7 @@ export function extract(css: string): GcpmModel {
     pageAssignments: [],
     breaks: [],
     xrefs: [],
+    counterResets: [],
     pageNames: [],
     warnings: [],
   };
@@ -361,6 +371,11 @@ function parseQualifiedRule(selector: string, body: string, model: GcpmModel) {
         model.pageAssignments.push({ selector, page: value.trim() });
     } else if (prop === "break-before" || prop === "break-after" || prop === "break-inside") {
       model.breaks.push({ selector, prop, value });
+    } else if (prop === "counter-reset") {
+      // `counter-reset` resets a list of counters ("page 1", "chapter 1 page
+      // 1", …); only the `page` pair is our business.
+      const m = /\bpage\s+(-?\d+)/.exec(value);
+      if (m) model.counterResets.push({ selector, start: Number(m[1]) });
     } else if (prop === "content") {
       for (const fn of ["target-counter", "target-text", "leader", "string"] as const) {
         if (new RegExp(`\\b${fn}\\s*\\(`).test(value)) {

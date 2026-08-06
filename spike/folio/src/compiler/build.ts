@@ -22,14 +22,16 @@ import {
   generatedContentCss,
   isRectoVersoBreak,
   leaderMarker,
+  pageCounterValues,
   parseWhich,
   planRectoBlanks,
   stringSymbols,
   wantsRecto,
+  type PageCounterReset,
   type StringEntry,
   type StringWhich,
 } from "../shared/synthesis.ts";
-import { evaluate, needsMeasurement, parseContent } from "../shared/content-value.ts";
+import { evaluate, formatCounter, needsMeasurement, parseContent } from "../shared/content-value.ts";
 import { inspectPdf } from "../shared/pdf-inspect.ts";
 import { ensureBundles } from "../bundles.ts";
 import {
@@ -120,7 +122,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // measure -> synthesize -> fixpoint loop.
     const rectoDecls = model.breaks.filter(isRectoVersoBreak);
     const needsMeasure =
-      tier3Reasons.length > 0 || consumedStrings(model).size > 0 || rectoDecls.length > 0;
+      tier3Reasons.length > 0 ||
+      consumedStrings(model).size > 0 ||
+      rectoDecls.length > 0 ||
+      model.counterResets.length > 0;
     let tier: 1 | 2 | 3 =
       tier2.geometry.bleed > 0 || tier2.geometry.slug > 0 ? 2 : 1;
     let passes = 1;
@@ -169,10 +174,19 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       const sites = await page.evaluate<any[]>(
         `window.__folio.xrefSites(${JSON.stringify(xrefSelectors)})`,
       );
+      // front-matter -> body folio restart (`counter-reset: page N`, MIGRATION.md
+      // gap #1): Chromium ignores the restart (ENGINE.md §8), so the elements
+      // that declare it need ids too, to learn which page they land on.
+      const resetSites = model.counterResets.length
+        ? await page.evaluate<any[]>(
+            `window.__folio.counterResetSites(${JSON.stringify(model.counterResets)})`,
+          )
+        : [];
       const targets = new Set<string>();
       for (const s of sources) targets.add(s.id);
       for (const s of sites) if (s.href.startsWith("#")) targets.add(s.href.slice(1));
       for (const s of rectoSites) targets.add(s.id);
+      for (const s of resetSites) targets.add(s.id);
       await page.evaluate(
         `window.__folio.instrument(${JSON.stringify([...targets])})`,
       );
@@ -285,7 +299,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         }
 
         // (b) page-granular running strings via a fixed counter-style map
-        const mapCss = [counterStyleCss(model, sources, pageMap, facts.pageCount), blankCss]
+        const mapCss = [
+          counterStyleCss(model, sources, pageMap, facts.pageCount, resetSites),
+          blankCss,
+        ]
           .filter(Boolean)
           .join("\n");
         if (mapCss) {
@@ -388,9 +405,9 @@ export function counterStyleCss(
   sources: Array<{ name: string; id: string; text: string }>,
   pageMap: Record<string, number>,
   pageCount: number,
+  resetSites: Array<{ id: string; start: number }> = [],
 ): string {
   const consumed = consumedStrings(model);
-  if (!consumed.size) return "";
 
   const byName = new Map<string, StringEntry[]>();
   for (const s of sources) {
@@ -400,8 +417,20 @@ export function counterStyleCss(
     list.push({ page, value: s.text });
     byName.set(s.name, list);
   }
-  if (!byName.size) return "";
   for (const entries of byName.values()) entries.sort((a, b) => a.page - b.page);
+
+  // Front-matter -> body folio restart (`counter-reset: page N`, MIGRATION.md
+  // gap #1). `pageCounterValues` fixes the NUMBER; the fixed-symbol map below
+  // formats it per the `counter(page[, style])` style each context actually
+  // requests, so `folio-page--lower-roman` and `folio-page--decimal` can carry
+  // the SAME restarted numbering with different symbols.
+  const resets: PageCounterReset[] = resetSites
+    .map((s) => ({ page: pageMap[s.id] ?? 0, start: s.start }))
+    .filter((r) => r.page > 0);
+  const pageValues = resets.length ? pageCounterValues(resets, pageCount) : null;
+
+  if (!consumed.size && !pageValues) return "";
+  if (!byName.size && !pageValues) return "";
 
   // A `string(name, which)` needs one fixed-symbol map per (name, which) pair
   // actually consumed — the shared `stringValueAt` policy sampled at every
@@ -428,14 +457,27 @@ export function counterStyleCss(
     );
   }
 
+  // One `@counter-style` per distinct `counter(page, <style>)` keyword the
+  // author actually uses, keyed by style so front matter's `lower-roman` and
+  // the body's plain decimal both replay the SAME restarted number sequence.
+  const pageCounterStyles = new Map<string, string[]>();
+  const pageCounterStyleName = (style: string) => `folio-page--${style}`;
+
   const rewrite = (content: string): string =>
     parseContent(content)
       .map((part) => {
         if (part.type === "string")
           return `counter(page, ${counterStyleName(part.name, parseWhich(part.which))})`;
         if (part.type === "literal") return cssQuote(part.value);
-        if (part.type === "counter")
+        if (part.type === "counter") {
+          if (part.name === "page" && pageValues) {
+            const styleName = pageCounterStyleName(part.style);
+            if (!pageCounterStyles.has(styleName))
+              pageCounterStyles.set(styleName, pageValues.map((v) => formatCounter(v, part.style)));
+            return `counter(page, ${styleName})`;
+          }
           return `counter(${part.name}${part.style !== "decimal" ? `, ${part.style}` : ""})`;
+        }
         if (part.type === "keyword") return part.value;
         return "";
       })
@@ -456,12 +498,21 @@ export function counterStyleCss(
       for (const [box, decls] of Object.entries(resolved.marginBoxes)) {
         if (!decls.content) continue;
         const hasString = /\bstring\s*\(/.test(decls.content);
-        lines.push(`  ${box} { content: ${hasString ? rewrite(decls.content) : decls.content}; }`);
+        const hasPageCounter = pageValues && /\bcounter\(\s*page\b(?!s)/.test(decls.content);
+        const needsRewrite = hasString || hasPageCounter;
+        lines.push(`  ${box} { content: ${needsRewrite ? rewrite(decls.content) : decls.content}; }`);
       }
       if (!lines.length) continue;
       const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
       out.push(`@page ${name ?? ""}${pseudo} {\n${lines.join("\n")}\n}`.replace("@page  ", "@page "));
     }
+  }
+  for (const [styleName, symbols] of pageCounterStyles) {
+    out.push(
+      `@counter-style ${styleName} { system: fixed; suffix: ""; symbols: ${symbols
+        .map(cssQuote)
+        .join(" ")}; }`,
+    );
   }
   return out.join("\n");
 }
