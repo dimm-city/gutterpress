@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>fixture 05 — margin-box furniture (supported subset)</title>
+<style>
+  /* ENGINE.md §8: margin boxes CAN carry background, border, width:
+     fit-content, font styling and counter(page) — a "chip". They CANNOT
+     carry transform: rotate() or box-shadow. This fixture demonstrates the
+     SUPPORTED subset only: no rotate(), no box-shadow anywhere in this file
+     (the runner greps this source file to prove it, ARCHITECTURE.md §8). */
+  @page {
+    size: 5in 7.5in;
+    margin: 0.75in;
+    @bottom-right {
+      content: "CH." counter(page);
+      background: #2b2b2b;
+      color: #fff;
+      border: 1pt dashed #999;
+      width: fit-content;
+      padding: 2pt 8pt;
+      font: 8pt/1 'DejaVu Sans Mono', monospace;
+      letter-spacing: 0.5pt;
+      text-transform: uppercase;
+    }
+  }
+  html { font: 11pt/1.4 'DejaVu Serif', Georgia, serif; }
+  body { margin: 0; }
+  p { margin: 0 0 8pt; }
+  /* CSS class, not inline style="" — Paged.js's polisher reads break-before
+     only from stylesheet rules (see fixture 03). */
+  .brk { break-before: page; }
+</style>
+<body>
+  <main>
+    <p>SENTINEL-CHIP-1 first page — the folio chip renders bottom-right.</p>
+    <div class="brk"><p>SENTINEL-CHIP-2 second page.</p></div>
+    <div class="brk"><p>SENTINEL-CHIP-3 third page.</p></div>
+  </main>
+</body>

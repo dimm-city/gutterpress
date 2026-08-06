@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>fixture 08 — recto/verso chapter starts + @page :blank</title>
+<style>
+  /* ENGINE.md §2/§7, proven by spikes/s10-recto-breaks.ts: Chromium treats
+     break-before: right|left|recto|verso as a PLAIN page break (no blank
+     page inserted), and @page :blank never matches a content-free page
+     natively. Paged.js implements both. Zero occurrences in the field guide
+     but required by any real printed book. */
+  @page {
+    size: 5in 7.5in;
+    margin: 1in;
+    @top-center { content: "HEAD"; font-size: 8pt; }
+    @bottom-center { content: counter(page); font-size: 9pt; }
+  }
+  @page :blank { @top-center { content: none; } @bottom-center { content: none; } }
+  html { font: 11pt/1.4 'DejaVu Serif', Georgia, serif; }
+  body { margin: 0; }
+  h1 { break-before: right; font-size: 14pt; margin: 0 0 8pt; }
+  p { margin: 0 0 8pt; }
+</style>
+<body>
+  <main>
+    <p>SENTINEL-FRONT front matter, page one.</p>
+    <h1 id="c2">SENTINELCHAPTERTWO</h1>
+    <p>SENTINEL-BODY-2 chapter two body.</p>
+    <h1 id="c3">SENTINELCHAPTERTHREE</h1>
+    <p>SENTINEL-BODY-3 chapter three body.</p>
+  </main>
+</body>

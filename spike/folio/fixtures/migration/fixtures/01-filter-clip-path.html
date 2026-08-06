@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>fixture 01 — filter + clip-path</title>
+<style>
+  @page { size: 5in 7.5in; margin: 0.75in; @bottom-center { content: counter(page); font-size: 9pt; } }
+  html { font: 11pt/1.4 'DejaVu Serif', Georgia, serif; }
+  body { margin: 0; }
+  p { margin: 0 0 8pt; }
+  /* the documented two-layer shadow pattern (ENGINE.md §10): clip-path cuts
+     the silhouette, filter:drop-shadow follows it. Both layers are needed —
+     box-shadow cannot follow a clipped silhouette. */
+  .card {
+    width: 3in;
+    height: 1.2in;
+    margin: 0 0 14pt;
+    background: #ddc9a3;
+    clip-path: polygon(4% 0, 96% 0, 100% 30%, 100% 100%, 0 100%, 0 30%);
+    filter: drop-shadow(3pt 3pt 0 #7a6a4a);
+    padding: 10pt;
+    box-sizing: border-box;
+  }
+  .plain {
+    width: 3in;
+    margin: 0 0 14pt;
+    padding: 10pt;
+    background: #eee;
+    border: 1pt solid #999;
+  }
+</style>
+<body>
+  <main>
+    <div class="card"><p>SENTINEL-FILTERED-CARD-A this text is rasterized</p></div>
+    <p>SENTINEL-PLAIN-TEXT-1 stays vector and must remain extractable.</p>
+    <div class="plain"><p>SENTINEL-PLAIN-BOX-2 also vector (box-shadow-free, filter-free).</p></div>
+    <div class="card"><p>SENTINEL-FILTERED-CARD-B second filtered card, forces a page break test</p></div>
+    <p>SENTINEL-PLAIN-TEXT-3 trailing vector paragraph.</p>
+  </main>
+</body>

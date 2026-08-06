@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>fixture 07 — multi-column body with break-inside: avoid cards</title>
+<style>
+  @page { size: 5in 7.5in; margin: 0.7in; @bottom-center { content: counter(page); font-size: 9pt; } }
+  html { font: 10.5pt/1.35 'DejaVu Serif', Georgia, serif; }
+  body { margin: 0; }
+  main { columns: 2; column-gap: 0.3in; }
+  .card {
+    break-inside: avoid;
+    margin: 0 0 10pt;
+    padding: 6pt;
+    border: 0.75pt solid #888;
+  }
+  .card p { margin: 0 0 4pt; }
+</style>
+<body>
+  <main>
+    <div class="card"><p>SENTINELCARD01TOP one</p><p>SENTINELCARD01MID two</p><p>SENTINELCARD01BOT three</p></div>
+    <div class="card"><p>SENTINELCARD02TOP one</p><p>SENTINELCARD02MID two</p><p>SENTINELCARD02BOT three</p></div>
+    <div class="card"><p>SENTINELCARD03TOP one</p><p>SENTINELCARD03MID two</p><p>SENTINELCARD03BOT three</p></div>
+    <div class="card"><p>SENTINELCARD04TOP one</p><p>SENTINELCARD04MID two</p><p>SENTINELCARD04BOT three</p></div>
+    <div class="card"><p>SENTINELCARD05TOP one</p><p>SENTINELCARD05MID two</p><p>SENTINELCARD05BOT three</p></div>
+    <div class="card"><p>SENTINELCARD06TOP one</p><p>SENTINELCARD06MID two</p><p>SENTINELCARD06BOT three</p></div>
+    <div class="card"><p>SENTINELCARD07TOP one</p><p>SENTINELCARD07MID two</p><p>SENTINELCARD07BOT three</p></div>
+    <div class="card"><p>SENTINELCARD08TOP one</p><p>SENTINELCARD08MID two</p><p>SENTINELCARD08BOT three</p></div>
+    <div class="card"><p>SENTINELCARD09TOP one</p><p>SENTINELCARD09MID two</p><p>SENTINELCARD09BOT three</p></div>
+    <div class="card"><p>SENTINELCARD10TOP one</p><p>SENTINELCARD10MID two</p><p>SENTINELCARD10BOT three</p></div>
+    <div class="card"><p>SENTINELCARD11TOP one</p><p>SENTINELCARD11MID two</p><p>SENTINELCARD11BOT three</p></div>
+    <div class="card"><p>SENTINELCARD12TOP one</p><p>SENTINELCARD12MID two</p><p>SENTINELCARD12BOT three</p></div>
+  </main>
+</body>

@@ -1,0 +1,59 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>fixture 02 — full-bleed background + running heads, every page</title>
+<style>
+  /* margin-box painting technique (ENGINE.md §5): @page{margin:0} would
+     delete the margin boxes the running head lives in, so instead the
+     content box AND all 16 margin boxes are painted the same tiled texture,
+     each offset by its own page-box coordinates so the tile stays continuous. */
+  @page {
+    size: 5in 7.5in;
+    margin: 0.6in;
+    background: #f2e9d8 url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAEUlEQVR42mNk+M9QzzBIAAgAAf8L/ZO0YXcAAAAASUVORK5CYII=) repeat;
+    background-position: 0 0;
+    @top-center {
+      content: string(chapter-title);
+      font-size: 9pt;
+      background: #f2e9d8 url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAEUlEQVR42mNk+M9QzzBIAAgAAf8L/ZO0YXcAAAAASUVORK5CYII=) repeat;
+      background-position: 0 -0.6in;
+    }
+    @bottom-center {
+      content: counter(page);
+      font-size: 9pt;
+      background: #f2e9d8 url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAEUlEQVR42mNk+M9QzzBIAAgAAf8L/ZO0YXcAAAAASUVORK5CYII=) repeat;
+      background-position: -0.6in -6.9in;
+    }
+    @top-left    { background: #f2e9d8; }
+    @top-right   { background: #f2e9d8; }
+    @bottom-left { background: #f2e9d8; }
+    @bottom-right{ background: #f2e9d8; }
+    @left-top    { background: #f2e9d8; }
+    @left-middle { background: #f2e9d8; }
+    @left-bottom { background: #f2e9d8; }
+    @right-top   { background: #f2e9d8; }
+    @right-middle{ background: #f2e9d8; }
+    @right-bottom{ background: #f2e9d8; }
+  }
+  html { font: 11pt/1.4 'DejaVu Serif', Georgia, serif; }
+  body { margin: 0; background: #f2e9d8; }
+  h1 { font-size: 15pt; break-before: page; string-set: chapter-title content(); margin: 0 0 10pt; }
+  p { margin: 0 0 8pt; }
+</style>
+<body>
+  <main>
+    <h1>Chapter One — Furnace</h1>
+    <p>SENTINEL-P1 body copy on the first chapter's opening page.</p>
+    <p>SENTINEL-P2 second paragraph, still chapter one.</p>
+    <!-- padded so chapter one spans a second page with NO h1 on it — the
+         running head on that continuation page must still read "Chapter One",
+         proving the head repeats independently of the heading itself. -->
+    <p>SENTINEL-P2B Filler to push into a continuation page. Gutter press folio signature quire recto verso colophon imposition kerning ligature ascender descender baseline leading widow orphan galley codex vellum quarto octavo marginalia rubric incipit explicit catchword deckle foxing forme chase quoin furniture platen tympan frisket dandy roll watermark chapbook broadside ephemera.</p>
+    <p>SENTINEL-P2C Gutter press folio signature quire recto verso colophon imposition kerning ligature ascender descender baseline leading widow orphan galley codex vellum quarto octavo marginalia rubric incipit explicit catchword deckle foxing forme chase quoin furniture platen tympan frisket dandy roll watermark chapbook broadside ephemera.</p>
+    <p>SENTINEL-P2D Gutter press folio signature quire recto verso colophon imposition kerning ligature ascender descender baseline leading widow orphan galley codex vellum quarto octavo marginalia rubric incipit explicit catchword deckle foxing forme chase quoin furniture platen tympan frisket dandy roll watermark chapbook broadside ephemera.</p>
+    <p>SENTINEL-P2E on the continuation page, chapter one, no heading here.</p>
+    <h1>Chapter Two — Bellows</h1>
+    <p>SENTINEL-P3 body copy under chapter two.</p>
+    <h1>Chapter Three — Anvil</h1>
+    <p>SENTINEL-P4 body copy under chapter three.</p>
+  </main>
+</body>

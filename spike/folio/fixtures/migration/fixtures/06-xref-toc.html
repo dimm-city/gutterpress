@@ -1,0 +1,46 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>fixture 06 — cross-references + TOC with page numbers</title>
+<style>
+  /* Tier 3 path: target-counter()/target-text() render nothing natively
+     (CSS.supports lies, ENGINE.md §2) so both the TOC and inline
+     cross-references need synthesis. */
+  @page { size: 5in 7.5in; margin: 0.75in; @bottom-center { content: counter(page); font-size: 9pt; } }
+  html { font: 11pt/1.4 'DejaVu Serif', Georgia, serif; }
+  body { margin: 0; }
+  h1 { font-size: 14pt; break-before: page; margin: 0 0 8pt; }
+  p { margin: 0 0 8pt; }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; }
+  nav.toc li::after { content: leader(dotted) target-counter(attr(href), page); }
+  a.xref::after { content: " (p. " target-counter(attr(href), page) ")"; }
+</style>
+<body>
+  <main>
+    <section>
+      <h1>Contents</h1>
+      <nav class="toc">
+        <ol>
+          <li><a href="#ch1">Chapter One — Origins</a></li>
+          <li><a href="#ch2">Chapter Two — Passage</a></li>
+          <li><a href="#ch3">Chapter Three — Landfall</a></li>
+        </ol>
+      </nav>
+    </section>
+    <section>
+      <h1 id="ch1">Chapter One — Origins</h1>
+      <p>SENTINEL-XR1 Chapter one opens here.
+        See also <a class="xref" href="#ch3">Chapter Three</a> for the resolution.</p>
+      <p>SENTINEL-FILL-1a padding paragraph.</p>
+      <p>SENTINEL-FILL-1b padding paragraph.</p>
+    </section>
+    <section>
+      <h1 id="ch2">Chapter Two — Passage</h1>
+      <p>SENTINEL-XR2 refers back to <a class="xref" href="#ch1">Chapter One</a>.</p>
+      <p>SENTINEL-FILL-2a padding paragraph.</p>
+    </section>
+    <section>
+      <h1 id="ch3">Chapter Three — Landfall</h1>
+      <p>SENTINEL-XR3 the resolution chapter.</p>
+    </section>
+  </main>
+</body>
