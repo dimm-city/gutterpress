@@ -474,20 +474,32 @@ async function printPdf(page: Session): Promise<Uint8Array> {
  * not call that a fixpoint.
  */
 /**
- * Pre-print width check. Lays the document out at a 10px viewport so every
- * block sits at its MIN-CONTENT width (this is what Chromium's shrink-to-fit
- * actually responds to — a clamped `max-width: 100%` image still contributes
- * its intrinsic width, so scanning laid-out overflow misses real triggers),
- * then reports the deepest elements wider than the largest page content box
- * in the author's model. Viewport emulation only — the DOM is never touched
- * (ARCHITECTURE.md §2), and the override is cleared before any print.
+ * Pre-print width check, in two passes — each matching a MEASURED
+ * shrink-to-fit trigger class, and nothing broader:
  *
- * Known approximation, on purpose: elements are compared against the WIDEST
- * page context (a margin-0 full-bleed page raises the limit for the whole
- * document), because mapping each element to its eventual page before any
- * print exists would cost a measurement pass. An element wider than its own
- * page but narrower than the widest context escapes this check; the fixture
- * gate in s8 covers the common case.
+ * 1. REAL-WIDTH box overflow: with the viewport at the widest page content
+ *    box, any element whose border box extends past the limit (fixed-width
+ *    blocks, negative-margin pulls, absolutely-positioned protrusions —
+ *    every one of these triggered the scale on the real field guide).
+ * 2. REPLACED-ELEMENT intrinsics: an `img` (canvas/video likewise) with an
+ *    auto width contributes its INTRINSIC width to Chromium's print
+ *    preferred-width even when `max-width: 100%` clamps the rendered box
+ *    (measured: `width: 100%` fixes it, `min-width: 0` does not; max-width
+ *    alone does not). Detected via CSS Typed OM — `computedStyleMap()`
+ *    returns the PRE-LAYOUT computed value, so `width: auto` is visible
+ *    where getComputedStyle only shows used pixels — combined with the
+ *    loaded intrinsic width. Scoped to replaced elements ONLY: min-content
+ *    heuristics on flex/grid containers produced measured false positives
+ *    (a 2524px "offender" on a book whose real print is uncompressed).
+ *
+ * Images are awaited (decode/complete) before either pass — intrinsic
+ * widths only exist once loaded, and skipping the wait made the check
+ * nondeterministic (measured: same book passing or failing by load race).
+ *
+ * Viewport emulation only — the DOM is never touched (ARCHITECTURE.md §2),
+ * and the override is cleared before any print. Known approximation, on
+ * purpose: elements are compared against the WIDEST page context (a
+ * margin-0 full-bleed page raises the limit for the whole document).
  */
 async function findWidthOffenders(
   page: Session,
@@ -503,33 +515,69 @@ async function findWidthOffenders(
       ...contexts.map((c) => c.geometry.width - c.geometry.margin.left - c.geometry.margin.right),
     ) + bleedSlugExtensionPt;
   const limitPx = (maxContentPt * 96) / 72;
-  await page.send("Emulation.setDeviceMetricsOverride", {
-    width: 10,
-    height: 1080,
-    deviceScaleFactor: 1,
-    mobile: false,
-  });
+  const DESC = `(el) => {
+    const cls = typeof el.className === "string" && el.className
+      ? "." + el.className.trim().split(/\\s+/).join(".") : "";
+    const src = el.tagName === "IMG" ? " src=" + (el.getAttribute("src") || "").slice(-40) : "";
+    return el.tagName.toLowerCase() + cls + src;
+  }`;
+  await page.evaluate(`Promise.allSettled(
+    [...document.images].map((i) => i.decode().catch(() => {}))
+  )`);
+  const seen = new Map<string, number>();
   try {
-    const raw = await page.evaluate<string>(`(() => {
-      const LIMIT = ${limitPx} + 1;
-      const out = [];
-      for (const el of document.querySelectorAll("*")) {
-        const r = el.getBoundingClientRect();
-        if (r.width <= LIMIT) continue;
-        let deepest = true;
-        for (const c of el.children) {
-          if (c.getBoundingClientRect().width >= r.width - 1) { deepest = false; break; }
+    // pass 1 — laid-out box overflow at the real content width
+    await page.send("Emulation.setDeviceMetricsOverride", {
+      width: Math.ceil(limitPx),
+      height: 1080,
+      deviceScaleFactor: 1,
+      mobile: false,
+    });
+    const boxes: Array<{ desc: string; px: number }> = JSON.parse(
+      await page.evaluate<string>(`(() => {
+        const LIMIT = ${limitPx} + 1;
+        const desc = ${DESC};
+        const out = [];
+        for (const el of document.querySelectorAll("*")) {
+          const r = el.getBoundingClientRect();
+          const right = Math.max(r.right, r.left + r.width);
+          if (right <= LIMIT && r.width <= LIMIT) continue;
+          let deepest = true;
+          for (const c of el.children) {
+            if (c.getBoundingClientRect().width >= r.width - 1) { deepest = false; break; }
+          }
+          if (!deepest) continue;
+          out.push({ desc: desc(el), px: Math.max(r.width, right) });
+          if (out.length >= 20) break;
         }
-        if (!deepest) continue;
-        const cls = typeof el.className === "string" && el.className
-          ? "." + el.className.trim().split(/\\s+/).join(".") : "";
-        const src = el.tagName === "IMG" ? " src=" + (el.getAttribute("src") || "").slice(-40) : "";
-        out.push({ desc: el.tagName.toLowerCase() + cls + src, px: r.width });
-        if (out.length >= 20) break;
-      }
-      return JSON.stringify(out);
-    })()`);
-    return { limitPx, list: JSON.parse(raw) };
+        return JSON.stringify(out);
+      })()`),
+    );
+    for (const o of boxes) seen.set(o.desc, Math.max(seen.get(o.desc) ?? 0, o.px));
+
+    // pass 2 — replaced elements whose width computes to auto with an
+    // over-wide intrinsic (Typed OM shows the pre-layout "auto")
+    const replaced: Array<{ desc: string; px: number }> = JSON.parse(
+      await page.evaluate<string>(`(() => {
+        const LIMIT = ${limitPx} + 1;
+        const desc = ${DESC};
+        const out = [];
+        for (const el of document.querySelectorAll("img, canvas, video")) {
+          const intrinsic = el.naturalWidth ?? el.videoWidth ?? el.width ?? 0;
+          if (!intrinsic || intrinsic <= LIMIT) continue;
+          let widthIsAuto = true;
+          try {
+            widthIsAuto = String(el.computedStyleMap().get("width")) === "auto";
+          } catch (_) { /* Typed OM unavailable: keep the conservative flag */ }
+          if (!widthIsAuto) continue;
+          out.push({ desc: desc(el), px: intrinsic });
+          if (out.length >= 20) break;
+        }
+        return JSON.stringify(out);
+      })()`),
+    );
+    for (const o of replaced) seen.set(o.desc, Math.max(seen.get(o.desc) ?? 0, o.px));
+    return { limitPx, list: [...seen.entries()].map(([desc, px]) => ({ desc, px })) };
   } finally {
     await page.send("Emulation.clearDeviceMetricsOverride");
   }

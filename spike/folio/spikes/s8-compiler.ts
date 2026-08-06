@@ -313,6 +313,37 @@ html { font: 11pt/1.45 serif } body { margin: 0 }
     rShrink.pageCount > 0 && rShrink.notes.some((n) => n.includes("allowShrink")),
     `${rShrink.pageCount}pp, notes: ${rShrink.notes.join(" | ")}`,
   );
+  // Replaced-element intrinsics: an auto-width image contributes its
+  // INTRINSIC width to print preferred-width even though max-width clamps
+  // the rendered box (the field guide's placards); `width: 100%` bounds it.
+  // An over-wide SVG data URI gives a deterministic intrinsic width.
+  const hugeImg = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="40"><rect width="1200" height="40" fill="#ddd"/></svg>')}`;
+  const imgFixture = (imgCss: string) =>
+    `<!doctype html><meta charset="utf-8"><style>
+@page { size: 6in 9in; margin: 0.75in; }
+img { max-width: 100%; ${imgCss} }
+</style><main><p>text</p><img src="${hugeImg}"></main>`;
+  const imgAuto = join(OUT_DIR, "s8-img-auto.html");
+  writeFileSync(imgAuto, imgFixture(""));
+  let imgError = "";
+  try {
+    await build({ input: imgAuto, browser });
+  } catch (e) {
+    imgError = String(e);
+  }
+  s.check(
+    "an auto-width image with an over-wide intrinsic FAILS the build",
+    imgError.includes("shrink-to-fit") && imgError.includes("img"),
+    imgError.slice(0, 100) || "build did not throw",
+  );
+  const imgFull = join(OUT_DIR, "s8-img-full.html");
+  writeFileSync(imgFull, imgFixture("width: 100%;"));
+  const rImgFull = await build({ input: imgFull, browser });
+  s.check(
+    "…and the same image with width:100% passes (specified width bounds the preferred width)",
+    rImgFull.pageCount > 0,
+    `${rImgFull.pageCount}pp`,
+  );
   // The fitted documents built earlier in this spike (r1/r2/r3) are the
   // pass case: they reached here without tripping the check.
 

@@ -189,7 +189,10 @@ export async function run(browser: Browser) {
       const slug = name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
       const path = join(OUT_DIR, `s13-bleedcontent-${slug}.html`);
       writeFileSync(path, `<!doctype html><meta charset="utf-8"><style>${css}</style>${body}`);
-      const r = await build({ input: path, browser, marks: true });
+      // allowShrink: these fixtures are DELIBERATELY over-wide — they exist
+      // to measure where the engine clips bleed-content painting, not to
+      // model a shippable book, so the pre-print width check must not veto.
+      const r = await build({ input: path, browser, marks: true, allowShrink: true });
       const pdfPath = join(OUT_DIR, `s13-bleedcontent-${slug}.pdf`);
       writeArtifact(pdfPath, r.bytes);
       const png = pdfRender(pdfPath, join(OUT_DIR, `s13-render-${slug}`), 150).files[0].file as string;
