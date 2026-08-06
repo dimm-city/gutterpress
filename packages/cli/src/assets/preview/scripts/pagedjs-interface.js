@@ -215,6 +215,216 @@
     return null;
   }
 
+  // ── Context-menu target resolution (protocol v4) ────────────────────────────
+  // docs/inline-editing-plan.md §3.1 / ADR 0009. getContextTargetAt() is the
+  // single resolution routine shared by the public previewAPI member and both
+  // event listeners below (contextmenu + keyboard) — see that doc for the
+  // exact kind-precedence contract implemented here.
+  var LAYOUT_MARKER_CLASSES = ['chapter', 'spread', 'page', 'section', 'md-page-break', 'md-column-break'];
+
+  function elementAtPoint(x, y) {
+    try {
+      if (typeof document.elementFromPoint === 'function') return document.elementFromPoint(x, y);
+    } catch (_e) { /* unsupported host — degrade to null */ }
+    return null;
+  }
+
+  function elementOf(node) {
+    if (!node) return null;
+    return node.nodeType === 1 ? node : (node.parentElement || null);
+  }
+
+  // Parse a `data-source-range="<start>:<end>"` value into a [start, end)
+  // pair — token.map's own 0-based half-open convention, verbatim.
+  function sourceRangeOf(el) {
+    if (!el || !el.getAttribute) return null;
+    var raw = el.getAttribute('data-source-range');
+    if (!raw) return null;
+    var sep = raw.indexOf(':');
+    if (sep < 0) return null;
+    var start = parseInt(raw.slice(0, sep), 10);
+    var end = parseInt(raw.slice(sep + 1), 10);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+    return [start, end];
+  }
+
+  // Fence gotcha (§2.6): markdown-it's default fence renderer puts token
+  // attrs on the inner <code>, never the <pre> wrapper — a click on the code
+  // block's padding hits <pre>'s box, which never carries data-source-range.
+  // Prefer an annotated <code> child over climbing to a coarser ancestor.
+  function fenceCodeChild(el) {
+    if (!el || !el.tagName || el.tagName.toLowerCase() !== 'pre' || !el.children) return null;
+    for (var i = 0; i < el.children.length; i++) {
+      var c = el.children[i];
+      if (c.tagName && c.tagName.toLowerCase() === 'code' && c.getAttribute && c.getAttribute('data-source-range')) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  // Innermost [data-source-range] element at/around `el` (self-or-ancestor),
+  // with the fence <pre>-hits-<code> special case above taking priority.
+  function resolveAnnotatedBlock(el) {
+    if (!el) return null;
+    var fenceCode = fenceCodeChild(el);
+    if (fenceCode) return fenceCode;
+    return el.closest ? el.closest('[data-source-range]') : null;
+  }
+
+  function isMarkerBlock(el) {
+    if (!el || !el.classList) return false;
+    for (var i = 0; i < LAYOUT_MARKER_CLASSES.length; i++) {
+      if (el.classList.contains(LAYOUT_MARKER_CLASSES[i])) return true;
+    }
+    return false;
+  }
+
+  // Split fragments duplicate every data attribute (including
+  // data-source-range and data-ref); data-split-from/-to are the only
+  // markers Paged.js adds fresh on the clone, so they're what identifies a
+  // fragment as split (never key on `id` — Paged.js strips it from every
+  // fragment but the first, mirroring it to data-id instead).
+  function isSplitFragment(el) {
+    return !!(el && el.hasAttribute && (el.hasAttribute('data-split-from') || el.hasAttribute('data-split-to')));
+  }
+
+  // Plain, JSON-cloneable rect — the payload crosses two postMessage
+  // boundaries, so no DOMRect instances (§3.5).
+  function plainRect(el) {
+    if (!el || !el.getBoundingClientRect) return null;
+    var r = el.getBoundingClientRect();
+    return { top: r.top, left: r.left, width: r.width, height: r.height };
+  }
+
+  // Non-collapsed selection info, or null. NEVER Range.toString() — a
+  // cross-page range's raw text is polluted with inter-page structural
+  // whitespace and can include every intervening page's content (§3.5);
+  // selection.toString() is the display-only source of truth here.
+  function selectionInfo() {
+    var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (!sel || sel.isCollapsed) return null;
+    var anchorBlock = resolveAnnotatedBlock(elementOf(sel.anchorNode));
+    var focusBlock = resolveAnnotatedBlock(elementOf(sel.focusNode));
+    var withinSingleBlock = !!(anchorBlock && focusBlock && anchorBlock === focusBlock);
+    return {
+      text: sel.toString(),
+      withinSingleBlock: withinSingleBlock,
+      range: withinSingleBlock ? sourceRangeOf(anchorBlock) : null,
+      chapter: withinSingleBlock ? chapterOf(anchorBlock) : null
+    };
+  }
+
+  // Shared resolution: builds the full getContextTargetAt() payload for a
+  // point element. `selection`/`image`/`link` are populated whenever
+  // applicable REGARDLESS of which `kind` wins, so the menu can offer
+  // secondary items (§3.1).
+  //
+  // kind precedence (decided): selection -> image -> link -> marker -> block
+  // -> none.
+  function buildContextTarget(pointEl) {
+    var selection = selectionInfo();
+    var imageEl = pointEl && pointEl.closest ? pointEl.closest('img') : null;
+    var image = imageEl ? { src: imageEl.getAttribute('src'), alt: imageEl.getAttribute('alt') } : null;
+    var linkEl = pointEl && pointEl.closest ? pointEl.closest('a') : null;
+    var link = linkEl ? { href: linkEl.getAttribute('href'), text: (linkEl.textContent || '').trim() } : null;
+
+    var block = resolveAnnotatedBlock(pointEl);
+
+    var kind;
+    if (selection) kind = 'selection';
+    else if (image) kind = 'image';
+    else if (link) kind = 'link';
+    else if (block && isMarkerBlock(block)) kind = 'marker';
+    else if (block) kind = 'block';
+    else kind = 'none';
+
+    return {
+      kind: kind,
+      chapter: chapterOf(pointEl),
+      range: block ? sourceRangeOf(block) : null,
+      blockTag: block && block.tagName ? block.tagName.toLowerCase() : null,
+      split: isSplitFragment(block),
+      ref: block && block.getAttribute ? (block.getAttribute('data-ref') || null) : null,
+      rect: plainRect(block || pointEl),
+      image: image,
+      link: link,
+      selection: selection
+    };
+  }
+
+  // The anchor point for a keyboard-invoked menu: the current selection's
+  // focus position if non-collapsed, else the block at the top of the
+  // viewport (topVisibleSourceEl(), which already exists for scroll sync).
+  // Keyboard events targeted at a focused element in a cross-origin iframe
+  // never reach the parent SPA — this resolution MUST live here, not
+  // SPA-side.
+  function keyboardAnchorPoint() {
+    var sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    var el = sel && !sel.isCollapsed ? elementOf(sel.focusNode) : null;
+    if (!el) el = topVisibleSourceEl();
+    var rect = el ? plainRect(el) : null;
+    if (!rect) return { x: 0, y: 0 };
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }
+
+  // ── Block-overlay geometry + masking (protocol v5) ──────────────────────────
+  // docs/inline-editing-plan.md §5.3 / ADR 0009. A block split across pages
+  // exists as MULTIPLE DOM fragments that duplicate every data attribute
+  // (§3.5's split-fragment gotcha applies here too) — `data-ref` is the one
+  // identity Paged.js keeps stable across them, so every command below groups
+  // by `data-ref`, never by `id` (Paged.js strips it from all fragments but
+  // the first) and never by uniqueness of `data-source-range` alone.
+
+  // All elements anywhere in the document carrying the given data-ref value.
+  // Built via filter (not a `[data-ref="…"]` selector) so a ref value can
+  // never be mis-parsed as CSS — the value is host-controlled today, but this
+  // stays robust regardless.
+  function elementsByRef(ref) {
+    if (!ref) return [];
+    var all = Array.from(document.querySelectorAll('[data-ref]'));
+    return all.filter(function (el) { return el.getAttribute('data-ref') === ref; });
+  }
+
+  function rangedBlocks() {
+    return Array.from(document.querySelectorAll('[data-source-range]'));
+  }
+
+  function rangedBlocksInChapter(chapter) {
+    if (!chapter) return rangedBlocks();
+    return rangedBlocks().filter(function (el) { return chapterOf(el) === chapter; });
+  }
+
+  // Resolve a getRectsFor()/setEditMask() spec to {ref, els}. Two mutually
+  // exclusive forms (§5.3):
+  //   {ref}              — the FAST path: data-ref survived from the moment
+  //                         the overlay opened (menu open, pageChanged/zoom
+  //                         re-anchor within the SAME render).
+  //   {chapter, range}    — the POST-SPLICE FALLBACK: a fresh render mints
+  //                         fresh data-refs, so after `renderingComplete` the
+  //                         overlay must re-resolve by the one thing that
+  //                         still identifies the block — its source range —
+  //                         and read back whatever data-ref the fresh DOM
+  //                         assigned it.
+  function resolveBlockGroup(spec) {
+    spec = spec || {};
+    if (spec.ref) {
+      var byRef = elementsByRef(spec.ref);
+      return { ref: byRef.length ? spec.ref : null, els: byRef };
+    }
+    if (spec.chapter != null && spec.range) {
+      var candidates = rangedBlocksInChapter(spec.chapter).filter(function (el) {
+        var r = sourceRangeOf(el);
+        return r && r[0] === spec.range[0] && r[1] === spec.range[1];
+      });
+      if (!candidates.length) return { ref: null, els: [] };
+      var targetRef = candidates[0].getAttribute('data-ref') || null;
+      if (!targetRef) return { ref: null, els: candidates };
+      return { ref: targetRef, els: elementsByRef(targetRef) };
+    }
+    return { ref: null, els: [] };
+  }
+
   var api = {
     getTotalPages: function () { refreshPages(); return pages.length; },
     getCurrentPage: function () { return currentPage; },
@@ -280,7 +490,58 @@
     // ── ADR 0005 generic primitives ─────────────────────────────────────────
     // Bumped whenever a command/event is added so a hot-updated SPA can
     // feature-detect against an older bundled lib.
-    getProtocolVersion: function () { return 3; },
+    // v5 (docs/inline-editing-plan.md §5.3, ADR 0009): getRectsFor() +
+    // setEditMask() for the click-to-edit block overlay.
+    getProtocolVersion: function () { return 5; },
+
+    // Resolve the annotated element/selection at a viewport point (protocol
+    // v4). Pure read; see buildContextTarget() above for the full contract.
+    getContextTargetAt: function (spec) {
+      spec = spec || {};
+      return buildContextTarget(elementAtPoint(spec.x, spec.y));
+    },
+
+    // All fragment rects for one logical block (protocol v5, §5.3). `ref` is
+    // returned alongside the rects (not just each rect's geometry) because a
+    // post-splice {chapter, range} lookup resolves a FRESH data-ref the
+    // caller has no other way to learn — the block overlay needs it to
+    // target the matching setEditMask() call after a re-anchor. Pure read;
+    // never mutates the DOM. Plain, JSON-cloneable objects only (§3.5) — no
+    // DOMRect instances.
+    getRectsFor: function (spec) {
+      var resolved = resolveBlockGroup(spec);
+      var rects = resolved.els.map(function (el) {
+        var r = plainRect(el);
+        if (!r) return null;
+        r.page = pageIndexOf(el);
+        return r;
+      }).filter(function (r) { return r != null; });
+      return { ref: resolved.ref, rects: rects };
+    },
+
+    // Toggle a masking class on EVERY fragment of a block, plus a scroll lock
+    // on the book document element (protocol v5, §5.1/§5.3). Purely cosmetic
+    // and fully reversible — Paged.js never re-layouts after a mutation
+    // (spike-verified), so nothing here may touch anything layout-affecting;
+    // see the class definitions below and ADR 0009. `masked: false` always
+    // removes the lock class too, even if this particular ref has zero live
+    // fragments (e.g. called defensively during teardown after a splice) —
+    // it is a document-level toggle, not scoped per-block, and there is at
+    // most one overlay open at a time.
+    setEditMask: function (spec) {
+      spec = spec || {};
+      var els = elementsByRef(spec.ref);
+      for (var i = 0; i < els.length; i++) {
+        if (spec.masked) els[i].classList.add('gutterpress-edit-mask');
+        else els[i].classList.remove('gutterpress-edit-mask');
+      }
+      var root = document.documentElement;
+      if (root && root.classList) {
+        if (spec.masked) root.classList.add('gutterpress-edit-scroll-lock');
+        else root.classList.remove('gutterpress-edit-scroll-lock');
+      }
+      return { count: els.length };
+    },
 
     // Publish any debounced reader movement before a host atomically replaces
     // this frame. `silent` lets the shell relay the returned event itself so a
@@ -457,6 +718,25 @@
     } catch (_e) { /* non-fatal: highlight just renders unstyled */ }
   }
 
+  // Block-overlay mask + scroll-lock style (protocol v5, plan §5.1/§5.3).
+  // Preview-only, never part of the PDF build path. Purely cosmetic: dims the
+  // masked fragment(s) so stale rendered text doesn't show behind/beside the
+  // overlay, and disables the book document's own scroll while an overlay is
+  // open (the overlay is positioned in host-SPA coordinates from a rect
+  // snapshot; an unlocked scroll would silently drift it over unrelated
+  // content — see BlockOverlayController). Exact visual treatment (dim vs.
+  // blank) is a placeholder pending design review (plan §7.6 open item).
+  if (typeof document.createElement === 'function') {
+    try {
+      var maskStyle = document.createElement('style');
+      maskStyle.textContent =
+        '.gutterpress-edit-mask{opacity:.2;filter:saturate(.4);pointer-events:none;' +
+        'transition:opacity .12s,filter .12s;}' +
+        'html.gutterpress-edit-scroll-lock{overflow:hidden !important;}';
+      (document.head || document.documentElement).appendChild(maskStyle);
+    } catch (_e) { /* non-fatal: mask just renders unstyled */ }
+  }
+
   // Click-to-source: emit elementActivated when the user clicks a source-mapped
   // block. Never preventDefault (links/selection keep working); the host decides
   // whether to act. (ADR 0005)
@@ -467,6 +747,43 @@
       window.dispatchEvent(new CustomEvent('elementActivated', {
         detail: { sourceLine: lineOf(el), chapter: chapterOf(el), id: el.id || null, tag: el.tagName.toLowerCase() }
       }));
+    }, true);
+
+    // Context menu (protocol v4, docs/inline-editing-plan.md §3.1). Both the
+    // mouse and keyboard paths dispatch the same contextMenuRequested window
+    // event carrying the getContextTargetAt() payload plus the viewport
+    // x/y and `via`.
+    //
+    // preventDefault() ONLY when kind !== 'none' — right-clicks on page
+    // furniture (margin boxes, running headers, page numbers) keep native
+    // behavior: that text is selectable/copyable, and killing native copy
+    // with no replacement menu would be a strict regression. No event is
+    // dispatched for 'none' either.
+    document.addEventListener('contextmenu', function (e) {
+      var detail = api.getContextTargetAt({ x: e.clientX, y: e.clientY });
+      if (detail.kind === 'none') return;
+      e.preventDefault();
+      detail.x = e.clientX;
+      detail.y = e.clientY;
+      detail.via = 'mouse';
+      window.dispatchEvent(new CustomEvent('contextMenuRequested', { detail: detail }));
+    }, true);
+
+    // Shift+F10 / the dedicated ContextMenu key. This listener MUST live
+    // inside the book iframe: keyboard events targeted at a focused element
+    // in a cross-origin iframe never reach the parent SPA, so an SPA-side
+    // listener cannot implement this.
+    document.addEventListener('keydown', function (e) {
+      var isShiftF10 = e.shiftKey && e.key === 'F10';
+      var isMenuKey = e.key === 'ContextMenu';
+      if (!isShiftF10 && !isMenuKey) return;
+      var anchor = keyboardAnchorPoint();
+      var detail = api.getContextTargetAt({ x: anchor.x, y: anchor.y });
+      detail.x = anchor.x;
+      detail.y = anchor.y;
+      detail.via = 'keyboard';
+      e.preventDefault();
+      window.dispatchEvent(new CustomEvent('contextMenuRequested', { detail: detail }));
     }, true);
   }
 

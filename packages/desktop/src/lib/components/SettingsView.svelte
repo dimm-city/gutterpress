@@ -235,6 +235,18 @@
             <option value="2">200%</option>
           </select>
         </div>
+        <div class="row">
+          <div class="row-label">
+            <label for="set-context-menu">Right-click menu in the preview</label>
+            <span class="row-hint">Right-click (or Shift+F10) an image, link, or block in the preview for quick edit actions.</span>
+          </div>
+          <input
+            id="set-context-menu"
+            type="checkbox"
+            checked={s.preview.contextMenu}
+            onchange={(e) => settings.set({ preview: { contextMenu: (e.currentTarget as HTMLInputElement).checked } })}
+          />
+        </div>
       </section>
 
       {#if isDesktop()}

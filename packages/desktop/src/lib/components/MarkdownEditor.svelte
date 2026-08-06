@@ -7,6 +7,28 @@
    * each user edit. No Gutterpress extension awareness yet (a follow-on per the
    * issue).
    *
+   * ## Two document shapes
+   *
+   * `switchBook(sections)` opens the WHOLE BOOK as one continuous document —
+   * every chapter concatenated in manifest `source.files` order, with the
+   * boundaries carried as mapped positions in `bookField` (see
+   * `$lib/editor/book-field.ts`) rather than as separator text. Scrolling runs
+   * from the first line of the book to the last without stopping at a file's
+   * end, and `(chapter, line) ↔ document line` — the only thing editor↔preview
+   * sync ever needed — is a table lookup, which is what let the cross-chapter
+   * open/poll/retry machinery be deleted outright.
+   *
+   * `switchFile(path, content)` opens ONE file, exactly as this component
+   * always did. That is the shape for stylesheets and for markdown that isn't
+   * part of the book. Both shapes share the one `EditorView`, the one state
+   * cache, and every export below; the book document is simply the case where
+   * `bookField` holds a segment table.
+   *
+   * Edits are reported per FILE either way: `onChange` for a single-file
+   * document, `onSectionChange(path, text)` for the book (one call per chapter
+   * an edit actually touched — normally one, two when a paste or a delete
+   * spans a boundary).
+   *
    * ONE EditorView for the component's lifetime (UX review M8). The exported
    * `switchFile(path, content)` swaps the open document via `view.setState(...)`
    * with a freshly built or cache-restored `EditorState` — it never tears the
@@ -29,14 +51,38 @@
    * onChange→buffer round trip, fighting the user's own typing — so the
    * explicit-call design is the right one independent of the lint rule.
    */
-  import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
+  import { EditorView, keymap, highlightActiveLine } from "@codemirror/view";
   import {
     EditorState,
     EditorSelection,
     Compartment,
+    Transaction,
     type Extension,
   } from "@codemirror/state";
   import { EditorStateCache } from "$lib/editor/editor-state-cache";
+  import {
+    bookField,
+    bookFieldInit,
+    bookLayout,
+    bookLineNumbers,
+    repairCollapsedSegments,
+    segmentAtPos,
+    setBookLayout,
+  } from "$lib/editor/book-field";
+  import {
+    bookLayoutsEqual,
+    buildBookDoc,
+    globalLineFor,
+    localLineFor,
+    normalizeEditorText,
+    segmentEnd,
+    segmentIndexForPath,
+    touchedSegments,
+    unpad,
+    withSegmentReplaced,
+    type BookLayout,
+    type BookSection,
+  } from "$lib/editor/book-layout";
   import {
     defaultKeymap,
     history,
@@ -84,19 +130,38 @@
     filePath = null,
     content = "",
     onChange,
+    onSectionChange,
+    onActiveSection,
     onSave,
     onAnchorLine,
   }: {
     filePath?: string | null;
     content?: string;
     onChange?: (value: string) => void;
+    /**
+     * Book-document edit. Fires once per chapter file an edit actually touched,
+     * with that file's full new content (the synthetic padding newline already
+     * stripped, so it is byte-for-byte what belongs on disk).
+     */
+    onSectionChange?: (path: string, text: string) => void;
+    /**
+     * The caret moved into a different chapter of the book document. This is
+     * what "which file is open" means once the whole book is one document — the
+     * status bar, the file-tree highlight, and the conflict banner follow it.
+     */
+    onActiveSection?: (path: string) => void;
     onSave?: () => void;
     /**
      * Editor→preview sync. Fires with the 1-based "anchor" source line: the top
      * visible line on scroll, or the caret line on a deliberate (non-typing)
-     * caret move. Debounced via rAF.
+     * caret move. Debounced via rAF. `chapter` names the file that line belongs
+     * to in a book document, and is null for a single-file document.
      */
-    onAnchorLine?: (line: number, origin: "scroll" | "caret") => void;
+    onAnchorLine?: (
+      line: number,
+      origin: "scroll" | "caret",
+      chapter: string | null,
+    ) => void;
   } = $props();
 
   let host = $state<HTMLDivElement | undefined>(undefined);
@@ -112,12 +177,23 @@
   let lastEmittedLine = -1;
   let anchorRaf = 0;
 
+  /**
+   * `line` is always a DOCUMENT line; the chapter-local line the preview speaks
+   * is resolved from the segment table here, so every caller upstream (scroll
+   * handler, caret listener) stays in one coordinate system.
+   */
   function emitAnchorLine(line: number, origin: "scroll" | "caret"): void {
-    if (!onAnchorLine) return;
+    if (!onAnchorLine || !view) return;
     if (Date.now() < suppressEmitUntil) return;
     if (line === lastEmittedLine) return;
     lastEmittedLine = line;
-    onAnchorLine(line, origin);
+    const layout = bookLayout(view.state);
+    if (!layout) {
+      onAnchorLine(line, origin, null);
+      return;
+    }
+    const local = localLineFor(layout, line);
+    if (local) onAnchorLine(local.line, origin, local.chapter);
   }
 
   // Top visible source line = doc line at the top-left of the scroll viewport.
@@ -147,8 +223,18 @@
   let currentLanguage: EditorLanguage = "plain";
   // The filePath the view's document currently belongs to. Used by
   // switchFile() to no-op a call that doesn't actually change the open file.
-  // Seeded at mount alongside the initial document.
+  // Seeded at mount alongside the initial document. In a book document this is
+  // BOOK_KEY — the document belongs to many files at once, and which one is
+  // "open" is answered by the caret (see onActiveSection), not by this.
   let appliedPath: string | null = null;
+  /**
+   * State-cache key for the book document. Not a real path, and deliberately
+   * unrepresentable as one, so it can never collide with a file the author
+   * opens standalone.
+   */
+  const BOOK_KEY = " book";
+  /** The active section's path, so a caret move only reports real changes. */
+  let activeSectionPath: string | null = null;
   // Per-file EditorState + scroll cache (UX review M8) — see the header
   // comment. Lives for the component's lifetime, not reset on file switch.
   const stateCache = new EditorStateCache<{
@@ -156,6 +242,63 @@
     scrollTop: number;
     scrollLeft: number;
   }>(20);
+
+  /**
+   * One chapter's bytes, sliced straight out of the CodeMirror `Text`. Never
+   * materialise the whole book as a string to do this — that would allocate the
+   * entire document on every keystroke.
+   */
+  function sectionTextAt(state: EditorState, layout: BookLayout, index: number): string {
+    const segment = layout.segments[index]!;
+    const raw = state.doc.sliceString(segment.from, segmentEnd(state.doc.length, layout, index));
+    return unpad(raw, segment.padded);
+  }
+
+  /**
+   * Report the book edit as per-file content, one call per chapter the change
+   * actually touched.
+   *
+   * `touchedSegments` owns which chapters those are (and why the changed span
+   * has to be widened) — it is pure, and unit-tested in book-layout.test.ts.
+   */
+  function emitChangedSections(
+    changes: { iterChangedRanges: (f: (a: number, b: number, c: number, d: number) => void) => void },
+    state: EditorState,
+    layout: BookLayout,
+  ): void {
+    if (!onSectionChange) return;
+    let min = Infinity;
+    let max = -Infinity;
+    changes.iterChangedRanges((_fromA, _toA, fromB, toB) => {
+      if (fromB < min) min = fromB;
+      if (toB > max) max = toB;
+    });
+    if (min === Infinity) return;
+    const touched = touchedSegments(layout, min, max);
+    if (!touched) return;
+    for (let i = touched.first; i <= touched.last; i++) {
+      onSectionChange(layout.segments[i]!.path, sectionTextAt(state, layout, i));
+    }
+  }
+
+  /**
+   * Give a chapter its line back when an edit collapsed it to nothing (see
+   * `repairCollapsedSegments`). Dispatched from a microtask because CodeMirror
+   * forbids re-entrant dispatch from inside an update, and outside the undo
+   * history so it never costs the author an extra undo press.
+   */
+  function repairCollapsed(state: EditorState): void {
+    const repair = repairCollapsedSegments(state);
+    if (!repair) return;
+    queueMicrotask(() => {
+      if (!view) return;
+      view.dispatch({
+        changes: repair.insertAt.map((pos) => ({ from: pos, insert: "\n" })),
+        effects: setBookLayout.of(repair.layout),
+        annotations: Transaction.addToHistory.of(false),
+      });
+    });
+  }
 
   /** Build the language extension for a given resolved language mode. */
   function languageExtension(lang: EditorLanguage): Extension {
@@ -255,18 +398,50 @@
     },
     ".cm-selectionMatch": { backgroundColor: "var(--cm-selection)" },
     "&.cm-focused": { outline: "none" },
+    // Chapter divider in the book document (book-field.ts's block widget). The
+    // author scrolls through one continuous manuscript; this is the only thing
+    // telling them where one file ends and the next begins, so it has to read
+    // as structure without competing with the prose.
+    ".cm-chapter-header": {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      margin: "22px 0 4px",
+      paddingRight: "12px",
+      fontFamily: "system-ui, sans-serif",
+      fontSize: "10px",
+      fontWeight: "600",
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      color: "var(--cm-chapter-label)",
+      userSelect: "none",
+    },
+    ".cm-chapter-header:first-child": { marginTop: "4px" },
+    ".cm-chapter-header::after": {
+      content: '""',
+      flex: "1 1 auto",
+      height: "1px",
+      background: "var(--cm-chapter-rule)",
+    },
   });
 
   // `forPath` is passed explicitly rather than read off the `filePath` prop:
   // `switchFile()` must resolve the language for the file it was just told
   // to switch TO, not risk racing however/whenever Svelte propagates the
   // prop update through to this read.
-  function buildState(doc: string, forPath: string | null): EditorState {
-    const lang = languageForPath(forPath);
+  function buildState(
+    doc: string,
+    forPath: string | null,
+    layout: BookLayout | null = null,
+  ): EditorState {
+    // A book document is markdown by construction — it has many paths and no
+    // single one to resolve a language from.
+    const lang = layout ? "markdown" : languageForPath(forPath);
     return EditorState.create({
-      doc,
+      doc: normalizeEditorText(doc),
       extensions: [
-        lineNumbers(),
+        bookFieldInit(layout),
+        bookLineNumbers(),
         history(),
         highlightActiveLine(),
         bracketMatching(),
@@ -288,8 +463,23 @@
         editableTheme,
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
+          const layout = bookLayout(update.state);
           if (update.docChanged && !applyingExternal) {
-            onChange?.(update.state.doc.toString());
+            if (layout) {
+              emitChangedSections(update.changes, update.state, layout);
+              repairCollapsed(update.state);
+            } else {
+              onChange?.(update.state.doc.toString());
+            }
+          }
+          // Which chapter the author is IN follows the caret — that is what
+          // "the open file" means once the whole book is one document.
+          if (layout && (update.selectionSet || update.docChanged)) {
+            const segment = segmentAtPos(update.state, update.state.selection.main.head);
+            if (segment && segment.path !== activeSectionPath) {
+              activeSectionPath = segment.path;
+              onActiveSection?.(segment.path);
+            }
           }
           // Editor→preview sync on a DELIBERATE caret move (click / arrow key),
           // not while typing — typing would yank the preview on every keystroke.
@@ -313,6 +503,7 @@
     if (!host) return;
     currentLanguage = languageForPath(filePath);
     appliedPath = filePath;
+    activeSectionPath = filePath;
     view = new EditorView({ state: buildState(content, filePath), parent: host });
     // Editor→preview scroll sync: emit the top visible line as the user
     // scrolls (rAF-coalesced). Bound to scrollDOM rather than updateListener
@@ -360,37 +551,141 @@
    */
   export function switchFile(newPath: string | null, newContent: string): void {
     if (!view || newPath === appliedPath) return;
-    if (appliedPath) {
-      stateCache.set(appliedPath, {
-        state: view.state,
-        scrollTop: view.scrollDOM.scrollTop,
-        scrollLeft: view.scrollDOM.scrollLeft,
-      });
-    }
+    stashCurrent();
     appliedPath = newPath;
+    activeSectionPath = newPath;
     currentLanguage = languageForPath(newPath);
     if (newPath == null) return; // nothing open — template hides the host
+    const doc = normalizeEditorText(newContent);
+    restoreOrBuild(newPath, doc, () => buildState(doc, newPath));
+  }
 
-    const cached = stateCache.get(newPath);
+  /**
+   * Open the WHOLE BOOK as one continuous document (see this component's
+   * header). `sections` must already be in the book's own chapter order — that
+   * order IS the document.
+   *
+   * Like {@link switchFile} this reconfigures the one live view rather than
+   * rebuilding it, and it restores the book's cached state (undo history,
+   * selection, scroll) when the freshly-built document matches what was cached
+   * — so bouncing out to a stylesheet and back lands the author exactly where
+   * they were.
+   */
+  export function switchBook(sections: BookSection[]): void {
+    if (!view) return;
+    const { doc, layout } = buildBookDoc(sections);
+    // Already showing exactly this book: do nothing. The parent pushes the
+    // document on every chapter navigation and after every folder-change
+    // rebuild, and a `setState` that swapped a document for an identical one
+    // would still tear down and rebuild the view — losing the author's scroll
+    // position on a plain click in the file tree, and racing the reveal that
+    // click is about to issue.
+    if (appliedPath === BOOK_KEY && sameBook(layout) && view.state.doc.toString() === doc) {
+      return;
+    }
+    stashCurrent();
+    appliedPath = BOOK_KEY;
+    currentLanguage = "markdown";
+    restoreOrBuild(BOOK_KEY, doc, () => buildState(doc, null, layout), layout);
+    activeSectionPath = sections[0]?.path ?? null;
+  }
+
+  /** Whether the live document already holds exactly these chapters, in order. */
+  function sameBook(next: BookLayout): boolean {
+    const current = view ? bookLayout(view.state) : null;
+    return bookLayoutsEqual(current, next);
+  }
+
+  /** Stash the outgoing document's state + scroll under its cache key. */
+  function stashCurrent(): void {
+    if (!view || !appliedPath) return;
+    stateCache.set(appliedPath, {
+      state: view.state,
+      scrollTop: view.scrollDOM.scrollTop,
+      scrollLeft: view.scrollDOM.scrollLeft,
+    });
+  }
+
+  /**
+   * Restore `key`'s cached state when its document still matches `expectedDoc`
+   * — i.e. nothing changed underneath while the author was away — otherwise
+   * build fresh. A stale cached doc must never resurrect over fresh content.
+   */
+  function restoreOrBuild(
+    key: string,
+    expectedDoc: string,
+    build: () => EditorState,
+    expectedLayout?: BookLayout,
+  ): void {
+    if (!view) return;
+    const cached = stateCache.get(key);
     let nextState: EditorState;
     let scrollTop = 0;
     let scrollLeft = 0;
-    if (cached && cached.state.doc.toString() === newContent) {
+    const cachedLayoutMatches =
+      expectedLayout === undefined ||
+      (cached ? bookLayoutsEqual(bookLayout(cached.state), expectedLayout) : false);
+    if (cached && cached.state.doc.toString() === expectedDoc && cachedLayoutMatches) {
       nextState = cached.state;
       scrollTop = cached.scrollTop;
       scrollLeft = cached.scrollLeft;
     } else {
-      // No cache entry, or the disk content changed while this file wasn't
-      // open — a stale cached doc must never resurrect over fresh content.
-      stateCache.delete(newPath);
-      nextState = buildState(newContent, newPath);
+      stateCache.delete(key);
+      nextState = build();
     }
+    // A document swap moves the viewport; that is not the author scrolling, so
+    // don't let it drive the preview.
+    suppressEmitUntil = Date.now() + 300;
+    lastEmittedLine = -1;
     view.setState(nextState);
+    if (scrollTop === 0 && scrollLeft === 0) return;
+    // Only a genuine RESTORE defers to a frame. A freshly-built document is
+    // already at the origin, and scheduling a redundant scroll write would
+    // clobber a reveal the caller issues right after this returns (opening a
+    // chapter from the file tree does exactly that).
     const v = view;
     requestAnimationFrame(() => {
       v.scrollDOM.scrollTop = scrollTop;
       v.scrollDOM.scrollLeft = scrollLeft;
     });
+  }
+
+  /**
+   * Replace ONE chapter's text inside the book document — the external-reload
+   * path (`EditorBuffer.onContentReplaced`) for a file that isn't the one under
+   * the caret. Returns false when this isn't a book document or doesn't hold
+   * `path`, so the caller can fall back to {@link updateContent}.
+   *
+   * The new boundary table is supplied explicitly rather than mapped: replacing
+   * a segment deletes its whole range, and every `assoc` collapses the next
+   * segment's boundary onto the deletion start.
+   */
+  export function spliceSection(path: string, nextContent: string): boolean {
+    if (!view) return false;
+    const layout = bookLayout(view.state);
+    if (!layout) return false;
+    const index = segmentIndexForPath(layout, path);
+    if (index < 0) return false;
+    const segment = layout.segments[index]!;
+    const end = segmentEnd(view.state.doc.length, layout, index);
+    const content = normalizeEditorText(nextContent);
+    const padded = !content.endsWith("\n");
+    const text = padded ? `${content}\n` : content;
+    const textMatches = view.state.doc.sliceString(segment.from, end) === text;
+    if (textMatches && segment.padded === padded) return true;
+    applyingExternal = true;
+    try {
+      view.dispatch({
+        changes: textMatches ? undefined : { from: segment.from, to: end, insert: text },
+        effects: setBookLayout.of(
+          withSegmentReplaced(layout, index, end - segment.from, text.length, padded),
+        ),
+        scrollIntoView: false,
+      });
+    } finally {
+      applyingExternal = false;
+    }
+    return true;
   }
 
   /**
@@ -401,6 +696,7 @@
    */
   export function updateContent(nextDoc: string): void {
     if (!view) return;
+    nextDoc = normalizeEditorText(nextDoc);
     const current = view.state.doc.toString();
     if (current === nextDoc) return;
     applyingExternal = true;
@@ -426,6 +722,58 @@
   /** Move keyboard focus into the editor (used when the pane is opened). */
   export function focus(): void {
     view?.focus();
+  }
+
+  /**
+   * Whether this view's current document actually holds `path` — the book
+   * document holds every chapter at once, a single-file document holds one.
+   *
+   * The commit engine (inline-editing plan §4.7 Step 4) asks the EDITOR this
+   * rather than inferring it from `buffer.filePath`, since a mounted editor can
+   * be showing something else entirely than whatever the buffer most recently
+   * loaded (e.g. mid-switch). Backed by real, private, internal state updated
+   * synchronously inside `switchFile()`/`switchBook()`/`onMount` above.
+   */
+  export function hasFile(path: string): boolean {
+    if (!view) return false;
+    const layout = bookLayout(view.state);
+    if (layout) return segmentIndexForPath(layout, path) >= 0;
+    return appliedPath === path;
+  }
+
+  /**
+   * Apply a `[from, to)` character-range edit to `path` as a single undoable
+   * transaction (inline-editing plan §4.7 Step 4 / commit-engine.ts). This is
+   * the ONLY way the commit engine mutates a file that has a live CodeMirror
+   * view mounted on it — the edit lands through `view.dispatch`, so it shares
+   * this view's undo history exactly like a toolbar action
+   * (`runToolbarAction` above) or a typed keystroke.
+   *
+   * `from`/`to` are offsets into THAT FILE, not into the document: the engine
+   * resolves them against the chapter's own content, so in a book document they
+   * are rebased onto the chapter's segment here. A no-op when no view is
+   * mounted or the document doesn't hold `path` (the caller is expected to have
+   * checked {@link hasFile} first).
+   */
+  export function applyRangeEditIn(
+    path: string,
+    from: number,
+    to: number,
+    insert: string,
+  ): void {
+    if (!view) return;
+    const layout = bookLayout(view.state);
+    if (!layout) {
+      if (appliedPath !== path) return;
+      view.dispatch({ changes: { from, to, insert } });
+      return;
+    }
+    const index = segmentIndexForPath(layout, path);
+    if (index < 0) return;
+    const base = layout.segments[index]!.from;
+    const end = segmentEnd(view.state.doc.length, layout, index);
+    if (base + to > end) return; // range doesn't fit the chapter — refuse, never spill
+    view.dispatch({ changes: { from: base + from, to: base + to, insert } });
   }
 
   /** Current selection text (empty string when there is no selection) (#29). */
@@ -498,11 +846,33 @@
   /**
    * Scroll/move the caret to a 1-based source line (preview→editor sync).
    * Suppresses the cursor-line echo so it doesn't bounce back to the preview.
+   *
+   * `line` is CHAPTER-LOCAL — the coordinate the preview speaks — and `chapter`
+   * says which file it belongs to. In a book document that resolves to a
+   * document line through the segment table; in a single-file document
+   * `chapter` is ignored and the line is used as-is. There is no file to open,
+   * no load to wait for, and nothing to retry: the target line is already in
+   * the document, so this is the WHOLE of preview→editor follow now.
    */
-  export function revealLine(line: number): void {
+  export function revealLine(line: number, chapter?: string | null): void {
     if (!view) return;
     const doc = view.state.doc;
-    const clamped = Math.max(1, Math.min(line, doc.lines));
+    const layout = bookLayout(view.state);
+    let target = line;
+    if (layout) {
+      if (!chapter) return;
+      const global = globalLineFor(layout, chapter, line);
+      if (global == null) return; // a chapter this book doesn't (any longer) build from
+      target = global;
+    } else if (chapter) {
+      // A chapter-local line means nothing to a single-file document. Revealing
+      // it anyway would scroll whatever IS open — a stylesheet, say — to that
+      // line number, which is simply the wrong document. The caller is expected
+      // to put the book back on screen first (see `+page.svelte`'s
+      // `revealInEditor`).
+      return;
+    }
+    const clamped = Math.max(1, Math.min(target, doc.lines));
     const pos = doc.line(clamped).from;
     // Suppress the echo across the async scroll event the dispatch triggers.
     suppressEmitUntil = Date.now() + 300;
@@ -594,6 +964,8 @@
     --cm-invalid: light-dark(#cf222e, #ff6b6b);
     --cm-selection: light-dark(rgba(9, 105, 218, 0.18), rgba(92, 179, 255, 0.28));
     --cm-active-line: light-dark(rgba(27, 31, 36, 0.045), rgba(255, 255, 255, 0.05));
+    --cm-chapter-label: light-dark(#6e7781, #8195b5);
+    --cm-chapter-rule: light-dark(rgba(27, 31, 36, 0.12), rgba(255, 255, 255, 0.12));
     --cm-gutter-bg: var(--app-surface);
     --cm-gutter-text: light-dark(#8c959f, #6b7280);
     --cm-bracket-bg: light-dark(rgba(9, 105, 218, 0.14), rgba(92, 179, 255, 0.18));

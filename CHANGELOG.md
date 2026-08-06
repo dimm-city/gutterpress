@@ -7,6 +7,28 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Inline editing in the preview** (ADR 0009): the paginated preview is now an
+  editing surface, not just a viewer.
+  - **Right-click context menu** over the preview, with actions matched to what
+    was clicked — image (alt text, width, position, replace), link (edit, copy
+    target), selected text (bold, italic, strikethrough, inline code, make
+    link), block (insert page break, go to source) and `@marker`. Reachable by
+    keyboard via `Shift+F10` / the menu key. Right-clicks on page furniture
+    (running headers, page numbers) keep native behavior. Toggled by the new
+    `preview.contextMenu` setting.
+  - **Click-to-edit block overlay** — "Edit this block" opens the block's
+    markdown source in place over the preview.
+  - **Click-to-source** — clicking a block in the preview reveals it in the
+    editor, opening the editor pane if it is closed.
+  - Every edit flows through the existing editor buffer, so saves, crash
+    recovery, external-edit conflict handling, and undo behave exactly as they
+    do in the editor pane. Only the edited block's bytes change, keeping
+    snapshot diffs minimal. When a chapter has unsaved changes or the source
+    can't be located unambiguously, actions degrade to "open in editor" rather
+    than guessing.
+  - Rendered blocks now carry `data-source-range` (markdown-it `token.map`
+    verbatim), and the preview bridge is at protocol v5.
+
 - **Publish targets** (ADR 0008): where a book is *published* is now separate
   from how it is *designed*. `targets:` in the manifest (or
   `validate`/`preflight --target <id[,id]>`) names the destinations to
@@ -22,6 +44,25 @@ This project follows [Semantic Versioning](https://semver.org/).
   missing.
 
 ### Changed
+
+- **The editor holds the whole book, not one chapter at a time.** Every
+  markdown file the book builds from is open at once, in `source.files` order,
+  as one continuous manuscript: scrolling runs from the first line to the last
+  instead of stopping dead at the end of each file, and a chapter divider names
+  each file where it begins. Line numbers restart at 1 in every chapter, so the
+  gutter matches what the preview and `gutterpress validate` report.
+  - **The editor and the preview now stay in step everywhere.** Scrolling the
+    preview across a chapter boundary follows in the editor immediately — no
+    file to open, nothing to wait for — and it keeps following while you have
+    unsaved changes, which it used to stop doing. Clicking a block, jumping to
+    a heading, and opening a problem all land in the same place.
+  - Each chapter still saves as its own file, with its own autosave, crash
+    recovery, and external-change handling; the status bar now reports the
+    whole book's save state rather than just the chapter you're typing in, so
+    unsaved work a few chapters back can't look saved.
+  - Stylesheets, and markdown files the book doesn't build from, still open on
+    their own. Switching between them and the manuscript no longer discards
+    anything — your place, undo history, and any pending save all survive.
 
 - Creating a book now asks what you're designing it for — and where it will
   be published. `gutterpress new` requires `--preset <dtrpg|book|custom>`

@@ -26,6 +26,22 @@
  *
  * Validation:
  *   Warnings are pushed into env.layoutWarnings: Array<{ line, type, message, marker? }>
+ *
+ * Source line threading (token.meta.line):
+ *   Every layout_*_open token (chapter/spread/page/section, including the
+ *   section opened by @continue) and both standalone break tokens
+ *   (layout_page_break / layout_column_break) carry `token.meta.line`, the
+ *   1-based marker line that produced them. This is consumed by the
+ *   node-free `source-range.ts` core rule (registered in renderer.ts) to
+ *   emit `data-source-range` on these wrappers. token.map is deliberately
+ *   left null on all of these tokens — see the inline comments at each
+ *   `t.meta = …` assignment site and ADR 0009: setting `map` would make
+ *   markdown-it-source-map stamp `data-source-line` onto these wrapper divs
+ *   too, which breaks preview scroll-sync (topVisibleSourceEl()'s
+ *   strictly-greater rect tie-break resolves to the wrapper instead of the
+ *   visible paragraph). Consumers must treat `token.meta.line` as possibly
+ *   non-finite (e.g. a malformed/mis-nested marker) and reject rather than
+ *   coerce.
  */
 
 function isBareToken(token) {
@@ -353,6 +369,15 @@ export default function plugin(md, pluginOptions = {}) {
 
     function openChapter(meta) {
       const t = new state.Token('layout_chapter_open', 'div', 1);
+      // Thread the 1-based marker line onto token.meta for the source-range
+      // annotation rule (source-range.ts) to consume. Do NOT set token.map
+      // here: markdown-it-source-map would then stamp data-source-line onto
+      // this wrapper div, and topVisibleSourceEl()'s strictly-greater rect
+      // tie-break in pagedjs-interface.js would resolve scroll-sync to this
+      // marker's line instead of the paragraph actually on screen, on every
+      // page of a multi-page chapter (the wrapper is cloned per page). See
+      // ADR 0009.
+      t.meta = { line: meta.__line };
       const classes = meta.attrs?.class || '';
       addClasses(t, 'chapter', classes);
       // Pass meta.name so attachDataAttrs emits `data-chapter-label="<name>"`
@@ -377,6 +402,9 @@ export default function plugin(md, pluginOptions = {}) {
 
     function openSpread(meta) {
       const t = new state.Token('layout_spread_open', 'div', 1);
+      // See the do-not-use-token.map comment in openChapter above (ADR 0009)
+      // — applies identically here.
+      t.meta = { line: meta.__line };
       addClasses(t, 'spread', meta.attrs && meta.attrs.class ? meta.attrs.class : '');
       attachDataAttrs(t, 'spread', meta.name, meta.attrs || {});
       stack.open({ kind: 'spread', noPagesYet: true, sawAnyPage: false }, t);
@@ -385,6 +413,9 @@ export default function plugin(md, pluginOptions = {}) {
     function openPage(meta) {
       const chapter = stack.get('chapter');
       const t = new state.Token('layout_page_open', 'div', 1);
+      // See the do-not-use-token.map comment in openChapter above (ADR 0009)
+      // — applies identically here.
+      t.meta = { line: meta.__line };
       const explicit = (meta.attrs && meta.attrs.class) ? meta.attrs.class : '';
       // Auto-inherit the open chapter's counter class so .page.chapter-N
       // selectors in page-rules.css match every page in the chapter without
@@ -444,8 +475,11 @@ export default function plugin(md, pluginOptions = {}) {
       // right place to record whether THIS section's body contains a
       // @column-break. Stored on the token's own `meta` (not env / not a
       // rendered attribute) since it's per-token render guidance, not
-      // author-visible output.
-      t.meta = { hasColumnBreak: false };
+      // author-visible output. `line` is the 1-based marker line, threaded
+      // for the source-range annotation rule (source-range.ts). Do NOT set
+      // token.map here — see the do-not-use-token.map comment in
+      // openChapter above (ADR 0009); applies identically here.
+      t.meta = { hasColumnBreak: false, line: meta.__line };
       stack.open(
         {
           kind: 'section',
@@ -527,6 +561,13 @@ export default function plugin(md, pluginOptions = {}) {
           name: section.meta.name,
           attrs: { ...(section.meta.attrs || {}) },
         };
+        // __line is deliberately re-attached here: contMeta only copies
+        // name/attrs from the original section's meta snapshot, and openSection
+        // reads meta.__line for the source-range annotation rule. Without this,
+        // a continuation section's line would be undefined (non-finite), which
+        // consumers must reject rather than silently resolve to whole-document
+        // offsets (see ADR 0009).
+        contMeta.__line = line;
         const cls = (contMeta.attrs.class || '').split(/\s+/).filter(Boolean);
         if (!cls.includes('gutterpress-continued')) cls.push('gutterpress-continued');
         contMeta.attrs.class = cls.join(' ');
@@ -538,6 +579,10 @@ export default function plugin(md, pluginOptions = {}) {
 
       if (kind === 'page-break') {
         const t = new state.Token('layout_page_break', 'div', 0);
+        // Thread the 1-based marker line for source-range.ts. Do NOT set
+        // token.map — see the do-not-use-token.map comment in openChapter
+        // above (ADR 0009); applies identically here.
+        t.meta = { line };
         t.attrSet('class', 'md-page-break');
         t.attrSet('aria-hidden', 'true');
         out.push(t);
@@ -562,6 +607,10 @@ export default function plugin(md, pluginOptions = {}) {
         }
 
         const t = new state.Token('layout_column_break', 'div', 0);
+        // Thread the 1-based marker line for source-range.ts. Do NOT set
+        // token.map — see the do-not-use-token.map comment in openChapter
+        // above (ADR 0009); applies identically here.
+        t.meta = { line };
         t.attrSet('class', 'md-column-break');
         t.attrSet('aria-hidden', 'true');
         out.push(t);
@@ -647,7 +696,17 @@ export default function plugin(md, pluginOptions = {}) {
       // it is not safe to assume the marker tokenizer already stripped
       // everything attribute-unsafe (e.g. a `'`-quoted class=value can still
       // carry a literal `"` through, see markdown-it-paged.test.ts).
-      return `<div class="${escapeAttr(cls)}"><div class="col">\n`;
+      //
+      // data-source-range (set by the source_range core rule, which runs
+      // BEFORE render — see source-range.ts) is threaded through explicitly:
+      // this branch bypasses self.renderToken()/renderAttrs, so any attr not
+      // named here is silently dropped from output. Without this, a
+      // col-split section with a @column-break would be un-targetable by
+      // the context menu's "marker" kind (plan §3.1) even though its
+      // wrapper token IS annotated internally.
+      const rangeAttr = token.attrGet('data-source-range');
+      const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
+      return `<div class="${escapeAttr(cls)}"${rangeHtml}><div class="col">\n`;
     }
 
     return self.renderToken(tokens, idx, opts);
@@ -665,9 +724,21 @@ export default function plugin(md, pluginOptions = {}) {
   // Both tokens' class is always the plugin's own literal ('md-page-break' /
   // 'md-column-break') today, never author input, but escapeAttr is applied
   // here too so this stays safe if that ever changes.
+  //
+  // data-source-range (set by the source_range core rule, which runs BEFORE
+  // render — see source-range.ts) is threaded through explicitly in both
+  // rules below: this custom renderer bypasses self.renderToken()/
+  // renderAttrs, so any attr not named here is silently dropped from
+  // output. Without this, @page-break / @column-break markers would be
+  // un-targetable by the context menu's "marker" kind (plan §3.1's kind
+  // precedence explicitly includes "layout wrapper/break") even though
+  // markdown-it-paged.js threads token.meta.line onto them for exactly this
+  // purpose.
   md.renderer.rules.layout_page_break = (tokens, idx) => {
     const cls = tokens[idx].attrGet('class') || 'md-page-break';
-    return `<div class="${escapeAttr(cls)}" aria-hidden="true"></div>\n`;
+    const rangeAttr = tokens[idx].attrGet('data-source-range');
+    const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
+    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}></div>\n`;
   };
 
   md.renderer.rules.layout_column_break = (tokens, idx, opts, env) => {
@@ -675,7 +746,9 @@ export default function plugin(md, pluginOptions = {}) {
       return `</div><div class="col">\n`;
     }
     const cls = tokens[idx].attrGet('class') || 'md-column-break';
-    return `<div class="${escapeAttr(cls)}" aria-hidden="true"></div>\n`;
+    const rangeAttr = tokens[idx].attrGet('data-source-range');
+    const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
+    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}></div>\n`;
   };
 
   // layout_marker tokens are transformed away in the core rule

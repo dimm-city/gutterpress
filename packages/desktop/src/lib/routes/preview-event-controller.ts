@@ -54,15 +54,27 @@ interface PreviewEventEditorSync {
   /** Timestamp (ms) before which preview→editor follow is suppressed (echo guard). */
   suppressPreviewSyncUntil: () => number;
   editorPaneOpen: () => boolean;
-  editorChapter: () => string | null;
-  currentDir: () => string | null;
-  /** Whether the open editor buffer has unsaved edits. */
-  bufferDirty: () => boolean;
   updateActiveOutline: (line: number) => void;
-  /** Reveal a line in the currently-open chapter (no-op if no editor). */
-  revealEditorLine: (line: number) => void;
-  /** Open a different chapter's file and reveal the line once it loads. */
-  followChapterInEditor: (chapter: string, line: number) => void;
+  /**
+   * Reveal a chapter-local line in the editor. The editor holds the whole book
+   * as one document, so this is just a scroll — there is no file to open and
+   * nothing to wait for, whether or not the line is in the chapter the caret
+   * currently sits in.
+   *
+   * `deliberate` says whether the author ASKED to go there (a click) or merely
+   * scrolled the preview. It decides what happens when the editor is showing
+   * something that isn't the book — a stylesheet — where a chapter-local line
+   * has no meaning: a deliberate jump brings the book back, a passive follow
+   * leaves the author in the file they are working in.
+   */
+  revealEditorLine: (chapter: string | null, line: number, deliberate: boolean) => void;
+  /**
+   * Open (mount) the editor pane when it is closed/unmounted — lazy-loads the
+   * editor module and moves focus into it. Used by `elementActivated`: a
+   * click on a preview block is an explicit "go here" intent that must never
+   * silently no-op just because the pane isn't open.
+   */
+  openEditorPane: (opts: { focus: boolean; ensureFile: boolean }) => void;
 }
 
 export interface PreviewEventDeps {
@@ -141,6 +153,9 @@ export class PreviewEventController {
       case "sourceLineChanged":
         this.onSourceLineChanged(e.detail);
         break;
+      case "elementActivated":
+        this.onElementActivated(e.detail);
+        break;
       case "pageChanged":
         this.onPageChanged(e.detail);
         break;
@@ -212,21 +227,43 @@ export class PreviewEventController {
     // preview (echo guard).
     const line = detail.sourceLine;
     const chap = detail.chapter;
-    if (typeof line === "number") {
-      es.updateActiveOutline(line);
-      if (d.now() >= es.suppressPreviewSyncUntil() && es.editorPaneOpen()) {
-        if (chap === es.editorChapter()) {
-          es.revealEditorLine(line);
-        } else if (chap && es.currentDir() && !es.bufferDirty()) {
-          // Scrolled into a DIFFERENT chapter: follow it by opening that
-          // chapter's file, then reveal the line once it has loaded. Skipped
-          // when there are unsaved edits so it never yanks the file away mid-
-          // edit. This is what makes the editor track the whole book, not just
-          // the one open chapter (the "sporadic" complaint).
-          es.followChapterInEditor(chap, line);
-        }
-      }
-    }
+    if (typeof line !== "number") return;
+    es.updateActiveOutline(line);
+    if (d.now() < es.suppressPreviewSyncUntil() || !es.editorPaneOpen()) return;
+    // The editor holds the whole book, so a scroll that crosses into another
+    // chapter is not a special case: the same reveal handles it. This branch
+    // used to carry a chapter-match test, a cross-chapter file-open, and a
+    // dirty-buffer gate that skipped the follow entirely (so the editor stopped
+    // tracking the reader mid-edit — the "sporadic" complaint). None of them
+    // have anything left to guard.
+    es.revealEditorLine(chap ?? null, line, false);
+  }
+
+  /**
+   * `elementActivated`: the author clicked a `[data-source-line]` block in the
+   * preview — an explicit "go to source" intent (PR 0 of the inline-editing
+   * plan; `docs/inline-editing-plan.md`). Same reveal as `onSourceLineChanged`,
+   * plus one addition: a closed/unmounted editor pane is opened rather than
+   * silently dropping the click. `data-source-line` is level-0-only today, so
+   * this jumps to a LINE; it cannot select the clicked block (that precision
+   * arrives with the `data-source-range` primitive in a later PR — not
+   * retrofitted here).
+   *
+   * Unlike `onSourceLineChanged`, this is not gated behind the echo-suppression
+   * window (`suppressPreviewSyncUntil`) — that guard exists to swallow scroll
+   * events that are themselves an echo of an editor-driven `scrollTo`, but a
+   * click is always genuine author intent, never an echo.
+   */
+  private onElementActivated(detail: PreviewEvent["detail"]): void {
+    const es = this.deps.editorSync;
+    const line = detail.sourceLine;
+    if (typeof line !== "number") return;
+
+    // Explicit "go here" click: open the pane instead of no-op'ing. The reveal
+    // below targets the clicked chapter itself, so the pane's own default
+    // first-file pick would only race it and flash the wrong place.
+    if (!es.editorPaneOpen()) es.openEditorPane({ focus: true, ensureFile: false });
+    es.revealEditorLine(detail.chapter ?? null, line, true);
   }
 
   private onPageChanged(detail: PreviewEvent["detail"]): void {

@@ -297,6 +297,22 @@ export function applyTable(view: EditorView, cols: number): void {
 //   {.float-left}, {.float-right}, {.center}, {.full-width}, {.full-bleed}
 // Width is via markdown-it-attrs: {width="300px"}.
 
+/**
+ * Build the `{…}` markdown-it-attrs suffix for an image from a width/position
+ * pair (empty string when neither is set). Extracted out of `applyImage` below
+ * (inline-editing plan §4.4) so the context menu's image actions (`Set
+ * width…`, `Set position`) can rewrite an EXISTING image token's attrs suffix
+ * with the exact same rule `applyImage` uses to insert a new one — `applyImage`
+ * itself only inserts a new snippet at the cursor and is not directly reusable
+ * for editing a token already in the document.
+ */
+export function buildImageAttrsString(width?: string, position?: string): string {
+  const attrs: string[] = [];
+  if (width) attrs.push(`width="${width}"`);
+  if (position) attrs.push(`.${position}`);
+  return attrs.length > 0 ? `{${attrs.join(" ")}}` : "";
+}
+
 export function applyImage(
   view: EditorView,
   src: string,
@@ -304,11 +320,7 @@ export function applyImage(
   width?: string,
   position?: string,
 ): void {
-  const attrs: string[] = [];
-  if (width) attrs.push(`width="${width}"`);
-  if (position) attrs.push(`.${position}`);
-
-  const attrStr = attrs.length > 0 ? `{${attrs.join(" ")}}` : "";
+  const attrStr = buildImageAttrsString(width, position);
   const snippet = `\n\n![${alt}](${src})${attrStr}\n\n`;
   const insertAt = insertionPointAfterCurrentLine(view);
   view.dispatch({

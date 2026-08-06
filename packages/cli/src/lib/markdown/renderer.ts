@@ -32,6 +32,7 @@ import markdownItSub from "markdown-it-sub";
 import markdownItSup from "markdown-it-sup";
 import markdownItAbbr from "markdown-it-abbr";
 import { registerImageRule } from "./images";
+import { sourceRangeRule } from "./source-range";
 
 /**
  * Plugin author API.
@@ -120,6 +121,11 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
  *   markdown-it-attrs → markdown-it-footnote → markdown-it-deflist →
  *   markdown-it-source-map → markdown-it-paged
  *
+ * The `source_range` core rule (source-range.ts, `data-source-range`) is
+ * registered LAST — after any custom (manifest) plugins — so it always sees
+ * the final token stream. It is additive alongside `markdown-it-source-map`'s
+ * `data-source-line`, whose coverage (level-0 blocks only) is unchanged.
+ *
  * markdown-it-deflist adds the standard (PHP Markdown Extra / Pandoc)
  * definition-list syntax — `Term` / `: definition` — emitting plain
  * `<dl><dt><dd>`. It is not in CommonMark/markdown-it core; this is the
@@ -162,6 +168,14 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   if (customPlugins && customPlugins.length > 0) {
     applyPlugins(md, customPlugins);
   }
+
+  // Source-range annotation (data-source-range) — registered UNCONDITIONALLY
+  // after the custom-plugin block above, not inside it: projects with zero
+  // custom plugins must still get the rule. `md.core.ruler.push` appends in
+  // registration order, so registering last here guarantees this rule sees
+  // the final token stream even when a user plugin pushed its own core rule.
+  // See docs/inline-editing-plan.md §2.2 / ADR 0009.
+  md.core.ruler.push("source_range", sourceRangeRule);
 
   return md;
 }

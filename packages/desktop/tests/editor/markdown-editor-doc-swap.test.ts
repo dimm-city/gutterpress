@@ -56,10 +56,17 @@ describe("+page.svelte — no {#key editorFilePath} remount around MarkdownEdito
     expect(src).toMatch(/<MarkdownEditor[\s\S]*?filePath=\{editorFilePath\}/);
   });
 
-  test("the parent calls switchFile() explicitly wherever the buffer's open file changes", () => {
+  test("the parent pushes the document explicitly whenever the open file changes", () => {
     const src = read(PAGE_PATH);
-    const calls = src.match(/editorRef\?\.switchFile\(/g) ?? [];
-    expect(calls.length).toBeGreaterThanOrEqual(2); // selectEditorFile + restoreRecovery
+    // One choke point (pushEditorDocument) rather than a switchFile() call at
+    // every site: it picks the document SHAPE — the whole book when the caret
+    // is in a chapter, a single file for a stylesheet — so no call site has to
+    // know which is live.
+    expect(src).toContain("function pushEditorDocument()");
+    expect(src).toContain("editorRef.switchBook(");
+    expect(src).toContain("editorRef.switchFile(");
+    const pushes = src.match(/pushEditorDocument\b/g) ?? [];
+    expect(pushes.length).toBeGreaterThanOrEqual(4);
   });
 });
 

@@ -1,0 +1,8 @@
+title: "Inline editing smoke fixture"
+authors:
+  - "Gutterpress tests"
+source:
+  files:
+    - 01-chapter.md
+styles:
+  - themes/basic/theme.css

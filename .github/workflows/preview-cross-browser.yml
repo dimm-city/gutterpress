@@ -3,7 +3,7 @@ name: Preview cross-browser smoke
 
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "release/**"]
     paths:
       - "packages/cli/src/**"
       - "packages/cli/tests/compat/**"
