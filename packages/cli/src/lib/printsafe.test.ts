@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { checkCss, rulePagedjsCrashSelectors } from "./printsafe";
+import { checkCss, rulePagedjsCrashSelectors, ruleRiskyProps } from "./printsafe";
 
 // Regression: splitSelectorList must not mis-parse an EVEN number of trailing
 // backslashes before a closing quote. With `\\"` the quote is NOT escaped (the
@@ -16,4 +16,24 @@ test("checkCss flags the second selector even when the first ends in escaped bac
   // the two selectors merge, so the crash message contains `a[data-x=` too.
   expect(crash[0]!.message).toContain("h1:first-of-type + p");
   expect(crash[0]!.message).not.toContain("a[data-x=");
+});
+
+// MIGRATION.md Step 1 "Scope filter:" — filter: is measured to rasterize its
+// subtree to a 300 DPI bitmap and dominate build time (~90%; 57.0s -> 6.2s
+// over 60pp when scoped, ENGINE.md §10). The warning must fire and must carry
+// those measured consequences, not just the generic risky-property message.
+test("checkCss warns on filter: with the measured rasterization/build-time message", () => {
+  const css = `.card { filter: drop-shadow(0 0 4px #000); }`;
+  const warnings = checkCss(css);
+  const filterWarnings = warnings.filter((w) => w.rule === ruleRiskyProps);
+  expect(filterWarnings.length).toBe(1);
+  expect(filterWarnings[0]!.severity).toBe("warning");
+  expect(filterWarnings[0]!.message).toContain("300 DPI bitmap");
+  expect(filterWarnings[0]!.message).toContain("57.0s -> 6.2s");
+});
+
+test("checkCss stays silent on filter: when the CSS has no filter declarations", () => {
+  const css = `.card { color: red; box-shadow: 0 0 4px #000; }`;
+  const warnings = checkCss(css);
+  expect(warnings.filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
 });

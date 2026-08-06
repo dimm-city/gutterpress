@@ -228,6 +228,13 @@ export async function electronPdfRenderer(input: {
       printBackground: true,
       pageSize: { width: widthIn, height: heightIn },
       margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      // Parity with the CLI's puppeteer-core export path (pagination.ts):
+      // both flags are backed by CDP's Page.printToPDF and turn heading
+      // structure into PDF bookmarks / a tagged accessibility tree. Without
+      // them the desktop export shipped 0 bookmarks while the CLI emits 155
+      // for the same document — see MIGRATION.md Step 1.
+      generateDocumentOutline: true,
+      generateTaggedPDF: true,
     });
     throwIfExportCanceled(session);
     await writeFile(input.outPdf, data);

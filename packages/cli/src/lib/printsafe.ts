@@ -164,7 +164,19 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
   root.walkAtRules((at) => reportRemoteUrls(at.params || "", at));
 
   root.walkDecls((decl) => {
-    if (riskyProperties.has(decl.prop.toLowerCase())) {
+    const prop = decl.prop.toLowerCase();
+    if (prop === "filter") {
+      // `filter:` gets its own message (not the generic risky-props text
+      // below): it's the one property measured to have a specific, severe
+      // cost — see MIGRATION.md Step 1 "Scope filter:" and ENGINE.md §10.
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message:
+          "Property is high-risk for print/PDF: 'filter' rasterizes its subtree to a 300 DPI bitmap in the printed PDF (text becomes unselectable, unsearchable, and inaccessible), and it dominates build time (~90% measured; 57.0s -> 6.2s over 60pp when scoped — see ENGINE.md §10). Scope it to the smallest possible selector.",
+        ...nodeLoc(decl),
+      });
+    } else if (riskyProperties.has(prop)) {
       warnings.push({
         rule: ruleRiskyProps,
         severity: "warning",
