@@ -19,7 +19,12 @@
  * produces under plain Chromium print (921/921 words glyph-identical,
  * ±0.15pt). The book's own tokens say 12pt; Paged.js renders ~16.4pt.
  * This line makes Folio match Paged.js so page boundaries can be compared
- * like-for-like. It is TEMPORARY by design.
+ * like-for-like.
+ *
+ * RATIFIED DECISION (MIGRATION.md, Decisions #1): this zoom is NEVER carried
+ * into production. On adoption the fix is retuned CSS tokens chosen from a
+ * proof at true size — no production stylesheet may contain body{zoom}. If
+ * you are copying from this file for real Folio CSS, copy HALF 2 only.
  * ======================================================================== */
 body { zoom: 1.5; }
 

@@ -2,11 +2,41 @@
 
 The engine question is answered (see [`COMPARISON.md`](./COMPARISON.md) "FINAL
 A/B REPORT"): with the confounds removed the two engines agree on pagination to
-1.3%, and Folio is the more faithful renderer. What is **not** measured is the
-integration cost, and that is now the largest risk in the project.
+1.3%, and Folio is the more faithful renderer. Verified twice — the numbers
+reproduce **exactly** on `release/0.10.0` (byte-identical extracted text for
+both engines). What is **not** measured is the integration cost, and that is
+now the largest risk in the project.
 
 This plan is ordered so that the first step pays for itself whether or not
 Folio is ever adopted.
+
+---
+
+## Decisions already made — do not re-litigate
+
+These were ratified by the project owner (2026-08-05/06). If work seems to
+conflict with one of them, the work is wrong, not the decision.
+
+1. **The `zoom: 1.5` shim is NOT carried forward. Ever.** It exists solely to
+   make A/B measurements comparable and is deleted on adoption. The permanent
+   fix is **adjusting the CSS tokens** to the sizes the team actually wants, so
+   that `pt` values mean what they say. Depending on a "mysterious zoom" was
+   explicitly rejected. See Step 2 for how the new sizes get chosen, and
+   [`ENGINE.md`](./ENGINE.md) §9 for what the 1.5× actually is.
+2. **The reflow is accepted.** Retuning the tokens will change the page count
+   from today's 296 printed pages toward wherever the honest sizes land
+   (200–296). That is expected, not a regression.
+3. **Guiding priorities, in order: output quality, standards compliance /
+   WYSIWYG (the HTML+CSS means what it says), and DX.** When a trade-off
+   appears, resolve it toward these. This is why the zoom was rejected and why
+   Folio's fidelity wins over Paged.js's familiarity.
+4. **Step-3 subjects are the in-repo examples plus purpose-built fixtures — not
+   the field guide.** The field guide lives in another repo, cannot be modified
+   freely, and its CSS is coupled to Paged.js's DOM. It remains the *reference*
+   for realistic complexity; it is not the test bed.
+5. **Preview and PDF switch together, per project, behind one flag.** Never
+   independently — a Folio preview against a Paged.js PDF disagrees by ~1.5×
+   in page count while the old scale exists, which is worse than today.
 
 ---
 
@@ -41,7 +71,11 @@ answer is probably between, putting the book somewhere between 200 and 296
 pages. Set the tokens from a proof at real size, then accept the page count.
 
 The `body { zoom: 1.5 }` shim in `compare/fg-shim.css` exists **only** to make
-A/B measurements comparable. It is deleted on adoption, not migrated.
+A/B measurements comparable. **Decision 1 above: it is deleted on adoption,
+never migrated, and no production stylesheet may contain it.** The furniture
+half of that shim (brick via margin boxes, chips, suppressions) is different —
+it becomes the *starting point* for the field guide's real Folio CSS when that
+book eventually migrates.
 
 ---
 
@@ -87,7 +121,7 @@ migration fixture set must cover, each traceable to a finding in this repo:
    the gutter defect above; assert the mirror survives.
 4. **Front-matter → body folio restart** (roman then arabic from 1) — the one
    known Folio gap; `counter-reset: page` does **not** work in native print
-   (`ENGINE.md` §9), so Folio must synthesize it.
+   (`ENGINE.md` §8), so Folio must synthesize it.
 5. **Margin-box furniture** — chips with backgrounds and borders; assert
    `transform: rotate()` and `box-shadow` are absent, since neither is
    supported in a margin box (`ENGINE.md` §8).
@@ -114,6 +148,87 @@ one larger "kitchen sink" book for realistic timing.
 Contained ⇒ finish the two Folio gaps (folio restart, predict-then-verify
 export) and migrate book by book. Sprawling ⇒ stop; Step 1's four wins are
 already banked.
+
+---
+
+## Pitfalls — every one of these cost real time in the spike
+
+Measurement traps (they produce convincing wrong answers):
+
+- **`pdftotext` word counts are meaningless on this design language.** Any
+  `filter:`ed subtree is rasterized — its text is a picture ([`ENGINE.md`](./ENGINE.md)
+  §10). This once produced "168 near-blank pages" that were fully typeset
+  cards. Use glyph bounding boxes (`pdftotext -bbox`) on unfiltered content,
+  rasters, and `compare/ab-report.py`.
+- **PDF page parity ≠ printed page parity.** Gutterpress restarts folio
+  numbering after front matter, offsetting the two by 5. A gutter-mirroring
+  check keyed to PDF parity gives the wrong verdict; key to the *printed*
+  number (ab-report does both).
+- **A same-page percentage is not an agreement metric on its own.** The
+  engines sit at 4.7% "same page" while agreeing almost everywhere — the delta
+  is a few long constant-offset runs, one insertion shifting hundreds of
+  anchors. Read the drift *profile*, not the headline number.
+- **"Inert" markup is a claim to verify, not assume.** Adding `id`s once
+  renumbered every chapter (`h1[id]` was real theme CSS); 0.10.0's
+  `data-source-*` attributes were confirmed inert only by stripping them and
+  diffing to byte-identity.
+- **`CSS.supports` lies** for GCPM features — render-probe instead
+  ([`ENGINE.md`](./ENGINE.md) §2). And the engine is **pinned to Chromium 151**
+  (`REQUIRED_MILESTONE`); a milestone bump is a code change, re-run the spikes.
+
+Engine behaviours that will bite an implementer:
+
+- **`zoom` dilutes**: `body{zoom:1.5}` yields 1.364× glyphs. Any future scale
+  computation must account for it — better, per Decision 1, never ship zoom.
+- **Margin boxes cannot `transform: rotate()` or `box-shadow`**
+  ([`ENGINE.md`](./ENGINE.md) §8). Rotated poster chips need an in-flow
+  element — which then cannot read `counter(page)` (it computes to 0 outside
+  margin boxes). Pick one per design element.
+- **`counter-reset: page` does not work in native print** — the folio-restart
+  gap is real and must be synthesized ([`ENGINE.md`](./ENGINE.md) §8).
+- **Full-bleed + running heads requires the margin-box painting technique**
+  ([`ENGINE.md`](./ENGINE.md) §5) — `@page { margin: 0 }` deletes the boxes the
+  heads live in.
+- **Do not "optimize" the measurement pass by stripping paint effects.**
+  Removing `filter` moves layout (containing block — 26% of words shift);
+  `filter: opacity(1)` keeps the geometry but still rasterizes text.
+- **`Page.printToPDF` must use `ReturnAsStream`.** Base64 returns the whole
+  PDF in one CDP message; on a 141 MB book it looks like a hang (>600 s, no
+  error, no progress). Already fixed in `src/shared/cdp.ts` — do not regress.
+
+Harness/process traps:
+
+- **Staging must copy assets.** `renderChaptersToFile` emits only HTML; the
+  asset copy is a separate build step. An asset-less stage once produced a
+  complete, internally consistent, entirely wrong A/B (`stage-book.ts` now
+  mirrors the shipped step).
+- **Stage B (Paged.js in-browser) has never completed on a 300-page book**
+  (>2 h before being killed, twice). Skip it for large subjects or bound it
+  with a timeout; the compile legs and `ab-report.py` carry the comparison.
+- **Field-guide content bugs**: four broken image refs hard-fail the build
+  (three are path typos — `cybersurgeon.png`, `chapter-03/etherlock.png`,
+  `chapter-01/proxy.jpg`). The A/B ran against a corrected copy; fix them in
+  `dc-op-manual` before using that book for anything.
+- **`compare/run.ts` passes `--skip-pre-validate`** deliberately: the subject
+  is pagination, and Folio has no content-validation gate to mirror.
+
+---
+
+## Current state of the two known Folio gaps
+
+1. **Front-matter folio restart** — not built. Mechanism identified: the
+   counter-style map is an arbitrary per-page symbol list, so
+   `i, ii, iii, 1, 2, 3…` is just a different list; the compiler needs to
+   detect the restart intent (the book's `counter-reset` on
+   `.page-chapter-start`) and emit it. Fixture 4 in Step 3 is its test.
+2. **Export time** — 2 print passes ≈ 13.5 min on the field guide. Design
+   sketched, not built: predict the page map from the viewer (0.11 s), apply
+   synthesis, print once, verify against that print's `/Dests` (free);
+   mismatch falls back to today's two prints. Bounded by viewer↔print parity
+   (330/331 blocks, knife-edge only). Note the cost is **export-only** — the
+   preview never prints ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §10) — and
+   ~90% of each print is `filter:`, which Step 1's scoping shrinks for both
+   engines.
 
 ---
 

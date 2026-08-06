@@ -9,7 +9,7 @@ pagination engine.
 - **viewer** (`src/viewer/`) — a browser document that lets Chromium fragment
   content into pages on screen with multicol, then decorates the result with
   page sheets, the 16 margin boxes, running strings and cross-references.
-  23 KB minified / 9 KB gzipped, zero runtime dependencies.
+  27 KB minified / 10 KB gzipped, zero runtime dependencies.
 - **compiler** (`src/compiler/`) — a Bun CLI that drives the *system* Chromium
   over raw CDP, fills the spec gaps Chromium hasn't shipped by synthesizing
   standard CSS, and post-processes the PDF (boxes, crop marks, signatures).
@@ -19,6 +19,20 @@ pagination engine.
   client and the PDF reader.
 
 Everything here is verified against a real browser by the spikes in `spikes/`.
+
+## Status (2026-08-06)
+
+**The engine question is settled in Folio's favor; the next work is
+integration, not pagination.** The final field-guide A/B (COMPARISON.md) shows
+the two engines agree to 1.3% in pages with glyph-identical type once the
+confounds are shimmed away, Folio is the more standards-faithful renderer
+(mirrored binding gutters that Paged.js drops; type at the size the CSS
+declares), and the numbers reproduce exactly on `release/0.10.0`. Two known
+Folio gaps remain (front-matter folio restart; export is 2 print passes), both
+with identified mechanisms. **Start at [`MIGRATION.md`](./MIGRATION.md)** — it
+records the ratified decisions (notably: the A/B `zoom` shim is never shipped;
+CSS tokens get retuned instead), the ordered plan, and every measurement
+pitfall this spike paid for.
 
 ## The documentation
 
@@ -31,7 +45,7 @@ Read in this order depending on what you need.
 | [`RESULTS.md`](./RESULTS.md) | The M0 verdict on the original proposal, spike by spike, with the findings that amend it. |
 | [`COMPARISON.md`](./COMPARISON.md) | Head-to-head against the current Paged.js pipeline on the same book. |
 | [`DIFFERENCES.md`](./DIFFERENCES.md) | The exhaustive artifact diff, the full defect ledger (fixed / deleted / inherent), and the three previously-untested areas. |
-| [`MIGRATION.md`](./MIGRATION.md) | **The adoption plan.** Four fixes worth making regardless, the type-size decision, and the time-boxed integration spike with its fixture requirements. |
+| [`MIGRATION.md`](./MIGRATION.md) | **The adoption plan — start here to pick up the work.** Ratified decisions (no zoom in production, reflow accepted, fixtures over the field guide), the four regardless-of-Folio fixes, the integration spike, the two open gaps, and the pitfall list. |
 
 The two rules worth knowing before touching the code, both learned the hard way:
 
@@ -53,7 +67,16 @@ bun compare/diff-report.ts a.pdf b.pdf   # content-aligned artifact diff
 bun spikes/run-all.ts s1  # just one
 bun test                  # unit tests for the shared modules
 bunx tsc --noEmit -p tsconfig.json
+
+# Shimmed A/B against a Paged.js-coupled book (full recipe: COMPARISON.md):
+bun compare/apply-shim.ts <staged>/book.html          # writes book.shimmed.html
+FOLIO_INPUT=<staged>/book.shimmed.html bun compare/run.ts <project>
+python3 compare/ab-report.py <gp.pdf> <folio.pdf>     # poppler-only readback
 ```
+
+On big books, expect the Gutterpress leg to take ~4.5 min and each Folio print
+pass ~3.5 min; stage B (Paged.js in-browser) has never completed on a 300-page
+book — kill the run after the compile legs and use `ab-report.py`.
 
 The spikes need a **Chrome/Chromium 151 or newer** binary — Folio is pinned to
 151 (`REQUIRED_MILESTONE` in `src/shared/cdp.ts`) and refuses to launch an older

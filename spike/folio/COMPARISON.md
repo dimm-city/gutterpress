@@ -327,40 +327,31 @@ full A/B measures.
 bun compare/stage-book.ts <field-guide-dir> /tmp/cmp-fg/staged
 # 2. shim a copy (writes book.shimmed.html next to book.html)
 bun compare/apply-shim.ts /tmp/cmp-fg/staged/book.html
-# 3. full harness against the ORIGINAL for the Gutterpress leg,
-#    then Folio against the shimmed copy:
-bun compare/run.ts <field-guide-dir>                # gutterpress + unshimmed folio
-FOLIO_INPUT=/tmp/cmp-fg/staged/book.shimmed.html    # (wire-up below)
+# 3. Gutterpress builds the ORIGINAL project; Folio builds the shimmed copy:
+FOLIO_CMP_DIR=/tmp/cmp-fg \
+FOLIO_INPUT=/tmp/cmp-fg/staged/book.shimmed.html \
+  bun compare/run.ts <field-guide-dir>
+# 4. independent readback (poppler only — Folio never grades itself):
+python3 compare/ab-report.py <gutterpress.pdf> /tmp/cmp-fg/folio.pdf
 ```
 
-The harness does not yet accept a substitute Folio input — that is the first
-item below.
+### The test list, with outcomes (all five completed 2026-08-05)
 
-### What to test next, in order
-
-1. **Wire the shimmed input into `compare/run.ts`** (an env var or flag that
-   substitutes Folio's input file) and run the full A/B. Success metric:
-   anchor-line tracking (the 599-anchor method used to find the 1.5× ratio)
-   shows page drift collapsing from 1.50× toward 1.0; report residual
-   same-page / ±1-page percentages.
-2. **Chip fidelity.** Rotation and box-shadow in margin boxes: minimal probes,
-   then either use them or record them as engine limits and accept square
-   chips. Compare chip crops at 100dpi against the Paged.js render.
-3. **Brick seam check at print resolution.** One 300dpi crop across a
-   margin-box/content boundary. If seams show, emit per-box
-   `background-position` offsets (geometry is known; the checker probe proved
-   alignment works).
-4. **Named-page parity.** The field guide's `chapter-start`/`full`/`clean`/
-   `citizen-file` pages under Folio: verify each gets its geometry and
-   suppressions on the same content as Paged.js. This is where the remaining
-   page-boundary drift will concentrate.
-5. **Front-matter folio numbering.** The book restarts page counters at the
-   first body chapter via a counter reset on `.page-chapter-start` — a
-   Paged.js-DOM-dependent mechanism. Determine what Folio's counter model
-   needs (likely nothing: real `counter-reset` on a content element works in
-   native print — probe it).
-6. **Only then** judge output quality side by side (density, breaks, chip
-   look), because until 1–5 the two engines are not rendering the same book.
+1. ~~Wire the shimmed input into `compare/run.ts`~~ **done** — `FOLIO_INPUT`
+   env var; Gutterpress always builds the original project. Result: drift
+   collapsed 1.50× → **1.013×** (see FINAL A/B REPORT below).
+2. ~~Chip fidelity~~ **done** — `transform: rotate()` and `box-shadow` are NOT
+   supported in margin boxes (probed with unmissable values). Recorded as
+   engine limits in [`ENGINE.md`](./ENGINE.md) §8; chips ship square.
+3. ~~Brick seam at 300 dpi~~ **done** — seamless across the margin-box/content
+   boundary; no per-box `background-position` offsets needed.
+4. ~~Named-page parity~~ **done** — mirrored binding gutters verified exact
+   under Folio (55/46 pt) and ABSENT under Paged.js (52/53 pt); residual page
+   drift is a handful of constant-offset runs, not scattered disagreement.
+5. ~~Front-matter folio numbering~~ **done, gap confirmed** —
+   `counter-reset: page` does NOT work in native print (`ENGINE.md` §8);
+   Folio must synthesize the restart via its counter-style map. **This is the
+   one open functional gap.**
 
 ### Open questions this A/B cannot answer
 
@@ -441,7 +432,7 @@ every other page and text creeps toward the gutter.
 page counter after the front matter (PDF page 7 prints as "2"). Folio's printed
 folios are the raw PDF index throughout (page 8 prints "8"). Root cause
 measured: `counter-reset: page` on a content element **does not** restart
-`counter(page)` in native print (ENGINE.md §9) — Paged.js gets this free
+`counter(page)` in native print (ENGINE.md §8) — Paged.js gets this free
 because its counter lives in the DOM. Folio *can* do it — its counter-style map
 is an arbitrary per-page symbol list, so `i, ii, 1, 2, 3…` is just a different
 list — but it does not today. **This is the one open functional gap.**
@@ -476,14 +467,16 @@ scattered disagreement. Folio is more faithful to the stylesheet (binding
 gutters, and the 12 pt the CSS actually declares), and slower by a factor that
 is understood and attributable to one design decision.
 
-The remaining decisions are not technical:
+The remaining decisions — **since resolved; the authoritative record is
+[`MIGRATION.md`](./MIGRATION.md) "Decisions already made"**:
 
-1. **Type size** — keep the Paged.js appearance (re-tune tokens to ~16.4 pt) or
-   take the authored 12 pt and a ~200-page book. Only the shim makes them
-   comparable; adoption deletes it.
+1. **Type size** — DECIDED: the zoom is never shipped; CSS tokens are retuned
+   from a proof at true size and the reflow is accepted (Decisions #1–2).
 2. **Folio numbering** — Folio must synthesize the front-matter restart. Known
-   mechanism, not yet built.
-3. **Build time** — acceptable, or worth removing the second print pass.
+   mechanism, not yet built (MIGRATION.md "Current state of the two known
+   Folio gaps").
+3. **Build time** — predict-then-verify is the sketched fix; export-only cost
+   (`ARCHITECTURE.md` §10).
 
 ---
 
