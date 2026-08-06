@@ -279,8 +279,23 @@ font/letter-spacing/text-transform, and `counter(page)` — probed together as a
 styled "chip" in `@bottom-left`/`@bottom-right`. This is enough to reproduce a
 poster-style folio chip without any DOM element.
 
-Not confirmed: `transform: rotate()` did not visibly apply in the probe, and
-`box-shadow` is unverified. Treat both as unsupported until measured.
+**Measured NOT supported in margin boxes:** `transform: rotate()` and
+`box-shadow`. Probed with deliberately unmissable values (`rotate(-12deg)`,
+`box-shadow: 6px 6px 0 #c00`): the chip renders axis-aligned with no shadow.
+A design that relies on rotated or shadowed margin-box furniture cannot get it
+from a margin box — it needs an in-flow element, which then cannot know its
+page number (§9).
+
+### Page-counter restart does NOT work from the content flow
+
+`counter-reset: page 1` on a normal element does **not** restart `counter(page)`
+in native print — measured: the element sits on page 3 and the margin box still
+reads `3`, not `1`. Front-matter → body folio renumbering (roman then arabic
+from 1) is therefore **not** expressible in the author's content, and a
+compiler must synthesize it. Folio's counter-style map does exactly this: the
+symbol list is per-page and arbitrary, so `i, ii, iii, 1, 2, 3…` is just a
+different symbol list. Paged.js gets it "for free" only because its page
+counter lives in the DOM.
 
 ## 9. `body { zoom }` under print — and what Paged.js's scale actually is
 

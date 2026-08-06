@@ -55,6 +55,16 @@ if (staged.status !== 0) throw new Error(`staging failed: ${staged.stderr}`);
 const bookHtml = staged.stdout.trim().split("\n").pop()!;
 console.log(`   ${bookHtml} (${kb(statSync(bookHtml).size)})`);
 
+/**
+ * Folio may be pointed at a DIFFERENT copy of the staged book — the A/B shim
+ * (`compare/apply-shim.ts`) writes `book.shimmed.html` next to `book.html`.
+ * Gutterpress always gets the original project, so the Paged.js leg is never
+ * affected by the shim. See COMPARISON.md "A/B plan".
+ */
+const folioInput = process.env.FOLIO_INPUT || bookHtml;
+if (folioInput !== bookHtml)
+  console.log(`   folio input OVERRIDDEN → ${folioInput} (${kb(statSync(folioInput).size)})`);
+
 // ---------------------------------------------------------------------------
 // A. compile
 // ---------------------------------------------------------------------------
@@ -93,12 +103,12 @@ void gpPdf;
 await ensureBundles();
 const browser = await launchChromium();
 const t1 = performance.now();
-const folio = await build({ input: bookHtml, onProgress: (m) => console.log(`     ${m}`) });
+const folio = await build({ input: folioInput, onProgress: (m) => console.log(`     ${m}`) });
 const folioColdMs = performance.now() - t1;
 const folioPdfPath = join(WORK, "folio.pdf");
 writeFileSync(folioPdfPath, folio.bytes);
 const t2 = performance.now();
-await build({ input: bookHtml, browser });
+await build({ input: folioInput, browser });
 const folioWarmMs = performance.now() - t2;
 console.log(
   `   folio:       ${fmt(folioColdMs)} cold / ${fmt(folioWarmMs)} warm → ${folioPdfPath} (${kb(
@@ -120,7 +130,7 @@ const polyfill = readFileSync(
   "utf8",
 );
 const viewer = readFileSync(join(import.meta.dir, "..", "dist", "folio.js"), "utf8");
-const html = readFileSync(bookHtml, "utf8");
+const html = readFileSync(folioInput, "utf8");
 
 const page = await browser.newPage();
 const loadPolyfillSource = async () => {

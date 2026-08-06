@@ -368,3 +368,119 @@ item below.
   (accept reflow) — editorial, decided by looking at both.
 - Tier-3 build cost on this book (2 × ~200 s). A/B correctness first; the
   optimistic single-pass design is a separate work item.
+
+---
+
+# FINAL A/B REPORT — field guide, shimmed
+
+Both engines on the same staged book with the same assets; Gutterpress on the
+original, Folio on the shimmed copy (`FOLIO_INPUT=book.shimmed.html`). All
+numbers read back out of the two PDFs with poppler — Folio never grades its own
+homework. Regenerate with `python3 compare/ab-report.py <gp.pdf> <folio.pdf>`.
+
+## Headline
+
+| | Gutterpress (Paged.js) | Folio |
+| --- | --- | --- |
+| pages | **301** | **297** (−1.3%) |
+| build | **263 s** | **806 s cold / 815 s warm** |
+| PDF | 171.6 MB | 176.9 MB |
+| page size | 621.12 × 810 pt | 621 × 810 pt |
+| type scale | — | **identical** (4496/4501 words within ±1.2%) |
+| mirrored binding gutters | **NO** | **YES** |
+| front-matter folio restart | **YES** | **NO** |
+
+**The shim worked.** Page-count divergence collapsed from **1.50× to 1.013×**,
+and type is now glyph-identical (median ratio 1.0000). What remains is a real
+engine comparison rather than an artefact of scale and dead CSS.
+
+## Pagination agreement
+
+1,477 shared anchor lines. The per-anchor page delta is **not** noise — it
+collapses into a handful of long constant runs:
+
+| delta | Gutterpress pages | anchors |
+| --- | --- | --- |
+| 0 | 1–7 | 70 |
+| +1 | 8–10 | 45 |
+| +2 | 11–43 | ~390 |
+| −4 | 173–301 | ~890 |
+
+A constant delta over hundreds of pages means the two engines are **breaking
+identically** and are merely offset — the disagreement is a small number of
+discrete page insertions, not a systematic density difference. Only 4.7% of
+anchors sit on the *same* page, but that number is misleading in isolation: it
+is one offset applied to a long run, not 1,400 independent disagreements.
+
+**Where the offsets come from:**
+
+- **Front matter (pp. 1–11):** Folio runs +2. Gutterpress inserts a blank at
+  page 42 that Folio does not (`gp [6, 42, 215, 219, 302]` vs
+  `folio [6, 211, 215, 298]`).
+- **The card chapter (pp. 44–172):** Folio uses **5 fewer pages** across the
+  band (Gutterpress spans pp. 43→173 = 130 pages; Folio 44→169 = 125). This is
+  the documented density difference — native fragmentation packs to the same
+  `break-inside` rules more tightly. It cannot be localised further by text
+  because this band is the Type-3-font card content that `pdftotext` cannot
+  recover from **either** PDF.
+
+## Two correctness differences, in opposite directions
+
+**Folio is right: mirrored binding gutters.** The book declares
+`@page :left/:right` with `--binding-margin: 0.75in` against a 0.625in outer
+edge. Folio applies it exactly — text left edge 55 pt recto vs 46 pt verso, a
+9 pt (0.125 in) offset matching the declaration. Gutterpress applies **none**
+(52/53 pt either way). Checked against *printed* page parity as well as PDF
+parity, because Gutterpress's folio numbering is offset by 5 — the naive
+measurement would have been an artefact.
+
+This matters for POD: without the mirror, inner margins are ~0.125 in short on
+every other page and text creeps toward the gutter.
+
+**Gutterpress is right: front-matter folio restart.** Gutterpress restarts the
+page counter after the front matter (PDF page 7 prints as "2"). Folio's printed
+folios are the raw PDF index throughout (page 8 prints "8"). Root cause
+measured: `counter-reset: page` on a content element **does not** restart
+`counter(page)` in native print (ENGINE.md §9) — Paged.js gets this free
+because its counter lives in the DOM. Folio *can* do it — its counter-style map
+is an arbitrary per-page symbol list, so `i, ii, 1, 2, 3…` is just a different
+list — but it does not today. **This is the one open functional gap.**
+
+## Speed
+
+Folio is **3.1× slower** here (806 s vs 263 s), worse than the 1.6× measured
+pre-shim because the shim makes Folio paginate the same ~300-page book instead
+of a denser 200-page one. The cause is unchanged and structural: Tier 3 costs
+two full print passes, and printing this book is ~1 s/page — of which **~90% is
+`filter:`** (measured: 57.0 s → 6.2 s for 60 pages with filters off). Warm is no
+faster than cold (815 vs 806 s), confirming browser startup is noise.
+
+Note this cost is shared: the same `filter:` expense is in Gutterpress's 263 s.
+Folio simply pays the print twice.
+
+## Not measured
+
+- **Stage B (in-browser pagination).** Paged.js did not finish paginating this
+  book in >2 h in an earlier run; this run was stopped before stage B rather
+  than repeat that. Folio's viewer paginates the user guide in 0.11 s, but no
+  comparable number exists for this book.
+- **PDF outline counts** — both PDFs use object streams, so the raw-byte probe
+  used here returns 0 for both and proves nothing either way.
+- **Visual quality side by side** at print resolution.
+
+## Verdict on the A/B question
+
+With the confounds removed, **the two engines agree on pagination**: same page
+count to 1.3%, identical type, and long runs of constant offset rather than
+scattered disagreement. Folio is more faithful to the stylesheet (binding
+gutters, and the 12 pt the CSS actually declares), and slower by a factor that
+is understood and attributable to one design decision.
+
+The remaining decisions are not technical:
+
+1. **Type size** — keep the Paged.js appearance (re-tune tokens to ~16.4 pt) or
+   take the authored 12 pt and a ~200-page book. Only the shim makes them
+   comparable; adoption deletes it.
+2. **Folio numbering** — Folio must synthesize the front-matter restart. Known
+   mechanism, not yet built.
+3. **Build time** — acceptable, or worth removing the second print pass.
