@@ -536,3 +536,46 @@ containing the running heads and cross-references (see
 viewer never prints, so the editing loop is unaffected. The available
 optimization is predict-then-verify (one print in the good case), not deleting a
 pass.
+
+---
+
+## Re-verified on `release/0.10.0`
+
+`release/0.10.0` merged into the spike branch (clean, no conflicts) and the
+whole A/B re-run against the 0.10.0 implementation.
+
+**Every number reproduced exactly.**
+
+| | 0.9.0-alpha.2 | 0.10.0-alpha.1 |
+| --- | --- | --- |
+| Gutterpress pages | 301 | **301** |
+| Gutterpress PDF | 171,580,552 B | **171,580,552 B** |
+| Folio pages | 297 | **297** |
+| Folio PDF | 176,948,509 B | **176,948,509 B** |
+| type scale match | 4496/4501 (99.9%) | **4496/4501 (99.9%)** |
+| median glyph ratio | 1.0000 | **1.0000** |
+| page ratio | 1.013 | **1.013** |
+| drift profile | 0, +1, +2 … −4 | **identical** |
+| mirrored gutters | folio YES / gp NO | **unchanged** |
+| folio numbering | gp restarts / folio doesn't | **unchanged** |
+
+Extracted text is **byte-identical** across versions for *both* engines; only
+the PDF creation date differs. Gutterpress build 263 s → 274 s (run-to-run
+variance, same machine). Folio's 15 spikes (212 checks), 50 unit tests and
+typecheck all pass unchanged on 0.10.0.
+
+**Why nothing moved, verified rather than assumed.** 0.10.0 changes
+`markdown-it-paged.js` (+83 lines) and `renderer.ts` (+14), which do alter the
+staged HTML — it grows 1,863 KB → 1,960 KB. But the additions are
+`data-source-range` / `data-source-line` attributes for the inline editor
+(3,425 occurrences), **no CSS selects on them**, and stripping those attributes
+makes the two staged files **byte-identical** (0 diff lines). Inert additions,
+inert result — which is the outcome to want, but worth confirming given that
+"inert" attributes are exactly the trap documented in
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §2, where adding `id`s renumbered every
+chapter.
+
+The one thing this run did not capture: Folio's cold/warm timings on 0.10.0
+(the run was stopped before the timing line printed, to avoid stage B which has
+never completed on this book). The artifact is byte-for-byte the same size and
+the same page count, so the work performed was the same.
