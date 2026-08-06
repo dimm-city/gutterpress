@@ -299,14 +299,29 @@ Harness/process traps:
    should assert exactly this shape (roman front matter, a recto-forced
    chapter start that requires a blank, arabic body restarting at 1) and that
    viewer and print agree on every folio, not just the page count.
-2. **Export time** — 2 print passes ≈ 13.5 min on the field guide. Design
-   sketched, not built: predict the page map from the viewer (0.11 s), apply
-   synthesis, print once, verify against that print's `/Dests` (free);
-   mismatch falls back to today's two prints. Bounded by viewer↔print parity
-   (330/331 blocks, knife-edge only). Note the cost is **export-only** — the
-   preview never prints ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §10) — and
-   ~90% of each print is `filter:`, which Step 1's scoping shrinks for both
-   engines.
+2. **Export time (predict-then-verify)** — built. `predictPageMap()` in
+   `build.ts` runs the viewer's own `fragmentDocument()` on a SEPARATE
+   page/tab (never the page about to print) to guess the Tier 3 page map,
+   feeds it through the same `applySynthesis()` the fixpoint loop already
+   used per-pass, and seeds the loop's convergence check with the guess. Pass
+   1 of the (unchanged) existing loop carries the guessed synthesis and IS the
+   verification print: if its own `/Dests` matches the guess, the loop
+   converges after ONE print; if not, the loop's existing pass-2 body runs
+   exactly as before, at today's two-print cost — never worse, never
+   unverified (`ARCHITECTURE.md` §10 has the full design and measurements).
+   Measured on `examples/gutterpress-user-guide`: output is byte-identical to
+   the un-predicted baseline (61pp, 9,699 words, 0 diffs) whether the guess
+   hits or misses — the verification is retained unconditionally. The guess
+   currently **misses** on this specific book (a pre-existing, separately-
+   documented viewer limitation — the cover page's `page:` assignment on a
+   descendant, not the container — see `ARCHITECTURE.md` §10) and falls back
+   to 2 prints, ~80–150 ms slower warm than the un-predicted baseline; the
+   `s8-compiler` spike's running-heads fixture (no cover-page idiom) now
+   converges in 1 pass where it always needed 2. Bounded by viewer↔print
+   parity (330/331 blocks, knife-edge only). Note the cost is **export-only**
+   — the preview never prints ([`ARCHITECTURE.md`](./ARCHITECTURE.md) §10) —
+   and ~90% of each print is `filter:`, which Step 1's scoping shrinks for
+   both engines.
 
 ---
 

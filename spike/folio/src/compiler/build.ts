@@ -44,6 +44,8 @@ import {
 import { postprocess, type PostprocessResult } from "./postprocess.ts";
 
 const AGENT_PATH = join(import.meta.dir, "..", "..", "dist", "folio-agent.js");
+/** Viewer bundle (`dist/folio.js`), reused unmodified for the predict step (§10). */
+const VIEWER_PATH = join(import.meta.dir, "..", "..", "dist", "folio.js");
 
 /** Generated page name carrying the author's `@page :blank` rules. */
 const BLANK_PAGE = "folio--blank";
@@ -77,16 +79,20 @@ export interface BuildResult {
   /** id -> 1-based page, the measurement channel's output */
   pageMap: Record<string, number>;
   converged: boolean;
+  /** how many times Page.printToPDF actually ran (§10: 1 in the common case) */
+  prints: number;
 }
 
 export async function build(opts: BuildOptions): Promise<BuildResult> {
   const log = opts.onProgress ?? (() => {});
   await ensureBundles();
   const AGENT = readFileSync(AGENT_PATH, "utf8");
+  const VIEWER = readFileSync(VIEWER_PATH, "utf8");
   const browser = opts.browser ?? (await launchChromium());
   const ownsBrowser = !opts.browser;
   const page = await browser.newPage();
   const notes: string[] = [];
+  let prints = 0;
 
   try {
     const url = /^(https?|file):\/\//.test(opts.input)
@@ -203,6 +209,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // the spacer fixes the parity, the next pass sees it fixed and removes it.
       if (rectoSites.length) {
         const measure = async () => {
+          prints++;
           const facts = await inspectPdf(await printPdf(page));
           return Object.fromEntries(
             Object.entries(facts.namedDests).map(([k, v]) => [k, v + 1]),
@@ -255,23 +262,12 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         }
       }
 
-      let previous = "";
-      converged = false;
-      for (let pass = 1; pass <= maxPasses; pass++) {
-        passes = pass;
-        bytes = await printPdf(page);
-        const facts = await inspectPdf(bytes);
-        pageMap = Object.fromEntries(
-          Object.entries(facts.namedDests).map(([k, v]) => [k, v + 1]),
-        );
-        const signature = JSON.stringify(pageMap);
-        if (signature === previous) {
-          converged = true;
-          log(`tier 3: fixpoint after ${pass} pass${pass === 1 ? "" : "es"}`);
-          break;
-        }
-        previous = signature;
-
+      // Apply cross-reference text and running-string CSS against a given page
+      // map — the ONE synthesis step, called either against a PREDICTED map
+      // (below, before the first print) or a just-MEASURED one (inside the
+      // loop, the fallback path). Same function either way (ARCHITECTURE.md
+      // §1): the two callers differ only in where the map came from.
+      const applySynthesis = async (map: Record<string, number>, pageCount: number) => {
         // (a) cross-reference text at the reference site
         const generated: Array<{ id: string; where: string; text: string }> = [];
         for (const site of sites) {
@@ -280,7 +276,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           const where = /::?before$/.test(site.selector) ? "before" : "after";
           const text = evaluate(decl.content, {
             attr: (n) => (n === "href" ? site.href : undefined),
-            targetPage: (u) => pageMap[u.replace(/^#/, "")],
+            targetPage: (u) => map[u.replace(/^#/, "")],
             targetText: (u) => targetText[u.replace(/^#/, "")],
             leader: leaderMarker,
           });
@@ -300,7 +296,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
 
         // (b) page-granular running strings via a fixed counter-style map
         const mapCss = [
-          counterStyleCss(model, sources, pageMap, facts.pageCount, resetSites),
+          counterStyleCss(model, sources, map, pageCount, resetSites),
           blankCss,
         ]
           .filter(Boolean)
@@ -311,6 +307,60 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           );
           genCss = genCss.split("\n/* Tier 3 */")[0] + `\n/* Tier 3 */\n${mapCss}`;
         }
+      };
+
+      // §10 predict-then-verify: guess the page map from the viewer's multicol
+      // layout (no print — ~0.11s) instead of a throwaway print purely to read
+      // `/Dests`. Synthesis is applied against the guess BEFORE the first
+      // print, so that print is both the verification print and — if the
+      // guess holds — the shipped bytes. `predicted` is null only if the
+      // predict page itself fails (e.g. a malformed document); the fixpoint
+      // loop below is unchanged and is the fallback either way.
+      const predicted = await predictPageMap(browser, url, AGENT, VIEWER, {
+        stringSets: model.stringSets.map((s) => ({ selector: s.selector, name: s.name })),
+        rectoDecls,
+        xrefSelectors,
+        resets: model.counterResets,
+        targets: [...targets],
+      });
+      let previous = "";
+      if (predicted) {
+        log(
+          `tier 3: predicted page map from the viewer in ${predicted.ms.toFixed(0)}ms (${predicted.pageCount}pp)`,
+        );
+        await applySynthesis(predicted.pageMap, predicted.pageCount);
+        previous = mapSignature(predicted.pageMap);
+      }
+
+      converged = false;
+      for (let pass = 1; pass <= maxPasses; pass++) {
+        passes = pass;
+        prints++;
+        bytes = await printPdf(page);
+        const facts = await inspectPdf(bytes);
+        // Chromium creates a /Dest for every id ANY link in the document
+        // resolves to, not just Folio's instrumented targets — a book with
+        // real in-content cross-references (`[text](#heading)`) litters
+        // `facts.namedDests` with ids no synthesis step reads. Scope to
+        // `targets`: that is the actual contract (id -> page for exactly the
+        // ids `applySynthesis` consumes), and it is what the predicted map
+        // is scoped to as well, so the two are comparable.
+        pageMap = Object.fromEntries(
+          Object.entries(facts.namedDests)
+            .filter(([k]) => targets.has(k))
+            .map(([k, v]) => [k, v + 1]),
+        );
+        const signature = mapSignature(pageMap);
+        if (signature === previous) {
+          converged = true;
+          log(
+            `tier 3: fixpoint after ${pass} pass${pass === 1 ? "" : "es"}` +
+              (predicted && pass === 1 ? " — the predicted print shipped, no reprint" : ""),
+          );
+          break;
+        }
+        previous = signature;
+        await applySynthesis(pageMap, facts.pageCount);
       }
       if (!converged) {
         notes.push(
@@ -345,7 +395,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       if (audit.length) log(`audit: ${audit.length} print-quality warning(s)`);
     }
 
-    bytes ??= await printPdf(page);
+    if (bytes === undefined) {
+      prints++;
+      bytes = await printPdf(page);
+    }
 
     // ---- postprocess -----------------------------------------------------
     const post = await postprocess(bytes, {
@@ -371,6 +424,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       post,
       pageMap,
       converged,
+      prints,
     };
   } finally {
     await page.close();
@@ -381,6 +435,98 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
 async function printPdf(page: Session): Promise<Uint8Array> {
   await page.waitForReady();
   return page.printToPDF();
+}
+
+/** Canonical (key-order-independent) signature for a page map, for fixpoint comparison. */
+function mapSignature(map: Record<string, number>): string {
+  return Object.keys(map)
+    .sort()
+    .map((k) => `${k}=${map[k]}`)
+    .join("|");
+}
+
+interface PredictedPageMap {
+  pageMap: Record<string, number>;
+  pageCount: number;
+  ms: number;
+}
+
+/**
+ * §10 predict-then-verify: guess the Tier 3 page map from the viewer's own
+ * multicol fragmentation instead of a throwaway print. Runs on a SEPARATE
+ * page/tab — never on the page that is about to print — so it cannot
+ * perturb the document the compiler ships.
+ *
+ * Reuses the compiler agent's own id-assignment functions
+ * (`stringSources`/`forcedBreakSites`/`xrefSites`/`counterResetSites`), in
+ * the SAME order the compiler already called them in on the print page, so
+ * the synthetic `folio-m-N` ids line up between the two pages (each page's
+ * counter starts fresh at 0; same calls, same order, same document ⇒ same
+ * ids) — no id needs to travel between pages. Then reuses the viewer's own
+ * `fragmentDocument()` (`ARCHITECTURE.md` §1: one function, not a twin) to
+ * read where each target id landed.
+ *
+ * Returns null if the predict page itself fails for any reason — the caller
+ * falls back to today's measure-first loop, at today's cost.
+ */
+async function predictPageMap(
+  browser: Browser,
+  url: string,
+  agentScript: string,
+  viewerScript: string,
+  args: {
+    stringSets: Array<{ selector: string; name: string }>;
+    rectoDecls: Array<{ selector: string; prop: string; value: string }>;
+    xrefSelectors: string[];
+    resets: Array<{ selector: string; start: number }>;
+    targets: string[];
+  },
+): Promise<PredictedPageMap | null> {
+  const t0 = performance.now();
+  let page: Session | undefined;
+  try {
+    page = await browser.newPage();
+    await page.navigate(url);
+    await page.evaluate(agentScript);
+    await page.waitForReady();
+    await page.evaluate(`window.__FOLIO_MANUAL__ = true;`);
+    await page.evaluate(viewerScript);
+
+    // Same calls, same order as the print page (build()'s Tier 3 setup):
+    // stringSources -> forcedBreakSites -> xrefSites -> counterResetSites.
+    await page.evaluate(`window.__folio.stringSources(${JSON.stringify(args.stringSets)})`);
+    if (args.rectoDecls.length)
+      await page.evaluate(
+        `window.__folio.forcedBreakSites(${JSON.stringify(args.rectoDecls)})`,
+      );
+    await page.evaluate(`window.__folio.xrefSites(${JSON.stringify(args.xrefSelectors)})`);
+    if (args.resets.length)
+      await page.evaluate(
+        `window.__folio.counterResetSites(${JSON.stringify(args.resets)})`,
+      );
+
+    const result = await page.evaluate<{
+      pageMap: Record<string, number>;
+      pageCount: number;
+    }>(`(async () => {
+      const api = await window.Folio.fragmentDocument({});
+      const pageMap = {};
+      for (const id of ${JSON.stringify(args.targets)}) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        // an id may name an injected zero-size <folio-anchor>; measure its
+        // host instead (same as the compiler agent's own anchorHost()).
+        const target = el.tagName === "FOLIO-ANCHOR" ? el.parentElement ?? el : el;
+        pageMap[id] = api.pageOf(target) + 1;
+      }
+      return { pageMap, pageCount: api.totalPages };
+    })()`);
+    return { ...result, ms: performance.now() - t0 };
+  } catch {
+    return null;
+  } finally {
+    if (page) await page.close();
+  }
 }
 
 /**

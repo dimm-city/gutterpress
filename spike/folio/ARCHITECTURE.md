@@ -262,11 +262,62 @@ optimistic path is new. The risk is bounded by viewer↔print parity (330/331
 blocks, ±1 page at knife edges — `ENGINE.md` §4): a chapter opener on a
 knife-edge boundary simply falls back to two prints.
 
+**Built** (§C2 of `MIGRATION.md`). `predictPageMap()` in `build.ts` opens a
+SECOND page/tab (never the page about to print), navigates it to the same
+`url`, and reuses two things verbatim rather than re-implementing them: the
+compiler agent's own id-assignment calls (`stringSources`/`forcedBreakSites`/
+`xrefSites`/`counterResetSites`, in the exact order `build()` already calls
+them in, so the synthetic `folio-m-N` ids line up between the two pages with
+nothing transferred), and the viewer's own `fragmentDocument()` (`dist/folio.js`,
+unmodified — ARCHITECTURE.md §1, not a second pagination implementation). The
+predicted map seeds the fixpoint loop's `previous` signature and is fed through
+the SAME `applySynthesis()` the loop already used per-pass; pass 1 of the
+existing loop therefore already carries the guessed synthesis, and IS the
+verification print. If its own `/Dests` matches the prediction (`mapSignature()`,
+a key-order-independent comparison — the earlier naive `JSON.stringify`
+comparison would have false-mismatched whenever Chromium's own /Dests table
+included ids from real in-content cross-reference links Folio never
+instrumented, which the real `gutterpress-user-guide` book does; `pageMap` is
+now scoped to `targets` on both sides), the loop converges after pass 1 — one
+print. If not, the loop's existing pass-2 body runs exactly as it always did,
+using the just-measured real map — today's two-print cost, no worse. Nothing
+about the loop's shape changed; only what seeds `previous` before it starts.
+
+**Measured** on `examples/gutterpress-user-guide` (`compare/stage-book.ts`
+input, warm browser): content is byte-identical to the un-predicted baseline —
+61 pages, 9,699 words, 0 pages with differing text, 0 words added or dropped
+either direction (poppler-backed `pdfText`). Print count is now instrumented
+(`BuildResult.prints`), not inferred. On this specific book prediction
+currently **misses**: `previous` (from `folio-m-1`, the first string-set
+source) predicts page 2 where print lands page 1, a flat +1 offset that
+widens further mid-book — traced to the guide's own cover page, where
+`.cover-page h1 { page: cover; }` assigns the named page to a DESCENDANT of
+`.cover-page`, not the container. This is the exact, already-documented
+viewer limitation in `fragment.ts`'s `pageNameOf()`: print puts only the
+heading's own page on the "cover" template and returns to the default page
+right after, while the multicol viewer — which cannot chunk the DOM mid-run —
+applies the template to the WHOLE run. The fallback fires correctly: passes=2,
+`converged=true`, output byte-identical to the two-print baseline (verified
+above) — correct page numbers, at today's cost, exactly as designed. Warm wall
+clock: baseline (no predict) 928–1,058 ms (n=2) vs. with predict 1,047–1,096 ms
+(n=3) — a real ~80–150 ms regression on THIS book, because the predict page's
+navigate + agent-script evaluate + `fragmentDocument()` (~140–185 ms measured,
+above the 0.11 s pure-layout figure this section already cited) is paid for
+and not recouped when the guess misses. The win is real but not universal: the
+`s8-compiler` spike's Tier-3 fixture (a chaptered book with running heads, no
+cover-page opener idiom) now converges in **1 pass** where every prior
+measurement in this repo required 2 (`s8` assertion already tolerated `passes
+<= 2`; it now observes 1). Fixing the cover-page idiom itself is out of this
+section's scope — it is a pre-existing, separately-documented viewer
+limitation, not a predict-then-verify defect, and the fallback already handles
+it correctly.
+
 **This cost is export-only.** The viewer contains zero print/CDP code — it
 paginates with multicol and `getBoundingClientRect()`, feeding the same shared
 `synthesis.ts` functions. Printing happens only in `build()`, reached from
 `folio build` and the dev server's `/proof.pdf` route. The editing loop never
-pays it.
+pays it. The predict step adds a second, throwaway page/tab to that same
+export-only cost center — never to the editing loop.
 
 ---
 
