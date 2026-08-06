@@ -1,37 +1,22 @@
 /*
- * Field-guide A/B shim — replicate the Paged.js-only styling under Folio
- * WITHOUT touching the field guide repo.
+ * Field-guide page-furniture starting point — replicate the Paged.js-only
+ * styling under the Gutterpress engine (spiked as "Folio") WITHOUT touching
+ * the field guide repo.
  *
  * Append this stylesheet to a COPY of the staged book.html (apply-shim.ts).
- * It has two independent halves; comment one out to test the other alone.
  *
- * Everything here was probed against real Chromium 151 before being written
- * down — see COMPARISON.md "A/B plan" for the probe evidence and the open
- * items. This file is A/B scaffolding, not a migration deliverable: if Folio
- * is adopted, the furniture half becomes real project CSS and the scale half
- * is DELETED in favour of re-tuned font tokens.
+ * Formerly two halves: a `body { zoom: 1.5 }` SCALE SHIM (retired
+ * 2026-08-06 — see MIGRATION.md Decision #1 and COMPARISON.md's "HONEST A/B
+ * REPORT") that existed only to compensate for a Chromium print shrink-to-fit
+ * confound in the field guide's over-wide layout. That confound is fixed
+ * upstream (`dc-op-manual` commit `fc12278`); the scale line is gone, no
+ * production stylesheet may contain `body { zoom }`, and this file now
+ * contains only what was HALF 2 below — the page-furniture rules, which
+ * become the *starting point* for the field guide's real engine CSS at
+ * migration (replacing the 11 `.pagedjs_*` DOM rules with standard-CSS
+ * equivalents; probed against real Chromium 151, see COMPARISON.md's
+ * historical "A/B plan" section for the probe evidence).
  */
-
-/* ==========================================================================
- * HALF 1 — SCALE SHIM
- *
- * Paged.js typesets this book at exactly the scale `body { zoom: 1.5 }`
- * produces under plain Chromium print (921/921 words glyph-identical,
- * ±0.15pt). The book's own tokens say 12pt; Paged.js renders ~16.4pt.
- * This line makes Folio match Paged.js so page boundaries can be compared
- * like-for-like.
- *
- * RATIFIED DECISION (MIGRATION.md, Decisions #1): this zoom is NEVER carried
- * into production. On adoption the fix is retuned CSS tokens chosen from a
- * proof at true size — no production stylesheet may contain body{zoom}. If
- * you are copying from this file for real Folio CSS, copy HALF 2 only.
- * ======================================================================== */
-body { zoom: 1.5; }
-
-/* ==========================================================================
- * HALF 2 — PAGE-FURNITURE SHIM
- * Replaces the 11 `.pagedjs_*` DOM rules with standard-CSS equivalents.
- * ======================================================================== */
 
 /* --- 2a. The brick sheet background (.pagedjs_sheet) --------------------
  * Chromium clips content painting to the page content box, so the brick is

@@ -1,10 +1,19 @@
 /**
- * Produce a shimmed copy of a staged book.html for A/B testing.
+ * Append a CSS file (default `fg-shim.css`, now the field-guide
+ * page-furniture starting point — see that file's header) to a copy of a
+ * staged book.html.
  *
  * Never edits the original: writes `book.shimmed.html` next to the input with
- * the shim stylesheet inlined as the LAST <style> in <head>, so it wins every
+ * the stylesheet inlined as the LAST <style> in <head>, so it wins every
  * equal-specificity cascade fight against the book's own CSS — the same
  * position Paged.js's generated styles occupy.
+ *
+ * The `body { zoom: 1.5 }` scale shim `fg-shim.css` used to also carry is
+ * retired (2026-08-06): the field guide's over-wide layout that made scale
+ * comparison necessary is fixed upstream, so an honest A/B needs no shim of
+ * any kind (see COMPARISON.md's "HONEST A/B REPORT"). This script still has a
+ * use — furniture-only comparisons — but is no longer part of the default A/B
+ * recipe.
  *
  *   bun compare/apply-shim.ts /tmp/cmp-fg/staged/book.html [shim.css]
  */
