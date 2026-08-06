@@ -350,11 +350,87 @@ Two measured facts about `zoom` in the print path:
   target glyph sizes without accounting for this.
 - **Paged.js's type scale on a pt-authored book is byte-for-byte `zoom: 1.5`.**
   On the field guide, plain Chromium + `body{zoom:1.5}` matched the Paged.js
-  PDF on **921/921 words within ±0.15pt**. The mechanism inside Paged.js is
-  not identified, but its output is exactly equivalent to a 1.5 zoom — which is
-  also the observed page-count ratio (296/200 ≈ 1.5). This makes `zoom: 1.5`
-  the correct temporary shim for A/B tests that must reproduce Paged.js
-  boundaries, and it quantifies the reflow a faithful engine causes.
+  PDF on **921/921 words within ±0.15pt**. Its output is exactly equivalent to
+  a 1.5 zoom — which is also the observed page-count ratio (296/200 ≈ 1.5).
+  This makes `zoom: 1.5` the correct temporary shim for A/B tests that must
+  reproduce Paged.js boundaries, and it quantifies the reflow a faithful
+  engine causes.
+
+### The mechanism: `@font-face` rule ORDER, not a scale property (A3 finding)
+
+Instrumented in `packages/cli`: `pagination.ts` sets a plain 1920×1080
+viewport (irrelevant to print — `page.pdf()` prints at the explicit
+`width`/`height` read from the `.pagedjs_page` computed style, not the
+viewport), never sets `deviceScaleFactor`, and injects no CSS of its own
+(`pagedjs.ts` only adds the polyfill `<script>` + break-inside handler — see
+`ARCHITECTURE.md`/A1 above). Confirmed by measurement, not reasoning: a
+single-paragraph fixture with a literal `font-size:12pt` and no custom fonts,
+run through the exact shipped `renderHtmlToPdf()`, printed at **13.406pt**
+glyph height for "the"-class words at 12pt on a plain sans-serif — i.e. no
+scale at all through the real pipeline on ordinary content. The inflation only
+appears with the field guide's actual CSS, and is fully reproducible from a
+single, isolated variable:
+
+**Trigger: whether the stylesheet's `@font-face` rule(s) for the font actually
+applied to body text appear BEFORE or AFTER the rest of the stylesheet
+(specifically, before the `:root` custom-property block).** Verified with
+ten+ fixtures built from the field guide's real, unmodified `@font-face`
+blocks (6 weight/style variants of `'Titillium Web'`, read only from a local,
+already-staged copy — not modified), run through the identical
+`renderHtmlToPdf()` call each time, varying only the ORDER of CSS text handed
+in:
+
+| fixture | `@font-face` position | measured "chapters" glyph height |
+| --- | --- | --- |
+| body text in `sans-serif` (no custom font at all) | — | 13.406pt (baseline) |
+| all 6 `Titillium Web` faces, placed AFTER `:root`+rest of the CSS | after | 13.289pt (correct) |
+| the SAME 6 faces, in their ORIGINAL file position (BEFORE `:root`) | before | **18.252pt** |
+| the SAME 6 faces moved to the very top of the stylesheet | before | **18.252pt** |
+| a single unrelated dummy rule (`.foo{color:red}`) placed first, no `@font-face`, `sans-serif` body | before, but not a font rule | 13.406pt (correct — rules out "anything-first") |
+| only 1 of the 6 `Titillium Web` faces (400 normal) | before | 13.289pt (correct — rules out "any @font-face before") |
+| only 2 of the 6 (400 + 700, both `normal` style) | before | 13.289pt (correct) |
+| all 6 `Titillium Web` faces alone (no other font families) | after (moved) | 13.289pt (correct) |
+
+The real field guide's `@font-face` blocks are authored first in its CSS
+(`css/dc-tokens.css`'s "WEBFONTS (local)" section, before `:root`), which is
+exactly the failing arrangement — this is not a contrived ordering, it is the
+book's actual authoring convention. Both **plain Chromium** (no Paged.js:
+`page.pdf({ preferCSSPageSize: true })` on the untouched real staged
+`book.html`, faces-first as authored) and the real shipped Gutterpress PDF's
+Table-of-Contents page were measured directly for cross-check: plain Chromium
+13.381pt / 12.82pt for "chapters"/"origins,"; the actual production PDF
+18.252pt for "chapters" on the same content — reproducing COMPARISON.md's
+13.38→18.25 (1.364×) finding exactly, and confirming plain Chromium is
+unaffected by the ordering that breaks Paged.js.
+
+**What this rules out and what remains open.** It is not `packages/cli`
+driving code (the ONLY variable across the passing/failing fixtures above is
+the CSS text order — `pagination.ts`/`pagedjs.ts` are byte-identical in every
+run). It is not the font being embedded, not `font-display: swap` (ablated:
+still inflates with `font-display: auto`), not having multiple weight/style
+variants of one family (2 and 6 variants both pass when placed after `:root`;
+both fail when placed before), and not "any rule before `:root`" (an unrelated
+dummy rule first does not trigger it — it is specific to `@font-face` rules
+that are actually in use). No dedicated `@font-face`/`FontFace` **Handler**
+class exists in the vendored polyfill (`paged.polyfill.js`'s `Handler`
+subclasses are `AtPage`, `Breaks`, `Splits`, `Counters`, `Lists`,
+`PositionFixed`, `PageCounterIncrement`, `NthOfType`, `Following`,
+`Footnotes`, `RunningHeaders`, `StringSets`, `TargetCounters`, `TargetText`,
+`WhiteSpaceFilter`, `CommentsFilter`, `ScriptsFilter`,
+`UndisplayedFilter` — none font-specific), so the trigger is not an explicit
+font-processing pass; it is some order-sensitive side effect of Paged.js's own
+CSS-rule walk (shared with `AtPage`'s `@page`-context extraction, which also
+walks the whole stylesheet by rule position — see §3's unrelated but
+same-shaped "cross-stylesheet order" cascade bug) that a large `@font-face`
+`src: url(data:...)` payload sitting before the rest of the sheet appears to
+perturb. The exact internal function was not isolated further within this
+task's budget — the trigger condition above is precise and reproducible
+(10 fixtures, single-variable ablation each time), which is enough to place
+the fault definitively inside Paged.js and out of `packages/cli`, but not
+enough to name the exact line the way A1's mirrored-gutter root cause was
+named. Not fixed, for the same reason as A1: forking the vendored polyfill is
+out of scope, and the book's own `@font-face`-before-`:root` authoring
+convention is unlikely to be worth changing for an engine being retired.
 
 ## 10. `filter:` rasterizes the subtree at 300 DPI — the dominant print cost
 

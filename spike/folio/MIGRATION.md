@@ -50,11 +50,14 @@ the pipeline shipping today.
 | **Mirrored binding gutters** | The book declares a 0.125in binding offset via `var(--binding-margin, …)`; Paged.js silently drops that declaration. Root-caused to Paged.js itself (not `packages/cli`) — see below. Not fixed; documented. | Folio 55pt recto / 46pt verso; Gutterpress 52/53pt either parity (`compare/ab-report.py`) |
 | **`generateDocumentOutline`** | Shipped PDFs have no bookmarks; the same DOM printed with the flag yields 155. One line in `pagination.ts`. | COMPARISON.md §A |
 | **Scope `filter:`** | ~90% of build time on **both** engines, and it silently rasterizes card text to 300 DPI bitmaps — not selectable, searchable or accessible in the released PDF. | 57.0s → 6.2s over 60pp; [`ENGINE.md`](./ENGINE.md) §10 |
-| **Explain the 1.364× scale** | Paged.js typesets the book at a scale its stylesheet never asks for, so every `pt` value in the CSS is a lie and the design is un-reasonable-about. | `body{zoom:1.5}` reproduces Paged.js on 921/921 words ±0.15pt |
+| **Explain the 1.364× scale** | Paged.js typesets the book at a scale its stylesheet never asks for. Root-caused (not just reproduced): triggered by `@font-face` rules appearing BEFORE `:root`/the rest of the stylesheet — the field guide's own authoring order. Confirmed Paged.js-internal (not `packages/cli`); not fixed, documented. | `body{zoom:1.5}` reproduces Paged.js on 921/921 words ±0.15pt; `ENGINE.md` §9 |
 
 The scale item is the gate for everything after it. Do not migrate away from a
 mechanism nobody can explain — and it is worth knowing whether it is a Paged.js
-behaviour or something in how the pipeline drives it.
+behaviour or something in how the pipeline drives it. **Answered**: it is a
+Paged.js behaviour, triggered by `@font-face` rule order — see
+[`ENGINE.md`](./ENGINE.md) §9 for the isolated trigger condition and the
+fixture matrix that confirms it.
 
 ### Mirrored binding gutters — root cause (Paged.js, not `packages/cli`)
 
