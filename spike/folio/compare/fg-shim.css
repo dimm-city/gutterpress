@@ -1,0 +1,112 @@
+/*
+ * Field-guide A/B shim — replicate the Paged.js-only styling under Folio
+ * WITHOUT touching the field guide repo.
+ *
+ * Append this stylesheet to a COPY of the staged book.html (apply-shim.ts).
+ * It has two independent halves; comment one out to test the other alone.
+ *
+ * Everything here was probed against real Chromium 151 before being written
+ * down — see COMPARISON.md "A/B plan" for the probe evidence and the open
+ * items. This file is A/B scaffolding, not a migration deliverable: if Folio
+ * is adopted, the furniture half becomes real project CSS and the scale half
+ * is DELETED in favour of re-tuned font tokens.
+ */
+
+/* ==========================================================================
+ * HALF 1 — SCALE SHIM
+ *
+ * Paged.js typesets this book at exactly the scale `body { zoom: 1.5 }`
+ * produces under plain Chromium print (921/921 words glyph-identical,
+ * ±0.15pt). The book's own tokens say 12pt; Paged.js renders ~16.4pt.
+ * This line makes Folio match Paged.js so page boundaries can be compared
+ * like-for-like. It is TEMPORARY by design.
+ * ======================================================================== */
+body { zoom: 1.5; }
+
+/* ==========================================================================
+ * HALF 2 — PAGE-FURNITURE SHIM
+ * Replaces the 11 `.pagedjs_*` DOM rules with standard-CSS equivalents.
+ * ======================================================================== */
+
+/* --- 2a. The brick sheet background (.pagedjs_sheet) --------------------
+ * Chromium clips content painting to the page content box, so the brick is
+ * painted twice: margin boxes cover the margin band, and a fixed element
+ * covers the content area. Both use the same tile the book already ships
+ * (content-addressed by the stager). background-size matches the book's
+ * `1.5in auto`. First iteration deliberately omits per-box
+ * background-position offsets — the brick is busy enough that seams may be
+ * invisible; measure before adding the offset machinery (checker-tile probe
+ * proved offsets DO align seams exactly when needed).
+ */
+@page {
+  @top-left-corner   { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @top-left          { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @top-center        { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @top-right         { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @top-right-corner  { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @left-top          { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @left-middle       { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @left-bottom       { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @right-top         { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @right-middle      { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @right-bottom      { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @bottom-left-corner  { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+  @bottom-right-corner { content: ""; background-image: url("assets/5328338ccc9c88ed.png"); background-size: 1.5in auto; background-color: #c8c5bf; }
+}
+
+/* content-area layer of the sheet background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-color: #c8c5bf;
+  background-image: url("assets/5328338ccc9c88ed.png");
+  background-repeat: repeat;
+  background-size: 1.5in auto;
+  background-blend-mode: multiply;
+}
+
+/* --- 2b. Folio chips (.pagedjs_margin-bottom-* .pagedjs_margin-content) --
+ * The book's default footer content comes from its own @page rules
+ * (page-rules.css, already standard CSS) — the .pagedjs_* rules only STYLE
+ * the boxes. Probed working in margin boxes: background, solid & dashed
+ * borders, counter(page), width: fit-content, left/right placement.
+ * OPEN ITEM: transform: rotate() did not visibly apply in the probe;
+ * box-shadow unconfirmed. Ship the chips square first, measure, then chase
+ * rotation if the difference matters at print size.
+ */
+@page {
+  @bottom-left {
+    background: #f4ecd8 url("assets/5328338ccc9c88ed.png");
+    background-blend-mode: multiply;
+    font-family: "Fira Code", monospace;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #1a1a1a;
+    border: 1px solid #1a1a1a;
+    width: fit-content;
+  }
+  @bottom-right {
+    font-family: "Fira Code", monospace;
+    font-size: 9pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #8b0000;
+    background: #efe3c2;
+    border: 1.5px dashed #d946ef;
+    width: fit-content;
+  }
+}
+
+/* --- 2c. Footer suppression on special pages ----------------------------
+ * (.pagedjs_front-matter_page etc. → the same names as @page contexts.)
+ */
+@page front-matter { @bottom-left { content: none; } @bottom-right { content: none; } }
+@page chapter-start { @bottom-left { content: none; } @bottom-right { content: none; } }
+@page full  { @bottom-left { content: none; } @bottom-right { content: none; } }
+@page clean { @bottom-left { content: none; } @bottom-right { content: none; } }
+@page :blank { @bottom-left { content: none; } @bottom-right { content: none; } }

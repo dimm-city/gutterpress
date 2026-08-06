@@ -271,7 +271,34 @@ The document outline is a second channel (heading → page, 14/14 correct), but
 
 ---
 
-## 8. PDF/X hand-off
+## 8. Margin boxes can carry real component styling
+
+Beyond text, a margin box renders: `background` (color and image, with
+`background-blend-mode`), solid **and** dashed `border`, `width: fit-content`,
+font/letter-spacing/text-transform, and `counter(page)` — probed together as a
+styled "chip" in `@bottom-left`/`@bottom-right`. This is enough to reproduce a
+poster-style folio chip without any DOM element.
+
+Not confirmed: `transform: rotate()` did not visibly apply in the probe, and
+`box-shadow` is unverified. Treat both as unsupported until measured.
+
+## 9. `body { zoom }` under print — and what Paged.js's scale actually is
+
+Two measured facts about `zoom` in the print path:
+
+- **`zoom` dilutes by exactly the glyph-box factor.** `body{zoom:1.364}`
+  produced a 1.24× glyph scale, `body{zoom:1.5}` produced 1.364× — both
+  consistent with `effective = zoom / 1.1`. Do not compute a zoom factor from
+  target glyph sizes without accounting for this.
+- **Paged.js's type scale on a pt-authored book is byte-for-byte `zoom: 1.5`.**
+  On the field guide, plain Chromium + `body{zoom:1.5}` matched the Paged.js
+  PDF on **921/921 words within ±0.15pt**. The mechanism inside Paged.js is
+  not identified, but its output is exactly equivalent to a 1.5 zoom — which is
+  also the observed page-count ratio (296/200 ≈ 1.5). This makes `zoom: 1.5`
+  the correct temporary shim for A/B tests that must reproduce Paged.js
+  boundaries, and it quantifies the reflow a faithful engine causes.
+
+## 10. PDF/X hand-off
 
 Ghostscript 10.06 converting a Chromium-printed PDF to PDF/X-1a with a real
 FOGRA39L profile (`s12`, 25 checks):

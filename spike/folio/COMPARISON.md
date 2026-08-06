@@ -263,3 +263,108 @@ Content bugs found in the book itself (unchanged; run used a corrected copy):
 four broken image references, three of them path typos —
 `images/chapter-02/cybersurgeon.png`, `./images/chapter-03/etherlock.png`,
 `images/chapter-01/proxy.jpg`. These hard-fail the build today.
+
+---
+
+## A/B plan: field guide on Folio without touching the field guide
+
+Status: **shim built and smoke-tested; full A/B not yet run.** Everything below
+was probed against real Chromium 151 before being written down.
+
+### Why a shim at all
+
+The field guide styles Paged.js's DOM directly — 11 rules across three
+concerns, inventoried from the staged CSS:
+
+1. `.pagedjs_sheet` — the brick sheet background (image, `1.5in auto` tile,
+   `multiply` blend)
+2. `.pagedjs_margin-bottom-* .pagedjs_margin-content` — poster-chip styling of
+   the footer boxes, with `:left/:right` variants (rotated, bordered,
+   shadowed)
+3. suppression of those chips on `front-matter`/`chapter-start`/`full`/
+   `clean`/`:blank` pages
+
+Everything else in the book's page model is already standard `@page` CSS
+(named pages, `:left/:right` mirroring, margin-box content) that Folio
+consumes as-is. Under Folio the 11 rules are dead — no `.pagedjs_*` elements
+exist — which is why the first comparison run produced pages with no
+furniture. The shim replaces exactly those 11 rules with standard-CSS
+equivalents, appended to a **copy** of the staged book; the field-guide repo
+is never modified.
+
+Separately, Paged.js typesets the book at a scale its stylesheet does not ask
+for. To compare page boundaries like-for-like, the shim also reproduces that
+scale — temporarily, by declared intent.
+
+### The two shims (`compare/fg-shim.css`, applied by `compare/apply-shim.ts`)
+
+**Scale shim — one line, empirically exact.** `body { zoom: 1.5 }` under
+plain Chromium print matches the Paged.js PDF glyph-for-glyph: **921/921
+words within ±0.15pt**. (Note `zoom` dilutes: 1.5 zoom → 1.364× glyphs; the
+naive 1.364 zoom lands at 1.24× and matches nothing. See ENGINE.md §9.) For
+A/B runs this makes the type identical; for migration it is deleted and the
+decision becomes editorial: keep 12pt as authored (book → ~200pp) or re-tune
+tokens to ~16.4pt (book stays ~296pp).
+
+**Furniture shim.** Probed primitive by primitive:
+
+| `.pagedjs_*` rule | standard-CSS replacement | probe result |
+| --- | --- | --- |
+| sheet brick background | paint all 16 margin boxes + a `body::before` fixed layer | edge-to-edge ink measured; brick seams invisible without offsets; a checker tile probe proved per-box `background-position` offsets align seams exactly if ever needed |
+| footer chips | `@bottom-left/right { background, border, width: fit-content, counter(page) }` | renders: backgrounds, solid+dashed borders, counters, placement. **`transform: rotate()` did not apply; `box-shadow` unconfirmed** |
+| chip suppression | `@page front-matter { @bottom-* { content: none } }` etc. | standard CSS, Folio consumes directly |
+| `C.N` chapter strings | none needed — the book's own `string-set` rules are standard; Folio Tier 3 synthesizes them | verified working in Folio on the user guide |
+
+Smoke test: shimmed book printed by plain Chromium shows the brick sheet edge
+to edge, a styled folio chip, and Paged.js-scale type. Content still lands on
+different pages than Gutterpress — that remaining delta is precisely what the
+full A/B measures.
+
+### How to run the A/B
+
+```bash
+# 1. stage (assets included), from spike/folio/
+bun compare/stage-book.ts <field-guide-dir> /tmp/cmp-fg/staged
+# 2. shim a copy (writes book.shimmed.html next to book.html)
+bun compare/apply-shim.ts /tmp/cmp-fg/staged/book.html
+# 3. full harness against the ORIGINAL for the Gutterpress leg,
+#    then Folio against the shimmed copy:
+bun compare/run.ts <field-guide-dir>                # gutterpress + unshimmed folio
+FOLIO_INPUT=/tmp/cmp-fg/staged/book.shimmed.html    # (wire-up below)
+```
+
+The harness does not yet accept a substitute Folio input — that is the first
+item below.
+
+### What to test next, in order
+
+1. **Wire the shimmed input into `compare/run.ts`** (an env var or flag that
+   substitutes Folio's input file) and run the full A/B. Success metric:
+   anchor-line tracking (the 599-anchor method used to find the 1.5× ratio)
+   shows page drift collapsing from 1.50× toward 1.0; report residual
+   same-page / ±1-page percentages.
+2. **Chip fidelity.** Rotation and box-shadow in margin boxes: minimal probes,
+   then either use them or record them as engine limits and accept square
+   chips. Compare chip crops at 100dpi against the Paged.js render.
+3. **Brick seam check at print resolution.** One 300dpi crop across a
+   margin-box/content boundary. If seams show, emit per-box
+   `background-position` offsets (geometry is known; the checker probe proved
+   alignment works).
+4. **Named-page parity.** The field guide's `chapter-start`/`full`/`clean`/
+   `citizen-file` pages under Folio: verify each gets its geometry and
+   suppressions on the same content as Paged.js. This is where the remaining
+   page-boundary drift will concentrate.
+5. **Front-matter folio numbering.** The book restarts page counters at the
+   first body chapter via a counter reset on `.page-chapter-start` — a
+   Paged.js-DOM-dependent mechanism. Determine what Folio's counter model
+   needs (likely nothing: real `counter-reset` on a content element works in
+   native print — probe it).
+6. **Only then** judge output quality side by side (density, breaks, chip
+   look), because until 1–5 the two engines are not rendering the same book.
+
+### Open questions this A/B cannot answer
+
+- Whether to keep the 1.5× appearance (re-tune tokens) or the authored 12pt
+  (accept reflow) — editorial, decided by looking at both.
+- Tier-3 build cost on this book (2 × ~200 s). A/B correctness first; the
+  optimistic single-pass design is a separate work item.
