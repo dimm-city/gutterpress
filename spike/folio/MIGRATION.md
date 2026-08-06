@@ -219,7 +219,13 @@ migration fixture set must cover, each traceable to a finding in this repo:
    supported in a margin box (`ENGINE.md` §8).
 6. **Cross-references + a TOC with page numbers** — the Tier 3 path.
 7. **Multi-column body with `break-inside: avoid` cards** — the density
-   difference that accounts for the residual page delta.
+   difference that accounts for the residual page delta. **Root-caused
+   (2026-08-06)**: Paged.js's own break-avoidance moves an avoid-block's
+   break to a new PAGE instead of the next COLUMN, abandoning the second
+   column — one tall card per page, 2× the paper (12pp vs native's 6pp on
+   the fixture). Confirmed Paged.js-internal by driving the raw vendored
+   polyfill with no injected handler (same result); native/Folio fill both
+   columns. Full bisect table: `fixtures/migration/README.md`, fixture 7.
 8. **Recto/verso chapter starts and `@page :blank`** — not exercised by the
    field guide at all (0 occurrences), but required by real books.
 

@@ -192,21 +192,36 @@ owned by another workstream per this task's boundaries).
 
 Both engines correctly keep every card intact (0 splits across a page
 boundary, all 12 cards measured on both engines) — the fixture's actual
-subject, `break-inside: avoid`, is honored by both. But Folio packs ~2 cards
-per column (6pp total) while Paged.js places roughly one card per column
-(12pp total) for the identical document and identical CSS. Isolated by
-toggling `column-fill: auto` on/off (no change in either engine — ruled out)
-and by confirming `packages/cli/src/lib/pagedjs.ts`'s `BREAK_INSIDE_HANDLER`
-only ever matches a `data-break-inside="avoid"` DOM attribute (read the
-source: `onBreakToken` walks up looking for that attribute) — this fixture
-uses plain CSS `break-inside: avoid` on a stylesheet rule, never that data
-attribute, so the handler's `onBreakToken` never matches and is a structural
-no-op here; it is NOT the fixture-8 interference repeating. This is Paged.js's
-own (unpatched) multi-column layout being measurably less dense than native
-Chromium's LayoutNG fragmentation for tall break-inside:avoid blocks in
-`columns:2` — a real, measured engine difference, not a `packages/cli` defect.
-Out of scope to chase further here (not a `packages/cli` regression to file
-against); flagged for whoever owns the engine-fidelity comparison.
+subject, `break-inside: avoid`, is honored by both. But the identical
+document lays out completely differently:
+
+- **Folio/native: 2 cards per page** — one per column, both columns used
+  (probe per-page distribution: `p1: [01, 02] … p6: [11, 12]`). Note plain
+  `pdftotext` (any mode) extracts only the FIRST column's card per page —
+  a poppler reading-order quirk, not content loss; the bbox-word probe
+  (`pdfprobe-poppler.py`) recovers all 12.
+- **Paged.js: 1 card per page** — the SECOND COLUMN IS NEVER FILLED
+  (`p1: [01] … p12: [12]`).
+
+Root-caused by measurement (2026-08-06):
+
+| variant | Paged.js pages | conclusion |
+| --- | --- | --- |
+| as-is | 12 | baseline |
+| drop `column-fill: auto` | 12 | column-fill is NOT the trigger |
+| drop `break-inside: avoid` | 7 | **avoid is the trigger** (columns fill again, cards split) |
+| short cards (2 fit per column) | 2 | columns work when no break-avoidance move is needed |
+| **RAW polyfill, no `BREAK_INSIDE_HANDLER`** | **12, 1 card/page** | **NOT our handler** — measured, not just source-read |
+
+Mechanism: when a `break-inside: avoid` card cannot share a column with its
+neighbor, Paged.js's own break-avoidance moves the break to a new PAGE
+instead of the next COLUMN, abandoning column 2 for the rest of the run —
+so a run of tall avoid-cards degenerates to one card per page. Confirmed
+Paged.js-internal by driving the raw vendored polyfill with no injected
+handler at all (same 12pp/1-per-page result). Native Chromium's LayoutNG
+(and therefore Folio) moves the same break to the next column. A real,
+measured engine defect on Paged.js's side — 2x the paper for this layout —
+not a `packages/cli` defect; nothing to fix on our side of the seam.
 
 ## Assertion could not fail — found and fixed (ARCHITECTURE.md §8)
 
