@@ -10,7 +10,8 @@
     "folio": "bun src/cli.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "compare": "bun compare/run.ts"
+    "compare": "bun compare/run.ts",
+    "migration-fixtures": "bun fixtures/migration/runner.ts"
   },
   "dependencies": {
     "pdf-lib": "^1.17.1",

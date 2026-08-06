@@ -49,12 +49,15 @@ fixture small and fast; nothing about the constructs depends on page size.
 | 04-folio-restart | 6 | 0.17s | PASS | 6 | 1.07s | **FAIL** |
 | 05-margin-box-furniture | 3 | 0.10s | PASS | 3 | 1.07s | PASS |
 | 06-xref-toc | 4 | 0.16s | PASS | 4 | 1.06s | PASS |
-| 07-multicol-break-avoid | 2 | 0.10s | PASS | 2 | 1.05s | PASS |
+| 07-multicol-break-avoid | 6 | 0.13-0.21s | PASS | 12 | 1.07-1.30s | PASS |
 | 08-recto-verso-blank | 5 | 0.23s | PASS | 3 | 1.06s | **FAIL** |
 | 99-kitchen-sink | 29 (tier 3, 2 passes) | 0.72s | — | 27 | 1.41s | — |
 
-6/8 same page count on both engines; the two divergences are the two known
-gaps (below), each with a documented, MEASURED reason — not a guess.
+5/8 same page count on both engines. Three fixtures diverge (04, 07, 08),
+each with a documented, MEASURED reason below — not a guess. Fixture 07's
+divergence was introduced by an independent-verification fix (its assertion
+originally could not fail, see "Assertion could not fail" below) and is a
+genuine PASS/PASS page-count gap, not an assertion failure like 04/08.
 
 ## Divergences, with the documented reason MIGRATION.md's success criteria ask for
 
@@ -72,8 +75,21 @@ gets it for free because its page counter lives in the DOM"). Measured:
   the compiler's planned synthesis actually emits (a generated page name is
   how the counter-style-map mechanism works at all, per MIGRATION.md's
   "Current state" note). Measured: that pairing DOES restart the counter
-  natively. Folio's PDF (no synthesis at all — this is a plain document,
-  Tier 1) reads `i, ii, iii, 1, 2, 3` correctly on ALL SIX pages.
+  natively AND is measured through Folio's compiler, correctly.
+
+  **Correction to an earlier draft of this section** (independent
+  re-measurement, ARCHITECTURE.md §7): this fixture is **NOT** Tier 1 / "no
+  synthesis at all" as previously stated here. Directly instrumenting
+  `build()` on this exact fixture (`bun run` a one-off script logging
+  `r.tier`/`r.passes`) measures `tier: 3, passes: 1` — `model.counterResets.length
+  > 0` alone forces `needsMeasure = true` in `src/compiler/build.ts` (the
+  `needsMeasure` disjunction includes `model.counterResets.length > 0`
+  unconditionally), which routes the document through the exact
+  measure→synthesize→fixpoint loop C1's `pageCounterValues`/`counterStyleCss`
+  machinery lives in — it converges in a single measurement pass, but it is
+  real synthesis, not a plain unsynthesized print. Folio's PDF reads
+  `i, ii, iii, 1, 2, 3` correctly on all six pages **because** that Tier-3
+  path works, not because it was skipped.
 - Paged.js's own DOM-based counter, given the identical document, restarts
   correctly on the FIRST body page (`1`) but does **not** propagate the
   reset to subsequent normal-flow pages in the same run — they read `4, 5`
@@ -81,13 +97,10 @@ gets it for free because its page counter lives in the DOM"). Measured:
   Sequence measured: `["i","ii","iii","1","4","5"]`.
 
 Net: for this specific, realistic construction (reset + name change
-together, which is what synthesis will actually emit), the "known Folio gap"
-does not reproduce — Folio doesn't need to synthesize this case, and
-Paged.js's "for free" claim is the one that doesn't hold up past the first
-page. This contradicts the priors in MIGRATION.md/ENGINE.md §8 as written and
-should be treated as a finding for whoever owns the synthesis work, not
-papered over. The narrower ENGINE.md §8 claim (reset alone, no name change)
-still holds — verified above.
+together, which is what synthesis will actually emit), Folio's Tier-3
+synthesis handles it correctly and Paged.js's "for free" claim is the one
+that doesn't hold up past the first page. The narrower ENGINE.md §8 claim
+(reset alone, no name change) still holds — verified above.
 
 ### Fixture 8 — recto/verso + `@page :blank`: Folio PASSES; Paged.js FAILS, and differently from `s10`
 
@@ -124,9 +137,53 @@ artifact of this fixture set, and is worth a follow-up issue against
 `packages/cli/src/lib/pagedjs.ts` — out of scope to fix here (that file is
 owned by another workstream per this task's boundaries).
 
+### Fixture 7 — multi-column `break-inside: avoid`: both PASS, but Folio 6pp vs Paged.js 12pp
+
+Both engines correctly keep every card intact (0 splits across a page
+boundary, all 12 cards measured on both engines) — the fixture's actual
+subject, `break-inside: avoid`, is honored by both. But Folio packs ~2 cards
+per column (6pp total) while Paged.js places roughly one card per column
+(12pp total) for the identical document and identical CSS. Isolated by
+toggling `column-fill: auto` on/off (no change in either engine — ruled out)
+and by confirming `packages/cli/src/lib/pagedjs.ts`'s `BREAK_INSIDE_HANDLER`
+only ever matches a `data-break-inside="avoid"` DOM attribute (read the
+source: `onBreakToken` walks up looking for that attribute) — this fixture
+uses plain CSS `break-inside: avoid` on a stylesheet rule, never that data
+attribute, so the handler's `onBreakToken` never matches and is a structural
+no-op here; it is NOT the fixture-8 interference repeating. This is Paged.js's
+own (unpatched) multi-column layout being measurably less dense than native
+Chromium's LayoutNG fragmentation for tall break-inside:avoid blocks in
+`columns:2` — a real, measured engine difference, not a `packages/cli` defect.
+Out of scope to chase further here (not a `packages/cli` regression to file
+against); flagged for whoever owns the engine-fidelity comparison.
+
+## Assertion could not fail — found and fixed (ARCHITECTURE.md §8)
+
+**Fixture 7's original assertion could never fail.** The original 12 cards
+were only 3 short `<p>` lines each; three cards packed per column with room
+to spare (~222pt of content in a ~439pt column), so removing `break-inside:
+avoid` from `.card` never produced a split — verified by mutating the ORIGINAL
+fixture (deleting the `break-inside: avoid` declaration) and re-running:
+Folio and Paged.js both still reported `0 split across a page boundary`,
+i.e. the assertion passed on a document that should have failed it. Fixed by
+padding each card with enough filler text to remove the slack (each card now
+straddles a column boundary when `break-inside: avoid` is absent) and
+switching `main`'s `columns` to `column-fill: auto` (sequential fill —
+deterministic, and what a real book wants; verified this was not itself the
+fix, see fixture 7's divergence note above). This also incidentally fixed a
+**second**, previously-documented defect: Folio's PDF text extraction was
+dropping the last character of ~half the `...TOP`/`...BOT` sentinel tokens
+at column-wrap points (`SENTINELCARD04TOP` → `SENTINELCARD04TO`), silently
+under-measuring the fixture (6/12 cards instead of 12/12). Renaming the
+tokens to end in a disposable buffer character (`...TOPZ`/`...BOTZ` instead
+of `...TOP`/`...BOT`) means the ONE character poppler drops is now the
+throwaway `Z`, not a character the assertion's `.includes("...TOP")` /
+`.includes("...BOT")` substring check needs — now measures 12/12 on both
+engines, every run.
+
 ## Proof that each assertion can fail (ARCHITECTURE.md §8)
 
-For fixtures 3, 4 and 8, the input was deliberately broken, the assertion
+For fixtures 3, 4, 7 and 8, the input was deliberately broken, the assertion
 was shown to fire, and the fixture was restored byte-identical
 (`diff` confirmed after each). Not simulated — this is copy-pasted output
 from actually running the broken fixture through `runner.ts`.
@@ -145,12 +202,29 @@ folio:    6pp in 0.18s — FAIL (folio sequence: ["i","ii","iii","4","5","6"] (w
 paged.js: 6pp in 1.37s — FAIL (folio sequence: ["i","ii","iii","4","5","6"] (want ["i","ii","iii","1","2","3"]))
 ```
 
+**Fixture 7** — removed `break-inside: avoid` from `.card` (post-fix fixture,
+Folio only, `build()` driven directly — 12/12 measured both before and after):
+
+```
+ORIGINAL (break-inside:avoid present): 6 pages, {"pass":true,"detail":"measured=12 split=0"}
+MUTATED  (break-inside:avoid removed): 6 pages, {"pass":false,"detail":"measured=12 split=5"}
+restored byte-identical: true
+```
+
 **Fixture 8** — changed `break-before: right` to `break-before: page`:
 
 ```
 folio:    3pp in 0.21s — FAIL (CHAPTERTWO on printed p2, CHAPTERTHREE on printed p3 (recto = odd))
 paged.js: 3pp in 1.30s — FAIL (CHAPTERTWO on printed p2, CHAPTERTHREE on printed p3 (recto = odd))
 ```
+
+Fixtures 1, 2, 5 and 6 were also independently falsified (Folio only, a
+scratch `build()`-driven harness, not checked in — same mutate/assert/restore
+pattern): removing the `filter`+`clip-path` pair (01), removing `string-set`
+from the chapter `h1` (02), replacing the margin-box chip's `counter(page)`
+content with a fixed literal (05), and pointing the TOC/xref `href`s at
+nonexistent ids (06) all correctly flip their assertion to FAIL, and all four
+fixtures were restored byte-identical afterward.
 
 ## Test-authoring findings worth keeping in mind for future fixtures
 
@@ -185,13 +259,19 @@ re-discovers them the hard way:
    fixture. Fixed by stripping `/* ... */` comments before the check. Kept
    as a live example of ARCHITECTURE.md §8 in this codebase, not just a
    citation of it.
-5. **A minor, unexplained Folio-PDF-specific extraction quirk**: fixture 7's
-   Folio output loses the trailing character of some multi-column sentinel
-   words under poppler (`SENTINELCARD04TOP` → `SENTINELCARD04TO`) for roughly
-   half the cards; Paged.js's PDF does not exhibit this. Didn't block the
-   assertion (`.includes()` still matches enough cards to prove
-   `split === 0`), not chased further — flagged here in case it recurs on a
-   real book and starts affecting an assertion that needs the FULL word.
+5. **poppler drops the LAST character of a word sitting at a column-wrap
+   edge, not a buffer character** — this was originally logged here as "a
+   minor, unexplained Folio-PDF-specific extraction quirk" that "didn't block
+   the assertion." Independent re-measurement (ARCHITECTURE.md §7) found it
+   silently zeroed the assertion's coverage from 12/12 cards to 6/12 rather
+   than being harmless, and traced the mechanism: whichever character
+   actually falls last gets dropped, so a sentinel ending in a meaningful
+   letter (`...TOP`, `...BOT`) loses that letter and fails `.includes()`.
+   Fixed (not just flagged) by renaming the tokens to end in a disposable
+   buffer character (`...TOPZ`/`...BOTZ`) — poppler now drops the throwaway
+   `Z`, and the assertion's substring check against `...TOP`/`...BOT` matches
+   every time. Worth this pattern for any future sentinel token that must
+   survive a column/line-wrap edge.
 
 ## Files
 

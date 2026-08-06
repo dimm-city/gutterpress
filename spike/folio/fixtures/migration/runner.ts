@@ -381,8 +381,32 @@ async function main() {
     );
   }
 
-  const failed = results.filter((r) => !r.folio.ok || !r.pagedjs.ok);
-  process.exitCode = failed.length > 0 ? 1 : 0;
+  // KNOWN_DIVERGENCES: fixtures whose Paged.js assertion is EXPECTED to fail
+  // today, with a documented, measured reason (README.md's "Divergences"
+  // section) — a Paged.js defect, not a Folio regression. Keeping the exit
+  // code green through these two lets this runner be a real CI gate (fails
+  // on an UNEXPECTED break) instead of permanently red on findings this
+  // spike already recorded on purpose.
+  const KNOWN_DIVERGENCES: Record<string, "folio" | "pagedjs"> = {
+    "04-folio-restart": "pagedjs",
+    "08-recto-verso-blank": "pagedjs",
+  };
+  const unexpectedFailures = results.filter((r) => {
+    const knownEngine = KNOWN_DIVERGENCES[r.id];
+    const folioBad = !r.folio.ok && knownEngine !== "folio";
+    const pagedjsBad = !r.pagedjs.ok && knownEngine !== "pagedjs";
+    return folioBad || pagedjsBad;
+  });
+  const surprises = results.filter((r) => {
+    const knownEngine = KNOWN_DIVERGENCES[r.id];
+    return knownEngine && (knownEngine === "folio" ? r.folio.ok : r.pagedjs.ok);
+  });
+  if (surprises.length > 0) {
+    console.log(
+      `\nNote: ${surprises.map((r) => r.id).join(", ")} PASSED on the engine documented as a known failure — README.md's "Divergences" section is stale, update it.`,
+    );
+  }
+  process.exitCode = unexpectedFailures.length > 0 ? 1 : 0;
 }
 
 if (import.meta.main) await main();

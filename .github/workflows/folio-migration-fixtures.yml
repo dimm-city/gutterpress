@@ -1,0 +1,78 @@
+name: Folio migration fixtures
+
+# spike/folio's migration fixture set (spike/folio/fixtures/migration/):
+# 8 small fixtures, each proving one construct from MIGRATION.md Step 3,
+# built on BOTH engines (Folio via spike/folio/src/compiler/build.ts, and
+# the SHIPPED Paged.js pipeline via packages/cli/src/lib/pagination.ts) and
+# checked with an independent poppler-based reader, never Folio's own model
+# (spike/folio/ARCHITECTURE.md §7). The kitchen-sink combined book
+# (99-kitchen-sink.html) is deliberately NOT run here — `runner.ts` only
+# builds it with --kitchen-sink, which this job never passes — so this job
+# stays fast (~10-20s of fixture builds, plus install/setup).
+#
+# Two of the eight fixtures (04-folio-restart, 08-recto-verso-blank) are
+# EXPECTED to fail their assertion on Paged.js today — documented, measured
+# reasons in spike/folio/fixtures/migration/README.md's "Divergences"
+# section. `runner.ts` itself knows about these two (its KNOWN_DIVERGENCES
+# allowlist) and only sets a nonzero exit code for an UNEXPECTED failure —
+# a build crash, a probe crash, any of the other six fixtures failing, or
+# either known-divergent fixture failing on the WRONG engine. If one of the
+# two known cases starts PASSING, the job still exits 0 but prints a "stale
+# README" note — that is a welcome surprise, not a break, and gets fixed by
+# updating the README, not by touching this workflow.
+
+on:
+  pull_request:
+    branches: [main, develop, "release/**"]
+    paths:
+      - "spike/folio/**"
+      - "packages/cli/src/lib/pagination.ts"
+      - "packages/cli/src/lib/pagedjs.ts"
+      - ".github/workflows/folio-migration-fixtures.yml"
+  workflow_dispatch:
+
+env:
+  PUPPETEER_SKIP_DOWNLOAD: "true"
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+
+jobs:
+  migration-fixtures:
+    name: Build + probe migration fixtures (both engines)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: stable
+
+      - name: Install PDF tooling (poppler-utils, for the independent reader)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils python3-pil
+
+      - name: Setup Bun (cached)
+        uses: ./.github/actions/bun
+
+      - name: Install workspace dependencies (packages/cli's puppeteer-core)
+        run: bun install
+
+      - name: Install spike/folio dependencies
+        working-directory: spike/folio
+        run: bun install
+
+      - name: Configure Chromium path
+        run: |
+          echo "PUPPETEER_EXECUTABLE_PATH=$(which google-chrome-stable)" >> $GITHUB_ENV
+          echo "FOLIO_CHROMIUM=$(which google-chrome-stable)" >> $GITHUB_ENV
+          echo "GUTTERPRESS_CHROMIUM_ARGS=--no-sandbox --disable-dev-shm-usage" >> $GITHUB_ENV
+
+      # Fast path only (the 8 small fixtures) — the kitchen-sink book is
+      # excluded by not passing --kitchen-sink, per MIGRATION.md Step 3
+      # ("small enough to run in CI, with one larger kitchen sink book for
+      # realistic timing" — timing, not correctness, so it stays local).
+      - name: Run migration fixtures (both engines, independent reader)
+        working-directory: spike/folio
+        run: bun run migration-fixtures
