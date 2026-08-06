@@ -1,0 +1,62 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>fixture 03b — binding margin declared via var()</title>
+<style>
+  /* P1a: fixture 03 only ever declares the binding side as a LITERAL length
+     (0.625in / 0.875in, zero var()) — exactly the case MIGRATION.md's own
+     root-cause investigation found Paged.js already handles correctly. It
+     never exercises the ACTUAL A1 defect: MIGRATION.md ("Mirrored binding
+     gutters — root cause") measured that Paged.js's vendored polyfill
+     parses `margin-left/right: var(--binding-margin, X)` by taking the
+     declaration's first CSS value node without checking its type — a
+     `Function` node for `var()`, not a `Dimension` — and drops it outright
+     (not even falling back to the var()'s own fallback text `X`): the page
+     silently inherits the BASE @page margin instead.
+     This fixture declares the LEFT margin (reliably measurable: body text
+     always starts flush against it — the right edge is not, see fixture
+     03's assertion comment in runner.ts) as a var() so all three possible
+     engine outcomes are distinguishable by which value the rendered left
+     inset lands on:
+       - correct  (Y = 1.25in = 90pt) — var() resolved against :root
+       - fallback (X = 1.00in = 72pt) — the var()'s own fallback text used,
+         :root ignored (not observed on either engine to date, but a
+         distinct, real bug shape worth being able to detect)
+       - dropped  (base @page margin = 0.75in = 54pt) — MIGRATION.md's
+         measured Paged.js behaviour: the declaration is discarded and the
+         page falls through to the unqualified @page rule
+     Y (1.25in), X (1.00in) and the base margin (0.75in) are three distinct
+     values 18pt apart so no measurement noise can confuse them. The right
+     margin stays a literal 0.625in throughout — unaffected by the var()
+     defect, present only to keep the page layout sane, not measured. */
+  :root {
+    --binding-margin: 1.25in; /* Y: the declared, correct value */
+  }
+  @page { size: 5in 7.5in; margin: 0.75in; } /* base: 54pt — the "dropped" value */
+  @page chapter {
+    margin-top: 0.75in;
+    margin-bottom: 0.75in;
+    margin-left: var(--binding-margin, 1in); /* binding side: X fallback = 1in = 72pt, Y = 1.25in = 90pt */
+    margin-right: 0.625in;
+    @bottom-center { content: counter(page); font-size: 9pt; }
+  }
+  html { font: 11pt/1.4 'DejaVu Serif', Georgia, serif; }
+  body { margin: 0; }
+  main { page: chapter; }
+  p { margin: 0 0 8pt; }
+  h1 { font-size: 14pt; break-before: page; margin: 0 0 8pt; }
+  /* CSS class, not an inline `style=` attribute — see fixture 03's comment:
+     Paged.js's polisher reads break-before/after only from stylesheet
+     rules, never inline style="". */
+  .brk { break-before: page; }
+</style>
+<body>
+  <main>
+    <h1>Binding test (var())</h1>
+    <p>SENTINEL-BINDV-01 first page of the run.</p>
+    <p>SENTINEL-BINDV-02 filler to keep the page from collapsing to a stub so the margin box still has room to render its folio.</p>
+    <div class="brk"><p>SENTINEL-BINDV-03 second page.</p></div>
+    <div class="brk"><p>SENTINEL-BINDV-04 third page.</p></div>
+    <div class="brk"><p>SENTINEL-BINDV-05 fourth page.</p></div>
+    <div class="brk"><p>SENTINEL-BINDV-06 fifth page.</p></div>
+  </main>
+</body>

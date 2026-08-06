@@ -1,6 +1,7 @@
 # Migration fixture set (MIGRATION.md Step 3)
 
-Eight small, purpose-built fixtures plus one combined "kitchen sink" book,
+Eight small, purpose-built fixtures (plus a 9th, 3b, added for P1a) plus one
+combined "kitchen sink" book,
 each testing one construct MIGRATION.md's Step 3 says the in-repo examples
 don't cover, traced to the ENGINE.md/ARCHITECTURE.md finding that motivated
 it. Every fixture builds on BOTH engines and is checked with an
@@ -28,9 +29,10 @@ editing it, regenerate with `bun run fixtures/99-kitchen-sink.ts`.
 | - | --- | --- | --- |
 | 1 | `01-filter-clip-path.html` | the two-layer `filter:drop-shadow()` + `clip-path` shadow pattern rasterizes its subtree (text becomes a picture) while plain vector text stays extractable | ENGINE.md §10 |
 | 2 | `02-fullbleed-running-heads.html` | full-bleed page background (tiled texture, via the margin-box painting technique) survives on a CONTINUATION page with no heading of its own, and the running head tracks the CURRENT chapter, not a stale one | ENGINE.md §5 |
-| 3 | `03-mirrored-binding.html` | named page + `:left`/`:right` binding-gutter mirroring survives to the PDF — the A1 defect fixture | MIGRATION.md Step 1 ("Mirrored binding gutters"), ENGINE.md §3 |
+| 3 | `03-mirrored-binding.html` | named page + `:left`/`:right` binding-gutter mirroring survives to the PDF, in the correct DIRECTION (recto's left inset is the declared outer value, verso's the declared inner/binding value) — the A1 defect fixture, literal-length case | MIGRATION.md Step 1 ("Mirrored binding gutters"), ENGINE.md §3 |
+| 3b | `03b-mirrored-binding-var.html` | the same binding-gutter defect, but with the binding side declared as `var(--binding-margin, X)` — the case that actually reproduces MIGRATION.md's root-caused Paged.js defect (literal lengths already work; `var()` is silently dropped) | MIGRATION.md "Mirrored binding gutters — root cause" |
 | 4 | `04-folio-restart.html` | front-matter (roman) → body (arabic-from-1) folio restart | ENGINE.md §8, MIGRATION.md "Current state of the two known Folio gaps" #1 |
-| 5 | `05-margin-box-furniture.html` | a margin-box "chip" (background + border + `width:fit-content` + `counter(page)`) renders, and the fixture's OWN CSS source contains neither `transform:rotate()` nor `box-shadow` (the unsupported pair) | ENGINE.md §8 |
+| 5 | `05-margin-box-furniture.html` | a margin-box "chip" (background + border + `width:fit-content` + `counter(page)`) renders AND is positioned where a margin box actually lives — below the content box, in the right half of the page (an OUTPUT observation from the PDF, not a lint on the fixture's own source; see "Assertion could not observe engine behaviour" below) | ENGINE.md §8 |
 | 6 | `06-xref-toc.html` | a TOC with `leader(dotted) target-counter(...)` and inline cross-references resolve to the page the target actually printed on (Tier 3) | ENGINE.md §2, ARCHITECTURE.md §10 |
 | 7 | `07-multicol-break-avoid.html` | `columns:2` + `break-inside:avoid` cards never split across a page | MIGRATION.md Step 3 item 7 |
 | 8 | `08-recto-verso-blank.html` | `break-before:right` forces chapters onto a recto (odd) page with a genuinely blank, unstyled verso inserted (`@page :blank`) | ENGINE.md §2/§7, `spikes/s10-recto-breaks.ts` |
@@ -43,25 +45,53 @@ fixture small and fast; nothing about the constructs depends on page size.
 
 | fixture | folio pages | folio time | folio assert | paged.js pages | paged.js time | paged.js assert |
 | --- | --- | --- | --- | --- | --- | --- |
-| 01-filter-clip-path | 1 | 0.20s | PASS | 1 | 1.32s | PASS |
-| 02-fullbleed-running-heads | 4 | 0.17s | PASS | 4 | 1.07s | PASS |
-| 03-mirrored-binding | 5 | 0.12s | PASS | 5 | 1.07s | PASS |
-| 04-folio-restart | 6 | 0.17s | PASS | 6 | 1.07s | **FAIL** |
-| 05-margin-box-furniture | 3 | 0.10s | PASS | 3 | 1.07s | PASS |
-| 06-xref-toc | 4 | 0.16s | PASS | 4 | 1.06s | PASS |
-| 07-multicol-break-avoid | 6 | 0.13-0.21s | PASS | 12 | 1.07-1.30s | PASS |
-| 08-recto-verso-blank | 5 | 0.23s | PASS | 3 | 1.06s | **FAIL** |
+| 01-filter-clip-path | 1 | 0.42s | PASS | 1 | 1.65s | PASS |
+| 02-fullbleed-running-heads | 4 | 0.23s | PASS | 4 | 1.09s | PASS |
+| 03-mirrored-binding | 5 | 0.12s | PASS | 5 | 1.16s | PASS |
+| 03b-mirrored-binding-var | 5 | 0.24s | PASS | 5 | 1.23s | **FAIL** |
+| 04-folio-restart | 6 | 0.28s | PASS | 6 | 1.10s | **FAIL** |
+| 05-margin-box-furniture | 3 | 0.13s | PASS | 3 | 1.08s | PASS |
+| 06-xref-toc | 4 | 0.22s | PASS | 4 | 1.08s | PASS |
+| 07-multicol-break-avoid | 6 | 0.13s | PASS | 12 | 1.08s | PASS |
+| 08-recto-verso-blank | 5 | 0.29s | PASS | 3 | 1.07s | **FAIL** |
 | 99-kitchen-sink | 29 (tier 3, 2 passes) | 0.72s | — | 27 | 1.41s | — |
 
-5/8 same page count on both engines. Three fixtures diverge (04, 07, 08),
+5/9 same page count on both engines. Four fixtures diverge (03b, 04, 07, 08),
 each with a documented, MEASURED reason below — not a guess. Fixture 07's
 divergence was introduced by an independent-verification fix (its assertion
 originally could not fail, see "Assertion could not fail" below) and is a
-genuine PASS/PASS page-count gap, not an assertion failure like 04/08.
+genuine PASS/PASS page-count gap, not an assertion failure like 03b/04/08.
 
 ## Divergences, with the documented reason MIGRATION.md's success criteria ask for
 
-### Fixture 4 — folio restart: Folio (native, unsynthesized) PASSES; Paged.js FAILS
+### Fixture 3b — binding margin via var(): Folio PASSES; Paged.js FAILS
+
+This is the fixture that covers the ACTUAL A1 defect (P1a). Fixture 3 uses
+only literal lengths on the binding side — the case MIGRATION.md's own
+root-cause investigation already found Paged.js handles correctly (measured:
+36pt/72pt end-to-end, exact). Fixture 3 alone never exercises the bug.
+
+Fixture 3b declares the binding side as `margin-left: var(--binding-margin,
+1in)` with `--binding-margin: 1.25in` on `:root`. Measured:
+
+- **Folio: 90.0pt** — the declared value (`correct`). Folio's compiler
+  resolves the custom property like any other CSS engine does.
+- **Paged.js: 54.0pt** — the BASE `@page` margin (`dropped`), not even the
+  var()'s own fallback text (`72.0pt`, which would be `fallback`). This is
+  exactly MIGRATION.md's root-caused mechanism: the vendored polyfill's
+  `@page` margin-* AST walker takes the first CSS value node without
+  checking its type, sees a `Function` node for `var()` (not a `Dimension`),
+  and `addMarginVars()`'s `typeof margin[m].value !== "undefined"` guard
+  then drops the declaration outright — the page falls through to the base
+  `@page` rule instead of resolving, or even falling back on, the
+  custom property.
+
+Net: this is a real, measured Paged.js defect in its own vendored `@page`
+parser — not a `packages/cli` driving-code defect (per MIGRATION.md, out of
+scope to patch here) — and now has a fixture that actually proves it, rather
+than one (fixture 3) that only proves the easy, already-working case.
+
+### Fixture 4 — folio restart: Folio (synthesized, tier 3) PASSES; Paged.js FAILS
 
 This is the **opposite** of what MIGRATION.md assumed going in ("Paged.js
 gets it for free because its page counter lives in the DOM"). Measured:
@@ -74,8 +104,18 @@ gets it for free because its page counter lives in the DOM"). Measured:
   element (`page: body-main; counter-reset: page 1;`) — because that's what
   the compiler's planned synthesis actually emits (a generated page name is
   how the counter-style-map mechanism works at all, per MIGRATION.md's
-  "Current state" note). Measured: that pairing DOES restart the counter
-  natively AND is measured through Folio's compiler, correctly.
+  "Current state" note).
+
+  **F6 correction (measured twice, plain Chromium print with no Folio at
+  all):** pairing the reset with a page-name change does **NOT** restart the
+  counter natively either — this exact document, printed straight, reads
+  `i, ii, iii, 4, 5, 6`, the reset still ignored. An earlier draft of this
+  section, and this fixture's own `04-folio-restart.html` comment, both
+  claimed the pairing "DOES restart natively" — that claim is **FALSE**,
+  contradicted by the very next paragraph's own tier-3 finding, and has been
+  corrected in both places. Folio's PDF reads `i, ii, iii, 1, 2, 3` correctly
+  only because it goes through the compiler's synthesis path (below), not
+  because native Chromium print restarts on this construction.
 
   **Correction to an earlier draft of this section** (independent
   re-measurement, ARCHITECTURE.md §7): this fixture is **NOT** Tier 1 / "no
@@ -181,50 +221,82 @@ throwaway `Z`, not a character the assertion's `.includes("...TOP")` /
 `.includes("...BOT")` substring check needs — now measures 12/12 on both
 engines, every run.
 
-## Proof that each assertion can fail (ARCHITECTURE.md §8)
+## Proof that each assertion can fail (ARCHITECTURE.md §8, P1b)
 
-For fixtures 3, 4, 7 and 8, the input was deliberately broken, the assertion
-was shown to fire, and the fixture was restored byte-identical
-(`diff` confirmed after each). Not simulated — this is copy-pasted output
-from actually running the broken fixture through `runner.ts`.
+**This is a re-runnable, in-repo proof, not a one-time claim.**
+`bun run runner.ts --prove-falsifiable` applies one defined, targeted
+mutation per fixture (`MUTATIONS` in `runner.ts`), rebuilds through BOTH
+engines, asserts the run FAILS, then restores the fixture and verifies it is
+byte-identical to before the mutation — throwing if a mutation's anchor text
+has drifted (so a stale mutation can't silently no-op) or if the restore
+isn't exact. It exits 1 if any mutation fails to flip its assertion, so this
+doubles as a permanent regression check against the "assertion could not
+fail" failure mode (see below) creeping back in. Previously this only
+existed for fixtures 3/4/7/8 as hand-copied transcripts, and for 1/2/5/6 as a
+throwaway, uncommitted harness that nothing re-ran. All 9 fixtures (the 8
+plus 3b) are covered now.
 
-**Fixture 3** — deleted the `@page chapter:left`/`:right` mirror rules:
-
-```
-folio:    5pp in 0.18s — FAIL (recto left inset avg 45.0pt, verso left inset avg 45.0pt, |Δ|=0.0pt)
-paged.js: 5pp in 1.30s — FAIL (recto left inset avg 45.0pt, verso left inset avg 45.0pt, |Δ|=0.0pt)
-```
-
-**Fixture 4** — removed `counter-reset: page 1` (kept the page-name change):
-
-```
-folio:    6pp in 0.18s — FAIL (folio sequence: ["i","ii","iii","4","5","6"] (want ["i","ii","iii","1","2","3"]))
-paged.js: 6pp in 1.37s — FAIL (folio sequence: ["i","ii","iii","4","5","6"] (want ["i","ii","iii","1","2","3"]))
-```
-
-**Fixture 7** — removed `break-inside: avoid` from `.card` (post-fix fixture,
-Folio only, `build()` driven directly — 12/12 measured both before and after):
+Full transcript, copy-pasted from an actual run (not edited, not simulated):
 
 ```
-ORIGINAL (break-inside:avoid present): 6 pages, {"pass":true,"detail":"measured=12 split=0"}
-MUTATED  (break-inside:avoid removed): 6 pages, {"pass":false,"detail":"measured=12 split=5"}
-restored byte-identical: true
+== --prove-falsifiable: mutate -> confirm FAIL on both engines -> restore ==
+
+-- 01-filter-clip-path — remove the filter + clip-path pair from .card
+   folio:    FAIL (expected) — plain text extractable=true, filtered text absent (rasterized)=false
+   paged.js: FAIL (expected) — plain text extractable=true, filtered text absent (rasterized)=false
+   restored byte-identical: true
+
+-- 02-fullbleed-running-heads — remove string-set from the chapter h1
+   folio:    FAIL (expected) — continuation page (p2) carries "Chapter One"=false, chapter-two page head not stale=true; edge ink {...}
+   paged.js: FAIL (expected) — continuation page (p2) carries "Chapter One"=false, chapter-two page head not stale=true; edge ink {...}
+   restored byte-identical: true
+
+-- 03-mirrored-binding — delete the @page chapter:left/:right mirror rules
+   folio:    FAIL (expected) — recto left inset avg 45.0pt (want 45pt, outer), verso left inset avg 45.0pt (want 63pt, inner/binding)
+   paged.js: FAIL (expected) — recto left inset avg 45.0pt (want 45pt, outer), verso left inset avg 45.0pt (want 63pt, inner/binding)
+   restored byte-identical: true
+
+-- 03b-mirrored-binding-var — replace the var()-declared binding margin with the outer literal (no binding offset at all)
+   folio:    FAIL (expected) — left inset avg 45.0pt -> unknown (correct=90pt, fallback=72pt, dropped=54pt)
+   paged.js: FAIL (expected) — left inset avg 45.0pt -> unknown (correct=90pt, fallback=72pt, dropped=54pt)
+   restored byte-identical: true
+
+-- 04-folio-restart — remove counter-reset: page 1 (keep the page-name change)
+   folio:    FAIL (expected) — folio sequence: ["i","ii","iii","4","5","6"] (want ["i","ii","iii","1","2","3"])
+   paged.js: FAIL (expected) — folio sequence: ["i","ii","iii","4","5","6"] (want ["i","ii","iii","1","2","3"])
+   restored byte-identical: true
+
+-- 05-margin-box-furniture — replace the chip's counter(page) with a fixed literal
+   folio:    FAIL (expected) — chip folio per page=false, chip positioned in bottom-right margin box (below y=486.0pt, right of x=180.0pt) on every page=true
+   paged.js: FAIL (expected) — chip folio per page=false, chip positioned in bottom-right margin box (below y=486.0pt, right of x=180.0pt) on every page=true
+   restored byte-identical: true
+
+-- 06-xref-toc — point the ch1 hrefs at a nonexistent id
+   folio:    FAIL (expected) — refs found=[4], ch1 on p2, ch3 on p4
+   paged.js: FAIL (expected) — refs found=[4,0], ch1 on p2, ch3 on p4
+   restored byte-identical: true
+
+-- 07-multicol-break-avoid — remove break-inside: avoid from .card
+   folio:    FAIL (expected) — 12 cards measured, 5 split across a page boundary
+   paged.js: FAIL (expected) — 12 cards measured, 5 split across a page boundary
+   restored byte-identical: true
+
+-- 08-recto-verso-blank — change break-before: right to break-before: page
+   folio:    FAIL (expected) — CHAPTERTWO on printed p2, CHAPTERTHREE on printed p3 (recto = odd)
+   paged.js: FAIL (expected) — CHAPTERTWO on printed p2, CHAPTERTHREE on printed p3 (recto = odd)
+   restored byte-identical: true
+
+All mutations correctly flipped their assertion to FAIL.
 ```
 
-**Fixture 8** — changed `break-before: right` to `break-before: page`:
-
-```
-folio:    3pp in 0.21s — FAIL (CHAPTERTWO on printed p2, CHAPTERTHREE on printed p3 (recto = odd))
-paged.js: 3pp in 1.30s — FAIL (CHAPTERTWO on printed p2, CHAPTERTHREE on printed p3 (recto = odd))
-```
-
-Fixtures 1, 2, 5 and 6 were also independently falsified (Folio only, a
-scratch `build()`-driven harness, not checked in — same mutate/assert/restore
-pattern): removing the `filter`+`clip-path` pair (01), removing `string-set`
-from the chapter `h1` (02), replacing the margin-box chip's `counter(page)`
-content with a fixed literal (05), and pointing the TOC/xref `href`s at
-nonexistent ids (06) all correctly flip their assertion to FAIL, and all four
-fixtures were restored byte-identical afterward.
+Notes on two entries: fixture 5's mutation makes `chipOk` (per-page `CH.N`
+text) fail while the NEW positional check still passes on the fixed literal
+`"CH.1"` (it's still a furniture chip, just always reading `1` — the
+positional check was never the thing this particular mutation was meant to
+exercise, `chipOk` is), and fixture 6's post-mutation `refs found` differs
+between engines (`[4]` vs `[4,0]`) because Folio and Paged.js disagree on
+what an unresolvable `target-counter()` renders as — irrelevant to the
+proof, since `refsCorrect` fails either way.
 
 ## Test-authoring findings worth keeping in mind for future fixtures
 
@@ -252,13 +324,26 @@ re-discovers them the hard way:
    (`SENTINELCARD01TOP`, not `SENTINEL-CARD-01-TOP`) to sidestep it, rather
    than working around it with an ever-looser regex.
 4. **A check whose own explanatory comment contains the string it's
-   grepping for can never fail.** Fixture 5's assertion originally grepped
-   its own `.html` source for `box-shadow`/`transform: rotate` to prove they
-   were absent — and matched its own doc-comment explaining WHY they're
-   absent, meaning the assertion was permanently false regardless of the
-   fixture. Fixed by stripping `/* ... */` comments before the check. Kept
-   as a live example of ARCHITECTURE.md §8 in this codebase, not just a
-   citation of it.
+   grepping for can never fail — and stripping the comment doesn't fix the
+   deeper problem.** Fixture 5's assertion originally grepped its own
+   `.html` source for `box-shadow`/`transform: rotate` to prove they were
+   absent — and matched its own doc-comment explaining WHY they're absent,
+   meaning the assertion was permanently false regardless of the fixture.
+   Stripping `/* ... */` comments before the check (an earlier fix) solved
+   THAT bug, but left a bigger one standing (F5, this round): grepping the
+   fixture's OWN checked-in source is a lint on a static file, not an
+   observation of what either engine rendered — it produces the identical
+   verdict for Folio and Paged.js no matter what either engine actually did,
+   so it can never catch a real engine regression either. Replaced with an
+   output-observed check: read the chip's own text bounding box back out of
+   the PDF (poppler bbox-layout) and assert it lands OUTSIDE the content
+   box, in the page's right half — i.e. actually rendered as a positioned
+   margin box, not floated body content. `transform: rotate()`/`box-shadow`
+   themselves have no output-observable "absence" signature worth asserting
+   (there is no PDF feature that proves a CSS property was never applied),
+   so that half of the old check is dropped rather than kept as
+   unfalsifiable theater. Kept as a live example of ARCHITECTURE.md §8 in
+   this codebase, not just a citation of it.
 5. **poppler drops the LAST character of a word sitting at a column-wrap
    edge, not a buffer character** — this was originally logged here as "a
    minor, unexplained Folio-PDF-specific extraction quirk" that "didn't block
@@ -275,8 +360,8 @@ re-discovers them the hard way:
 
 ## Files
 
-- `fixtures/01-*.html` .. `08-*.html` — the 8 small fixtures, self-contained
-  (inline `<style>`, no external assets).
+- `fixtures/01-*.html` .. `08-*.html`, plus `03b-mirrored-binding-var.html` —
+  the 9 small fixtures, self-contained (inline `<style>`, no external assets).
 - `fixtures/99-kitchen-sink.ts` — generator for the combined book;
   `fixtures/99-kitchen-sink.html` is its checked-in output.
 - `runner.ts` — builds every fixture on both engines and prints the table

@@ -9,11 +9,19 @@
      THIS fixture pairs the counter-reset with a page-NAME change
      (`page: body-main`) on the SAME element, because that is what the
      compiler's planned synthesis actually emits (a generated page name is
-     how the counter-style-map mechanism works at all). Measured finding,
-     not assumed: that pairing DOES restart the counter natively — a
-     page-name change opens a new page-counter context. So this specific
-     construction is NOT expected to fail; the isolated ENGINE.md §8 case
-     (reset with no name change) still does. Both are asserted below. */
+     how the counter-style-map mechanism works at all).
+     CORRECTED (F6, measured twice — see README.md "Fixture 4"): pairing the
+     reset with a page-name change does NOT restart the counter natively
+     either. Plain Chromium print of this exact document reads
+     i, ii, iii, 4, 5, 6 — the reset is still ignored. Folio's PDF reads
+     i, ii, iii, 1, 2, 3 correctly, but ONLY because
+     `model.counterResets.length > 0` forces the compiler down its tier-3
+     measure→synthesize→fixpoint path (`src/compiler/build.ts`), whose
+     `pageCounterValues`/`counterStyleCss` machinery computes and injects the
+     restart itself. That is real synthesis, not a native restart earned by
+     the pairing — do not read this fixture's PASS as evidence the pairing
+     works "for free". The isolated ENGINE.md §8 case (reset with no name
+     change) still fails natively too. Both are asserted below. */
   @page {
     size: 5in 7.5in;
     margin: 0.75in;
