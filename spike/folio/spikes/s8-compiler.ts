@@ -323,25 +323,22 @@ html { font: 11pt/1.45 serif } body { margin: 0 }
 @page { size: 6in 9in; margin: 0.75in; }
 img { max-width: 100%; ${imgCss} }
 </style><main><p>text</p><img src="${hugeImg}"></main>`;
+  // The intrinsic class is a HEURISTIC (constrained auto-width images
+  // measured harmless on a real book) — it must WARN in notes, not block.
   const imgAuto = join(OUT_DIR, "s8-img-auto.html");
   writeFileSync(imgAuto, imgFixture(""));
-  let imgError = "";
-  try {
-    await build({ input: imgAuto, browser });
-  } catch (e) {
-    imgError = String(e);
-  }
+  const rImgAuto = await build({ input: imgAuto, browser });
   s.check(
-    "an auto-width image with an over-wide intrinsic FAILS the build",
-    imgError.includes("shrink-to-fit") && imgError.includes("img"),
-    imgError.slice(0, 100) || "build did not throw",
+    "an auto-width image with an over-wide intrinsic WARNS (recorded in notes), never blocks",
+    rImgAuto.pageCount > 0 && rImgAuto.notes.some((n) => n.includes("over-wide-intrinsic")),
+    `${rImgAuto.pageCount}pp, notes: ${rImgAuto.notes.join(" | ").slice(0, 90)}`,
   );
   const imgFull = join(OUT_DIR, "s8-img-full.html");
   writeFileSync(imgFull, imgFixture("width: 100%;"));
   const rImgFull = await build({ input: imgFull, browser });
   s.check(
-    "…and the same image with width:100% passes (specified width bounds the preferred width)",
-    rImgFull.pageCount > 0,
+    "…and the same image with width:100% is clean (specified width bounds the preferred width)",
+    rImgFull.pageCount > 0 && !rImgFull.notes.some((n) => n.includes("over-wide-intrinsic")),
     `${rImgFull.pageCount}pp`,
   );
   // The fitted documents built earlier in this spike (r1/r2/r3) are the

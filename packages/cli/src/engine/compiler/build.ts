@@ -135,19 +135,35 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       model,
       2 * (tier2.geometry.bleed + tier2.geometry.slug),
     );
-    if (widthOffenders.list.length) {
-      const detail = widthOffenders.list
-        .map((o) => `  ${o.desc} — min-content ${Math.round(o.px)}px > ${Math.round(widthOffenders.limitPx)}px content box`)
+    const describe = (list: Array<{ desc: string; px: number }>) =>
+      list
+        .map((o) => `  ${o.desc} — ${Math.round(o.px)}px > ${Math.round(widthOffenders.limitPx)}px content box`)
         .join("\n");
+    if (widthOffenders.boxes.length) {
+      // Laid-out box overflow is a PROVEN trigger class (every measured
+      // real-book shrink was one) — a hard error unless the caller opts out.
       const msg =
         `content wider than the page content box triggers Chromium print ` +
-        `shrink-to-fit (the WHOLE book scales down, silently):\n${detail}`;
+        `shrink-to-fit (the WHOLE book scales down, silently):\n${describe(widthOffenders.boxes)}`;
       if (opts.allowShrink) {
-        notes.push(`width check (allowShrink): ${widthOffenders.list.length} over-wide element(s) — output may be scaled down`);
+        notes.push(`width check (allowShrink): ${widthOffenders.boxes.length} over-wide element(s) — output may be scaled down`);
         log(`WARNING: ${msg}`);
       } else {
         throw new Error(`${msg}\nFix the offending widths, or pass allowShrink to build anyway.`);
       }
+    }
+    if (widthOffenders.intrinsics.length) {
+      // Auto-width replaced elements with over-wide intrinsics are a
+      // HEURISTIC class: real triggers exist (unconstrained placards,
+      // fixed by `width: 100%`), but images otherwise constrained by
+      // max-width/container measured as harmless on a real book — so this
+      // warns and records, never blocks.
+      const msg =
+        `${widthOffenders.intrinsics.length} auto-width image(s) with an intrinsic width past the ` +
+        `page content box — if the output prints smaller than the CSS declares, give these an ` +
+        `explicit width (e.g. width: 100%):\n${describe(widthOffenders.intrinsics)}`;
+      notes.push(`width check: ${widthOffenders.intrinsics.length} auto-width over-wide-intrinsic image(s)`);
+      log(`WARNING: ${msg}`);
     }
 
     // Running heads, cross-references and recto/verso placement all need to
@@ -354,7 +370,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       let previous = "";
       if (predicted) {
         log(
-          `tier 3: predicted page map from the viewer in ${predicted.ms.toFixed(0)}ms (${predicted.pageCount}pp)`,
+          `tier 3: predicted page map from the viewer in ${predicted.ms.toFixed(0)}ms ` +
+            `(${predicted.pageCount}pp, ${Object.keys(predicted.pageMap).length}/${targets.size} targets resolved)`,
         );
         await applySynthesis(predicted.pageMap, predicted.pageCount);
         previous = mapSignature(predicted.pageMap, predicted.pageCount);
@@ -377,6 +394,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           Object.entries(facts.namedDests)
             .filter(([k]) => targets.has(k))
             .map(([k, v]) => [k, v + 1]),
+        );
+        log(
+          `tier 3: pass ${pass} measured ${Object.keys(pageMap).length}/${targets.size} targets (${facts.pageCount}pp)`,
         );
         const signature = mapSignature(pageMap, facts.pageCount);
         if (signature === previous) {
@@ -505,7 +525,11 @@ async function findWidthOffenders(
   page: Session,
   model: GcpmModel,
   bleedSlugExtensionPt: number,
-): Promise<{ limitPx: number; list: Array<{ desc: string; px: number }> }> {
+): Promise<{
+  limitPx: number;
+  boxes: Array<{ desc: string; px: number }>;
+  intrinsics: Array<{ desc: string; px: number }>;
+}> {
   const contexts = [
     resolvePage(model),
     ...model.pageNames.map((n) => resolvePage(model, { name: n })),
@@ -524,7 +548,6 @@ async function findWidthOffenders(
   await page.evaluate(`Promise.allSettled(
     [...document.images].map((i) => i.decode().catch(() => {}))
   )`);
-  const seen = new Map<string, number>();
   try {
     // pass 1 — laid-out box overflow at the real content width
     await page.send("Emulation.setDeviceMetricsOverride", {
@@ -553,8 +576,6 @@ async function findWidthOffenders(
         return JSON.stringify(out);
       })()`),
     );
-    for (const o of boxes) seen.set(o.desc, Math.max(seen.get(o.desc) ?? 0, o.px));
-
     // pass 2 — replaced elements whose width computes to auto with an
     // over-wide intrinsic (Typed OM shows the pre-layout "auto")
     const replaced: Array<{ desc: string; px: number }> = JSON.parse(
@@ -576,8 +597,7 @@ async function findWidthOffenders(
         return JSON.stringify(out);
       })()`),
     );
-    for (const o of replaced) seen.set(o.desc, Math.max(seen.get(o.desc) ?? 0, o.px));
-    return { limitPx, list: [...seen.entries()].map(([desc, px]) => ({ desc, px })) };
+    return { limitPx, boxes, intrinsics: replaced };
   } finally {
     await page.send("Emulation.clearDeviceMetricsOverride");
   }
