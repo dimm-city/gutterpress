@@ -26,13 +26,13 @@ const commandArgs = {
   "skip-lint": { type: "boolean", description: "Skip CSS linting (default: lint runs for pdf/pdfx)" },
   "skip-pre-validate": { type: "boolean", description: "Skip pre-build validation" },
   "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation" },
-  engine: { type: "string", description: "Pagination engine: paged (default) | folio [Section D spike]" },
+  engine: { type: "string", description: "Pagination engine: paged (default) | native — the Gutterpress engine, native Chromium pagination" },
 } as const;
 
-function parseEngine(value: unknown): "folio" | undefined {
+function parseEngine(value: unknown): "native" | undefined {
   if (value === undefined || value === "paged") return undefined;
-  if (value === "folio") return "folio";
-  throw new UsageError(`Unknown --engine "${String(value)}". Expected: paged | folio`);
+  if (value === "native") return "native";
+  throw new UsageError(`Unknown --engine "${String(value)}". Expected: paged | native`);
 }
 
 export default defineCommand({

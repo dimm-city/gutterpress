@@ -81,13 +81,13 @@ export interface BuildRunnerOptions {
   keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
   /**
-   * SECTION D SPIKE (MIGRATION.md Step 3). "paged" (default) is the shipped
-   * pipeline; "folio" routes both the assembled HTML (no Paged.js polyfill
-   * tag) and the PDF render (via {@link folioPdfRenderer}, `./folio-engine`)
-   * through the Folio compiler at `spike/folio/`. See `folio-engine.ts`'s
-   * header for why this is a spike-only seam, not a production one.
+   * "paged" (default) is the shipped Chromium+Paged.js pipeline; "native"
+   * routes both the assembled HTML (no Paged.js polyfill tag) and the PDF
+   * render (via `./engine.ts`'s `buildNativePdf`) through the Gutterpress
+   * engine at `src/engine/` — native Chromium pagination, no polyfill. See
+   * `engine.ts`'s header for the seams this bypasses and why.
    */
-  engine?: "paged" | "folio";
+  engine?: "paged" | "native";
 }
 
 export interface BuildRunnerResult {
@@ -679,26 +679,25 @@ class PdfOutput implements OutputStrategy {
         ? path.join(stage, "raw.pdf")
         : path.resolve(pdfFile);
       await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
-      // engine: "folio" (Section D spike) — NOT routed through renderHtmlToPdf().
-      // That function's staging (`paginationOverlays`) unconditionally injects
-      // the Paged.js polyfill script into the served HTML regardless of which
+      // engine: "native" — NOT routed through renderHtmlToPdf(). That
+      // function's staging (`paginationOverlays`) unconditionally injects the
+      // Paged.js polyfill script into the served HTML regardless of which
       // `PdfRenderer` runs against it (`pagedjs.ts`'s patchHtmlStringForPagedjs
       // injects even with no marker present, by design — finding #22, "silent
-      // no-load"). Measured: driving Folio's own `launchChromium` at a
+      // no-load"). Measured: driving the engine's own `launchChromium` at a
       // Paged.js-staged URL let Paged.js re-paginate the DOM out from under
-      // Folio's own fragmentation mid-navigation — output dropped from 61pp/
-      // 9,699 words to 6pp/754 words with no error. Folio therefore gets its
-      // own direct call, on the plain file (no HTTP staging, no polyfill
-      // overlay at all) — see folio-engine.ts's module doc for what a real,
-      // non-spike integration would need instead of this branch.
+      // the engine's own fragmentation mid-navigation — output dropped from
+      // 61pp/9,699 words to 6pp/754 words with no error. The engine therefore
+      // gets its own direct call, on the plain file (no HTTP staging, no
+      // polyfill overlay at all) — see engine.ts's module doc for detail.
       const staticHtmlRaw =
-        opts.pdfRenderer || opts.engine === "folio"
+        opts.pdfRenderer || opts.engine === "native"
           ? undefined
           : path.join(stage, "book-static-raw.html");
-      if (opts.engine === "folio") {
-        log.info("Rendering HTML to PDF via Chromium+Folio [Section D spike]");
-        const { buildFolioPdf } = await import("./folio-engine");
-        await buildFolioPdf(htmlFile, rawPdf);
+      if (opts.engine === "native") {
+        log.info("Rendering HTML to PDF via the Gutterpress engine (native Chromium pagination)");
+        const { buildNativePdf } = await import("./engine");
+        await buildNativePdf(htmlFile, rawPdf);
       } else {
         log.info("Rendering HTML to PDF via Chromium+Paged.js");
         await renderHtmlToPdf(htmlFile, rawPdf, opts.pdfRenderer, staticHtmlRaw);
@@ -825,11 +824,11 @@ export async function runBuild(
   // Without this we'd discover missing tools deep in the pipeline (30-90s in
   // for a real book) when ENOENT bubbles up from a child_process spawn. A 50ms
   // probe at the top gives an actionable error immediately.
-  // engine: "folio" (Section D spike) drives its OWN Chromium via
-  // spike/folio's `launchChromium` (see ./folio-engine.ts) — it never touches
-  // this file's puppeteer pool, so the pool preflight/prewarm below is
-  // skipped exactly as it already is for an injected `pdfRenderer`.
-  if (ctx.format !== "html" && opts.engine !== "folio") {
+  // engine: "native" drives its OWN Chromium via src/engine's `launchChromium`
+  // (see ./engine.ts) — it never touches this file's puppeteer pool, so the
+  // pool preflight/prewarm below is skipped exactly as it already is for an
+  // injected `pdfRenderer`.
+  if (ctx.format !== "html" && opts.engine !== "native") {
     await preflightBuildTools(ctx.format, opts, ctx.config);
   }
 
@@ -839,7 +838,7 @@ export async function runBuild(
   // this build will actually paginate in Chromium: a PDF/PDFX build with no
   // injected renderer, or an HTML build with a browser available.
   const willPaginateInChromium =
-    (ctx.format !== "html" && !opts.pdfRenderer && opts.engine !== "folio") ||
+    (ctx.format !== "html" && !opts.pdfRenderer && opts.engine !== "native") ||
     (ctx.format === "html" && !!(await resolveChromiumExecutable()));
   if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 

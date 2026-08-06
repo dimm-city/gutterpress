@@ -72,8 +72,8 @@ export async function renderChapters(
     onCssAssets?: (copies: AssetCopy[]) => void;
     /** Non-fatal notices from the inliner (e.g. a remote `url()` left as-is). */
     onStyleWarnings?: (warnings: string[]) => void;
-    /** See {@link assembleBookHtml}'s option of the same name (Section D spike). */
-    engine?: "paged" | "folio";
+    /** See {@link assembleBookHtml}'s option of the same name. */
+    engine?: "paged" | "native";
   } = {}
 ): Promise<string> {
   // The SAME resolver the editor uses, so what gets inlined is always the file
@@ -133,8 +133,8 @@ export async function renderChaptersToFile(
     onImageRefs?: (refs: string[]) => void;
     onCssAssets?: (copies: AssetCopy[]) => void;
     onStyleWarnings?: (warnings: string[]) => void;
-    /** See {@link renderChapters}'s option of the same name (Section D spike). */
-    engine?: "paged" | "folio";
+    /** See {@link renderChapters}'s option of the same name. */
+    engine?: "paged" | "native";
   } = {}
 ): Promise<string> {
   await mkdir(outDir, { recursive: true });

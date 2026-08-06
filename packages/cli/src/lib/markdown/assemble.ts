@@ -86,12 +86,12 @@ export interface AssembleBookHtmlOptions {
    */
   onImageRefs?: (refs: string[]) => void;
   /**
-   * SECTION D SPIKE (MIGRATION.md Step 3). "paged" (default, or omitted)
-   * emits the {@link pagedjsPolyfillTag} slot as before. "folio" omits it
-   * entirely — Folio never loads a client-side polyfill, so there is nothing
-   * for a rewriter to fill the slot with.
+   * "paged" (default, or omitted) emits the {@link pagedjsPolyfillTag} slot as
+   * before. "native" omits it entirely — the Gutterpress engine never loads a
+   * client-side polyfill, so there is nothing for a rewriter to fill the slot
+   * with.
    */
-  engine?: "paged" | "folio";
+  engine?: "paged" | "native";
 }
 
 /**
@@ -183,7 +183,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   <style data-project-css>\n${inlineCss}\n</style>
-  ${opts.engine === "folio" ? "" : pagedjsPolyfillTag()}
+  ${opts.engine === "native" ? "" : pagedjsPolyfillTag()}
 </head>
 <body>
 ${bodyContent}

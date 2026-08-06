@@ -43,12 +43,15 @@ function parseArgs(argv: string[]) {
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
+    if (a === undefined) continue;
     if (a.startsWith("--")) {
       const [k, v] = a.slice(2).split("=");
+      if (!k) continue;
+      const next = argv[i + 1];
       if (v !== undefined) out[k] = v;
-      else if (argv[i + 1] && !argv[i + 1].startsWith("-")) out[k] = argv[++i];
+      else if (next && !next.startsWith("-")) out[k] = argv[++i] ?? true;
       else out[k] = true;
-    } else if (a === "-o") out.output = argv[++i];
+    } else if (a === "-o") out.output = argv[++i] ?? "";
     else positional.push(a);
   }
   return { positional, flags: out };

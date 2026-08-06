@@ -40,6 +40,14 @@ import previewShellJs from "../assets/preview/scripts/preview-shell.js" with { t
 import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" };
 
+// Gutterpress engine bundles (native pagination — `--engine native`).
+// Prebuilt by `scripts/build-engine-bundles.mjs` (part of `npm run build`)
+// from `src/engine/{viewer,compiler}` — CLAUDE.md §1 bans a live bundler
+// inside packages/cli/src at runtime, so these are ordinary generated/
+// committed assets, embedded the same way as the vendored paged.polyfill.js.
+import engineViewerJs from "../assets/engine/folio.js" with { type: "file" };
+import engineAgentJs from "../assets/engine/folio-agent.js" with { type: "file" };
+
 // New-project starter templates (#25). Baked in so `gutterpress new` (compiled
 // binary) and the desktop wizard scaffold from one embedded source.
 import tplBookManifest from "../assets/templates/book/manifest.yaml" with { type: "file" };
@@ -75,6 +83,8 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "preview/scripts/preview-shell.js":       abs(filePath(previewShellJs)),
   "vendor/paged.polyfill.js":               abs(filePath(pagedPolyfill)),
   "profiles/CGATS21_CRPC1.icc":             abs(filePath(cmykProfile)),
+  "engine/folio.js":                        abs(filePath(engineViewerJs)),
+  "engine/folio-agent.js":                  abs(filePath(engineAgentJs)),
   "templates/book/manifest.yaml":           abs(filePath(tplBookManifest)),
   "templates/book/chapter-01.md":           abs(filePath(tplBookChapter01)),
   "templates/zine/manifest.yaml":           abs(filePath(tplZineManifest)),
