@@ -36,6 +36,16 @@
       "default": "paged",
       "examples": ["paged", "native"]
     },
+    "engineStyles": {
+      "type": "object",
+      "description": "Engine-conditional stylesheets, appended AFTER `styles` for the resolved engine only. The per-book migration mechanism: a book whose chrome is coupled to one engine's DOM (e.g. `.pagedjs_sheet` backgrounds) declares the other engine's replacement furniture here, so one project renders correctly under both engines while it migrates. Loaded last, so furniture wins the cascade.",
+      "properties": {
+        "paged": { "type": "array", "items": { "type": "string" } },
+        "native": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false,
+      "examples": [{ "native": ["css/native-furniture.css"] }]
+    },
     "targets": {
       "type": "array",
       "description": "Where the book is published (ADR 0008): publish targets whose requirements `gutterpress validate` checks the built PDF against — each target is validated separately, so one book can target several destinations. Omitting it uses the preset's default (dtrpg -> [\"dtrpg\"]; book/custom -> []).",

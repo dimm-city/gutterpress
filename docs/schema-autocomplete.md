@@ -239,6 +239,15 @@ Pagination engine. `"paged"` (default) is the shipped Chromium+Paged.js pipeline
 engine: native
 ```
 
+#### `engineStyles` (object)
+Engine-conditional stylesheets, appended after `styles` for the resolved engine only. This is the per-book migration mechanism: a book whose chrome is coupled to one engine's DOM (for example, `.pagedjs_sheet` backgrounds that only exist in Paged.js's output) declares the other engine's replacement furniture here, so the same project renders correctly under both engines while it migrates. Loaded last, so the furniture wins the cascade.
+
+```yaml
+engineStyles:
+  native:
+    - css/native-furniture.css
+```
+
 #### `styles` (array of strings)
 CSS files to link into the rendered book, applied in order, relative to the manifest directory. If omitted, Gutterpress discovers one: `styles/book.css`, then `css/print.css`, `css/index.css`, `css/style.css`, `css/main.css`, then the first `.css` it finds, then none.
 

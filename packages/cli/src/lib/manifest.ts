@@ -348,7 +348,15 @@ function resolveWithPreset(
     // is the single source of default-stylesheet truth (styles/book.css, else
     // the first discovered .css, else []). Baking a preset default in here
     // defeated that documented fallback chain on every real render path.
-    styles: c.styles ?? m.styles,
+    // Engine-conditional stylesheets append AFTER the base list for the
+    // resolved engine only (the per-book migration mechanism — see
+    // GutterpressManifest.engineStyles). Loaded last so furniture wins.
+    styles: (() => {
+      const base = c.styles ?? m.styles;
+      const extra = m.engineStyles?.[engine];
+      if (!extra || extra.length === 0) return base;
+      return [...(base ?? []), ...extra];
+    })(),
     plugins,
     targets: resolveTargets(c.targets ?? m.targets, preset.defaultTargets),
     source: mergeShape(c.source, m.source, preset.source),

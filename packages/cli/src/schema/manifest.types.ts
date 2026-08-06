@@ -79,6 +79,15 @@ export interface GutterpressManifest {
    */
   engine?: "paged" | "native";
   /**
+   * Engine-conditional stylesheets, appended AFTER `styles` for the resolved
+   * engine only. The transition mechanism for per-book migration: a book
+   * whose chrome is coupled to one engine's DOM (e.g. `.pagedjs_sheet`
+   * backgrounds) declares the other engine's replacement furniture here, so
+   * one project renders correctly under BOTH engines while it migrates.
+   * Loaded last, so furniture wins the cascade over the shared layers.
+   */
+  engineStyles?: { paged?: string[]; native?: string[] };
+  /**
    * Where the book is published (ADR 0008): publish-target ids whose
    * validation policies this book is checked against. Absent = the preset's
    * defaults (`dtrpg` -> ["dtrpg"]; `book`/`custom` -> []). The registry in

@@ -83,6 +83,36 @@ test(".cjs extension with a separator is also recognized as a file path", () => 
 // (`styles`'s preset default, `allowedCallouts`) are characterized
 // separately, below, as "before" (bug) / "after" (fix) pairs — not locked in
 // here.
+describe("resolveConfig engineStyles — engine-conditional stylesheets (per-book migration)", () => {
+  test("native extras append after base styles only when engine resolves native", () => {
+    const m = {
+      styles: ["css/index.css"],
+      engineStyles: { native: ["css/native-furniture.css"] },
+    };
+    expect(resolveConfig({}, { ...m, engine: "native" as const }).styles).toEqual([
+      "css/index.css",
+      "css/native-furniture.css",
+    ]);
+    expect(resolveConfig({}, m).styles).toEqual(["css/index.css"]); // paged default
+    expect(resolveConfig({ engine: "native" }, m).styles).toEqual([
+      "css/index.css",
+      "css/native-furniture.css",
+    ]); // CLI override selects the extras too
+  });
+
+  test("paged extras apply under the default engine", () => {
+    const m = { styles: ["a.css"], engineStyles: { paged: ["b.css"], native: ["c.css"] } };
+    expect(resolveConfig({}, m).styles).toEqual(["a.css", "b.css"]);
+    expect(resolveConfig({ engine: "native" }, m).styles).toEqual(["a.css", "c.css"]);
+  });
+
+  test("engineStyles alone (no base styles) still loads for its engine", () => {
+    const m = { engineStyles: { native: ["only.css"] } };
+    expect(resolveConfig({ engine: "native" }, m).styles).toEqual(["only.css"]);
+    expect(resolveConfig({}, m).styles).toBeUndefined(); // paged: untouched fallback discovery
+  });
+});
+
 describe("resolveConfig characterization — merge precedence (finding #24 refactor safety net)", () => {
   test("all-preset (no cli, no manifest overrides) reproduces the dtrpg preset verbatim", () => {
     const config = resolveConfig({}, {});
