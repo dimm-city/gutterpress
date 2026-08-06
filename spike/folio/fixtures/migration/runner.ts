@@ -65,6 +65,17 @@ interface PaginationModule {
   renderHtmlToPdf(htmlFile: string, outPdf: string): Promise<void>;
 }
 const { renderHtmlToPdf } = (await import(paginationModulePath)) as unknown as PaginationModule;
+// The Paged.js leg leaves browser-pool.ts's shared pre-warmed puppeteer
+// browser alive, which keeps the process from ever exiting (measured: the
+// table prints in seconds, then the run hangs for minutes until killed).
+// Same non-literal-specifier rationale as paginationModulePath above.
+const browserPoolModulePath = resolve(
+  HERE, "..", "..", "..", "..", "packages", "cli", "src", "lib", "browser-pool.ts",
+);
+interface BrowserPoolModule {
+  closeBrowser(): Promise<void>;
+}
+const { closeBrowser } = (await import(browserPoolModulePath)) as unknown as BrowserPoolModule;
 const FIXTURES_DIR = join(HERE, "fixtures");
 const OUT_DIR = join(HERE, "out");
 mkdirSync(OUT_DIR, { recursive: true });
@@ -544,6 +555,7 @@ async function main() {
       process.exitCode = allExpected ? 0 : 1;
     } finally {
       await browser.close();
+      await closeBrowser();
     }
     return;
   }
@@ -588,9 +600,9 @@ async function main() {
   // KNOWN_DIVERGENCES: fixtures whose Paged.js assertion is EXPECTED to fail
   // today, with a documented, measured reason (README.md's "Divergences"
   // section) — a Paged.js defect, not a Folio regression. Keeping the exit
-  // code green through these two lets this runner be a real CI gate (fails
-  // on an UNEXPECTED break) instead of permanently red on findings this
-  // spike already recorded on purpose.
+  // code green through these entries lets this runner be a real CI gate
+  // (fails on an UNEXPECTED break) instead of permanently red on findings
+  // this spike already recorded on purpose.
   const KNOWN_DIVERGENCES: Record<string, "folio" | "pagedjs"> = {
     "03b-mirrored-binding-var": "pagedjs",
     "04-folio-restart": "pagedjs",
@@ -612,6 +624,9 @@ async function main() {
     );
   }
   process.exitCode = unexpectedFailures.length > 0 ? 1 : 0;
+  // Tear down the Paged.js leg's shared pre-warmed browser, or the process
+  // never exits (see the closeBrowser import note above).
+  await closeBrowser();
 }
 
 if (import.meta.main) await main();

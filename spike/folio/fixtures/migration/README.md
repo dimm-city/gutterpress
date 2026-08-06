@@ -17,7 +17,7 @@ cd spike/folio/fixtures/migration
 bun run runner.ts                 # all 8 small fixtures (~10s)
 bun run runner.ts 03               # just fixture 03 (id prefix match)
 bun run runner.ts --kitchen-sink nonexistent   # only the combined book
-bun run runner.ts --kitchen-sink   # 8 fixtures + the combined book
+bun run runner.ts --kitchen-sink   # 9 fixtures + the combined book
 ```
 
 `fixtures/99-kitchen-sink.ts` is a **generator**, not a static file — after

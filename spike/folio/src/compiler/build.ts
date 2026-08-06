@@ -446,7 +446,7 @@ async function printPdf(page: Session): Promise<Uint8Array> {
  * beyond the list silently degrades to a decimal fallback) — the loop must
  * not call that a fixpoint.
  */
-function mapSignature(map: Record<string, number>, pageCount: number): string {
+export function mapSignature(map: Record<string, number>, pageCount: number): string {
   return (
     Object.keys(map)
       .sort()

@@ -165,10 +165,13 @@ describe("restartedPageValues — resetSites + measured pageMap -> pageCounterVa
     expect(restartedPageValues([], { a: 1 }, 5)).toBeNull();
   });
 
-  test("resolves resetSites against the measured id->page map, same as pageCounterValues", () => {
-    // front matter 4pp, restart element measured on physical page 5
+  test("resolves resetSites against the measured id->page map", () => {
+    // front matter 4pp, restart element measured on physical page 5:
+    // pages 1-4 keep their physical numbers, then the restart counts 1, 2.
+    // Hand-computed — NOT asserted against pageCounterValues (which this
+    // function calls through), so a bug in either function fails here.
     const result = restartedPageValues([{ id: "ch1", start: 1 }], { ch1: 5 }, 6);
-    expect(result).toEqual(pageCounterValues([{ page: 5, start: 1 }], 6));
+    expect(result).toEqual([1, 2, 3, 4, 1, 2]);
   });
 
   test("an id absent from the map (unmeasured) is dropped, like pageCounterValues' page<=0", () => {

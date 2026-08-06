@@ -61,7 +61,7 @@ The two rules worth knowing before touching the code, both learned the hard way:
 
 ```bash
 bun install
-bun run spikes            # all 15 spikes against a real browser (~19s, 212 checks)
+bun run spikes            # all 15 spikes against a real browser (~19s, 217 checks)
 bun run compare           # current Gutterpress vs this spike, same book
 bun compare/diff-report.ts a.pdf b.pdf   # content-aligned artifact diff
 bun spikes/run-all.ts s1  # just one

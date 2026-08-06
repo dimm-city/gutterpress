@@ -1,5 +1,22 @@
 # Current Gutterpress (Paged.js) vs the Folio spike — same book, both engines
 
+> [!WARNING]
+> **CORRECTION (2026-08-06): the type-scale conclusion in this file is
+> refuted.** This document attributes the field guide's 1.364× type-size gap to
+> Paged.js scaling the book up. Independent re-measurement proved the opposite:
+> Paged.js applies **no scale** (it renders identically to script-stripped
+> plain Chromium on the full field-guide stylesheet), and the smaller type on
+> the plain/Folio legs is **Chromium print shrink-to-fit compressing those
+> renders** — the un-paginated document lays out ~960px wide against ~705pt
+> printable, and Folio's own PDF build is compressed **identically** (probe:
+> 58.45pt on both legs vs 79.73pt uncompressed control). So "Folio typesets at
+> the 12pt the CSS declares" is **wrong on this book**: 13.38pt is the
+> compressed size, and Paged.js's 18.25pt is the *uncompressed* rendering.
+> The pagination-agreement, gutter-fidelity, drift-profile and `filter:`
+> findings below are unaffected. Authoritative account: `ENGINE.md` §9
+> ("What the 1.364× actually is") and `MIGRATION.md` Step 1/Step 2.
+> Sections below are left as written; read them against this correction.
+
 Reproduce with:
 
 ```bash
@@ -214,17 +231,19 @@ glyphs → fewer characters per line → 296 pages where the CSS as written yiel
 200. Anchor tracking through the book shows the drift accumulating smoothly to a
 stable 1.50× page ratio by mid-book, not jumping at any one construct.
 
-**This is the migration risk, and it is not a Folio defect.** The field guide is
-typeset at ~136 % of what its stylesheet specifies, so its `pt` values do not
-mean what they say. Adopting Folio would reflow the entire book to 200 pages at
-genuinely-12 pt type. Whether the fix is to re-tune the tokens (≈16.4 pt to
-preserve today's appearance) or to accept the smaller type is an editorial
-decision, not a technical one — but it must be made deliberately, and it is
-invisible until something renders the CSS faithfully. The scale originates in
-Paged.js's layout, not in the book: no `.pagedjs_*` rule sets `font-size`,
-`zoom`, `transform` or `scale`, and Gutterpress prints with explicit
-`width`/`height` from the sheet's computed style rather than `preferCSSPageSize`
-(`packages/cli/src/lib/pagination.ts`).
+**~~This is the migration risk, and it is not a Folio defect.~~ REFUTED — the
+causality here is backwards (see the correction banner at the top).** The
+paragraph as originally written claimed the field guide is typeset at ~136% of
+its stylesheet and that "the scale originates in Paged.js's layout." Measured
+false: Paged.js renders the full field-guide stylesheet identically to plain
+Chromium with scripts stripped (18.252pt both ways) — it applies no scale. The
+plain and Folio legs are the ones that deviate, compressed by Chromium print
+shrink-to-fit because the un-paginated document overflows the printable width
+(~960px vs ~705pt; injected-probe ratio exactly 1/1.364). Folio's 200-page /
+"genuinely-12pt" render is a *compressed* render, not a faithful one. The real
+migration risk is therefore different: the book's over-wide content (a
+`dc-op-manual` CSS issue) must be fixed before ANY engine's un-shimmed render
+of it means anything. Full account: `ENGINE.md` §9.
 
 ### Folio is 1.6× SLOWER here, and the reason is structural
 
@@ -463,9 +482,12 @@ Folio simply pays the print twice.
 
 With the confounds removed, **the two engines agree on pagination**: same page
 count to 1.3%, identical type, and long runs of constant offset rather than
-scattered disagreement. Folio is more faithful to the stylesheet (binding
-gutters, and the 12 pt the CSS actually declares), and slower by a factor that
-is understood and attributable to one design decision.
+scattered disagreement. Folio is more faithful to the stylesheet on binding
+gutters (Paged.js drops `var()` `@page` margins). ~~and the 12 pt the CSS
+actually declares~~ — **that half is refuted**: Folio's smaller type on this
+book is Chromium shrink-to-fit compression, not fidelity (see the correction
+banner and `ENGINE.md` §9). Folio is slower by a factor that is understood and
+attributable to one design decision.
 
 The remaining decisions — **since resolved; the authoritative record is
 [`MIGRATION.md`](./MIGRATION.md) "Decisions already made"**:

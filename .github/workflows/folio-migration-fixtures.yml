@@ -1,7 +1,7 @@
 name: Folio migration fixtures
 
 # spike/folio's migration fixture set (spike/folio/fixtures/migration/):
-# 8 small fixtures, each proving one construct from MIGRATION.md Step 3,
+# 9 small fixtures, each proving one construct from MIGRATION.md Step 3,
 # built on BOTH engines (Folio via spike/folio/src/compiler/build.ts, and
 # the SHIPPED Paged.js pipeline via packages/cli/src/lib/pagination.ts) and
 # checked with an independent poppler-based reader, never Folio's own model
@@ -10,16 +10,17 @@ name: Folio migration fixtures
 # builds it with --kitchen-sink, which this job never passes — so this job
 # stays fast (~10-20s of fixture builds, plus install/setup).
 #
-# Two of the eight fixtures (04-folio-restart, 08-recto-verso-blank) are
-# EXPECTED to fail their assertion on Paged.js today — documented, measured
-# reasons in spike/folio/fixtures/migration/README.md's "Divergences"
-# section. `runner.ts` itself knows about these two (its KNOWN_DIVERGENCES
-# allowlist) and only sets a nonzero exit code for an UNEXPECTED failure —
-# a build crash, a probe crash, any of the other six fixtures failing, or
-# either known-divergent fixture failing on the WRONG engine. If one of the
-# two known cases starts PASSING, the job still exits 0 but prints a "stale
-# README" note — that is a welcome surprise, not a break, and gets fixed by
-# updating the README, not by touching this workflow.
+# Three of the fixtures (03b-mirrored-binding-var, 04-folio-restart,
+# 08-recto-verso-blank) are EXPECTED to fail their assertion on Paged.js
+# today — documented, measured reasons in
+# spike/folio/fixtures/migration/README.md's "Divergences" section.
+# `runner.ts` itself knows about these (its KNOWN_DIVERGENCES allowlist) and
+# only sets a nonzero exit code for an UNEXPECTED failure — a build crash, a
+# probe crash, any other fixture failing, or a known-divergent fixture
+# failing on the WRONG engine. If one of the known cases starts PASSING, the
+# job still exits 0 but prints a "stale README" note — that is a welcome
+# surprise, not a break, and gets fixed by updating the README, not by
+# touching this workflow.
 
 on:
   pull_request:

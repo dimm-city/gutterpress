@@ -48,7 +48,7 @@ the pipeline shipping today.
 | fix | why | evidence |
 | --- | --- | --- |
 | **Mirrored binding gutters** | The book declares a 0.125in binding offset via `var(--binding-margin, …)`; Paged.js silently drops that declaration. Root-caused to Paged.js itself (not `packages/cli`) — see below. Not fixed; documented. | Folio 55pt recto / 46pt verso; Gutterpress 52/53pt either parity (`compare/ab-report.py`) |
-| **`generateDocumentOutline`** | ✅ **DONE** (`bfcbd15`): `outline: true` in `pagination.ts`'s `page.pdf()` call. 0 → 155 bookmarks, all 155 destinations landing on a page whose text contains the bookmark title (verified with two readers that share no code with our pipeline). ⚠️ Correction: `tagged: true` is a **no-op** — `/StructTreeRoot` and `/MarkInfo <</Marked true>>` were already present before the commit. Bookmarks are the whole delta. The desktop export path (`packages/desktop/electron/pdf-export.ts`) still has neither flag. | COMPARISON.md §A |
+| **`generateDocumentOutline`** | ✅ **DONE** (`bfcbd15`): `outline: true` in `pagination.ts`'s `page.pdf()` call. 0 → 155 bookmarks, all 155 destinations landing on a page whose text contains the bookmark title (verified with two readers that share no code with our pipeline). ⚠️ Correction: `tagged: true` is a **no-op** — `/StructTreeRoot` and `/MarkInfo <</Marked true>>` were already present before the commit. Bookmarks are the whole delta. The desktop export path got the same fix (`a5123dd`: `generateDocumentOutline`/`generateTaggedPDF` on `webContents.printToPDF`), **measured** in headless Electron 42 — flags on → `/Outlines` + `/StructTreeRoot` present, flags off → neither; also measured: the CDP params alone suffice, Electron's main does NOT need the `--generate-pdf-document-outline`/`--export-tagged-pdf` launch flags puppeteer adds by default. | COMPARISON.md §A |
 | **Scope `filter:`** | ~90% of build time on **both** engines, and it silently rasterizes card text to 300 DPI bitmaps — not selectable, searchable or accessible in the released PDF. ⚠️ **Partially done**: `packages/cli/src/lib/printsafe.ts` now emits a print-safety **warning** (`printsafe/no-risky-print-effects`) naming these exact measured consequences whenever `filter:` appears in author CSS — see its test in `printsafe.test.ts`. The actual scoping — rewriting the design guide's CSS so `filter:` applies to the smallest possible selector — is unchanged and out of scope for this repo: it lives in the book's own CSS, owned by `dc-op-manual`. | 57.0s → 6.2s over 60pp; [`ENGINE.md`](./ENGINE.md) §10 |
 | **Explain the 1.364× scale** | ✅ **RESOLVED — and it inverts the headline.** "Paged.js inflates, triggered by `@font-face` rule order" was refuted (font substitution, not a scale). The follow-up finding — "the 1.364× is Chromium print shrink-to-fit compressing the PLAIN render" — is correct as far as it went, but the open question it left ("is Folio's leg compressed the same way?") is now answered: **yes, identically.** `folio build()`'s only `Page.printToPDF()` call (`src/compiler/build.ts`'s `printPdf()`, used at every tier) is a bare CDP print of the raw document with no width-fitting of its own — the multicol fragmentation that would make it immune belongs to Folio's on-screen *viewer*, not its PDF build path. Measured on the real staged field guide: Folio's real body-text "chapters" prints **13.38pt**, matching plain Chromium's compressed **13.381pt** — not the shipped Paged.js PDF's **18.26pt** (re-confirmed), and Folio's own build lands at **201 pages**, same as the plain-Chromium leg, both short of Paged.js's 301. Paged.js's number is the honest one here: pagination removes the over-wide trigger by construction; Folio's native-print path does not. | `ENGINE.md` §9 (resolved subsection); four-leg synthetic table (53.15/79.73pt, ratio 0.6666 on both engines) + the field-guide re-measurement (13.38pt Folio vs 13.381pt plain vs 18.26pt Paged.js) |
 
@@ -150,12 +150,17 @@ Under Folio, `12pt` means 12pt once a document is not over-wide. The tokens
 become honest, which is the whole point — but it forces a decision that has
 been made implicitly until now.
 
-**Do not pick the size by matching today's output.** Every visual judgment in
-the book so far was made through a 1.364× distortion, so "what it looks like
-now" is not a design decision anyone actually took. At true size, 12pt on the
-~7.2in measure is on the small side and 16.4pt is genuinely large; the right
-answer is probably between, putting the book somewhere between 200 and 296
-pages. Set the tokens from a proof at real size, then accept the page count.
+**The "distortion" framing this section was written under is dead** (see the
+premise correction above): today's shipped output is the *uncompressed*,
+honest rendering of the CSS — the visual judgments made against it were made
+at the real size, and its ~18.25pt-glyph body text is what a 12pt declaration
+plus this book's fonts and layout genuinely produce **when the content fits
+the page**. What changes under Folio is not the size but the fragility: fix
+the over-wide layout first, then take the proof at true size and set the
+tokens from it. If the proofed size matches today's output, no retune is
+needed at all; if the team wants different sizes, that is a design choice made
+deliberately, not a correction of an engine artifact. Either way, set the
+tokens from a proof at real size, then accept the page count.
 
 The `body { zoom: 1.5 }` shim in `compare/fg-shim.css` exists **only** to make
 A/B measurements comparable. **Decision 1 above: it is deleted on adoption,

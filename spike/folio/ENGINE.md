@@ -12,7 +12,7 @@ why the version is pinned and why these facts are re-measured rather than
 remembered.
 
 Measured on Chrome **151.0.7922.75**. Re-run with `bun run spikes`
-(15 spikes, 212 checks, ~19 s).
+(15 spikes, 217 checks, ~19 s).
 
 ---
 

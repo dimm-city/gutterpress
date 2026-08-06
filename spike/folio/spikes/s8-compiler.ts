@@ -10,7 +10,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { launchChromium, type Browser } from "../src/shared/cdp.ts";
-import { build } from "../src/compiler/build.ts";
+import { build, mapSignature } from "../src/compiler/build.ts";
 import { inspectPdf, PT_PER_IN as IN } from "../src/shared/pdf-inspect.ts";
 import { bookHtml } from "../fixtures/make-book.ts";
 import { Spike, writeArtifact, OUT_DIR } from "./harness.ts";
@@ -189,6 +189,17 @@ html { font: 11pt/1.45 'DejaVu Serif', serif } body { margin: 0 }
     "§10 predict-then-verify HITS on this fixture: exactly one print",
     r3.prints === 1,
     `${r3.prints} print(s)`,
+  );
+  // C2 GATE (F2): the fixpoint signature must distinguish two states whose
+  // id->page maps are identical but whose page counts differ — the exact
+  // condition under which an under-predicted count used to converge with an
+  // undersized @counter-style symbol list (running head silently degrading
+  // to a decimal on the trailing page). A revert that drops pageCount from
+  // mapSignature makes these equal again and fails here.
+  s.check(
+    "fixpoint signature distinguishes same-map/different-pageCount states",
+    mapSignature({ a: 1, b: 3 }, 4) !== mapSignature({ a: 1, b: 3 }, 5),
+    "",
   );
 
   const t3 = pdfText(join(OUT_DIR, "s8-tier3.pdf"));
