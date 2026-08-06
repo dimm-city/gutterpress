@@ -31,6 +31,7 @@ Read in this order depending on what you need.
 | [`RESULTS.md`](./RESULTS.md) | The M0 verdict on the original proposal, spike by spike, with the findings that amend it. |
 | [`COMPARISON.md`](./COMPARISON.md) | Head-to-head against the current Paged.js pipeline on the same book. |
 | [`DIFFERENCES.md`](./DIFFERENCES.md) | The exhaustive artifact diff, the full defect ledger (fixed / deleted / inherent), and the three previously-untested areas. |
+| [`MIGRATION.md`](./MIGRATION.md) | **The adoption plan.** Four fixes worth making regardless, the type-size decision, and the time-boxed integration spike with its fixture requirements. |
 
 The two rules worth knowing before touching the code, both learned the hard way:
 
