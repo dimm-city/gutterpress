@@ -72,6 +72,8 @@ export async function renderChapters(
     onCssAssets?: (copies: AssetCopy[]) => void;
     /** Non-fatal notices from the inliner (e.g. a remote `url()` left as-is). */
     onStyleWarnings?: (warnings: string[]) => void;
+    /** See {@link assembleBookHtml}'s option of the same name (Section D spike). */
+    engine?: "paged" | "folio";
   } = {}
 ): Promise<string> {
   // The SAME resolver the editor uses, so what gets inlined is always the file
@@ -106,6 +108,7 @@ export async function renderChapters(
     wrapChapters: opts.wrapChapters,
     onChapterWarnings: opts.onChapterWarnings,
     onImageRefs: opts.onImageRefs,
+    engine: opts.engine,
   });
 }
 
@@ -130,6 +133,8 @@ export async function renderChaptersToFile(
     onImageRefs?: (refs: string[]) => void;
     onCssAssets?: (copies: AssetCopy[]) => void;
     onStyleWarnings?: (warnings: string[]) => void;
+    /** See {@link renderChapters}'s option of the same name (Section D spike). */
+    engine?: "paged" | "folio";
   } = {}
 ): Promise<string> {
   await mkdir(outDir, { recursive: true });
@@ -143,6 +148,7 @@ export async function renderChaptersToFile(
     onImageRefs: opts.onImageRefs,
     onCssAssets: opts.onCssAssets,
     onStyleWarnings: opts.onStyleWarnings,
+    engine: opts.engine,
   });
   const outFile = join(outDir, BOOK_HTML_FILENAME);
   await writeFile(outFile, html);

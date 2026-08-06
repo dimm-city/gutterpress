@@ -203,6 +203,7 @@ gutterpress build [input-dir] [options]
   --skip-lint             Skip the CSS print-safety pass (default: lint runs for pdf/pdfx)
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
+  --engine <name>         paged (default) | folio   [Section D spike — see spike/folio/MIGRATION.md]
 ```
 
 ### `gutterpress publish`

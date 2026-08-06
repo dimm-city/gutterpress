@@ -211,6 +211,207 @@ already banked.
 
 ---
 
+## Step 3 — integration spike results (2026-08-06)
+
+Built one flag, `gutterpress build --engine folio`, on `examples/gutterpress-user-guide`
+(the largest in-repo example). Time-boxed; PDF path is real and measured
+end-to-end, preview is NOT wired (see below) — that gap is itself the
+headline finding.
+
+### What was built
+
+- `packages/cli/src/commands/build.ts` — `--engine <paged|folio>` flag.
+- `packages/cli/src/lib/build-runner.ts` — `BuildRunnerOptions.engine`;
+  `PdfOutput.finish` branches to a Folio call instead of `renderHtmlToPdf()`
+  when `engine === "folio"`; preflight/prewarm skip `packages/cli`'s own
+  Chromium pool for the same case (Folio launches its own).
+- `packages/cli/src/lib/markdown/assemble.ts` + `markdown/index.ts` — thread
+  `engine` down to the assembler so the Paged.js polyfill `<script>` slot is
+  omitted entirely (not swapped) when `engine === "folio"`.
+- `packages/cli/src/lib/folio-engine.ts` (**new**) — the actual bridge:
+  dynamically imports `spike/folio/src/compiler/build.ts` and drives it
+  directly against the assembled `book.html` file.
+- `packages/cli/README.md` — documented the flag (`readme-drift.test.ts`
+  enforces `--help` ⇄ README parity and caught the omission).
+
+**6 files touched** (5 modified + 1 new) out of the 32 non-test files under
+`packages/cli/src` that reference Paged.js, and **0 files touched** under
+`packages/desktop/src` (16 reference Paged.js there) — the desktop app was
+never opened.
+
+### What had to be FORKED, named explicitly
+
+1. **`folio-engine.ts` itself is a fork, not an integration.** It reaches
+   `spike/folio/src/compiler/build.ts` with a *relative cross-directory
+   import*. `spike/folio` is not a Bun workspace member (root `package.json`
+   `workspaces` is `["packages/*"]` only) and is not published. This works
+   from `bun packages/cli/src/cli.ts` (source checkout) but is provably
+   incompatible with both shipping targets: the `bun build --compile` binary
+   never bundles `spike/`, and the desktop app's electron-vite build doesn't
+   either. **This is the single largest blast-radius item**: a real
+   integration needs Folio promoted to an actual package (its own
+   `package.json`, workspace membership, a build step emitting `.d.ts`) —
+   not a bigger flag, a different starting point.
+2. **A second, independent Chromium launcher.** Folio drives the *system*
+   Chromium via its own raw-CDP `launchChromium()`
+   (`spike/folio/src/shared/cdp.ts`), completely separate from
+   `packages/cli/src/lib/browser-pool.ts` (puppeteer-core, connection
+   pooling, warm-reuse across preview rebuilds). The flag does not share a
+   browser instance between the two engines — each `--engine folio` build
+   launches and tears down its own Chromium process. Measured cost of that:
+   see wall-clock below.
+3. **`renderHtmlToPdf()`'s HTTP staging is not engine-agnostic despite
+   looking like an extension seam.** The existing injected-`PdfRenderer`
+   mechanism (`opts.pdfRenderer`, already used by the Electron desktop) looks
+   like the natural place to plug Folio in — it accepts any renderer
+   function. It is NOT sufficient: `renderHtmlToPdf()`'s own staging
+   (`paginationOverlays` → `pagedjs.ts`'s `patchHtmlStringForPagedjs`)
+   unconditionally injects the Paged.js polyfill into the served HTML
+   *regardless of which renderer runs against it*, and does so even with no
+   polyfill-tag marker present (a deliberate fallback — finding #22, "a doc
+   that merely mentions 'pagedjs' must not silently skip loading it"). First
+   attempt used this seam and produced a real, silent, measured failure:
+   Folio's own Chromium navigated to a Paged.js-staged URL, Paged.js started
+   re-paginating the live DOM, and Folio's fragmentation ran against a
+   document being rewritten out from under it — **output dropped from 61pp /
+   9,699 words to 6pp / 754 words, no error thrown, exit code 0.** Root
+   cause confirmed by driving Folio's own CLI directly against the identical
+   assembled `book.html` with NO staging: 61pp, 9,699 words, matching C2's
+   baseline exactly. Fix: `PdfOutput.finish` calls
+   `folio-engine.ts`'s `buildFolioPdf()` directly on the plain file, bypassing
+   `renderHtmlToPdf()` and `paginationOverlays` entirely. **Named finding**:
+   the `PdfRenderer` seam is Paged.js-coupled at the staging layer, not just
+   the print layer — a future non-spike integration cannot reuse it as-is.
+4. **`tsc` boundary.** A `typeof import("../../../../spike/folio/...")`
+   type-only cast (tried first, for type safety across the boundary) pulls
+   spike/folio's entire module graph into `packages/cli`'s `tsc --noEmit`
+   program, which then fails: `packages/cli/tsconfig.json` is stricter than
+   `spike/folio/tsconfig.json` (e.g. `noUncheckedIndexedAccess`), so files
+   that typecheck clean under spike/folio's own gate produce 15+ errors under
+   `packages/cli`'s. Worked around with an untyped dynamic `import()` (`any`)
+   — meaning the bridge has **zero type safety across the boundary**, which a
+   real integration could not ship.
+
+### What was NOT touched — Decision #5 is currently VIOLATED by this spike
+
+Decision #5 ("preview and PDF switch together, per project, behind one
+flag — never independently") is **not met**. This flag only changes the PDF
+build path. Live preview (`packages/cli/src/preview/http-server.ts`,
+`preview/file-watcher.ts`'s `injectPreviewScripts`) still unconditionally
+injects `pagedjs-interface.js` + `pagedjs-bridge.js` + the Paged.js polyfill
+for every project, flagged or not — `--engine folio --format pdf` and
+`gutterpress preview` on the same project would currently disagree exactly
+the way Decision #5 warns against.
+
+Wiring preview was time-boxed out, but the concept was validated separately
+(not shipped): the assembled `book.html` (engine: folio, no polyfill tag)
+was hand-loaded in real headless Chromium with Folio's viewer bundle
+(`spike/folio/dist/folio.js`) injected in place of the polyfill script.
+Result: **0 `.pagedjs_*` classes, no polyfill script present, Folio
+self-mounted and fragmented the document client-side to 65 pages** (17
+`.folio-strip` contexts, `--folio-pages` custom properties summed) — in the
+same ballpark as the 61-page print output (the print/predict gap the C2
+report already documents), with no server round-trip needed. So the
+mechanism is plausible, but making it real requires:
+- Serving `spike/folio/dist/folio.js` (+ `folio-agent.js`) as a preview asset
+  — `packages/cli/src/lib/embedded-assets.ts`'s bundling list would need a
+  new entry, itself the same "promote spike/folio to a real package" problem
+  as finding #1 above, now on the preview side too.
+- A `injectPreviewScripts` branch that swaps the Paged.js trio for the Folio
+  script instead of the current single unconditional rewrite.
+- Deciding what the preview toolbar's Paged.js-specific
+  `pagedjs-interface.js`/`pagedjs-bridge.js` postMessage API becomes for
+  Folio — not investigated.
+
+None of this is unusually hard *individually*; it is unbuilt, and every item
+routes back through the same packaging gap as the PDF path's finding #1.
+
+### Measured
+
+- **Page count agreement (the success criterion this spike could actually
+  check):** PDF-only, both via `--engine folio`: **61 pages, 61 pages, 61
+  pages** across 3 runs — matches Folio's own direct CLI build on the
+  identical assembled HTML (61pp, 9,699 words, byte-for-byte the C2 report's
+  number) and Paged.js's own build of the same project (64pp — the two
+  engines' existing, already-documented divergence, not a regression from
+  this flag). Preview page count: **not measured** — preview isn't wired
+  (see above); the hand-probe above got 65pp from the viewer's own client-
+  side fragmentation on the same document, which is *close to* but not equal
+  to the 61pp print number — expected, and already documented as the
+  predict/verify gap in the C2 report, not a new finding.
+- **DOM verification (inspected the artifact, not the code, per the task's
+  instruction):**
+  `grep -o "pagedjs[a-zA-Z_-]*" book.html` on the `--engine folio`-assembled
+  HTML still finds **3 residual identifiers**:
+  `--pagedjs-margin-left`/`--pagedjs-margin-right` (custom properties emitted
+  by `markdown-it-paged.js`'s own `PAGED_CSS` — generic, default to `0px`,
+  functionally inert under Folio, but the *name* is Paged.js-branded and
+  untouched by this task's scope — CLAUDE.md §6 says `markdown-it-paged` owns
+  its full CSS contract) and `.pagedjs_sheet` (a selector in the EXAMPLE
+  PROJECT'S OWN `examples/gutterpress-user-guide/styles/guide.css`, targeting
+  a Paged.js-only DOM class for full-bleed background painting — under Folio
+  this rule is simply dead, meaning that background-painting effect is
+  **silently absent** in Folio output, a real visual regression for this
+  specific example, not caught by page-count parity). Neither is the
+  polyfill *loading* (confirmed: no `<script src="...paged.polyfill...">` in
+  the served/printed document; zero `.pagedjs_page`/`.pagedjs_*` runtime
+  classes in the printed PDF's structure) — so the letter of the success
+  criterion is met on the PDF path, but the example project's own CSS is not
+  actually engine-neutral, which page-count parity alone would have missed.
+- **Wall clock, PDF build, warm, n=3 each, same machine, same project:**
+  Paged.js (`gutterpress build --format pdf`): **2.8s, 4.2s, 3.7s**
+  (mean ≈3.6s). Folio (`--engine folio`): **6.1s, 7.6s, 7.6s**
+  (mean ≈7.1s, ~2x slower) — entirely attributable to finding #2 (no shared
+  warm browser; Folio launches its own Chromium from cold every call). A real
+  integration sharing one warm browser between the two paths would very
+  likely close most of this gap, but that sharing does not exist today.
+- **Preview startup:** not measured — no `--engine folio` preview path
+  exists to start.
+- **tsc / test suites (packages/cli, this task's own regression check, not
+  one of the binding spike/folio gates):** `bunx tsc --noEmit -p tsconfig.json`
+  clean (0 errors) after routing the `spike/folio` import through an untyped
+  `any` boundary (finding #4). `bun test`: 2222 pass → 2224 pass, 0 fail
+  (added 0 new tests — this is a spike, not a shipped feature; the only test
+  regression caught was `readme-drift.test.ts` flagging the undocumented
+  `--engine` flag, fixed by updating `README.md` in the same commit).
+- **spike/folio's own binding gates, unaffected (no spike/folio files
+  touched by this task):** `bun run spikes`: 15/15, 212 checks. `bun test`:
+  57 pass, 0 fail, 126 expect() calls. `bunx tsc --noEmit`: clean.
+
+### Recommendation against the decision gate: **SPRAWLING (partial)**
+
+Not sprawling in the sense of "touches everywhere" — 6 files in
+`packages/cli`, 0 in `packages/desktop`, existing tests unaffected. It is
+sprawling in the sense the gate actually cares about: **the PDF half looks
+contained only because it currently violates Decision #5** (preview and PDF
+must switch together; this spike ships PDF-only) and **only because it
+forks rather than shares** three separate subsystems (browser launch/pool,
+the `PdfRenderer` staging seam, and the module/package boundary itself). Two
+of those forks — the browser launcher and the `spike/folio` packaging gap —
+are prerequisites for the preview half to exist AT ALL, not incremental
+follow-up work; wiring preview does not add a fourth small thing, it forces
+finding #1 (promote `spike/folio` to a real, typed, workspace package) to
+actually happen before Decision #5 can be satisfied for even one project.
+That is a real, non-trivial engineering item (build tooling, `.d.ts`
+generation, a shared or reconciled browser-launch layer, a decision on what
+`packages/desktop`'s Electron `printToPDF` path does under `engine: folio`
+if desktop is ever in scope), not a flag.
+
+Given Step 1's four wins are already banked regardless of this outcome, and
+this spike found no NEW correctness problem with Folio itself (the 61pp
+number matches every prior measurement in this document exactly), the
+honest read is: **stop the "flip a flag today" framing; the packaging work
+(promote `spike/folio` to a workspace package with a real build + `.d.ts`,
+and reconcile or explicitly duplicate the browser-launch layer) is a
+prerequisite project of its own, sized independently of "book by book"
+migration.** Once that exists, "book by book" per Decision #5 is very
+plausibly contained — nothing measured here contradicts that — but it is
+not what "finish the two Folio gaps and migrate book by book" describes
+today, because today there is no book that can legally ship the `spike/`
+import at all.
+
+---
+
 ## Pitfalls — every one of these cost real time in the spike
 
 Measurement traps (they produce convincing wrong answers):
