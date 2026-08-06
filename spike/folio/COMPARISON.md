@@ -484,3 +484,55 @@ The remaining decisions are not technical:
 2. **Folio numbering** — Folio must synthesize the front-matter restart. Known
    mechanism, not yet built.
 3. **Build time** — acceptable, or worth removing the second print pass.
+
+---
+
+## Why the field guide is slow to print (both engines)
+
+The build cost is not pagination and not the art — it is `filter:`.
+
+Measured over 60 pages of the real book: **57.0 s with filters, 6.2 s without
+(9.2×)**. Over the same pages `box-shadow` costs nothing (57.0 s),
+`background-image` costs nothing (56.9 s), and hiding every `<img>` changes the
+PDF from 41.5 MB to 12.6 MB while leaving the time unchanged. `filter:` is
+**~90 % of print time and nothing else is close.**
+
+**Mechanism** (minimal A/B, one card with and without `drop-shadow`): PDF has no
+vector filter primitive, so Chromium rasterizes the whole filtered subtree to a
+**300 DPI bitmap**. Text inside becomes a picture of text — fonts vanish from
+the PDF entirely (1 CID TrueType → none), images appear (0 → 4), size grows
+4.2×. Full detail in [`ENGINE.md`](./ENGINE.md) §10.
+
+**This resolves an earlier mystery.** The "168 near-blank pages" and the Type 3
+fonts seen in both PDFs were never a layout fault — the card chapters' text is
+rasterized, so `pdftotext` cannot read it. Page 100 of the Gutterpress PDF
+carries a 2199×1517 @300 DPI image exactly where a text card is authored.
+
+**Three consequences for the book as shipped today** (Paged.js, not Folio —
+this is current-pipeline behaviour):
+
+1. Card text is **not selectable, searchable or accessible** in the released PDF.
+2. File size is inflated by bitmaps standing in for vector text.
+3. Every build pays the rasterization, on both engines.
+
+**Mitigation is authorial.** `box-shadow` is free and stays vector.
+`filter: drop-shadow()` is only needed when the shadow must follow a `clip-path`
+silhouette instead of the border box. Restricting `filter` to the elements that
+truly need it is the largest single build-time win available *and* restores text
+extraction. Note the design guide's own comment already documents the
+filter+clip-path pairing as deliberate — so this is a scoping exercise, not a
+blanket removal.
+
+Do not try to reclaim it with a cheap measurement pass: removing `filter` moves
+layout (it creates a containing block — 26 % of words shift), and
+`filter: opacity(1)` keeps the containing block but still rasterizes.
+
+## Where Folio's build time actually lands
+
+Folio's 806 s is **two** prints of a ~300-page book whose print cost is
+dominated by the above. The second print is not overhead — it is the only print
+containing the running heads and cross-references (see
+[`ARCHITECTURE.md`](./ARCHITECTURE.md) §10). **And it is export-only:** the
+viewer never prints, so the editing loop is unaffected. The available
+optimization is predict-then-verify (one print in the good case), not deleting a
+pass.

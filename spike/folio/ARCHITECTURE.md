@@ -230,7 +230,47 @@ Chromium 61/61 pages, adding only the running heads it synthesizes.
 
 ---
 
-## 10. State the limits you cannot fix
+## 10. The second print pass is the output, not overhead
+
+Tier 3's loop prints at the TOP of each iteration
+(`bytes = await printPdf(page)` in `build.ts`), so the passes are not
+"work then a redundant re-render":
+
+- **Pass 1** prints the document *before* any synthesis, purely to read the
+  `/Dests` page map. Its bytes are discarded.
+- Synthesis is then applied: `setGenerated()` (cross-reference text) and
+  `counterStyleCss()` (running strings).
+- **Pass 2** prints *with* synthesis applied — **these are the shipped bytes** —
+  and its page map is compared with pass 1's to confirm nothing moved.
+
+So "drop the second pass" would ship the pass-1 print: a book with no running
+heads and no cross-references. The second print is the only one that contains
+the synthesized content.
+
+The comparison is a real second job, not caution. Cross-reference text lands in
+the *content* flow (`::after`), so inserting "(p. 42)" can reflow a line and
+push content onto a new page — invalidating the page numbers just written.
+Running heads alone cannot do this, because margin boxes sit outside the content
+flow.
+
+**The optimization is therefore not to remove a pass but to remove the need for
+the measurement print:** predict the page map from the viewer (multicol, 0.11 s),
+apply synthesis, print once, then verify against *that same print's* `/Dests` —
+free, no extra print. Match ⇒ one print. Mismatch ⇒ reprint, i.e. today's cost.
+Correctness is unchanged because the verification is retained; only the
+optimistic path is new. The risk is bounded by viewer↔print parity (330/331
+blocks, ±1 page at knife edges — `ENGINE.md` §4): a chapter opener on a
+knife-edge boundary simply falls back to two prints.
+
+**This cost is export-only.** The viewer contains zero print/CDP code — it
+paginates with multicol and `getBoundingClientRect()`, feeding the same shared
+`synthesis.ts` functions. Printing happens only in `build()`, reached from
+`folio build` and the dev server's `/proof.pdf` route. The editing loop never
+pays it.
+
+---
+
+## 11. State the limits you cannot fix
 
 Three things Folio cannot do, written down rather than left to be discovered:
 

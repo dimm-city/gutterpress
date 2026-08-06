@@ -313,7 +313,60 @@ Two measured facts about `zoom` in the print path:
   the correct temporary shim for A/B tests that must reproduce Paged.js
   boundaries, and it quantifies the reflow a faithful engine causes.
 
-## 10. PDF/X hand-off
+## 10. `filter:` rasterizes the subtree at 300 DPI — the dominant print cost
+
+This is the single most expensive thing measured in this project, and it is a
+property of Chromium's PDF output, not of any tool wrapping it.
+
+**What it does.** A minimal A/B — two identical documents, one with
+`filter: drop-shadow(...)` on a card:
+
+| | no filter | with `drop-shadow` |
+| --- | --- | --- |
+| sentinel strings extractable | 2 | **0** |
+| fonts in the PDF | 1 CID TrueType | **none at all** |
+| embedded images | 0 | **4** (300 DPI, with soft masks) |
+| file size | 8,988 B | **37,435 B** (4.2×) |
+
+There is no vector filter primitive in PDF, so Chromium **rasterizes the entire
+filtered subtree into a bitmap** and embeds it — at 300 DPI, so print quality is
+preserved. The text inside a filtered element is no longer text; it is a picture
+of text.
+
+**Why it dominates the clock.** Instead of emitting a few hundred bytes of
+vector glyph references, the engine renders each filtered subtree to a 300 DPI
+raster, per element, per page, then compresses it. Measured on the field guide
+(60 pages): **57.0 s with filters, 6.2 s without — 9.2×.** For comparison, over
+the same 60 pages `box-shadow` costs nothing (57.0 s) and `background-image`
+costs nothing (56.9 s); hiding every `<img>` changes the PDF from 41.5 MB to
+12.6 MB and the time not at all. **`filter:` is ~90 % of print time and nothing
+else is close.**
+
+**Three consequences beyond speed**, all confirmed on the real book (page 100
+carries a 2199×1517 @300 DPI image plus a `Type 3` font where a text card is
+authored):
+
+1. **Text in filtered elements is not selectable, searchable, or accessible.**
+   This is why `pdftotext` recovers almost nothing from the card chapters of
+   *either* engine's PDF — the earlier "168 near-blank pages" reading was this,
+   not a layout fault.
+2. **File size inflates** — vector text replaced by 300 DPI bitmaps.
+3. **It costs both engines equally.** Paged.js and Folio print through the same
+   Chromium, so this expense is already in the current pipeline's build time.
+
+**The mitigation is authorial, not architectural:** `box-shadow` is free and
+stays vector. `filter: drop-shadow()` is only required when the shadow must
+follow a `clip-path` silhouette rather than the border box. Restricting
+`filter` to the elements that genuinely need the silhouette — and using
+`box-shadow` elsewhere — is the largest single build-time win available, and it
+restores text extraction for the affected content.
+
+Do **not** try to reclaim this by disabling `filter` for a measurement pass:
+`filter` creates a containing block, so removing it moves layout (measured: 26 %
+of words shift). `filter: opacity(1)` preserves the containing block but still
+rasterizes (measured: text stopped extracting), so it is not a shortcut either.
+
+## 11. PDF/X hand-off
 
 Ghostscript 10.06 converting a Chromium-printed PDF to PDF/X-1a with a real
 FOGRA39L profile (`s12`, 25 checks):
