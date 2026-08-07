@@ -7,6 +7,7 @@
  * there is exactly one implementation of each.
  */
 import { leaderFillCount, LEADER_RE } from "../shared/synthesis.ts";
+import { evaluate } from "../shared/content-value.ts";
 
 export interface StringSource {
   /** string name */
@@ -86,7 +87,7 @@ export async function collectCss(): Promise<string> {
 
 /** Every element that sets a string, in document order, with an id to measure. */
 export function stringSources(
-  stringSets: Array<{ selector: string; name: string }>,
+  stringSets: Array<{ selector: string; name: string; value?: string }>,
 ): StringSource[] {
   const out: StringSource[] = [];
   let order = 0;
@@ -100,10 +101,21 @@ export function stringSources(
     for (const el of els) {
       const attrs: Record<string, string> = {};
       for (const a of Array.from(el.attributes)) attrs[a.name] = a.value;
+      // The string VALUE is the declared expression (content(), attr(x),
+      // literals), evaluated exactly as the viewer evaluates it
+      // (ARCHITECTURE.md §1 — same function, decorate.ts does the same).
+      // Falling back to raw textContent shipped a chapter's ENTIRE text
+      // into a folio chip when the book declared `attr(data-ch)`.
+      const text = decl.value
+        ? evaluate(decl.value, {
+            text: (el.textContent ?? "").trim().replace(/\s+/g, " "),
+            attr: (n) => el.getAttribute(n) ?? undefined,
+          })
+        : (el.textContent ?? "").trim().replace(/\s+/g, " ");
       out.push({
         name: decl.name,
         id: ensureAnchor(el),
-        text: (el.textContent ?? "").trim().replace(/\s+/g, " "),
+        text,
         attrs,
         order: order++,
       });

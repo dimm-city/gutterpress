@@ -211,7 +211,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       const maxPasses = opts.maxPasses ?? 4;
       const sources = await page.evaluate<any[]>(
         `window.__folio.stringSources(${JSON.stringify(
-          model.stringSets.map((s) => ({ selector: s.selector, name: s.name })),
+          model.stringSets.map((s) => ({ selector: s.selector, name: s.name, value: s.value })),
         )})`,
       );
       // recto/verso forced breaks: Chromium treats them as plain page breaks
@@ -386,7 +386,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         AGENT,
         VIEWER,
         {
-          stringSets: model.stringSets.map((s) => ({ selector: s.selector, name: s.name })),
+          stringSets: model.stringSets.map((s) => ({ selector: s.selector, name: s.name, value: s.value })),
           rectoDecls,
           xrefSelectors,
           resets: model.counterResets,
