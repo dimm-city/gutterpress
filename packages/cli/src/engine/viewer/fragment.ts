@@ -110,22 +110,8 @@ export function injectBreakMapping(model: GcpmModel, doc: Document = document): 
   return css;
 }
 
-/**
- * Named page that applies to a top-level flow child.
- *
- * A `page:` assignment on a DESCENDANT (the `h1 { page: chapter }` shape) gives
- * the HEADING's page that template and breaks back to the default page right
- * after it — which is exactly how a "chapter opener" template is written, and
- * how both Chromium and Paged.js behave (verified against the Gutterpress user
- * guide theme). What it does NOT do is put the whole chapter on that template.
- * The viewer cannot reproduce a mid-container page change without chunking the
- * DOM, so it says so rather than diverging silently.
- */
-function pageNameOf(
-  el: Element,
-  model: GcpmModel,
-  warnings: string[],
-): string | undefined {
+/** Named page assigned directly ON `el` itself (not a descendant). */
+function directPageName(el: Element, model: GcpmModel): string | undefined {
   for (const a of model.pageAssignments) {
     try {
       if (el.matches(a.selector)) return a.page;
@@ -133,22 +119,86 @@ function pageNameOf(
       /* unsupported selector — ignore, never throw on author CSS */
     }
   }
+  return undefined;
+}
+
+/** Whether some descendant of `el` (not `el` itself) carries a page assignment. */
+function hasDescendantPageAssignment(el: Element, model: GcpmModel): boolean {
   for (const a of model.pageAssignments) {
     try {
-      const inner = el.querySelector(a.selector);
-      if (!inner) continue;
-      warnings.push(
-        `\`${a.selector} { page: ${a.page} }\` sits on a descendant, so in print only ${a.selector}'s own ` +
-          `page uses the "${a.page}" template (the opener idiom) and the rest of the run returns to the ` +
-          `default page. The screen preview applies it to the whole run. If the whole run was meant to use ` +
-          `the template, move \`page\` to the container; if this is a chapter opener, the PDF is correct.`,
-      );
-      return a.page;
+      if (el.querySelector(a.selector)) return true;
     } catch {
-      /* ignore */
+      /* unsupported selector — ignore */
     }
   }
-  return undefined;
+  return false;
+}
+
+interface Run {
+  page?: string;
+  nodes: HTMLElement[];
+}
+
+function pushRun(runs: Run[], page: string | undefined, nodes: HTMLElement[]) {
+  const last = runs[runs.length - 1];
+  if (last && last.page === page) last.nodes.push(...nodes);
+  else runs.push({ page, nodes });
+}
+
+/**
+ * Partition `kids` (all direct children of `container`) into runs of
+ * identical page context, in document order — recursively.
+ *
+ * A `page:` assignment on a DESCENDANT (the `h1 { page: chapter }` "chapter
+ * opener" shape) gives only that element's own fragment the named template;
+ * the run reverts to the default page right after it, because `page` is not
+ * inherited sideways to later siblings of the box that set it (verified
+ * against Chromium print and the Gutterpress user guide theme). A child with
+ * no page assignment of its own but a page-changing descendant is
+ * recursively exploded into synthetic sibling shells — shallow clones of
+ * the child (same tag/attributes, no content duplication; the fragmenter
+ * still only ever MOVES authored content) — so the opener element ends up
+ * in its own run/strip at the named geometry while the rest of the child's
+ * content lands in a following run/strip at the default geometry, matching
+ * print exactly.
+ *
+ * A child whose page assignment is on the CONTAINER itself (`directPageName`
+ * matches) is never recursed into — the whole subtree keeps that name, same
+ * as before this function existed.
+ */
+function explodeChildren(
+  container: Element,
+  kids: HTMLElement[],
+  model: GcpmModel,
+): Run[] {
+  const runs: Run[] = [];
+  for (const kid of kids) {
+    const own = directPageName(kid, model);
+    if (own !== undefined) {
+      pushRun(runs, own, [kid]);
+      continue;
+    }
+    if (!hasDescendantPageAssignment(kid, model)) {
+      pushRun(runs, undefined, [kid]);
+      continue;
+    }
+    const inner = explodeChildren(kid, Array.from(kid.children) as HTMLElement[], model);
+    if (inner.length <= 1) {
+      pushRun(runs, inner[0]?.page, [kid]);
+      continue;
+    }
+    // kid's own page context changes partway through its children: split it
+    // into one shell per inner run, inserted in kid's place, then drop the
+    // now-empty original.
+    for (const r of inner) {
+      const shell = kid.cloneNode(false) as HTMLElement;
+      for (const n of r.nodes) shell.appendChild(n);
+      kid.before(shell);
+      pushRun(runs, r.page, [shell]);
+    }
+    kid.remove();
+  }
+  return runs;
 }
 
 /**
@@ -170,13 +220,10 @@ export function buildStrips(
     (c) => !c.classList.contains("folio-layer"),
   ) as HTMLElement[];
 
-  const runs: Array<{ page?: string; nodes: HTMLElement[] }> = [];
-  for (const child of children) {
-    const page = pageNameOf(child, model, warnings);
-    const last = runs[runs.length - 1];
-    if (last && last.page === page) last.nodes.push(child);
-    else runs.push({ page, nodes: [child] });
-  }
+  // `warnings` is kept in the signature (opts callers still pass it) but no
+  // fidelity warning remains to raise here — explodeChildren resolves the
+  // opener idiom structurally instead of diverging and warning about it.
+  const runs = explodeChildren(root, children, model);
 
   const strips: StripInfo[] = [];
   for (const run of runs) {

@@ -93,32 +93,41 @@ const KNOWN_DIVERGENCES: Array<{
   kind: DivergenceKind;
   reason: string;
 }> = [
-  // Root-caused 2026-08-08: examples/with-design-guide/design-guide/styles/guide.css
-  // sets `page: chapter` on `h1` (line 255), a DESCENDANT of the chapter's
-  // content flow, per the "frozen chapter-opener composite" pattern
-  // (`@page chapter` at guide.css:181 — a much larger top margin for the
-  // opener). Per the CSS Paged Media spec, a `page` value set on a
-  // descendant box only names the page fragment THAT BOX starts on; later
-  // fragments of the same flow revert to the ancestor's page value. Chromium
-  // print gets this right (42pp) — fragment.ts's viewer does not: it
-  // resolves one page name per `.folio-strip` (one "run" = one chapter) from
-  // whichever element first requested a named page anywhere in it, so the
-  // viewer applies `chapter`'s oversized opener margins to EVERY page of
-  // that chapter, not just the opener page, inflating design-guide's 3
-  // chapters from 42pp to 59pp (fragment.ts already self-reports this exact
-  // mismatch as an authoring warning — see `compensateRepeatedHeaders`/
-  // strip-building in fragment.ts — but does not correct for it). This is a
-  // real fragment.ts limitation in named-page-context scoping, not a
-  // measurement artifact of this gate: `viewerPageCount`/`predicted` in
-  // build.ts both pin the same deterministic viewport print measures
-  // against, and design-guide declares no recto/verso breaks or
-  // counter-resets (the two divergence classes the migration plan already
-  // named as likely). Every downstream page-of-element and target-counter()
-  // mismatch below is a direct consequence of this single root cause, not 6
-  // independent bugs. Must be fixed in fragment.ts's page-context
-  // resolution before Phase 5's default flip.
-  { fixture: "design-guide", kind: "pageCount", reason: "viewer over-applies `page: chapter`'s opener template to a whole chapter run instead of just its opener fragment (root cause above)" },
-  { fixture: "design-guide", kind: "pageMap", reason: "downstream of the pageCount divergence above — every id after the first chapter opener lands on a viewer page shifted by the accumulated over-count" },
+  // UPDATE 2026-08-08: the ORIGINAL root cause named here — fragment.ts
+  // resolving one page name per `.folio-strip` from whichever descendant
+  // first requested a named page, applying `page: chapter`'s oversized
+  // opener margins to the WHOLE chapter run (59pp) instead of only the
+  // opener fragment — is FIXED (`explodeChildren` in fragment.ts: a child
+  // with no page assignment of its own but a page-changing descendant is
+  // recursively split into synthetic sibling shells, so the opener element
+  // gets its own run/strip at the named geometry and the rest of the run
+  // reverts to the default geometry, matching Chromium print's box-level
+  // `page` semantics). That took design-guide from 59pp to 53pp.
+  //
+  // A SECOND, unrelated, pre-existing divergence remains and accounts for
+  // the rest of the gap (53pp vs print's 42pp): `pre code` in guide.css sets
+  // an explicit `font-size: 9pt; line-height: 1.5` (both on `pre code`
+  // itself, not inherited) — this SHOULD compute an 18px line box (12px ×
+  // 1.5). Measured directly (`code.getClientRects()`), the viewer instead
+  // renders 22px between lines — the SAME 22px `1.5 × 14.667px` you get from
+  // `pre`'s own INHERITED font-size (11pt, from `body`), not `code`'s own
+  // 12px. Confirmed NOT caused by fragment.ts or any code in this repo: it
+  // reproduces on a completely vanilla `page.navigate()` with
+  // `Emulation.setEmulatedMedia({media:"print"})` and ZERO viewer/agent
+  // script injected. The real print page (`Page.printToPDF`, measured via
+  // `pdftotext -bbox` glyph y-coordinates on the built PDF) uses the
+  // CORRECT ~17.5px spacing. So this is a Chromium quirk specific to
+  // `Emulation.setEmulatedMedia("print")` on a live tab vs real
+  // `printToPDF` for this exact shape (an inline element with its own
+  // explicit unitless `line-height` nested in a block whose OWN inherited
+  // font-size differs) — not a fragmenter/page-context bug, and not fixable
+  // in fragment.ts. It concentrates in code-heavy chapters (CLI/Markdown
+  // Reference, Components), matching the growing per-chapter divergence.
+  // Needs its own investigation (possibly: mount `predictPageMap` against
+  // real print rendering instead of live-tab print-emulation) before this
+  // can be un-allowlisted.
+  { fixture: "design-guide", kind: "pageCount", reason: "residual ~11pp gap from a live-tab print-emulation vs real-printToPDF line-height quirk on `pre code` (see comment above) — NOT the named-page-context bug, which is fixed" },
+  { fixture: "design-guide", kind: "pageMap", reason: "downstream of the pageCount divergence above — ids after code-heavy chapters land on a viewer page shifted by the accumulated line-height quirk" },
   { fixture: "design-guide", kind: "targetCounter", reason: "downstream of the pageMap divergence above — target-counter() resolves through the same (wrong) viewer page map" },
 ];
 

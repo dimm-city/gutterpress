@@ -761,38 +761,65 @@
     }
     return css;
   }
-  function pageNameOf(el, model, warnings) {
+  function directPageName(el, model) {
     for (const a of model.pageAssignments) {
       try {
         if (el.matches(a.selector))
           return a.page;
       } catch {}
     }
+    return;
+  }
+  function hasDescendantPageAssignment(el, model) {
     for (const a of model.pageAssignments) {
       try {
-        const inner = el.querySelector(a.selector);
-        if (!inner)
-          continue;
-        warnings.push(`\`${a.selector} { page: ${a.page} }\` sits on a descendant, so in print only ${a.selector}'s own ` + `page uses the "${a.page}" template (the opener idiom) and the rest of the run returns to the ` + `default page. The screen preview applies it to the whole run. If the whole run was meant to use ` + `the template, move \`page\` to the container; if this is a chapter opener, the PDF is correct.`);
-        return a.page;
+        if (el.querySelector(a.selector))
+          return true;
       } catch {}
     }
-    return;
+    return false;
+  }
+  function pushRun(runs, page, nodes) {
+    const last = runs[runs.length - 1];
+    if (last && last.page === page)
+      last.nodes.push(...nodes);
+    else
+      runs.push({ page, nodes });
+  }
+  function explodeChildren(container, kids, model) {
+    const runs = [];
+    for (const kid of kids) {
+      const own = directPageName(kid, model);
+      if (own !== undefined) {
+        pushRun(runs, own, [kid]);
+        continue;
+      }
+      if (!hasDescendantPageAssignment(kid, model)) {
+        pushRun(runs, undefined, [kid]);
+        continue;
+      }
+      const inner = explodeChildren(kid, Array.from(kid.children), model);
+      if (inner.length <= 1) {
+        pushRun(runs, inner[0]?.page, [kid]);
+        continue;
+      }
+      for (const r of inner) {
+        const shell = kid.cloneNode(false);
+        for (const n of r.nodes)
+          shell.appendChild(n);
+        kid.before(shell);
+        pushRun(runs, r.page, [shell]);
+      }
+      kid.remove();
+    }
+    return runs;
   }
   function buildStrips(model, opts = {}, warnings = []) {
     const doc = document;
     const root = opts.root ?? doc.querySelector("main") ?? doc.body;
     const gap = opts.sheetGap ?? 24;
     const children = Array.from(root.children).filter((c) => !c.classList.contains("folio-layer"));
-    const runs = [];
-    for (const child of children) {
-      const page = pageNameOf(child, model, warnings);
-      const last = runs[runs.length - 1];
-      if (last && last.page === page)
-        last.nodes.push(child);
-      else
-        runs.push({ page, nodes: [child] });
-    }
+    const runs = explodeChildren(root, children, model);
     const strips = [];
     for (const run of runs) {
       const { geometry } = resolvePage(model, { name: run.page });
