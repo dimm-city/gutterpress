@@ -6,6 +6,11 @@ claim below was **measured** against real builds, not inferred from specs.
 Where a fix lives in a real stylesheet, the canonical example is
 `dc-op-manual/dc-design-guide/css/native-furniture.css`.
 
+> Companion doc: `docs/native-engine-dx-recommendations.md` — a ranked
+> proposal set for removing these gotchas at the engine layer (default
+> reset rules, build checks, CDP settings), so future books don't need the
+> per-book workarounds described here.
+
 The single most important mental-model shift: **Paged.js pre-cuts your content
 into page-sized DOM boxes before CSS ever runs; the native engine styles one
 continuous document that Chromium fragments at print time.** Almost every
@@ -109,6 +114,11 @@ a multicol — its pages are pre-cut.
   unenforceable**, and Chromium degrades badly: the child lands whole in one
   column and the neighbor column goes dead. If sections/cards inside a column
   wrapper can exceed a column's height, give them `break-inside: auto`.
+  Note that core's own `PAGED_CSS` ships `.section { break-inside: avoid }`
+  (markdown-it-paged.js:790, injected after author sheets) — so a book can
+  hit this collapse without ever writing the rule itself. Check the computed
+  style, not just your own stylesheets, when hunting the source of an
+  `avoid`.
 - **`column-fill: balance` on a multicol that fragments across pages leaves
   non-final page fragments with a dead second column.** Use
   `column-fill: auto` (sequential fill) on fragmenting multicol under native —
@@ -172,6 +182,13 @@ fixture — but only when the thing being kept-with can actually be placed:
 - The mirror trick works too: `.pagedjs_page`-scoped rules are dead selectors
   under native, so a shared sheet can carry Paged.js-only geometry by scoping
   it to the Paged.js DOM.
+- **Know what core CSS silently assumes.** `PAGED_CSS`'s `.full-bleed`
+  utility is built on `--pagedjs-margin-left/right`, custom properties only
+  the Paged.js polyfill sets. On the native engine they fall back to `0px`
+  and the class degrades to plain full-width — **no error, no warning, the
+  art just isn't full-bleed.** Until the engine emits engine-neutral margin
+  variables, set `--pagedjs-margin-left/right` yourself in the native leg's
+  stylesheet (matching your `@page` margins) if you use `.full-bleed`.
 
 ## 10. Debugging workflow that actually finds things
 
@@ -187,6 +204,13 @@ fixture — but only when the thing being kept-with can actually be placed:
   geometry) before writing a fix. Two of our worst wrong turns came from
   guessing selectors; every real fix came within minutes once the actual
   element and its computed values were on screen.
+- **Remember which media you're measuring.** A staged DOM you inspect (and,
+  as of this writing, the engine's own build-time audits) computes styles
+  under **screen** media unless print is explicitly emulated
+  (`Emulation.setEmulatedMedia({ media: "print" })`) — any rule inside
+  `@media print` is invisible to the inspection but active in the printed
+  output. Verify print-only rules by printing, or emulate print before
+  reading computed styles.
 - **Prove CSS mechanisms in a synthetic 2-page fixture** (`chromium
   --headless --print-to-pdf` on a 20-line HTML file, ~5 s) before waiting on
   a 300-page build to test a hypothesis.

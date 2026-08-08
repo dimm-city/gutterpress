@@ -1,4 +1,18 @@
-# Final synthesis — making the native engine unsurprising to style
+# Native-engine DX recommendations — making styling unsurprising
+
+> **Status: proposal, not adopted.** Produced 2026-08-08 by a multi-agent
+> review/debate/synthesis over `docs/native-engine-styling-guide.md`,
+> `dc-op-manual/dc-design-guide/css/native-furniture.css`, and
+> `packages/cli/src/engine/`. Independently re-verified by hand afterward:
+> `setEmulatedMedia` is absent from `packages/cli/src/` and
+> `packages/desktop/src/`; the `PAGED_CSS` `.section { break-inside: avoid }`
+> default is at markdown-it-paged.js:790 (the body below says 786 —
+> off-by-four, same rule); the `.full-bleed` `--pagedjs-margin-*` 0px
+> fallback, the xref `targets` folding at build.ts:249, the width-check
+> left-edge skip at build.ts:594, and the viewer's `.folio-strip > *
+> { break-inside: auto }` counter-rule all check out as described.
+> Companion doc: `docs/native-engine-styling-guide.md` (the measured gotchas
+> these recommendations address).
 
 Ground rules applied: engine-layer beats per-book CSS; core (`PAGED_CSS`, all three render paths) beats native-only; detection beats auto-fix where Chromium behavior is versioned; a *primitive the author writes instead* beats a *warning after they wrote the wrong thing*. Ranked by (surprise removed) / (cost).
 
