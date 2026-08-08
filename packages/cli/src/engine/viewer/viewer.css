@@ -7,8 +7,10 @@
   --folio-guide: #e5484d;
   --folio-safe: #30a46c;
   background: var(--folio-stage-bg);
+  margin: 0;
   padding: 32px;
   overflow: auto;
+  zoom: var(--gutterpress-zoom, 1);
 }
 
 /* One flow strip per named-page run. Chromium fragments its content into
@@ -69,14 +71,23 @@
 .folio-marginbox[data-align="end"] { justify-content: flex-end; }
 
 /* designer mode ------------------------------------------------------- */
-.folio-stage[data-designer="on"] .folio-guide-trim,
-.folio-stage[data-designer="on"] .folio-guide-safe {
+.folio-guide-trim,
+.folio-guide-safe,
+.folio-crop-mark {
   position: absolute;
   pointer-events: none;
+  display: none;
+}
+
+.folio-stage[data-designer="on"] .folio-guide-trim,
+.folio-stage[data-designer="on"] .folio-guide-safe,
+.folio-stage[data-designer="on"] .folio-crop-mark {
+  display: block;
 }
 
 .folio-guide-trim { outline: 1px dashed var(--folio-guide); }
 .folio-guide-safe { outline: 1px dashed var(--folio-safe); }
+.folio-crop-mark { background: var(--folio-guide); }
 
 .folio-warning {
   position: absolute;

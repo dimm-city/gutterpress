@@ -46,6 +46,10 @@ export interface DecorationApi {
   /** the restarted `counter(page)` value for each 0-based book page, honoring `counter-reset: page N` */
   pageNumbers: number[];
   warnings: string[];
+  /** switch spread layout and redraw; undefined = current single-row default */
+  setSpread(mode: "single" | "two-up" | undefined): void;
+  /** show/hide trim, safe, and crop guides on the stage */
+  setDesigner(on: boolean): void;
 }
 
 interface PageCtx {
@@ -58,11 +62,12 @@ interface PageCtx {
 
 export function decorate(
   layout: FolioViewerApi,
-  opts: { designer?: boolean } = {},
+  opts: { designer?: boolean; spread?: "single" | "two-up" } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
   const sheets = new Map<number, HTMLElement>();
   let blankPages = new Set<number>();
+  let spreadMode = opts.spread;
   const warnings: string[] = [];
   const api: DecorationApi = {
     redraw: () => draw(),
@@ -71,7 +76,16 @@ export function decorate(
     targets: new Map(),
     pageNumbers: [],
     warnings,
+    setSpread(mode) {
+      spreadMode = mode;
+      draw();
+    },
+    setDesigner(on) {
+      document.body.dataset.designer = on ? "on" : "off";
+    },
   };
+  document.body.classList.add("folio-stage");
+  if (document.body.dataset.designer === undefined) api.setDesigner(!!opts.designer);
 
   function pageContext(strip: StripInfo, indexInStrip: number, bookIndex: number): PageCtx {
     // A recto/verso blank spacer is a DOM sibling of whatever it precedes, so
@@ -238,26 +252,55 @@ export function decorate(
       const layer = run.querySelector<HTMLElement>(".folio-layer")!;
       layer.textContent = "";
       const g = strip.geometry;
-      run.style.height = px(g.height);
-      run.style.width = `${stride * strip.pages}px`;
+      const gap = gapOf(strip.el);
+      const pageW = g.width * PX_PER_PT;
+      const pageH = g.height * PX_PER_PT;
+      const firstRow = spreadMode === "two-up" ? twoUpSlot(strip.offset).row : 0;
 
       for (let i = 0; i < strip.pages; i++) {
         const bookIndex = strip.offset + i;
         const ctx = pageContext(strip, i, bookIndex);
-        const columnLeft = PX_PER_PT * g.margin.left + i * stride;
-        const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
+
+        let sheetLeft: number;
+        let sheetTop: number;
+        if (spreadMode === "single") {
+          sheetLeft = 0;
+          sheetTop = i * (pageH + gap);
+        } else if (spreadMode === "two-up") {
+          const slot = twoUpSlot(bookIndex);
+          sheetLeft = slot.col * (pageW + gap);
+          sheetTop = (slot.row - firstRow) * (pageH + gap);
+        } else {
+          const columnLeft = PX_PER_PT * g.margin.left + i * stride;
+          sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
+          sheetTop = 0;
+        }
 
         const sheet = document.createElement("div");
         sheet.className = "folio-sheet";
         sheet.dataset.page = String(bookIndex + 1);
         sheet.style.left = `${sheetLeft}px`;
+        sheet.style.top = `${sheetTop}px`;
         sheet.style.setProperty("--folio-page-w", px(ctx.geometry.width));
         sheet.style.setProperty("--folio-page-h", px(ctx.geometry.height));
         layer.appendChild(sheet);
         sheets.set(bookIndex, sheet);
 
         drawMarginBoxes(sheet, ctx, layout.totalPages);
-        if (opts.designer) drawGuides(sheet, ctx);
+        drawGuides(sheet, ctx);
+        drawCropMarks(sheet, ctx);
+      }
+
+      if (spreadMode === "single") {
+        run.style.width = px(g.width);
+        run.style.height = `${strip.pages * (pageH + gap) - gap}px`;
+      } else if (spreadMode === "two-up") {
+        const lastRow = twoUpSlot(strip.offset + strip.pages - 1).row - firstRow;
+        run.style.width = `${2 * pageW + gap}px`;
+        run.style.height = `${(lastRow + 1) * (pageH + gap) - gap}px`;
+      } else {
+        run.style.height = px(g.height);
+        run.style.width = `${stride * strip.pages}px`;
       }
 
       if (opts.designer) checkOverflow(strip, warnings);
@@ -292,6 +335,36 @@ export function decorate(
           ? "end"
           : "start";
       sheet.appendChild(box);
+    }
+  }
+
+  const CROP_LEN = 14;
+  const CROP_GAP = 3;
+
+  /** Printer's crop marks at the trim corners, visible only in designer mode
+   * (CSS-gated, same pattern as the trim/safe guides). Only meaningful when
+   * the page has bleed to crop away. */
+  function drawCropMarks(sheet: HTMLElement, ctx: PageCtx) {
+    const g = ctx.geometry;
+    if (g.bleed <= 0) return;
+    const w = g.width * PX_PER_PT;
+    const h = g.height * PX_PER_PT;
+    const mark = (left: number, top: number, width: number, height: number) => {
+      const el = document.createElement("div");
+      el.className = "folio-crop-mark";
+      Object.assign(el.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+      sheet.appendChild(el);
+    };
+    for (const [cx, cy] of [
+      [0, 0],
+      [w, 0],
+      [0, h],
+      [w, h],
+    ] as const) {
+      const ox = cx === 0 ? -1 : 1;
+      const oy = cy === 0 ? -1 : 1;
+      mark(cx + (ox < 0 ? -(CROP_GAP + CROP_LEN) : CROP_GAP), cy - 0.5, CROP_LEN, 1);
+      mark(cx - 0.5, cy + (oy < 0 ? -(CROP_GAP + CROP_LEN) : CROP_GAP), 1, CROP_LEN);
     }
   }
 
@@ -335,6 +408,21 @@ export function decorate(
 
   draw();
   return api;
+}
+
+function gapOf(el: HTMLElement): number {
+  return parseFloat(getComputedStyle(el).getPropertyValue("--folio-sheet-gap")) || 24;
+}
+
+/**
+ * Recto/verso pairing for `spread: "two-up"`: page 1 (book index 0) sits
+ * alone on the right (the cover), then pages pair up verso-left/recto-right —
+ * the same parity `pageContext` uses to resolve `@page :left`/`:right`.
+ */
+function twoUpSlot(bookIndex: number): { row: number; col: 0 | 1 } {
+  if (bookIndex === 0) return { row: 0, col: 1 };
+  const n = bookIndex - 1;
+  return { row: Math.floor(n / 2) + 1, col: (n % 2 === 0 ? 0 : 1) as 0 | 1 };
 }
 
 function ensureRun(strip: StripInfo): HTMLElement {

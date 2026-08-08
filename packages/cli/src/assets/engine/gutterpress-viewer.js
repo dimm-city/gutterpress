@@ -43,8 +43,10 @@
   --folio-guide: #e5484d;
   --folio-safe: #30a46c;
   background: var(--folio-stage-bg);
+  margin: 0;
   padding: 32px;
   overflow: auto;
+  zoom: var(--gutterpress-zoom, 1);
 }
 
 /* One flow strip per named-page run. Chromium fragments its content into
@@ -105,14 +107,23 @@
 .folio-marginbox[data-align="end"] { justify-content: flex-end; }
 
 /* designer mode ------------------------------------------------------- */
-.folio-stage[data-designer="on"] .folio-guide-trim,
-.folio-stage[data-designer="on"] .folio-guide-safe {
+.folio-guide-trim,
+.folio-guide-safe,
+.folio-crop-mark {
   position: absolute;
   pointer-events: none;
+  display: none;
+}
+
+.folio-stage[data-designer="on"] .folio-guide-trim,
+.folio-stage[data-designer="on"] .folio-guide-safe,
+.folio-stage[data-designer="on"] .folio-crop-mark {
+  display: block;
 }
 
 .folio-guide-trim { outline: 1px dashed var(--folio-guide); }
 .folio-guide-safe { outline: 1px dashed var(--folio-safe); }
+.folio-crop-mark { background: var(--folio-guide); }
 
 .folio-warning {
   position: absolute;
@@ -1216,6 +1227,7 @@
     const model = layout.model;
     const sheets = new Map;
     let blankPages = new Set;
+    let spreadMode = opts.spread;
     const warnings = [];
     const api = {
       redraw: () => draw(),
@@ -1223,8 +1235,18 @@
       stringMap: new Map,
       targets: new Map,
       pageNumbers: [],
-      warnings
+      warnings,
+      setSpread(mode) {
+        spreadMode = mode;
+        draw();
+      },
+      setDesigner(on) {
+        document.body.dataset.designer = on ? "on" : "off";
+      }
     };
+    document.body.classList.add("folio-stage");
+    if (document.body.dataset.designer === undefined)
+      api.setDesigner(!!opts.designer);
     function pageContext(strip, indexInStrip, bookIndex) {
       if (blankPages.has(bookIndex)) {
         const pseudos2 = ["blank"];
@@ -1369,24 +1391,50 @@
         const layer = run.querySelector(".folio-layer");
         layer.textContent = "";
         const g = strip.geometry;
-        run.style.height = px(g.height);
-        run.style.width = `${stride * strip.pages}px`;
+        const gap = gapOf(strip.el);
+        const pageW = g.width * PX_PER_PT;
+        const pageH = g.height * PX_PER_PT;
+        const firstRow = spreadMode === "two-up" ? twoUpSlot(strip.offset).row : 0;
         for (let i = 0;i < strip.pages; i++) {
           const bookIndex = strip.offset + i;
           const ctx = pageContext(strip, i, bookIndex);
-          const columnLeft = PX_PER_PT * g.margin.left + i * stride;
-          const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
+          let sheetLeft;
+          let sheetTop;
+          if (spreadMode === "single") {
+            sheetLeft = 0;
+            sheetTop = i * (pageH + gap);
+          } else if (spreadMode === "two-up") {
+            const slot = twoUpSlot(bookIndex);
+            sheetLeft = slot.col * (pageW + gap);
+            sheetTop = (slot.row - firstRow) * (pageH + gap);
+          } else {
+            const columnLeft = PX_PER_PT * g.margin.left + i * stride;
+            sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
+            sheetTop = 0;
+          }
           const sheet = document.createElement("div");
           sheet.className = "folio-sheet";
           sheet.dataset.page = String(bookIndex + 1);
           sheet.style.left = `${sheetLeft}px`;
+          sheet.style.top = `${sheetTop}px`;
           sheet.style.setProperty("--folio-page-w", px(ctx.geometry.width));
           sheet.style.setProperty("--folio-page-h", px(ctx.geometry.height));
           layer.appendChild(sheet);
           sheets.set(bookIndex, sheet);
           drawMarginBoxes(sheet, ctx, layout.totalPages);
-          if (opts.designer)
-            drawGuides(sheet, ctx);
+          drawGuides(sheet, ctx);
+          drawCropMarks(sheet, ctx);
+        }
+        if (spreadMode === "single") {
+          run.style.width = px(g.width);
+          run.style.height = `${strip.pages * (pageH + gap) - gap}px`;
+        } else if (spreadMode === "two-up") {
+          const lastRow = twoUpSlot(strip.offset + strip.pages - 1).row - firstRow;
+          run.style.width = `${2 * pageW + gap}px`;
+          run.style.height = `${(lastRow + 1) * (pageH + gap) - gap}px`;
+        } else {
+          run.style.height = px(g.height);
+          run.style.width = `${stride * strip.pages}px`;
         }
         if (opts.designer)
           checkOverflow(strip, warnings);
@@ -1418,6 +1466,32 @@
         });
         box.dataset.align = name.includes("center") || name.includes("middle") ? "center" : /right/.test(name) ? "end" : "start";
         sheet.appendChild(box);
+      }
+    }
+    const CROP_LEN = 14;
+    const CROP_GAP = 3;
+    function drawCropMarks(sheet, ctx) {
+      const g = ctx.geometry;
+      if (g.bleed <= 0)
+        return;
+      const w = g.width * PX_PER_PT;
+      const h = g.height * PX_PER_PT;
+      const mark = (left, top, width, height) => {
+        const el = document.createElement("div");
+        el.className = "folio-crop-mark";
+        Object.assign(el.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+        sheet.appendChild(el);
+      };
+      for (const [cx, cy] of [
+        [0, 0],
+        [w, 0],
+        [0, h],
+        [w, h]
+      ]) {
+        const ox = cx === 0 ? -1 : 1;
+        const oy = cy === 0 ? -1 : 1;
+        mark(cx + (ox < 0 ? -(CROP_GAP + CROP_LEN) : CROP_GAP), cy - 0.5, CROP_LEN, 1);
+        mark(cx - 0.5, cy + (oy < 0 ? -(CROP_GAP + CROP_LEN) : CROP_GAP), 1, CROP_LEN);
       }
     }
     function drawGuides(sheet, ctx) {
@@ -1455,6 +1529,15 @@
     }
     draw();
     return api;
+  }
+  function gapOf(el) {
+    return parseFloat(getComputedStyle(el).getPropertyValue("--folio-sheet-gap")) || 24;
+  }
+  function twoUpSlot(bookIndex) {
+    if (bookIndex === 0)
+      return { row: 0, col: 1 };
+    const n = bookIndex - 1;
+    return { row: Math.floor(n / 2) + 1, col: n % 2 === 0 ? 0 : 1 };
   }
   function ensureRun(strip) {
     const parent = strip.el.parentElement;

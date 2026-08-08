@@ -520,6 +520,11 @@
         currentViewMode = mode || 'two-column';
         document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
         if (mode) document.body.classList.add('view-' + mode);
+        // sheet placement is JS-computed (§7), not pure CSS — the body class
+        // above is cosmetic under native, this is what actually moves sheets.
+        if (NATIVE_ENGINE && window.Gutterpress && window.Gutterpress.decoration) {
+          window.Gutterpress.decoration.setSpread(mode === 'single' ? 'single' : 'two-up');
+        }
       });
       if (!silent) return api.notifyPageChange();
     },
@@ -532,6 +537,9 @@
     toggleDebugMode: function () {
       debugMode = !debugMode;
       document.body.classList.toggle('debug', debugMode);
+      if (NATIVE_ENGINE && window.Gutterpress && window.Gutterpress.decoration) {
+        window.Gutterpress.decoration.setDesigner(debugMode);
+      }
       return debugMode;
     },
     notifyPageChange: function () {
