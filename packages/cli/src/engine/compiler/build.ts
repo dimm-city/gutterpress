@@ -84,6 +84,15 @@ export interface BuildResult {
   pageCount: number;
   genCss: string;
   geometry: Tier2Output["geometry"];
+  /**
+   * Flat human-readable warnings, including the broken-xref, abspos-leak, and
+   * fragmenting-multicol audit classes. Interim surface: these currently only
+   * reach the CLI's `--verbose` stream (`log()`), not the desktop's
+   * aggregated print-quality report UI. Wiring them into that report as a
+   * distinguishable `kind` (matching `auditContent`'s overheight/dpi shape)
+   * is tracked as a follow-up, not done here — it touches the desktop's
+   * report-rendering code, outside this change's scope.
+   */
   notes: string[];
   post: PostprocessResult;
   /** id -> 1-based page, the measurement channel's output */
@@ -498,6 +507,16 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     const base = resolvePage(model);
     const contentHeightPx =
       ((base.geometry.height - base.geometry.margin.top - base.geometry.margin.bottom) * 96) / 72;
+    // Minimum content height across every page context (base + named pages),
+    // for the multicol fragmentation check below: that check needs a
+    // conservative (never too generous) threshold, since a named page with
+    // smaller margins has a shorter content box than the default page and
+    // would otherwise under-report fragmentation there.
+    const pageContexts = [base, ...model.pageNames.map((n) => resolvePage(model, { name: n }))];
+    const minContentHeightPx =
+      (Math.min(
+        ...pageContexts.map((c) => c.geometry.height - c.geometry.margin.top - c.geometry.margin.bottom),
+      ) * 96) / 72;
     {
       const audit = await page.evaluate<Array<{ kind: string; what: string; detail: string }>>(
         `window.__folio.auditContent(${contentHeightPx}, ${opts.dpiFloor ?? 300})`,
@@ -512,67 +531,70 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       if (audit.length) log(`audit: ${audit.length} print-quality warning(s)`);
     }
 
-    // Abspos containing-block leak detector — independent of the width/height
-    // passes above. An `position: absolute` element whose `offsetParent` is
-    // the document (or nothing) positions against the WHOLE canvas, not the
-    // page it appears on: it can paint clipped on the last page of a 300-page
-    // book while the page it belongs to renders empty. Scoped to `.page`/
-    // `.spread` becoming positioned (PAGED_CSS) would make most of these go
-    // silent by finding a containing block again — but only for pages that
-    // DON'T fragment across sheets; that refinement needs fragmentation info
-    // this pass doesn't have cheaply, so it is left for later, not guessed at.
+    // Abspos containing-block leak + fragmenting-multicol warnings — one
+    // shared `querySelectorAll("*")` walk with a single `getComputedStyle`
+    // call per element (was two separate document-wide walks).
+    //
+    // Abspos: independent of the width/height passes above. A
+    // `position: absolute` element whose `offsetParent` is the document (or
+    // nothing) positions against the WHOLE canvas, not the page it appears
+    // on: it can paint clipped on the last page of a 300-page book while the
+    // page it belongs to renders empty. Scoped to `.page`/`.spread` becoming
+    // positioned (PAGED_CSS) would make most of these go silent by finding a
+    // containing block again — but only for pages that DON'T fragment across
+    // sheets; that refinement needs fragmentation info this pass doesn't have
+    // cheaply, so it is left for later, not guessed at.
+    //
+    // Multicol: `column-fill: balance` (the initial value) only balances
+    // columns on the LAST fragment — a balanced container that fragments
+    // across sheets leaves dead columns on every page before the last one.
+    // Explicitly scoped to actual multicol containers (`column-count` OR
+    // `column-width` set — `columns: 20em` resolves to `column-width` with
+    // `column-count: auto`, so checking `columnCount` alone misses it), not a
+    // relaxation of auditContent's leaf guard — that would make every wrapper
+    // div in a 300-page book a candidate.
     {
-      const leaks = JSON.parse(
+      const { leaks, multicol } = JSON.parse(
         await page.evaluate<string>(`(() => {
           const desc = ${DESC_JS};
-          const out = [];
+          const leaks = [];
+          const multicol = [];
           for (const el of document.querySelectorAll("*")) {
-            const tag = el.tagName;
-            if (tag === "FOLIO-ANCHOR") continue;
-            const id = el.id || "";
-            if (id.startsWith("folio-") || id.startsWith("__folio")) continue;
-            const cls = typeof el.className === "string" ? el.className : "";
-            if (/(^|\\s)(folio-|__folio)/.test(cls)) continue;
-            if (el.closest("#folio-instrumentation")) continue;
-            if (getComputedStyle(el).position !== "absolute") continue;
-            if (el.getClientRects().length === 0) continue; // display:none subtree
-            const op = el.offsetParent;
-            if (op === null || op === document.body) {
-              out.push(desc(el));
-              if (out.length >= 20) break;
+            const cs = getComputedStyle(el);
+            if (leaks.length < 20) {
+              const tag = el.tagName;
+              const id = el.id || "";
+              const cls = typeof el.className === "string" ? el.className : "";
+              if (
+                tag !== "FOLIO-ANCHOR" &&
+                !id.startsWith("folio-") &&
+                !id.startsWith("__folio") &&
+                !/(^|\\s)(folio-|__folio)/.test(cls) &&
+                !el.closest("#folio-instrumentation") &&
+                cs.position === "absolute" &&
+                el.getClientRects().length !== 0 // not a display:none subtree
+              ) {
+                const op = el.offsetParent;
+                if (op === null || op === document.body) leaks.push(desc(el));
+              }
+            }
+            if (
+              multicol.length < 20 &&
+              !(cs.columnCount === "auto" && cs.columnWidth === "auto") &&
+              cs.columnFill === "balance" &&
+              el.getBoundingClientRect().height > ${minContentHeightPx} + 1
+            ) {
+              multicol.push(desc(el));
             }
           }
-          return JSON.stringify(out);
+          return JSON.stringify({ leaks, multicol });
         })()`),
-      ) as string[];
+      ) as { leaks: string[]; multicol: string[] };
       for (const d of leaks)
         notes.push(
           `${d} is position: absolute with no positioned ancestor — it positions against the whole document, not the page it appears on in your markdown.`,
         );
       if (leaks.length) log(`audit: ${leaks.length} abspos containing-block leak(s)`);
-    }
-
-    // Fragmenting-multicol warning: `column-fill: balance` (the initial
-    // value) only balances columns on the LAST fragment — a balanced
-    // container that fragments across sheets leaves dead columns on every
-    // page before the last one. Explicitly scoped to actual multicol
-    // containers, not a relaxation of auditContent's leaf guard — that would
-    // make every wrapper div in a 300-page book a candidate.
-    {
-      const multicol = JSON.parse(
-        await page.evaluate<string>(`(() => {
-          const desc = ${DESC_JS};
-          const out = [];
-          for (const el of document.querySelectorAll("*")) {
-            const cs = getComputedStyle(el);
-            if (cs.columnCount === "auto" || cs.columnFill !== "balance") continue;
-            if (el.getBoundingClientRect().height <= ${contentHeightPx} + 1) continue;
-            out.push(desc(el));
-            if (out.length >= 20) break;
-          }
-          return JSON.stringify(out);
-        })()`),
-      ) as string[];
       for (const d of multicol)
         notes.push(
           `${d} is a multi-column container with column-fill: balance taller than one page — Chromium only balances the LAST fragment, leaving dead columns on every page before it. Add column-fill: auto to ${d}.`,
@@ -747,16 +769,22 @@ async function findWidthOffenders(
  * resolved to an element, i.e. is absent from `resolved` (the id -> text map
  * `targetTexts` only populates for ids it actually found). Non-bare hrefs
  * (`other.html#x`, `https://…`) are the author linking elsewhere on purpose —
- * skipped by construction, since only `#...` hrefs are compared.
+ * skipped by construction, since only `#...` hrefs are compared. Deduped by
+ * href, first-seen order — one typo'd target should not produce a note per
+ * link site.
  */
 export function findBrokenXrefRefs(
   sites: Array<{ href: string }>,
   resolved: Record<string, string>,
 ): string[] {
+  const seen = new Set<string>();
   const out: string[] = [];
   for (const s of sites) {
     if (!s.href.startsWith("#")) continue;
-    if (!(s.href.slice(1) in resolved)) out.push(s.href);
+    if (s.href.slice(1) in resolved) continue;
+    if (seen.has(s.href)) continue;
+    seen.add(s.href);
+    out.push(s.href);
   }
   return out;
 }

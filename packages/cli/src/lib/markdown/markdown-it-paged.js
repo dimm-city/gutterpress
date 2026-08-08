@@ -808,7 +808,7 @@ export const PAGED_CSS = `
 
 :where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }
 :where(img, svg, video) { max-width: 100%; }
-:where(p > img:only-child, figure > img) { width: 100%; height: auto; object-fit: contain; }
+:where(p > img:only-child:not([class]), figure > img:not([class])) { width: 100%; height: auto; object-fit: contain; }
 :where(.section, figure) > :where(:first-child) { break-before: avoid; }
 
 .center { display: block; margin-left: auto; margin-right: auto; max-width: 100%; }

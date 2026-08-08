@@ -1175,9 +1175,23 @@ describe("PAGED_CSS export", () => {
     expect(PAGED_CSS).toContain(":where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }");
     expect(PAGED_CSS).toContain(":where(img, svg, video) { max-width: 100%; }");
     expect(PAGED_CSS).toContain(
-      ":where(p > img:only-child, figure > img) { width: 100%; height: auto; object-fit: contain; }"
+      ":where(p > img:only-child:not([class]), figure > img:not([class])) { width: 100%; height: auto; object-fit: contain; }"
     );
     expect(PAGED_CSS).toContain(":where(.section, figure) > :where(:first-child) { break-before: avoid; }");
+  });
+
+  // Blocker fix: the standalone-image sizing default must not clobber the
+  // .center/.float-left/.float-right utility classes, which style
+  // `![alt](src){.class}` output (`<p><img class="...">` — still matches
+  // `p > img:only-child` without the `:not([class])` guard, so the
+  // zero-specificity `width: 100%` used to win over those classes'
+  // `max-width` and blow up the float/center sizing).
+  test("standalone image default sizing excludes classed images so .center/.float-left/.float-right keep natural sizing", () => {
+    const md = createMarkdownRenderer();
+    const html = md.render("![b](b.png){.float-left}");
+    expect(html).toContain('<img src="b.png" alt="b" class="float-left">');
+    // sanity: the selector itself is scoped off classed images
+    expect(PAGED_CSS).toMatch(/p > img:only-child:not\(\[class\]\)/);
   });
 
   // #2: .page/.spread must be the containing block for abspos descendants so

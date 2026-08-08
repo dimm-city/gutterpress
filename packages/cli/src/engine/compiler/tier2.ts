@@ -278,6 +278,16 @@ export function synthesize(input: Tier2Input): Tier2Output {
   {
     const names: Array<string | undefined> = [undefined, ...model.pageNames];
     const variants = [[] as string[], ...pseudoVariants(model).map((p) => [p])];
+    // Union of every margin box declared anywhere in the model, not just the
+    // one context being resolved: Chromium ignores page-selector specificity
+    // across stylesheets (see the bleed/geometry note above), so a
+    // synthesized `content: ""` in an unnamed `@page` block is emitted AFTER
+    // the author's sheet and clobbers a box the author declared only in a
+    // named context (e.g. `@page chapter { @top-center { content: … } }`)
+    // when synthesis runs for the base `@page`. Never re-emit a box the
+    // author wrote anywhere.
+    const declaredAnywhere = new Set<string>();
+    for (const r of model.pageRules) for (const box of Object.keys(r.marginBoxes)) declaredAnywhere.add(box);
     let bandBoxCount = 0;
     for (const name of names) {
       for (const pseudos of variants) {
@@ -290,7 +300,7 @@ export function synthesize(input: Tier2Input): Tier2Output {
         );
         if (!isBase && !authorWroteIt) continue;
         const resolved = resolvePage(model, { name, pseudos });
-        const boxes = marginBandBoxes(resolved.decls, Object.keys(resolved.marginBoxes));
+        const boxes = marginBandBoxes(resolved.decls, declaredAnywhere);
         if (!boxes.length) continue;
         bandBoxCount += boxes.length;
         const bg = resolved.decls[MARGIN_BOX_BG_PROP];

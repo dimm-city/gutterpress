@@ -193,7 +193,14 @@ fixture — but only when the thing being kept-with can actually be placed:
   emits `--gp-margin-*` on `:root` for the default page and on the named-page
   container selector for any named page that overrides margins; the viewer
   sets the same variables on each named-page run so the live preview matches.
-  No per-book workaround needed anymore.
+  No per-book workaround needed anymore. Verified for the desktop app too:
+  `config.engine === "native"` always calls `buildNativePdf` (`lib/engine.ts`,
+  which imports `build()` from `engine/compiler/build.ts`) regardless of an
+  injected `opts.pdfRenderer` — `packages/desktop/electron/pdf-export.ts`'s
+  `webContents.printToPDF` renderer is only wired into the Paged.js leg
+  (`renderHtmlToPdf`'s `pdfRenderer` param); the native leg always uses the
+  engine's own `launchChromium`/CDP client, so it always gets `folio-gen-css`
+  (tier 2) on desktop exactly as it does from the CLI.
 
 ## 10. Debugging workflow that actually finds things
 

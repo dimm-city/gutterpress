@@ -31,4 +31,13 @@ describe("findBrokenXrefRefs", () => {
       ),
     ).toEqual(["#typo", "#missing"]);
   });
+
+  test("a broken href repeated across many sites is reported once, first-seen order", () => {
+    expect(
+      findBrokenXrefRefs(
+        [{ href: "#missing" }, { href: "#ok" }, { href: "#missing" }, { href: "#missing" }],
+        { ok: "Fine" },
+      ),
+    ).toEqual(["#missing"]);
+  });
 });

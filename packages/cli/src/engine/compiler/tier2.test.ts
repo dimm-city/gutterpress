@@ -58,4 +58,23 @@ describe("tier 2 — margin-band background synthesis (#8)", () => {
     expect(css).not.toMatch(/@top-center\s*\{\s*content:\s*"";/);
     expect(notes.join("\n")).toContain("margin-band background synthesized for 15");
   });
+
+  // Blocker fix (review finding): a box declared only in a NAMED page context
+  // must not be re-synthesized with content: "" when synthesis runs for the
+  // base @page — the synthesized block is emitted after the author's sheet
+  // and would silently blank the named page's running head.
+  test("a box declared only in a named page context is never re-synthesized for the base page", () => {
+    const model = extract(`
+      @page {
+        margin: 1in;
+        --gp-margin-box-background: url(texture.png);
+      }
+      h1 { page: chapter; }
+      @page chapter {
+        @top-center { content: "Title"; }
+      }
+    `);
+    const { css } = synthesize({ model });
+    expect(css).not.toMatch(/@top-center\s*\{\s*content:\s*"";/);
+  });
 });
