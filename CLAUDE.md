@@ -71,6 +71,38 @@ via `bun packages/cli/src/cli.ts` during development.
 - Allow authors to convert markdown and CSS into print ready PDFs
 - Simplify the process of creating 
 
+### What Gutterpress is — and what the engine is not
+
+**Gutterpress is the TOOLING around authoring books with markdown and CSS**:
+the authoring workflow, plugins, themes, validation, preview, and publishing
+tools. That tooling is the product and is permanent.
+
+**The rendering engine and every polyfill/shim are NOT the product.** They
+exist only to fill gaps in Chrome's CSS Paged Media / GCPM implementation,
+and they are **expected to be removed** as Chrome's support improves. This
+expectation is a design constraint on every engine/shim change:
+
+1. **Thin over capable.** A shim implements the missing slice of the
+   standard and nothing more. No engine-private extensions, no behavior the
+   spec doesn't describe, no features that would give the shim a reason to
+   outlive the gap it fills.
+2. **Standards-based in and out.** Authors write standard CSS Paged Media /
+   GCPM (`@page`, margin boxes, `string-set`, `target-counter()`,
+   `leader()`); documents the pipeline produces stay near-pure standard
+   HTML+CSS. When Chrome ships a feature natively, the author's CSS must
+   already be the CSS that feature expects — removal of our shim should be a
+   no-op for every book.
+3. **Track the spec, not our shims.** Where our implementation and the spec
+   disagree, the implementation is what changes. Never let book CSS, docs,
+   or tooling depend on a shim-specific behavior, DOM shape, or property
+   (this is how the Paged.js migration got expensive — books coupled to
+   `.pagedjs_*` internals and polyfill quirks).
+4. **Design for deletion.** Each shim's boundary should be sharp enough that
+   deleting it when Chrome catches up is a small, safe change — feature-
+   detect where possible, keep shims out of the author-facing surface, and
+   record in each shim's header which spec gap it fills so its removal
+   trigger is knowable.
+
 
 ## Architectural rules
 
