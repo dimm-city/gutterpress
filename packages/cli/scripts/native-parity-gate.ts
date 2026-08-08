@@ -47,7 +47,7 @@
  *   bun scripts/native-parity-gate.ts
  *   bun scripts/native-parity-gate.ts <project-dir> [<project-dir> ...]
  */
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -300,7 +300,22 @@ async function runFixture(
 
 async function main() {
   const args = process.argv.slice(2);
-  const fixtures = (args.length ? args : DEFAULT_FIXTURES).map((p) => resolve(p));
+  const requested = (args.length ? args : DEFAULT_FIXTURES).map((p) => resolve(p));
+  // Two default fixtures live outside the repo (/tmp scratch books), so on a
+  // fresh clone or in CI they are simply absent — skipping them keeps the
+  // in-repo fixtures meaningful instead of failing the gate for a reason that
+  // has nothing to do with parity. An explicitly named dir is never skipped.
+  const fixtures = args.length
+    ? requested
+    : requested.filter((dir) => {
+        if (existsSync(dir)) return true;
+        console.log(`   SKIP ${dir} — not present on this machine`);
+        return false;
+      });
+  if (!fixtures.length) {
+    console.log("No fixtures available to measure — nothing was checked.");
+    process.exit(1);
+  }
   mkdirSync(WORK, { recursive: true });
 
   const AGENT = await readFile(await getAssetPath("engine/gutterpress-agent.js"), "utf8");
@@ -350,8 +365,12 @@ async function main() {
       }
     }
   }
+  // Only fixtures this run actually measured can say anything about whether an
+  // allowlisted divergence is gone; a skipped one has no opinion.
   const knownButAbsent = KNOWN_DIVERGENCES.filter(
-    (k) => !reports.some((r) => r.fixture === k.fixture && r.divergences.some((d) => d.kind === k.kind)),
+    (k) =>
+      reports.some((r) => r.fixture === k.fixture) &&
+      !reports.some((r) => r.fixture === k.fixture && r.divergences.some((d) => d.kind === k.kind)),
   );
   for (const k of knownButAbsent)
     console.log(`   NOTE: allowlisted divergence [${k.fixture}/${k.kind}] did not reproduce this run — parity improved, update KNOWN_DIVERGENCES.`);
