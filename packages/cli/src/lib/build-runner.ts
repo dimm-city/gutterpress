@@ -871,9 +871,11 @@ export async function runBuild(
   // below, instead of sitting on the critical path at pagination time. Only when
   // this build will actually paginate in Chromium: a PDF/PDFX build with no
   // injected renderer (Paged.js or native — both now draw from the same pool),
-  // or an HTML build with a browser available.
+  // or an HTML build with a browser available. Same `pdfRenderer` caveat as the
+  // preflight above: a native build ignores an injected renderer and paginates
+  // in the pooled Chromium anyway, so it must still prewarm.
   const willPaginateInChromium =
-    (ctx.format !== "html" && !opts.pdfRenderer) ||
+    (ctx.format !== "html" && (!opts.pdfRenderer || ctx.config.engine === "native")) ||
     (ctx.format === "html" && !!(await resolveChromiumExecutable()));
   if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 

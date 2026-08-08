@@ -155,6 +155,34 @@ test("runBuild closes the browser exactly once on a successful build, even when 
   }
 });
 
+test("runBuild prewarms the pool for a native build even with an injected pdfRenderer", async () => {
+  installMocks();
+  const { dir, outDir } = await makeBrokenLintProject();
+  try {
+    await expect(
+      runBuild({
+        inputDir: dir,
+        format: "pdf",
+        outDir,
+        skipLint: false,
+        skipPreValidate: true,
+        // The desktop's shape: it always injects a renderer, but a native
+        // build ignores it and paginates in the pooled Chromium
+        // (engine.ts's buildNativePdf -> browser-pool's getBrowser), so the
+        // prewarm must not be suppressed by the injected renderer.
+        engine: "native",
+        pdfRenderer: fakeRenderer,
+        rawArgs: {},
+      })
+    ).rejects.toThrow(/CSS lint failed/);
+
+    expect(prewarmBrowserMock).toHaveBeenCalledTimes(1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(outDir, { recursive: true, force: true });
+  }
+});
+
 test("runBuild does NOT close the browser when keepBrowserAlive is set", async () => {
   installMocks();
   const { dir, outDir } = await makeBrokenLintProject();
