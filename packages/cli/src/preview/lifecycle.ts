@@ -102,7 +102,7 @@ export async function initializePreviewDirectories(): Promise<string> {
   // Mark this dir as ours so a future startup can detect orphan-ship.
   await writeFile(path.join(tempDir, PID_FILE_NAME), `${process.pid}\n`, 'utf8');
 
-  // Preview assets (paged.polyfill.js, pagedjs-bridge.js, pagedjs-interface.js,
+  // Preview assets (paged.polyfill.js, preview-bridge.js, preview-interface.js,
   // favicon) are served directly from the process-wide embedded-assets dir by
   // the HTTP server (see http-server.ts EMBEDDED_PREFIXES/EMBEDDED_EXACT), not
   // copied into the per-project temp dir. manifest.schema.json is embedded too

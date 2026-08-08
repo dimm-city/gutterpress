@@ -30,8 +30,8 @@ export function stripPaginationRuntime(html: string): string {
   // (a) The Paged.js polyfill <script> slot — identified by the stable
   //     `data-pagedjs-polyfill` marker OR (post-staging) its `paged.polyfill`
   //     src. The shared matcher deliberately never matches a bare "pagedjs"
-  //     substring, so the navigation scripts (pagedjs-interface.js /
-  //     pagedjs-bridge.js) survive.
+  //     substring, so the navigation scripts (preview-interface.js /
+  //     preview-bridge.js) survive.
   out = out.replace(pagedjsPolyfillTagRegex(), "");
   // (b) The inline BreakInsideAvoidHandler block (identified by its class name);
   //     it sets window.PagedConfig.* which is dead without the engine.
@@ -67,8 +67,8 @@ export function stripPaginationOrigin(html: string): string {
  */
 export function injectNavigationScripts(html: string): string {
   const tags =
-    '  <script src="preview/scripts/pagedjs-interface.js"></script>\n' +
-    '  <script src="preview/scripts/pagedjs-bridge.js"></script>\n';
+    '  <script src="preview/scripts/preview-interface.js"></script>\n' +
+    '  <script src="preview/scripts/preview-bridge.js"></script>\n';
   if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, tags + "</head>");
   return tags + html;
 }
@@ -86,12 +86,12 @@ export async function finalizeStaticBook(
 ): Promise<void> {
   await fsp.mkdir(path.join(outDir, "preview/scripts"), { recursive: true });
   await fsp.copyFile(
-    await getAssetPath("preview/scripts/pagedjs-interface.js"),
-    path.join(outDir, "preview/scripts/pagedjs-interface.js")
+    await getAssetPath("preview/scripts/preview-interface.js"),
+    path.join(outDir, "preview/scripts/preview-interface.js")
   );
   await fsp.copyFile(
-    await getAssetPath("preview/scripts/pagedjs-bridge.js"),
-    path.join(outDir, "preview/scripts/pagedjs-bridge.js")
+    await getAssetPath("preview/scripts/preview-bridge.js"),
+    path.join(outDir, "preview/scripts/preview-bridge.js")
   );
   await fsp.writeFile(
     htmlFile,
@@ -119,17 +119,17 @@ export async function shipRuntimePaginatedHtml(
     path.join(outDir, "vendor/paged.polyfill.js")
   );
   await fsp.copyFile(
-    await getAssetPath("preview/scripts/pagedjs-interface.js"),
-    path.join(outDir, "preview/scripts/pagedjs-interface.js")
+    await getAssetPath("preview/scripts/preview-interface.js"),
+    path.join(outDir, "preview/scripts/preview-interface.js")
   );
   await fsp.copyFile(
-    await getAssetPath("preview/scripts/pagedjs-bridge.js"),
-    path.join(outDir, "preview/scripts/pagedjs-bridge.js")
+    await getAssetPath("preview/scripts/preview-bridge.js"),
+    path.join(outDir, "preview/scripts/preview-bridge.js")
   );
   const bookSource = await fsp.readFile(htmlFile, "utf-8");
   const bookWithInterface = bookSource.replace(
     pagedjsPolyfillTagRegex(),
-    '<script src="preview/scripts/pagedjs-interface.js"></script>\n  <script src="preview/scripts/pagedjs-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
+    '<script src="preview/scripts/preview-interface.js"></script>\n  <script src="preview/scripts/preview-bridge.js"></script>\n  <script src="vendor/paged.polyfill.js"></script>'
   );
   await fsp.writeFile(htmlFile, bookWithInterface, "utf-8");
 }

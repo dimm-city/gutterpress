@@ -4,7 +4,7 @@
  * Because the SvelteKit toolbar (port A) and the Gutterpress preview server
  * (port B) are on different origins, stylesheet rules defined in the toolbar
  * cannot reach the iframe's DOM. We push them in via the gutterpress:inject-styles
- * postMessage protocol added to pagedjs-bridge.js.
+ * postMessage protocol added to preview-bridge.js.
  *
  * Two style blocks are managed:
  *  - "desktop-canvas": zoom, background, page shadows, spread/single/two-column

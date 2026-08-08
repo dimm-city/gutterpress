@@ -49,7 +49,7 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
     });
     page.on("pageerror", (err) => pageErrors.push(String(err)));
 
-    // pagedjs-interface.js dispatches `renderingComplete` on the preview
+    // preview-interface.js dispatches `renderingComplete` on the preview
     // window once pagination finishes. Init scripts run in every frame, so
     // this works for both the shell at "/" (book.html in an iframe) and a
     // direct /book.html load.

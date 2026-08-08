@@ -1,9 +1,29 @@
-// Interface adapter: exposes window.previewAPI for the parent toolbar.
-// Paged.js paginates into .pagedjs_page elements. We use PagedConfig.after
-// to know when rendering is done.
+// Interface adapter: exposes window.previewAPI for the parent toolbar. Works
+// under BOTH pagination engines (`--engine paged` / `--engine native`),
+// detected once at load time from the injected engine <script> tag — by the
+// time any previewAPI method actually runs, the corresponding engine has had
+// a chance to mount.
+//
+// Paged.js paginates into .pagedjs_page elements; we use PagedConfig.after to
+// know when rendering is done. The Gutterpress engine viewer paginates into
+// .folio-sheet elements (one per page, `dataset.page` = 1-based book page)
+// and exposes window.Gutterpress.pageOf(el) (0-based); it fires 'folio:layout'
+// when its pagination completes.
+//
+// The ~150-line data-ref fragment-grouping machinery below (resolveBlockGroup/
+// elementsByRef) exists because Paged.js CLONES an element across pages and
+// strips its id from every clone but the first. The native viewer never
+// clones — an element that visually spans pages is still ONE element — so the
+// native path skips that grouping and resolves rects straight off the single
+// element via getClientRects() + pageOf().
 
 (function () {
   'use strict';
+
+  var NATIVE_ENGINE = !!(
+    document.querySelector &&
+    document.querySelector('script[src*="/engine/gutterpress-viewer.js"]')
+  );
 
   var pages = [];
   var currentPage = 1;
@@ -14,7 +34,13 @@
   var lastSourceChapter = null;
 
   function refreshPages() {
-    pages = Array.from(document.querySelectorAll('.pagedjs_page'));
+    if (NATIVE_ENGINE) {
+      pages = Array.from(document.querySelectorAll('.folio-sheet')).sort(function (a, b) {
+        return (parseInt(a.dataset.page, 10) || 0) - (parseInt(b.dataset.page, 10) || 0);
+      });
+    } else {
+      pages = Array.from(document.querySelectorAll('.pagedjs_page'));
+    }
     return pages;
   }
 
@@ -71,7 +97,13 @@
   }
 
   function pageIndexOf(el) {
-    if (!el || !el.closest) return 0;
+    if (!el) return 0;
+    if (NATIVE_ENGINE) {
+      if (!window.Gutterpress || typeof window.Gutterpress.pageOf !== 'function') return 0;
+      var native = window.Gutterpress.pageOf(el);
+      return native >= 0 ? native + 1 : 0;
+    }
+    if (!el.closest) return 0;
     var pg = el.closest('.pagedjs_page');
     if (!pg) return 0;
     if (pages.length === 0) refreshPages();
@@ -425,6 +457,38 @@
     return { ref: null, els: [] };
   }
 
+  // Native-engine getRectsFor(): the viewer never clones, so a spec resolves
+  // to AT MOST ONE element. Its fragment rects come straight from
+  // getClientRects() — a block can still visually span pages if the
+  // browser's own multicol layout breaks it there — each reported under the
+  // block's own page (window.Gutterpress.pageOf() locates the fragmentainer
+  // the element STARTS in, so every rect shares that one page number). Same
+  // {ref, rects[]} wire shape as the paged path.
+  function nativeRectsFor(spec) {
+    spec = spec || {};
+    var el = null;
+    if (spec.ref) {
+      el = elementsByRef(spec.ref)[0] || null;
+    } else if (spec.chapter != null && spec.range) {
+      var candidates = rangedBlocksInChapter(spec.chapter).filter(function (e) {
+        var r = sourceRangeOf(e);
+        return r && r[0] === spec.range[0] && r[1] === spec.range[1];
+      });
+      el = candidates[0] || null;
+    }
+    if (!el) return { ref: null, rects: [] };
+    var page = pageIndexOf(el);
+    var raw = el.getClientRects ? Array.from(el.getClientRects()) : [];
+    if (!raw.length) {
+      var r0 = plainRect(el);
+      raw = r0 ? [r0] : [];
+    }
+    var rects = raw.map(function (r) {
+      return { top: r.top, left: r.left, width: r.width, height: r.height, page: page };
+    });
+    return { ref: el.getAttribute('data-ref') || null, rects: rects };
+  }
+
   var api = {
     getTotalPages: function () { refreshPages(); return pages.length; },
     getCurrentPage: function () { return currentPage; },
@@ -437,8 +501,11 @@
     getPageDimensions: function () {
       refreshPages();
       var page = pages[0] || null;
-      var pagesEl = document.querySelector('.pagedjs_pages');
       if (!page) return null;
+      if (NATIVE_ENGINE) {
+        return { width: page.offsetWidth, height: page.offsetHeight };
+      }
+      var pagesEl = document.querySelector('.pagedjs_pages');
       return {
         width: currentViewMode === 'single' ? page.offsetWidth : (pagesEl ? pagesEl.scrollWidth : page.offsetWidth),
         height: page.offsetHeight
@@ -509,6 +576,7 @@
     // never mutates the DOM. Plain, JSON-cloneable objects only (§3.5) — no
     // DOMRect instances.
     getRectsFor: function (spec) {
+      if (NATIVE_ENGINE) return nativeRectsFor(spec);
       var resolved = resolveBlockGroup(spec);
       var rects = resolved.els.map(function (el) {
         var r = plainRect(el);
@@ -814,7 +882,12 @@
     return true;
   }
 
-  if (!startPageObserver()) {
+  // The incremental page-count MutationObserver is a Paged.js-only heuristic:
+  // Paged.js builds .pagedjs_page elements one at a time as it paginates, so
+  // watching the DOM lets the toolbar show a growing page count before
+  // PagedConfig.after fires. The native viewer lays out synchronously and
+  // announces completion via 'folio:layout' (below) — no observer needed.
+  if (!NATIVE_ENGINE && !startPageObserver()) {
     document.addEventListener('DOMContentLoaded', function onReady() {
       document.removeEventListener('DOMContentLoaded', onReady);
       startPageObserver();
@@ -857,9 +930,9 @@
     scrollTimer = setTimeout(publishScrollPosition, 150);
   });
 
-  // Paged.js calls this when rendering is complete
-  window.PagedConfig = window.PagedConfig || {};
-  window.PagedConfig.after = function (flow) {
+  // Shared "pagination finished" handling for both engines: reset to page 1,
+  // scroll to top, and announce completion.
+  function onRenderingComplete(label) {
     refreshPages();
     observedPageCount = pages.length;
     pageObserver.disconnect();
@@ -867,8 +940,20 @@
     ignoreScrollUntil = Date.now() + 300;
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     recordVisibleSource();
-    console.log('Paged.js rendered ' + pages.length + ' pages');
+    console.log(label + ' rendered ' + pages.length + ' pages');
     api.notifyRenderingComplete();
     setTimeout(api.notifyPageChange, 0);
+  }
+
+  // Paged.js calls this when rendering is complete.
+  window.PagedConfig = window.PagedConfig || {};
+  window.PagedConfig.after = function (flow) {
+    onRenderingComplete('Paged.js');
   };
+
+  // The Gutterpress engine viewer dispatches this when its pagination
+  // completes (engine/viewer/index.ts's mount()).
+  window.addEventListener('folio:layout', function () {
+    if (NATIVE_ENGINE) onRenderingComplete('Gutterpress engine');
+  });
 })();

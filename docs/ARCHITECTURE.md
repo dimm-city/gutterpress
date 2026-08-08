@@ -122,7 +122,7 @@ packages/cli/src/
 │   └── logger.ts           # Leveled logger + command-facing log facade
 └── assets/                 # Static assets
     ├── manifest.schema.json # JSON schema
-    └── preview/            # Embedded desktop preview assets (Paged.js, pagedjs-interface)
+    └── preview/            # Embedded desktop preview assets (Paged.js, preview-interface)
 ```
 
 ### Data Flow

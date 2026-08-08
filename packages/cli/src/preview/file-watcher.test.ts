@@ -291,8 +291,8 @@ describe('injectPreviewScripts', () => {
 
   test('swaps the polyfill slot for the interface scripts + served polyfill', () => {
     const out = injectPreviewScripts(html, false);
-    expect(out).toContain('/preview/scripts/pagedjs-interface.js');
-    expect(out).toContain('/preview/scripts/pagedjs-bridge.js');
+    expect(out).toContain('/preview/scripts/preview-interface.js');
+    expect(out).toContain('/preview/scripts/preview-bridge.js');
     expect(out).toContain('/vendor/paged.polyfill.js');
     expect(out).not.toContain('data-pagedjs-polyfill');
   });

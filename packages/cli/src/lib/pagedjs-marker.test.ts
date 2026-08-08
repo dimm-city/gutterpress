@@ -46,10 +46,10 @@ test("the marker regex still matches a legacy CDN / vendored polyfill src", () =
 });
 
 test("the marker regex does NOT match the navigation toolbar scripts", () => {
-  // pagedjs-interface.js / pagedjs-bridge.js contain the substring "pagedjs" but
-  // are NOT the polyfill and must survive the strip pass.
-  const iface = '<script src="preview/scripts/pagedjs-interface.js"></script>';
-  const bridge = '<script src="preview/scripts/pagedjs-bridge.js"></script>';
+  // preview-interface.js / preview-bridge.js are the CLI's navigation toolbar
+  // scripts, NOT the polyfill, and must survive the strip pass.
+  const iface = '<script src="preview/scripts/preview-interface.js"></script>';
+  const bridge = '<script src="preview/scripts/preview-bridge.js"></script>';
   expect(pagedjsPolyfillTagRegex().test(iface)).toBe(false);
   expect(pagedjsPolyfillTagRegex().test(bridge)).toBe(false);
 });

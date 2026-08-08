@@ -201,7 +201,7 @@ wrong" this plan bans).
 **Why NOT `t.map = [line-1, line]`** (the superficially cleaner fix): setting
 `map` makes the existing `markdown-it-source-map` render patch stamp
 `data-source-line` onto the wrapper divs, which changes the *candidate set* of
-the shipped scroll-sync code. `sourcedBlocks()` in `pagedjs-interface.js`
+the shipped scroll-sync code. `sourcedBlocks()` in `preview-interface.js`
 selects `[data-source-line]`, and `topVisibleSourceEl()` keeps the best
 candidate only on a **strictly greater** top — a wrapper div's rect top ties
 exactly with its first child's top, the wrapper comes first in document
@@ -379,7 +379,7 @@ assets served under `/preview/scripts/`) plus the SPA client typings.
 The overlay's commands (`getRectsFor`, `setEditMask`) ship with the overlay
 in PR 5 as protocol v5.
 
-### 3.1 `pagedjs-interface.js` (book iframe)
+### 3.1 `preview-interface.js` (book iframe)
 
 New `previewAPI` member (object-parameter style, matching
 `queryDom(spec)`/`highlight(spec)`):
@@ -443,7 +443,7 @@ Note: the right mouse button fires `contextmenu` only — never `click` — so
 these listeners cannot double-fire with the existing `elementActivated`
 click listener (review-verified).
 
-### 3.2 `pagedjs-bridge.js` (book iframe)
+### 3.2 `preview-bridge.js` (book iframe)
 
 Command dispatch is generic by name — **no change needed for commands**
 **[spike-verified]**. One line to forward the new event:
@@ -925,7 +925,7 @@ zero dependency cost.)
 
 | File | Change |
 |---|---|
-| `packages/cli/src/assets/preview/scripts/pagedjs-interface.js` | `getRectsFor`, `setEditMask`, protocol → 5 |
+| `packages/cli/src/assets/preview/scripts/preview-interface.js` | `getRectsFor`, `setEditMask`, protocol → 5 |
 | `packages/desktop/src/lib/preview-client.ts` | typed wrappers for both v5 commands |
 | `packages/desktop/src/lib/components/BlockEditOverlay.svelte` | new |
 | `packages/desktop/src/lib/routes/block-overlay-controller.svelte.ts` | new |

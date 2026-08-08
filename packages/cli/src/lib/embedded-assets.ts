@@ -34,8 +34,8 @@ import { fileURLToPath } from "node:url";
 
 import favicon from "../assets/favicon.ico" with { type: "file" };
 import manifestSchema from "../assets/manifest.schema.json" with { type: "file" };
-import pagedjsInterfaceJs from "../assets/preview/scripts/pagedjs-interface.js" with { type: "file" };
-import pagedjsBridgeJs from "../assets/preview/scripts/pagedjs-bridge.js" with { type: "file" };
+import previewInterfaceJs from "../assets/preview/scripts/preview-interface.js" with { type: "file" };
+import previewBridgeJs from "../assets/preview/scripts/preview-bridge.js" with { type: "file" };
 import previewShellJs from "../assets/preview/scripts/preview-shell.js" with { type: "file" };
 import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" };
@@ -78,8 +78,8 @@ const filePath = (v: unknown): string => v as string;
 const EMBEDDED_ASSETS: Record<string, string> = {
   "favicon.ico":                            abs(favicon),
   "manifest.schema.json":                   abs(filePath(manifestSchema)),
-  "preview/scripts/pagedjs-interface.js":   abs(filePath(pagedjsInterfaceJs)),
-  "preview/scripts/pagedjs-bridge.js":      abs(filePath(pagedjsBridgeJs)),
+  "preview/scripts/preview-interface.js":   abs(filePath(previewInterfaceJs)),
+  "preview/scripts/preview-bridge.js":      abs(filePath(previewBridgeJs)),
   "preview/scripts/preview-shell.js":       abs(filePath(previewShellJs)),
   "vendor/paged.polyfill.js":               abs(filePath(pagedPolyfill)),
   "profiles/CGATS21_CRPC1.icc":             abs(filePath(cmykProfile)),

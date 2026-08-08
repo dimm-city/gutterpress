@@ -161,7 +161,7 @@ export class BlockOverlayController {
         break;
       case "pageChanged":
         // Zoom / view-mode / page-nav all route through the bridge's
-        // notifyPageChange() (pagedjs-interface.js), so this ONE case covers
+        // notifyPageChange() (preview-interface.js), so this ONE case covers
         // all three anchor-invalidating cases the plan lists separately.
         await this.reanchorAfterViewportChange();
         break;

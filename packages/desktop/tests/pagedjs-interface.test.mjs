@@ -19,7 +19,7 @@ const scriptPath = path.resolve(
   "assets",
   "preview",
   "scripts",
-  "pagedjs-interface.js"
+  "preview-interface.js"
 );
 const scriptSource = readFileSync(scriptPath, "utf8");
 
@@ -33,6 +33,106 @@ function makePage(offsetTop, offsetWidth = 400, offsetHeight = 600) {
       this.scrollIntoViewCalls.push(opts);
     },
   };
+}
+
+// Native-engine equivalent of makePage(): a `.folio-sheet`, keyed by its
+// 1-based `dataset.page` (the same value the real viewer's decorate.ts
+// stamps on each sheet) rather than DOM order.
+function makeSheet(page, offsetWidth = 400, offsetHeight = 600) {
+  return {
+    dataset: { page: String(page) },
+    offsetWidth,
+    offsetHeight,
+    scrollIntoViewCalls: [],
+    scrollIntoView(opts) {
+      this.scrollIntoViewCalls.push(opts);
+    },
+  };
+}
+
+// Loads preview-interface.js with a `script[src*="/engine/gutterpress-viewer.js"]`
+// tag present (the NATIVE_ENGINE detection signal) and a minimal
+// window.Gutterpress stub, against `.folio-sheet` fixtures instead of
+// `.pagedjs_page`.
+function loadNativePreviewApi(sheets) {
+  const listeners = new Map();
+
+  const document = {
+    body: { classList: { add() {}, remove() {} } },
+    documentElement: { scrollTop: 0, style: { setProperty() {} } },
+    querySelectorAll(selector) {
+      if (selector === ".folio-sheet") return sheets;
+      return [];
+    },
+    querySelector(selector) {
+      if (selector === 'script[src*="/engine/gutterpress-viewer.js"]') return {};
+      return null;
+    },
+  };
+
+  const windowObj = {
+    document,
+    innerHeight: 900,
+    scrollY: 0,
+    previewAPI: undefined,
+    location: { search: "" },
+    parent: { postMessage() {} },
+    print() {},
+    Gutterpress: {
+      // 0-based, matching engine/viewer/fragment.ts's pageOf() contract.
+      pageOf: (el) => sheets.indexOf(el),
+    },
+    scrollTo(_x, y) {
+      this.scrollY = y;
+      document.documentElement.scrollTop = y;
+    },
+    requestAnimationFrame(cb) {
+      cb();
+      return 1;
+    },
+    addEventListener(name, fn) {
+      listeners.set(name, [...(listeners.get(name) ?? []), fn]);
+    },
+    dispatchEvent(event) {
+      for (const fn of listeners.get(event.type) ?? []) fn(event);
+    },
+  };
+
+  for (const [i, s] of sheets.entries()) {
+    s.getBoundingClientRect = () => ({
+      top: i * 900 - windowObj.scrollY,
+      bottom: i * 900 - windowObj.scrollY + s.offsetHeight,
+      left: 0,
+      right: s.offsetWidth,
+      width: s.offsetWidth,
+      height: s.offsetHeight,
+    });
+  }
+
+  class CustomEventStub {
+    constructor(type, init = {}) {
+      this.type = type;
+      this.detail = init.detail;
+    }
+  }
+  class MutationObserverStub {
+    constructor(_callback) {}
+    observe() {}
+    disconnect() {}
+  }
+
+  const run = new Function(
+    "window",
+    "document",
+    "CustomEvent",
+    "MutationObserver",
+    "setTimeout",
+    "clearTimeout",
+    scriptSource
+  );
+  run(windowObj, document, CustomEventStub, MutationObserverStub, setTimeout, clearTimeout);
+
+  return { windowObj, sheets, api: windowObj.previewAPI };
 }
 
 function loadPreviewApi(pages, pagesWidth = 808, search = "") {
@@ -134,9 +234,16 @@ function loadPreviewApi(pages, pagesWidth = 808, search = "") {
 // closest()/classList/getAttribute against real elements, which a hand-mock
 // can't cheaply reproduce faithfully. Mirrors preview-bridge.test.mjs's
 // setup() pattern, which loads this SAME script the same way.
-function loadInterfaceWithDom(html) {
+// `opts.native`: install the NATIVE_ENGINE detection tag plus a
+// window.Gutterpress.pageOf() stub before the script runs, so getRectsFor()
+// takes the native (no clone-grouping) path.
+function loadInterfaceWithDom(html, opts = {}) {
   const window = new Window({ url: "http://localhost/" });
   const document = window.document;
+  if (opts.native) {
+    document.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
+    window.Gutterpress = { pageOf: opts.pageOf || (() => -1) };
+  }
   document.body.innerHTML = html;
   // happy-dom implements elementFromPoint() but has no layout engine, so it
   // always returns null — tests set it explicitly per case to the element
@@ -221,6 +328,39 @@ async function main() {
   }
 
   console.log("[desktop-test] PASS pagedjs interface navigation");
+
+  // ── Native engine (--engine native): same navigation contract, driven off
+  // .folio-sheet elements + window.Gutterpress instead of .pagedjs_page ───────
+  {
+    const sheets = [makeSheet(1), makeSheet(2), makeSheet(3), makeSheet(4)];
+    const { api } = loadNativePreviewApi(sheets);
+    api.setViewMode("single", true);
+    assert.equal(api.getTotalPages(), 4, "native: page count comes from .folio-sheet elements");
+    api.goToPage(3);
+    assert.equal(api.getCurrentPage(), 3);
+    assert.equal(sheets[2].scrollIntoViewCalls.length, 1, "native: goToPage scrolls the matching sheet");
+    api.nextPage();
+    assert.equal(api.getCurrentPage(), 4);
+    api.prevPage();
+    assert.equal(api.getCurrentPage(), 3);
+    assert.deepEqual(
+      api.getPageDimensions(),
+      { width: 400, height: 600 },
+      "native: dimensions come straight off the sheet — no .pagedjs_pages two-column width"
+    );
+  }
+
+  {
+    // .folio-sheet insertion order need not match page order (draw() appends
+    // per-strip); refreshPages() must sort by dataset.page, not DOM order.
+    const sheets = [makeSheet(2), makeSheet(1)];
+    const { api } = loadNativePreviewApi(sheets);
+    assert.equal(api.getTotalPages(), 2);
+    api.goToPage(1);
+    assert.equal(sheets[1].scrollIntoViewCalls.length, 1, "page 1 is the sheet with dataset.page===\"1\", not DOM order");
+  }
+
+  console.log("[desktop-test] PASS native-engine page navigation");
 
   // ── getContextTargetAt: kind precedence + payload shape (protocol v4,
   // docs/inline-editing-plan.md §3.1) ────────────────────────────────────────
@@ -610,6 +750,47 @@ async function main() {
     const { api } = loadInterfaceWithDom("<p>x</p>");
     assert.equal(api.getProtocolVersion(), 5);
   }
+
+  // ── Native engine getRectsFor: no clone-grouping — a spec resolves to AT
+  // MOST ONE element, and its rects come straight from getClientRects() ──────
+  const nativeOverlayHtml = `
+    <div class="chapter" data-chapter-src="a.md" data-source-range="0:10" data-ref="chapter-ref">
+      <p id="solo" data-source-range="0:1" data-ref="solo-ref">Solo block</p>
+    </div>`;
+
+  {
+    const { document, api } = loadInterfaceWithDom(nativeOverlayHtml, {
+      native: true,
+      pageOf: (el) => (el && el.id === "solo" ? 1 : -1), // 0-based -> reported page 2
+    });
+    const solo = document.getElementById("solo");
+    solo.getClientRects = () => [{ top: 10, left: 5, bottom: 30, right: 100, width: 95, height: 20 }];
+    const result = api.getRectsFor({ ref: "solo-ref" });
+    assert.equal(result.ref, "solo-ref");
+    assert.deepEqual(result.rects, [{ top: 10, left: 5, width: 95, height: 20, page: 2 }]);
+    assert.deepEqual(JSON.parse(JSON.stringify(result)), result, "JSON-cloneable, no DOMRect instances");
+  }
+
+  // getRectsFor({chapter, range}) resolution works the same way natively.
+  {
+    const { document, api } = loadInterfaceWithDom(nativeOverlayHtml, {
+      native: true,
+      pageOf: () => 0,
+    });
+    const solo = document.getElementById("solo");
+    solo.getClientRects = () => [{ top: 1, left: 2, bottom: 3, right: 4, width: 2, height: 2 }];
+    const result = api.getRectsFor({ chapter: "a.md", range: [0, 1] });
+    assert.equal(result.ref, "solo-ref", "resolves via source range and reads back the live data-ref");
+    assert.equal(result.rects.length, 1);
+  }
+
+  // Unknown/stale ref: empty result, ref:null, no throw.
+  {
+    const { api } = loadInterfaceWithDom(nativeOverlayHtml, { native: true });
+    assert.deepEqual(api.getRectsFor({ ref: "does-not-exist" }), { ref: null, rects: [] });
+  }
+
+  console.log("[desktop-test] PASS native-engine getRectsFor (no clone grouping)");
 
   console.log("[desktop-test] PASS getRectsFor / setEditMask / protocol v5");
 }

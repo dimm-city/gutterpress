@@ -1,5 +1,5 @@
 /**
- * Client for the cross-origin pagedjs-bridge.js running inside the preview iframe.
+ * Client for the cross-origin preview-bridge.js running inside the preview iframe.
  * Sends commands via postMessage and tracks replies by id.
  */
 export interface PreviewEvent {

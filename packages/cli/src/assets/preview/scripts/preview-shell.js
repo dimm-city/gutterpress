@@ -254,8 +254,14 @@
       cleanup();
       callback();
     }
-    var hasPaged = !!d.querySelector('script[src*="paged.polyfill"]');
-    if (hasPaged) {
+    // Paged.js fires 'renderingComplete' itself; the Gutterpress engine
+    // viewer has no polyfill script, so preview-interface.js's folio:layout
+    // listener re-dispatches 'renderingComplete' on its behalf (same event,
+    // either engine — see preview-interface.js's onRenderingComplete()).
+    // Detected the same way http-server.ts's HMR client detects an engine.
+    var hasEngine = !!d.querySelector('script[src*="paged.polyfill"]')
+      || !!d.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
+    if (hasEngine) {
       w.addEventListener('renderingComplete', finish);
       if (w.__PAGED_RENDERED__ === true) setTimeout(finish, 0);
       timer = setTimeout(function () {

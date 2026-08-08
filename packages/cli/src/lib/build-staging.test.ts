@@ -27,7 +27,7 @@ test("stripPaginationRuntime removes polyfill script and inline break handler", 
     "})();",
     "</script>",
     '<script src="./vendor/paged.polyfill.js"></script>',
-    '<script src="preview/scripts/pagedjs-interface.js"></script>',
+    '<script src="preview/scripts/preview-interface.js"></script>',
     "</head><body><div class=\"pagedjs_page\">hi</div></body></html>",
   ].join("\n");
 
@@ -36,7 +36,7 @@ test("stripPaginationRuntime removes polyfill script and inline break handler", 
   expect(out).not.toMatch(/paged\.polyfill\.js/);
   expect(out).not.toMatch(/BreakInsideAvoidHandler/);
   // Navigation script and the layout CSS survive.
-  expect(out).toMatch(/pagedjs-interface\.js/);
+  expect(out).toMatch(/preview-interface\.js/);
   expect(out).toMatch(/\.pagedjs_page\{width:8\.5in\}/);
   // The paginated page DOM survives.
   expect(out).toMatch(/class="pagedjs_page"/);
@@ -57,13 +57,13 @@ test("stripPaginationRuntime is version-agnostic (marker, not URL, drives the ma
     const html =
       "<!DOCTYPE html><html><head>" +
       `${pagedjsPolyfillTag(version)}` +
-      '<script src="preview/scripts/pagedjs-interface.js"></script>' +
+      '<script src="preview/scripts/preview-interface.js"></script>' +
       '</head><body><div class="pagedjs_page">hi</div></body></html>';
     const out = stripPaginationRuntime(html);
     // The polyfill slot is gone at every version...
     expect(out).not.toMatch(/data-pagedjs-polyfill/);
     // ...while the navigation script (also contains "pagedjs") survives...
-    expect(out).toMatch(/pagedjs-interface\.js/);
+    expect(out).toMatch(/preview-interface\.js/);
     // ...and the paginated page DOM is untouched.
     expect(out).toMatch(/class="pagedjs_page"/);
   }
@@ -87,7 +87,7 @@ test("shipRuntimePaginatedHtml rewrites the marker slot at any version", async (
       // The marker slot was replaced with the vendored polyfill + nav scripts.
       expect(result).not.toMatch(/data-pagedjs-polyfill/);
       expect(result).toMatch(/vendor\/paged\.polyfill\.js/);
-      expect(result).toMatch(/preview\/scripts\/pagedjs-interface\.js/);
+      expect(result).toMatch(/preview\/scripts\/preview-interface\.js/);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -96,10 +96,10 @@ test("shipRuntimePaginatedHtml rewrites the marker slot at any version", async (
 
 test("injectNavigationScripts inserts both toolbar scripts before </head>", () => {
   const out = injectNavigationScripts("<head><title>x</title></head><body></body>");
-  expect(out).toMatch(/preview\/scripts\/pagedjs-interface\.js/);
-  expect(out).toMatch(/preview\/scripts\/pagedjs-bridge\.js/);
+  expect(out).toMatch(/preview\/scripts\/preview-interface\.js/);
+  expect(out).toMatch(/preview\/scripts\/preview-bridge\.js/);
   // Inserted before </head>, not after it.
-  expect(out.indexOf("pagedjs-interface.js")).toBeLessThan(out.indexOf("</head>"));
+  expect(out.indexOf("preview-interface.js")).toBeLessThan(out.indexOf("</head>"));
 });
 
 // The no-Chromium fallback for `--format html`: ships the polyfill + nav scripts
@@ -122,14 +122,14 @@ test("shipRuntimePaginatedHtml rewrites the book + vendors the polyfill", async 
     const result = await readFile(htmlFile, "utf-8");
     // The browser-pagination polyfill IS shipped (this is the fallback).
     expect(result).toMatch(/vendor\/paged\.polyfill\.js/);
-    expect(result).toMatch(/preview\/scripts\/pagedjs-interface\.js/);
-    expect(result).toMatch(/preview\/scripts\/pagedjs-bridge\.js/);
+    expect(result).toMatch(/preview\/scripts\/preview-interface\.js/);
+    expect(result).toMatch(/preview\/scripts\/preview-bridge\.js/);
     // The CDN tag was replaced (no unpkg reference left).
     expect(result).not.toMatch(/unpkg\.com/);
     // Vendored assets exist on disk.
     expect(existsSync(join(dir, "vendor/paged.polyfill.js"))).toBe(true);
-    expect(existsSync(join(dir, "preview/scripts/pagedjs-interface.js"))).toBe(true);
-    expect(existsSync(join(dir, "preview/scripts/pagedjs-bridge.js"))).toBe(true);
+    expect(existsSync(join(dir, "preview/scripts/preview-interface.js"))).toBe(true);
+    expect(existsSync(join(dir, "preview/scripts/preview-bridge.js"))).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

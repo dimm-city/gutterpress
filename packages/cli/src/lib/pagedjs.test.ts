@@ -57,11 +57,11 @@ test("body text merely mentioning 'pagedjs' does NOT suppress polyfill injection
   expect(out).toContain("PagedConfig");
 });
 
-test("navigation toolbar scripts (pagedjs-interface.js / pagedjs-bridge.js) do not count as an existing polyfill", async () => {
+test("navigation toolbar scripts (preview-interface.js / preview-bridge.js) do not count as an existing polyfill", async () => {
   const htmlPath = await stageHtml(
     "<!DOCTYPE html><html><head>" +
-      '<script src="preview/scripts/pagedjs-interface.js"></script>' +
-      '<script src="preview/scripts/pagedjs-bridge.js"></script>' +
+      '<script src="preview/scripts/preview-interface.js"></script>' +
+      '<script src="preview/scripts/preview-bridge.js"></script>' +
       "</head><body><p>Hi</p></body></html>"
   );
   await patchHtmlForPagedjs(htmlPath, "./vendor/paged.polyfill.js");
@@ -69,8 +69,8 @@ test("navigation toolbar scripts (pagedjs-interface.js / pagedjs-bridge.js) do n
 
   expect(out).toContain('<script src="./vendor/paged.polyfill.js"></script>');
   // Navigation scripts survive untouched.
-  expect(out).toContain("pagedjs-interface.js");
-  expect(out).toContain("pagedjs-bridge.js");
+  expect(out).toContain("preview-interface.js");
+  expect(out).toContain("preview-bridge.js");
 });
 
 test("an existing stable marker slot is replaced with the handler + local vendor copy", async () => {

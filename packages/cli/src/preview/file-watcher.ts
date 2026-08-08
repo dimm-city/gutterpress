@@ -111,8 +111,8 @@ async function renderPreviewBook(
  *
  * `engine: "paged"` (default) injects, in order, replacing the polyfill
  * marker slot `assembleBookHtml` emits:
- *   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
- *   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (desktop)
+ *   1. preview-interface.js — defines window.previewAPI for in-iframe controls
+ *   2. preview-bridge.js    — postMessage bridge for cross-origin toolbar (desktop)
  *   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
  *   4. Paged.js polyfill itself, served directly from the process-wide
  *      embedded-assets dir by the HTTP server (see http-server.ts route
@@ -124,14 +124,15 @@ async function renderPreviewBook(
  *          serving it from a stable disk path lets the OS file-cache
  *          and Defender hash-cache stay warm across sessions.
  *
- * `engine: "native"` injects ONE script instead: the Gutterpress engine's
- * viewer bundle (`/engine/gutterpress-viewer.js`, embedded the same way as the polyfill —
- * see lib/embedded-assets.ts). It self-mounts on DOMContentLoaded and
- * paginates the document client-side via multicol — no Paged.js polyfill, no
- * BREAK_INSIDE_HANDLER, no pagedjs-interface/bridge (MIGRATION.md Step 3:
- * preview and PDF must use the same engine, never independently). There is
- * no polyfill marker slot to replace — `assembleBookHtml` omits it entirely
- * for `engine: "native"` — so the viewer script is inserted before `</head>`.
+ * `engine: "native"` injects the Gutterpress engine's viewer bundle
+ * (`/engine/gutterpress-viewer.js`, embedded the same way as the polyfill —
+ * see lib/embedded-assets.ts) PLUS the same preview-interface.js/
+ * preview-bridge.js pair — no Paged.js polyfill, no BREAK_INSIDE_HANDLER.
+ * preview-interface.js detects which engine is live at runtime, so the
+ * desktop's whole `gutterpress:cmd/reply/event` command protocol works under
+ * native too. There is no polyfill marker slot to replace — `assembleBookHtml`
+ * omits it entirely for `engine: "native"` — so the scripts are inserted
+ * before `</head>`.
  *
  * With `pageIsolateChapters`, each source wrapper starts on a fresh page. This
  * is the v0.8.3 incremental-preview invariant: a standalone source render owns
@@ -145,13 +146,17 @@ export function injectPreviewScripts(
 ): string {
   let output: string;
   if (engine === "native") {
+    const scripts =
+      '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
+      + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
+      + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
     output = /<\/head>/i.test(html)
-      ? html.replace(/<\/head>/i, '  <script src="/engine/gutterpress-viewer.js"></script>\n</head>')
-      : html + '<script src="/engine/gutterpress-viewer.js"></script>';
+      ? html.replace(/<\/head>/i, scripts + '</head>')
+      : html + scripts;
   } else {
     const iface =
-      '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
-      + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
+      '<script src="/preview/scripts/preview-interface.js"></script>\n  '
+      + '<script src="/preview/scripts/preview-bridge.js"></script>\n  ';
     output = html.replace(
       pagedjsPolyfillTagRegex(),
       iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`

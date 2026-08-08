@@ -40,7 +40,7 @@ export function pagedjsPolyfillTag(version: string = PAGEDJS_VERSION): string {
  * staging/patch pass has already swapped in) — so the same matcher works at every
  * stage of the pipeline. Deliberately matches `paged.polyfill` (the version-
  * stable FILENAME), never a bare `pagedjs` substring, so the navigation toolbar
- * scripts (`pagedjs-interface.js` / `pagedjs-bridge.js`) are left untouched.
+ * scripts (`preview-interface.js` / `preview-bridge.js`) are left untouched.
  *
  * Attribute-order tolerant and version-agnostic. Returns a FRESH RegExp per call
  * so the `g` flag's `lastIndex` is never shared between callers.

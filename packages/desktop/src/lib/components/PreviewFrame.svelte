@@ -53,7 +53,7 @@
   bridge via main.ts's — now closed — will-navigate hole). `sandbox` denies
   top-navigation and popups outright, as defense in depth alongside the host's
   will-navigate/setWindowOpenHandler policy.
-  allow-scripts is required: the pagedjs-bridge.js running inside the frame
+  allow-scripts is required: the preview-bridge.js running inside the frame
   drives paged.js layout and the postMessage command bridge (preview-client.ts).
   allow-same-origin is required too: without it the sandboxed frame gets an
   opaque origin, which breaks its own same-origin resource fetches (fonts,

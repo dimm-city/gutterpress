@@ -373,7 +373,7 @@ export default function plugin(md, pluginOptions = {}) {
       // annotation rule (source-range.ts) to consume. Do NOT set token.map
       // here: markdown-it-source-map would then stamp data-source-line onto
       // this wrapper div, and topVisibleSourceEl()'s strictly-greater rect
-      // tie-break in pagedjs-interface.js would resolve scroll-sync to this
+      // tie-break in preview-interface.js would resolve scroll-sync to this
       // marker's line instead of the paragraph actually on screen, on every
       // page of a multi-page chapter (the wrapper is cloned per page). See
       // ADR 0009.
