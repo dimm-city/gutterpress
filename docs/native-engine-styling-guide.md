@@ -6,10 +6,12 @@ claim below was **measured** against real builds, not inferred from specs.
 Where a fix lives in a real stylesheet, the canonical example is
 `dc-op-manual/dc-design-guide/css/native-furniture.css`.
 
-> Companion doc: `docs/native-engine-dx-recommendations.md` — a ranked
-> proposal set for removing these gotchas at the engine layer (default
-> reset rules, build checks, CDP settings), so future books don't need the
-> per-book workarounds described here.
+> **Several of these gotchas no longer bite** — the engine now defends
+> against them by default (marked **[handled]** below). They stay documented
+> because you will still meet them when you override a default, read an older
+> book's CSS, or hit a case the default cannot cover. What the engine does
+> for you now, and why each default is shaped the way it is:
+> `docs/native-engine-dx-recommendations.md`.
 
 The single most important mental-model shift: **Paged.js pre-cuts your content
 into page-sized DOM boxes before CSS ever runs; the native engine styles one
@@ -31,7 +33,9 @@ gotcha below is a consequence of that difference.
   `width: fit-content` (great for chip/pill footers), fonts, and
   `text-transform`. They do **not** support `transform: rotate()` or
   `box-shadow` — rotated/shadowed sticker chrome must be flattened to a square,
-  unshadowed version.
+  unshadowed version. **[reported]** — the CSS linter warns when it sees one
+  of these inside a margin box, so a silently-ignored declaration doesn't read
+  as "my shadow just isn't showing up".
 - **Named pages and `:blank` can override margin-box chrome.** A later
   `@page chapter-start { @bottom-left { content: ""; … } }` suppresses chips on
   chrome-free pages. Keep an empty background fill in the suppressed box so a
@@ -44,8 +48,11 @@ smaller, more pages, different pagination) appears far from the cause.
 
 - **Any box that extends past the page content box triggers a whole-document
   print scale-down.** One overflowing element on page 213 shrinks all 300
-  pages. Left-side protrusion counts too. Ancestor `overflow: hidden` does NOT
-  contain absolutely positioned descendants for this purpose.
+  pages. Left-side protrusion counts too (**[handled]** — the build's width
+  check now flags both edges, names the element, and states the one-line fix;
+  it is a hard error unless you pass `allowShrink`). Ancestor
+  `overflow: hidden` does NOT contain absolutely positioned descendants for
+  this purpose.
 - **Auto-width replaced elements (images) trigger it via their INTRINSIC
   width.** An `<img>` with `width: auto` feeds its natural pixel width into
   Chromium's preferred-width computation. `max-width: 100%` does **not** bound
@@ -71,6 +78,13 @@ smaller, more pages, different pagination) appears far from the cause.
   because the page div was the containing block. This is invisible until you
   look at the final pages (or run `pdfimages -list` on them and find objects
   that shouldn't be there).
+  **[handled]**, with a caveat worth understanding: core now makes every
+  `.page`/`.spread` a containing block, so a mispinned element lands on its
+  own page instead of the book's last page. That contains the blast radius;
+  it does not make the pin correct. A `.page` may still span several sheets
+  (see Fix B), so `bottom: 0` pins to the END of that run, not to a sheet
+  edge. Anything still positioned against the document — abspos in raw HTML
+  outside a page wrapper — is reported as a build diagnostic.
 - **Fix A (preferred): don't position — flow.** Seat art in normal flow and
   let floats/margins do the design. In-flow art also rebalances surrounding
   multicol content, often improving the page.
@@ -114,16 +128,19 @@ a multicol — its pages are pre-cut.
   unenforceable**, and Chromium degrades badly: the child lands whole in one
   column and the neighbor column goes dead. If sections/cards inside a column
   wrapper can exceed a column's height, give them `break-inside: auto`.
-  Note that core's own `PAGED_CSS` ships `.section { break-inside: avoid }`
-  (markdown-it-paged.js:790, injected after author sheets) — so a book can
-  hit this collapse without ever writing the rule itself. Check the computed
-  style, not just your own stylesheets, when hunting the source of an
-  `avoid`.
+  **[handled]** — core used to ship a blanket `.section { break-inside: avoid }`
+  that caused this collapse in books that never wrote the rule. That default
+  is gone (replaced by first-child glue, §6), so a `break-inside: avoid` you
+  see in a computed style is now yours. Still check the computed style rather
+  than only your own sheets when hunting one down.
 - **`column-fill: balance` on a multicol that fragments across pages leaves
   non-final page fragments with a dead second column.** Use
   `column-fill: auto` (sequential fill) on fragmenting multicol under native —
   both columns fill on every page. (Balance is fine for a multicol that fits
-  on one page.)
+  on one page — which is why this is NOT defaulted: a global `column-fill:
+  auto` would visibly ragged-ify every ordinary single-page two-column
+  layout.) **[reported]** — the build warns when a balanced multicol actually
+  fragments, names it, and tells you to add `column-fill: auto`.
 - **A column-spanning heading (`column-span: all`) followed by an
   unbreakable box strands the heading**: Chromium emits an EMPTY box fragment
   (border + padding, zero content) under the spanner at the page bottom, and
@@ -132,6 +149,11 @@ a multicol — its pages are pre-cut.
   directly under its header.
 
 ## 6. Keeping headers with their content
+
+**[handled]** for the common case: core ships `break-after: avoid` on every
+heading and `break-before: avoid` on the first child of a `.section`/`figure`,
+both at `:where()` zero specificity so any rule of yours wins. The mechanics
+below still matter when you override them, or when the glue cannot hold.
 
 `break-after: avoid` (on the heading) and `break-before: avoid` (on the first
 child of a box) **do work** in Chromium print — verified with a synthetic
@@ -151,7 +173,9 @@ fixture — but only when the thing being kept-with can actually be placed:
 
 - **TOC page numbers via `target-counter()` work natively** — but only against
   anchors that exist. Fragment links with spaces or typos silently produce
-  wrong/empty numbers under both engines; validate hrefs.
+  wrong/empty numbers under both engines. **[handled]** — the build now names
+  every cross-reference whose target id does not exist, instead of printing a
+  blank number and saying nothing.
 - **`counter-reset` tricks that never worked under Paged.js won't start
   working natively.** When output looks wrong, check whether the "regression"
   was ever right (we found a `counter-reset: chapter 1 page 0` that had been
@@ -202,8 +226,25 @@ fixture — but only when the thing being kept-with can actually be placed:
   scaled book — and trips the pre-print width check as a hard error. **The
   only native mechanism for edge-to-edge art is a named `@page` with zero
   side margins**, applied to the page the art sits on, so the content box
-  reaches the paper edge and nothing has to out-dent. Any future native
-  `.full-bleed` has to work that way.
+  reaches the paper edge and nothing has to out-dent.
+
+  **Do this today, per book** (measured working on Chromium 148 — the art
+  reaches both paper edges and the shrink probe stays at the clean 204.4pt):
+
+  ```css
+  @page full-bleed-art { margin-left: 0; margin-right: 0; }
+  .full-bleed-art { page: full-bleed-art; width: 100%; max-width: none; }
+  ```
+
+  Note this moves the whole PAGE's side margins, so its margin boxes
+  (running heads, folios) move outward with them — usually what you want on
+  an art page, but suppress them there if not.
+
+  Core cannot ship this as `.full-bleed` yet: measured, Paged.js does NOT
+  honour the named page here (the image stayed at content width, 4.5in of a
+  6in sheet) while native does, so one shared rule cannot serve both legs.
+  When Paged.js is removed, `.full-bleed` should be reimplemented exactly
+  this way and the `--pagedjs-margin-*` out-dent deleted.
 
 ## 10. Debugging workflow that actually finds things
 
@@ -219,13 +260,13 @@ fixture — but only when the thing being kept-with can actually be placed:
   geometry) before writing a fix. Two of our worst wrong turns came from
   guessing selectors; every real fix came within minutes once the actual
   element and its computed values were on screen.
-- **Remember which media you're measuring.** A staged DOM you inspect (and,
-  as of this writing, the engine's own build-time audits) computes styles
-  under **screen** media unless print is explicitly emulated
+- **Remember which media you're measuring.** A staged DOM you inspect
+  computes styles under **screen** media unless print is explicitly emulated
   (`Emulation.setEmulatedMedia({ media: "print" })`) — any rule inside
   `@media print` is invisible to the inspection but active in the printed
   output. Verify print-only rules by printing, or emulate print before
-  reading computed styles.
+  reading computed styles. (The engine's own audits do this now — they run
+  under print media, so what they measure is what prints.)
 - **Prove CSS mechanisms in a synthetic 2-page fixture** (`chromium
   --headless --print-to-pdf` on a 20-line HTML file, ~5 s) before waiting on
   a 300-page build to test a hypothesis.
@@ -235,3 +276,24 @@ fixture — but only when the thing being kept-with can actually be placed:
 - **Compare against the Paged.js leg before "fixing" anything.** Several
   scary-looking pages (a lone divider illustration, a header-only page)
   were identical in both engines — book-as-designed, not defects.
+
+## 11. What the build tells you, and where it says it
+
+Every finding below names the offending element and states the fix in one
+line. In the desktop app they appear in the **Problems panel** next to the
+spell-check-style source findings; from the CLI they print as warnings.
+
+| Finding | Meaning |
+|---|---|
+| Too wide for the page | Something exceeds the page content box and would shrink the whole book (§2). Hard error unless you pass `allowShrink`. |
+| Image has no width set | An auto-width image whose natural size exceeds the page — the shrink risk of §2, as a warning. |
+| Broken link | A cross-reference points at an id that does not exist; its page number would print blank (§7). |
+| Placed off its page | An absolutely positioned element with nothing positioned around it (§3). |
+| Empty column | A balanced multi-column block that runs past one page, leaving dead columns (§5). |
+| Taller than the page | Content that print splits but the screen preview clips — the two will not agree there (§4). |
+| Image resolution | Below the DPI floor; may look soft in print. |
+
+If you add a check to the engine, give it a code in `BUILD_DIAGNOSTIC_CODES`
+and a plain-language label in the desktop's `SOURCE_LABELS` — a test fails
+otherwise, so an author never sees a raw id like
+`engine.multicol.dead-column`.

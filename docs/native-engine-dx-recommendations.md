@@ -199,6 +199,25 @@ unused synthesis path is the speculative complexity the mandate forbids. The
 gotcha it addressed (16 hand-copied margin-box rules) stands unfixed and is
 worth revisiting on its own.
 
+**What replaces it (measured, not yet shipped).** Native full-bleed IS
+achievable — just not by out-denting. A named zero-side-margin page works:
+
+```css
+@page full-bleed-art { margin-left: 0; margin-right: 0; }
+.full-bleed-art { page: full-bleed-art; width: 100%; max-width: none; }
+```
+
+Verified on Chromium 148: the art reaches both paper edges and the shrink
+probe stays at the clean 204.4pt (no scale-down). The blocker to shipping it
+as core's `.full-bleed` is cross-engine: measured, **Paged.js does not honour
+the named page** in this shape (the image stayed at content width, 4.5in of a
+6in sheet) while native does — so a single shared rule cannot serve both
+legs, and core CSS is shared by all three render paths. **This is a concrete
+Paged.js-removal deliverable**: when the polyfill leg goes, reimplement
+`.full-bleed` this way and delete the `--pagedjs-margin-*` out-dent
+entirely — one mechanism, no custom properties, and the class stops being
+the silently-dead primitive it is today.
+
 ## 11. Margin-box unsupported-property lint
 
 **Kills:** §1's silently-dropped `transform`/`box-shadow` inside `@top-*`/`@bottom-*`/`@left-*`/`@right-*`.
