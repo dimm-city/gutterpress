@@ -1,6 +1,23 @@
-# Native-only migration plan (delete Paged.js, rename Folio → Gutterpress)
+# Native-engine migration plan (make native the default; keep Paged.js behind a flag)
 
-Status: agreed plan. Supersedes the draft that circulated as "A/B".
+Status: agreed plan, in execution. Supersedes the draft that circulated as "A/B".
+
+> **DIRECTIVE (product owner, 2026-08-08) — READ FIRST.**
+> **Paged.js is NOT being deleted.** It stays fully implemented and selectable
+> behind `--engine paged` / `engine: "paged"` until we are 100% certain the
+> native engine reaches parity with, or improves on, it.
+>
+> The goal of this execution pass is: **native becomes the DEFAULT**, and the
+> migration can be reliably finished and tested. That means Phases 0-5 land;
+> **Phase 6 (deletion) does NOT run.** Nothing Paged.js-related is removed —
+> not the polyfill, not `pagination.ts`, not `engineStyles`, not the `engine`
+> manifest key, not `rulePagedjsCrashSelectors`, not the PWA's polyfill.
+> Every "*Deleted:*" line in Phases 0-5 that names a PAGED.JS file is
+> suspended; deletions of code made genuinely dead by the new native path
+> (e.g. `iframe-styles.ts`, the `data-ref` grouping inside the shared preview
+> interface) still apply, but only where the paged leg keeps working.
+> Phase 6 remains written below as the eventual follow-up, gated on the
+> parity evidence Phase 5 produces.
 
 ## Decisions
 
@@ -140,7 +157,11 @@ Automated fixture, run on the migration fixture set *and* `examples/with-design-
 
 Then `manifest.ts:329` `?? "paged"` → `?? "native"`. `--engine paged` survives. This is the reversible commit; sit on it and dogfood a real book.
 
-### Phase 6 — port the PWA, then delete
+### Phase 6 — port the PWA, then delete — **SUSPENDED, DO NOT EXECUTE**
+
+> Retained as the eventual follow-up. It runs only after the product owner
+> confirms native parity from Phase 5's evidence. Nothing in this section is
+> in scope for the current execution pass.
 
 Port `web-adapter.ts`'s in-browser preview to the viewer bundle (must stay node-free — `check-render-pure.mjs`), update `service-worker.ts:38`'s `SHELL` precache, and confirm both purity gates (`tools/check-render-purity.mjs --strict`, `scripts/check-render-pure.mjs`) are green.
 
