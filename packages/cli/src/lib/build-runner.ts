@@ -27,6 +27,7 @@ import { preflightBuildTools, computeGates, type Gates } from "./build-preflight
 import {
   finalizeStaticBook,
   shipRuntimePaginatedHtml,
+  shipViewerHtml,
   createStageRoot,
 } from "./build-staging";
 import {
@@ -595,13 +596,20 @@ interface OutputStrategy {
 }
 
 /**
- * `--format html` — Pre-paginate at BUILD time (static-site-generator model):
- * run Paged.js once in headless Chromium, serialize the fully-fragmented DOM,
- * and ship that static HTML so the browser renders pages with NO runtime
- * pagination JS. This inverts the pre-SSG model (shipping the polyfill so the
- * browser re-paginates on every load). The navigation toolbar scripts are kept
- * — they only scroll between already-laid-out pages; they do not paginate. With
- * no Chromium at build we fall back to shipping the runtime-pagination polyfill.
+ * `--format html`.
+ *
+ * `engine: "native"` ships the self-contained `book.html` plus a copy of the
+ * viewer bundle (`shipViewerHtml`) — the browser paginates on load. No
+ * headless Chromium at build time.
+ *
+ * `engine: "paged"` (unchanged) pre-paginates at BUILD time (static-site-
+ * generator model): run Paged.js once in headless Chromium, serialize the
+ * fully-fragmented DOM, and ship that static HTML so the browser renders
+ * pages with NO runtime pagination JS. This inverts the pre-SSG model
+ * (shipping the polyfill so the browser re-paginates on every load). The
+ * navigation toolbar scripts are kept — they only scroll between already-
+ * laid-out pages; they do not paginate. With no Chromium at build we fall
+ * back to shipping the runtime-pagination polyfill.
  */
 class HtmlOutput implements OutputStrategy {
   async finish(
@@ -610,23 +618,28 @@ class HtmlOutput implements OutputStrategy {
   ): Promise<BuildRunnerResult> {
     const { workDir, outDir, inputDir, config, opts } = ctx;
 
-    const chromium = await resolveChromiumExecutable();
-    if (!chromium) {
-      // No headless browser at build → fall back to runtime pagination so the
-      // build still succeeds (the browser paginates on load — pre-SSG behavior).
-      log.warn(
-        "Chromium not found — shipping runtime-paginated HTML (the browser will " +
-          "paginate on load). Install Chromium or set CHROMIUM_PATH for " +
-          "pre-paginated static output."
-      );
-      await shipRuntimePaginatedHtml(htmlFile, workDir);
+    if (config.engine === "native") {
+      log.info("Shipping self-contained HTML + viewer bundle (native engine)");
+      await shipViewerHtml(htmlFile, workDir);
     } else {
-      // No staging copy: book.html is self-contained (CSS + fonts inlined) and
-      // its images already sit in outDir, so the pagination pass serves outDir
-      // itself with the engine supplied as in-memory overlays.
-      log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
-      const paginated = await paginateToStaticHtml(htmlFile);
-      await finalizeStaticBook(paginated, htmlFile, workDir);
+      const chromium = await resolveChromiumExecutable();
+      if (!chromium) {
+        // No headless browser at build → fall back to runtime pagination so the
+        // build still succeeds (the browser paginates on load — pre-SSG behavior).
+        log.warn(
+          "Chromium not found — shipping runtime-paginated HTML (the browser will " +
+            "paginate on load). Install Chromium or set CHROMIUM_PATH for " +
+            "pre-paginated static output."
+        );
+        await shipRuntimePaginatedHtml(htmlFile, workDir);
+      } else {
+        // No staging copy: book.html is self-contained (CSS + fonts inlined) and
+        // its images already sit in outDir, so the pagination pass serves outDir
+        // itself with the engine supplied as in-memory overlays.
+        log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
+        const paginated = await paginateToStaticHtml(htmlFile);
+        await finalizeStaticBook(paginated, htmlFile, workDir);
+      }
     }
 
     // A minimal index.html redirects to book.html so static hosts (Azure SWA,

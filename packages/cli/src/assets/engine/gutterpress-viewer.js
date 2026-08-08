@@ -50,7 +50,18 @@
 }
 
 /* One flow strip per named-page run. Chromium fragments its content into
-   columns; each column IS a page's content area. */
+   columns; each column IS a page's content area. \`width\` is deliberately ONE
+   column wide — it sizes the strip's own box to the first page's content
+   area, matching where the strip sits inside that sheet (see the transform
+   below). \`overflow\` must stay \`visible\`: with a fixed height and no
+   \`column-count\`, Chromium creates as many columns as the content needs,
+   extending past this box in the inline direction (\`scrollWidth\` — read by
+   \`measure()\` — reflects the true extent). \`overflow: hidden\` here would
+   clip every column past the first from painting while leaving
+   getClientRects()/scrollWidth (and so pageOf()) unaffected, so pages 2+ of
+   a run would measure correctly but render blank — the \`.folio-run\` wrapper
+   below is already sized to the run's full width and owns the actual
+   clipping/visibility, so the strip does not need to. */
 .folio-strip {
   position: relative;
   width: var(--folio-content-w);
@@ -60,7 +71,7 @@
     var(--folio-margin-right) + var(--folio-margin-left) + var(--folio-sheet-gap)
   );
   column-fill: auto;
-  overflow: hidden;
+  overflow: visible;
   margin: 0 0 var(--folio-sheet-gap);
   /* strip sits inside the first sheet's content box */
   transform: translate(var(--folio-margin-left), var(--folio-margin-top));
@@ -134,6 +145,28 @@
   font: 600 10px/1.4 ui-sans-serif, system-ui, sans-serif;
   padding: 2px 6px;
   border-radius: 3px;
+}
+
+/* An accidental Ctrl+P on the published page must not print the dark stage
+   plus decorations — the PDF, shipped alongside book.html, is the print
+   artifact. This is a minimal reset, not a print layout. */
+@media print {
+  .folio-stage {
+    background: none;
+    padding: 0;
+    overflow: visible;
+    zoom: 1;
+  }
+  .folio-layer,
+  .folio-warning,
+  .folio-guide-trim,
+  .folio-guide-safe,
+  .folio-crop-mark {
+    display: none !important;
+  }
+  .folio-sheet {
+    box-shadow: none;
+  }
 }
 `;
 
@@ -1621,7 +1654,21 @@
     window.dispatchEvent(new CustomEvent("folio:layout", {
       detail: { ms: performance.now() - t0, pages: layout.totalPages }
     }));
+    fitZoom();
+    window.addEventListener("resize", fitZoom);
     return api;
+  }
+  function fitZoom() {
+    const sheet = document.querySelector(".folio-sheet");
+    if (!sheet)
+      return;
+    const pageW = parseFloat(sheet.style.getPropertyValue("--folio-page-w"));
+    if (!pageW)
+      return;
+    const stagePadding = parseFloat(getComputedStyle(document.body).paddingLeft) + parseFloat(getComputedStyle(document.body).paddingRight);
+    const available = window.innerWidth - stagePadding;
+    const zoom = available > 0 && available < pageW ? available / pageW : 1;
+    document.body.style.setProperty("--gutterpress-zoom", String(zoom));
   }
   if (typeof document !== "undefined" && !window.__FOLIO_MANUAL__) {
     const params = new URLSearchParams(location.search);

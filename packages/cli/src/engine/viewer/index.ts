@@ -69,7 +69,27 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
       detail: { ms: performance.now() - t0, pages: layout.totalPages },
     }),
   );
+  fitZoom();
+  window.addEventListener("resize", fitZoom);
   return api;
+}
+
+/**
+ * Narrow viewports (phones) get a SMALLER PAGE, never a reflow: scale the
+ * stage down via the `--gutterpress-zoom` custom property `.folio-stage`
+ * already reads (viewer.css). Never zooms up past 1 — only shrinks to fit.
+ */
+function fitZoom() {
+  const sheet = document.querySelector<HTMLElement>(".folio-sheet");
+  if (!sheet) return;
+  const pageW = parseFloat(sheet.style.getPropertyValue("--folio-page-w"));
+  if (!pageW) return;
+  const stagePadding =
+    parseFloat(getComputedStyle(document.body).paddingLeft) +
+    parseFloat(getComputedStyle(document.body).paddingRight);
+  const available = window.innerWidth - stagePadding;
+  const zoom = available > 0 && available < pageW ? available / pageW : 1;
+  document.body.style.setProperty("--gutterpress-zoom", String(zoom));
 }
 
 if (typeof document !== "undefined" && !(window as any).__FOLIO_MANUAL__) {

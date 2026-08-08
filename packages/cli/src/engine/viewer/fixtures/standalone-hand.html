@@ -1,0 +1,63 @@
+<!--
+  Regression fixture (Phase 4b): a plain hand-authored HTML file using only
+  standard Paged Media CSS (`@page` margin boxes, `string-set`,
+  `target-counter()`, `leader()`, `break-before: page`) — no Gutterpress
+  classes, no build step, and deliberately BARE body children (no wrapper
+  divs, unlike anything `assemble.ts` produces). One `<script src>` of the
+  viewer bundle is the entire integration.
+
+  Regression coverage: content that flows past the first page of a run used
+  to position correctly (pageOf()) while not painting — `.folio-strip` was
+  `overflow: hidden` at a fixed one-column width, so columns 2+ existed
+  (scrollWidth reflected them) but were clipped from view. See
+  `standalone.test.ts`.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hand-authored standalone test</title>
+<style>
+@page {
+  size: 6in 9in;
+  margin: 0.75in;
+  @top-center { content: string(chaptitle); }
+  @bottom-center { content: counter(page); }
+}
+h1 { string-set: chaptitle content(); break-before: page; margin-top: 0; }
+p { font: 14px/1.5 Georgia, serif; }
+.toc a { text-decoration: none; color: inherit; }
+.toc a::after { content: leader(".") target-counter(attr(href url), page); }
+</style>
+</head>
+<body>
+<div class="toc">
+  <p><a href="#ch1">Chapter One</a></p>
+  <p><a href="#ch2">Chapter Two</a></p>
+</div>
+<h1 id="ch1">Chapter One</h1>
+<p>Paragraph 1. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+<p>Paragraph 2. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+<p>Paragraph 3. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.</p>
+<p>Paragraph 4. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+<p>Paragraph 5. Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam varius, turpis et commodo pharetra.</p>
+<p>Paragraph 6. Aliquam ultricies iaculis lacus. Sed a orci vel eros ultricies fermentum. Cras dictum ultricies ligula.</p>
+<p>Paragraph 7. Sed sagittis. Nam congue, risus semper porta volutpat, quam pede lobortis ligula, sit amet eleifend pede.</p>
+<p>Paragraph 8. Fusce a quam. Etiam ut purus mattis mauris sodales aliquam. Curabitur nisi. Quisque malesuada placerat nisl.</p>
+<p>Paragraph 9. Nam nec ante. Sed lacinia, urna non tincidunt mattis, tortor neque adipiscing diam, a cursus ipsum ante quis turpis.</p>
+<p>Paragraph 10. Nulla facilisi. Ut fringilla. Suspendisse potenti. Nunc feugiat mi a tellus consequat imperdiet.</p>
+<p>Paragraph 11. Vestibulum sagittis sapien cum nulla nunc, tincidunt et, mattis eget, convallis nec, purus.</p>
+<p>Paragraph 12. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus.</p>
+<p>Paragraph 13. Nulla nulla lorem, suscipit in posuere in, interdum non magna. Nam elit agna, endrerit sit amet.</p>
+<p>Paragraph 14. Phasellus ultrices nulla quis nibh. Quisque a lectus. Donec consectetuer ligula vulputate sem tristique.</p>
+<p>Paragraph 15. Aenean posuere, tortor sed cursus feugiat, nunc augue blandit nunc, eu sollicitudin urna dolor sagittis lacus.</p>
+<p>Paragraph 16. Donec elit libero, sodales nec, volutpat a, suscipit non, turpis. Nullam sagittis. Suspendisse pulvinar.</p>
+<p>Paragraph 17. Etiam venenatis. Fusce id purus. Ut varius tincidunt libero. Phasellus dolor. Maecenas vestibulum mollis diam.</p>
+<p>Paragraph 18. Pellentesque ut neque. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas.</p>
+<p>Paragraph 19. In dui magna, posuere eget, vestibulum et, tempor auctor, justo. In ac felis quis tortor malesuada pretium.</p>
+<p>Paragraph 20. Pellentesque auctor neque nec urna. Proin sapien ipsum, porta a, auctor quis, euismod ut, mi.</p>
+<h1 id="ch2">Chapter Two</h1>
+<p>More content on page two of the run.</p>
+<script src="gutterpress-viewer.js"></script>
+</body>
+</html>
