@@ -94,6 +94,9 @@ export function decorate(
       document.body.dataset.designer = on ? "on" : "off";
     },
   };
+  // Must run BEFORE `.folio-stage` lands on <body>: after that the stage's own
+  // chrome background is indistinguishable from the author's.
+  const canvasBg = captureCanvasBackground();
   document.body.classList.add("folio-stage");
   if (document.body.dataset.designer === undefined) api.setDesigner(!!opts.designer);
 
@@ -289,6 +292,7 @@ export function decorate(
         sheet.style.top = `${sheetTop}px`;
         sheet.style.setProperty("--folio-page-w", px(ctx.geometry.width));
         sheet.style.setProperty("--folio-page-h", px(ctx.geometry.height));
+        for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
         layer.appendChild(sheet);
         sheets.set(bookIndex, sheet);
 
@@ -405,6 +409,44 @@ export function decorate(
 
   draw();
   return api;
+}
+
+const CANVAS_BG_PROPS = [
+  "background-color",
+  "background-image",
+  "background-repeat",
+  "background-position",
+  "background-size",
+  "background-origin",
+  "background-clip",
+  "background-blend-mode",
+] as const;
+
+/**
+ * The document canvas background (`html`'s, or `body`'s when `html` paints
+ * nothing) is printed on EVERY page — that is how a book paints its own paper.
+ * The viewer's stage IS `<body>`, so left alone that background paints one
+ * backdrop behind the whole filmstrip instead of the pages themselves, and the
+ * sheets stay blank white: the exact opposite of the printed artifact. Replay
+ * it per sheet instead. `background-attachment` is deliberately not copied —
+ * `fixed` against the viewport is meaningless for a page box.
+ *
+ * When it came from `html`, that element is also cleared, so the stage keeps
+ * showing viewer chrome. When it came from `body`, no clearing is needed:
+ * `.folio-stage` (0-1-0) already outranks the author's `body` rule (0-0-1).
+ */
+function captureCanvasBackground(): Array<[string, string]> {
+  for (const el of [document.documentElement, document.body]) {
+    const cs = getComputedStyle(el);
+    const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
+    if (cs.backgroundImage === "none" && transparent) continue;
+    const captured = CANVAS_BG_PROPS.map(
+      (p) => [p, cs.getPropertyValue(p)] as [string, string],
+    );
+    if (el === document.documentElement) el.style.background = "none";
+    return captured;
+  }
+  return [];
 }
 
 function ensureRun(strip: StripInfo): HTMLElement {

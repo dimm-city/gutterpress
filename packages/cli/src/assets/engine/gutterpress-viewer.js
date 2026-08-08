@@ -37,21 +37,17 @@
   var viewer_default = `/* Folio viewer chrome. The author's content CSS is untouched; everything here
    is scoped to Folio's own wrappers/layers. */
 
-/* Default gray canvas, at ZERO specificity (\`:where()\`) so an author's own
-   \`body { background: … }\` (0-0-1) wins outright — a book that paints its
-   own canvas (e.g. a brick background) must not lose it to this class
-   (0-1-0 would otherwise always beat a bare element selector). Every other
-   stage rule below stays normal-specificity: those are structural (zoom,
-   scrolling, the sheet gap custom property), not chrome an author restyles. */
-:where(.folio-stage) {
-  background: var(--folio-stage-bg);
-}
-
+/* The stage backdrop is viewer chrome and must stay chrome: this rule (0-1-0)
+   deliberately outranks an author's \`body { background: … }\` (0-0-1). An
+   author's canvas background is not lost — \`decorate()\` reads it before this
+   class is applied and replays it on every sheet, which is where print puts
+   it (see \`captureCanvasBackground\`). */
 .folio-stage {
   --folio-sheet-bg: #fff;
   --folio-stage-bg: #4a4a52;
   --folio-guide: #e5484d;
   --folio-safe: #30a46c;
+  background: var(--folio-stage-bg);
   margin: 0;
   padding: 32px;
   overflow: auto;
@@ -1351,6 +1347,7 @@
         document.body.dataset.designer = on ? "on" : "off";
       }
     };
+    const canvasBg = captureCanvasBackground();
     document.body.classList.add("folio-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
@@ -1511,6 +1508,8 @@
           sheet.style.top = `${sheetTop}px`;
           sheet.style.setProperty("--folio-page-w", px(ctx.geometry.width));
           sheet.style.setProperty("--folio-page-h", px(ctx.geometry.height));
+          for (const [prop, value] of canvasBg)
+            sheet.style.setProperty(prop, value);
           layer.appendChild(sheet);
           sheets.set(bookIndex, sheet);
           drawMarginBoxes(sheet, ctx, layout.totalPages);
@@ -1612,6 +1611,29 @@
     }
     draw();
     return api;
+  }
+  var CANVAS_BG_PROPS = [
+    "background-color",
+    "background-image",
+    "background-repeat",
+    "background-position",
+    "background-size",
+    "background-origin",
+    "background-clip",
+    "background-blend-mode"
+  ];
+  function captureCanvasBackground() {
+    for (const el of [document.documentElement, document.body]) {
+      const cs = getComputedStyle(el);
+      const transparent = /^(transparent|rgba\(0, ?0, ?0, ?0\))$/.test(cs.backgroundColor);
+      if (cs.backgroundImage === "none" && transparent)
+        continue;
+      const captured = CANVAS_BG_PROPS.map((p) => [p, cs.getPropertyValue(p)]);
+      if (el === document.documentElement)
+        el.style.background = "none";
+      return captured;
+    }
+    return [];
   }
   function ensureRun(strip) {
     const parent = strip.el.parentElement;

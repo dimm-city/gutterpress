@@ -247,3 +247,58 @@ testIf(
   },
   RENDER_TEST_TIMEOUT_MS
 );
+
+testIf(
+  "the author's canvas background is painted on every sheet, not behind the filmstrip",
+  async () => {
+    const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".canvas-bg-test-"));
+    try {
+      const html = await fsp.readFile(
+        path.join(FIXTURES_DIR, "standalone-hand.html"),
+        "utf8"
+      );
+      await fsp.writeFile(
+        path.join(dir, "canvas-bg.html"),
+        html.replace("</style>", "html { background-color: rgb(1, 2, 3); }\n</style>")
+      );
+      await fsp.copyFile(
+        await getAssetPath("engine/gutterpress-viewer.js"),
+        path.join(dir, "gutterpress-viewer.js")
+      );
+      const { url, close } = await serveDir(dir, "canvas-bg.html");
+      try {
+        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const page = await browser.newPage();
+        try {
+          await page.setViewport({ width: 1400, height: 1000 });
+          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.waitForFunction(
+            "window.Gutterpress && window.Gutterpress.totalPages > 0"
+          );
+          const result = await page.evaluate(() => {
+            const sheets = Array.from(document.querySelectorAll<HTMLElement>(".folio-sheet"));
+            return {
+              sheetCount: sheets.length,
+              sheetBgs: sheets.map((s) => getComputedStyle(s).backgroundColor),
+              htmlBg: getComputedStyle(document.documentElement).backgroundColor,
+              stageBg: getComputedStyle(document.body).backgroundColor,
+            };
+          });
+          expect(result.sheetCount).toBeGreaterThan(1);
+          // print paints the canvas on EVERY page, so every sheet carries it
+          expect(new Set(result.sheetBgs)).toEqual(new Set(["rgb(1, 2, 3)"]));
+          // and it is no longer painted as one backdrop behind the filmstrip
+          expect(result.htmlBg).toBe("rgba(0, 0, 0, 0)");
+          expect(result.stageBg).toBe("rgb(74, 74, 82)");
+        } finally {
+          await page.close();
+        }
+      } finally {
+        await close();
+      }
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS
+);
