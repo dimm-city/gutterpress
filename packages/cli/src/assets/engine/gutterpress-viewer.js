@@ -786,40 +786,68 @@
     else
       runs.push({ page, nodes });
   }
-  function explodeChildren(container, kids, model) {
+  function explodeChildren(container, model) {
     const runs = [];
-    for (const kid of kids) {
+    let pending = [];
+    const carry = () => {
+      if (!pending.length)
+        return [];
+      const held = pending;
+      pending = [];
+      const last = runs[runs.length - 1];
+      if (last) {
+        pushRun(runs, last.page, held);
+        return [];
+      }
+      if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+        pushRun(runs, undefined, held);
+        return [];
+      }
+      return held;
+    };
+    for (const node of Array.from(container.childNodes)) {
+      if (node.nodeType !== 1) {
+        pending.push(node);
+        continue;
+      }
+      const kid = node;
+      if (kid.classList.contains("folio-layer"))
+        continue;
       const own = directPageName(kid, model);
       if (own !== undefined) {
-        pushRun(runs, own, [kid]);
+        pushRun(runs, own, [...carry(), kid]);
         continue;
       }
       if (!hasDescendantPageAssignment(kid, model)) {
-        pushRun(runs, undefined, [kid]);
+        pushRun(runs, undefined, [...carry(), kid]);
         continue;
       }
-      const inner = explodeChildren(kid, Array.from(kid.children), model);
+      const inner = explodeChildren(kid, model);
       if (inner.length <= 1) {
-        pushRun(runs, inner[0]?.page, [kid]);
+        pushRun(runs, inner[0]?.page, [...carry(), kid]);
         continue;
       }
+      let lead = carry();
       for (const r of inner) {
         const shell = kid.cloneNode(false);
         for (const n of r.nodes)
           shell.appendChild(n);
         kid.before(shell);
-        pushRun(runs, r.page, [shell]);
+        pushRun(runs, r.page, [...lead, shell]);
+        lead = [];
       }
       kid.remove();
     }
+    const trailing = carry();
+    if (trailing.length)
+      pushRun(runs, undefined, trailing);
     return runs;
   }
   function buildStrips(model, opts = {}, warnings = []) {
     const doc = document;
     const root = opts.root ?? doc.querySelector("main") ?? doc.body;
     const gap = opts.sheetGap ?? 24;
-    const children = Array.from(root.children).filter((c) => !c.classList.contains("folio-layer"));
-    const runs = explodeChildren(root, children, model);
+    const runs = explodeChildren(root, model);
     const strips = [];
     for (const run of runs) {
       const { geometry } = resolvePage(model, { name: run.page });
@@ -1288,6 +1316,16 @@
 
   // src/engine/viewer/decorate.ts
   var px = (v) => `${v * PX_PER_PT}px`;
+  function elementForHref(href) {
+    const raw = href.replace(/^#/, "");
+    if (!raw)
+      return null;
+    let id = raw;
+    try {
+      id = decodeURIComponent(raw);
+    } catch {}
+    return document.getElementById(id);
+  }
   function decorate(layout, opts = {}) {
     const model = layout.model;
     const sheets = new Map;
@@ -1373,7 +1411,7 @@
       for (const a of Array.from(document.querySelectorAll("a[href^='#']")))
         linked.add(a.getAttribute("href"));
       for (const href of linked) {
-        const el = document.querySelector(href.replace(/^#/, "#"));
+        const el = elementForHref(href);
         if (!el)
           continue;
         const [page] = pageRangeOf(el, layout.strips);
@@ -1400,7 +1438,7 @@
           const text = evaluate(xref.content, {
             attr: (n) => el.getAttribute(n) ?? undefined,
             targetPage: (url) => api.targets.get(url),
-            targetText: (url) => (document.querySelector(url)?.textContent ?? "").trim() || undefined,
+            targetText: (url) => (elementForHref(url)?.textContent ?? "").trim() || undefined,
             leader: leaderMarker
           });
           el.setAttribute(`data-folio-${pseudo}`, text);

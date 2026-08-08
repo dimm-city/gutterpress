@@ -36,6 +36,23 @@ import {
 
 const px = (v: number) => `${v * PX_PER_PT}px`;
 
+/**
+ * Element an in-document `#href` points at — `getElementById`, never
+ * `querySelector`: markdown-it-footnote emits legal ids that are invalid CSS
+ * selectors (`fnref1:1`), and a throw here aborts the whole mount.
+ */
+function elementForHref(href: string): Element | null {
+  const raw = href.replace(/^#/, "");
+  if (!raw) return null;
+  let id = raw;
+  try {
+    id = decodeURIComponent(raw);
+  } catch {
+    /* not percent-encoded — use the literal */
+  }
+  return document.getElementById(id);
+}
+
 export interface DecorationApi {
   redraw(): void;
   sheetFor(page: number): HTMLElement | undefined;
@@ -162,7 +179,7 @@ export function decorate(
     for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href^='#']")))
       linked.add(a.getAttribute("href")!);
     for (const href of linked) {
-      const el = document.querySelector(href.replace(/^#/, "#"));
+      const el = elementForHref(href);
       if (!el) continue;
       const [page] = pageRangeOf(el, layout.strips);
       if (page >= 0) api.targets.set(href, toFolioPage(page + 1, pageValues));
@@ -191,7 +208,7 @@ export function decorate(
           attr: (n) => el.getAttribute(n) ?? undefined,
           targetPage: (url) => api.targets.get(url),
           targetText: (url) =>
-            (document.querySelector(url)?.textContent ?? "").trim() || undefined,
+            (elementForHref(url)?.textContent ?? "").trim() || undefined,
           leader: leaderMarker,
         });
         el.setAttribute(`data-folio-${pseudo}`, text);

@@ -136,18 +136,18 @@ function hasDescendantPageAssignment(el: Element, model: GcpmModel): boolean {
 
 interface Run {
   page?: string;
-  nodes: HTMLElement[];
+  nodes: ChildNode[];
 }
 
-function pushRun(runs: Run[], page: string | undefined, nodes: HTMLElement[]) {
+function pushRun(runs: Run[], page: string | undefined, nodes: ChildNode[]) {
   const last = runs[runs.length - 1];
   if (last && last.page === page) last.nodes.push(...nodes);
   else runs.push({ page, nodes });
 }
 
 /**
- * Partition `kids` (all direct children of `container`) into runs of
- * identical page context, in document order — recursively.
+ * Partition `container`'s child NODES into runs of identical page context, in
+ * document order — recursively.
  *
  * A `page:` assignment on a DESCENDANT (the `h1 { page: chapter }` "chapter
  * opener" shape) gives only that element's own fragment the named template;
@@ -165,39 +165,77 @@ function pushRun(runs: Run[], page: string | undefined, nodes: HTMLElement[]) {
  * A child whose page assignment is on the CONTAINER itself (`directPageName`
  * matches) is never recursed into — the whole subtree keeps that name, same
  * as before this function existed.
+ *
+ * Text and comment nodes ride along with the run of the element BEFORE them
+ * (the run print would leave them in), or with the first run when nothing
+ * precedes them. Iterating elements alone would leave every loose text node
+ * behind in the emptied original and delete it from the preview.
+ *
+ * A shell keeps the original's attributes INCLUDING `id`, so author CSS that
+ * scopes by id (`.chapter#ch-cli table`) still matches in every shell. The
+ * duplicate id is deliberate: `getElementById` then answers with the FIRST
+ * shell, which is where the element starts — the answer a cross-reference
+ * wants.
  */
-function explodeChildren(
-  container: Element,
-  kids: HTMLElement[],
-  model: GcpmModel,
-): Run[] {
+function explodeChildren(container: Element, model: GcpmModel): Run[] {
   const runs: Run[] = [];
-  for (const kid of kids) {
+  let pending: ChildNode[] = [];
+  /** Nodes to emit before the next element: prior run if there is one. */
+  const carry = (): ChildNode[] => {
+    if (!pending.length) return [];
+    const held = pending;
+    pending = [];
+    const last = runs[runs.length - 1];
+    if (last) {
+      pushRun(runs, last.page, held);
+      return [];
+    }
+    // Nothing precedes it: text with real content opens its own default-page
+    // run (print puts it on the default page, then the named element breaks
+    // to its own). Whitespace generates no box, so it just rides along.
+    if (held.some((n) => (n.textContent ?? "").trim() !== "")) {
+      pushRun(runs, undefined, held);
+      return [];
+    }
+    return held;
+  };
+
+  for (const node of Array.from(container.childNodes)) {
+    if (node.nodeType !== 1) {
+      pending.push(node);
+      continue;
+    }
+    const kid = node as HTMLElement;
+    if (kid.classList.contains("folio-layer")) continue; // viewer chrome, not content
     const own = directPageName(kid, model);
     if (own !== undefined) {
-      pushRun(runs, own, [kid]);
+      pushRun(runs, own, [...carry(), kid]);
       continue;
     }
     if (!hasDescendantPageAssignment(kid, model)) {
-      pushRun(runs, undefined, [kid]);
+      pushRun(runs, undefined, [...carry(), kid]);
       continue;
     }
-    const inner = explodeChildren(kid, Array.from(kid.children) as HTMLElement[], model);
+    const inner = explodeChildren(kid, model);
     if (inner.length <= 1) {
-      pushRun(runs, inner[0]?.page, [kid]);
+      pushRun(runs, inner[0]?.page, [...carry(), kid]);
       continue;
     }
     // kid's own page context changes partway through its children: split it
     // into one shell per inner run, inserted in kid's place, then drop the
     // now-empty original.
+    let lead = carry();
     for (const r of inner) {
       const shell = kid.cloneNode(false) as HTMLElement;
       for (const n of r.nodes) shell.appendChild(n);
       kid.before(shell);
-      pushRun(runs, r.page, [shell]);
+      pushRun(runs, r.page, [...lead, shell]);
+      lead = [];
     }
     kid.remove();
   }
+  const trailing = carry();
+  if (trailing.length) pushRun(runs, undefined, trailing);
   return runs;
 }
 
@@ -216,14 +254,10 @@ export function buildStrips(
   const root = opts.root ?? doc.querySelector("main") ?? doc.body;
   const gap = opts.sheetGap ?? 24;
 
-  const children = Array.from(root.children).filter(
-    (c) => !c.classList.contains("folio-layer"),
-  ) as HTMLElement[];
-
   // `warnings` is kept in the signature (opts callers still pass it) but no
   // fidelity warning remains to raise here — explodeChildren resolves the
   // opener idiom structurally instead of diverging and warning about it.
-  const runs = explodeChildren(root, children, model);
+  const runs = explodeChildren(root, model);
 
   const strips: StripInfo[] = [];
   for (const run of runs) {

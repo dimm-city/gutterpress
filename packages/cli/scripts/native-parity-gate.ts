@@ -92,44 +92,7 @@ const KNOWN_DIVERGENCES: Array<{
   fixture: string;
   kind: DivergenceKind;
   reason: string;
-}> = [
-  // UPDATE 2026-08-08: the ORIGINAL root cause named here — fragment.ts
-  // resolving one page name per `.folio-strip` from whichever descendant
-  // first requested a named page, applying `page: chapter`'s oversized
-  // opener margins to the WHOLE chapter run (59pp) instead of only the
-  // opener fragment — is FIXED (`explodeChildren` in fragment.ts: a child
-  // with no page assignment of its own but a page-changing descendant is
-  // recursively split into synthetic sibling shells, so the opener element
-  // gets its own run/strip at the named geometry and the rest of the run
-  // reverts to the default geometry, matching Chromium print's box-level
-  // `page` semantics). That took design-guide from 59pp to 53pp.
-  //
-  // A SECOND, unrelated, pre-existing divergence remains and accounts for
-  // the rest of the gap (53pp vs print's 42pp): `pre code` in guide.css sets
-  // an explicit `font-size: 9pt; line-height: 1.5` (both on `pre code`
-  // itself, not inherited) — this SHOULD compute an 18px line box (12px ×
-  // 1.5). Measured directly (`code.getClientRects()`), the viewer instead
-  // renders 22px between lines — the SAME 22px `1.5 × 14.667px` you get from
-  // `pre`'s own INHERITED font-size (11pt, from `body`), not `code`'s own
-  // 12px. Confirmed NOT caused by fragment.ts or any code in this repo: it
-  // reproduces on a completely vanilla `page.navigate()` with
-  // `Emulation.setEmulatedMedia({media:"print"})` and ZERO viewer/agent
-  // script injected. The real print page (`Page.printToPDF`, measured via
-  // `pdftotext -bbox` glyph y-coordinates on the built PDF) uses the
-  // CORRECT ~17.5px spacing. So this is a Chromium quirk specific to
-  // `Emulation.setEmulatedMedia("print")` on a live tab vs real
-  // `printToPDF` for this exact shape (an inline element with its own
-  // explicit unitless `line-height` nested in a block whose OWN inherited
-  // font-size differs) — not a fragmenter/page-context bug, and not fixable
-  // in fragment.ts. It concentrates in code-heavy chapters (CLI/Markdown
-  // Reference, Components), matching the growing per-chapter divergence.
-  // Needs its own investigation (possibly: mount `predictPageMap` against
-  // real print rendering instead of live-tab print-emulation) before this
-  // can be un-allowlisted.
-  { fixture: "design-guide", kind: "pageCount", reason: "residual ~11pp gap from a live-tab print-emulation vs real-printToPDF line-height quirk on `pre code` (see comment above) — NOT the named-page-context bug, which is fixed" },
-  { fixture: "design-guide", kind: "pageMap", reason: "downstream of the pageCount divergence above — ids after code-heavy chapters land on a viewer page shifted by the accumulated line-height quirk" },
-  { fixture: "design-guide", kind: "targetCounter", reason: "downstream of the pageMap divergence above — target-counter() resolves through the same (wrong) viewer page map" },
-];
+}> = [];
 
 function isKnown(d: Divergence) {
   return KNOWN_DIVERGENCES.find((k) => k.fixture === d.fixture && k.kind === d.kind);
@@ -238,6 +201,15 @@ async function runFixture(
   // their page maps can still be compared, exactly like the migration
   // spike's `--skip-pre-validate` on the same class of pre-existing issue.
   const result: BuildResult = await build({ input: htmlPath, browser, allowShrink: true });
+  // …but say so loudly: a shrunk print is laid out at the OFFENDING width and
+  // scaled to fit, so it fits ~1/scale² more content per page than the viewer,
+  // which never shrinks. Measured on design-guide: one 818px `code` line made
+  // print 42pp against the viewer's 53pp — a divergence that looks like a
+  // fragmenter bug and is not one.
+  if (result.diagnostics.some((d) => d.code === "engine.width.overflow"))
+    console.log(
+      `   NOTE width overflow — Chromium shrank this print to fit; page counts below are NOT comparable`,
+    );
   const divergences: Divergence[] = [];
 
   // ---- (a) total page count --------------------------------------------

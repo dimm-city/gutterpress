@@ -35,10 +35,10 @@ afterAll(async () => {
 });
 
 /** Serve `dir` over a local HTTP server; returns the base URL and a close fn. */
-function serveDir(dir: string): Promise<{ url: string; close: () => Promise<void> }> {
+function serveDir(dir: string, entry: string): Promise<{ url: string; close: () => Promise<void> }> {
   const server = http.createServer((req, res) => {
     const rel = decodeURIComponent((req.url ?? "/").split("?")[0]!).replace(/^\/+/, "");
-    const filePath = path.join(dir, rel || "standalone-hand.html");
+    const filePath = path.join(dir, rel || entry);
     if (!filePath.startsWith(dir) || !fs.existsSync(filePath)) {
       res.writeHead(404);
       res.end("not found");
@@ -54,7 +54,7 @@ function serveDir(dir: string): Promise<{ url: string; close: () => Promise<void
     server.listen(0, "127.0.0.1", () => {
       const port = (server.address() as { port: number }).port;
       resolve({
-        url: `http://127.0.0.1:${port}/standalone-hand.html`,
+        url: `http://127.0.0.1:${port}/${entry}`,
         close: () => new Promise((r) => server.close(() => r())),
       });
     });
@@ -77,7 +77,7 @@ testIf(
         await getAssetPath("engine/gutterpress-viewer.js"),
         path.join(dir, "gutterpress-viewer.js")
       );
-      const { url, close } = await serveDir(dir);
+      const { url, close } = await serveDir(dir, "standalone-hand.html");
       try {
         const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
         const page = await browser.newPage();
@@ -182,6 +182,59 @@ testIf(
           expect(narrow.fit).toBeLessThan(1);
           // still multiplied by the host's 2, not replaced by it
           expect(narrow.zoom).toBeCloseTo(narrow.fit * 2, 2);
+        } finally {
+          await page.close();
+        }
+      } finally {
+        await close();
+      }
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  RENDER_TEST_TIMEOUT_MS
+);
+
+testIf(
+  "a named-page box splits its container without losing the container's loose text",
+  async () => {
+    const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".named-page-test-"));
+    try {
+      await fsp.copyFile(
+        path.join(FIXTURES_DIR, "named-page-runs.html"),
+        path.join(dir, "named-page-runs.html")
+      );
+      await fsp.copyFile(
+        await getAssetPath("engine/gutterpress-viewer.js"),
+        path.join(dir, "gutterpress-viewer.js")
+      );
+      const { url, close } = await serveDir(dir, "named-page-runs.html");
+      try {
+        const browser = await getBrowser(RENDER_TEST_TIMEOUT_MS);
+        const page = await browser.newPage();
+        try {
+          await page.setViewport({ width: 3000, height: 1200 });
+          await page.goto(url, { waitUntil: "networkidle0" });
+          await page.waitForFunction(
+            "window.Gutterpress && window.Gutterpress.totalPages > 0"
+          );
+          const result = await page.evaluate(() => {
+            const strips = Array.from(document.querySelectorAll<HTMLElement>(".folio-strip"));
+            return {
+              totalPages: (window as any).Gutterpress.totalPages,
+              pages: strips.map((s) => s.dataset.page ?? ""),
+              text: strips.map((s) => s.textContent ?? "").join(" "),
+            };
+          });
+          // measured against Page.printToPDF of the same fixture: 5 pages,
+          // one run per page template change, in document order
+          expect(result.totalPages).toBe(5);
+          expect(result.pages).toEqual(["", "chapter", "", "wide", ""]);
+          // the loose text nodes are authored content — an element-only walk
+          // left them behind in the emptied original and deleted them
+          expect(result.text).toContain("LOOSE-TEXT-BEFORE");
+          expect(result.text).toContain("LOOSE-TEXT-AFTER");
+          expect(result.text).toContain("Wide page content.");
         } finally {
           await page.close();
         }
