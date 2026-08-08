@@ -46,6 +46,18 @@ import { postprocess, type PostprocessResult } from "./postprocess.ts";
 /** Generated page name carrying the author's `@page :blank` rules. */
 const BLANK_PAGE = "folio--blank";
 
+/**
+ * Shared element-description helper for every in-page audit's evaluated JS
+ * (width offenders, abspos leaks, fragmenting multicol) — one implementation
+ * of "name this element for a warning", not a copy per pass.
+ */
+const DESC_JS = `(el) => {
+    const cls = typeof el.className === "string" && el.className
+      ? "." + el.className.trim().split(/\\s+/).join(".") : "";
+    const src = el.tagName === "IMG" ? " src=" + (el.getAttribute("src") || "").slice(-40) : "";
+    return el.tagName.toLowerCase() + cls + src;
+  }`;
+
 export interface BuildOptions {
   input: string;
   output?: string;
@@ -123,6 +135,14 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     };
     await page.send("Emulation.setDeviceMetricsOverride", sheetViewport);
 
+    // Every audit below (the width check, the abspos/multicol passes, the
+    // print-quality pass) reads computed styles through `getBoundingClientRect`/
+    // `getComputedStyle` while `printToPDF` renders under the `print` media —
+    // without this, a book with layout inside `@media print` (the normal
+    // thing) is measured against a document that is not the one printed.
+    // Set once, kept for the build's whole life, same as the viewport pin.
+    await page.send("Emulation.setEmulatedMedia", { media: "print" });
+    log(`print media emulated for audits and measurement`);
 
     // ---- Tier 2: geometry synthesis (bleed / marks) ---------------------
     const tier2 = synthesize({
@@ -155,9 +175,19 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       2 * (tier2.geometry.bleed + tier2.geometry.slug),
       sheetViewport,
     );
-    const describe = (list: Array<{ desc: string; px: number }>) =>
+    const describe = (list: Array<{ desc: string; px: number; left?: number }>) =>
       list
-        .map((o) => `  ${o.desc} — ${Math.round(o.px)}px > ${Math.round(widthOffenders.limitPx)}px content box`)
+        .map((o) => {
+          // The one-line fix depends on which edge the box is offending: a
+          // negative `left` is a box pulled off the LEFT edge (undo the
+          // offset/margin), an over-wide box is pushed past the RIGHT edge
+          // (give it an explicit width that fits the content box).
+          const fix =
+            o.left !== undefined && o.left < -1
+              ? "keep it inside the page content box"
+              : "give it an explicit width";
+          return `  ${o.desc} — ${Math.round(o.px)}px > ${Math.round(widthOffenders.limitPx)}px content box (${fix})`;
+        })
         .join("\n");
     if (widthOffenders.boxes.length) {
       // Laid-out box overflow is a PROVEN trigger class (every measured
@@ -255,6 +285,18 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       const targetText = await page.evaluate<Record<string, string>>(
         `window.__folio.targetTexts(${JSON.stringify([...targets])})`,
       );
+
+      // A typo'd `href="#..."` on a cross-reference is the single most likely
+      // mistake a non-technical author makes, and today it renders a blank
+      // or wrong page number with nothing in the CLI output naming it.
+      // `targetText` only has an entry for ids that actually resolved to an
+      // element, so a bare-fragment href missing from it names a dead xref.
+      const brokenXrefs = findBrokenXrefRefs(sites, targetText);
+      for (const href of brokenXrefs)
+        notes.push(
+          `cross-reference "${href}" has no matching id in the document — its page number/text will render blank.`,
+        );
+      if (brokenXrefs.length) log(`WARNING: ${brokenXrefs.length} broken cross-reference href(s): ${brokenXrefs.join(", ")}`);
 
 
       // ---- recto/verso placement, before anything quotes a page number ----
@@ -453,10 +495,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // Print-quality audit against the settled layout, just before the artifact
     // is final: content taller than the page (where screen and print diverge)
     // and rasters below the print resolution bar.
+    const base = resolvePage(model);
+    const contentHeightPx =
+      ((base.geometry.height - base.geometry.margin.top - base.geometry.margin.bottom) * 96) / 72;
     {
-      const base = resolvePage(model);
-      const contentHeightPx =
-        ((base.geometry.height - base.geometry.margin.top - base.geometry.margin.bottom) * 96) / 72;
       const audit = await page.evaluate<Array<{ kind: string; what: string; detail: string }>>(
         `window.__folio.auditContent(${contentHeightPx}, ${opts.dpiFloor ?? 300})`,
       );
@@ -468,6 +510,74 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         );
       }
       if (audit.length) log(`audit: ${audit.length} print-quality warning(s)`);
+    }
+
+    // Abspos containing-block leak detector — independent of the width/height
+    // passes above. An `position: absolute` element whose `offsetParent` is
+    // the document (or nothing) positions against the WHOLE canvas, not the
+    // page it appears on: it can paint clipped on the last page of a 300-page
+    // book while the page it belongs to renders empty. Scoped to `.page`/
+    // `.spread` becoming positioned (PAGED_CSS) would make most of these go
+    // silent by finding a containing block again — but only for pages that
+    // DON'T fragment across sheets; that refinement needs fragmentation info
+    // this pass doesn't have cheaply, so it is left for later, not guessed at.
+    {
+      const leaks = JSON.parse(
+        await page.evaluate<string>(`(() => {
+          const desc = ${DESC_JS};
+          const out = [];
+          for (const el of document.querySelectorAll("*")) {
+            const tag = el.tagName;
+            if (tag === "FOLIO-ANCHOR") continue;
+            const id = el.id || "";
+            if (id.startsWith("folio-") || id.startsWith("__folio")) continue;
+            const cls = typeof el.className === "string" ? el.className : "";
+            if (/(^|\\s)(folio-|__folio)/.test(cls)) continue;
+            if (el.closest("#folio-instrumentation")) continue;
+            if (getComputedStyle(el).position !== "absolute") continue;
+            if (el.getClientRects().length === 0) continue; // display:none subtree
+            const op = el.offsetParent;
+            if (op === null || op === document.body) {
+              out.push(desc(el));
+              if (out.length >= 20) break;
+            }
+          }
+          return JSON.stringify(out);
+        })()`),
+      ) as string[];
+      for (const d of leaks)
+        notes.push(
+          `${d} is position: absolute with no positioned ancestor — it positions against the whole document, not the page it appears on in your markdown.`,
+        );
+      if (leaks.length) log(`audit: ${leaks.length} abspos containing-block leak(s)`);
+    }
+
+    // Fragmenting-multicol warning: `column-fill: balance` (the initial
+    // value) only balances columns on the LAST fragment — a balanced
+    // container that fragments across sheets leaves dead columns on every
+    // page before the last one. Explicitly scoped to actual multicol
+    // containers, not a relaxation of auditContent's leaf guard — that would
+    // make every wrapper div in a 300-page book a candidate.
+    {
+      const multicol = JSON.parse(
+        await page.evaluate<string>(`(() => {
+          const desc = ${DESC_JS};
+          const out = [];
+          for (const el of document.querySelectorAll("*")) {
+            const cs = getComputedStyle(el);
+            if (cs.columnCount === "auto" || cs.columnFill !== "balance") continue;
+            if (el.getBoundingClientRect().height <= ${contentHeightPx} + 1) continue;
+            out.push(desc(el));
+            if (out.length >= 20) break;
+          }
+          return JSON.stringify(out);
+        })()`),
+      ) as string[];
+      for (const d of multicol)
+        notes.push(
+          `${d} is a multi-column container with column-fill: balance taller than one page — Chromium only balances the LAST fragment, leaving dead columns on every page before it. Add column-fill: auto to ${d}.`,
+        );
+      if (multicol.length) log(`audit: ${multicol.length} fragmenting multicol warning(s)`);
     }
 
     if (bytes === undefined) {
@@ -555,7 +665,7 @@ async function findWidthOffenders(
   restoreViewport: Record<string, unknown>,
 ): Promise<{
   limitPx: number;
-  boxes: Array<{ desc: string; px: number }>;
+  boxes: Array<{ desc: string; px: number; left: number }>;
   intrinsics: Array<{ desc: string; px: number }>;
 }> {
   const contexts = [
@@ -567,12 +677,6 @@ async function findWidthOffenders(
       ...contexts.map((c) => c.geometry.width - c.geometry.margin.left - c.geometry.margin.right),
     ) + bleedSlugExtensionPt;
   const limitPx = (maxContentPt * 96) / 72;
-  const DESC = `(el) => {
-    const cls = typeof el.className === "string" && el.className
-      ? "." + el.className.trim().split(/\\s+/).join(".") : "";
-    const src = el.tagName === "IMG" ? " src=" + (el.getAttribute("src") || "").slice(-40) : "";
-    return el.tagName.toLowerCase() + cls + src;
-  }`;
   await page.evaluate(`Promise.allSettled(
     [...document.images].map((i) => i.decode().catch(() => {}))
   )`);
@@ -584,21 +688,25 @@ async function findWidthOffenders(
       deviceScaleFactor: 1,
       mobile: false,
     });
-    const boxes: Array<{ desc: string; px: number }> = JSON.parse(
+    const boxes: Array<{ desc: string; px: number; left: number }> = JSON.parse(
       await page.evaluate<string>(`(() => {
         const LIMIT = ${limitPx} + 1;
-        const desc = ${DESC};
+        const desc = ${DESC_JS};
         const out = [];
         for (const el of document.querySelectorAll("*")) {
           const r = el.getBoundingClientRect();
           const right = Math.max(r.right, r.left + r.width);
-          if (right <= LIMIT && r.width <= LIMIT) continue;
+          // Flag right-edge overflow (fixed-width blocks, negative-margin
+          // pulls) AND left-edge protrusion (negative left with an ordinary
+          // width) — both trigger the same whole-document shrink-to-fit,
+          // measured: a left bleed alone cost 16%.
+          if (right <= LIMIT && r.width <= LIMIT && r.left >= -1) continue;
           let deepest = true;
           for (const c of el.children) {
             if (c.getBoundingClientRect().width >= r.width - 1) { deepest = false; break; }
           }
           if (!deepest) continue;
-          out.push({ desc: desc(el), px: Math.max(r.width, right) });
+          out.push({ desc: desc(el), px: Math.max(r.width, right), left: r.left });
           if (out.length >= 20) break;
         }
         return JSON.stringify(out);
@@ -609,7 +717,7 @@ async function findWidthOffenders(
     const replaced: Array<{ desc: string; px: number }> = JSON.parse(
       await page.evaluate<string>(`(() => {
         const LIMIT = ${limitPx} + 1;
-        const desc = ${DESC};
+        const desc = ${DESC_JS};
         const out = [];
         for (const el of document.querySelectorAll("img, canvas, video")) {
           const intrinsic = el.naturalWidth ?? el.videoWidth ?? el.width ?? 0;
@@ -632,6 +740,25 @@ async function findWidthOffenders(
     // layout depend on it (the measured 0.84x path divergence).
     await page.send("Emulation.setDeviceMetricsOverride", restoreViewport);
   }
+}
+
+/**
+ * Bare-fragment xref hrefs (`#foo`) among `sites` whose target id never
+ * resolved to an element, i.e. is absent from `resolved` (the id -> text map
+ * `targetTexts` only populates for ids it actually found). Non-bare hrefs
+ * (`other.html#x`, `https://…`) are the author linking elsewhere on purpose —
+ * skipped by construction, since only `#...` hrefs are compared.
+ */
+export function findBrokenXrefRefs(
+  sites: Array<{ href: string }>,
+  resolved: Record<string, string>,
+): string[] {
+  const out: string[] = [];
+  for (const s of sites) {
+    if (!s.href.startsWith("#")) continue;
+    if (!(s.href.slice(1) in resolved)) out.push(s.href);
+  }
+  return out;
 }
 
 export function mapSignature(map: Record<string, number>, pageCount: number): string {
