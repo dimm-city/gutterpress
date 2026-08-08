@@ -1525,9 +1525,15 @@
       if (window.parent !== window)
         window.parent.postMessage({ folio: detail }, "*");
     };
-    window.Gutterpress = Object.assign(window.Gutterpress ?? {}, api);
-    window.folio = window.Gutterpress;
-    window.Folio = window.Gutterpress;
+    const ns = window.Gutterpress;
+    if (ns) {
+      for (const k of Object.keys(ns))
+        if (!(k in api))
+          api[k] = ns[k];
+    }
+    window.Gutterpress = api;
+    window.folio = api;
+    window.Folio = api;
     emit();
     window.dispatchEvent(new CustomEvent("folio:layout", {
       detail: { ms: performance.now() - t0, pages: layout.totalPages }

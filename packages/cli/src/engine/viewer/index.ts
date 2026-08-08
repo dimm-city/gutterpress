@@ -55,9 +55,14 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
     if (window.parent !== window) window.parent.postMessage({ folio: detail }, "*");
   };
 
-  window.Gutterpress = Object.assign(window.Gutterpress ?? {}, api) as FolioApi;
-  window.folio = window.Gutterpress; // deprecated alias, same object
-  (window as any).Folio = window.Gutterpress; // deprecated alias, same object
+  // the global must BE the mounted api: relayout() mutates totalPages /
+  // warnings / blankPages in place, so a merged copy would read stale after a
+  // refresh. Fold global.ts's module-namespace members in instead.
+  const ns = window.Gutterpress as Record<string, unknown> | undefined;
+  if (ns) for (const k of Object.keys(ns)) if (!(k in api)) (api as any)[k] = ns[k];
+  window.Gutterpress = api;
+  window.folio = api; // deprecated alias, same object
+  (window as any).Folio = api; // deprecated alias, same object
   emit();
   window.dispatchEvent(
     new CustomEvent("folio:layout", {
