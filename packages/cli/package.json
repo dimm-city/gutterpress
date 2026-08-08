@@ -53,7 +53,8 @@
     "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
-    "typecheck:engine-browser": "tsc --noEmit -p src/engine/browser.tsconfig.json"
+    "typecheck:engine-browser": "tsc --noEmit -p src/engine/browser.tsconfig.json",
+    "parity:gate": "bun scripts/native-parity-gate.ts"
   },
   "engines": {
     "bun": ">=1.0.0",

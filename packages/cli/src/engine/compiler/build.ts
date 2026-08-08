@@ -130,11 +130,39 @@ export interface BuildResult {
    */
   diagnostics: BuildDiagnostic[];
   post: PostprocessResult;
-  /** id -> 1-based page, the measurement channel's output */
+  /** id -> 1-based page, the measurement channel's output (print/Chromium) */
   pageMap: Record<string, number>;
   converged: boolean;
   /** how many times Page.printToPDF actually ran (§10: 1 in the common case) */
   prints: number;
+  /**
+   * §10's predict-then-verify guess, read straight from the in-browser
+   * viewer (`fragmentDocument()`) against the SAME target ids as
+   * {@link BuildResult.pageMap} — i.e. the desktop preview's own
+   * fragmenter's opinion of where each id landed. `null` when Tier 3 never
+   * ran (no `needsMeasure` reason), so there is nothing to predict.
+   * Exposed for the native-vs-print parity gate
+   * (`scripts/native-parity-gate.ts`) — not consumed elsewhere.
+   */
+  predicted: { pageMap: Record<string, number>; pageCount: number } | null;
+  /**
+   * The deterministic device-pixel viewport (`sheetViewport`, §"deterministic
+   * viewport = the sheet") this build pinned Chromium to. A caller that wants
+   * to mount its OWN extra viewer page against the same document (the
+   * native-vs-print parity gate's page-count check on a Tier-1/2 book, where
+   * {@link BuildResult.predicted} is `null`) needs this to reproduce the same
+   * fragmentation the build measured — an unpinned viewport free-sizes off
+   * whatever window the browser happens to have open.
+   */
+  viewport: { width: number; height: number };
+  /**
+   * `counter-reset: page N` sites (id + declared start), resolved against
+   * measured page numbers — the input `restartedPageValues()` needs to
+   * convert either {@link BuildResult.pageMap} or
+   * {@link BuildResult.predicted} into resolved `target-counter()` values
+   * the same way {@link BuildResult.pageMap}'s own synthesis did.
+   */
+  resetSites: Array<{ id: string; start: number }>;
 }
 
 export async function build(opts: BuildOptions): Promise<BuildResult> {
@@ -289,6 +317,8 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // pass produces the first print — an up-front print here would be
     // discarded unread.
     let bytes: Uint8Array | undefined;
+    let predictedForResult: { pageMap: Record<string, number>; pageCount: number } | null = null;
+    let resetSitesForResult: Array<{ id: string; start: number }> = [];
 
     // ---- Tier 3: measure -> synthesize -> fixpoint -----------------------
     if (needsMeasure) {
@@ -329,6 +359,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             `window.__folio.counterResetSites(${JSON.stringify(model.counterResets)})`,
           )
         : [];
+      resetSitesForResult = resetSites;
       const targets = new Set<string>();
       for (const s of sources) targets.add(s.id);
       for (const s of sites) if (s.href.startsWith("#")) targets.add(s.href.slice(1));
@@ -492,6 +523,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         },
         sheetViewport,
       );
+      if (predicted) predictedForResult = { pageMap: predicted.pageMap, pageCount: predicted.pageCount };
       let previous = "";
       if (predicted) {
         log(
@@ -687,6 +719,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       pageMap,
       converged,
       prints,
+      predicted: predictedForResult,
+      resetSites: resetSitesForResult,
+      viewport: { width: sheetViewport.width, height: sheetViewport.height },
     };
   } finally {
     await page.close();
