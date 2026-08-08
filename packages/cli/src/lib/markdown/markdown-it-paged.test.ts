@@ -1152,12 +1152,39 @@ describe("PAGED_CSS export", () => {
       ".md-page-break",
       ".page",
       ".spread",
-      ".section",
-      ".section.col-split",
+      ":where(.page, .spread)",
       ".md-column-break",
     ]) {
       expect(PAGED_CSS).toContain(selector);
     }
+  });
+
+  // #6: the old blanket `.section { break-inside: avoid }` produced a
+  // taller-than-a-column dead-column collapse in multicol layouts and had to
+  // be undone by `.section.col-split { break-inside: auto }`. Both are gone;
+  // keep-together is now only the empty-first-fragment glue, which achieves
+  // the same intent without the collapse.
+  test("no longer sets a blanket break-inside: avoid on .section (or the col-split override that undid it)", () => {
+    expect(PAGED_CSS).not.toMatch(/\.section\s*\{[^}]*break-inside/);
+    expect(PAGED_CSS).not.toContain(".section.col-split");
+  });
+
+  // #7: the safe default reset — heading orphans, image sizing, and the
+  // first-child keep-together glue that replaces #6's blanket rule.
+  test("defines the safe default reset (headings, image sizing, first-child glue), all at zero specificity", () => {
+    expect(PAGED_CSS).toContain(":where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }");
+    expect(PAGED_CSS).toContain(":where(img, svg, video) { max-width: 100%; }");
+    expect(PAGED_CSS).toContain(
+      ":where(p > img:only-child, figure > img) { width: 100%; height: auto; object-fit: contain; }"
+    );
+    expect(PAGED_CSS).toContain(":where(.section, figure) > :where(:first-child) { break-before: avoid; }");
+  });
+
+  // #2: .page/.spread must be the containing block for abspos descendants so
+  // a mispinned bottom:0 fails locally instead of painting on the book's last
+  // page. :where() so author CSS at any specificity can opt back to static.
+  test("makes .page/.spread positioned containing blocks at zero specificity", () => {
+    expect(PAGED_CSS).toContain(":where(.page, .spread) { position: relative; }");
   });
 });
 
@@ -1193,14 +1220,17 @@ describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
     expect(rule![0]).toMatch(/width:\s*100%/);
   });
 
-  test("defines .full-bleed using break-before + Paged.js's own page-margin custom properties (no fabricated @page art template)", () => {
+  test("defines .full-bleed using break-before + engine-neutral --gp-margin-* falling back to Paged.js's own page-margin custom properties (no fabricated @page art template)", () => {
     const rule = PAGED_CSS.match(/\.full-bleed\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     const body = rule![0];
     expect(body).toMatch(/break-before:\s*page/);
-    // Escapes to the page's own trim edge via the real, Paged.js-populated
-    // --pagedjs-margin-* custom properties (see node_modules/pagedjs
-    // src/polisher/base.js / atpage.js) — not an invented mechanism.
+    // #10: --gp-margin-* is the engine-neutral primary, falling back to the
+    // real Paged.js-populated --pagedjs-margin-* custom properties (see
+    // node_modules/pagedjs src/polisher/base.js / atpage.js) so the class
+    // works identically once the native engine emits --gp-margin-*.
+    expect(body).toMatch(/--gp-margin-left/);
+    expect(body).toMatch(/--gp-margin-right/);
     expect(body).toMatch(/--pagedjs-margin-left/);
     expect(body).toMatch(/--pagedjs-margin-right/);
     expect(body).toMatch(/margin-left:\s*calc\(-1 \*/);

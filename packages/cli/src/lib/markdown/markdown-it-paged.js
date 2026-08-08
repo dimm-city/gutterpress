@@ -760,6 +760,18 @@ export default function plugin(md, pluginOptions = {}) {
  * Consumers should inject this into <head> after their user stylesheets so
  * the layout contract (page/section/column breaks) wins at equal specificity.
  *
+ * `.page`/`.spread` are given `position: relative` so they are the containing
+ * block for any abspos descendant: a mispinned `bottom: 0` now fails LOCALLY
+ * on its own page instead of resolving against the document canvas and
+ * painting on the last page of the book. Under Paged.js the page div is
+ * already the containing block, so this is a no-op there — engine
+ * convergence, not a native-only hack.
+ *
+ * The break/orphan rules below (`break-after` on headings, image sizing,
+ * first-child glue) are all `:where()` so they carry zero specificity —
+ * author CSS at any specificity wins outright, reusing this same
+ * after-author injection point.
+ *
  * Also ships five author-facing image/block utility classes (CLAUDE.md §0 —
  * a behavior broadly useful to non-technical authors belongs in core, not a
  * project layer; see UX finding M17). markdown-it-attrs is bundled by
@@ -772,24 +784,32 @@ export default function plugin(md, pluginOptions = {}) {
  *   .float-right  — floats right with clearance margins.
  *   .full-width   — fills the page's content width (100%).
  *   .full-bleed   — forces its own page (break-before) and cancels the
- *                   page's LEFT/RIGHT margins via Paged.js's real
- *                   `--pagedjs-margin-left`/`--pagedjs-margin-right` custom
- *                   properties (set per-page by the polyfill from the active
- *                   `@page` rule — see pagedjs/src/polisher/base.js), so
- *                   content spans the page edge-to-edge horizontally. This
+ *                   page's LEFT/RIGHT margins via engine-neutral
+ *                   `--gp-margin-left`/`--gp-margin-right` custom properties
+ *                   (set per named page by the engine's tier-2 synthesis),
+ *                   falling back to Paged.js's real
+ *                   `--pagedjs-margin-left`/`--pagedjs-margin-right` (set
+ *                   per-page by the polyfill from the active `@page` rule —
+ *                   see pagedjs/src/polisher/base.js), so content spans the
+ *                   page edge-to-edge horizontally on either engine. This
  *                   does NOT cancel the top/bottom margins, extend past the
  *                   trim into printer bleed overage, apply a named `@page`
  *                   template, or remove headers/footers — none of that is
- *                   implemented; the custom-property fallback of 0 means it
- *                   degrades to plain full-width outside a Paged.js render.
+ *                   implemented; the fallback chain resolving to 0 means it
+ *                   degrades to plain full-width if neither engine sets the
+ *                   variables.
  */
 export const PAGED_CSS = `
 .md-page-break { break-before: page; }
 .page { break-before: page; }
 .spread { break-before: page; }
-.section { break-inside: avoid; }
-.section.col-split { break-inside: auto; }
+:where(.page, .spread) { position: relative; }
 .md-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
+
+:where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }
+:where(img, svg, video) { max-width: 100%; }
+:where(p > img:only-child, figure > img) { width: 100%; height: auto; object-fit: contain; }
+:where(.section, figure) > :where(:first-child) { break-before: avoid; }
 
 .center { display: block; margin-left: auto; margin-right: auto; max-width: 100%; }
 .float-left { float: left; margin: 0 1em 1em 0; max-width: 50%; }
@@ -799,8 +819,8 @@ export const PAGED_CSS = `
   display: block;
   break-before: page;
   max-width: none;
-  width: calc(100% + var(--pagedjs-margin-left, 0px) + var(--pagedjs-margin-right, 0px));
-  margin-left: calc(-1 * var(--pagedjs-margin-left, 0px));
-  margin-right: calc(-1 * var(--pagedjs-margin-right, 0px));
+  width: calc(100% + var(--gp-margin-left, var(--pagedjs-margin-left, 0px)) + var(--gp-margin-right, var(--pagedjs-margin-right, 0px)));
+  margin-left: calc(-1 * var(--gp-margin-left, var(--pagedjs-margin-left, 0px)));
+  margin-right: calc(-1 * var(--gp-margin-right, var(--pagedjs-margin-right, 0px)));
 }
 `;
