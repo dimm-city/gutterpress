@@ -76,8 +76,9 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
 
 /**
  * Narrow viewports (phones) get a SMALLER PAGE, never a reflow: scale the
- * stage down via the `--gutterpress-zoom` custom property `.folio-stage`
- * already reads (viewer.css). Never zooms up past 1 — only shrinks to fit.
+ * stage down via `--gutterpress-fit-zoom`, which `.folio-stage` multiplies
+ * with the host's own `--gutterpress-zoom` (viewer.css). Never zooms up past
+ * 1 — only shrinks to fit.
  */
 function fitZoom() {
   const sheet = document.querySelector<HTMLElement>(".folio-sheet");
@@ -88,8 +89,9 @@ function fitZoom() {
     parseFloat(getComputedStyle(document.body).paddingLeft) +
     parseFloat(getComputedStyle(document.body).paddingRight);
   const available = window.innerWidth - stagePadding;
-  const zoom = available > 0 && available < pageW ? available / pageW : 1;
-  document.body.style.setProperty("--gutterpress-zoom", String(zoom));
+  if (available > 0 && available < pageW)
+    document.body.style.setProperty("--gutterpress-fit-zoom", String(available / pageW));
+  else document.body.style.removeProperty("--gutterpress-fit-zoom");
 }
 
 if (typeof document !== "undefined" && !(window as any).__FOLIO_MANUAL__) {

@@ -156,6 +156,32 @@ testIf(
           // overflow box), not merely positioned.
           expect(result.visibleWidth).toBeGreaterThan(0);
           expect(result.visibleHeight).toBeGreaterThan(0);
+
+          // The viewer's fit-to-width shrink and a host's zoom control are
+          // separate inputs and must COMPOSE: preview-interface.js's setZoom()
+          // writes `--gutterpress-zoom` on <html>, so a fit value written to
+          // the same property on <body> (the stage) would shadow it and the
+          // zoom control would go dead under the native engine.
+          const zoom = await page.evaluate(() => {
+            document.documentElement.style.setProperty("--gutterpress-zoom", "2");
+            const wide = getComputedStyle(document.body).zoom;
+            return { wide, fitWide: document.body.style.getPropertyValue("--gutterpress-fit-zoom") };
+          });
+          expect(parseFloat(zoom.wide)).toBeCloseTo(2, 2);
+          expect(zoom.fitWide).toBe("");
+
+          await page.setViewport({ width: 320, height: 900 });
+          const narrow = await page.evaluate(async () => {
+            await new Promise((r) => setTimeout(r, 100));
+            return {
+              fit: parseFloat(document.body.style.getPropertyValue("--gutterpress-fit-zoom")),
+              zoom: parseFloat(getComputedStyle(document.body).zoom),
+            };
+          });
+          expect(narrow.fit).toBeGreaterThan(0);
+          expect(narrow.fit).toBeLessThan(1);
+          // still multiplied by the host's 2, not replaced by it
+          expect(narrow.zoom).toBeCloseTo(narrow.fit * 2, 2);
         } finally {
           await page.close();
         }
