@@ -562,14 +562,19 @@ async function runNativeCoreRegression() {
         outer.dispatchEvent(event);
         return result;
       };
-      node.dispatchEvent(new outer.Event("load"));
       // Real production: the viewer's mount() fires 'folio:layout' once its
       // own async fragmentDocument() resolves; preview-interface.js's
       // listener (installed by installBook() above) turns that into
       // 'renderingComplete' for preview-shell.js's onReady() to pick up —
       // see preview-interface.js's onRenderingComplete(). installBook has no
       // real viewer to await, so the fixture fires it directly.
+      // Ordering matters and is measured, not assumed: the viewer mounts on
+      // DOMContentLoaded, so on a small book it finishes BEFORE the iframe's
+      // `load` event — i.e. before preview-shell.js attaches its
+      // 'renderingComplete' listener. Only onRenderingComplete()'s
+      // __GUTTERPRESS_RENDERED__ latch makes the swap complete at all.
       node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("folio:layout", { detail: {} }));
+      node.dispatchEvent(new outer.Event("load"));
     }
     return result;
   };

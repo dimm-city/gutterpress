@@ -933,6 +933,11 @@
   // Shared "pagination finished" handling for both engines: reset to page 1,
   // scroll to top, and announce completion.
   function onRenderingComplete(label) {
+    // Latch: a host that attaches its 'renderingComplete' listener after the
+    // event already fired (preview-shell.js binds on the iframe's `load`, which
+    // the native viewer's DOMContentLoaded mount can beat) has no other way to
+    // know pagination is done.
+    window.__GUTTERPRESS_RENDERED__ = true;
     refreshPages();
     observedPageCount = pages.length;
     pageObserver.disconnect();

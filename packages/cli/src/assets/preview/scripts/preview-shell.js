@@ -263,7 +263,9 @@
       || !!d.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
     if (hasEngine) {
       w.addEventListener('renderingComplete', finish);
-      if (w.__PAGED_RENDERED__ === true) setTimeout(finish, 0);
+      if (w.__PAGED_RENDERED__ === true || w.__GUTTERPRESS_RENDERED__ === true) {
+        setTimeout(finish, 0);
+      }
       timer = setTimeout(function () {
         if (done) return;
         done = true;
