@@ -111,6 +111,27 @@ gutterpress build ./my-book --format html --out ./_site
 
 > Reviewer conflict, resolved. One reviewer wanted a `--static` snapshot mode kept in reserve; another demanded a viewer-vs-print parity gate before shipping HTML from the viewer. Both fall away under the chosen option: we are not claiming the web artifact reproduces print fragmentation, so there is nothing to gate, and building a second mode nobody has asked for violates the "reduce complexity" rule. The parity gate is still required — but for Phase 5, where the *desktop preview* claims WYSIWYG.
 
+### Phase 4b — the standalone viewer is a supported surface
+
+Verified by hand (2026-08-08): a plain hand-authored HTML file — standard
+Paged Media CSS (`@page` margin boxes, `string-set`, `target-counter()`,
+`leader()`, `break-before: page`), no Gutterpress classes, no build step —
+plus one `<script src>` of the viewer bundle auto-mounts and renders a
+correct paged view: sheets, folios, running heads, and a resolved
+leader/target-counter TOC line. No browser does this natively; the viewer is
+a real standalone Paged Media renderer, and "author standard HTML+CSS, drop
+in one script" must be a documented, supported use — it is the strongest
+possible expression of the product goal that authors target the standard,
+not our tooling.
+
+One bug found in exactly this scenario, to fix in this phase: with bare body
+children (no wrapper divs — the input the CLI pipeline never produces), a
+run's content that flows to page 2+ positions correctly per `pageOf()` but
+does not paint — the strip element stays one column wide while the
+decoration layer draws the later sheets correctly. Make the hand-authored
+file above the regression fixture, then document the drop-in usage (a
+ten-line example in the user guide) alongside the iframe embed snippet.
+
 ### Phase 5 — parity gate, then flip the default
 
 The gate exists because the desktop preview and the PDF use **different fragmenters** (`engine/viewer/fragment.ts` in-browser vs Chromium print), and `spike/folio/ARCHITECTURE.md` correctly treats parity as measured, not guaranteed. An author shown a layout the PDF does not match is the most damaging failure this migration can produce.
