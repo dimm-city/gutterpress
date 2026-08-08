@@ -9,6 +9,7 @@
  * "every compiler-side synthesis needs a viewer-side twin" from rotting: there
  * is no twin, there is one function.
  */
+import { MARGIN_BOX_NAMES, type Declarations } from "./gcpm-extract.ts";
 
 // ---------------------------------------------------------------------------
 // recto/verso forced breaks
@@ -288,4 +289,65 @@ export function generatedContentCss(selectors: Iterable<string>): string {
   rules.add(`[data-folio-after]::after { content: attr(data-folio-after); }`);
   rules.add(`[data-folio-before]::before { content: attr(data-folio-before); }`);
   return [...rules].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// --gp-margin-* (#10) — engine-neutral page-margin custom properties
+// ---------------------------------------------------------------------------
+
+export interface PageMargin {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * `--gp-margin-*` for one resolved `@page` context, in pt.
+ *
+ * pt is a valid CSS length on screen as well as in print, so the SAME
+ * declarations work verbatim in the compiler's generated stylesheet (already
+ * pt-denominated) and the viewer's inline styles — one function, no
+ * per-renderer unit conversion to keep in sync. `PAGED_CSS`'s `.full-bleed`
+ * reads these to cancel a page's left/right margin; the value must be the
+ * AUTHORED margin (what `resolvePage` returns), not tier 2's bleed-expanded
+ * one, since `.full-bleed` is for ordinary pages pulling art to the trim
+ * edge, not the already-bled cover/plate pages tier 2 handles separately.
+ */
+export function marginVarDecls(margin: PageMargin): Declarations {
+  return {
+    "--gp-margin-top": `${margin.top}pt`,
+    "--gp-margin-right": `${margin.right}pt`,
+    "--gp-margin-bottom": `${margin.bottom}pt`,
+    "--gp-margin-left": `${margin.left}pt`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// margin-band background synthesis (#8) — opt-in via --gp-margin-box-background
+// ---------------------------------------------------------------------------
+
+/**
+ * The one author-declared `@page` custom property that opts a page context
+ * into margin-band background synthesis. Accepts any CSS `background`
+ * shorthand value.
+ */
+export const MARGIN_BOX_BG_PROP = "--gp-margin-box-background";
+
+/**
+ * Which margin boxes synthesis should paint for one resolved `@page` context:
+ * every box in `MARGIN_BOX_NAMES` the author did NOT declare themselves
+ * (`declaredBoxes` — the keys of `resolvePage(...).marginBoxes`), and only
+ * when the author opted in via `MARGIN_BOX_BG_PROP`. Strictly opt-in (no
+ * property declared -> no boxes) and never claims a box the author wrote
+ * themselves, synthesized or not — that box's own `content`/`background`
+ * always wins.
+ */
+export function marginBandBoxes(
+  pageDecls: Declarations,
+  declaredBoxes: Iterable<string>,
+): string[] {
+  if (!pageDecls[MARGIN_BOX_BG_PROP]) return [];
+  const declared = new Set(declaredBoxes);
+  return MARGIN_BOX_NAMES.map((name) => `@${name}`).filter((box) => !declared.has(box));
 }

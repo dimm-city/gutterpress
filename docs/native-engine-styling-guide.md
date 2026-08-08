@@ -23,7 +23,12 @@ gotcha below is a consequence of that difference.
 - **The root (`html`) background paints the page CONTENT box only — never the
   margins.** A full-bleed texture needs two layers: `html { background: … }`
   for the content area, plus `@page` margin boxes carrying the same background
-  for the margin band (all 16 boxes if you want a seamless frame).
+  for the margin band (all 16 boxes if you want a seamless frame). As of the
+  tier-2 margin-band synthesis (#8), you no longer have to hand-copy those 16
+  rules: declare `--gp-margin-box-background: <background value>;` once inside
+  `@page` and the engine (and the viewer) fills in every margin box you didn't
+  declare content for yourself. Strictly opt-in — a box you did declare is
+  left exactly as you wrote it.
 - **Don't use `position: fixed` for per-page backdrops.** It's
   viewport-dependent and unreliable under print. The `html` background is
   viewport-independent and repeats correctly on every page.
@@ -182,13 +187,13 @@ fixture — but only when the thing being kept-with can actually be placed:
 - The mirror trick works too: `.pagedjs_page`-scoped rules are dead selectors
   under native, so a shared sheet can carry Paged.js-only geometry by scoping
   it to the Paged.js DOM.
-- **Know what core CSS silently assumes.** `PAGED_CSS`'s `.full-bleed`
-  utility is built on `--pagedjs-margin-left/right`, custom properties only
-  the Paged.js polyfill sets. On the native engine they fall back to `0px`
-  and the class degrades to plain full-width — **no error, no warning, the
-  art just isn't full-bleed.** Until the engine emits engine-neutral margin
-  variables, set `--pagedjs-margin-left/right` yourself in the native leg's
-  stylesheet (matching your `@page` margins) if you use `.full-bleed`.
+- **`PAGED_CSS`'s `.full-bleed` now works on either engine.** It reads
+  `--gp-margin-left/right` first, falling back to Paged.js's own
+  `--pagedjs-margin-left/right`. The native compiler's tier-2 synthesis (#10)
+  emits `--gp-margin-*` on `:root` for the default page and on the named-page
+  container selector for any named page that overrides margins; the viewer
+  sets the same variables on each named-page run so the live preview matches.
+  No per-book workaround needed anymore.
 
 ## 10. Debugging workflow that actually finds things
 

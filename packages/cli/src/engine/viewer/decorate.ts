@@ -20,6 +20,9 @@ import {
   leaderFillCount,
   leaderMarker,
   LEADER_RE,
+  MARGIN_BOX_BG_PROP,
+  marginBandBoxes,
+  marginVarDecls,
   pageCounterValues,
   parseWhich,
   stringValueAt,
@@ -54,6 +57,7 @@ interface PageCtx {
   pseudos: string[];
   geometry: PageGeometry;
   marginBoxes: Record<string, Declarations>;
+  decls: Declarations;
 }
 
 export function decorate(
@@ -82,16 +86,16 @@ export function decorate(
     // and content off the surrounding run's context (ARCHITECTURE.md §1).
     if (blankPages.has(bookIndex)) {
       const pseudos = ["blank"];
-      const { geometry, marginBoxes } = resolvePage(model, { pseudos });
-      return { index: bookIndex, strip, pseudos, geometry, marginBoxes };
+      const { geometry, marginBoxes, decls } = resolvePage(model, { pseudos });
+      return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
     }
     const pseudos: string[] = [];
     if (bookIndex === 0) pseudos.push("first");
     if (indexInStrip === 0) pseudos.push("nth-first-of-run");
     // page 1 is a recto
     pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
-    const { geometry, marginBoxes } = resolvePage(model, { name: strip.page, pseudos });
-    return { index: bookIndex, strip, pseudos, geometry, marginBoxes };
+    const { geometry, marginBoxes, decls } = resolvePage(model, { name: strip.page, pseudos });
+    return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
   }
 
   /** Which page is each string-set / xref target element on. */
@@ -240,6 +244,11 @@ export function decorate(
       const g = strip.geometry;
       run.style.height = px(g.height);
       run.style.width = `${stride * strip.pages}px`;
+      // #10: `run` wraps `strip.el`, the actual container of the author's
+      // content for this named-page run — a real ancestor, unlike the
+      // decoration sheets below, so `.full-bleed` sees these on screen too.
+      for (const [prop, value] of Object.entries(marginVarDecls(g.margin)))
+        run.style.setProperty(prop, value);
 
       for (let i = 0; i < strip.pages; i++) {
         const bookIndex = strip.offset + i;
@@ -291,6 +300,17 @@ export function decorate(
         : /right/.test(name)
           ? "end"
           : "start";
+      sheet.appendChild(box);
+    }
+
+    // #8: margin-band background synthesis — every box the author left
+    // undeclared in this context, only when they opted in.
+    for (const boxName of marginBandBoxes(ctx.decls, Object.keys(ctx.marginBoxes))) {
+      const name = boxName.slice(1);
+      const box = document.createElement("div");
+      box.className = "folio-marginbox";
+      box.dataset.box = name;
+      Object.assign(box.style, rectFor(name, g), { background: ctx.decls[MARGIN_BOX_BG_PROP] });
       sheet.appendChild(box);
     }
   }

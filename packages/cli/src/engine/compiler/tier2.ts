@@ -21,6 +21,7 @@ import {
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { needsMeasurement, parseContent } from "../shared/content-value.ts";
+import { MARGIN_BOX_BG_PROP, marginBandBoxes, marginVarDecls } from "../shared/synthesis.ts";
 
 export const DEFAULT_SLUG_PT = 18; // 0.25in
 
@@ -239,6 +240,68 @@ export function synthesize(input: Tier2Input): Tier2Output {
         "Chromium clips page content to the content box, so art can only reach the bleed area on " +
           "pages whose authored margin is 0 (covers, plates) — those keep a slug-only margin so the " +
           "content box IS the bleed box. On pages with real margins, bleed is geometry only.",
+      );
+  }
+
+  // ---- 2. --gp-margin-* (#10) --------------------------------------------
+  //
+  // `.full-bleed` (PAGED_CSS) needs the AUTHORED margin, unaffected by tier
+  // 2's own bleed/slug inset above — that inset exists to keep bled art
+  // reaching bleed on pages the author gave 0 margin; `.full-bleed` is the
+  // primitive for ordinary pages pulling content to the trim edge.
+  {
+    const base = resolvePage(model);
+    out.push(`:root {`, declsToCss(marginVarDecls(base.geometry.margin)), `}`);
+    for (const name of model.pageNames) {
+      const selectors = model.pageAssignments
+        .filter((a) => a.page === name)
+        .map((a) => a.selector);
+      if (!selectors.length) continue; // no DOM ever gets this @page name
+      const resolved = resolvePage(model, { name });
+      const overrides = (["top", "right", "bottom", "left"] as const).some(
+        (side) => resolved.geometry.margin[side] !== base.geometry.margin[side],
+      );
+      if (!overrides) continue;
+      out.push(
+        `:where(${selectors.join(", ")}) {`,
+        declsToCss(marginVarDecls(resolved.geometry.margin)),
+        `}`,
+      );
+    }
+  }
+
+  // ---- 3. margin-band background synthesis (#8) --------------------------
+  //
+  // One author declaration (`--gp-margin-box-background` on `@page`) expands
+  // into a background rule for every margin box the author left undeclared
+  // in that context — replaces N hand-copied identical margin-box rules.
+  {
+    const names: Array<string | undefined> = [undefined, ...model.pageNames];
+    const variants = [[] as string[], ...pseudoVariants(model).map((p) => [p])];
+    let bandBoxCount = 0;
+    for (const name of names) {
+      for (const pseudos of variants) {
+        const isBase = name === undefined && pseudos.length === 0;
+        const authorWroteIt = model.pageRules.some(
+          (r) =>
+            r.name === name &&
+            r.pseudos.length === pseudos.length &&
+            r.pseudos.every((p) => pseudos.includes(p)),
+        );
+        if (!isBase && !authorWroteIt) continue;
+        const resolved = resolvePage(model, { name, pseudos });
+        const boxes = marginBandBoxes(resolved.decls, Object.keys(resolved.marginBoxes));
+        if (!boxes.length) continue;
+        bandBoxCount += boxes.length;
+        const bg = resolved.decls[MARGIN_BOX_BG_PROP];
+        const pseudo = pseudos.length ? `:${pseudos.join(":")}` : "";
+        const lines = boxes.map((box) => `  ${box} { content: ""; background: ${bg}; }`);
+        out.push(`@page ${name ?? ""}${pseudo} {\n${lines.join("\n")}\n}`.replace("@page  ", "@page "));
+      }
+    }
+    if (bandBoxCount > 0)
+      notes.push(
+        `margin-band background synthesized for ${bandBoxCount} otherwise-undeclared margin box(es) via ${MARGIN_BOX_BG_PROP}`,
       );
   }
 
