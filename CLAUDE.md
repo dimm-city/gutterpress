@@ -103,6 +103,32 @@ expectation is a design constraint on every engine/shim change:
    record in each shim's header which spec gap it fills so its removal
    trigger is knowable.
 
+**Boundary rulings** (ratified by the product owner, 2026-08-08 — these
+resolve the categorization questions future work will hit):
+
+- **The on-screen viewer is PERMANENT tooling**, not a shim. The Paged Media
+  spec targets print; browsers show no intent to paginate on screen, so the
+  viewer (preview, HTML publishing, embeds) has no official replacement
+  coming. It stays thin and standards-FED — it reads only standard CSS —
+  but its UX (navigation, zoom, view modes) is a product feature worth
+  investing in, not something built reluctantly.
+- **Print-production features are PERMANENT tooling.** Bleed, crop marks,
+  PDF/X boxes and ICC intents, signature imposition are publishing tools —
+  the product — implemented as PDF post-processing outside the rendering
+  path. The "temporary shim" category covers ONLY spec-defined features
+  Chrome has not implemented yet.
+- **Chrome wins once it ships.** When Chrome implements a Paged Media
+  feature, we drop our shim and match Chrome's behavior even where it is
+  imperfect — print output IS Chrome's output, and preview↔PDF divergence
+  is the worst failure this project can produce. File upstream Chromium
+  bugs; do not maintain corrective shims.
+- **Author-facing vocabulary is fine when it emits standard CSS.** Markdown
+  markers (`@page`/`@section`/`@chapter`), utility classes, and `--gp-*`
+  custom properties are the product's authoring surface — permanent —
+  provided they compile/expand to standard HTML+CSS so documents stay
+  portable and shims stay removable. What is forbidden is non-standard
+  RUNTIME behavior, not non-standard authoring shorthand.
+
 
 ## Architectural rules
 
