@@ -117,6 +117,28 @@ function isPagedjsCrashProneSelector(selector: string): boolean {
   return hasFunctionalPseudoWithSibling || hasNthOfTypeWithSibling;
 }
 
+const marginBoxAtRuleNames = new Set([
+  "top-left-corner", "top-left", "top-center", "top-right", "top-right-corner",
+  "bottom-left-corner", "bottom-left", "bottom-center", "bottom-right", "bottom-right-corner",
+  "left-top", "left-middle", "left-bottom",
+  "right-top", "right-middle", "right-bottom",
+]);
+
+// Chromium silently ignores these inside @page margin boxes (renders square,
+// unshadowed) though they are valid per CSS Paged Media. Delete this check if/
+// when Chromium implements them in margin boxes — see ENGINE recommendation #11.
+const marginBoxIgnoredProperties = new Set([
+  "transform", "rotate", "translate", "scale", "box-shadow",
+]);
+
+function isInPageMarginBox(decl: postcss.Declaration): boolean {
+  const box = decl.parent;
+  if (!box || box.type !== "atrule") return false;
+  if (!marginBoxAtRuleNames.has((box as postcss.AtRule).name.toLowerCase())) return false;
+  const page = box.parent;
+  return !!page && page.type === "atrule" && (page as postcss.AtRule).name.toLowerCase() === "page";
+}
+
 function nodeLoc(node: postcss.Node): { line: number; column: number } {
   return {
     line: node.source?.start?.line ?? 1,
@@ -181,6 +203,13 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
         rule: ruleRiskyProps,
         severity: "warning",
         message: `Property is high-risk for print/PDF (can force rasterization): ${decl.prop}`,
+        ...nodeLoc(decl),
+      });
+    } else if (marginBoxIgnoredProperties.has(prop) && isInPageMarginBox(decl)) {
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message: `Property "${decl.prop}" is not supported in Chromium @page margin boxes and is silently ignored — the chrome renders square/unshadowed.`,
         ...nodeLoc(decl),
       });
     }

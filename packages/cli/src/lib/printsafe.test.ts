@@ -37,3 +37,21 @@ test("checkCss stays silent on filter: when the CSS has no filter declarations",
   const warnings = checkCss(css);
   expect(warnings.filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
 });
+
+// Chromium silently ignores transform/box-shadow inside @page margin boxes
+// (renders square, unshadowed) though they're valid per CSS Paged Media.
+test("checkCss warns once on transform: inside an @page margin box", () => {
+  const css = `@page { @bottom-left { content: "x"; transform: rotate(5deg); } }`;
+  const warnings = checkCss(css);
+  const marginBoxWarnings = warnings.filter((w) => w.rule === ruleRiskyProps);
+  expect(marginBoxWarnings.length).toBe(1);
+  expect(marginBoxWarnings[0]!.message).toContain(
+    "not supported in Chromium @page margin boxes and is silently ignored",
+  );
+});
+
+test("checkCss does not flag transform: outside an @page margin box", () => {
+  const css = `.card { transform: rotate(5deg); }`;
+  const warnings = checkCss(css);
+  expect(warnings.filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
+});
