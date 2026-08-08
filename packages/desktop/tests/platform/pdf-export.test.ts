@@ -1,13 +1,16 @@
 /**
  * Unit tests for electron/pdf-export.ts (ARCH review finding #27).
  *
- * `electronPdfRenderer`'s poll loop used to treat "Paged.js finished" and
+ * `electronPdfRenderer`'s poll loop used to treat "the engine finished" and
  * "deadline elapsed" identically — both fell through to `printToPDF`, so a
  * timed-out render silently produced a TRUNCATED PDF reported as a success.
- * The loop is now extracted into `waitForPagedRendered`, a pure
+ * The loop is now extracted into `waitForEngineRendered`, a pure
  * dependency-injected helper with no BrowserWindow/webContents, so the
  * timeout-vs-done distinction is directly testable with fakes (no real
- * Electron process needed for these first tests).
+ * Electron process needed for these first tests). It is engine-agnostic:
+ * `electronPdfRenderer` detects Paged.js vs the native engine from the DOM
+ * (STATUS_SCRIPT/GEOMETRY_SCRIPT) and this test's `nextGeometryFn` stands in
+ * for that DOM check, since the fake `executeJavaScript` doesn't run real JS.
  *
  * The "electron" package's default export outside a real Electron process is
  * just a path string (see tests/updater/electron-updater.test.ts), so
@@ -23,20 +26,25 @@ import { BuildError } from "gutterpress";
 class FakeWebContents {
   execCalls: string[] = [];
   printToPDFCalls = 0;
+  lastPageSize: { width: number; height: number } | null = null;
   constructor(
     private statusFn: () => { done: boolean; pages: number },
+    private geometryFn: () => { w: number; h: number } = () => ({ w: 816, h: 1056 }),
   ) {}
   async executeJavaScript(script: string): Promise<unknown> {
     this.execCalls.push(script);
     if (script.includes("document.fonts.ready")) return true;
+    // Status and geometry are both engine-agnostic scripts (pdf-export.ts's
+    // STATUS_SCRIPT / GEOMETRY_SCRIPT) — real Chromium branches inside them
+    // on the DOM, but this fake can't run that DOM query, so it distinguishes
+    // by which literal script ran and returns the test's canned answer for it.
     if (script.includes("__PAGED_RENDERED__")) return this.statusFn();
-    if (script.includes("getComputedStyle")) {
-      return { count: 1, w: 816, h: 1056 };
-    }
+    if (script.includes("folio-page-w")) return this.geometryFn();
     return null;
   }
-  async printToPDF(): Promise<Buffer> {
+  async printToPDF(opts: { pageSize: { width: number; height: number } }): Promise<Buffer> {
     this.printToPDFCalls++;
+    this.lastPageSize = opts.pageSize;
     return Buffer.from("fake-pdf-bytes");
   }
 }
@@ -45,8 +53,12 @@ class FakeBrowserWindow {
   static instances: FakeBrowserWindow[] = [];
   webContents: FakeWebContents;
   private destroyed = false;
-  constructor(_opts: unknown, statusFn: () => { done: boolean; pages: number } = () => ({ done: true, pages: 1 })) {
-    this.webContents = new FakeWebContents(statusFn);
+  constructor(
+    _opts: unknown,
+    statusFn: () => { done: boolean; pages: number } = () => ({ done: true, pages: 1 }),
+    geometryFn?: () => { w: number; h: number },
+  ) {
+    this.webContents = new FakeWebContents(statusFn, geometryFn);
     FakeBrowserWindow.instances.push(this);
   }
   async loadURL(): Promise<void> {}
@@ -58,10 +70,11 @@ class FakeBrowserWindow {
   }
 }
 
-// The test-specific status function each fake BrowserWindow should poll —
-// swapped per-test via `nextStatusFn` since the "electron" mock factory below
+// The test-specific status/geometry functions each fake BrowserWindow should
+// poll — swapped per-test via these since the "electron" mock factory below
 // only runs once per module instance and can't take per-test params directly.
 let nextStatusFn: () => { done: boolean; pages: number } = () => ({ done: true, pages: 1 });
+let nextGeometryFn: (() => { w: number; h: number }) | undefined;
 
 // NOTE: `bun test --isolate` does not fully sandbox `mock.module("electron", …)`
 // registrations between files that all touch the "electron" specifier — other
@@ -77,7 +90,7 @@ mock.module("electron", () =>
   electronMock({
     BrowserWindow: class extends FakeBrowserWindow {
       constructor(opts: unknown) {
-        super(opts, nextStatusFn);
+        super(opts, nextStatusFn, nextGeometryFn);
       }
     },
   }),
@@ -85,17 +98,17 @@ mock.module("electron", () =>
 
 const {
   electronPdfRenderer,
-  waitForPagedRendered,
+  waitForEngineRendered,
   setActiveExportSession,
   ExportCanceledError,
 } = await import("../../electron/pdf-export");
 
-// ── waitForPagedRendered (pure poll-loop helper) ────────────────────────────
+// ── waitForEngineRendered (pure poll-loop helper) ────────────────────────────
 
-test("waitForPagedRendered resolves with the final page count once done flips true", async () => {
+test("waitForEngineRendered resolves with the final page count once done flips true", async () => {
   const progress: number[] = [];
   let calls = 0;
-  const pages = await waitForPagedRendered(10_000, {
+  const pages = await waitForEngineRendered(10_000, {
     getStatus: async () => {
       calls++;
       return { done: calls >= 3, pages: calls };
@@ -109,10 +122,10 @@ test("waitForPagedRendered resolves with the final page count once done flips tr
   expect(progress).toEqual([1, 2, 3]);
 });
 
-test("waitForPagedRendered only reports progress when the page count changes", async () => {
+test("waitForEngineRendered only reports progress when the page count changes", async () => {
   const progress: number[] = [];
   let calls = 0;
-  await waitForPagedRendered(10_000, {
+  await waitForEngineRendered(10_000, {
     getStatus: async () => {
       calls++;
       // Page count sticks at 2 for a few polls before finishing.
@@ -126,9 +139,9 @@ test("waitForPagedRendered only reports progress when the page count changes", a
   expect(progress).toEqual([2]);
 });
 
-test("waitForPagedRendered throws a typed, author-friendly BuildError on deadline instead of returning", async () => {
+test("waitForEngineRendered throws a typed, author-friendly BuildError on deadline instead of returning", async () => {
   let now = 0;
-  const err = await waitForPagedRendered(60_000, {
+  const err = await waitForEngineRendered(60_000, {
     getStatus: async () => ({ done: false, pages: 5 }),
     now: () => now,
     sleep: async () => {
@@ -145,9 +158,9 @@ test("waitForPagedRendered throws a typed, author-friendly BuildError on deadlin
   expect((err as Error).message).toContain("incomplete PDF");
 });
 
-test("waitForPagedRendered's deadline error scales the minute count with timeoutMs", async () => {
+test("waitForEngineRendered's deadline error scales the minute count with timeoutMs", async () => {
   let now = 0;
-  const err = await waitForPagedRendered(20 * 60_000, {
+  const err = await waitForEngineRendered(20 * 60_000, {
     getStatus: async () => ({ done: false, pages: 1 }),
     now: () => now,
     sleep: async () => {
@@ -159,9 +172,9 @@ test("waitForPagedRendered's deadline error scales the minute count with timeout
   expect((err as Error).message).toContain("20 minutes");
 });
 
-test("waitForPagedRendered propagates a cancellation check immediately, not a BuildError", async () => {
+test("waitForEngineRendered propagates a cancellation check immediately, not a BuildError", async () => {
   class Canceled extends Error {}
-  const err = await waitForPagedRendered(10_000, {
+  const err = await waitForEngineRendered(10_000, {
     getStatus: async () => ({ done: false, pages: 1 }),
     now: () => 0,
     sleep: async () => {},
@@ -220,6 +233,35 @@ test("electronPdfRenderer completes normally and calls printToPDF exactly once w
     expect(win?.webContents.printToPDFCalls).toBe(1);
   } finally {
     setActiveExportSession(null);
+  }
+});
+
+test("electronPdfRenderer computes a non-default pageSize from the native engine's resolved page geometry", async () => {
+  // 6x4in at 96 CSS px/in — as decorate.ts writes --folio-page-w/-h for a
+  // book like /tmp/fbtest/book, distinct from both the Letter-ish default
+  // (8.625x11.25in) and the Paged.js fixture geometry used by the other
+  // tests in this file (816x1056px = 8.5x11in).
+  nextStatusFn = () => ({ done: true, pages: 4 });
+  nextGeometryFn = () => ({ w: 576, h: 384 });
+  setActiveExportSession({
+    id: "exp-native",
+    canceled: false,
+    outPath: "/tmp/out-native.pdf",
+    tempOutPath: "/tmp/out-native.tmp.pdf",
+    win: null,
+  });
+  try {
+    await electronPdfRenderer({
+      url: "http://127.0.0.1:1/book.html",
+      outPdf: "/tmp/out-native.pdf",
+      timeoutMs: 10_000,
+    });
+    const win = FakeBrowserWindow.instances.at(-1);
+    expect(win?.webContents.printToPDFCalls).toBe(1);
+    expect(win?.webContents.lastPageSize).toEqual({ width: 6, height: 4 });
+  } finally {
+    setActiveExportSession(null);
+    nextGeometryFn = undefined;
   }
 });
 

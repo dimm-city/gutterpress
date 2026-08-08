@@ -82,10 +82,10 @@ export function throwIfExportCanceled(session: ExportSession): void {
   }
 }
 
-/** Dependencies of {@link waitForPagedRendered}, injected so the timeout-vs-done
+/** Dependencies of {@link waitForEngineRendered}, injected so the timeout-vs-done
  * distinction (ARCH review #27) is unit-testable without a real BrowserWindow. */
 export interface WaitForPagedRenderedDeps {
-  /** Reads `window.__PAGED_RENDERED__` + the current `.pagedjs_page` count. */
+  /** Reads the active engine's completion flag + current rendered page count. */
   getStatus: () => Promise<{ done: boolean; pages: number }>;
   /** Injectable clock (epoch ms). */
   now: () => number;
@@ -98,11 +98,14 @@ export interface WaitForPagedRenderedDeps {
 }
 
 /**
- * Poll Paged.js's completion flag until it flips true or `timeoutMs` elapses.
+ * Poll the active engine's completion flag until it flips true or `timeoutMs`
+ * elapses. Engine-agnostic: `deps.getStatus` reads whichever of Paged.js's
+ * `window.__PAGED_RENDERED__` or the native engine's `window.Gutterpress` is
+ * present on the page (see `electronPdfRenderer`'s `STATUS_SCRIPT`).
  *
  * Extracted standalone (no BrowserWindow/webContents) from `electronPdfRenderer`
  * so it can be driven with fakes in tests. Previously this loop's two exit
- * conditions — "Paged.js signaled done" and "the deadline passed" — were
+ * conditions — "the engine signaled done" and "the deadline passed" — were
  * indistinguishable to the caller, which fell through to `printToPDF` either
  * way and wrote a TRUNCATED "successful" PDF on a slow/stuck render (ARCH
  * review #27). On timeout this now throws a typed, author-friendly
@@ -116,7 +119,7 @@ export interface WaitForPagedRenderedDeps {
  * "did not finish" phrase and passes it through to the author verbatim. Keep
  * that phrase in sync with the exact string thrown below.
  */
-export async function waitForPagedRendered(
+export async function waitForEngineRendered(
   timeoutMs: number,
   deps: WaitForPagedRenderedDeps
 ): Promise<number> {
@@ -148,6 +151,44 @@ export async function waitForPagedRendered(
     await deps.sleep(100);
   }
 }
+
+/**
+ * Engine-agnostic completion check, run on every poll of
+ * {@link waitForEngineRendered}. Detects the active engine from the DOM (a
+ * `paged.polyfill` script tag) rather than threading an `engine` flag through
+ * `electronPdfRenderer` — the same detection `http-server.ts`'s
+ * `finishInitialRender` wiring already uses for the preview's "rendering
+ * complete" wait.
+ */
+const STATUS_SCRIPT = `(() => {
+  if (document.querySelector('script[src*="paged.polyfill"]')) {
+    return {
+      done: window.__PAGED_RENDERED__ === true,
+      pages: document.querySelectorAll('.pagedjs_page').length
+    };
+  }
+  var gp = window.Gutterpress;
+  return { done: !!gp, pages: gp ? gp.totalPages : 0 };
+})()`;
+
+/** Engine-agnostic page-geometry read, run once after {@link STATUS_SCRIPT} reports done. */
+const GEOMETRY_SCRIPT = `(() => {
+  const px = (v) => (v ? parseFloat(v) : 0);
+  const pagedPage = document.querySelector('.pagedjs_page');
+  if (pagedPage) {
+    const s = getComputedStyle(pagedPage);
+    return { w: px(s.width), h: px(s.height) };
+  }
+  const sheet = document.querySelector('.folio-sheet');
+  if (sheet) {
+    const cs = getComputedStyle(sheet);
+    return {
+      w: px(cs.getPropertyValue('--folio-page-w')),
+      h: px(cs.getPropertyValue('--folio-page-h'))
+    };
+  }
+  return { w: 0, h: 0 };
+})()`;
 
 export async function electronPdfRenderer(input: {
   url: string;
@@ -183,17 +224,20 @@ export async function electronPdfRenderer(input: {
     await wc.executeJavaScript("document.fonts.ready.then(() => true)");
     throwIfExportCanceled(session);
 
-    // Poll until Paged.js signals completion, emitting a per-page progress
-    // event so the UI can show "Rendering page N…" instead of an opaque
-    // spinner during the (inherently slow) Paged.js pagination of large
-    // books. Throws a typed BuildError instead of returning if the timeout
-    // elapses first — see waitForPagedRendered's doc comment (ARCH #27).
-    const lastPages = await waitForPagedRendered(input.timeoutMs, {
-      getStatus: () =>
-        wc.executeJavaScript(`(() => ({
-          done: window.__PAGED_RENDERED__ === true,
-          pages: document.querySelectorAll('.pagedjs_page').length
-        }))()`) as Promise<{ done: boolean; pages: number }>,
+    // Poll until the active engine signals completion, emitting a per-page
+    // progress event so the UI can show "Rendering page N…" instead of an
+    // opaque spinner during the (inherently slow) pagination of large books.
+    // Engine is detected at runtime from the DOM rather than threaded through
+    // as a flag — the same script tag check http-server.ts already uses to
+    // decide which "rendering complete" event to wait on. Paged.js sets
+    // `window.__PAGED_RENDERED__`; the native engine's viewer assigns
+    // `window.Gutterpress` only once fragmentation + decoration have both
+    // finished (engine/viewer/index.ts's `mount()`), so its mere presence is
+    // the completion signal. Throws a typed BuildError instead of returning
+    // if the timeout elapses first — see waitForEngineRendered's doc comment
+    // (ARCH #27).
+    const lastPages = await waitForEngineRendered(input.timeoutMs, {
+      getStatus: () => wc.executeJavaScript(STATUS_SCRIPT) as Promise<{ done: boolean; pages: number }>,
       now: () => Date.now(),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
       onProgress: (pages) =>
@@ -209,14 +253,13 @@ export async function electronPdfRenderer(input: {
       pages: lastPages,
     });
 
-    // Measure the first rendered page (CSS px) to set the paper size.
-    const info = (await wc.executeJavaScript(`(() => {
-      const pages = document.querySelectorAll('.pagedjs_page');
-      const el = pages[0] || null;
-      const s = el ? getComputedStyle(el) : null;
-      const px = (v) => (v ? parseFloat(v) : 0);
-      return { count: pages.length, w: px(s && s.width), h: px(s && s.height) };
-    })()`)) as { count: number; w: number; h: number };
+    // Measure the resolved page size (CSS px) to set printToPDF's paper size.
+    // Paged.js: measure the first `.pagedjs_page`'s computed box. Native: read
+    // `--folio-page-w`/`-h` off the first `.folio-sheet` — decorate.ts sets
+    // these as inline custom properties in px (PX_PER_PT = 96/72) directly
+    // from the compiler's resolved PageGeometry, so no layout measurement of
+    // a cloned/fragmented element is needed.
+    const info = (await wc.executeJavaScript(GEOMETRY_SCRIPT)) as { w: number; h: number };
 
     // printToPDF pageSize is in INCHES; CSS px → in is px / 96. Fall back to a
     // US-Letter-ish book trim if measurement failed.

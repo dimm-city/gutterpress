@@ -131,13 +131,13 @@ export function friendlyPdfError(e: unknown): string {
     // prefix (shared helper, defined above) before showing it to the author.
     return friendlyHostError(msg);
   }
-  // Render-timeout export blocks (electron/pdf-export.ts's waitForPagedRendered,
+  // Render-timeout export blocks (electron/pdf-export.ts's waitForEngineRendered,
   // ARCH review #27) throw a typed BuildError whose message is already an
   // author-friendly sentence. Like SYNC_CONFLICT above, `code` alone isn't
   // reliable across `api:build`'s ipcMain.handle/ipcRenderer.invoke boundary —
   // Electron strips custom Error properties there — so match by the message's
   // stable, distinctive phrase instead. Keep this phrase in sync with the exact
-  // string thrown in waitForPagedRendered.
+  // string thrown in waitForEngineRendered.
   if (/did not finish/i.test(msg)) {
     return friendlyHostError(msg);
   }
