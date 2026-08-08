@@ -37,12 +37,21 @@
   var viewer_default = `/* Folio viewer chrome. The author's content CSS is untouched; everything here
    is scoped to Folio's own wrappers/layers. */
 
+/* Default gray canvas, at ZERO specificity (\`:where()\`) so an author's own
+   \`body { background: … }\` (0-0-1) wins outright — a book that paints its
+   own canvas (e.g. a brick background) must not lose it to this class
+   (0-1-0 would otherwise always beat a bare element selector). Every other
+   stage rule below stays normal-specificity: those are structural (zoom,
+   scrolling, the sheet gap custom property), not chrome an author restyles. */
+:where(.folio-stage) {
+  background: var(--folio-stage-bg);
+}
+
 .folio-stage {
   --folio-sheet-bg: #fff;
   --folio-stage-bg: #4a4a52;
   --folio-guide: #e5484d;
   --folio-safe: #30a46c;
-  background: var(--folio-stage-bg);
   margin: 0;
   padding: 32px;
   overflow: auto;
@@ -1330,7 +1339,6 @@
     const model = layout.model;
     const sheets = new Map;
     let blankPages = new Set;
-    let spreadMode = opts.spread;
     const warnings = [];
     const api = {
       redraw: () => draw(),
@@ -1339,10 +1347,6 @@
       targets: new Map,
       pageNumbers: [],
       warnings,
-      setSpread(mode) {
-        spreadMode = mode;
-        draw();
-      },
       setDesigner(on) {
         document.body.dataset.designer = on ? "on" : "off";
       }
@@ -1494,27 +1498,12 @@
         const layer = run.querySelector(".folio-layer");
         layer.textContent = "";
         const g = strip.geometry;
-        const gap = gapOf(strip.el);
-        const pageW = g.width * PX_PER_PT;
-        const pageH = g.height * PX_PER_PT;
-        const firstRow = spreadMode === "two-up" ? twoUpSlot(strip.offset).row : 0;
         for (let i = 0;i < strip.pages; i++) {
           const bookIndex = strip.offset + i;
           const ctx = pageContext(strip, i, bookIndex);
-          let sheetLeft;
-          let sheetTop;
-          if (spreadMode === "single") {
-            sheetLeft = 0;
-            sheetTop = i * (pageH + gap);
-          } else if (spreadMode === "two-up") {
-            const slot = twoUpSlot(bookIndex);
-            sheetLeft = slot.col * (pageW + gap);
-            sheetTop = (slot.row - firstRow) * (pageH + gap);
-          } else {
-            const columnLeft = PX_PER_PT * g.margin.left + i * stride;
-            sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
-            sheetTop = 0;
-          }
+          const columnLeft = PX_PER_PT * g.margin.left + i * stride;
+          const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
+          const sheetTop = 0;
           const sheet = document.createElement("div");
           sheet.className = "folio-sheet";
           sheet.dataset.page = String(bookIndex + 1);
@@ -1528,17 +1517,8 @@
           drawGuides(sheet, ctx);
           drawCropMarks(sheet, ctx);
         }
-        if (spreadMode === "single") {
-          run.style.width = px(g.width);
-          run.style.height = `${strip.pages * (pageH + gap) - gap}px`;
-        } else if (spreadMode === "two-up") {
-          const lastRow = twoUpSlot(strip.offset + strip.pages - 1).row - firstRow;
-          run.style.width = `${2 * pageW + gap}px`;
-          run.style.height = `${(lastRow + 1) * (pageH + gap) - gap}px`;
-        } else {
-          run.style.height = px(g.height);
-          run.style.width = `${stride * strip.pages}px`;
-        }
+        run.style.height = px(g.height);
+        run.style.width = `${stride * strip.pages}px`;
         if (opts.designer)
           checkOverflow(strip, warnings);
       }
@@ -1633,15 +1613,6 @@
     draw();
     return api;
   }
-  function gapOf(el) {
-    return parseFloat(getComputedStyle(el).getPropertyValue("--folio-sheet-gap")) || 24;
-  }
-  function twoUpSlot(bookIndex) {
-    if (bookIndex === 0)
-      return { row: 0, col: 1 };
-    const n = bookIndex - 1;
-    return { row: Math.floor(n / 2) + 1, col: n % 2 === 0 ? 0 : 1 };
-  }
   function ensureRun(strip) {
     const parent = strip.el.parentElement;
     if (parent.classList.contains("folio-run"))
@@ -1683,6 +1654,7 @@
   }
 
   // src/engine/viewer/index.ts
+  var resizeListener;
   async function mount(opts = {}) {
     const t0 = performance.now();
     const layout = await fragmentDocument(opts);
@@ -1725,7 +1697,10 @@
       detail: { ms: performance.now() - t0, pages: layout.totalPages }
     }));
     fitZoom();
-    window.addEventListener("resize", fitZoom);
+    if (resizeListener)
+      window.removeEventListener("resize", resizeListener);
+    resizeListener = fitZoom;
+    window.addEventListener("resize", resizeListener);
     return api;
   }
   function fitZoom() {

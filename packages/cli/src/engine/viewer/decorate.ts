@@ -63,8 +63,6 @@ export interface DecorationApi {
   /** the restarted `counter(page)` value for each 0-based book page, honoring `counter-reset: page N` */
   pageNumbers: number[];
   warnings: string[];
-  /** switch spread layout and redraw; undefined = current single-row default */
-  setSpread(mode: "single" | "two-up" | undefined): void;
   /** show/hide trim, safe, and crop guides on the stage */
   setDesigner(on: boolean): void;
 }
@@ -79,12 +77,11 @@ interface PageCtx {
 
 export function decorate(
   layout: FolioViewerApi,
-  opts: { designer?: boolean; spread?: "single" | "two-up" } = {},
+  opts: { designer?: boolean } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
   const sheets = new Map<number, HTMLElement>();
   let blankPages = new Set<number>();
-  let spreadMode = opts.spread;
   const warnings: string[] = [];
   const api: DecorationApi = {
     redraw: () => draw(),
@@ -93,10 +90,6 @@ export function decorate(
     targets: new Map(),
     pageNumbers: [],
     warnings,
-    setSpread(mode) {
-      spreadMode = mode;
-      draw();
-    },
     setDesigner(on) {
       document.body.dataset.designer = on ? "on" : "off";
     },
@@ -269,29 +262,25 @@ export function decorate(
       const layer = run.querySelector<HTMLElement>(".folio-layer")!;
       layer.textContent = "";
       const g = strip.geometry;
-      const gap = gapOf(strip.el);
-      const pageW = g.width * PX_PER_PT;
-      const pageH = g.height * PX_PER_PT;
-      const firstRow = spreadMode === "two-up" ? twoUpSlot(strip.offset).row : 0;
 
       for (let i = 0; i < strip.pages; i++) {
         const bookIndex = strip.offset + i;
         const ctx = pageContext(strip, i, bookIndex);
 
-        let sheetLeft: number;
-        let sheetTop: number;
-        if (spreadMode === "single") {
-          sheetLeft = 0;
-          sheetTop = i * (pageH + gap);
-        } else if (spreadMode === "two-up") {
-          const slot = twoUpSlot(bookIndex);
-          sheetLeft = slot.col * (pageW + gap);
-          sheetTop = (slot.row - firstRow) * (pageH + gap);
-        } else {
-          const columnLeft = PX_PER_PT * g.margin.left + i * stride;
-          sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
-          sheetTop = 0;
-        }
+        // Sheets are painted exactly where Chromium put the matching column
+        // (`i * stride`) — the ONLY layout that is guaranteed to agree with
+        // where the strip's real content actually is. A `single`/`two-up`
+        // repositioning was tried here and shipped broken (see setSpread's
+        // retirement, ARCHITECTURE.md §7): the strip is one multicol flow
+        // element with N columns, not N independently movable elements, so
+        // the sheet chrome could be moved but the author's content — which
+        // Chromium still renders at its native column offset — could not
+        // move with it. Fixing that for real would mean fragmenting the DOM
+        // per physical page (cloning content across pages), which is exactly
+        // what this engine exists to avoid.
+        const columnLeft = PX_PER_PT * g.margin.left + i * stride;
+        const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
+        const sheetTop = 0;
 
         const sheet = document.createElement("div");
         sheet.className = "folio-sheet";
@@ -308,17 +297,8 @@ export function decorate(
         drawCropMarks(sheet, ctx);
       }
 
-      if (spreadMode === "single") {
-        run.style.width = px(g.width);
-        run.style.height = `${strip.pages * (pageH + gap) - gap}px`;
-      } else if (spreadMode === "two-up") {
-        const lastRow = twoUpSlot(strip.offset + strip.pages - 1).row - firstRow;
-        run.style.width = `${2 * pageW + gap}px`;
-        run.style.height = `${(lastRow + 1) * (pageH + gap) - gap}px`;
-      } else {
-        run.style.height = px(g.height);
-        run.style.width = `${stride * strip.pages}px`;
-      }
+      run.style.height = px(g.height);
+      run.style.width = `${stride * strip.pages}px`;
 
       if (opts.designer) checkOverflow(strip, warnings);
     }
@@ -425,21 +405,6 @@ export function decorate(
 
   draw();
   return api;
-}
-
-function gapOf(el: HTMLElement): number {
-  return parseFloat(getComputedStyle(el).getPropertyValue("--folio-sheet-gap")) || 24;
-}
-
-/**
- * Recto/verso pairing for `spread: "two-up"`: page 1 (book index 0) sits
- * alone on the right (the cover), then pages pair up verso-left/recto-right —
- * the same parity `pageContext` uses to resolve `@page :left`/`:right`.
- */
-function twoUpSlot(bookIndex: number): { row: number; col: 0 | 1 } {
-  if (bookIndex === 0) return { row: 0, col: 1 };
-  const n = bookIndex - 1;
-  return { row: Math.floor(n / 2) + 1, col: (n % 2 === 0 ? 0 : 1) as 0 | 1 };
 }
 
 function ensureRun(strip: StripInfo): HTMLElement {

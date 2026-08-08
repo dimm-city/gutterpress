@@ -520,11 +520,15 @@
         currentViewMode = mode || 'two-column';
         document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
         if (mode) document.body.classList.add('view-' + mode);
-        // sheet placement is JS-computed (§7), not pure CSS — the body class
-        // above is cosmetic under native, this is what actually moves sheets.
-        if (NATIVE_ENGINE && window.Gutterpress && window.Gutterpress.decoration) {
-          window.Gutterpress.decoration.setSpread(mode === 'single' ? 'single' : 'two-up');
-        }
+        // Under native the view-mode classes are cosmetic ONLY (paged.js CSS
+        // reads them to lay out .pagedjs_page, see iframe-styles.ts). A prior
+        // native `decoration.setSpread()` call repositioned the sheet chrome
+        // to fake a single/two-up layout, but the strip underneath is one
+        // multicol flow element — its columns cannot be individually moved,
+        // so the author's content stayed at its native column position while
+        // the sheets moved, visibly detaching text from page. Retired rather
+        // than shipped broken; native always shows its one correct layout
+        // (see decorate.ts's draw()).
       });
       if (!silent) return api.notifyPageChange();
     },

@@ -27,6 +27,8 @@ declare global {
   }
 }
 
+let resizeListener: (() => void) | undefined;
+
 export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   const t0 = performance.now();
   const layout = await fragmentDocument(opts);
@@ -70,7 +72,12 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
     }),
   );
   fitZoom();
-  window.addEventListener("resize", fitZoom);
+  // Repeat mount() calls (hot reload of the standalone viewer, re-embedding)
+  // must not stack a new listener on top of the last one — each stale
+  // closure would keep firing fitZoom() forever.
+  if (resizeListener) window.removeEventListener("resize", resizeListener);
+  resizeListener = fitZoom;
+  window.addEventListener("resize", resizeListener);
   return api;
 }
 
