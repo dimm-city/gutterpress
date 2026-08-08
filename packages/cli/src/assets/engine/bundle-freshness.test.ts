@@ -2,20 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync, statSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-// `folio.js` / `folio-agent.js` are GENERATED from src/engine (see
-// scripts/build-engine-bundles.mjs) and committed, because the runtime may not
-// bundle (CLAUDE.md §1). Nothing rebuilds them when you run the CLI from
-// source — `bun packages/cli/src/cli.ts build` loads the committed bytes — so
-// an engine source change that isn't followed by a bundle refresh ships the
-// OLD engine while the source reads correct. That failure is silent and
-// expensive: a stale folio-agent.js once cost a debugging cycle by dropping
-// the string-set value evaluator, which put a chapter's entire text in every
-// footer chip while agent.ts looked right.
+// `gutterpress-viewer.js` / `gutterpress-agent.js` are GENERATED from
+// src/engine (see scripts/build-engine-bundles.mjs) and committed, because
+// the runtime may not bundle (CLAUDE.md §1). Nothing rebuilds them when you
+// run the CLI from source — `bun packages/cli/src/cli.ts build` loads the
+// committed bytes — so an engine source change that isn't followed by a
+// bundle refresh ships the OLD engine while the source reads correct. That
+// failure is silent and expensive: a stale gutterpress-agent.js once cost a
+// debugging cycle by dropping the string-set value evaluator, which put a
+// chapter's entire text in every footer chip while agent.ts looked right.
 // import.meta.dir is <pkg>/src/assets/engine
 const SRC_ROOT = resolve(import.meta.dir, "..", "..");
 const PKG_ROOT = resolve(SRC_ROOT, "..");
 const ENGINE_SRC = join(SRC_ROOT, "engine");
-const BUNDLES = ["folio.js", "folio-agent.js"];
+const BUNDLES = ["gutterpress-viewer.js", "gutterpress-agent.js"];
 
 function newestSourceMtime(dir: string): { ms: number; file: string } {
   let newest = { ms: 0, file: "" };
@@ -51,9 +51,17 @@ describe("committed engine bundles", () => {
   // rewrites mtimes wholesale, so mtime alone can pass on a bundle that is
   // substantively stale. These are the engine features whose absence produced
   // silently-wrong PDFs rather than an error.
-  test("folio-agent.js carries the content-value evaluator string-set depends on", () => {
-    const agent = readFileSync(join(import.meta.dir, "folio-agent.js"), "utf8");
+  test("gutterpress-agent.js carries the content-value evaluator string-set depends on", () => {
+    const agent = readFileSync(join(import.meta.dir, "gutterpress-agent.js"), "utf8");
     expect(agent).toContain("function evaluateContent");
     expect(agent).toContain("function parseContent");
+  });
+
+  // Content check for the Phase 0 window.Gutterpress collapse (mtime alone
+  // can't catch a fresh clone where the old window.Folio/window.folio split
+  // bundle happens to still be newer than its source).
+  test("gutterpress-viewer.js exposes window.Gutterpress", () => {
+    const viewer = readFileSync(join(import.meta.dir, "gutterpress-viewer.js"), "utf8");
+    expect(viewer).toContain("window.Gutterpress");
   });
 });

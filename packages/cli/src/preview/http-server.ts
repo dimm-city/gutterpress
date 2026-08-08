@@ -131,7 +131,7 @@ function hmrClientSnippet(initialRevision: number, instanceId: string): string {
     // whichever engine is on the page. In static mode (no engine) the
     // content is final immediately, so restore right after load.
     var hasEngine = !!document.querySelector('script[src*="paged.polyfill"]')
-      || !!document.querySelector('script[src*="/engine/folio.js"]');
+      || !!document.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
     window.addEventListener('renderingComplete', finishInitialRender);
     window.addEventListener('folio:layout', finishInitialRender, { once: true });
     if (!hasEngine) {

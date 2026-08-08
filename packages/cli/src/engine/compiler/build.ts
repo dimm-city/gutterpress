@@ -139,8 +139,8 @@ export interface BuildResult {
 
 export async function build(opts: BuildOptions): Promise<BuildResult> {
   const log = opts.onProgress ?? (() => {});
-  const AGENT = await readFile(await getAssetPath("engine/folio-agent.js"), "utf8");
-  const VIEWER = await readFile(await getAssetPath("engine/folio.js"), "utf8");
+  const AGENT = await readFile(await getAssetPath("engine/gutterpress-agent.js"), "utf8");
+  const VIEWER = await readFile(await getAssetPath("engine/gutterpress-viewer.js"), "utf8");
   const browser = opts.browser ?? (await launchChromium());
   const ownsBrowser = !opts.browser;
   const page = await browser.newPage();
@@ -921,7 +921,7 @@ async function predictPageMap(
       pageMap: Record<string, number>;
       pageCount: number;
     }>(`(async () => {
-      const api = await window.Folio.fragmentDocument({});
+      const api = await window.Gutterpress.fragmentDocument({});
       const pageMap = {};
       for (const id of ${JSON.stringify(args.targets)}) {
         const el = document.getElementById(id);

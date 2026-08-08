@@ -1,5 +1,5 @@
 /**
- * Folio viewer entry. Bundled to a single self-contained IIFE (`folio.js`) —
+ * Folio viewer entry. Bundled to a single self-contained IIFE (`gutterpress-viewer.js`) —
  * zero runtime dependencies, no CSS parser in the hot path.
  *
  * Embed contract is an iframe (§3): the viewer owns its document, so CSSOM is
@@ -20,6 +20,8 @@ export interface FolioApi extends FolioViewerApi {
 
 declare global {
   interface Window {
+    Gutterpress?: FolioApi;
+    /** @deprecated use window.Gutterpress */
     folio?: FolioApi;
     __folioReadyPending?: boolean;
   }
@@ -53,14 +55,9 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
     if (window.parent !== window) window.parent.postMessage({ folio: detail }, "*");
   };
 
-  window.addEventListener("message", (e) => {
-    const msg = (e.data ?? {}) as { folio?: string; page?: number };
-    if (msg.folio === "goto" && typeof msg.page === "number") api.goto(msg.page);
-    else if (msg.folio === "next") api.next();
-    else if (msg.folio === "prev") api.prev();
-  });
-
-  window.folio = api;
+  window.Gutterpress = Object.assign(window.Gutterpress ?? {}, api) as FolioApi;
+  window.folio = window.Gutterpress; // deprecated alias, same object
+  (window as any).Folio = window.Gutterpress; // deprecated alias, same object
   emit();
   window.dispatchEvent(
     new CustomEvent("folio:layout", {

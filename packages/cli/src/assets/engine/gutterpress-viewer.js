@@ -1525,16 +1525,9 @@
       if (window.parent !== window)
         window.parent.postMessage({ folio: detail }, "*");
     };
-    window.addEventListener("message", (e) => {
-      const msg = e.data ?? {};
-      if (msg.folio === "goto" && typeof msg.page === "number")
-        api.goto(msg.page);
-      else if (msg.folio === "next")
-        api.next();
-      else if (msg.folio === "prev")
-        api.prev();
-    });
-    window.folio = api;
+    window.Gutterpress = Object.assign(window.Gutterpress ?? {}, api);
+    window.folio = window.Gutterpress;
+    window.Folio = window.Gutterpress;
     emit();
     window.dispatchEvent(new CustomEvent("folio:layout", {
       detail: { ms: performance.now() - t0, pages: layout.totalPages }
@@ -1551,5 +1544,8 @@
   }
 
   // src/engine/viewer/global.ts
-  window.Folio = { mount, decorate, ...exports_fragment, gcpm: exports_gcpm_extract, content: exports_content_value };
+  var api = { mount, decorate, ...exports_fragment, gcpm: exports_gcpm_extract, content: exports_content_value };
+  window.Gutterpress = api;
+  window.Folio = api;
+  window.folio = api;
 })();

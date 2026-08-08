@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 // ──────────────────────────────────────────────────────────────────────────
 // Prebuild the Gutterpress engine's two browser-side bundles:
-//   src/assets/engine/folio.js        (viewer — src/engine/viewer/global.ts)
-//   src/assets/engine/folio-agent.js  (compiler agent — src/engine/compiler/agent.ts)
+//   src/assets/engine/gutterpress-viewer.js  (viewer — src/engine/viewer/global.ts)
+//   src/assets/engine/gutterpress-agent.js   (compiler agent — src/engine/compiler/agent.ts)
 //
 // This is the ONE place `Bun.build` is invoked for the engine. Root CLAUDE.md
 // §1 bans importing a bundler at runtime inside `packages/cli/src/` — the
@@ -27,8 +27,8 @@ const ENGINE_SRC = join(PKG_ROOT, "src", "engine");
 const OUT_DIR = join(PKG_ROOT, "src", "assets", "engine");
 
 const TARGETS = [
-  { entry: join(ENGINE_SRC, "viewer", "global.ts"), outName: "folio.js", minify: false },
-  { entry: join(ENGINE_SRC, "compiler", "agent.ts"), outName: "folio-agent.js", minify: false },
+  { entry: join(ENGINE_SRC, "viewer", "global.ts"), outName: "gutterpress-viewer.js", minify: false },
+  { entry: join(ENGINE_SRC, "compiler", "agent.ts"), outName: "gutterpress-agent.js", minify: false },
 ];
 
 function newestSourceMtime(dir) {

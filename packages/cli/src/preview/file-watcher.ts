@@ -125,7 +125,7 @@ async function renderPreviewBook(
  *          and Defender hash-cache stay warm across sessions.
  *
  * `engine: "native"` injects ONE script instead: the Gutterpress engine's
- * viewer bundle (`/engine/folio.js`, embedded the same way as the polyfill —
+ * viewer bundle (`/engine/gutterpress-viewer.js`, embedded the same way as the polyfill —
  * see lib/embedded-assets.ts). It self-mounts on DOMContentLoaded and
  * paginates the document client-side via multicol — no Paged.js polyfill, no
  * BREAK_INSIDE_HANDLER, no pagedjs-interface/bridge (MIGRATION.md Step 3:
@@ -146,8 +146,8 @@ export function injectPreviewScripts(
   let output: string;
   if (engine === "native") {
     output = /<\/head>/i.test(html)
-      ? html.replace(/<\/head>/i, '  <script src="/engine/folio.js"></script>\n</head>')
-      : html + '<script src="/engine/folio.js"></script>';
+      ? html.replace(/<\/head>/i, '  <script src="/engine/gutterpress-viewer.js"></script>\n</head>')
+      : html + '<script src="/engine/gutterpress-viewer.js"></script>';
   } else {
     const iface =
       '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '

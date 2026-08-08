@@ -1,5 +1,5 @@
 /**
- * Browser-side agent for the compiler. Bundled to `dist/folio-agent.js` and
+ * Browser-side agent for the compiler. Bundled to `dist/gutterpress-agent.js` and
  * evaluated in the page the compiler is about to print.
  *
  * It only reads the DOM and applies what the compiler computed — all policy
