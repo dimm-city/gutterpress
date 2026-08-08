@@ -88,7 +88,38 @@ accepted by the product owner.
 
 | Date | Area | Native | Paged | Verdict | Evidence |
 |---|---|---|---|---|---|
-| 2026-08-08 | A.1 page count (field guide, 300pp) | 302pp | 303pp | = | both legs rebuilt from identical content; 1pp fragmentation difference |
-| 2026-08-08 | A.2 type scale (field guide) | 18.252pt | 18.252pt | = | `pdftotext -bbox` median glyph height, pages 12/25/240/290 both legs |
-| 2026-08-08 | C.14 preview↔print parity | 42pp print vs 59pp viewer (design-guide) | n/a | < | `scripts/native-parity-gate.ts`; descendant `page:` over-applied to whole run; fix in progress |
-| 2026-08-08 | E.22 html export | paginated artifact ships | Paged.js DOM snapshot | pending | native path landed; needs measured comparison |
+| 08-08 | A.1 page count (field guide 300pp) | 302pp | 303pp | = | native denser (11.0 vs 10.6 lines/page) |
+| 08-08 | A.1 page count (design guide) | 53pp | 54pp | = | content identical through p9 |
+| 08-08 | A.2 type scale (field guide pp40/260) | 18.252pt | 18.252pt | = | `pdftotext -bbox` median glyph height |
+| 08-08 | A.2 type scale (design guide pp10/25/45) | 9.966/10.959/12.176 | 9.967/10.960/12.176 | = | matches to 0.001pt |
+| 08-08 | A.3 content fidelity (field guide) | 28,384 tokens | 28,180 | = | no loss; paged-only tokens are a `pdftotext` folio-chip artifact |
+| 08-08 | A.6 cross-references | all resolve | all resolve | = | parity gate, 9 target-counter ids on design-guide |
+| 08-08 | A.7 margin chrome (body pages) | present, mirrored | present, mirrored | = | rendered pp 11/40/150/260 both legs |
+| 08-08 | **A.7 margin chrome (chapter-opener pages)** | **absent** | head + folio + chapter chips | **<** | field guide p7 rendered side by side |
+| 08-08 | **A.3 float placement (field guide p7 aside)** | drops full-width below text | floats right beside text | **<** | rendered p7 both legs |
+| 08-08 | **A.3 image objects (field guide)** | 3,067 | 579 | **<** | `pdfimages -list`; brick bitmap re-emitted per page instead of a shared XObject |
+| 08-08 | C.14 preview↔print parity | 0 divergences, 5 fixtures | n/a | > | `native-parity-gate.ts`, **empty allowlist** |
+| 08-08 | **C.15 page navigation** | **saturates at p14 of 34** | works | **<** | live preview drive; `scrollToCurrentPage` assumes a vertical stack, viewer lays out a 2-D grid |
+| 08-08 | C.15 view modes (single/two-up) | no-op | works | **<** | deliberately retired as broken; paged retains it |
+| 08-08 | C.16 outline / source sync / context menu | 64 entries, correct pages | works | = | live drive: `getOutline`, `getVisibleSource`, `getContextTargetAt`, `getRectsFor` |
+| 08-08 | **C.16 block identity (`ref`)** | **always null** | `data-ref` minted | **<** | `data-ref` is produced only by the polyfill; `{chapter,range}` fallback still works |
+| 08-08 | E.22 html export (design guide) | 53pp, folios + running heads | DOM snapshot | = | served + driven headless; 53 sheets, 40+ margin boxes with real content |
+| 08-08 | E.23 standalone drop-in | 2pp render fully | n/a | > | hand-authored Paged Media + one script; no Paged.js equivalent |
+| 08-08 | F.24 bundle freshness | byte-identical rebuild | n/a | = | `--force` rebuild left `git status` empty |
+| 08-08 | **F.25 desktop export w/o system Chromium** | **fails** | works (Electron Chromium) | **<** | native ignores the injected `pdfRenderer`; contradicts ADR 0002 |
+| 08-08 | 26. build wall-clock (design guide 53pp) | 1,975 ms | 3,534 ms | > | clean back-to-back; native 1.8x faster |
+| 08-08 | 26. build wall-clock (field guide 302pp) | ~13 min | ~4 min | accepted | agreed exception; paged measured under load so its true time is lower |
+
+### Open blockers (verdict `<`)
+
+1. **Desktop PDF export requires a system Chromium** under native — biggest blocker, contradicts ADR 0002.
+2. **Preview page navigation saturates** — 20 of 34 pages unreachable from the toolbar at a 1400px viewport.
+3. **Chapter-opener pages lose their running head and folio chips.**
+4. **Right floats drop full-width** on the field guide's opener aside.
+5. **Image XObjects duplicated ~5x** — check with the print vendor before a DTRPG upload.
+6. **`ref` block identity is always null** — latent; the `{chapter,range}` fallback carries today.
+7. **View modes are a no-op**; the PWA is still hard-wired to Paged.js; `iframe-styles.ts` still ships.
+
+### Scope caveat on the parity gate
+
+`native-parity-gate.ts` compares **native-print vs native-viewer** — it proves the preview does not lie about the PDF. It does **not** compare native vs Paged.js; that is what this table is for.
