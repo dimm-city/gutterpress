@@ -249,6 +249,14 @@ export function synthesize(input: Tier2Input): Tier2Output {
   // 2's own bleed/slug inset above — that inset exists to keep bled art
   // reaching bleed on pages the author gave 0 margin; `.full-bleed` is the
   // primitive for ordinary pages pulling content to the trim edge.
+  //
+  // Named pages only. Mirrored margins (`@page :left`/`:right` giving the
+  // spread a wider gutter side) are NOT expressible here: these are DOM
+  // selector rules, and no DOM element knows its own page parity before
+  // fragmentation — `.full-bleed` on a mirrored-margin book cancels the
+  // base margin on both sides. Paged.js keeps its per-page
+  // `--pagedjs-margin-*` for exactly that case (the var chain in PAGED_CSS
+  // falls through to it whenever tier 2 has not emitted these).
   {
     const base = resolvePage(model);
     out.push(`:root {`, declsToCss(marginVarDecls(base.geometry.margin)), `}`);

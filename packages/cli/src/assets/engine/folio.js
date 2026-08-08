@@ -652,6 +652,21 @@
     return [...rules].join(`
 `);
   }
+  function marginVarDecls(margin) {
+    return {
+      "--gp-margin-top": `${margin.top}pt`,
+      "--gp-margin-right": `${margin.right}pt`,
+      "--gp-margin-bottom": `${margin.bottom}pt`,
+      "--gp-margin-left": `${margin.left}pt`
+    };
+  }
+  var MARGIN_BOX_BG_PROP = "--gp-margin-box-background";
+  function marginBandBoxes(pageDecls, declaredBoxes) {
+    if (!pageDecls[MARGIN_BOX_BG_PROP])
+      return [];
+    const declared = new Set(declaredBoxes);
+    return MARGIN_BOX_NAMES.map((name) => `@${name}`).filter((box) => !declared.has(box));
+  }
 
   // src/engine/viewer/fragment.ts
   var PX_PER_PT = 96 / 72;
@@ -1228,8 +1243,8 @@
     function pageContext(strip, indexInStrip, bookIndex) {
       if (blankPages.has(bookIndex)) {
         const pseudos2 = ["blank"];
-        const { geometry: geometry2, marginBoxes: marginBoxes2 } = resolvePage(model, { pseudos: pseudos2 });
-        return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2 };
+        const { geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 } = resolvePage(model, { pseudos: pseudos2 });
+        return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 };
       }
       const pseudos = [];
       if (bookIndex === 0)
@@ -1237,8 +1252,8 @@
       if (indexInStrip === 0)
         pseudos.push("nth-first-of-run");
       pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
-      const { geometry, marginBoxes } = resolvePage(model, { name: strip.page, pseudos });
-      return { index: bookIndex, strip, pseudos, geometry, marginBoxes };
+      const { geometry, marginBoxes, decls } = resolvePage(model, { name: strip.page, pseudos });
+      return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
     }
     function buildMaps() {
       api.stringMap = new Map;
@@ -1371,6 +1386,8 @@
         const g = strip.geometry;
         run.style.height = px(g.height);
         run.style.width = `${stride * strip.pages}px`;
+        for (const [prop, value] of Object.entries(marginVarDecls(g.margin)))
+          run.style.setProperty(prop, value);
         for (let i = 0;i < strip.pages; i++) {
           const bookIndex = strip.offset + i;
           const ctx = pageContext(strip, i, bookIndex);
@@ -1417,6 +1434,14 @@
           color: decls["color"] ?? ""
         });
         box.dataset.align = name.includes("center") || name.includes("middle") ? "center" : /right/.test(name) ? "end" : "start";
+        sheet.appendChild(box);
+      }
+      for (const boxName of marginBandBoxes(ctx.decls, Object.keys(ctx.marginBoxes))) {
+        const name = boxName.slice(1);
+        const box = document.createElement("div");
+        box.className = "folio-marginbox";
+        box.dataset.box = name;
+        Object.assign(box.style, rectFor(name, g), { background: ctx.decls[MARGIN_BOX_BG_PROP] });
         sheet.appendChild(box);
       }
     }

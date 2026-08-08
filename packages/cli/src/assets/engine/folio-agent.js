@@ -54,6 +54,52 @@
     addCss: () => addCss
   });
 
+  // src/engine/shared/gcpm-extract.ts
+  function skipString(css, i) {
+    const quote = css[i];
+    i++;
+    while (i < css.length) {
+      if (css[i] === "\\")
+        i += 2;
+      else if (css[i] === quote)
+        return i + 1;
+      else
+        i++;
+    }
+    return i;
+  }
+  function splitTopLevel(s, sep) {
+    const out = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0;i < s.length; i++) {
+      const c = s[i];
+      if (c === '"' || c === "'") {
+        i = skipString(s, i) - 1;
+        continue;
+      }
+      if (c === "(")
+        depth++;
+      else if (c === ")")
+        depth--;
+      else if (c === sep && depth === 0) {
+        out.push(s.slice(start, i));
+        start = i + 1;
+      }
+    }
+    out.push(s.slice(start));
+    return out.map((x) => x.trim()).filter(Boolean);
+  }
+  var UNITS_PER_PT = {
+    pt: 1,
+    px: 0.75,
+    in: 72,
+    pc: 12,
+    cm: 72 / 2.54,
+    mm: 72 / 25.4,
+    q: 72 / 101.6
+  };
+
   // src/engine/shared/synthesis.ts
   var WHICH_VALUES = new Set(["first", "start", "last", "first-except"]);
   var LEADER_RE = /\uE000([^\uE001]*)\uE001/;
@@ -61,6 +107,197 @@
     if (!(gluePx > 0) || !(gapPx > 0))
       return 0;
     return Math.max(0, Math.floor(gapPx / gluePx) - 1);
+  }
+
+  // src/engine/shared/content-value.ts
+  var FUNC = /^([a-z-]+)\(/i;
+  function parseContent(value) {
+    const parts = [];
+    let i = 0;
+    const s = value.trim();
+    while (i < s.length) {
+      const c = s[i];
+      if (/\s/.test(c)) {
+        i++;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        const end = closeString(s, i);
+        parts.push({ type: "literal", value: unquote(s.slice(i, end)) });
+        i = end;
+        continue;
+      }
+      const rest = s.slice(i);
+      const fn = FUNC.exec(rest);
+      if (fn && fn[1] !== undefined) {
+        const open = i + fn[0].length - 1;
+        const close = matchParen(s, open);
+        const args = splitTopLevel(s.slice(open + 1, close), ",");
+        parts.push(toPart(fn[1].toLowerCase(), args));
+        i = close + 1;
+        continue;
+      }
+      const word = /^[^\s"']+/.exec(rest)[0];
+      parts.push({ type: "keyword", value: word });
+      i += word.length;
+    }
+    return parts;
+  }
+  function toPart(name, args) {
+    switch (name) {
+      case "counter":
+        return { type: "counter", name: args[0] ?? "page", style: args[1] ?? "decimal" };
+      case "string":
+        return { type: "string", name: args[0] ?? "", which: args[1] ?? "first" };
+      case "target-counter":
+        return {
+          type: "target-counter",
+          url: args[0] ?? "",
+          counter: args[1] ?? "page",
+          style: args[2] ?? "decimal"
+        };
+      case "target-text":
+        return { type: "target-text", url: args[0] ?? "", which: args[1] ?? "content" };
+      case "leader":
+        return { type: "leader", glue: unquote(args[0] ?? '"."') };
+      case "attr": {
+        const [a, as] = (args[0] ?? "").split(/\s+/);
+        return { type: "attr", name: a ?? "", as };
+      }
+      case "content":
+        return { type: "content", which: args[0] ?? "text" };
+      default:
+        return { type: "keyword", value: `${name}(${args.join(",")})` };
+    }
+  }
+  function closeString(s, i) {
+    const q = s[i++];
+    while (i < s.length) {
+      if (s[i] === "\\")
+        i += 2;
+      else if (s[i] === q)
+        return i + 1;
+      else
+        i++;
+    }
+    return i;
+  }
+  function matchParen(s, open) {
+    let depth = 0;
+    for (let i = open;i < s.length; i++) {
+      const c = s[i];
+      if (c === '"' || c === "'") {
+        i = closeString(s, i) - 1;
+        continue;
+      }
+      if (c === "(")
+        depth++;
+      else if (c === ")" && --depth === 0)
+        return i;
+    }
+    return s.length - 1;
+  }
+  function unquote(s) {
+    const t = s.trim();
+    if (t.startsWith('"') && t.endsWith('"') || t.startsWith("'") && t.endsWith("'"))
+      return t.slice(1, -1).replace(/\\(.)/g, "$1");
+    return t;
+  }
+  function resolveUrlArg(arg, ctx) {
+    const m = /^attr\(\s*([\w-]+)(?:\s+url)?\s*\)$/i.exec(arg.trim());
+    if (m && m[1] !== undefined)
+      return ctx.attr?.(m[1]) ?? "";
+    return unquote(arg);
+  }
+  var ROMAN = [
+    [1000, "m"],
+    [900, "cm"],
+    [500, "d"],
+    [400, "cd"],
+    [100, "c"],
+    [90, "xc"],
+    [50, "l"],
+    [40, "xl"],
+    [10, "x"],
+    [9, "ix"],
+    [5, "v"],
+    [4, "iv"],
+    [1, "i"]
+  ];
+  function formatCounter(n, style = "decimal") {
+    switch (style.trim()) {
+      case "decimal-leading-zero":
+        return n < 10 ? `0${n}` : String(n);
+      case "lower-roman":
+      case "upper-roman": {
+        let v = n;
+        let out = "";
+        for (const [num, sym] of ROMAN)
+          while (v >= num)
+            out += sym, v -= num;
+        return style === "upper-roman" ? out.toUpperCase() : out;
+      }
+      case "lower-alpha":
+      case "upper-alpha": {
+        let v = n;
+        let out = "";
+        while (v > 0) {
+          const r = (v - 1) % 26;
+          out = String.fromCharCode(97 + r) + out;
+          v = Math.floor((v - 1) / 26);
+        }
+        return style === "upper-alpha" ? out.toUpperCase() : out;
+      }
+      case "none":
+        return "";
+      default:
+        return String(n);
+    }
+  }
+  function evaluateContent(parts, ctx) {
+    let out = "";
+    for (const p of parts) {
+      switch (p.type) {
+        case "literal":
+          out += p.value;
+          break;
+        case "counter":
+          out += formatCounter(p.name === "pages" ? ctx.pages ?? 0 : ctx.page ?? 0, p.style);
+          break;
+        case "string":
+          out += ctx.strings?.(p.name, p.which) ?? "";
+          break;
+        case "target-counter": {
+          const url = resolveUrlArg(p.url, ctx);
+          const page = ctx.targetPage?.(url);
+          out += page === undefined ? "?" : formatCounter(page, p.style);
+          break;
+        }
+        case "target-text": {
+          const url = resolveUrlArg(p.url, ctx);
+          out += ctx.targetText?.(url, p.which) ?? "";
+          break;
+        }
+        case "attr":
+          out += ctx.attr?.(p.name) ?? "";
+          break;
+        case "content":
+          out += ctx.text ?? "";
+          break;
+        case "leader":
+          out += ctx.leader?.(p.glue) ?? "";
+          break;
+        case "keyword":
+          if (p.value === "normal" || p.value === "none")
+            break;
+          out += p.value;
+          break;
+      }
+    }
+    return out;
+  }
+  function evaluate(value, ctx) {
+    return evaluateContent(parseContent(value), ctx);
   }
 
   // src/engine/compiler/agent.ts
@@ -113,10 +350,14 @@
         const attrs = {};
         for (const a of Array.from(el.attributes))
           attrs[a.name] = a.value;
+        const text = decl.value ? evaluate(decl.value, {
+          text: (el.textContent ?? "").trim().replace(/\s+/g, " "),
+          attr: (n) => el.getAttribute(n) ?? undefined
+        }) : (el.textContent ?? "").trim().replace(/\s+/g, " ");
         out.push({
           name: decl.name,
           id: ensureAnchor(el),
-          text: (el.textContent ?? "").trim().replace(/\s+/g, " "),
+          text,
           attrs,
           order: order++
         });

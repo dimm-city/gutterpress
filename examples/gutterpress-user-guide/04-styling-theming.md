@@ -179,6 +179,35 @@ h1 { string-set: chapter-title content(); }
 }
 ```
 
+### Painting the page margins
+
+Want a texture, colour, or border band running around the outside of every
+page? The page's own background only covers the text area, so the margins
+would stay white. Rather than writing out all sixteen margin boxes by hand,
+declare one property:
+
+```css
+@page {
+  --gp-margin-box-background: #f4efe6 url("../img/paper.png");
+}
+```
+
+Gutterpress fills in every margin box you have not styled yourself. Any box
+you *do* write — a running head, a page number — is left exactly as you wrote
+it, so headers and footers keep working:
+
+```css
+@page {
+  --gp-margin-box-background: #f4efe6;
+
+  /* still yours; the band fills in around it */
+  @bottom-center { content: counter(page); }
+}
+```
+
+Nothing happens unless you declare the property, so existing books are
+unaffected.
+
 ### Widow and orphan control
 
 `orphans`/`widows` control the minimum number of lines that must stay together at the top/bottom of a page break. Core Gutterpress sets **no default** — Paged.js follows the CSS default of 2. This guide's own `guide.css` raises both to 3:
