@@ -54,6 +54,15 @@
     addCss: () => addCss
   });
 
+  // src/engine/shared/synthesis.ts
+  var WHICH_VALUES = new Set(["first", "start", "last", "first-except"]);
+  var LEADER_RE = /\uE000([^\uE001]*)\uE001/;
+  function leaderFillCount(gapPx, gluePx) {
+    if (!(gluePx > 0) || !(gapPx > 0))
+      return 0;
+    return Math.max(0, Math.floor(gapPx / gluePx) - 1);
+  }
+
   // src/engine/shared/gcpm-extract.ts
   function skipString(css, i) {
     const quote = css[i];
@@ -99,15 +108,6 @@
     mm: 72 / 25.4,
     q: 72 / 101.6
   };
-
-  // src/engine/shared/synthesis.ts
-  var WHICH_VALUES = new Set(["first", "start", "last", "first-except"]);
-  var LEADER_RE = /\uE000([^\uE001]*)\uE001/;
-  function leaderFillCount(gapPx, gluePx) {
-    if (!(gluePx > 0) || !(gapPx > 0))
-      return 0;
-    return Math.max(0, Math.floor(gapPx / gluePx) - 1);
-  }
 
   // src/engine/shared/content-value.ts
   var FUNC = /^([a-z-]+)\(/i;

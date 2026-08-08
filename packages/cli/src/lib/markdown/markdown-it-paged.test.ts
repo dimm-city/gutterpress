@@ -1244,19 +1244,20 @@ describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
     expect(rule![0]).toMatch(/width:\s*100%/);
   });
 
-  test("defines .full-bleed using break-before + engine-neutral --gp-margin-* falling back to Paged.js's own page-margin custom properties (no fabricated @page art template)", () => {
+  test("defines .full-bleed using break-before + Paged.js's own page-margin custom properties (no fabricated @page art template)", () => {
     const rule = PAGED_CSS.match(/\.full-bleed\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     const body = rule![0];
     expect(body).toMatch(/break-before:\s*page/);
-    // #10: --gp-margin-* is the engine-neutral primary, falling back to the
-    // real Paged.js-populated --pagedjs-margin-* custom properties (see
-    // node_modules/pagedjs src/polisher/base.js / atpage.js) so the class
-    // works identically once the native engine emits --gp-margin-*.
-    expect(body).toMatch(/--gp-margin-left/);
-    expect(body).toMatch(/--gp-margin-right/);
+    // The real Paged.js-populated custom properties (see node_modules/pagedjs
+    // src/polisher/base.js / atpage.js). Deliberately NOT fed the native
+    // engine's page margins: measured on Chromium 148, out-denting a band to
+    // the sheet edge shrinks the WHOLE document ~10% (the shrink-to-fit
+    // trigger is the content box, not the sheet), so supplying real margins
+    // natively would scale every page instead of bleeding the art.
     expect(body).toMatch(/--pagedjs-margin-left/);
     expect(body).toMatch(/--pagedjs-margin-right/);
+    expect(body).not.toMatch(/--gp-margin/);
     expect(body).toMatch(/margin-left:\s*calc\(-1 \*/);
     expect(body).toMatch(/margin-right:\s*calc\(-1 \*/);
     // Must NOT promise a named `art` page template or header/footer removal —

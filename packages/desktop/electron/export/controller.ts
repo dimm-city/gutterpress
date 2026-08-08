@@ -334,6 +334,7 @@ export class ExportController {
           htmlPath: result.htmlPath ?? undefined,
           pdfPath: exportSession.outPath,
           fingerprintPath: result.fingerprintPath ?? undefined,
+          diagnostics: result.diagnostics,
         };
       } catch (e: unknown) {
         if (exportSession.canceled || this.deps.isExportCanceledError(e)) {

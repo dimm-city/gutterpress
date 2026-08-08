@@ -21,6 +21,7 @@ import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
 import { BuildError } from "./build-error";
+import type { BuildDiagnostic } from "../engine/compiler/build.ts";
 import { UsageError } from "./cli-args";
 import { preflightBuildTools, computeGates, type Gates } from "./build-preflight";
 import {
@@ -107,6 +108,12 @@ export interface BuildRunnerResult {
   pdfPath: string | null;
   /** As {@link htmlPath}: `null` when nothing but the artifact was published. */
   fingerprintPath: string | null;
+  /**
+   * Author-facing print-quality findings from the render (native engine only
+   * — Paged.js has no equivalent audit). Empty for a clean build. The desktop
+   * maps these into the Problems panel; the CLI logs them.
+   */
+  diagnostics: BuildDiagnostic[];
 }
 
 export interface SplitOutPath {
@@ -492,7 +499,8 @@ async function finalizeBuild(
   fingerprint: BuildFingerprintInput,
   wroteMessage: string,
   paths: { htmlPath: string; pdfPath: string | null },
-  artifactName: string | null = null
+  artifactName: string | null = null,
+  diagnostics: BuildDiagnostic[] = []
 ): Promise<BuildRunnerResult> {
   const workFingerprint = await writeBuildFingerprint({
     ...fingerprint,
@@ -521,6 +529,7 @@ async function finalizeBuild(
       : null,
     pdfPath: paths.pdfPath,
     fingerprintPath,
+    diagnostics,
   };
 }
 
@@ -696,6 +705,7 @@ class PdfOutput implements OutputStrategy {
       // 61pp/9,699 words to 6pp/754 words with no error. The engine therefore
       // gets its own direct call, on the plain file (no HTTP staging, no
       // polyfill overlay at all) — see engine.ts's module doc for detail.
+      let engineDiagnostics: BuildDiagnostic[] = [];
       const staticHtmlRaw =
         opts.pdfRenderer || config.engine === "native"
           ? undefined
@@ -703,7 +713,8 @@ class PdfOutput implements OutputStrategy {
       if (config.engine === "native") {
         log.info("Rendering HTML to PDF via the Gutterpress engine (native Chromium pagination)");
         const { buildNativePdf } = await import("./engine");
-        await buildNativePdf(htmlFile, rawPdf);
+        engineDiagnostics = await buildNativePdf(htmlFile, rawPdf);
+        for (const d of engineDiagnostics) log.warn(d.message);
       } else {
         log.info("Rendering HTML to PDF via Chromium+Paged.js");
         await renderHtmlToPdf(htmlFile, rawPdf, opts.pdfRenderer, staticHtmlRaw);
@@ -794,7 +805,8 @@ class PdfOutput implements OutputStrategy {
         },
         `Wrote: ${reportedPdf}`,
         { htmlPath: htmlFile, pdfPath: reportedPdf },
-        pdfName
+        pdfName,
+        engineDiagnostics
       );
     } finally {
       await fsp.rm(stage, { recursive: true, force: true });

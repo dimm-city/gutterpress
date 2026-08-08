@@ -58,6 +58,37 @@ const DESC_JS = `(el) => {
     return el.tagName.toLowerCase() + cls + src;
   }`;
 
+/**
+ * Codes are stable identifiers a UI can map to a plain-language label; the
+ * set is closed here so a surface's label table can be asserted complete
+ * against it rather than drifting silently as checks are added.
+ */
+export type BuildDiagnosticCode =
+  | "engine.width.overflow"
+  | "engine.width.intrinsic"
+  | "engine.xref.broken"
+  | "engine.abspos.leak"
+  | "engine.multicol.dead-column"
+  | "engine.content.overheight"
+  | "engine.image.low-dpi";
+
+export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
+  "engine.width.overflow",
+  "engine.width.intrinsic",
+  "engine.xref.broken",
+  "engine.abspos.leak",
+  "engine.multicol.dead-column",
+  "engine.content.overheight",
+  "engine.image.low-dpi",
+];
+
+export interface BuildDiagnostic {
+  code: BuildDiagnosticCode;
+  severity: "warning" | "info";
+  /** Plain-language, already naming the offending element. */
+  message: string;
+}
+
 export interface BuildOptions {
   input: string;
   output?: string;
@@ -85,15 +116,19 @@ export interface BuildResult {
   genCss: string;
   geometry: Tier2Output["geometry"];
   /**
-   * Flat human-readable warnings, including the broken-xref, abspos-leak, and
-   * fragmenting-multicol audit classes. Interim surface: these currently only
-   * reach the CLI's `--verbose` stream (`log()`), not the desktop's
-   * aggregated print-quality report UI. Wiring them into that report as a
-   * distinguishable `kind` (matching `auditContent`'s overheight/dpi shape)
-   * is tracked as a follow-up, not done here — it touches the desktop's
-   * report-rendering code, outside this change's scope.
+   * Engine-internal reasons (which tier ran, why tier 3 did not converge) —
+   * developer-facing, printed by the engine dev CLI. Author-facing findings
+   * live in {@link BuildResult.diagnostics}, never here: one finding, one
+   * channel.
    */
   notes: string[];
+  /**
+   * Author-facing print-quality findings, carried to whatever surface the
+   * caller has — the desktop's Problems panel, the CLI's build output. Each
+   * carries a stable `code` so a surface can label it in plain language
+   * without parsing the message.
+   */
+  diagnostics: BuildDiagnostic[];
   post: PostprocessResult;
   /** id -> 1-based page, the measurement channel's output */
   pageMap: Record<string, number>;
@@ -110,6 +145,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
   const ownsBrowser = !opts.browser;
   const page = await browser.newPage();
   const notes: string[] = [];
+  const diagnostics: BuildDiagnostic[] = [];
+  const diagnose = (code: BuildDiagnosticCode, message: string, severity: BuildDiagnostic["severity"] = "warning") =>
+    diagnostics.push({ code, severity, message });
   let prints = 0;
 
   try {
@@ -205,7 +243,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         `content wider than the page content box triggers Chromium print ` +
         `shrink-to-fit (the WHOLE book scales down, silently):\n${describe(widthOffenders.boxes)}`;
       if (opts.allowShrink) {
-        notes.push(`width check (allowShrink): ${widthOffenders.boxes.length} over-wide element(s) — output may be scaled down`);
+        for (const o of widthOffenders.boxes)
+          diagnose(
+            "engine.width.overflow",
+            `${o.desc} is wider than the page — Chromium shrinks the WHOLE book to fit it. ${o.left < -1 ? "Keep it inside the page content box." : "Give it an explicit width that fits."}`,
+          );
         log(`WARNING: ${msg}`);
       } else {
         throw new Error(`${msg}\nFix the offending widths, or pass allowShrink to build anyway.`);
@@ -221,7 +263,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         `${widthOffenders.intrinsics.length} auto-width image(s) with an intrinsic width past the ` +
         `page content box — if the output prints smaller than the CSS declares, give these an ` +
         `explicit width (e.g. width: 100%):\n${describe(widthOffenders.intrinsics)}`;
-      notes.push(`width check: ${widthOffenders.intrinsics.length} auto-width over-wide-intrinsic image(s)`);
+      for (const o of widthOffenders.intrinsics)
+        diagnose(
+          "engine.width.intrinsic",
+          `${o.desc} has no width set and is naturally wider than the page — if the printed output comes out smaller than your CSS says, give it an explicit width (e.g. width: 100%).`,
+        );
       log(`WARNING: ${msg}`);
     }
 
@@ -302,8 +348,9 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // element, so a bare-fragment href missing from it names a dead xref.
       const brokenXrefs = findBrokenXrefRefs(sites, targetText);
       for (const href of brokenXrefs)
-        notes.push(
-          `cross-reference "${href}" has no matching id in the document — its page number/text will render blank.`,
+        diagnose(
+          "engine.xref.broken",
+          `The link "${href}" doesn't point at anything in this book, so its page number will print blank. Check the spelling, or add that id to the heading you meant.`,
         );
       if (brokenXrefs.length) log(`WARNING: ${brokenXrefs.length} broken cross-reference href(s): ${brokenXrefs.join(", ")}`);
 
@@ -522,11 +569,16 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         `window.__folio.auditContent(${contentHeightPx}, ${opts.dpiFloor ?? 300})`,
       );
       for (const w of audit) {
-        notes.push(
-          w.kind === "overheight"
-            ? `${w.what} is taller than the page content box (${w.detail}): print splits it across pages, the screen preview clips it — they will not agree here.`
-            : `${w.what} is below the ${opts.dpiFloor ?? 300} DPI print bar (${w.detail}).`,
-        );
+        if (w.kind === "overheight")
+          diagnose(
+            "engine.content.overheight",
+            `${w.what} is taller than one page (${w.detail}): print splits it across pages while the on-screen preview clips it, so the two will not agree here.`,
+          );
+        else
+          diagnose(
+            "engine.image.low-dpi",
+            `${w.what} is below the ${opts.dpiFloor ?? 300} DPI print bar (${w.detail}) — it may look soft or pixelated in print.`,
+          );
       }
       if (audit.length) log(`audit: ${audit.length} print-quality warning(s)`);
     }
@@ -591,13 +643,15 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         })()`),
       ) as { leaks: string[]; multicol: string[] };
       for (const d of leaks)
-        notes.push(
-          `${d} is position: absolute with no positioned ancestor — it positions against the whole document, not the page it appears on in your markdown.`,
+        diagnose(
+          "engine.abspos.leak",
+          `${d} uses position: absolute with nothing positioned around it, so it is placed against the whole document rather than the page it sits on in your markdown — it can print on a completely different page.`,
         );
       if (leaks.length) log(`audit: ${leaks.length} abspos containing-block leak(s)`);
       for (const d of multicol)
-        notes.push(
-          `${d} is a multi-column container with column-fill: balance taller than one page — Chromium only balances the LAST fragment, leaving dead columns on every page before it. Add column-fill: auto to ${d}.`,
+        diagnose(
+          "engine.multicol.dead-column",
+          `${d} runs over more than one page in columns, and only the last page's columns get balanced — earlier pages are left with an empty column. Add column-fill: auto to ${d}.`,
         );
       if (multicol.length) log(`audit: ${multicol.length} fragmenting multicol warning(s)`);
     }
@@ -628,6 +682,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       genCss,
       geometry: tier2.geometry,
       notes,
+      diagnostics,
       post,
       pageMap,
       converged,

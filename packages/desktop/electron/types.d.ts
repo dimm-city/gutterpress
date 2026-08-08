@@ -139,6 +139,7 @@ declare global {
         htmlPath?: string;
         pdfPath?: string;
         fingerprintPath?: string;
+        diagnostics?: Array<{ code: string; severity: "warning" | "info"; message: string }>;
       }>;
       // doctor migrated to server route (Phase 2C)
       // Event subscriptions

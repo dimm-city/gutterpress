@@ -23,12 +23,7 @@ gotcha below is a consequence of that difference.
 - **The root (`html`) background paints the page CONTENT box only — never the
   margins.** A full-bleed texture needs two layers: `html { background: … }`
   for the content area, plus `@page` margin boxes carrying the same background
-  for the margin band (all 16 boxes if you want a seamless frame). As of the
-  tier-2 margin-band synthesis (#8), you no longer have to hand-copy those 16
-  rules: declare `--gp-margin-box-background: <background value>;` once inside
-  `@page` and the engine (and the viewer) fills in every margin box you didn't
-  declare content for yourself. Strictly opt-in — a box you did declare is
-  left exactly as you wrote it.
+  for the margin band (all 16 boxes if you want a seamless frame).
 - **Don't use `position: fixed` for per-page backdrops.** It's
   viewport-dependent and unreliable under print. The `html` background is
   viewport-independent and repeats correctly on every page.
@@ -187,20 +182,28 @@ fixture — but only when the thing being kept-with can actually be placed:
 - The mirror trick works too: `.pagedjs_page`-scoped rules are dead selectors
   under native, so a shared sheet can carry Paged.js-only geometry by scoping
   it to the Paged.js DOM.
-- **`PAGED_CSS`'s `.full-bleed` now works on either engine.** It reads
-  `--gp-margin-left/right` first, falling back to Paged.js's own
-  `--pagedjs-margin-left/right`. The native compiler's tier-2 synthesis (#10)
-  emits `--gp-margin-*` on `:root` for the default page and on the named-page
-  container selector for any named page that overrides margins; the viewer
-  sets the same variables on each named-page run so the live preview matches.
-  No per-book workaround needed anymore. Verified for the desktop app too:
-  `config.engine === "native"` always calls `buildNativePdf` (`lib/engine.ts`,
-  which imports `build()` from `engine/compiler/build.ts`) regardless of an
-  injected `opts.pdfRenderer` — `packages/desktop/electron/pdf-export.ts`'s
-  `webContents.printToPDF` renderer is only wired into the Paged.js leg
-  (`renderHtmlToPdf`'s `pdfRenderer` param); the native leg always uses the
-  engine's own `launchChromium`/CDP client, so it always gets `folio-gen-css`
-  (tier 2) on desktop exactly as it does from the CLI.
+- **`PAGED_CSS`'s `.full-bleed` is a Paged.js-only primitive, and cannot be
+  ported by supplying the page margins.** It out-dents by
+  `--pagedjs-margin-left/right`, which only the polyfill sets, so natively it
+  degrades to plain full-width — silently. The tempting fix (have the engine
+  emit the real margins under an engine-neutral name so the class works on
+  both legs) was implemented, measured, and REVERTED: out-denting to the
+  sheet edge shrinks the whole document, because the shrink-to-fit trigger is
+  the page CONTENT box, not the sheet (§2). Measured on Chromium 148, 6×4in
+  sheet, 0.75in margins, by the width of a fixed text run:
+
+  | band | text run | result |
+  |---|---|---|
+  | inside the content box | 204.4pt | no shrink |
+  | out to the sheet edge (what `.full-bleed` asks for) | 182.9pt | book shrunk ~10% |
+  | past the sheet | 171.7pt | book shrunk ~16% |
+
+  Feeding it real margins therefore converts a silent no-op into a silently
+  scaled book — and trips the pre-print width check as a hard error. **The
+  only native mechanism for edge-to-edge art is a named `@page` with zero
+  side margins**, applied to the page the art sits on, so the content box
+  reaches the paper edge and nothing has to out-dent. Any future native
+  `.full-bleed` has to work that way.
 
 ## 10. Debugging workflow that actually finds things
 

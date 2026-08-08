@@ -4,9 +4,6 @@ import {
   generatedContentCss,
   cssQuote,
   isRectoVersoBreak,
-  MARGIN_BOX_BG_PROP,
-  marginBandBoxes,
-  marginVarDecls,
   pageCounterValues,
   parseWhich,
   planRectoBlanks,
@@ -296,39 +293,5 @@ describe("generatedContentCss — out-specifying the author (Chrome 151 regressi
 
   test("ignores selectors with no ::after/::before to target", () => {
     expect(generatedContentCss(["div.plain"]).split("\n")).toHaveLength(2);
-  });
-});
-
-describe("marginVarDecls (#10)", () => {
-  test("emits --gp-margin-* in pt, one per side", () => {
-    expect(marginVarDecls({ top: 36, right: 54, bottom: 36, left: 54 })).toEqual({
-      "--gp-margin-top": "36pt",
-      "--gp-margin-right": "54pt",
-      "--gp-margin-bottom": "36pt",
-      "--gp-margin-left": "54pt",
-    });
-  });
-});
-
-describe("marginBandBoxes (#8) — opt-in margin-band background synthesis", () => {
-  test("no --gp-margin-box-background declared -> no synthesis", () => {
-    expect(marginBandBoxes({}, [])).toEqual([]);
-  });
-
-  test("declared -> every margin box the author did not declare themselves", () => {
-    const boxes = marginBandBoxes({ [MARGIN_BOX_BG_PROP]: "url(texture.png)" }, []);
-    expect(boxes).toHaveLength(16);
-    expect(boxes).toContain("@top-center");
-    expect(boxes).toContain("@bottom-right-corner");
-  });
-
-  test("skips boxes the author already declared, whatever they put in them", () => {
-    const boxes = marginBandBoxes(
-      { [MARGIN_BOX_BG_PROP]: "red" },
-      ["@top-center", "@bottom-left"],
-    );
-    expect(boxes).not.toContain("@top-center");
-    expect(boxes).not.toContain("@bottom-left");
-    expect(boxes).toHaveLength(14);
   });
 });

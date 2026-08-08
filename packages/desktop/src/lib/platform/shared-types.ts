@@ -695,6 +695,20 @@ export interface BuildResult {
   pdfPath?: string;
   fingerprintPath?: string;
   downloadUrl?: string;
+  /**
+   * Print-quality findings the render produced (native engine only). Defined
+   * locally, decoupled from the lib (§8) — the renderer never value-imports
+   * `gutterpress`. Maps into the Problems panel.
+   */
+  diagnostics?: BuildDiagnosticDto[];
+}
+
+/** One print-quality finding, mirrored from the lib's `BuildDiagnostic`. */
+export interface BuildDiagnosticDto {
+  /** Stable check id, e.g. "engine.multicol.dead-column". */
+  code: string;
+  severity: "warning" | "info";
+  message: string;
 }
 
 export interface ExportProgressEvent {

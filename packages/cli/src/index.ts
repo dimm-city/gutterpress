@@ -46,6 +46,13 @@ export type { ImageInfo, ColorSpace } from "./lib/image-inspect.ts";
 // export directly. Exported here so the CLI's own validation pipeline and the
 // desktop's host-side route share one implementation.
 export { checkCss } from "./lib/printsafe.ts";
+
+// Print-quality findings the render produces (native engine). The codes are
+// exported so a surface's plain-language label table can be asserted complete
+// against them rather than drifting as checks are added — the desktop
+// Problems panel does exactly that.
+export { BUILD_DIAGNOSTIC_CODES } from "./engine/compiler/build.ts";
+export type { BuildDiagnostic, BuildDiagnosticCode } from "./engine/compiler/build.ts";
 export type { PrintSafeWarning } from "./lib/printsafe.ts";
 export {
   ruleRemoteUrls,

@@ -1,6 +1,12 @@
 # Native-engine DX recommendations — making styling unsurprising
 
-> **Status: proposal, not adopted.** Produced 2026-08-08 by a multi-agent
+> **Status: IMPLEMENTED, with two rejections — see the per-item notes.**
+> #1-#7, #9 and #11 shipped on `claude/folio-pagination-spike-onknc6`.
+> **#10 was implemented, measured, and reverted** (its premise was wrong —
+> see the item), and **#8 was reverted with it** (shared delivery vehicle).
+> Cross-cutting requirement A (surfacing) is now met: every author-facing
+> finding flows to the desktop Problems panel as a typed diagnostic.
+> Originally produced 2026-08-08 as a proposal by a multi-agent
 > review/debate/synthesis over `docs/native-engine-styling-guide.md`,
 > `dc-op-manual/dc-design-guide/css/native-furniture.css`, and
 > `packages/cli/src/engine/`. Independently re-verified by hand afterward:
@@ -169,19 +175,29 @@ Note `break-after: avoid`, **not** `avoid-page` — `avoid-page` does not suppre
 
 ---
 
-## 10. `--gp-margin-*` so `.full-bleed` works on the native engine
+## 10. ~~`--gp-margin-*` so `.full-bleed` works on the native engine~~ — REJECTED ON MEASUREMENT
 
-**Kills:** an unlisted gotcha the doc missed entirely. `PAGED_CSS`'s `.full-bleed` — the one core primitive that exists to make full-bleed art trivial for a non-technical author — is built on `--pagedjs-margin-left/right`, set only by the Paged.js polyfill. On the native engine it falls back to `0` and **does nothing, without a warning.**
+**Implemented, measured, reverted (2026-08-08).** The finding that
+`.full-bleed` silently no-ops natively is real, but the proposed fix rests on
+a false premise: that the class fails only for want of the margin values.
+Supplying them makes the element out-dent to the sheet edge, and that is
+itself the shrink-to-fit trigger — the threshold is the page CONTENT box, not
+the sheet. Measured (Chromium 148, 6×4in sheet, 0.75in margins, by the width
+of a fixed text run): inside the content box 204.4pt (no shrink); out to the
+sheet edge 182.9pt (whole book scaled ~10%); past the sheet 171.7pt (~16%).
 
-**Mechanism:** the engine already resolves per-page margins (`resolvePage(model).geometry`, `build.ts:117`) and already synthesizes CSS in tier 2. Emit engine-neutral `--gp-margin-left/right` per named page; change `.full-bleed` to `var(--gp-margin-left, var(--pagedjs-margin-left, 0px))` so both legs work identically.
+So the "fix" converts a silent no-op into a silently scaled book, and trips
+the pre-print width check (#4) as a hard build error on any book using the
+class. The only native mechanism for edge-to-edge art is a named `@page` with
+zero side margins, so the content box itself reaches the paper edge and
+nothing out-dents. A real native `.full-bleed` must be built that way — which
+is a different piece of work, not a variable rename.
 
-**Lives:** engine transform (tier-2 synthesis) + one edit to `PAGED_CSS`.
-
-**Opt-out:** n/a — this makes a documented primitive keep its promise.
-
-**Open:** viewer needs the same variables or the preview still lies. Does the desktop path (Electron's own Chromium, ADR 0002) get the tier-2 sheet? Verify.
-
----
+Recommendation #8 (margin-band background synthesis) was reverted alongside
+it: its only delivery vehicle was the same tier-2 emission, and shipping an
+unused synthesis path is the speculative complexity the mandate forbids. The
+gotcha it addressed (16 hand-copied margin-box rules) stands unfixed and is
+worth revisiting on its own.
 
 ## 11. Margin-box unsupported-property lint
 

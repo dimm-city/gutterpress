@@ -784,20 +784,28 @@ export default function plugin(md, pluginOptions = {}) {
  *   .float-right  — floats right with clearance margins.
  *   .full-width   — fills the page's content width (100%).
  *   .full-bleed   — forces its own page (break-before) and cancels the
- *                   page's LEFT/RIGHT margins via engine-neutral
- *                   `--gp-margin-left`/`--gp-margin-right` custom properties
- *                   (set per named page by the engine's tier-2 synthesis),
- *                   falling back to Paged.js's real
- *                   `--pagedjs-margin-left`/`--pagedjs-margin-right` (set
- *                   per-page by the polyfill from the active `@page` rule —
- *                   see pagedjs/src/polisher/base.js), so content spans the
- *                   page edge-to-edge horizontally on either engine. This
+ *                   page's LEFT/RIGHT margins via Paged.js's real
+ *                   `--pagedjs-margin-left`/`--pagedjs-margin-right` custom
+ *                   properties (set per-page by the polyfill from the active
+ *                   `@page` rule — see pagedjs/src/polisher/base.js), so
+ *                   content spans the page edge-to-edge horizontally. This
  *                   does NOT cancel the top/bottom margins, extend past the
  *                   trim into printer bleed overage, apply a named `@page`
  *                   template, or remove headers/footers — none of that is
- *                   implemented; the fallback chain resolving to 0 means it
- *                   degrades to plain full-width if neither engine sets the
- *                   variables.
+ *                   implemented; the custom-property fallback of 0 means it
+ *                   degrades to plain full-width outside a Paged.js render.
+ *
+ *                   PAGED.JS ONLY, and deliberately so. Under native print,
+ *                   MEASURED (Chromium 148, 6x4in sheet, 0.75in margins): a
+ *                   band out-dented to the sheet edge shrinks the whole
+ *                   document ~10% (text run 204.4pt -> 182.9pt), because the
+ *                   shrink-to-fit trigger is the page CONTENT box, not the
+ *                   sheet. Feeding this rule the real margins therefore does
+ *                   not make full-bleed work natively — it silently scales
+ *                   the entire book (and trips the pre-print width check).
+ *                   The only native mechanism for edge-to-edge art is a
+ *                   named `@page` with zero side margins, which the author
+ *                   applies to the page the art sits on.
  */
 export const PAGED_CSS = `
 .md-page-break { break-before: page; }
@@ -819,8 +827,8 @@ export const PAGED_CSS = `
   display: block;
   break-before: page;
   max-width: none;
-  width: calc(100% + var(--gp-margin-left, var(--pagedjs-margin-left, 0px)) + var(--gp-margin-right, var(--pagedjs-margin-right, 0px)));
-  margin-left: calc(-1 * var(--gp-margin-left, var(--pagedjs-margin-left, 0px)));
-  margin-right: calc(-1 * var(--gp-margin-right, var(--pagedjs-margin-right, 0px)));
+  width: calc(100% + var(--pagedjs-margin-left, 0px) + var(--pagedjs-margin-right, 0px));
+  margin-left: calc(-1 * var(--pagedjs-margin-left, 0px));
+  margin-right: calc(-1 * var(--pagedjs-margin-right, 0px));
 }
 `;

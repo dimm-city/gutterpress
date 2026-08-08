@@ -212,6 +212,7 @@ interface BuildResult {
   htmlPath?: string;
   pdfPath?: string;
   fingerprintPath?: string;
+  diagnostics?: Array<{ code: string; severity: "warning" | "info"; message: string }>;
 }
 
 type LibModule = typeof import("gutterpress");
