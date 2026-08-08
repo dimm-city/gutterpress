@@ -19,6 +19,29 @@ in this migration (a dead column; a half-empty page).
 may be slower than Paged.js — that is an accepted, documented limitation — so
 long as the *output* is as good or better. Nothing else gets an exception.
 
+## What parity means — and what it does not
+
+**Parity is with the book's design intent, never bug-for-bug with Paged.js.**
+Chromium's native print is the standards baseline. Where the legs differ,
+classify the divergence before touching anything:
+
+1. **Engine bug** — native deviates from what the CSS specifies → fix the
+   engine.
+2. **Book CSS relying on a Paged.js quirk** — the CSS was written against
+   Paged.js's non-standard behaviour and native is CSS-correct → fix the
+   BOOK's CSS to express the intent in standard terms; record it as a
+   migration note. (Example: `page: chapter-start` on a multi-sheet container
+   suppresses margin chrome on every sheet natively — spec-correct — where
+   Paged.js applied it to one page; the field guide's "missing opener chrome"
+   is this class, not an engine regression.)
+3. **Paged.js bug** — native is right and better → record it as a deliberate
+   improvement (the design-guide sidebar float, measured 38% of its
+   containing block natively vs 9% off under paged, is this class).
+
+**Never replicate a Paged.js quirk inside the engine to make a diff go
+green.** A "fix" that moves the engine away from the spec to match the
+polyfill is a regression by definition, whatever the diff says.
+
 ## What must be proven
 
 Each row needs a measured result on a real book, native vs paged, before the
