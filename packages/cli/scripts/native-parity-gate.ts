@@ -24,19 +24,34 @@
  *       measured page map (`pageMap`, read from the printed PDF's named
  *       destinations). Only meaningful for a Tier 3 book (one that actually
  *       has `target-counter()`/`string-set`/recto-verso breaks/counter
- *       resets to instrument) — a Tier 1/2 book instruments nothing, so this
- *       check is vacuously empty for it and (a) is the only signal.
+ *       resets to instrument) — a Tier 1/2 book instruments nothing on its
+ *       own, so (d) below is what covers it.
  *   (c) resolved `target-counter()` values — both page maps run through the
  *       SAME conversion the compiler itself uses to turn a physical page
  *       into the folio a `target-counter()` reference actually prints
  *       (`restartedPageValues` + `toFolioPage`, `shared/synthesis.ts`), so a
  *       counter-reset restart is honored on both sides identically.
+ *   (d) per-heading page-of-element mapping, for EVERY fixture regardless of
+ *       tier: `stage()` instruments every heading with a stable id (reusing
+ *       one if the author already gave it) and an EMPTY self-referential
+ *       `<a href="#id">` right inside it (see `instrumentHeadingIds()`).
+ *       Chromium's `printToPDF` only emits a PDF named destination for an id
+ *       that some in-document link actually resolves to (measured — a bare
+ *       `id` with no link gets no /Dest); the empty anchor contributes zero
+ *       width/height so it cannot perturb pagination, and is genuinely the
+ *       same mechanism (b) already relies on for Tier 3's own target ids —
+ *       just applied to headings so a Tier 1/2 book gets real per-id
+ *       coverage too, not only the whole-document page count. Print side
+ *       reads `inspectPdf(result.bytes)`'s `namedDests`; the viewer side is
+ *       `viewerPageMap()`'s own mount, since a Tier 1/2 book never ran
+ *       `predictPageMap` and Tier 3's `predicted.pageMap` is scoped to its
+ *       own target ids, not these headings.
  *
- * A Tier 1/2 book (no `predicted` map — nothing was instrumented) still gets
- * (a): a second, independent viewer mount (this script's own
- * `viewerPageCount`), pinned to the exact same `viewport` the build itself
- * measured against, so a page-count mismatch is a real fragmentation
- * divergence, not an artifact of an unpinned viewport.
+ * A Tier 1/2 book (no `predicted` map — nothing was instrumented for target-
+ * counter() purposes) still gets (a): a second, independent viewer mount
+ * (this script's own `viewerPageMap`), pinned to the exact same `viewport`
+ * the build itself measured against, so a page-count mismatch is a real
+ * fragmentation divergence, not an artifact of an unpinned viewport.
  *
  * Any divergence must be an explicit entry in KNOWN_DIVERGENCES with a
  * reason, following the migration spike's own pattern
@@ -48,12 +63,13 @@
  *   bun scripts/native-parity-gate.ts <project-dir> [<project-dir> ...]
  */
 import { existsSync, mkdirSync } from "node:fs";
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { launchChromium, type Browser } from "../src/engine/shared/cdp.ts";
 import { build, type BuildResult } from "../src/engine/compiler/build.ts";
 import { restartedPageValues, toFolioPage } from "../src/engine/shared/synthesis.ts";
+import { inspectPdf } from "../src/engine/shared/pdf-inspect.ts";
 import { loadManifestWithPath, resolveConfig } from "../src/lib/manifest.ts";
 import { renderChaptersToFile } from "../src/lib/markdown/index.ts";
 import { loadPluginsWithCss } from "../src/lib/markdown/plugins.ts";
@@ -73,7 +89,7 @@ const DEFAULT_FIXTURES = [
   join(REPO, "examples", "with-design-guide", "design-guide"),
 ];
 
-type DivergenceKind = "pageCount" | "pageMap" | "targetCounter";
+type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
 
 interface Divergence {
   fixture: string;
@@ -98,14 +114,47 @@ function isKnown(d: Divergence) {
   return KNOWN_DIVERGENCES.find((k) => k.fixture === d.fixture && k.kind === d.kind);
 }
 
+/**
+ * Give every heading a stable id (reusing the author's own if present) plus
+ * an EMPTY self-referential `<a href="#id">` right inside its opening tag —
+ * the mechanism `inspectPdf`'s `namedDests` and the compiler's own Tier 3
+ * measurement channel both rely on: Chromium's `printToPDF` only emits a PDF
+ * named destination for an id some in-document link actually resolves to, a
+ * bare unlinked `id` gets no /Dest (measured). The anchor is empty (no text
+ * content), so it contributes zero width/height and cannot perturb line
+ * breaking or pagination — this is what lets check (d) run on every fixture
+ * regardless of tier, not just the Tier 3 books that already instrument
+ * their own target-counter() ids.
+ */
+function instrumentHeadingIds(html: string): { html: string; ids: string[] } {
+  let n = 0;
+  const ids: string[] = [];
+  const instrumented = html.replace(
+    /<h([1-6])((?:\s+[^>]*)?)>/g,
+    (_match, level: string, attrs: string) => {
+      const existing = attrs.match(/\sid="([^"]*)"/);
+      const id = existing ? existing[1] : `folio-parity-h${n++}`;
+      ids.push(id);
+      const idAttr = existing ? "" : ` id="${id}"`;
+      return `<h${level}${attrs}${idAttr}><a href="#${id}" class="folio-parity-anchor"></a>`;
+    },
+  );
+  return { html: instrumented, ids };
+}
+
 // ---------------------------------------------------------------------------
 // stage a project dir into a self-contained book.html — the exact call
 // build-runner.ts's renderBook() makes (resolveConfig -> loadPluginsWithCss
 // -> renderChaptersToFile -> planImageCopies -> copy), forced to
 // `engine: "native"` regardless of the project's own manifest so every
-// fixture is staged as a real native-engine book would be.
+// fixture is staged as a real native-engine book would be. Also instruments
+// every heading (`instrumentHeadingIds`) so check (d) has stable ids to
+// compare, in every fixture regardless of tier.
 // ---------------------------------------------------------------------------
-async function stage(projectDir: string, outDir: string): Promise<string> {
+async function stage(
+  projectDir: string,
+  outDir: string,
+): Promise<{ htmlPath: string; headingIds: string[] }> {
   const { manifest, manifestPath } = await loadManifestWithPath(projectDir);
   const config = resolveConfig({ engine: "native" }, manifest);
   const renderDir = manifestPath ? dirname(manifestPath) : projectDir;
@@ -136,24 +185,34 @@ async function stage(projectDir: string, outDir: string): Promise<string> {
       await copyFile(c.from, dest);
     }),
   );
-  return htmlPath;
+
+  const rawHtml = await readFile(htmlPath, "utf-8");
+  const { html: instrumentedHtml, ids: headingIds } = instrumentHeadingIds(rawHtml);
+  await writeFile(htmlPath, instrumentedHtml, "utf-8");
+
+  return { htmlPath, headingIds };
 }
 
 /**
- * Independent second measurement for a Tier 1/2 book, where `build()` never
- * ran `predictPageMap` (nothing needed instrumenting). Mounts the viewer on
- * its OWN page, pinned to the same deterministic viewport `build()` itself
- * measured against (`BuildResult.viewport`) — an unpinned viewport would
- * make a page-count mismatch meaningless (see `build.ts`'s "deterministic
- * viewport = the sheet" comment).
+ * Independent viewer measurement, run on its OWN page pinned to the same
+ * deterministic viewport `build()` itself measured against
+ * (`BuildResult.viewport`) — an unpinned viewport would make a page-count or
+ * per-id comparison meaningless (see `build.ts`'s "deterministic viewport =
+ * the sheet" comment). Used two ways: (a)'s Tier 1/2 page-count fallback
+ * (`build()` never ran `predictPageMap` for those, so there is no
+ * `predicted.pageCount` to read), and (d)'s per-heading page map, which runs
+ * for every fixture regardless of tier — `predicted.pageMap` (when present)
+ * is scoped to Tier 3's own target-counter() ids, not the heading ids
+ * `instrumentHeadingIds` adds.
  */
-async function viewerPageCount(
+async function viewerPageMap(
   browser: Browser,
   url: string,
   agentScript: string,
   viewerScript: string,
   viewport: { width: number; height: number },
-): Promise<number> {
+  ids: string[],
+): Promise<{ pageCount: number; pageMap: Record<string, number> }> {
   const page = await browser.newPage();
   try {
     await page.send("Emulation.setDeviceMetricsOverride", {
@@ -168,8 +227,17 @@ async function viewerPageCount(
     await page.waitForReady();
     await page.evaluate(`window.__FOLIO_MANUAL__ = true;`);
     await page.evaluate(viewerScript);
-    return await page.evaluate<number>(
-      `(async () => (await window.Gutterpress.fragmentDocument({})).totalPages)()`,
+    return await page.evaluate<{ pageCount: number; pageMap: Record<string, number> }>(
+      `(async () => {
+        const api = await window.Gutterpress.fragmentDocument({});
+        const ids = ${JSON.stringify(ids)};
+        const pageMap = {};
+        for (const id of ids) {
+          const el = document.getElementById(id);
+          if (el) pageMap[id] = api.pageOf(el) + 1;
+        }
+        return { pageCount: api.totalPages, pageMap };
+      })()`,
     );
   } finally {
     await page.close();
@@ -182,6 +250,7 @@ interface FixtureReport {
   printPages: number;
   viewerPages: number;
   instrumentedIds: number;
+  headingIds: number;
   divergences: Divergence[];
 }
 
@@ -193,7 +262,7 @@ async function runFixture(
   viewerScript: string,
 ): Promise<FixtureReport> {
   const stageDir = join(WORK, name);
-  const htmlPath = await stage(projectDir, stageDir);
+  const { htmlPath, headingIds } = await stage(projectDir, stageDir);
   // allowShrink: true — this gate measures FRAGMENTER parity, not content
   // print-quality. A pre-existing width-overflow in a fixture book is a real
   // (separate) finding, not this gate's concern; downgrading it to a warning
@@ -211,15 +280,52 @@ async function runFixture(
       `   NOTE width overflow — Chromium shrank this print to fit; page counts below are NOT comparable`,
     );
   const divergences: Divergence[] = [];
+  const url = pathToFileURL(htmlPath).href;
+
+  // ---- (d) per-heading page map, every fixture regardless of tier -------
+  // Runs before (a) so a Tier 1/2 book's page-count fallback can reuse this
+  // same viewer mount instead of paying for a second one.
+  const headingMeasurement = await viewerPageMap(
+    browser,
+    url,
+    agentScript,
+    viewerScript,
+    result.viewport,
+    headingIds,
+  );
+  const printFacts = await inspectPdf(result.bytes);
+  const printHeadingMap: Record<string, number> = {};
+  for (const id of headingIds) {
+    const dest = printFacts.namedDests[id];
+    if (dest !== undefined) printHeadingMap[id] = dest + 1;
+  }
+  for (const id of headingIds) {
+    const printed = printHeadingMap[id];
+    const viewed = headingMeasurement.pageMap[id];
+    // Missing on both sides just means Chromium didn't resolve a /Dest for
+    // this id (e.g. a duplicate id elsewhere in the document) — not a
+    // fragmenter divergence, so only flag a ONE-sided miss or an outright
+    // mismatch.
+    if (printed === undefined && viewed === undefined) continue;
+    if (printed === undefined || viewed === undefined) {
+      divergences.push({
+        fixture: name,
+        kind: "headingPageMap",
+        detail: `id=${id} print=${printed ?? "MISSING"} viewer=${viewed ?? "MISSING"}`,
+      });
+      continue;
+    }
+    if (printed !== viewed) {
+      divergences.push({
+        fixture: name,
+        kind: "headingPageMap",
+        detail: `id=${id} print=p${printed} viewer=p${viewed}`,
+      });
+    }
+  }
 
   // ---- (a) total page count --------------------------------------------
-  let viewerPages: number;
-  if (result.predicted) {
-    viewerPages = result.predicted.pageCount;
-  } else {
-    const url = pathToFileURL(htmlPath).href;
-    viewerPages = await viewerPageCount(browser, url, agentScript, viewerScript, result.viewport);
-  }
+  const viewerPages = result.predicted ? result.predicted.pageCount : headingMeasurement.pageCount;
   if (viewerPages !== result.pageCount) {
     divergences.push({
       fixture: name,
@@ -275,6 +381,7 @@ async function runFixture(
     printPages: result.pageCount,
     viewerPages,
     instrumentedIds,
+    headingIds: headingIds.length,
     divergences,
   };
 }
@@ -313,7 +420,8 @@ async function main() {
         reports.push(report);
         console.log(
           `   tier ${report.tier}, print ${report.printPages}pp / viewer ${report.viewerPages}pp, ` +
-            `${report.instrumentedIds} instrumented id(s), ${report.divergences.length} divergence(s)`,
+            `${report.instrumentedIds} target-counter id(s), ${report.headingIds} heading id(s), ` +
+            `${report.divergences.length} divergence(s)`,
         );
         for (const d of report.divergences) console.log(`     [${d.kind}] ${d.detail}`);
       } catch (err) {
@@ -324,6 +432,7 @@ async function main() {
           printPages: -1,
           viewerPages: -1,
           instrumentedIds: 0,
+          headingIds: 0,
           divergences: [{ fixture: name, kind: "pageCount", detail: "build failed, see log above" }],
         });
       }

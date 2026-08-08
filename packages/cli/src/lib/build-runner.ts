@@ -858,8 +858,11 @@ export async function runBuild(
   // engine: "native" now reuses this file's puppeteer pool too (see
   // ./engine.ts — it connects the engine's raw-CDP client to the pool's
   // browser instead of launching its own), so it needs the same Chromium
-  // preflight as the Paged.js path. Only an injected `pdfRenderer` skips it.
-  if (ctx.format !== "html" && !opts.pdfRenderer) {
+  // preflight as the Paged.js path. An injected `pdfRenderer` only skips it
+  // for the Paged.js leg — a native build ignores `opts.pdfRenderer` (it
+  // always calls `buildNativePdf`, which needs the system Chromium; see the
+  // comment at its call site below), so the preflight must still run.
+  if (ctx.format !== "html" && (!opts.pdfRenderer || ctx.config.engine === "native")) {
     await preflightBuildTools(ctx.format, opts, ctx.config);
   }
 

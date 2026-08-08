@@ -7,10 +7,11 @@
  * The loop is now extracted into `waitForEngineRendered`, a pure
  * dependency-injected helper with no BrowserWindow/webContents, so the
  * timeout-vs-done distinction is directly testable with fakes (no real
- * Electron process needed for these first tests). It is engine-agnostic:
- * `electronPdfRenderer` detects Paged.js vs the native engine from the DOM
- * (STATUS_SCRIPT/GEOMETRY_SCRIPT) and this test's `nextGeometryFn` stands in
- * for that DOM check, since the fake `executeJavaScript` doesn't run real JS.
+ * Electron process needed for these first tests). `electronPdfRenderer` only
+ * ever renders Paged.js documents (STATUS_SCRIPT/GEOMETRY_SCRIPT) — the
+ * native engine bypasses this file entirely (see pdf-export.ts's doc
+ * comments) — and this test's `nextGeometryFn` stands in for the geometry
+ * DOM check, since the fake `executeJavaScript` doesn't run real JS.
  *
  * The "electron" package's default export outside a real Electron process is
  * just a path string (see tests/updater/electron-updater.test.ts), so
@@ -34,12 +35,12 @@ class FakeWebContents {
   async executeJavaScript(script: string): Promise<unknown> {
     this.execCalls.push(script);
     if (script.includes("document.fonts.ready")) return true;
-    // Status and geometry are both engine-agnostic scripts (pdf-export.ts's
-    // STATUS_SCRIPT / GEOMETRY_SCRIPT) — real Chromium branches inside them
-    // on the DOM, but this fake can't run that DOM query, so it distinguishes
-    // by which literal script ran and returns the test's canned answer for it.
+    // Status and geometry are both real DOM-reading scripts (pdf-export.ts's
+    // STATUS_SCRIPT / GEOMETRY_SCRIPT), but this fake can't run a DOM query,
+    // so it distinguishes by which literal script ran and returns the test's
+    // canned answer for it.
     if (script.includes("__PAGED_RENDERED__")) return this.statusFn();
-    if (script.includes("folio-page-w")) return this.geometryFn();
+    if (script.includes("pagedPage")) return this.geometryFn();
     return null;
   }
   async printToPDF(opts: { pageSize: { width: number; height: number } }): Promise<Buffer> {
@@ -107,37 +108,8 @@ const {
 // ── STATUS_SCRIPT (the literal string Chromium evaluates) ────────────────────
 // The FakeWebContents above cannot run these scripts, so the real string is
 // exercised here against a hand-built window/document instead.
-function runStatusScript(win: Record<string, unknown>, sel: (q: string) => unknown) {
-  return new Function(
-    "window",
-    "document",
-    `return ${STATUS_SCRIPT};`,
-  )(win, { querySelector: sel, querySelectorAll: () => [] }) as {
-    done: boolean;
-    pages: number;
-  };
-}
-
-test("STATUS_SCRIPT does not report done while the native viewer's global is still the pre-mount namespace", () => {
-  // engine/viewer/global.ts assigns the module namespace to window.Gutterpress
-  // at script-eval time; mount() then awaits a stylesheet fetch before it
-  // replaces it with the fragmented api. Only the latter has totalPages.
-  expect(runStatusScript({ Gutterpress: { mount: () => {}, decorate: () => {} } }, () => null)).toEqual({
-    done: false,
-    pages: 0,
-  });
-  expect(runStatusScript({}, () => null)).toEqual({ done: false, pages: 0 });
-  expect(runStatusScript({ Gutterpress: { totalPages: 34 } }, () => null)).toEqual({
-    done: true,
-    pages: 34,
-  });
-});
-
-test("STATUS_SCRIPT reads Paged.js's own flag when the polyfill tag is on the page", () => {
-  const doc = {
-    querySelector: (q: string) => (q.includes("paged.polyfill") ? {} : null),
-    querySelectorAll: () => [{}, {}, {}],
-  };
+test("STATUS_SCRIPT reads Paged.js's own flag and page count", () => {
+  const doc = { querySelectorAll: () => [{}, {}, {}] };
   const run = (win: Record<string, unknown>) =>
     new Function("window", "document", `return ${STATUS_SCRIPT};`)(win, doc);
   expect(run({ __PAGED_RENDERED__: false })).toEqual({ done: false, pages: 3 });
@@ -277,24 +249,23 @@ test("electronPdfRenderer completes normally and calls printToPDF exactly once w
   }
 });
 
-test("electronPdfRenderer computes a non-default pageSize from the native engine's resolved page geometry", async () => {
-  // 6x4in at 96 CSS px/in — as decorate.ts writes --folio-page-w/-h for a
-  // book like /tmp/fbtest/book, distinct from both the Letter-ish default
-  // (8.625x11.25in) and the Paged.js fixture geometry used by the other
+test("electronPdfRenderer computes a non-default pageSize from the measured Paged.js page geometry", async () => {
+  // 6x4in at 96 CSS px/in, distinct from both the Letter-ish fallback
+  // (8.625x11.25in) and the default fixture geometry used by the other
   // tests in this file (816x1056px = 8.5x11in).
   nextStatusFn = () => ({ done: true, pages: 4 });
   nextGeometryFn = () => ({ w: 576, h: 384 });
   setActiveExportSession({
-    id: "exp-native",
+    id: "exp-geometry",
     canceled: false,
-    outPath: "/tmp/out-native.pdf",
-    tempOutPath: "/tmp/out-native.tmp.pdf",
+    outPath: "/tmp/out-geometry.pdf",
+    tempOutPath: "/tmp/out-geometry.tmp.pdf",
     win: null,
   });
   try {
     await electronPdfRenderer({
       url: "http://127.0.0.1:1/book.html",
-      outPdf: "/tmp/out-native.pdf",
+      outPdf: "/tmp/out-geometry.pdf",
       timeoutMs: 10_000,
     });
     const win = FakeBrowserWindow.instances.at(-1);

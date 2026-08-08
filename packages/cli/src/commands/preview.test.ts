@@ -106,6 +106,7 @@ test("a failed PDF auto-open is nonfatal and reports the saved path", async () =
     htmlPath: "/tmp/out/book.html",
     pdfPath: "/tmp/out/book.pdf",
     fingerprintPath: "/tmp/out/build-fingerprint.json",
+    diagnostics: [],
   });
   openPathSpy = spyOn(openPathModule, "openPath").mockRejectedValue(
     new Error("spawn xdg-open ENOENT")

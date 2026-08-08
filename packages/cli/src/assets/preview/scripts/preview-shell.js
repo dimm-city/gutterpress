@@ -472,6 +472,12 @@
     frame.addEventListener('load', function () {
       if (building !== frame) return;
       var loadedDocument = fdoc(frame);
+      // Incremental chapter splice is Paged.js-only by design: it needs the
+      // polyfill's `.pagedjs_page` DOM to find the chapter's page range and
+      // graft it into the live document. Under `engine: "native"` neither
+      // marker is present, so every chapter edit falls back to a full reload
+      // (swap) here — safe, since the native viewer re-fragments the whole
+      // document in ~100ms, fast enough that splicing isn't worth building.
       if (!loadedDocument || (
         !loadedDocument.querySelector('script[src*="paged.polyfill"]') &&
         !loadedDocument.querySelector('.pagedjs_page')
