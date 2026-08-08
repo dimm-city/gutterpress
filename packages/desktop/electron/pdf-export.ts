@@ -159,8 +159,17 @@ export async function waitForEngineRendered(
  * `electronPdfRenderer` — the same detection `http-server.ts`'s
  * `finishInitialRender` wiring already uses for the preview's "rendering
  * complete" wait.
+ *
+ * The native branch must NOT test for `window.Gutterpress` alone: the viewer
+ * bundle's entry (engine/viewer/global.ts) assigns the module namespace to that
+ * global at script-eval time, before `mount()` has fragmented anything, and
+ * `mount()` awaits a real network round trip (`loadStyleSources` fetches every
+ * `<link rel=stylesheet>`). Only the mounted api carries a numeric
+ * `totalPages`, so that is the completion signal — measured: with a pending
+ * stylesheet the presence test reported `{done: true, pages: undefined}` on the
+ * first poll and the export fell through to printToPDF on an unfragmented page.
  */
-const STATUS_SCRIPT = `(() => {
+export const STATUS_SCRIPT = `(() => {
   if (document.querySelector('script[src*="paged.polyfill"]')) {
     return {
       done: window.__PAGED_RENDERED__ === true,
@@ -168,7 +177,8 @@ const STATUS_SCRIPT = `(() => {
     };
   }
   var gp = window.Gutterpress;
-  return { done: !!gp, pages: gp ? gp.totalPages : 0 };
+  var mounted = !!gp && typeof gp.totalPages === "number";
+  return { done: mounted, pages: mounted ? gp.totalPages : 0 };
 })()`;
 
 /** Engine-agnostic page-geometry read, run once after {@link STATUS_SCRIPT} reports done. */
@@ -230,10 +240,10 @@ export async function electronPdfRenderer(input: {
     // Engine is detected at runtime from the DOM rather than threaded through
     // as a flag — the same script tag check http-server.ts already uses to
     // decide which "rendering complete" event to wait on. Paged.js sets
-    // `window.__PAGED_RENDERED__`; the native engine's viewer assigns
-    // `window.Gutterpress` only once fragmentation + decoration have both
-    // finished (engine/viewer/index.ts's `mount()`), so its mere presence is
-    // the completion signal. Throws a typed BuildError instead of returning
+    // `window.__PAGED_RENDERED__`; the native engine's viewer only puts a
+    // numeric `totalPages` on `window.Gutterpress` once fragmentation +
+    // decoration have both finished (engine/viewer/index.ts's `mount()`),
+    // which is what STATUS_SCRIPT tests. Throws a typed BuildError instead of returning
     // if the timeout elapses first — see waitForEngineRendered's doc comment
     // (ARCH #27).
     const lastPages = await waitForEngineRendered(input.timeoutMs, {

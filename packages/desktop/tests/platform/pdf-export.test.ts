@@ -101,7 +101,48 @@ const {
   waitForEngineRendered,
   setActiveExportSession,
   ExportCanceledError,
+  STATUS_SCRIPT,
 } = await import("../../electron/pdf-export");
+
+// ── STATUS_SCRIPT (the literal string Chromium evaluates) ────────────────────
+// The FakeWebContents above cannot run these scripts, so the real string is
+// exercised here against a hand-built window/document instead.
+function runStatusScript(win: Record<string, unknown>, sel: (q: string) => unknown) {
+  return new Function(
+    "window",
+    "document",
+    `return ${STATUS_SCRIPT};`,
+  )(win, { querySelector: sel, querySelectorAll: () => [] }) as {
+    done: boolean;
+    pages: number;
+  };
+}
+
+test("STATUS_SCRIPT does not report done while the native viewer's global is still the pre-mount namespace", () => {
+  // engine/viewer/global.ts assigns the module namespace to window.Gutterpress
+  // at script-eval time; mount() then awaits a stylesheet fetch before it
+  // replaces it with the fragmented api. Only the latter has totalPages.
+  expect(runStatusScript({ Gutterpress: { mount: () => {}, decorate: () => {} } }, () => null)).toEqual({
+    done: false,
+    pages: 0,
+  });
+  expect(runStatusScript({}, () => null)).toEqual({ done: false, pages: 0 });
+  expect(runStatusScript({ Gutterpress: { totalPages: 34 } }, () => null)).toEqual({
+    done: true,
+    pages: 34,
+  });
+});
+
+test("STATUS_SCRIPT reads Paged.js's own flag when the polyfill tag is on the page", () => {
+  const doc = {
+    querySelector: (q: string) => (q.includes("paged.polyfill") ? {} : null),
+    querySelectorAll: () => [{}, {}, {}],
+  };
+  const run = (win: Record<string, unknown>) =>
+    new Function("window", "document", `return ${STATUS_SCRIPT};`)(win, doc);
+  expect(run({ __PAGED_RENDERED__: false })).toEqual({ done: false, pages: 3 });
+  expect(run({ __PAGED_RENDERED__: true })).toEqual({ done: true, pages: 3 });
+});
 
 // ── waitForEngineRendered (pure poll-loop helper) ────────────────────────────
 
