@@ -21,6 +21,11 @@
      fitZoom()). They MUST compose — writing both to one property makes the
      <body> value shadow the host's and the zoom control goes dead. */
   zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));
+  /* Manual wheel/trackpad scroll settles on a page boundary (single mode) or
+     a recto-page boundary (two-up, below) — `proximity`, not `mandatory`, so
+     a fast scroll gesture isn't fought to a stop mid-flick. `x` only: rows
+     (chapters) stack vertically with no equivalent "page" unit to snap to. */
+  scroll-snap-type: x proximity;
 }
 
 /* One flow strip per named-page run. Chromium fragments its content into
@@ -75,6 +80,23 @@
   height: var(--folio-page-h);
   background: var(--folio-sheet-bg);
   box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
+  scroll-snap-align: start;
+}
+
+/* View modes (WORK PACKAGE B item 3): content NEVER moves — sheets stay
+   exactly where decorate.ts painted them (see draw()'s own comment on why a
+   prior repositioning approach shipped broken and was retired). A view mode
+   is purely a paging/scroll-snap granularity choice: `pageStep()`
+   (preview-interface.js) already steps next/prevPage by 1 or 2 book pages;
+   this is the matching manual-scroll behavior. Two-up snaps ONLY on recto
+   (odd 1-based / `nth-child(odd)`) sheets, so a manual scroll settles with a
+   recto+verso PAIR in view together, never split across a snap point — every
+   chapter starts its own strip on a recto by construction (recto/verso
+   blanks), so sheet DOM order within one `.folio-layer` already alternates
+   recto/verso starting from the first child. */
+body.view-two-column .folio-sheet:nth-child(even),
+body.view-spread .folio-sheet:nth-child(even) {
+  scroll-snap-align: none;
 }
 
 .folio-marginbox {

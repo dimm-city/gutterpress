@@ -10,9 +10,13 @@ import { decorate, type DecorationApi } from "./decorate.ts";
 
 export interface FolioApi extends FolioViewerApi {
   decoration: DecorationApi;
+  /** 1-based, matching `.folio-sheet[data-page]` and every other book-facing
+   * page number in the API (pageOf() is the one deliberate exception — it's
+   * documented 0-based for DOM-index math). Clamped to [1, totalPages]. */
   goto(page: number): void;
   next(): void;
   prev(): void;
+  /** 1-based; see `goto()`. */
   currentPage(): number;
   /** re-fragment + redecorate after a content/CSS change (hot reload) */
   refresh(): void;
@@ -36,14 +40,20 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   const api: FolioApi = Object.assign(layout, {
     decoration,
     goto(page: number) {
-      const target = decoration.sheetFor(page);
+      // Public surface is 1-based (matches dataset.page); sheetFor()/`current`
+      // are 0-based internally (matches pageOf()). Clamp BEFORE converting so
+      // an out-of-range call (e.g. goto(totalPages) rounding up past the
+      // last valid index) still lands on the last page instead of missing
+      // decoration.sheetFor() and scrolling nowhere.
+      const clamped = Math.max(1, Math.min(layout.totalPages, Math.round(page)));
+      current = clamped - 1;
+      const target = decoration.sheetFor(current);
       target?.scrollIntoView({ block: "start", inline: "center" });
-      current = Math.max(0, Math.min(layout.totalPages - 1, page));
       emit();
     },
-    next: () => api.goto(current + 1),
-    prev: () => api.goto(current - 1),
-    currentPage: () => current,
+    next: () => api.goto(api.currentPage() + 1),
+    prev: () => api.goto(api.currentPage() - 1),
+    currentPage: () => current + 1,
     refresh() {
       layout.relayout();
       decoration.redraw();

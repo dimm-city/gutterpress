@@ -10,12 +10,15 @@
 // and exposes window.Gutterpress.pageOf(el) (0-based); it fires 'folio:layout'
 // when its pagination completes.
 //
-// The ~150-line data-ref fragment-grouping machinery below (resolveBlockGroup/
-// elementsByRef) exists because Paged.js CLONES an element across pages and
-// strips its id from every clone but the first. The native viewer never
-// clones — an element that visually spans pages is still ONE element — so the
-// native path skips that grouping and resolves rects straight off the single
-// element via getClientRects() + pageOf().
+// The block-overlay fragment-grouping machinery below (blocksMatchingRange)
+// groups by `{chapter, range}` (data-source-range), not `data-ref` — a source
+// range is duplicated onto every fragment identically (Paged.js CLONES an
+// element across pages and strips its id from every clone but the first, but
+// copies data-source-range verbatim), so it groups a clone-set exactly as
+// well as a ref would, with no separate ref bookkeeping needed. The native
+// viewer never clones — an element that visually spans pages is still ONE
+// element — so the native path (nativeRectsFor) resolves rects straight off
+// the single matching element via getClientRects() + pageOf().
 
 (function () {
   'use strict';
@@ -51,8 +54,51 @@
     return Math.max(1, Math.min(Math.round(page), pages.length));
   }
 
+  // The native viewer lays one CHAPTER per row (`.folio-run`), each row as
+  // wide as that chapter needs — rows stack vertically, but a long chapter's
+  // pages run off horizontally within its own row (viewer.css: `.folio-sheet`
+  // is `left`-positioned within the row, every sheet in a row shares `top`).
+  // The paged.js top-only scan below can't tell two sheets in the same row
+  // apart — every one of them has the same `top`, so it always resolves to
+  // the LAST sheet of whichever row is vertically in view, ignoring
+  // scrollLeft entirely (measured: goToPage(18/30/34) in a 34pp book all
+  // landed on page 14 — row 1's last page — regardless of horizontal scroll
+  // position). Pick the sheet with the GREATEST visible overlap area with the
+  // viewport — a fixed reference-point distance was tried first but broke at
+  // the very end of a row: the browser clamps scrollIntoView({inline:'start'})
+  // once there's no more row content to scroll past, so the last page of a
+  // short final row can land mid-viewport rather than flush against any fixed
+  // point (measured: goToPage(34) on a 34pp book left page 34 at ~40% visible
+  // width from the left edge, so a left-edge reference point missed it and
+  // matched page 33 instead, which still touched the reference point). Falls
+  // back to nearest-by-distance when nothing overlaps at all (e.g. mid-scroll
+  // between rows, or every sheet clipped by a shorter viewport than a page).
+  function detectVisiblePageNative() {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var best = 0;
+    var bestArea = 0;
+    var nearest = 0;
+    var nearestScore = Infinity;
+    var refX = vw / 3;
+    var refY = vh / 3;
+    for (var i = 0; i < pages.length; i++) {
+      var r = pages[i].getBoundingClientRect();
+      var w = Math.min(r.right, vw) - Math.max(r.left, 0);
+      var h = Math.min(r.bottom, vh) - Math.max(r.top, 0);
+      var area = w > 0 && h > 0 ? w * h : 0;
+      if (area > bestArea) { bestArea = area; best = i; }
+      var dx = refX < r.left ? r.left - refX : (refX > r.right ? refX - r.right : 0);
+      var dy = refY < r.top ? r.top - refY : (refY > r.bottom ? refY - r.bottom : 0);
+      var score = dx * dx + dy * dy;
+      if (score < nearestScore) { nearestScore = score; nearest = i; }
+    }
+    return (bestArea > 0 ? best : nearest) + 1;
+  }
+
   function detectVisiblePage() {
     if (pages.length === 0) return 1;
+    if (NATIVE_ENGINE) return detectVisiblePageNative();
     // Use getBoundingClientRect (viewport-relative, post-zoom) rather than
     // offsetTop. The desktop applies CSS `zoom` for fit-width; under `zoom`,
     // offsetTop stays in PRE-zoom layout coords while window.scrollY is POST-zoom,
@@ -78,7 +124,16 @@
     var page = clampPage(currentPage);
     currentPage = page;
     ignoreScrollUntil = Date.now() + 300;
-    pages[page - 1].scrollIntoView({ behavior: 'instant', block: 'start', inline: 'nearest' });
+    // Native's rows can be wider than the viewport (a long chapter scrolls
+    // horizontally within its own row) — align the target sheet's left edge
+    // to the viewport's left edge (matching detectVisiblePageNative's `refX`)
+    // rather than paged's single-column 'nearest', which leaves scrollLeft
+    // wherever it already was when the sheet is already partly on-screen.
+    pages[page - 1].scrollIntoView({
+      behavior: 'instant',
+      block: 'start',
+      inline: NATIVE_ENGINE ? 'start' : 'nearest'
+    });
     recordVisibleSource();
   }
 
@@ -377,7 +432,6 @@
       range: block ? sourceRangeOf(block) : null,
       blockTag: block && block.tagName ? block.tagName.toLowerCase() : null,
       split: isSplitFragment(block),
-      ref: block && block.getAttribute ? (block.getAttribute('data-ref') || null) : null,
       rect: plainRect(block || pointEl),
       image: image,
       link: link,
@@ -400,23 +454,17 @@
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
-  // ── Block-overlay geometry + masking (protocol v5) ──────────────────────────
+  // ── Block-overlay geometry + masking (protocol v6) ──────────────────────────
   // docs/inline-editing-plan.md §5.3 / ADR 0009. A block split across pages
   // exists as MULTIPLE DOM fragments that duplicate every data attribute
-  // (§3.5's split-fragment gotcha applies here too) — `data-ref` is the one
-  // identity Paged.js keeps stable across them, so every command below groups
-  // by `data-ref`, never by `id` (Paged.js strips it from all fragments but
-  // the first) and never by uniqueness of `data-source-range` alone.
-
-  // All elements anywhere in the document carrying the given data-ref value.
-  // Built via filter (not a `[data-ref="…"]` selector) so a ref value can
-  // never be mis-parsed as CSS — the value is host-controlled today, but this
-  // stays robust regardless.
-  function elementsByRef(ref) {
-    if (!ref) return [];
-    var all = Array.from(document.querySelectorAll('[data-ref]'));
-    return all.filter(function (el) { return el.getAttribute('data-ref') === ref; });
-  }
+  // (§3.5's split-fragment gotcha applies here too) — `data-source-range` is
+  // duplicated onto every fragment identically, so `{chapter, range}` groups
+  // them exactly as well as the `data-ref` this used to key off (protocol v5
+  // dropped `data-ref` from the wire contract entirely: the native viewer
+  // never mints one at all — it never clones, so there is nothing to give a
+  // shared identity to — and a source range already uniquely identifies one
+  // block, so the ref was pure duplication of information `{chapter, range}`
+  // already carried on every path, paged included).
 
   function rangedBlocks() {
     return Array.from(document.querySelectorAll('[data-source-range]'));
@@ -427,34 +475,12 @@
     return rangedBlocks().filter(function (el) { return chapterOf(el) === chapter; });
   }
 
-  // Resolve a getRectsFor()/setEditMask() spec to {ref, els}. Two mutually
-  // exclusive forms (§5.3):
-  //   {ref}              — the FAST path: data-ref survived from the moment
-  //                         the overlay opened (menu open, pageChanged/zoom
-  //                         re-anchor within the SAME render).
-  //   {chapter, range}    — the POST-SPLICE FALLBACK: a fresh render mints
-  //                         fresh data-refs, so after `renderingComplete` the
-  //                         overlay must re-resolve by the one thing that
-  //                         still identifies the block — its source range —
-  //                         and read back whatever data-ref the fresh DOM
-  //                         assigned it.
-  function resolveBlockGroup(spec) {
-    spec = spec || {};
-    if (spec.ref) {
-      var byRef = elementsByRef(spec.ref);
-      return { ref: byRef.length ? spec.ref : null, els: byRef };
-    }
-    if (spec.chapter != null && spec.range) {
-      var candidates = rangedBlocksInChapter(spec.chapter).filter(function (el) {
-        var r = sourceRangeOf(el);
-        return r && r[0] === spec.range[0] && r[1] === spec.range[1];
-      });
-      if (!candidates.length) return { ref: null, els: [] };
-      var targetRef = candidates[0].getAttribute('data-ref') || null;
-      if (!targetRef) return { ref: null, els: candidates };
-      return { ref: targetRef, els: elementsByRef(targetRef) };
-    }
-    return { ref: null, els: [] };
+  function blocksMatchingRange(chapter, range) {
+    if (!range) return [];
+    return rangedBlocksInChapter(chapter).filter(function (el) {
+      var r = sourceRangeOf(el);
+      return r && r[0] === range[0] && r[1] === range[1];
+    });
   }
 
   // Native-engine getRectsFor(): the viewer never clones, so a spec resolves
@@ -462,21 +488,11 @@
   // getClientRects() — a block can still visually span pages if the
   // browser's own multicol layout breaks it there — each reported under the
   // block's own page (window.Gutterpress.pageOf() locates the fragmentainer
-  // the element STARTS in, so every rect shares that one page number). Same
-  // {ref, rects[]} wire shape as the paged path.
+  // the element STARTS in, so every rect shares that one page number).
   function nativeRectsFor(spec) {
     spec = spec || {};
-    var el = null;
-    if (spec.ref) {
-      el = elementsByRef(spec.ref)[0] || null;
-    } else if (spec.chapter != null && spec.range) {
-      var candidates = rangedBlocksInChapter(spec.chapter).filter(function (e) {
-        var r = sourceRangeOf(e);
-        return r && r[0] === spec.range[0] && r[1] === spec.range[1];
-      });
-      el = candidates[0] || null;
-    }
-    if (!el) return { ref: null, rects: [] };
+    var el = blocksMatchingRange(spec.chapter, spec.range)[0] || null;
+    if (!el) return { rects: [] };
     var page = pageIndexOf(el);
     var raw = el.getClientRects ? Array.from(el.getClientRects()) : [];
     if (!raw.length) {
@@ -486,7 +502,7 @@
     var rects = raw.map(function (r) {
       return { top: r.top, left: r.left, width: r.width, height: r.height, page: page };
     });
-    return { ref: el.getAttribute('data-ref') || null, rects: rects };
+    return { rects: rects };
   }
 
   var api = {
@@ -520,15 +536,18 @@
         currentViewMode = mode || 'two-column';
         document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
         if (mode) document.body.classList.add('view-' + mode);
-        // Under native the view-mode classes are cosmetic ONLY (paged.js CSS
-        // reads them to lay out .pagedjs_page, see iframe-styles.ts). A prior
-        // native `decoration.setSpread()` call repositioned the sheet chrome
+        // Under native the view-mode classes NEVER move content or sheets —
+        // a prior `decoration.setSpread()` call repositioned the sheet chrome
         // to fake a single/two-up layout, but the strip underneath is one
-        // multicol flow element — its columns cannot be individually moved,
+        // multicol flow element whose columns cannot be individually moved,
         // so the author's content stayed at its native column position while
-        // the sheets moved, visibly detaching text from page. Retired rather
-        // than shipped broken; native always shows its one correct layout
-        // (see decorate.ts's draw()).
+        // the sheets moved, visibly detaching text from page (retired; see
+        // decorate.ts's draw()). Instead the classes ONLY drive CSS
+        // scroll-snap granularity (viewer.css: 1 page per snap point in
+        // single mode, recto+verso pairs in two-up/spread) — sheets are
+        // already laid out correctly by decorate.ts; a view mode just picks
+        // how a manual scroll settles. `pageStep()` above already makes
+        // next/prevPage step by 1 or 2 book pages to match.
       });
       if (!silent) return api.notifyPageChange();
     },
@@ -569,9 +588,11 @@
     // ── ADR 0005 generic primitives ─────────────────────────────────────────
     // Bumped whenever a command/event is added so a hot-updated SPA can
     // feature-detect against an older bundled lib.
-    // v5 (docs/inline-editing-plan.md §5.3, ADR 0009): getRectsFor() +
-    // setEditMask() for the click-to-edit block overlay.
-    getProtocolVersion: function () { return 5; },
+    // v6 (WORK PACKAGE B item 2): getRectsFor()/setEditMask() dropped the
+    // {ref} form entirely — {chapter, range} is the only target shape now
+    // (v5 had a data-ref fast path that the native viewer, which never mints
+    // one, could never use in the first place).
+    getProtocolVersion: function () { return 6; },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.
@@ -580,37 +601,34 @@
       return buildContextTarget(elementAtPoint(spec.x, spec.y));
     },
 
-    // All fragment rects for one logical block (protocol v5, §5.3). `ref` is
-    // returned alongside the rects (not just each rect's geometry) because a
-    // post-splice {chapter, range} lookup resolves a FRESH data-ref the
-    // caller has no other way to learn — the block overlay needs it to
-    // target the matching setEditMask() call after a re-anchor. Pure read;
-    // never mutates the DOM. Plain, JSON-cloneable objects only (§3.5) — no
-    // DOMRect instances.
+    // All fragment rects for one logical block (protocol v6, §5.3), targeted
+    // by {chapter, range}. Pure read; never mutates the DOM. Plain,
+    // JSON-cloneable objects only (§3.5) — no DOMRect instances.
     getRectsFor: function (spec) {
       if (NATIVE_ENGINE) return nativeRectsFor(spec);
-      var resolved = resolveBlockGroup(spec);
-      var rects = resolved.els.map(function (el) {
+      spec = spec || {};
+      var els = blocksMatchingRange(spec.chapter, spec.range);
+      var rects = els.map(function (el) {
         var r = plainRect(el);
         if (!r) return null;
         r.page = pageIndexOf(el);
         return r;
       }).filter(function (r) { return r != null; });
-      return { ref: resolved.ref, rects: rects };
+      return { rects: rects };
     },
 
-    // Toggle a masking class on EVERY fragment of a block, plus a scroll lock
-    // on the book document element (protocol v5, §5.1/§5.3). Purely cosmetic
-    // and fully reversible — Paged.js never re-layouts after a mutation
-    // (spike-verified), so nothing here may touch anything layout-affecting;
-    // see the class definitions below and ADR 0009. `masked: false` always
-    // removes the lock class too, even if this particular ref has zero live
-    // fragments (e.g. called defensively during teardown after a splice) —
-    // it is a document-level toggle, not scoped per-block, and there is at
-    // most one overlay open at a time.
+    // Toggle a masking class on EVERY fragment of a block ({chapter, range}
+    // match, protocol v6, §5.1/§5.3), plus a scroll lock on the book document
+    // element. Purely cosmetic and fully reversible — Paged.js never
+    // re-layouts after a mutation (spike-verified), so nothing here may touch
+    // anything layout-affecting; see the class definitions below and ADR
+    // 0009. `masked: false` always removes the lock class too, even if this
+    // particular range has zero live fragments (e.g. called defensively
+    // during teardown after a splice) — it is a document-level toggle, not
+    // scoped per-block, and there is at most one overlay open at a time.
     setEditMask: function (spec) {
       spec = spec || {};
-      var els = elementsByRef(spec.ref);
+      var els = blocksMatchingRange(spec.chapter, spec.range);
       for (var i = 0; i < els.length; i++) {
         if (spec.masked) els[i].classList.add('gutterpress-edit-mask');
         else els[i].classList.remove('gutterpress-edit-mask');
