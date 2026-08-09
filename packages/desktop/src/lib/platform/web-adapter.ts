@@ -37,6 +37,10 @@ import {
 // (those drag puppeteer + node:fs). This is what lets the in-browser preview
 // (#33 Phase 2) render entirely client-side with no localhost server.
 import { assembleBookHtml, pagedjsPolyfillTagRegex } from "gutterpress/render";
+// Pure JS, no `node:*` — ships a `browser` build, so it stays PWA-clean in
+// this file (see readProjectEngine's doc comment for why this is here
+// instead of the lib's real manifest.ts, which drags node:fs/node:path).
+import { parse as parseYaml } from "yaml";
 import { IndexedDbWebStore } from "./web-store";
 import type { WebStore } from "./web-store";
 import { deepMergeSettings } from "../settings-merge";
@@ -95,19 +99,23 @@ const VENDOR_PAGED_POLYFILL_URL = "/vendor/paged.polyfill.js";
 
 /**
  * Read the project's configured engine from `manifest.yaml`'s top-level
- * `engine:` scalar, or `"paged"` if the manifest is absent/unreadable or the
- * key isn't set (matching the CLI's own default — `manifest.ts`'s
- * `c.engine ?? m.engine ?? "paged"`).
+ * `engine:` scalar, or `"paged"` if the manifest is absent/unreadable, fails
+ * to parse, or the key isn't set/isn't a top-level scalar (matching the
+ * CLI's own default — `manifest.ts`'s `c.engine ?? m.engine ?? "paged"`).
  *
- * Deliberately NOT a full YAML parse: this adapter doesn't have a manifest
- * parser at all yet (see `renderBookHtml`'s "KNOWN PHASE-2 GAP" comment —
- * `source.files`/`plugins` aren't parsed here either), and pulling in a full
- * parser for one scalar is out of scope for closing WP-C item 2's "silent
- * divergence" bug. A top-level `engine: native|paged` line is simple,
- * well-defined YAML regardless of parser, so a narrow regex is honest here in
- * a way it would not be for nested manifest structure.
+ * A real YAML parse (via the `yaml` package — pure JS, no `node:*`, ships a
+ * `browser` build, so it stays PWA-clean per CLAUDE.md §8), not a regex: a
+ * regex over raw text can't tell a real top-level `engine:` key from one
+ * that's commented out, quoted oddly, or nested under another key — it would
+ * silently default to `paged` in cases a human reading the YAML would not
+ * expect. This still doesn't reach for the CLI's full `manifest.ts` (that
+ * pulls in `node:fs`/`node:path` and drags Node into the renderer bundle);
+ * it parses the YAML structurally and reads exactly one top-level key, which
+ * is enough to close the "silent divergence" bug without widening scope to
+ * `source.files`/`plugins` (still unparsed here — see `renderBookHtml`'s
+ * "KNOWN PHASE-2 GAP" comment).
  */
-async function readProjectEngine(
+export async function readProjectEngine(
   root: FileSystemDirectoryHandle,
 ): Promise<"paged" | "native"> {
   let text: string;
@@ -116,8 +124,17 @@ async function readProjectEngine(
   } catch {
     return "paged";
   }
-  const m = /^engine:\s*["']?(paged|native)["']?\s*$/m.exec(text);
-  return m?.[1] === "native" ? "native" : "paged";
+  let doc: unknown;
+  try {
+    doc = parseYaml(text);
+  } catch {
+    return "paged";
+  }
+  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+    return "paged";
+  }
+  const engine = (doc as Record<string, unknown>).engine;
+  return engine === "native" ? "native" : "paged";
 }
 
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
