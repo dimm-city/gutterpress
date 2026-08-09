@@ -1175,7 +1175,7 @@ describe("PAGED_CSS export", () => {
     expect(PAGED_CSS).toContain(":where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }");
     expect(PAGED_CSS).toContain(":where(img, svg, video) { max-width: 100%; }");
     expect(PAGED_CSS).toContain(
-      ":where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; }"
+      ":where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }"
     );
     expect(PAGED_CSS).toContain(":where(.section, figure) > :where(:first-child) { break-before: avoid; }");
   });

@@ -772,6 +772,19 @@ export default function plugin(md, pluginOptions = {}) {
  * author CSS at any specificity wins outright, reusing this same
  * after-author injection point.
  *
+ * `vertical-align: bottom` on a lone image is a print-correctness rule, not
+ * cosmetics. An `<img>` in a `<p>` is inline-level, so its line box adds
+ * half-leading/descender space UNDER the image: an image sized to exactly the
+ * page content box (a book capping art at `page-height - margins`, or art that
+ * naturally fills the page) produces a paragraph a few px TALLER than the box
+ * it was sized to fit. MEASURED (Chromium 148, field guide chapter 1, 10in
+ * content box): a 956px image made a 963.59px paragraph — a 3.6px overflow
+ * that pushed the enclosing named-page wrapper's bottom edge onto the NEXT
+ * sheet, so Chromium named that sheet after the PREVIOUS page name and the new
+ * template's running head and folio silently vanished. `vertical-align:
+ * bottom` collapses the line box onto the image, keeping the image inline (so
+ * `text-align: center` still centers it — `display: block` would not).
+ *
  * Also ships five author-facing image/block utility classes (CLAUDE.md §0 —
  * a behavior broadly useful to non-technical authors belongs in core, not a
  * project layer; see UX finding M17). markdown-it-attrs is bundled by
@@ -816,7 +829,7 @@ export const PAGED_CSS = `
 
 :where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }
 :where(img, svg, video) { max-width: 100%; }
-:where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; }
+:where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }
 :where(.section, figure) > :where(:first-child) { break-before: avoid; }
 
 .center { display: block; margin-left: auto; margin-right: auto; max-width: 100%; }
