@@ -162,49 +162,6 @@
     return matches.length === 1 ? matches[0] : null;
   }
 
-  // ── Native-engine incremental splice ──────────────────────────────────
-  // The Gutterpress viewer never clones content across pages (§ engine
-  // viewer header): pagination is CSS multicol fragmentation of ONE live DOM
-  // subtree, not the Paged.js "clone content onto N .pagedjs_page shells"
-  // model spliceChapter()/pagesFor() are built around. That makes the native
-  // incremental update simpler, not harder — there is no page range to find
-  // and graft, only the chapter's own wrapper element to replace in place,
-  // followed by window.Gutterpress.refresh() (re-fragment; ~100ms per the
-  // engine's own budget) instead of a full document reload.
-  function isNativeEngine(d) {
-    return !!(d && d.querySelector('script[src*="/engine/gutterpress-viewer.js"]'));
-  }
-
-  function cssAttrEscape(value) {
-    if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(value);
-    return String(value).replace(/["\\]/g, '\\$&');
-  }
-
-  function liveChapterIdsNative(d) {
-    var nodes = d.querySelectorAll('[data-chapter-src]'), ids = [];
-    for (var i = 0; i < nodes.length; i++) {
-      var id = nodes[i].getAttribute('data-chapter-src');
-      if (id && ids.indexOf(id) === -1) ids.push(id);
-    }
-    return ids;
-  }
-
-  function resolveChapterIdNative(d, file) {
-    var ids = liveChapterIdsNative(d);
-    if (ids.indexOf(file) !== -1) return file;
-    var wanted = normId(file), matches = [];
-    for (var i = 0; i < ids.length; i++) {
-      if (normId(ids[i]) === wanted) matches.push(ids[i]);
-    }
-    return matches.length === 1 ? matches[0] : null;
-  }
-
-  function liveChapterNodesNative(d, id) {
-    return Array.prototype.slice.call(
-      d.querySelectorAll('[data-chapter-src="' + cssAttrEscape(id) + '"]')
-    );
-  }
-
   function pagesFor(d, file) {
     var pages = d.querySelectorAll('.pagedjs_page');
     var owned = [], shared = [], first = -1, last = -1;
@@ -515,10 +472,25 @@
     frame.addEventListener('load', function () {
       if (building !== frame) return;
       var loadedDocument = fdoc(frame);
-      // This path builds the `.pagedjs_page` page-range graft below and is
-      // Paged.js-only; the dispatcher routes `engine: "native"` documents to
-      // spliceChapterNative() instead (see below), so this guard is now a
-      // defensive fallback rather than the primary native path.
+      // Incremental chapter splice is Paged.js-only by design: it needs the
+      // polyfill's `.pagedjs_page` DOM to find the chapter's page range and
+      // graft it into the live document. Under `engine: "native"` neither
+      // marker is present, so every chapter edit falls back to a full reload
+      // (swap) here.
+      //
+      // A native in-place splice WAS built and REMOVED (2026-08-08 review):
+      // grafting a fresh `.gutterpress-chapter` node in and calling
+      // `Gutterpress.refresh()` is not sound, because `refresh()` →
+      // `relayout()` only re-`measure()`s the EXISTING strips — it never
+      // re-runs `buildStrips()`/`explodeChildren()`. So any page context the
+      // edit introduces (a new `@page`/`page:` assignment inside the chapter)
+      // is silently dropped: measured 2 preview pages where the same content
+      // prints 3. That is a preview↔PDF divergence, the worst failure this
+      // project can produce, and it bought nothing — measured end-to-end
+      // (file write → change visible, 5 samples, 34pp field guide) native's
+      // plain full reload is 509ms avg vs the paged leg's incremental splice
+      // at 998ms avg. Native already wins hot reload WITHOUT a splice.
+      // Reintroducing one requires `relayout()` to rebuild strips first.
       if (!loadedDocument || (
         !loadedDocument.querySelector('script[src*="paged.polyfill"]') &&
         !loadedDocument.querySelector('.pagedjs_page')
@@ -535,75 +507,6 @@
       }, 15000);
     });
     document.body.appendChild(frame);
-  }
-
-  // Native counterpart to spliceChapter(): fetch the re-rendered chapter as
-  // plain text (no hidden iframe, no polyfill pagination wait — a DOMParser
-  // parse never runs scripts), swap its single `.gutterpress-chapter` wrapper
-  // into the live document in place, then ask the live viewer to re-fragment.
-  // Falls back to swap() on anything unexpected: a chapter id not found, a
-  // chapter that isn't a single intact wrapper in either document, or a fetch
-  // error. `building` is reused as the in-flight token so a message that
-  // arrives mid-fetch is treated as overlapping the same way it would be for
-  // an in-flight iframe splice/swap.
-  function spliceChapterNative(file, instance, revision) {
-    discardBuilding();
-    var activeDocument = fdoc(active);
-    var liveId = activeDocument ? resolveChapterIdNative(activeDocument, file) : null;
-    if (!liveId) {
-      if (window.console) console.warn('[gutterpress] chapter not found in live document; using full reload:', file);
-      swap(instance, revision);
-      return;
-    }
-    var liveNodes = liveChapterNodesNative(activeDocument, liveId);
-    if (liveNodes.length !== 1) {
-      if (window.console) {
-        console.warn('[gutterpress] chapter is not a single live node (' + liveNodes.length + '); using full reload:', file);
-      }
-      swap(instance, revision);
-      return;
-    }
-
-    var startedAt = Date.now();
-    var token = {};
-    building = token;
-
-    window.fetch('/__chapter?file=' + encodeURIComponent(file) + '&revision=' + revision + '&bust=' + Date.now())
-      .then(function (res) {
-        if (!res.ok) throw new Error('chapter fetch failed: ' + res.status);
-        return res.text();
-      })
-      .then(function (text) {
-        if (building !== token) return; // superseded by a later change
-        var parsed = new window.DOMParser().parseFromString(text, 'text/html');
-        var fresh = parsed.querySelectorAll('.gutterpress-chapter[data-chapter-src]');
-        if (fresh.length !== 1) {
-          throw new Error('unexpected chapter fragment shape (' + fresh.length + ' nodes)');
-        }
-        var anchor = capture(active);
-        var imported = activeDocument.importNode(fresh[0], true);
-        imported.setAttribute('data-chapter-src', liveId);
-        var target = liveNodes[0];
-        target.parentNode.insertBefore(imported, target);
-        target.parentNode.removeChild(target);
-
-        var win = fwin(active);
-        if (win && win.Gutterpress && typeof win.Gutterpress.refresh === 'function') {
-          win.Gutterpress.refresh();
-        }
-        var api = win && win.previewAPI;
-        if (api && typeof api.refresh === 'function') api.refresh();
-        restore(active, anchor);
-
-        building = null;
-        reportIncrementalComplete(instance, revision, startedAt);
-      })
-      .catch(function (error) {
-        if (building !== token) return; // already superseded; the newer update owns the outcome
-        building = null;
-        if (window.console) console.warn('[gutterpress] native chapter splice failed; using full reload:', error);
-        swap(instance, revision);
-      });
   }
 
   function tagInitialPages() {
@@ -696,12 +599,7 @@
       message.file &&
       !updateOverlaps
     ) {
-      var activeDocumentForDispatch = fdoc(active);
-      if (activeDocumentForDispatch && isNativeEngine(activeDocumentForDispatch)) {
-        spliceChapterNative(message.file, instance, revision);
-      } else {
-        spliceChapter(message.file, instance, revision);
-      }
+      spliceChapter(message.file, instance, revision);
     } else {
       swap(instance, revision);
     }
