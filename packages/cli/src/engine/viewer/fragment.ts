@@ -630,8 +630,47 @@ export interface FolioViewerApi {
   relayout(): LayoutResult;
 }
 
+/**
+ * An `<img>`'s INTRINSIC SIZE (`naturalWidth`/`naturalHeight`, what the
+ * fragmenter's layout read cares about) is available as soon as the element
+ * reaches `complete` — the browser doesn't need the full pixel decode
+ * `img.decode()` forces. Measured: on this book's 20-image chapter,
+ * `decode()` cost ~400ms of real per-navigation decode work on a fresh
+ * iframe (large print-resolution art, not re-decoded free across
+ * navigations) versus ~80-170ms waiting only for `complete` — the
+ * `load`/`error` event already fires once dimensions are known. Waiting on
+ * decode was measurably wrong for this call site: it bought no additional
+ * layout correctness, only paint readiness we don't need here.
+ */
+function imageIntrinsicSizeReady(img: HTMLImageElement): Promise<void> {
+  if (img.complete) return Promise.resolve();
+  return new Promise((resolve) => {
+    img.addEventListener("load", () => resolve(), { once: true });
+    img.addEventListener("error", () => resolve(), { once: true });
+  });
+}
+
+/**
+ * Wait for whatever the fragmenter is about to measure to actually be ready:
+ * web fonts (line-box heights) and already-requested images (intrinsic size).
+ * Both promises are already-resolved no-ops on a warm load — `document.fonts.ready`
+ * settles immediately once every face is in, and `imageIntrinsicSizeReady`
+ * short-circuits on `img.complete` — so this costs nothing when nothing is
+ * pending; it only holds up a genuinely cold cache, which is exactly the race
+ * this closes (blocker #3: first-load-in-a-fresh-Chromium fragmenting before
+ * fonts/images finish and reporting one fewer page than every later load).
+ */
+export function waitForLayoutReady(doc: Document = document): Promise<void> {
+  const fontsReady = doc.fonts?.ready ?? Promise.resolve();
+  const imagesReady = Promise.all(Array.from(doc.images).map(imageIntrinsicSizeReady));
+  return Promise.all([fontsReady, imagesReady]).then(() => undefined);
+}
+
 /** Fragment the current document. Decoration is a separate layer (decorate.ts). */
 export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioViewerApi> {
+  // Kick off alongside the stylesheet fetches below so a cold cache's font/
+  // image load overlaps network time instead of adding to it.
+  const layoutReady = waitForLayoutReady();
   const css = await loadStyleSources();
   injectViewerCss();
   // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
@@ -647,6 +686,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
   injectBreakMapping(model);
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
+  await layoutReady;
   measure(strips);
   const blanks = compensateRectoBreaks(model, strips);
   if (blanks) measure(strips);

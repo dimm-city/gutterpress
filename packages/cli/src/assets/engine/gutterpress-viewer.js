@@ -17,6 +17,7 @@
   // src/engine/viewer/fragment.ts
   var exports_fragment = {};
   __export(exports_fragment, {
+    waitForLayoutReady: () => waitForLayoutReady,
     strideOf: () => strideOf,
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
@@ -1106,7 +1107,23 @@ body.view-spread .folio-sheet[data-side="verso"] {
     const idx = rects.map((r) => Math.max(0, Math.min(strip.pages - 1, Math.floor((r.left - stripLeft + 1) / stride))));
     return [strip.offset + Math.min(...idx), strip.offset + Math.max(...idx)];
   }
+  function imageIntrinsicSizeReady(img) {
+    if (img.complete)
+      return Promise.resolve();
+    return new Promise((resolve) => {
+      img.addEventListener("load", () => resolve(), { once: true });
+      img.addEventListener("error", () => resolve(), { once: true });
+    });
+  }
+  function waitForLayoutReady(doc = document) {
+    const fontsReady = doc.fonts?.ready ?? Promise.resolve();
+    const imagesReady = Promise.all(Array.from(doc.images).map(imageIntrinsicSizeReady));
+    return Promise.all([fontsReady, imagesReady]).then(() => {
+      return;
+    });
+  }
   async function fragmentDocument(opts = {}) {
+    const layoutReady = waitForLayoutReady();
     const css = await loadStyleSources();
     injectViewerCss();
     const printOnly = mediaPrintBodies(css).join(`
@@ -1121,6 +1138,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
     injectBreakMapping(model);
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
+    await layoutReady;
     measure(strips);
     const blanks = compensateRectoBreaks(model, strips);
     if (blanks)
