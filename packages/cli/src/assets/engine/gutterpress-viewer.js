@@ -57,10 +57,23 @@
      fitZoom()). They MUST compose — writing both to one property makes the
      <body> value shadow the host's and the zoom control goes dead. */
   zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));
-  /* Manual wheel/trackpad scroll settles on a page boundary (single mode) or
-     a recto-page boundary (two-up, below) — \`proximity\`, not \`mandatory\`, so
-     a fast scroll gesture isn't fought to a stop mid-flick. \`x\` only: rows
-     (chapters) stack vertically with no equivalent "page" unit to snap to. */
+  /* Kept for a host that makes THIS element the scroll container. In the
+     ordinary document the viewport scrolls, not <body> — \`overflow: auto\`
+     above propagates to the viewport and leaves <body> itself a non-scroller,
+     so a \`scroll-snap-type\` declared here is inert (measured: with the
+     property only here, a smooth scroll settles exactly where asked, sheet
+     left edges 152–300px off the viewport edge, in every view mode). The
+     rule that actually does the work is on :root below. */
+  scroll-snap-type: x proximity;
+}
+
+/* Manual wheel/trackpad scroll settles on a page boundary (single mode) or a
+   recto-page boundary (two-up, see \`data-side\` below) — \`proximity\`, not
+   \`mandatory\`, so a fast gesture isn't fought to a stop mid-flick. \`x\` only:
+   rows (chapters) stack vertically with no equivalent "page" unit to snap to.
+   Declared on the viewport's real scroll container (:root), scoped by :has()
+   so it can only ever apply to a document the viewer itself owns. */
+:root:has(> body.folio-stage) {
   scroll-snap-type: x proximity;
 }
 
@@ -125,13 +138,15 @@
    is purely a paging/scroll-snap granularity choice: \`pageStep()\`
    (preview-interface.js) already steps next/prevPage by 1 or 2 book pages;
    this is the matching manual-scroll behavior. Two-up snaps ONLY on recto
-   (odd 1-based / \`nth-child(odd)\`) sheets, so a manual scroll settles with a
-   recto+verso PAIR in view together, never split across a snap point — every
-   chapter starts its own strip on a recto by construction (recto/verso
-   blanks), so sheet DOM order within one \`.folio-layer\` already alternates
-   recto/verso starting from the first child. */
-body.view-two-column .folio-sheet:nth-child(even),
-body.view-spread .folio-sheet:nth-child(even) {
+   sheets, so a manual scroll settles with a recto+verso PAIR in view
+   together, never split across a snap point. Keyed off \`data-side\` (written
+   by decorate.ts from the sheet's own 1-based book page number), NOT
+   \`nth-child(odd)\`: a \`.folio-layer\`'s first sheet is NOT always a recto —
+   measured on the 34pp field guide, the layers start at pages 1, 3, 5, 7 and
+   **14** (a verso), so nth-child parity would snap that 20-page run on its
+   VERSO pages, splitting exactly the pairs this is meant to keep together. */
+body.view-two-column .folio-sheet[data-side="verso"],
+body.view-spread .folio-sheet[data-side="verso"] {
   scroll-snap-align: none;
 }
 
@@ -1526,6 +1541,7 @@ body.view-spread .folio-sheet:nth-child(even) {
           const sheet = document.createElement("div");
           sheet.className = "folio-sheet";
           sheet.dataset.page = String(bookIndex + 1);
+          sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
           sheet.style.left = `${sheetLeft}px`;
           sheet.style.top = `${sheetTop}px`;
           sheet.style.setProperty("--folio-page-w", px(ctx.geometry.width));

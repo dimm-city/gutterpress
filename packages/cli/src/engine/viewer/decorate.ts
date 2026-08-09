@@ -288,6 +288,10 @@ export function decorate(
         const sheet = document.createElement("div");
         sheet.className = "folio-sheet";
         sheet.dataset.page = String(bookIndex + 1);
+        // Recto = odd 1-based page (page 1 is a recto). Read by viewer.css's
+        // two-up scroll-snap rule; a `.folio-layer`'s first sheet is NOT
+        // reliably a recto, so DOM-order parity cannot stand in for this.
+        sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
         sheet.style.left = `${sheetLeft}px`;
         sheet.style.top = `${sheetTop}px`;
         sheet.style.setProperty("--folio-page-w", px(ctx.geometry.width));
