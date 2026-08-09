@@ -139,9 +139,11 @@ export async function verifyNativeChromiumMilestone(): Promise<void> {
       `The Gutterpress native engine requires Chromium ${REQUIRED_MILESTONE}+; found ${version}.\n\n` +
         `Install a newer Chrome, Chromium, or Edge, or point CHROMIUM_PATH ` +
         `(or PUPPETEER_EXECUTABLE_PATH) at a ${REQUIRED_MILESTONE}+ binary.\n\n` +
+        // No doc path in this string on purpose: `.reviews/` is gitignored and
+        // `docs/adr/0002` is not published either, so either pointer would send
+        // a user of the shipped binary to a file that does not exist.
         `Note: the desktop app's own bundled Chromium does not satisfy this — ` +
-        `--engine native always drives a separate, external Chromium (see ` +
-        `.reviews/adr/0002).`,
+        `--engine native always drives a separate, external Chromium.`,
       2
     );
   }

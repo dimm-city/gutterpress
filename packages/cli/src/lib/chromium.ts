@@ -110,7 +110,10 @@ export async function requireChromiumExecutable(): Promise<string> {
       "",
       "The Gutterpress desktop app's Paged.js PDF export uses its own bundled",
       "browser and needs no separate install. --engine native PDF export (CLI",
-      "or desktop) always drives a separate, external Chromium — see docs/adr/0002.",
+      // No doc path here on purpose — `docs/adr/0002` is not published in the
+      // repo (the ADR lives in the gitignored `.reviews/`), so a user of the
+      // shipped binary cannot open it.
+      "or desktop) always drives a separate, external Chromium.",
     ].join("\n")
   );
 }
