@@ -541,6 +541,34 @@ export function compensateRectoBreaks(
   return inserted;
 }
 
+/**
+ * Undo `buildStrips()`: move each strip's children back out to its former
+ * position in the flow root, in order, then drop the now-empty wrapper.
+ * `relayout()` must call this before rebuilding the strip list — calling
+ * `buildStrips()` a second time without unwrapping first would explode the
+ * PREVIOUS run's strip elements as if they were authored content, nesting
+ * strips inside strips instead of re-partitioning the original DOM.
+ *
+ * `decorate.ts`'s `ensureRun()` may since have wrapped `strip.el` in a
+ * `.folio-run` container (alongside a sibling `.folio-layer`) — that
+ * decoration chrome has to come out too, or it is left behind as an orphan
+ * in the flow root and the NEXT `buildStrips()` sweeps it up as if it were
+ * authored content (measured: a stale `.folio-run` left two ghost pages of
+ * decoration ahead of the real, rebuilt strip).
+ */
+function unwrapStrips(strips: StripInfo[]): void {
+  for (const strip of strips) {
+    const stripEl = strip.el;
+    const runWrapper = stripEl.parentElement;
+    const removalTarget =
+      runWrapper && runWrapper.classList.contains("folio-run") ? runWrapper : stripEl;
+    const parent = removalTarget.parentNode;
+    if (!parent) continue;
+    while (stripEl.firstChild) parent.insertBefore(stripEl.firstChild, removalTarget);
+    parent.removeChild(removalTarget);
+  }
+}
+
 /** One geometry read per strip; no per-node measurement. */
 export function measure(strips: StripInfo[]): LayoutResult {
   let offset = 0;
@@ -706,7 +734,20 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
       pageOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
     pageRangeOf: (sel) =>
       pageRangeOf(typeof sel === "string" ? document.querySelector(sel)! : sel, strips),
+    // Rebuilds the strip structure from scratch instead of only re-measuring
+    // the strips built at mount. A re-measure-only relayout cannot see a DOM
+    // edit that adds or removes a page-context run (e.g. a spliced-in
+    // `page:`-assigned element) — it would silently keep the old strip
+    // boundaries and report the wrong page count. Measured cost of a full
+    // rebuild is the same order as mount (tens of ms on a real book), so
+    // there is no separate "cheap" path to keep.
     relayout: () => {
+      unwrapStrips(strips);
+      for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+        spacer.remove();
+      const rebuilt = buildStrips(model, opts, authoring);
+      strips.length = 0;
+      strips.push(...rebuilt);
       measure(strips);
       api.blankPages = compensateRectoBreaks(model, strips);
       if (opts.compensateHeaders !== false)

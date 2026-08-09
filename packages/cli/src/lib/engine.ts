@@ -44,6 +44,13 @@ import { getBrowser } from "./browser-pool.ts";
 import { RENDER_TIMEOUT_MS } from "./pagination.ts";
 import { BuildError } from "./build-error.ts";
 
+/** The subset of `BuildOptions` that has a manifest/CLI source today (B.12). */
+export interface NativePdfOptions {
+  title?: string;
+  author?: string;
+  signature?: number;
+}
+
 /**
  * Render `htmlFile` to `outPdf` via the Gutterpress engine. No HTTP staging,
  * no Paged.js polyfill — but the pooled/pre-warmed Chromium IS reused (see
@@ -57,13 +64,14 @@ import { BuildError } from "./build-error.ts";
 export async function buildNativePdf(
   htmlFile: string,
   outPdf: string,
+  options: NativePdfOptions = {},
 ): Promise<BuildDiagnostic[]> {
   let result: Awaited<ReturnType<typeof build>>;
   try {
     const pooled = await getBrowser(RENDER_TIMEOUT_MS);
     const engineBrowser = await connectChromium(pooled.wsEndpoint());
     try {
-      result = await build({ input: htmlFile, browser: engineBrowser });
+      result = await build({ input: htmlFile, browser: engineBrowser, ...options });
     } finally {
       // Drops OUR websocket only (connectChromium's close never touches the
       // pooled browser). Without this, every build in a long-lived process

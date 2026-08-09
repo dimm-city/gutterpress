@@ -41,6 +41,7 @@ export const DTRPG_PRESET: VendorPreset = {
   source: {
     files: null,
   },
+  print: { signature: 1 },
   pdfx: {
     flavor: "x1a",
     icc: "profiles/CGATS21_CRPC1.icc",
@@ -142,6 +143,7 @@ export const BOOK_PRESET: VendorPreset = {
   source: {
     files: null,
   },
+  print: { signature: 1 },
   pdfx: {
     flavor: "x1a",
     icc: "profiles/CGATS21_CRPC1.icc",

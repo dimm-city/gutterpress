@@ -104,6 +104,15 @@ export interface GutterpressManifest {
     icc?: string;
     stripAnnotations?: boolean;
   };
+  /**
+   * Native-engine print-production options with no other manifest home
+   * (`engine/compiler/postprocess.ts` already implements them; this is the
+   * missing manifest surface for reaching them — B.12).
+   */
+  print?: {
+    /** Pad the PDF with blank pages until pageCount is a multiple of this. */
+    signature?: number;
+  };
   page?: {
     width?: number;
     height?: number;
@@ -199,6 +208,9 @@ export interface ResolvedConfig {
     flavor: "x1a" | "x3";
     icc: string;
     stripAnnotations: boolean;
+  };
+  print: {
+    signature: number;
   };
   page: {
     width: number;

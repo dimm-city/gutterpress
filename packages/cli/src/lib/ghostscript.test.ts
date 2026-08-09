@@ -7,6 +7,7 @@ import * as execMod from "./exec";
 import * as toolProbe from "./tool-probe";
 import {
   convertToPdfxCmyk,
+  hasSoftMaskedImages,
   resolveGhostscript,
   stripAnnotations,
 } from "./ghostscript";
@@ -72,15 +73,29 @@ describe("resolveGhostscript", () => {
   });
 });
 
-test("stripAnnotations keeps its qpdf scratch file in staging", async () => {
+test("stripAnnotations keeps its qpdf scratch file in staging, and deletes leftover /Annots", async () => {
   const outputDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-output-"));
   const stagingDir = await mkdtemp(join(tmpdir(), "gutterpress-gs-stage-"));
   try {
     const pdfPath = join(outputDir, "book.pdf");
     await writeFile(pdfPath, "original");
+
+    // A real one-page PDF with a Link annotation qpdf's flatten step would
+    // NOT remove (no appearance stream to draw) — B.12's actual failure
+    // mode. The mocked "qpdf" step is a no-op copy, so `stripAnnotations`'s
+    // own pdf-lib pass is what has to delete it.
+    const { PDFDocument, PDFName, PDFArray } = await import("pdf-lib");
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([100, 100]);
+    const annotDict: any = doc.context.obj({ Type: "Annot", Subtype: "Link" });
+    const annotRef = doc.context.register(annotDict);
+    page.node.set(PDFName.of("Annots"), PDFArray.withContext(doc.context));
+    (page.node.Annots() as any).push(annotRef);
+    const withAnnot = await doc.save();
+
     const run = spyOn(execMod, "run").mockImplementation(async (_cmd, args) => {
       expect(args[1]).toBe(join(stagingDir, "annotations-stripped.pdf"));
-      await writeFile(args[1]!, "stripped");
+      await writeFile(args[1]!, withAnnot);
     });
 
     await stripAnnotations(pdfPath, stagingDir);
@@ -90,7 +105,8 @@ test("stripAnnotations keeps its qpdf scratch file in staging", async () => {
       join(stagingDir, "annotations-stripped.pdf"),
       "--flatten-annotations=all",
     ]);
-    expect(await readFile(pdfPath, "utf8")).toBe("stripped");
+    const result = await PDFDocument.load(await readFile(pdfPath));
+    expect(result.getPage(0).node.has(PDFName.of("Annots"))).toBe(false);
     expect(await readdir(outputDir)).toEqual(["book.pdf"]);
     expect(await readdir(stagingDir)).toEqual([]);
   } finally {
@@ -138,4 +154,25 @@ test("convertToPdfxCmyk uses resolved Ghostscript and stages its definition file
     await rm(outputDir, { recursive: true, force: true });
     await rm(stagingDir, { recursive: true, force: true });
   }
+});
+
+describe("hasSoftMaskedImages", () => {
+  test("detects a real /SMask indirect reference (an alpha-channel image)", () => {
+    const pdf = Buffer.from(
+      "1 0 obj\n<< /Type /XObject /Subtype /Image /SMask 2 0 R >>\nendobj\n"
+    );
+    expect(hasSoftMaskedImages(pdf)).toBe(true);
+  });
+
+  test("does not false-positive on an opaque image's /SMask /None", () => {
+    const pdf = Buffer.from(
+      "1 0 obj\n<< /Type /XObject /Subtype /Image /SMask /None >>\nendobj\n"
+    );
+    expect(hasSoftMaskedImages(pdf)).toBe(false);
+  });
+
+  test("false on a PDF with no image XObjects at all", () => {
+    const pdf = Buffer.from("1 0 obj\n<< /Type /Catalog >>\nendobj\n");
+    expect(hasSoftMaskedImages(pdf)).toBe(false);
+  });
 });

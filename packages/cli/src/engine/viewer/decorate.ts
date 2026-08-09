@@ -187,8 +187,20 @@ export function decorate(
     return stringValueAt(api.stringMap.get(name) ?? [], page, parseWhich(which));
   }
 
-  /** Fill `target-counter()` text in the author's own DOM (screen path). */
+  /**
+   * Fill `target-counter()` text in the author's own DOM (screen path).
+   *
+   * When a link's target genuinely doesn't exist in the book, `target-counter()`
+   * has nothing to resolve — that is a content bug (a typo'd `href`, or a
+   * heading that lost its id), not something the viewer's measurement can
+   * fix, and the compiler's own build already diagnoses it
+   * (`engine.xref.broken` in `compiler/build.ts`). The preview used to leave
+   * a bare "p.?" with no explanation; it now reports the same actionable
+   * message the PDF build does, so the live preview is honest about WHY a
+   * page number is missing instead of just showing an unexplained glyph.
+   */
   function fillXrefs() {
+    const brokenHrefs = new Set<string>();
     for (const xref of model.xrefs) {
       if (!needsMeasurement(xref.content)) continue;
       const base = xref.selector.replace(/::?(after|before)$/, "");
@@ -202,7 +214,11 @@ export function decorate(
       for (const el of els) {
         const text = evaluate(xref.content, {
           attr: (n) => el.getAttribute(n) ?? undefined,
-          targetPage: (url) => api.targets.get(url),
+          targetPage: (url) => {
+            const page = api.targets.get(url);
+            if (page === undefined && url.startsWith("#")) brokenHrefs.add(url);
+            return page;
+          },
           targetText: (url) =>
             (elementForHref(url)?.textContent ?? "").trim() || undefined,
           leader: leaderMarker,
@@ -210,6 +226,10 @@ export function decorate(
         el.setAttribute(`data-folio-${pseudo}`, text);
       }
     }
+    for (const href of brokenHrefs)
+      warnings.push(
+        `The link "${href}" doesn't point at anything in this book, so its page number can't be shown. Check the spelling, or add that id to the heading you meant.`,
+      );
     fillLeaders();
     let style = document.getElementById("folio-xref-style");
     if (!style) {

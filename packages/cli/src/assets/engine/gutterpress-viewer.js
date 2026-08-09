@@ -1064,6 +1064,19 @@ body.view-spread .folio-sheet[data-side="verso"] {
     }
     return inserted;
   }
+  function unwrapStrips(strips) {
+    for (const strip of strips) {
+      const stripEl = strip.el;
+      const runWrapper = stripEl.parentElement;
+      const removalTarget = runWrapper && runWrapper.classList.contains("folio-run") ? runWrapper : stripEl;
+      const parent = removalTarget.parentNode;
+      if (!parent)
+        continue;
+      while (stripEl.firstChild)
+        parent.insertBefore(stripEl.firstChild, removalTarget);
+      parent.removeChild(removalTarget);
+    }
+  }
   function measure(strips) {
     let offset = 0;
     for (const strip of strips) {
@@ -1155,6 +1168,12 @@ body.view-spread .folio-sheet[data-side="verso"] {
       pageOf: (sel) => pageOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
+        unwrapStrips(strips);
+        for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+          spacer.remove();
+        const rebuilt = buildStrips(model, opts, authoring);
+        strips.length = 0;
+        strips.push(...rebuilt);
         measure(strips);
         api.blankPages = compensateRectoBreaks(model, strips);
         if (opts.compensateHeaders !== false)
@@ -1479,6 +1498,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       return stringValueAt(api.stringMap.get(name) ?? [], page, parseWhich(which));
     }
     function fillXrefs() {
+      const brokenHrefs = new Set;
       for (const xref of model.xrefs) {
         if (!needsMeasurement(xref.content))
           continue;
@@ -1493,13 +1513,20 @@ body.view-spread .folio-sheet[data-side="verso"] {
         for (const el of els) {
           const text = evaluate(xref.content, {
             attr: (n) => el.getAttribute(n) ?? undefined,
-            targetPage: (url) => api.targets.get(url),
+            targetPage: (url) => {
+              const page = api.targets.get(url);
+              if (page === undefined && url.startsWith("#"))
+                brokenHrefs.add(url);
+              return page;
+            },
             targetText: (url) => (elementForHref(url)?.textContent ?? "").trim() || undefined,
             leader: leaderMarker
           });
           el.setAttribute(`data-folio-${pseudo}`, text);
         }
       }
+      for (const href of brokenHrefs)
+        warnings.push(`The link "${href}" doesn't point at anything in this book, so its page number can't be shown. Check the spelling, or add that id to the heading you meant.`);
       fillLeaders();
       let style = document.getElementById("folio-xref-style");
       if (!style) {

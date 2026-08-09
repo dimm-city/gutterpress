@@ -12,6 +12,7 @@ import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium
 import { prewarmBrowser, closeBrowser } from "./browser-pool";
 import {
   convertToPdfxCmyk,
+  hasSoftMaskedImages,
   stampCreator,
   stripAnnotations,
 } from "./ghostscript";
@@ -731,7 +732,11 @@ class PdfOutput implements OutputStrategy {
       if (config.engine === "native") {
         log.info("Rendering HTML to PDF via the Gutterpress engine (native Chromium pagination)");
         const { buildNativePdf } = await import("./engine");
-        engineDiagnostics = await buildNativePdf(htmlFile, rawPdf);
+        engineDiagnostics = await buildNativePdf(htmlFile, rawPdf, {
+          title: config.title,
+          author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
+          signature: config.print.signature,
+        });
         for (const d of engineDiagnostics) log.warn(d.message);
       } else {
         log.info("Rendering HTML to PDF via Chromium+Paged.js");
@@ -772,6 +777,27 @@ class PdfOutput implements OutputStrategy {
       if (pdfxMode) {
         const icc = opts.iccPath ?? config.pdfx.icc;
         effectiveIccPath = await resolveIccProfile(icc, manifestDir, opts.iccPath);
+
+        // B.10: PDF/X-1a and PDF/X-3 are built at PDF 1.3 compatibility,
+        // which cannot represent live transparency at all — an image with
+        // an alpha channel forces Ghostscript to flatten whatever page it's
+        // on into a single raster (fonts and searchable text lost on that
+        // page). This is not fixable without changing PDF/X conformance
+        // (PDF/X-1a and PDF/X-3 are both PDF-1.3-based by spec, not a
+        // Gutterpress default), so warn precisely rather than let the
+        // author discover a fontless page after the fact.
+        if (hasSoftMaskedImages(await fsp.readFile(rawPdf))) {
+          log.warn(
+            "This book includes images with transparency (an alpha channel). " +
+              `PDF/${pdfxMode === "x1a" ? "X-1a" : "X-3"} has no way to represent that ` +
+              "(both are based on PDF 1.3, which predates PDF transparency), so " +
+              "Ghostscript will flatten every page containing one into a single raster " +
+              "image — that page loses its embedded fonts and searchable text in the " +
+              "PDF/X output. To keep vector text, flatten the image against its intended " +
+              "background before including it (export it with no alpha channel), or build " +
+              "--format pdf instead of pdfx if this book doesn't need print-ready CMYK."
+          );
+        }
 
         const shouldStrip = opts.stripAnnotations ?? config.pdfx.stripAnnotations;
         shouldStripAnnotations = shouldStrip;

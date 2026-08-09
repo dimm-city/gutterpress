@@ -80,12 +80,48 @@ export async function resolveGhostscript(
 }
 
 /**
- * Strip all annotations from a PDF using qpdf.
+ * Whether `pdfBytes` contains at least one image soft mask (`/SMask N 0 R`,
+ * an indirect reference to a real mask object — not the literal `/SMask
+ * /None` an opaque image XObject can also carry, which this pattern does
+ * not match).
+ *
+ * PDF/X-1a and PDF/X-3 (as this codebase generates them, `-dCompatibilityLevel=1.3`
+ * in {@link convertToPdfxCmyk}) are both based on PDF 1.3, which predates the
+ * PDF 1.4 transparency model entirely — a soft-masked (alpha-channel) image
+ * has nothing a PDF-1.3 file can represent it with. Ghostscript's only
+ * PDF/X-compliant option is to flatten the page it appears ON down to a
+ * single raster image (B.10, measured: a book with alpha-channel artwork
+ * loses every embedded font and all searchable text in its PDF/X output,
+ * identically on both engines — this is a Ghostscript/PDF-1.3 property, not
+ * an engine bug). Detecting it lets the build warn the author PRECISELY,
+ * instead of them discovering a fontless PDF/X file after the fact.
+ */
+export function hasSoftMaskedImages(pdfBytes: Uint8Array): boolean {
+  // PDF object dictionaries are literal ASCII even when content/image
+  // streams are compressed, so a plain byte scan is enough — no PDF parser
+  // needed for a yes/no "does this reference exist" check.
+  return /\/SMask\s+\d+\s+\d+\s+R/.test(Buffer.from(pdfBytes).toString("latin1"));
+}
+
+/**
+ * Strip all annotations from a PDF.
  *
  * Chromium embeds internal link annotations (from HTML `id` attributes)
  * that are not permitted in PDF/X output. Removing them before Ghostscript
  * prevents the "Annotation not TrapNet or PrinterMark" warning and keeps
  * the output in strict PDF/X compliance.
+ *
+ * Two passes, because neither alone removes every annotation (B.12,
+ * measured: 20 `/Subtype /Link` objects survived qpdf's step alone, before
+ * AND after):
+ *  1. qpdf `--flatten-annotations=all` draws any annotation WITH an
+ *     appearance stream (form fields, free text, …) into the page content
+ *     before removing it, so visible annotation content is preserved rather
+ *     than silently deleted.
+ *  2. Link annotations have no appearance stream — that is what makes them
+ *     invisible — so qpdf's flatten step has nothing to draw and leaves them
+ *     in `/Annots` untouched. Delete whatever `/Annots` entries remain
+ *     directly (pdf-lib, in-process, no second external tool).
  */
 export async function stripAnnotations(
   pdfPath: string,
@@ -98,6 +134,14 @@ export async function stripAnnotations(
   } finally {
     await unlink(tmp).catch(() => {});
   }
+
+  const { PDFDocument, PDFName } = await import("pdf-lib");
+  const bytes = await readFile(pdfPath);
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const annots = PDFName.of("Annots");
+  for (const page of doc.getPages()) page.node.delete(annots);
+  const out = await doc.save();
+  await writeFile(pdfPath, out);
 }
 
 type PdfxFlavor = "x1a" | "x3";
