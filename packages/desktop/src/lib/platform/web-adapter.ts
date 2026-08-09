@@ -93,6 +93,33 @@ const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 // offline.
 const VENDOR_PAGED_POLYFILL_URL = "/vendor/paged.polyfill.js";
 
+/**
+ * Read the project's configured engine from `manifest.yaml`'s top-level
+ * `engine:` scalar, or `"paged"` if the manifest is absent/unreadable or the
+ * key isn't set (matching the CLI's own default — `manifest.ts`'s
+ * `c.engine ?? m.engine ?? "paged"`).
+ *
+ * Deliberately NOT a full YAML parse: this adapter doesn't have a manifest
+ * parser at all yet (see `renderBookHtml`'s "KNOWN PHASE-2 GAP" comment —
+ * `source.files`/`plugins` aren't parsed here either), and pulling in a full
+ * parser for one scalar is out of scope for closing WP-C item 2's "silent
+ * divergence" bug. A top-level `engine: native|paged` line is simple,
+ * well-defined YAML regardless of parser, so a narrow regex is honest here in
+ * a way it would not be for nested manifest structure.
+ */
+async function readProjectEngine(
+  root: FileSystemDirectoryHandle,
+): Promise<"paged" | "native"> {
+  let text: string;
+  try {
+    text = await readFileFromRoot(root, "manifest.yaml");
+  } catch {
+    return "paged";
+  }
+  const m = /^engine:\s*["']?(paged|native)["']?\s*$/m.exec(text);
+  return m?.[1] === "native" ? "native" : "paged";
+}
+
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
 // IndexedDB object-store names + record shapes the adapter persists. Handles are
 // stored verbatim (FileSystemDirectoryHandle is structured-cloneable); the rest
@@ -775,13 +802,47 @@ export class WebAdapter implements Platform {
       .filter((s) => s.length > 0)
       .join("\n\n");
 
+    // Read the project's configured engine (manifest.yaml's top-level
+    // `engine:` scalar) so this render can at least know which engine the
+    // author asked for, rather than silently assuming Paged.js the way this
+    // adapter always used to (see readProjectEngine's doc comment for why
+    // the result below is always "paged" today regardless of what this
+    // returns).
+    const configuredEngine = await readProjectEngine(root);
+    if (configuredEngine === "native") {
+      // Native engine requested, but not honoured: see readProjectEngine's
+      // doc comment and WP-C item 2 (docs/native-engine-acceptance-gate.md).
+      // Logged instead of silent so a native-engine author who opens their
+      // book in the browser PWA target learns WHY it paginates differently
+      // than the CLI/desktop build, instead of just seeing a mismatch.
+      console.warn(
+        `[web render] "${input.displayName}" is configured for engine:"native", but the ` +
+          "browser/PWA target does not ship the native viewer bundle yet — " +
+          "rendering with the Paged.js polyfill instead. This is a known, tracked " +
+          "gap (docs/native-engine-acceptance-gate.md, WP-C item 2), not a silent " +
+          "divergence.",
+      );
+    }
+
     // The assembler inlines `projectCss` into its own <style> block, in the
     // right cascade position — the browser has no separate inlining step to do.
+    //
+    // engine is deliberately PINNED to "paged" here, regardless of
+    // `configuredEngine` above: the native viewer bundle
+    // (`gutterpress-viewer.js`) is not yet shipped under this app's
+    // `static/` dir (unlike `/vendor/paged.polyfill.js`), so there is
+    // nothing for a native marker to load in this browser context. Honouring
+    // the manifest fully — matching the CLI/desktop for the same project —
+    // is WP-C item 2's remaining work; until then this stays an explicit,
+    // logged pin rather than an accidental default (assembleBookHtml's
+    // `engine` option defaults to "paged" when omitted, which is what
+    // silently happened here before).
     let html = await assembleBookHtml({
       files: md,
       readText: (relPath) => readFileFromRoot(root, relPath),
       projectCss,
       title: input.displayName,
+      engine: "paged",
     });
 
     // #33 Phase 4 (offline): the render core emits a stable, src-less polyfill
@@ -817,6 +878,10 @@ export class WebAdapter implements Platform {
       port: 0, // no server on web
       input: args.input.key,
       title: args.input.displayName ?? null,
+      // Always "paged": renderBookHtml pins the browser/PWA target to
+      // Paged.js regardless of the manifest (see its own comment) — this
+      // reports what's actually rendering, not what was configured.
+      engine: "paged",
     };
   }
 

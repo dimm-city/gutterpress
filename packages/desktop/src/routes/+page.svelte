@@ -1367,7 +1367,14 @@
   const autoSaveDelaySink = settingsChangeGuard<number>((delay) => book?.setSaveDelayMs(delay));
   const recoverySink = settingsChangeGuard<boolean>((enabled) => book?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
-    (bg) => client?.injectStyles("desktop-canvas", buildDesktopStyles(bg)),
+    (bg) => {
+      // Paged.js leg only — see PreviewEventDeps.engine's doc comment
+      // (preview-event-controller.ts). Every selector this CSS targets is
+      // `.pagedjs_*`, which the native viewer's DOM never has.
+      if (lifecycle.previewEngine === "paged") {
+        client?.injectStyles("desktop-canvas", buildDesktopStyles(bg));
+      }
+    },
     () => !!client,
   );
   // Split ratio (#103): the durable settings value seeds the controller (which
@@ -2168,6 +2175,7 @@
     zoom: () => zoom,
     viewMode: () => viewMode,
     bgColor: () => bgColor,
+    engine: () => lifecycle.previewEngine,
     setRendering: (v) => (lifecycle.rendering = v),
     getRendering: () => lifecycle.rendering,
     setRenderProgressPage: (v) => (lifecycle.renderProgressPage = v),

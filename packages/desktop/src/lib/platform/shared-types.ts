@@ -662,6 +662,13 @@ export interface PreviewStartSuccess {
   port: number;
   input: string;
   title: string | null;
+  /**
+   * The engine actually rendering this preview ("paged" if the manifest's
+   * engine couldn't be determined). Lets iframe-only preview chrome (e.g.
+   * `iframe-styles.ts`'s Paged.js-specific CSS) apply itself only when it
+   * will actually match something in the iframe's DOM.
+   */
+  engine: "paged" | "native";
 }
 
 export interface PreviewStartFailure {

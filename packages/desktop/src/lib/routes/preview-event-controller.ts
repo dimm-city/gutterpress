@@ -87,6 +87,15 @@ export interface PreviewEventDeps {
   zoom: () => string;
   viewMode: () => "single" | "two-column";
   bgColor: () => string;
+  /**
+   * The engine rendering the CURRENT preview (`ProjectLifecycleController`'s
+   * `previewEngine`, sourced from `PreviewStartSuccess.engine`). Gates
+   * `$lib/iframe-styles`' injection below: every selector in that file
+   * targets `.pagedjs_*` classes the native viewer's DOM never has (it uses
+   * `.folio-*`), so injecting it there is dead weight, not a fix for
+   * anything — see docs/native-engine-acceptance-gate.md, WP-C item 3.
+   */
+  engine: () => "paged" | "native";
   // ── Render-phase state sinks / getters ──────────────────────────────────
   setRendering: (v: boolean) => void;
   getRendering: () => boolean;
@@ -182,8 +191,11 @@ export class PreviewEventController {
     // and unnecessary settings writes.
     if (!hotReload) {
       const client = d.client();
-      client?.injectStyles("desktop-canvas", buildDesktopStyles(d.bgColor()));
-      client?.injectStyles("debug", DEBUG_STYLES);
+      // Paged.js leg only — see `engine`'s doc comment above.
+      if (d.engine() === "paged") {
+        client?.injectStyles("desktop-canvas", buildDesktopStyles(d.bgColor()));
+        client?.injectStyles("debug", DEBUG_STYLES);
+      }
       const auto = d.viewportWidth() < 1280 ? "single" : "two-column";
       const { page: restorePage, viewMode: restoreMode } = d.consumePendingRestore();
       const mode = restoreMode ?? (d.zoomView.userSetViewMode ? d.viewMode() : auto);

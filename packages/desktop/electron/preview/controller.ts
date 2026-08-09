@@ -168,12 +168,18 @@ export class PreviewOpenController {
 
     let lib: LibModule | null = null;
     let title = path.basename(openedDir);
+    // Default "paged": if the manifest can't be loaded (malformed/missing),
+    // startPreviewServer's own generation reports that failure below, and
+    // "paged" matches the CLI's own no-manifest default (manifest.ts's
+    // `c.engine ?? m.engine ?? "paged"`).
+    let engine: "paged" | "native" = "paged";
     let result: PreviewStartResult;
     try {
       lib = await this.deps.loadLib();
       try {
         const { manifest } = await lib.loadManifestWithPath(openedDir);
         if (manifest.title) title = manifest.title;
+        engine = manifest.engine;
       } catch {
         /* malformed/missing manifest is reported by preview generation below */
       }
@@ -195,6 +201,7 @@ export class PreviewOpenController {
         port: activePreview.port,
         input: openedDir,
         title,
+        engine,
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

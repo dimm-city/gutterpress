@@ -66,6 +66,7 @@ export type ProjectLifecyclePreviewResult =
       previewStarted: true;
       url: string;
       title: string | null;
+      engine: "paged" | "native";
     }
   | {
       previewStarted: false;
@@ -188,6 +189,8 @@ export interface ProjectLifecycleDeps {
 export class ProjectLifecycleController {
   // ── Public rune state (read by the template; mutated only via methods) ──────
   previewUrl = $state<string | null>(null);
+  /** The engine actually rendering `previewUrl` — see PreviewStartSuccess's doc comment. */
+  previewEngine = $state<"paged" | "native">("paged");
   currentDir = $state<string | null>(null);
   /** Adapter-precomputed display name (#49) for the open folder, or null when opened by raw key. */
   currentFolderDisplayName = $state<string | null>(null);
@@ -235,6 +238,7 @@ export class ProjectLifecycleController {
    */
   private resetWorkspace(): void {
     this.previewUrl = null;
+    this.previewEngine = "paged";
     this.currentDir = null;
     this.currentFolderDisplayName = null;
     this.currentUrl = null;
@@ -375,6 +379,7 @@ export class ProjectLifecycleController {
         await Promise.resolve();
         if (superseded()) return false;
         this.previewUrl = data.url;
+        this.previewEngine = data.engine;
         this.rendering = true;
       }
       // Settle the restore-state read here, where it is applied.
@@ -462,6 +467,7 @@ export class ProjectLifecycleController {
       await Promise.resolve();
       if (epoch !== this.folderOpenEpoch) return false;
       this.previewUrl = data.url;
+      this.previewEngine = data.engine;
       this.rendering = true;
       return true;
     } catch (e) {

@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach } from "bun:test";
+import { test, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import { ElectronAdapter } from "../../src/lib/platform/electron-adapter";
 import { WebAdapter } from "../../src/lib/platform/web-adapter";
 import { InMemoryWebStore } from "../../src/lib/platform/web-store";
@@ -507,6 +507,66 @@ test("WebAdapter.startPreview revokes the prior URL before minting a new one (#3
     expect(urls.revoked).toContain(first.url);
     expect(urls.revoked).not.toContain(second.url);
   } finally {
+    urls.restore();
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
+test("WebAdapter.startPreview pins engine:native projects to Paged.js, explicitly and loudly (WP-C item 2)", async () => {
+  // The browser/PWA target doesn't ship the native viewer bundle yet (no
+  // /vendor equivalent, unlike paged.polyfill.js) — see
+  // docs/native-engine-acceptance-gate.md, WP-C item 2. A project configured
+  // for engine:"native" must still render (with Paged.js), but the pin must
+  // be logged, not silent, so an author sees a divergence explanation instead
+  // of just a mismatch versus the CLI/desktop build.
+  const root = makeFsaTree();
+  root.addFile("manifest.yaml", "title: Native Book\nengine: native\n");
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
+  const urls = stubObjectUrls();
+  const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const p = new WebAdapter(new InMemoryWebStore());
+    const ref = (await p.openFolder())!;
+
+    const result = await p.startPreview({ input: ref });
+
+    const html = await urls.blobs.get(result.url)!.text();
+    // Pinned to Paged.js: the polyfill is still what actually loads.
+    expect(html).toContain('src="/vendor/paged.polyfill.js"');
+
+    // The pin is explained, not silent.
+    const warned = warnSpy.mock.calls.some((args) =>
+      String(args[0]).includes('engine:"native"'),
+    );
+    expect(warned).toBe(true);
+  } finally {
+    warnSpy.mockRestore();
+    urls.restore();
+    // @ts-expect-error test global
+    globalThis.window = undefined;
+  }
+});
+
+test("WebAdapter.startPreview stays quiet about engine when the manifest doesn't request native (WP-C item 2)", async () => {
+  const root = makeFsaTree();
+  root.addFile("manifest.yaml", "title: Paged Book\nengine: paged\n");
+  // @ts-expect-error test global
+  globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
+  const urls = stubObjectUrls();
+  const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const p = new WebAdapter(new InMemoryWebStore());
+    const ref = (await p.openFolder())!;
+    await p.startPreview({ input: ref });
+
+    const warned = warnSpy.mock.calls.some((args) =>
+      String(args[0]).includes('engine:"native"'),
+    );
+    expect(warned).toBe(false);
+  } finally {
+    warnSpy.mockRestore();
     urls.restore();
     // @ts-expect-error test global
     globalThis.window = undefined;
