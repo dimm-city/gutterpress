@@ -99,7 +99,7 @@ export interface ContextMenuDeps {
    * destination, closing the menu itself is this controller's job, not the
    * overlay's.
    */
-  openBlockOverlay: (chapter: string, range: SourceRange, ref: string | null) => void;
+  openBlockOverlay: (chapter: string, range: SourceRange) => void;
 }
 
 export interface ContextMenuItem {
@@ -204,7 +204,6 @@ export class ContextMenuController {
       range: detail.range ?? null,
       blockTag: detail.blockTag ?? null,
       split: !!detail.split,
-      ref: detail.ref ?? null,
       rect: detail.rect ?? null,
       image: detail.image ?? null,
       link: detail.link ?? null,
@@ -592,7 +591,7 @@ export class ContextMenuController {
         label: "Edit this block",
         enabled: true,
         run: () => {
-          this.deps.openBlockOverlay(chapter, range, target.ref);
+          this.deps.openBlockOverlay(chapter, range);
           this.close();
         },
       },

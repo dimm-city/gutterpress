@@ -8,7 +8,7 @@
  *
  * Ownership split from `BlockEditOverlay.svelte`: this controller owns
  * geometry, the captured-at-open patch context (chapter/range/expected/
- * trailingBlank/generation/ref), the bridge calls (`getRectsFor`/
+ * trailingBlank/generation), the bridge calls (`getRectsFor`/
  * `setEditMask`), and the dismissal-event subscription
  * (`renderingComplete`/`pageChanged`) — it has ZERO DOM / CodeMirror
  * awareness. The component owns the live CodeMirror view and therefore the
@@ -29,8 +29,8 @@ import { buildLineStarts, charRange } from "$lib/editor/source-range";
 /** Minimal preview-client surface the controller drives. */
 export interface BlockOverlayClient {
   on(fn: (e: PreviewEvent) => void): () => void;
-  getRectsFor(target: { ref: string } | { chapter: string; range: SourceRange }): Promise<RectsForResult>;
-  setEditMask(spec: { ref: string; masked: boolean }): Promise<{ count: number }>;
+  getRectsFor(target: { chapter: string; range: SourceRange }): Promise<RectsForResult>;
+  setEditMask(spec: { chapter: string; range: SourceRange; masked: boolean }): Promise<{ count: number }>;
 }
 
 export interface BlockOverlayRect {
@@ -44,7 +44,6 @@ export interface BlockOverlayRect {
 export interface BlockOverlayTarget {
   chapter: string;
   range: SourceRange;
-  ref: string | null;
 }
 
 export interface BlockOverlayDeps {
@@ -118,7 +117,6 @@ interface Captured {
   expected: string;
   trailingBlank: string;
   expectedGeneration: number;
-  ref: string | null;
 }
 
 export class BlockOverlayController {
@@ -195,7 +193,6 @@ export class BlockOverlayController {
       expected: slice,
       trailingBlank,
       expectedGeneration: this.deps.commitEngine.generation,
-      ref: target.ref,
     };
     this.initialText = editable;
     this.open = true;
@@ -208,11 +205,9 @@ export class BlockOverlayController {
     }
     let result: RectsForResult;
     try {
-      result = target.ref
-        ? await client.getRectsFor({ ref: target.ref })
-        : await client.getRectsFor({ chapter: target.chapter, range: target.range });
+      result = await client.getRectsFor({ chapter: target.chapter, range: target.range });
     } catch {
-      result = { ref: null, rects: [] };
+      result = { rects: [] };
     }
     if (!this.open || this.captured?.chapter !== target.chapter) return; // closed/reopened while awaiting
     if (!result.rects.length) {
@@ -220,9 +215,8 @@ export class BlockOverlayController {
       this.close();
       return;
     }
-    this.captured.ref = result.ref ?? target.ref;
     this.applyRects(result.rects);
-    if (this.captured.ref) void client.setEditMask({ ref: this.captured.ref, masked: true });
+    void client.setEditMask({ chapter: target.chapter, range: target.range, masked: true });
   }
 
   /** Discard the in-progress edit (Escape). */
@@ -258,18 +252,22 @@ export class BlockOverlayController {
 
   /**
    * Defense-in-depth (plan §5.1/§5.6): ALWAYS issues `setEditMask({masked:
-   * false})` for whatever ref is currently captured. `commit()`/`cancel()`
+   * false})` for whatever block is currently captured. `commit()`/`cancel()`
    * already call this; `BlockEditOverlay.svelte`'s `onMount` cleanup calls it
    * again unconditionally on EVERY unmount path, including ones that skip
    * `commit()`/`cancel()` entirely (a project switch, an error unmount) — the
    * "the iframe reload clears masks anyway" argument only covers a
    * splice/swap, not SPA-side teardown. Idempotent: removing a class that
-   * isn't there, or unmasking a ref with zero live fragments, is a no-op.
+   * isn't there, or unmasking a range with zero live fragments, is a no-op.
    */
   teardown(): void {
-    const ref = this.captured?.ref;
+    const captured = this.captured;
     const client = this.deps.client();
-    if (ref && client) void client.setEditMask({ ref, masked: false }).catch(() => {});
+    if (captured && client) {
+      void client
+        .setEditMask({ chapter: captured.chapter, range: captured.range, masked: false })
+        .catch(() => {});
+    }
   }
 
   private close(): void {
@@ -283,14 +281,19 @@ export class BlockOverlayController {
   /**
    * `renderingComplete`: a chapter splice just replaced the DOM (our own
    * commit already closed the overlay by the time this fires; an EXTERNAL
-   * change — another save, a watcher reload — may still be open). Fresh DOM
-   * means fresh `data-ref`s, so this MUST use the `{chapter, range}`
-   * fallback, never the stale `ref`. If the block no longer resolves (edited
-   * away / merged), the in-progress edit is discarded and the overlay closes
-   * with a toast — plan §1 principle 3 ("fail safe, not fail wrong"): once
-   * the underlying content can no longer be verified to be what's on screen,
-   * silently continuing to edit it is not safe, even though the commit
-   * engine's own mismatch gate would ALSO catch this at commit time.
+   * change — another save, a watcher reload — may still be open). Re-resolves
+   * by `{chapter, range}` — the one identity that survives a fresh render on
+   * BOTH engines (a source range is duplicated verbatim onto every split
+   * fragment, so it groups a Paged.js clone-set exactly like the old
+   * `data-ref` did, with no separate ref bookkeeping needed). Since fresh DOM
+   * means the mask class from before the splice is gone, always re-issue
+   * `setEditMask(true)` against the (possibly new) elements. If the block no
+   * longer resolves (edited away / merged), the in-progress edit is discarded
+   * and the overlay closes with a toast — plan §1 principle 3 ("fail safe,
+   * not fail wrong"): once the underlying content can no longer be verified
+   * to be what's on screen, silently continuing to edit it is not safe, even
+   * though the commit engine's own mismatch gate would ALSO catch this at
+   * commit time.
    */
   private async reanchorAfterRender(): Promise<void> {
     if (!this.open || !this.captured) return;
@@ -304,38 +307,34 @@ export class BlockOverlayController {
     try {
       result = await client.getRectsFor({ chapter, range });
     } catch {
-      result = { ref: null, rects: [] };
+      result = { rects: [] };
     }
     if (!this.open || this.captured?.chapter !== chapter) return; // closed while awaiting
     if (!result.rects.length) {
       this.closeWithToast();
       return;
     }
-    const oldRef = this.captured.ref;
-    const newRef = result.ref;
-    this.captured.ref = newRef;
     this.applyRects(result.rects);
-    if (newRef) void client.setEditMask({ ref: newRef, masked: true });
-    if (oldRef && oldRef !== newRef) void client.setEditMask({ ref: oldRef, masked: false }).catch(() => {});
+    void client.setEditMask({ chapter, range, masked: true });
   }
 
   /**
    * `pageChanged` (zoom / view-mode / page nav): the DOM itself did not
-   * change, only layout — the captured `ref` is still valid, so this re-fetch
-   * uses the FAST `{ref}` path, purely to refresh geometry.
+   * change, only layout — re-fetch by the same `{chapter, range}`, purely to
+   * refresh geometry.
    */
   private async reanchorAfterViewportChange(): Promise<void> {
-    if (!this.open || !this.captured?.ref) return;
+    if (!this.open || !this.captured) return;
     const client = this.deps.client();
     if (!client) return;
-    const ref = this.captured.ref;
+    const { chapter, range } = this.captured;
     let result: RectsForResult;
     try {
-      result = await client.getRectsFor({ ref });
+      result = await client.getRectsFor({ chapter, range });
     } catch {
       return;
     }
-    if (!this.open || this.captured?.ref !== ref) return;
+    if (!this.open || this.captured?.chapter !== chapter) return;
     if (result.rects.length) this.applyRects(result.rects);
   }
 

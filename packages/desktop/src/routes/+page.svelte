@@ -2143,7 +2143,7 @@
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
-    openBlockOverlay: (chapter, range, ref) => void blockOverlay.show({ chapter, range, ref }),
+    openBlockOverlay: (chapter, range) => void blockOverlay.show({ chapter, range }),
   });
 
   // ----------------------------------------------------------------

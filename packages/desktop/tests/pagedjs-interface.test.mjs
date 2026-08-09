@@ -391,7 +391,6 @@ async function main() {
     assert.equal(detail.chapter, "a.md");
     assert.equal(detail.blockTag, "p");
     assert.equal(detail.split, false);
-    assert.equal(detail.ref, "plain-ref");
     assert.equal(detail.image, null);
     assert.equal(detail.link, null);
     assert.equal(detail.selection, null);
@@ -428,7 +427,6 @@ async function main() {
     const detail = api.getContextTargetAt({ x: 1, y: 1 });
     assert.equal(detail.kind, "marker");
     assert.deepEqual(detail.range, [3, 4]);
-    assert.equal(detail.ref, "break-ref");
   }
 
   // kind: 'none' — no [data-source-range] ancestor (margin box content, e.g.
@@ -440,7 +438,6 @@ async function main() {
     assert.equal(detail.kind, "none");
     assert.equal(detail.range, null);
     assert.equal(detail.chapter, null);
-    assert.equal(detail.ref, null);
     assert.equal(detail.blockTag, null);
   }
 
@@ -463,7 +460,6 @@ async function main() {
     assert.equal(detail.kind, "block");
     assert.equal(detail.blockTag, "code", "resolves to the <code> descendant, not <pre>");
     assert.deepEqual(detail.range, [4, 5]);
-    assert.equal(detail.ref, "code-ref");
   }
   // A click directly on the <code> resolves identically.
   {
@@ -471,12 +467,11 @@ async function main() {
     document.elementFromPoint = () => document.getElementById("code");
     const detail = api.getContextTargetAt({ x: 1, y: 1 });
     assert.equal(detail.blockTag, "code");
-    assert.equal(detail.ref, "code-ref");
   }
 
-  // Split-fragment grouping: fragments duplicate data-source-range and
-  // data-ref; only the clone carrying data-split-from/-to reports split:true
-  // — data-ref is the one identity that groups them (never `id`).
+  // Split-fragment grouping: fragments duplicate data-source-range; only the
+  // clone carrying data-split-from/-to reports split:true — data-source-range
+  // is the one identity that groups them (never `id`).
   {
     const { document, api } = loadInterfaceWithDom(contextHtml);
     document.elementFromPoint = () => document.getElementById("frag1");
@@ -485,9 +480,7 @@ async function main() {
     const d2 = api.getContextTargetAt({ x: 1, y: 1 });
     assert.equal(d1.split, false);
     assert.equal(d2.split, true);
-    assert.equal(d1.ref, "split-ref");
-    assert.equal(d2.ref, "split-ref", "both fragments share the one stable identity");
-    assert.deepEqual(d1.range, d2.range, "split fragments duplicate data-source-range");
+    assert.deepEqual(d1.range, d2.range, "split fragments duplicate data-source-range — that's their shared identity");
   }
 
   // JSON-cloneability: the payload crosses two postMessage boundaries — no
@@ -551,7 +544,7 @@ async function main() {
 
   // getProtocolVersion() is at least 4 (getContextTargetAt's own protocol
   // floor) — the exact current value is asserted once, definitively, by the
-  // "protocol v5" check further down; this just pins the v4 floor here so a
+  // "protocol v6" check further down; this just pins the v4 floor here so a
   // future regression in THIS section's own feature set is caught locally.
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
@@ -642,25 +635,27 @@ async function main() {
 
   console.log("[desktop-test] PASS contextMenuRequested mouse + keyboard listeners");
 
-  // ── getRectsFor / setEditMask (protocol v5) ──────────────────────────────────
-  // docs/inline-editing-plan.md §5.3.
+  // ── getRectsFor / setEditMask (protocol v6) ──────────────────────────────────
+  // docs/inline-editing-plan.md §5.3. WORK PACKAGE B item 2 dropped `data-ref`
+  // from the wire contract entirely — `{chapter, range}` is the only target
+  // shape now, on both engines.
   const overlayHtml = `
     <div class="pagedjs_pages">
       <div class="pagedjs_page">
-        <div class="chapter" data-chapter-src="a.md" data-source-range="0:10" data-ref="chapter-ref">
-          <p id="p1" data-source-range="0:1" data-ref="p1-ref">Solo block</p>
-          <p id="frag1" data-source-range="1:3" data-ref="split-ref">first half</p>
+        <div class="chapter" data-chapter-src="a.md" data-source-range="0:10">
+          <p id="p1" data-source-range="0:1">Solo block</p>
+          <p id="frag1" data-source-range="1:3">first half</p>
         </div>
       </div>
       <div class="pagedjs_page">
-        <div class="chapter" data-chapter-src="a.md" data-source-range="0:10" data-ref="chapter-ref">
-          <p id="frag2" data-source-range="1:3" data-ref="split-ref" data-split-from="split-ref">second half</p>
+        <div class="chapter" data-chapter-src="a.md" data-source-range="0:10">
+          <p id="frag2" data-source-range="1:3" data-split-from="split">second half</p>
         </div>
       </div>
     </div>`;
 
-  // getRectsFor({ref}) groups every fragment sharing the SAME data-ref, across
-  // pages, and reports each fragment's own page index.
+  // getRectsFor({chapter, range}) groups every fragment sharing the SAME
+  // source range, across pages, and reports each fragment's own page index.
   {
     const { document, api } = loadInterfaceWithDom(overlayHtml);
     const frag1 = document.getElementById("frag1");
@@ -668,8 +663,7 @@ async function main() {
     frag1.getBoundingClientRect = () => ({ top: 100, left: 10, bottom: 140, right: 200, width: 190, height: 40 });
     frag2.getBoundingClientRect = () => ({ top: 20, left: 10, bottom: 60, right: 200, width: 190, height: 40 });
     // pageIndexOf() needs the page list refreshed + closest('.pagedjs_page') to resolve.
-    const result = api.getRectsFor({ ref: "split-ref" });
-    assert.equal(result.ref, "split-ref");
+    const result = api.getRectsFor({ chapter: "a.md", range: [1, 3] });
     assert.equal(result.rects.length, 2, "both split fragments are returned");
     assert.deepEqual(result.rects[0], { top: 100, left: 10, width: 190, height: 40, page: 1 });
     assert.deepEqual(result.rects[1], { top: 20, left: 10, width: 190, height: 40, page: 2 });
@@ -677,43 +671,34 @@ async function main() {
     assert.deepEqual(JSON.parse(JSON.stringify(result)), result);
   }
 
-  // getRectsFor({ref}) for an unknown/stale ref (e.g. a splice already
-  // replaced the DOM) returns an empty, ref:null result rather than throwing.
+  // getRectsFor({chapter, range}) for a range that no longer matches anything
+  // (e.g. a splice already replaced the DOM) returns an empty result rather
+  // than throwing.
   {
     const { api } = loadInterfaceWithDom(overlayHtml);
-    const result = api.getRectsFor({ ref: "does-not-exist" });
-    assert.deepEqual(result, { ref: null, rects: [] });
+    const result = api.getRectsFor({ chapter: "a.md", range: [99, 100] });
+    assert.deepEqual(result, { rects: [] });
   }
 
-  // getRectsFor({chapter, range}) — the POST-SPLICE FALLBACK: a fresh render
-  // mints fresh data-refs, so resolution must go by source range + chapter,
-  // reading back whatever data-ref the fresh DOM assigned.
   {
     const { document, api } = loadInterfaceWithDom(overlayHtml);
     const p1 = document.getElementById("p1");
     p1.getBoundingClientRect = () => ({ top: 5, left: 0, bottom: 25, right: 200, width: 200, height: 20 });
     const result = api.getRectsFor({ chapter: "a.md", range: [0, 1] });
-    assert.equal(result.ref, "p1-ref", "resolves the CURRENT data-ref via the range match");
     assert.equal(result.rects.length, 1);
     assert.deepEqual(result.rects[0], { top: 5, left: 0, width: 200, height: 20, page: 1 });
   }
 
-  // getRectsFor({chapter, range}) with no matching range: empty result, no throw.
-  {
-    const { api } = loadInterfaceWithDom(overlayHtml);
-    const result = api.getRectsFor({ chapter: "a.md", range: [99, 100] });
-    assert.deepEqual(result, { ref: null, rects: [] });
-  }
-
-  // setEditMask: masks EVERY fragment sharing a data-ref + applies the scroll
-  // lock, and unmasking fully reverts both — reversible, no residue.
+  // setEditMask: masks EVERY fragment sharing a {chapter, range} + applies
+  // the scroll lock, and unmasking fully reverts both — reversible, no
+  // residue.
   {
     const { document, api } = loadInterfaceWithDom(overlayHtml);
     const frag1 = document.getElementById("frag1");
     const frag2 = document.getElementById("frag2");
     const root = document.documentElement;
 
-    const onResult = api.setEditMask({ ref: "split-ref", masked: true });
+    const onResult = api.setEditMask({ chapter: "a.md", range: [1, 3], masked: true });
     assert.equal(onResult.count, 2);
     assert.ok(frag1.classList.contains("gutterpress-edit-mask"));
     assert.ok(frag2.classList.contains("gutterpress-edit-mask"));
@@ -722,40 +707,40 @@ async function main() {
     const p1 = document.getElementById("p1");
     assert.equal(p1.classList.contains("gutterpress-edit-mask"), false);
 
-    const offResult = api.setEditMask({ ref: "split-ref", masked: false });
+    const offResult = api.setEditMask({ chapter: "a.md", range: [1, 3], masked: false });
     assert.equal(offResult.count, 2);
     assert.equal(frag1.classList.contains("gutterpress-edit-mask"), false);
     assert.equal(frag2.classList.contains("gutterpress-edit-mask"), false);
     assert.equal(root.classList.contains("gutterpress-edit-scroll-lock"), false, "scroll lock fully reverted");
   }
 
-  // setEditMask({masked:false}) for a ref with zero live fragments (e.g. a
+  // setEditMask({masked:false}) for a range with zero live fragments (e.g. a
   // splice already replaced the DOM) still clears the document-level scroll
-  // lock — defense-in-depth teardown must not depend on the ref resolving.
+  // lock — defense-in-depth teardown must not depend on the range resolving.
   {
     const { document, api } = loadInterfaceWithDom(overlayHtml);
-    api.setEditMask({ ref: "split-ref", masked: true });
+    api.setEditMask({ chapter: "a.md", range: [1, 3], masked: true });
     assert.ok(document.documentElement.classList.contains("gutterpress-edit-scroll-lock"));
-    const result = api.setEditMask({ ref: "gone-ref", masked: false });
+    const result = api.setEditMask({ chapter: "a.md", range: [999, 1000], masked: false });
     assert.equal(result.count, 0);
     assert.equal(
       document.documentElement.classList.contains("gutterpress-edit-scroll-lock"),
       false,
-      "scroll lock is a document-level toggle, not scoped to the (now unresolved) ref"
+      "scroll lock is a document-level toggle, not scoped to the (now unresolved) range"
     );
   }
 
-  // getProtocolVersion() bumped to 5.
+  // getProtocolVersion() bumped to 6.
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 5);
+    assert.equal(api.getProtocolVersion(), 6);
   }
 
   // ── Native engine getRectsFor: no clone-grouping — a spec resolves to AT
   // MOST ONE element, and its rects come straight from getClientRects() ──────
   const nativeOverlayHtml = `
-    <div class="chapter" data-chapter-src="a.md" data-source-range="0:10" data-ref="chapter-ref">
-      <p id="solo" data-source-range="0:1" data-ref="solo-ref">Solo block</p>
+    <div class="chapter" data-chapter-src="a.md" data-source-range="0:10">
+      <p id="solo" data-source-range="0:1">Solo block</p>
     </div>`;
 
   {
@@ -765,34 +750,20 @@ async function main() {
     });
     const solo = document.getElementById("solo");
     solo.getClientRects = () => [{ top: 10, left: 5, bottom: 30, right: 100, width: 95, height: 20 }];
-    const result = api.getRectsFor({ ref: "solo-ref" });
-    assert.equal(result.ref, "solo-ref");
+    const result = api.getRectsFor({ chapter: "a.md", range: [0, 1] });
     assert.deepEqual(result.rects, [{ top: 10, left: 5, width: 95, height: 20, page: 2 }]);
     assert.deepEqual(JSON.parse(JSON.stringify(result)), result, "JSON-cloneable, no DOMRect instances");
   }
 
-  // getRectsFor({chapter, range}) resolution works the same way natively.
-  {
-    const { document, api } = loadInterfaceWithDom(nativeOverlayHtml, {
-      native: true,
-      pageOf: () => 0,
-    });
-    const solo = document.getElementById("solo");
-    solo.getClientRects = () => [{ top: 1, left: 2, bottom: 3, right: 4, width: 2, height: 2 }];
-    const result = api.getRectsFor({ chapter: "a.md", range: [0, 1] });
-    assert.equal(result.ref, "solo-ref", "resolves via source range and reads back the live data-ref");
-    assert.equal(result.rects.length, 1);
-  }
-
-  // Unknown/stale ref: empty result, ref:null, no throw.
+  // Unmatched range: empty result, no throw.
   {
     const { api } = loadInterfaceWithDom(nativeOverlayHtml, { native: true });
-    assert.deepEqual(api.getRectsFor({ ref: "does-not-exist" }), { ref: null, rects: [] });
+    assert.deepEqual(api.getRectsFor({ chapter: "a.md", range: [99, 100] }), { rects: [] });
   }
 
   console.log("[desktop-test] PASS native-engine getRectsFor (no clone grouping)");
 
-  console.log("[desktop-test] PASS getRectsFor / setEditMask / protocol v5");
+  console.log("[desktop-test] PASS getRectsFor / setEditMask / protocol v6");
 }
 
 main().catch((error) => {
