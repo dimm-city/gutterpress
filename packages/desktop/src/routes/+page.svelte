@@ -50,7 +50,7 @@
   import { StartupController } from "$lib/routes/startup-controller.svelte";
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
-  import { buildDesktopStyles } from "$lib/iframe-styles";
+  import { buildDesktopStyles, buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api, type ProjectConfigFields } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
@@ -1368,12 +1368,16 @@
   const recoverySink = settingsChangeGuard<boolean>((enabled) => book?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
     (bg) => {
-      // Paged.js leg only — see PreviewEventDeps.engine's doc comment
-      // (preview-event-controller.ts). Every selector this CSS targets is
-      // `.pagedjs_*`, which the native viewer's DOM never has.
-      if (lifecycle.previewEngine === "paged") {
-        client?.injectStyles("desktop-canvas", buildDesktopStyles(bg));
-      }
+      // The full sheet is Paged.js-only (`.pagedjs_*` selectors the native
+      // viewer's DOM never has); the background rule is not — the native
+      // viewer honours it, so changing this setting must still repaint the
+      // native preview. See buildCanvasBackgroundStyles' doc comment.
+      client?.injectStyles(
+        "desktop-canvas",
+        lifecycle.previewEngine === "paged"
+          ? buildDesktopStyles(bg)
+          : buildCanvasBackgroundStyles(bg),
+      );
     },
     () => !!client,
   );

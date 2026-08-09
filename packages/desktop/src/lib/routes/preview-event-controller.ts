@@ -23,7 +23,11 @@
  * builders (browser-safe string templates).
  */
 
-import { buildDesktopStyles, DEBUG_STYLES } from "$lib/iframe-styles";
+import {
+  buildDesktopStyles,
+  buildCanvasBackgroundStyles,
+  DEBUG_STYLES,
+} from "$lib/iframe-styles";
 import type { PreviewEvent } from "$lib/preview-client";
 
 /** Minimal host-command client surface the controller drives. */
@@ -90,10 +94,12 @@ export interface PreviewEventDeps {
   /**
    * The engine rendering the CURRENT preview (`ProjectLifecycleController`'s
    * `previewEngine`, sourced from `PreviewStartSuccess.engine`). Gates
-   * `$lib/iframe-styles`' injection below: every selector in that file
+   * `$lib/iframe-styles`' injection below: nearly every selector in that file
    * targets `.pagedjs_*` classes the native viewer's DOM never has (it uses
-   * `.folio-*`), so injecting it there is dead weight, not a fix for
-   * anything — see docs/native-engine-acceptance-gate.md, WP-C item 3.
+   * `.folio-*`), so injecting it there is dead weight — see
+   * docs/native-engine-acceptance-gate.md, WP-C item 3. The exception is the
+   * `html, body` background rule, which the native viewer DOES honour, so the
+   * native leg still gets `buildCanvasBackgroundStyles`.
    */
   engine: () => "paged" | "native";
   // ── Render-phase state sinks / getters ──────────────────────────────────
@@ -191,10 +197,16 @@ export class PreviewEventController {
     // and unnecessary settings writes.
     if (!hotReload) {
       const client = d.client();
-      // Paged.js leg only — see `engine`'s doc comment above.
+      // Paged.js leg gets the full canvas/view-mode sheet + debug chrome (all
+      // `.pagedjs_*`). The native leg gets ONLY the engine-agnostic background
+      // rule — the rest would be dead, but the background is not: it is the
+      // author's preview-background setting, and the native viewer honours it
+      // (see buildCanvasBackgroundStyles' doc comment for the measurement).
       if (d.engine() === "paged") {
         client?.injectStyles("desktop-canvas", buildDesktopStyles(d.bgColor()));
         client?.injectStyles("debug", DEBUG_STYLES);
+      } else {
+        client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(d.bgColor()));
       }
       const auto = d.viewportWidth() < 1280 ? "single" : "two-column";
       const { page: restorePage, viewMode: restoreMode } = d.consumePendingRestore();

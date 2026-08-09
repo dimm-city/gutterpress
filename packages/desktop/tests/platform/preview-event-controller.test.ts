@@ -8,6 +8,8 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 interface Harness {
   ctrl: PreviewEventController;
   log: string[];
+  /** Every injectStyles(id, css) the controller made, in order. */
+  injectedCss: Array<{ id: string; css: string }>;
   client: {
     calls: Array<{ cmd: string; args: unknown[] }>;
     rejectSetZoom: boolean;
@@ -44,8 +46,10 @@ interface Harness {
 
 function make(): Harness {
   const log: string[] = [];
+  const injectedCss: Array<{ id: string; css: string }> = [];
   const h = {
     log,
+    injectedCss,
     hasClient: true,
     zoom: "fit-width",
     viewMode: "two-column" as "single" | "two-column",
@@ -91,8 +95,9 @@ function make(): Harness {
     if (cmd === "getTotalPages") return Promise.resolve(client.getTotalPagesResult);
     return Promise.resolve(undefined);
   };
-  client.injectStyles = (id: string) => {
+  client.injectStyles = (id: string, css: string) => {
     log.push(`inject:${id}`);
+    injectedCss.push({ id, css });
   };
 
   h.pageNav = {
@@ -197,17 +202,22 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
   expect(h.client.calls).toContainEqual({ cmd: "setZoom", args: [0.5] });
 });
 
-test("renderingComplete skips iframe-styles injection under the native engine (WP-C item 3)", async () => {
-  // Every selector in $lib/iframe-styles targets .pagedjs_* classes the
-  // native viewer's DOM never has — injecting it is dead weight, so it must
-  // not happen for a native-engine preview.
+test("renderingComplete injects only the canvas background under the native engine (WP-C item 3)", async () => {
+  // Nearly every selector in $lib/iframe-styles targets .pagedjs_* classes the
+  // native viewer's DOM never has — injecting those is dead weight. The
+  // `html, body` background rule is the exception: the native viewer honours
+  // it (measured), so dropping it would silently kill the author's
+  // preview-background setting on the native leg.
   const h = make();
   h.engine = "native";
   h.zoom = "0.5";
   h.ctrl.handleEvent(rc(12));
 
-  expect(h.log).not.toContain("inject:desktop-canvas");
   expect(h.log).not.toContain("inject:debug");
+  const canvas = h.injectedCss.filter((i) => i.id === "desktop-canvas");
+  expect(canvas.length).toBe(1);
+  expect(canvas[0]!.css).toContain("background-color: #123456 !important");
+  expect(canvas[0]!.css).not.toContain("pagedjs_");
   // Everything else in the settle sequence still runs unaffected.
   expect(h.log).toContain("applyViewMode:two-column:false");
   await flush();

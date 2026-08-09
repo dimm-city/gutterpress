@@ -13,6 +13,26 @@
  *  - "debug": crop marks, page box overlays, bleed/safe area indicators.
  */
 
+/**
+ * The ONE engine-agnostic rule in this file: the author's chosen preview
+ * canvas background. Everything else here is Paged.js-specific
+ * (`.pagedjs_*`), but this targets `html, body`, which every preview has.
+ *
+ * The native viewer makes `<body>` its `.folio-stage` and paints its own
+ * `--folio-stage-bg` (#4a4a52) there; this `!important` rule outranks it —
+ * measured 2026-08-08 by loading a native `--format html` build in Chromium:
+ * body background went from `rgb(74, 74, 82)` to the injected colour. Gating
+ * the whole "desktop-canvas" block off on the native leg therefore did not
+ * just skip dead selectors, it silently killed the preview-background
+ * setting there; the native leg injects this subset instead.
+ */
+export function buildCanvasBackgroundStyles(bg: string): string {
+  return `
+/* Injected by Gutterpress desktop — the author's preview canvas background. */
+html, body { background-color: ${bg} !important; }
+`.trim();
+}
+
 /** Build the canvas + view-mode stylesheet, parameterised by background color. */
 export function buildDesktopStyles(bg: string): string {
   return `
