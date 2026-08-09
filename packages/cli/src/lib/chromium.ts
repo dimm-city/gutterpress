@@ -108,7 +108,9 @@ export async function requireChromiumExecutable(): Promise<string> {
       "Or point to an existing install:",
       "  CHROMIUM_PATH=/path/to/chrome gutterpress build ...",
       "",
-      "The Gutterpress desktop app includes its own browser and needs no separate browser installation.",
+      "The Gutterpress desktop app's Paged.js PDF export uses its own bundled",
+      "browser and needs no separate install. --engine native PDF export (CLI",
+      "or desktop) always drives a separate, external Chromium — see docs/adr/0002.",
     ].join("\n")
   );
 }

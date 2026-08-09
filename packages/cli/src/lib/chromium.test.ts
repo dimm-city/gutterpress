@@ -310,7 +310,12 @@ describe("requireChromiumExecutable — error message quality", () => {
       // Sourced from the single INSTALL_HINTS registry (ARCH finding #15) —
       // not a hand-copied duplicate that could drift.
       expect(message).toContain(INSTALL_HINTS.chromium.body);
-      expect(message).toContain("desktop app includes its own browser");
+      // Paged.js desktop export uses Electron's own bundled browser and needs
+      // no separate install; --engine native always needs an external one
+      // (see .reviews/adr/0002's 2026-08-08 addendum) — the message must not
+      // claim the desktop app never needs a separate browser install.
+      expect(message).toContain("Paged.js PDF export uses its own bundled");
+      expect(message).toContain("--engine native");
       expect(message).not.toContain("undefined");
     }
   });

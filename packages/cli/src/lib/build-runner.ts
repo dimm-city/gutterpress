@@ -23,7 +23,12 @@ import { log } from "../utils/logger";
 import { BuildError } from "./build-error";
 import type { BuildDiagnostic } from "../engine/compiler/build.ts";
 import { UsageError } from "./cli-args";
-import { preflightBuildTools, computeGates, type Gates } from "./build-preflight";
+import {
+  preflightBuildTools,
+  computeGates,
+  verifyNativeChromiumMilestone,
+  type Gates,
+} from "./build-preflight";
 import {
   finalizeStaticBook,
   shipRuntimePaginatedHtml,
@@ -886,6 +891,19 @@ export async function runBuild(
     await fsp.mkdir(ctx.workDir, { recursive: true });
 
     await runQualityGates(ctx);
+
+    // Native engine: verify the pooled Chromium meets the engine's minimum
+    // milestone BEFORE rendering — a too-old browser previously surfaced only
+    // deep inside buildNativePdf, after the render below had already run. Not
+    // folded into preflightBuildTools() (which runs before quality gates):
+    // that would force this build to await Chromium's cold start before
+    // lint/validate even start, defeating prewarmBrowser()'s overlap. Placed
+    // here instead, the common failure case (a quality gate throwing) never
+    // pays for it, and by the time gates finish the prewarmed browser is
+    // usually already warm. See verifyNativeChromiumMilestone's doc comment.
+    if (ctx.format !== "html" && ctx.config.engine === "native") {
+      await verifyNativeChromiumMilestone();
+    }
 
     const htmlFile = await renderBook(ctx);
 

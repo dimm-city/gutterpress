@@ -4,6 +4,9 @@ import { resolveGhostscript } from "./ghostscript";
 import { INSTALL_HINTS as CANONICAL_INSTALL_HINTS } from "./install-hints";
 import { BuildError } from "./build-error";
 import { log } from "../utils/logger";
+import { getBrowser, closeBrowser } from "./browser-pool";
+import { RENDER_TIMEOUT_MS } from "./pagination";
+import { REQUIRED_MILESTONE } from "../engine/shared/cdp";
 import type { BuildFormat } from "./build-runner";
 import type { PdfRenderer } from "./pagination";
 
@@ -91,6 +94,57 @@ export async function preflightBuildTools(
     `Required system tools not found:\n\n${list}\n\nInstall the missing tools and re-run, or set GHOSTSCRIPT_PATH, CHROMIUM_PATH, or system PATH so gutterpress can find them. See the User Guide Chapter 7 (System Setup) at examples/gutterpress-user-guide/07-system-setup.md for the full per-feature matrix.`,
     2
   );
+}
+
+/**
+ * Native engine only: verify the browser-pool's Chromium meets
+ * `engine/shared/cdp.ts`'s `REQUIRED_MILESTONE`, with an early, actionable
+ * error instead of the late, cryptic one `connectChromium` throws from deep
+ * inside `buildNativePdf` (reached only after quality gates + the markdown
+ * render have already run). `preflightBuildTools`'s presence check
+ * (`resolveChromiumExecutable`) doesn't catch a resolved-but-too-old binary —
+ * this does.
+ *
+ * Deliberately NOT called from `preflightBuildTools` itself: that would
+ * force `runBuild` to await a full Chromium cold start (~1-2s) BEFORE
+ * lint/validate even start, defeating the whole point of `prewarmBrowser()`
+ * firing in parallel with them. Call this instead right after quality gates
+ * finish and before rendering — by then the prewarmed browser is usually
+ * already warm, and any quality-gate failure (the common case) never pays
+ * this cost at all. Reuses `getBrowser()` (the same cached instance
+ * `buildNativePdf`'s `connectChromium` will reuse), so this is one cold
+ * start, not two.
+ *
+ * Desktop native-engine exports hit this every time on the current Electron
+ * pin: measured 2026-08-08, Electron 42.1.0 bundles Chromium 148.0.7778.97,
+ * below `REQUIRED_MILESTONE` (151) — see `.reviews/adr/0002`'s 2026-08-08
+ * addendum for the decision this backs.
+ */
+export async function verifyNativeChromiumMilestone(): Promise<void> {
+  let version: string;
+  try {
+    const browser = await getBrowser(RENDER_TIMEOUT_MS);
+    version = await browser.version();
+  } catch (err) {
+    throw new BuildError(
+      `Could not launch a Chromium browser for --engine native: ` +
+        `${err instanceof Error ? err.message : String(err)}`,
+      2
+    );
+  }
+  const milestone = Number(/Chrome\/(\d+)/.exec(version)?.[1] ?? 0);
+  if (milestone < REQUIRED_MILESTONE) {
+    await closeBrowser();
+    throw new BuildError(
+      `The Gutterpress native engine requires Chromium ${REQUIRED_MILESTONE}+; found ${version}.\n\n` +
+        `Install a newer Chrome, Chromium, or Edge, or point CHROMIUM_PATH ` +
+        `(or PUPPETEER_EXECUTABLE_PATH) at a ${REQUIRED_MILESTONE}+ binary.\n\n` +
+        `Note: the desktop app's own bundled Chromium does not satisfy this — ` +
+        `--engine native always drives a separate, external Chromium (see ` +
+        `.reviews/adr/0002).`,
+      2
+    );
+  }
 }
 
 export interface Gates {

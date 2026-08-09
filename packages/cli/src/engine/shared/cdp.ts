@@ -134,22 +134,39 @@ export async function launchChromium(
  */
 export async function connectChromium(wsUrl: string): Promise<Browser> {
   const conn = await Connection.open(wsUrl);
-  return checkMilestoneAndWrap(conn, wsUrl, "via connected browser", async () => {
-    conn.close();
-  });
+  return checkMilestoneAndWrap(
+    conn,
+    wsUrl,
+    "via connected browser",
+    async () => {
+      conn.close();
+    },
+    // Unlike launchChromium (which resolves its own binary via findChromium(),
+    // governed by FOLIO_CHROMIUM), this path attaches to a browser someone
+    // ELSE already launched — in practice `browser-pool.ts`'s puppeteer
+    // instance, resolved via `chromium.ts`'s CHROMIUM_PATH /
+    // PUPPETEER_EXECUTABLE_PATH. Telling a user on this path to set
+    // FOLIO_CHROMIUM does nothing; measured 2026-08-08 (Electron 42.1.0 bundles
+    // Chromium 148, below this file's REQUIRED_MILESTONE 151) — this is exactly
+    // the message a desktop native-engine export hits.
+    `Set CHROMIUM_PATH (or PUPPETEER_EXECUTABLE_PATH) to a ${REQUIRED_MILESTONE}+ binary.`,
+  );
 }
 
 /**
  * Shared by `launchChromium` and `connectChromium`: verify the pin (same
  * error message shape either way, per ARCHITECTURE.md §1 — one function owns
  * the check), then wrap the raw `Connection` in the public `Browser` shape.
- * `teardown` is the only thing that differs between the two callers.
+ * `teardown` is the only thing that differs between the two callers; so does
+ * `overrideHint`, since the two callers resolve their binary through
+ * different env vars (see connectChromium's call site comment).
  */
 async function checkMilestoneAndWrap(
   conn: Connection,
   wsUrl: string,
   origin: string,
   teardown: () => Promise<void>,
+  overrideHint: string = `Set FOLIO_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
 ): Promise<Browser> {
   const version = await conn.send<{ product: string }>("Browser.getVersion", {});
   const milestone = Number(/Chrome\/(\d+)/.exec(version.product)?.[1] ?? 0);
@@ -158,7 +175,7 @@ async function checkMilestoneAndWrap(
     await teardown();
     throw new Error(
       `The Gutterpress engine requires Chromium ${REQUIRED_MILESTONE}+; found ${version.product} ${origin}.\n` +
-        `Set FOLIO_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
+        overrideHint,
     );
   }
 
