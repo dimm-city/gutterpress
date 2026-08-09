@@ -42,41 +42,13 @@ const UPDATED_CHAPTER = `
     </div>
   </div>`;
 
-// Native-engine fixture for runNativeChapterSpliceRegression() below:
-// content lives in ONE `.gutterpress-chapter` node per chapter (native never
-// clones a block across pages — pagination is CSS multicol fragmentation of
-// this same live subtree), unlike BOOK/BOOK_NATIVE's per-page duplication,
-// which only exists to fake `getBoundingClientRect()` per page for the
-// scroll-anchor tests above.
-const NATIVE_SPLICE_BOOK = `
-  <div class="folio-strip"><div class="gutterpress-chapter" data-chapter-src="chapter-1.md">
-    <p data-source-line="1">Chapter one</p>
-  </div></div>
-  <div class="folio-strip"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
-    <p data-source-line="1">Chapter two start</p>
-    <p data-source-line="20">Chapter two anchor</p>
-  </div></div>`;
-
-// What GET /__chapter?file=chapter-2.md returns for engine:"native" — a
-// standalone rendered document wrapping the one edited chapter, same as
-// renderChapterPreviewHtml()/injectPreviewScripts() produce in production.
-const UPDATED_CHAPTER_NATIVE = `<!doctype html><html><head></head><body>
-  <div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
-    <p data-source-line="1">Updated chapter two start</p>
-    <p data-source-line="20">Updated chapter two anchor</p>
-  </div>
-    </div>
-  </div>`;
-
 // Native-engine fixture for the core (non-splice) regression below: same
 // three-page/two-chapter shape as BOOK, as `.folio-sheet` elements (the
 // viewer's page unit — see engine/viewer/decorate.ts) instead of
 // `.pagedjs_page`. The chapter-splice scenario further down (UPDATED_CHAPTER
-// and everything after it) stays paged-only — it grafts `.pagedjs_page` page
-// ranges, a DOM shape native never produces (native never clones content
-// across pages, so it has no page range to graft; see WORK PACKAGE B item 2
-// and runNativeChapterSpliceRegression() below, which covers native's own
-// splice path against `spliceChapterNative()`).
+// and everything after it) stays paged-only: preview-shell.js's incremental
+// splice is hardcoded to `.pagedjs_page`/`data-page-number` today — a
+// pre-existing gap this phase does not close.
 const BOOK_NATIVE = `
   <div class="folio-sheet" data-page="1"><div class="gutterpress-chapter" data-chapter-src="chapter-1.md">
     <p data-source-line="1">Chapter one</p>
@@ -694,107 +666,8 @@ async function runNativeCoreRegression() {
   console.log("[desktop-test] PASS native-engine preview-shell double-buffer swap + anchor preservation");
 }
 
-// WORK PACKAGE B item 2: native's own incremental path (spliceChapterNative())
-// — no hidden iframe, no page-range graft. A `content-update` message fetches
-// the re-rendered chapter as plain text, swaps its single live
-// `.gutterpress-chapter` node in place, and asks the still-active viewer to
-// re-fragment via `window.Gutterpress.refresh()`. The active iframe identity
-// never changes (unlike swap()/spliceChapter(), which both replace the
-// iframe), so there is nothing to preserve scroll position ACROSS — the
-// active frame's own scroll position is untouched; this test asserts the
-// splice completes and reports `updateMode: "chapter-splice"`, matching
-// the paged leg's incremental-update contract.
-async function runNativeChapterSpliceRegression() {
-  const outer = new Window({ url: "http://localhost/" });
-  const document = outer.document;
-  const hostEvents = [];
-  Object.defineProperty(outer, "parent", {
-    configurable: true,
-    value: { postMessage: (message) => hostEvents.push(message) },
-  });
-  const active = document.createElement("iframe");
-  active.id = "gutterpress-active";
-  active.title = "preview";
-  document.body.appendChild(active);
-  active.contentDocument.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
-  active.contentDocument.body.innerHTML = NATIVE_SPLICE_BOOK;
-
-  const gutterpressRefreshCalls = [];
-  active.contentWindow.Gutterpress = {
-    refresh: () => gutterpressRefreshCalls.push(Date.now()),
-  };
-  const previewApiRefreshCalls = [];
-  active.contentWindow.previewAPI = {
-    refresh: () => previewApiRefreshCalls.push(Date.now()),
-    getTotalPages: () => 2,
-    flushScroll: () => null,
-  };
-
-  let fetchedUrl = null;
-  outer.fetch = (url) => {
-    fetchedUrl = url;
-    return Promise.resolve({ ok: true, text: () => Promise.resolve(UPDATED_CHAPTER_NATIVE) });
-  };
-
-  let onChange;
-  outer.__GUTTERPRESS_INSTANCE = "instance-a";
-  outer.__GUTTERPRESS_REVISION = 0;
-  outer.__GUTTERPRESS_CHANGE_SOURCE = {
-    subscribe(callback) {
-      onChange = callback;
-      return () => {};
-    },
-    acknowledge() {},
-  };
-  outer.requestAnimationFrame = (callback) => callback();
-
-  const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
-  runShell(outer, document, (callback) => callback(), clearTimeout);
-  active.dispatchEvent(new outer.Event("load"));
-
-  onChange?.({ type: "content-update", instance: "instance-a", revision: 1, file: "chapter-2.md" });
-
-  // The fetch().then().then() chain settles across microtasks.
-  for (let i = 0; i < 5; i++) await Promise.resolve();
-
-  assert.match(
-    fetchedUrl ?? "",
-    /^\/__chapter\?file=chapter-2\.md/,
-    "native splice fetches the edited chapter via /__chapter",
-  );
-  assert.equal(
-    document.getElementById("gutterpress-active"),
-    active,
-    "native: a chapter splice preserves the active iframe identity (no full reload)",
-  );
-  assert.equal(
-    active.contentDocument.body.textContent.includes("Updated chapter two anchor"),
-    true,
-    "native: the edited chapter's fresh content is visible",
-  );
-  assert.equal(
-    active.contentDocument.body.textContent.includes("Chapter two anchor"),
-    false,
-    "native: the edited chapter's stale content is removed",
-  );
-  assert.equal(
-    active.contentDocument.body.textContent.includes("Chapter one"),
-    true,
-    "native: an unmodified chapter's content is untouched",
-  );
-  assert.equal(gutterpressRefreshCalls.length, 1, "native splice re-fragments via window.Gutterpress.refresh()");
-  assert.equal(previewApiRefreshCalls.length, 1, "native splice resyncs previewAPI's page cache");
-  const spliceComplete = hostEvents.find((message) => message?.name === "renderingComplete");
-  assert.equal(spliceComplete?.detail?.hotReload, true, "native splice reports as a hot reload");
-  assert.equal(spliceComplete?.detail?.revision, 1, "native splice reports the applied revision");
-  assert.equal(spliceComplete?.detail?.updateMode, "chapter-splice", "native splice reports chapter-splice, not full-reload");
-
-  console.log("[desktop-test] PASS native-engine incremental chapter splice (no full reload)");
-}
-
 main()
   .then(runNativeCoreRegression)
-  .then(runNativeChapterSpliceRegression)
   .catch((error) => {
     console.error("[desktop-test] FAIL", error);
     process.exit(1);
