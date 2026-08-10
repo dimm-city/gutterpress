@@ -1,0 +1,21 @@
+title: "The Salt Marsh Almanac"
+authors:
+  - "Gutterpress Spike"
+
+preset: book
+
+styles:
+  - styles/style.css
+  - styles/style-native.css
+
+source:
+  files:
+    - 00-cover.md
+    - 01-toc.md
+    - 02-chapter-one.md
+    - 03-chapter-two.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in
+  tolerance: 0.5

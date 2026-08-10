@@ -1,0 +1,121 @@
+/* style.css — the OBVIOUS, standard CSS a non-technical author would write
+   first, working from the Gutterpress user guide + standard Paged Media CSS.
+   Loaded on BOTH engines. Anything that had to move to style-native.css or
+   style-paged.css is a recorded workaround — see the spike's findings doc. */
+
+:root {
+  --color-ink: #1a1a1a;
+  --color-muted: #555555;
+  --color-accent: #2b6e5c;
+  --color-rule: #cccccc;
+  --font-body: Georgia, "Times New Roman", serif;
+  --font-display: Georgia, serif;
+  --fs-body: 10.5pt;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--color-ink);
+}
+
+@page {
+  size: 6in 9in;
+  margin: 0.75in;
+
+  @top-center {
+    content: string(chapter-title);
+    font-size: 8pt;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  @bottom-center {
+    content: counter(page);
+    font-size: 8pt;
+    color: var(--color-muted);
+  }
+}
+
+/* No running head / folio on the cover or the TOC's own opening page. */
+[data-page="cover"] {
+  page: cover;
+}
+@page cover {
+  @top-center { content: none; }
+  @bottom-center { content: none; }
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-size: 22pt;
+  color: var(--color-accent);
+  margin: 0 0 0.6em;
+  string-set: chapter-title content();
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-size: 14pt;
+  color: var(--color-accent);
+  margin: 1.2em 0 0.5em;
+}
+
+p { orphans: 3; widows: 3; }
+
+/* Chapter opener — the one element core injects for a labelled @chapter. */
+.chapter-opener {
+  font-family: var(--font-display);
+  font-size: 11pt;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  color: var(--color-accent);
+  margin-bottom: 0.4em;
+}
+
+/* Table of contents, standard target-counter() page numbers. */
+.toc a {
+  text-decoration: none;
+  color: var(--color-ink);
+}
+.toc a::after {
+  content: leader(".") target-counter(attr(href), page);
+  color: var(--color-muted);
+}
+
+/* Two-column reference section. */
+.two-column {
+  columns: 2;
+  column-gap: 1.5em;
+}
+.two-column h2 {
+  column-span: all;
+}
+
+/* Callout / aside. */
+.callout {
+  border-left: 3pt solid var(--color-accent);
+  background: #f2f5f3;
+  padding: 0.6em 0.9em;
+  margin: 0.8em 0;
+  font-size: 9.5pt;
+  break-inside: avoid;
+}
+
+/* Cover page. */
+.cover-page {
+  text-align: center;
+  padding-top: 2.5in;
+}
+.cover-page h1 {
+  font-size: 30pt;
+}
+
+/* Full-bleed gallery page: suppress the running head / folio that would
+   otherwise land on the trim edge (per the user guide's full-bleed note). */
+@page gp-full-bleed {
+  @top-center { content: none; }
+  @bottom-center { content: none; }
+}
