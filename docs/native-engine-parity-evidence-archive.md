@@ -1,125 +1,67 @@
-# Native-engine acceptance gate
+# Native engine vs Paged.js — A/B evidence archive (captured pre-deletion)
 
-Status: **binding**. This is the bar the native engine must clear before it
-becomes the default, and before Paged.js is dropped. Set by the product owner
-2026-08-08.
+Status: **frozen snapshot**, captured 2026-08-09 as Work Package D, item 4 of
+`docs/native-only-migration-plan.md`. Paged.js has not been deleted yet (see
+that plan's Phase 6, currently suspended), but this snapshot exists so the
+proof that native reached parity with — or improved on — Paged.js survives
+even after Phase 6 eventually removes the Paged.js code paths this evidence
+was measured against.
 
-> A frozen, point-in-time copy of this file's measured-results table (plus
-> pointers to the rest of the durable A/B evidence, e.g. `spike/folio/`) is
-> archived at
-> [`docs/native-engine-parity-evidence-archive.md`](./native-engine-parity-evidence-archive.md),
-> captured 2026-08-09 per `native-only-migration-plan.md`'s Phase 6
-> housekeeping — so the proof survives even after Paged.js is eventually
-> deleted and this living doc has moved on.
+`docs/native-engine-acceptance-gate.md` is the **living** document — it keeps
+being appended to as work continues, and its older rows can be superseded or
+reworded by later review passes (see its own "SUPERSEDED" / "CORRECTED"
+markers). This file is a **verbatim, point-in-time copy** of that gate's full
+measured-results table as of commit `7df2c51` (branch
+`claude/folio-pagination-spike-onknc6`), so a later reader always has one
+copy that cannot drift out from under them, however the live doc is edited
+later. If the two disagree, the live gate doc is authoritative for CURRENT
+status; this file is authoritative for WHAT WAS MEASURED on that date.
 
-## The rule
+## Where the underlying evidence lives
 
-> **Provable parity, or provable improvement, versus the Paged.js
-> implementation — for everything from PDF/X build output to hot reloading in
-> the desktop UI.**
+Most of the raw evidence cited in the table below is **not** in this repo —
+the "Evidence" column names ephemeral paths under `/tmp` (`/tmp/wpA`,
+`/tmp/wpC`, `/tmp/wpD`, `/tmp/rev`, `/tmp/fbtest`, `/tmp/fg-proof-parent`,
+etc.) that were scratch build/render output from individual work sessions and
+do not persist across sessions or machines. Those paths are recorded for
+provenance (what command, what fixture, what tool) — they are NOT reproducible
+artifacts sitting in this checkout. If the underlying PDFs/screenshots are
+needed again, they must be REGENERATED using the commands named in each row,
+against the book fixtures still in this repo:
 
-"Provable" means measured and reproducible on a real book, not reasoned from
-code. A claim without an observation behind it does not count. Rendering and
-looking beats any metric: matching page counts have twice hidden real defects
-in this migration (a dead column; a half-empty page).
+- `/tmp/fbtest/book` — a purpose-built 2-page fixture (not committed; regenerate
+  via `gutterpress new` or ask in the session history for its exact source —
+  it is referenced extensively in the WP-C/WP-C-review rows above)
+- `/tmp/fg-proof-parent/field-guide` (34pp) — the DC field guide, sourced from
+  the `dc-op-manual` repo, staged into a parent dir alongside this repo per the
+  work order's convention
+- `examples/with-design-guide/` (53pp) — **committed in this repo**, the one
+  fixture in the table that is fully reproducible from this checkout alone
+  (`--skip-pre-validate --skip-lint`)
 
-**The one agreed exception:** PDF build **wall-clock time**. The native engine
-may be slower than Paged.js — that is an accepted, documented limitation — so
-long as the *output* is as good or better. Nothing else gets an exception.
+The durable, ALREADY-committed A/B evidence that predates and underlies this
+whole migration is the `spike/folio/` tree itself (kept exactly per
+`native-only-migration-plan.md`'s rename-target note: "Do not delete the spike
+before the Phase 5 parity gate exists; it is the evidence base"):
 
-## What parity means — and what it does not
+| File | What it captures |
+| --- | --- |
+| `spike/folio/COMPARISON.md` | Full head-to-head build, both engines, same input HTML, on the user guide and the DC field guide — the "HONEST A/B REPORT" |
+| `spike/folio/RESULTS.md` | The original M0 spike verdict, spike-by-spike (`s0`-`s14`), with pass/fail counts |
+| `spike/folio/DIFFERENCES.md` | Enumerated, classified native-vs-Paged.js divergences |
+| `spike/folio/ARCHITECTURE.md` | The design rules each measured browser bug forced |
+| `spike/folio/fixtures/migration/README.md` | The 9-fixture migration set + its own measured results table (page counts, pass/fail per engine) — the fixture set `.github/workflows/folio-migration-fixtures.yml` runs on every PR touching the engine |
+| `spike/folio/compare/*.ts`, `*.py` | The actual comparison tooling (`run.ts`, `ab-report.py`, `visual-diff.py`, `ink-boxes.py`, `diff-report.ts`) used to produce the above — reproducible via `bun spike/folio/compare/run.ts [project]` |
 
-**Parity is with the book's design intent, never bug-for-bug with Paged.js.**
-(Constitution: CLAUDE.md "What Gutterpress is — and what the engine is not" —
-the engine and every shim exist only to fill gaps in Chrome's Paged Media
-implementation and are expected to be removed as Chrome improves; they must
-stay thin and standards-based so that removal is a no-op for authors.)
-Chromium's native print is the standards baseline. Where the legs differ,
-classify the divergence before touching anything:
+None of the above is touched by this work package. This archive file exists
+only to also freeze the GATE table (below), which lives in a different doc
+(`docs/native-engine-acceptance-gate.md`) that is not part of `spike/folio/`
+and is actively edited.
 
-1. **Engine bug** — native deviates from what the CSS specifies → fix the
-   engine.
-2. **Book CSS relying on a Paged.js quirk** — the CSS was written against
-   Paged.js's non-standard behaviour and native is CSS-correct → fix the
-   BOOK's CSS to express the intent in standard terms; record it as a
-   migration note. (Example: `page: chapter-start` on a multi-sheet container
-   suppresses margin chrome on every sheet natively — spec-correct — where
-   Paged.js applied it to one page; the field guide's "missing opener chrome"
-   is this class, not an engine regression.)
-3. **Paged.js bug** — native is right and better → record it as a deliberate
-   improvement (the design-guide sidebar float, measured 38% of its
-   containing block natively vs 9% off under paged, is this class).
+## Frozen copy of the gate's measured-results table (as of 2026-08-09)
 
-**Never replicate a Paged.js quirk inside the engine to make a diff go
-green.** A "fix" that moves the engine away from the spec to match the
-polyfill is a regression by definition, whatever the diff says.
-
-## What must be proven
-
-Each row needs a measured result on a real book, native vs paged, before the
-gate can be called clear. `=` means parity; `>` means native is better; `<` is
-a blocker unless it is the wall-clock row.
-
-### A. PDF output
-1. Page count and pagination decisions (differences explained, not tolerated).
-2. Type scale — no whole-document shrink on either leg (median glyph height).
-3. Content fidelity: every element that prints on the paged leg prints on the
-   native leg, on a comparable page. Verified by rendering pages and looking,
-   plus `pdfimages -list` for art that exists in the file but is painted out
-   of view.
-4. Text remains extractable/searchable — no new rasterization. `pdftotext`
-   coverage per page compared between legs.
-5. Fonts embedded; no fallback substitution.
-6. Cross-references and TOC page numbers resolve correctly (`target-counter`).
-7. Running heads / folios / margin chrome present and correct.
-
-### B. PDF/X output (`--format pdfx`)
-8. PDF/X-1a and PDF/X-3 both build.
-9. ICC profile embedded; output intent correct.
-10. Post-build validation passes at least as well as the paged leg.
-11. PDF boxes — trim/bleed/art — correct; crop marks present when requested.
-12. Signature padding, metadata (title/author), annotation stripping.
-
-### C. Preview and desktop UX
-13. **Hot reload**: an edit reaches the preview at least as fast and as
-    reliably as the paged leg. Measure the actual latency both ways.
-14. Preview fidelity: what the author sees matches what prints — this is the
-    parity gate (`scripts/native-parity-gate.ts`), which must pass with an
-    **empty allowlist**.
-15. Page navigation, zoom, view modes, outline.
-16. Block edit / click-to-edit, context menu, editor↔preview source sync.
-17. Scroll position and page position survive a reload.
-18. Error and warning surfacing: build diagnostics reach the Problems panel.
-
-### D. Author-facing behaviour
-19. CSS support: anything the paged leg renders, the native leg renders — or
-    the difference is a documented, deliberate improvement.
-20. Build diagnostics are as good or better (native adds checks paged lacks:
-    broken cross-references, abspos leaks, dead columns).
-21. Error messages on failure are as actionable.
-
-### E. Static HTML export
-22. `--format html` produces a publishable, paginated artifact on the native
-    leg (the paginated view is the default, always).
-23. Embedding (iframe) works.
-
-### F. Reliability
-24. Determinism: same input, same output across repeated builds.
-25. No new failure modes on a machine without a system Chromium (preflight
-    fires early with an actionable message).
-
-## Accepted limitation
-
-26. **Build wall-clock time may regress.** Record the measured delta on a real
-    book so it is documented rather than discovered. Everything else in this
-    list must be `=` or `>`.
-
-## How results are recorded
-
-Every iteration appends to the results table below: date, area, native result,
-paged result, verdict (`=`, `>`, `<`), and the evidence (command run, file
-rendered, what was observed). A `<` stays open until fixed or explicitly
-accepted by the product owner.
+> Copied verbatim from `docs/native-engine-acceptance-gate.md`. See that file
+> for the gate's rules, scope, and any rows added after this snapshot.
 
 | Date | Area | Native | Paged | Verdict | Evidence |
 |---|---|---|---|---|---|
