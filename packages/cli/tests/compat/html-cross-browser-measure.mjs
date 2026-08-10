@@ -6,9 +6,7 @@
  *
  * NOT part of the automated suite (no .pw.ts suffix — see playwright.config.ts's
  * header for why that matters) and not CI-wired: it drives real system
- * browsers against build output that must exist first, and WebKit needs
- * host libraries this sandbox does not ship (see the gate doc's §E rows for
- * exactly what was missing and what was tried).
+ * browsers against build output that must exist first.
  *
  * Usage:
  *   gutterpress build examples/with-design-guide/design-guide --format html \
@@ -18,10 +16,35 @@
  *   node tests/compat/html-cross-browser-measure.mjs
  *
  * Override the build output locations with GP_NATIVE_HTML_DIR / GP_PAGED_HTML_DIR.
+ *
+ * RUNNING WEBKIT ON AN UNSUPPORTED LINUX (e.g. Ubuntu 26.04)
+ * ----------------------------------------------------------
+ * `playwright install webkit` refuses on too-new distros; force the download
+ * with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64. The downloaded
+ * MiniBrowser then wants 7 host sonames the distro no longer ships. The WPE
+ * runtime itself (libWPEWebKit / libwpe / libWPEBackend-fdo) DOES ship inside
+ * the bundle's own `minibrowser-wpe/lib` — do not chase those.
+ *
+ * `minibrowser-wpe/MiniBrowser` OVERWRITES `LD_LIBRARY_PATH`, so pointing that
+ * variable at a vendored prefix does nothing. Use LD_PRELOAD with absolute
+ * paths instead (the loader registers each soname, satisfying the deps):
+ *
+ *   # extract these .debs into $P (dpkg-deb -x, no root needed):
+ *   #   libicu74, libxml2 (2.9.x), libwoff1, libbacktrace0, libjxl0.10
+ *   #   (+ libmanette / libenchant-2-2 only for the non-headless GTK browser)
+ *   # libjxl 0.8 is gone from the archives; a symlink from the 0.10 build
+ *   # satisfies the 0.8 soname and works for HTML rendering:
+ *   ln -sf libjxl.so.0.10 $P/libjxl.so.0.8
+ *   export LD_PRELOAD="$P/libicudata.so.74 $P/libicuuc.so.74 \
+ *     $P/libicui18n.so.74 $P/libbacktrace.so.0 $P/libxml2.so.2 \
+ *     $P/libwoff2common.so.1.0.2 $P/libwoff2dec.so.1.0.2 \
+ *     $P/libjxl_cms.so.0.10 $P/libjxl.so.0.8"
  */
 import { chromium, firefox, webkit } from "playwright";
 import { serveDir } from "./serve-static.mjs";
 import fs from "node:fs";
+
+const SHOTS = process.env.GP_SHOT_DIR || "/tmp/wpE-html/shots";
 
 const LEGS = {
   native: { dir: process.env.GP_NATIVE_HTML_DIR || "/tmp/wpE-html/native", port: 4501 },
@@ -38,88 +61,92 @@ const BROWSERS = { chromium, firefox, webkit };
 
 const results = [];
 
-async function measure(browserName, launcher, legName, extraOpts = {}) {
+async function measure(browserName, launcher, legName, javaScriptEnabled) {
   const leg = LEGS[legName];
   const url = `http://127.0.0.1:${leg.port}/book.html`;
+  const tag = `${browserName}-${legName}${javaScriptEnabled ? "" : "-nojs"}`;
   let browser;
   try {
     browser = await launcher.launch();
   } catch (e) {
-    results.push({ browserName, legName, ok: false, error: "LAUNCH FAILED: " + e.message.split("\n")[0] });
+    results.push({ tag, ok: false, error: "LAUNCH FAILED: " + e.message.split("\n")[0] });
     return;
   }
   const consoleErrors = [];
   const pageErrors = [];
   try {
-    const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, ...extraOpts });
+    const context = await browser.newContext({
+      viewport: { width: 1400, height: 900 },
+      javaScriptEnabled,
+    });
     const page = await context.newPage();
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
     });
     page.on("pageerror", (err) => pageErrors.push(String(err)));
-    await page.goto(url, { waitUntil: "load", timeout: 30000 });
+    await page.goto(url, { waitUntil: "load", timeout: 60000 });
     // give native's multicol fragmentation JS time to settle
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(8000);
+
+    // screenshot at the TOP of the document, BEFORE any scrolling — a shot
+    // taken after a wheel event lands at an engine-dependent offset and is
+    // not comparable across browsers.
+    fs.mkdirSync(SHOTS, { recursive: true });
+    await page.screenshot({ path: `${SHOTS}/${tag}-top.png` });
 
     const metrics = await page.evaluate(() => {
-      const folioSheets = document.querySelectorAll(".folio-sheet").length;
-      const folioStage = document.querySelectorAll(".folio-stage").length;
-      const pagedPages = document.querySelectorAll(".pagedjs_page").length;
-      const runningHeads = document.querySelectorAll(
-        ".folio-marginbox, .pagedjs_margin-content"
-      ).length;
-      const bodyText = document.body ? document.body.innerText.length : 0;
-      const scrollWidth = document.scrollingElement ? document.scrollingElement.scrollWidth : 0;
-      const scrollHeight = document.scrollingElement ? document.scrollingElement.scrollHeight : 0;
-      const viewportW = window.innerWidth;
-      const viewportH = window.innerHeight;
-      return { folioSheets, folioStage, pagedPages, runningHeads, bodyText, scrollWidth, scrollHeight, viewportW, viewportH };
+      const q = (s) => document.querySelectorAll(s).length;
+      const se = document.scrollingElement;
+      const sheets = [...document.querySelectorAll(".folio-sheet, .pagedjs_page")];
+      return {
+        folioSheets: q(".folio-sheet"),
+        folioStage: q(".folio-stage"),
+        pagedPages: q(".pagedjs_page"),
+        runningHeads: q(".folio-marginbox, .pagedjs_margin-content"),
+        bodyText: document.body ? document.body.innerText.length : 0,
+        scrollWidth: se ? se.scrollWidth : 0,
+        scrollHeight: se ? se.scrollHeight : 0,
+        // first four page boxes, to tell a real page grid from a single flow
+        firstPageRects: sheets.slice(0, 4).map((el) => {
+          const r = el.getBoundingClientRect();
+          return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+        }),
+        // per-page text, so a page-count divergence can be located exactly
+        pageTexts: sheets.map((el) => (el.innerText || "").replace(/\s+/g, " ").trim().slice(0, 60)),
+      };
     });
 
-    // test scroll navigation: scroll and see if scrollLeft/scrollTop changes and is retained
     const before = await page.evaluate(() => ({
       x: document.scrollingElement.scrollLeft,
       y: document.scrollingElement.scrollTop,
     }));
     await page.mouse.wheel(0, 3000);
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
     const after = await page.evaluate(() => ({
       x: document.scrollingElement.scrollLeft,
       y: document.scrollingElement.scrollTop,
     }));
     const scrolled = before.x !== after.x || before.y !== after.y;
+    await page.screenshot({ path: `${SHOTS}/${tag}-scrolled.png` });
 
-    const shotPath = `/tmp/wpE-html/shots/${browserName}-${legName}${extraOpts.javaScriptEnabled === false ? "-nojs" : ""}.png`;
-    fs.mkdirSync("/tmp/wpE-html/shots", { recursive: true });
-    await page.screenshot({ path: shotPath, fullPage: false });
-
-    results.push({
-      browserName,
-      legName,
-      jsDisabled: extraOpts.javaScriptEnabled === false,
-      ok: true,
-      metrics,
-      scrolled,
-      consoleErrors,
-      pageErrors,
-      shotPath,
-    });
+    results.push({ tag, ok: true, metrics, scrolled, consoleErrors, pageErrors });
     await context.close();
   } catch (e) {
-    results.push({ browserName, legName, ok: false, error: "RUN FAILED: " + e.message.split("\n")[0], consoleErrors, pageErrors });
+    results.push({ tag, ok: false, error: "RUN FAILED: " + e.message.split("\n")[0], consoleErrors, pageErrors });
   } finally {
     await browser.close();
   }
 }
 
+// Every leg is measured with AND without JavaScript: native's fallback is the
+// point of the no-JS run, and the paged leg's no-JS run is what proves its
+// export really is a static pre-paginated snapshot rather than script output.
 for (const legName of Object.keys(LEGS)) {
   for (const [browserName, launcher] of Object.entries(BROWSERS)) {
-    await measure(browserName, launcher, legName);
+    await measure(browserName, launcher, legName, true);
+    await measure(browserName, launcher, legName, false);
   }
 }
-
-// JS-disabled test, chromium, native only
-await measure("chromium", chromium, "native", { javaScriptEnabled: false });
 
 for (const s of Object.values(servers)) s.close();
 
