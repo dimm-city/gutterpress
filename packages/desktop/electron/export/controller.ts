@@ -47,12 +47,25 @@ export interface ExportBuildArgs {
   skipPostValidate?: boolean;
 }
 
+/**
+ * One print-quality finding, mirrored from the lib's `BuildDiagnostic`
+ * (defined locally — Electron main does not import the lib's engine types
+ * across the layering boundary; kept in lockstep with
+ * `src/lib/platform/shared-types.ts`'s `BuildDiagnosticDto`).
+ */
+export interface ExportBuildDiagnostic {
+  code: string;
+  severity: "warning" | "info";
+  message: string;
+}
+
 export interface ExportBuildResult {
   exportId: string;
   outDir: string;
   htmlPath?: string;
   pdfPath: string;
   fingerprintPath?: string;
+  diagnostics?: ExportBuildDiagnostic[];
 }
 
 /**

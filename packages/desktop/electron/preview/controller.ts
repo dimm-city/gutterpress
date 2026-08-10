@@ -179,7 +179,7 @@ export class PreviewOpenController {
       try {
         const { manifest } = await lib.loadManifestWithPath(openedDir);
         if (manifest.title) title = manifest.title;
-        engine = manifest.engine;
+        engine = manifest.engine ?? "native";
       } catch {
         /* malformed/missing manifest is reported by preview generation below */
       }

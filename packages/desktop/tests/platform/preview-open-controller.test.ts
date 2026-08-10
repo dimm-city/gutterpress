@@ -200,6 +200,7 @@ test("happy path (local-folder): starts server, sets activePreview, returns resu
     port: 1234,
     input: "/book",
     title: "book",
+    engine: "native",
   });
   expect(h.getActivePreview()?.inputPath).toBe("/book");
   expect(h.getActiveRepositoryRoot()).toBeNull();
