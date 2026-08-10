@@ -27,6 +27,19 @@ const RENDER_TEST_TIMEOUT_MS = 60_000;
 
 const chromium = await resolveChromiumExecutable();
 const fixtureAvailable = await Bun.file(`${FIXTURE}/chapter-00.md`).exists();
+// The `page.evaluate` callbacks below are serialized and run in the BROWSER,
+// where `window.previewAPI` (preview-interface.js) exists — but this package's
+// tsconfig is deliberately Node-targeted with no DOM lib (see its comment: a
+// package-wide `lib: ["DOM"]` leaks DOM overloads into every Node file). Declare
+// just the one browser global these callbacks touch, file-locally.
+declare const window: {
+  previewAPI?: {
+    getTotalPages(): number;
+    getCurrentPage(): number;
+    goToPage(n: number): { currentPage: number };
+  };
+};
+
 const testIf = chromium && fixtureAvailable ? test : test.skip;
 if (!chromium) {
   // eslint-disable-next-line no-console

@@ -117,8 +117,8 @@ async function extractAssets(): Promise<string> {
 // the per-process temp dir out from under us; in that case we must re-extract.
 //
 // This MUST be an asset shipped on both the native and paged legs (ideally one
-// that outlives Paged.js entirely) — `vendor/paged.polyfill.js` was staged-out
-// removal deliberately did not delete it, but is still Paged.js-only: once the
+// that outlives Paged.js entirely). `vendor/paged.polyfill.js` — the previous
+// sentinel — is Paged.js-only: once the
 // polyfill is finally deleted, a sentinel that still names it would never exist
 // on disk again, so `existsSync` below would be false forever and every call to
 // `getAssetsDir()` would re-extract from scratch. The native engine's viewer
