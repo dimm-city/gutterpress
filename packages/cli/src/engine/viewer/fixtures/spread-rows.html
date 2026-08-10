@@ -1,0 +1,55 @@
+<!--
+  Regression fixture: two-up/spread view mode (`applySpreadMode`).
+
+  Deliberately shaped to expose ROW-axis bugs, which a short book cannot:
+
+  - One long unnamed run (many paragraphs) that fragments into ~8 pages, so
+    the wrapped grid is 4+ ROWS deep. A per-row pitch error is invisible in
+    row 0 and grows one page-margin per row, so the run has to be long.
+  - Non-zero, ASYMMETRIC page margins (`margin: 0.5in 0.5in 0.75in`), so
+    `--folio-page-h` and `--folio-content-h` are different numbers and the
+    two cannot be confused by accident.
+  - An `h1 { page: chapter }` opener partway through, so the document has
+    real run boundaries (one strip per named-page run) and both a
+    recto-starting and a verso-starting run occur.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Spread rows</title>
+<style>
+@page { size: 5in 5in; margin: 0.5in 0.5in 0.75in; }
+@page chapter { margin-top: 1.5in; }
+body { font: 11pt/1.35 Georgia, serif; margin: 0; }
+h1 { font-size: 20pt; page: chapter; break-before: page; margin: 0; }
+p { margin: 0 0 9pt; }
+</style>
+</head>
+<body>
+<div id="root">
+  <p id="a1">Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one. Alpha one.</p>
+  <p id="a2">Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two. Alpha two.</p>
+  <p id="a3">Alpha three. Alpha three. Alpha three. Alpha three. Alpha three. Alpha three. Alpha three. Alpha three. Alpha three. Alpha three. Alpha three. Alpha three. Alpha three.</p>
+  <p id="a4">Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four. Alpha four.</p>
+  <p id="a5">Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five. Alpha five.</p>
+  <p id="a6">Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six. Alpha six.</p>
+  <p id="a7">Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven. Alpha seven.</p>
+  <p id="a8">Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight. Alpha eight.</p>
+  <p id="a9">Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine. Alpha nine.</p>
+  <p id="a10">Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten. Alpha ten.</p>
+  <p id="a11">Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven. Alpha eleven.</p>
+  <p id="a12">Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve. Alpha twelve.</p>
+  <h1 id="h-two">Two</h1>
+  <p id="b1">Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one. Beta one.</p>
+  <p id="b2">Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two. Beta two.</p>
+  <p id="b3">Beta three. Beta three. Beta three. Beta three. Beta three. Beta three. Beta three. Beta three. Beta three. Beta three. Beta three. Beta three. Beta three. Beta three.</p>
+  <p id="b4">Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four. Beta four.</p>
+  <p id="b5">Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five. Beta five.</p>
+  <p id="b6">Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six. Beta six.</p>
+  <p id="b7">Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven. Beta seven.</p>
+  <p id="b8">Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight. Beta eight.</p>
+</div>
+<script src="gutterpress-viewer.js"></script>
+</body>
+</html>

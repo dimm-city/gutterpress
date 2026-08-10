@@ -605,13 +605,28 @@ export function strideOf(strip: HTMLElement): number {
   return w + gap;
 }
 
-/** Vertical pitch between wrapped rows: full page height (§ applySpreadMode's
- * `row-gap` mirrors `column-gap`'s "content box + margins + visual gap"
- * shape) plus the row gap. Unused (but harmless to read) when a strip isn't
- * wrapped — every fragment then sits in row 0 regardless of this value. */
+/**
+ * Vertical pitch between wrapped rows — the EXACT mirror of `strideOf`:
+ * multicol lays a wrapped row out at `column-height` + `row-gap`, exactly as
+ * it lays a column out at the content width + `column-gap`. So this must read
+ * the CONTENT height (`--folio-content-h`, which is what `column-height` is
+ * set to), not the full page height.
+ *
+ * Reading `--folio-page-h` here overshot by (margin-top + margin-bottom) per
+ * row — measured on design-guide: sheets painted at a 1260px pitch while
+ * Chromium wrapped content at 1080px, so from row 1 on the sheet chrome sat
+ * below the text it was supposed to frame, drifting a further 180px each row,
+ * and `pageOf()` mapped 106/363 probe elements to the wrong page in spread
+ * mode. `--folio-page-h` + `sheetGap` is the same number by construction
+ * (`row-gap` = margins + gap), but content-h + rowGap is the form that stays
+ * correct if either definition changes.
+ *
+ * Unused (but harmless to read) when a strip isn't wrapped — every fragment
+ * then sits in row 0 regardless of this value.
+ */
 export function rowStrideOf(strip: HTMLElement): number {
   const cs = getComputedStyle(strip);
-  const h = parseFloat(cs.getPropertyValue("--folio-page-h"));
+  const h = parseFloat(cs.getPropertyValue("--folio-content-h"));
   const gap = parseFloat(cs.rowGap) || 0;
   return h + gap;
 }

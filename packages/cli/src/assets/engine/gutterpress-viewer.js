@@ -1143,7 +1143,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
   }
   function rowStrideOf(strip) {
     const cs = getComputedStyle(strip);
-    const h = parseFloat(cs.getPropertyValue("--folio-page-h"));
+    const h = parseFloat(cs.getPropertyValue("--folio-content-h"));
     const gap = parseFloat(cs.rowGap) || 0;
     return h + gap;
   }
