@@ -23,6 +23,7 @@ import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
 import { BuildError } from "./build-error";
 import type { BuildDiagnostic } from "../engine/compiler/build.ts";
+import type { Browser as EngineBrowser, Session as EngineSession } from "../engine/shared/cdp.ts";
 import { UsageError } from "./cli-args";
 import {
   preflightBuildTools,
@@ -48,7 +49,7 @@ import {
 // part of this module's long-standing public surface (re-exported through
 // src/api/index.ts) — re-export so existing `import { type PdfRenderer } from
 // "./build-runner"` call sites keep working unchanged.
-export type { PdfRenderer, PdfRenderInput };
+export type { PdfRenderer, PdfRenderInput, EngineBrowser, EngineSession };
 
 export type BuildFormat = "html" | "pdf" | "pdfx";
 export type PdfxFlavor = "x1a" | "x3";
@@ -101,6 +102,21 @@ export interface BuildRunnerOptions {
    * bypasses and why.
    */
   engine?: "paged" | "native";
+  /**
+   * Optional injected engine-Chromium factory for `--engine native` builds —
+   * the mirror of `pdfRenderer` above, but for the native engine's OWN
+   * Chromium driver (`engine.ts`'s `buildNativePdf`, NOT `renderHtmlToPdf`'s
+   * Paged.js leg, which `pdfRenderer` covers). When omitted (the CLI's
+   * default), the native engine attaches to `browser-pool.ts`'s pooled
+   * external Chromium, same as always, and the usual Chromium preflight /
+   * milestone check apply. When supplied (the desktop, over its own Electron
+   * `BrowserWindow` — see `packages/desktop/electron`'s engine-browser
+   * module), it is used instead, no external Chromium is required, and both
+   * of those checks are skipped. Only called (lazily) when a build actually
+   * resolves to `engine: "native"`, so a Paged.js build never pays for
+   * constructing it.
+   */
+  engineBrowser?: () => Promise<EngineBrowser>;
 }
 
 export interface BuildRunnerResult {
@@ -732,11 +748,16 @@ class PdfOutput implements OutputStrategy {
       if (config.engine === "native") {
         log.info("Rendering HTML to PDF via the Gutterpress engine (native Chromium pagination)");
         const { buildNativePdf } = await import("./engine");
-        engineDiagnostics = await buildNativePdf(htmlFile, rawPdf, {
-          title: config.title,
-          author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
-          signature: config.print.signature,
-        });
+        engineDiagnostics = await buildNativePdf(
+          htmlFile,
+          rawPdf,
+          {
+            title: config.title,
+            author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
+            signature: config.print.signature,
+          },
+          opts.engineBrowser
+        );
         for (const d of engineDiagnostics) log.warn(d.message);
       } else {
         log.info("Rendering HTML to PDF via Chromium+Paged.js");
@@ -895,7 +916,12 @@ export async function runBuild(
   // preflight as the Paged.js path. An injected `pdfRenderer` only skips it
   // for the Paged.js leg — a native build ignores `opts.pdfRenderer` (it
   // always calls `buildNativePdf`, which needs the system Chromium; see the
-  // comment at its call site below), so the preflight must still run.
+  // comment at its call site below), so the preflight must still run — UNLESS
+  // `opts.engineBrowser` is also supplied (the desktop's Electron path),
+  // which drives its own Chromium and needs neither the pool nor an external
+  // binary; `preflightBuildTools` itself skips its Chromium check in that
+  // case, but ghostscript/qpdf checks for pdfx still apply, so this call
+  // stays unconditional.
   if (ctx.format !== "html" && (!opts.pdfRenderer || ctx.config.engine === "native")) {
     await preflightBuildTools(ctx.format, opts, ctx.config);
   }
@@ -903,13 +929,17 @@ export async function runBuild(
   // Pre-warm the headless browser NOW (fire-and-forget) so the ~1–2s Chromium
   // cold start overlaps with lint + validation + markdown render + asset staging
   // below, instead of sitting on the critical path at pagination time. Only when
-  // this build will actually paginate in Chromium: a PDF/PDFX build with no
-  // injected renderer (Paged.js or native — both now draw from the same pool),
-  // or an HTML build with a browser available. Same `pdfRenderer` caveat as the
-  // preflight above: a native build ignores an injected renderer and paginates
-  // in the pooled Chromium anyway, so it must still prewarm.
+  // this build will actually paginate in the POOLED Chromium: a PDF/PDFX build
+  // with no injected renderer (Paged.js or native — both now draw from the same
+  // pool) and no injected `engineBrowser`, or an HTML build with a browser
+  // available. Same `pdfRenderer` caveat as the preflight above: a native build
+  // ignores an injected renderer and paginates in the pooled Chromium anyway,
+  // UNLESS `opts.engineBrowser` is supplied, in which case it drives that
+  // browser instead and the pool is never touched.
   const willPaginateInChromium =
-    (ctx.format !== "html" && (!opts.pdfRenderer || ctx.config.engine === "native")) ||
+    (ctx.format !== "html" &&
+      (!opts.pdfRenderer || ctx.config.engine === "native") &&
+      !opts.engineBrowser) ||
     (ctx.format === "html" && !!(await resolveChromiumExecutable()));
   if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 
@@ -930,7 +960,10 @@ export async function runBuild(
     // here instead, the common failure case (a quality gate throwing) never
     // pays for it, and by the time gates finish the prewarmed browser is
     // usually already warm. See verifyNativeChromiumMilestone's doc comment.
-    if (ctx.format !== "html" && ctx.config.engine === "native") {
+    // Skipped when `opts.engineBrowser` is supplied: that path never touches
+    // the pool (the desktop drives its own Electron Chromium instead), so
+    // there is nothing here for this check to verify.
+    if (ctx.format !== "html" && ctx.config.engine === "native" && !opts.engineBrowser) {
       await verifyNativeChromiumMilestone();
     }
 

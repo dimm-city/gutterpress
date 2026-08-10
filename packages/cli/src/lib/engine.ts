@@ -39,10 +39,12 @@
  */
 import { writeFile } from "node:fs/promises";
 import { build, type BuildDiagnostic } from "../engine/compiler/build.ts";
-import { connectChromium } from "../engine/shared/cdp.ts";
+import { connectChromium, type Browser as EngineBrowser } from "../engine/shared/cdp.ts";
 import { getBrowser } from "./browser-pool.ts";
 import { RENDER_TIMEOUT_MS } from "./pagination.ts";
 import { BuildError } from "./build-error.ts";
+
+export type { EngineBrowser };
 
 /** The subset of `BuildOptions` that has a manifest/CLI source today (B.12). */
 export interface NativePdfOptions {
@@ -60,22 +62,34 @@ export interface NativePdfOptions {
  * them (the desktop Problems panel, the CLI's own output). Dropping them here
  * is what made the engine's print-quality audits invisible in every real
  * build path — they only ever reached the engine dev CLI.
+ *
+ * `getEngineBrowser` is an optional injected factory, mirroring the
+ * `pdfRenderer` seam `build-runner.ts` already has for the Paged.js leg: when
+ * omitted (the CLI's default), this module gets `browser-pool.ts`'s pooled
+ * puppeteer browser and attaches `cdp.ts`'s `connectChromium()` to it, same as
+ * always. When supplied (the desktop, over its own Electron `BrowserWindow` —
+ * see `packages/desktop/electron`'s engine-browser module), that browser is
+ * used directly instead — no pooled/external Chromium involved at all. Either
+ * way this function owns closing whatever browser it ends up with: the pooled
+ * path because `connectChromium`'s close only drops OUR websocket (never the
+ * pool), and the injected path because the desktop hands over a browser built
+ * fresh for exactly this one build (`newPage()` -> one window per build), so
+ * nothing else is going to close it.
  */
 export async function buildNativePdf(
   htmlFile: string,
   outPdf: string,
   options: NativePdfOptions = {},
+  getEngineBrowser?: () => Promise<EngineBrowser>,
 ): Promise<BuildDiagnostic[]> {
   let result: Awaited<ReturnType<typeof build>>;
   try {
-    const pooled = await getBrowser(RENDER_TIMEOUT_MS);
-    const engineBrowser = await connectChromium(pooled.wsEndpoint());
+    const engineBrowser = getEngineBrowser
+      ? await getEngineBrowser()
+      : await connectChromium((await getBrowser(RENDER_TIMEOUT_MS)).wsEndpoint());
     try {
       result = await build({ input: htmlFile, browser: engineBrowser, ...options });
     } finally {
-      // Drops OUR websocket only (connectChromium's close never touches the
-      // pooled browser). Without this, every build in a long-lived process
-      // (preview server, desktop) leaks one CDP connection.
       await engineBrowser.close();
     }
   } catch (err) {

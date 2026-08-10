@@ -51,7 +51,7 @@ const INSTALL_HINTS: Record<"gs" | "qpdf", string> = {
  */
 export async function preflightBuildTools(
   format: BuildFormat,
-  opts: { stripAnnotations?: boolean; pdfRenderer?: PdfRenderer },
+  opts: { stripAnnotations?: boolean; pdfRenderer?: PdfRenderer; engineBrowser?: unknown },
   config: { pdfx: { stripAnnotations: boolean }; engine?: "paged" | "native" }
 ): Promise<void> {
   const missing: MissingTool[] = [];
@@ -60,9 +60,12 @@ export async function preflightBuildTools(
   // is injected (the Electron desktop renders with its own bundled Chromium).
   // The native engine ignores an injected `pdfRenderer` (build-runner.ts always
   // calls `buildNativePdf`, which drives the system/pooled Chromium directly),
-  // so it still needs this check even with `opts.pdfRenderer` set.
+  // so it still needs this check even with `opts.pdfRenderer` set — UNLESS
+  // `opts.engineBrowser` is ALSO supplied, which drives the native engine's own
+  // Electron Chromium instead of the pool and needs no external binary at all.
   if (
     (!opts.pdfRenderer || config.engine === "native") &&
+    !opts.engineBrowser &&
     !(await resolveChromiumExecutable())
   ) {
     // requireChromiumExecutable() throws with multi-line install instructions

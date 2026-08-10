@@ -31,19 +31,40 @@ export function findChromium(): string {
 /**
  * Folio targets exactly one engine.
  *
- * Chromium's Paged Media behaviour is not stable across milestones, and it
- * changes in ways that produce NO error: 151 began parsing `target-counter()`
- * while still computing it to `none`, which made the author's declaration
- * survive the cascade and silently outrank Folio's override — every
- * cross-reference in the document disappeared, quietly. A shim cannot defend
- * against that class of change by feature-detection, because the feature
- * reports itself as present.
+ * THE 151 INCIDENT: Chromium's Paged Media behaviour is not stable across
+ * milestones, and it changed once in a way that produced NO error. 151 began
+ * PARSING `target-counter()` while still computing it to `none`. Before 151,
+ * an unsupported `target-counter()` declaration was dropped by the cascade
+ * (invalid at parse time), so Folio's `generatedContentCss()` override, which
+ * targets the SAME property on the SAME selector, was the only rule left
+ * standing. At 151, the author's declaration started parsing as valid — so
+ * it stayed in the cascade, and on equal specificity, source order (the
+ * author's stylesheet loads after Folio's) let it win. Every cross-reference
+ * in the document disappeared, quietly.
  *
- * So the version is pinned rather than probed, and running on anything else is
- * an error rather than a guess. Raising this floor means re-running
- * `bun run spikes` and treating every changed measurement as a finding.
+ * WHY THE FLOOR MOVED BACK TO 148 (measured, not assumed): the fix was never
+ * "run on 151" — it was `generatedContentCss()` OUT-SPECIFYING the author's
+ * selector, which wins the cascade whether the author's declaration is
+ * dropped (pre-151 regime) or retained (151+ regime). That was already
+ * verified by a RENDER PROBE (below) that reads back
+ * `getComputedStyle(el, '::after').content` instead of trusting
+ * `CSS.supports` — i.e. the thing that actually defends against this class of
+ * silent-content-loss regression is the probe, not the milestone pin. Measured
+ * 148 vs 151 head-to-head: the spike suite differs in exactly 2 checks (both
+ * assertions ABOUT Chromium's parse-vs-drop behaviour, now written to accept
+ * either regime — see spike/folio s0/s2), the parity gate output is
+ * byte-identical, and real 34pp/53pp book builds produce identical page counts
+ * and sizes on both milestones. So 151 was a *floor for the incident's
+ * discovery*, not a requirement of the fix. It is pinned rather than probed —
+ * running on anything below 148 is still an error rather than a guess — but
+ * 148 is the honestly-supported floor because it's also what Electron's
+ * bundled Chromium ships (42.1.0 → 148.0.7778.97 as of 2026-08-08), and the
+ * desktop app needs to drive its own Chromium for native-engine PDF export
+ * (see packages/desktop/electron's engine-browser module). Raising or
+ * lowering this floor again means re-running `bun run spikes` and treating
+ * every changed measurement as a finding, same as before.
  */
-export const REQUIRED_MILESTONE = 151;
+export const REQUIRED_MILESTONE = 148;
 
 export interface Browser {
   wsUrl: string;
@@ -146,9 +167,7 @@ export async function connectChromium(wsUrl: string): Promise<Browser> {
     // ELSE already launched — in practice `browser-pool.ts`'s puppeteer
     // instance, resolved via `chromium.ts`'s CHROMIUM_PATH /
     // PUPPETEER_EXECUTABLE_PATH. Telling a user on this path to set
-    // FOLIO_CHROMIUM does nothing; measured 2026-08-08 (Electron 42.1.0 bundles
-    // Chromium 148, below this file's REQUIRED_MILESTONE 151) — this is exactly
-    // the message a desktop native-engine export hits.
+    // FOLIO_CHROMIUM does nothing.
     `Set CHROMIUM_PATH (or PUPPETEER_EXECUTABLE_PATH) to a ${REQUIRED_MILESTONE}+ binary.`,
   );
 }
