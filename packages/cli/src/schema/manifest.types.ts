@@ -70,29 +70,22 @@ export interface GutterpressManifest {
   /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
   preset?: "dtrpg" | "book" | "custom";
   /**
-   * Pagination engine (MIGRATION.md Decision #5): "native" (default) routes
-   * both `gutterpress build` and `gutterpress preview` through the
-   * Gutterpress engine (`src/engine/`) — native Chromium pagination, no
-   * Paged.js polyfill. "paged" is DEPRECATED — the Chromium+Paged.js
-   * pipeline, kept for compatibility and slated for removal; new projects
-   * should not set this value, and existing projects should migrate to
-   * "native" (see docs/migrations/2026-08-native-engine-default.md). Preview
-   * and PDF always use the SAME engine for a given project — never
-   * independently. `--engine` on the CLI overrides this per invocation.
+   * Pagination engine. Paged.js has been removed (native-only-migration-
+   * plan.md Phase 6) — the Gutterpress engine (`src/engine/`, native Chromium
+   * pagination) is the only engine. This field and `--engine` on the CLI are
+   * accepted-but-ignored for backward compatibility: an explicit "paged"
+   * produces a one-line warning and the build proceeds natively regardless.
    */
   engine?: "paged" | "native";
   /**
-   * Engine-conditional stylesheets, appended AFTER `styles` for the resolved
-   * engine only. The transition mechanism for per-book migration: a book
-   * whose chrome is coupled to one engine's DOM (e.g. `.pagedjs_sheet`
-   * backgrounds) declares the other engine's replacement furniture here, so
-   * one project renders correctly under BOTH engines while it migrates.
-   * Loaded last, so furniture wins the cascade over the shared layers.
+   * Engine-conditional stylesheets, appended AFTER `styles`. `.native` is the
+   * only list that still applies; `.paged` is accepted-but-ignored (a warning
+   * fires if it has entries) now that Paged.js has been removed.
    */
   engineStyles?: {
     /**
-     * DEPRECATED — stylesheets loaded only under `engine: "paged"`. Slated
-     * for removal along with the Paged.js pipeline; do not add new entries.
+     * REMOVED — Paged.js has been deleted. Accepted for backward-compatible
+     * manifest parsing only; entries here are ignored with a warning.
      */
     paged?: string[];
     native?: string[];
@@ -203,8 +196,8 @@ export interface ResolvedConfig {
   title: string;
   authors: string[];
   /**
-   * Resolved pagination engine (cli > manifest > default "native"). See
-   * {@link GutterpressManifest.engine}.
+   * Resolved pagination engine — always "native"; Paged.js has been removed.
+   * See {@link GutterpressManifest.engine}.
    */
   engine: "paged" | "native";
   /** Validated publish-target ids for this book (may be empty). */

@@ -1,32 +1,18 @@
-// Interface adapter: exposes window.previewAPI for the parent toolbar. Works
-// under BOTH pagination engines (`--engine paged` / `--engine native`),
-// detected once at load time from the injected engine <script> tag — by the
-// time any previewAPI method actually runs, the corresponding engine has had
-// a chance to mount.
+// Interface adapter: exposes window.previewAPI for the parent toolbar.
 //
-// Paged.js paginates into .pagedjs_page elements; we use PagedConfig.after to
-// know when rendering is done. The Gutterpress engine viewer paginates into
-// .folio-sheet elements (one per page, `dataset.page` = 1-based book page)
-// and exposes window.Gutterpress.pageOf(el) (0-based); it fires 'folio:layout'
-// when its pagination completes.
+// The Gutterpress engine viewer paginates into .folio-sheet elements (one per
+// page, `dataset.page` = 1-based book page) and exposes
+// window.Gutterpress.pageOf(el) (0-based); it fires 'folio:layout' when its
+// pagination completes.
 //
 // The block-overlay fragment-grouping machinery below (blocksMatchingRange)
-// groups by `{chapter, range}` (data-source-range), not `data-ref` — a source
-// range is duplicated onto every fragment identically (Paged.js CLONES an
-// element across pages and strips its id from every clone but the first, but
-// copies data-source-range verbatim), so it groups a clone-set exactly as
-// well as a ref would, with no separate ref bookkeeping needed. The native
-// viewer never clones — an element that visually spans pages is still ONE
-// element — so the native path (nativeRectsFor) resolves rects straight off
-// the single matching element via getClientRects() + pageOf().
+// groups by `{chapter, range}` (data-source-range) — the native viewer never
+// clones an element across pages (an element that visually spans pages is
+// still ONE element), so nativeRectsFor resolves rects straight off the
+// single matching element via getClientRects() + pageOf().
 
 (function () {
   'use strict';
-
-  var NATIVE_ENGINE = !!(
-    document.querySelector &&
-    document.querySelector('script[src*="/engine/gutterpress-viewer.js"]')
-  );
 
   var pages = [];
   var currentPage = 1;
@@ -37,13 +23,9 @@
   var lastSourceChapter = null;
 
   function refreshPages() {
-    if (NATIVE_ENGINE) {
-      pages = Array.from(document.querySelectorAll('.folio-sheet')).sort(function (a, b) {
-        return (parseInt(a.dataset.page, 10) || 0) - (parseInt(b.dataset.page, 10) || 0);
-      });
-    } else {
-      pages = Array.from(document.querySelectorAll('.pagedjs_page'));
-    }
+    pages = Array.from(document.querySelectorAll('.folio-sheet')).sort(function (a, b) {
+      return (parseInt(a.dataset.page, 10) || 0) - (parseInt(b.dataset.page, 10) || 0);
+    });
     return pages;
   }
 
@@ -58,22 +40,23 @@
   // wide as that chapter needs — rows stack vertically, but a long chapter's
   // pages run off horizontally within its own row (viewer.css: `.folio-sheet`
   // is `left`-positioned within the row, every sheet in a row shares `top`).
-  // The paged.js top-only scan below can't tell two sheets in the same row
-  // apart — every one of them has the same `top`, so it always resolves to
-  // the LAST sheet of whichever row is vertically in view, ignoring
-  // scrollLeft entirely (measured: goToPage(18/30/34) in a 34pp book all
-  // landed on page 14 — row 1's last page — regardless of horizontal scroll
-  // position). Pick the sheet with the GREATEST visible overlap area with the
-  // viewport — a fixed reference-point distance was tried first but broke at
-  // the very end of a row: the browser clamps scrollIntoView({inline:'start'})
-  // once there's no more row content to scroll past, so the last page of a
-  // short final row can land mid-viewport rather than flush against any fixed
-  // point (measured: goToPage(34) on a 34pp book left page 34 at ~40% visible
+  // A top-only scan can't tell two sheets in the same row apart — every one
+  // of them has the same `top`, so it always resolves to the LAST sheet of
+  // whichever row is vertically in view, ignoring scrollLeft entirely
+  // (measured: goToPage(18/30/34) in a 34pp book all landed on page 14 —
+  // row 1's last page — regardless of horizontal scroll position). Pick the
+  // sheet with the GREATEST visible overlap area with the viewport — a fixed
+  // reference-point distance was tried first but broke at the very end of a
+  // row: the browser clamps scrollIntoView({inline:'start'}) once there's no
+  // more row content to scroll past, so the last page of a short final row
+  // can land mid-viewport rather than flush against any fixed point
+  // (measured: goToPage(34) on a 34pp book left page 34 at ~40% visible
   // width from the left edge, so a left-edge reference point missed it and
   // matched page 33 instead, which still touched the reference point). Falls
   // back to nearest-by-distance when nothing overlaps at all (e.g. mid-scroll
   // between rows, or every sheet clipped by a shorter viewport than a page).
-  function detectVisiblePageNative() {
+  function detectVisiblePage() {
+    if (pages.length === 0) return 1;
     var vw = window.innerWidth;
     var vh = window.innerHeight;
     var best = 0;
@@ -96,29 +79,6 @@
     return (bestArea > 0 ? best : nearest) + 1;
   }
 
-  function detectVisiblePage() {
-    if (pages.length === 0) return 1;
-    if (NATIVE_ENGINE) return detectVisiblePageNative();
-    // Use getBoundingClientRect (viewport-relative, post-zoom) rather than
-    // offsetTop. The desktop applies CSS `zoom` for fit-width; under `zoom`,
-    // offsetTop stays in PRE-zoom layout coords while window.scrollY is POST-zoom,
-    // so mixing them pinned the detected page to 1. getBoundingClientRect is
-    // consistent with the rendered viewport at any zoom.
-    var line = window.innerHeight / 3; // reference line in the upper third
-    var vh = window.innerHeight;
-    var last = 0;
-    for (var i = 0; i < pages.length; i++) {
-      var top = pages[i].getBoundingClientRect().top;
-      if (top <= line) last = i;       // last page whose top is at/above the line
-      else if (top > vh) break;        // well below the viewport — stop scanning
-    }
-    // In spread/two-column view a row holds two pages at the same top; report the
-    // FIRST page of that row (matches single view, where each row is one page).
-    var rowTop = pages[last].getBoundingClientRect().top;
-    while (last > 0 && Math.abs(pages[last - 1].getBoundingClientRect().top - rowTop) < 2) last--;
-    return last + 1;
-  }
-
   function scrollToCurrentPage() {
     if (pages.length === 0) return;
     var page = clampPage(currentPage);
@@ -126,13 +86,11 @@
     ignoreScrollUntil = Date.now() + 300;
     // Native's rows can be wider than the viewport (a long chapter scrolls
     // horizontally within its own row) — align the target sheet's left edge
-    // to the viewport's left edge (matching detectVisiblePageNative's `refX`)
-    // rather than paged's single-column 'nearest', which leaves scrollLeft
-    // wherever it already was when the sheet is already partly on-screen.
+    // to the viewport's left edge (matching detectVisiblePage's `refX`).
     pages[page - 1].scrollIntoView({
       behavior: 'instant',
       block: 'start',
-      inline: NATIVE_ENGINE ? 'start' : 'nearest'
+      inline: 'start'
     });
     recordVisibleSource();
   }
@@ -143,8 +101,9 @@
 
   // ── Source-mapping helpers (ADR 0005) ──────────────────────────────────────
   // Every block element carries data-source-line (markdown-it-source-map). These
-  // map rendered DOM <-> markdown source line and rendered DOM <-> paged.js page,
-  // which is the same-origin info the cross-iframe host cannot compute itself.
+  // map rendered DOM <-> markdown source line and rendered DOM <-> page. The
+  // native fragmenter MOVES elements into strips, it does not clone them, so
+  // these attributes survive intact.
   function lineOf(el) {
     if (!el || !el.getAttribute) return null;
     var n = parseInt(el.getAttribute('data-source-line'), 10);
@@ -153,17 +112,9 @@
 
   function pageIndexOf(el) {
     if (!el) return 0;
-    if (NATIVE_ENGINE) {
-      if (!window.Gutterpress || typeof window.Gutterpress.pageOf !== 'function') return 0;
-      var native = window.Gutterpress.pageOf(el);
-      return native >= 0 ? native + 1 : 0;
-    }
-    if (!el.closest) return 0;
-    var pg = el.closest('.pagedjs_page');
-    if (!pg) return 0;
-    if (pages.length === 0) refreshPages();
-    var idx = pages.indexOf(pg);
-    return idx >= 0 ? idx + 1 : 0;
+    if (!window.Gutterpress || typeof window.Gutterpress.pageOf !== 'function') return 0;
+    var native = window.Gutterpress.pageOf(el);
+    return native >= 0 ? native + 1 : 0;
   }
 
   function sourcedBlocks() {
@@ -367,13 +318,11 @@
     return false;
   }
 
-  // Split fragments duplicate every data attribute (including
-  // data-source-range and data-ref); data-split-from/-to are the only
-  // markers Paged.js adds fresh on the clone, so they're what identifies a
-  // fragment as split (never key on `id` — Paged.js strips it from every
-  // fragment but the first, mirroring it to data-id instead).
-  function isSplitFragment(el) {
-    return !!(el && el.hasAttribute && (el.hasAttribute('data-split-from') || el.hasAttribute('data-split-to')));
+  // The native fragmenter MOVES elements into strips rather than cloning them,
+  // so there is no split-fragment marker to detect here — a block that visually
+  // spans pages is still exactly one element.
+  function isSplitFragment() {
+    return false;
   }
 
   // Plain, JSON-cloneable rect — the payload crosses two postMessage
@@ -459,12 +408,10 @@
   // exists as MULTIPLE DOM fragments that duplicate every data attribute
   // (§3.5's split-fragment gotcha applies here too) — `data-source-range` is
   // duplicated onto every fragment identically, so `{chapter, range}` groups
-  // them exactly as well as the `data-ref` this used to key off (protocol v5
-  // dropped `data-ref` from the wire contract entirely: the native viewer
-  // never mints one at all — it never clones, so there is nothing to give a
-  // shared identity to — and a source range already uniquely identifies one
-  // block, so the ref was pure duplication of information `{chapter, range}`
-  // already carried on every path, paged included).
+  // them (protocol v5 dropped `data-ref` from the wire contract entirely: the
+  // native viewer never mints one at all — it never clones, so there is
+  // nothing to give a shared identity to — and a source range already
+  // uniquely identifies one block).
 
   function rangedBlocks() {
     return Array.from(document.querySelectorAll('[data-source-range]'));
@@ -483,12 +430,12 @@
     });
   }
 
-  // Native-engine getRectsFor(): the viewer never clones, so a spec resolves
-  // to AT MOST ONE element. Its fragment rects come straight from
-  // getClientRects() — a block can still visually span pages if the
-  // browser's own multicol layout breaks it there — each reported under the
-  // block's own page (window.Gutterpress.pageOf() locates the fragmentainer
-  // the element STARTS in, so every rect shares that one page number).
+  // getRectsFor(): the viewer never clones, so a spec resolves to AT MOST ONE
+  // element. Its fragment rects come straight from getClientRects() — a block
+  // can still visually span pages if the browser's own multicol layout breaks
+  // it there — each reported under the block's own page
+  // (window.Gutterpress.pageOf() locates the fragmentainer the element
+  // STARTS in, so every rect shares that one page number).
   function nativeRectsFor(spec) {
     spec = spec || {};
     var el = blocksMatchingRange(spec.chapter, spec.range)[0] || null;
@@ -518,14 +465,7 @@
       refreshPages();
       var page = pages[0] || null;
       if (!page) return null;
-      if (NATIVE_ENGINE) {
-        return { width: page.offsetWidth, height: page.offsetHeight };
-      }
-      var pagesEl = document.querySelector('.pagedjs_pages');
-      return {
-        width: currentViewMode === 'single' ? page.offsetWidth : (pagesEl ? pagesEl.scrollWidth : page.offsetWidth),
-        height: page.offsetHeight
-      };
+      return { width: page.offsetWidth, height: page.offsetHeight };
     },
     firstPage: function () { return api.goToPage(1); },
     prevPage: function (mode) { return api.goToPage(currentPage - pageStep(mode)); },
@@ -538,14 +478,14 @@
         if (mode) document.body.classList.add('view-' + mode);
         // The classes drive CSS scroll-snap granularity (viewer.css: 1 page
         // per snap point in single mode, recto+verso pairs in two-up/spread)
-        // under BOTH engines — `pageStep()` above already makes next/prevPage
-        // step by 1 or 2 book pages to match. Under native, `setSpread()`
-        // additionally does the real relayout: `column-wrap: wrap` (CSS
-        // Multicol L2) wraps each chapter's columns into a 2-column grid so
-        // content, not just sheet chrome, actually moves into pairs — see
-        // fragment.ts's `applySpreadMode`. No-ops to single-row on a browser
-        // without the capability (Firefox/Safari as of this writing).
-        if (NATIVE_ENGINE && window.Gutterpress && typeof window.Gutterpress.setSpread === 'function') {
+        // — `pageStep()` above already makes next/prevPage step by 1 or 2
+        // book pages to match. `setSpread()` additionally does the real
+        // relayout: `column-wrap: wrap` (CSS Multicol L2) wraps each
+        // chapter's columns into a 2-column grid so content, not just sheet
+        // chrome, actually moves into pairs — see fragment.ts's
+        // `applySpreadMode`. No-ops to single-row on a browser without the
+        // capability (Firefox/Safari as of this writing).
+        if (window.Gutterpress && typeof window.Gutterpress.setSpread === 'function') {
           window.Gutterpress.setSpread(currentViewMode !== 'single');
         }
       });
@@ -560,7 +500,7 @@
     toggleDebugMode: function () {
       debugMode = !debugMode;
       document.body.classList.toggle('debug', debugMode);
-      if (NATIVE_ENGINE && window.Gutterpress && window.Gutterpress.decoration) {
+      if (window.Gutterpress && window.Gutterpress.decoration) {
         window.Gutterpress.decoration.setDesigner(debugMode);
       }
       return debugMode;
@@ -590,8 +530,7 @@
     // feature-detect against an older bundled lib.
     // v6 (WORK PACKAGE B item 2): getRectsFor()/setEditMask() dropped the
     // {ref} form entirely — {chapter, range} is the only target shape now
-    // (v5 had a data-ref fast path that the native viewer, which never mints
-    // one, could never use in the first place).
+    // (the native viewer never mints a ref — it never clones).
     getProtocolVersion: function () { return 6; },
 
     // Resolve the annotated element/selection at a viewport point (protocol
@@ -605,22 +544,12 @@
     // by {chapter, range}. Pure read; never mutates the DOM. Plain,
     // JSON-cloneable objects only (§3.5) — no DOMRect instances.
     getRectsFor: function (spec) {
-      if (NATIVE_ENGINE) return nativeRectsFor(spec);
-      spec = spec || {};
-      var els = blocksMatchingRange(spec.chapter, spec.range);
-      var rects = els.map(function (el) {
-        var r = plainRect(el);
-        if (!r) return null;
-        r.page = pageIndexOf(el);
-        return r;
-      }).filter(function (r) { return r != null; });
-      return { rects: rects };
+      return nativeRectsFor(spec);
     },
 
     // Toggle a masking class on EVERY fragment of a block ({chapter, range}
     // match, protocol v6, §5.1/§5.3), plus a scroll lock on the book document
-    // element. Purely cosmetic and fully reversible — Paged.js never
-    // re-layouts after a mutation (spike-verified), so nothing here may touch
+    // element. Purely cosmetic and fully reversible — nothing here may touch
     // anything layout-affecting; see the class definitions below and ADR
     // 0009. `masked: false` always removes the lock class too, even if this
     // particular range has zero live fragments (e.g. called defensively
@@ -651,7 +580,7 @@
     },
 
     // Heading tree with page + source line — powers chapter jump (UX-013), TOC,
-    // minimap, scrollspy. Page math needs same-origin paged.js access, so it
+    // minimap, scrollspy. Page math needs same-origin engine access, so it
     // lives here rather than being derived host-side.
     getOutline: function () {
       refreshPages();
@@ -885,45 +814,6 @@
     }, true);
   }
 
-  var observedPageCount = 0;
-  var pageObserverQueued = false;
-  function publishObservedPageCount() {
-    pageObserverQueued = false;
-    if (window.__PAGED_RENDERED__ === true) return;
-    var count = refreshPages().length;
-    if (count > observedPageCount) {
-      observedPageCount = count;
-      window.dispatchEvent(new CustomEvent('pageChanged', {
-        detail: { currentPage: count, totalPages: count }
-      }));
-    }
-  }
-  var pageObserver = new MutationObserver(function () {
-    if (window.__PAGED_RENDERED__ === true) return;
-    if (pageObserverQueued) return;
-    pageObserverQueued = true;
-    window.requestAnimationFrame(publishObservedPageCount);
-  });
-
-  function startPageObserver() {
-    var target = document.body || document.documentElement;
-    if (!target) return false;
-    pageObserver.observe(target, { childList: true, subtree: true });
-    return true;
-  }
-
-  // The incremental page-count MutationObserver is a Paged.js-only heuristic:
-  // Paged.js builds .pagedjs_page elements one at a time as it paginates, so
-  // watching the DOM lets the toolbar show a growing page count before
-  // PagedConfig.after fires. The native viewer lays out synchronously and
-  // announces completion via 'folio:layout' (below) — no observer needed.
-  if (!NATIVE_ENGINE && !startPageObserver()) {
-    document.addEventListener('DOMContentLoaded', function onReady() {
-      document.removeEventListener('DOMContentLoaded', onReady);
-      startPageObserver();
-    });
-  }
-
   // Scroll tracking
   var scrollTimer = null;
   function publishScrollPosition(force, silent) {
@@ -960,35 +850,25 @@
     scrollTimer = setTimeout(publishScrollPosition, 150);
   });
 
-  // Shared "pagination finished" handling for both engines: reset to page 1,
-  // scroll to top, and announce completion.
-  function onRenderingComplete(label) {
+  // Reset to page 1, scroll to top, and announce completion once the native
+  // viewer's pagination finishes.
+  function onRenderingComplete() {
     // Latch: a host that attaches its 'renderingComplete' listener after the
     // event already fired (preview-shell.js binds on the iframe's `load`, which
     // the native viewer's DOMContentLoaded mount can beat) has no other way to
     // know pagination is done.
     window.__GUTTERPRESS_RENDERED__ = true;
     refreshPages();
-    observedPageCount = pages.length;
-    pageObserver.disconnect();
     currentPage = 1;
     ignoreScrollUntil = Date.now() + 300;
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     recordVisibleSource();
-    console.log(label + ' rendered ' + pages.length + ' pages');
+    console.log('Gutterpress engine rendered ' + pages.length + ' pages');
     api.notifyRenderingComplete();
     setTimeout(api.notifyPageChange, 0);
   }
 
-  // Paged.js calls this when rendering is complete.
-  window.PagedConfig = window.PagedConfig || {};
-  window.PagedConfig.after = function (flow) {
-    onRenderingComplete('Paged.js');
-  };
-
   // The Gutterpress engine viewer dispatches this when its pagination
   // completes (engine/viewer/index.ts's mount()).
-  window.addEventListener('folio:layout', function () {
-    if (NATIVE_ENGINE) onRenderingComplete('Gutterpress engine');
-  });
+  window.addEventListener('folio:layout', onRenderingComplete);
 })();

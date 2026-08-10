@@ -19,15 +19,16 @@ const layoutSource = readFileSync(
 // The SW imports `$service-worker` (only resolvable inside the SvelteKit build),
 // so rather than evaluate the module we assert the SOURCE encodes the contract
 // the acceptance criteria require. The offline preview gap closes only if the
-// vendored paged.js is in the precache list; this guards that explicitly.
+// native engine's viewer bundle is in the precache list; this guards that
+// explicitly.
 
-test("service worker precaches the vendored paged.js (offline preview, #33)", () => {
-  // The same-origin vendored polyfill (rewritten into preview HTML by
+test("service worker precaches the native engine's viewer bundle (offline preview, #33)", () => {
+  // The same-origin vendored viewer bundle (injected into preview HTML by
   // WebAdapter.startPreview) must be in the precache SHELL so preview renders
   // offline.
-  expect(swSource).toContain("/vendor/paged.polyfill.js");
+  expect(swSource).toContain("/engine/gutterpress-viewer.js");
   // And the actual asset must ship in static/ so the build emits it.
-  expect(existsSync(join(desktopRoot, "static", "vendor", "paged.polyfill.js"))).toBe(true);
+  expect(existsSync(join(desktopRoot, "static", "engine", "gutterpress-viewer.js"))).toBe(true);
 });
 
 test("service worker precaches the adapter-static build shell (#33)", () => {

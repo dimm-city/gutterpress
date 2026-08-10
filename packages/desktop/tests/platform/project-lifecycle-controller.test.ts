@@ -258,7 +258,7 @@ test("startFolderPreview: happy path opens the folder and starts the watcher", a
   expect(ctrl.previewEngine).toBe("paged");
 });
 
-test("startFolderPreview captures the started preview's engine (WP-C item 3's iframe-styles gate reads this)", async () => {
+test("startFolderPreview captures the started preview's engine", async () => {
   const { ctrl, deps } = make();
   deps.startPreviewResult = { previewStarted: true, url: "preview://book", title: "My Book", engine: "native" };
   await ctrl.startFolderPreview("/proj", "Opening…");

@@ -123,16 +123,13 @@ function hmrClientSnippet(initialRevision: number, instanceId: string): string {
       readyToAcknowledge = true;
       acknowledge();
     }
-    // CRITICAL ordering: when a pagination engine is present it restructures
+    // CRITICAL ordering: when the pagination engine is present it restructures
     // the DOM after load, so restoring the scroll anchor early would target
-    // pre-pagination geometry (or be wiped by Paged.js's initial scroll).
-    // Paged.js fires 'renderingComplete'; the Gutterpress engine viewer
-    // fires 'folio:layout' when its pagination completes — wait for
-    // whichever engine is on the page. In static mode (no engine) the
-    // content is final immediately, so restore right after load.
-    var hasEngine = !!document.querySelector('script[src*="paged.polyfill"]')
-      || !!document.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
-    window.addEventListener('renderingComplete', finishInitialRender);
+    // pre-pagination geometry. The Gutterpress engine viewer fires
+    // 'folio:layout' when its pagination completes — wait for it. In static
+    // mode (no engine) the content is final immediately, so restore right
+    // after load.
+    var hasEngine = !!document.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
     window.addEventListener('folio:layout', finishInitialRender, { once: true });
     if (!hasEngine) {
       if (document.readyState === 'loading') {
@@ -401,7 +398,7 @@ async function serveStatic(
  * response across reloads within the same preview session instead of
  * re-fetching the ~900 KB polyfill on every load.
  */
-const EMBEDDED_PREFIXES = ['/vendor/', '/preview/scripts/', '/engine/'];
+const EMBEDDED_PREFIXES = ['/preview/scripts/', '/engine/'];
 const EMBEDDED_EXACT = new Set(['/favicon.ico']);
 
 /**

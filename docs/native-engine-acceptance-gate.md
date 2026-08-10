@@ -5,12 +5,13 @@ becomes the default, and before Paged.js is dropped. Set by the product owner
 2026-08-08.
 
 > A frozen, point-in-time copy of this file's measured-results table (plus
-> pointers to the rest of the durable A/B evidence, e.g. `spike/folio/`) is
-> archived at
+> pointers to the rest of the durable A/B evidence) is archived at
 > [`docs/native-engine-parity-evidence-archive.md`](./native-engine-parity-evidence-archive.md),
 > captured 2026-08-09 per `native-only-migration-plan.md`'s Phase 6
-> housekeeping — so the proof survives even after Paged.js is eventually
-> deleted and this living doc has moved on.
+> housekeeping — so the proof survives now that Paged.js has been deleted
+> (Phase 6, executed 2026-08-10) and this living doc has moved on. Paged.js
+> itself and `spike/folio/`'s migration-only tooling are gone; that spike's
+> durable docs moved to `docs/engine-history/`.
 
 ## The rule
 

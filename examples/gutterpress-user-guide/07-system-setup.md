@@ -12,7 +12,7 @@ Gutterpress does almost everything in-process. It needs only a Chromium-based br
 
 | Tool | Used for | When you need it |
 |------|----------|------------------|
-| Chrome / Chromium | Renders your HTML + Paged.js layout into a PDF | **Always** (every PDF) |
+| Chrome / Chromium | Renders your HTML into a paginated PDF (native print engine) | **Always** (every PDF) |
 | Ghostscript (`gs`) | Converts the RGB PDF to **CMYK PDF/X** with an ICC output intent; per-page ink-coverage check | Only for `--format pdfx` |
 | `qpdf` | Strips disallowed annotations for PDF/X; validates the PDF/X OutputIntent + metadata | Only for `--format pdfx` |
 
@@ -198,7 +198,7 @@ linting auto-detects `.htmlhintrc`.
 ### CSS print-safety linting — built in (no stylelint)
 
 `gutterpress lint` checks CSS for print-safety issues (remote URLs, rasterizing
-effects, Paged.js crash-prone selectors) using Gutterpress's own postcss-based
+effects) using Gutterpress's own postcss-based
 checks. **stylelint is not used or required** — it can't be bundled into the
 `bun build --compile` binary, so these checks run in-process everywhere,
 including from the standalone binary.

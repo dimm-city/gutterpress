@@ -8,8 +8,7 @@ import { renderChaptersToFile } from "./markdown/index";
 import { loadPluginsWithCss } from "./markdown/plugins";
 import { planImageCopies, type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
-import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium";
-import { prewarmBrowser, closeBrowser } from "./browser-pool";
+import { prewarmBrowser, closeBrowser, RENDER_TIMEOUT_MS } from "./browser-pool";
 import {
   convertToPdfxCmyk,
   hasLiveTransparency,
@@ -32,25 +31,18 @@ import {
   verifyNativeChromiumMilestone,
   type Gates,
 } from "./build-preflight";
-import {
-  finalizeStaticBook,
-  shipRuntimePaginatedHtml,
-  shipViewerHtml,
-  createStageRoot,
-} from "./build-staging";
-import {
-  paginateToStaticHtml,
-  renderHtmlToPdf,
-  RENDER_TIMEOUT_MS,
-  type PdfRenderer,
-  type PdfRenderInput,
-} from "./pagination";
+import { shipViewerHtml, createStageRoot } from "./build-staging";
 
-// PdfRenderer/PdfRenderInput now live in ./pagination (ARCH finding #9) but are
-// part of this module's long-standing public surface (re-exported through
-// src/api/index.ts) — re-export so existing `import { type PdfRenderer } from
-// "./build-runner"` call sites keep working unchanged.
-export type { PdfRenderer, PdfRenderInput, EngineBrowser, EngineSession };
+export { RENDER_TIMEOUT_MS };
+
+// EngineBrowser/EngineSession are part of this module's long-standing public
+// surface (re-exported through src/api/index.ts) — re-export so existing
+// `import { type EngineBrowser } from "./build-runner"` call sites keep
+// working unchanged. PdfRenderer/PdfRenderInput (the Paged.js renderer seam)
+// were removed with the Paged.js pipeline (native-only-migration-plan.md
+// Phase 6); the desktop's Electron PDF export now goes through the native
+// engine's own Chromium seam (`engineBrowser`) instead.
+export type { EngineBrowser, EngineSession };
 
 export type BuildFormat = "html" | "pdf" | "pdfx";
 export type PdfxFlavor = "x1a" | "x3";
@@ -76,12 +68,6 @@ export interface BuildRunnerOptions {
   skipPreValidate?: boolean;
   skipPostValidate?: boolean;
   /**
-   * Optional PDF renderer override. When provided, the build uses it instead of
-   * launching Chromium via puppeteer, and the Chromium preflight is skipped.
-   * The Electron desktop injects one backed by `webContents.printToPDF`.
-   */
-  pdfRenderer?: PdfRenderer;
-  /**
    * Keep the pooled headless browser alive after the build returns. A one-shot
    * CLI build leaves this false so the process can exit; a long-lived
    * preview/watch server sets it true so the browser stays warm across rebuilds
@@ -91,31 +77,21 @@ export interface BuildRunnerOptions {
   keepBrowserAlive?: boolean;
   rawArgs: Record<string, unknown>;
   /**
-   * CLI `--engine` override, fed into {@link resolveConfig} as the top of the
-   * cli > manifest > default("native") cascade (MIGRATION.md Decision #5).
-   * `undefined` means "no CLI override" — the manifest's `engine:` field (or
-   * "native") decides. The actually-resolved engine for this build lives on
-   * `BuildContext.config.engine`, NOT this field — read that downstream, not
-   * `opts.engine`. "native" routes both the assembled HTML (no Paged.js
-   * polyfill tag) and the PDF render (via `./engine.ts`'s `buildNativePdf`)
-   * through the Gutterpress engine at `src/engine/` — native Chromium
-   * pagination, no polyfill. See `engine.ts`'s header for the seams this
-   * bypasses and why.
+   * CLI `--engine` override. Paged.js has been removed — the native engine is
+   * the only engine — so this is a deprecated no-op accepted for backward
+   * compatibility only: `"paged"` triggers a one-line warning
+   * (`manifest.ts`'s resolution) and the build proceeds natively regardless.
    */
   engine?: "paged" | "native";
   /**
-   * Optional injected engine-Chromium factory for `--engine native` builds —
-   * the mirror of `pdfRenderer` above, but for the native engine's OWN
-   * Chromium driver (`engine.ts`'s `buildNativePdf`, NOT `renderHtmlToPdf`'s
-   * Paged.js leg, which `pdfRenderer` covers). When omitted (the CLI's
-   * default), the native engine attaches to `browser-pool.ts`'s pooled
-   * external Chromium, same as always, and the usual Chromium preflight /
-   * milestone check apply. When supplied (the desktop, over its own Electron
-   * `BrowserWindow` — see `packages/desktop/electron`'s engine-browser
-   * module), it is used instead, no external Chromium is required, and both
-   * of those checks are skipped. Only called (lazily) when a build actually
-   * resolves to `engine: "native"`, so a Paged.js build never pays for
-   * constructing it.
+   * Optional injected engine-Chromium factory for native builds
+   * (`engine.ts`'s `buildNativePdf`). When omitted (the CLI's default), the
+   * native engine attaches to `browser-pool.ts`'s pooled external Chromium,
+   * and the usual Chromium preflight / milestone check apply. When supplied
+   * (the desktop, over its own Electron `BrowserWindow` — see
+   * `packages/desktop/electron`'s engine-browser module), it is used
+   * instead, no external Chromium is required, and both of those checks are
+   * skipped.
    */
   engineBrowser?: () => Promise<EngineBrowser>;
 }
@@ -407,7 +383,6 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     files: config.source.files,
     plugins,
     pluginCss,
-    engine: config.engine,
     onChapterWarnings: (file, warnings) => {
       for (const w of warnings) {
         log.warn(`  ${file}, line ${w.line}: ${w.message}`);
@@ -619,20 +594,9 @@ interface OutputStrategy {
 }
 
 /**
- * `--format html`.
- *
- * `engine: "native"` ships the self-contained `book.html` plus a copy of the
- * viewer bundle (`shipViewerHtml`) — the browser paginates on load. No
- * headless Chromium at build time.
- *
- * `engine: "paged"` (unchanged) pre-paginates at BUILD time (static-site-
- * generator model): run Paged.js once in headless Chromium, serialize the
- * fully-fragmented DOM, and ship that static HTML so the browser renders
- * pages with NO runtime pagination JS. This inverts the pre-SSG model
- * (shipping the polyfill so the browser re-paginates on every load). The
- * navigation toolbar scripts are kept — they only scroll between already-
- * laid-out pages; they do not paginate. With no Chromium at build we fall
- * back to shipping the runtime-pagination polyfill.
+ * `--format html` ships the self-contained `book.html` plus a copy of the
+ * native engine's viewer bundle (`shipViewerHtml`) — the browser paginates on
+ * load. No headless Chromium at build time.
  */
 class HtmlOutput implements OutputStrategy {
   async finish(
@@ -641,29 +605,8 @@ class HtmlOutput implements OutputStrategy {
   ): Promise<BuildRunnerResult> {
     const { workDir, outDir, inputDir, config, opts } = ctx;
 
-    if (config.engine === "native") {
-      log.info("Shipping self-contained HTML + viewer bundle (native engine)");
-      await shipViewerHtml(htmlFile, workDir);
-    } else {
-      const chromium = await resolveChromiumExecutable();
-      if (!chromium) {
-        // No headless browser at build → fall back to runtime pagination so the
-        // build still succeeds (the browser paginates on load — pre-SSG behavior).
-        log.warn(
-          "Chromium not found — shipping runtime-paginated HTML (the browser will " +
-            "paginate on load). Install Chromium or set CHROMIUM_PATH for " +
-            "pre-paginated static output."
-        );
-        await shipRuntimePaginatedHtml(htmlFile, workDir);
-      } else {
-        // No staging copy: book.html is self-contained (CSS + fonts inlined) and
-        // its images already sit in outDir, so the pagination pass serves outDir
-        // itself with the engine supplied as in-memory overlays.
-        log.info("Pre-paginating HTML via Chromium + Paged.js (build-time)");
-        const paginated = await paginateToStaticHtml(htmlFile);
-        await finalizeStaticBook(paginated, htmlFile, workDir);
-      }
-    }
+    log.info("Shipping self-contained HTML + viewer bundle (native engine)");
+    await shipViewerHtml(htmlFile, workDir);
 
     // A minimal index.html redirects to book.html so static hosts (Azure SWA,
     // GitHub Pages, etc.) have a default entry point. This is not the desktop
@@ -695,8 +638,8 @@ class HtmlOutput implements OutputStrategy {
 
 /**
  * `--format pdf` / `--format pdfx` — stage the rendered book, render it to PDF
- * via Chromium+Paged.js (or an injected renderer), then for plain pdf stamp
- * /Creator and for pdfx resolve the ICC, optionally strip annotations, and
+ * via the Gutterpress engine's native Chromium pagination, then for plain pdf
+ * stamp /Creator and for pdfx resolve the ICC, optionally strip annotations, and
  * convert to CMYK PDF/X. Runs post-build validation for pdfx, then finalizes.
  * The staging scratch dir is removed in a finally so it never leaks.
  */
@@ -730,54 +673,21 @@ class PdfOutput implements OutputStrategy {
         ? path.join(stage, "raw.pdf")
         : path.resolve(pdfFile);
       await fsp.mkdir(path.dirname(path.resolve(pdfFile)), { recursive: true });
-      // engine: "native" — NOT routed through renderHtmlToPdf(). That
-      // function's staging (`paginationOverlays`) unconditionally injects the
-      // Paged.js polyfill script into the served HTML regardless of which
-      // `PdfRenderer` runs against it (`pagedjs.ts`'s patchHtmlStringForPagedjs
-      // injects even with no marker present, by design — finding #22, "silent
-      // no-load"). Measured: driving the engine's own `launchChromium` at a
-      // Paged.js-staged URL let Paged.js re-paginate the DOM out from under
-      // the engine's own fragmentation mid-navigation — output dropped from
-      // 61pp/9,699 words to 6pp/754 words with no error. The engine therefore
-      // gets its own direct call, on the plain file (no HTTP staging, no
-      // polyfill overlay at all) — see engine.ts's module doc for detail.
-      let engineDiagnostics: BuildDiagnostic[] = [];
-      const staticHtmlRaw =
-        opts.pdfRenderer || config.engine === "native"
-          ? undefined
-          : path.join(stage, "book-static-raw.html");
-      if (config.engine === "native") {
-        log.info("Rendering HTML to PDF via the Gutterpress engine (native Chromium pagination)");
-        const { buildNativePdf } = await import("./engine");
-        engineDiagnostics = await buildNativePdf(
-          htmlFile,
-          rawPdf,
-          {
-            title: config.title,
-            author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
-            signature: config.print.signature,
-          },
-          opts.engineBrowser
-        );
-        for (const d of engineDiagnostics) log.warn(d.message);
-      } else {
-        log.info("Rendering HTML to PDF via Chromium+Paged.js");
-        await renderHtmlToPdf(htmlFile, rawPdf, opts.pdfRenderer, staticHtmlRaw);
-      }
-      if (staticHtmlRaw && fs.existsSync(staticHtmlRaw)) {
-        await finalizeStaticBook(
-          await fsp.readFile(staticHtmlRaw, "utf-8"),
-          htmlFile,
-          workDir
-        );
-        // A `file` target delivers ONE artifact — the PDF — so book.html stays in
-        // the work dir and is discarded with it. Announcing a path under `outDir`
-        // (the folder chosen in a Save dialog) named a file that was never
-        // written there (2026-07-29 audit).
-        if (ctx.target.kind !== "file") {
-          log.success(`Wrote static desktop: ${path.join(outDir, BOOK_HTML)}`);
-        }
-      }
+      // The engine gets a direct call on the plain file — no HTTP staging —
+      // see engine.ts's module doc for detail.
+      log.info("Rendering HTML to PDF via the Gutterpress engine (native Chromium pagination)");
+      const { buildNativePdf } = await import("./engine");
+      const engineDiagnostics = await buildNativePdf(
+        htmlFile,
+        rawPdf,
+        {
+          title: config.title,
+          author: config.authors.length > 0 ? config.authors.join(", ") : undefined,
+          signature: config.print.signature,
+        },
+        opts.engineBrowser
+      );
+      for (const d of engineDiagnostics) log.warn(d.message);
 
       if (!pdfxMode) {
         // stampCreator writes /Creator (Gutterpress) into the PDF's Info dict using
@@ -885,19 +795,19 @@ class PdfOutput implements OutputStrategy {
 
 /**
  * Orchestrate a build: resolve the context, mkdir the output, preflight tools
- * (non-html), pre-warm the browser when this build will paginate in Chromium,
+ * (non-html), pre-warm the browser when this build will render in Chromium,
  * run the quality gates, render the book, then hand off to the per-format output
- * strategy for pagination + finalize. The heavy lifting lives in the named
- * stages + strategies above (plus ./build-preflight, ./build-staging, and
- * ./pagination); this reads as the pipeline it is.
+ * strategy for rendering + finalize. The heavy lifting lives in the named
+ * stages + strategies above (plus ./build-preflight and ./build-staging);
+ * this reads as the pipeline it is.
  *
  * Everything from the prewarm decision onward runs inside a try/finally that
  * closes the pooled browser (unless `keepBrowserAlive` is set) — finding #50:
  * previously the close only happened on the success tail (inside
- * `finalizeBuild`), so a prewarmed Chromium leaked whenever a quality gate,
- * the render, or pagination itself threw. `closeBrowser()` is a no-op if
- * nothing was launched (including the injected-renderer path, which never
- * uses the pool), so it is safe to call unconditionally here.
+ * `finalizeBuild`), so a prewarmed Chromium leaked whenever a quality gate or
+ * the render itself threw. `closeBrowser()` is a no-op if nothing was
+ * launched (including the injected-`engineBrowser` path, which never uses
+ * the pool), so it is safe to call unconditionally here.
  */
 export async function runBuild(
   opts: BuildRunnerOptions
@@ -911,36 +821,23 @@ export async function runBuild(
   // Without this we'd discover missing tools deep in the pipeline (30-90s in
   // for a real book) when ENOENT bubbles up from a child_process spawn. A 50ms
   // probe at the top gives an actionable error immediately.
-  // engine: "native" now reuses this file's puppeteer pool too (see
-  // ./engine.ts — it connects the engine's raw-CDP client to the pool's
-  // browser instead of launching its own), so it needs the same Chromium
-  // preflight as the Paged.js path. An injected `pdfRenderer` only skips it
-  // for the Paged.js leg — a native build ignores `opts.pdfRenderer` (it
-  // always calls `buildNativePdf`, which needs the system Chromium; see the
-  // comment at its call site below), so the preflight must still run — UNLESS
-  // `opts.engineBrowser` is also supplied (the desktop's Electron path),
-  // which drives its own Chromium and needs neither the pool nor an external
-  // binary; `preflightBuildTools` itself skips its Chromium check in that
-  // case, but ghostscript/qpdf checks for pdfx still apply, so this call
-  // stays unconditional.
-  if (ctx.format !== "html" && (!opts.pdfRenderer || ctx.config.engine === "native")) {
+  // Every build reuses this file's puppeteer pool (./engine.ts connects the
+  // engine's raw-CDP client to the pool's browser) unless `opts.engineBrowser`
+  // is supplied (the desktop's Electron path), which drives its own Chromium
+  // and needs neither the pool nor an external binary; `preflightBuildTools`
+  // itself skips its Chromium check in that case, but ghostscript/qpdf checks
+  // for pdfx still apply, so this call stays unconditional.
+  if (ctx.format !== "html") {
     await preflightBuildTools(ctx.format, opts, ctx.config);
   }
 
   // Pre-warm the headless browser NOW (fire-and-forget) so the ~1–2s Chromium
   // cold start overlaps with lint + validation + markdown render + asset staging
-  // below, instead of sitting on the critical path at pagination time. Only when
-  // this build will actually paginate in the POOLED Chromium: a PDF/PDFX build
-  // with no injected renderer (Paged.js or native — both now draw from the same
-  // pool) and no injected `engineBrowser`, or an HTML build with a browser
-  // available. Same `pdfRenderer` caveat as the preflight above: a native build
-  // ignores an injected renderer and paginates in the pooled Chromium anyway,
-  // UNLESS `opts.engineBrowser` is supplied, in which case it drives that
-  // browser instead and the pool is never touched.
-  const willPaginateInChromium =
-    rendersInPooledChromium(ctx.format, ctx.config.engine, opts) ||
-    (ctx.format === "html" && !!(await resolveChromiumExecutable()));
-  if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
+  // below, instead of sitting on the critical path at render time. Only when
+  // this build will actually render in the POOLED Chromium: a PDF/PDFX build
+  // with no injected `engineBrowser`. HTML builds never touch Chromium — the
+  // native viewer bundle paginates in the reader's browser, not at build time.
+  if (rendersInPooledChromium(ctx.format, opts)) prewarmBrowser(RENDER_TIMEOUT_MS);
 
   try {
     // Created INSIDE the try so the finally below always reclaims it. Creating
@@ -950,19 +847,19 @@ export async function runBuild(
 
     await runQualityGates(ctx);
 
-    // Native engine: verify the pooled Chromium meets the engine's minimum
-    // milestone BEFORE rendering — a too-old browser previously surfaced only
-    // deep inside buildNativePdf, after the render below had already run. Not
-    // folded into preflightBuildTools() (which runs before quality gates):
-    // that would force this build to await Chromium's cold start before
-    // lint/validate even start, defeating prewarmBrowser()'s overlap. Placed
-    // here instead, the common failure case (a quality gate throwing) never
-    // pays for it, and by the time gates finish the prewarmed browser is
-    // usually already warm. See verifyNativeChromiumMilestone's doc comment.
-    // Skipped when `opts.engineBrowser` is supplied: that path never touches
-    // the pool (the desktop drives its own Electron Chromium instead), so
-    // there is nothing here for this check to verify.
-    if (ctx.config.engine === "native" && rendersInPooledChromium(ctx.format, ctx.config.engine, opts)) {
+    // Verify the pooled Chromium meets the engine's minimum milestone BEFORE
+    // rendering — a too-old browser previously surfaced only deep inside
+    // buildNativePdf, after the render below had already run. Not folded into
+    // preflightBuildTools() (which runs before quality gates): that would
+    // force this build to await Chromium's cold start before lint/validate
+    // even start, defeating prewarmBrowser()'s overlap. Placed here instead,
+    // the common failure case (a quality gate throwing) never pays for it,
+    // and by the time gates finish the prewarmed browser is usually already
+    // warm. See verifyNativeChromiumMilestone's doc comment. Skipped when
+    // `opts.engineBrowser` is supplied: that path never touches the pool (the
+    // desktop drives its own Electron Chromium instead), so there is nothing
+    // here for this check to verify.
+    if (rendersInPooledChromium(ctx.format, opts)) {
       await verifyNativeChromiumMilestone();
     }
 

@@ -229,10 +229,11 @@ export function parsePdfxFlavor(
 }
 
 /**
- * Parse `--engine`, shared by `build` and `preview` (MIGRATION.md Decision
- * #5 — one flag, both surfaces). `undefined` means "not passed" — the
- * manifest's `engine:` field (or the "native" default) then applies; an
- * explicit `--engine paged` still overrides a manifest default of "native".
+ * Parse `--engine`, shared by `build` and `preview`. Paged.js has been
+ * removed — the native engine is the only engine — so this flag is now an
+ * accepted-but-ignored no-op: `--engine paged` produces a one-line warning
+ * (`manifest.ts`'s resolution) and the build proceeds natively regardless.
+ * `undefined` means "not passed".
  */
 export function parseEngine(raw: unknown): "paged" | "native" | undefined {
   if (raw === undefined) return undefined;

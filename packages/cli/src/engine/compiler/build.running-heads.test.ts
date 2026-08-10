@@ -67,7 +67,6 @@ testIf(
         files: config.source.files,
         plugins,
         pluginCss,
-        engine: "native",
         onImageRefs: (refs) => imageRefs.push(...refs),
       });
       const { copies } = await planImageCopies(renderDir, imageRefs);

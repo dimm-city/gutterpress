@@ -1,5 +1,5 @@
 /**
- * Embedded preview assets (favicon, manifest schema, paged.js polyfill,
+ * Embedded preview assets (favicon, manifest schema, native engine bundles,
  * iframe interface + cross-origin bridge).
  *
  * `with { type: "file" }` imports are the canonical embedding mechanism for
@@ -37,7 +37,6 @@ import manifestSchema from "../assets/manifest.schema.json" with { type: "file" 
 import previewInterfaceJs from "../assets/preview/scripts/preview-interface.js" with { type: "file" };
 import previewBridgeJs from "../assets/preview/scripts/preview-bridge.js" with { type: "file" };
 import previewShellJs from "../assets/preview/scripts/preview-shell.js" with { type: "file" };
-import pagedPolyfill from "../assets/vendor/paged.polyfill.js" with { type: "file" };
 import cmykProfile from "../../profiles/CGATS21_CRPC1.icc" with { type: "file" };
 
 // Gutterpress engine bundles (native pagination — `--engine native`).
@@ -81,7 +80,6 @@ const EMBEDDED_ASSETS: Record<string, string> = {
   "preview/scripts/preview-interface.js":   abs(filePath(previewInterfaceJs)),
   "preview/scripts/preview-bridge.js":      abs(filePath(previewBridgeJs)),
   "preview/scripts/preview-shell.js":       abs(filePath(previewShellJs)),
-  "vendor/paged.polyfill.js":               abs(filePath(pagedPolyfill)),
   "profiles/CGATS21_CRPC1.icc":             abs(filePath(cmykProfile)),
   "engine/gutterpress-viewer.js":           abs(filePath(engineViewerJs)),
   "engine/gutterpress-agent.js":            abs(filePath(engineAgentJs)),

@@ -83,8 +83,8 @@ test(".cjs extension with a separator is also recognized as a file path", () => 
 // (`styles`'s preset default, `allowedCallouts`) are characterized
 // separately, below, as "before" (bug) / "after" (fix) pairs — not locked in
 // here.
-describe("resolveConfig engineStyles — engine-conditional stylesheets (per-book migration)", () => {
-  test("native extras append after base styles only when engine resolves native", () => {
+describe("resolveConfig engineStyles — Paged.js removed, only .native applies (native-only-migration-plan.md Phase 6)", () => {
+  test("native extras append after base styles regardless of the (ignored) engine field", () => {
     const m = {
       styles: ["css/index.css"],
       engineStyles: { native: ["css/native-furniture.css"] },
@@ -96,33 +96,34 @@ describe("resolveConfig engineStyles — engine-conditional stylesheets (per-boo
     expect(resolveConfig({}, m).styles).toEqual([
       "css/index.css",
       "css/native-furniture.css",
-    ]); // native default (no engine: key) also picks up native extras
+    ]); // native default (no engine: key)
     expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
       "css/index.css",
-    ]); // explicit paged: no native extras
+      "css/native-furniture.css",
+    ]); // engine: "paged" is ignored — still native extras
     expect(resolveConfig({ engine: "native" }, m).styles).toEqual([
       "css/index.css",
       "css/native-furniture.css",
-    ]); // CLI override selects the extras too
+    ]); // CLI override is likewise a no-op
   });
 
-  test("paged extras apply only when engine resolves paged", () => {
+  test("engineStyles.paged is ignored — only engineStyles.native applies", () => {
     const m = { styles: ["a.css"], engineStyles: { paged: ["b.css"], native: ["c.css"] } };
-    expect(resolveConfig({}, m).styles).toEqual(["a.css", "c.css"]); // native default
+    expect(resolveConfig({}, m).styles).toEqual(["a.css", "c.css"]);
     expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
       "a.css",
-      "b.css",
+      "c.css",
     ]);
     expect(resolveConfig({ engine: "native" }, m).styles).toEqual(["a.css", "c.css"]);
   });
 
-  test("engineStyles alone (no base styles) still loads for its engine", () => {
+  test("engineStyles.native alone (no base styles) still loads, regardless of the engine field", () => {
     const m = { engineStyles: { native: ["only.css"] } };
     expect(resolveConfig({ engine: "native" }, m).styles).toEqual(["only.css"]);
-    expect(resolveConfig({}, m).styles).toEqual(["only.css"]); // native default picks these up too
-    expect(
-      resolveConfig({}, { ...m, engine: "paged" as const }).styles,
-    ).toBeUndefined(); // explicit paged: untouched fallback discovery
+    expect(resolveConfig({}, m).styles).toEqual(["only.css"]);
+    expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
+      "only.css",
+    ]); // engine: "paged" is ignored — native extras still apply
   });
 });
 

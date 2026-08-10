@@ -110,113 +110,6 @@
     });
   }
 
-  // Paged.js preserves source wrappers on cloned flow fragments. Record every
-  // source represented on each page so an edit can locate its live range.
-  function tagPages(frame) {
-    var d = fdoc(frame); if (!d) return;
-    var pages = d.querySelectorAll('.pagedjs_page');
-    for (var i = 0; i < pages.length; i++) {
-      if (pages[i].getAttribute('data-chapter-srcs')) continue;
-      var nodes = pages[i].querySelectorAll('.gutterpress-chapter[data-chapter-src]');
-      var chapters = [];
-      for (var j = 0; j < nodes.length; j++) {
-        var chapter = nodes[j].getAttribute('data-chapter-src');
-        if (chapter && chapters.indexOf(chapter) === -1) chapters.push(chapter);
-      }
-      if (!chapters.length) continue;
-      pages[i].setAttribute('data-chapter-src', chapters[0]);
-      pages[i].setAttribute('data-chapter-srcs', chapters.join('\n'));
-    }
-  }
-
-  function pageChapters(page) {
-    var value = page.getAttribute('data-chapter-srcs') ||
-      page.getAttribute('data-chapter-src') || '';
-    return value ? value.split('\n') : [];
-  }
-
-  function normId(value) {
-    var result = String(value || '').replace(/\\/g, '/').replace(/\/{2,}/g, '/');
-    while (result.indexOf('./') === 0) result = result.slice(2);
-    return result;
-  }
-
-  function liveChapterIds(d) {
-    var pages = d.querySelectorAll('.pagedjs_page'), ids = [];
-    for (var i = 0; i < pages.length; i++) {
-      var chapters = pageChapters(pages[i]);
-      for (var j = 0; j < chapters.length; j++) {
-        if (ids.indexOf(chapters[j]) === -1) ids.push(chapters[j]);
-      }
-    }
-    return ids;
-  }
-
-  function resolveChapterId(d, file) {
-    var ids = liveChapterIds(d);
-    if (ids.indexOf(file) !== -1) return file;
-    var wanted = normId(file), matches = [];
-    for (var i = 0; i < ids.length; i++) {
-      if (normId(ids[i]) === wanted) matches.push(ids[i]);
-    }
-    return matches.length === 1 ? matches[0] : null;
-  }
-
-  function pagesFor(d, file) {
-    var pages = d.querySelectorAll('.pagedjs_page');
-    var owned = [], shared = [], first = -1, last = -1;
-    for (var i = 0; i < pages.length; i++) {
-      var chapters = pageChapters(pages[i]);
-      if (chapters.indexOf(file) === -1) continue;
-      if (first === -1) first = i;
-      last = i;
-      if (chapters.length > 1) shared.push(pages[i]);
-    }
-    for (i = first; i !== -1 && i <= last; i++) {
-      var pageIds = pageChapters(pages[i]);
-      // Blank pages generated inside a source range carry no source element.
-      // Keep them with the range so an incremental replacement cannot move a
-      // recto/verso blank from the middle to the end of the chapter.
-      if (pageIds.indexOf(file) !== -1 || pageIds.length === 0) owned.push(pages[i]);
-    }
-    return { owned: owned, shared: shared };
-  }
-
-  // Remove only top-level fragments for this source. Ignoring nested matches
-  // avoids removing a parent and then attempting to remove its descendants.
-  function removeChapterFragments(page, file) {
-    var nodes = page.querySelectorAll('.gutterpress-chapter[data-chapter-src]');
-    for (var i = 0; i < nodes.length; i++) {
-      if (nodes[i].getAttribute('data-chapter-src') !== file) continue;
-      var ancestor = nodes[i].parentElement, nested = false;
-      while (ancestor && ancestor !== page) {
-        if (ancestor.getAttribute('data-chapter-src') === file) { nested = true; break; }
-        ancestor = ancestor.parentElement;
-      }
-      if (!nested && nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);
-    }
-  }
-
-  function reportIncrementalComplete(instance, revision, startedAt) {
-    appliedInstance = instance;
-    appliedRevision = revision;
-    activeReady = true;
-    reportAppliedState(appliedInstance, appliedRevision);
-    if (window.parent === window) return;
-    var api = fwin(active) && fwin(active).previewAPI;
-    window.parent.postMessage({
-      type: 'gutterpress:event',
-      name: 'renderingComplete',
-      detail: {
-        totalPages: api && typeof api.getTotalPages === 'function' ? api.getTotalPages() : 0,
-        hotReload: true,
-        hotReloadMs: Math.max(0, Date.now() - startedAt),
-        revision: revision,
-        updateMode: 'chapter-splice'
-      }
-    }, '*');
-  }
-
   // Carry desktop canvas/debug CSS and view state into the hidden replacement
   // so its first visible paint matches the frame it replaces.
   function copyPresentation(from, to) {
@@ -254,37 +147,19 @@
       cleanup();
       callback();
     }
-    // Paged.js fires 'renderingComplete' itself; the Gutterpress engine
-    // viewer has no polyfill script, so preview-interface.js's folio:layout
-    // listener re-dispatches 'renderingComplete' on its behalf (same event,
-    // either engine — see preview-interface.js's onRenderingComplete()).
-    // Detected the same way http-server.ts's HMR client detects an engine.
-    var hasEngine = !!d.querySelector('script[src*="paged.polyfill"]')
-      || !!d.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
-    if (hasEngine) {
-      w.addEventListener('renderingComplete', finish);
-      if (w.__PAGED_RENDERED__ === true || w.__GUTTERPRESS_RENDERED__ === true) {
-        setTimeout(finish, 0);
-      }
-      timer = setTimeout(function () {
-        if (done) return;
-        done = true;
-        cleanup();
-        if (onTimeout) onTimeout();
-      }, timeoutMs || 180000);
-    } else {
-      var attempts = 0;
-      (function poll() {
-        var current = fdoc(frame);
-        if (current && current.querySelectorAll('.pagedjs_page').length > 0) { finish(); return; }
-        if (attempts++ < 800 && !done) timer = setTimeout(poll, 25);
-        else if (!done) {
-          done = true;
-          cleanup();
-          if (onTimeout) onTimeout();
-        }
-      })();
+    // preview-interface.js's folio:layout listener re-dispatches
+    // 'renderingComplete' once the native viewer's pagination completes (see
+    // preview-interface.js's onRenderingComplete()).
+    w.addEventListener('renderingComplete', finish);
+    if (w.__GUTTERPRESS_RENDERED__ === true) {
+      setTimeout(finish, 0);
     }
+    timer = setTimeout(function () {
+      if (done) return;
+      done = true;
+      cleanup();
+      if (onTimeout) onTimeout();
+    }, timeoutMs || 180000);
     return function () { done = true; cleanup(); };
   }
 
@@ -336,7 +211,6 @@
       active = frame;
       hotReloadFrame = frame;
       building = null;
-      tagPages(frame);
       var api = fwin(frame) && fwin(frame).previewAPI;
       if (api && typeof api.refresh === 'function') api.refresh();
       frame.style.visibility = 'visible';
@@ -363,161 +237,30 @@
     document.body.appendChild(frame);
   }
 
-  function spliceChapter(file, instance, revision) {
-    discardBuilding();
-    tagPages(active);
-    var activeDocument = fdoc(active);
-    var liveId = activeDocument ? resolveChapterId(activeDocument, file) : null;
-    if (!liveId) {
-      if (window.console) {
-        console.warn('[gutterpress] chapter not found in live pages; using full reload:', file);
-      }
-      swap(instance, revision);
-      return;
-    }
+  // Incremental chapter splice used to live here (spliceChapter): it needed
+  // Paged.js's `.pagedjs_page` DOM to find a chapter's live page range and
+  // graft a freshly-paginated replacement into it. Paged.js has been removed
+  // (native-only-migration-plan.md Phase 6). A native in-place splice was
+  // also tried and removed (2026-08-08 review): grafting a fresh
+  // `.gutterpress-chapter` node in and calling `Gutterpress.refresh()` is not
+  // sound, because `refresh()` -> `relayout()` only re-`measure()`s the
+  // EXISTING strips — it never re-runs `buildStrips()`/`explodeChildren()`.
+  // So any page context the edit introduces (a new `@page`/`page:`
+  // assignment inside the chapter) is silently dropped: measured 2 preview
+  // pages where the same content prints 3 — a preview<->PDF divergence, the
+  // worst failure this project can produce. It also bought nothing: measured
+  // end-to-end (file write -> change visible, 5 samples, 34pp field guide)
+  // the plain full reload (`swap`, below) is 509ms avg vs the incremental
+  // splice's 998ms avg. Every content-update now goes straight to `swap()`.
 
-    var startedAt = Date.now();
-    var frame = document.createElement('iframe');
-    frame.style.visibility = 'hidden';
-    frame.setAttribute('aria-hidden', 'true');
-    frame.title = 'updated chapter';
-    frame.src = '/__chapter?file=' + encodeURIComponent(file) + '&revision=' + revision +
-      '&bust=' + Date.now();
-    building = frame;
-
-    function finish() {
-      if (building !== frame) return;
-      frame.__gutterpressCancelReady = null;
-      try {
-        var ad = fdoc(active), sourceDocument = fdoc(frame);
-        if (!ad || !sourceDocument) throw new Error('chapter frame is unavailable');
-        var activeApi = fwin(active) && fwin(active).previewAPI;
-        var pendingSource = activeApi && typeof activeApi.flushScroll === 'function'
-          ? activeApi.flushScroll(true)
-          : null;
-        if (pendingSource && window.parent !== window) {
-          window.parent.postMessage({
-            type: 'gutterpress:event',
-            name: 'sourceLineChanged',
-            detail: pendingSource
-          }, '*');
-        }
-        var anchor = capture(active);
-        var container = ad.querySelector('.pagedjs_pages') || ad.body;
-        var found = pagesFor(ad, liveId);
-        var allNewPages = Array.prototype.slice.call(
-          sourceDocument.querySelectorAll('.pagedjs_page')
-        );
-        var firstContentPage = -1, lastContentPage = -1;
-        for (var pageIndex = 0; pageIndex < allNewPages.length; pageIndex++) {
-          if (!allNewPages[pageIndex].querySelector('[data-chapter-src]')) continue;
-          if (firstContentPage === -1) firstContentPage = pageIndex;
-          lastContentPage = pageIndex;
-        }
-        var newPages = firstContentPage === -1
-          ? []
-          : allNewPages.slice(firstContentPage, lastContentPage + 1);
-        if (!found.owned.length) throw new Error('chapter is absent from the live page range');
-        if (!newPages.length) throw new Error('chapter pagination produced no pages');
-
-        var first = found.owned[0];
-        var firstIsShared = found.shared.indexOf(first) !== -1;
-        var firstOrder = pageChapters(first);
-        var at = firstIsShared && firstOrder.indexOf(liveId) > 0
-          ? first.nextElementSibling
-          : first;
-        var exclusive = [];
-        for (var i = 0; i < found.owned.length; i++) {
-          if (found.shared.indexOf(found.owned[i]) === -1) exclusive.push(found.owned[i]);
-        }
-
-        for (i = 0; i < found.shared.length; i++) {
-          removeChapterFragments(found.shared[i], liveId);
-          var remaining = pageChapters(found.shared[i]).filter(function (chapter) {
-            return chapter !== liveId;
-          });
-          if (remaining.length) {
-            found.shared[i].setAttribute('data-chapter-src', remaining[0]);
-            found.shared[i].setAttribute('data-chapter-srcs', remaining.join('\n'));
-          } else {
-            found.shared[i].removeAttribute('data-chapter-src');
-            found.shared[i].removeAttribute('data-chapter-srcs');
-          }
-        }
-
-        for (i = 0; i < newPages.length; i++) {
-          var imported = ad.importNode(newPages[i], true);
-          imported.setAttribute('data-chapter-src', liveId);
-          imported.setAttribute('data-chapter-srcs', liveId);
-          container.insertBefore(imported, at);
-        }
-        for (i = 0; i < exclusive.length; i++) {
-          if (exclusive[i].parentNode) exclusive[i].parentNode.removeChild(exclusive[i]);
-        }
-
-        restore(active, anchor);
-        var api = fwin(active) && fwin(active).previewAPI;
-        if (api && typeof api.refresh === 'function') api.refresh();
-        building = null;
-        if (frame.parentNode) frame.parentNode.removeChild(frame);
-        reportIncrementalComplete(instance, revision, startedAt);
-      } catch (error) {
-        building = null;
-        if (frame.parentNode) frame.parentNode.removeChild(frame);
-        if (window.console) console.warn('[gutterpress] chapter splice failed; using full reload:', error);
-        swap(instance, revision);
-      }
-    }
-
-    frame.addEventListener('load', function () {
-      if (building !== frame) return;
-      var loadedDocument = fdoc(frame);
-      // Incremental chapter splice is Paged.js-only by design: it needs the
-      // polyfill's `.pagedjs_page` DOM to find the chapter's page range and
-      // graft it into the live document. Under `engine: "native"` neither
-      // marker is present, so every chapter edit falls back to a full reload
-      // (swap) here.
-      //
-      // A native in-place splice WAS built and REMOVED (2026-08-08 review):
-      // grafting a fresh `.gutterpress-chapter` node in and calling
-      // `Gutterpress.refresh()` is not sound, because `refresh()` →
-      // `relayout()` only re-`measure()`s the EXISTING strips — it never
-      // re-runs `buildStrips()`/`explodeChildren()`. So any page context the
-      // edit introduces (a new `@page`/`page:` assignment inside the chapter)
-      // is silently dropped: measured 2 preview pages where the same content
-      // prints 3. That is a preview↔PDF divergence, the worst failure this
-      // project can produce, and it bought nothing — measured end-to-end
-      // (file write → change visible, 5 samples, 34pp field guide) native's
-      // plain full reload is 509ms avg vs the paged leg's incremental splice
-      // at 998ms avg. Native already wins hot reload WITHOUT a splice.
-      // Reintroducing one requires `relayout()` to rebuild strips first.
-      if (!loadedDocument || (
-        !loadedDocument.querySelector('script[src*="paged.polyfill"]') &&
-        !loadedDocument.querySelector('.pagedjs_page')
-      )) {
-        discardBuilding();
-        swap(instance, revision);
-        return;
-      }
-      frame.__gutterpressCancelReady = onReady(frame, finish, function () {
-        if (building !== frame) return;
-        discardBuilding();
-        if (window.console) console.warn('[gutterpress] chapter pagination timed out; using full reload');
-        swap(instance, revision);
-      }, 15000);
-    });
-    document.body.appendChild(frame);
-  }
-
-  function tagInitialPages() {
+  function markActiveReady() {
     onReady(active, function () {
-      tagPages(active);
       activeReady = true;
       reportAppliedState(appliedInstance, appliedRevision);
     });
   }
-  if (active.contentDocument && active.contentDocument.readyState === 'complete') tagInitialPages();
-  active.addEventListener('load', tagInitialPages);
+  if (active.contentDocument && active.contentDocument.readyState === 'complete') markActiveReady();
+  active.addEventListener('load', markActiveReady);
 
   function connectChanges(onMessage) {
     var source = window.__GUTTERPRESS_CHANGE_SOURCE;
@@ -590,19 +333,9 @@
       instance === desiredInstance &&
       (revision < desiredRevision || (revision === desiredRevision && building))
     ) return;
-    var updateOverlaps = !!building;
     desiredInstance = instance;
     desiredRevision = revision;
-    if (
-      message.type === 'content-update' &&
-      typeof message.file === 'string' &&
-      message.file &&
-      !updateOverlaps
-    ) {
-      spliceChapter(message.file, instance, revision);
-    } else {
-      swap(instance, revision);
-    }
+    swap(instance, revision);
   });
   window.addEventListener('beforeunload', disconnectChanges);
 })();

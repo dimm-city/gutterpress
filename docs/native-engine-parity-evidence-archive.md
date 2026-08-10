@@ -1,11 +1,18 @@
 # Native engine vs Paged.js — A/B evidence archive (captured pre-deletion)
 
 Status: **frozen snapshot**, captured 2026-08-09 as Work Package D, item 4 of
-`docs/native-only-migration-plan.md`. Paged.js has not been deleted yet (see
-that plan's Phase 6, currently suspended), but this snapshot exists so the
-proof that native reached parity with — or improved on — Paged.js survives
-even after Phase 6 eventually removes the Paged.js code paths this evidence
-was measured against.
+`docs/native-only-migration-plan.md`. Paged.js was deleted 2026-08-10 (Phase 6
+of that plan, now executed) — this snapshot is the proof that native reached
+parity with — or improved on — Paged.js, preserved after Phase 6 removed the
+Paged.js code paths this evidence was measured against.
+
+> **Post-deletion note:** every `spike/folio/` path below refers to that
+> tree's pre-deletion location. Its migration-only A/B tooling
+> (`compare/`, `fixtures/`, `spikes/`) was retired with Paged.js; its durable
+> docs (ARCHITECTURE.md, ENGINE.md, MIGRATION.md, RESULTS.md, COMPARISON.md,
+> DIFFERENCES.md, README.md) moved to `docs/engine-history/`. This archive is
+> left byte-for-byte as captured — it is authoritative for WHAT WAS MEASURED,
+> not for where the evidence lives today.
 
 `docs/native-engine-acceptance-gate.md` is the **living** document — it keeps
 being appended to as work continues, and its older rows can be superseded or

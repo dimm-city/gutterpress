@@ -23,20 +23,8 @@ const scriptPath = path.resolve(
 );
 const scriptSource = readFileSync(scriptPath, "utf8");
 
-function makePage(offsetTop, offsetWidth = 400, offsetHeight = 600) {
-  return {
-    offsetTop,
-    offsetWidth,
-    offsetHeight,
-    scrollIntoViewCalls: [],
-    scrollIntoView(opts) {
-      this.scrollIntoViewCalls.push(opts);
-    },
-  };
-}
-
-// Native-engine equivalent of makePage(): a `.folio-sheet`, keyed by its
-// 1-based `dataset.page` (the same value the real viewer's decorate.ts
+// A `.folio-sheet`, keyed by its 1-based `dataset.page` (the same value the
+// real viewer's decorate.ts
 // stamps on each sheet) rather than DOM order.
 function makeSheet(page, offsetWidth = 400, offsetHeight = 600) {
   return {
@@ -135,100 +123,6 @@ function loadNativePreviewApi(sheets) {
   return { windowObj, sheets, api: windowObj.previewAPI };
 }
 
-function loadPreviewApi(pages, pagesWidth = 808, search = "") {
-  const listeners = new Map();
-  const bodyClasses = new Set();
-  const pagesEl = { scrollWidth: pagesWidth };
-
-  const document = {
-    body: {
-      classList: {
-        add: (...classes) => classes.forEach((c) => bodyClasses.add(c)),
-        remove: (...classes) => classes.forEach((c) => bodyClasses.delete(c)),
-      },
-    },
-    documentElement: {
-      scrollTop: 0,
-      style: { setProperty() {} },
-    },
-    querySelectorAll(selector) {
-      if (selector === ".pagedjs_page") return pages;
-      return [];
-    },
-    querySelector(selector) {
-      if (selector === ".pagedjs_page") return pages[0] ?? null;
-      if (selector === ".pagedjs_pages") return pagesEl;
-      return null;
-    },
-  };
-
-  const windowObj = {
-    document,
-    innerHeight: 900,
-    scrollY: 0,
-    previewAPI: undefined,
-    PagedConfig: {},
-    location: { search },
-    __PAGED_RENDERED__: false,
-    parent: { postMessage() {} },
-    print() {},
-    scrollTo(_x, y) {
-      this.scrollY = y;
-      document.documentElement.scrollTop = y;
-    },
-    requestAnimationFrame(cb) {
-      cb();
-      return 1;
-    },
-    addEventListener(name, fn) {
-      listeners.set(name, [...(listeners.get(name) ?? []), fn]);
-    },
-    dispatchEvent(event) {
-      for (const fn of listeners.get(event.type) ?? []) fn(event);
-    },
-  };
-
-  // detectVisiblePage() uses getBoundingClientRect (viewport-relative, post-zoom)
-  // rather than offsetTop, so the page number tracks scroll under CSS zoom. Mock
-  // it to match the real DOM: top = offsetTop - scrollY.
-  for (const p of pages) {
-    p.getBoundingClientRect = () => ({
-      top: p.offsetTop - windowObj.scrollY,
-      bottom: p.offsetTop - windowObj.scrollY + p.offsetHeight,
-      left: 0,
-      right: p.offsetWidth,
-      width: p.offsetWidth,
-      height: p.offsetHeight,
-    });
-  }
-
-  class CustomEventStub {
-    constructor(type, init = {}) {
-      this.type = type;
-      this.detail = init.detail;
-    }
-  }
-
-  class MutationObserverStub {
-    constructor(_callback) {}
-    observe() {}
-    disconnect() {}
-  }
-
-  const run = new Function(
-    "window",
-    "document",
-    "CustomEvent",
-    "MutationObserver",
-    "setTimeout",
-    "clearTimeout",
-    scriptSource
-  );
-  run(windowObj, document, CustomEventStub, MutationObserverStub, setTimeout, clearTimeout);
-
-  return { windowObj, pages, api: windowObj.previewAPI };
-}
-
 // Real DOM (happy-dom) loader for getContextTargetAt() / contextMenuRequested
 // tests (protocol v4, docs/inline-editing-plan.md §3.1): resolution walks
 // closest()/classList/getAttribute against real elements, which a hand-mock
@@ -263,74 +157,9 @@ function loadInterfaceWithDom(html, opts = {}) {
 }
 
 async function main() {
-  {
-    const pages = [makePage(0), makePage(0), makePage(1000), makePage(1000), makePage(2000), makePage(2000)];
-    const { api } = loadPreviewApi(pages);
-    api.setViewMode("two-column");
-    api.goToPage(4);
-    assert.equal(api.getCurrentPage(), 4);
-    api.nextPage("two-column");
-    assert.equal(api.getCurrentPage(), 6);
-    api.prevPage("two-column");
-    assert.equal(api.getCurrentPage(), 4);
-  }
-
-  {
-    const pages = [makePage(0), makePage(0), makePage(1000), makePage(1000), makePage(2000), makePage(2000)];
-    const { api } = loadPreviewApi(pages);
-    api.setViewMode("single");
-    api.goToPage(4);
-    api.nextPage("two-column");
-    assert.equal(api.getCurrentPage(), 6);
-  }
-
-  {
-    const pages = [makePage(0), makePage(1000), makePage(2000), makePage(3000), makePage(4000), makePage(5000)];
-    const { api } = loadPreviewApi(pages);
-    api.setViewMode("single");
-    api.goToPage(4);
-    api.nextPage();
-    assert.equal(api.getCurrentPage(), 5);
-    api.prevPage();
-    assert.equal(api.getCurrentPage(), 4);
-  }
-
-  {
-    const pages = [makePage(0), makePage(0), makePage(1000), makePage(1000)];
-    const { api, windowObj } = loadPreviewApi(pages);
-    api.setViewMode("two-column");
-    await new Promise((resolve) => setTimeout(resolve, 320));
-    windowObj.scrollY = 1100;
-    windowObj.dispatchEvent({ type: "scroll" });
-    await new Promise((resolve) => setTimeout(resolve, 170));
-    assert.equal(api.getCurrentPage(), 3);
-  }
-
-  {
-    const pages = [makePage(0), makePage(0), makePage(1000), makePage(1000)];
-    const { api } = loadPreviewApi(pages);
-    api.goToPage(3);
-    assert.equal(api.setZoom("1.25"), undefined);
-    assert.equal(api.getCurrentPage(), 3);
-    api.setViewMode("single");
-    assert.equal(api.getCurrentPage(), 3);
-    api.setViewMode("two-column");
-    assert.equal(api.getCurrentPage(), 3);
-  }
-
-  {
-    const pages = [makePage(0, 400), makePage(0, 400)];
-    const { api } = loadPreviewApi(pages, 808);
-    api.setViewMode("two-column");
-    assert.deepEqual(api.getPageDimensions(), { width: 808, height: 600 });
-    api.setViewMode("single");
-    assert.deepEqual(api.getPageDimensions(), { width: 400, height: 600 });
-  }
-
-  console.log("[desktop-test] PASS pagedjs interface navigation");
-
-  // ── Native engine (--engine native): same navigation contract, driven off
-  // .folio-sheet elements + window.Gutterpress instead of .pagedjs_page ───────
+  // ── Native engine navigation, driven off .folio-sheet elements +
+  // window.Gutterpress (Paged.js has been removed — see
+  // native-only-migration-plan.md Phase 6) ────────────────────────────────────
   {
     const sheets = [makeSheet(1), makeSheet(2), makeSheet(3), makeSheet(4)];
     const { api } = loadNativePreviewApi(sheets);
@@ -469,9 +298,11 @@ async function main() {
     assert.equal(detail.blockTag, "code");
   }
 
-  // Split-fragment grouping: fragments duplicate data-source-range; only the
-  // clone carrying data-split-from/-to reports split:true — data-source-range
-  // is the one identity that groups them (never `id`).
+  // The native fragmenter MOVES elements into strips rather than cloning
+  // them (unlike Paged.js, which cloned an element across pages and marked
+  // the clone with data-split-from/-to) — a block that visually spans pages
+  // is still exactly ONE element, so split is always false, even on an
+  // element carrying a stale data-split-from attribute.
   {
     const { document, api } = loadInterfaceWithDom(contextHtml);
     document.elementFromPoint = () => document.getElementById("frag1");
@@ -479,8 +310,8 @@ async function main() {
     document.elementFromPoint = () => document.getElementById("frag2");
     const d2 = api.getContextTargetAt({ x: 1, y: 1 });
     assert.equal(d1.split, false);
-    assert.equal(d2.split, true);
-    assert.deepEqual(d1.range, d2.range, "split fragments duplicate data-source-range — that's their shared identity");
+    assert.equal(d2.split, false);
+    assert.deepEqual(d1.range, d2.range, "both fragments carry the same data-source-range");
   }
 
   // JSON-cloneability: the payload crosses two postMessage boundaries — no
@@ -654,40 +485,9 @@ async function main() {
       </div>
     </div>`;
 
-  // getRectsFor({chapter, range}) groups every fragment sharing the SAME
-  // source range, across pages, and reports each fragment's own page index.
-  {
-    const { document, api } = loadInterfaceWithDom(overlayHtml);
-    const frag1 = document.getElementById("frag1");
-    const frag2 = document.getElementById("frag2");
-    frag1.getBoundingClientRect = () => ({ top: 100, left: 10, bottom: 140, right: 200, width: 190, height: 40 });
-    frag2.getBoundingClientRect = () => ({ top: 20, left: 10, bottom: 60, right: 200, width: 190, height: 40 });
-    // pageIndexOf() needs the page list refreshed + closest('.pagedjs_page') to resolve.
-    const result = api.getRectsFor({ chapter: "a.md", range: [1, 3] });
-    assert.equal(result.rects.length, 2, "both split fragments are returned");
-    assert.deepEqual(result.rects[0], { top: 100, left: 10, width: 190, height: 40, page: 1 });
-    assert.deepEqual(result.rects[1], { top: 20, left: 10, width: 190, height: 40, page: 2 });
-    // JSON-cloneable (§3.5) — no DOMRect instances.
-    assert.deepEqual(JSON.parse(JSON.stringify(result)), result);
-  }
-
-  // getRectsFor({chapter, range}) for a range that no longer matches anything
-  // (e.g. a splice already replaced the DOM) returns an empty result rather
-  // than throwing.
-  {
-    const { api } = loadInterfaceWithDom(overlayHtml);
-    const result = api.getRectsFor({ chapter: "a.md", range: [99, 100] });
-    assert.deepEqual(result, { rects: [] });
-  }
-
-  {
-    const { document, api } = loadInterfaceWithDom(overlayHtml);
-    const p1 = document.getElementById("p1");
-    p1.getBoundingClientRect = () => ({ top: 5, left: 0, bottom: 25, right: 200, width: 200, height: 20 });
-    const result = api.getRectsFor({ chapter: "a.md", range: [0, 1] });
-    assert.equal(result.rects.length, 1);
-    assert.deepEqual(result.rects[0], { top: 5, left: 0, width: 200, height: 20, page: 1 });
-  }
+  // getRectsFor is exercised against the native engine only, below (no
+  // clone-grouping — the native viewer never clones an element across
+  // pages, so a spec resolves to AT MOST ONE element).
 
   // setEditMask: masks EVERY fragment sharing a {chapter, range} + applies
   // the scroll lock, and unmasking fully reverts both — reversible, no

@@ -16,7 +16,6 @@ import { PAGED_CSS } from "./markdown-it-paged.js";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
-import { pagedjsPolyfillTag } from "../pagedjs-marker";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -85,13 +84,6 @@ export interface AssembleBookHtmlOptions {
    * list can drift from what the book actually uses.
    */
   onImageRefs?: (refs: string[]) => void;
-  /**
-   * "paged" (default, or omitted) emits the {@link pagedjsPolyfillTag} slot as
-   * before. "native" omits it entirely — the Gutterpress engine never loads a
-   * client-side polyfill, so there is nothing for a rewriter to fill the slot
-   * with.
-   */
-  engine?: "paged" | "native";
 }
 
 /**
@@ -183,7 +175,6 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   <style data-project-css>\n${inlineCss}\n</style>
-  ${opts.engine === "native" ? "" : pagedjsPolyfillTag()}
 </head>
 <body>
 ${bodyContent}

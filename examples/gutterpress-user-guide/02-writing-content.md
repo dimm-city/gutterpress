@@ -105,7 +105,7 @@ Alignment:
 | Text   | Text   |    42 |
 ```
 
-GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></table>` — that's markdown-it's built-in table support, not a Gutterpress addition. Because the header row is real `<thead>` markup, Paged.js can repeat it when a table is forced to break across a page — standard CSS table fragmentation, independent of any stylesheet.
+GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></table>` — that's markdown-it's built-in table support, not a Gutterpress addition. Because the header row is real `<thead>` markup, Chromium can repeat it when a table is forced to break across a page — standard CSS table fragmentation, independent of any stylesheet.
 
 Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; wrap a table in `@section` (see [Layout Directives](#layout-directives)) if you need core to keep it together.
 
@@ -186,7 +186,7 @@ Renders:
 </div>
 ```
 
-- The bare label (`C.01`) becomes `data-chapter-label` on the chapter **and** on every `@page` inside it, so CSS can reach it from the page where the content actually lives (Paged.js may split the chapter wrapper itself into an empty leading sheet).
+- The bare label (`C.01`) becomes `data-chapter-label` on the chapter **and** on every `@page` inside it, so CSS can reach it from the page where the content actually lives (the engine may split the chapter wrapper itself into an empty leading sheet).
 - `.chapter-opener` is a plain, unstyled `<div>` — style it yourself as a badge, a big numeral, a rule, or a full opener layout. It's injected once per chapter, on the first `@page` only.
 - `#id` / `.class` work like on any other marker: `@chapter #ch-bestiary .bestiary`.
 - No bare label means no `.chapter-opener` — there's no label to show.

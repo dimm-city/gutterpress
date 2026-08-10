@@ -16,8 +16,9 @@
  * The behavior is a faithful move of the original main.ts code: the validation,
  * the safety-gate branches, the temp-file rename, the progress events, and the
  * BuildError/ENOENT/cancel error mapping are preserved verbatim. The live
- * BrowserWindow interaction lives ENTIRELY in the injected `pdfRenderer`
- * (electron/pdf-export.ts) — this controller never touches a window directly.
+ * BrowserWindow interaction lives ENTIRELY in the injected `engineBrowser`
+ * (electron/engine-browser.ts) — this controller never touches a window
+ * directly.
  *
  * Node/lib-side ONLY — never imported by the renderer.
  */
@@ -29,7 +30,7 @@ import { randomUUID } from "node:crypto";
 import { preExportSyncGateBlockError } from "../recovery-bridge";
 import type { GitIdentityArgs } from "../git-identity";
 import type { ExportProgressEvent, ExportSession } from "../pdf-export";
-import type { ConflictFile, EngineBrowser, PdfRenderer, TokenStore } from "gutterpress";
+import type { ConflictFile, EngineBrowser, TokenStore } from "gutterpress";
 
 type LibModule = typeof import("gutterpress");
 
@@ -96,19 +97,14 @@ export interface ExportControllerDeps {
   gitIdentity: () => Promise<GitIdentityArgs>;
   /** Network reachability (Electron net.isOnline in production). */
   isOnline: () => boolean;
-  /** True when GUTTERPRESS_PUPPETEER opts out of the Electron PDF renderer. */
+  /** True when GUTTERPRESS_PUPPETEER opts out of the Electron engine browser. */
   usePuppeteer: () => boolean;
-  /** Electron-native PDF renderer (electron/pdf-export.ts). */
-  pdfRenderer: PdfRenderer;
   /**
-   * Electron-native engine browser factory for `--engine native` builds
-   * (electron/engine-browser.ts). Threaded through to `lib.runBuild` as
-   * `engineBrowser` — `build-runner.ts` only calls it (lazily, one hidden
-   * `BrowserWindow` per build) when a build actually resolves to
-   * `engine: "native"`, so a Paged.js export never pays for it. Same
-   * `usePuppeteer()` escape hatch as `pdfRenderer`: falls back to the CLI's
-   * pooled external Chromium (and its usual Chromium-milestone preflight)
-   * when set.
+   * Electron-native engine browser factory (electron/engine-browser.ts).
+   * Threaded through to `lib.runBuild` as `engineBrowser` — `build-runner.ts`
+   * only calls it (lazily, one hidden `BrowserWindow` per build). The
+   * `usePuppeteer()` escape hatch falls back to the CLI's pooled external
+   * Chromium (and its usual Chromium-milestone preflight) when set.
    */
   engineBrowser: () => Promise<EngineBrowser>;
   /** Auto-sync state accessors (subset of AutoSyncOrchestrator). */
@@ -334,7 +330,6 @@ export class ExportController {
           skipPreValidate: args.skipPreValidate,
           skipPostValidate: args.skipPostValidate,
           // Render with Electron's own Chromium unless explicitly opted out.
-          pdfRenderer: this.deps.usePuppeteer() ? undefined : this.deps.pdfRenderer,
           engineBrowser: this.deps.usePuppeteer() ? undefined : this.deps.engineBrowser,
           rawArgs: { input: args.input, format, out: args.out },
         });

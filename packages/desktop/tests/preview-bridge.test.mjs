@@ -30,14 +30,10 @@ const scriptPath = path.resolve(
 );
 const source = readFileSync(scriptPath, "utf8");
 
-// Wrap `inner` in the page-boundary element the given engine uses. `n` is
-// the page's 1-based book position — only consumed by the native fixture,
-// which (unlike Paged.js) never clones/renames a page element, so its
-// dataset.page must be authored directly, matching what decorate.ts stamps.
+// Wrap `inner` in the page-boundary element the native viewer uses. `n` is
+// the page's 1-based book position, matching what decorate.ts stamps.
 function pageWrap(engine, n, inner) {
-  return engine === "native"
-    ? `<div class="folio-sheet" data-page="${n}">${inner}</div>`
-    : `<div class="pagedjs_page">${inner}</div>`;
+  return `<div class="folio-sheet" data-page="${n}">${inner}</div>`;
 }
 
 // Two chapters that DELIBERATELY share the same source-line numbers (1, 4, 9) —
@@ -137,7 +133,10 @@ function setup(markup, engine = "paged") {
 }
 
 async function main() {
- for (const engine of ["paged", "native"]) {
+ // Paged.js has been removed (native-only-migration-plan.md Phase 6) — native
+ // is the only engine now; the loop stays (rather than being flattened) so a
+ // future second engine slots back in with minimal diff.
+ for (const engine of ["native"]) {
   // ── 1. Chapter-scoped line resolution (the critical correctness property) ──
   {
     const { api, scrolls } = setup(undefined, engine);

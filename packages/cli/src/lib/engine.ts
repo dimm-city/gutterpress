@@ -7,24 +7,15 @@
  * cross-directory import out of a non-workspace directory, and it ships in
  * both the source checkout and the compiled binary).
  *
- * Deliberately bypasses `./pagination.ts`'s `renderHtmlToPdf` / `PdfRenderer`
- * seam: that function's HTTP staging (`paginationOverlays`) always injects
- * the Paged.js polyfill into the served HTML, even when a custom renderer is
- * given, and even with no polyfill-tag marker present — `pagedjs.ts`'s
- * `patchHtmlStringForPagedjs` falls back to injecting it before `</head>`
- * regardless (deliberate, per finding #22: a doc that merely CONTAINS the
- * word "pagedjs" must not silently skip loading it). Measured: driving the
- * engine's own Chromium at a Paged.js-staged URL let Paged.js re-paginate the
- * DOM out from under the engine's fragmentation mid-navigation — output
- * dropped from 61pp / 9,699 words to 6pp / 754 words, no error thrown. So this
- * module calls the engine directly on the plain `book.html` FILE (no HTTP
- * staging, no overlay, no polyfill of any kind) instead of going through
- * `renderHtmlToPdf`.
+ * This module calls the engine directly on the plain `book.html` FILE — no
+ * HTTP staging, no overlay, no pagination polyfill of any kind (the Paged.js
+ * pipeline this used to deliberately bypass was deleted along with Paged.js
+ * itself — native-only-migration-plan.md Phase 6).
  *
  * The engine used to drive its OWN Chromium via `src/engine/shared/cdp.ts`'s
  * raw-CDP `launchChromium()` per build, entirely separate from
  * `./browser-pool.ts` (puppeteer-core, connection pooling, warm-reuse across
- * preview rebuilds) — measured ~2x wall clock vs the Paged.js path (7.1s vs
+ * preview rebuilds) — measured ~2x wall clock vs reusing the pool (7.1s vs
  * 3.6s mean on the user guide) because every native build paid a full cold
  * Chromium launch. It now reuses the SAME pooled/pre-warmed browser: this
  * module gets `browser-pool.ts`'s puppeteer `Browser`, hands its
@@ -44,8 +35,7 @@ import {
   assertMilestone,
   type Browser as EngineBrowser,
 } from "../engine/shared/cdp.ts";
-import { getBrowser } from "./browser-pool.ts";
-import { RENDER_TIMEOUT_MS } from "./pagination.ts";
+import { getBrowser, RENDER_TIMEOUT_MS } from "./browser-pool.ts";
 import { BuildError } from "./build-error.ts";
 
 export type { EngineBrowser };

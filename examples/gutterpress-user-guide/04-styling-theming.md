@@ -154,7 +154,7 @@ This guide's own cover page (`00-cover.md`) uses the same mechanism with a hand-
 
 ### Running headers and footers
 
-Paged.js uses CSS margin boxes for headers and footers:
+Gutterpress uses CSS margin boxes for headers and footers:
 
 ```css
 h1 { string-set: chapter-title content(); }
@@ -186,7 +186,7 @@ h1 { string-set: chapter-title content(); }
 
 ### Widow and orphan control
 
-`orphans`/`widows` control the minimum number of lines that must stay together at the top/bottom of a page break. Core Gutterpress sets **no default** — Paged.js follows the CSS default of 2. This guide's own `guide.css` raises both to 3:
+`orphans`/`widows` control the minimum number of lines that must stay together at the top/bottom of a page break. Core Gutterpress sets **no default** — Chromium follows the CSS default of 2. This guide's own `guide.css` raises both to 3:
 
 ```css
 body {
@@ -201,7 +201,7 @@ body {
 /* Keep a block from splitting across pages */
 .no-break {
   break-inside: avoid;
-  page-break-inside: avoid;  /* Paged.js legacy */
+  page-break-inside: avoid;  /* legacy alias, older browsers */
 }
 
 /* Force a new page before an element */

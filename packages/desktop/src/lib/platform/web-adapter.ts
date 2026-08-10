@@ -36,11 +36,7 @@ import {
 // stays PWA-clean in the renderer bundle. NEVER import build-runner / index
 // (those drag puppeteer + node:fs). This is what lets the in-browser preview
 // (#33 Phase 2) render entirely client-side with no localhost server.
-import { assembleBookHtml, pagedjsPolyfillTagRegex } from "gutterpress/render";
-// Pure JS, no `node:*` — ships a `browser` build, so it stays PWA-clean in
-// this file (see readProjectEngine's doc comment for why this is here
-// instead of the lib's real manifest.ts, which drags node:fs/node:path).
-import { parse as parseYaml } from "yaml";
+import { assembleBookHtml } from "gutterpress/render";
 import { IndexedDbWebStore } from "./web-store";
 import type { WebStore } from "./web-store";
 import { deepMergeSettings } from "../settings-merge";
@@ -91,51 +87,12 @@ import type {
 
 const NOT_IMPL = "Web platform support lands in 0.6.0 (#41).";
 
-// #33 Phase 4: same-origin path of the vendored paged.js polyfill the desktop
-// ships in static/vendor/. The service worker precaches it; startPreview
-// rewrites the render core's src-less marker slot to this so preview works
-// offline.
-const VENDOR_PAGED_POLYFILL_URL = "/vendor/paged.polyfill.js";
-
-/**
- * Read the project's configured engine from `manifest.yaml`'s top-level
- * `engine:` scalar, or `"native"` if the manifest is absent/unreadable, fails
- * to parse, or the key isn't set/isn't a top-level scalar (matching the
- * CLI's own default — `manifest.ts`'s `c.engine ?? m.engine ?? "native"`).
- *
- * A real YAML parse (via the `yaml` package — pure JS, no `node:*`, ships a
- * `browser` build, so it stays PWA-clean per CLAUDE.md §8), not a regex: a
- * regex over raw text can't tell a real top-level `engine:` key from one
- * that's commented out, quoted oddly, or nested under another key — it would
- * silently default to `paged` in cases a human reading the YAML would not
- * expect. This still doesn't reach for the CLI's full `manifest.ts` (that
- * pulls in `node:fs`/`node:path` and drags Node into the renderer bundle);
- * it parses the YAML structurally and reads exactly one top-level key, which
- * is enough to close the "silent divergence" bug without widening scope to
- * `source.files`/`plugins` (still unparsed here — see `renderBookHtml`'s
- * "KNOWN PHASE-2 GAP" comment).
- */
-export async function readProjectEngine(
-  root: FileSystemDirectoryHandle,
-): Promise<"paged" | "native"> {
-  let text: string;
-  try {
-    text = await readFileFromRoot(root, "manifest.yaml");
-  } catch {
-    return "native";
-  }
-  let doc: unknown;
-  try {
-    doc = parseYaml(text);
-  } catch {
-    return "native";
-  }
-  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
-    return "native";
-  }
-  const engine = (doc as Record<string, unknown>).engine;
-  return engine === "paged" ? "paged" : "native";
-}
+// Same-origin path of the native engine's viewer bundle the desktop ships in
+// static/engine/. The service worker precaches it; startPreview injects a
+// <script src> pointing at it so preview works offline. Paged.js has been
+// removed (native-only-migration-plan.md Phase 6) — native is the only
+// engine, so there is no manifest `engine:` field left to honor here.
+const VENDOR_VIEWER_URL = "/engine/gutterpress-viewer.js";
 
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
 // IndexedDB object-store names + record shapes the adapter persists. Handles are
@@ -759,31 +716,29 @@ export class WebAdapter implements Platform {
    * STRING — the shared core behind both `startPreview` (Blob URL for the
    * iframe) and `build({format:"html"})` (Blob URL for a download). Keeping ONE
    * assembly path means the exported HTML is byte-identical to what the user
-   * previews: same inlined project CSS, same same-origin paged.js rewrite.
+   * previews: same inlined project CSS, same same-origin viewer-bundle inject.
    *
-   * Pipeline (plan §2):
+   * Pipeline:
    *  1. resolve the root FileSystemDirectoryHandle from `input.key`;
    *  2. list the project's `.md`/`.css` (FSA), read them via `web-fs`;
-   *  3. run the PURE `assembleBookHtml` (markdown-it + paged plugin) with an
+   *  3. run the PURE `assembleBookHtml` (markdown-it + core plugins) with an
    *     FSA-backed `readText` — the SAME render core the CLI uses;
    *  4. INLINE the project CSS (a blob-URL doc can't resolve relative `css/*`
-   *     hrefs) and rewrite the paged.js marker slot to the same-origin copy.
+   *     hrefs) and inject a `<script src>` for the same-origin viewer bundle.
    *
-   * OFFLINE (#33 Phase 4): the pure render core emits a src-less
-   * `data-pagedjs-polyfill` marker slot (never a CDN URL — `pagedjs-marker.ts`,
-   * asserted by its test); step 4 rewrites that slot to the same-origin, vendored
-   * `/vendor/paged.polyfill.js` (shipped in the desktop `static/` dir + precached
-   * by the service worker). A `blob:` document inherits the creating page's
-   * origin, so an absolute-path URL resolves same-origin and is SW-cacheable —
-   * which is what makes the in-browser preview work fully offline once the
-   * shell is cached.
+   * OFFLINE: the injected script points at the same-origin, vendored
+   * `/engine/gutterpress-viewer.js` (shipped in the desktop `static/` dir +
+   * precached by the service worker). A `blob:` document inherits the
+   * creating page's origin, so an absolute-path URL resolves same-origin and
+   * is SW-cacheable — which is what makes the in-browser preview work fully
+   * offline once the shell is cached.
    *
    * KNOWN PHASE-2 GAP (tracked for later phases — intentionally not silent):
    * chapters are listed in alphabetical order (`listProjectFiles`), matching
    * the CLI's no-manifest fallback. A project `manifest.yaml` with a custom
    * `source.files` order or `plugins` is NOT yet parsed here, so such projects
    * can preview in a different order than the CLI build. A later phase will
-   * parse the manifest (the `yaml` dep is browser-safe).
+   * parse the manifest.
    *
    * Throws (rejects, via the `async` callers) when the folder has no `.md`.
    */
@@ -819,61 +774,23 @@ export class WebAdapter implements Platform {
       .filter((s) => s.length > 0)
       .join("\n\n");
 
-    // Read the project's configured engine (manifest.yaml's top-level
-    // `engine:` scalar) so this render can at least know which engine the
-    // author asked for, rather than silently assuming Paged.js the way this
-    // adapter always used to (see readProjectEngine's doc comment for why
-    // the result below is always "paged" in the actual render below,
-    // regardless of what this returns). `native` is now the default (no
-    // `engine:` key), so this branch fires for most projects, not just ones
-    // that explicitly opted into native.
-    const configuredEngine = await readProjectEngine(root);
-    if (configuredEngine === "native") {
-      // Native engine requested, but not honoured: see readProjectEngine's
-      // doc comment and WP-C item 2 (docs/native-engine-acceptance-gate.md).
-      // Logged instead of silent so a native-engine author who opens their
-      // book in the browser PWA target learns WHY it paginates differently
-      // than the CLI/desktop build, instead of just seeing a mismatch.
-      console.warn(
-        `[web render] "${input.displayName}" is configured for engine:"native", but the ` +
-          "browser/PWA target does not ship the native viewer bundle yet — " +
-          "rendering with the Paged.js polyfill instead. This is a known, tracked " +
-          "gap (docs/native-engine-acceptance-gate.md, WP-C item 2), not a silent " +
-          "divergence.",
-      );
-    }
-
     // The assembler inlines `projectCss` into its own <style> block, in the
     // right cascade position — the browser has no separate inlining step to do.
-    //
-    // engine is deliberately PINNED to "paged" here, regardless of
-    // `configuredEngine` above: the native viewer bundle
-    // (`gutterpress-viewer.js`) is not yet shipped under this app's
-    // `static/` dir (unlike `/vendor/paged.polyfill.js`), so there is
-    // nothing for a native marker to load in this browser context. Honouring
-    // the manifest fully — matching the CLI/desktop for the same project —
-    // is WP-C item 2's remaining work; until then this stays an explicit,
-    // logged pin rather than an accidental default (assembleBookHtml's
-    // `engine` option defaults to "paged" when omitted, which is what
-    // silently happened here before).
     let html = await assembleBookHtml({
       files: md,
       readText: (relPath) => readFileFromRoot(root, relPath),
       projectCss,
       title: input.displayName,
-      engine: "paged",
     });
 
-    // #33 Phase 4 (offline): the render core emits a stable, src-less polyfill
-    // MARKER slot (no network dependency); rewrite it to the same-origin vendored
-    // copy so the preview/export works offline (the SW precaches
-    // /vendor/paged.polyfill.js). A blob: document inherits this page's origin, so
-    // the absolute path resolves same-origin. Matching the marker (not a pinned
-    // CDN URL) keeps this rewrite robust across paged.js version bumps.
-    html = html.replace(
-      pagedjsPolyfillTagRegex(),
-      `<script src="${VENDOR_PAGED_POLYFILL_URL}"></script>`,
-    );
+    // Inject a <script src> for the same-origin, vendored viewer bundle (the
+    // SW precaches /engine/gutterpress-viewer.js) so preview/export works
+    // offline. A blob: document inherits this page's origin, so the absolute
+    // path resolves same-origin.
+    const tag = `  <script src="${VENDOR_VIEWER_URL}"></script>\n`;
+    html = /<\/head>/i.test(html)
+      ? html.replace(/<\/head>/i, tag + "</head>")
+      : html + tag;
 
     return html;
   }
@@ -897,10 +814,8 @@ export class WebAdapter implements Platform {
       port: 0, // no server on web
       input: args.input.key,
       title: args.input.displayName ?? null,
-      // Always "paged": renderBookHtml pins the browser/PWA target to
-      // Paged.js regardless of the manifest (see its own comment) — this
-      // reports what's actually rendering, not what was configured.
-      engine: "paged",
+      // Paged.js has been removed — native is the only engine.
+      engine: "native",
     };
   }
 
@@ -921,7 +836,7 @@ export class WebAdapter implements Platform {
    *
    * - `format:"html"` — render the full standalone `book.html` IN-BROWSER
    *   (the SAME `renderBookHtml` path as the live preview, so the export matches
-   *   what the author sees: inlined project CSS + same-origin paged.js) and hand
+   *   what the author sees: inlined project CSS + same-origin viewer bundle) and hand
    *   it back as a `blob:` object URL on `BuildResult.downloadUrl`. The SPA turns
    *   that into a browser download (an `<a download>` click). There is no
    *   filesystem write on web; `outDir`/`htmlPath` are nominal display values

@@ -1,6 +1,10 @@
 import type { Browser } from "puppeteer-core";
 import { requireChromiumExecutable } from "./chromium";
 
+/** Hard ceiling for navigation + rendering. Large books need this budget; it
+ *  is also the puppeteer protocolTimeout for the pooled browser. */
+export const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
+
 /**
  * Shared, pre-warmable headless-Chromium instance.
  *

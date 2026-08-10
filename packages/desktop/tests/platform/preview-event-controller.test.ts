@@ -41,7 +41,6 @@ interface Harness {
   // editor-sync ambient state
   suppressUntil: number;
   editorPaneOpen: boolean;
-  engine: "paged" | "native";
 }
 
 function make(): Harness {
@@ -64,11 +63,6 @@ function make(): Harness {
     },
     suppressUntil: 0,
     editorPaneOpen: true,
-    // Paged.js by default — matches PreviewStartSuccess's own default and lets
-    // the existing tests below (written against the paged leg) keep asserting
-    // on the injected `inject:desktop-canvas`/`inject:debug` log entries
-    // unchanged. A dedicated test below covers the native-engine skip.
-    engine: "paged",
   } as Harness;
 
   h.client = {
@@ -134,7 +128,6 @@ function make(): Harness {
     zoom: () => h.zoom,
     viewMode: () => h.viewMode,
     bgColor: () => "#123456",
-    engine: () => h.engine,
     setRendering: (v) => {
       h.rendering = v;
       log.push(`setRendering:${v}`);
@@ -186,7 +179,6 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
     "setRendering:false",
     "overlay:true",
     "inject:desktop-canvas",
-    "inject:debug",
     "applyViewMode:two-column:false",
     "call:setZoom",
     "toast:Your book is ready — 12 pages",
@@ -200,28 +192,14 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
   // Reveal is the LAST thing to happen, only after the zoom round-trip settles.
   expect(h.log[h.log.length - 1]).toBe("reveal");
   expect(h.client.calls).toContainEqual({ cmd: "setZoom", args: [0.5] });
-});
 
-test("renderingComplete injects only the canvas background under the native engine (WP-C item 3)", async () => {
-  // Nearly every selector in $lib/iframe-styles targets .pagedjs_* classes the
-  // native viewer's DOM never has — injecting those is dead weight. The
-  // `html, body` background rule is the exception: the native viewer honours
-  // it (measured), so dropping it would silently kill the author's
-  // preview-background setting on the native leg.
-  const h = make();
-  h.engine = "native";
-  h.zoom = "0.5";
-  h.ctrl.handleEvent(rc(12));
-
-  expect(h.log).not.toContain("inject:debug");
+  // Only the engine-agnostic preview canvas background is injected — Paged.js
+  // has been removed (native-only-migration-plan.md Phase 6), and the rest
+  // of the native viewer's chrome (zoom, sheet background, view modes, debug
+  // guides) lives in decorate.ts + viewer.css, not injected from the toolbar.
   const canvas = h.injectedCss.filter((i) => i.id === "desktop-canvas");
   expect(canvas.length).toBe(1);
   expect(canvas[0]!.css).toContain("background-color: #123456 !important");
-  expect(canvas[0]!.css).not.toContain("pagedjs_");
-  // Everything else in the settle sequence still runs unaffected.
-  expect(h.log).toContain("applyViewMode:two-column:false");
-  await flush();
-  expect(h.log[h.log.length - 1]).toBe("reveal");
 });
 
 test("renderingComplete fit-width path measures-and-fits, never assumes 100%", async () => {

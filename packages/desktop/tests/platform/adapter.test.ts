@@ -1,4 +1,4 @@
-import { test, expect, beforeEach, afterEach, spyOn } from "bun:test";
+import { test, expect, beforeEach, afterEach } from "bun:test";
 import { ElectronAdapter } from "../../src/lib/platform/electron-adapter";
 import { WebAdapter } from "../../src/lib/platform/web-adapter";
 import { InMemoryWebStore } from "../../src/lib/platform/web-store";
@@ -451,20 +451,19 @@ test("WebAdapter.startPreview renders book.html in-browser → blob URL (#33 Pha
     expect(result.title).toBe("my-book");
     expect(urls.created).toHaveLength(1);
 
-    // The assembled HTML contains the rendered markdown + the paged runtime +
-    // the inlined project CSS.
+    // The assembled HTML contains the rendered markdown + the native viewer
+    // bundle + the inlined project CSS.
     const html = await urls.blobs.get(result.url)!.text();
     expect(html).toContain(">Intro</h1>"); // from 01-intro.md (# Intro)
     expect(html).toContain("Sentinel content here."); // from 02-body.md
-    expect(html).toContain("paged.polyfill.js");
     expect(html).toContain("data-project-css"); // theme.css inlined
     expect(html).toContain("body{}"); // theme.css contents inlined
 
-    // #33 Phase 4: the paged.js runtime must be referenced from a SAME-ORIGIN,
-    // service-worker-cacheable path (so preview works OFFLINE), NOT from the
-    // unpkg CDN the pure render core defaults to. A blob: document inherits the
-    // creating page's origin, so an absolute-path URL resolves same-origin.
-    expect(html).toContain('src="/vendor/paged.polyfill.js"');
+    // #33 Phase 4: the viewer bundle must be referenced from a SAME-ORIGIN,
+    // service-worker-cacheable path (so preview works OFFLINE). A blob:
+    // document inherits the creating page's origin, so an absolute-path URL
+    // resolves same-origin.
+    expect(html).toContain('src="/engine/gutterpress-viewer.js"');
     expect(html).not.toContain("unpkg.com");
   } finally {
     urls.restore();
@@ -513,19 +512,15 @@ test("WebAdapter.startPreview revokes the prior URL before minting a new one (#3
   }
 });
 
-test("WebAdapter.startPreview pins engine:native projects to Paged.js, explicitly and loudly (WP-C item 2)", async () => {
-  // The browser/PWA target doesn't ship the native viewer bundle yet (no
-  // /vendor equivalent, unlike paged.polyfill.js) — see
-  // docs/native-engine-acceptance-gate.md, WP-C item 2. A project configured
-  // for engine:"native" must still render (with Paged.js), but the pin must
-  // be logged, not silent, so an author sees a divergence explanation instead
-  // of just a mismatch versus the CLI/desktop build.
+test("WebAdapter.startPreview renders natively regardless of the manifest's (ignored) engine field", async () => {
+  // Paged.js has been removed (native-only-migration-plan.md Phase 6) — the
+  // native viewer bundle is what renders every project on the browser/PWA
+  // target now, whatever the manifest's `engine:` field says.
   const root = makeFsaTree();
-  root.addFile("manifest.yaml", "title: Native Book\nengine: native\n");
+  root.addFile("manifest.yaml", "title: Legacy Book\nengine: paged\n");
   // @ts-expect-error test global
   globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
   const urls = stubObjectUrls();
-  const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
   try {
     const p = new WebAdapter(new InMemoryWebStore());
     const ref = (await p.openFolder())!;
@@ -533,40 +528,9 @@ test("WebAdapter.startPreview pins engine:native projects to Paged.js, explicitl
     const result = await p.startPreview({ input: ref });
 
     const html = await urls.blobs.get(result.url)!.text();
-    // Pinned to Paged.js: the polyfill is still what actually loads.
-    expect(html).toContain('src="/vendor/paged.polyfill.js"');
-
-    // The pin is explained, not silent.
-    const warned = warnSpy.mock.calls.some((args) =>
-      String(args[0]).includes('engine:"native"'),
-    );
-    expect(warned).toBe(true);
+    expect(html).toContain('src="/engine/gutterpress-viewer.js"');
+    expect(result.engine).toBe("native");
   } finally {
-    warnSpy.mockRestore();
-    urls.restore();
-    // @ts-expect-error test global
-    globalThis.window = undefined;
-  }
-});
-
-test("WebAdapter.startPreview stays quiet about engine when the manifest doesn't request native (WP-C item 2)", async () => {
-  const root = makeFsaTree();
-  root.addFile("manifest.yaml", "title: Paged Book\nengine: paged\n");
-  // @ts-expect-error test global
-  globalThis.window = { showDirectoryPicker: () => Promise.resolve(root) };
-  const urls = stubObjectUrls();
-  const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
-  try {
-    const p = new WebAdapter(new InMemoryWebStore());
-    const ref = (await p.openFolder())!;
-    await p.startPreview({ input: ref });
-
-    const warned = warnSpy.mock.calls.some((args) =>
-      String(args[0]).includes('engine:"native"'),
-    );
-    expect(warned).toBe(false);
-  } finally {
-    warnSpy.mockRestore();
     urls.restore();
     // @ts-expect-error test global
     globalThis.window = undefined;
@@ -619,13 +583,13 @@ test("WebAdapter.build({format:'html'}) returns a blob downloadUrl with the rend
     expect(result.htmlPath).toMatch(/\.html$/);
 
     // The blob contains the SAME rendered book.html as startPreview: rendered
-    // markdown + inlined project CSS + the same-origin paged.js polyfill.
+    // markdown + inlined project CSS + the same-origin native viewer bundle.
     const html = await urls.blobs.get(result.downloadUrl!)!.text();
     expect(html).toContain(">Intro</h1>"); // from 01-intro.md (# Intro)
     expect(html).toContain("Sentinel content here."); // from 02-body.md
     expect(html).toContain("data-project-css"); // theme.css inlined
     expect(html).toContain("body{}"); // theme.css contents inlined
-    expect(html).toContain('src="/vendor/paged.polyfill.js"');
+    expect(html).toContain('src="/engine/gutterpress-viewer.js"');
     expect(html).not.toContain("unpkg.com");
   } finally {
     urls.restore();

@@ -4,11 +4,9 @@ import { resolveGhostscript } from "./ghostscript";
 import { INSTALL_HINTS as CANONICAL_INSTALL_HINTS } from "./install-hints";
 import { BuildError } from "./build-error";
 import { log } from "../utils/logger";
-import { getBrowser, closeBrowser } from "./browser-pool";
-import { RENDER_TIMEOUT_MS } from "./pagination";
+import { getBrowser, closeBrowser, RENDER_TIMEOUT_MS } from "./browser-pool";
 import { REQUIRED_MILESTONE } from "../engine/shared/cdp";
 import type { BuildFormat } from "./build-runner";
-import type { PdfRenderer } from "./pagination";
 
 /**
  * Tool preflight + gate computation (ARCH finding #9, extracted from
@@ -51,33 +49,28 @@ const INSTALL_HINTS: Record<"gs" | "qpdf", string> = {
  */
 /**
  * Does this build render in the POOLED/external Chromium? The one rule,
- * defined once: HTML builds never paginate here; an injected `pdfRenderer`
- * replaces the pool ONLY on the Paged.js leg (the native engine ignores it);
- * an injected `engineBrowser` (the desktop's Electron host) replaces the
- * pool on the native leg. Every caller that gates preflight, prewarm, or the
- * milestone check derives from THIS predicate — four hand-copied variants of
- * it once drifted (one site forgot `engineBrowser`) and only stayed correct
- * because a callee re-checked.
+ * defined once: HTML builds never paginate here; an injected `engineBrowser`
+ * (the desktop's Electron host) replaces the pool. Every caller that gates
+ * preflight, prewarm, or the milestone check derives from THIS predicate.
  */
 export function rendersInPooledChromium(
   format: BuildFormat,
-  engine: "paged" | "native" | undefined,
-  opts: { pdfRenderer?: unknown; engineBrowser?: unknown }
+  opts: { engineBrowser?: unknown }
 ): boolean {
-  return format !== "html" && (!opts.pdfRenderer || engine === "native") && !opts.engineBrowser;
+  return format !== "html" && !opts.engineBrowser;
 }
 
 export async function preflightBuildTools(
   format: BuildFormat,
-  opts: { stripAnnotations?: boolean; pdfRenderer?: PdfRenderer; engineBrowser?: unknown },
-  config: { pdfx: { stripAnnotations: boolean }; engine?: "paged" | "native" }
+  opts: { stripAnnotations?: boolean; engineBrowser?: unknown },
+  config: { pdfx: { stripAnnotations: boolean } }
 ): Promise<void> {
   const missing: MissingTool[] = [];
 
   // Chromium — required exactly when the build renders in the pooled/external
   // Chromium (see rendersInPooledChromium's doc for the injection cases).
   if (
-    rendersInPooledChromium(format, config.engine, opts) &&
+    rendersInPooledChromium(format, opts) &&
     !(await resolveChromiumExecutable())
   ) {
     // requireChromiumExecutable() throws with multi-line install instructions

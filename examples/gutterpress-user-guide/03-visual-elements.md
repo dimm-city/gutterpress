@@ -129,12 +129,11 @@ Core Gutterpress ships five ready-to-use image/block utility classes — they're
 ![Full page art](assets/artwork.jpg){.full-bleed}
 ```
 
-`.full-bleed` uses two different mechanisms depending on renderer, both producing the same edge-to-edge result:
-- **Forces a page break before the image** (`break-before: page`), in both renderers.
-- **Under Paged.js**, it cancels the page's left/right margins by reading Paged.js's own `--pagedjs-margin-left` / `--pagedjs-margin-right` custom properties (set per page from whatever `@page` rule is active) and applying the matching negative margin, so the image reaches the page's left and right trim edges.
-- **Under the native engine**, it assigns the image's page to a core-owned named page (`@page gp-full-bleed`) with zero left/right margins, so the page's own content box already is the sheet — no negative margin needed.
+`.full-bleed` produces the edge-to-edge result this way:
+- **Forces a page break before the image** (`break-before: page`).
+- **It assigns the image's page to a core-owned named page** (`@page gp-full-bleed`) with zero left/right margins, so the page's own content box already is the sheet — no negative margin needed.
 
-It does **not**: cancel the top/bottom margins, remove headers or footers, or add printer bleed overage past the trim edge. Under the native engine, the running head and folio move onto the trim line on the bleed page itself (margin boxes are positioned by the page's own margins, which are zero here) — if you need to keep them, suppress the ones that would land on the trim edge with a small override targeting `@page gp-full-bleed` (e.g. `@top-center { content: none }`); see the native engine styling guide. If you need true bleed — content that extends past the trim line for a print shop to cut through — design the artwork to the bled dimensions and add that overage via your PDF export/preflight settings; see [Bleed for full-page images](#bleed-for-full-page-images) below.
+It does **not**: cancel the top/bottom margins, remove headers or footers, or add printer bleed overage past the trim edge. The running head and folio move onto the trim line on the bleed page itself (margin boxes are positioned by the page's own margins, which are zero here) — if you need to keep them, suppress the ones that would land on the trim edge with a small override targeting `@page gp-full-bleed` (e.g. `@top-center { content: none }`); see the native engine styling guide. If you need true bleed — content that extends past the trim line for a print shop to cut through — design the artwork to the bled dimensions and add that overage via your PDF export/preflight settings; see [Bleed for full-page images](#bleed-for-full-page-images) below.
 
 ### Image galleries
 

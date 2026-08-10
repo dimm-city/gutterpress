@@ -82,11 +82,10 @@ export function locateThemeRoot(names: string[]): string | null {
 /**
  * Split print-safety findings into the one that REJECTS the import (a CSS
  * syntax/parse failure — the stylesheet is unusable) vs. WARN findings the
- * author should still see (remote URLs, risky print effects, paged.js crash
- * selectors) that import anyway. The discriminator is the rule id, not
- * severity: `no-remote-urls`/`no-pagedjs-crash-selectors` are `error`-severity
- * but the #106 spec still imports them with a warning; only `syntax-error`
- * refuses.
+ * author should still see (remote URLs, risky print effects) that import
+ * anyway. The discriminator is the rule id, not severity: `no-remote-urls` is
+ * `error`-severity but the #106 spec still imports it with a warning; only
+ * `syntax-error` refuses.
  */
 export function classifyThemeCssFindings(findings: PrintSafeWarning[]): {
   reject: PrintSafeWarning | null;

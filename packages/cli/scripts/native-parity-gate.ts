@@ -55,7 +55,7 @@
  *
  * Any divergence must be an explicit entry in KNOWN_DIVERGENCES with a
  * reason, following the migration spike's own pattern
- * (`spike/folio/fixtures/migration/runner.ts`'s KNOWN_DIVERGENCES) — never a
+ * (the same KNOWN_DIVERGENCES pattern the retired migration-fixtures harness used — see docs/engine-history/MIGRATION.md) — never a
  * silent tolerance. An unlisted divergence fails the run (exit 1).
  *
  * Usage:
@@ -104,7 +104,7 @@ interface Divergence {
 }
 
 /**
- * Explicit allowlist, `spike/folio/fixtures/migration/runner.ts`'s
+ * Explicit allowlist (the same KNOWN_DIVERGENCES pattern the retired migration-fixtures harness used, see docs/engine-history/MIGRATION.md):
  * KNOWN_DIVERGENCES pattern: every entry names exactly what it excuses and
  * why. A divergence NOT matched here fails the run. Empty until a real,
  * understood divergence is found — see this script's own report output for

@@ -157,7 +157,23 @@ Automated fixture, run on the migration fixture set *and* `examples/with-design-
 
 Then `manifest.ts:329` `?? "paged"` → `?? "native"`. `--engine paged` survives. This is the reversible commit; sit on it and dogfood a real book.
 
-### Phase 6 — delete Paged.js — **UNSUSPENDED 2026-08-10 (owner confirmed the gate is met)**
+### Phase 6 — delete Paged.js — **EXECUTED 2026-08-10**
+
+> Done: the paged pipeline (`pagination.ts`, `pagedjs.ts`, `pagedjs-marker.ts`,
+> `page-var-resolve.ts`, `paged.polyfill.js`, the `pagedjs` devDependency,
+> `printsafe.ts`'s `rulePagedjsCrashSelectors`), the `engine`/`engineStyles`
+> dual-path branches in `build-runner.ts`/`file-watcher.ts`/`assemble.ts`/
+> `manifest.ts` (now a no-op-with-warning), the desktop's paged
+> `printToPDF` renderer (`electronPdfRenderer`) and `iframe-styles.ts`, and
+> the migration-only A/B tooling (`spike/folio/compare`, `spike/folio/fixtures`,
+> `spike/folio/spikes`, `.github/workflows/folio-migration-fixtures.yml`) are
+> all gone. `web-adapter.ts`'s in-browser preview now injects the native
+> viewer bundle; `service-worker.ts`'s `SHELL` precaches
+> `/engine/gutterpress-viewer.js`. `spike/folio/`'s durable docs
+> (ARCHITECTURE.md, ENGINE.md, MIGRATION.md, RESULTS.md, COMPARISON.md,
+> DIFFERENCES.md, README.md) moved to `docs/engine-history/` rather than
+> being deleted. `scripts/native-parity-gate.ts` (native-viewer vs
+> native-print) is unaffected and remains permanent.
 
 > Every gate row reads = or > except the accepted wall-clock exception; the
 > A/B evidence is archived in-repo. The parity gate (native-viewer vs

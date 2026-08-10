@@ -2,7 +2,7 @@
 
 **Write a book in Markdown. Lay it out with CSS. Export a print-ready PDF.**
 
-Gutterpress is a desktop application (with a CLI for power users) that turns a folder of markdown files into a professionally typeset PDF — the kind you'd send to an offset printer or a print-on-demand service. Under the hood it uses [Paged.js](https://pagedjs.org/) and Chromium for layout, just like the W3C-recommended CSS Paged Media spec. You write content; Gutterpress handles page breaks, running headers, columns, page numbers, and all the print-specific work that web browsers usually skip.
+Gutterpress is a desktop application (with a CLI for power users) that turns a folder of markdown files into a professionally typeset PDF — the kind you'd send to an offset printer or a print-on-demand service. Under the hood it uses a native Chromium print engine for layout, following the W3C-recommended CSS Paged Media spec. You write content; Gutterpress handles page breaks, running headers, columns, page numbers, and all the print-specific work that web browsers usually skip.
 
 ## Get the desktop app
 

@@ -76,8 +76,9 @@
    * renders the author's own document CSS and must always sit on a fixed,
    * neutral print-condition background regardless of the app's light/dark
    * theme. This literal is the one deliberate exception to the no-hardcoded-
-   * colour rule; see iframe-styles.ts buildDesktopStyles for the matching
-   * in-iframe canvas background. Do NOT replace it with an app theme token.
+   * colour rule; see iframe-styles.ts's buildCanvasBackgroundStyles for the
+   * matching in-iframe canvas background. Do NOT replace it with an app
+   * theme token.
    */
   iframe {
     flex: 1;

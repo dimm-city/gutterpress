@@ -57,7 +57,6 @@ export type { PrintSafeWarning } from "./lib/printsafe.ts";
 export {
   ruleRemoteUrls,
   ruleRiskyProps,
-  rulePagedjsCrashSelectors,
   ruleSyntax,
 } from "./lib/printsafe.ts";
 

@@ -145,7 +145,6 @@ import {
 } from "./recovery-paths";
 import {
   ExportCanceledError,
-  electronPdfRenderer,
   getActiveExportSession,
   initPdfExport,
   sendExportProgress,
@@ -1713,7 +1712,6 @@ const exportController = new ExportController({
   gitIdentity: async () => gitIdentityFrom(await readSettings()),
   isOnline: () => net.isOnline(),
   usePuppeteer: () => !!process.env.GUTTERPRESS_PUPPETEER,
-  pdfRenderer: electronPdfRenderer,
   engineBrowser: createElectronEngineBrowser,
   sync: {
     isConflictLatched: (dir) => autoSync.isConflictLatched(dir),

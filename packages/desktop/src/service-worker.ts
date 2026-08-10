@@ -12,8 +12,8 @@
  * Strategy (plan §5):
  *  - PRECACHE the app shell on `install`: every adapter-static `build` asset
  *    (`_app/*`), the prerendered `files` (incl. index.html, the manifest, the
- *    icons), and the vendored `/vendor/paged.polyfill.js` so the in-browser
- *    preview (Phase 2) renders OFFLINE.
+ *    icons), and the vendored `/engine/gutterpress-viewer.js` so the
+ *    in-browser preview (Phase 2) renders OFFLINE.
  *  - RUNTIME: cache-first for same-origin GETs (serve the precached shell, then
  *    fall back to network and populate the cache); network-first is unnecessary
  *    because the shell is content-hashed by Vite — a new build = a new `version`
@@ -31,11 +31,11 @@ import { build, files, version } from "$service-worker";
 const CACHE = `Gutterpress-cache-${version}`;
 
 // The app shell: hashed JS/CSS chunks (`build`) + prerendered static assets
-// (`files` — index.html, manifest.webmanifest, icons). Add the vendored
-// paged.js explicitly so in-browser preview works offline even though it lives
-// under static/ (it IS in `files`, but list it defensively in case a future
-// adapter config changes what `files` enumerates).
-const SHELL = [...build, ...files, "/vendor/paged.polyfill.js"];
+// (`files` — index.html, manifest.webmanifest, icons). Add the native
+// engine's viewer bundle explicitly so in-browser preview works offline even
+// though it lives under static/ (it IS in `files`, but list it defensively
+// in case a future adapter config changes what `files` enumerates).
+const SHELL = [...build, ...files, "/engine/gutterpress-viewer.js"];
 
 // `self` is the ServiceWorkerGlobalScope inside a SW module.
 const sw = self as unknown as ServiceWorkerGlobalScope;

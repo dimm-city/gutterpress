@@ -607,9 +607,6 @@ describe('/__chapter route', () => {
     await writeFile(join(projectDir, 'chapter2.md'), '# Other Chapter');
 
     const state = makeState(projectDir);
-    // This test asserts the paged polyfill is injected, so it needs the
-    // paged engine explicitly now that native is the resolveConfig default.
-    state.config.engine = 'paged';
     server = await createPreviewServer(state, port);
 
     const res = await fetch(
@@ -620,7 +617,7 @@ describe('/__chapter route', () => {
     const body = await res.text();
     expect(body).toContain('Hello Chapter');
     expect(body).toContain('data-chapter-src="chapter1.md"');
-    expect(body).toContain('/vendor/paged.polyfill.js');
+    expect(body).toContain('/engine/gutterpress-viewer.js');
     expect(body).not.toContain('Other Chapter');
   });
 

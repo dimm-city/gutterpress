@@ -20,23 +20,15 @@ import { test, expect, spyOn, afterEach } from "bun:test";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PdfRenderInput } from "./pagination.ts";
 import * as browserPool from "./browser-pool.ts";
 import * as chromium from "./chromium.ts";
+import type { EngineBrowser } from "./build-runner.ts";
 
-// A minimal but structurally valid PDF (mirrors build-runner.staging.test.ts)
-// so pdf-lib's /Creator stamp loads it cleanly.
-const MINIMAL_PDF =
-  "%PDF-1.4\n" +
-  "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
-  "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
-  "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n" +
-  "xref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n" +
-  "0000000052 00000 n \n0000000101 00000 n \n" +
-  "trailer<</Size 4/Root 1 0 R>>\nstartxref\n170\n%%EOF\n";
-
-const fakeRenderer = async ({ outPdf }: PdfRenderInput): Promise<void> => {
-  await writeFile(outPdf, MINIMAL_PDF, "latin1");
+// A fake native EngineBrowser (mirrors the desktop's engineBrowser seam) that
+// never touches the pooled/external Chromium, so this exercises the "the
+// pool was never used" path without launching a real engine build.
+const fakeEngineBrowser = async (): Promise<EngineBrowser> => {
+  throw new Error("engine build should not reach the browser in this test");
 };
 
 const { runBuild } = await import("./build-runner.ts");
@@ -120,53 +112,15 @@ test("runBuild closes the prewarmed browser when a quality gate throws before pa
   }
 });
 
-test("runBuild closes the browser exactly once on a successful build, even when the pool was never used", async () => {
-  installMocks();
-  const dir = await mkdtemp(join(tmpdir(), "gutterpress-browser-ok-in-"));
-  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-browser-ok-out-"));
-  try {
-    // engine: paged — an injected renderer only skips the Chromium
-    // preflight/pool under paged; a native build ignores the injected
-    // renderer and paginates in the pool regardless (see the "prewarms the
-    // pool for a native build even with an injected pdfRenderer" test below).
-    await writeFile(
-      join(dir, "manifest.yaml"),
-      "title: Browser Lifecycle\nengine: paged\n",
-      "utf-8"
-    );
-    await writeFile(join(dir, "chapter-01.md"), "# Hello\n", "utf-8");
-
-    const result = await runBuild({
-      inputDir: dir,
-      format: "pdf",
-      outDir,
-      skipLint: true,
-      skipPreValidate: true,
-      // An injected renderer skips the Chromium preflight AND the pool
-      // entirely (renderHtmlToPdf calls it directly) — willPaginateInChromium
-      // is false, so prewarmBrowser/getBrowser are never called. This proves
-      // the finally's closeBrowser() call is unconditional (a safe no-op
-      // matching the pool's own idempotent behavior), exactly like the old
-      // success-path call in finalizeBuild was — just now running from one
-      // structural close point instead of a side effect on the success tail.
-      pdfRenderer: fakeRenderer,
-      rawArgs: {},
-    });
-
-    expect(result.pdfPath).not.toBeNull();
-    expect(prewarmBrowserMock).not.toHaveBeenCalled();
-    expect(getBrowserMock).not.toHaveBeenCalled();
-    expect(closeBrowserMock).toHaveBeenCalledTimes(1);
-  } finally {
-    await rm(dir, { recursive: true, force: true });
-    await rm(outDir, { recursive: true, force: true });
-  }
-});
-
-test("runBuild prewarms the pool for a native build even with an injected pdfRenderer", async () => {
+test("runBuild skips the pool entirely when an engineBrowser is injected (desktop's shape), yet still closes it exactly once", async () => {
   installMocks();
   const { dir, outDir } = await makeBrokenLintProject();
   try {
+    // An injected engineBrowser (the desktop's Electron host) skips the
+    // Chromium preflight AND the pool entirely — willPaginateInChromium is
+    // false, so prewarmBrowser/getBrowser are never called. This proves the
+    // finally's closeBrowser() call is unconditional (a safe no-op matching
+    // the pool's own idempotent behavior).
     await expect(
       runBuild({
         inputDir: dir,
@@ -174,17 +128,14 @@ test("runBuild prewarms the pool for a native build even with an injected pdfRen
         outDir,
         skipLint: false,
         skipPreValidate: true,
-        // The desktop's shape: it always injects a renderer, but a native
-        // build ignores it and paginates in the pooled Chromium
-        // (engine.ts's buildNativePdf -> browser-pool's getBrowser), so the
-        // prewarm must not be suppressed by the injected renderer.
-        engine: "native",
-        pdfRenderer: fakeRenderer,
+        engineBrowser: fakeEngineBrowser,
         rawArgs: {},
       })
     ).rejects.toThrow(/CSS lint failed/);
 
-    expect(prewarmBrowserMock).toHaveBeenCalledTimes(1);
+    expect(prewarmBrowserMock).not.toHaveBeenCalled();
+    expect(getBrowserMock).not.toHaveBeenCalled();
+    expect(closeBrowserMock).toHaveBeenCalledTimes(1);
   } finally {
     await rm(dir, { recursive: true, force: true });
     await rm(outDir, { recursive: true, force: true });

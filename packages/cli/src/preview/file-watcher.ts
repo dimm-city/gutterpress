@@ -18,15 +18,13 @@ import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
-import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
-import { pagedjsPolyfillTagRegex } from '../lib/pagedjs-marker';
 import type { ResolvedPluginConfig } from '../schema/manifest.types';
 
 /**
  * Tiny placeholder book.html for no-input mode. The desktop's iframe needs a
  * valid src to load; the desktop app (packages/desktop) detects `hasInput: false`
  * via /api/status and shows its own folder picker. Plain text only — no
- * Paged.js, no plugins, no manifest.
+ * engine, no plugins, no manifest.
  */
 const EMPTY_BOOK_HTML = `<!doctype html>
 <html lang="en">
@@ -55,8 +53,7 @@ export function incrementalPreviewEnabled(): boolean {
 }
 
 /**
- * Shared preview render path. renderChapters() does all Markdown, CSS, and
- * Paged.js-slot work.
+ * Shared preview render path. renderChapters() does all Markdown + CSS work.
  *
  * Named `renderPreviewBook` (ARCH finding #53) to distinguish it from
  * build-runner.ts's `renderBook` — same name, different module, and a
@@ -68,7 +65,7 @@ export function incrementalPreviewEnabled(): boolean {
  */
 async function renderPreviewBook(
   inputPath: string,
-  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[]; engine?: "paged" | "native" },
+  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] },
   opts: {
     files: string[] | null;
     wrapChapters: boolean;
@@ -91,7 +88,6 @@ async function renderPreviewBook(
     files: opts.files,
     plugins,
     pluginCss,
-    engine: config.engine,
     wrapChapters: opts.wrapChapters,
     ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
     // ARCH finding #4: markdown-it-paged's typed, line-numbered author-mistake
@@ -107,32 +103,14 @@ async function renderPreviewBook(
 }
 
 /**
- * Rewrite rendered book HTML for the live preview.
- *
- * `engine: "paged"` (deprecated) injects, in order, replacing the polyfill
- * marker slot `assembleBookHtml` emits:
- *   1. preview-interface.js — defines window.previewAPI for in-iframe controls
- *   2. preview-bridge.js    — postMessage bridge for cross-origin toolbar (desktop)
- *   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
- *   4. Paged.js polyfill itself, served directly from the process-wide
- *      embedded-assets dir by the HTTP server (see http-server.ts route
- *      for /vendor/*). We no longer copy it into the per-project tempDir
- *      because:
- *        - The polyfill is 904 KB and copying it per open is wasted IO
- *          (one of the worst-case Defender scan targets on Windows).
- *        - The per-process extracted copy is identical across opens so
- *          serving it from a stable disk path lets the OS file-cache
- *          and Defender hash-cache stay warm across sessions.
- *
- * `engine: "native"` injects the Gutterpress engine's viewer bundle
- * (`/engine/gutterpress-viewer.js`, embedded the same way as the polyfill —
- * see lib/embedded-assets.ts) PLUS the same preview-interface.js/
- * preview-bridge.js pair — no Paged.js polyfill, no BREAK_INSIDE_HANDLER.
- * preview-interface.js detects which engine is live at runtime, so the
- * desktop's whole `gutterpress:cmd/reply/event` command protocol works under
- * native too. There is no polyfill marker slot to replace — `assembleBookHtml`
- * omits it entirely for `engine: "native"` — so the scripts are inserted
- * before `</head>`.
+ * Rewrite rendered book HTML for the live preview: inject the Gutterpress
+ * engine's viewer bundle (`/engine/gutterpress-viewer.js`, embedded the same
+ * way as every other preview asset — see lib/embedded-assets.ts) PLUS the
+ * preview-interface.js/preview-bridge.js pair, before `</head>`.
+ * preview-interface.js defines `window.previewAPI` for in-iframe controls;
+ * preview-bridge.js is the postMessage bridge for the cross-origin desktop
+ * toolbar — together they make the desktop's whole
+ * `gutterpress:cmd/reply/event` command protocol work.
  *
  * With `pageIsolateChapters`, each source wrapper starts on a fresh page. This
  * is the v0.8.3 incremental-preview invariant: a standalone source render owns
@@ -142,26 +120,14 @@ async function renderPreviewBook(
 export function injectPreviewScripts(
   html: string,
   pageIsolateChapters: boolean,
-  engine: "paged" | "native" = "paged",
 ): string {
-  let output: string;
-  if (engine === "native") {
-    const scripts =
-      '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
-      + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
-      + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
-    output = /<\/head>/i.test(html)
-      ? html.replace(/<\/head>/i, scripts + '</head>')
-      : html + scripts;
-  } else {
-    const iface =
-      '<script src="/preview/scripts/preview-interface.js"></script>\n  '
-      + '<script src="/preview/scripts/preview-bridge.js"></script>\n  ';
-    output = html.replace(
-      pagedjsPolyfillTagRegex(),
-      iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
-    );
-  }
+  const scripts =
+    '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
+    + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
+    + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
+  let output = /<\/head>/i.test(html)
+    ? html.replace(/<\/head>/i, scripts + '</head>')
+    : html + scripts;
   if (pageIsolateChapters && /<\/head>/i.test(output)) {
     output = output.replace(
       /<\/head>/i,
@@ -188,7 +154,7 @@ export function injectPreviewScripts(
 export async function generateAndWriteHtml(
   inputPath: string,
   tempDir: string,
-  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[]; engine?: "paged" | "native" },
+  config: { title?: string; styles?: string[]; source?: { files?: string[] | null }; plugins?: ResolvedPluginConfig[] },
   cssAssets: Map<string, string>
 ): Promise<void> {
   if (!inputPath) {
@@ -212,7 +178,7 @@ export async function generateAndWriteHtml(
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, incremental, config.engine),
+    injectPreviewScripts(html, incremental),
     "utf-8"
   );
 }
@@ -225,13 +191,13 @@ export async function generateAndWriteHtml(
 export async function renderChapterPreviewHtml(
   inputPath: string,
   file: string,
-  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[]; engine?: "paged" | "native" }
+  config: { title?: string; styles?: string[]; plugins?: ResolvedPluginConfig[] }
 ): Promise<string> {
   const html = await renderPreviewBook(inputPath, config, {
     files: [canonicalChapterId(file)],
     wrapChapters: true,
   });
-  return injectPreviewScripts(html, true, config.engine);
+  return injectPreviewScripts(html, true);
 }
 
 /** One changed project file, named for the preview broadcast decision. */

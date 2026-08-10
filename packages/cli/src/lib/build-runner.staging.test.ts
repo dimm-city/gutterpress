@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runBuild } from "./build-runner.ts";
-import type { PdfRenderInput } from "./pagination.ts";
+import { resolveChromiumExecutable } from "./chromium.ts";
 
 /**
  * Staging-hygiene guard (P2 / build-tmpdir-staging): a build must NOT leave a
@@ -13,27 +13,18 @@ import type { PdfRenderInput } from "./pagination.ts";
  * exported and driven by the desktop host, so polluting/mutating cwd is a real
  * side effect and breaks concurrent builds.
  *
- * Drives the FULL PDF path of runBuild via an injected `pdfRenderer` — the same
- * seam the Electron desktop uses. Injecting a renderer also skips the Chromium
- * preflight, so this runs with no browser installed. The fake renderer writes a
- * minimal valid PDF so the rest of the pipeline (stamp, fingerprint) runs to
- * completion exactly as production would.
+ * Drives the FULL native PDF path of runBuild against a real Chromium — the
+ * native engine's compiler evaluates JS against a real DOM to fragment pages,
+ * so (unlike the deleted Paged.js `pdfRenderer` seam) there is no trivial
+ * in-process fake for it. Skipped when no Chromium is resolvable, same
+ * pattern as the other Chromium-driven engine tests (e.g. nav-native.test.ts).
  */
 
-// A minimal but structurally valid PDF so pdf-lib's /Creator stamp loads it
-// cleanly (mirrors what a real renderer would emit closely enough).
-const MINIMAL_PDF =
-  "%PDF-1.4\n" +
-  "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
-  "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
-  "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n" +
-  "xref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n" +
-  "0000000052 00000 n \n0000000101 00000 n \n" +
-  "trailer<</Size 4/Root 1 0 R>>\nstartxref\n170\n%%EOF\n";
-
-const fakeRenderer = async ({ outPdf }: PdfRenderInput): Promise<void> => {
-  await writeFile(outPdf, MINIMAL_PDF, "latin1");
-};
+const chromium = await resolveChromiumExecutable();
+const testIf = chromium ? test : test.skip;
+if (!chromium) {
+  console.warn("[build-runner.staging.test] No Chromium resolved — skipping.");
+}
 
 const originalCwd = process.cwd();
 const dirsToClean: string[] = [];
@@ -45,7 +36,7 @@ afterEach(async () => {
   }
 });
 
-test("runBuild (pdf) leaves no .gutterpress-stage* dir in cwd and still writes the PDF", async () => {
+testIf("runBuild (pdf) leaves no .gutterpress-stage* dir in cwd and still writes the PDF", async () => {
   // A source project with a single chapter.
   const inputDir = await mkdtemp(join(tmpdir(), "gutterpress-stage-input-"));
   const outDir = await mkdtemp(join(tmpdir(), "gutterpress-stage-out-"));
@@ -70,8 +61,6 @@ test("runBuild (pdf) leaves no .gutterpress-stage* dir in cwd and still writes t
     // and would spawn external probes. The staging code runs regardless.
     skipLint: true,
     skipPreValidate: true,
-    // Injected renderer => full PDF pipeline with no Chromium + no preflight.
-    pdfRenderer: fakeRenderer,
     rawArgs: {},
   });
 
@@ -86,13 +75,7 @@ test("runBuild (pdf) leaves no .gutterpress-stage* dir in cwd and still writes t
     name.startsWith(".gutterpress-stage")
   );
   expect(leftover).toEqual([]);
-}, 20_000);
-// 20s, not bun's 5s default: this drives the FULL runBuild pipeline (staging,
-// chapter render, fingerprinting) with only the PDF bytes themselves faked —
-// it is real disk/process work, not a fixed-cost unit test, and CI's shared
-// runner regularly lands this well past 871ms local-idle time (measured
-// 5001.42ms on a contended run, i.e. it hit the default 5000ms ceiling by
-// 1.42ms — the invariant this test checks (cwd stays clean) was never in
-// doubt, only the budget was too tight). No Chromium is involved (pdfRenderer
-// is injected), so this is a scheduling-contention margin, not a mask for a
-// slow render.
+}, 30_000);
+// 30s: this drives the FULL native runBuild pipeline (staging, chapter
+// render, a real Chromium PDF render, fingerprinting) — real disk/process/
+// browser work, not a fixed-cost unit test.

@@ -20,8 +20,6 @@ export {
   type BuildRunnerOptions,
   type BuildRunnerResult,
   type SplitOutPath,
-  type PdfRenderer,
-  type PdfRenderInput,
   type EngineBrowser,
   type EngineSession,
 } from "../lib/build-runner";

@@ -1,8 +1,12 @@
 /**
  * One-off measurement script for native-engine-acceptance-gate.md §E:
  * does the published `--format html` artifact read as a PAGED document in
- * Chromium, Firefox, and WebKit (native needs the viewer script + multicol;
- * paged is a pre-paginated DOM snapshot and should need nothing)?
+ * Chromium, Firefox, and WebKit (the native viewer script paginates the
+ * multicol document client-side)?
+ *
+ * Paged.js has been removed (native-only-migration-plan.md Phase 6) — this
+ * used to A/B the native leg against a `--engine paged` build; now it
+ * measures the native artifact only.
  *
  * NOT part of the automated suite (no .pw.ts suffix — see playwright.config.ts's
  * header for why that matters) and not CI-wired: it drives real system
@@ -10,12 +14,10 @@
  *
  * Usage:
  *   gutterpress build examples/with-design-guide/design-guide --format html \
- *     --engine native --out /tmp/wpE-html/native
- *   gutterpress build examples/with-design-guide/design-guide --format html \
- *     --engine paged  --out /tmp/wpE-html/paged
+ *     --out /tmp/wpE-html/native
  *   node tests/compat/html-cross-browser-measure.mjs
  *
- * Override the build output locations with GP_NATIVE_HTML_DIR / GP_PAGED_HTML_DIR.
+ * Override the build output location with GP_NATIVE_HTML_DIR.
  *
  * RUNNING WEBKIT ON AN UNSUPPORTED LINUX (e.g. Ubuntu 26.04)
  * ----------------------------------------------------------
@@ -48,7 +50,6 @@ const SHOTS = process.env.GP_SHOT_DIR || "/tmp/wpE-html/shots";
 
 const LEGS = {
   native: { dir: process.env.GP_NATIVE_HTML_DIR || "/tmp/wpE-html/native", port: 4501 },
-  paged: { dir: process.env.GP_PAGED_HTML_DIR || "/tmp/wpE-html/paged", port: 4502 },
 };
 
 const servers = {};
@@ -97,12 +98,11 @@ async function measure(browserName, launcher, legName, javaScriptEnabled) {
     const metrics = await page.evaluate(() => {
       const q = (s) => document.querySelectorAll(s).length;
       const se = document.scrollingElement;
-      const sheets = [...document.querySelectorAll(".folio-sheet, .pagedjs_page")];
+      const sheets = [...document.querySelectorAll(".folio-sheet")];
       return {
         folioSheets: q(".folio-sheet"),
         folioStage: q(".folio-stage"),
-        pagedPages: q(".pagedjs_page"),
-        runningHeads: q(".folio-marginbox, .pagedjs_margin-content"),
+        runningHeads: q(".folio-marginbox"),
         bodyText: document.body ? document.body.innerText.length : 0,
         scrollWidth: se ? se.scrollWidth : 0,
         scrollHeight: se ? se.scrollHeight : 0,
@@ -138,9 +138,9 @@ async function measure(browserName, launcher, legName, javaScriptEnabled) {
   }
 }
 
-// Every leg is measured with AND without JavaScript: native's fallback is the
-// point of the no-JS run, and the paged leg's no-JS run is what proves its
-// export really is a static pre-paginated snapshot rather than script output.
+// Measured with AND without JavaScript: the no-JS run is native's fallback —
+// the document must remain readable (a true graceful fallback) even though
+// the paginated view is the product.
 for (const legName of Object.keys(LEGS)) {
   for (const [browserName, launcher] of Object.entries(BROWSERS)) {
     await measure(browserName, launcher, legName, true);

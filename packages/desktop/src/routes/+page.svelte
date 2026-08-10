@@ -50,7 +50,7 @@
   import { StartupController } from "$lib/routes/startup-controller.svelte";
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
-  import { buildDesktopStyles, buildCanvasBackgroundStyles } from "$lib/iframe-styles";
+  import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api, type ProjectConfigFields } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
@@ -1368,16 +1368,11 @@
   const recoverySink = settingsChangeGuard<boolean>((enabled) => book?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
     (bg) => {
-      // The full sheet is Paged.js-only (`.pagedjs_*` selectors the native
-      // viewer's DOM never has); the background rule is not — the native
-      // viewer honours it, so changing this setting must still repaint the
-      // native preview. See buildCanvasBackgroundStyles' doc comment.
-      client?.injectStyles(
-        "desktop-canvas",
-        lifecycle.previewEngine === "paged"
-          ? buildDesktopStyles(bg)
-          : buildCanvasBackgroundStyles(bg),
-      );
+      // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
+      // native is the only engine, and the native viewer honours this
+      // background rule directly. See buildCanvasBackgroundStyles' doc
+      // comment.
+      client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(bg));
     },
     () => !!client,
   );
@@ -2179,7 +2174,6 @@
     zoom: () => zoom,
     viewMode: () => viewMode,
     bgColor: () => bgColor,
-    engine: () => lifecycle.previewEngine,
     setRendering: (v) => (lifecycle.rendering = v),
     getRendering: () => lifecycle.rendering,
     setRenderProgressPage: (v) => (lifecycle.renderProgressPage = v),

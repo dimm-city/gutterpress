@@ -323,22 +323,30 @@ function resolveWithPreset(
     );
   }
 
-  // Pagination engine (MIGRATION.md Decision #5 — preview and PDF switch
-  // together, per project, behind one flag): cli > manifest > default
-  // "native" (parity ruled proven 2026-08-08; see
-  // docs/native-engine-acceptance-gate.md). Both `build` and `preview` read
-  // this one resolved value. `paged` remains fully supported and selectable.
-  const engine = c.engine ?? m.engine ?? "native";
-  if (engine !== "paged" && engine !== "native") {
-    throw new UsageError(`Unknown engine "${String(engine)}". Expected: paged | native`);
+  // Pagination engine (native-only-migration-plan.md Phase 6): Paged.js has
+  // been removed — the native engine is the only engine. `engine:`/`--engine`
+  // still parse (so an old manifest/CLI invocation doesn't hard-fail) but are
+  // now a no-op: every build resolves to "native" regardless of the value
+  // requested, and an explicit "paged" gets a one-line warning instead of
+  // silently changing behavior.
+  const requestedEngine = c.engine ?? m.engine ?? "native";
+  if (requestedEngine !== "paged" && requestedEngine !== "native") {
+    throw new UsageError(`Unknown engine "${String(requestedEngine)}". Expected: paged | native`);
   }
-  if (engine === "paged") {
+  if (requestedEngine === "paged") {
     warnOnce(
-      "engine-paged-deprecated",
-      "[gutterpress] engine: \"paged\" is deprecated and will be removed. " +
-        "See docs/migrations/2026-08-native-engine-default.md to switch to native."
+      "engine-paged-removed",
+      "[gutterpress] Paged.js has been removed; the native engine is the " +
+        "only engine. \"engine: paged\" is ignored — building natively."
     );
   }
+  if ((m.engineStyles?.paged?.length ?? 0) > 0) {
+    warnOnce(
+      "engine-styles-paged-removed",
+      "[gutterpress] engineStyles.paged is ignored — Paged.js has been removed."
+    );
+  }
+  const engine = "native" as const;
 
   // Resolve plugins from CLI overrides or manifest. A plugin entry with
   // `enabled: false` (#30 per-project toggle) stays in the manifest but is
@@ -357,12 +365,12 @@ function resolveWithPreset(
     // is the single source of default-stylesheet truth (styles/book.css, else
     // the first discovered .css, else []). Baking a preset default in here
     // defeated that documented fallback chain on every real render path.
-    // Engine-conditional stylesheets append AFTER the base list for the
-    // resolved engine only (the per-book migration mechanism — see
+    // Engine-conditional stylesheets append AFTER the base list (see
     // GutterpressManifest.engineStyles). Loaded last so furniture wins.
+    // `engineStyles.paged` is ignored (warned above) — only `.native` applies.
     styles: (() => {
       const base = c.styles ?? m.styles;
-      const extra = m.engineStyles?.[engine];
+      const extra = m.engineStyles?.native;
       if (!extra || extra.length === 0) return base;
       return [...(base ?? []), ...extra];
     })(),
