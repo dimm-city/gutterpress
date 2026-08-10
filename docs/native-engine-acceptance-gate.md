@@ -232,6 +232,17 @@ required, so the committed numbers are now reproducible.
 
 ~~5. **Core's `.full-bleed` primitive does not bleed under native**~~ — FIXED
    2026-08-09 (Work Package A), moved to Closed below.
+6. **§E cross-browser HTML reading experience — WebKit unmeasured** (found
+   08-10). Not a `<` verdict against native (Chromium and Firefox measured
+   `=`, byte-identical, see the new §E section above) — this is an evidence
+   gap, not a defect: this sandbox's OS (Ubuntu 26.04) is too new for
+   Playwright's WebKit build to launch at all, even after vendoring the 5
+   host libraries Playwright's own installer flags (a second, deeper tier of
+   missing WPE-runtime libraries blocks it). Needs re-running
+   `packages/cli/tests/compat/html-cross-browser-measure.mjs` on a host
+   Playwright actually supports (Ubuntu 22.04/24.04, macOS) before this can
+   be closed either way — Safari/WebKit is too large a share of real readers
+   to leave unmeasured indefinitely.
 
 ### Closed since last iteration
 
@@ -435,3 +446,62 @@ and `--no-sandbox` are set. Sample counts are as stated per row and are small.
 | 08-10 | **C.15 view modes (single/two-up) — INDEPENDENT re-run with scroll PINNED, SUPERSEDES the "both do a real relayout" row** | With `goToPage(1)` re-issued *after* each mode toggle, native's sheet geometry is: single → `left` 0/852 alternating, 2 sheets per row; two-up → `left` -620/232, 2 sheets per row. The horizontal offsets **do** change between modes, so the toggle is not inert — but native **never** renders one sheet per row, in either mode. Its "Single page view" is a horizontal shift plus scroll-snap/clipping over a permanently two-up sheet grid | Same pinned probe: 1 sheet per row (`left` 0, `top` 0/1080/2160/…) in **both** modes, with byte-identical `top` values — on this book at page 1 paged's toggle changes nothing geometrically | `<` native never achieves a true single-page layout; paged always renders single-per-row | New `packages/desktop/tests/integration/viewmode-probe.pw.mjs`. This is the third harness to measure this item and the third different answer, so the original row's claim that the in-app result "SUPERSEDES the 08-08/08-09 CLI-level finding" is **withdrawn** — the difference between harnesses is scroll position, and the original in-app probe measured geometry at whatever scroll offset the toggle left behind, which makes its "sheet tops shift by a full page-row height ⇒ real repaint" reading an artifact of scrolling, not of relayout. Treat this pinned-scroll row as the current best evidence and the two earlier view-mode rows as superseded by it. The durable, harness-independent finding is the one stated in the Native column: native has no true single-page view. |
 | 08-10 | **C.16 click-to-edit + C.18 export via the real app UI — INDEPENDENT re-run** | click-to-edit: clicked paragraph's text present in editor viewport ✓; export: 23,654 bytes, 2 pages, 612×792pt (letter) — byte-for-byte the same file as the original pass (`md5 c992add11259cd967f234f1ea87c8d0c`) | click-to-edit ✓; export: 23,709 bytes, 2 pages, 612×792pt | = **CONFIRMED** | Re-ran `click-and-export.pw.mjs` on both legs after **deleting** the destination PDFs first (see harness note below). `pdftotext` confirms the 2-page PDF really does contain all three chapters (Alpha/Beta/Gamma), so "2 pages" is a complete document, not a truncated export. Export output is deterministic across runs. |
 | 08-10 | **Harness defect found and fixed during review** | n/a | n/a | fixed | Both export drivers wrote to a fixed `/tmp/gutterpress-*-<engine>.pdf` and polled `existsSync(outPath)` for success, so a leftover PDF from a previous run would report **instant success with a stale size and page count**. This is the most likely explanation for the "too-wide-element probe produced a byte-identical 23,654-byte export" observation in the row above — that row's conclusion ("the seed never rendered") may be an artifact of the stale file rather than a real finding, and should be re-run before it is relied on. Fixed in both drivers with an `rmSync(outPath, { force: true })` before the export click. The C.16/C.18 numbers in the row above this one were taken *after* the fix, from a clean slate. |
+
+### 08-10 — E. Static HTML export: cross-browser reading experience (measurement only)
+
+Built the 53pp design guide (`examples/with-design-guide/design-guide`) with
+`gutterpress build --format html` on both legs, served each artifact as
+static files (no dev server, no build-time chrome — exactly what a reader
+downloading `book.html` gets), and drove it with real Chromium, Firefox, and
+WebKit via Playwright (`packages/cli/tests/compat/html-cross-browser-measure.mjs`,
+`serve-static.mjs`). Measured, per browser: paged-view element counts
+(`.folio-sheet`/`.folio-stage` for native, `.pagedjs_page` for paged),
+running-head margin-box counts, document scroll geometry, whether a mouse-wheel
+scroll moves the viewport, console/page errors, and a screenshot. Also drove
+the native artifact with JavaScript disabled in Chromium (`javaScriptEnabled:
+false`), since the native leg's documented fallback is "the document remains
+readable," not "still paginates."
+
+**WebKit could not be driven in this sandbox — recorded as an environment gap,
+not a native or paged defect.** `playwright install webkit` refuses outright
+("Playwright does not support webkit on ubuntu26.04-x64"); forcing it via the
+undocumented `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` env var
+downloads a binary that then fails to launch with 7 missing shared libraries
+(`libicudata/i18n/uc.so.74`, `libxml2.so.2`, `libmanette-0.2.so.0`,
+`libenchant-2.so.2`, `libwoff2dec.so.1.0.2`) — this host has no `sudo` and
+Ubuntu 26.04's own package archive no longer ships those exact sonames (it's
+on libicu78/libxml2-16). Downloaded matching .deb packages by hand from
+`archive.ubuntu.com` (icu74, libxml2 2.9.14, libmanette 0.2.7, libwoff1,
+libenchant-2-2 2.3.3 — the closest available build to what the WebKit binary
+was linked against) and extracted them to a local prefix; with
+`LD_LIBRARY_PATH` pointed at that prefix, all 7 originally-reported libraries
+resolve (`ldd` confirms), but `MiniBrowser` itself then fails on a second,
+deeper tier of missing libraries that Playwright's host-validation check
+never mentions: `libWPEWebKit-2.0.so.1`, `libwpe-1.0.so.1`,
+`libWPEBackend-fdo-1.0.so.1`, `libjxl.so.0.8`, `libbacktrace.so.0` — the
+actual WebKitGTK/WPE runtime, which is not installed on this host at all
+(`dpkg -l`/`ldconfig -p` show nothing WebKit-related) and is not something 5
+vendored .debs can supply. This is a real, host-specific limitation (an
+unsupported/too-new Linux distro in this sandbox), not something to spend
+further effort vendoring for a measurement task — reported per the task's
+"admitted gap beats a false verified-claim" instruction rather than skipped
+silently. **The two rows below (native/paged, Chromium+Firefox) are what this
+pass could actually measure; the WebKit column of the gate stays open,
+untested.**
+
+| Date | Area | Native | Paged | Verdict | Evidence |
+|---|---|---|---|---|---|
+| 08-10 | **E — published HTML, paged rendering, Chromium vs Firefox (WebKit untestable, see note above)** | Chromium and Firefox are **pixel-metric-identical**: 53 `.folio-sheet` elements, 1 `.folio-stage`, 97 running-head margin boxes, `document.body.innerText.length` 48,062 chars, scroll geometry `7592×14576` — every number matches to the byte across both engines. Mouse-wheel scroll moves the viewport on both. Zero console errors, zero page errors, on both. | Chromium and Firefox are likewise identical: 54 `.pagedjs_page` elements, 864 running-head margin boxes, `innerText.length` 47,251, scroll geometry `1400×57024`. Zero console/page errors on both. | **= (Chromium vs Firefox; WebKit unmeasured)** | `html-cross-browser-measure.mjs`, `page.evaluate()` DOM counts + scroll geometry read back from the SAME served static artifact in each browser, 1400×900 viewport, 2s settle after `load` for native's client-side fragmentation. Screenshots looked at for all 4 combinations (`/tmp/wpE-html/shots/{chromium,firefox}-{native,paged}.png`): all four show a paginated, sheet-on-dark-canvas layout with running heads and folios — no visible difference between the two browsers on either leg. **This directly confirms the task's plain-multicol hypothesis: native's single-mode paged view does NOT degrade to a continuous document in Firefox** (column-wrap/row-mode, which IS Chrome-only per open blocker 4 above, is not what single-mode uses) — it fragments identically via ordinary CSS multicol, which is universal. No spread-gap is visible from single-mode metrics alone; the two-up/spread limitation is already tracked separately as open blocker 4 and is a Chromium-only *feature* gap (`column-wrap: wrap`), not a Firefox regression. |
+| 08-10 | **E — published HTML, native artifact with JavaScript disabled (Chromium)** | Degrades to a **continuous, readable, single-column document** — confirmed, not assumed. `.folio-sheet`/`.folio-stage` counts are 0 (the viewer script never ran, so no fragmentation happened), `document.body.innerText.length` is unchanged (47,251 chars — no content lost), but `scrollHeight` is 32,710px (one tall flow) vs 14,576px **wide** with JS enabled (a fragmented sheet grid) — i.e. the CSS `break-before: page` rules on `.page`/`.chapter-opener` etc. have no effect on screen without the viewer (expected: `break-before` is a fragmentation-context property, and screen media has no fragmentation context here). Mouse-wheel scroll still moves the viewport normally. Zero console errors, zero page errors — no crash, no broken layout, just plain flowed HTML. | n/a — the paged leg's artifact is Paged.js's own pre-paginated DOM snapshot; it needs no script to render paginated (see the row above: identical with JS implicitly always-on in every browser tested, since `--engine paged`'s HTML export ships no runtime script to disable in the first place). | **n/a (fallback confirmed as documented, not a comparison)** | Same script, `javaScriptEnabled: false` context. Screenshot: `/tmp/wpE-html/shots/chromium-native-nojs.png` — looked at it: headings, body copy, code blocks, and a chapter-number rule all render in normal reading order with no broken chrome, no unstyled-content flash, no missing text. This matches the task's framing exactly: "the document remains readable," it just isn't paginated. |
+
+**Verdict for §E per the rubric:** `=` for the browsers actually measured
+(Chromium, Firefox) — native's single-mode paged view and JS-disabled
+fallback both hold up exactly as documented, with zero divergence from
+Firefox on any measured metric. **WebKit is an open, unresolved gap in this
+gate's evidence** (not a `<` against native — nothing was observed to fail,
+nothing was observed to pass; it is simply unmeasured), caused by this
+sandbox's OS being newer than Playwright/WebKit currently support. Recommend
+re-running `html-cross-browser-measure.mjs` on a supported host (Ubuntu
+22.04/24.04 or macOS) before this row can be closed with real Safari/WebKit
+evidence — Safari is a large enough share of real readers (~20-30% mobile)
+that this is worth doing on a capable machine, not waived.
