@@ -76,18 +76,22 @@ export async function run(browser: Browser) {
     !probe.h1StringSet.stringSet,
     `h1 cssText = ${JSON.stringify(probe.h1StringSet.cssText)}`,
   );
-  // The pinned engine RETAINS this declaration (it parses target-counter() but
-  // computes it to none). A surviving declaration outranks a bare
-  // `[data-folio-after]::after` override, which is precisely why
-  // `generatedContentCss()` reuses the author's own selector. Assert it: if an
-  // engine goes back to dropping it, the override could be simplified, and
-  // that should be a finding rather than a silent non-event.
-  s.check(
-    "CSSOM RETAINS target-counter() content — Folio's override must out-specify it",
-    Boolean(probe.xrefContent),
-    probe.xrefContent
-      ? `retained: ${JSON.stringify(probe.xrefContent)}`
-      : "dropped by the parser",
+  // Whether this declaration survives CSSOM is regime-dependent, and BOTH
+  // regimes are covered by `generatedContentCss()` out-specifying the
+  // author's selector (see cdp.ts's REQUIRED_MILESTONE doc comment):
+  //
+  //  - 151+ PARSES target-counter() (computing it to `none`), so the
+  //    declaration is RETAINED and would outrank a bare
+  //    `[data-folio-after]::after` override on source order alone — this is
+  //    exactly why the override reuses the author's own selector.
+  //  - <151 fails to parse target-counter() at all, so the declaration is
+  //    DROPPED before it ever reaches CSSOM, and there's nothing to
+  //    out-specify.
+  //
+  // Not a pass/fail assertion (it's a fact about Chromium's parser, not about
+  // us) — recorded so a regime change is visible without failing the spike.
+  s.note(
+    `xrefContent = ${probe.xrefContent ? `retained: ${JSON.stringify(probe.xrefContent)}` : "dropped by the parser"} (regime-dependent; generatedContentCss() out-specifies the author's selector either way)`,
   );
 
   // the text path must recover everything CSSOM dropped

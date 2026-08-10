@@ -258,26 +258,28 @@ export async function run(browser: Browser) {
       !support.bleedDescriptor,
       `CSSOM retains bleed = ${support.bleedDescriptor}`,
     );
-    // Two SEPARATE facts about the pinned engine, both load-bearing and both
-    // asserted rather than hedged:
+    // One load-bearing fact about EVERY engine in the supported range
+    // (148-151+), asserted rather than hedged: it does not RENDER a
+    // cross-reference, so Tier 3 is still required. If a future engine
+    // renders it, this fails and Tier 3 can be retired.
     //
-    //  1. it does not RENDER a cross-reference, so Tier 3 is still required;
-    //  2. it nonetheless CLAIMS support, so CSS.supports must never gate the
-    //     shim — and the author's declaration survives the cascade, which is
-    //     why generatedContentCss() reuses the author's own selector.
-    //
-    // If a future engine renders it, (1) fails and Tier 3 can be retired. If
-    // one stops claiming support, (2) fails and the override can go back to a
-    // bare attribute selector. Either way the change surfaces here first.
+    // Whether CSS.supports CLAIMS target-counter() support varies by regime
+    // and is NOT asserted either way — it is a fact about Chromium's parser,
+    // not about us: pre-151, an unsupported function fails to parse, so
+    // CSS.supports correctly reports false; 151+ parses the function (while
+    // still computing its value to `none`), so CSS.supports reports true. Both
+    // regimes are handled identically by generatedContentCss() out-specifying
+    // the author's selector (see cdp.ts's REQUIRED_MILESTONE doc comment), so
+    // CSS.supports must never gate the shim in either case — recorded via
+    // `s.data.unsupported` above for visibility, not asserted as a fixed
+    // value.
     s.check(
       "target-counter() still does not RENDER (Tier 3 required)",
       !support.targetCounterRenders,
       `computed ::after content ${support.targetCounterRenders ? "renders" : "is none"}`,
     );
-    s.check(
-      "CSS.supports claims target-counter() despite it not rendering (so it cannot gate the shim)",
-      support.targetCounter,
-      `CSS.supports = ${support.targetCounter}`,
+    s.note(
+      `CSS.supports(target-counter) = ${support.targetCounter} (regime-dependent: true once Chromium parses-but-drops the value at compute time, false when it fails to parse at all — either is fine)`,
     );
     s.note(
       `float:footnote=${support.floatFootnote}, @page :nth()=${support.nthPage} (both v1 non-goals / fallbacks)`,
