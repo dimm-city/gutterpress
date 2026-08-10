@@ -29,7 +29,7 @@ import { randomUUID } from "node:crypto";
 import { preExportSyncGateBlockError } from "../recovery-bridge";
 import type { GitIdentityArgs } from "../git-identity";
 import type { ExportProgressEvent, ExportSession } from "../pdf-export";
-import type { ConflictFile, PdfRenderer, TokenStore } from "gutterpress";
+import type { ConflictFile, EngineBrowser, PdfRenderer, TokenStore } from "gutterpress";
 
 type LibModule = typeof import("gutterpress");
 
@@ -87,6 +87,17 @@ export interface ExportControllerDeps {
   usePuppeteer: () => boolean;
   /** Electron-native PDF renderer (electron/pdf-export.ts). */
   pdfRenderer: PdfRenderer;
+  /**
+   * Electron-native engine browser factory for `--engine native` builds
+   * (electron/engine-browser.ts). Threaded through to `lib.runBuild` as
+   * `engineBrowser` — `build-runner.ts` only calls it (lazily, one hidden
+   * `BrowserWindow` per build) when a build actually resolves to
+   * `engine: "native"`, so a Paged.js export never pays for it. Same
+   * `usePuppeteer()` escape hatch as `pdfRenderer`: falls back to the CLI's
+   * pooled external Chromium (and its usual Chromium-milestone preflight)
+   * when set.
+   */
+  engineBrowser: () => Promise<EngineBrowser>;
   /** Auto-sync state accessors (subset of AutoSyncOrchestrator). */
   sync: ExportSyncGate;
   /** Single active export session accessors (electron/pdf-export.ts). */
@@ -311,6 +322,7 @@ export class ExportController {
           skipPostValidate: args.skipPostValidate,
           // Render with Electron's own Chromium unless explicitly opted out.
           pdfRenderer: this.deps.usePuppeteer() ? undefined : this.deps.pdfRenderer,
+          engineBrowser: this.deps.usePuppeteer() ? undefined : this.deps.engineBrowser,
           rawArgs: { input: args.input, format, out: args.out },
         });
         this.deps.throwIfCanceled(exportSession);

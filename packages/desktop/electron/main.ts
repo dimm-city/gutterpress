@@ -153,6 +153,7 @@ import {
   throwIfExportCanceled,
   type ExportSession,
 } from "./pdf-export";
+import { createElectronEngineBrowser } from "./engine-browser";
 import {
   registerAppProtocol,
   startSvelteKitServer,
@@ -1713,6 +1714,7 @@ const exportController = new ExportController({
   isOnline: () => net.isOnline(),
   usePuppeteer: () => !!process.env.GUTTERPRESS_PUPPETEER,
   pdfRenderer: electronPdfRenderer,
+  engineBrowser: createElectronEngineBrowser,
   sync: {
     isConflictLatched: (dir) => autoSync.isConflictLatched(dir),
     latchConflict: (dir, files) => autoSync.latchConflict(dir, files),
