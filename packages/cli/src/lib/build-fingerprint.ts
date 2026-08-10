@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import git from "isomorphic-git";
 import { resolveChromiumExecutable } from "./chromium";
@@ -7,6 +8,7 @@ import { resolveGhostscript } from "./ghostscript";
 import { execCapture } from "./exec";
 import { detectProjectSource } from "./project-source";
 import { hasUncommittedChanges } from "./source-provider";
+import { getAssetPath } from "./embedded-assets";
 // PACKAGE_META is a static package.json import — see version.ts's header for
 // why (the compiled `--compile` binary must never read package.json off
 // disk at runtime).
@@ -179,6 +181,41 @@ async function getGitRevision(sourceDir?: string): Promise<{
   return null;
 }
 
+/**
+ * Content hash of the two committed native-engine bundles (viewer + compiler
+ * agent, `scripts/build-engine-bundles.mjs`'s output). Replaces the old
+ * `pagedjs` devDependency-version cache-key input (native-only-migration-
+ * plan.md Phase 6 housekeeping, item 2): the pagedjs version stopped being a
+ * meaningful fingerprint input once native became the default engine, and
+ * would go away entirely with the eventual Paged.js deletion. A build's
+ * output depends on which engine bundle produced it, so a fingerprint that
+ * wants to detect "did the engine change since this artifact was built"
+ * needs an engine-appropriate input — the bundle's own bytes, not a package
+ * version that may not even move when the bundle is regenerated (`bun
+ * scripts/build-engine-bundles.mjs --force` bumps content, not any version
+ * field). `null` on any read failure — this is best-effort metadata, never
+ * worth failing a build over (same contract as `getToolVersions`'s other
+ * fields).
+ */
+async function getEngineBundleHash(): Promise<string | null> {
+  try {
+    const [viewerPath, agentPath] = await Promise.all([
+      getAssetPath("engine/gutterpress-viewer.js"),
+      getAssetPath("engine/gutterpress-agent.js"),
+    ]);
+    const [viewerBytes, agentBytes] = await Promise.all([
+      readFile(viewerPath),
+      readFile(agentPath),
+    ]);
+    const hash = createHash("sha256");
+    hash.update(viewerBytes);
+    hash.update(agentBytes);
+    return hash.digest("hex").slice(0, 12);
+  } catch {
+    return null;
+  }
+}
+
 async function getToolVersions(): Promise<Record<string, string | null>> {
   // Record the resolved Chromium PATH, but do NOT spawn it for `--version`:
   // on Windows `chrome.exe --version` launches a visible browser window instead
@@ -188,11 +225,12 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
   const chromiumPath = await resolveChromiumExecutable();
   const ghostscriptPath = await resolveGhostscript();
 
-  const [gsVersion, qpdfVersion] = await Promise.all([
+  const [gsVersion, qpdfVersion, engineBundleHash] = await Promise.all([
     ghostscriptPath
       ? getFirstLineVersion(ghostscriptPath, ["--version"])
       : Promise.resolve(null),
     getFirstLineVersion("qpdf", ["--version"]),
+    getEngineBundleHash(),
   ]);
 
   return {
@@ -200,12 +238,9 @@ async function getToolVersions(): Promise<Record<string, string | null>> {
     bun: (process.versions as Record<string, string | undefined>).bun ?? null,
     node: process.versions.node,
     "puppeteer-core": PACKAGE_META.dependencies["puppeteer-core"] ?? null,
-    // pagedjs is a devDependency (its runtime form is the vendored polyfill);
-    // fall back to dependencies so a future re-promotion still records it.
-    pagedjs:
-      PACKAGE_META.devDependencies.pagedjs ??
-      PACKAGE_META.dependencies.pagedjs ??
-      null,
+    // Content hash of the committed engine bundles — see getEngineBundleHash's
+    // docstring. Replaces the old `pagedjs` devDependency-version field.
+    engineBundle: engineBundleHash,
     ghostscript: gsVersion,
     qpdf: qpdfVersion,
     // Path, not version — recording the version would require spawning the GUI.

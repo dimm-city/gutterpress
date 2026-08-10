@@ -73,10 +73,12 @@ export interface GutterpressManifest {
    * Pagination engine (MIGRATION.md Decision #5): "native" (default) routes
    * both `gutterpress build` and `gutterpress preview` through the
    * Gutterpress engine (`src/engine/`) — native Chromium pagination, no
-   * Paged.js polyfill. "paged" is the deprecated Chromium+Paged.js pipeline,
-   * kept for compatibility. Preview and PDF always use the SAME engine for a
-   * given project — never independently. `--engine` on the CLI overrides
-   * this per invocation.
+   * Paged.js polyfill. "paged" is DEPRECATED — the Chromium+Paged.js
+   * pipeline, kept for compatibility and slated for removal; new projects
+   * should not set this value, and existing projects should migrate to
+   * "native" (see docs/migrations/2026-08-native-engine-default.md). Preview
+   * and PDF always use the SAME engine for a given project — never
+   * independently. `--engine` on the CLI overrides this per invocation.
    */
   engine?: "paged" | "native";
   /**
@@ -87,7 +89,14 @@ export interface GutterpressManifest {
    * one project renders correctly under BOTH engines while it migrates.
    * Loaded last, so furniture wins the cascade over the shared layers.
    */
-  engineStyles?: { paged?: string[]; native?: string[] };
+  engineStyles?: {
+    /**
+     * DEPRECATED — stylesheets loaded only under `engine: "paged"`. Slated
+     * for removal along with the Paged.js pipeline; do not add new entries.
+     */
+    paged?: string[];
+    native?: string[];
+  };
   /**
    * Where the book is published (ADR 0008): publish-target ids whose
    * validation policies this book is checked against. Absent = the preset's
