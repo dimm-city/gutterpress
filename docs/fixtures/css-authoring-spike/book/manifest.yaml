@@ -6,7 +6,6 @@ preset: book
 
 styles:
   - styles/style.css
-  - styles/style-native.css
 
 source:
   files:

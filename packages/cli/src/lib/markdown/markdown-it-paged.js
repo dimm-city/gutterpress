@@ -839,6 +839,23 @@ export default function plugin(md, pluginOptions = {}) {
  *                   docs/native-engine-styling-guide.md §9 for the one-line
  *                   author remedy (`@top-center { content: none }` etc. on
  *                   `@page gp-full-bleed`).
+ *
+ *                   A standalone `![Art](x.jpg){.full-bleed}` markdown image
+ *                   is rendered as `<p><img class="full-bleed"></p>` — a
+ *                   naked markdown-it standalone-image wrap, not something
+ *                   this plugin controls. The `<p>`'s UA default vertical
+ *                   margin sits above/below an image sized to the page's
+ *                   full content box, overflows the box by that margin, and
+ *                   on native print pushes the whole page onto a spurious
+ *                   extra sheet, which then renders BLANK (the art landed on
+ *                   the sheet after). MEASURED (300dpi, 6x9in sheet, a
+ *                   4-source-file fixture book): with the paragraph margin
+ *                   left at UA default, native emits 8pp with page 6 fully
+ *                   blank (0 dark pixels of 540,000 sampled); zeroing the
+ *                   wrapping paragraph's margin below gives the intended
+ *                   7pp with the art bleeding edge-to-edge on page 6. Scoped
+ *                   to `:only-child` so a `.full-bleed` image sharing a
+ *                   paragraph with other inline content keeps its margin.
  */
 export const PAGED_CSS = `
 /* The UA default of 8px body margin is a screen affordance with no meaning
@@ -879,4 +896,5 @@ body { margin: 0; }
   margin-left: calc(-1 * var(--pagedjs-margin-left, 0px));
   margin-right: calc(-1 * var(--pagedjs-margin-right, 0px));
 }
+:where(p:has(> img.full-bleed:only-child)) { margin: 0; }
 `;
