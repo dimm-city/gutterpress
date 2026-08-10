@@ -36,7 +36,7 @@ const main = defineCommand({
     name: "gutterpress",
     version: VERSION,
     description:
-      "Markdown to print-ready PDF (and static-site HTML) using Chromium + Paged.js",
+      "Markdown to print-ready PDF (and static-site HTML) using Chromium",
   },
   setup({ rawArgs }) {
     return preflightRequiredInvocations(rawArgs);
