@@ -157,11 +157,12 @@ Automated fixture, run on the migration fixture set *and* `examples/with-design-
 
 Then `manifest.ts:329` `?? "paged"` → `?? "native"`. `--engine paged` survives. This is the reversible commit; sit on it and dogfood a real book.
 
-### Phase 6 — port the PWA, then delete — **SUSPENDED, DO NOT EXECUTE**
+### Phase 6 — delete Paged.js — **UNSUSPENDED 2026-08-10 (owner confirmed the gate is met)**
 
-> Retained as the eventual follow-up. It runs only after the product owner
-> confirms native parity from Phase 5's evidence. Nothing in this section is
-> in scope for the current execution pass.
+> Every gate row reads = or > except the accepted wall-clock exception; the
+> A/B evidence is archived in-repo. The parity gate (native-viewer vs
+> native-print) is PERMANENT and survives this phase — only the
+> paged-vs-native comparison tooling goes with the polyfill.
 
 Port `web-adapter.ts`'s in-browser preview to the viewer bundle (must stay node-free — `check-render-pure.mjs`), update `service-worker.ts:38`'s `SHELL` precache, and confirm both purity gates (`tools/check-render-purity.mjs --strict`, `scripts/check-render-pure.mjs`) are green.
 
