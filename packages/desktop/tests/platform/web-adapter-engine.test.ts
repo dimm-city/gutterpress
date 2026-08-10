@@ -2,7 +2,9 @@
  * Unit tests for `readProjectEngine` (WP-C item 2): a real YAML parse of
  * `manifest.yaml`'s top-level `engine:` scalar, replacing the old regex that
  * silently defaulted to `paged` on any shape it didn't match (quoted,
- * commented, nested).
+ * commented, nested). The default (missing/unreadable/malformed manifest, or
+ * an unrecognised value) is now `native` — see `manifest.ts`'s
+ * `c.engine ?? m.engine ?? "native"`.
  *
  * Uses the same hand-built mock FSA tree as web-fs.test.ts — no real browser
  * needed.
@@ -81,48 +83,48 @@ test("quoted engine value is honoured by a real parse", async () => {
   ).resolves.toBe("native");
 });
 
-test("commented-out engine: line does NOT match (defaults paged)", async () => {
+test("commented-out engine: line does NOT match (defaults native)", async () => {
   await expect(
-    readProjectEngine(rootWithManifest("title: Book\n# engine: native\n")),
-  ).resolves.toBe("paged");
+    readProjectEngine(rootWithManifest("title: Book\n# engine: paged\n")),
+  ).resolves.toBe("native");
 });
 
-test("engine nested under another key does NOT match top level (defaults paged)", async () => {
+test("engine nested under another key does NOT match top level (defaults native)", async () => {
   await expect(
     readProjectEngine(
-      rootWithManifest("title: Book\nbuild:\n  engine: native\n"),
+      rootWithManifest("title: Book\nbuild:\n  engine: paged\n"),
     ),
-  ).resolves.toBe("paged");
+  ).resolves.toBe("native");
 });
 
-test("missing engine: key defaults to paged", async () => {
+test("missing engine: key defaults to native", async () => {
   await expect(readProjectEngine(rootWithManifest("title: Book\n"))).resolves.toBe(
-    "paged",
+    "native",
   );
 });
 
-test("unrecognised engine value defaults to paged", async () => {
+test("unrecognised engine value defaults to native", async () => {
   await expect(
     readProjectEngine(rootWithManifest("title: Book\nengine: bogus\n")),
-  ).resolves.toBe("paged");
+  ).resolves.toBe("native");
 });
 
-test("missing manifest.yaml defaults to paged", async () => {
+test("missing manifest.yaml defaults to native", async () => {
   const root = new MockDir("book") as unknown as FileSystemDirectoryHandle;
-  await expect(readProjectEngine(root)).resolves.toBe("paged");
+  await expect(readProjectEngine(root)).resolves.toBe("native");
 });
 
-test("malformed YAML defaults to paged instead of throwing", async () => {
+test("malformed YAML defaults to native instead of throwing", async () => {
   await expect(
-    readProjectEngine(rootWithManifest("title: [unterminated\nengine: native\n")),
-  ).resolves.toBe("paged");
+    readProjectEngine(rootWithManifest("title: [unterminated\nengine: paged\n")),
+  ).resolves.toBe("native");
 });
 
-test("a manifest that parses to a scalar/array, not a mapping, defaults to paged", async () => {
+test("a manifest that parses to a scalar/array, not a mapping, defaults to native", async () => {
   await expect(readProjectEngine(rootWithManifest("just a string\n"))).resolves.toBe(
-    "paged",
+    "native",
   );
   await expect(readProjectEngine(rootWithManifest("- one\n- two\n"))).resolves.toBe(
-    "paged",
+    "native",
   );
 });

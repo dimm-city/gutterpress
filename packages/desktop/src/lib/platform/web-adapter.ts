@@ -99,9 +99,9 @@ const VENDOR_PAGED_POLYFILL_URL = "/vendor/paged.polyfill.js";
 
 /**
  * Read the project's configured engine from `manifest.yaml`'s top-level
- * `engine:` scalar, or `"paged"` if the manifest is absent/unreadable, fails
+ * `engine:` scalar, or `"native"` if the manifest is absent/unreadable, fails
  * to parse, or the key isn't set/isn't a top-level scalar (matching the
- * CLI's own default — `manifest.ts`'s `c.engine ?? m.engine ?? "paged"`).
+ * CLI's own default — `manifest.ts`'s `c.engine ?? m.engine ?? "native"`).
  *
  * A real YAML parse (via the `yaml` package — pure JS, no `node:*`, ships a
  * `browser` build, so it stays PWA-clean per CLAUDE.md §8), not a regex: a
@@ -122,19 +122,19 @@ export async function readProjectEngine(
   try {
     text = await readFileFromRoot(root, "manifest.yaml");
   } catch {
-    return "paged";
+    return "native";
   }
   let doc: unknown;
   try {
     doc = parseYaml(text);
   } catch {
-    return "paged";
+    return "native";
   }
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
-    return "paged";
+    return "native";
   }
   const engine = (doc as Record<string, unknown>).engine;
-  return engine === "native" ? "native" : "paged";
+  return engine === "paged" ? "paged" : "native";
 }
 
 // ── Persistence (#33 Phase 3) ─────────────────────────────────────────────────
@@ -823,8 +823,10 @@ export class WebAdapter implements Platform {
     // `engine:` scalar) so this render can at least know which engine the
     // author asked for, rather than silently assuming Paged.js the way this
     // adapter always used to (see readProjectEngine's doc comment for why
-    // the result below is always "paged" today regardless of what this
-    // returns).
+    // the result below is always "paged" in the actual render below,
+    // regardless of what this returns). `native` is now the default (no
+    // `engine:` key), so this branch fires for most projects, not just ones
+    // that explicitly opted into native.
     const configuredEngine = await readProjectEngine(root);
     if (configuredEngine === "native") {
       // Native engine requested, but not honoured: see readProjectEngine's

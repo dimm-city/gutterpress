@@ -168,11 +168,11 @@ export class PreviewOpenController {
 
     let lib: LibModule | null = null;
     let title = path.basename(openedDir);
-    // Default "paged": if the manifest can't be loaded (malformed/missing),
+    // Default "native": if the manifest can't be loaded (malformed/missing),
     // startPreviewServer's own generation reports that failure below, and
-    // "paged" matches the CLI's own no-manifest default (manifest.ts's
-    // `c.engine ?? m.engine ?? "paged"`).
-    let engine: "paged" | "native" = "paged";
+    // "native" matches the CLI's own no-manifest default (manifest.ts's
+    // `c.engine ?? m.engine ?? "native"`).
+    let engine: "paged" | "native" = "native";
     let result: PreviewStartResult;
     try {
       lib = await this.deps.loadLib();
