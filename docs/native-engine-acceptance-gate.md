@@ -233,7 +233,8 @@ required, so the committed numbers are now reproducible.
 
 ~~5. **Core's `.full-bleed` primitive does not bleed under native**~~ — FIXED
    2026-08-09 (Work Package A), moved to Closed below.
-6. **§E native's published-HTML pagination is not stable across browser
+6. **[CLOSED 08-10 — fixed, see the end of this item] §E native's
+   published-HTML pagination is not stable across browser
    engines — WebKit paginates the same book to a different page count than
    Chromium/Firefox** (found 08-10 in the REVIEW pass, after WebKit was
    actually driven; the original 08-10 §E pass reported WebKit "untestable"
@@ -268,16 +269,35 @@ required, so the committed numbers are now reproducible.
    fragment (a bounding rect spanning 2 side-by-side unwrapped columns reads
    as one full column-height regardless of how much of the second column its
    content actually occupies). No `height`/`min-height` rule targets
-   `.chapter`, so this is not an explicit CSS 100%-height difference; the
-   deeper trigger (why WebKit's multicol line-breaking places one more line
-   wrap or fragment inside this specific opener box than Chromium's does) was
-   not chased further — that would mean debugging WebKit's own multicol
-   fragmentation algorithm, out of scope for a viewer-side fix and explicitly
-   against this task's constraint not to change what Chromium (the print
-   baseline) decides. Recorded as a bounded, explained divergence: the
-   `div.chapter.palette` chapter-opener run, WebKit-only, 1 extra physical
-   page, root cause is WebKit's own multicol fragmentation of that box
-   (not our CSS, not our JS, not spread mode, not the blank-page planner).
+   `.chapter`, so this is not an explicit CSS 100%-height difference.
+   **CLOSED 08-10 (review pass) — the deeper trigger WAS chased, and it is
+   fixed.** The above stopped one step short: the "not fixable, WebKit's own
+   multicol algorithm" conclusion is WITHDRAWN. Dumping the opener's client
+   rects in both engines shows what actually happens — in WebKit the
+   `div.chapter.palette` has TWO client rects, an EMPTY 648×708 box in column
+   1 and the `h1` alone at column 2 (`[936, 6608, 648, 229]`); in Chromium it
+   has one rect, the `h1` in column 1 (`[72, 6620, 648, 229]`). The opener
+   `h1`'s computed `break-before` is `column` in BOTH engines —
+   `injectBreakMapping()` maps the author's `break-before: page` onto it — so
+   the difference is that WebKit HONOURS a forced break sitting at the very
+   start of the fragmentation container while Chromium ignores it (per
+   CSS-break-3: a forced break at the start of a fragmentainer is not
+   applied). Why only this opener out of nine: its wrapper is the only one
+   with a non-zero `margin-top` (11.72px vs `0px` on every other opener), so
+   in WebKit content has already begun when the forced break is met. Fix:
+   `clearLeadingForcedBreaks()` in `viewer/fragment.ts` clears a forced
+   `break-before` on each strip's leading in-flow chain after `buildStrips()`.
+   Chromium-neutrality is measured, not argued: with the neutralization
+   applied at runtime, all 18 design-guide strip `scrollWidth`s are
+   byte-identical in Chromium before and after (`648, 648, 648, 2328, 648,
+   4008, 648, 2328, 648, 6528, 648, 4848, 648, 3168, 648, 7368, 648, 4008`),
+   and in WebKit only strip 6 changes, 1488 → 648. After the fix, a rebuilt
+   published artifact measures **53 `.folio-sheet`, 97 running heads and
+   scroll `7592×19072` in Chromium, Firefox AND WebKit**, with page 13
+   ("04 / Color Palette") screenshotted in Chromium and WebKit and looked at:
+   the same opener, no blank page. `native-parity-gate.ts` still reports the
+   same page counts on all 6 fixtures (design-guide 53pp print / 53pp viewer)
+   with an EMPTY allowlist, confirming print-side pagination is untouched.
 
 ### Closed since last iteration
 
@@ -562,19 +582,22 @@ unsupported by Playwright; that is not the same as untestable.
 | Date | Area | Native | Paged | Verdict | Evidence |
 |---|---|---|---|---|---|
 | 08-10 (review) | **E — published HTML, paged rendering, Chromium vs Firefox vs WebKit — SUPERSEDES the "Chromium vs Firefox, WebKit untestable" row below** | Chromium and Firefox are metric-identical (53 `.folio-sheet`, 1 `.folio-stage`, 97 running heads, `innerText.length` 48,062, scroll `7592×14576`). **WebKit is not: 54 sheets, 98 running heads** — same stage geometry (`7592×14576`), one extra page. Located exactly: sheet index 12 is a near-empty page in all three engines, but WebKit emits a SECOND near-empty sheet at index 13, so where Chromium/Firefox read `12:[13] 13:[Color Palette 14] 14:[Color Palette 15]`, WebKit reads `12:[13] 13:[14] 14:[Color Palette 15]` — and every page from there to the end of the book is shifted by one (Chromium's chapter-opener blanks land at 12/16/25/32/37/47, WebKit's at 12/13/17/26/33/38/48). Exactly one spurious page, not one per chapter. Zero console/page errors in all three. | **54 `.pagedjs_page` in all three engines**, 864 running heads, scroll `1400×57024`, and the first four page rects are byte-identical (`[0,0,816,1056] [0,1056,…] [0,2112,…] [0,3168,…]`) in Chromium, Firefox AND WebKit. Zero console/page errors in all three. | **`<` — native's published-HTML pagination is engine-dependent; paged's is not** | Rewritten `packages/cli/tests/compat/html-cross-browser-measure.mjs` (now runs all 3 browsers × 2 legs × JS-on/JS-off, screenshots the document TOP before any scrolling, and returns per-page text). Result reproduced twice, and re-confirmed with the settle time raised from 2s to **8s**, so it is not a fragmentation-timing artifact. `innerText.length` differs slightly per engine on BOTH legs (paged: 47,251 Chromium/Firefox vs 47,210 WebKit — a 41-char whitespace-normalisation baseline), so the native 48,062 vs 47,944 gap is ~77 chars above baseline, consistent with one extra page's running head + folio and no content loss. Screenshots looked at at the document top for all three engines (`/tmp/wpE-verify/shots/{chromium,firefox,webkit}-native-top.png`): all three show the same paginated sheet-on-dark-canvas view with the `01 / Table of Contents` opener — the divergence is a page-count/offset defect, not a "renders continuous in browser X" defect. |
+| 08-10 (review, FIX) | **E — published HTML, cross-engine page count — the row above is SUPERSEDED: the divergence is FIXED, not merely explained** | Re-measured on a freshly rebuilt artifact after `clearLeadingForcedBreaks()` (see open-item 6, now closed): **53 `.folio-sheet`, 97 running heads, scroll `7592×19072` in Chromium, Firefox AND WebKit** — page counts and stage geometry now agree in all three. Full-document sheet geometry re-probed in document coordinates: sheet tops step `32, 1088, 2144, 3200, …` with only `0` and `1056` as consecutive deltas, **0 overlapping sheet pairs out of all 53** in every engine (before the `decorate.ts` height fix the same probe reported 17 overlapping pairs in Chromium/Firefox and 19 in WebKit, first pair overlapping 336px vertically — measured on the pre-fix bundle, so the fix's causation is proven, not inferred). `innerText.length` 48,062 Chromium/Firefox vs 47,942 WebKit (baseline whitespace-normalisation gap on the paged leg is 41 chars; the remaining ~79-char gap is running-head/folio text normalisation, unchanged by this fix and NOT a page-count difference any more). Zero console/page errors in all three. | Unchanged reference: 54 `.pagedjs_page`, 864 running heads, scroll `1400×57024`, identical first-four rects in all three engines, JS on and off. | **= for published-HTML cross-engine determinism** (native's page COUNT and sheet geometry are now engine-independent; native still has the extra 53-vs-54 whole-book difference against paged.js's own pagination, which is a different question) | Independently re-run in the review pass on artifacts rebuilt from source (`bun scripts/build-engine-bundles.mjs --force`, bundle md5 `37682c3…` before the fragment.ts change): `tests/compat/html-cross-browser-measure.mjs` plus a new full-document overlap probe. WebKit driven via the documented `LD_PRELOAD` route. Document-top screenshots looked at in all three engines, plus page 13 clipped in Chromium and WebKit. |
 | 08-10 (review) | **E — paged leg renders paginated with JavaScript DISABLED, in all three engines** | n/a | **Confirmed by observation.** `javaScriptEnabled: false` in Chromium, Firefox and WebKit each still yields 54 `.pagedjs_page`, 864 running heads, scroll `1400×57024`, and the same first-four page rects — byte-for-byte identical to the JS-enabled run in the same engine. Consistent with the artifact itself: `grep -c pagedjs_page paged/book.html` = 360 occurrences in the SOURCE, i.e. Paged.js's output is baked into the exported HTML; its two `<script>` tags (`preview/scripts/preview-interface.js`, `preview-bridge.js`) are preview chrome, not the paginator. | **> for paged (no-JS resilience)** | Same script. Screenshots looked at (`{chromium,firefox,webkit}-paged-nojs-top.png`): identical paginated layout in all three, running head + folio present. Caveat observed while looking: paged's on-screen pages are **white-on-white** — no sheet border or canvas tint — so page boundaries are invisible until you reach a running head or folio, where native's viewer draws sheets on a dark canvas. That is a presentation difference in native's favour and is NOT captured by any numeric metric here. |
 | 08-10 (review) | **E — native artifact with JavaScript disabled, all three engines (was Chromium-only)** | Fallback holds in **all three**, confirmed by looking, not assumed: 0 sheets / 0 stages / 0 running heads, scroll geometry collapses to a single 1400px-wide column (`scrollHeight` 32,710 Chromium / 32,651 Firefox / 32,721 WebKit), `innerText` intact (47,251 / 47,251 / 47,210 — the same per-engine baseline as above), wheel scroll works, zero console and page errors. | n/a (see the row above — paged needs no JS at all) | **n/a — documented fallback confirmed, now on all three engines** | Screenshot `webkit-native-nojs-top.png` looked at: `01 / Table of Contents`, the chapter rule, the numbered chapter list, "How to use this guide" and its ordered list all render in normal reading order, full-width, unpaginated and unbroken — same as the Chromium and Firefox no-JS shots. |
 | 08-10 (review) | ~~**E — observation, both engines, not a browser difference: native's default published view overlaps its own sheets**~~ | At a 1400×900 viewport the first four sheet rects are `[24,32,816,1056] [0,752,816,1056] [24,1628,…] [0,2348,…]` — identical in Chromium, Firefox and WebKit. Sheet 1 spans y 32→1088 while sheet 2 starts at y 752, so consecutive sheets **overlap by ~336px** and the layout reads as a cascade of offset cards rather than a page sequence; visible in every native top-of-document screenshot. | Paged's rects are a clean non-overlapping stack (`top` 0 / 1056 / 2112 / 3168, `left` 0). | **SUPERSEDED — see the FIXED row below; the "almost certainly the two-up defect" guess in this row's own notes was WRONG** | Kept struck-through (not deleted) so the record shows the original observation and its wrong initial diagnosis. |
 | 08-10 (fix) | **E — published-HTML sheet overlap — ROOT-CAUSED (NOT the C.15 two-up defect) and FIXED** | Same four sheets, same book, re-measured BEFORE touching code: `[24,32,816,1056] [0,752,…] [24,1628,…] [0,2348,…]` (336px overlap), `.folio-strip[data-wrap]` count **0** and `Gutterpress.setSpread(false)` called explicitly on load — spread/two-up was never engaged, disproving the row-539 guess outright. AFTER the fix: `[0,32,816,1056] [-24,1088,…] [0,2144,…] [-24,3200,…]` — every sheet's `top` is exactly the previous sheet's `top + 1056` (its own full height), zero overlap, confirmed by looking at full-page screenshots before/after (cascade-of-offset-cards → clean tiled stack). | n/a (paged was already clean — unaffected reference) | **= (native now matches paged's clean tiling)** | Real root cause, in `decorate.ts`'s `draw()`: `run.style.height` (the box document-flow stacking relies on for EVERY run, wrapped or not) was set to `rowStride * rows`, where `rowStride` is `--folio-content-h + row-gap` (content box only, per the earlier "ROW-PITCH CORRECTION" fix scoped to wrapped-row PITCH). For the common unwrapped case `rows` is always 1, so the run's box was sized to CONTENT height only, short by exactly `margin-top + margin-bottom` (336px on this book's front-matter pages) — the next sibling run then started inside that gap, i.e. underneath the previous sheet's still-visible margin area. Fixed to `rowStride * (rows - 1) + PX_PER_PT * g.height`: `rowStride` pitch only BETWEEN rows, full sheet height (`g.height`, content + margins) for the box's own last row. Cross-run spread pairing's `marginTop` pull-up (used only when `strip.wrapCols && shift === 1`, i.e. actual two-up mode) depended on the old (buggy) height via `prevRowStride`; fixing the height without updating that pull-up broke `spread.test.ts` (`report.rows` produced 2 unexpected solo pages) — fixed by tracking `prevPageH` (previous run's real full sheet height) instead and pulling up by `prevPageH + sheetGap`; `spread.test.ts` passes again. Verified: `bun test` 2355 pass/0 fail (packages/cli), desktop `npm test` 2424 pass/0 fail, desktop `npm run typecheck` clean, `bun scripts/native-parity-gate.ts` — 0 divergences, empty allowlist, all 6 fixtures. `bun scripts/build-engine-bundles.mjs --force` re-run and the bundle committed. This item was NEVER the C.15 permanently-two-up architectural gap (that gap is real and separate, see the C.15 rows) — it was a plain arithmetic bug reachable any time a run has exactly one row, which is the common case for every book. |
 
-**Verdict for §E per the rubric, after the review pass:** **`<` for native.**
-The Chromium-vs-Firefox parity the original pass found is real and reproduced
-exactly — but parity across two engines was the wrong question. With WebKit
-actually driven, native paginates the same book to 54 pages where Chromium
-and Firefox give 53, while Paged.js gives 54 in all three with identical
-geometry; and paged's exported HTML paginates with JavaScript disabled in
-every engine, where native's degrades (as designed, and confirmed readable)
-to a continuous document. Native still wins on presentation (visible sheets
+**Verdict for §E per the rubric, after the review pass and the 08-10 fixes:**
+**`<` for native, on ONE remaining ground — no-JS behaviour.** The
+cross-engine page-count ground is CLOSED: after `clearLeadingForcedBreaks()`
+native paginates the same book to 53 pages with identical sheet geometry in
+Chromium, Firefox and WebKit (re-measured on a rebuilt artifact, all three
+engines driven), and the self-overlapping sheet stack is fixed as well (0
+overlapping pairs out of 53 sheets, all three engines, against 17-19 before).
+What still keeps this section below the bar is that paged's exported HTML
+paginates with JavaScript disabled in every engine, where native's degrades
+(as designed, and confirmed readable) to a continuous document. Native still wins on presentation (visible sheets
 on a canvas vs paged's invisible white-on-white page boundaries) and that is
 worth keeping, but on the gate's own "provable parity or improvement" bar
 this section does not clear it.

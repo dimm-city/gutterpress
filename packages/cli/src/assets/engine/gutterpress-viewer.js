@@ -933,6 +933,14 @@ body.view-spread .folio-sheet[data-side="verso"] {
       pushRun(runs, undefined, trailing);
     return runs;
   }
+  var FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
+  function clearLeadingForcedBreaks(strip) {
+    for (let el = strip.firstElementChild;el; el = el.firstElementChild) {
+      const cs = getComputedStyle(el);
+      if (FORCED_BREAK.test(cs.breakBefore))
+        el.style.breakBefore = "auto";
+    }
+  }
   function buildStrips(model, opts = {}, warnings = []) {
     const doc = document;
     const root = opts.root ?? doc.querySelector("main") ?? doc.body;
@@ -961,6 +969,8 @@ body.view-spread .folio-sheet[data-side="verso"] {
         strip.appendChild(n);
       strips.push({ el: strip, page: run.page, geometry, pages: 0, offset: 0 });
     }
+    for (const s of strips)
+      clearLeadingForcedBreaks(s.el);
     return strips;
   }
   function compensateRepeatedHeaders(strips, maxPasses = 24) {

@@ -244,6 +244,35 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
   return runs;
 }
 
+const FORCED_BREAK = /^(column|page|left|right|recto|verso|always)$/;
+
+/**
+ * Neutralize a forced `break-before` sitting on the LEADING in-flow chain of a
+ * strip (the strip's first child, its first child, …).
+ *
+ * A strip IS a fragmentation container, and a forced break at the very start of
+ * one is spec-ignorable — Chromium ignores it (measured: neutralizing changes
+ * NOTHING in Chromium, all 18 design-guide strip widths byte-identical before
+ * and after). WebKit does not always: on the design-guide's `#ch-palette`
+ * chapter opener — whose wrapper carries a non-zero `margin-top`, unlike every
+ * other opener in that book — WebKit honours the `break-before` mapped onto the
+ * opener `h1`, leaves column 1 empty and pushes the `h1` into column 2, so the
+ * strip measures 1488px against a 840px column stride (2 pages) where Chromium
+ * measures 648px (1 page). That is the single spurious page behind the
+ * published-HTML 54-vs-53 page-count divergence in
+ * `docs/native-engine-acceptance-gate.md` §E.
+ *
+ * Clearing it here is Chromium-neutral by construction (a break Chromium
+ * already ignores) and makes the published artifact paginate identically in
+ * Chromium, Firefox and WebKit.
+ */
+function clearLeadingForcedBreaks(strip: HTMLElement) {
+  for (let el = strip.firstElementChild; el; el = el.firstElementChild) {
+    const cs = getComputedStyle(el);
+    if (FORCED_BREAK.test(cs.breakBefore)) (el as HTMLElement).style.breakBefore = "auto";
+  }
+}
+
 /**
  * Group the flow root's children into runs of identical page context and wrap
  * each run in a strip. Runs only ever split where print would already have
@@ -285,6 +314,10 @@ export function buildStrips(
     for (const n of run.nodes) strip.appendChild(n);
     strips.push({ el: strip, page: run.page, geometry, pages: 0, offset: 0 });
   }
+  // Separate pass: `clearLeadingForcedBreaks` reads computed style, and doing
+  // that inside the loop above would force one synchronous style recalc per
+  // strip right after that strip's own DOM writes.
+  for (const s of strips) clearLeadingForcedBreaks(s.el);
   return strips;
 }
 
