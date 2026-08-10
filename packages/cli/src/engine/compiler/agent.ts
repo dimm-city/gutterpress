@@ -41,10 +41,24 @@ let uid = 0;
  * strip its ids and reprint, praying the clean document paginated identically
  * to the measured one. Instead: an element that already has an id is measured
  * through it (no mutation at all); one that doesn't gets a zero-size
- * `<folio-anchor id=…>` injected as its first child. Custom tag + absolute
- * positioning keep it invisible to layout, `::first-letter`, and (verified
- * against hostile `[id]`/`::before`/counter CSS) to author selectors — so the
- * instrumented document IS the shipped document and no final reprint exists.
+ * `<folio-anchor id=…>` injected as its first child. Custom tag + zero size
+ * (`width:0;height:0;overflow:hidden`) keep it invisible to layout,
+ * `::first-letter`, and (verified against hostile `[id]`/`::before`/counter
+ * CSS) to author selectors — so the instrumented document IS the shipped
+ * document and no final reprint exists.
+ *
+ * Deliberately NOT `position: absolute`: measured on
+ * docs/fixtures/css-authoring-spike/book, an absolutely positioned anchor
+ * that was the very first box after a forced `break-before: page` printed a
+ * PDF named destination one page LATE (page 2's heading measured as page 3),
+ * because its static-position fragmentation lands differently from ordinary
+ * in-flow content right at a page-break boundary. An in-flow (`display:
+ * inline-block`, default `position: static`) zero-size box fragments through
+ * the exact same layout path as a real, non-zero-size heading — which is
+ * already proven correct, since author-supplied ids (no anchor at all) never
+ * hit this bug — at the cost of the residual risk below applying identically
+ * regardless of `position` (DOM tree shape, not CSS positioning, is what a
+ * `:first-child` selector observes).
  *
  * Residual risk, accepted and documented: a `parent > :first-child` rule could
  * observe the injected child. Elements with author ids — the common case, since
@@ -56,7 +70,7 @@ function ensureAnchor(el: Element): string {
   if (existing?.tagName === "FOLIO-ANCHOR" && existing.id) return existing.id;
   const anchor = document.createElement("folio-anchor");
   anchor.id = `folio-m-${++uid}`;
-  anchor.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden");
+  anchor.setAttribute("style", "display:inline-block;width:0;height:0;overflow:hidden");
   el.insertBefore(anchor, el.firstChild);
   return anchor.id;
 }

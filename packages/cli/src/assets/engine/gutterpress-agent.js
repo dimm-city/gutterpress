@@ -310,7 +310,7 @@
       return existing.id;
     const anchor = document.createElement("folio-anchor");
     anchor.id = `folio-m-${++uid}`;
-    anchor.setAttribute("style", "position:absolute;width:0;height:0;overflow:hidden");
+    anchor.setAttribute("style", "display:inline-block;width:0;height:0;overflow:hidden");
     el.insertBefore(anchor, el.firstChild);
     return anchor.id;
   }

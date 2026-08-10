@@ -87,6 +87,12 @@ const DEFAULT_FIXTURES = [
   join(REPO, "examples", "with-design-guide", "book-01"),
   join(REPO, "examples", "with-design-guide", "book-02"),
   join(REPO, "examples", "with-design-guide", "design-guide"),
+  // The three-repro spike fixture (committed): it pinned the running-heads
+  // regression where `<folio-anchor>`'s zero-size `position:absolute` first
+  // child, sitting immediately after a forced `break-before: page`, measured
+  // one page late in print (headingPageMap divergence on pages 2-3) — see
+  // agent.ts's `ensureAnchor`.
+  join(REPO, "docs", "fixtures", "css-authoring-spike", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";
