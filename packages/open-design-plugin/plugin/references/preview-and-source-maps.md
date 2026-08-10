@@ -14,8 +14,8 @@ gutterpress preview ./books/core-book
 Port 3579 is the default; the user may bind another one, and the printed URL is
 the truth. The runtime brief carries whatever they are actually running.
 
-The preview uses the same Markdown renderer, inlined CSS, and Paged.js polyfill
-as the build. Judge print layout from its paginated pages, never from ordinary
+The preview uses the same Markdown renderer, inlined CSS, and Gutterpress
+pagination engine as the build. Judge print layout from its paginated pages, never from ordinary
 browser flow. The live shell is optimized for editing, so wait for its completed
 pagination and confirm page-critical work with the normal Gutterpress build before
 final delivery.
@@ -29,7 +29,7 @@ The watcher debounces a burst of writes into one rebuild, then:
 
 - **any watched source changed** — Markdown, stylesheet, font, image, manifest,
   or authored plugin - the shell loads the rebuilt `book.html` into its hidden
-  frame, completes a full-document Paged.js pagination, then swaps it into view.
+  frame, completes a full-document pagination, then swaps it into view.
 
 A stylesheet edit takes the full path deliberately. In a paged medium, fonts,
 leading, spacing, custom properties, page geometry, columns, image sizing, and
@@ -81,9 +81,9 @@ When live DOM inspection is available, locate a target as follows:
 3. Together those give file + line. Confirm by reading that line in the source
    before editing it.
 
-Paged.js splits and clones content across page boxes, so a fragment may carry a
-line number inherited from a node that began on an earlier page — treat the
-result as a strong hint, verified against the file, not as an exact address.
+Pagination can split a block across page boxes, so a fragment may carry a line
+number inherited from a node that began on an earlier page — treat the result
+as a strong hint, verified against the file, not as an exact address.
 
 For a **styling** question, the attributes only tell you which Markdown produced
 the element. Which rule styles it comes from the element's semantic classes and

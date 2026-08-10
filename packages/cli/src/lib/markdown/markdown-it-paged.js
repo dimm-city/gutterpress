@@ -796,41 +796,29 @@ export default function plugin(md, pluginOptions = {}) {
  *   .float-left   — floats left with clearance margins.
  *   .float-right  — floats right with clearance margins.
  *   .full-width   — fills the page's content width (100%).
- *   .full-bleed   — forces its own page (break-before) and cancels the
- *                   page's LEFT/RIGHT margins via Paged.js's real
- *                   `--pagedjs-margin-left`/`--pagedjs-margin-right` custom
- *                   properties (set per-page by the polyfill from the active
- *                   `@page` rule — see pagedjs/src/polisher/base.js), so
- *                   content spans the page edge-to-edge horizontally. This
- *                   does NOT cancel the top/bottom margins, extend past the
- *                   trim into printer bleed overage, apply a named `@page`
- *                   template, or remove headers/footers — none of that is
- *                   implemented; the custom-property fallback of 0 means it
- *                   degrades to plain full-width outside a Paged.js render.
+ *   .full-bleed   — forces its own page (break-before) and spans it
+ *                   edge-to-edge horizontally. This does NOT cancel the
+ *                   top/bottom margins, extend past the trim into printer
+ *                   bleed overage, or remove headers/footers — none of that
+ *                   is implemented.
  *
- *                   Under Paged.js this out-dent is the whole mechanism (the
- *                   custom properties are set per-page by the polyfill from
- *                   the active `@page` rule — see pagedjs/src/polisher/base.js).
- *
- *                   Under NATIVE print the out-dent is a no-op fallback
- *                   (`--pagedjs-margin-*` are never set outside Paged.js, so
- *                   both `calc()`s collapse to plain 100%/0 — same as
- *                   `.full-width`) and the actual bleed comes from a second,
- *                   independent mechanism: the rule below also assigns the
- *                   element's page to a named `@page gp-full-bleed` with zero
- *                   side margins, so the page's own CONTENT box is the sheet
- *                   and `width: 100%` already reaches both edges — no
- *                   shrink-to-fit trigger, because nothing out-dents past the
- *                   content box. MEASURED (Chromium 148, 6x4in sheet, 0.75in
- *                   margins): before this named page existed, feeding the
- *                   real margins into the out-dent shrank the whole document
- *                   ~10% (text run 204.4pt -> 182.9pt), because the
- *                   shrink-to-fit trigger is the page CONTENT box, not the
- *                   sheet — that failure mode is why the named page exists.
- *                   The two mechanisms don't conflict: Paged.js ignores the
- *                   named `@page` (unsupported) and keeps using the out-dent;
- *                   native ignores the always-0 custom properties and uses
- *                   the named page.
+ *                   The mechanism is a named page: the rule below assigns the
+ *                   element's page to `@page gp-full-bleed`, which has zero
+ *                   side margins, so the page's own CONTENT box IS the sheet
+ *                   and a plain `width: 100%` already reaches both edges —
+ *                   with no shrink-to-fit trigger, because nothing out-dents
+ *                   past the content box. MEASURED (Chromium 148, 6x4in
+ *                   sheet, 0.75in margins): the earlier mechanism (a negative
+ *                   out-dent of the real page margins, inherited from the
+ *                   Paged.js era, where the polyfill published them as
+ *                   `--pagedjs-margin-left/right`) shrank the WHOLE document
+ *                   ~10% under native print (text run 204.4pt -> 182.9pt),
+ *                   because the shrink-to-fit trigger is the page CONTENT
+ *                   box, not the sheet — that failure mode is why the named
+ *                   page exists. Paged.js has since been removed
+ *                   (native-only-migration-plan.md Phase 6), so the out-dent
+ *                   (whose custom properties nothing sets any more, making it
+ *                   a permanent no-op) went with it.
  *
  *                   KNOWN GAP: on the bleed page, native's running head/folio
  *                   move onto the trim line (margin boxes are positioned by
@@ -892,9 +880,9 @@ body { margin: 0; }
   break-before: page;
   page: gp-full-bleed;
   max-width: none;
-  width: calc(100% + var(--pagedjs-margin-left, 0px) + var(--pagedjs-margin-right, 0px));
-  margin-left: calc(-1 * var(--pagedjs-margin-left, 0px));
-  margin-right: calc(-1 * var(--pagedjs-margin-right, 0px));
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
 }
 :where(p:has(> img.full-bleed:only-child)) { margin: 0; }
 `;

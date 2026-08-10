@@ -18,16 +18,19 @@
 // Run directly (`bun scripts/build-engine-bundles.mjs`) to refresh the
 // committed bundles after an engine source change.
 // ──────────────────────────────────────────────────────────────────────────
-import { readdirSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ENGINE_SRC = join(PKG_ROOT, "src", "engine");
 const OUT_DIR = join(PKG_ROOT, "src", "assets", "engine");
+const VIEWER_BUNDLE = "gutterpress-viewer.js";
+// The desktop PWA's static mirror of the viewer bundle (see the copy below).
+const DESKTOP_STATIC_ENGINE = resolve(PKG_ROOT, "..", "desktop", "static", "engine");
 
 const TARGETS = [
-  { entry: join(ENGINE_SRC, "viewer", "global.ts"), outName: "gutterpress-viewer.js", minify: false },
+  { entry: join(ENGINE_SRC, "viewer", "global.ts"), outName: VIEWER_BUNDLE, minify: false },
   { entry: join(ENGINE_SRC, "compiler", "agent.ts"), outName: "gutterpress-agent.js", minify: false },
 ];
 
@@ -69,6 +72,19 @@ export async function buildEngineBundles(force = false, outDir = OUT_DIR) {
       );
     }
     built.push(target.outName);
+  }
+  // The desktop PWA serves the viewer as a plain static file
+  // (packages/desktop/static/engine/) — it cannot reach into the CLI's
+  // embedded assets from the browser. That copy is a second on-disk original,
+  // so refresh it here or a `--force` rebuild silently ships a stale viewer to
+  // the web target while the CLI runs the new one. Only when writing the real
+  // committed output dir (bundle-freshness.test.ts builds into a scratch dir).
+  if (resolve(outDir) === OUT_DIR) {
+    mkdirSync(DESKTOP_STATIC_ENGINE, { recursive: true });
+    copyFileSync(
+      join(OUT_DIR, VIEWER_BUNDLE),
+      join(DESKTOP_STATIC_ENGINE, VIEWER_BUNDLE),
+    );
   }
   return built;
 }

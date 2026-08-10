@@ -1244,22 +1244,26 @@ describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
     expect(rule![0]).toMatch(/width:\s*100%/);
   });
 
-  test("defines .full-bleed using break-before + Paged.js's own page-margin custom properties (no fabricated @page art template)", () => {
+  test("defines .full-bleed as break-before + the zero-side-margin named page (no margin out-dent)", () => {
     const rule = PAGED_CSS.match(/\.full-bleed\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     const body = rule![0];
     expect(body).toMatch(/break-before:\s*page/);
-    // The real Paged.js-populated custom properties (see node_modules/pagedjs
-    // src/polisher/base.js / atpage.js). Deliberately NOT fed the native
-    // engine's page margins: measured on Chromium 148, out-denting a band to
-    // the sheet edge shrinks the WHOLE document ~10% (the shrink-to-fit
-    // trigger is the content box, not the sheet), so supplying real margins
-    // natively would scale every page instead of bleeding the art.
-    expect(body).toMatch(/--pagedjs-margin-left/);
-    expect(body).toMatch(/--pagedjs-margin-right/);
+    // The bleed comes from `@page gp-full-bleed { margin-left/right: 0 }` —
+    // the page's content box IS the sheet, so a plain `width: 100%` reaches
+    // both edges. Nothing may out-dent past the content box: measured on
+    // Chromium 148, feeding the real page margins into a negative margin
+    // shrinks the WHOLE document ~10% (the shrink-to-fit trigger is the
+    // content box, not the sheet).
+    expect(body).toMatch(/page:\s*gp-full-bleed/);
+    expect(body).toMatch(/width:\s*100%/);
+    expect(body).not.toMatch(/calc\(/);
+    // Paged.js is gone (native-only-migration-plan.md Phase 6) — nothing sets
+    // its page-margin custom properties any more, so they must not survive
+    // here as a permanent no-op.
+    expect(PAGED_CSS).not.toMatch(/--pagedjs-margin/);
     expect(body).not.toMatch(/--gp-margin/);
-    expect(body).toMatch(/margin-left:\s*calc\(-1 \*/);
-    expect(body).toMatch(/margin-right:\s*calc\(-1 \*/);
+    expect(PAGED_CSS).toMatch(/@page gp-full-bleed\s*\{[^}]*margin-left:\s*0/);
     // Must NOT promise a named `art` page template or header/footer removal —
     // neither is implemented.
     expect(PAGED_CSS).not.toMatch(/@page\s+art\b/);

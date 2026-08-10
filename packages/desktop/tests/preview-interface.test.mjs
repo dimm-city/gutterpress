@@ -175,7 +175,7 @@ async function main() {
     assert.deepEqual(
       api.getPageDimensions(),
       { width: 400, height: 600 },
-      "native: dimensions come straight off the sheet — no .pagedjs_pages two-column width"
+      "native: dimensions come straight off the sheet — no wrapper-derived two-column width"
     );
   }
 
@@ -194,8 +194,8 @@ async function main() {
   // ── getContextTargetAt: kind precedence + payload shape (protocol v4,
   // docs/inline-editing-plan.md §3.1) ────────────────────────────────────────
   const contextHtml = `
-    <div class="pagedjs_pages">
-      <div class="pagedjs_page">
+    <div class="gp-test-root">
+      <div class="gp-test-page">
         <div class="chapter" data-chapter-src="a.md" data-source-range="0:12" data-ref="chapter-ref">
           <div class="page" data-source-range="0:12" data-ref="page-ref">
             <p id="plain" data-source-range="1:2" data-ref="plain-ref">Just a plain paragraph.</p>
@@ -207,7 +207,7 @@ async function main() {
           </div>
         </div>
       </div>
-      <div class="pagedjs_margin"><span id="running">Running header</span></div>
+      <div class="gp-test-margin"><span id="running">Running header</span></div>
     </div>`;
 
   // kind: 'block'
@@ -390,7 +390,7 @@ async function main() {
       <div class="chapter" data-chapter-src="a.md" data-source-range="0:1" data-ref="c">
         <p id="para" data-source-range="0:1" data-ref="p1">Hello</p>
       </div>
-      <div class="pagedjs_margin"><span id="running">Header</span></div>`;
+      <div class="gp-test-margin"><span id="running">Header</span></div>`;
     const { window, document } = loadInterfaceWithDom(html);
     const para = document.getElementById("para");
 
@@ -425,7 +425,7 @@ async function main() {
   // parent SPA).
   {
     const html = `
-      <div class="pagedjs_pages"><div class="pagedjs_page">
+      <div class="gp-test-root"><div class="gp-test-page">
         <div class="chapter" data-chapter-src="a.md" data-source-range="0:1" data-ref="c">
           <p id="para" data-source-line="1" data-source-range="0:1" data-ref="p1">Top of viewport</p>
         </div>
@@ -471,14 +471,14 @@ async function main() {
   // from the wire contract entirely — `{chapter, range}` is the only target
   // shape now, on both engines.
   const overlayHtml = `
-    <div class="pagedjs_pages">
-      <div class="pagedjs_page">
+    <div class="gp-test-root">
+      <div class="gp-test-page">
         <div class="chapter" data-chapter-src="a.md" data-source-range="0:10">
           <p id="p1" data-source-range="0:1">Solo block</p>
           <p id="frag1" data-source-range="1:3">first half</p>
         </div>
       </div>
-      <div class="pagedjs_page">
+      <div class="gp-test-page">
         <div class="chapter" data-chapter-src="a.md" data-source-range="0:10">
           <p id="frag2" data-source-range="1:3" data-split-from="split">second half</p>
         </div>
