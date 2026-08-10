@@ -12,7 +12,7 @@ import { requireChromiumExecutable, resolveChromiumExecutable } from "./chromium
 import { prewarmBrowser, closeBrowser } from "./browser-pool";
 import {
   convertToPdfxCmyk,
-  hasSoftMaskedImages,
+  hasLiveTransparency,
   stampCreator,
   stripAnnotations,
 } from "./ghostscript";
@@ -779,23 +779,26 @@ class PdfOutput implements OutputStrategy {
         effectiveIccPath = await resolveIccProfile(icc, manifestDir, opts.iccPath);
 
         // B.10: PDF/X-1a and PDF/X-3 are built at PDF 1.3 compatibility,
-        // which cannot represent live transparency at all — an image with
-        // an alpha channel forces Ghostscript to flatten whatever page it's
-        // on into a single raster (fonts and searchable text lost on that
-        // page). This is not fixable without changing PDF/X conformance
-        // (PDF/X-1a and PDF/X-3 are both PDF-1.3-based by spec, not a
-        // Gutterpress default), so warn precisely rather than let the
-        // author discover a fontless page after the fact.
-        if (hasSoftMaskedImages(await fsp.readFile(rawPdf))) {
+        // which cannot represent live transparency at all — an alpha-channel
+        // image OR a CSS `opacity`/`mix-blend-mode` rule forces Ghostscript
+        // to flatten whatever page it's on into a single raster (fonts and
+        // searchable text lost on that page). This is not fixable without
+        // changing PDF/X conformance (PDF/X-1a and PDF/X-3 are both
+        // PDF-1.3-based by spec, not a Gutterpress default), so warn
+        // precisely rather than let the author discover a fontless page
+        // after the fact.
+        if (await hasLiveTransparency(await fsp.readFile(rawPdf))) {
           log.warn(
-            "This book includes images with transparency (an alpha channel). " +
+            "This book uses transparency — an image with an alpha channel, or a CSS " +
+              "rule like `opacity` or `mix-blend-mode`. " +
               `PDF/${pdfxMode === "x1a" ? "X-1a" : "X-3"} has no way to represent that ` +
               "(both are based on PDF 1.3, which predates PDF transparency), so " +
-              "Ghostscript will flatten every page containing one into a single raster " +
+              "Ghostscript will flatten every page that uses it into a single raster " +
               "image — that page loses its embedded fonts and searchable text in the " +
-              "PDF/X output. To keep vector text, flatten the image against its intended " +
-              "background before including it (export it with no alpha channel), or build " +
-              "--format pdf instead of pdfx if this book doesn't need print-ready CMYK."
+              "PDF/X output. To keep vector text, remove the `opacity`/blend rule and " +
+              "flatten any alpha-channel image against its intended background before " +
+              "including it (export it with no alpha channel), or build --format pdf " +
+              "instead of pdfx if this book doesn't need print-ready CMYK."
           );
         }
 

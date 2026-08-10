@@ -80,27 +80,86 @@ export async function resolveGhostscript(
 }
 
 /**
- * Whether `pdfBytes` contains at least one image soft mask (`/SMask N 0 R`,
- * an indirect reference to a real mask object — not the literal `/SMask
- * /None` an opaque image XObject can also carry, which this pattern does
- * not match).
+ * Whether `pdfBytes` uses any live PDF transparency — the PDF 1.4 imaging
+ * feature, in ALL the forms Chromium emits it, not just alpha-channel images:
+ *
+ *  - a transparency **group** (`/Group << /S /Transparency >>`), which is what
+ *    CSS `opacity`, `mix-blend-mode` and friends compile down to;
+ *  - an **image soft mask** (`/SMask` on an image XObject, pointing at a real
+ *    mask rather than the literal `/None` an opaque image also carries) — an
+ *    RGBA source image;
+ *  - a **graphics-state** soft mask or constant alpha (`/SMask`, `/ca`, `/CA`
+ *    on an `/ExtGState`).
  *
  * PDF/X-1a and PDF/X-3 (as this codebase generates them, `-dCompatibilityLevel=1.3`
  * in {@link convertToPdfxCmyk}) are both based on PDF 1.3, which predates the
- * PDF 1.4 transparency model entirely — a soft-masked (alpha-channel) image
- * has nothing a PDF-1.3 file can represent it with. Ghostscript's only
- * PDF/X-compliant option is to flatten the page it appears ON down to a
- * single raster image (B.10, measured: a book with alpha-channel artwork
- * loses every embedded font and all searchable text in its PDF/X output,
- * identically on both engines — this is a Ghostscript/PDF-1.3 property, not
- * an engine bug). Detecting it lets the build warn the author PRECISELY,
- * instead of them discovering a fontless PDF/X file after the fact.
+ * PDF 1.4 transparency model entirely — live transparency has nothing a
+ * PDF-1.3 file can represent it with. Ghostscript's only PDF/X-compliant
+ * option is to flatten the page it appears ON down to a single raster image
+ * (B.10, measured: a book with alpha-channel artwork loses every embedded
+ * font and all searchable text in its PDF/X output, identically on both
+ * engines — this is a Ghostscript/PDF-1.3 property, not an engine bug).
+ * Detecting it lets the build warn the author PRECISELY, instead of them
+ * discovering a fontless PDF/X file after the fact.
+ *
+ * This walks the parsed object graph rather than scanning raw bytes. A byte
+ * scan is NOT sufficient and produced a false "all clear" in review: image
+ * XObjects are streams, so their dicts do sit uncompressed at top level, but
+ * `/ExtGState` and `/Group` dicts are plain objects that Chromium packs into
+ * **object streams** (`/Type /ObjStm`, deflate-compressed), where no regex can
+ * see them. Measured on four books with known Ghostscript outcomes, this
+ * predicate is exactly right on all four; the byte scan silently missed the
+ * CSS-`opacity` book, which rasterizes to zero embedded fonts.
  */
-export function hasSoftMaskedImages(pdfBytes: Uint8Array): boolean {
-  // PDF object dictionaries are literal ASCII even when content/image
-  // streams are compressed, so a plain byte scan is enough — no PDF parser
-  // needed for a yes/no "does this reference exist" check.
-  return /\/SMask\s+\d+\s+\d+\s+R/.test(Buffer.from(pdfBytes).toString("latin1"));
+export async function hasLiveTransparency(pdfBytes: Uint8Array): Promise<boolean> {
+  const { PDFDocument, PDFDict, PDFName, PDFNumber, PDFRawStream, PDFRef } = await import(
+    "pdf-lib"
+  );
+  let doc;
+  try {
+    doc = await PDFDocument.load(pdfBytes, {
+      updateMetadata: false,
+      throwOnInvalidObject: false,
+    });
+  } catch {
+    // Never let a detection heuristic fail a build: if the PDF can't be
+    // parsed here, Ghostscript is still about to be handed it and will
+    // report anything genuinely wrong. Skip the advisory warning instead.
+    return false;
+  }
+  const ctx = doc.context;
+  const NONE = "/None";
+
+  for (const [, obj] of ctx.enumerateIndirectObjects()) {
+    const dict =
+      obj instanceof PDFRawStream ? obj.dict : obj instanceof PDFDict ? obj : undefined;
+    if (!dict) continue;
+
+    const smask = dict.get(PDFName.of("SMask"));
+    const subtype = String(dict.get(PDFName.of("Subtype")) ?? "");
+    const type = String(dict.get(PDFName.of("Type")) ?? "");
+
+    if (subtype === "/Image" && smask && String(smask) !== NONE) return true;
+
+    if (type === "/ExtGState") {
+      if (smask && String(smask) !== NONE) return true;
+      for (const key of ["ca", "CA"]) {
+        const alpha = dict.get(PDFName.of(key));
+        if (alpha instanceof PDFNumber && alpha.asNumber() < 1) return true;
+      }
+    }
+
+    const group = dict.get(PDFName.of("Group"));
+    if (group) {
+      const resolved = group instanceof PDFRef ? ctx.lookup(group) : group;
+      if (
+        resolved instanceof PDFDict &&
+        String(resolved.get(PDFName.of("S"))) === "/Transparency"
+      )
+        return true;
+    }
+  }
+  return false;
 }
 
 /**
