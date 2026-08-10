@@ -6,7 +6,7 @@
  * Usage: node drive-app.mjs <fixtureDir> <engineLabel> <editChapterFile>
  */
 import { _electron as electron } from "playwright-core";
-import { existsSync, mkdtempSync, writeFileSync, readFileSync, appendFileSync, cpSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, readFileSync, appendFileSync, cpSync, rmSync } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -234,6 +234,10 @@ try {
   } else
   try {
     const outPath = join(tmpdir(), `gutterpress-appdrive-${engineLabel}-export.pdf`);
+    // The success poll below is `existsSync(outPath)`, so a leftover PDF from
+    // an earlier run would report instant success with a stale size/page
+    // count. Always start from a clean slate.
+    rmSync(outPath, { force: true });
     // Stub Electron's native save dialog so the real app UI flow (Export
     // button -> dialog -> "Export PDF") can run headlessly end to end,
     // exactly the app code path a user drives, minus the native file picker

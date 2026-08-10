@@ -3,7 +3,7 @@
 // fixture (fast open + fast export) — items 6 & 7 of the in-app measurement
 // pass. Usage: node click-and-export.pw.mjs <fixtureDir> <engineLabel>
 import { _electron as electron } from "playwright-core";
-import { existsSync, mkdtempSync, writeFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, statSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
@@ -77,6 +77,10 @@ try {
   // ── 7. export PDF via app UI ─────────────────────────────────────────
   try {
     const outPath = join(tmpdir(), `gutterpress-clickexport-${engineLabel}.pdf`);
+    // The success poll below is `existsSync(outPath)`, so a leftover PDF from
+    // an earlier run would report instant success with a stale size/page
+    // count. Always start from a clean slate.
+    rmSync(outPath, { force: true });
     await electronApp.evaluate(({ dialog }, out) => {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: out });
     }, outPath);
