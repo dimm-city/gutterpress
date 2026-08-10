@@ -1,42 +1,30 @@
 /* style-paged.css — Paged.js-only workarounds discovered while building
-   this book. Empty until a real deviation is found and recorded. */
+   this book.
 
-/* WORKAROUND: Paged.js's `leader()` is broken in this vendored build — ANY
+   WORKAROUND: Paged.js's `leader()` is broken in this vendored build — ANY
    `content` value that includes a `leader()` term renders as nothing at
-   all, not just the leader glyphs. Isolated with a minimal repro
-   (`/tmp/tc-test`): `content: leader(".") " done"` (no target-counter
-   involved) rendered NOTHING under Paged.js, while the identical rule
-   without leader() rendered fine, and `content: " [" target-counter(...)
-   "]"` (no leader) also rendered fine. So the standard, spec-correct,
-   textbook TOC pattern — `content: leader(".") target-counter(attr(href),
-   page)`, which is what style.css writes and what the native engine
-   renders correctly — silently blanks the ENTIRE pseudo-element under
-   Paged.js. Also confirmed while isolating: Paged.js resolves plain
-   `attr(href)` target-counter references fine; the `attr(href url)` form is
-   NOT required (a form seen elsewhere in this codebase, but not needed
-   here).
-   Workaround: drop `leader()` entirely and fake the dot leader with an
-   absolutely-positioned `::before` dotted border rule plus a separately
-   positioned `::after` for the page number — visually close to a real
-   leader (evenly dotted rule to a fixed right inset) but not proportional
-   text-fill like the spec primitive, and it requires `position: relative`
-   on the link, which the base style.css does not otherwise need. */
+   all, not just the leader glyphs. Verified on this fixture: deleting this
+   file from `manifest-paged.yaml` and rebuilding leaves the TOC with NO
+   page numbers whatsoever (`pdftotext -f 2 -l 2`: "Chapter One — Reading
+   the Tides Chapter Two — A Foraging Gallery", numbers absent), while the
+   identical `style.css` rule renders full dot leaders + numbers on native.
+   Also confirmed: Paged.js resolves plain `attr(href)` target-counter
+   references fine; the `attr(href url)` form is NOT required.
+
+   Workaround: drop `leader()` and fake the dot leader with a plain dotted
+   `border-bottom` on a block-level link, plus an absolutely positioned
+   `::after` for the page number. Visually close but not equivalent — a real
+   `leader()` starts AFTER the link text; this rule also underlines the text
+   itself, and does not proportionally fill to a tab stop. */
 .toc a {
+  display: block;
   position: relative;
-  display: inline-block;
-  width: 100%;
-}
-.toc a::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 1.6em;
-  bottom: 0.2em;
   border-bottom: 1pt dotted var(--color-muted);
 }
 .toc a::after {
   content: target-counter(attr(href), page);
   position: absolute;
   right: 0;
+  background: white;
   color: var(--color-muted);
 }
