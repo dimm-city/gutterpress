@@ -43,11 +43,11 @@ function newestSourceMtime(dir) {
   return newest;
 }
 
-export async function buildEngineBundles(force = false) {
+export async function buildEngineBundles(force = false, outDir = OUT_DIR) {
   const srcMtime = newestSourceMtime(ENGINE_SRC);
   const built = [];
   for (const target of TARGETS) {
-    const outPath = join(OUT_DIR, target.outName);
+    const outPath = join(outDir, target.outName);
     if (!force) {
       try {
         if (statSync(outPath).mtimeMs >= srcMtime) continue;
@@ -60,7 +60,7 @@ export async function buildEngineBundles(force = false) {
       target: "browser",
       format: "iife",
       minify: target.minify,
-      outdir: OUT_DIR,
+      outdir: outDir,
       naming: target.outName,
     });
     if (!result.success) {

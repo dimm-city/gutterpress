@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync, statSync, readdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { readFileSync, statSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { buildEngineBundles } from "../../../scripts/build-engine-bundles.mjs";
 
 // `gutterpress-viewer.js` / `gutterpress-agent.js` are GENERATED from
 // src/engine (see scripts/build-engine-bundles.mjs) and committed, because
@@ -33,19 +35,51 @@ function newestSourceMtime(dir: string): { ms: number; file: string } {
 }
 
 describe("committed engine bundles", () => {
-  test.each(BUNDLES)("%s is newer than every engine source file", (name) => {
-    const bundle = join(import.meta.dir, name);
-    const newest = newestSourceMtime(ENGINE_SRC);
-    const bundleMs = statSync(bundle).mtimeMs;
-    if (bundleMs < newest.ms) {
-      throw new Error(
-        `${name} is older than ${newest.file.replace(PKG_ROOT, "")} — the engine ` +
-          `source changed but the committed bundle was not refreshed, so the CLI ` +
-          `still runs the OLD engine. Run: bun scripts/build-engine-bundles.mjs`,
-      );
+  // The real invariant: the committed bundle equals what the source produces
+  // right now. Rebuild into a scratch dir and byte-compare — this holds up
+  // on a fresh clone, where `git checkout` rewrites every file's mtime in
+  // arbitrary order and makes an mtime comparison meaningless.
+  test("committed bundles match a fresh build from src/engine", async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "gutterpress-engine-bundle-"));
+    try {
+      await buildEngineBundles(true, scratch);
+      for (const name of BUNDLES) {
+        const committed = readFileSync(join(import.meta.dir, name), "utf8");
+        const fresh = readFileSync(join(scratch, name), "utf8");
+        if (committed !== fresh) {
+          throw new Error(
+            `${name} does not match a fresh build from src/engine — the engine ` +
+              `source changed but the committed bundle was not refreshed, so the CLI ` +
+              `still runs the OLD engine. Run: bun scripts/build-engine-bundles.mjs --force`,
+          );
+        }
+        expect(committed).toBe(fresh);
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
     }
-    expect(bundleMs).toBeGreaterThanOrEqual(newest.ms);
   });
+
+  // Local-only developer aid: catches a forgotten rebuild fast, without
+  // waiting for CI. Skipped in CI because `git checkout` on a fresh clone
+  // rewrites mtimes in arbitrary order, making this comparison meaningless
+  // there — the content check above is the real invariant everywhere.
+  test.skipIf(!!process.env.CI).each(BUNDLES)(
+    "%s is newer than every engine source file (local only)",
+    (name) => {
+      const bundle = join(import.meta.dir, name);
+      const newest = newestSourceMtime(ENGINE_SRC);
+      const bundleMs = statSync(bundle).mtimeMs;
+      if (bundleMs < newest.ms) {
+        throw new Error(
+          `${name} is older than ${newest.file.replace(PKG_ROOT, "")} — the engine ` +
+            `source changed but the committed bundle was not refreshed, so the CLI ` +
+            `still runs the OLD engine. Run: bun scripts/build-engine-bundles.mjs`,
+        );
+      }
+      expect(bundleMs).toBeGreaterThanOrEqual(newest.ms);
+    },
+  );
 
   // A content check the mtime rule can't make: git checkout / a fresh clone
   // rewrites mtimes wholesale, so mtime alone can pass on a bundle that is
