@@ -841,6 +841,19 @@ export default function plugin(md, pluginOptions = {}) {
  *                   `@page gp-full-bleed`).
  */
 export const PAGED_CSS = `
+/* The UA default of 8px body margin is a screen affordance with no meaning
+   in paged media, and the two engines disagree about it: Paged.js's polisher
+   drops it (the body is not the page box there), native print keeps it. Left
+   in place it insets EVERY native page's content by 8px per side relative to
+   the paged leg, and -- measured, 300dpi, 6x4in sheet -- it is what stops
+   .full-bleed below from reaching the paper: the art lands at 0.080..5.917in
+   of a 6in sheet instead of 0.000..6.000in, because width:100% resolves
+   against the BODY content box, not the page's. Zeroing it here (first in
+   the cascade -- assemble.ts puts author CSS last) makes the two engines
+   agree and makes .full-bleed actually bleed on a book that has not written
+   its own reset. Authors who want a body margin still just declare one. */
+body { margin: 0; }
+
 .md-page-break { break-before: page; }
 .page { break-before: page; }
 .spread { break-before: page; }

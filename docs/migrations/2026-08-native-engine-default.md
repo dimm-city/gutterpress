@@ -81,7 +81,27 @@ each one). The full field-notes list, with the reasoning and fixes, is
   pre-existing `--pagedjs-margin-*` out-dent (kept for the Paged.js leg).
   Native honours the named page (content box = sheet, so nothing has to
   out-dent — no shrink-to-fit trigger); Paged.js ignores the named page and
-  keeps using the out-dent, so its output is unchanged. If your book already
+  keeps using the out-dent, so its output is unchanged.
+
+  **`PAGED_CSS` also zeroes the body margin now (2026-08-09 review pass),
+  and that part is not `.full-bleed`-specific.** The named page alone was
+  not enough: `width: 100%` resolves against the BODY box, and the UA
+  default `body { margin: 8px }` survives native print (Paged.js's polisher
+  drops it), so on a book with no body reset of its own the art stopped 8px
+  short of each edge. MEASURED at 300dpi on a real `--engine native` build,
+  6×4in sheet, 0.75in margins, no author body rule: ink on the bleed page
+  spanned **0.080–5.917in** before, **0.000–6.000in** after. The same reset
+  also removes an 8px-per-side inset that native was applying to EVERY page
+  of such a book relative to the paged leg (the non-bleed page's text run
+  moved from 0.840–2.920in to 0.757–2.837in, exactly matching paged).
+  `PAGED_CSS` is injected before author CSS (`assemble.ts`), so a book that
+  wants a body margin still just declares one. Page counts re-measured
+  after the reset: `/tmp/fbtest/book` 2pp, field-guide 34pp, design-guide
+  53pp — all unchanged; the Paged.js leg is unchanged too (it already had
+  no body margin). Regression-tested in
+  `packages/cli/src/lib/markdown/paged-css-full-bleed.test.ts`.
+
+  If your book already
   had the workaround below in its own CSS, it's now redundant (harmless —
   same values) and can be removed:
 

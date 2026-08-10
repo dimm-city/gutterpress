@@ -248,6 +248,33 @@ accepted by the product owner.
   Suites: CLI `bun test` 2345 pass / 1 skip / 0 fail; desktop `npm test`
   2424 pass / 0 fail; `bun scripts/native-parity-gate.ts` with an empty
   `KNOWN_DIVERGENCES`: 5/5 fixtures, 0 divergences, gate PASSES.
+  **08-09 REVIEW PASS — the measurement above was real but its fixture
+  carried `body { margin: 0 }`, and that turned out to be load-bearing.**
+  Re-measured on a fixture WITHOUT it (which is what a default book is):
+  the bleed page's ink spanned **0.080–5.917in of a 6in sheet**, not
+  0.000–6.000in — an 8px-per-side white frame, confirmed visually on the
+  300dpi raster. Root-caused, not guessed: `width: 100%` resolves against
+  the BODY box, and the UA default `body { margin: 8px }` survives native
+  print while Paged.js's polisher drops it; re-adding `body { margin: 0 }`
+  to the same fixture took it to exactly 0.000–6.000in. Fixed in core —
+  `PAGED_CSS` now zeroes the body margin (first in the cascade, so authors
+  still override it). After the fix, on the no-reset fixture: bleed page
+  0.000–6.000in (native) and 0.000–6.000in (paged), and the non-bleed
+  page's text run moved from 0.840–2.920in to 0.757–2.837in, now exactly
+  matching paged — the reset also removed an 8px-per-side inset native had
+  been applying to every page of such a book. Paged.js leg re-measured with
+  and without the named-page assignment: 2pp, page-2 ink 0.000–6.000in,
+  page-1 ink 0.757–2.837in in BOTH — the "Paged.js output is unchanged"
+  claim holds. Page counts after the reset: `/tmp/fbtest/book` 2pp,
+  field-guide 34pp, design-guide 53pp — unchanged. Regression test with a
+  proven negative control (deleting the rule fails it with `8px`):
+  `packages/cli/src/lib/markdown/paged-css-full-bleed.test.ts`.
+  Independently re-verified in the same review pass: design-guide 53pp base
+  → 54pp old-behavior → 55pp fixed (reproduced exactly), the width-guard in
+  BOTH states (with the `gp-full-bleed` exclusion the over-wide fixture
+  errors at `div.toowide — 528px > 432px content box`; with the exclusion
+  removed the identical build succeeds silently), and the running-head/folio
+  trim-line gap, seen on design-guide's rendered bleed page.
   Known, documented gap (not fixed): on the bleed page, native's running
   head/folio move onto the trim line (margin boxes are positioned by the
   page's own now-zero margins). Not addressed in core — see

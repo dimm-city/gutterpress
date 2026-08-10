@@ -231,6 +231,15 @@ fixture — but only when the thing being kept-with can actually be placed:
   The named-page mechanism sidesteps this entirely: the content box IS the
   sheet, so nothing has to out-dent past it.
 
+  The named page is necessary but was not sufficient on its own: `width:
+  100%` resolves against the BODY box, and the UA's default `body { margin:
+  8px }` survives native print (Paged.js's polisher drops it). `PAGED_CSS`
+  therefore also ships `body { margin: 0 }`. MEASURED at 300dpi on a real
+  `--engine native` build (6×4in sheet, 0.75in margins, no author body
+  rule): the art spanned 0.080–5.917in before the reset and 0.000–6.000in
+  after. The reset is first in the cascade (`assemble.ts` puts author CSS
+  last), so declaring your own `body` margin still wins.
+
   **Known gap, not fixed in core:** on the bleed page, the running head/folio
   move onto the trim line under native (margin boxes are positioned by the
   page's own margins, which `gp-full-bleed` zeroes). If you need to keep
