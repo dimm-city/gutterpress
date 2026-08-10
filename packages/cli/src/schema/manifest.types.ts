@@ -70,12 +70,13 @@ export interface GutterpressManifest {
   /** How the book is designed (ADR 0008). The registry in lib/presets.ts is authoritative. */
   preset?: "dtrpg" | "book" | "custom";
   /**
-   * Pagination engine (MIGRATION.md Decision #5): "paged" (default) is the
-   * shipped Chromium+Paged.js pipeline; "native" routes both `gutterpress
-   * build` and `gutterpress preview` through the Gutterpress engine
-   * (`src/engine/`) — native Chromium pagination, no Paged.js polyfill.
-   * Preview and PDF always use the SAME engine for a given project — never
-   * independently. `--engine` on the CLI overrides this per invocation.
+   * Pagination engine (MIGRATION.md Decision #5): "native" (default) routes
+   * both `gutterpress build` and `gutterpress preview` through the
+   * Gutterpress engine (`src/engine/`) — native Chromium pagination, no
+   * Paged.js polyfill. "paged" is the deprecated Chromium+Paged.js pipeline,
+   * kept for compatibility. Preview and PDF always use the SAME engine for a
+   * given project — never independently. `--engine` on the CLI overrides
+   * this per invocation.
    */
   engine?: "paged" | "native";
   /**
@@ -193,7 +194,7 @@ export interface ResolvedConfig {
   title: string;
   authors: string[];
   /**
-   * Resolved pagination engine (cli > manifest > default "paged"). See
+   * Resolved pagination engine (cli > manifest > default "native"). See
    * {@link GutterpressManifest.engine}.
    */
   engine: "paged" | "native";

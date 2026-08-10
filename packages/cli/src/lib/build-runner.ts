@@ -90,9 +90,9 @@ export interface BuildRunnerOptions {
   rawArgs: Record<string, unknown>;
   /**
    * CLI `--engine` override, fed into {@link resolveConfig} as the top of the
-   * cli > manifest > default("paged") cascade (MIGRATION.md Decision #5).
+   * cli > manifest > default("native") cascade (MIGRATION.md Decision #5).
    * `undefined` means "no CLI override" — the manifest's `engine:` field (or
-   * "paged") decides. The actually-resolved engine for this build lives on
+   * "native") decides. The actually-resolved engine for this build lives on
    * `BuildContext.config.engine`, NOT this field — read that downstream, not
    * `opts.engine`. "native" routes both the assembled HTML (no Paged.js
    * polyfill tag) and the PDF render (via `./engine.ts`'s `buildNativePdf`)

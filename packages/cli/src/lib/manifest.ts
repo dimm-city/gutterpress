@@ -325,10 +325,19 @@ function resolveWithPreset(
 
   // Pagination engine (MIGRATION.md Decision #5 — preview and PDF switch
   // together, per project, behind one flag): cli > manifest > default
-  // "paged". Both `build` and `preview` read this one resolved value.
-  const engine = c.engine ?? m.engine ?? "paged";
+  // "native" (parity ruled proven 2026-08-08; see
+  // docs/native-engine-acceptance-gate.md). Both `build` and `preview` read
+  // this one resolved value. `paged` remains fully supported and selectable.
+  const engine = c.engine ?? m.engine ?? "native";
   if (engine !== "paged" && engine !== "native") {
     throw new UsageError(`Unknown engine "${String(engine)}". Expected: paged | native`);
+  }
+  if (engine === "paged") {
+    warnOnce(
+      "engine-paged-deprecated",
+      "[gutterpress] engine: \"paged\" is deprecated and will be removed. " +
+        "See docs/migrations/2026-08-native-engine-default.md to switch to native."
+    );
   }
 
   // Resolve plugins from CLI overrides or manifest. A plugin entry with

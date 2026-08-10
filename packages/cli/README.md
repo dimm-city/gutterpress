@@ -184,7 +184,7 @@ gutterpress preview [input-dir] [options]
   --skip-lint             Skip CSS linting                              (pdf|pdfx only)
   --skip-pre-validate     Skip pre-build validation                     (pdf|pdfx only)
   --skip-post-validate    Skip post-build PDF/X validation              (pdfx only)
-  --engine <name>         paged (default) | native   [overrides the manifest's engine: field; applies to the live preview AND --format pdf|pdfx]
+  --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; applies to the live preview AND --format pdf|pdfx]
 ```
 
 ### `gutterpress build`
@@ -204,7 +204,7 @@ gutterpress build [input-dir] [options]
   --skip-lint             Skip the CSS print-safety pass (default: lint runs for pdf/pdfx)
   --skip-pre-validate     Skip pre-build validation
   --skip-post-validate    Skip post-build PDF/X validation
-  --engine <name>         paged (default) | native   [overrides the manifest's engine: field; native = the Gutterpress engine, native Chromium pagination]
+  --engine <name>         native (default) | paged (deprecated)   [overrides the manifest's engine: field; native = the Gutterpress engine, native Chromium pagination]
 ```
 
 ### `gutterpress publish`

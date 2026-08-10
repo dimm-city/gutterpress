@@ -27,7 +27,7 @@ const commandArgs = {
   "skip-lint": { type: "boolean", description: "Skip CSS linting (default: lint runs for pdf/pdfx)" },
   "skip-pre-validate": { type: "boolean", description: "Skip pre-build validation" },
   "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation" },
-  engine: { type: "string", description: "Pagination engine: paged (default) | native — the Gutterpress engine, native Chromium pagination. Overrides the manifest's `engine:` field for this build." },
+  engine: { type: "string", description: "Pagination engine: native (default) | paged (deprecated) — native is the Gutterpress engine, native Chromium pagination. Overrides the manifest's `engine:` field for this build." },
 } as const;
 
 export default defineCommand({

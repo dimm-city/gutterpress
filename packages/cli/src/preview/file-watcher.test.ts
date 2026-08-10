@@ -207,7 +207,10 @@ describe('generateAndWriteHtml', () => {
     const content = await renderChapterPreviewHtml(
       testDir,
       'chapter-02.md',
-      resolveConfig({ title: 'Test' }, {}),
+      // engine: paged — this test asserts the paged polyfill is injected,
+      // so it needs the paged engine explicitly now that native is the
+      // resolveConfig default.
+      resolveConfig({ title: 'Test', engine: 'paged' }, {}),
     );
 
     expect(content).toContain('Chapter 2');

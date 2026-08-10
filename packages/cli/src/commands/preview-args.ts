@@ -20,5 +20,5 @@ export const previewArgs = {
   "skip-lint": { type: "boolean", description: "Skip CSS linting (pdf|pdfx only)" },
   "skip-pre-validate": { type: "boolean", description: "Skip pre-build validation (pdf|pdfx only)" },
   "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation (pdfx only)" },
-  engine: { type: "string", description: "Pagination engine: paged (default) | native — the Gutterpress engine, native Chromium pagination. Overrides the manifest's `engine:` field; applies to both the live preview and --format pdf|pdfx." },
+  engine: { type: "string", description: "Pagination engine: native (default) | paged (deprecated) — native is the Gutterpress engine, native Chromium pagination. Overrides the manifest's `engine:` field; applies to both the live preview and --format pdf|pdfx." },
 } as const;

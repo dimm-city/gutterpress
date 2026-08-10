@@ -233,10 +233,10 @@ preset: book
 ```
 
 #### `engine` (string)
-Pagination engine. `"paged"` (default) is the shipped Chromium+Paged.js pipeline; `"native"` routes both `gutterpress build` and `gutterpress preview` through the Gutterpress engine — native Chromium pagination, no Paged.js polyfill. Preview and PDF always use the same engine for a given project (they switch together, never independently). The CLI `--engine` flag overrides this per invocation for either command.
+Pagination engine. `"native"` (default) routes both `gutterpress build` and `gutterpress preview` through the Gutterpress engine — native Chromium pagination, no Paged.js polyfill. `"paged"` is the deprecated Chromium+Paged.js pipeline, kept for compatibility (see [`docs/migrations/2026-08-native-engine-default.md`](./migrations/2026-08-native-engine-default.md)). Preview and PDF always use the same engine for a given project (they switch together, never independently). The CLI `--engine` flag overrides this per invocation for either command.
 
 ```yaml
-engine: native
+engine: paged
 ```
 
 #### `engineStyles` (object)

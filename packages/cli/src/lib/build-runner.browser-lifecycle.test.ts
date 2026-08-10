@@ -125,7 +125,15 @@ test("runBuild closes the browser exactly once on a successful build, even when 
   const dir = await mkdtemp(join(tmpdir(), "gutterpress-browser-ok-in-"));
   const outDir = await mkdtemp(join(tmpdir(), "gutterpress-browser-ok-out-"));
   try {
-    await writeFile(join(dir, "manifest.yaml"), "title: Browser Lifecycle\n", "utf-8");
+    // engine: paged — an injected renderer only skips the Chromium
+    // preflight/pool under paged; a native build ignores the injected
+    // renderer and paginates in the pool regardless (see the "prewarms the
+    // pool for a native build even with an injected pdfRenderer" test below).
+    await writeFile(
+      join(dir, "manifest.yaml"),
+      "title: Browser Lifecycle\nengine: paged\n",
+      "utf-8"
+    );
     await writeFile(join(dir, "chapter-01.md"), "# Hello\n", "utf-8");
 
     const result = await runBuild({

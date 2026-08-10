@@ -607,6 +607,9 @@ describe('/__chapter route', () => {
     await writeFile(join(projectDir, 'chapter2.md'), '# Other Chapter');
 
     const state = makeState(projectDir);
+    // This test asserts the paged polyfill is injected, so it needs the
+    // paged engine explicitly now that native is the resolveConfig default.
+    state.config.engine = 'paged';
     server = await createPreviewServer(state, port);
 
     const res = await fetch(

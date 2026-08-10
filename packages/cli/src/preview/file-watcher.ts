@@ -109,7 +109,7 @@ async function renderPreviewBook(
 /**
  * Rewrite rendered book HTML for the live preview.
  *
- * `engine: "paged"` (default) injects, in order, replacing the polyfill
+ * `engine: "paged"` (deprecated) injects, in order, replacing the polyfill
  * marker slot `assembleBookHtml` emits:
  *   1. preview-interface.js — defines window.previewAPI for in-iframe controls
  *   2. preview-bridge.js    — postMessage bridge for cross-origin toolbar (desktop)
