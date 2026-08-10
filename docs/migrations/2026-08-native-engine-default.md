@@ -21,6 +21,16 @@ different. Read on before you build.
 `--engine paged` / `--engine native` on the CLI still override the manifest
 for a single invocation, same as before.
 
+**`--format html` changes too.** The engine choice is baked into the exported
+`book.html`: the paged leg ships the Paged.js polyfill `<script>` and its
+runtime stylesheet, the native leg ships neither (the Gutterpress engine never
+loads a client-side polyfill). Measured on a book with no `engine:` key: the
+exported `book.html` goes from 329 `paged`-matching occurrences to 4 (a
+`/* markdown-it-paged */` comment and three `--pagedjs-margin-*` references
+in the `.full-bleed` rule — see the `.full-bleed` bullet below). If you
+post-process or self-host `book.html` and
+depended on the polyfill being present, set `engine: paged` explicitly.
+
 ## How to switch back
 
 Add this to `manifest.yaml` if you need to stay on Paged.js for now:
@@ -64,6 +74,24 @@ each one). The full field-notes list, with the reasoning and fixes, is
   whole-document shrink-to-fit is driven by an image's *intrinsic* pixel
   width when nothing else bounds it; `max-width: 100%` alone does not stop
   this).
+- **`.full-bleed` does NOT bleed on the native engine — this one is a real
+  gap, not a deliberate divergence.** Core's `.full-bleed` rule
+  (`markdown-it-paged.js`'s `PAGED_CSS`) cancels the page's side margins by
+  reading `--pagedjs-margin-left` / `--pagedjs-margin-right`, custom
+  properties that only the Paged.js polyfill sets. The native engine never
+  sets them, so the `var(…, 0px)` fallbacks apply and the element is simply
+  `width: 100%` of the content box. Measured on a 6×4in book with
+  `margin: 0.75in` and a `.full-bleed` image: paged prints it edge-to-edge
+  across the full sheet width; native prints it inset by 0.75in on both
+  sides. **Workaround until core is fixed:** give the element its own named
+  page and zero that page's side margins — standard CSS that works on both
+  engines:
+
+  ```css
+  .full-bleed { page: gp-full-bleed; }
+  @page gp-full-bleed { margin-left: 0; margin-right: 0; }
+  ```
+
 - **A named-page (`page:`) transition forces a page break, per spec.**
   Paged.js does not reliably do this. If a book used a `page:` change to
   apply margin overrides on the SAME page as preceding content (relying on
@@ -92,8 +120,8 @@ each one). The full field-notes list, with the reasoning and fixes, is
 
 - Crop marks, bleed, PDF/X output, and imposition are unchanged — these are
   permanent print-production tooling regardless of engine.
-- HTML/web export (`--format html`) behavior is unaffected by this default
-  flip; it already followed the manifest's `engine:` value.
+- Manifest keys themselves: nothing was renamed or removed. Only the value
+  `engine:` resolves to when you leave it out has changed.
 - Live preview hot-reload: native's plain full reload is measured faster
   than Paged.js's incremental splice on real books (see the C.13 rows in
   `docs/native-engine-acceptance-gate.md`), so switching should not make
