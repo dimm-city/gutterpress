@@ -280,6 +280,19 @@ export function decorate(
     buildMaps();
     fillXrefs();
 
+    // Cross-run spread composition. Strip offsets are consecutive, so parity
+    // interlocks: a run whose first page is a RECTO (wrapShift = 1) always
+    // follows a run whose last page was a solo VERSO sitting in the LEFT
+    // slot of its final row (proof: offsets B = A.offset + A.pages; B even
+    // forces A.pages-1+A.shift even in both A-parity cases). The recto run's
+    // leading spacer keeps its first row right-slot-only, so pulling the run
+    // UP by one row makes the two boxes overlap without the slots ever
+    // colliding — the verso and recto compose one visual spread. This is
+    // placement arithmetic on boxes we already position; content and sheets
+    // stay in the same box, and pagination is untouched.
+    let prevRowStride = 0;
+    let first = true;
+
     for (const strip of layout.strips) {
       const run = ensureRun(strip);
       const stride = strideOf(strip.el);
@@ -339,6 +352,21 @@ export function decorate(
       const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
       run.style.height = `${rowStride * rows}px`;
       run.style.width = `${stride * perRow}px`;
+
+      // A recto-starting wrapped run overlaps the previous run's last row
+      // (see the parity proof above). The sibling margins collapse:
+      // prev's bottom margin (sheet-gap G) + this negative top margin
+      // -(prevRowStride + G) collapse to -prevRowStride, landing this run's
+      // first row exactly on the previous run's last-row top. The very
+      // first run keeps the solo-cover convention.
+      const sheetGap =
+        parseFloat(getComputedStyle(run).getPropertyValue("--folio-sheet-gap")) || 0;
+      run.style.marginTop =
+        strip.wrapCols && shift === 1 && !first
+          ? `${-(prevRowStride + sheetGap)}px`
+          : "";
+      prevRowStride = rowStride;
+      first = false;
 
       if (opts.designer) checkOverflow(strip, warnings);
     }

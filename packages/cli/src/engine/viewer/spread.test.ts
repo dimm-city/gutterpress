@@ -214,6 +214,22 @@ testIf(
         });
         expect(badRows).toEqual([]);
         expect(report.rows[0]!.sheets).toEqual([{ page: 1, side: "recto" }]);
+
+        // CROSS-RUN COMPOSITION: a recto-starting run overlaps the previous
+        // run's solo-verso row (decorate.ts's parity-proof margin pull), so
+        // consecutive verso|recto pairs compose ACROSS run boundaries too.
+        // The only legitimate solo rows are page 1 (the cover convention)
+        // and, when the book ends on a verso, the final page. Anything else
+        // solo means the overlap regressed and "spread view" is stacking
+        // single pages again — the defect that made the first cross-run
+        // implementation unacceptable (17 of 35 rows solo on the design
+        // guide).
+        const soloPages = report.rows
+          .filter((row) => row.sheets.length === 1)
+          .map((row) => row.sheets[0]!.page);
+        const allowedSolos = new Set([1]);
+        if (report.totalPages % 2 === 0) allowedSolos.add(report.totalPages);
+        expect(soloPages.filter((p) => !allowedSolos.has(p))).toEqual([]);
       } finally {
         await close();
       }

@@ -1664,6 +1664,8 @@ body.view-spread .folio-sheet[data-side="verso"] {
       blankPages = new Set(layout.blankPageIndices);
       buildMaps();
       fillXrefs();
+      let prevRowStride = 0;
+      let first = true;
       for (const strip of layout.strips) {
         const run = ensureRun(strip);
         const stride = strideOf(strip.el);
@@ -1701,6 +1703,10 @@ body.view-spread .folio-sheet[data-side="verso"] {
         const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
         run.style.height = `${rowStride * rows}px`;
         run.style.width = `${stride * perRow}px`;
+        const sheetGap = parseFloat(getComputedStyle(run).getPropertyValue("--folio-sheet-gap")) || 0;
+        run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevRowStride + sheetGap)}px` : "";
+        prevRowStride = rowStride;
+        first = false;
         if (opts.designer)
           checkOverflow(strip, warnings);
       }
