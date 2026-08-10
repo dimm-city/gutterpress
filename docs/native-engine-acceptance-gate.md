@@ -185,9 +185,74 @@ accepted by the product owner.
    REMAINING WORK, honestly scoped: strips are per named-page RUN and each run wraps into its own grid, so spread pairing cannot cross a run boundary. Measured: field-guide 5 runs (2 odd-length, 1 verso-starting); design-guide 18 runs (**15 odd, 9 verso-starting**) because every chapter opener is its own 1-page run. Within-run spread is shippable now; correct cross-run pairing needs zero-height `break-after: column` padding plus offset bookkeeping in `measure()`/`decorate()` (~30–50 lines of off-by-one-prone index work — exactly what the parity gate exists to catch). Do not announce "spread view" until cross-run pairing lands, since on an opener-heavy book that is most of the book. Published `book.html` runs in the READER's browser, so the mode must be `CSS.supports('column-wrap','wrap')`-gated with a single-row fallback (Firefox: positive position, unshipped; Safari: silent).
    NOTE FOR THE CONSTITUTION: the relaxation of "tooling code need not be standards-replaceable" turned out NOT to be needed here — the capability arrived as a real, shipped standard. "It never chunks the DOM" stands, now on measured merit rather than principle.
 
-5. **Core's `.full-bleed` primitive does not bleed under native** (found 08-09, WP-C review pass — NEW, and now the DEFAULT experience). `markdown-it-paged.js`'s `PAGED_CSS` implements `.full-bleed` as `width: calc(100% + var(--pagedjs-margin-left, 0px) + var(--pagedjs-margin-right, 0px))` plus matching negative margins. Those custom properties are set only by the Paged.js polyfill (`pagedjs/src/polisher/base.js`); the native engine never sets them, so both fallbacks resolve to `0px` and the element renders as plain `width: 100%` of the content box. MEASURED: a 6×4in book, `@page { margin: 0.75in }`, one `.full-bleed` image and no other CSS — built both legs and rasterized at 80dpi: the paged leg paints the plate edge-to-edge across the full 6in sheet; the native leg paints it inset by 0.75in on both sides. (The `/tmp/fbtest/book` fixture masks this because its own CSS adds `page: gp-full-bleed` + `@page gp-full-bleed { margin-left/right: 0 }` — that named-page pair IS the standard-CSS workaround, and it is what makes the fbtest full-bleed correct on native.) Verdict `<`: this is a CORE authoring primitive (CLAUDE.md §0 — fix the general layer, not the book), and the defect is in Gutterpress's own CSS depending on Paged.js internals, not in a book's CSS. NOT fixed in the review pass: the obvious fix (emit `page: gp-full-bleed` from `.full-bleed` and ship a default `@page gp-full-bleed` rule) forces a page break and changes pagination for every existing book on BOTH legs — an owner-level call, not a review-pass edit. Documented for authors with the workaround in `docs/migrations/2026-08-native-engine-default.md`.
+~~5. **Core's `.full-bleed` primitive does not bleed under native**~~ — FIXED
+   2026-08-09 (Work Package A), moved to Closed below.
 
 ### Closed since last iteration
+
+- **Core's `.full-bleed` primitive does not bleed under native** — FIXED
+  2026-08-09 (Work Package A). `PAGED_CSS`'s `.full-bleed` now carries
+  `page: gp-full-bleed` plus a core-owned `@page gp-full-bleed { margin-left:
+  0; margin-right: 0; }`, alongside the pre-existing `--pagedjs-margin-*`
+  out-dent (kept, not deleted, so the Paged.js leg is byte-identical). Native
+  honours the named page (content box = sheet, so `width: 100%` bleeds and
+  nothing out-dents, so no shrink-to-fit trigger); Paged.js ignores the named
+  page (unsupported) and keeps using the out-dent — the two mechanisms
+  coexist without conflict. MEASURED (minimal fixture, 6×4in sheet, 0.75in
+  margins, `body { margin: 0 }`, no book-level workaround CSS): ink extent on
+  the bleed page at 300dpi — native 0.00–5.99in, paged 0.00–5.99in on a 6in
+  sheet (both reach the edges; the fixture's own margin dimensions of the
+  6in canvas round to 5.99 not 6.00 due to a 1px sampling threshold, not a
+  gap). Text-run width probe on the SAME build (a fixed line of text on the
+  non-bleed page): 2.0767in on both legs — identical, confirming no
+  shrink-to-fit fired. Page counts unchanged on `/tmp/fbtest/book` (2pp
+  native / 1pp paged — pre-existing Paged.js named-page bug, unrelated to
+  this fix, already classified above), field-guide (34pp), and design-guide
+  AS SHIPPED (53pp) — none of the three real books use core's `.full-bleed`
+  class, so none move.
+  **Correction to the original fix plan's "free" framing:** adding an
+  ACTUAL `.full-bleed` image mid-chapter to a real book (design-guide +
+  one synthetic image in `02-palette.md`) does change pagination: 53pp base
+  → 54pp with the OLD (non-bleeding) `.full-bleed` → **55pp** with the fix,
+  a genuine +1 page versus the old behavior, reproduced whether or not the
+  image was styled to fill the page's full height. Rendered and looked at
+  both: under the old CSS the (non-bleeding, inset) image and the next
+  heading shared one page; under the fix the image gets its own page and
+  the next heading is forced to a fresh page — this is the CSS
+  Fragmentation spec's mandatory forced break when a box's used `page`
+  value changes (here: image on `gp-full-bleed` → next content back on
+  `auto`), not a bug. The "adds only a break-after, which is free on an
+  already-full art page" claim does not hold in general — it is free only
+  when the following content already had nowhere else to go on that sheet,
+  which was not true in this test. Net effect: turning on true bleed for an
+  existing `.full-bleed` image is a genuine, correct, +1-page repagination
+  for that book, not a no-op — authors should expect this when adopting the
+  fix on a book that already uses `.full-bleed`.
+  Guard proven, not assumed: `findWidthOffenders()`'s per-context
+  `Math.max` now excludes `gp-full-bleed` by name
+  (`packages/cli/src/engine/compiler/build.ts`), so the shrink-to-fit
+  hard-error limit stays pinned to the real content box (432px on the
+  6×4in/0.75in fixture) instead of rising to the full sheet (576px) for
+  every book. Reproduced both states on a fixture with a deliberately
+  5.5in-wide div on that 6in/0.75in-margin book: with the exclusion, build
+  **errors** — `div.overwide — 528px > 432px content box`; with the
+  exclusion reverted (guard code temporarily stashed, CSS fix kept), the
+  SAME build **succeeds silently** — exactly the project-wide masking bug
+  the companion fix exists to prevent.
+  Viewer agrees with print: mounted the preview, measured `img.full-bleed`'s
+  `getBoundingClientRect()` against its containing `.folio-strip` — width
+  576px vs strip width 576px, left/right edges coincide exactly (0 gap).
+  The viewer needed no special-casing: `fragment.ts` already reads named-page
+  geometry through the same shared `resolvePage`/`extract` used by the
+  compiler, so `gp-full-bleed` is handled generically.
+  Suites: CLI `bun test` 2345 pass / 1 skip / 0 fail; desktop `npm test`
+  2424 pass / 0 fail; `bun scripts/native-parity-gate.ts` with an empty
+  `KNOWN_DIVERGENCES`: 5/5 fixtures, 0 divergences, gate PASSES.
+  Known, documented gap (not fixed): on the bleed page, native's running
+  head/folio move onto the trim line (margin boxes are positioned by the
+  page's own now-zero margins). Not addressed in core — see
+  `docs/native-engine-styling-guide.md` §9 for the one-line author
+  suppression on `@page gp-full-bleed`.
 
 - **Image XObject count** — re-measured on the real 302pp book. The originally-reported "3,067 vs 579" gap is a placement-count artifact, not duplicated bitmap data: grouping by object id gives 347 (native) vs 293 (paged) UNIQUE image objects, and summing each object's own bytes gives 149.9 MB vs 148.0 MB (+1.3%) of actual embedded image data — full PDF 167.5 MB vs 162.1 MB (+3.3%). (The unique-object counts and PDF sizes were re-measured and reproduce exactly; the byte figures originally recorded here as 36.8/35.3 MB did not reproduce and are corrected above.) The brick-tile XObject is confirmed SHARED (one object id, 43, placed 598 times) not re-encoded. Verdict corrected from `<` to `=`; the elevated row count is inherent to native's per-page margin-box painting model (16 boxes × 302 pages each need their own `Do` reference) versus Paged.js's continuous-canvas compositing, and has no meaningful file-size cost.
 - **Preview page navigation saturation (C.15)** — fixed. `detectVisiblePage()` now handles the native 2-D chapter-row layout (max-overlap-area, falling back to nearest-point); `Gutterpress.goto()`/`currentPage()`'s 0-based/1-based mismatch fixed too. Regression-tested (`packages/cli/src/preview/nav-native.test.ts`).

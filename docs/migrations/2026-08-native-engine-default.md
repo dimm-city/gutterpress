@@ -74,22 +74,44 @@ each one). The full field-notes list, with the reasoning and fixes, is
   whole-document shrink-to-fit is driven by an image's *intrinsic* pixel
   width when nothing else bounds it; `max-width: 100%` alone does not stop
   this).
-- **`.full-bleed` does NOT bleed on the native engine — this one is a real
-  gap, not a deliberate divergence.** Core's `.full-bleed` rule
-  (`markdown-it-paged.js`'s `PAGED_CSS`) cancels the page's side margins by
-  reading `--pagedjs-margin-left` / `--pagedjs-margin-right`, custom
-  properties that only the Paged.js polyfill sets. The native engine never
-  sets them, so the `var(…, 0px)` fallbacks apply and the element is simply
-  `width: 100%` of the content box. Measured on a 6×4in book with
-  `margin: 0.75in` and a `.full-bleed` image: paged prints it edge-to-edge
-  across the full sheet width; native prints it inset by 0.75in on both
-  sides. **Workaround until core is fixed:** give the element its own named
-  page and zero that page's side margins — standard CSS that works on both
-  engines:
+- **`.full-bleed` now bleeds on the native engine too (fixed 2026-08-09).**
+  Core's `.full-bleed` rule (`markdown-it-paged.js`'s `PAGED_CSS`) now
+  carries `page: gp-full-bleed` plus a core-owned
+  `@page gp-full-bleed { margin-left: 0; margin-right: 0; }`, alongside the
+  pre-existing `--pagedjs-margin-*` out-dent (kept for the Paged.js leg).
+  Native honours the named page (content box = sheet, so nothing has to
+  out-dent — no shrink-to-fit trigger); Paged.js ignores the named page and
+  keeps using the out-dent, so its output is unchanged. If your book already
+  had the workaround below in its own CSS, it's now redundant (harmless —
+  same values) and can be removed:
 
   ```css
+  /* no longer needed — core does this now */
   .full-bleed { page: gp-full-bleed; }
   @page gp-full-bleed { margin-left: 0; margin-right: 0; }
+  ```
+
+  **This can change your page count.** Turning on true bleed for an image
+  that does not already fill its page forces the CSS-spec-mandated break
+  AFTER the image too (its used `page` reverts to `auto` for whatever
+  follows), pushing that following content to a fresh sheet instead of
+  sharing the (previously non-bleeding) image's page. Measured: adding one
+  `.full-bleed` image mid-chapter to a 53-page book went from 54pp (old,
+  non-bleeding behavior) to 55pp (fixed, bleeding behavior) — a genuine +1
+  page, not a no-op. If your book doesn't use `.full-bleed` at all, nothing
+  changes (measured: field-guide and design-guide, as shipped, are
+  unaffected).
+
+  **New known gap, documented not fixed:** on the bleed page, native's
+  running head/folio move onto the trim line (margin boxes are positioned
+  by the page's own now-zero margins). If you need to keep them, suppress
+  the ones that would land on the trim edge, scoped to core's named page:
+
+  ```css
+  @page gp-full-bleed {
+    @top-center { content: none; }
+    @bottom-center { content: none; }
+  }
   ```
 
 - **A named-page (`page:`) transition forces a page break, per spec.**

@@ -206,45 +206,47 @@ fixture — but only when the thing being kept-with can actually be placed:
 - The mirror trick works too: `.pagedjs_page`-scoped rules are dead selectors
   under native, so a shared sheet can carry Paged.js-only geometry by scoping
   it to the Paged.js DOM.
-- **`PAGED_CSS`'s `.full-bleed` is a Paged.js-only primitive, and cannot be
-  ported by supplying the page margins.** It out-dents by
-  `--pagedjs-margin-left/right`, which only the polyfill sets, so natively it
-  degrades to plain full-width — silently. The tempting fix (have the engine
-  emit the real margins under an engine-neutral name so the class works on
-  both legs) was implemented, measured, and REVERTED: out-denting to the
-  sheet edge shrinks the whole document, because the shrink-to-fit trigger is
-  the page CONTENT box, not the sheet (§2). Measured on Chromium 148, 6×4in
-  sheet, 0.75in margins, by the width of a fixed text run:
+- **`PAGED_CSS`'s `.full-bleed` bleeds on both engines, via two independent
+  mechanisms in the same rule.** It out-dents by
+  `--pagedjs-margin-left/right` (Paged.js-only — the polyfill sets these per
+  page from the active `@page` rule) AND assigns the element's page to a
+  core-owned named page, `@page gp-full-bleed { margin-left: 0; margin-right:
+  0; }`. Native honours the named page (the page's content box already is the
+  sheet, so `width: 100%` reaches both edges and nothing out-dents — no
+  shrink-to-fit trigger); Paged.js ignores the named page (unsupported) and
+  keeps using the out-dent. Earlier revisions of this guide (and of
+  `PAGED_CSS`) had `.full-bleed` feed the real page margins into the out-dent
+  under both engines — that was implemented, measured, and REVERTED:
+  out-denting to the sheet edge shrinks the whole document, because the
+  shrink-to-fit trigger is the page CONTENT box, not the sheet (§2). Measured
+  on Chromium 148, 6×4in sheet, 0.75in margins, by the width of a fixed text
+  run:
 
   | band | text run | result |
   |---|---|---|
   | inside the content box | 204.4pt | no shrink |
-  | out to the sheet edge (what `.full-bleed` asks for) | 182.9pt | book shrunk ~10% |
+  | out to the sheet edge (what the old `.full-bleed` produced) | 182.9pt | book shrunk ~10% |
   | past the sheet | 171.7pt | book shrunk ~16% |
 
-  Feeding it real margins therefore converts a silent no-op into a silently
-  scaled book — and trips the pre-print width check as a hard error. **The
-  only native mechanism for edge-to-edge art is a named `@page` with zero
-  side margins**, applied to the page the art sits on, so the content box
-  reaches the paper edge and nothing has to out-dent.
+  The named-page mechanism sidesteps this entirely: the content box IS the
+  sheet, so nothing has to out-dent past it.
 
-  **Do this today, per book** (measured working on Chromium 148 — the art
-  reaches both paper edges and the shrink probe stays at the clean 204.4pt):
+  **Known gap, not fixed in core:** on the bleed page, the running head/folio
+  move onto the trim line under native (margin boxes are positioned by the
+  page's own margins, which `gp-full-bleed` zeroes). If you need to keep
+  them, suppress the ones that would land on the trim edge, scoped to core's
+  named page:
 
   ```css
-  @page full-bleed-art { margin-left: 0; margin-right: 0; }
-  .full-bleed-art { page: full-bleed-art; width: 100%; max-width: none; }
+  @page gp-full-bleed {
+    @top-center { content: none; }
+    @bottom-center { content: none; }
+  }
   ```
 
-  Note this moves the whole PAGE's side margins, so its margin boxes
-  (running heads, folios) move outward with them — usually what you want on
-  an art page, but suppress them there if not.
-
-  Core cannot ship this as `.full-bleed` yet: measured, Paged.js does NOT
-  honour the named page here (the image stayed at content width, 4.5in of a
-  6in sheet) while native does, so one shared rule cannot serve both legs.
-  When Paged.js is removed, `.full-bleed` should be reimplemented exactly
-  this way and the `--pagedjs-margin-*` out-dent deleted.
+  Core does not ship this suppression itself — which margin boxes a book
+  actually uses (and whether hiding them on the art page is even wanted) is a
+  book-level design call, not a default.
 
 ## 10. Debugging workflow that actually finds things
 

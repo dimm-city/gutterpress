@@ -782,7 +782,17 @@ async function findWidthOffenders(
 }> {
   const contexts = [
     resolvePage(model),
-    ...model.pageNames.map((n) => resolvePage(model, { name: n })),
+    // Exclude core's own `gp-full-bleed` named page (markdown-it-paged.js
+    // PAGED_CSS): it's injected into EVERY document with zero side margins
+    // so `.full-bleed` art can reach the sheet edge, which would otherwise
+    // raise this Math.max to the full sheet width for every book and
+    // silently disable the shrink-to-fit hard error project-wide. The
+    // exclusion is bounded because core owns both the @page rule and the
+    // only class that targets it — an author-declared named page with
+    // zero margins still (correctly) raises the limit.
+    ...model.pageNames
+      .filter((n) => n !== "gp-full-bleed")
+      .map((n) => resolvePage(model, { name: n })),
   ];
   const maxContentPt =
     Math.max(

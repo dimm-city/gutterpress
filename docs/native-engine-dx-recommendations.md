@@ -175,7 +175,24 @@ Note `break-after: avoid`, **not** `avoid-page` — `avoid-page` does not suppre
 
 ---
 
-## 10. ~~`--gp-margin-*` so `.full-bleed` works on the native engine~~ — REJECTED ON MEASUREMENT
+## 10. ~~`--gp-margin-*` so `.full-bleed` works on the native engine~~ — REJECTED ON MEASUREMENT, SUPERSEDED (2026-08-09)
+
+> **Update 2026-08-09: shipped, by the named-page route this item already
+> called out below, not by the rejected variable-rename route.**
+> `.full-bleed` now carries `page: gp-full-bleed` plus a core-owned
+> `@page gp-full-bleed { margin-left: 0; margin-right: 0; }`, alongside the
+> existing `--pagedjs-margin-*` out-dent (kept, not deleted). Native honours
+> the named page and bleeds via the content-box-is-the-sheet mechanism
+> described below with zero shrink; Paged.js ignores the unsupported named
+> page and keeps using the out-dent, so its output is unchanged. The two
+> mechanisms don't conflict because each engine only recognizes one of them.
+> The out-dent was NOT deleted, unlike the "Paged.js-removal deliverable"
+> framing below assumed — Paged.js is still a supported `--engine paged` leg,
+> so removing its only working mechanism was out of scope; that deletion
+> remains a real Paged.js-removal cleanup. Known gap, documented not fixed:
+> the bleed page's running head/folio move onto the trim line under native
+> (margin boxes follow the page's own now-zero margins) — see
+> `docs/native-engine-styling-guide.md` §9 for the one-line author remedy.
 
 **Implemented, measured, reverted (2026-08-08).** The finding that
 `.full-bleed` silently no-ops natively is real, but the proposed fix rests on

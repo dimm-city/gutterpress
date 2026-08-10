@@ -808,17 +808,37 @@ export default function plugin(md, pluginOptions = {}) {
  *                   implemented; the custom-property fallback of 0 means it
  *                   degrades to plain full-width outside a Paged.js render.
  *
- *                   PAGED.JS ONLY, and deliberately so. Under native print,
- *                   MEASURED (Chromium 148, 6x4in sheet, 0.75in margins): a
- *                   band out-dented to the sheet edge shrinks the whole
- *                   document ~10% (text run 204.4pt -> 182.9pt), because the
+ *                   Under Paged.js this out-dent is the whole mechanism (the
+ *                   custom properties are set per-page by the polyfill from
+ *                   the active `@page` rule — see pagedjs/src/polisher/base.js).
+ *
+ *                   Under NATIVE print the out-dent is a no-op fallback
+ *                   (`--pagedjs-margin-*` are never set outside Paged.js, so
+ *                   both `calc()`s collapse to plain 100%/0 — same as
+ *                   `.full-width`) and the actual bleed comes from a second,
+ *                   independent mechanism: the rule below also assigns the
+ *                   element's page to a named `@page gp-full-bleed` with zero
+ *                   side margins, so the page's own CONTENT box is the sheet
+ *                   and `width: 100%` already reaches both edges — no
+ *                   shrink-to-fit trigger, because nothing out-dents past the
+ *                   content box. MEASURED (Chromium 148, 6x4in sheet, 0.75in
+ *                   margins): before this named page existed, feeding the
+ *                   real margins into the out-dent shrank the whole document
+ *                   ~10% (text run 204.4pt -> 182.9pt), because the
  *                   shrink-to-fit trigger is the page CONTENT box, not the
- *                   sheet. Feeding this rule the real margins therefore does
- *                   not make full-bleed work natively — it silently scales
- *                   the entire book (and trips the pre-print width check).
- *                   The only native mechanism for edge-to-edge art is a
- *                   named `@page` with zero side margins, which the author
- *                   applies to the page the art sits on.
+ *                   sheet — that failure mode is why the named page exists.
+ *                   The two mechanisms don't conflict: Paged.js ignores the
+ *                   named `@page` (unsupported) and keeps using the out-dent;
+ *                   native ignores the always-0 custom properties and uses
+ *                   the named page.
+ *
+ *                   KNOWN GAP: on the bleed page, native's running head/folio
+ *                   move onto the trim line (margin boxes are positioned by
+ *                   the page's own margins, which are now zero on this named
+ *                   page). This is not fixed in core — see
+ *                   docs/native-engine-styling-guide.md §9 for the one-line
+ *                   author remedy (`@top-center { content: none }` etc. on
+ *                   `@page gp-full-bleed`).
  */
 export const PAGED_CSS = `
 .md-page-break { break-before: page; }
@@ -836,9 +856,11 @@ export const PAGED_CSS = `
 .float-left { float: left; margin: 0 1em 1em 0; max-width: 50%; }
 .float-right { float: right; margin: 0 0 1em 1em; max-width: 50%; }
 .full-width { display: block; width: 100%; max-width: 100%; }
+@page gp-full-bleed { margin-left: 0; margin-right: 0; }
 .full-bleed {
   display: block;
   break-before: page;
+  page: gp-full-bleed;
   max-width: none;
   width: calc(100% + var(--pagedjs-margin-left, 0px) + var(--pagedjs-margin-right, 0px));
   margin-left: calc(-1 * var(--pagedjs-margin-left, 0px));
