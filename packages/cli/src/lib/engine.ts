@@ -39,7 +39,11 @@
  */
 import { writeFile } from "node:fs/promises";
 import { build, type BuildDiagnostic } from "../engine/compiler/build.ts";
-import { connectChromium, type Browser as EngineBrowser } from "../engine/shared/cdp.ts";
+import {
+  connectChromium,
+  REQUIRED_MILESTONE,
+  type Browser as EngineBrowser,
+} from "../engine/shared/cdp.ts";
 import { getBrowser } from "./browser-pool.ts";
 import { RENDER_TIMEOUT_MS } from "./pagination.ts";
 import { BuildError } from "./build-error.ts";
@@ -87,6 +91,20 @@ export async function buildNativePdf(
     const engineBrowser = getEngineBrowser
       ? await getEngineBrowser()
       : await connectChromium((await getBrowser(RENDER_TIMEOUT_MS)).wsEndpoint());
+    // The pooled path gets its milestone floor enforced inside
+    // `connectChromium`; an INJECTED browser never goes through it, so the
+    // floor would otherwise be unenforced on exactly the host that supplies
+    // its own Chromium (the desktop). Electron 42.1.0 ships 148 = the floor
+    // today, so a future Electron downgrade — or a host wiring in some other
+    // browser — must fail loudly here rather than silently paginate on an
+    // engine the compiler was never measured against.
+    if (getEngineBrowser && engineBrowser.milestone < REQUIRED_MILESTONE) {
+      await engineBrowser.close();
+      throw new Error(
+        `The Gutterpress engine requires Chromium ${REQUIRED_MILESTONE}+; ` +
+          `the host-supplied browser reports ${engineBrowser.version}.`
+      );
+    }
     try {
       result = await build({ input: htmlFile, browser: engineBrowser, ...options });
     } finally {

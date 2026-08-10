@@ -118,10 +118,10 @@ export async function preflightBuildTools(
  * `buildNativePdf`'s `connectChromium` will reuse), so this is one cold
  * start, not two.
  *
- * Desktop native-engine exports hit this every time on the current Electron
- * pin: measured 2026-08-08, Electron 42.1.0 bundles Chromium 148.0.7778.97,
- * below `REQUIRED_MILESTONE` (151) — see `.reviews/adr/0002`'s 2026-08-08
- * addendum for the decision this backs.
+ * Not reached by the desktop: it injects its own `engineBrowser` (Electron's
+ * bundled Chromium, 148 as of Electron 42.1.0 = `REQUIRED_MILESTONE`), which
+ * `runBuild` skips this check for and `buildNativePdf` milestone-checks
+ * directly instead. This is the pooled/external-Chromium path only.
  */
 export async function verifyNativeChromiumMilestone(): Promise<void> {
   let version: string;
@@ -145,8 +145,9 @@ export async function verifyNativeChromiumMilestone(): Promise<void> {
         // No doc path in this string on purpose: `.reviews/` is gitignored and
         // `docs/adr/0002` is not published either, so either pointer would send
         // a user of the shipped binary to a file that does not exist.
-        `Note: the desktop app's own bundled Chromium does not satisfy this — ` +
-        `--engine native always drives a separate, external Chromium.`,
+        `Note: this applies to the CLI's own Chromium only — the desktop app ` +
+        `renders --engine native with its own bundled browser and needs no ` +
+        `separate install.`,
       2
     );
   }
