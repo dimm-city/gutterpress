@@ -98,11 +98,11 @@ async function measure(browserName, launcher, legName, javaScriptEnabled) {
     const metrics = await page.evaluate(() => {
       const q = (s) => document.querySelectorAll(s).length;
       const se = document.scrollingElement;
-      const sheets = [...document.querySelectorAll(".folio-sheet")];
+      const sheets = [...document.querySelectorAll(".gp-sheet")];
       return {
-        folioSheets: q(".folio-sheet"),
-        folioStage: q(".folio-stage"),
-        runningHeads: q(".folio-marginbox"),
+        gpSheets: q(".gp-sheet"),
+        gpStage: q(".gp-stage"),
+        runningHeads: q(".gp-marginbox"),
         bodyText: document.body ? document.body.innerText.length : 0,
         scrollWidth: se ? se.scrollWidth : 0,
         scrollHeight: se ? se.scrollHeight : 0,

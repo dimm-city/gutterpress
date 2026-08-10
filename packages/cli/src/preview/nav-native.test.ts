@@ -2,7 +2,7 @@
  * Regression test for the native-engine preview navigation saturation bug
  * (WORK PACKAGE B item 1, docs/native-engine-acceptance-gate.md C.15).
  *
- * The native viewer lays sheets out one CHAPTER per row (`.folio-run`), each
+ * The native viewer lays sheets out one CHAPTER per row (`.gp-run`), each
  * row scrolling HORIZONTALLY when its chapter is wider than the viewport —
  * unlike Paged.js's single vertical page stack. `detectVisiblePage()` used to
  * scan by `top` only, which can't distinguish two sheets in the same row (they

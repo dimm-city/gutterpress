@@ -63,7 +63,7 @@ testIf(
           const result = await page.evaluate(() => {
             const links = Array.from(document.querySelectorAll("a")).map((a) => ({
               href: a.getAttribute("href"),
-              after: a.getAttribute("data-folio-after"),
+              after: a.getAttribute("data-gp-after"),
             }));
             return {
               links,

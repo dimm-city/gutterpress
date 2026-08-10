@@ -23,7 +23,7 @@ const scriptPath = path.resolve(
 );
 const scriptSource = readFileSync(scriptPath, "utf8");
 
-// A `.folio-sheet`, keyed by its 1-based `dataset.page` (the same value the
+// A `.gp-sheet`, keyed by its 1-based `dataset.page` (the same value the
 // real viewer's decorate.ts
 // stamps on each sheet) rather than DOM order.
 function makeSheet(page, offsetWidth = 400, offsetHeight = 600) {
@@ -40,7 +40,7 @@ function makeSheet(page, offsetWidth = 400, offsetHeight = 600) {
 
 // Loads preview-interface.js with a `script[src*="/engine/gutterpress-viewer.js"]`
 // tag present (the NATIVE_ENGINE detection signal) and a minimal
-// window.Gutterpress stub, against `.folio-sheet` fixtures instead of
+// window.Gutterpress stub, against `.gp-sheet` fixtures instead of
 // `.pagedjs_page`.
 function loadNativePreviewApi(sheets) {
   const listeners = new Map();
@@ -49,7 +49,7 @@ function loadNativePreviewApi(sheets) {
     body: { classList: { add() {}, remove() {} } },
     documentElement: { scrollTop: 0, style: { setProperty() {} } },
     querySelectorAll(selector) {
-      if (selector === ".folio-sheet") return sheets;
+      if (selector === ".gp-sheet") return sheets;
       return [];
     },
     querySelector(selector) {
@@ -157,14 +157,14 @@ function loadInterfaceWithDom(html, opts = {}) {
 }
 
 async function main() {
-  // ── Native engine navigation, driven off .folio-sheet elements +
+  // ── Native engine navigation, driven off .gp-sheet elements +
   // window.Gutterpress (Paged.js has been removed — see
   // native-only-migration-plan.md Phase 6) ────────────────────────────────────
   {
     const sheets = [makeSheet(1), makeSheet(2), makeSheet(3), makeSheet(4)];
     const { api } = loadNativePreviewApi(sheets);
     api.setViewMode("single", true);
-    assert.equal(api.getTotalPages(), 4, "native: page count comes from .folio-sheet elements");
+    assert.equal(api.getTotalPages(), 4, "native: page count comes from .gp-sheet elements");
     api.goToPage(3);
     assert.equal(api.getCurrentPage(), 3);
     assert.equal(sheets[2].scrollIntoViewCalls.length, 1, "native: goToPage scrolls the matching sheet");
@@ -180,7 +180,7 @@ async function main() {
   }
 
   {
-    // .folio-sheet insertion order need not match page order (draw() appends
+    // .gp-sheet insertion order need not match page order (draw() appends
     // per-strip); refreshPages() must sort by dataset.page, not DOM order.
     const sheets = [makeSheet(2), makeSheet(1)];
     const { api } = loadNativePreviewApi(sheets);

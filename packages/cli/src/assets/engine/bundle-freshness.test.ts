@@ -91,9 +91,9 @@ describe("committed engine bundles", () => {
     expect(agent).toContain("function parseContent");
   });
 
-  // Content check for the Phase 0 window.Gutterpress collapse (mtime alone
-  // can't catch a fresh clone where the old window.Folio/window.folio split
-  // bundle happens to still be newer than its source).
+  // Content check for the single window.Gutterpress global (mtime alone
+  // can't catch a fresh clone where a stale bundle happens to still be newer
+  // than its source).
   test("gutterpress-viewer.js exposes window.Gutterpress", () => {
     const viewer = readFileSync(join(import.meta.dir, "gutterpress-viewer.js"), "utf8");
     expect(viewer).toContain("window.Gutterpress");

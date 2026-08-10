@@ -84,7 +84,7 @@ After `</question-form>`, stop. Do not narrate next steps or begin inspection.
 - Change page geometry through the owning CSS `@page` rule. The manifest `page:`
   block records expected trim dimensions for validation; it does not resize the
   rendered page.
-- Never target engine-generated structure (`.folio-*`) or a page by ordinal. Style
+- Never target engine-generated structure (`.gp-*`) or a page by ordinal. Style
   semantic Markdown, marker classes, and stable project selectors instead.
 - Treat direct DOM tuning on the HTTP preview as temporary context, never as the durable edit.
 - Reject a book path that is absolute or escapes the imported project root.

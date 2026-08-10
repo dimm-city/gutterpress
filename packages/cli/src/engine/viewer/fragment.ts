@@ -1,7 +1,7 @@
 /**
  * Viewer core (§7): let Chromium fragment the author's content into pages on
  * screen, using multicol — the same LayoutNG block-fragmentation engine print
- * uses. Folio contributes ONE shallow wrapper per named-page run and a handful
+ * uses. Gutterpress contributes ONE shallow wrapper per named-page run and a handful
  * of CSS custom properties. It never chunks the DOM.
  */
 import VIEWER_CSS from "./viewer.css" with { type: "text" };
@@ -39,9 +39,9 @@ export interface LayoutResult {
 
 /** The viewer's own chrome, inlined into the bundle (self-contained, §3). */
 export function injectViewerCss(doc: Document = document) {
-  if (doc.getElementById("folio-viewer-css")) return;
+  if (doc.getElementById("gp-viewer-css")) return;
   const style = doc.createElement("style");
-  style.id = "folio-viewer-css";
+  style.id = "gp-viewer-css";
   style.textContent = VIEWER_CSS;
   doc.head.appendChild(style);
 }
@@ -67,7 +67,7 @@ export function collectCssText(doc: Document = document): string {
       out += owner.textContent + "\n";
       continue;
     }
-    const raw = (owner as any)?.__folioSource;
+    const raw = (owner as any)?.__gpSource;
     if (raw) out += raw + "\n";
   }
   return out;
@@ -83,11 +83,11 @@ export async function loadStyleSources(doc: Document = document): Promise<string
   );
   await Promise.all(
     links.map(async (l) => {
-      if ((l as any).__folioSource) return;
+      if ((l as any).__gpSource) return;
       try {
-        (l as any).__folioSource = await (await fetch(l.href)).text();
+        (l as any).__gpSource = await (await fetch(l.href)).text();
       } catch {
-        (l as any).__folioSource = "";
+        (l as any).__gpSource = "";
       }
     }),
   );
@@ -103,12 +103,12 @@ export function injectBreakMapping(model: GcpmModel, doc: Document = document): 
   for (const b of model.breaks) {
     if (b.prop === "break-inside") continue; // `avoid` works identically in multicol
     if (!/^(page|left|right|recto|verso|always)$/.test(b.value.trim())) continue;
-    rules.push(`.folio-strip ${b.selector} { ${b.prop}: column; }`);
+    rules.push(`.gp-strip ${b.selector} { ${b.prop}: column; }`);
   }
   const css = rules.join("\n");
   if (css) {
     const style = doc.createElement("style");
-    style.id = "folio-break-mapping";
+    style.id = "gp-break-mapping";
     style.textContent = css;
     doc.head.appendChild(style);
   }
@@ -211,7 +211,7 @@ function explodeChildren(container: Element, model: GcpmModel): Run[] {
       continue;
     }
     const kid = node as HTMLElement;
-    if (kid.classList.contains("folio-layer")) continue; // viewer chrome, not content
+    if (kid.classList.contains("gp-layer")) continue; // viewer chrome, not content
     const own = directPageName(kid, model);
     if (own !== undefined) {
       pushRun(runs, own, [...carry(), kid]);
@@ -297,19 +297,19 @@ export function buildStrips(
   for (const run of runs) {
     const { geometry } = resolvePage(model, { name: run.page });
     const strip = doc.createElement("div");
-    strip.className = "folio-strip";
+    strip.className = "gp-strip";
     if (run.page) strip.dataset.page = run.page;
     const w = pt(geometry.width - geometry.margin.left - geometry.margin.right);
     const h = pt(geometry.height - geometry.margin.top - geometry.margin.bottom);
-    strip.style.setProperty("--folio-content-w", `${w}px`);
-    strip.style.setProperty("--folio-content-h", `${h}px`);
-    strip.style.setProperty("--folio-sheet-gap", `${gap}px`);
-    strip.style.setProperty("--folio-page-w", `${pt(geometry.width)}px`);
-    strip.style.setProperty("--folio-page-h", `${pt(geometry.height)}px`);
-    strip.style.setProperty("--folio-margin-top", `${pt(geometry.margin.top)}px`);
-    strip.style.setProperty("--folio-margin-right", `${pt(geometry.margin.right)}px`);
-    strip.style.setProperty("--folio-margin-bottom", `${pt(geometry.margin.bottom)}px`);
-    strip.style.setProperty("--folio-margin-left", `${pt(geometry.margin.left)}px`);
+    strip.style.setProperty("--gp-content-w", `${w}px`);
+    strip.style.setProperty("--gp-content-h", `${h}px`);
+    strip.style.setProperty("--gp-sheet-gap", `${gap}px`);
+    strip.style.setProperty("--gp-page-w", `${pt(geometry.width)}px`);
+    strip.style.setProperty("--gp-page-h", `${pt(geometry.height)}px`);
+    strip.style.setProperty("--gp-margin-top", `${pt(geometry.margin.top)}px`);
+    strip.style.setProperty("--gp-margin-right", `${pt(geometry.margin.right)}px`);
+    strip.style.setProperty("--gp-margin-bottom", `${pt(geometry.margin.bottom)}px`);
+    strip.style.setProperty("--gp-margin-left", `${pt(geometry.margin.left)}px`);
     run.nodes[0]!.before(strip);
     for (const n of run.nodes) strip.appendChild(n);
     strips.push({ el: strip, page: run.page, geometry, pages: 0, offset: 0 });
@@ -349,7 +349,7 @@ export function compensateRepeatedHeaders(
     if (!tables.length) continue;
     for (const table of tables) {
       for (const shim of Array.from(
-        table.querySelectorAll("tr.folio-thead-shim, tr.folio-tfoot-shim"),
+        table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim"),
       ))
         shim.remove();
       table.style.breakBefore = "";
@@ -395,8 +395,8 @@ export function compensateRepeatedHeaders(
           table.querySelectorAll<HTMLTableRowElement>("tbody > tr"),
         ).filter(
           (r) =>
-            !r.classList.contains("folio-thead-shim") &&
-            !r.classList.contains("folio-tfoot-shim"),
+            !r.classList.contains("gp-thead-shim") &&
+            !r.classList.contains("gp-tfoot-shim"),
         );
         if (!rows.length) continue;
         const rects = rows.map((r) => r.getClientRects()[0] ?? r.getBoundingClientRect());
@@ -459,7 +459,7 @@ export function compensateRepeatedHeaders(
       // WRITE phase
       for (const plan of plans) {
         for (const shim of Array.from(
-          plan.table.querySelectorAll("tr.folio-thead-shim, tr.folio-tfoot-shim"),
+          plan.table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim"),
         ))
           shim.remove();
         if (plan.push && !pushed.has(plan.table)) {
@@ -473,7 +473,7 @@ export function compensateRepeatedHeaders(
           touched++;
         }
         for (const [row, height] of plan.footRows) {
-          row.before(sectionShim(plan.table.tFoot!, height, plan.cells, "folio-tfoot-shim"));
+          row.before(sectionShim(plan.table.tFoot!, height, plan.cells, "gp-tfoot-shim"));
           touched++;
         }
       }
@@ -487,7 +487,7 @@ export function compensateRepeatedHeaders(
  * header print would draw, and consumes exactly the same height.
  */
 function headerShim(head: HTMLTableSectionElement, height: number, cells: number): HTMLTableRowElement {
-  return sectionShim(head, height, cells, "folio-thead-shim");
+  return sectionShim(head, height, cells, "gp-thead-shim");
 }
 
 /** Clone of a thead/tfoot row reserving `height`, drawn where print draws it. */
@@ -503,7 +503,7 @@ function sectionShim(
   shim.style.height = `${height}px`;
   // a foot shim may be taller than the foot itself (it fills to the column
   // bottom); pin the cloned content to the bottom edge, where print draws it
-  if (className === "folio-tfoot-shim") shim.style.verticalAlign = "bottom";
+  if (className === "gp-tfoot-shim") shim.style.verticalAlign = "bottom";
   const source = section.rows[0];
   if (source) {
     for (const cell of Array.from(source.cells)) {
@@ -540,7 +540,7 @@ export function compensateRectoBreaks(
   strips: StripInfo[],
 ): number {
   const decls = model.breaks.filter(isRectoVersoBreak);
-  for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+  for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
     spacer.remove();
   if (!decls.length) return 0;
 
@@ -569,7 +569,7 @@ export function compensateRectoBreaks(
   for (const [i, site] of sites.entries()) {
     if (!plan[i]) continue;
     const spacer = document.createElement("div");
-    spacer.className = "folio-recto-spacer";
+    spacer.className = "gp-recto-spacer";
     spacer.setAttribute("aria-hidden", "true");
     spacer.style.cssText =
       "break-before: column; break-after: column; height: 0; margin: 0; padding: 0; border: 0;";
@@ -588,24 +588,24 @@ export function compensateRectoBreaks(
  * strips inside strips instead of re-partitioning the original DOM.
  *
  * `decorate.ts`'s `ensureRun()` may since have wrapped `strip.el` in a
- * `.folio-run` container (alongside a sibling `.folio-layer`) — that
+ * `.gp-run` container (alongside a sibling `.gp-layer`) — that
  * decoration chrome has to come out too, or it is left behind as an orphan
  * in the flow root and the NEXT `buildStrips()` sweeps it up as if it were
- * authored content (measured: a stale `.folio-run` left two ghost pages of
+ * authored content (measured: a stale `.gp-run` left two ghost pages of
  * decoration ahead of the real, rebuilt strip).
  */
 function unwrapStrips(strips: StripInfo[]): void {
   for (const strip of strips) {
     const stripEl = strip.el;
-    // `applySpreadMode` may have inserted a leading `.folio-wrap-spacer` —
+    // `applySpreadMode` may have inserted a leading `.gp-wrap-spacer` —
     // viewer chrome, not authored content. It has to come out same as the
-    // `.folio-run` decoration wrapper below, or it leaks into the flow root
+    // `.gp-run` decoration wrapper below, or it leaks into the flow root
     // and the NEXT `buildStrips()` sweeps it up as if an author wrote it.
-    for (const spacer of Array.from(stripEl.querySelectorAll(".folio-wrap-spacer")))
+    for (const spacer of Array.from(stripEl.querySelectorAll(".gp-wrap-spacer")))
       spacer.remove();
     const runWrapper = stripEl.parentElement;
     const removalTarget =
-      runWrapper && runWrapper.classList.contains("folio-run") ? runWrapper : stripEl;
+      runWrapper && runWrapper.classList.contains("gp-run") ? runWrapper : stripEl;
     const parent = removalTarget.parentNode;
     if (!parent) continue;
     while (stripEl.firstChild) parent.insertBefore(stripEl.firstChild, removalTarget);
@@ -623,7 +623,7 @@ export function measure(strips: StripInfo[]): LayoutResult {
     strip.pages = Math.max(1, Math.round(strip.el.scrollWidth / stride));
     strip.offset = offset;
     offset += strip.pages;
-    strip.el.style.setProperty("--folio-pages", String(strip.pages));
+    strip.el.style.setProperty("--gp-pages", String(strip.pages));
   }
   return { strips, totalPages: offset };
 }
@@ -641,9 +641,9 @@ export function strideOf(strip: HTMLElement): number {
  */
 export function stripMetrics(strip: HTMLElement): { stride: number; rowStride: number } {
   const cs = getComputedStyle(strip);
-  const w = parseFloat(cs.getPropertyValue("--folio-content-w"));
+  const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
   const colGap = parseFloat(cs.columnGap) || 0;
-  const h = parseFloat(cs.getPropertyValue("--folio-content-h"));
+  const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
   const rowGap = parseFloat(cs.rowGap) || 0;
   return { stride: w + colGap, rowStride: h + rowGap };
 }
@@ -652,15 +652,15 @@ export function stripMetrics(strip: HTMLElement): { stride: number; rowStride: n
  * Vertical pitch between wrapped rows — the EXACT mirror of `strideOf`:
  * multicol lays a wrapped row out at `column-height` + `row-gap`, exactly as
  * it lays a column out at the content width + `column-gap`. So this must read
- * the CONTENT height (`--folio-content-h`, which is what `column-height` is
+ * the CONTENT height (`--gp-content-h`, which is what `column-height` is
  * set to), not the full page height.
  *
- * Reading `--folio-page-h` here overshot by (margin-top + margin-bottom) per
+ * Reading `--gp-page-h` here overshot by (margin-top + margin-bottom) per
  * row — measured on design-guide: sheets painted at a 1260px pitch while
  * Chromium wrapped content at 1080px, so from row 1 on the sheet chrome sat
  * below the text it was supposed to frame, drifting a further 180px each row,
  * and `pageOf()` mapped 106/363 probe elements to the wrong page in spread
- * mode. `--folio-page-h` + `sheetGap` is the same number by construction
+ * mode. `--gp-page-h` + `sheetGap` is the same number by construction
  * (`row-gap` = margins + gap), but content-h + rowGap is the form that stays
  * correct if either definition changes.
  *
@@ -675,7 +675,7 @@ export function rowStrideOf(strip: HTMLElement): number {
  * Local fragment index (0-based, WITHIN this strip) of a rect, generalizing
  * the single-row case (`wrapCols` unset ⇒ `perRow` = `strip.pages`, every
  * fragment in row 0, exactly the pre-wrap formula) to a wrapped 2-column
- * grid. `wrapGeometry()`'s shift accounts for a leading `.folio-wrap-spacer` — see
+ * grid. `wrapGeometry()`'s shift accounts for a leading `.gp-wrap-spacer` — see
  * `applySpreadMode` — which occupies grid slots BEFORE this strip's own
  * first real fragment, so the grid slot a rect is found in has to be
  * un-shifted back to a real content index.
@@ -686,7 +686,7 @@ export function rowStrideOf(strip: HTMLElement): number {
  * every consumer's row/col math degrade to the single-row layout for free.
  * The shift is 1 exactly when a wrapped run's first physical page is a recto
  * (0-based `offset` even): `applySpreadMode` inserts a leading
- * `.folio-wrap-spacer` for that case, so the run's real first fragment sits
+ * `.gp-wrap-spacer` for that case, so the run's real first fragment sits
  * one grid slot in.
  */
 export function wrapGeometry(strip: StripInfo): { perRow: number; shift: number } {
@@ -738,7 +738,7 @@ export function spreadModeSupported(): boolean {
 
 /**
  * Two-up/spread view mode. Wraps each run's own multicol flow into 2-column
- * ROWS instead of one long row (`.folio-strip[data-wrap="on"]` in
+ * ROWS instead of one long row (`.gp-strip[data-wrap="on"]` in
  * viewer.css) — content genuinely moves with the columns, because they are
  * the same box; this is not the retired chrome-only two-up (`decorate.ts`'s
  * `draw()` comment). No-ops to single-row when the browser lacks the
@@ -754,7 +754,7 @@ export function spreadModeSupported(): boolean {
  * slot paints at, not which fragments the browser's own column-wrap
  * grouping puts in the same row together — that grouping is exactly what's
  * wrong here. Fixing the GROUPING needs a real, empty, zero-height
- * `.folio-wrap-spacer` occupying grid slot 0 (`break-after: column`, so it
+ * `.gp-wrap-spacer` occupying grid slot 0 (`break-after: column`, so it
  * consumes exactly one column-flow slot and nothing else) — inserted as the
  * strip's first child, AFTER `measure()` has already fixed `strip.pages`/
  * `offset`/`totalPages` for good, so it can never perturb the page count or
@@ -772,7 +772,7 @@ export function applySpreadMode(strips: StripInfo[], spread: boolean): void {
   const on = spread && spreadModeSupported();
   for (const strip of strips) {
     const el = strip.el;
-    const existingSpacer = el.querySelector(":scope > .folio-wrap-spacer");
+    const existingSpacer = el.querySelector(":scope > .gp-wrap-spacer");
     if (!on) {
       existingSpacer?.remove();
       delete el.dataset.wrap;
@@ -785,7 +785,7 @@ export function applySpreadMode(strips: StripInfo[], spread: boolean): void {
     if (shift) {
       if (!existingSpacer) {
         const spacer = document.createElement("div");
-        spacer.className = "folio-wrap-spacer";
+        spacer.className = "gp-wrap-spacer";
         spacer.setAttribute("aria-hidden", "true");
         el.insertBefore(spacer, el.firstChild);
       }
@@ -802,14 +802,14 @@ export function applySpreadMode(strips: StripInfo[], spread: boolean): void {
  * A blank spacer sits inside whichever named-page run happens to contain the
  * site it precedes (it is a DOM sibling, not a strip boundary — recto/verso
  * breaks split PAGES, not runs), but the compiler gives every blank page its
- * own isolated context (`page: folio--blank`, ENGINE.md §8 / `counterStyleCss`
+ * own isolated context (`page: gp--blank`, ENGINE.md §8 / `counterStyleCss`
  * in `build.ts`), decoupled from the surrounding run. `pageContext` in
  * `decorate.ts` needs this list to do the same, or a blank page picks up the
  * WRONG context's geometry and content — exactly the recto/verso parity class
  * of bug (`ARCHITECTURE.md` §1).
  */
 export function blankPageIndices(strips: StripInfo[]): number[] {
-  return Array.from(document.querySelectorAll(".folio-recto-spacer")).map((el) =>
+  return Array.from(document.querySelectorAll(".gp-recto-spacer")).map((el) =>
     pageOf(el, strips),
   );
 }
@@ -824,7 +824,7 @@ export function pageRangeOf(el: Element, strips: StripInfo[]): [number, number] 
   return [strip.offset + Math.min(...idx), strip.offset + Math.max(...idx)];
 }
 
-export interface FolioViewerApi {
+export interface GutterpressViewerApi {
   model: GcpmModel;
   strips: StripInfo[];
   totalPages: number;
@@ -876,7 +876,7 @@ export function waitForLayoutReady(doc: Document = document): Promise<void> {
 }
 
 /** Fragment the current document. Decoration is a separate layer (decorate.ts). */
-export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioViewerApi> {
+export async function fragmentDocument(opts: LayoutOptions = {}): Promise<GutterpressViewerApi> {
   // Kick off alongside the stylesheet fetches below so a cold cache's font/
   // image load overlaps network time instead of adding to it.
   const layoutReady = waitForLayoutReady();
@@ -885,9 +885,9 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
   // the preview renders the PRINT stylesheet: re-inject `@media print` bodies
   // as screen rules, since the browser won't apply them outside print emulation
   const printOnly = mediaPrintBodies(css).join("\n");
-  if (printOnly && !document.getElementById("folio-media-print")) {
+  if (printOnly && !document.getElementById("gp-media-print")) {
     const style = document.createElement("style");
-    style.id = "folio-media-print";
+    style.id = "gp-media-print";
     style.textContent = printOnly;
     document.head.appendChild(style);
   }
@@ -904,7 +904,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
       ? { tables: 0, passes: 0, warnings: [] }
       : compensateRepeatedHeaders(strips);
   const { totalPages } = measure(strips);
-  const api: FolioViewerApi = {
+  const api: GutterpressViewerApi = {
     model,
     strips,
     totalPages,
@@ -924,7 +924,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<FolioV
     // there is no separate "cheap" path to keep.
     relayout: () => {
       unwrapStrips(strips);
-      for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+      for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
         spacer.remove();
       const rebuilt = buildStrips(model, opts, authoring);
       strips.length = 0;

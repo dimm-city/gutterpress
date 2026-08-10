@@ -185,7 +185,7 @@ export class PreviewEventController {
       // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
       // native is the only engine. The rest of the old iframe-styles.ts sheet
       // targeted `.pagedjs_*` classes the native viewer's DOM never has (it
-      // uses `.folio-*`, styled by decorate.ts + viewer.css); the preview
+      // uses `.gp-*`, styled by decorate.ts + viewer.css); the preview
       // background is the one rule the native viewer needs injected here (it
       // is the author's preview-background setting, not engine chrome).
       client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(d.bgColor()));

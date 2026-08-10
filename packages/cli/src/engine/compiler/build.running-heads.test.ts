@@ -15,7 +15,7 @@ import { loadPdf, getTextPass } from "../../lib/pdf-inspect.ts";
 
 /**
  * Regression for the two-page running-head defect found on
- * docs/fixtures/css-authoring-spike/book: `<folio-anchor>`'s
+ * docs/fixtures/css-authoring-spike/book: `<gp-anchor>`'s
  * `position:absolute` zero-size first child, sitting immediately after a
  * forced `break-before: page`, measured ONE PAGE LATE via the PDF's named
  * destinations — page 2 (own h1 "Contents") reported page 3, colliding with

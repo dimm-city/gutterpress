@@ -126,11 +126,11 @@ function hmrClientSnippet(initialRevision: number, instanceId: string): string {
     // CRITICAL ordering: when the pagination engine is present it restructures
     // the DOM after load, so restoring the scroll anchor early would target
     // pre-pagination geometry. The Gutterpress engine viewer fires
-    // 'folio:layout' when its pagination completes — wait for it. In static
+    // 'gp:layout' when its pagination completes — wait for it. In static
     // mode (no engine) the content is final immediately, so restore right
     // after load.
     var hasEngine = !!document.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
-    window.addEventListener('folio:layout', finishInitialRender, { once: true });
+    window.addEventListener('gp:layout', finishInitialRender, { once: true });
     if (!hasEngine) {
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () { setTimeout(finishInitialRender, 50); });

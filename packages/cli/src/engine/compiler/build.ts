@@ -1,5 +1,5 @@
 /**
- * The Folio compiler (§8). Drives the SYSTEM Chromium over raw CDP and runs
+ * The Gutterpress compiler (§8). Drives the SYSTEM Chromium over raw CDP and runs
  * the three tiers:
  *
  *   Tier 1  native print — a document using only supported features is done in
@@ -44,7 +44,7 @@ import {
 import { postprocess, type PostprocessResult } from "./postprocess.ts";
 
 /** Generated page name carrying the author's `@page :blank` rules. */
-const BLANK_PAGE = "folio--blank";
+const BLANK_PAGE = "gp--blank";
 
 /**
  * Shared element-description helper for every in-page audit's evaluated JS
@@ -187,7 +187,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     await page.waitForReady();
 
     // ---- read the author's CSS (never rewrite it) -----------------------
-    const cssText = await page.evaluate<string>(`window.__folio.collectCss()`);
+    const cssText = await page.evaluate<string>(`window.__gp.collectCss()`);
     const model: GcpmModel = extract(cssText);
     const { tier3Reasons } = classify(model);
 
@@ -230,7 +230,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     let genCss = tier2.css;
     if (genCss.trim().length > 200) {
       await page.evaluate(
-        `window.__folio.addCss("folio-gen-css", ${JSON.stringify(genCss)})`,
+        `window.__gp.addCss("gp-gen-css", ${JSON.stringify(genCss)})`,
       );
       log(`tier 2: bleed/marks geometry`);
     }
@@ -325,7 +325,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       tier = 3;
       const maxPasses = opts.maxPasses ?? 4;
       const sources = await page.evaluate<any[]>(
-        `window.__folio.stringSources(${JSON.stringify(
+        `window.__gp.stringSources(${JSON.stringify(
           model.stringSets.map((s) => ({ selector: s.selector, name: s.name, value: s.value })),
         )})`,
       );
@@ -334,10 +334,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       // page numbers, inside this same fixpoint.
       const rectoSites = rectoDecls.length
         ? await page.evaluate<any[]>(
-            `window.__folio.forcedBreakSites(${JSON.stringify(rectoDecls)})`,
+            `window.__gp.forcedBreakSites(${JSON.stringify(rectoDecls)})`,
           )
         : [];
-      // The blank pages Folio inserts must be styled by the author's
+      // The blank pages Gutterpress inserts must be styled by the author's
       // `@page :blank` rules, which Chromium never matches on its own (s10).
       // Emitted LAST, in the same sheet as the running-string rewrite, and
       // through `counterStyleCss`'s shared rewrite (F1) so a restarted folio
@@ -349,14 +349,14 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         .filter((x) => needsMeasurement(x.content))
         .map((x) => x.selector);
       const sites = await page.evaluate<any[]>(
-        `window.__folio.xrefSites(${JSON.stringify(xrefSelectors)})`,
+        `window.__gp.xrefSites(${JSON.stringify(xrefSelectors)})`,
       );
       // front-matter -> body folio restart (`counter-reset: page N`, MIGRATION.md
       // gap #1): Chromium ignores the restart (ENGINE.md §8), so the elements
       // that declare it need ids too, to learn which page they land on.
       const resetSites = model.counterResets.length
         ? await page.evaluate<any[]>(
-            `window.__folio.counterResetSites(${JSON.stringify(model.counterResets)})`,
+            `window.__gp.counterResetSites(${JSON.stringify(model.counterResets)})`,
           )
         : [];
       resetSitesForResult = resetSites;
@@ -366,10 +366,10 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       for (const s of rectoSites) targets.add(s.id);
       for (const s of resetSites) targets.add(s.id);
       await page.evaluate(
-        `window.__folio.instrument(${JSON.stringify([...targets])})`,
+        `window.__gp.instrument(${JSON.stringify([...targets])})`,
       );
       const targetText = await page.evaluate<Record<string, string>>(
-        `window.__folio.targetTexts(${JSON.stringify([...targets])})`,
+        `window.__gp.targetTexts(${JSON.stringify([...targets])})`,
       );
 
       // A typo'd `href="#..."` on a cross-reference is the single most likely
@@ -417,13 +417,13 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
           const earlyBlankCss = counterStyleCss(model, [], {}, 0, [], true);
           if (earlyBlankCss) {
             await page.evaluate(
-              `window.__folio.addCss("folio-gen-strings", ${JSON.stringify(earlyBlankCss)})`,
+              `window.__gp.addCss("gp-gen-strings", ${JSON.stringify(earlyBlankCss)})`,
             );
           }
         }
         if (planned.length) {
           await page.evaluate(
-            `window.__folio.applyRectoSpacers(${JSON.stringify(planned)}, ${JSON.stringify(BLANK_PAGE)})`,
+            `window.__gp.applyRectoSpacers(${JSON.stringify(planned)}, ${JSON.stringify(BLANK_PAGE)})`,
           );
           log(`tier 3: ${planned.length} blank page(s) so forced breaks land on the right side`);
           // verify, and repair any site the plan missed (bounded)
@@ -440,7 +440,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
               else planned.push(site.id);
             }
             await page.evaluate(
-              `window.__folio.applyRectoSpacers(${JSON.stringify(planned)}, ${JSON.stringify(BLANK_PAGE)})`,
+              `window.__gp.applyRectoSpacers(${JSON.stringify(planned)}, ${JSON.stringify(BLANK_PAGE)})`,
             );
             if (attempt === 2)
               notes.push(
@@ -481,22 +481,22 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         if (generated.length) {
           const contentCss = generatedContentCss(model.xrefs.map((x) => x.selector));
           await page.evaluate(
-            `window.__folio.setGenerated(${JSON.stringify(generated)}, ${JSON.stringify(contentCss)})`,
+            `window.__gp.setGenerated(${JSON.stringify(generated)}, ${JSON.stringify(contentCss)})`,
           );
           const g = tier2.geometry;
           const contentWidthPx =
             ((g.trim.width - resolvePage(model).geometry.margin.left -
               resolvePage(model).geometry.margin.right) * 96) / 72;
-          await page.evaluate(`window.__folio.fillLeaders(${contentWidthPx})`);
+          await page.evaluate(`window.__gp.fillLeaders(${contentWidthPx})`);
         }
 
         // (b) page-granular running strings via a fixed counter-style map
-        // (the folio--blank named page is emitted through this SAME call —
+        // (the gp--blank named page is emitted through this SAME call —
         // F1 — so a restarted folio counter agrees on the inserted blanks).
         const mapCss = counterStyleCss(model, sources, map, pageCount, resetSites, hasBlankSites);
         if (mapCss) {
           await page.evaluate(
-            `window.__folio.addCss("folio-gen-strings", ${JSON.stringify(mapCss)})`,
+            `window.__gp.addCss("gp-gen-strings", ${JSON.stringify(mapCss)})`,
           );
           genCss = genCss.split("\n/* Tier 3 */")[0] + `\n/* Tier 3 */\n${mapCss}`;
         }
@@ -541,7 +541,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
         bytes = await printPdf(page);
         const facts = await inspectPdf(bytes);
         // Chromium creates a /Dest for every id ANY link in the document
-        // resolves to, not just Folio's instrumented targets — a book with
+        // resolves to, not just Gutterpress's instrumented targets — a book with
         // real in-content cross-references (`[text](#heading)`) litters
         // `facts.namedDests` with ids no synthesis step reads. Scope to
         // `targets`: that is the actual contract (id -> page for exactly the
@@ -575,7 +575,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       }
       // No de-instrumentation, no final reprint: measurement never touches an
       // author-visible attribute (elements are measured through their own ids
-      // or through injected zero-size <folio-anchor> children), so the last
+      // or through injected zero-size <gp-anchor> children), so the last
       // printed bytes ARE the output. The measured document and the shipped
       // document cannot diverge, structurally.
     }
@@ -598,7 +598,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       ) * 96) / 72;
     {
       const audit = await page.evaluate<Array<{ kind: string; what: string; detail: string }>>(
-        `window.__folio.auditContent(${contentHeightPx}, ${opts.dpiFloor ?? 300})`,
+        `window.__gp.auditContent(${contentHeightPx}, ${opts.dpiFloor ?? 300})`,
       );
       for (const w of audit) {
         if (w.kind === "overheight")
@@ -650,11 +650,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
               const id = el.id || "";
               const cls = typeof el.className === "string" ? el.className : "";
               if (
-                tag !== "FOLIO-ANCHOR" &&
-                !id.startsWith("folio-") &&
-                !id.startsWith("__folio") &&
-                !/(^|\\s)(folio-|__folio)/.test(cls) &&
-                !el.closest("#folio-instrumentation") &&
+                tag !== "GP-ANCHOR" &&
+                !id.startsWith("gp-") &&
+                !id.startsWith("__gp") &&
+                !/(^|\\s)(gp-|__gp)/.test(cls) &&
+                !el.closest("#gp-instrumentation") &&
                 cs.position === "absolute" &&
                 el.getClientRects().length !== 0 // not a display:none subtree
               ) {
@@ -914,7 +914,7 @@ interface PredictedPageMap {
  * Reuses the compiler agent's own id-assignment functions
  * (`stringSources`/`forcedBreakSites`/`xrefSites`/`counterResetSites`), in
  * the SAME order the compiler already called them in on the print page, so
- * the synthetic `folio-m-N` ids line up between the two pages (each page's
+ * the synthetic `gp-m-N` ids line up between the two pages (each page's
  * counter starts fresh at 0; same calls, same order, same document ⇒ same
  * ids) — no id needs to travel between pages. Then reuses the viewer's own
  * `fragmentDocument()` (`ARCHITECTURE.md` §1: one function, not a twin) to
@@ -947,20 +947,20 @@ async function predictPageMap(
     await page.navigate(url);
     await page.evaluate(agentScript);
     await page.waitForReady();
-    await page.evaluate(`window.__FOLIO_MANUAL__ = true;`);
+    await page.evaluate(`window.__GP_MANUAL__ = true;`);
     await page.evaluate(viewerScript);
 
     // Same calls, same order as the print page (build()'s Tier 3 setup):
     // stringSources -> forcedBreakSites -> xrefSites -> counterResetSites.
-    await page.evaluate(`window.__folio.stringSources(${JSON.stringify(args.stringSets)})`);
+    await page.evaluate(`window.__gp.stringSources(${JSON.stringify(args.stringSets)})`);
     if (args.rectoDecls.length)
       await page.evaluate(
-        `window.__folio.forcedBreakSites(${JSON.stringify(args.rectoDecls)})`,
+        `window.__gp.forcedBreakSites(${JSON.stringify(args.rectoDecls)})`,
       );
-    await page.evaluate(`window.__folio.xrefSites(${JSON.stringify(args.xrefSelectors)})`);
+    await page.evaluate(`window.__gp.xrefSites(${JSON.stringify(args.xrefSelectors)})`);
     if (args.resets.length)
       await page.evaluate(
-        `window.__folio.counterResetSites(${JSON.stringify(args.resets)})`,
+        `window.__gp.counterResetSites(${JSON.stringify(args.resets)})`,
       );
 
     const result = await page.evaluate<{
@@ -972,9 +972,9 @@ async function predictPageMap(
       for (const id of ${JSON.stringify(args.targets)}) {
         const el = document.getElementById(id);
         if (!el) continue;
-        // an id may name an injected zero-size <folio-anchor>; measure its
+        // an id may name an injected zero-size <gp-anchor>; measure its
         // host instead (same as the compiler agent's own anchorHost()).
-        const target = el.tagName === "FOLIO-ANCHOR" ? el.parentElement ?? el : el;
+        const target = el.tagName === "GP-ANCHOR" ? el.parentElement ?? el : el;
         pageMap[id] = api.pageOf(target) + 1;
       }
       return { pageMap, pageCount: api.totalPages };
@@ -993,7 +993,7 @@ async function predictPageMap(
  * `string-set`/`string()` is unimplemented in Chromium, so the value a margin
  * box should show changes page by page with nothing in CSS to express it. The
  * fix is a generated `@counter-style { system: fixed; symbols: … }` with one
- * symbol per page, consumed as `counter(page, folio-<name>)` — verified in S3.
+ * symbol per page, consumed as `counter(page, gp-<name>)` — verified in S3.
  * Rendering stays inside Chromium with the document's own fonts, and the
  * author's `@page` rules are never renamed or rewritten.
  *
@@ -1027,12 +1027,12 @@ export function counterStyleCss(
   // Front-matter -> body folio restart (`counter-reset: page N`, MIGRATION.md
   // gap #1). `pageCounterValues` fixes the NUMBER; the fixed-symbol map below
   // formats it per the `counter(page[, style])` style each context actually
-  // requests, so `folio-page--lower-roman` and `folio-page--decimal` can carry
+  // requests, so `gp-page--lower-roman` and `gp-page--decimal` can carry
   // the SAME restarted numbering with different symbols.
   const pageValues = restartedPageValues(resetSites, pageMap, pageCount);
 
   // `hasBlank` keeps this function from bailing out early when the ONLY
-  // thing it needs to emit is the `folio--blank` named page's rewritten
+  // thing it needs to emit is the `gp--blank` named page's rewritten
   // content (F1): a document with no running strings/restart still needs
   // its inserted blanks routed through the same rewrite as everything else.
   if (!consumed.size && !pageValues && !hasBlank) return "";
@@ -1067,7 +1067,7 @@ export function counterStyleCss(
   // author actually uses, keyed by style so front matter's `lower-roman` and
   // the body's plain decimal both replay the SAME restarted number sequence.
   const pageCounterStyles = new Map<string, string[]>();
-  const pageCounterStyleName = (style: string) => `folio-page--${style}`;
+  const pageCounterStyleName = (style: string) => `gp-page--${style}`;
 
   const rewrite = (content: string): string =>
     parseContent(content)
@@ -1114,8 +1114,8 @@ export function counterStyleCss(
     }
   }
 
-  // The blank spacer pages Folio inserts for forced recto/verso breaks are
-  // assigned `page: folio--blank` (s10: Chromium never matches the native
+  // The blank spacer pages Gutterpress inserts for forced recto/verso breaks are
+  // assigned `page: gp--blank` (s10: Chromium never matches the native
   // `:blank` pseudo against our own synthetic breaks), so the author's
   // `@page :blank` content has to be re-emitted under that name — through
   // the SAME `rewrite` used above, not a verbatim copy (F1: a verbatim copy

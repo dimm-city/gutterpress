@@ -15,7 +15,7 @@
 > default is at markdown-it-paged.js:790 (the body below says 786 —
 > off-by-four, same rule); the `.full-bleed` `--pagedjs-margin-*` 0px
 > fallback, the xref `targets` folding at build.ts:249, the width-check
-> left-edge skip at build.ts:594, and the viewer's `.folio-strip > *
+> left-edge skip at build.ts:594, and the viewer's `.gp-strip > *
 > { break-inside: auto }` counter-rule all check out as described.
 > Companion doc: `docs/native-engine-styling-guide.md` (the measured gotchas
 > these recommendations address).
@@ -92,7 +92,7 @@ Verified against source before ranking: `Emulation.setEmulatedMedia` appears **n
 
 **Kills:** §3 for the cases #2 cannot reach (raw HTML, nested wrappers, and — after #2 — anything whose offsets resolve outside the current fragment).
 
-**Mechanism:** a third, independent pass (not an extension of pass 2, which is replaced-element intrinsics). Five lines, not an ancestor walk: `getComputedStyle(el).position === "absolute" && (el.offsetParent === null || el.offsetParent === document.body)`. Exclusions are mandatory: engine-injected DOM (`#folio-instrumentation`, viewer `.folio-layer`/decorate chrome are abspos by design) and `display:none` subtrees. Non-blocking warning, same `desc()` selector string the width passes use. **`position: absolute` only** — `fixed` has no containing-block story worth explaining; if it warrants anything it is a flat "don't use fixed in print" line, not this check.
+**Mechanism:** a third, independent pass (not an extension of pass 2, which is replaced-element intrinsics). Five lines, not an ancestor walk: `getComputedStyle(el).position === "absolute" && (el.offsetParent === null || el.offsetParent === document.body)`. Exclusions are mandatory: engine-injected DOM (`#gp-instrumentation`, viewer `.gp-layer`/decorate chrome are abspos by design) and `display:none` subtrees. Non-blocking warning, same `desc()` selector string the width passes use. **`position: absolute` only** — `fixed` has no containing-block story worth explaining; if it warrants anything it is a flat "don't use fixed in print" line, not this check.
 
 **Message states the mechanism, not a predicted page.** "positions against the whole document, not the page it appears on in your markdown" — the compiler does not know where an unfragmented abspos box paints, so do not print "page 300 of 300".
 

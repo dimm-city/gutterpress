@@ -306,10 +306,10 @@
     if (el.id)
       return el.id;
     const existing = el.firstElementChild;
-    if (existing?.tagName === "FOLIO-ANCHOR" && existing.id)
+    if (existing?.tagName === "GP-ANCHOR" && existing.id)
       return existing.id;
-    const anchor = document.createElement("folio-anchor");
-    anchor.id = `folio-m-${++uid}`;
+    const anchor = document.createElement("gp-anchor");
+    anchor.id = `gp-m-${++uid}`;
     anchor.setAttribute("style", "display:inline");
     el.insertBefore(anchor, el.firstChild);
     return anchor.id;
@@ -318,7 +318,7 @@
     const el = document.getElementById(id);
     if (!el)
       return null;
-    return el.tagName === "FOLIO-ANCHOR" ? el.parentElement : el;
+    return el.tagName === "GP-ANCHOR" ? el.parentElement : el;
   }
   async function collectCss() {
     let out = "";
@@ -400,7 +400,7 @@
     return out;
   }
   function applyRectoSpacers(ids, pageName) {
-    for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+    for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
       spacer.remove();
     let inserted = 0;
     for (const id of ids) {
@@ -408,7 +408,7 @@
       if (!el)
         continue;
       const spacer = document.createElement("div");
-      spacer.className = "folio-recto-spacer";
+      spacer.className = "gp-recto-spacer";
       spacer.setAttribute("aria-hidden", "true");
       spacer.style.cssText = `break-before: page; break-after: page; height: 0; margin: 0; padding: 0; border: 0; page: ${pageName};`;
       el.before(spacer);
@@ -471,10 +471,10 @@
     return out;
   }
   function instrument(ids) {
-    let host = document.getElementById("folio-instrumentation");
+    let host = document.getElementById("gp-instrumentation");
     if (!host) {
       host = document.createElement("div");
-      host.id = "folio-instrumentation";
+      host.id = "gp-instrumentation";
       host.style.display = "none";
       document.body.appendChild(host);
     }
@@ -498,7 +498,7 @@
   }
   function fillLeaders(contentWidthPx) {
     const marked = [];
-    for (const attr of ["data-folio-after", "data-folio-before"]) {
+    for (const attr of ["data-gp-after", "data-gp-before"]) {
       for (const el of Array.from(document.querySelectorAll(`[${attr}]`))) {
         const raw = el.getAttribute(attr) ?? "";
         if (LEADER_RE.test(raw))
@@ -539,9 +539,9 @@
     for (const e of entries) {
       const el = anchorHost(e.id);
       if (el)
-        el.setAttribute(`data-folio-${e.where}`, e.text);
+        el.setAttribute(`data-gp-${e.where}`, e.text);
     }
-    addCss("folio-generated-content", css);
+    addCss("gp-generated-content", css);
     return entries.length;
   }
   var api = {
@@ -559,5 +559,5 @@
     setGenerated
   };
   if (typeof window !== "undefined")
-    window.__folio = api;
+    window.__gp = api;
 })();

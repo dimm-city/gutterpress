@@ -33,7 +33,7 @@ const source = readFileSync(scriptPath, "utf8");
 // Wrap `inner` in the page-boundary element the native viewer uses. `n` is
 // the page's 1-based book position, matching what decorate.ts stamps.
 function pageWrap(engine, n, inner) {
-  return `<div class="folio-sheet" data-page="${n}">${inner}</div>`;
+  return `<div class="gp-sheet" data-page="${n}">${inner}</div>`;
 }
 
 // Two chapters that DELIBERATELY share the same source-line numbers (1, 4, 9) —
@@ -70,12 +70,12 @@ function setup(markup, engine = "paged") {
   if (engine === "native") {
     document.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
     // Book-wide (0-based) page index of an element, from its enclosing
-    // .folio-sheet's dataset.page — the fixture's stand-in for the real
+    // .gp-sheet's dataset.page — the fixture's stand-in for the real
     // viewer's fragmentainer-position math (engine/viewer/fragment.ts's
     // pageOf()), which happy-dom can't lay out to measure.
     window.Gutterpress = {
       pageOf(el) {
-        const sheet = el && el.closest ? el.closest(".folio-sheet") : null;
+        const sheet = el && el.closest ? el.closest(".gp-sheet") : null;
         return sheet ? parseInt(sheet.getAttribute("data-page"), 10) - 1 : -1;
       },
     };
@@ -97,7 +97,7 @@ function setup(markup, engine = "paged") {
       height: 40,
     });
   });
-  const pageSelector = engine === "native" ? ".folio-sheet" : ".pagedjs_page";
+  const pageSelector = engine === "native" ? ".gp-sheet" : ".pagedjs_page";
   const pages = [...document.querySelectorAll(pageSelector)];
   pages.forEach((el, i) => {
     el.getBoundingClientRect = () => ({

@@ -267,28 +267,28 @@ describe("css emission helpers", () => {
   });
 
   test("counter-style names are stable and collision-free", () => {
-    expect(counterStyleName("chapter-title", "first")).toBe("folio-chapter-title");
-    expect(counterStyleName("chapter-title", "last")).toBe("folio-chapter-title--last");
+    expect(counterStyleName("chapter-title", "first")).toBe("gp-chapter-title");
+    expect(counterStyleName("chapter-title", "last")).toBe("gp-chapter-title--last");
   });
 });
 
 describe("generatedContentCss — out-specifying the author (Chrome 151 regression)", () => {
   test("reuses the author's selector so the override always wins", () => {
     const css = generatedContentCss(["a.xref::after"]);
-    expect(css).toContain("a.xref[data-folio-after]::after { content: attr(data-folio-after); }");
+    expect(css).toContain("a.xref[data-gp-after]::after { content: attr(data-gp-after); }");
   });
 
   test("handles selector lists, :before, and single-colon pseudos", () => {
     const css = generatedContentCss(["a.x::after, a.y::after", "p.note:before"]);
-    expect(css).toContain("a.x[data-folio-after]::after");
-    expect(css).toContain("a.y[data-folio-after]::after");
-    expect(css).toContain("p.note[data-folio-before]:before");
+    expect(css).toContain("a.x[data-gp-after]::after");
+    expect(css).toContain("a.y[data-gp-after]::after");
+    expect(css).toContain("p.note[data-gp-before]:before");
   });
 
   test("always keeps the bare fallback rules", () => {
     const css = generatedContentCss([]);
-    expect(css).toContain("[data-folio-after]::after { content: attr(data-folio-after); }");
-    expect(css).toContain("[data-folio-before]::before { content: attr(data-folio-before); }");
+    expect(css).toContain("[data-gp-after]::after { content: attr(data-gp-after); }");
+    expect(css).toContain("[data-gp-before]::before { content: attr(data-gp-before); }");
   });
 
   test("ignores selectors with no ::after/::before to target", () => {

@@ -24,14 +24,14 @@ const body = book.locator("body");
 await body.waitFor({ state: "attached", timeout: 60_000 });
 await Promise.race([
   book.locator(".pagedjs_page").first().waitFor({ state: "visible", timeout: 60_000 }).catch(()=>{}),
-  book.locator(".folio-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(()=>{}),
+  book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(()=>{}),
 ]);
 const shot = async () => {
   await body.evaluate((el) => el.ownerDocument.defaultView.previewAPI.goToPage(1));
   await sleep(900);
   return body.evaluate((el) => {
     const doc = el.ownerDocument;
-    const sheets = [...doc.querySelectorAll(".folio-sheet, .pagedjs_page")].slice(0, 8)
+    const sheets = [...doc.querySelectorAll(".gp-sheet, .pagedjs_page")].slice(0, 8)
       .map((n) => { const r = n.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top) }; });
     const rows = {};
     for (const s of sheets) (rows[s.top] ||= new Set()).add(s.left);

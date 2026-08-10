@@ -163,7 +163,7 @@ try {
   await step("1. app launches, project opens, preview paginates", async () => {
     await page.locator(".toc-item").first().waitFor({ state: "visible", timeout: 120_000 });
     await book.locator("body").waitFor({ state: "attached", timeout: 30_000 });
-    await book.locator(".folio-sheet").first().waitFor({ state: "visible", timeout: 60_000 });
+    await book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 });
     const chapterAttr = await book.locator("[data-chapter-src]").first().getAttribute("data-chapter-src");
     if (chapterAttr !== "01-chapter.md") {
       throw new Error(`expected chapter 01-chapter.md open, got ${chapterAttr}`);
@@ -171,7 +171,7 @@ try {
   });
 
   const targetPara = book.locator("p", { hasText: "target paragraph for right click testing" });
-  const marginBox = book.locator('.folio-marginbox[data-box="top-center"]');
+  const marginBox = book.locator('.gp-marginbox[data-box="top-center"]');
 
   async function boxOf(locator) {
     // Defensive: the fixture's chapter is long enough that later steps'

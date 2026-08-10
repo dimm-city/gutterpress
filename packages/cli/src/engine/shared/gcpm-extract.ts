@@ -1,5 +1,5 @@
 /**
- * `gcpm-extract` (§9) — the ONLY piece of Folio that reads CSS, and it never
+ * `gcpm-extract` (§9) — the ONLY piece of Gutterpress that reads CSS, and it never
  * rewrites the author's files.
  *
  * Scope is deliberately narrow: `@page` blocks (incl. margin at-rules and the

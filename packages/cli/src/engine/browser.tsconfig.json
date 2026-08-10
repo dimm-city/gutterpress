@@ -1,7 +1,7 @@
 {
   // Isolated typecheck program for the Gutterpress engine's browser-side
-  // sources: the viewer (bundled to `folio.js`) and the compiler agent
-  // (bundled to `folio-agent.js`) — see scripts/build-engine-bundles.mjs.
+  // sources: the viewer (bundled to `gutterpress-viewer.js`) and the compiler agent
+  // (bundled to `gutterpress-agent.js`) — see scripts/build-engine-bundles.mjs.
   // These run inside the page being paginated, never inside packages/cli's
   // own Node process, and are never imported by any Node-side TS file (the
   // compiler calls them only as prebuilt bundle TEXT via embedded-assets.ts).

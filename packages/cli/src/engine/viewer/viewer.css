@@ -1,17 +1,17 @@
-/* Folio viewer chrome. The author's content CSS is untouched; everything here
-   is scoped to Folio's own wrappers/layers. */
+/* Gutterpress viewer chrome. The author's content CSS is untouched; everything here
+   is scoped to Gutterpress's own wrappers/layers. */
 
 /* The stage backdrop is viewer chrome and must stay chrome: this rule (0-1-0)
    deliberately outranks an author's `body { background: … }` (0-0-1). An
    author's canvas background is not lost — `decorate()` reads it before this
    class is applied and replays it on every sheet, which is where print puts
    it (see `captureCanvasBackground`). */
-.folio-stage {
-  --folio-sheet-bg: #fff;
-  --folio-stage-bg: #4a4a52;
-  --folio-guide: #e5484d;
-  --folio-safe: #30a46c;
-  background: var(--folio-stage-bg);
+.gp-stage {
+  --gp-sheet-bg: #fff;
+  --gp-stage-bg: #4a4a52;
+  --gp-guide: #e5484d;
+  --gp-safe: #30a46c;
+  background: var(--gp-stage-bg);
   margin: 0;
   padding: 32px;
   overflow: auto;
@@ -37,7 +37,7 @@
    rows (chapters) stack vertically with no equivalent "page" unit to snap to.
    Declared on the viewport's real scroll container (:root), scoped by :has()
    so it can only ever apply to a document the viewer itself owns. */
-:root:has(> body.folio-stage) {
+:root:has(> body.gp-stage) {
   scroll-snap-type: x proximity;
 }
 
@@ -51,27 +51,27 @@
    `measure()` — reflects the true extent). `overflow: hidden` here would
    clip every column past the first from painting while leaving
    getClientRects()/scrollWidth (and so pageOf()) unaffected, so pages 2+ of
-   a run would measure correctly but render blank — the `.folio-run` wrapper
+   a run would measure correctly but render blank — the `.gp-run` wrapper
    below is already sized to the run's full width and owns the actual
    clipping/visibility, so the strip does not need to. */
-.folio-strip {
+.gp-strip {
   position: relative;
-  width: var(--folio-content-w);
-  height: var(--folio-content-h);
-  column-width: var(--folio-content-w);
+  width: var(--gp-content-w);
+  height: var(--gp-content-h);
+  column-width: var(--gp-content-w);
   column-gap: calc(
-    var(--folio-margin-right) + var(--folio-margin-left) + var(--folio-sheet-gap)
+    var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
   );
   column-fill: auto;
   overflow: visible;
-  margin: 0 0 var(--folio-sheet-gap);
+  margin: 0 0 var(--gp-sheet-gap);
   /* strip sits inside the first sheet's content box */
-  transform: translate(var(--folio-margin-left), var(--folio-margin-top));
+  transform: translate(var(--gp-margin-left), var(--gp-margin-top));
 }
 
 /* Sheets/margin boxes are painted behind/around the strip by the decoration
    layer; the strip itself must stay transparent so they show through. */
-.folio-strip > * {
+.gp-strip > * {
   break-inside: auto;
 }
 
@@ -79,7 +79,7 @@
    run's multicol columns into 2-column ROWS instead of one long row, using
    CSS Multicol L2's `column-wrap: wrap` + `column-height` (shipped unflagged
    Chrome/Edge 145+ — CSS.supports-gated in JS, so this selector only ever
-   matches on a browser that has it; the base `.folio-strip` rules above are
+   matches on a browser that has it; the base `.gp-strip` rules above are
    the single-row fallback everywhere else). `row-gap` mirrors `column-gap`
    above: content box height + top/bottom margins + the visual sheet gap, so
    consecutive wrapped rows are spaced exactly one page-pitch apart, matching
@@ -87,16 +87,16 @@
    row. Width reserves exactly two columns so a lone page (a strip with only
    one fragment) still gets its correct left/right slot, with nothing
    inserted to fill the other. */
-.folio-strip[data-wrap="on"] {
+.gp-strip[data-wrap="on"] {
   column-wrap: wrap;
-  column-height: var(--folio-content-h);
+  column-height: var(--gp-content-h);
   column-count: 2;
   row-gap: calc(
-    var(--folio-margin-top) + var(--folio-margin-bottom) + var(--folio-sheet-gap)
+    var(--gp-margin-top) + var(--gp-margin-bottom) + var(--gp-sheet-gap)
   );
   width: calc(
-    var(--folio-content-w) * 2 + var(--folio-margin-right) + var(--folio-margin-left) +
-      var(--folio-sheet-gap)
+    var(--gp-content-w) * 2 + var(--gp-margin-right) + var(--gp-margin-left) +
+      var(--gp-sheet-gap)
   );
 }
 
@@ -109,7 +109,7 @@
    the run's real content one slot later so it lands correctly — see its
    doc comment for why a same-box CSS-only mirror (e.g. `direction: rtl`)
    cannot fix this (it changes placement, not grouping). */
-.folio-wrap-spacer {
+.gp-wrap-spacer {
   break-after: column;
   height: 0;
   margin: 0;
@@ -117,23 +117,23 @@
   border: 0;
 }
 
-.folio-run {
+.gp-run {
   position: relative;
-  margin: 0 0 var(--folio-sheet-gap);
+  margin: 0 0 var(--gp-sheet-gap);
 }
 
-.folio-layer {
+.gp-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.folio-sheet {
+.gp-sheet {
   position: absolute;
   top: 0;
-  width: var(--folio-page-w);
-  height: var(--folio-page-h);
-  background: var(--folio-sheet-bg);
+  width: var(--gp-page-w);
+  height: var(--gp-page-h);
+  background: var(--gp-sheet-bg);
   box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
   scroll-snap-align: start;
 }
@@ -147,16 +147,16 @@
    sheets, so a manual scroll settles with a recto+verso PAIR in view
    together, never split across a snap point. Keyed off `data-side` (written
    by decorate.ts from the sheet's own 1-based book page number), NOT
-   `nth-child(odd)`: a `.folio-layer`'s first sheet is NOT always a recto —
+   `nth-child(odd)`: a `.gp-layer`'s first sheet is NOT always a recto —
    measured on the 34pp field guide, the layers start at pages 1, 3, 5, 7 and
    **14** (a verso), so nth-child parity would snap that 20-page run on its
    VERSO pages, splitting exactly the pairs this is meant to keep together. */
-body.view-two-column .folio-sheet[data-side="verso"],
-body.view-spread .folio-sheet[data-side="verso"] {
+body.view-two-column .gp-sheet[data-side="verso"],
+body.view-spread .gp-sheet[data-side="verso"] {
   scroll-snap-align: none;
 }
 
-.folio-marginbox {
+.gp-marginbox {
   position: absolute;
   display: flex;
   align-items: center;
@@ -166,34 +166,34 @@ body.view-spread .folio-sheet[data-side="verso"] {
   color: inherit;
 }
 
-.folio-marginbox[data-align="start"] { justify-content: flex-start; }
-.folio-marginbox[data-align="center"] { justify-content: center; }
-.folio-marginbox[data-align="end"] { justify-content: flex-end; }
+.gp-marginbox[data-align="start"] { justify-content: flex-start; }
+.gp-marginbox[data-align="center"] { justify-content: center; }
+.gp-marginbox[data-align="end"] { justify-content: flex-end; }
 
 /* designer mode ------------------------------------------------------- */
-.folio-guide-trim,
-.folio-guide-safe,
-.folio-crop-mark {
+.gp-guide-trim,
+.gp-guide-safe,
+.gp-crop-mark {
   position: absolute;
   pointer-events: none;
   display: none;
 }
 
-.folio-stage[data-designer="on"] .folio-guide-trim,
-.folio-stage[data-designer="on"] .folio-guide-safe,
-.folio-stage[data-designer="on"] .folio-crop-mark {
+.gp-stage[data-designer="on"] .gp-guide-trim,
+.gp-stage[data-designer="on"] .gp-guide-safe,
+.gp-stage[data-designer="on"] .gp-crop-mark {
   display: block;
 }
 
-.folio-guide-trim { outline: 1px dashed var(--folio-guide); }
-.folio-guide-safe { outline: 1px dashed var(--folio-safe); }
-.folio-crop-mark { background: var(--folio-guide); }
+.gp-guide-trim { outline: 1px dashed var(--gp-guide); }
+.gp-guide-safe { outline: 1px dashed var(--gp-safe); }
+.gp-crop-mark { background: var(--gp-guide); }
 
-.folio-warning {
+.gp-warning {
   position: absolute;
   right: 4px;
   top: 4px;
-  background: var(--folio-guide);
+  background: var(--gp-guide);
   color: #fff;
   font: 600 10px/1.4 ui-sans-serif, system-ui, sans-serif;
   padding: 2px 6px;
@@ -204,20 +204,20 @@ body.view-spread .folio-sheet[data-side="verso"] {
    plus decorations — the PDF, shipped alongside book.html, is the print
    artifact. This is a minimal reset, not a print layout. */
 @media print {
-  .folio-stage {
+  .gp-stage {
     background: none;
     padding: 0;
     overflow: visible;
     zoom: 1;
   }
-  .folio-layer,
-  .folio-warning,
-  .folio-guide-trim,
-  .folio-guide-safe,
-  .folio-crop-mark {
+  .gp-layer,
+  .gp-warning,
+  .gp-guide-trim,
+  .gp-guide-safe,
+  .gp-crop-mark {
     display: none !important;
   }
-  .folio-sheet {
+  .gp-sheet {
     box-shadow: none;
   }
 }

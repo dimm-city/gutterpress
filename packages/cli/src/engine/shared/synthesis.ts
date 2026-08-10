@@ -136,7 +136,7 @@ export function cssQuote(s: string): string {
 
 /** Stable generated counter-style name for a (string name, which) pair. */
 export function counterStyleName(name: string, which: StringWhich): string {
-  return which === "first" ? `folio-${name}` : `folio-${name}--${which}`;
+  return which === "first" ? `gp-${name}` : `gp-${name}--${which}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,22 +250,22 @@ export function leaderFillCount(gapPx: number, gluePx: number): number {
 // ---------------------------------------------------------------------------
 
 /**
- * CSS that makes Folio's computed text win over the author's own rule.
+ * CSS that makes Gutterpress's computed text win over the author's own rule.
  *
- * Folio resolves `target-counter()` / `target-text()` / `leader()` into a
- * `data-folio-after|before` attribute and renders it with `content: attr(…)`.
+ * Gutterpress resolves `target-counter()` / `target-text()` / `leader()` into a
+ * `data-gp-after|before` attribute and renders it with `content: attr(…)`.
  *
  * The pinned engine PARSES `target-counter()` (and `CSS.supports()` reports it
  * as supported) but computes the whole `content` value to `none` — nothing
  * renders. So the author's declaration SURVIVES the cascade, and
- * `a.xref::after` (0,1,1) outranks a bare `[data-folio-after]::after` (0,1,0):
+ * `a.xref::after` (0,1,1) outranks a bare `[data-gp-after]::after` (0,1,0):
  * a lower-specificity override loses to the author's empty value and the
  * cross-reference silently disappears.
  *
  * The fix is to out-specify the author on their own terms: reuse their selector
- * and add Folio's attribute to it, so the override is strictly more specific
+ * and add Gutterpress's attribute to it, so the override is strictly more specific
  * than the rule it must beat, whatever that rule looks like. The bare rules are
- * kept as a fallback for content Folio generates on elements no author selector
+ * kept as a fallback for content Gutterpress generates on elements no author selector
  * mentions.
  */
 export function generatedContentCss(selectors: Iterable<string>): string {
@@ -280,12 +280,12 @@ export function generatedContentCss(selectors: Iterable<string>): string {
       if (base === undefined || colons === undefined || pseudo === undefined) continue;
       const where = pseudo.toLowerCase();
       rules.add(
-        `${base.trim()}[data-folio-${where}]${colons}${where} { content: attr(data-folio-${where}); }`,
+        `${base.trim()}[data-gp-${where}]${colons}${where} { content: attr(data-gp-${where}); }`,
       );
     }
   }
   // fallback for elements no author selector named (specificity 0,1,0)
-  rules.add(`[data-folio-after]::after { content: attr(data-folio-after); }`);
-  rules.add(`[data-folio-before]::before { content: attr(data-folio-before); }`);
+  rules.add(`[data-gp-after]::after { content: attr(data-gp-after); }`);
+  rules.add(`[data-gp-before]::before { content: attr(data-gp-before); }`);
   return [...rules].join("\n");
 }

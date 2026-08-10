@@ -71,7 +71,7 @@ a more specific override of every declaration.
 Pagination rewrites the document into generated page/sheet boxes. Never target
 that generated structure:
 
-- **No engine-generated selectors** (`.folio-*` sheets, strips, and margin
+- **No engine-generated selectors** (`.gp-*` sheets, strips, and margin
   boxes). They describe a layout artifact, not your content, and they change
   with the engine.
 - **No page-ordinal targeting.** "The third page" is an output of pagination;

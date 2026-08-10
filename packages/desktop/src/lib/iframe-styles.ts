@@ -11,7 +11,7 @@
  * export was deleted with it (the native viewer's own chrome — zoom, sheet
  * background, view modes, debug guides — lives in decorate.ts + viewer.css
  * instead). Only the one engine-agnostic rule below survives: the preview
- * canvas background, which the native viewer's `<body>` (its `.folio-stage`)
+ * canvas background, which the native viewer's `<body>` (its `.gp-stage`)
  * still needs pushed in from the toolbar's settings.
  */
 export function buildCanvasBackgroundStyles(bg: string): string {

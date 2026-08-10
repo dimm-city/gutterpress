@@ -69,10 +69,10 @@ try {
   // ── 1. open -> first rendered preview timing ────────────────────────────
   await book.locator("body").waitFor({ state: "attached", timeout: 60_000 });
   // First visible page element differs by engine: paged uses .pagedjs_page,
-  // native uses .folio-sheet.
+  // native uses .gp-sheet.
   await Promise.race([
     book.locator(".pagedjs_page").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
-    book.locator(".folio-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
+    book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
   ]);
   const t1 = Date.now();
   results.openToFirstPreviewMs = t1 - t0;
@@ -81,7 +81,7 @@ try {
   // Sanity: which engine did we actually get?
   const sheetKind = await bookEval((doc) => {
     if (doc.ownerDocument.querySelector(".pagedjs_page")) return "paged";
-    if (doc.ownerDocument.querySelector(".folio-sheet")) return "native";
+    if (doc.ownerDocument.querySelector(".gp-sheet")) return "native";
     return "unknown";
   });
   results.detectedEngine = sheetKind;
@@ -185,7 +185,7 @@ try {
   await sleep(500);
   const shotFn = (el) => {
     const doc = el.ownerDocument;
-    const sheets = [...doc.querySelectorAll(".folio-sheet, .pagedjs_page")].slice(0, 4)
+    const sheets = [...doc.querySelectorAll(".gp-sheet, .pagedjs_page")].slice(0, 4)
       .map((n) => { const r = n.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top) }; });
     return { bodyClass: doc.body.className, sheets };
   };

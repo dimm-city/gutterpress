@@ -31,7 +31,7 @@ import {
   pageRangeOf,
   stripMetrics,
   wrapGeometry,
-  type FolioViewerApi,
+  type GutterpressViewerApi,
   type StripInfo,
 } from "./fragment.ts";
 
@@ -77,7 +77,7 @@ interface PageCtx {
 }
 
 export function decorate(
-  layout: FolioViewerApi,
+  layout: GutterpressViewerApi,
   opts: { designer?: boolean } = {},
 ): DecorationApi {
   const model: GcpmModel = layout.model;
@@ -95,16 +95,16 @@ export function decorate(
       document.body.dataset.designer = on ? "on" : "off";
     },
   };
-  // Must run BEFORE `.folio-stage` lands on <body>: after that the stage's own
+  // Must run BEFORE `.gp-stage` lands on <body>: after that the stage's own
   // chrome background is indistinguishable from the author's.
   const canvasBg = captureCanvasBackground();
-  document.body.classList.add("folio-stage");
+  document.body.classList.add("gp-stage");
   if (document.body.dataset.designer === undefined) api.setDesigner(!!opts.designer);
 
   function pageContext(strip: StripInfo, indexInStrip: number, bookIndex: number): PageCtx {
     // A recto/verso blank spacer is a DOM sibling of whatever it precedes, so
     // it sits inside that element's named-page run — but the compiler gives
-    // every blank page its OWN isolated context (`page: folio--blank`,
+    // every blank page its OWN isolated context (`page: gp--blank`,
     // resolved with no name, pseudo `blank` only: see `counterStyleCss` in
     // `build.ts`). Matching that here is what keeps a blank page's geometry
     // and content off the surrounding run's context (ARCHITECTURE.md §1).
@@ -224,7 +224,7 @@ export function decorate(
             (elementForHref(url)?.textContent ?? "").trim() || undefined,
           leader: leaderMarker,
         });
-        el.setAttribute(`data-folio-${pseudo}`, text);
+        el.setAttribute(`data-gp-${pseudo}`, text);
       }
     }
     for (const href of brokenHrefs)
@@ -232,10 +232,10 @@ export function decorate(
         `The link "${href}" doesn't point at anything in this book, so its page number can't be shown. Check the spelling, or add that id to the heading you meant.`,
       );
     fillLeaders();
-    let style = document.getElementById("folio-xref-style");
+    let style = document.getElementById("gp-xref-style");
     if (!style) {
       style = document.createElement("style");
-      style.id = "folio-xref-style";
+      style.id = "gp-xref-style";
       document.head.appendChild(style);
     }
     style.textContent = generatedContentCss(model.xrefs.map((x) => x.selector));
@@ -247,7 +247,7 @@ export function decorate(
    */
   function fillLeaders() {
     const marked: Array<{ el: HTMLElement; attr: string; raw: string }> = [];
-    for (const attr of ["data-folio-after", "data-folio-before"]) {
+    for (const attr of ["data-gp-after", "data-gp-before"]) {
       for (const el of Array.from(document.querySelectorAll<HTMLElement>(`[${attr}]`))) {
         const raw = el.getAttribute(attr) ?? "";
         if (LEADER_RE.test(raw)) marked.push({ el, attr, raw });
@@ -300,13 +300,13 @@ export function decorate(
       // synchronous style recalc per strip on every mount and hot reload.
       const { stride, rowStride } = stripMetrics(strip.el);
       const sheetGap =
-        parseFloat(getComputedStyle(run).getPropertyValue("--folio-sheet-gap")) || 0;
+        parseFloat(getComputedStyle(run).getPropertyValue("--gp-sheet-gap")) || 0;
       // `wrapCols` unset (view mode off, or the browser lacks
       // `column-wrap: wrap`) ⇒ every page sits in one row, exactly the
       // pre-wrap layout — `perRow = strip.pages` makes the row/col math
       // below degrade to that single-row case for free.
       const { perRow, shift } = wrapGeometry(strip);
-      const layer = run.querySelector<HTMLElement>(".folio-layer")!;
+      const layer = run.querySelector<HTMLElement>(".gp-layer")!;
       layer.textContent = "";
       const g = strip.geometry;
 
@@ -328,16 +328,16 @@ export function decorate(
         const sheetTop = row * rowStride;
 
         const sheet = document.createElement("div");
-        sheet.className = "folio-sheet";
+        sheet.className = "gp-sheet";
         sheet.dataset.page = String(bookIndex + 1);
         // Recto = odd 1-based page (page 1 is a recto). Read by viewer.css's
-        // two-up scroll-snap rule; a `.folio-layer`'s first sheet is NOT
+        // two-up scroll-snap rule; a `.gp-layer`'s first sheet is NOT
         // reliably a recto, so DOM-order parity cannot stand in for this.
         sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
         sheet.style.left = `${sheetLeft}px`;
         sheet.style.top = `${sheetTop}px`;
-        sheet.style.setProperty("--folio-page-w", px(ctx.geometry.width));
-        sheet.style.setProperty("--folio-page-h", px(ctx.geometry.height));
+        sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
+        sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
         for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
         layer.appendChild(sheet);
         sheets.set(bookIndex, sheet);
@@ -349,11 +349,11 @@ export function decorate(
 
       // Reserve the full row width even for a solo page in a wrapped run
       // (`perRow` can exceed `strip.pages`) — matches the CSS width
-      // `.folio-strip[data-wrap]` reserves, and is what leaves a wrapped
+      // `.gp-strip[data-wrap]` reserves, and is what leaves a wrapped
       // run's empty slot visibly empty instead of collapsed. `+ shift`
       // counts the leading spacer's own grid slot toward row count.
       const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
-      // `rowStride` is the PITCH between wrapped rows (`--folio-content-h` +
+      // `rowStride` is the PITCH between wrapped rows (`--gp-content-h` +
       // row-gap — see `rowStrideOf`), not a row's own full height: multicol
       // lays each wrapped row's content out at `column-height`, but the
       // SHEET drawn around it is the full page box (content + margins).
@@ -405,7 +405,7 @@ export function decorate(
       });
       if (!text) continue;
       const box = document.createElement("div");
-      box.className = "folio-marginbox";
+      box.className = "gp-marginbox";
       box.dataset.box = name;
       box.textContent = text;
       Object.assign(box.style, rectFor(name, g), {
@@ -436,7 +436,7 @@ export function decorate(
     const h = g.height * PX_PER_PT;
     const mark = (left: number, top: number, width: number, height: number) => {
       const el = document.createElement("div");
-      el.className = "folio-crop-mark";
+      el.className = "gp-crop-mark";
       Object.assign(el.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
       sheet.appendChild(el);
     };
@@ -457,7 +457,7 @@ export function decorate(
     const g = ctx.geometry;
     if (g.bleed > 0) {
       const trim = document.createElement("div");
-      trim.className = "folio-guide-trim";
+      trim.className = "gp-guide-trim";
       Object.assign(trim.style, {
         left: "0px",
         top: "0px",
@@ -467,7 +467,7 @@ export function decorate(
       sheet.appendChild(trim);
     }
     const safe = document.createElement("div");
-    safe.className = "folio-guide-safe";
+    safe.className = "gp-guide-safe";
     Object.assign(safe.style, {
       left: px(g.margin.left),
       top: px(g.margin.top),
@@ -486,7 +486,7 @@ export function decorate(
         out.push(
           `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""} is ${Math.round(r.height)}px tall; page content box is ${Math.round(h)}px — it will clip on screen and overflow in print.`,
         );
-        el.classList.add("folio-overflowing");
+        el.classList.add("gp-overflowing");
       }
     }
   }
@@ -517,7 +517,7 @@ const CANVAS_BG_PROPS = [
  *
  * When it came from `html`, that element is also cleared, so the stage keeps
  * showing viewer chrome. When it came from `body`, no clearing is needed:
- * `.folio-stage` (0-1-0) already outranks the author's `body` rule (0-0-1).
+ * `.gp-stage` (0-1-0) already outranks the author's `body` rule (0-0-1).
  */
 function captureCanvasBackground(): Array<[string, string]> {
   for (const el of [document.documentElement, document.body]) {
@@ -535,13 +535,13 @@ function captureCanvasBackground(): Array<[string, string]> {
 
 function ensureRun(strip: StripInfo): HTMLElement {
   const parent = strip.el.parentElement!;
-  if (parent.classList.contains("folio-run")) return parent;
+  if (parent.classList.contains("gp-run")) return parent;
   const run = document.createElement("div");
-  run.className = "folio-run";
+  run.className = "gp-run";
   strip.el.before(run);
   run.appendChild(strip.el);
   const layer = document.createElement("div");
-  layer.className = "folio-layer";
+  layer.className = "gp-layer";
   run.insertBefore(layer, strip.el);
   return run;
 }

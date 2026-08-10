@@ -84,7 +84,7 @@ testIf(
           repeat = await page.evaluate(() => {
             const authored = () =>
               Array.from(document.querySelectorAll("p, h1, h2"))
-                .filter((el) => !el.closest(".folio-layer"))
+                .filter((el) => !el.closest(".gp-layer"))
                 .map((el) => el.textContent)
                 .join("");
             const text0 = authored();
@@ -94,7 +94,7 @@ testIf(
             for (let i = 0; i < 3; i++) {
               (window as any).Gutterpress.refresh();
               counts.push((window as any).Gutterpress.totalPages);
-              runs.push(document.querySelectorAll(".folio-run").length);
+              runs.push(document.querySelectorAll(".gp-run").length);
               textSame.push(authored() === text0);
             }
             return { counts, runs, textSame };
@@ -120,7 +120,7 @@ testIf(
         expect(before).toBeLessThan(expected);
         expect(afterRefresh).toBe(expected);
         // Repeated refresh must be idempotent, in page count AND in DOM
-        // shape: `unwrapStrips()` has to remove decorate.ts's `.folio-run`
+        // shape: `unwrapStrips()` has to remove decorate.ts's `.gp-run`
         // wrapper too, or each refresh leaves an orphan behind that the next
         // `buildStrips()` sweeps up as authored content (the ghost-page
         // failure `unwrapStrips`'s own comment records). Counting runs is

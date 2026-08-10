@@ -147,7 +147,7 @@
       cleanup();
       callback();
     }
-    // preview-interface.js's folio:layout listener re-dispatches
+    // preview-interface.js's gp:layout listener re-dispatches
     // 'renderingComplete' once the native viewer's pagination completes (see
     // preview-interface.js's onRenderingComplete()).
     w.addEventListener('renderingComplete', finish);

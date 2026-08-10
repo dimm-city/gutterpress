@@ -1,7 +1,7 @@
 /**
  * `--engine native` — thin bridge from `packages/cli`'s PDF build to the
  * Gutterpress engine at `src/engine/` (promoted 2026-08-06 from the
- * `spike/folio` integration spike — see `spike/folio/MIGRATION.md` "Step 3
+ * `folio` integration spike — see `docs/engine-history/MIGRATION.md` "Step 3
  * — integration spike results" for the blast-radius findings this module
  * resolves: the engine is now an ordinary in-package module, not a relative
  * cross-directory import out of a non-workspace directory, and it ships in

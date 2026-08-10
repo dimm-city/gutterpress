@@ -25,7 +25,7 @@
    * no undo history or file identity of its own to preserve across opens.
    *
    * NEVER patches the paginated preview DOM for instant feedback.
-   * `.folio-strip` is a live CSS multicol container
+   * `.gp-strip` is a live CSS multicol container
    * (`column-fill:auto`, fixed column width) — overflowing content does not
    * visibly overlap; it spills into invisible columns thousands of pixels to
    * the side (`getClientRects().length > 1`, spike-verified). That failure is

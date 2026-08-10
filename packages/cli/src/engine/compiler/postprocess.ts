@@ -34,7 +34,7 @@ export async function postprocess(
   opts: PostprocessOptions,
 ): Promise<PostprocessResult> {
   // updateMetadata:false — pdf-lib otherwise stamps ITSELF as Producer at load
-  // time, clobbering Chromium's. Folio's postprocess edits boxes; it is not the
+  // time, clobbering Chromium's. Gutterpress's postprocess edits boxes; it is not the
   // document's producer.
   const doc = await PDFDocument.load(input, { updateMetadata: false });
   const g = opts.geometry;

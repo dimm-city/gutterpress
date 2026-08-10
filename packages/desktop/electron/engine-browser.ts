@@ -99,7 +99,7 @@ class ElectronEngineSession implements EngineSession {
    * setContent makes, so behaviour matches the external-Chromium path
    * exactly. Not on the native engine's real build path (which only ever
    * calls `navigate`), kept for interface parity + spike/tooling callers. */
-  async setContent(html: string, _baseUrl = "http://folio.spike/"): Promise<void> {
+  async setContent(html: string, _baseUrl = "http://gutterpress.spike/"): Promise<void> {
     const { frameTree } = await this.send<any>("Page.getFrameTree");
     await this.send("Page.setDocumentContent", { frameId: frameTree.frame.id, html });
   }

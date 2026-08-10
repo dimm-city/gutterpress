@@ -47,7 +47,7 @@ try {
   await bookBody.waitFor({ state: "attached", timeout: 60_000 });
   await Promise.race([
     book.locator(".pagedjs_page").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
-    book.locator(".folio-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
+    book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
   ]);
 
   // ── 6. click-to-edit sync ─────────────────────────────────────────────

@@ -10,7 +10,7 @@ const scriptDir = path.resolve(__dirname, "..", "..", "cli", "src", "assets", "p
 const shellSource = readFileSync(path.join(scriptDir, "preview-shell.js"), "utf8");
 const interfaceSource = readFileSync(path.join(scriptDir, "preview-interface.js"), "utf8");
 
-// `.folio-sheet` elements (the viewer's page unit — see
+// `.gp-sheet` elements (the viewer's page unit — see
 // engine/viewer/decorate.ts). Paged.js has been removed
 // (native-only-migration-plan.md Phase 6) — the incremental chapter-splice
 // scenario this fixture set used to also cover (UPDATED_CHAPTER) was removed
@@ -18,13 +18,13 @@ const interfaceSource = readFileSync(path.join(scriptDir, "preview-interface.js"
 // as a geometry-wide change (see preview-shell.js's header comment on the
 // removed spliceChapter()).
 const BOOK_NATIVE = `
-  <div class="folio-sheet" data-page="1"><div class="gutterpress-chapter" data-chapter-src="chapter-1.md">
+  <div class="gp-sheet" data-page="1"><div class="gutterpress-chapter" data-chapter-src="chapter-1.md">
     <p data-source-line="1">Chapter one</p>
   </div></div>
-  <div class="folio-sheet" data-page="2"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+  <div class="gp-sheet" data-page="2"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
     <p data-source-line="1">Chapter two start</p>
   </div></div>
-  <div class="folio-sheet" data-page="3"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+  <div class="gp-sheet" data-page="3"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
     <p data-source-line="20">Chapter two anchor</p>
   </div></div>`;
 
@@ -35,12 +35,12 @@ function installBook(frame, markup = BOOK_NATIVE) {
   frameDocument.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
   frameWindow.Gutterpress = {
     pageOf(el) {
-      const sheet = el && el.closest ? el.closest(".folio-sheet") : null;
+      const sheet = el && el.closest ? el.closest(".gp-sheet") : null;
       return sheet ? parseInt(sheet.getAttribute("data-page"), 10) - 1 : -1;
     },
   };
   frameDocument.body.innerHTML = markup;
-  const pageSelector = ".folio-sheet";
+  const pageSelector = ".gp-sheet";
   const pages = [...frameDocument.querySelectorAll(pageSelector)];
   const blocks = [...frameDocument.querySelectorAll("[data-source-line]")];
   let zoom = 1;
@@ -130,7 +130,7 @@ async function main() {
   active.contentDocument.body.classList.add("debug");
   const desktopStyle = active.contentDocument.createElement("style");
   desktopStyle.setAttribute("data-gutterpress-desktop-canvas", "true");
-  desktopStyle.textContent = ".folio-sheet { box-shadow: 0 0 2px black; }";
+  desktopStyle.textContent = ".gp-sheet { box-shadow: 0 0 2px black; }";
   active.contentDocument.head.appendChild(desktopStyle);
 
   let onChange;
@@ -177,13 +177,13 @@ async function main() {
         deferNextFrameLoad = false;
         deferredFrame = node;
       } else {
-        // Real production: the viewer's mount() fires 'folio:layout' once its
+        // Real production: the viewer's mount() fires 'gp:layout' once its
         // own async fragmentDocument() resolves; preview-interface.js's
         // listener (installed by installBook() above) turns that into
         // 'renderingComplete' for preview-shell.js's onReady() to pick up —
         // see preview-interface.js's onRenderingComplete(). installBook has
         // no real viewer to await, so the fixture fires it directly.
-        node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("folio:layout", { detail: {} }));
+        node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
         node.dispatchEvent(new outer.Event("load"));
       }
     }
@@ -194,16 +194,16 @@ async function main() {
   // it), so onReady() takes the wait-for-'renderingComplete' branch and arms
   // a real ~180s timeout. Only short (poll/debounce) timers should fire
   // synchronously; the long readiness timeout must NOT fire before the
-  // explicit 'folio:layout' dispatch above reaches it, or it discards the
+  // explicit 'gp:layout' dispatch above reaches it, or it discards the
   // frame as "timed out".
   const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
   runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
   // The initial `active` frame carries the viewer <script> tag too (same as
   // every frame `installBook` produces), so it needs the same explicit
-  // 'folio:layout' -> __GUTTERPRESS_RENDERED__ latch as the swap-in frames
+  // 'gp:layout' -> __GUTTERPRESS_RENDERED__ latch as the swap-in frames
   // below, or markActiveReady()'s onReady() call never resolves and the
   // shell never acknowledges the initial revision.
-  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("folio:layout", { detail: {} }));
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
   active.dispatchEvent(new outer.Event("load"));
 
   onChange?.({ type: "reload-state", instance: "instance-a", revision: 0 });
@@ -459,7 +459,7 @@ async function main() {
 }
 
 // ── Native engine: the same double-buffer swap + anchor-preservation core
-// (the property this suite exists to guard), against `.folio-sheet` fixtures
+// (the property this suite exists to guard), against `.gp-sheet` fixtures
 // instead of `.pagedjs_page`. The chapter-splice scenario in main() above
 // stays paged-only — see BOOK_NATIVE's comment.
 async function runNativeCoreRegression() {
@@ -482,7 +482,7 @@ async function runNativeCoreRegression() {
   active.contentDocument.body.classList.add("debug");
   const desktopStyle = active.contentDocument.createElement("style");
   desktopStyle.setAttribute("data-gutterpress-desktop-canvas", "true");
-  desktopStyle.textContent = ".folio-sheet { box-shadow: 0 0 2px black; }";
+  desktopStyle.textContent = ".gp-sheet { box-shadow: 0 0 2px black; }";
   active.contentDocument.head.appendChild(desktopStyle);
 
   let onChange;
@@ -520,7 +520,7 @@ async function runNativeCoreRegression() {
         outer.dispatchEvent(event);
         return result;
       };
-      // Real production: the viewer's mount() fires 'folio:layout' once its
+      // Real production: the viewer's mount() fires 'gp:layout' once its
       // own async fragmentDocument() resolves; preview-interface.js's
       // listener (installed by installBook() above) turns that into
       // 'renderingComplete' for preview-shell.js's onReady() to pick up —
@@ -531,7 +531,7 @@ async function runNativeCoreRegression() {
       // `load` event — i.e. before preview-shell.js attaches its
       // 'renderingComplete' listener. Only onRenderingComplete()'s
       // __GUTTERPRESS_RENDERED__ latch makes the swap complete at all.
-      node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("folio:layout", { detail: {} }));
+      node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
       node.dispatchEvent(new outer.Event("load"));
     }
     return result;
@@ -543,11 +543,11 @@ async function runNativeCoreRegression() {
   // needs it for NATIVE_ENGINE detection) — so onReady() takes the
   // wait-for-'renderingComplete' branch and arms a real ~180s timeout. Only
   // short (poll/debounce) timers should fire synchronously; the long
-  // readiness timeout must NOT fire before the explicit 'folio:layout'
+  // readiness timeout must NOT fire before the explicit 'gp:layout'
   // dispatch below reaches it, or it discards the frame as "timed out".
   const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
   runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
-  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("folio:layout", { detail: {} }));
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
   active.dispatchEvent(new outer.Event("load"));
 
   onChange?.({ type: "full-reload", instance: "instance-a", revision: 1 });

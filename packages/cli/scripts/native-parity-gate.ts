@@ -88,7 +88,7 @@ const DEFAULT_FIXTURES = [
   join(REPO, "examples", "with-design-guide", "book-02"),
   join(REPO, "examples", "with-design-guide", "design-guide"),
   // The three-repro spike fixture (committed): it pinned the running-heads
-  // regression where `<folio-anchor>`'s zero-size `position:absolute` first
+  // regression where `<gp-anchor>`'s zero-size `position:absolute` first
   // child, sitting immediately after a forced `break-before: page`, measured
   // one page late in print (headingPageMap divergence on pages 2-3) — see
   // agent.ts's `ensureAnchor`.
@@ -139,10 +139,10 @@ function instrumentHeadingIds(html: string): { html: string; ids: string[] } {
     /<h([1-6])((?:\s+[^>]*)?)>/g,
     (_match, level: string, attrs: string) => {
       const existing = attrs.match(/\sid="([^"]*)"/);
-      const id = existing ? existing[1] : `folio-parity-h${n++}`;
+      const id = existing ? existing[1] : `gp-parity-h${n++}`;
       ids.push(id);
       const idAttr = existing ? "" : ` id="${id}"`;
-      return `<h${level}${attrs}${idAttr}><a href="#${id}" class="folio-parity-anchor"></a>`;
+      return `<h${level}${attrs}${idAttr}><a href="#${id}" class="gp-parity-anchor"></a>`;
     },
   );
   return { html: instrumented, ids };
@@ -231,7 +231,7 @@ async function viewerPageMap(
     await page.navigate(url);
     await page.evaluate(agentScript);
     await page.waitForReady();
-    await page.evaluate(`window.__FOLIO_MANUAL__ = true;`);
+    await page.evaluate(`window.__GP_MANUAL__ = true;`);
     await page.evaluate(viewerScript);
     return await page.evaluate<{ pageCount: number; pageMap: Record<string, number> }>(
       `(async () => {

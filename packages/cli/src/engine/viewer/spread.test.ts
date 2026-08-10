@@ -15,12 +15,12 @@ import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
  * fragmenter already decided, never re-decide them — the tooling-tier rule.
  *
  * THE BUG THIS EXISTS FOR: the first cross-run pairing implementation was
- * measured by reading `.folio-sheet` rectangles only. That proved the sheet
+ * measured by reading `.gp-sheet` rectangles only. That proved the sheet
  * CHROME was grouped and sided correctly and said nothing about where
  * Chromium actually put the author's CONTENT — and the content was
  * elsewhere: `rowStrideOf()` derived the wrapped-row pitch from
- * `--folio-page-h` when multicol lays a row out at `column-height`
- * (= `--folio-content-h`) + `row-gap`, so every row after the first drifted
+ * `--gp-page-h` when multicol lays a row out at `column-height`
+ * (= `--gp-content-h`) + `row-gap`, so every row after the first drifted
  * one page-margin further from its sheet. On the design guide that put 82 of
  * 363 probe elements fully outside the sheet drawn for their own page — the
  * same "chrome moved, content stayed" failure the retired chrome-only two-up
@@ -94,7 +94,7 @@ testIf(
           report = await page.evaluate(() => {
             const gp = (window as any).Gutterpress;
             const probeEls = Array.from(
-              document.querySelectorAll<HTMLElement>(".folio-strip p, .folio-strip h1")
+              document.querySelectorAll<HTMLElement>(".gp-strip p, .gp-strip h1")
             );
             const single = probeEls.map((el) => gp.pageOf(el));
 
@@ -113,7 +113,7 @@ testIf(
             > = {};
             const rowMap = new Map<number, Array<{ page: number; side: string; l: number }>>();
             for (const sh of Array.from(
-              document.querySelectorAll<HTMLElement>(".folio-sheet")
+              document.querySelectorAll<HTMLElement>(".gp-sheet")
             )) {
               const r = sh.getBoundingClientRect();
               const p = Number(sh.dataset.page) - 1;
@@ -154,7 +154,7 @@ testIf(
             return {
               supported:
                 CSS.supports("column-wrap", "wrap") && CSS.supports("column-height", "100px"),
-              wrapped: !!document.querySelector('.folio-strip[data-wrap="on"]'),
+              wrapped: !!document.querySelector('.gp-strip[data-wrap="on"]'),
               totalPages: gp.totalPages,
               probes: probeEls.length,
               pageOfMismatches,

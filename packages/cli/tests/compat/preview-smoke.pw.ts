@@ -5,7 +5,7 @@
  * playwright.config.ts), renders the preview in chromium, firefox, and
  * webkit and asserts:
  *
- *   - the native engine's viewer bundle dispatches `folio:layout` within a
+ *   - the native engine's viewer bundle dispatches `gp:layout` within a
  *     generous timeout
  *   - page count > 0 and matches the event's `pages` count
  *   - no layout collapse (sheets have non-zero size; no uncaught page errors)
@@ -51,12 +51,12 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
     page.on("pageerror", (err) => pageErrors.push(String(err)));
 
     // The native engine's viewer bundle (engine/viewer/index.ts) dispatches
-    // `folio:layout` on the window once pagination finishes. Init scripts run
+    // `gp:layout` on the window once pagination finishes. Init scripts run
     // in every frame, so this works for both the shell at "/" (book.html in
     // an iframe) and a direct /book.html load.
     await page.addInitScript(() => {
       (window as any).__gutterpressRender = { done: false };
-      window.addEventListener("folio:layout", (e: any) => {
+      window.addEventListener("gp:layout", (e: any) => {
         (window as any).__gutterpressRender = { done: true, totalPages: e?.detail?.pages ?? null };
       });
     });
@@ -79,7 +79,7 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
     });
 
     const measured = await frame.evaluate(() => {
-      const pages = Array.from(document.querySelectorAll(".folio-sheet"));
+      const pages = Array.from(document.querySelectorAll(".gp-sheet"));
       // A trailing structural 0×0 sheet can legitimately exist; what signals
       // collapse is content sheets without geometry.
       const zeroSizedContentPages = pages.filter((p) => {

@@ -59,12 +59,12 @@ function parseArgs(argv: string[]) {
 
 const HOT_RELOAD = `<script>
 (() => {
-  const ws = new WebSocket(\`ws://\${location.host}/__folio\`);
+  const ws = new WebSocket(\`ws://\${location.host}/__gp\`);
   ws.onmessage = (e) => { if (e.data === "reload") location.reload(); };
 })();
 </script>`;
 
-const VIEWER_TAG = `<script src="/__folio/gutterpress-viewer.js"></script>`;
+const VIEWER_TAG = `<script src="/__gp/gutterpress-viewer.js"></script>`;
 
 /** Inject the viewer + hot reload without touching the author's file on disk. */
 function instrumentHtml(html: string, opts: { hot: boolean; viewer: boolean }): string {
@@ -78,7 +78,7 @@ function instrumentHtml(html: string, opts: { hot: boolean; viewer: boolean }): 
 
 async function cmdBuild(positional: string[], flags: Record<string, any>) {
   const input = positional[0];
-  if (!input) die("usage: folio build <input.html> -o <output.pdf>");
+  if (!input) die("usage: dev-cli build <input.html> -o <output.pdf>");
   const output = String(flags.output ?? input.replace(/\.html?$/i, "") + ".pdf");
   const t0 = performance.now();
   const result = await build({
@@ -117,7 +117,7 @@ async function cmdDev(positional: string[], flags: Record<string, any>) {
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
-    if (url.pathname === "/__folio/gutterpress-viewer.js") {
+    if (url.pathname === "/__gp/gutterpress-viewer.js") {
       res.writeHead(200, { "content-type": MIME[".js"] });
       res.end(readFileSync(VIEWER_JS));
       return;
@@ -148,7 +148,7 @@ async function cmdDev(positional: string[], flags: Record<string, any>) {
     res.end(readFileSync(file));
   });
 
-  const wss = new WebSocketServer({ server, path: "/__folio" });
+  const wss = new WebSocketServer({ server, path: "/__gp" });
   let timer: ReturnType<typeof setTimeout> | undefined;
   watch(root, { recursive: true }, (_e, name) => {
     if (name && /\.(html?|css|js|svg|png|jpe?g)$/i.test(name)) {
@@ -161,7 +161,7 @@ async function cmdDev(positional: string[], flags: Record<string, any>) {
   });
 
   // The warm browser outlives every request, so the ONLY thing that can close
-  // it is process shutdown. Without this, every `folio dev` session leaks a
+  // it is process shutdown. Without this, every `dev-cli dev` session leaks a
   // headless Chromium and its profile dir for as long as the machine is up.
   let closing = false;
   const shutdown = async () => {
@@ -177,7 +177,7 @@ async function cmdDev(positional: string[], flags: Record<string, any>) {
     process.once(sig, shutdown);
 
   server.listen(port, () => {
-    console.log(`folio dev → http://localhost:${port}/  (proof at /proof.pdf)`);
+    console.log(`dev-cli dev → http://localhost:${port}/  (proof at /proof.pdf)`);
   });
 }
 
@@ -186,7 +186,7 @@ function cmdExport(positional: string[], flags: Record<string, any>) {
   const outDir = resolve(String(flags.output ?? "dist"));
   mkdirSync(outDir, { recursive: true });
   const html = instrumentHtml(readFileSync(input, "utf8"), { hot: false, viewer: true }).replace(
-    "/__folio/gutterpress-viewer.js",
+    "/__gp/gutterpress-viewer.js",
     "./gutterpress-viewer.js",
   );
   writeFileSync(join(outDir, "index.html"), html);
@@ -212,12 +212,12 @@ switch (cmd) {
     cmdExport(positional, flags);
     break;
   default:
-    console.log(`folio — standard CSS in, pages out
+    console.log(`dev-cli — standard CSS in, pages out
 
-  folio build  <input.html> -o <out.pdf> [--signature N] [--marks] [--slug 0.25in]
-                                         [--bleed 0.125in] [--title T] [--author A]
-                                         [--emit-css]
-  folio dev    <input.html|dir> [--port 4321]
-  folio export <input.html> -o <dir>
+  dev-cli build  <input.html> -o <out.pdf> [--signature N] [--marks] [--slug 0.25in]
+                                           [--bleed 0.125in] [--title T] [--author A]
+                                           [--emit-css]
+  dev-cli dev    <input.html|dir> [--port 4321]
+  dev-cli export <input.html> -o <dir>
 `);
 }

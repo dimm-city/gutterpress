@@ -1,8 +1,8 @@
 // Interface adapter: exposes window.previewAPI for the parent toolbar.
 //
-// The Gutterpress engine viewer paginates into .folio-sheet elements (one per
+// The Gutterpress engine viewer paginates into .gp-sheet elements (one per
 // page, `dataset.page` = 1-based book page) and exposes
-// window.Gutterpress.pageOf(el) (0-based); it fires 'folio:layout' when its
+// window.Gutterpress.pageOf(el) (0-based); it fires 'gp:layout' when its
 // pagination completes.
 //
 // The block-overlay fragment-grouping machinery below (blocksMatchingRange)
@@ -23,7 +23,7 @@
   var lastSourceChapter = null;
 
   function refreshPages() {
-    pages = Array.from(document.querySelectorAll('.folio-sheet')).sort(function (a, b) {
+    pages = Array.from(document.querySelectorAll('.gp-sheet')).sort(function (a, b) {
       return (parseInt(a.dataset.page, 10) || 0) - (parseInt(b.dataset.page, 10) || 0);
     });
     return pages;
@@ -36,9 +36,9 @@
     return Math.max(1, Math.min(Math.round(page), pages.length));
   }
 
-  // The native viewer lays one CHAPTER per row (`.folio-run`), each row as
+  // The native viewer lays one CHAPTER per row (`.gp-run`), each row as
   // wide as that chapter needs — rows stack vertically, but a long chapter's
-  // pages run off horizontally within its own row (viewer.css: `.folio-sheet`
+  // pages run off horizontally within its own row (viewer.css: `.gp-sheet`
   // is `left`-positioned within the row, every sheet in a row shares `top`).
   // A top-only scan can't tell two sheets in the same row apart — every one
   // of them has the same `top`, so it always resolves to the LAST sheet of
@@ -870,5 +870,5 @@
 
   // The Gutterpress engine viewer dispatches this when its pagination
   // completes (engine/viewer/index.ts's mount()).
-  window.addEventListener('folio:layout', onRenderingComplete);
+  window.addEventListener('gp:layout', onRenderingComplete);
 })();

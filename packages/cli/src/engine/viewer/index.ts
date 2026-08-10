@@ -1,5 +1,5 @@
 /**
- * Folio viewer entry. Bundled to a single self-contained IIFE (`gutterpress-viewer.js`) —
+ * Gutterpress viewer entry. Bundled to a single self-contained IIFE (`gutterpress-viewer.js`) —
  * zero runtime dependencies, no CSS parser in the hot path.
  *
  * Embed contract is an iframe (§3): the viewer owns its document, so CSSOM is
@@ -8,14 +8,14 @@
 import {
   applySpreadMode,
   fragmentDocument,
-  type FolioViewerApi,
+  type GutterpressViewerApi,
   type LayoutOptions,
 } from "./fragment.ts";
 import { decorate, type DecorationApi } from "./decorate.ts";
 
-export interface FolioApi extends FolioViewerApi {
+export interface GutterpressApi extends GutterpressViewerApi {
   decoration: DecorationApi;
-  /** 1-based, matching `.folio-sheet[data-page]` and every other book-facing
+  /** 1-based, matching `.gp-sheet[data-page]` and every other book-facing
    * page number in the API (pageOf() is the one deliberate exception — it's
    * documented 0-based for DOM-index math). Clamped to [1, totalPages]. */
   goto(page: number): void;
@@ -25,17 +25,15 @@ export interface FolioApi extends FolioViewerApi {
   currentPage(): number;
   /** re-fragment + redecorate after a content/CSS change (hot reload) */
   refresh(): void;
-  /** two-up/spread view mode (viewer.css's `.folio-strip[data-wrap]`); no-op
+  /** two-up/spread view mode (viewer.css's `.gp-strip[data-wrap]`); no-op
    * to single-row on a browser without `column-wrap: wrap` support. */
   setSpread(on: boolean): void;
 }
 
 declare global {
   interface Window {
-    Gutterpress?: FolioApi;
-    /** @deprecated use window.Gutterpress */
-    folio?: FolioApi;
-    __folioReadyPending?: boolean;
+    Gutterpress?: GutterpressApi;
+    __gpReadyPending?: boolean;
   }
 }
 
@@ -50,7 +48,7 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   // no `data-wrap` attribute, so the previously-requested view mode has to be
   // re-applied explicitly, not just relied on to survive.
   let spreadOn = false;
-  const api: FolioApi = Object.assign(layout, {
+  const api: GutterpressApi = Object.assign(layout, {
     decoration,
     goto(page: number) {
       // Public surface is 1-based (matches dataset.page); sheetFor()/`current`
@@ -83,8 +81,8 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   let current = 0;
   const emit = () => {
     const detail = { page: current, pagecount: layout.totalPages };
-    window.dispatchEvent(new CustomEvent("folio:page", { detail }));
-    if (window.parent !== window) window.parent.postMessage({ folio: detail }, "*");
+    window.dispatchEvent(new CustomEvent("gp:page", { detail }));
+    if (window.parent !== window) window.parent.postMessage({ gp: detail }, "*");
   };
 
   // the global must BE the mounted api: relayout() mutates totalPages /
@@ -93,11 +91,9 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   const ns = window.Gutterpress as Record<string, unknown> | undefined;
   if (ns) for (const k of Object.keys(ns)) if (!(k in api)) (api as any)[k] = ns[k];
   window.Gutterpress = api;
-  window.folio = api; // deprecated alias, same object
-  (window as any).Folio = api; // deprecated alias, same object
   emit();
   window.dispatchEvent(
-    new CustomEvent("folio:layout", {
+    new CustomEvent("gp:layout", {
       detail: { ms: performance.now() - t0, pages: layout.totalPages },
     }),
   );
@@ -113,14 +109,14 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
 
 /**
  * Narrow viewports (phones) get a SMALLER PAGE, never a reflow: scale the
- * stage down via `--gutterpress-fit-zoom`, which `.folio-stage` multiplies
+ * stage down via `--gutterpress-fit-zoom`, which `.gp-stage` multiplies
  * with the host's own `--gutterpress-zoom` (viewer.css). Never zooms up past
  * 1 — only shrinks to fit.
  */
 function fitZoom() {
-  const sheet = document.querySelector<HTMLElement>(".folio-sheet");
+  const sheet = document.querySelector<HTMLElement>(".gp-sheet");
   if (!sheet) return;
-  const pageW = parseFloat(sheet.style.getPropertyValue("--folio-page-w"));
+  const pageW = parseFloat(sheet.style.getPropertyValue("--gp-page-w"));
   if (!pageW) return;
   const stagePadding =
     parseFloat(getComputedStyle(document.body).paddingLeft) +
@@ -131,7 +127,7 @@ function fitZoom() {
   else document.body.style.removeProperty("--gutterpress-fit-zoom");
 }
 
-if (typeof document !== "undefined" && !(window as any).__FOLIO_MANUAL__) {
+if (typeof document !== "undefined" && !(window as any).__GP_MANUAL__) {
   const params = new URLSearchParams(location.search);
   const start = () => mount({ designer: params.has("designer") });
   if (document.readyState === "loading")

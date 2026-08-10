@@ -40,20 +40,20 @@
   });
 
   // src/engine/viewer/viewer.css
-  var viewer_default = `/* Folio viewer chrome. The author's content CSS is untouched; everything here
-   is scoped to Folio's own wrappers/layers. */
+  var viewer_default = `/* Gutterpress viewer chrome. The author's content CSS is untouched; everything here
+   is scoped to Gutterpress's own wrappers/layers. */
 
 /* The stage backdrop is viewer chrome and must stay chrome: this rule (0-1-0)
    deliberately outranks an author's \`body { background: … }\` (0-0-1). An
    author's canvas background is not lost — \`decorate()\` reads it before this
    class is applied and replays it on every sheet, which is where print puts
    it (see \`captureCanvasBackground\`). */
-.folio-stage {
-  --folio-sheet-bg: #fff;
-  --folio-stage-bg: #4a4a52;
-  --folio-guide: #e5484d;
-  --folio-safe: #30a46c;
-  background: var(--folio-stage-bg);
+.gp-stage {
+  --gp-sheet-bg: #fff;
+  --gp-stage-bg: #4a4a52;
+  --gp-guide: #e5484d;
+  --gp-safe: #30a46c;
+  background: var(--gp-stage-bg);
   margin: 0;
   padding: 32px;
   overflow: auto;
@@ -79,7 +79,7 @@
    rows (chapters) stack vertically with no equivalent "page" unit to snap to.
    Declared on the viewport's real scroll container (:root), scoped by :has()
    so it can only ever apply to a document the viewer itself owns. */
-:root:has(> body.folio-stage) {
+:root:has(> body.gp-stage) {
   scroll-snap-type: x proximity;
 }
 
@@ -93,27 +93,27 @@
    \`measure()\` — reflects the true extent). \`overflow: hidden\` here would
    clip every column past the first from painting while leaving
    getClientRects()/scrollWidth (and so pageOf()) unaffected, so pages 2+ of
-   a run would measure correctly but render blank — the \`.folio-run\` wrapper
+   a run would measure correctly but render blank — the \`.gp-run\` wrapper
    below is already sized to the run's full width and owns the actual
    clipping/visibility, so the strip does not need to. */
-.folio-strip {
+.gp-strip {
   position: relative;
-  width: var(--folio-content-w);
-  height: var(--folio-content-h);
-  column-width: var(--folio-content-w);
+  width: var(--gp-content-w);
+  height: var(--gp-content-h);
+  column-width: var(--gp-content-w);
   column-gap: calc(
-    var(--folio-margin-right) + var(--folio-margin-left) + var(--folio-sheet-gap)
+    var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
   );
   column-fill: auto;
   overflow: visible;
-  margin: 0 0 var(--folio-sheet-gap);
+  margin: 0 0 var(--gp-sheet-gap);
   /* strip sits inside the first sheet's content box */
-  transform: translate(var(--folio-margin-left), var(--folio-margin-top));
+  transform: translate(var(--gp-margin-left), var(--gp-margin-top));
 }
 
 /* Sheets/margin boxes are painted behind/around the strip by the decoration
    layer; the strip itself must stay transparent so they show through. */
-.folio-strip > * {
+.gp-strip > * {
   break-inside: auto;
 }
 
@@ -121,7 +121,7 @@
    run's multicol columns into 2-column ROWS instead of one long row, using
    CSS Multicol L2's \`column-wrap: wrap\` + \`column-height\` (shipped unflagged
    Chrome/Edge 145+ — CSS.supports-gated in JS, so this selector only ever
-   matches on a browser that has it; the base \`.folio-strip\` rules above are
+   matches on a browser that has it; the base \`.gp-strip\` rules above are
    the single-row fallback everywhere else). \`row-gap\` mirrors \`column-gap\`
    above: content box height + top/bottom margins + the visual sheet gap, so
    consecutive wrapped rows are spaced exactly one page-pitch apart, matching
@@ -129,16 +129,16 @@
    row. Width reserves exactly two columns so a lone page (a strip with only
    one fragment) still gets its correct left/right slot, with nothing
    inserted to fill the other. */
-.folio-strip[data-wrap="on"] {
+.gp-strip[data-wrap="on"] {
   column-wrap: wrap;
-  column-height: var(--folio-content-h);
+  column-height: var(--gp-content-h);
   column-count: 2;
   row-gap: calc(
-    var(--folio-margin-top) + var(--folio-margin-bottom) + var(--folio-sheet-gap)
+    var(--gp-margin-top) + var(--gp-margin-bottom) + var(--gp-sheet-gap)
   );
   width: calc(
-    var(--folio-content-w) * 2 + var(--folio-margin-right) + var(--folio-margin-left) +
-      var(--folio-sheet-gap)
+    var(--gp-content-w) * 2 + var(--gp-margin-right) + var(--gp-margin-left) +
+      var(--gp-sheet-gap)
   );
 }
 
@@ -151,7 +151,7 @@
    the run's real content one slot later so it lands correctly — see its
    doc comment for why a same-box CSS-only mirror (e.g. \`direction: rtl\`)
    cannot fix this (it changes placement, not grouping). */
-.folio-wrap-spacer {
+.gp-wrap-spacer {
   break-after: column;
   height: 0;
   margin: 0;
@@ -159,23 +159,23 @@
   border: 0;
 }
 
-.folio-run {
+.gp-run {
   position: relative;
-  margin: 0 0 var(--folio-sheet-gap);
+  margin: 0 0 var(--gp-sheet-gap);
 }
 
-.folio-layer {
+.gp-layer {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
 
-.folio-sheet {
+.gp-sheet {
   position: absolute;
   top: 0;
-  width: var(--folio-page-w);
-  height: var(--folio-page-h);
-  background: var(--folio-sheet-bg);
+  width: var(--gp-page-w);
+  height: var(--gp-page-h);
+  background: var(--gp-sheet-bg);
   box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
   scroll-snap-align: start;
 }
@@ -189,16 +189,16 @@
    sheets, so a manual scroll settles with a recto+verso PAIR in view
    together, never split across a snap point. Keyed off \`data-side\` (written
    by decorate.ts from the sheet's own 1-based book page number), NOT
-   \`nth-child(odd)\`: a \`.folio-layer\`'s first sheet is NOT always a recto —
+   \`nth-child(odd)\`: a \`.gp-layer\`'s first sheet is NOT always a recto —
    measured on the 34pp field guide, the layers start at pages 1, 3, 5, 7 and
    **14** (a verso), so nth-child parity would snap that 20-page run on its
    VERSO pages, splitting exactly the pairs this is meant to keep together. */
-body.view-two-column .folio-sheet[data-side="verso"],
-body.view-spread .folio-sheet[data-side="verso"] {
+body.view-two-column .gp-sheet[data-side="verso"],
+body.view-spread .gp-sheet[data-side="verso"] {
   scroll-snap-align: none;
 }
 
-.folio-marginbox {
+.gp-marginbox {
   position: absolute;
   display: flex;
   align-items: center;
@@ -208,34 +208,34 @@ body.view-spread .folio-sheet[data-side="verso"] {
   color: inherit;
 }
 
-.folio-marginbox[data-align="start"] { justify-content: flex-start; }
-.folio-marginbox[data-align="center"] { justify-content: center; }
-.folio-marginbox[data-align="end"] { justify-content: flex-end; }
+.gp-marginbox[data-align="start"] { justify-content: flex-start; }
+.gp-marginbox[data-align="center"] { justify-content: center; }
+.gp-marginbox[data-align="end"] { justify-content: flex-end; }
 
 /* designer mode ------------------------------------------------------- */
-.folio-guide-trim,
-.folio-guide-safe,
-.folio-crop-mark {
+.gp-guide-trim,
+.gp-guide-safe,
+.gp-crop-mark {
   position: absolute;
   pointer-events: none;
   display: none;
 }
 
-.folio-stage[data-designer="on"] .folio-guide-trim,
-.folio-stage[data-designer="on"] .folio-guide-safe,
-.folio-stage[data-designer="on"] .folio-crop-mark {
+.gp-stage[data-designer="on"] .gp-guide-trim,
+.gp-stage[data-designer="on"] .gp-guide-safe,
+.gp-stage[data-designer="on"] .gp-crop-mark {
   display: block;
 }
 
-.folio-guide-trim { outline: 1px dashed var(--folio-guide); }
-.folio-guide-safe { outline: 1px dashed var(--folio-safe); }
-.folio-crop-mark { background: var(--folio-guide); }
+.gp-guide-trim { outline: 1px dashed var(--gp-guide); }
+.gp-guide-safe { outline: 1px dashed var(--gp-safe); }
+.gp-crop-mark { background: var(--gp-guide); }
 
-.folio-warning {
+.gp-warning {
   position: absolute;
   right: 4px;
   top: 4px;
-  background: var(--folio-guide);
+  background: var(--gp-guide);
   color: #fff;
   font: 600 10px/1.4 ui-sans-serif, system-ui, sans-serif;
   padding: 2px 6px;
@@ -246,20 +246,20 @@ body.view-spread .folio-sheet[data-side="verso"] {
    plus decorations — the PDF, shipped alongside book.html, is the print
    artifact. This is a minimal reset, not a print layout. */
 @media print {
-  .folio-stage {
+  .gp-stage {
     background: none;
     padding: 0;
     overflow: visible;
     zoom: 1;
   }
-  .folio-layer,
-  .folio-warning,
-  .folio-guide-trim,
-  .folio-guide-safe,
-  .folio-crop-mark {
+  .gp-layer,
+  .gp-warning,
+  .gp-guide-trim,
+  .gp-guide-safe,
+  .gp-crop-mark {
     display: none !important;
   }
-  .folio-sheet {
+  .gp-sheet {
     box-shadow: none;
   }
 }
@@ -783,11 +783,11 @@ body.view-spread .folio-sheet[data-side="verso"] {
         if (base === undefined || colons === undefined || pseudo === undefined)
           continue;
         const where = pseudo.toLowerCase();
-        rules.add(`${base.trim()}[data-folio-${where}]${colons}${where} { content: attr(data-folio-${where}); }`);
+        rules.add(`${base.trim()}[data-gp-${where}]${colons}${where} { content: attr(data-gp-${where}); }`);
       }
     }
-    rules.add(`[data-folio-after]::after { content: attr(data-folio-after); }`);
-    rules.add(`[data-folio-before]::before { content: attr(data-folio-before); }`);
+    rules.add(`[data-gp-after]::after { content: attr(data-gp-after); }`);
+    rules.add(`[data-gp-before]::before { content: attr(data-gp-before); }`);
     return [...rules].join(`
 `);
   }
@@ -795,10 +795,10 @@ body.view-spread .folio-sheet[data-side="verso"] {
   // src/engine/viewer/fragment.ts
   var PX_PER_PT = 96 / 72;
   function injectViewerCss(doc = document) {
-    if (doc.getElementById("folio-viewer-css"))
+    if (doc.getElementById("gp-viewer-css"))
       return;
     const style = doc.createElement("style");
-    style.id = "folio-viewer-css";
+    style.id = "gp-viewer-css";
     style.textContent = viewer_default;
     doc.head.appendChild(style);
   }
@@ -812,7 +812,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
 `;
         continue;
       }
-      const raw = owner?.__folioSource;
+      const raw = owner?.__gpSource;
       if (raw)
         out += raw + `
 `;
@@ -822,12 +822,12 @@ body.view-spread .folio-sheet[data-side="verso"] {
   async function loadStyleSources(doc = document) {
     const links = Array.from(doc.querySelectorAll('link[rel~="stylesheet"]'));
     await Promise.all(links.map(async (l) => {
-      if (l.__folioSource)
+      if (l.__gpSource)
         return;
       try {
-        l.__folioSource = await (await fetch(l.href)).text();
+        l.__gpSource = await (await fetch(l.href)).text();
       } catch {
-        l.__folioSource = "";
+        l.__gpSource = "";
       }
     }));
     return collectCssText(doc);
@@ -839,13 +839,13 @@ body.view-spread .folio-sheet[data-side="verso"] {
         continue;
       if (!/^(page|left|right|recto|verso|always)$/.test(b.value.trim()))
         continue;
-      rules.push(`.folio-strip ${b.selector} { ${b.prop}: column; }`);
+      rules.push(`.gp-strip ${b.selector} { ${b.prop}: column; }`);
     }
     const css = rules.join(`
 `);
     if (css) {
       const style = doc.createElement("style");
-      style.id = "folio-break-mapping";
+      style.id = "gp-break-mapping";
       style.textContent = css;
       doc.head.appendChild(style);
     }
@@ -901,7 +901,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
         continue;
       }
       const kid = node;
-      if (kid.classList.contains("folio-layer"))
+      if (kid.classList.contains("gp-layer"))
         continue;
       const own = directPageName(kid, model);
       if (own !== undefined) {
@@ -950,20 +950,20 @@ body.view-spread .folio-sheet[data-side="verso"] {
     for (const run of runs) {
       const { geometry } = resolvePage(model, { name: run.page });
       const strip = doc.createElement("div");
-      strip.className = "folio-strip";
+      strip.className = "gp-strip";
       if (run.page)
         strip.dataset.page = run.page;
       const w = pt(geometry.width - geometry.margin.left - geometry.margin.right);
       const h = pt(geometry.height - geometry.margin.top - geometry.margin.bottom);
-      strip.style.setProperty("--folio-content-w", `${w}px`);
-      strip.style.setProperty("--folio-content-h", `${h}px`);
-      strip.style.setProperty("--folio-sheet-gap", `${gap}px`);
-      strip.style.setProperty("--folio-page-w", `${pt(geometry.width)}px`);
-      strip.style.setProperty("--folio-page-h", `${pt(geometry.height)}px`);
-      strip.style.setProperty("--folio-margin-top", `${pt(geometry.margin.top)}px`);
-      strip.style.setProperty("--folio-margin-right", `${pt(geometry.margin.right)}px`);
-      strip.style.setProperty("--folio-margin-bottom", `${pt(geometry.margin.bottom)}px`);
-      strip.style.setProperty("--folio-margin-left", `${pt(geometry.margin.left)}px`);
+      strip.style.setProperty("--gp-content-w", `${w}px`);
+      strip.style.setProperty("--gp-content-h", `${h}px`);
+      strip.style.setProperty("--gp-sheet-gap", `${gap}px`);
+      strip.style.setProperty("--gp-page-w", `${pt(geometry.width)}px`);
+      strip.style.setProperty("--gp-page-h", `${pt(geometry.height)}px`);
+      strip.style.setProperty("--gp-margin-top", `${pt(geometry.margin.top)}px`);
+      strip.style.setProperty("--gp-margin-right", `${pt(geometry.margin.right)}px`);
+      strip.style.setProperty("--gp-margin-bottom", `${pt(geometry.margin.bottom)}px`);
+      strip.style.setProperty("--gp-margin-left", `${pt(geometry.margin.left)}px`);
       run.nodes[0].before(strip);
       for (const n of run.nodes)
         strip.appendChild(n);
@@ -982,7 +982,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       if (!tables.length)
         continue;
       for (const table of tables) {
-        for (const shim of Array.from(table.querySelectorAll("tr.folio-thead-shim, tr.folio-tfoot-shim")))
+        for (const shim of Array.from(table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim")))
           shim.remove();
         table.style.breakBefore = "";
       }
@@ -1001,7 +1001,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
           const head = table.tHead;
           const headRect = head?.getClientRects()[0];
           const footHeight = table.tFoot?.getBoundingClientRect().height ?? 0;
-          const rows = Array.from(table.querySelectorAll("tbody > tr")).filter((r) => !r.classList.contains("folio-thead-shim") && !r.classList.contains("folio-tfoot-shim"));
+          const rows = Array.from(table.querySelectorAll("tbody > tr")).filter((r) => !r.classList.contains("gp-thead-shim") && !r.classList.contains("gp-tfoot-shim"));
           if (!rows.length)
             continue;
           const rects = rows.map((r) => r.getClientRects()[0] ?? r.getBoundingClientRect());
@@ -1040,7 +1040,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
           break;
         previous = signature;
         for (const plan of plans) {
-          for (const shim of Array.from(plan.table.querySelectorAll("tr.folio-thead-shim, tr.folio-tfoot-shim")))
+          for (const shim of Array.from(plan.table.querySelectorAll("tr.gp-thead-shim, tr.gp-tfoot-shim")))
             shim.remove();
           if (plan.push && !pushed.has(plan.table)) {
             pushed.add(plan.table);
@@ -1053,7 +1053,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
             touched++;
           }
           for (const [row, height] of plan.footRows) {
-            row.before(sectionShim(plan.table.tFoot, height, plan.cells, "folio-tfoot-shim"));
+            row.before(sectionShim(plan.table.tFoot, height, plan.cells, "gp-tfoot-shim"));
             touched++;
           }
         }
@@ -1062,14 +1062,14 @@ body.view-spread .folio-sheet[data-side="verso"] {
     return { tables: touched, passes, warnings };
   }
   function headerShim(head, height, cells) {
-    return sectionShim(head, height, cells, "folio-thead-shim");
+    return sectionShim(head, height, cells, "gp-thead-shim");
   }
   function sectionShim(section, height, cells, className) {
     const shim = document.createElement("tr");
     shim.className = className;
     shim.setAttribute("aria-hidden", "true");
     shim.style.height = `${height}px`;
-    if (className === "folio-tfoot-shim")
+    if (className === "gp-tfoot-shim")
       shim.style.verticalAlign = "bottom";
     const source = section.rows[0];
     if (source) {
@@ -1091,7 +1091,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
   }
   function compensateRectoBreaks(model, strips) {
     const decls = model.breaks.filter(isRectoVersoBreak);
-    for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+    for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
       spacer.remove();
     if (!decls.length)
       return 0;
@@ -1113,7 +1113,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       if (!plan[i])
         continue;
       const spacer = document.createElement("div");
-      spacer.className = "folio-recto-spacer";
+      spacer.className = "gp-recto-spacer";
       spacer.setAttribute("aria-hidden", "true");
       spacer.style.cssText = "break-before: column; break-after: column; height: 0; margin: 0; padding: 0; border: 0;";
       site.el.before(spacer);
@@ -1124,10 +1124,10 @@ body.view-spread .folio-sheet[data-side="verso"] {
   function unwrapStrips(strips) {
     for (const strip of strips) {
       const stripEl = strip.el;
-      for (const spacer of Array.from(stripEl.querySelectorAll(".folio-wrap-spacer")))
+      for (const spacer of Array.from(stripEl.querySelectorAll(".gp-wrap-spacer")))
         spacer.remove();
       const runWrapper = stripEl.parentElement;
-      const removalTarget = runWrapper && runWrapper.classList.contains("folio-run") ? runWrapper : stripEl;
+      const removalTarget = runWrapper && runWrapper.classList.contains("gp-run") ? runWrapper : stripEl;
       const parent = removalTarget.parentNode;
       if (!parent)
         continue;
@@ -1143,7 +1143,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       strip.pages = Math.max(1, Math.round(strip.el.scrollWidth / stride));
       strip.offset = offset;
       offset += strip.pages;
-      strip.el.style.setProperty("--folio-pages", String(strip.pages));
+      strip.el.style.setProperty("--gp-pages", String(strip.pages));
     }
     return { strips, totalPages: offset };
   }
@@ -1152,9 +1152,9 @@ body.view-spread .folio-sheet[data-side="verso"] {
   }
   function stripMetrics(strip) {
     const cs = getComputedStyle(strip);
-    const w = parseFloat(cs.getPropertyValue("--folio-content-w"));
+    const w = parseFloat(cs.getPropertyValue("--gp-content-w"));
     const colGap = parseFloat(cs.columnGap) || 0;
-    const h = parseFloat(cs.getPropertyValue("--folio-content-h"));
+    const h = parseFloat(cs.getPropertyValue("--gp-content-h"));
     const rowGap = parseFloat(cs.rowGap) || 0;
     return { stride: w + colGap, rowStride: h + rowGap };
   }
@@ -1193,7 +1193,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
     const on = spread && spreadModeSupported();
     for (const strip of strips) {
       const el = strip.el;
-      const existingSpacer = el.querySelector(":scope > .folio-wrap-spacer");
+      const existingSpacer = el.querySelector(":scope > .gp-wrap-spacer");
       if (!on) {
         existingSpacer?.remove();
         delete el.dataset.wrap;
@@ -1206,7 +1206,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       if (shift) {
         if (!existingSpacer) {
           const spacer = document.createElement("div");
-          spacer.className = "folio-wrap-spacer";
+          spacer.className = "gp-wrap-spacer";
           spacer.setAttribute("aria-hidden", "true");
           el.insertBefore(spacer, el.firstChild);
         }
@@ -1216,7 +1216,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
     }
   }
   function blankPageIndices(strips) {
-    return Array.from(document.querySelectorAll(".folio-recto-spacer")).map((el) => pageOf(el, strips));
+    return Array.from(document.querySelectorAll(".gp-recto-spacer")).map((el) => pageOf(el, strips));
   }
   function pageRangeOf(el, strips) {
     const strip = strips.find((s) => s.el.contains(el));
@@ -1249,9 +1249,9 @@ body.view-spread .folio-sheet[data-side="verso"] {
     injectViewerCss();
     const printOnly = mediaPrintBodies(css).join(`
 `);
-    if (printOnly && !document.getElementById("folio-media-print")) {
+    if (printOnly && !document.getElementById("gp-media-print")) {
       const style = document.createElement("style");
-      style.id = "folio-media-print";
+      style.id = "gp-media-print";
       style.textContent = printOnly;
       document.head.appendChild(style);
     }
@@ -1277,7 +1277,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
         unwrapStrips(strips);
-        for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+        for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
           spacer.remove();
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
@@ -1530,7 +1530,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       }
     };
     const canvasBg = captureCanvasBackground();
-    document.body.classList.add("folio-stage");
+    document.body.classList.add("gp-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
     function pageContext(strip, indexInStrip2, bookIndex) {
@@ -1630,23 +1630,23 @@ body.view-spread .folio-sheet[data-side="verso"] {
             targetText: (url) => (elementForHref(url)?.textContent ?? "").trim() || undefined,
             leader: leaderMarker
           });
-          el.setAttribute(`data-folio-${pseudo}`, text);
+          el.setAttribute(`data-gp-${pseudo}`, text);
         }
       }
       for (const href of brokenHrefs)
         warnings.push(`The link "${href}" doesn't point at anything in this book, so its page number can't be shown. Check the spelling, or add that id to the heading you meant.`);
       fillLeaders();
-      let style = document.getElementById("folio-xref-style");
+      let style = document.getElementById("gp-xref-style");
       if (!style) {
         style = document.createElement("style");
-        style.id = "folio-xref-style";
+        style.id = "gp-xref-style";
         document.head.appendChild(style);
       }
       style.textContent = generatedContentCss(model.xrefs.map((x) => x.selector));
     }
     function fillLeaders() {
       const marked = [];
-      for (const attr of ["data-folio-after", "data-folio-before"]) {
+      for (const attr of ["data-gp-after", "data-gp-before"]) {
         for (const el of Array.from(document.querySelectorAll(`[${attr}]`))) {
           const raw = el.getAttribute(attr) ?? "";
           if (LEADER_RE.test(raw))
@@ -1684,9 +1684,9 @@ body.view-spread .folio-sheet[data-side="verso"] {
       for (const strip of layout.strips) {
         const run = ensureRun(strip);
         const { stride, rowStride } = stripMetrics(strip.el);
-        const sheetGap = parseFloat(getComputedStyle(run).getPropertyValue("--folio-sheet-gap")) || 0;
+        const sheetGap = parseFloat(getComputedStyle(run).getPropertyValue("--gp-sheet-gap")) || 0;
         const { perRow, shift } = wrapGeometry(strip);
-        const layer = run.querySelector(".folio-layer");
+        const layer = run.querySelector(".gp-layer");
         layer.textContent = "";
         const g = strip.geometry;
         for (let i = 0;i < strip.pages; i++) {
@@ -1699,13 +1699,13 @@ body.view-spread .folio-sheet[data-side="verso"] {
           const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
           const sheetTop = row * rowStride;
           const sheet = document.createElement("div");
-          sheet.className = "folio-sheet";
+          sheet.className = "gp-sheet";
           sheet.dataset.page = String(bookIndex + 1);
           sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
           sheet.style.left = `${sheetLeft}px`;
           sheet.style.top = `${sheetTop}px`;
-          sheet.style.setProperty("--folio-page-w", px(ctx.geometry.width));
-          sheet.style.setProperty("--folio-page-h", px(ctx.geometry.height));
+          sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
+          sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
           for (const [prop, value] of canvasBg)
             sheet.style.setProperty(prop, value);
           layer.appendChild(sheet);
@@ -1739,7 +1739,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
         if (!text)
           continue;
         const box = document.createElement("div");
-        box.className = "folio-marginbox";
+        box.className = "gp-marginbox";
         box.dataset.box = name;
         box.textContent = text;
         Object.assign(box.style, rectFor(name, g), {
@@ -1762,7 +1762,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       const h = g.height * PX_PER_PT;
       const mark = (left, top, width, height) => {
         const el = document.createElement("div");
-        el.className = "folio-crop-mark";
+        el.className = "gp-crop-mark";
         Object.assign(el.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
         sheet.appendChild(el);
       };
@@ -1782,7 +1782,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       const g = ctx.geometry;
       if (g.bleed > 0) {
         const trim = document.createElement("div");
-        trim.className = "folio-guide-trim";
+        trim.className = "gp-guide-trim";
         Object.assign(trim.style, {
           left: "0px",
           top: "0px",
@@ -1792,7 +1792,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
         sheet.appendChild(trim);
       }
       const safe = document.createElement("div");
-      safe.className = "folio-guide-safe";
+      safe.className = "gp-guide-safe";
       Object.assign(safe.style, {
         left: px(g.margin.left),
         top: px(g.margin.top),
@@ -1807,7 +1807,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
         const r = el.getBoundingClientRect();
         if (r.height > h + 1) {
           out.push(`${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""} is ${Math.round(r.height)}px tall; page content box is ${Math.round(h)}px — it will clip on screen and overflow in print.`);
-          el.classList.add("folio-overflowing");
+          el.classList.add("gp-overflowing");
         }
       }
     }
@@ -1839,14 +1839,14 @@ body.view-spread .folio-sheet[data-side="verso"] {
   }
   function ensureRun(strip) {
     const parent = strip.el.parentElement;
-    if (parent.classList.contains("folio-run"))
+    if (parent.classList.contains("gp-run"))
       return parent;
     const run = document.createElement("div");
-    run.className = "folio-run";
+    run.className = "gp-run";
     strip.el.before(run);
     run.appendChild(strip.el);
     const layer = document.createElement("div");
-    layer.className = "folio-layer";
+    layer.className = "gp-layer";
     run.insertBefore(layer, strip.el);
     return run;
   }
@@ -1912,9 +1912,9 @@ body.view-spread .folio-sheet[data-side="verso"] {
     let current = 0;
     const emit = () => {
       const detail = { page: current, pagecount: layout.totalPages };
-      window.dispatchEvent(new CustomEvent("folio:page", { detail }));
+      window.dispatchEvent(new CustomEvent("gp:page", { detail }));
       if (window.parent !== window)
-        window.parent.postMessage({ folio: detail }, "*");
+        window.parent.postMessage({ gp: detail }, "*");
     };
     const ns = window.Gutterpress;
     if (ns) {
@@ -1923,10 +1923,8 @@ body.view-spread .folio-sheet[data-side="verso"] {
           api[k] = ns[k];
     }
     window.Gutterpress = api;
-    window.folio = api;
-    window.Folio = api;
     emit();
-    window.dispatchEvent(new CustomEvent("folio:layout", {
+    window.dispatchEvent(new CustomEvent("gp:layout", {
       detail: { ms: performance.now() - t0, pages: layout.totalPages }
     }));
     fitZoom();
@@ -1937,10 +1935,10 @@ body.view-spread .folio-sheet[data-side="verso"] {
     return api;
   }
   function fitZoom() {
-    const sheet = document.querySelector(".folio-sheet");
+    const sheet = document.querySelector(".gp-sheet");
     if (!sheet)
       return;
-    const pageW = parseFloat(sheet.style.getPropertyValue("--folio-page-w"));
+    const pageW = parseFloat(sheet.style.getPropertyValue("--gp-page-w"));
     if (!pageW)
       return;
     const stagePadding = parseFloat(getComputedStyle(document.body).paddingLeft) + parseFloat(getComputedStyle(document.body).paddingRight);
@@ -1950,7 +1948,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
     else
       document.body.style.removeProperty("--gutterpress-fit-zoom");
   }
-  if (typeof document !== "undefined" && !window.__FOLIO_MANUAL__) {
+  if (typeof document !== "undefined" && !window.__GP_MANUAL__) {
     const params = new URLSearchParams(location.search);
     const start = () => mount({ designer: params.has("designer") });
     if (document.readyState === "loading")
@@ -1962,6 +1960,4 @@ body.view-spread .folio-sheet[data-side="verso"] {
   // src/engine/viewer/global.ts
   var api = { mount, decorate, ...exports_fragment, gcpm: exports_gcpm_extract, content: exports_content_value };
   window.Gutterpress = api;
-  window.Folio = api;
-  window.folio = api;
 })();

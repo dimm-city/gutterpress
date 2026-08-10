@@ -1,5 +1,5 @@
 /**
- * Minimal CDP client for the Folio spike.
+ * Minimal CDP client for the Gutterpress engine.
  *
  * Deliberately NOT puppeteer: the proposal's compiler contract is "drive the
  * *system* Chromium over raw CDP (chrome-launcher + WebSocket)". This file is
@@ -12,7 +12,7 @@ import { join } from "node:path";
 import WebSocket from "ws";
 
 const CANDIDATES = [
-  process.env.FOLIO_CHROMIUM,
+  process.env.GUTTERPRESS_CHROMIUM,
   process.env.PUPPETEER_EXECUTABLE_PATH,
   "/opt/pw-browsers/chromium",
   "/usr/bin/chromium",
@@ -24,22 +24,22 @@ const CANDIDATES = [
 export function findChromium(): string {
   for (const c of CANDIDATES) if (existsSync(c)) return c;
   throw new Error(
-    `No Chromium found. Set FOLIO_CHROMIUM. Looked in:\n  ${CANDIDATES.join("\n  ")}`,
+    `No Chromium found. Set GUTTERPRESS_CHROMIUM. Looked in:\n  ${CANDIDATES.join("\n  ")}`,
   );
 }
 
 /**
- * Folio targets exactly one engine.
+ * Gutterpress targets exactly one engine.
  *
  * THE 151 INCIDENT: Chromium's Paged Media behaviour is not stable across
  * milestones, and it changed once in a way that produced NO error. 151 began
  * PARSING `target-counter()` while still computing it to `none`. Before 151,
  * an unsupported `target-counter()` declaration was dropped by the cascade
- * (invalid at parse time), so Folio's `generatedContentCss()` override, which
+ * (invalid at parse time), so Gutterpress's `generatedContentCss()` override, which
  * targets the SAME property on the SAME selector, was the only rule left
  * standing. At 151, the author's declaration started parsing as valid — so
  * it stayed in the cascade, and on equal specificity, source order (the
- * author's stylesheet loads after Folio's) let it win. Every cross-reference
+ * author's stylesheet loads after Gutterpress's) let it win. Every cross-reference
  * in the document disappeared, quietly.
  *
  * WHY THE FLOOR MOVED BACK TO 148 (measured, not assumed): the fix was never
@@ -52,7 +52,7 @@ export function findChromium(): string {
  * silent-content-loss regression is the probe, not the milestone pin. Measured
  * 148 vs 151 head-to-head: the spike suite differs in exactly 2 checks (both
  * assertions ABOUT Chromium's parse-vs-drop behaviour, now written to accept
- * either regime — see spike/folio s0/s2), the parity gate output is
+ * either regime — see spike/native-engine s0/s2), the parity gate output is
  * byte-identical, and real 34pp/53pp book builds produce identical page counts
  * and sizes on both milestones. So 151 was a *floor for the incident's
  * discovery*, not a requirement of the fix. It is pinned rather than probed —
@@ -85,7 +85,7 @@ export function assertMilestone(product: string, origin: string, hint = ""): voi
 
 /**
  * The document-settled probe both hosts run before measuring or printing:
- * fonts ready, any pending `folio:ready` handshake, then two rAFs so layout
+ * fonts ready, any pending `gp:ready` handshake, then two rAFs so layout
  * settles after the font swap. ONE definition — the Electron host
  * (packages/desktop/electron/engine-browser.ts) evaluates the same
  * expression, and a drift between hosts would be an invisible divergence in
@@ -94,10 +94,10 @@ export function assertMilestone(product: string, origin: string, hint = ""): voi
 export function readyProbeExpr(timeoutMs: number): string {
   return `(async () => {
       await document.fonts.ready;
-      if (window.__folioReadyPending) {
+      if (window.__gpReadyPending) {
         await new Promise((res) => {
           const t = setTimeout(res, ${timeoutMs});
-          document.addEventListener('folio:ready', () => { clearTimeout(t); res(); }, { once: true });
+          document.addEventListener('gp:ready', () => { clearTimeout(t); res(); }, { once: true });
         });
       }
       // two rAFs: let layout settle after fonts swap
@@ -135,7 +135,7 @@ export interface Session {
   evaluate<T = any>(expression: string): Promise<T>;
   setContent(html: string, baseUrl?: string): Promise<void>;
   navigate(url: string): Promise<void>;
-  /** Wait for fonts + optional `folio:ready`, per §6 of the proposal. */
+  /** Wait for fonts + optional `gp:ready`, per §6 of the proposal. */
   waitForReady(timeoutMs?: number): Promise<void>;
   printToPDF(opts?: Record<string, unknown>): Promise<Uint8Array>;
   close(): Promise<void>;
@@ -145,7 +145,7 @@ export async function launchChromium(
   opts: { headless?: boolean; args?: string[] } = {},
 ): Promise<Browser> {
   const bin = findChromium();
-  const userDataDir = mkdtempSync(join(tmpdir(), "folio-cdp-"));
+  const userDataDir = mkdtempSync(join(tmpdir(), "gp-cdp-"));
   const args = [
     "--remote-debugging-port=0",
     `--user-data-dir=${userDataDir}`,
@@ -216,11 +216,11 @@ export async function connectChromium(wsUrl: string): Promise<Browser> {
       conn.close();
     },
     // Unlike launchChromium (which resolves its own binary via findChromium(),
-    // governed by FOLIO_CHROMIUM), this path attaches to a browser someone
+    // governed by GUTTERPRESS_CHROMIUM), this path attaches to a browser someone
     // ELSE already launched — in practice `browser-pool.ts`'s puppeteer
     // instance, resolved via `chromium.ts`'s CHROMIUM_PATH /
     // PUPPETEER_EXECUTABLE_PATH. Telling a user on this path to set
-    // FOLIO_CHROMIUM does nothing.
+    // GUTTERPRESS_CHROMIUM does nothing.
     `Set CHROMIUM_PATH (or PUPPETEER_EXECUTABLE_PATH) to a ${REQUIRED_MILESTONE}+ binary.`,
   );
 }
@@ -238,7 +238,7 @@ async function checkMilestoneAndWrap(
   wsUrl: string,
   origin: string,
   teardown: () => Promise<void>,
-  overrideHint: string = `Set FOLIO_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
+  overrideHint: string = `Set GUTTERPRESS_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
 ): Promise<Browser> {
   const version = await conn.send<{ product: string }>("Browser.getVersion", {});
   try {
@@ -394,7 +394,7 @@ class SessionImpl implements Session {
     await done;
   }
 
-  async setContent(html: string, baseUrl = "http://folio.spike/") {
+  async setContent(html: string, baseUrl = "http://gutterpress.spike/") {
     await this.waitForLoad(async () => {
       const { frameTree } = await this.send<any>("Page.getFrameTree");
       await this.send("Page.setDocumentContent", {

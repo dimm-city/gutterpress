@@ -41,7 +41,7 @@ let uid = 0;
  * strip its ids and reprint, praying the clean document paginated identically
  * to the measured one. Instead: an element that already has an id is measured
  * through it (no mutation at all); one that doesn't gets a zero-size
- * `<folio-anchor id=…>` injected as its first child. Custom tag + an EMPTY
+ * `<gp-anchor id=…>` injected as its first child. Custom tag + an EMPTY
  * inline box keep it invisible to layout, `::first-letter`, and (verified
  * against hostile `[id]`/`::before`/counter CSS) to author selectors — so the
  * instrumented document IS the shipped document and no final reprint exists.
@@ -74,9 +74,9 @@ let uid = 0;
 function ensureAnchor(el: Element): string {
   if (el.id) return el.id;
   const existing = el.firstElementChild;
-  if (existing?.tagName === "FOLIO-ANCHOR" && existing.id) return existing.id;
-  const anchor = document.createElement("folio-anchor");
-  anchor.id = `folio-m-${++uid}`;
+  if (existing?.tagName === "GP-ANCHOR" && existing.id) return existing.id;
+  const anchor = document.createElement("gp-anchor");
+  anchor.id = `gp-m-${++uid}`;
   anchor.setAttribute("style", "display:inline");
   el.insertBefore(anchor, el.firstChild);
   return anchor.id;
@@ -86,7 +86,7 @@ function ensureAnchor(el: Element): string {
 function anchorHost(id: string): Element | null {
   const el = document.getElementById(id);
   if (!el) return null;
-  return el.tagName === "FOLIO-ANCHOR" ? el.parentElement : el;
+  return el.tagName === "GP-ANCHOR" ? el.parentElement : el;
 }
 
 export async function collectCss(): Promise<string> {
@@ -205,14 +205,14 @@ export function counterResetSites(
  * matches `:blank` itself).
  */
 export function applyRectoSpacers(ids: string[], pageName: string): number {
-  for (const spacer of Array.from(document.querySelectorAll(".folio-recto-spacer")))
+  for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
     spacer.remove();
   let inserted = 0;
   for (const id of ids) {
     const el = anchorHost(id);
     if (!el) continue;
     const spacer = document.createElement("div");
-    spacer.className = "folio-recto-spacer";
+    spacer.className = "gp-recto-spacer";
     spacer.setAttribute("aria-hidden", "true");
     spacer.style.cssText = `break-before: page; break-after: page; height: 0; margin: 0; padding: 0; border: 0; page: ${pageName};`;
     el.before(spacer);
@@ -306,10 +306,10 @@ export function xrefSites(selectors: string[]): Array<{ id: string; href: string
  * from a `display:none` link, so this is provably layout-neutral.
  */
 export function instrument(ids: string[]): number {
-  let host = document.getElementById("folio-instrumentation");
+  let host = document.getElementById("gp-instrumentation");
   if (!host) {
     host = document.createElement("div");
-    host.id = "folio-instrumentation";
+    host.id = "gp-instrumentation";
     host.style.display = "none";
     document.body.appendChild(host);
   }
@@ -344,7 +344,7 @@ export function addCss(id: string, css: string): void {
  */
 export function fillLeaders(contentWidthPx: number): number {
   const marked: Array<{ el: Element; attr: string; raw: string }> = [];
-  for (const attr of ["data-folio-after", "data-folio-before"]) {
+  for (const attr of ["data-gp-after", "data-gp-before"]) {
     for (const el of Array.from(document.querySelectorAll(`[${attr}]`))) {
       const raw = el.getAttribute(attr) ?? "";
       if (LEADER_RE.test(raw)) marked.push({ el, attr, raw });
@@ -395,15 +395,15 @@ export function setGenerated(
 ): number {
   for (const e of entries) {
     const el = anchorHost(e.id);
-    if (el) el.setAttribute(`data-folio-${e.where}`, e.text);
+    if (el) el.setAttribute(`data-gp-${e.where}`, e.text);
   }
-  addCss("folio-generated-content", css);
+  addCss("gp-generated-content", css);
   return entries.length;
 }
 
 declare global {
   interface Window {
-    __folio: typeof api;
+    __gp: typeof api;
   }
 }
 
@@ -422,4 +422,4 @@ const api = {
   setGenerated,
 };
 
-if (typeof window !== "undefined") window.__folio = api;
+if (typeof window !== "undefined") window.__gp = api;

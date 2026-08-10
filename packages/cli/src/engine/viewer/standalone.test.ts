@@ -14,7 +14,7 @@ import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
  * Phase 4b regression: a hand-authored HTML file with bare body children (no
  * wrapper divs — the shape `assemble.ts` never produces) plus one
  * `<script src>` of the viewer bundle must render EVERY page's content, not
- * just the first. `.folio-strip` used to be `overflow: hidden` at a
+ * just the first. `.gp-strip` used to be `overflow: hidden` at a
  * fixed one-column width: pageOf()/scrollWidth still measured columns 2+
  * correctly, but they never painted. See `fixtures/standalone-hand.html`.
  */
@@ -66,7 +66,7 @@ testIf(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );
           const result = await page.evaluate(() => {
-            const strip = document.querySelector<HTMLElement>(".folio-strip")!;
+            const strip = document.querySelector<HTMLElement>(".gp-strip")!;
             const paras = Array.from(strip.querySelectorAll<HTMLElement>("p"));
             // "Paragraph 20" sits on page 3 of the run (a column past the
             // first) — the exact site the regression clipped from painting.
@@ -79,13 +79,13 @@ testIf(
             // ancestor's clip: for each ancestor whose computed overflow is
             // not `visible`, its own border box bounds what's actually
             // paintable through it (the exact mechanism the regression hit —
-            // `.folio-strip`'s `overflow: hidden` at a fixed one-column
+            // `.gp-strip`'s `overflow: hidden` at a fixed one-column
             // width clipped every later column even though layout still
             // positioned their content correctly). A non-empty resulting
             // rect is proof the element is genuinely visible, not merely
             // positioned.
             let visible = { ...rect.toJSON() } as { top: number; left: number; right: number; bottom: number };
-            // The root scrolling element (here `.folio-stage`'s `<body>`) gets
+            // The root scrolling element (here `.gp-stage`'s `<body>`) gets
             // its `overflow` promoted to the visual viewport by the browser —
             // it is not a nested clipping box, so its own getBoundingClientRect()
             // is not a valid clip bound. Stop the walk there and clip against
@@ -194,7 +194,7 @@ testIf(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );
           const result = await page.evaluate(() => {
-            const strips = Array.from(document.querySelectorAll<HTMLElement>(".folio-strip"));
+            const strips = Array.from(document.querySelectorAll<HTMLElement>(".gp-strip"));
             return {
               totalPages: (window as any).Gutterpress.totalPages,
               pages: strips.map((s) => s.dataset.page ?? ""),
@@ -251,7 +251,7 @@ testIf(
             "window.Gutterpress && window.Gutterpress.totalPages > 0"
           );
           const result = await page.evaluate(() => {
-            const sheets = Array.from(document.querySelectorAll<HTMLElement>(".folio-sheet"));
+            const sheets = Array.from(document.querySelectorAll<HTMLElement>(".gp-sheet"));
             return {
               sheetCount: sheets.length,
               sheetBgs: sheets.map((s) => getComputedStyle(s).backgroundColor),
