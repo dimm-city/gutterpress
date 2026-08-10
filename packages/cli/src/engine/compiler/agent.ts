@@ -41,24 +41,31 @@ let uid = 0;
  * strip its ids and reprint, praying the clean document paginated identically
  * to the measured one. Instead: an element that already has an id is measured
  * through it (no mutation at all); one that doesn't gets a zero-size
- * `<folio-anchor id=…>` injected as its first child. Custom tag + zero size
- * (`width:0;height:0;overflow:hidden`) keep it invisible to layout,
- * `::first-letter`, and (verified against hostile `[id]`/`::before`/counter
- * CSS) to author selectors — so the instrumented document IS the shipped
- * document and no final reprint exists.
+ * `<folio-anchor id=…>` injected as its first child. Custom tag + an EMPTY
+ * inline box keep it invisible to layout, `::first-letter`, and (verified
+ * against hostile `[id]`/`::before`/counter CSS) to author selectors — so the
+ * instrumented document IS the shipped document and no final reprint exists.
  *
- * Deliberately NOT `position: absolute`: measured on
- * docs/fixtures/css-authoring-spike/book, an absolutely positioned anchor
- * that was the very first box after a forced `break-before: page` printed a
- * PDF named destination one page LATE (page 2's heading measured as page 3),
- * because its static-position fragmentation lands differently from ordinary
- * in-flow content right at a page-break boundary. An in-flow (`display:
- * inline-block`, default `position: static`) zero-size box fragments through
- * the exact same layout path as a real, non-zero-size heading — which is
- * already proven correct, since author-supplied ids (no anchor at all) never
- * hit this bug — at the cost of the residual risk below applying identically
- * regardless of `position` (DOM tree shape, not CSS positioning, is what a
- * `:first-child` selector observes).
+ * The `display` value is load-bearing in BOTH directions; `display:inline` is
+ * the only value measured to satisfy both constraints:
+ *
+ *  - NOT `position: absolute`: measured on
+ *    docs/fixtures/css-authoring-spike/book, an absolutely positioned anchor
+ *    that was the very first box after a forced `break-before: page` printed
+ *    its PDF named destination one page LATE (page 2's heading measured as
+ *    page 3), because its static-position fragmentation lands differently
+ *    from ordinary in-flow content right at a page-break boundary.
+ *  - NOT `display: inline-block`: a non-inline child before the text
+ *    DISQUALIFIES `::first-letter` in Chromium, silently deleting an author's
+ *    drop cap on any anchored element (measured: an `h1::first-letter` drop
+ *    cap renders with `display:inline` and vanishes with `inline-block`).
+ *    Pinned by `agent.first-letter.test.ts`.
+ *
+ * An empty in-flow inline box has neither problem: it fragments through the
+ * same layout path as ordinary content — already proven correct, since
+ * author-supplied ids (no anchor at all) never hit the page-late bug — and is
+ * transparent to `::first-letter`. `width`/`height` are not set because they
+ * do not apply to a non-replaced inline box; it is zero-size by being empty.
  *
  * Residual risk, accepted and documented: a `parent > :first-child` rule could
  * observe the injected child. Elements with author ids — the common case, since
@@ -70,7 +77,7 @@ function ensureAnchor(el: Element): string {
   if (existing?.tagName === "FOLIO-ANCHOR" && existing.id) return existing.id;
   const anchor = document.createElement("folio-anchor");
   anchor.id = `folio-m-${++uid}`;
-  anchor.setAttribute("style", "display:inline-block;width:0;height:0;overflow:hidden");
+  anchor.setAttribute("style", "display:inline");
   el.insertBefore(anchor, el.firstChild);
   return anchor.id;
 }
