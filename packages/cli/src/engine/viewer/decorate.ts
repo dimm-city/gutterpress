@@ -290,7 +290,7 @@ export function decorate(
     // colliding — the verso and recto compose one visual spread. This is
     // placement arithmetic on boxes we already position; content and sheets
     // stay in the same box, and pagination is untouched.
-    let prevRowStride = 0;
+    let prevPageH = 0;
     let first = true;
 
     for (const strip of layout.strips) {
@@ -353,20 +353,39 @@ export function decorate(
       // run's empty slot visibly empty instead of collapsed. `+ shift`
       // counts the leading spacer's own grid slot toward row count.
       const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
-      run.style.height = `${rowStride * rows}px`;
+      // `rowStride` is the PITCH between wrapped rows (`--folio-content-h` +
+      // row-gap — see `rowStrideOf`), not a row's own full height: multicol
+      // lays each wrapped row's content out at `column-height`, but the
+      // SHEET drawn around it is the full page box (content + margins).
+      // Sizing the run box at `rowStride * rows` therefore left the box
+      // short by exactly (margin-top + margin-bottom) for its own last row —
+      // harmless for a wrapped multi-row run (the shortfall was inside the
+      // box, absorbed by the next row's margin), but for the common
+      // unwrapped case (`rows` always 1) it shrank the WHOLE run to content
+      // height, so the next sibling run's box started before this run's
+      // sheet visually ended: sheets stacked in document flow overlapped by
+      // that same margin gap. Reserve `rowStride` pitch only BETWEEN rows,
+      // and the sheet's real full height (`g.height`) for the last row.
+      run.style.height = `${rowStride * (rows - 1) + PX_PER_PT * g.height}px`;
       run.style.width = `${stride * perRow}px`;
 
       // A recto-starting wrapped run overlaps the previous run's last row
-      // (see the parity proof above). The sibling margins collapse:
-      // prev's bottom margin (sheet-gap G) + this negative top margin
-      // -(prevRowStride + G) collapse to -prevRowStride, landing this run's
-      // first row exactly on the previous run's last-row top. The very
-      // first run keeps the solo-cover convention.
+      // (see the parity proof above). The sibling margins collapse: prev's
+      // bottom margin (sheet-gap G) + this negative top margin pulls this
+      // run's first row up onto the previous run's last-row top. The pull
+      // distance is prev's own box height MINUS the offset of its last row
+      // from its own top — i.e. exactly prev's full sheet height
+      // (`prevPageH`, content + margins), not `rowStride` (content only):
+      // since the fix above, a run's box height is
+      // `rowStride*(rows-1) + pageH`, and its last row sits at
+      // `rowStride*(rows-1)` from the top, so bottom-of-box minus
+      // top-of-last-row is `pageH` regardless of row count. The very first
+      // run keeps the solo-cover convention.
       run.style.marginTop =
         strip.wrapCols && shift === 1 && !first
-          ? `${-(prevRowStride + sheetGap)}px`
+          ? `${-(prevPageH + sheetGap)}px`
           : "";
-      prevRowStride = rowStride;
+      prevPageH = PX_PER_PT * g.height;
       first = false;
 
       if (opts.designer) checkOverflow(strip, warnings);
