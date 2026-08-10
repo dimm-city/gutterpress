@@ -81,6 +81,7 @@ testIf(
         const page = await browser.newPage();
         let before: number;
         let afterRefresh: number;
+        let repeat: { counts: number[]; runs: number[]; textSame: boolean[] };
         try {
           await page.goto(url, { waitUntil: "networkidle0" });
           await page.waitForFunction(
@@ -97,6 +98,25 @@ testIf(
             root.appendChild(spliced);
             (window as any).Gutterpress.refresh();
             return (window as any).Gutterpress.totalPages;
+          });
+
+          repeat = await page.evaluate(() => {
+            const authored = () =>
+              Array.from(document.querySelectorAll("p, h1, h2"))
+                .filter((el) => !el.closest(".folio-layer"))
+                .map((el) => el.textContent)
+                .join("");
+            const text0 = authored();
+            const counts: number[] = [];
+            const runs: number[] = [];
+            const textSame: boolean[] = [];
+            for (let i = 0; i < 3; i++) {
+              (window as any).Gutterpress.refresh();
+              counts.push((window as any).Gutterpress.totalPages);
+              runs.push(document.querySelectorAll(".folio-run").length);
+              textSame.push(authored() === text0);
+            }
+            return { counts, runs, textSame };
           });
         } finally {
           await page.close();
@@ -119,6 +139,16 @@ testIf(
         // (the new page context is invisible to it) instead of `expected`.
         expect(before).toBeLessThan(expected);
         expect(afterRefresh).toBe(expected);
+        // Repeated refresh must be idempotent, in page count AND in DOM
+        // shape: `unwrapStrips()` has to remove decorate.ts's `.folio-run`
+        // wrapper too, or each refresh leaves an orphan behind that the next
+        // `buildStrips()` sweeps up as authored content (the ghost-page
+        // failure `unwrapStrips`'s own comment records). Counting runs is
+        // what catches an unwrap that "works" only because the page count
+        // happens to survive.
+        expect(repeat.counts).toEqual([expected, expected, expected]);
+        expect(repeat.runs).toEqual([repeat.runs[0], repeat.runs[0], repeat.runs[0]]);
+        expect(repeat.textSame).toEqual([true, true, true]);
       } finally {
         await close();
       }
