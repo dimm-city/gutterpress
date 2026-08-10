@@ -5,7 +5,12 @@
  * Embed contract is an iframe (§3): the viewer owns its document, so CSSOM is
  * always same-origin and no shadow-DOM isolation machinery is needed.
  */
-import { fragmentDocument, type FolioViewerApi, type LayoutOptions } from "./fragment.ts";
+import {
+  applySpreadMode,
+  fragmentDocument,
+  type FolioViewerApi,
+  type LayoutOptions,
+} from "./fragment.ts";
 import { decorate, type DecorationApi } from "./decorate.ts";
 
 export interface FolioApi extends FolioViewerApi {
@@ -20,6 +25,9 @@ export interface FolioApi extends FolioViewerApi {
   currentPage(): number;
   /** re-fragment + redecorate after a content/CSS change (hot reload) */
   refresh(): void;
+  /** two-up/spread view mode (viewer.css's `.folio-strip[data-wrap]`); no-op
+   * to single-row on a browser without `column-wrap: wrap` support. */
+  setSpread(on: boolean): void;
 }
 
 declare global {
@@ -37,6 +45,11 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   const t0 = performance.now();
   const layout = await fragmentDocument(opts);
   const decoration = decorate(layout, { designer: opts.designer });
+  // Tracked here (not derived from the DOM) because `relayout()` rebuilds
+  // `layout.strips` from scratch on every refresh — the fresh elements carry
+  // no `data-wrap` attribute, so the previously-requested view mode has to be
+  // re-applied explicitly, not just relied on to survive.
+  let spreadOn = false;
   const api: FolioApi = Object.assign(layout, {
     decoration,
     goto(page: number) {
@@ -56,6 +69,13 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
     currentPage: () => current + 1,
     refresh() {
       layout.relayout();
+      applySpreadMode(layout.strips, spreadOn);
+      decoration.redraw();
+      emit();
+    },
+    setSpread(on: boolean) {
+      spreadOn = on;
+      applySpreadMode(layout.strips, spreadOn);
       decoration.redraw();
       emit();
     },

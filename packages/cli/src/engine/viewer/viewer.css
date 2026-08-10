@@ -75,6 +75,48 @@
   break-inside: auto;
 }
 
+/* Two-up/spread view mode (`applySpreadMode` in fragment.ts): wraps this
+   run's multicol columns into 2-column ROWS instead of one long row, using
+   CSS Multicol L2's `column-wrap: wrap` + `column-height` (shipped unflagged
+   Chrome/Edge 145+ — CSS.supports-gated in JS, so this selector only ever
+   matches on a browser that has it; the base `.folio-strip` rules above are
+   the single-row fallback everywhere else). `row-gap` mirrors `column-gap`
+   above: content box height + top/bottom margins + the visual sheet gap, so
+   consecutive wrapped rows are spaced exactly one page-pitch apart, matching
+   how `column-gap` already encodes left/right margins for columns within a
+   row. Width reserves exactly two columns so a lone page (a strip with only
+   one fragment) still gets its correct left/right slot, with nothing
+   inserted to fill the other. */
+.folio-strip[data-wrap="on"] {
+  column-wrap: wrap;
+  column-height: var(--folio-content-h);
+  column-count: 2;
+  row-gap: calc(
+    var(--folio-margin-top) + var(--folio-margin-bottom) + var(--folio-sheet-gap)
+  );
+  width: calc(
+    var(--folio-content-w) * 2 + var(--folio-margin-right) + var(--folio-margin-left) +
+      var(--folio-sheet-gap)
+  );
+}
+
+/* Cross-run correctness (no padding, no inserted PAGE): a run whose first
+   physical page is a RECTO would otherwise fall into multicol's first
+   (LEFT) grid slot and get grouped with the verso that follows it — wrong
+   side AND wrong pairing (a recto pairs with the verso that PRECEDES it).
+   `fragment.ts`'s `applySpreadMode` inserts this as the strip's first
+   child to consume exactly ONE column-flow slot with zero content, pushing
+   the run's real content one slot later so it lands correctly — see its
+   doc comment for why a same-box CSS-only mirror (e.g. `direction: rtl`)
+   cannot fix this (it changes placement, not grouping). */
+.folio-wrap-spacer {
+  break-after: column;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .folio-run {
   position: relative;
   margin: 0 0 var(--folio-sheet-gap);

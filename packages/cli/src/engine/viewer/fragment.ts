@@ -25,6 +25,14 @@ export interface StripInfo {
   pages: number;
   /** page index (0-based, book-wide) of this run's first page */
   offset: number;
+  /** two-up/spread view mode (§ applySpreadMode): pages rendered per wrapped
+   * row. `undefined` = single row (view mode off, or unsupported browser). */
+  wrapCols?: number;
+  /** grid slots this run's real content is shifted by (0 or 1) — a leading
+   * `.folio-wrap-spacer` occupies the slots, so this many extra empty
+   * columns sit BEFORE `strip.el`'s first real fragment. See
+   * `applySpreadMode`. */
+  wrapShift?: number;
 }
 
 export interface LayoutResult {
@@ -559,6 +567,12 @@ export function compensateRectoBreaks(
 function unwrapStrips(strips: StripInfo[]): void {
   for (const strip of strips) {
     const stripEl = strip.el;
+    // `applySpreadMode` may have inserted a leading `.folio-wrap-spacer` —
+    // viewer chrome, not authored content. It has to come out same as the
+    // `.folio-run` decoration wrapper below, or it leaks into the flow root
+    // and the NEXT `buildStrips()` sweeps it up as if an author wrote it.
+    for (const spacer of Array.from(stripEl.querySelectorAll(".folio-wrap-spacer")))
+      spacer.remove();
     const runWrapper = stripEl.parentElement;
     const removalTarget =
       runWrapper && runWrapper.classList.contains("folio-run") ? runWrapper : stripEl;
@@ -591,20 +605,133 @@ export function strideOf(strip: HTMLElement): number {
   return w + gap;
 }
 
+/** Vertical pitch between wrapped rows: full page height (§ applySpreadMode's
+ * `row-gap` mirrors `column-gap`'s "content box + margins + visual gap"
+ * shape) plus the row gap. Unused (but harmless to read) when a strip isn't
+ * wrapped — every fragment then sits in row 0 regardless of this value. */
+export function rowStrideOf(strip: HTMLElement): number {
+  const cs = getComputedStyle(strip);
+  const h = parseFloat(cs.getPropertyValue("--folio-page-h"));
+  const gap = parseFloat(cs.rowGap) || 0;
+  return h + gap;
+}
+
 /**
- * Page index (0-based, book-wide) of an element, from its fragment's x offset.
- * In a fragmented context an element's client rect identifies its
+ * Local fragment index (0-based, WITHIN this strip) of a rect, generalizing
+ * the single-row case (`wrapCols` unset ⇒ `perRow` = `strip.pages`, every
+ * fragment in row 0, exactly the pre-wrap formula) to a wrapped 2-column
+ * grid. `wrapShift` accounts for a leading `.folio-wrap-spacer` — see
+ * `applySpreadMode` — which occupies grid slots BEFORE this strip's own
+ * first real fragment, so the grid slot a rect is found in has to be
+ * un-shifted back to a real content index.
+ */
+function indexInStrip(left: number, top: number, strip: StripInfo): number {
+  const stride = strideOf(strip.el);
+  const rowStride = rowStrideOf(strip.el);
+  const stripBox = strip.el.getBoundingClientRect();
+  const stripLeft = stripBox.left - strip.el.scrollLeft;
+  const stripTop = stripBox.top;
+  const perRow = strip.wrapCols ?? strip.pages;
+  const shift = strip.wrapShift ?? 0;
+  const colVisual = Math.floor((left - stripLeft + 1) / stride);
+  const colClamped = Math.max(0, Math.min(perRow - 1, colVisual));
+  const row = Math.max(0, Math.floor((top - stripTop + 1) / rowStride));
+  const idx = row * perRow + colClamped - shift;
+  return Math.max(0, Math.min(strip.pages - 1, idx));
+}
+
+/**
+ * Page index (0-based, book-wide) of an element, from its fragment's
+ * position. In a fragmented context an element's client rect identifies its
  * fragmentainer — O(declared elements), not O(nodes).
  */
 export function pageOf(el: Element, strips: StripInfo[]): number {
   const strip = strips.find((s) => s.el.contains(el));
   if (!strip) return -1;
-  const stride = strideOf(strip.el);
   const rects = el.getClientRects();
-  const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
   const first = rects.length ? rects[0]! : (el as HTMLElement).getBoundingClientRect();
-  const idx = Math.floor((first.left - stripLeft + 1) / stride);
-  return strip.offset + Math.max(0, Math.min(strip.pages - 1, idx));
+  return strip.offset + indexInStrip(first.left, first.top, strip);
+}
+
+/**
+ * Whether this browser can lay multicol columns out in wrapping ROWS
+ * (CSS Multicol L2's `column-wrap: wrap` + `column-height`, shipped
+ * unflagged in Chrome/Edge 145). Gates two-up/spread view mode — the
+ * published `book.html` runs in the READER's browser, and Firefox/Safari
+ * don't have this yet (docs/native-engine-acceptance-gate.md 08-09/08-10).
+ */
+export function spreadModeSupported(): boolean {
+  return (
+    typeof CSS !== "undefined" &&
+    typeof CSS.supports === "function" &&
+    CSS.supports("column-wrap", "wrap") &&
+    CSS.supports("column-height", "100px")
+  );
+}
+
+/**
+ * Two-up/spread view mode. Wraps each run's own multicol flow into 2-column
+ * ROWS instead of one long row (`.folio-strip[data-wrap="on"]` in
+ * viewer.css) — content genuinely moves with the columns, because they are
+ * the same box; this is not the retired chrome-only two-up (`decorate.ts`'s
+ * `draw()` comment). No-ops to single-row when the browser lacks the
+ * capability (`spreadModeSupported()`).
+ *
+ * CROSS-RUN CORRECTNESS: each run starts its own fresh 2-column grid at grid
+ * slot 0, so a run whose first physical page is a RECTO would otherwise land
+ * in multicol's first (LEFT) slot and get grouped with the VERSO that
+ * follows it — both backwards (recto belongs on the right) and the wrong
+ * pairing (a recto pairs with the verso that PRECEDES it, in the previous
+ * run, not the one after it). A same-box CSS-only fix (e.g. `direction: rtl`
+ * to mirror left/right) cannot fix this: mirroring only changes which edge a
+ * slot paints at, not which fragments the browser's own column-wrap
+ * grouping puts in the same row together — that grouping is exactly what's
+ * wrong here. Fixing the GROUPING needs a real, empty, zero-height
+ * `.folio-wrap-spacer` occupying grid slot 0 (`break-after: column`, so it
+ * consumes exactly one column-flow slot and nothing else) — inserted as the
+ * strip's first child, AFTER `measure()` has already fixed `strip.pages`/
+ * `offset`/`totalPages` for good, so it can never perturb the page count or
+ * any page-of-element mapping (verified: fragment index of every element is
+ * unaffected — the spacer is pure grid-slot bookkeeping, `indexInStrip`
+ * subtracts it back out). It pushes this run's real first page into slot 1
+ * (the right column), and every fragment after it shifts down by the same
+ * one slot, so the run's own internal pairing lines up correctly for its
+ * whole length. A page count of 1 still gets the 2-column reservation
+ * (never skipped), so a solo shifted recto (e.g. the book's very first
+ * page) renders in the RIGHT slot with an empty left slot — the classic
+ * single-page-spread convention — with nothing else inserted.
+ */
+export function applySpreadMode(strips: StripInfo[], spread: boolean): void {
+  const on = spread && spreadModeSupported();
+  for (const strip of strips) {
+    const el = strip.el;
+    const existingSpacer = el.querySelector(":scope > .folio-wrap-spacer");
+    if (!on) {
+      existingSpacer?.remove();
+      delete el.dataset.wrap;
+      strip.wrapCols = undefined;
+      strip.wrapShift = 0;
+      continue;
+    }
+    // This run's first physical page is a recto (0-based, even) iff its
+    // offset is even — same recto/verso rule `decorate.ts` uses per-sheet.
+    // A recto-starting run needs one leading blank grid slot; a
+    // verso-starting run already lands correctly at slot 0 unshifted.
+    const shift = strip.offset % 2 === 0 ? 1 : 0;
+    strip.wrapCols = 2;
+    strip.wrapShift = shift;
+    el.dataset.wrap = "on";
+    if (shift) {
+      if (!existingSpacer) {
+        const spacer = document.createElement("div");
+        spacer.className = "folio-wrap-spacer";
+        spacer.setAttribute("aria-hidden", "true");
+        el.insertBefore(spacer, el.firstChild);
+      }
+    } else {
+      existingSpacer?.remove();
+    }
+  }
 }
 
 /**
@@ -630,16 +757,9 @@ export function blankPageIndices(strips: StripInfo[]): number[] {
 export function pageRangeOf(el: Element, strips: StripInfo[]): [number, number] {
   const strip = strips.find((s) => s.el.contains(el));
   if (!strip) return [-1, -1];
-  const stride = strideOf(strip.el);
-  const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
   const rects = Array.from(el.getClientRects());
   if (!rects.length) return [pageOf(el, strips), pageOf(el, strips)];
-  const idx = rects.map((r) =>
-    Math.max(
-      0,
-      Math.min(strip.pages - 1, Math.floor((r.left - stripLeft + 1) / stride)),
-    ),
-  );
+  const idx = rects.map((r) => indexInStrip(r.left, r.top, strip));
   return [strip.offset + Math.min(...idx), strip.offset + Math.max(...idx)];
 }
 

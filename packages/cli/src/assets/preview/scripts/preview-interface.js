@@ -536,18 +536,18 @@
         currentViewMode = mode || 'two-column';
         document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
         if (mode) document.body.classList.add('view-' + mode);
-        // Under native the view-mode classes NEVER move content or sheets —
-        // a prior `decoration.setSpread()` call repositioned the sheet chrome
-        // to fake a single/two-up layout, but the strip underneath is one
-        // multicol flow element whose columns cannot be individually moved,
-        // so the author's content stayed at its native column position while
-        // the sheets moved, visibly detaching text from page (retired; see
-        // decorate.ts's draw()). Instead the classes ONLY drive CSS
-        // scroll-snap granularity (viewer.css: 1 page per snap point in
-        // single mode, recto+verso pairs in two-up/spread) — sheets are
-        // already laid out correctly by decorate.ts; a view mode just picks
-        // how a manual scroll settles. `pageStep()` above already makes
-        // next/prevPage step by 1 or 2 book pages to match.
+        // The classes drive CSS scroll-snap granularity (viewer.css: 1 page
+        // per snap point in single mode, recto+verso pairs in two-up/spread)
+        // under BOTH engines — `pageStep()` above already makes next/prevPage
+        // step by 1 or 2 book pages to match. Under native, `setSpread()`
+        // additionally does the real relayout: `column-wrap: wrap` (CSS
+        // Multicol L2) wraps each chapter's columns into a 2-column grid so
+        // content, not just sheet chrome, actually moves into pairs — see
+        // fragment.ts's `applySpreadMode`. No-ops to single-row on a browser
+        // without the capability (Firefox/Safari as of this writing).
+        if (NATIVE_ENGINE && window.Gutterpress && typeof window.Gutterpress.setSpread === 'function') {
+          window.Gutterpress.setSpread(currentViewMode !== 'single');
+        }
       });
       if (!silent) return api.notifyPageChange();
     },

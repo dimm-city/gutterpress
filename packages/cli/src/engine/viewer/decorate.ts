@@ -29,6 +29,7 @@ import {
 import {
   PX_PER_PT,
   pageRangeOf,
+  rowStrideOf,
   strideOf,
   type FolioViewerApi,
   type StripInfo,
@@ -282,6 +283,13 @@ export function decorate(
     for (const strip of layout.strips) {
       const run = ensureRun(strip);
       const stride = strideOf(strip.el);
+      const rowStride = rowStrideOf(strip.el);
+      // `wrapCols` unset (view mode off, or the browser lacks
+      // `column-wrap: wrap`) ⇒ every page sits in one row, exactly the
+      // pre-wrap layout — `perRow = strip.pages` makes the row/col math
+      // below degrade to that single-row case for free.
+      const perRow = strip.wrapCols ?? strip.pages;
+      const shift = strip.wrapShift ?? 0;
       const layer = run.querySelector<HTMLElement>(".folio-layer")!;
       layer.textContent = "";
       const g = strip.geometry;
@@ -290,20 +298,18 @@ export function decorate(
         const bookIndex = strip.offset + i;
         const ctx = pageContext(strip, i, bookIndex);
 
-        // Sheets are painted exactly where Chromium put the matching column
-        // (`i * stride`) — the ONLY layout that is guaranteed to agree with
-        // where the strip's real content actually is. A `single`/`two-up`
-        // repositioning was tried here and shipped broken (see setSpread's
-        // retirement, ARCHITECTURE.md §7): the strip is one multicol flow
-        // element with N columns, not N independently movable elements, so
-        // the sheet chrome could be moved but the author's content — which
-        // Chromium still renders at its native column offset — could not
-        // move with it. Fixing that for real would mean fragmenting the DOM
-        // per physical page (cloning content across pages), which is exactly
-        // what this engine exists to avoid.
-        const columnLeft = PX_PER_PT * g.margin.left + i * stride;
+        // Sheets are painted exactly where Chromium put the matching
+        // fragment — the ONLY layout that is guaranteed to agree with where
+        // the strip's real content actually is. Column-wrap (§ view modes)
+        // moves CONTENT with the columns, so this is real 2-D positioning,
+        // not the retired chrome-only two-up where sheet chrome moved but
+        // Chromium-rendered content stayed at its native single-row offset.
+        const slot = i + shift;
+        const row = Math.floor(slot / perRow);
+        const colVisual = slot % perRow;
+        const columnLeft = PX_PER_PT * g.margin.left + colVisual * stride;
         const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
-        const sheetTop = 0;
+        const sheetTop = row * rowStride;
 
         const sheet = document.createElement("div");
         sheet.className = "folio-sheet";
@@ -325,8 +331,14 @@ export function decorate(
         drawCropMarks(sheet, ctx);
       }
 
-      run.style.height = px(g.height);
-      run.style.width = `${stride * strip.pages}px`;
+      // Reserve the full row width even for a solo page in a wrapped run
+      // (`perRow` can exceed `strip.pages`) — matches the CSS width
+      // `.folio-strip[data-wrap]` reserves, and is what leaves a wrapped
+      // run's empty slot visibly empty instead of collapsed. `+ shift`
+      // counts the leading spacer's own grid slot toward row count.
+      const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
+      run.style.height = `${rowStride * rows}px`;
+      run.style.width = `${stride * perRow}px`;
 
       if (opts.designer) checkOverflow(strip, warnings);
     }

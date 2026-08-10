@@ -19,6 +19,8 @@
   __export(exports_fragment, {
     waitForLayoutReady: () => waitForLayoutReady,
     strideOf: () => strideOf,
+    spreadModeSupported: () => spreadModeSupported,
+    rowStrideOf: () => rowStrideOf,
     pageRangeOf: () => pageRangeOf,
     pageOf: () => pageOf,
     measure: () => measure,
@@ -31,6 +33,7 @@
     collectCssText: () => collectCssText,
     buildStrips: () => buildStrips,
     blankPageIndices: () => blankPageIndices,
+    applySpreadMode: () => applySpreadMode,
     PX_PER_PT: () => PX_PER_PT
   });
 
@@ -110,6 +113,48 @@
    layer; the strip itself must stay transparent so they show through. */
 .folio-strip > * {
   break-inside: auto;
+}
+
+/* Two-up/spread view mode (\`applySpreadMode\` in fragment.ts): wraps this
+   run's multicol columns into 2-column ROWS instead of one long row, using
+   CSS Multicol L2's \`column-wrap: wrap\` + \`column-height\` (shipped unflagged
+   Chrome/Edge 145+ — CSS.supports-gated in JS, so this selector only ever
+   matches on a browser that has it; the base \`.folio-strip\` rules above are
+   the single-row fallback everywhere else). \`row-gap\` mirrors \`column-gap\`
+   above: content box height + top/bottom margins + the visual sheet gap, so
+   consecutive wrapped rows are spaced exactly one page-pitch apart, matching
+   how \`column-gap\` already encodes left/right margins for columns within a
+   row. Width reserves exactly two columns so a lone page (a strip with only
+   one fragment) still gets its correct left/right slot, with nothing
+   inserted to fill the other. */
+.folio-strip[data-wrap="on"] {
+  column-wrap: wrap;
+  column-height: var(--folio-content-h);
+  column-count: 2;
+  row-gap: calc(
+    var(--folio-margin-top) + var(--folio-margin-bottom) + var(--folio-sheet-gap)
+  );
+  width: calc(
+    var(--folio-content-w) * 2 + var(--folio-margin-right) + var(--folio-margin-left) +
+      var(--folio-sheet-gap)
+  );
+}
+
+/* Cross-run correctness (no padding, no inserted PAGE): a run whose first
+   physical page is a RECTO would otherwise fall into multicol's first
+   (LEFT) grid slot and get grouped with the verso that follows it — wrong
+   side AND wrong pairing (a recto pairs with the verso that PRECEDES it).
+   \`fragment.ts\`'s \`applySpreadMode\` inserts this as the strip's first
+   child to consume exactly ONE column-flow slot with zero content, pushing
+   the run's real content one slot later so it lands correctly — see its
+   doc comment for why a same-box CSS-only mirror (e.g. \`direction: rtl\`)
+   cannot fix this (it changes placement, not grouping). */
+.folio-wrap-spacer {
+  break-after: column;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .folio-run {
@@ -1067,6 +1112,8 @@ body.view-spread .folio-sheet[data-side="verso"] {
   function unwrapStrips(strips) {
     for (const strip of strips) {
       const stripEl = strip.el;
+      for (const spacer of Array.from(stripEl.querySelectorAll(".folio-wrap-spacer")))
+        spacer.remove();
       const runWrapper = stripEl.parentElement;
       const removalTarget = runWrapper && runWrapper.classList.contains("folio-run") ? runWrapper : stripEl;
       const parent = removalTarget.parentNode;
@@ -1094,16 +1141,64 @@ body.view-spread .folio-sheet[data-side="verso"] {
     const gap = parseFloat(cs.columnGap) || 0;
     return w + gap;
   }
+  function rowStrideOf(strip) {
+    const cs = getComputedStyle(strip);
+    const h = parseFloat(cs.getPropertyValue("--folio-page-h"));
+    const gap = parseFloat(cs.rowGap) || 0;
+    return h + gap;
+  }
+  function indexInStrip(left, top, strip) {
+    const stride = strideOf(strip.el);
+    const rowStride = rowStrideOf(strip.el);
+    const stripBox = strip.el.getBoundingClientRect();
+    const stripLeft = stripBox.left - strip.el.scrollLeft;
+    const stripTop = stripBox.top;
+    const perRow = strip.wrapCols ?? strip.pages;
+    const shift = strip.wrapShift ?? 0;
+    const colVisual = Math.floor((left - stripLeft + 1) / stride);
+    const colClamped = Math.max(0, Math.min(perRow - 1, colVisual));
+    const row = Math.max(0, Math.floor((top - stripTop + 1) / rowStride));
+    const idx = row * perRow + colClamped - shift;
+    return Math.max(0, Math.min(strip.pages - 1, idx));
+  }
   function pageOf(el, strips) {
     const strip = strips.find((s) => s.el.contains(el));
     if (!strip)
       return -1;
-    const stride = strideOf(strip.el);
     const rects = el.getClientRects();
-    const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
     const first = rects.length ? rects[0] : el.getBoundingClientRect();
-    const idx = Math.floor((first.left - stripLeft + 1) / stride);
-    return strip.offset + Math.max(0, Math.min(strip.pages - 1, idx));
+    return strip.offset + indexInStrip(first.left, first.top, strip);
+  }
+  function spreadModeSupported() {
+    return typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("column-wrap", "wrap") && CSS.supports("column-height", "100px");
+  }
+  function applySpreadMode(strips, spread) {
+    const on = spread && spreadModeSupported();
+    for (const strip of strips) {
+      const el = strip.el;
+      const existingSpacer = el.querySelector(":scope > .folio-wrap-spacer");
+      if (!on) {
+        existingSpacer?.remove();
+        delete el.dataset.wrap;
+        strip.wrapCols = undefined;
+        strip.wrapShift = 0;
+        continue;
+      }
+      const shift = strip.offset % 2 === 0 ? 1 : 0;
+      strip.wrapCols = 2;
+      strip.wrapShift = shift;
+      el.dataset.wrap = "on";
+      if (shift) {
+        if (!existingSpacer) {
+          const spacer = document.createElement("div");
+          spacer.className = "folio-wrap-spacer";
+          spacer.setAttribute("aria-hidden", "true");
+          el.insertBefore(spacer, el.firstChild);
+        }
+      } else {
+        existingSpacer?.remove();
+      }
+    }
   }
   function blankPageIndices(strips) {
     return Array.from(document.querySelectorAll(".folio-recto-spacer")).map((el) => pageOf(el, strips));
@@ -1112,12 +1207,10 @@ body.view-spread .folio-sheet[data-side="verso"] {
     const strip = strips.find((s) => s.el.contains(el));
     if (!strip)
       return [-1, -1];
-    const stride = strideOf(strip.el);
-    const stripLeft = strip.el.getBoundingClientRect().left - strip.el.scrollLeft;
     const rects = Array.from(el.getClientRects());
     if (!rects.length)
       return [pageOf(el, strips), pageOf(el, strips)];
-    const idx = rects.map((r) => Math.max(0, Math.min(strip.pages - 1, Math.floor((r.left - stripLeft + 1) / stride))));
+    const idx = rects.map((r) => indexInStrip(r.left, r.top, strip));
     return [strip.offset + Math.min(...idx), strip.offset + Math.max(...idx)];
   }
   function imageIntrinsicSizeReady(img) {
@@ -1425,7 +1518,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
     document.body.classList.add("folio-stage");
     if (document.body.dataset.designer === undefined)
       api.setDesigner(!!opts.designer);
-    function pageContext(strip, indexInStrip, bookIndex) {
+    function pageContext(strip, indexInStrip2, bookIndex) {
       if (blankPages.has(bookIndex)) {
         const pseudos2 = ["blank"];
         const { geometry: geometry2, marginBoxes: marginBoxes2 } = resolvePage(model, { pseudos: pseudos2 });
@@ -1434,7 +1527,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
       const pseudos = [];
       if (bookIndex === 0)
         pseudos.push("first");
-      if (indexInStrip === 0)
+      if (indexInStrip2 === 0)
         pseudos.push("nth-first-of-run");
       pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
       const { geometry, marginBoxes } = resolvePage(model, { name: strip.page, pseudos });
@@ -1574,15 +1667,21 @@ body.view-spread .folio-sheet[data-side="verso"] {
       for (const strip of layout.strips) {
         const run = ensureRun(strip);
         const stride = strideOf(strip.el);
+        const rowStride = rowStrideOf(strip.el);
+        const perRow = strip.wrapCols ?? strip.pages;
+        const shift = strip.wrapShift ?? 0;
         const layer = run.querySelector(".folio-layer");
         layer.textContent = "";
         const g = strip.geometry;
         for (let i = 0;i < strip.pages; i++) {
           const bookIndex = strip.offset + i;
           const ctx = pageContext(strip, i, bookIndex);
-          const columnLeft = PX_PER_PT * g.margin.left + i * stride;
+          const slot = i + shift;
+          const row = Math.floor(slot / perRow);
+          const colVisual = slot % perRow;
+          const columnLeft = PX_PER_PT * g.margin.left + colVisual * stride;
           const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
-          const sheetTop = 0;
+          const sheetTop = row * rowStride;
           const sheet = document.createElement("div");
           sheet.className = "folio-sheet";
           sheet.dataset.page = String(bookIndex + 1);
@@ -1599,8 +1698,9 @@ body.view-spread .folio-sheet[data-side="verso"] {
           drawGuides(sheet, ctx);
           drawCropMarks(sheet, ctx);
         }
-        run.style.height = px(g.height);
-        run.style.width = `${stride * strip.pages}px`;
+        const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
+        run.style.height = `${rowStride * rows}px`;
+        run.style.width = `${stride * perRow}px`;
         if (opts.designer)
           checkOverflow(strip, warnings);
       }
@@ -1764,6 +1864,7 @@ body.view-spread .folio-sheet[data-side="verso"] {
     const t0 = performance.now();
     const layout = await fragmentDocument(opts);
     const decoration = decorate(layout, { designer: opts.designer });
+    let spreadOn = false;
     const api = Object.assign(layout, {
       decoration,
       goto(page) {
@@ -1778,6 +1879,13 @@ body.view-spread .folio-sheet[data-side="verso"] {
       currentPage: () => current + 1,
       refresh() {
         layout.relayout();
+        applySpreadMode(layout.strips, spreadOn);
+        decoration.redraw();
+        emit();
+      },
+      setSpread(on) {
+        spreadOn = on;
+        applySpreadMode(layout.strips, spreadOn);
         decoration.redraw();
         emit();
       }
