@@ -3,7 +3,7 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import net from "node:net";
 import type { Page } from "puppeteer-core";
-import { getBrowser } from "./browser-pool";
+import { getBrowserPage } from "./browser-pool";
 import { resolveStaticPath, serveFile } from "./static-serve";
 import { patchHtmlStringForPagedjs } from "./pagedjs";
 import { getAssetPath } from "./embedded-assets";
@@ -443,9 +443,9 @@ const puppeteerPdfRenderer: PdfRenderer = async ({
   captureStaticHtmlTo,
 }) => {
   // Reuse the pre-warmed pooled browser; open a fresh page and close the PAGE
-  // (not the browser) so the browser stays warm for the next render.
-  const browser = await getBrowser(timeoutMs);
-  const page = await browser.newPage();
+  // (not the browser) so the browser stays warm for the next render. Tolerates
+  // a browser that died underneath the pool (see getBrowserPage's doc).
+  const { page } = await getBrowserPage(timeoutMs);
   try {
     await paginateAndCapture(page, url, timeoutMs);
 
@@ -552,8 +552,10 @@ export async function paginateToStaticHtml(htmlFile: string): Promise<string> {
 
   try {
     // Reuse the pre-warmed pooled browser; open a fresh page, close the PAGE.
-    const browser = await getBrowser(RENDER_TIMEOUT_MS);
-    const page = await browser.newPage();
+    // Tolerates a browser that died underneath the pool (see getBrowserPage's
+    // doc) — this is the exact "WebSocket ... Connection ended" flake seen
+    // when a CI runner's pooled Chromium disconnects mid-suite.
+    const { page } = await getBrowserPage(RENDER_TIMEOUT_MS);
     try {
       await paginateAndCapture(
         page,

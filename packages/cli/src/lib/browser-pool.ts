@@ -71,6 +71,35 @@ export async function getBrowser(timeoutMs: number): Promise<Browser> {
 }
 
 /**
+ * Get the shared browser and open a fresh page on it, tolerating a browser
+ * that died between the last health check and this call (e.g. a CI runner
+ * that OOM-kills Chromium under memory pressure, or the pooled instance's own
+ * devtools connection dropping): `browser.newPage()` on a disconnected
+ * browser rejects with a websocket/"Connection ended"-shaped error rather
+ * than triggering the `disconnected` listener in time to save this caller.
+ * One retry after dropping the stale pool entry converts that into a clean
+ * relaunch instead of a hard failure — the same shape of resilience
+ * `getBrowser`/`prewarmBrowser` already give a launch that fails outright.
+ */
+export async function getBrowserPage(
+  timeoutMs: number
+): Promise<{ browser: Browser; page: Awaited<ReturnType<Browser["newPage"]>> }> {
+  try {
+    const browser = await getBrowser(timeoutMs);
+    const page = await browser.newPage();
+    return { browser, page };
+  } catch (e) {
+    // Drop whatever the pool is holding (closeBrowser() swallows a
+    // close() failure on an already-dead browser) so getBrowser() below
+    // launches fresh rather than handing back the same broken instance.
+    await closeBrowser();
+    const browser = await getBrowser(timeoutMs);
+    const page = await browser.newPage();
+    return { browser, page };
+  }
+}
+
+/**
  * Close the shared browser. A one-shot CLI build calls this when done so the
  * process can exit; a preview/watch server calls it on shutdown.
  */

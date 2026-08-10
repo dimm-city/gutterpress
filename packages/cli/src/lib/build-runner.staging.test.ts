@@ -86,4 +86,13 @@ test("runBuild (pdf) leaves no .gutterpress-stage* dir in cwd and still writes t
     name.startsWith(".gutterpress-stage")
   );
   expect(leftover).toEqual([]);
-});
+}, 20_000);
+// 20s, not bun's 5s default: this drives the FULL runBuild pipeline (staging,
+// chapter render, fingerprinting) with only the PDF bytes themselves faked —
+// it is real disk/process work, not a fixed-cost unit test, and CI's shared
+// runner regularly lands this well past 871ms local-idle time (measured
+// 5001.42ms on a contended run, i.e. it hit the default 5000ms ceiling by
+// 1.42ms — the invariant this test checks (cwd stays clean) was never in
+// doubt, only the budget was too tight). No Chromium is involved (pdfRenderer
+// is injected), so this is a scheduling-contention margin, not a mask for a
+// slow render.
