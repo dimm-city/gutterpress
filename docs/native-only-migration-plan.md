@@ -166,9 +166,9 @@ Then `manifest.ts:329` `?? "paged"` → `?? "native"`. `--engine paged` survives
 Port `web-adapter.ts`'s in-browser preview to the viewer bundle (must stay node-free — `check-render-pure.mjs`), update `service-worker.ts:38`'s `SHELL` precache, and confirm both purity gates (`tools/check-render-purity.mjs --strict`, `scripts/check-render-pure.mjs`) are green.
 
 Housekeeping that must land in the deletion commit or it silently breaks:
-- `embedded-assets.ts:118` `SENTINEL_ASSET = "vendor/paged.polyfill.js"` — the file whose existence proves the extracted temp asset dir is intact. Delete the polyfill without moving this and `getAssetsDir()` re-extracts on **every** call, forever, with no test covering it. Move it to the viewer bundle.
-- `build-fingerprint.ts:203-207` uses the `pagedjs` dep version as a cache-key input. Replace the input; don't just drop it.
-- `manifest.schema.json:34-43` / `schema/manifest.types.ts:73-90` keep accepting `engine: "paged"` and `engineStyles.paged` for one release with a deprecation warning, then go.
+- ~~`embedded-assets.ts:118` `SENTINEL_ASSET = "vendor/paged.polyfill.js"`~~ — **DONE (WP-D, `9299456`)**: the sentinel is now `engine/gutterpress-viewer.js`, covered by `embedded-assets.test.ts` (deleting only the polyfill must NOT re-extract; deleting the sentinel must). Independently re-verified by probe: after nuking the extracted dir, exactly ONE re-extraction, stable across subsequent calls.
+- ~~`build-fingerprint.ts:203-207` uses the `pagedjs` dep version as a cache-key input.~~ — **DONE (WP-D, `9299456`)**: replaced by `tools.engineBundle`, a sha256-12 of the two committed engine bundles. Verified against a real build's `build-fingerprint.json`.
+- `manifest.schema.json:34-43` / `schema/manifest.types.ts:73-90` keep accepting `engine: "paged"` and `engineStyles.paged` for one release with a deprecation warning, then go. (WP-D added the deprecation language to both; the fields themselves stay until the deletion release.)
 - Capture the final head-to-head artifacts from `.github/workflows/folio-migration-fixtures.yml` and `spike/folio/compare/*` **before** deleting — that is the only evidence the native engine matched. A first snapshot (the acceptance gate's measured table as of 2026-08-09, plus pointers to `spike/folio/`'s durable comparison docs) is already archived at [`docs/native-engine-parity-evidence-archive.md`](./native-engine-parity-evidence-archive.md) — refresh/extend it, don't replace it, if more evidence accrues before the real deletion commit.
 
 *Deleted:* `paged.polyfill.js` (33,288), `pagination.ts` (608), `pagedjs.ts` (166, incl. its hand-written `break-inside:avoid` polyfill), `page-var-resolve.ts` (159, a workaround for Paged.js discarding `var()` inside `@page`), `pagedjs-marker.ts` (50), the residual `build-staging.ts`, the `pagedjs` devDependency, the `engine` field and every `engineStyles` conditional, ~850 lines of tests, and `printsafe.ts`'s `rulePagedjsCrashSelectors`. **~35,500 lines.**
@@ -236,7 +236,7 @@ Prefix **`gp-` for CSS/DOM**, `Gutterpress` for the global and types, `gutterpre
 3. PWA/WebAdapter on the viewer, service-worker precache updated, both purity gates green.
 4. Gate A green.
 5. `examples/with-design-guide` and `examples/gutterpress-user-guide` built natively and visually diffed against the last Paged.js build — **resized screenshots** per CLAUDE.md §0b, or the review is invalid.
-6. `SENTINEL_ASSET` moved; `build-fingerprint` input replaced; manifest schema still accepts `engine: "paged"` with a deprecation warning.
+6. ~~`SENTINEL_ASSET` moved; `build-fingerprint` input replaced; manifest schema still accepts `engine: "paged"` with a deprecation warning.~~ — **DONE (WP-D, `9299456`), reviewed and re-verified 2026-08-09.**
 
 Ship 1–6 as **deprecation** (default `native`, `paged` still selectable) for one release. Delete in the next.
 
