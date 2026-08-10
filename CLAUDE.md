@@ -103,6 +103,33 @@ expectation is a design constraint on every engine/shim change:
    record in each shim's header which spec gap it fills so its removal
    trigger is knowable.
 
+### Where "standards-based" binds strictly, and where it relaxes
+
+The standards rules above apply with FULL force to everything that
+**processes author HTML and CSS** — the markdown pipeline, `PAGED_CSS`, the
+compiler, the print path, and anything that decides what the author's
+document *means* or what lands in the PDF. That code is standards-based, its
+shims are thin and removable, and it may not invent behavior a future Chrome
+feature could not replace.
+
+The rules **relax for code that exists only to support the tooling** — the
+preview/viewer chrome, the desktop UI, editor integration. No future browser
+feature is going to replace "a preview application", so that code may be
+implemented in whatever way best serves the authoring experience.
+
+Two constraints survive the relaxation, and they are what keep it honest:
+
+1. **It must READ standard CSS.** The viewer consumes the same standard
+   `@page`/GCPM the print path does. Authors never write viewer-specific CSS,
+   and no book may depend on viewer internals (DOM shape, classes, custom
+   properties) — that coupling is exactly what made the Paged.js migration
+   expensive.
+2. **It must not change what the document means.** Tooling may re-present the
+   author's pages; it may not re-decide them. Where the viewer derives
+   pagination by any means other than the print fragmenter, the preview↔print
+   parity gate (`scripts/native-parity-gate.ts`) is what proves it still
+   agrees with the PDF — and it must stay green with an empty allowlist.
+
 **Boundary rulings** (ratified by the product owner, 2026-08-08 — these
 resolve the categorization questions future work will hit):
 
@@ -127,7 +154,15 @@ resolve the categorization questions future work will hit):
   custom properties are the product's authoring surface — permanent —
   provided they compile/expand to standard HTML+CSS so documents stay
   portable and shims stay removable. What is forbidden is non-standard
-  RUNTIME behavior, not non-standard authoring shorthand.
+  RUNTIME behavior in the HTML/CSS processing path, not non-standard
+  authoring shorthand.
+- **The preview is not a PDF viewer.** Showing the built PDF instead of a
+  live viewer would make preview↔print fidelity tautological and hand us
+  spread view and zoom for free — but it defeats the viewer's whole purpose,
+  which is HOT-RELOAD EDITING: an author changing a word must see it
+  immediately, not wait on a PDF build. A PDF-preview mode may be worth
+  adding later as an additional way to inspect the final artifact; it must
+  never replace the live viewer.
 
 
 ## Architectural rules
