@@ -27,6 +27,7 @@ import type { Browser as EngineBrowser, Session as EngineSession } from "../engi
 import { UsageError } from "./cli-args";
 import {
   preflightBuildTools,
+  rendersInPooledChromium,
   computeGates,
   verifyNativeChromiumMilestone,
   type Gates,
@@ -937,9 +938,7 @@ export async function runBuild(
   // UNLESS `opts.engineBrowser` is supplied, in which case it drives that
   // browser instead and the pool is never touched.
   const willPaginateInChromium =
-    (ctx.format !== "html" &&
-      (!opts.pdfRenderer || ctx.config.engine === "native") &&
-      !opts.engineBrowser) ||
+    rendersInPooledChromium(ctx.format, ctx.config.engine, opts) ||
     (ctx.format === "html" && !!(await resolveChromiumExecutable()));
   if (willPaginateInChromium) prewarmBrowser(RENDER_TIMEOUT_MS);
 
@@ -963,7 +962,7 @@ export async function runBuild(
     // Skipped when `opts.engineBrowser` is supplied: that path never touches
     // the pool (the desktop drives its own Electron Chromium instead), so
     // there is nothing here for this check to verify.
-    if (ctx.format !== "html" && ctx.config.engine === "native" && !opts.engineBrowser) {
+    if (ctx.config.engine === "native" && rendersInPooledChromium(ctx.format, ctx.config.engine, opts)) {
       await verifyNativeChromiumMilestone();
     }
 

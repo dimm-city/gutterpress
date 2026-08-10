@@ -84,18 +84,18 @@ export async function getBrowser(timeoutMs: number): Promise<Browser> {
 export async function getBrowserPage(
   timeoutMs: number
 ): Promise<{ browser: Browser; page: Awaited<ReturnType<Browser["newPage"]>> }> {
+  const attempt = async () => {
+    const browser = await getBrowser(timeoutMs);
+    return { browser, page: await browser.newPage() };
+  };
   try {
-    const browser = await getBrowser(timeoutMs);
-    const page = await browser.newPage();
-    return { browser, page };
-  } catch (e) {
+    return await attempt();
+  } catch {
     // Drop whatever the pool is holding (closeBrowser() swallows a
-    // close() failure on an already-dead browser) so getBrowser() below
-    // launches fresh rather than handing back the same broken instance.
+    // close() failure on an already-dead browser) so the retry launches
+    // fresh rather than getting the same broken instance back.
     await closeBrowser();
-    const browser = await getBrowser(timeoutMs);
-    const page = await browser.newPage();
-    return { browser, page };
+    return await attempt();
   }
 }
 

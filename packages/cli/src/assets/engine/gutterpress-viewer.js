@@ -17,7 +17,9 @@
   // src/engine/viewer/fragment.ts
   var exports_fragment = {};
   __export(exports_fragment, {
+    wrapGeometry: () => wrapGeometry,
     waitForLayoutReady: () => waitForLayoutReady,
+    stripMetrics: () => stripMetrics,
     strideOf: () => strideOf,
     spreadModeSupported: () => spreadModeSupported,
     rowStrideOf: () => rowStrideOf,
@@ -1136,25 +1138,30 @@ body.view-spread .folio-sheet[data-side="verso"] {
     return { strips, totalPages: offset };
   }
   function strideOf(strip) {
+    return stripMetrics(strip).stride;
+  }
+  function stripMetrics(strip) {
     const cs = getComputedStyle(strip);
     const w = parseFloat(cs.getPropertyValue("--folio-content-w"));
-    const gap = parseFloat(cs.columnGap) || 0;
-    return w + gap;
+    const colGap = parseFloat(cs.columnGap) || 0;
+    const h = parseFloat(cs.getPropertyValue("--folio-content-h"));
+    const rowGap = parseFloat(cs.rowGap) || 0;
+    return { stride: w + colGap, rowStride: h + rowGap };
   }
   function rowStrideOf(strip) {
-    const cs = getComputedStyle(strip);
-    const h = parseFloat(cs.getPropertyValue("--folio-content-h"));
-    const gap = parseFloat(cs.rowGap) || 0;
-    return h + gap;
+    return stripMetrics(strip).rowStride;
+  }
+  function wrapGeometry(strip) {
+    if (!strip.wrapCols)
+      return { perRow: strip.pages, shift: 0 };
+    return { perRow: strip.wrapCols, shift: strip.offset % 2 === 0 ? 1 : 0 };
   }
   function indexInStrip(left, top, strip) {
-    const stride = strideOf(strip.el);
-    const rowStride = rowStrideOf(strip.el);
+    const { stride, rowStride } = stripMetrics(strip.el);
     const stripBox = strip.el.getBoundingClientRect();
     const stripLeft = stripBox.left - strip.el.scrollLeft;
     const stripTop = stripBox.top;
-    const perRow = strip.wrapCols ?? strip.pages;
-    const shift = strip.wrapShift ?? 0;
+    const { perRow, shift } = wrapGeometry(strip);
     const colVisual = Math.floor((left - stripLeft + 1) / stride);
     const colClamped = Math.max(0, Math.min(perRow - 1, colVisual));
     const row = Math.max(0, Math.floor((top - stripTop + 1) / rowStride));
@@ -1181,12 +1188,10 @@ body.view-spread .folio-sheet[data-side="verso"] {
         existingSpacer?.remove();
         delete el.dataset.wrap;
         strip.wrapCols = undefined;
-        strip.wrapShift = 0;
         continue;
       }
-      const shift = strip.offset % 2 === 0 ? 1 : 0;
       strip.wrapCols = 2;
-      strip.wrapShift = shift;
+      const { shift } = wrapGeometry(strip);
       el.dataset.wrap = "on";
       if (shift) {
         if (!existingSpacer) {
@@ -1668,10 +1673,9 @@ body.view-spread .folio-sheet[data-side="verso"] {
       let first = true;
       for (const strip of layout.strips) {
         const run = ensureRun(strip);
-        const stride = strideOf(strip.el);
-        const rowStride = rowStrideOf(strip.el);
-        const perRow = strip.wrapCols ?? strip.pages;
-        const shift = strip.wrapShift ?? 0;
+        const { stride, rowStride } = stripMetrics(strip.el);
+        const sheetGap = parseFloat(getComputedStyle(run).getPropertyValue("--folio-sheet-gap")) || 0;
+        const { perRow, shift } = wrapGeometry(strip);
         const layer = run.querySelector(".folio-layer");
         layer.textContent = "";
         const g = strip.geometry;
@@ -1703,7 +1707,6 @@ body.view-spread .folio-sheet[data-side="verso"] {
         const rows = Math.max(1, Math.ceil((strip.pages + shift) / perRow));
         run.style.height = `${rowStride * rows}px`;
         run.style.width = `${stride * perRow}px`;
-        const sheetGap = parseFloat(getComputedStyle(run).getPropertyValue("--folio-sheet-gap")) || 0;
         run.style.marginTop = strip.wrapCols && shift === 1 && !first ? `${-(prevRowStride + sheetGap)}px` : "";
         prevRowStride = rowStride;
         first = false;

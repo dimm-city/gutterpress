@@ -66,6 +66,59 @@ export function findChromium(): string {
  */
 export const REQUIRED_MILESTONE = 148;
 
+/**
+ * Refuse to paginate on a browser below the floor. The invariant belongs to
+ * the `Browser` CONTRACT, not to any one way of obtaining a browser — the
+ * launch/connect paths and the host-injected path (an Electron
+ * `EngineBrowser`, `lib/engine.ts`) must enforce the identical rule with the
+ * identical message, or the two drift (they already had once).
+ */
+export function assertMilestone(product: string, origin: string, hint = ""): void {
+  const milestone = Number(/Chrome\/(\d+)/.exec(product)?.[1] ?? 0);
+  if (milestone < REQUIRED_MILESTONE) {
+    throw new Error(
+      `The Gutterpress engine requires Chromium ${REQUIRED_MILESTONE}+; found ${product} ${origin}.` +
+        (hint ? `\n${hint}` : ""),
+    );
+  }
+}
+
+/**
+ * The document-settled probe both hosts run before measuring or printing:
+ * fonts ready, any pending `folio:ready` handshake, then two rAFs so layout
+ * settles after the font swap. ONE definition — the Electron host
+ * (packages/desktop/electron/engine-browser.ts) evaluates the same
+ * expression, and a drift between hosts would be an invisible divergence in
+ * when "ready" means ready.
+ */
+export function readyProbeExpr(timeoutMs: number): string {
+  return `(async () => {
+      await document.fonts.ready;
+      if (window.__folioReadyPending) {
+        await new Promise((res) => {
+          const t = setTimeout(res, ${timeoutMs});
+          document.addEventListener('folio:ready', () => { clearTimeout(t); res(); }, { once: true });
+        });
+      }
+      // two rAFs: let layout settle after fonts swap
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return true;
+    })()`;
+}
+
+/**
+ * The print-quality contract both hosts pass to their print call: tagged PDF
+ * + document outline (named destinations — Tier 3 and the parity gate read
+ * them back) + CSS page size + backgrounds. ONE object, spread by both
+ * `SessionImpl.printToPDF` and the Electron host's `printToPDF`.
+ */
+export const DEFAULT_PRINT_OPTS = {
+  printBackground: true,
+  preferCSSPageSize: true,
+  generateTaggedPDF: true,
+  generateDocumentOutline: true,
+} as const;
+
 export interface Browser {
   wsUrl: string;
   version: string;
@@ -188,15 +241,13 @@ async function checkMilestoneAndWrap(
   overrideHint: string = `Set FOLIO_CHROMIUM to a ${REQUIRED_MILESTONE}+ binary.`,
 ): Promise<Browser> {
   const version = await conn.send<{ product: string }>("Browser.getVersion", {});
-  const milestone = Number(/Chrome\/(\d+)/.exec(version.product)?.[1] ?? 0);
-
-  if (milestone < REQUIRED_MILESTONE) {
+  try {
+    assertMilestone(version.product, origin, overrideHint);
+  } catch (e) {
     await teardown();
-    throw new Error(
-      `The Gutterpress engine requires Chromium ${REQUIRED_MILESTONE}+; found ${version.product} ${origin}.\n` +
-        overrideHint,
-    );
+    throw e;
   }
+  const milestone = Number(/Chrome\/(\d+)/.exec(version.product)?.[1] ?? 0);
 
   return {
     wsUrl,
@@ -361,18 +412,7 @@ class SessionImpl implements Session {
   }
 
   async waitForReady(timeoutMs = 15_000) {
-    await this.evaluate(`(async () => {
-      await document.fonts.ready;
-      if (window.__folioReadyPending) {
-        await new Promise((res) => {
-          const t = setTimeout(res, ${timeoutMs});
-          document.addEventListener('folio:ready', () => { clearTimeout(t); res(); }, { once: true });
-        });
-      }
-      // two rAFs: let layout settle after fonts swap
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      return true;
-    })()`);
+    await this.evaluate(readyProbeExpr(timeoutMs));
   }
 
   /**
@@ -393,10 +433,7 @@ class SessionImpl implements Session {
     const res = await this.send<{ data: string; stream?: string }>(
       "Page.printToPDF",
       {
-        printBackground: true,
-        preferCSSPageSize: true,
-        generateTaggedPDF: true,
-        generateDocumentOutline: true,
+        ...DEFAULT_PRINT_OPTS,
         transferMode: "ReturnAsStream",
         ...opts,
       },

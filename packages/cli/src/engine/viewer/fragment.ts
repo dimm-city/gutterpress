@@ -26,13 +26,10 @@ export interface StripInfo {
   /** page index (0-based, book-wide) of this run's first page */
   offset: number;
   /** two-up/spread view mode (§ applySpreadMode): pages rendered per wrapped
-   * row. `undefined` = single row (view mode off, or unsupported browser). */
+   * row. `undefined` = single row (view mode off, or unsupported browser).
+   * The leading-spacer shift is NOT stored — it is fully determined by
+   * `wrapCols` + `offset` parity; derive it with `wrapGeometry()`. */
   wrapCols?: number;
-  /** grid slots this run's real content is shifted by (0 or 1) — a leading
-   * `.folio-wrap-spacer` occupies the slots, so this many extra empty
-   * columns sit BEFORE `strip.el`'s first real fragment. See
-   * `applySpreadMode`. */
-  wrapShift?: number;
 }
 
 export interface LayoutResult {
@@ -599,10 +596,23 @@ export function measure(strips: StripInfo[]): LayoutResult {
 }
 
 export function strideOf(strip: HTMLElement): number {
+  return stripMetrics(strip).stride;
+}
+
+/**
+ * Both pitches from ONE getComputedStyle read. `indexInStrip` runs once per
+ * xref/string-set/probe element on every mount and refresh, and each
+ * getComputedStyle call can force a style recalc — reading the horizontal
+ * and vertical pitch together halves that cost without any caching to
+ * invalidate.
+ */
+export function stripMetrics(strip: HTMLElement): { stride: number; rowStride: number } {
   const cs = getComputedStyle(strip);
   const w = parseFloat(cs.getPropertyValue("--folio-content-w"));
-  const gap = parseFloat(cs.columnGap) || 0;
-  return w + gap;
+  const colGap = parseFloat(cs.columnGap) || 0;
+  const h = parseFloat(cs.getPropertyValue("--folio-content-h"));
+  const rowGap = parseFloat(cs.rowGap) || 0;
+  return { stride: w + colGap, rowStride: h + rowGap };
 }
 
 /**
@@ -625,29 +635,38 @@ export function strideOf(strip: HTMLElement): number {
  * then sits in row 0 regardless of this value.
  */
 export function rowStrideOf(strip: HTMLElement): number {
-  const cs = getComputedStyle(strip);
-  const h = parseFloat(cs.getPropertyValue("--folio-content-h"));
-  const gap = parseFloat(cs.rowGap) || 0;
-  return h + gap;
+  return stripMetrics(strip).rowStride;
 }
 
 /**
  * Local fragment index (0-based, WITHIN this strip) of a rect, generalizing
  * the single-row case (`wrapCols` unset ⇒ `perRow` = `strip.pages`, every
  * fragment in row 0, exactly the pre-wrap formula) to a wrapped 2-column
- * grid. `wrapShift` accounts for a leading `.folio-wrap-spacer` — see
+ * grid. `wrapGeometry()`'s shift accounts for a leading `.folio-wrap-spacer` — see
  * `applySpreadMode` — which occupies grid slots BEFORE this strip's own
  * first real fragment, so the grid slot a rect is found in has to be
  * un-shifted back to a real content index.
  */
+/**
+ * Wrap-grid geometry of a strip, derived — never stored — so it cannot drift
+ * from the state that determines it. `perRow = pages` when wrap is off makes
+ * every consumer's row/col math degrade to the single-row layout for free.
+ * The shift is 1 exactly when a wrapped run's first physical page is a recto
+ * (0-based `offset` even): `applySpreadMode` inserts a leading
+ * `.folio-wrap-spacer` for that case, so the run's real first fragment sits
+ * one grid slot in.
+ */
+export function wrapGeometry(strip: StripInfo): { perRow: number; shift: number } {
+  if (!strip.wrapCols) return { perRow: strip.pages, shift: 0 };
+  return { perRow: strip.wrapCols, shift: strip.offset % 2 === 0 ? 1 : 0 };
+}
+
 function indexInStrip(left: number, top: number, strip: StripInfo): number {
-  const stride = strideOf(strip.el);
-  const rowStride = rowStrideOf(strip.el);
+  const { stride, rowStride } = stripMetrics(strip.el);
   const stripBox = strip.el.getBoundingClientRect();
   const stripLeft = stripBox.left - strip.el.scrollLeft;
   const stripTop = stripBox.top;
-  const perRow = strip.wrapCols ?? strip.pages;
-  const shift = strip.wrapShift ?? 0;
+  const { perRow, shift } = wrapGeometry(strip);
   const colVisual = Math.floor((left - stripLeft + 1) / stride);
   const colClamped = Math.max(0, Math.min(perRow - 1, colVisual));
   const row = Math.max(0, Math.floor((top - stripTop + 1) / rowStride));
@@ -725,16 +744,10 @@ export function applySpreadMode(strips: StripInfo[], spread: boolean): void {
       existingSpacer?.remove();
       delete el.dataset.wrap;
       strip.wrapCols = undefined;
-      strip.wrapShift = 0;
       continue;
     }
-    // This run's first physical page is a recto (0-based, even) iff its
-    // offset is even — same recto/verso rule `decorate.ts` uses per-sheet.
-    // A recto-starting run needs one leading blank grid slot; a
-    // verso-starting run already lands correctly at slot 0 unshifted.
-    const shift = strip.offset % 2 === 0 ? 1 : 0;
     strip.wrapCols = 2;
-    strip.wrapShift = shift;
+    const { shift } = wrapGeometry(strip);
     el.dataset.wrap = "on";
     if (shift) {
       if (!existingSpacer) {

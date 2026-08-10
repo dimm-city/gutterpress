@@ -63,6 +63,7 @@
  * the switches — don't assume the container result generalizes to every host.
  */
 import { BrowserWindow } from "electron";
+import { DEFAULT_PRINT_OPTS, readyProbeExpr } from "gutterpress";
 import type { EngineBrowser, EngineSession } from "gutterpress";
 
 function milestoneFromChromeVersion(v: string): number {
@@ -107,20 +108,8 @@ class ElectronEngineSession implements EngineSession {
     await this.win.loadURL(url);
   }
 
-  /** Identical expression to `engine/shared/cdp.ts`'s `waitForReady` — same
-   * `document.fonts.ready` + `folio:ready` + two-rAF settle contract. */
   async waitForReady(timeoutMs = 15_000): Promise<void> {
-    await this.evaluate(`(async () => {
-      await document.fonts.ready;
-      if (window.__folioReadyPending) {
-        await new Promise((res) => {
-          const t = setTimeout(res, ${timeoutMs});
-          document.addEventListener('folio:ready', () => { clearTimeout(t); res(); }, { once: true });
-        });
-      }
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      return true;
-    })()`);
+    await this.evaluate(readyProbeExpr(timeoutMs));
   }
 
   async printToPDF(opts: Record<string, unknown> = {}): Promise<Uint8Array> {
@@ -128,13 +117,7 @@ class ElectronEngineSession implements EngineSession {
     // doc) — meaningless against `webContents.printToPDF`, which returns an
     // in-process Buffer with no serialization step to stream around.
     const { transferMode: _drop, ...rest } = opts;
-    const buf = await this.wc.printToPDF({
-      printBackground: true,
-      preferCSSPageSize: true,
-      generateTaggedPDF: true,
-      generateDocumentOutline: true,
-      ...rest,
-    });
+    const buf = await this.wc.printToPDF({ ...DEFAULT_PRINT_OPTS, ...rest });
     return new Uint8Array(buf);
   }
 
@@ -221,8 +204,7 @@ export async function createElectronEngineBrowser(): Promise<EngineBrowser> {
       await win.loadURL("about:blank");
       win.webContents.debugger.attach();
       const session = new ElectronEngineSession(win);
-      await session.send("Page.enable");
-      await session.send("Runtime.enable");
+      await Promise.all([session.send("Page.enable"), session.send("Runtime.enable")]);
       return session;
     },
     async close() {

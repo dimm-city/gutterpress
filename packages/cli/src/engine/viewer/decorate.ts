@@ -29,8 +29,8 @@ import {
 import {
   PX_PER_PT,
   pageRangeOf,
-  rowStrideOf,
-  strideOf,
+  stripMetrics,
+  wrapGeometry,
   type FolioViewerApi,
   type StripInfo,
 } from "./fragment.ts";
@@ -281,7 +281,7 @@ export function decorate(
     fillXrefs();
 
     // Cross-run spread composition. Strip offsets are consecutive, so parity
-    // interlocks: a run whose first page is a RECTO (wrapShift = 1) always
+    // interlocks: a run whose first page is a RECTO (wrapGeometry shift 1) always
     // follows a run whose last page was a solo VERSO sitting in the LEFT
     // slot of its final row (proof: offsets B = A.offset + A.pages; B even
     // forces A.pages-1+A.shift even in both A-parity cases). The recto run's
@@ -295,14 +295,17 @@ export function decorate(
 
     for (const strip of layout.strips) {
       const run = ensureRun(strip);
-      const stride = strideOf(strip.el);
-      const rowStride = rowStrideOf(strip.el);
+      // One computed-style read per strip, BEFORE the sheet-append loop
+      // below mutates the DOM — reading after those writes forces a
+      // synchronous style recalc per strip on every mount and hot reload.
+      const { stride, rowStride } = stripMetrics(strip.el);
+      const sheetGap =
+        parseFloat(getComputedStyle(run).getPropertyValue("--folio-sheet-gap")) || 0;
       // `wrapCols` unset (view mode off, or the browser lacks
       // `column-wrap: wrap`) ⇒ every page sits in one row, exactly the
       // pre-wrap layout — `perRow = strip.pages` makes the row/col math
       // below degrade to that single-row case for free.
-      const perRow = strip.wrapCols ?? strip.pages;
-      const shift = strip.wrapShift ?? 0;
+      const { perRow, shift } = wrapGeometry(strip);
       const layer = run.querySelector<HTMLElement>(".folio-layer")!;
       layer.textContent = "";
       const g = strip.geometry;
@@ -359,8 +362,6 @@ export function decorate(
       // -(prevRowStride + G) collapse to -prevRowStride, landing this run's
       // first row exactly on the previous run's last-row top. The very
       // first run keeps the solo-cover convention.
-      const sheetGap =
-        parseFloat(getComputedStyle(run).getPropertyValue("--folio-sheet-gap")) || 0;
       run.style.marginTop =
         strip.wrapCols && shift === 1 && !first
           ? `${-(prevRowStride + sheetGap)}px`

@@ -49,6 +49,24 @@ const INSTALL_HINTS: Record<"gs" | "qpdf", string> = {
  * stampCreator) and needs no system tool at all.
  * qpdf is REQUIRED for pdfx + stripAnnotations (default true).
  */
+/**
+ * Does this build render in the POOLED/external Chromium? The one rule,
+ * defined once: HTML builds never paginate here; an injected `pdfRenderer`
+ * replaces the pool ONLY on the Paged.js leg (the native engine ignores it);
+ * an injected `engineBrowser` (the desktop's Electron host) replaces the
+ * pool on the native leg. Every caller that gates preflight, prewarm, or the
+ * milestone check derives from THIS predicate — four hand-copied variants of
+ * it once drifted (one site forgot `engineBrowser`) and only stayed correct
+ * because a callee re-checked.
+ */
+export function rendersInPooledChromium(
+  format: BuildFormat,
+  engine: "paged" | "native" | undefined,
+  opts: { pdfRenderer?: unknown; engineBrowser?: unknown }
+): boolean {
+  return format !== "html" && (!opts.pdfRenderer || engine === "native") && !opts.engineBrowser;
+}
+
 export async function preflightBuildTools(
   format: BuildFormat,
   opts: { stripAnnotations?: boolean; pdfRenderer?: PdfRenderer; engineBrowser?: unknown },
@@ -56,16 +74,10 @@ export async function preflightBuildTools(
 ): Promise<void> {
   const missing: MissingTool[] = [];
 
-  // Chromium — required for any rendered output, UNLESS an external PDF renderer
-  // is injected (the Electron desktop renders with its own bundled Chromium).
-  // The native engine ignores an injected `pdfRenderer` (build-runner.ts always
-  // calls `buildNativePdf`, which drives the system/pooled Chromium directly),
-  // so it still needs this check even with `opts.pdfRenderer` set — UNLESS
-  // `opts.engineBrowser` is ALSO supplied, which drives the native engine's own
-  // Electron Chromium instead of the pool and needs no external binary at all.
+  // Chromium — required exactly when the build renders in the pooled/external
+  // Chromium (see rendersInPooledChromium's doc for the injection cases).
   if (
-    (!opts.pdfRenderer || config.engine === "native") &&
-    !opts.engineBrowser &&
+    rendersInPooledChromium(format, config.engine, opts) &&
     !(await resolveChromiumExecutable())
   ) {
     // requireChromiumExecutable() throws with multi-line install instructions

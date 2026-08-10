@@ -1,3 +1,4 @@
+import { serveDir } from "./test-support/serve-dir.ts";
 import { test, expect, afterAll } from "bun:test";
 import http from "node:http";
 import fs from "node:fs";
@@ -36,31 +37,6 @@ afterAll(async () => {
   await closeBrowser();
 });
 
-function serveDir(dir: string, entry: string): Promise<{ url: string; close: () => Promise<void> }> {
-  const server = http.createServer((req, res) => {
-    const rel = decodeURIComponent((req.url ?? "/").split("?")[0]!).replace(/^\/+/, "");
-    const filePath = path.join(dir, rel || entry);
-    if (!filePath.startsWith(dir) || !fs.existsSync(filePath)) {
-      res.writeHead(404);
-      res.end("not found");
-      return;
-    }
-    res.setHeader(
-      "content-type",
-      filePath.endsWith(".js") ? "text/javascript" : "text/html"
-    );
-    fs.createReadStream(filePath).pipe(res);
-  });
-  return new Promise((resolve) => {
-    server.listen(0, "127.0.0.1", () => {
-      const port = (server.address() as { port: number }).port;
-      resolve({
-        url: `http://127.0.0.1:${port}/${entry}`,
-        close: () => new Promise((r) => server.close(() => r())),
-      });
-    });
-  });
-}
 
 testIf(
   "a broken target-counter() href warns instead of silently printing '?'; a valid one still resolves",

@@ -26,6 +26,12 @@ export {
   type EngineSession,
 } from "../lib/build-runner";
 
+// Host implementations of the EngineBrowser/EngineSession contract (the
+// desktop's Electron host) share these contract-level values with the CLI's
+// own CDP sessions — one definition of "document ready" and one print-quality
+// contract, so the hosts cannot drift.
+export { DEFAULT_PRINT_OPTS, readyProbeExpr } from "../engine/shared/cdp";
+
 export {
   startPreviewServer,
   type PreviewServerHandle,
