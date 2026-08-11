@@ -38,11 +38,19 @@ printed numbers alone. Watch the sky as closely as the table.
 
 ![A heron at the full content width](assets/heron.jpg){.gp-full}
 
-The full-width plate above spans the page's whole content box. The
-legacy class names keep working forever alongside the gp-* ones:
+The full-width plate above spans the page's whole content box.
 
-![A heron via the legacy float class](assets/heron.jpg){.float-right .gp-small}
+## Wrapping to a Silhouette
+
+![A headland silhouette, text wraps its slope](assets/headland.svg){.gp-left .gp-shape .gp-medium}
 
 Stand at an edge and wait, and the marsh comes to you. Fish, birds, and
 foragers all work the seams where fast water meets slow, where mud meets
-sand, where the last of the ebb meets the first push of the flood.
+sand, where the last of the ebb meets the first push of the flood. The
+shaped float on the left lets these lines climb its transparent slope
+instead of squaring off against the image box, and the wrap must land on
+the same lines in the preview and in the printed pages for the parity
+gate to stay green. The tide table is a promise the water mostly keeps,
+and the wind rewrites it at the margins while the moon signs it twice a
+month before the mud files it away under eelgrass until the next low
+water opens the book again.

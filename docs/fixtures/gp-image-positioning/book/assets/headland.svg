@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="160" viewBox="0 0 120 160">
+  <!-- A headland silhouette: opaque along the left edge, tapering into full
+       transparency toward the top-right — asymmetric alpha so a .gp-shape
+       wrap visibly differs from the rectangular margin box. -->
+  <path d="M0 0 L48 0 L120 160 L0 160 Z" fill="#2b6e5c"/>
+</svg>

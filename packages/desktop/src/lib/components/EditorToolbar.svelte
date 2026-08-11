@@ -79,7 +79,7 @@
   export type ToolbarPayload =
     | { level: 1 | 2 | 3 | 4 }           // heading
     | { cols: number }                    // table
-    | { src: string; alt: string; width?: string; position?: string; size?: string } // image
+    | { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } // image
     | { kind: LayoutBlockKind };          // layout-block
 
   // The toolbar is only meaningful for markdown files.
@@ -225,6 +225,7 @@
   let imageWidth = $state("");
   let imagePosition = $state<"" | ImagePositionClass>("");
   let imageSize = $state<"" | ImageSizeClass>("");
+  let imageShape = $state(false);
   let imageSrc = $state("");        // picked absolute path from host
   let imageBusy = $state(false);
   let imageError = $state("");
@@ -277,6 +278,7 @@
       width: imageWidth || undefined,
       position: imagePosition || undefined,
       size: imageSize || undefined,
+      shape: imageShape || undefined,
     });
     // Reset dialog state.
     imageSrc = "";
@@ -284,6 +286,7 @@
     imageWidth = "";
     imagePosition = "";
     imageSize = "";
+    imageShape = false;
     imageOpen = false;
     imageBusy = false;
     // Focus restoration to `imageDialogTriggerEl` is handled by the
@@ -296,6 +299,7 @@
     imageWidth = "";
     imagePosition = "";
     imageSize = "";
+    imageShape = false;
     imageError = "";
     imageOpen = false;
     imageBusy = false;
@@ -698,6 +702,18 @@
     </p>
   </div>
 
+  <div class="image-field">
+    <label class="image-check-row">
+      <input type="checkbox" bind:checked={imageShape} aria-label="Wrap text to image shape" />
+      Wrap text to the image's shape
+    </label>
+    <p class="image-hint">
+      For floated images with transparency (cut-out PNGs): text follows the
+      visible silhouette instead of the rectangular box. Has no effect
+      without a float position.
+    </p>
+  </div>
+
   {#if imageError}
     <p class="image-error" role="alert">{imageError}</p>
   {/if}
@@ -1019,6 +1035,15 @@
     font-size: 10px;
     color: var(--app-text-muted);
     line-height: 1.4;
+  }
+
+  .image-check-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--app-text);
+    cursor: pointer;
   }
 
   .image-select {

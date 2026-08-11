@@ -7,11 +7,14 @@
  * `packages/cli/src/lib/markdown/markdown-it-paged.js` ships the rules;
  * this module only mirrors the names for UI options and attrs editing.
  * `image-classes.test.ts` holds a drift gate asserting every class listed
- * here appears as a selector in `PAGED_CSS`, so the two cannot diverge
- * silently. Canonical names are `gp-*`; the original five (`center`,
- * `float-left`, `float-right`, `full-width`, `full-bleed`) are PERMANENT
- * aliases — recognized on read, never rewritten unless the user actively
- * changes that facet.
+ * here appears as a selector in `PAGED_CSS` — and that no legacy alias
+ * does — so the two cannot diverge silently. The vocabulary is `gp-*`
+ * ONLY: the five pre-vocabulary names (`center`, `float-left`,
+ * `float-right`, `full-width`, `full-bleed`) were REMOVED from core CSS.
+ * The `aliases` lists below keep them recognized on READ purely as a
+ * migration path — an old book's `{.float-right}` still identifies the
+ * position facet, so "Set position…" rewrites it to the live `gp-*` name
+ * in place instead of appending a second class beside a dead one.
  *
  * The tokenizer/facet-setter pairs below exist for one reason: the old
  * `parsePosition`-regex + rebuild-from-scratch write path silently DROPPED
@@ -30,7 +33,11 @@ export interface ImageClassOption {
   class: string;
   /** Short name accepted from text prompts, e.g. "right". */
   short: string;
-  /** Permanent legacy alias(es) recognized on read, never rewritten unasked. */
+  /**
+   * REMOVED legacy name(s) recognized on read as a migration path (they no
+   * longer exist in core CSS); rewritten to `class` when the user edits
+   * this facet, never resurrected otherwise.
+   */
   aliases?: readonly string[];
   /** UI label, e.g. "Float right". */
   label: string;
@@ -177,5 +184,25 @@ export function setSizeClass(tokens: readonly string[], cls: string | null): str
     tokens,
     isFacetToken(IMAGE_SIZE_OPTIONS),
     cls == null ? null : `.${cls}`,
+  );
+}
+
+/**
+ * The shape-wrap facet is a boolean: `.gp-shape` wraps text to a floated
+ * image's alpha silhouette (core mirrors the src into --gp-shape at render
+ * time; the desktop only toggles the class). Inert without a float
+ * position, so the UI can offer it unconditionally.
+ */
+export const IMAGE_SHAPE_CLASS = "gp-shape";
+
+export function hasShapeClass(tokens: readonly string[]): boolean {
+  return tokens.includes(`.${IMAGE_SHAPE_CLASS}`);
+}
+
+export function setShapeClass(tokens: readonly string[], on: boolean): string[] {
+  return setFacetToken(
+    tokens,
+    (token) => token === `.${IMAGE_SHAPE_CLASS}`,
+    on ? `.${IMAGE_SHAPE_CLASS}` : null,
   );
 }

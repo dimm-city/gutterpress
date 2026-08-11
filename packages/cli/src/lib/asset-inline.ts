@@ -488,3 +488,64 @@ export async function planImageCopies(
 
   return { copies: [...copies.values()], errors };
 }
+
+/**
+ * Inline every `--gp-shape:url("…")` style-attribute value in rendered book
+ * HTML as a data: URI, reading the referenced file relative to `baseDir`
+ * (the staged book directory, where `planImageCopies` already landed it).
+ *
+ * Why this exists: `shape-outside` READS PIXELS, so unlike `<img>` rendering
+ * it requires CORS-clean image data. The print path loads the staged
+ * `book.html` via `file://`, where every file is an opaque origin — a
+ * file-path shape silently degrades to the margin box (MEASURED, Chromium
+ * 141: identical fixture wraps over http:// and does nothing over file://),
+ * while the http-served preview shows the shape. That is a
+ * preview-vs-print divergence, the exact failure class the parity gate
+ * exists to prevent — and it depends on browser launch flags we do not
+ * control on every host (Electron's export window enforces web security).
+ * A data: URI is same-origin everywhere, so staging — which already inlines
+ * fonts as data: URIs — makes the print input origin-independent.
+ *
+ * The value matched is exactly what `images.ts` emits after markdown-it's
+ * attribute escaping: `--gp-shape:url(&quot;<src>&quot;)`. Remote and data:
+ * URLs, files that escape `baseDir`, and unreadable files are left
+ * untouched — the shape then falls back to the margin box, the same
+ * behavior as an image that fails to load.
+ */
+export async function inlineShapeUrls(html: string, baseDir: string): Promise<string> {
+  const re = /--gp-shape:url\(&quot;((?:(?!&quot;).)*)&quot;\)/g;
+  const matches = [...html.matchAll(re)];
+  if (matches.length === 0) return html;
+
+  const replacements = new Map<string, string>();
+  for (const m of matches) {
+    const escaped = m[1]!;
+    if (replacements.has(m[0]!)) continue;
+    // Undo markdown-it's HTML attribute escaping to recover the raw URL.
+    const raw = escaped
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+    if (!raw || isNonFileUrl(raw)) continue;
+    const cleaned = stripUrlSuffix(decodeRef(raw));
+    if (path.isAbsolute(cleaned)) continue;
+    const abs = path.resolve(baseDir, cleaned);
+    if (escapesProjectRoot(baseDir, abs)) continue;
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(abs);
+    } catch {
+      continue;
+    }
+    const mime = mimeFor(path.extname(abs).toLowerCase());
+    const dataUri = `data:${mime};base64,${bytes.toString("base64")}`;
+    replacements.set(m[0]!, `--gp-shape:url(&quot;${dataUri}&quot;)`);
+  }
+  if (replacements.size === 0) return html;
+
+  let out = html;
+  for (const [from, to] of replacements) {
+    out = out.split(from).join(to);
+  }
+  return out;
+}

@@ -16,8 +16,12 @@
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
 import {
+  IMAGE_POSITION_OPTIONS,
+  IMAGE_SIZE_OPTIONS,
+  normalizeClassInput,
   serializeImageAttrs,
   setPositionClass,
+  setShapeClass,
   setSizeClass,
   setWidth,
 } from "./image-classes";
@@ -306,22 +310,32 @@ export function applyTable(view: EditorView, cols: number): void {
 
 /**
  * Build the `{…}` markdown-it-attrs suffix for a NEW image from the insert
- * dialog's width/position/size picks (empty string when none are set).
- * Extracted out of `applyImage` below (inline-editing plan §4.4) so the
- * context menu's image actions can share the exact same suffix rule —
- * though for EXISTING tokens they go through image-classes' tokenize →
- * set-facet → serialize instead, which preserves attrs this builder doesn't
- * know about.
+ * dialog's width/position/size/shape picks (empty string when none are
+ * set). Position/size inputs are canonicalized through the option tables,
+ * so a caller still holding a removed legacy name ("full-bleed") writes the
+ * live gp-* class, never a dead one. Extracted out of `applyImage` below
+ * (inline-editing plan §4.4) so the context menu's image actions can share
+ * the exact same suffix rule — though for EXISTING tokens they go through
+ * image-classes' tokenize → set-facet → serialize instead, which preserves
+ * attrs this builder doesn't know about.
  */
 export function buildImageAttrsString(
   width?: string,
   position?: string,
   size?: string,
+  shape?: boolean,
 ): string {
   let tokens: string[] = [];
   tokens = setWidth(tokens, width || null);
-  tokens = setPositionClass(tokens, position || null);
-  tokens = setSizeClass(tokens, size || null);
+  tokens = setPositionClass(
+    tokens,
+    position ? (normalizeClassInput(IMAGE_POSITION_OPTIONS, position) ?? null) : null,
+  );
+  tokens = setSizeClass(
+    tokens,
+    size ? (normalizeClassInput(IMAGE_SIZE_OPTIONS, size) ?? null) : null,
+  );
+  tokens = setShapeClass(tokens, shape === true);
   return serializeImageAttrs(tokens);
 }
 
@@ -332,8 +346,9 @@ export function applyImage(
   width?: string,
   position?: string,
   size?: string,
+  shape?: boolean,
 ): void {
-  const attrStr = buildImageAttrsString(width, position, size);
+  const attrStr = buildImageAttrsString(width, position, size, shape);
   const snippet = `\n\n![${alt}](${src})${attrStr}\n\n`;
   const insertAt = insertionPointAfterCurrentLine(view);
   view.dispatch({

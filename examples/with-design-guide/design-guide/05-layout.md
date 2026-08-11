@@ -157,6 +157,7 @@ Content that must not split across a page break.
 <tr><td>.img-float-left</td><td>![alt](src){.img-float-left}</td><td>Float image left, 44% width, text wraps</td></tr>
 <tr><td>.gp-left / .gp-right / .gp-center / .gp-full / .gp-bleed</td><td>![alt](src){.gp-right}</td><td>Core image positions (no project CSS needed)</td></tr>
 <tr><td>.gp-small / .gp-medium / .gp-large</td><td>![alt](src){.gp-right .gp-small}</td><td>Core image sizes — 25/50/75% of the column</td></tr>
+<tr><td>.gp-shape</td><td>![alt](src){.gp-right .gp-shape}</td><td>Wrap text to a floated image's alpha silhouette</td></tr>
 <tr><td>.gp-pin (+ .gp-top/.gp-bottom/.gp-left/.gp-right)</td><td>![alt](src){.gp-pin .gp-bottom}</td><td>Pin an image to its @page container instead of flowing</td></tr>
 <tr><td>.no-break</td><td>@section .no-break</td><td>Prevent block from splitting across pages</td></tr>
 <tr><td>.break-before</td><td>## Heading {.break-before}</td><td>Force new page before this element</td></tr>

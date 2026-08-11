@@ -12,7 +12,7 @@ low, when the pool was at its clearest.
 
 @page .gallery-page
 
-![The tidepool at low water](assets/tidepool-full.jpg){.full-bleed}
+![The tidepool at low water](assets/tidepool-full.jpg){.gp-bleed}
 
 @page
 

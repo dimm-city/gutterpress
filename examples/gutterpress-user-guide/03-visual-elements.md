@@ -106,7 +106,8 @@ Core Gutterpress ships a small, composable `gp-*` vocabulary for placing
 images — plain CSS rules in `PAGED_CSS`, always present, no plugin or theme
 required. `markdown-it-attrs` (also bundled) is what lets you attach
 `{.gp-right}` and friends to an image. Pick one **position** word, and
-optionally add a **size** and a **spacing** word — the classes compose:
+optionally add a **size**, a **spacing**, and a **shape** word — the
+classes compose:
 
 ```markdown
 ![Float right, quarter width](assets/small.jpg){.gp-right .gp-small}
@@ -150,10 +151,37 @@ no class means the normal 1em):
 Under the hood the presets set the `--gp-gap` custom property, so a
 stylesheet can also tune the clearance directly (`img { --gp-gap: 0.75em }`).
 
-**Legacy names.** The original five classes — `.center`, `.float-left`,
-`.float-right`, `.full-width`, `.full-bleed` — are permanent aliases of
-`.gp-center`/`.gp-left`/`.gp-right`/`.gp-full`/`.gp-bleed`. Books that use
-them keep working, forever; new writing should prefer the `gp-*` names.
+> **Migrating from the old class names?** The pre-vocabulary utilities —
+> `.center`, `.float-left`, `.float-right`, `.full-width`, `.full-bleed` —
+> were **removed** when the `gp-*` vocabulary shipped. Rename them in your
+> markdown (`.center` → `.gp-center`, `.float-left` → `.gp-left`,
+> `.float-right` → `.gp-right`, `.full-width` → `.gp-full`, `.full-bleed` →
+> `.gp-bleed`); the desktop editor's image menu rewrites the old name for
+> you when you edit an image's position. See
+> `docs/migrations/2026-08-gp-image-classes.md`.
+
+### Shaped text wrap {#shaped-text-wrap}
+
+`.gp-shape` makes wrapping text follow a floated image's actual visible
+silhouette instead of its rectangular box — for cut-out art with a
+transparent background (PNG or SVG with an alpha channel):
+
+```markdown
+![A creature bursting from the margin](assets/beast.png){.gp-right .gp-shape .gp-loose}
+```
+
+The spacing words (`.gp-tight`/`.gp-loose`) set how far the text stays from
+the visible silhouette, the same way they set float clearance. Details worth
+knowing:
+
+- **Floats only.** `.gp-shape` needs `.gp-left` or `.gp-right`; on anything
+  else it does nothing (this is how CSS `shape-outside` works, and it makes
+  the class safe to leave on while trying layouts).
+- **The image needs real transparency.** A JPEG has no alpha channel, so
+  its "shape" is just its rectangle.
+- **You only type the class.** Gutterpress mirrors the image's own file into
+  the CSS shape automatically, and the build inlines it so the printed PDF
+  wraps exactly like the preview.
 
 ### Pinned images {#pinned-images}
 
@@ -190,7 +218,7 @@ Two rules keep pinning predictable:
 
 ### Full-bleed artwork {#full-bleed-artwork}
 
-`.gp-bleed` (alias: `.full-bleed`) forces the image onto its own page and cancels that page's left/right margins so the image spans the page edge-to-edge horizontally:
+`.gp-bleed` forces the image onto its own page and cancels that page's left/right margins so the image spans the page edge-to-edge horizontally:
 
 ```markdown
 ![Full page art](assets/artwork.jpg){.gp-bleed}

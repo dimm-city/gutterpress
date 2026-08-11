@@ -288,16 +288,18 @@ test("applyImage: includes width attribute when provided", () => {
   expect(getDoc(v)).toContain('![Wide image](assets/wide.png){width="80%"}');
 });
 
-test("applyImage: includes position class when provided", () => {
+test("applyImage: a removed legacy position name canonicalizes to its gp-* class", () => {
+  // The old five class names no longer exist in core CSS — writing one
+  // verbatim would attach a dead class. The builder normalizes instead.
   const v = makeMockView("text");
   applyImage(v as unknown as EditorView, "assets/left.jpg", "Left float", undefined, "float-left");
-  expect(getDoc(v)).toContain("![Left float](assets/left.jpg){.float-left}");
+  expect(getDoc(v)).toContain("![Left float](assets/left.jpg){.gp-left}");
 });
 
 test("applyImage: includes both width and position", () => {
   const v = makeMockView("text");
-  applyImage(v as unknown as EditorView, "assets/img.jpg", "Img", "300px", "center");
-  expect(getDoc(v)).toContain('![Img](assets/img.jpg){width="300px" .center}');
+  applyImage(v as unknown as EditorView, "assets/img.jpg", "Img", "300px", "gp-center");
+  expect(getDoc(v)).toContain('![Img](assets/img.jpg){width="300px" .gp-center}');
 });
 
 test("applyImage: no attrs when neither width nor position given", () => {
@@ -323,6 +325,12 @@ test("applyImage: size alone builds a one-class suffix", () => {
   const v = makeMockView("text");
   applyImage(v as unknown as EditorView, "assets/art.jpg", "Art", undefined, undefined, "gp-medium");
   expect(getDoc(v)).toContain("![Art](assets/art.jpg){.gp-medium}");
+});
+
+test("applyImage: shape toggle appends .gp-shape after the other facets", () => {
+  const v = makeMockView("text");
+  applyImage(v as unknown as EditorView, "assets/beast.png", "Beast", undefined, "gp-right", "gp-small", true);
+  expect(getDoc(v)).toContain("![Beast](assets/beast.png){.gp-right .gp-small .gp-shape}");
 });
 
 // ── L6: empty-selection toggle must not pile up marker debris ───────────────
@@ -501,10 +509,10 @@ test("TOOLBAR_ITEMS: declares an insert-layout-block control in the insert group
   expect(item?.group).toBe("insert");
 });
 
-// ── M26: image dialog Position must offer .full-bleed (documented but missing) ─
+// ── M26: image dialog Position must offer the bleed layout ───────────────────
 
-test("toolbar-actions.ts documents .full-bleed as a supported image position class", () => {
+test("toolbar-actions.ts supports bleed as an image position (legacy name canonicalizes)", () => {
   const v = makeMockView("text");
   applyImage(v as unknown as EditorView, "assets/cover.jpg", "Cover", undefined, "full-bleed");
-  expect(getDoc(v)).toContain("![Cover](assets/cover.jpg){.full-bleed}");
+  expect(getDoc(v)).toContain("![Cover](assets/cover.jpg){.gp-bleed}");
 });

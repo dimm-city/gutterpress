@@ -86,8 +86,10 @@ smaller, more pages, different pagination) appears far from the cause.
   edge. Anything still positioned against the document — abspos in raw HTML
   outside a page wrapper — is reported as a build diagnostic.
 - **Fix A (preferred): don't position — flow.** Seat art in normal flow and
-  let floats/margins do the design. In-flow art also rebalances surrounding
-  multicol content, often improving the page.
+  let floats/margins do the design (the core `gp-*` classes: positions,
+  sizes, `.gp-tight`/`.gp-loose` spacing, and `.gp-shape` alpha-silhouette
+  wrap). In-flow art also rebalances surrounding multicol content, often
+  improving the page.
 - **Fix A½ (for images): core now ships a supported pin idiom.** A markdown
   image with `{.gp-pin}` (+ `.gp-top/.gp-bottom/.gp-left/.gp-right` edge
   modifiers, `.gp-small/.gp-medium/.gp-large` sizes) is abspos done the safe

@@ -16,6 +16,15 @@ import type MarkdownIt from "markdown-it";
  * author's own folder layout is the layout that ships. Paths are emitted
  * verbatim; the build resolves them against the project root, which is the
  * frame `book.html` is served from.
+ *
+ * One render-time ADDITION (not a src rewrite): an image carrying the
+ * `.gp-shape` class gets an inline `--gp-shape: url("<src>")` custom
+ * property, mirroring the src byte-for-byte. PAGED_CSS's `img.gp-shape`
+ * rule reads it for `shape-outside` — CSS cannot reference an element's own
+ * src in a url() context (attr() is blocked there), so the pipeline is the
+ * only place the mirror can happen. Authors only ever type the class.
+ * Raw-HTML `<img>` tags are not touched — `.gp-shape` is a markdown-image
+ * feature; raw HTML authors write the style attribute themselves.
  */
 
 /** Env slot the rule appends to. Absent when nothing referenced an image. */
@@ -36,6 +45,18 @@ export function registerImageRule(md: MarkdownIt): void {
       if (src) {
         const bucket = (env as ImageRefEnv | undefined) ?? {};
         (bucket.imageRefs ??= []).push(src);
+
+        const cls = token.attrGet("class");
+        if (cls && cls.split(/\s+/).includes("gp-shape")) {
+          // CSS-escape for a double-quoted url() token; newlines can't
+          // appear in a markdown image src token, so \ and " cover it.
+          const cssUrl = src.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          const decl = `--gp-shape:url("${cssUrl}")`;
+          const existing = token.attrGet("style");
+          // Ours first, author's style last — later declarations win, so an
+          // author-supplied {style="--gp-shape:…"} still overrides.
+          token.attrSet("style", existing ? `${decl}; ${existing}` : decl);
+        }
       }
     }
     return defaultRender(tokens, idx, options, env, self);

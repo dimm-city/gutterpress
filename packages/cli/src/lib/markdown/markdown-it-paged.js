@@ -843,28 +843,35 @@ export default function plugin(md, pluginOptions = {}) {
  * project layer; see UX finding M17). markdown-it-attrs is bundled by
  * default (renderer.ts), so `![Art](x.jpg){.gp-right .gp-small}` already
  * attaches the classes to the rendered `<img>` — these rules are what make
- * them actually do something print-safe. The original five class names
- * (.center/.float-left/.float-right/.full-width/.full-bleed) are PERMANENT
- * aliases sharing rule bodies with their gp-* successors — published books
- * keep working, forever.
+ * them actually do something print-safe. The gp-* vocabulary REPLACED the
+ * five pre-vocabulary utility names (.center/.float-left/.float-right/
+ * .full-width/.full-bleed), which were removed rather than kept as
+ * aliases — one vocabulary, no duplicate way to spell each layout. Books
+ * migrate by renaming the classes in their markdown; the desktop editor
+ * recognizes the old names when editing an image and rewrites them to the
+ * gp-* names in place.
  *
- *   .gp-left      — floats left, text wraps (alias: .float-left).
- *   .gp-right     — floats right, text wraps (alias: .float-right).
- *   .gp-center    — centers a block element (alias: .center).
- *   .gp-full      — fills the page's content width (alias: .full-width).
+ *   .gp-left      — floats left, text wraps.
+ *   .gp-right     — floats right, text wraps.
+ *   .gp-center    — centers a block element.
+ *   .gp-full      — fills the page's content width.
  *   .gp-small     — width 25% of the column. Sizes compose with any
  *   .gp-medium    — width 50%.        position (including .gp-pin, where
  *   .gp-large     — width 75%.        the % resolves against the page box).
- *   .gp-tight     — float clearance 0.5em (sets --gp-gap; default 1em).
- *   .gp-loose     — float clearance 2em (sets --gp-gap).
+ *   .gp-tight     — float/shape clearance 0.5em (sets --gp-gap; default 1em).
+ *   .gp-loose     — float/shape clearance 2em (sets --gp-gap).
+ *   .gp-shape     — wraps text to a floated image's alpha silhouette
+ *                   (shape-outside; the pipeline mirrors the src into
+ *                   --gp-shape because CSS url() contexts can't read
+ *                   attr()). Floats only; inert elsewhere.
  *   .gp-pin       — pins within the nearest @page/@spread container;
  *                   centered on both axes unless combined with the edge
  *                   modifiers .gp-top/.gp-bottom/.gp-left/.gp-right.
  *   .gp-bleed     — forces its own page (break-before) and spans it
- *                   edge-to-edge horizontally (alias: .full-bleed). This
- *                   does NOT cancel the top/bottom margins, extend past the
- *                   trim into printer bleed overage, or remove headers/
- *                   footers — none of that is implemented.
+ *                   edge-to-edge horizontally. This does NOT cancel the
+ *                   top/bottom margins, extend past the trim into printer
+ *                   bleed overage, or remove headers/footers — none of
+ *                   that is implemented.
  *
  *                   The mechanism is a named page: the rule below assigns the
  *                   element's page to `@page gp-full-bleed`, which has zero
@@ -892,8 +899,8 @@ export default function plugin(md, pluginOptions = {}) {
  *                   author remedy (`@top-center { content: none }` etc. on
  *                   `@page gp-full-bleed`).
  *
- *                   A standalone `![Art](x.jpg){.full-bleed}` markdown image
- *                   is rendered as `<p><img class="full-bleed"></p>` — a
+ *                   A standalone `![Art](x.jpg){.gp-bleed}` markdown image
+ *                   is rendered as `<p><img class="gp-bleed"></p>` — a
  *                   naked markdown-it standalone-image wrap, not something
  *                   this plugin controls. The `<p>`'s UA default vertical
  *                   margin sits above/below an image sized to the page's
@@ -906,7 +913,7 @@ export default function plugin(md, pluginOptions = {}) {
  *                   blank (0 dark pixels of 540,000 sampled); zeroing the
  *                   wrapping paragraph's margin below gives the intended
  *                   7pp with the art bleeding edge-to-edge on page 6. Scoped
- *                   to `:only-child` so a `.full-bleed` image sharing a
+ *                   to `:only-child` so a `.gp-bleed` image sharing a
  *                   paragraph with other inline content keeps its margin.
  *
  * Rule ORDER within the gp-* block is the contract: flow positions → sizes
@@ -947,11 +954,11 @@ export const PAGED_CSS = `
    drops it (the body is not the page box there), native print keeps it. Left
    in place it insets EVERY native page's content by 8px per side relative to
    the paged leg, and -- measured, 300dpi, 6x4in sheet -- it is what stops
-   .full-bleed below from reaching the paper: the art lands at 0.080..5.917in
+   .gp-bleed below from reaching the paper: the art lands at 0.080..5.917in
    of a 6in sheet instead of 0.000..6.000in, because width:100% resolves
    against the BODY content box, not the page's. Zeroing it here (first in
    the cascade -- assemble.ts puts author CSS last) makes the two engines
-   agree and makes .full-bleed actually bleed on a book that has not written
+   agree and makes .gp-bleed actually bleed on a book that has not written
    its own reset. Authors who want a body margin still just declare one. */
 body { margin: 0; }
 
@@ -966,37 +973,38 @@ body { margin: 0; }
 :where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }
 :where(.section, figure) > :where(:first-child) { break-before: avoid; }
 
-/* gp-* author image/block vocabulary. Canonical names are gp-*; the original
-   five (.center/.float-left/.float-right/.full-width/.full-bleed) are
-   PERMANENT aliases sharing the same rule bodies. Source ORDER is the
-   contract — see the doctrine comment above. */
+/* gp-* author image/block vocabulary. One vocabulary, gp-* only — the
+   pre-vocabulary utility names (.center/.float-left/.float-right/
+   .full-width/.full-bleed) were REMOVED when gp-* shipped; books rename
+   the classes in their markdown (see the migration note). Source ORDER is
+   the contract — see the doctrine comment above. */
 
 /* flow positions */
-.float-left, .gp-left {
+.gp-left {
   float: left;
   margin: 0 var(--gp-gap, 1em) var(--gp-gap, 1em) 0;
   max-width: 50%;
 }
-.float-right, .gp-right {
+.gp-right {
   float: right;
   margin: 0 0 var(--gp-gap, 1em) var(--gp-gap, 1em);
   max-width: 50%;
 }
-.center, .gp-center {
+.gp-center {
   display: block;
   float: none;
   margin-left: auto;
   margin-right: auto;
   max-width: 100%;
 }
-.full-width, .gp-full {
+.gp-full {
   display: block;
   float: none;
   width: 100%;
   max-width: 100%;
 }
 @page gp-full-bleed { margin-left: 0; margin-right: 0; }
-.full-bleed, .gp-bleed {
+.gp-bleed {
   display: block;
   float: none;
   break-before: page;
@@ -1014,9 +1022,24 @@ body { margin: 0; }
 .gp-large { width: 75%; max-width: 100%; }
 
 /* float clearance presets — consumed by var(--gp-gap) in the float rules
-   above; --gp-gap itself is author-settable CSS */
+   above and by .gp-shape's shape-margin below; --gp-gap itself is
+   author-settable CSS */
 .gp-tight { --gp-gap: 0.5em; }
 .gp-loose { --gp-gap: 2em; }
+
+/* shape wrap — text follows the image's alpha silhouette instead of its
+   rectangular box. shape-outside only applies to floats, so this is inert
+   without .gp-left/.gp-right (and under .gp-pin, which un-floats). The
+   shape URL cannot be written in CSS (url() contexts can't read attr()),
+   so the image renderer rule (images.ts) mirrors the src into an inline
+   --gp-shape:url(...) custom property whenever it sees this class --
+   authors only ever type the class. threshold 0.2 ignores near-transparent
+   anti-aliasing halos; shape-margin shares the float-gap vocabulary. */
+img.gp-shape {
+  shape-outside: var(--gp-shape);
+  shape-image-threshold: 0.2;
+  shape-margin: var(--gp-gap, 1em);
+}
 
 /* pin — within the nearest positioned ancestor (.page/.spread, rule above).
    inset:0 and the explicit centers are load-bearing; see doctrine comment. */
@@ -1038,8 +1061,8 @@ body { margin: 0; }
 .gp-right { justify-self: end; }
 
 /* wrapper-margin neutralization (same pattern and rationale as the
-   .full-bleed paragraph-margin note in the doctrine comment; for pin, the
+   .gp-bleed paragraph-margin note in the doctrine comment; for pin, the
    emptied paragraph would otherwise leave a phantom margin gap in flow) */
-:where(p:has(> img:is(.full-bleed, .gp-bleed):only-child)) { margin: 0; }
+:where(p:has(> img.gp-bleed:only-child)) { margin: 0; }
 :where(p:has(> img.gp-pin:only-child)) { margin: 0; }
 `;

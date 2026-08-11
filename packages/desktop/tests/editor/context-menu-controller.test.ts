@@ -459,6 +459,31 @@ describe("image kind", () => {
     expect(h.commitEngine.calls).toEqual([]);
   });
 
+  test("Wrap text to image shape toggles .gp-shape on, then off, preserving the rest", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right .my-note}\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-shape")!);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      "![Art](x.png){.gp-right .my-note .gp-shape}\n"
+    );
+
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right .my-note .gp-shape}\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-shape")!);
+    expect((h.commitEngine.calls[1] as { replacement: string }).replacement).toBe(
+      "![Art](x.png){.gp-right .my-note}\n"
+    );
+  });
+
   test("Set size… appends a size class without touching the rest", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";

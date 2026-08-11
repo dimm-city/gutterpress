@@ -37,9 +37,11 @@ import {
   getPositionClass,
   getSizeClass,
   getWidth,
+  hasShapeClass,
   normalizeClassInput,
   serializeImageAttrs,
   setPositionClass,
+  setShapeClass,
   setSizeClass,
   setWidth,
   tokenizeImageAttrs,
@@ -512,6 +514,22 @@ export class ContextMenuController {
             }
             updated = setSizeClass(tokens, cls);
           }
+          const token = `![${match.alt}](${match.src})${serializeImageAttrs(updated)}`;
+          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
+        },
+      },
+      {
+        id: "image-shape",
+        label: "Wrap text to image shape",
+        enabled: !!match,
+        disabledReason,
+        run: async () => {
+          if (!match) return;
+          // Boolean facet toggle — every other token passes through
+          // verbatim. Inert without a float position (shape-outside only
+          // applies to floats), so toggling is always safe.
+          const tokens = tokenizeImageAttrs(match.attrsRaw);
+          const updated = setShapeClass(tokens, !hasShapeClass(tokens));
           const token = `![${match.alt}](${match.src})${serializeImageAttrs(updated)}`;
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },

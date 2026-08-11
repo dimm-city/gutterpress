@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import MarkdownIt from "markdown-it";
 import { registerImageRule, collectHtmlImageRefs, type ImageRefEnv } from "./images";
+import { createMarkdownRenderer } from "./renderer";
 
 /** Render `src` through a markdown-it with the rule installed, returning the env. */
 function renderWith(markdown: string): { html: string; env: ImageRefEnv } {
@@ -39,6 +40,31 @@ test("records remote and data: references too (the build filters them, not the r
 test("no images means no env pollution", () => {
   const { env } = renderWith("# just a heading");
   expect(env.imageRefs).toBeUndefined();
+});
+
+// --gp-shape mirroring (shape-outside cannot read the element's own src from
+// CSS — url() contexts reject attr() — so the rule mirrors it). These go
+// through createMarkdownRenderer because the class only exists after
+// markdown-it-attrs runs.
+test("a .gp-shape image gets its src mirrored into an inline --gp-shape url", () => {
+  const md = createMarkdownRenderer();
+  const html = md.render("![b](beast.png){.gp-right .gp-shape}");
+  expect(html).toContain(
+    '<img src="beast.png" alt="b" class="gp-right gp-shape" style="--gp-shape:url(&quot;beast.png&quot;)">'
+  );
+});
+
+test("images without .gp-shape get no style attribute", () => {
+  const md = createMarkdownRenderer();
+  const html = md.render("![b](beast.png){.gp-right .gp-small}");
+  expect(html).toContain('<img src="beast.png" alt="b" class="gp-right gp-small">');
+  expect(html).not.toContain("--gp-shape");
+});
+
+test("an author-supplied style attribute survives, after ours, so the author wins", () => {
+  const md = createMarkdownRenderer();
+  const html = md.render('![b](x.png){.gp-shape style="border:1px"}');
+  expect(html).toContain('style="--gp-shape:url(&quot;x.png&quot;); border:1px"');
 });
 
 test("collectHtmlImageRefs finds raw HTML <img> the markdown rule never sees", () => {

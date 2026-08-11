@@ -10,13 +10,16 @@ import { describe, expect, test } from "bun:test";
 
 import {
   IMAGE_POSITION_OPTIONS,
+  IMAGE_SHAPE_CLASS,
   IMAGE_SIZE_OPTIONS,
   getPositionClass,
   getSizeClass,
   getWidth,
+  hasShapeClass,
   normalizeClassInput,
   serializeImageAttrs,
   setPositionClass,
+  setShapeClass,
   setSizeClass,
   setWidth,
   tokenizeImageAttrs,
@@ -118,20 +121,52 @@ describe("normalizeClassInput", () => {
   });
 });
 
+describe("shape facet (boolean)", () => {
+  test("toggles .gp-shape on and off without touching anything else", () => {
+    const tokens = tokenizeImageAttrs("{.gp-right .my-note}");
+    const on = setShapeClass(tokens, true);
+    expect(serializeImageAttrs(on)).toBe("{.gp-right .my-note .gp-shape}");
+    expect(hasShapeClass(on)).toBe(true);
+    const off = setShapeClass(on, false);
+    expect(serializeImageAttrs(off)).toBe("{.gp-right .my-note}");
+    expect(hasShapeClass(off)).toBe(false);
+  });
+
+  test("setting an already-set state is a no-op in content terms", () => {
+    const tokens = tokenizeImageAttrs("{.gp-shape}");
+    expect(serializeImageAttrs(setShapeClass(tokens, true))).toBe("{.gp-shape}");
+  });
+});
+
 describe("drift gate against core PAGED_CSS", () => {
   // markdown-it-paged.js is deliberately self-contained ESM (zero imports),
   // so the sibling-package source import works under bun test without
   // building the lib. If this import ever breaks, fall back to reading the
   // file as text and scanning for the selectors.
-  test("every class the desktop offers exists as a PAGED_CSS selector", async () => {
+  test("every canonical class the desktop offers exists as a PAGED_CSS selector", async () => {
     const { PAGED_CSS } = await import("../../../cli/src/lib/markdown/markdown-it-paged.js");
-    const everyClass = [...IMAGE_POSITION_OPTIONS, ...IMAGE_SIZE_OPTIONS].flatMap((o) => [
-      o.class,
-      ...(o.aliases ?? []),
-    ]);
-    expect(everyClass.length).toBeGreaterThan(0);
-    for (const cls of everyClass) {
+    const canonical = [
+      ...IMAGE_POSITION_OPTIONS.map((o) => o.class),
+      ...IMAGE_SIZE_OPTIONS.map((o) => o.class),
+      IMAGE_SHAPE_CLASS,
+    ];
+    expect(canonical.length).toBeGreaterThan(0);
+    for (const cls of canonical) {
       expect(PAGED_CSS).toContain(`.${cls}`);
+    }
+  });
+
+  test("no legacy alias exists as a PAGED_CSS selector — removal must stick", async () => {
+    // Aliases are a desktop-side READ convenience for migrating old books;
+    // if one reappears in core CSS the vocabulary is duplicated again.
+    const { PAGED_CSS } = await import("../../../cli/src/lib/markdown/markdown-it-paged.js");
+    const aliases = [...IMAGE_POSITION_OPTIONS, ...IMAGE_SIZE_OPTIONS].flatMap(
+      (o) => o.aliases ?? [],
+    );
+    expect(aliases.length).toBeGreaterThan(0);
+    for (const alias of aliases) {
+      expect(PAGED_CSS).not.toContain(`.${alias} `);
+      expect(PAGED_CSS).not.toContain(`.${alias},`);
     }
   });
 });
