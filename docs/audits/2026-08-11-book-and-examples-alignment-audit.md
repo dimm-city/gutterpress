@@ -12,7 +12,7 @@ Goal: make dc-op-manual a project that demonstrates best practice — profession
 
 The book is in better shape than its size suggests: **zero `!important`**, **zero vendor prefixes**, only 3 uses of superseded `page-break-*`, and 158 of 171 component classes are live. The problems are not sprawl — they are **stale scaffolding from the Paged.js era that no longer describes reality**, and a **project plugin that has grown past what it needs to do**.
 
-**Two CRITICAL engine bugs came out of this, and they outrank everything else.** `var()` inside `@page` fails silently, two different ways: in `size:` it yields **Letter instead of the book's trim**, and in `margin:` it **disables the shrink-to-fit guard**. Both reproduced. The field guide is running with the guard off right now. See §6b.
+**Two CRITICAL engine bugs came out of this, and they outrank everything else.** `var()` inside `@page` fails silently in the declarations **our compiler parses itself**: in `size:` it yields **Letter instead of the book's trim**, and in `margin:` it **disables the shrink-to-fit guard**. Both reproduced. The field guide is running with the guard off right now. (`var()` in `@page { background }` — which Chromium parses — works fine; see §1.) See §6b.
 
 The six *book* changes that matter most, in order:
 
@@ -54,6 +54,14 @@ This cascades further than the line count suggests:
 - **§4 (chip suppression)** currently refills suppressed boxes with brick. With a page background, a bare `content: none` suffices — roughly 8 lines become 4.
 
 **Caveat, measured:** gradient-only `@page` backgrounds paint **nothing** in Chromium print, while solid colours and `url()` images paint the full sheet. Pre-rasterise gradients. This is not in the styling guide and should be added.
+
+**`var()` in the replacement rule — checked, and it works.** The solution review flagged that the one-liner above uses `var(--bg)` inside `@page`, in a document that also reports `var()` failing silently in `@page` (§6b) — and that my verification fixture had used a literal hex, so the combination was unproven. Re-tested directly: `@page { background: var(--bg) }` and `@page { background: #2d6cdf }` produce **identical output** (corner pixel `(46,107,222)` both).
+
+That contradiction resolves into a sharper rule than either document had, and it explains B1/B2's mechanism:
+
+> **`var()` works in `@page` declarations Chromium consumes directly** (`background`). **It fails in the ones our compiler parses itself** (`size`, `margin`) — because `gcpm-extract.ts` does lexical `toPt` conversion with a silent fallback, and never resolves custom properties.
+
+So the fix for B1/B2 is not "ban `var()` in `@page`" but "make the compiler's own `@page` parsing resolve custom properties, or refuse loudly when it cannot". Anything Chromium parses is already fine.
 
 **Prerequisite — already shipped:** the viewer models `@page` paint declarations as of `72e02d4`, so this no longer causes a preview↔print divergence.
 
