@@ -3,7 +3,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { PAGED_CSS } from "./markdown-it-paged.js";
+import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../chromium.ts";
 import { closeBrowser, getBrowser } from "../browser-pool.ts";
@@ -25,7 +25,7 @@ import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
  * Observed on the field guide (34pp, native engine, Chromium 148/151): a 956px
  * image on a 960px content box made a 963.59px paragraph, and page 7 — the
  * first `citizen-file` page — printed with no running head and no folio, while
- * the Paged.js leg printed both. `vertical-align: bottom` in PAGED_CSS
+ * the Paged.js leg printed both. `vertical-align: bottom` in MARKER_CSS
  * collapses the line box onto the image and fixes it.
  *
  * The fixture below is that bug with nothing else in it: no plugin, no book
@@ -51,7 +51,7 @@ const SVG = encodeURIComponent(
 
 const fixture = `<!doctype html><meta charset="utf-8"><style>
 html, body { margin: 0; padding: 0; }
-${PAGED_CSS}
+${MARKER_CSS}
 ${GUTTERPRESS_CSS}
 @page a { size: 384px 480px; margin: 24px; }
 @page b { size: 384px 300px; margin: 24px; }

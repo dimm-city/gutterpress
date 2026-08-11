@@ -113,7 +113,7 @@ function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
 
 /**
  * `.page` / `.spread` are the containing blocks core creates for pinned
- * content (`:where(.page, .spread) { position: relative }` in PAGED_CSS), so
+ * content (`:where(.page, .spread) { position: relative }` in MARKER_CSS), so
  * what a book declares on them decides whether `.gp-pin` and `.gp-bleed`
  * work at all. Two mistakes are silent, look nothing like their symptom, and
  * cost hours; both are cheap to spot in the stylesheet.

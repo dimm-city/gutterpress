@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { launchChromium } from "../shared/cdp.ts";
 import { build } from "./build.ts";
-import { PAGED_CSS } from "../../lib/markdown/markdown-it-paged.js";
+import { MARKER_CSS } from "../../lib/markdown/markers.js";
 import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 
 /**
@@ -25,7 +25,7 @@ import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
  *   2. the engine's own abspos instrumentation is still excluded, so every
  *      build doesn't warn about the engine's furniture.
  *
- * A contained `.gp-pin` (inside `.page`, which PAGED_CSS makes
+ * A contained `.gp-pin` (inside `.page`, which MARKER_CSS makes
  * `position: relative`) must stay silent — that is the supported idiom.
  */
 
@@ -37,7 +37,7 @@ const SVG = encodeURIComponent(
 const SRC = `data:image/svg+xml,${SVG}`;
 
 const fixture = `<!doctype html><meta charset="utf-8"><style>
-${PAGED_CSS}
+${MARKER_CSS}
 ${GUTTERPRESS_CSS}
 @page { size: 384px 480px; margin: 24px; }
 </style>

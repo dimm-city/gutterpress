@@ -12,7 +12,7 @@
  * wrapper is the ONLY node-coupled part of the old `renderChapters`, so the pure
  * markdown→HTML→book.html work lives here and the wrapper just supplies inputs.
  */
-import { PAGED_CSS } from "./markdown-it-paged.js";
+import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
@@ -166,7 +166,7 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   // DOM needs, and nothing else. `gp-*` is Gutterpress product vocabulary and
   // lives in gutterpress-css.ts.
   const inlineCss = [
-    `/* markdown-it-paged */\n${PAGED_CSS.trim()}`,
+    `/* markdown-it-paged */\n${MARKER_CSS.trim()}`,
     `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
     pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,

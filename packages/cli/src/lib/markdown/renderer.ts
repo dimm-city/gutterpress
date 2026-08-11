@@ -19,7 +19,7 @@ import MarkdownIt from "markdown-it";
 import { debug } from "../../utils/logger";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
-import markdownItPaged from "./markdown-it-paged.js";
+import markdownItPaged from "./markers.js";
 import gpPinScope from "./gp-pin-scope.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";

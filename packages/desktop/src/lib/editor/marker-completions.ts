@@ -5,7 +5,7 @@
  * markdown-it-paged layout markers (`@chapter`, `@spread`, `@page`,
  * `@section`, `@continue`, `@page-break`, `@column-break`, `@end-section`).
  * The whitelist below is copied verbatim from `parseMarkerLine`'s `.includes`
- * check in `packages/cli/src/lib/markdown/markdown-it-paged.js` — the single
+ * check in `packages/cli/src/lib/markdown/markers.js` — the single
  * source of truth for which `@` tokens are real markers.
  *
  * Mirrors css-editor.ts's `pagedMediaCompletions` craftsmanship: a hand-
@@ -146,7 +146,7 @@ export const markerCompletions: readonly MarkerCompletion[] = [
   },
   {
     label: "@continue",
-    detail: "Close the current @section and reopen a matching one, marked .md-continued",
+    detail: "Close the current @section and reopen a matching one, marked .gp-continued",
     apply: "@continue",
   },
   {

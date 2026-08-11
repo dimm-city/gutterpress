@@ -11,7 +11,7 @@ import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
 import markdownItDeflist from "markdown-it-deflist";
 import markdownItSourceMap from "markdown-it-source-map";
-import markdownItPaged from "./markdown-it-paged.js";
+import markdownItPaged from "./markers.js";
 import { registerImageRule } from "./images";
 import { createMarkdownRenderer } from "./renderer";
 import { SOURCE_RANGE_ATTR } from "./source-range";
@@ -265,12 +265,12 @@ describe("source_range: layout markers", () => {
     // line 4: "@continue" -> continuation section's OWN line is 4, and it
     // gets a FINITE range (the §2.1 @continue fix)
     expect(html).toContain(
-      `<div class="section md-continued" data-section="S" ${SOURCE_RANGE_ATTR}="4:5"`
+      `<div class="section gp-continued" data-section="S" ${SOURCE_RANGE_ATTR}="4:5"`
     );
     // line 7: "@page-break" -> break div range [7,8) — proves the renderer
     // rule fix (markdown-it-paged.js) actually emits the attribute a custom
     // renderer rule would otherwise silently drop.
-    expect(html).toContain(`class="md-page-break" aria-hidden="true" ${SOURCE_RANGE_ATTR}="7:8"`);
+    expect(html).toContain(`class="gp-page-break" aria-hidden="true" ${SOURCE_RANGE_ATTR}="7:8"`);
 
     const [from, to] = charRange(src, starts, [7, 8]);
     expect(src.slice(from, to)).toBe("@page-break\n");

@@ -3,11 +3,11 @@
  * class vocabulary the desktop UI reads and writes (inline-editing plan
  * §4.4's "one attrs-suffix rule" widened to the whole class list).
  *
- * The vocabulary itself is core's: `PAGED_CSS` in
- * `packages/cli/src/lib/markdown/markdown-it-paged.js` ships the rules;
+ * The vocabulary itself is core's: `MARKER_CSS` in
+ * `packages/cli/src/lib/markdown/markers.js` ships the rules;
  * this module only mirrors the names for UI options and attrs editing.
  * `image-classes.test.ts` holds a drift gate asserting every class listed
- * here appears as a selector in `PAGED_CSS` — and that no legacy alias
+ * here appears as a selector in `MARKER_CSS` — and that no legacy alias
  * does — so the two cannot diverge silently. The vocabulary is `gp-*`
  * ONLY: the five pre-vocabulary names (`center`, `float-left`,
  * `float-right`, `full-width`, `full-bleed`) were REMOVED from core CSS.

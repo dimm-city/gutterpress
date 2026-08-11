@@ -200,7 +200,7 @@ async function main() {
           <div class="page" data-source-range="0:12" data-ref="page-ref">
             <p id="plain" data-source-range="1:2" data-ref="plain-ref">Just a plain paragraph.</p>
             <p id="para" data-source-range="2:3" data-ref="para-ref">Hello <a id="lnk" href="https://example.com/x">link text</a> and <img id="img" src="art.jpg" alt="Art"> world.</p>
-            <div class="md-page-break" data-source-range="3:4" data-ref="break-ref" aria-hidden="true"></div>
+            <div class="gp-page-break" data-source-range="3:4" data-ref="break-ref" aria-hidden="true"></div>
             <pre id="pre" data-ref="pre-ref"><code id="code" data-source-range="4:5" data-ref="code-ref">const x = 1;</code></pre>
             <p id="frag1" data-source-range="5:7" data-ref="split-ref">first half</p>
             <p id="frag2" data-source-range="5:7" data-ref="split-ref" data-split-from="split-ref">second half</p>
@@ -252,7 +252,7 @@ async function main() {
   // kind: 'marker' — a layout wrapper/break class.
   {
     const { document, api } = loadInterfaceWithDom(contextHtml);
-    document.elementFromPoint = () => document.querySelector(".md-page-break");
+    document.elementFromPoint = () => document.querySelector(".gp-page-break");
     const detail = api.getContextTargetAt({ x: 1, y: 1 });
     assert.equal(detail.kind, "marker");
     assert.deepEqual(detail.range, [3, 4]);

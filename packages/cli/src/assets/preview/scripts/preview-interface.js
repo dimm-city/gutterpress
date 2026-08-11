@@ -258,7 +258,7 @@
   // single resolution routine shared by the public previewAPI member and both
   // event listeners below (contextmenu + keyboard) — see that doc for the
   // exact kind-precedence contract implemented here.
-  var LAYOUT_MARKER_CLASSES = ['chapter', 'spread', 'page', 'section', 'md-page-break', 'md-column-break'];
+  var LAYOUT_MARKER_CLASSES = ['chapter', 'spread', 'page', 'section', 'gp-page-break', 'gp-column-break'];
 
   function elementAtPoint(x, y) {
     try {

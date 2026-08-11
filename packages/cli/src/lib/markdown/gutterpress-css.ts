@@ -9,7 +9,7 @@
  * the plugin on its own, so they do not belong in it. They were added there
  * when the vocabulary shipped and are moved here now.
  *
- * Injected by assemble.ts immediately AFTER `PAGED_CSS` and BEFORE user plugin
+ * Injected by assemble.ts immediately AFTER `MARKER_CSS` and BEFORE user plugin
  * and project CSS, so the cascade order is: plugin layout primitives ->
  * Gutterpress vocabulary -> plugin CSS -> the author's stylesheets last. An
  * author overriding a `gp-*` class at equal specificity still wins.

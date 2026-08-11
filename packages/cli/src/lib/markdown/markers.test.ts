@@ -19,7 +19,7 @@
  */
 import { describe, test, expect } from "bun:test";
 import MarkdownIt from "markdown-it";
-import markdownItPaged, { PAGED_CSS } from "./markdown-it-paged.js";
+import markdownItPaged, { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { createMarkdownRenderer } from "./renderer";
 import { assembleBookHtml } from "./assemble";
@@ -437,12 +437,12 @@ describe("marker grammar (parsed via rendered output + warnings)", () => {
         "@page-break trailing tokens ignored .foo #bar\nHi\n"
       ).html;
       expect(pageBreak).toBe(
-        '<div class="md-page-break" aria-hidden="true"></div>\n<p>Hi</p>\n'
+        '<div class="gp-page-break" aria-hidden="true"></div>\n<p>Hi</p>\n'
       );
 
       const columnBreak = renderPaged("@column-break .foo #bar\nHi\n").html;
       expect(columnBreak).toBe(
-        '<div class="md-column-break" aria-hidden="true"></div>\n<p>Hi</p>\n'
+        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>Hi</p>\n'
       );
 
       const endSection = renderPaged("@end-section .foo #bar\nHi\n").html;
@@ -812,11 +812,11 @@ describe("chapter counter class inheritance (ch=N / .chapter-N)", () => {
 });
 
 describe("@continue / @end-section", () => {
-  test("@continue closes the current section and opens a new one with the same name + md-continued class", () => {
+  test("@continue closes the current section and opens a new one with the same name + gp-continued class", () => {
     const { html } = renderPaged("@section S\nA\n@continue\nB\n@end-section\n");
     expect(html).toBe(
       '<div class="section" data-section="S"><p>A</p>\n</div>' +
-        '<div class="section md-continued" data-section="S"><p>B</p>\n</div>'
+        '<div class="section gp-continued" data-section="S"><p>B</p>\n</div>'
     );
   });
 
@@ -828,19 +828,19 @@ describe("@continue / @end-section", () => {
       '<div class="section" data-section="S" data-region="aside">'
     );
     expect(html).toContain(
-      '<div class="section md-continued" data-section="S" data-region="aside">'
+      '<div class="section gp-continued" data-section="S" data-region="aside">'
     );
   });
 
-  test("@continue does not duplicate md-continued if chained twice", () => {
+  test("@continue does not duplicate gp-continued if chained twice", () => {
     const { html } = renderPaged(
       "@section S\nA\n@continue\nB\n@continue\nC\n@end-section\n"
     );
     const matches = html.match(/class="section[^"]*"/g) || [];
     expect(matches).toEqual([
       'class="section"',
-      'class="section md-continued"',
-      'class="section md-continued"',
+      'class="section gp-continued"',
+      'class="section gp-continued"',
     ]);
   });
 
@@ -859,14 +859,14 @@ describe("@page-break / @column-break output", () => {
   test("@page-break emits a self-closing marker div", () => {
     const { html } = renderPaged("@page\nA\n@page-break\nB\n");
     expect(html).toBe(
-      '<div class="page"><p>A</p>\n<div class="md-page-break" aria-hidden="true"></div>\n<p>B</p>\n</div>'
+      '<div class="page"><p>A</p>\n<div class="gp-page-break" aria-hidden="true"></div>\n<p>B</p>\n</div>'
     );
   });
 
   test("@column-break outside a .col-split section emits a fixed marker div", () => {
     const { html } = renderPaged("@section\nA\n@column-break\nB\n@end-section\n");
     expect(html).toContain(
-      '<div class="md-column-break" aria-hidden="true"></div>'
+      '<div class="gp-column-break" aria-hidden="true"></div>'
     );
   });
 
@@ -886,7 +886,7 @@ describe("@page-break / @column-break output", () => {
     );
     expect(html).not.toContain('class="col"');
     expect(html).toContain(
-      '<div class="md-column-break" aria-hidden="true"></div>'
+      '<div class="gp-column-break" aria-hidden="true"></div>'
     );
   });
 
@@ -1044,7 +1044,7 @@ describe("col-split has-column-break detection (characterization for the transfo
     expect(html).toBe(
       '<div class="section col-split"><div class="col">\n<p>A</p>\n</div>' +
         '<div class="col">\n<p>B</p>\n</div></div>\n' +
-        '<div class="section col-split md-continued"><p>C</p>\n</div>'
+        '<div class="section col-split gp-continued"><p>C</p>\n</div>'
     );
   });
 
@@ -1054,7 +1054,7 @@ describe("col-split has-column-break detection (characterization for the transfo
     );
     expect(html).toBe(
       '<div class="section col-split"><p>A</p>\n</div>' +
-        '<div class="section col-split md-continued"><div class="col">\n<p>B</p>\n</div>' +
+        '<div class="section col-split gp-continued"><div class="col">\n<p>B</p>\n</div>' +
         '<div class="col">\n<p>C</p>\n</div></div>\n'
     );
   });
@@ -1066,7 +1066,7 @@ describe("col-split has-column-break detection (characterization for the transfo
     );
     expect(html).toBe(
       '<div class="section"><p>A</p>\n' +
-        '<div class="md-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>' +
+        '<div class="gp-column-break" aria-hidden="true"></div>\n<p>B</p>\n</div>' +
         '<div class="section col-split"><p>C</p>\n</div>'
     );
   });
@@ -1145,18 +1145,18 @@ describe("HTML escaping", () => {
   });
 });
 
-describe("PAGED_CSS export", () => {
+describe("MARKER_CSS export", () => {
   test("is a non-empty string containing the key selectors the plugin relies on", () => {
-    expect(typeof PAGED_CSS).toBe("string");
-    expect(PAGED_CSS.length).toBeGreaterThan(0);
+    expect(typeof MARKER_CSS).toBe("string");
+    expect(MARKER_CSS.length).toBeGreaterThan(0);
     for (const selector of [
-      ".md-page-break",
+      ".gp-page-break",
       ".page",
       ".spread",
       ":where(.page, .spread)",
-      ".md-column-break",
+      ".gp-column-break",
     ]) {
-      expect(PAGED_CSS).toContain(selector);
+      expect(MARKER_CSS).toContain(selector);
     }
   });
 
@@ -1166,19 +1166,19 @@ describe("PAGED_CSS export", () => {
   // keep-together is now only the empty-first-fragment glue, which achieves
   // the same intent without the collapse.
   test("no longer sets a blanket break-inside: avoid on .section (or the col-split override that undid it)", () => {
-    expect(PAGED_CSS).not.toMatch(/\.section\s*\{[^}]*break-inside/);
-    expect(PAGED_CSS).not.toContain(".section.col-split");
+    expect(MARKER_CSS).not.toMatch(/\.section\s*\{[^}]*break-inside/);
+    expect(MARKER_CSS).not.toContain(".section.col-split");
   });
 
   // #7: the safe default reset — heading orphans, image sizing, and the
   // first-child keep-together glue that replaces #6's blanket rule.
   test("defines the safe default reset (headings, image sizing, first-child glue), all at zero specificity", () => {
-    expect(PAGED_CSS).toContain(":where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }");
-    expect(PAGED_CSS).toContain(":where(img, svg, video) { max-width: 100%; }");
-    expect(PAGED_CSS).toContain(
+    expect(MARKER_CSS).toContain(":where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }");
+    expect(MARKER_CSS).toContain(":where(img, svg, video) { max-width: 100%; }");
+    expect(MARKER_CSS).toContain(
       ":where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }"
     );
-    expect(PAGED_CSS).toContain(":where(.section, figure) > :where(:first-child) { break-before: avoid; }");
+    expect(MARKER_CSS).toContain(":where(.section, figure) > :where(:first-child) { break-before: avoid; }");
   });
 
   // The standalone-image default must bound the PREFERRED width (only an
@@ -1189,8 +1189,8 @@ describe("PAGED_CSS export", () => {
   // vs 150.4pt); width:100% stopped the shrink but blew a 64px icon to 5in;
   // fit-content stopped the shrink AND left the icon alone.
   test("standalone image default bounds preferred width without upscaling", () => {
-    expect(PAGED_CSS).toMatch(/width: fit-content/);
-    expect(PAGED_CSS).not.toMatch(/img:only-child[^{]*\{[^}]*[^-]width: 100%/);
+    expect(MARKER_CSS).toMatch(/width: fit-content/);
+    expect(MARKER_CSS).not.toMatch(/img:only-child[^{]*\{[^}]*[^-]width: 100%/);
   });
 
   // The utility classes style `![alt](src){.class}` output, whose `<p><img
@@ -1214,7 +1214,7 @@ describe("PAGED_CSS export", () => {
   // a mispinned bottom:0 fails locally instead of painting on the book's last
   // page. :where() so author CSS at any specificity can opt back to static.
   test("makes .page/.spread positioned containing blocks at zero specificity", () => {
-    expect(PAGED_CSS).toContain(":where(.page, .spread) { position: relative; }");
+    expect(MARKER_CSS).toContain(":where(.page, .spread) { position: relative; }");
   });
 });
 
@@ -1223,7 +1223,7 @@ describe("PAGED_CSS export", () => {
 // finding M17 and CLAUDE.md §0 (author-first primitive layering: a behavior
 // broadly useful to non-technical authors belongs in core, not a project
 // layer). markdown-it-attrs (bundled, see renderer.ts) already lets authors
-// attach `{.gp-center}` etc. to any element; PAGED_CSS must supply the matching
+// attach `{.gp-center}` etc. to any element; MARKER_CSS must supply the matching
 // print-safe rules so the classes actually do something.
 describe("GUTTERPRESS_CSS author-facing image/block utilities (M17)", () => {
   // gp-* only: the five pre-vocabulary names were REMOVED, so the regexes

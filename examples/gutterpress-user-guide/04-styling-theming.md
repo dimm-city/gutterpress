@@ -234,12 +234,12 @@ Each layout marker emits a predictable CSS class that you can style. This mirror
 | `@chapter` | `<div class="chapter">` (+ `data-chapter-label` when given a bare label) | `.chapter` |
 | `@spread` | `<div class="spread">` | `.spread` |
 | `@page` | `<div class="page">` | `.page` |
-| `@page-break` | `<div class="md-page-break">` (no page wrapper) | `.md-page-break` |
+| `@page-break` | `<div class="gp-page-break">` (no page wrapper) | `.gp-page-break` |
 | `@section` | `<div class="section">` | `.section` |
-| `@continue` | `<div class="section md-continued">` | `.section.md-continued` |
-| `@column-break` | `<div class="md-column-break">` (or a `.col` boundary inside `.col-split`) | `.md-column-break` |
+| `@continue` | `<div class="section gp-continued">` | `.section.gp-continued` |
+| `@column-break` | `<div class="gp-column-break">` (or a `.col` boundary inside `.col-split`) | `.gp-column-break` |
 
-Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.md-page-break`, never `.md-break`.
+Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.gp-page-break`, never `.md-break`.
 
 @end-section
 

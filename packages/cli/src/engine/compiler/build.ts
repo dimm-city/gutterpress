@@ -624,7 +624,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // nothing) positions against the WHOLE canvas, not the page it appears
     // on: it can paint clipped on the last page of a 300-page book while the
     // page it belongs to renders empty. Scoped to `.page`/`.spread` becoming
-    // positioned (PAGED_CSS) would make most of these go silent by finding a
+    // positioned (MARKER_CSS) would make most of these go silent by finding a
     // containing block again — but only for pages that DON'T fragment across
     // sheets; that refinement needs fragmentation info this pass doesn't have
     // cheaply, so it is left for later, not guessed at.
@@ -653,7 +653,7 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
                 tag !== "GP-ANCHOR" &&
                 !id.startsWith("gp-") &&
                 !id.startsWith("__gp") &&
-                // gp-* CLASSES are author-facing vocabulary (PAGED_CSS's
+                // gp-* CLASSES are author-facing vocabulary (MARKER_CSS's
                 // .gp-pin is abspos by design and must stay visible to this
                 // leak check); only the engine's own print-document class is
                 // excluded. Engine-internal DOM identifies itself via ids or
@@ -788,7 +788,7 @@ async function findWidthOffenders(
   const contexts = [
     resolvePage(model),
     // Exclude core's own `gp-` reserved-namespace pages (markdown-it-paged.js
-    // PAGED_CSS — today `gp-full-bleed`): they are injected into EVERY
+    // MARKER_CSS — today `gp-full-bleed`): they are injected into EVERY
     // document with zero side margins so `.full-bleed` art can reach the
     // sheet edge, which would otherwise raise this Math.max to the full
     // sheet width for every book and silently disable the shrink-to-fit

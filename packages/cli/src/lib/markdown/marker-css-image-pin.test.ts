@@ -3,14 +3,14 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { PAGED_CSS } from "./markdown-it-paged.js";
+import { MARKER_CSS } from "./markers.js";
 import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../chromium.ts";
 import { closeBrowser, getBrowser } from "../browser-pool.ts";
 import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
 
 /**
- * Geometry contract for the gp-* pin mode (PAGED_CSS). The parity gate
+ * Geometry contract for the gp-* pin mode (MARKER_CSS). The parity gate
  * compares page INDICES only — it cannot see where on a page something
  * paints — so this test is the one place the pin geometry is measured in a
  * real Chromium.
@@ -56,10 +56,10 @@ const SQ_SRC = `data:image/svg+xml,${SQ_SVG}`;
 
 // #p5p's margin is zeroed by FIXTURE CSS (its float + default 16px margin
 // would spill past the fixed page height); the pin paragraphs' margins are
-// deliberately NOT zeroed here — they must come out 0 via PAGED_CSS's
+// deliberately NOT zeroed here — they must come out 0 via MARKER_CSS's
 // :where(p:has(> img.gp-pin:only-child)) neutralizer, which is under test.
 const fixture = `<!doctype html><meta charset="utf-8"><style>
-${PAGED_CSS}
+${MARKER_CSS}
 ${GUTTERPRESS_CSS}
 @page { size: ${PAGE_W}px ${PAGE_H}px; margin: 0; }
 .page { width: ${PAGE_W}px; height: ${PAGE_H}px; }
@@ -140,7 +140,7 @@ testIf(
 
         // Case 1: bare .gp-pin is centered on BOTH axes (the abspos
         // `normal`-behaves-as-`start` trap: remove either explicit center
-        // from PAGED_CSS and this fails top-left).
+        // from MARKER_CSS and this fails top-left).
         expect(m.centered.left).toBeCloseTo((PAGE_W - IMG_W) / 2, 0);
         expect(m.centered.top).toBeCloseTo((PAGE_H - IMG_H) / 2, 0);
         expect(m.centered.width).toBe(IMG_W);

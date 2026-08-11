@@ -19,7 +19,7 @@ import type MarkdownIt from "markdown-it";
  *
  * One render-time ADDITION (not a src rewrite): an image carrying the
  * `.gp-shape` class gets an inline `--gp-shape: url("<src>")` custom
- * property, mirroring the src byte-for-byte. PAGED_CSS's `img.gp-shape`
+ * property, mirroring the src byte-for-byte. MARKER_CSS's `img.gp-shape`
  * rule reads it for `shape-outside` — CSS cannot reference an element's own
  * src in a url() context (attr() is blocked there), so the pipeline is the
  * only place the mirror can happen. Authors only ever type the class.

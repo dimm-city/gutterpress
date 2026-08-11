@@ -1,5 +1,35 @@
 /**
- * markdown-it-paged (inlined from dimm-city/markdown-it-paged)
+ * Gutterpress layout markers — the `@page`/`@section`/`@chapter` authoring
+ * surface, and the CSS the DOM it emits requires (`MARKER_CSS`).
+ *
+ * OWNERSHIP: this is Gutterpress code. It began as an inlined copy of the
+ * standalone `markdown-it-paged` package (itlackey/markdown-it-paged) and was
+ * absorbed at 0.10.0, because the copy had stopped being that package: it had
+ * grown to 812 lines against upstream's 433 — a 635-line divergence — was
+ * never consumed from npm (no dependency, ever), and carried four feature
+ * clusters upstream has none of, all of them Gutterpress-specific:
+ *
+ *   - `data-source-range` threading for the desktop editor (ADR 0009)
+ *   - `data-chapter-label` propagation and `.chapter-opener` injection
+ *   - `env.__colSplitDepth` per-render state
+ *   - the emitted-class contract the viewer and preview depend on
+ *
+ * Keeping the third-party label had a real cost: it argued against cleaning
+ * up comments that describe a removed engine, and it made the ownership
+ * boundary for the `gp-*` vocabulary ambiguous. CLAUDE.md's constitution
+ * already names these markers "the product's authoring surface — permanent".
+ *
+ * The upstream package remains its own project; Gutterpress no longer tracks
+ * it. Do not re-converge: `data-source-range` is editor plumbing that has no
+ * business in a general-purpose markdown-it plugin.
+ *
+ * Emitted classes use the `gp-` prefix, matching the rest of the product's
+ * vocabulary (`gutterpress-css.ts`). This module owns the STRUCTURAL DOM
+ * (`.page`, `.spread`, `.section`, `.chapter`, `.gp-page-break`,
+ * `.gp-column-break`, `.gp-continued`) and the minimal CSS that DOM needs;
+ * `gutterpress-css.ts` owns the author UTILITY vocabulary (`.gp-pin`,
+ * `.gp-bleed`, sizes, spacing, depth). Both are Gutterpress; the split is by
+ * role, not by owner.
  *
  * Markers:
  *   @chapter [class ...] [key=value ...] [#id] [.class...]
@@ -18,8 +48,8 @@
  *   section    -> <div class="section ..." data-section="name" data-region="..." ...>
  *   continue   -> closes current @section and opens a new matching continuation section
  *   end-section -> closes nearest open @section (no-op if none open)
- *   page-break -> <div class="md-page-break" aria-hidden="true"></div>
- *   column-break -> <div class="md-column-break" aria-hidden="true"></div>
+ *   page-break -> <div class="gp-page-break" aria-hidden="true"></div>
+ *   column-break -> <div class="gp-column-break" aria-hidden="true"></div>
  *
  * Opt-in:
  *   If no markers are present, plugin does nothing.
@@ -280,15 +310,15 @@ export default function plugin(md, pluginOptions = {}) {
      *   data-chapter-label. This lets CSS reach the chapter label from any
      *   descendant page via attr(data-chapter-label) — e.g. to render a
      *   chapter-opener badge on the page where the content actually lives,
-     *   rather than on the chapter wrapper (which paged.js may split into
+     *   rather than on the chapter wrapper (which a fragmenting engine may split into
      *   an empty leading sheet).
      * @property {string} [counterClass]
      *   chapter: counter class inherited by child @page directives. When an
      *   @chapter declares ch="N" (or a .chapter-N class), every @page opened
      *   within that chapter automatically gets the same .chapter-N class.
      *   This lets CSS rules like `.page.chapter-3 { counter-reset: chapter 3 }`
-     *   in page-rules.css match every page in the chapter, because Paged.js
-     *   needs the class on every page wrapper (it clones content per page).
+     *   in a book's page rules match every page in the chapter: the class
+     *   has to be on every page wrapper, not only the chapter's.
      *   Authors don't hand-apply .chapter-N anywhere.
      * @property {boolean} [openerEmitted]
      *   chapter: whether the one-time .chapter-opener element has been
@@ -428,9 +458,9 @@ export default function plugin(md, pluginOptions = {}) {
       addClasses(t, 'page', merged);
       attachDataAttrs(t, 'page', meta.name, meta.attrs || {});
       // Propagate the chapter label so CSS can target the chapter-opener
-      // page via attribute selector (paged.js may split the chapter wrapper
-      // into an empty leading sheet, but the child page stays with its
-      // content).
+      // page via attribute selector (a fragmenting engine may split the
+      // chapter wrapper into an empty leading sheet, but the child page stays
+      // with its content).
       const label = chapter ? chapter.label : '';
       if (label) t.attrSet('data-chapter-label', label);
       stack.open({ kind: 'page' }, t);
@@ -443,9 +473,11 @@ export default function plugin(md, pluginOptions = {}) {
       //
       //     <div class="chapter-opener" data-chapter-label="C.01">C.01</div>
       //
-      // Paged.js strips `::before` declarations on `.chapter` and `.page`
-      // elements during its polisher pass, so a pure-CSS pseudo-element
-      // approach isn't viable here. A structural element is the simplest
+      // HISTORICAL: this is a real element rather than a `::before` because
+      // the Paged.js polisher stripped `::before` on `.chapter`/`.page`. That
+      // engine is gone, so a pseudo-element may now be viable — but the
+      // structural element is also what carries `data-chapter-label` to the
+      // viewer, so this is a deliberate keep, not an unexamined leftover. A structural element is the simplest
       // mechanism that survives pagination and is reusable across
       // projects (any project styling `.chapter-opener` gets the same
       // markup).
@@ -569,7 +601,7 @@ export default function plugin(md, pluginOptions = {}) {
         // offsets (see ADR 0009).
         contMeta.__line = line;
         const cls = (contMeta.attrs.class || '').split(/\s+/).filter(Boolean);
-        if (!cls.includes('md-continued')) cls.push('md-continued');
+        if (!cls.includes('gp-continued')) cls.push('gp-continued');
         contMeta.attrs.class = cls.join(' ');
 
         stack.close('section');
@@ -583,7 +615,7 @@ export default function plugin(md, pluginOptions = {}) {
         // token.map — see the do-not-use-token.map comment in openChapter
         // above (ADR 0009); applies identically here.
         t.meta = { line };
-        t.attrSet('class', 'md-page-break');
+        t.attrSet('class', 'gp-page-break');
         t.attrSet('aria-hidden', 'true');
         out.push(t);
         continue;
@@ -611,7 +643,7 @@ export default function plugin(md, pluginOptions = {}) {
         // token.map — see the do-not-use-token.map comment in openChapter
         // above (ADR 0009); applies identically here.
         t.meta = { line };
-        t.attrSet('class', 'md-column-break');
+        t.attrSet('class', 'gp-column-break');
         t.attrSet('aria-hidden', 'true');
         out.push(t);
         continue;
@@ -648,7 +680,7 @@ export default function plugin(md, pluginOptions = {}) {
 
   // Renderer rules for injected tokens.
   //
-  // col-split handling: Paged.js strips `break-after: column` during CSS
+  // col-split handling. HISTORICAL: Paged.js stripped `break-after: column` during CSS
   // preprocessing, so CSS column breaks never fire. Authors opt in by adding
   // `.col-split` to an @section; the renderer then emits explicit
   // <div class="col"> sibling wrappers and treats @column-break as the
@@ -695,7 +727,7 @@ export default function plugin(md, pluginOptions = {}) {
       // escaped the same as every other attribute value this file emits —
       // it is not safe to assume the marker tokenizer already stripped
       // everything attribute-unsafe (e.g. a `'`-quoted class=value can still
-      // carry a literal `"` through, see markdown-it-paged.test.ts).
+      // carry a literal `"` through, see markers.test.ts).
       //
       // data-source-range (set by the source_range core rule, which runs
       // BEFORE render — see source-range.ts) is threaded through explicitly:
@@ -721,8 +753,8 @@ export default function plugin(md, pluginOptions = {}) {
   };
 
   // nesting:0 on <div> emits only an opening tag — emit complete open+close pair instead.
-  // Both tokens' class is always the plugin's own literal ('md-page-break' /
-  // 'md-column-break') today, never author input, but escapeAttr is applied
+  // Both tokens' class is always the plugin's own literal ('gp-page-break' /
+  // 'gp-column-break') today, never author input, but escapeAttr is applied
   // here too so this stays safe if that ever changes.
   //
   // data-source-range (set by the source_range core rule, which runs BEFORE
@@ -732,10 +764,10 @@ export default function plugin(md, pluginOptions = {}) {
   // output. Without this, @page-break / @column-break markers would be
   // un-targetable by the context menu's "marker" kind (plan §3.1's kind
   // precedence explicitly includes "layout wrapper/break") even though
-  // markdown-it-paged.js threads token.meta.line onto them for exactly this
+  // this module threads token.meta.line onto them for exactly this
   // purpose.
   md.renderer.rules.layout_page_break = (tokens, idx) => {
-    const cls = tokens[idx].attrGet('class') || 'md-page-break';
+    const cls = tokens[idx].attrGet('class') || 'gp-page-break';
     const rangeAttr = tokens[idx].attrGet('data-source-range');
     const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
     return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}></div>\n`;
@@ -745,7 +777,7 @@ export default function plugin(md, pluginOptions = {}) {
     if (getDepth(env) > 0) {
       return `</div><div class="col">\n`;
     }
-    const cls = tokens[idx].attrGet('class') || 'md-column-break';
+    const cls = tokens[idx].attrGet('class') || 'gp-column-break';
     const rangeAttr = tokens[idx].attrGet('data-source-range');
     const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
     return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}></div>\n`;
@@ -756,16 +788,15 @@ export default function plugin(md, pluginOptions = {}) {
 }
 
 /**
- * Minimal Paged.js-friendly CSS for the classes this plugin emits.
+ * The minimal CSS the DOM this module emits requires. Author utility
+ * vocabulary lives in gutterpress-css.ts — see the ownership note above.
  * Consumers should inject this into <head> after their user stylesheets so
  * the layout contract (page/section/column breaks) wins at equal specificity.
  *
  * `.page`/`.spread` are given `position: relative` so they are the containing
  * block for any abspos descendant: a mispinned `bottom: 0` now fails LOCALLY
  * on its own page instead of resolving against the document canvas and
- * painting on the last page of the book. Under Paged.js the page div is
- * already the containing block, so this is a no-op there — engine
- * convergence, not a native-only hack.
+ * painting on the last page of the book.
  *
  * The break/orphan rules below (`break-after` on headings, image sizing,
  * first-child glue) are all `:where()` so they carry zero specificity —
@@ -786,7 +817,7 @@ export default function plugin(md, pluginOptions = {}) {
  * `text-align: center` still centers it — `display: block` would not).
  *
  */
-export const PAGED_CSS = `
+export const MARKER_CSS = `
 /* The UA default of 8px body margin is a screen affordance with no meaning
    in paged media, and engines disagree about it: a polyfill that treats the
    page div as the page box drops it, native print keeps it. Left in place it
@@ -798,11 +829,11 @@ export const PAGED_CSS = `
    agree. Authors who want a body margin still just declare one. */
 body { margin: 0; }
 
-.md-page-break { break-before: page; }
+.gp-page-break { break-before: page; }
 .page { break-before: page; }
 .spread { break-before: page; }
 :where(.page, .spread) { position: relative; }
-.md-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
+.gp-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
 
 :where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }
 :where(img, svg, video) { max-width: 100%; }

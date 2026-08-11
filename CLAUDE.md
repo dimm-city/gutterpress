@@ -106,7 +106,7 @@ expectation is a design constraint on every engine/shim change:
 ### Where "standards-based" binds strictly, and where it relaxes
 
 The standards rules above apply with FULL force to everything that
-**processes author HTML and CSS** — the markdown pipeline, `PAGED_CSS`, the
+**processes author HTML and CSS** — the markdown pipeline, `MARKER_CSS`, the
 compiler, the print path, and anything that decides what the author's
 document *means* or what lands in the PDF. That code is standards-based, its
 shims are thin and removable, and it may not invent behavior a future Chrome
@@ -302,34 +302,40 @@ removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,
 `@sidebar`, `@callout`, etc.) is the canonical author surface for wrapped
 blocks. Do NOT reintroduce `markdown-it-container` to core.
 
-### 6. `markdown-it-paged` is a STANDALONE plugin — keep Gutterpress out of it
+### 6. Gutterpress owns its markers — `markers.js`
 
-`packages/cli/src/lib/markdown/markdown-it-paged.js` is inlined from the
-independently published `markdown-it-paged` package. It owns exactly its own
-contract: markers → tokens → HTML emission → the CSS the emitted DOM needs
-(`PAGED_CSS` named export). Per-render state lives on `env.__colSplitDepth`,
-not a module-level closure, so a thrown render can't leak depth state into
-the next chapter.
+`packages/cli/src/lib/markdown/markers.js` is **Gutterpress code**. It began
+as an inlined copy of the standalone `markdown-it-paged` package and was
+absorbed at 0.10.0: the copy had grown to 812 lines against upstream's 433,
+was never consumed from npm, and carried four Gutterpress-only feature
+clusters (`data-source-range` editor threading per ADR 0009,
+`data-chapter-label`/`.chapter-opener`, `env.__colSplitDepth`, and the
+emitted-class contract the viewer depends on). The third-party label had
+stopped describing the file, and it was actively costing us — it argued
+against cleaning comments that describe a removed engine, and it blurred the
+ownership boundary for the `gp-*` vocabulary.
 
-**No Gutterpress-specific code may live in that file.** Anything meaningless
-to someone using the plugin on its own belongs in a Gutterpress-owned module
-beside it:
+The upstream package remains its own project. **Do not re-converge with it**:
+`data-source-range` is desktop-editor plumbing with no business in a
+general-purpose markdown-it plugin.
 
-- `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author-facing `gp-*`
-  vocabulary: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
-  `.gp-bleed`, and the `--gp-z-*` depth ladder. `assemble.ts` injects it
-  directly after `PAGED_CSS`, so the cascade is: plugin layout primitives →
-  Gutterpress vocabulary → user plugin CSS → author stylesheets last.
-- `gp-pin-scope.js` — the `gp_pin_scope_check` diagnostic, registered by
-  `renderer.ts` right after the paged plugin (it walks that plugin's
-  `layout_*` tokens and reads classes markdown-it-attrs attached, so the
-  order is load-bearing).
+**One prefix: `gp-`.** Everything Gutterpress emits or styles is `gp-`
+prefixed. The split between the two modules is by ROLE, not owner:
 
-The `gp-*` vocabulary was originally added inside the plugin and moved out;
-don't move it back. The one Gutterpress name still emitted by the plugin is
-the `gutterpress-continued` class on `@continue` — author-facing, documented
-in the user guide, and asserted in tests, so renaming it is a deliberate
-breaking change, not a cleanup.
+- `markers.js` (`MARKER_CSS`) — the **structural DOM**: markers → tokens →
+  `.page` / `.spread` / `.section` / `.chapter` / `.gp-page-break` /
+  `.gp-column-break` / `.gp-continued`, plus the minimal CSS that DOM needs.
+  Per-render state lives on `env.__colSplitDepth`, not a module-level
+  closure, so a thrown render can't leak depth state into the next chapter.
+- `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
+  vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
+  `.gp-bleed`, and the `--gp-z-*` depth ladder.
+- `gp-pin-scope.js` — the `.gp-pin` diagnostic, registered by `renderer.ts`
+  right after the marker plugin (it walks that plugin's `layout_*` tokens and
+  reads classes markdown-it-attrs attached, so the order is load-bearing).
+
+`assemble.ts` injects `MARKER_CSS` then `GUTTERPRESS_CSS`, before user plugin
+CSS and the author's stylesheets, so author rules win at equal specificity.
 
 ### 7. Git/source operations are Node-native — no external OS tools (0.4.0+)
 

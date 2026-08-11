@@ -270,7 +270,7 @@ export function applyHr(view: EditorView): void {
 
 // ── Page break ───────────────────────────────────────────────────────────────
 // The canonical Gutterpress author token is `@page-break` on its own line.
-// Source: packages/cli/src/lib/markdown/markdown-it-paged.js line 13.
+// Source: packages/cli/src/lib/markdown/markers.js line 13.
 
 export function applyPageBreak(view: EditorView): void {
   const insertAt = insertionPointAfterCurrentLine(view);

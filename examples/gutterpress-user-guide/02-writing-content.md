@@ -155,7 +155,7 @@ Layout directives are `@`-prefixed markers that control how content flows across
 | `@page-break` | Hard break, no page wrapper emitted |
 | `@section` | Group content together to avoid mid-section breaks |
 | `@end-section` | Close the current `@section` (no-op if none is open); stays on the same page |
-| `@continue` | Close the current `@section` and reopen a matching one, marked `.md-continued` |
+| `@continue` | Close the current `@section` and reopen a matching one, marked `.gp-continued` |
 | `@column-break` | Force a column break inside a multi-column section |
 
 @end-section
@@ -224,7 +224,7 @@ Content above.
 Content below, on a new page.
 ```
 
-Renders `<div class="md-page-break" aria-hidden="true"></div>` between the two paragraphs — a plain marker element, not a page container.
+Renders `<div class="gp-page-break" aria-hidden="true"></div>` between the two paragraphs — a plain marker element, not a page container.
 
 ### @section and @end-section
 
@@ -249,7 +249,7 @@ Continues on the same page as the section above.
 
 ### @continue — split a named section without losing its identity
 
-`@continue` closes the **currently open** `@section` and immediately reopens a new one with the same name and attributes, plus an extra `md-continued` class. Use it when a named block has to spill past a break but you still want to style the overflow (e.g. a "(continued)" label) without repeating its heading:
+`@continue` closes the **currently open** `@section` and immediately reopens a new one with the same name and attributes, plus an extra `gp-continued` class. Use it when a named block has to spill past a break but you still want to style the overflow (e.g. a "(continued)" label) without repeating its heading:
 
 ```markdown
 @section Notes
@@ -269,7 +269,7 @@ Renders:
 <div class="section" data-section="Notes">
   <p>First part of a long note...</p>
 </div>
-<div class="section md-continued" data-section="Notes">
+<div class="section gp-continued" data-section="Notes">
   <p>The overflow, continuing.</p>
 </div>
 ```

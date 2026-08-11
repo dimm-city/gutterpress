@@ -158,7 +158,7 @@ export function forcedColumnBreaksSupported(): boolean {
  * Scoped to the OUTER strip only (`FORCED_PAGE_LIKE` values — the ones
  * `injectBreakMapping` maps to `column`), because that is what the
  * cross-browser page COUNT depends on. A break already authored as `column`
- * directly (`.md-column-break`, used for a nested in-page `.section`
+ * directly (`.gp-column-break`, used for a nested in-page `.section`
  * multicol) targets an auto-height BALANCED multicol context with no fixed
  * column height to reserve against — out of scope here, a known remaining
  * Firefox cosmetic limitation (docs/native-engine-acceptance-gate.md).

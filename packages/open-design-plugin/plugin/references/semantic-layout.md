@@ -30,8 +30,8 @@ What they emit:
 | `@section` | `<div class="section …" data-section="name" data-region="…">` |
 | `@continue` | closes the open `@section` and opens a matching continuation |
 | `@end-section` | closes the nearest open `@section` |
-| `@page-break` | `<div class="md-page-break" aria-hidden="true">` |
-| `@column-break` | `<div class="md-column-break" aria-hidden="true">` |
+| `@page-break` | `<div class="gp-page-break" aria-hidden="true">` |
+| `@column-break` | `<div class="gp-column-break" aria-hidden="true">` |
 
 A chapter's label propagates to its child pages as `data-chapter-label`, so CSS
 can reach it from any descendant with `attr(data-chapter-label)` — that is the

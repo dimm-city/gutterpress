@@ -26,4 +26,4 @@ export type {
   GutterpressPluginExport,
 } from "./lib/markdown/renderer";
 
-export { PAGED_CSS } from "./lib/markdown/markdown-it-paged.js";
+export { MARKER_CSS } from "./lib/markdown/markers.js";
