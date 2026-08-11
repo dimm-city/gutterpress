@@ -125,11 +125,48 @@ export function getWidth(tokens: readonly string[]): string {
 }
 
 /**
+ * Pin mode is a COMPOSED position: `.gp-pin` plus up to two edge words.
+ * `.gp-top`/`.gp-bottom` are pin-only; `.gp-left`/`.gp-right` are dual —
+ * flow floats on their own, pin edges once `.gp-pin` is present. So which
+ * tokens make up "the position" depends on whether the image is pinned,
+ * and treating position as a single token silently corrupts pinned images
+ * (clearing `{.gp-pin .gp-bottom .gp-right}` used to drop only `.gp-pin`,
+ * leaving `.gp-right` as a live right float instead of an inline image).
+ */
+export const IMAGE_PIN_CLASS = "gp-pin";
+const PIN_EDGE_CLASSES: readonly string[] = ["gp-top", "gp-bottom", "gp-left", "gp-right"];
+
+function isPinned(tokens: readonly string[]): boolean {
+  return tokens.includes(`.${IMAGE_PIN_CLASS}`);
+}
+
+/**
+ * Predicate for "this token participates in the image's ACTIVE position".
+ * When pinned that is `.gp-pin` + any edge word (+ any contradictory flow
+ * position someone hand-wrote); otherwise just the flow position class.
+ * Inert `.gp-top`/`.gp-bottom` on a NON-pinned image are deliberately not
+ * included — they do nothing, and this module edits one facet rather than
+ * tidying tokens the user did not ask about.
+ */
+function participatesInPosition(tokens: readonly string[]): (token: string) => boolean {
+  const pinned = isPinned(tokens);
+  return (token: string): boolean => {
+    const name = classTokenName(token);
+    if (name == null) return false;
+    if (optionFor(IMAGE_POSITION_OPTIONS, name) != null) return true;
+    return pinned && PIN_EDGE_CLASSES.includes(name);
+  };
+}
+
+/**
  * The position class AS WRITTEN (canonical or legacy alias) — the UI maps
  * it for display but the document keeps the author's spelling until the
- * user actively changes this facet.
+ * user actively changes this facet. `.gp-pin` anywhere wins regardless of
+ * token order: `{.gp-right .gp-pin}` is a pinned image whose `.gp-right`
+ * is an edge modifier, not a right float.
  */
 export function getPositionClass(tokens: readonly string[]): string | undefined {
+  if (isPinned(tokens)) return IMAGE_PIN_CLASS;
   for (const token of tokens) {
     const name = classTokenName(token);
     if (name && optionFor(IMAGE_POSITION_OPTIONS, name)) return name;
@@ -170,13 +207,26 @@ export function setWidth(tokens: readonly string[], width: string | null): strin
   return setFacetToken(tokens, isWidthToken, width == null ? null : `width="${width}"`);
 }
 
-/** `cls` must be canonical (`gp-*`) or a known alias; null clears the facet. */
+/**
+ * Replace the image's whole composed position: every participating token is
+ * removed and the new class takes the first one's slot (appended when the
+ * image had no position), so clearing a pinned image really does make it
+ * inline and switching away from pin cannot leave a live edge word behind.
+ *
+ * `cls` must be canonical (`gp-*`) or a known alias; null clears the facet.
+ * Re-selecting pin on an already-pinned image is a no-op rather than a
+ * reset — the context menu seeds its prompt with the current position, so
+ * confirming it unchanged must not silently drop the author's edge words.
+ */
 export function setPositionClass(tokens: readonly string[], cls: string | null): string[] {
-  return setFacetToken(
-    tokens,
-    isFacetToken(IMAGE_POSITION_OPTIONS),
-    cls == null ? null : `.${cls}`,
-  );
+  if (cls === IMAGE_PIN_CLASS && isPinned(tokens)) return [...tokens];
+  const participates = participatesInPosition(tokens);
+  const at = tokens.findIndex(participates);
+  const kept = tokens.filter((token) => !participates(token));
+  if (cls == null) return kept;
+  const next = [...kept];
+  next.splice(at === -1 ? kept.length : at, 0, `.${cls}`);
+  return next;
 }
 
 export function setSizeClass(tokens: readonly string[], cls: string | null): string[] {

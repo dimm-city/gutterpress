@@ -103,6 +103,65 @@ describe("facet setters preserve everything else", () => {
   });
 });
 
+// A pinned position is COMPOSED (.gp-pin + up to two edge words), and
+// .gp-left/.gp-right are dual-purpose — flow floats alone, pin edges under
+// .gp-pin. Editing position as a single token corrupted pinned images:
+// clearing {.gp-pin .gp-bottom .gp-right} dropped only .gp-pin and left
+// .gp-right as a live right float instead of an inline image, and switching
+// to another position left the edge words behind to fight it.
+describe("pinned positions are edited as one composed set", () => {
+  test("clearing a pinned position removes the pin AND its edge modifiers", () => {
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .gp-right}");
+    expect(serializeImageAttrs(setPositionClass(tokens, null))).toBe("");
+  });
+
+  test("pin is recognized regardless of token order, and clearing still empties it", () => {
+    const tokens = tokenizeImageAttrs("{.gp-right .gp-pin}");
+    expect(getPositionClass(tokens)).toBe("gp-pin");
+    expect(serializeImageAttrs(setPositionClass(tokens, null))).toBe("");
+  });
+
+  test("switching from pin to a flow position drops every edge word", () => {
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-top .gp-left}");
+    expect(serializeImageAttrs(setPositionClass(tokens, "gp-center"))).toBe("{.gp-center}");
+  });
+
+  test("non-position tokens survive clearing a pinned position", () => {
+    const tokens = tokenizeImageAttrs('{width="200px" .gp-pin .gp-bottom .gp-small .my-note}');
+    expect(serializeImageAttrs(setPositionClass(tokens, null))).toBe(
+      '{width="200px" .gp-small .my-note}',
+    );
+  });
+
+  test("the new position takes the slot the old one occupied", () => {
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .gp-small}");
+    expect(serializeImageAttrs(setPositionClass(tokens, "gp-right"))).toBe(
+      "{.gp-right .gp-small}",
+    );
+  });
+
+  test("re-selecting pin on an already-pinned image keeps its edge words", () => {
+    // The context menu seeds its prompt with the current position, so
+    // confirming "pin" unchanged must not silently reset the edges.
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .gp-right}");
+    expect(serializeImageAttrs(setPositionClass(tokens, "gp-pin"))).toBe(
+      "{.gp-pin .gp-bottom .gp-right}",
+    );
+  });
+
+  test("switching a flow float to pin leaves a centered pin, edges untouched", () => {
+    const tokens = tokenizeImageAttrs("{.gp-right .gp-small}");
+    expect(serializeImageAttrs(setPositionClass(tokens, "gp-pin"))).toBe("{.gp-pin .gp-small}");
+  });
+
+  test("inert gp-top/gp-bottom on a NON-pinned image are left alone", () => {
+    // They do nothing without .gp-pin; this module edits one facet rather
+    // than tidying tokens the user did not ask about.
+    const tokens = tokenizeImageAttrs("{.gp-top .gp-right .gp-small}");
+    expect(serializeImageAttrs(setPositionClass(tokens, null))).toBe("{.gp-top .gp-small}");
+  });
+});
+
 describe("normalizeClassInput", () => {
   test("accepts short names, canonical classes, and legacy aliases", () => {
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "right")).toBe("gp-right");
