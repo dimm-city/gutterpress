@@ -55,6 +55,16 @@ gotcha below is a consequence of that difference.
   chrome-free pages. Keep an empty background fill in the suppressed box so a
   patterned margin band stays continuous.
 
+- **Large raster images in `@page { background }` are silently dropped.**
+  Measured: a 2550×3300 texture never paints (flat colour, no error, every
+  page) while a 450×582 downscale of the same image paints correctly —
+  bounded between 450×582 (ok) and 638×825 (dropped). Resample background
+  tiles to their display resolution (450px at a 1.5in tile is exactly
+  300dpi). Gradients in `@page { background }` paint nothing at all. Both
+  are tracked: dimm-city/gutterpress#152, #149. Verify any `@page`
+  background fixture with a PRODUCTION-SIZED asset — a 16×16 test tile
+  passes and proves nothing.
+
 ## 2. The whole-document shrink-to-fit trap
 
 This is the nastiest native behavior because the symptom (every page slightly
