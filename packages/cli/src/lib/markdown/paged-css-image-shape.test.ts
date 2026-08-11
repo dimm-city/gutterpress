@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { PAGED_CSS } from "./markdown-it-paged.js";
+import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../chromium.ts";
 import { closeBrowser, getBrowser } from "../browser-pool.ts";
 import { loadPdf, getTextPass } from "../pdf-inspect.ts";
@@ -45,6 +46,7 @@ const WRAP_TEXT =
 
 const fixture = `<!doctype html><meta charset="utf-8"><style>
 ${PAGED_CSS}
+${GUTTERPRESS_CSS}
 @page { size: 400px 600px; margin: 20px; }
 body { font: 14px/1.4 serif; width: 360px; }
 p { margin: 0 0 8px; }

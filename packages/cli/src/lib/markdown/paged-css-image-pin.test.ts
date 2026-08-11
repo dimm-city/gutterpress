@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { PAGED_CSS } from "./markdown-it-paged.js";
+import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../chromium.ts";
 import { closeBrowser, getBrowser } from "../browser-pool.ts";
 import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
@@ -59,6 +60,7 @@ const SQ_SRC = `data:image/svg+xml,${SQ_SVG}`;
 // :where(p:has(> img.gp-pin:only-child)) neutralizer, which is under test.
 const fixture = `<!doctype html><meta charset="utf-8"><style>
 ${PAGED_CSS}
+${GUTTERPRESS_CSS}
 @page { size: ${PAGE_W}px ${PAGE_H}px; margin: 0; }
 .page { width: ${PAGE_W}px; height: ${PAGE_H}px; }
 #p5p { margin: 0; }

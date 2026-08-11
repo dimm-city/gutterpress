@@ -20,6 +20,7 @@ import { debug } from "../../utils/logger";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
 import markdownItPaged from "./markdown-it-paged.js";
+import gpPinScope from "./gp-pin-scope.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
 // Optional, opt-in markdown features. Bundled so they're available WITHOUT any
@@ -160,6 +161,10 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   md.use(unwrapPlugin(markdownItDeflist));
   md.use(unwrapPlugin(markdownItSourceMap));
   md.use(markdownItPaged);
+  // Gutterpress's own diagnostic; must follow the paged plugin (it walks the
+  // layout_* tokens that plugin emits) and markdown-it-attrs (it reads the
+  // {.gp-pin} classes attrs attaches).
+  md.use(gpPinScope);
 
   // Image src normalization (token-level renderer rule).
   registerImageRule(md);

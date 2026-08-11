@@ -18,6 +18,7 @@ import postcss from "postcss";
 export const ruleRemoteUrls = "printsafe/no-remote-urls";
 export const ruleRiskyProps = "printsafe/no-risky-print-effects";
 export const ruleSyntax = "printsafe/syntax-error";
+export const rulePageContainment = "printsafe/page-containment";
 
 export interface PrintSafeWarning {
   rule: string;
@@ -110,6 +111,63 @@ function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
   return true;
 }
 
+/**
+ * `.page` / `.spread` are the containing blocks core creates for pinned
+ * content (`:where(.page, .spread) { position: relative }` in PAGED_CSS), so
+ * what a book declares on them decides whether `.gp-pin` and `.gp-bleed`
+ * work at all. Two mistakes are silent, look nothing like their symptom, and
+ * cost hours; both are cheap to spot in the stylesheet.
+ *
+ * Matches `.page`/`.spread` as whole class tokens — `.page-credits` and
+ * `.spread-wide` are different classes and must not be flagged.
+ */
+function targetsPageWrapper(selector: string): boolean {
+  if (!/\.(page|spread)(?![\w-])/.test(selector)) return false;
+  // A selector that already names gp-bleed/gp-pin has been scoped
+  // deliberately — either the exception this rule tells authors to write
+  // (`.page:not(:has(.gp-bleed))`) or a rule aimed at those elements. Warning
+  // on the documented fix is how a lint rule teaches people to ignore it.
+  return !/\bgp-(bleed|pin)\b/.test(selector);
+}
+
+/** Properties that make an element a stacking context, trapping a
+ * `.gp-behind` descendant inside it instead of letting it paint under the
+ * page's text. `z-index` only counts when it is not `auto`; `opacity`/
+ * `filter`/`transform`/`mix-blend-mode` count at any non-initial value. */
+function createsStackingContext(decl: postcss.Declaration): boolean {
+  const p = decl.prop.toLowerCase();
+  const v = decl.value.trim().toLowerCase();
+  switch (p) {
+    case "z-index":
+      return v !== "auto" && v !== "initial" && v !== "unset";
+    case "isolation":
+      return v === "isolate";
+    case "opacity":
+      return v !== "1" && v !== "100%" && v !== "initial" && v !== "unset";
+    case "mix-blend-mode":
+      return v !== "normal" && v !== "initial" && v !== "unset";
+    case "filter":
+    case "backdrop-filter":
+    case "transform":
+    case "perspective":
+    case "will-change":
+      return v !== "none" && v !== "initial" && v !== "unset";
+    case "contain":
+      return /\b(paint|layout|strict|content)\b/.test(v);
+    default:
+      return false;
+  }
+}
+
+/** Any `overflow` value other than `visible` makes the box clip its
+ * descendants — including out-of-flow ones. */
+function clipsDescendants(decl: postcss.Declaration): boolean {
+  const p = decl.prop.toLowerCase();
+  if (p !== "overflow" && p !== "overflow-x" && p !== "overflow-y") return false;
+  const v = decl.value.trim().toLowerCase();
+  return v !== "" && !/^(visible|initial|unset|revert)$/.test(v);
+}
+
 function nodeLoc(node: postcss.Node): { line: number; column: number } {
   return {
     line: node.source?.start?.line ?? 1,
@@ -191,6 +249,33 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
         ...nodeLoc(decl),
       });
     }
+  });
+
+  // What a book declares on .page / .spread decides whether pinned and
+  // full-bleed content works, and both failure modes are silent.
+  root.walkRules((rule) => {
+    if (rule.parent?.type === "atrule") {
+      const at = (rule.parent as postcss.AtRule).name.toLowerCase();
+      if (at === "page" || marginBoxAtRuleNames.has(at)) return;
+    }
+    if (!targetsPageWrapper(rule.selector)) return;
+    rule.walkDecls((decl) => {
+      if (clipsDescendants(decl)) {
+        warnings.push({
+          rule: rulePageContainment,
+          severity: "warning",
+          message: `"${decl.prop}: ${decl.value}" on "${rule.selector}" clips out-of-flow descendants: a .gp-bleed plate is cut back to this box's width instead of reaching the sheet edge, and a .gp-behind image is cut the same way. Scope it with :has() (e.g. "${rule.selector}:not(:has(.gp-bleed, .gp-pin))") or drop it.`,
+          ...nodeLoc(decl),
+        });
+      } else if (createsStackingContext(decl)) {
+        warnings.push({
+          rule: rulePageContainment,
+          severity: "warning",
+          message: `"${decl.prop}: ${decl.value}" on "${rule.selector}" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at "position: relative; z-index: auto" for this reason.`,
+          ...nodeLoc(decl),
+        });
+      }
+    });
   });
 
   return warnings;

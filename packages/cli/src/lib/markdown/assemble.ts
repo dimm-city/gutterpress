@@ -13,6 +13,7 @@
  * markdown→HTML→book.html work lives here and the wrapper just supplies inputs.
  */
 import { PAGED_CSS } from "./markdown-it-paged.js";
+import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
@@ -156,14 +157,17 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     opts.onImageRefs([...imageRefs]);
   }
 
-  // Inject markdown-it-paged + user-plugin CSS as a single <style> block.
-  // PAGED_CSS is treated identically to user plugin css — the only built-in
-  // plugin that ships CSS routes through the same pipeline as user plugins,
-  // so the cascade story is uniform.
-  // Cascade order: layout primitives, then plugin CSS, then the author's own
+  // Inject built-in + user-plugin CSS as a single <style> block.
+  // Cascade order: markdown-it-paged's layout primitives, then Gutterpress's
+  // own `gp-*` vocabulary, then user plugin CSS, then the author's own
   // stylesheets last so project rules win at equal specificity.
+  // The two built-ins are separate because markdown-it-paged is a standalone,
+  // independently published plugin: it owns the marker DOM and the CSS that
+  // DOM needs, and nothing else. `gp-*` is Gutterpress product vocabulary and
+  // lives in gutterpress-css.ts.
   const inlineCss = [
     `/* markdown-it-paged */\n${PAGED_CSS.trim()}`,
+    `/* gutterpress */\n${GUTTERPRESS_CSS.trim()}`,
     pluginCss ? `/* user plugin css */\n${pluginCss.trim()}` : null,
     projectCss ? `/* project css */\n${projectCss.trim()}` : null,
   ].filter(Boolean).join("\n\n");

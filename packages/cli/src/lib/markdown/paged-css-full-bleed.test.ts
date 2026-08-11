@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { PAGED_CSS } from "./markdown-it-paged.js";
+import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../chromium.ts";
 import { closeBrowser, getBrowser } from "../browser-pool.ts";
 
@@ -44,6 +45,7 @@ const SVG = encodeURIComponent(
 // Deliberately NO `body { margin: 0 }` here — that is the whole point.
 const fixture = `<!doctype html><meta charset="utf-8"><style>
 ${PAGED_CSS}
+${GUTTERPRESS_CSS}
 @page { size: 600px 400px; margin: 40px; }
 </style>
 <p>text</p>

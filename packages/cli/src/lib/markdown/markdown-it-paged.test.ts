@@ -20,6 +20,7 @@
 import { describe, test, expect } from "bun:test";
 import MarkdownIt from "markdown-it";
 import markdownItPaged, { PAGED_CSS } from "./markdown-it-paged.js";
+import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { createMarkdownRenderer } from "./renderer";
 import { assembleBookHtml } from "./assemble";
 
@@ -1203,7 +1204,7 @@ describe("PAGED_CSS export", () => {
     expect(html).toContain('<img src="b.png" alt="b" class="gp-left">');
     // First .gp-left rule in the sheet is the float rule (the later one is
     // the pin-edge justify-self modifier).
-    const rule = PAGED_CSS.match(/\.gp-left\s*\{[^}]*\}/);
+    const rule = GUTTERPRESS_CSS.match(/\.gp-left\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     expect(rule![0]).toMatch(/float:\s*left/);
     expect(rule![0]).toMatch(/max-width:\s*50%/);
@@ -1224,20 +1225,20 @@ describe("PAGED_CSS export", () => {
 // layer). markdown-it-attrs (bundled, see renderer.ts) already lets authors
 // attach `{.gp-center}` etc. to any element; PAGED_CSS must supply the matching
 // print-safe rules so the classes actually do something.
-describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
+describe("GUTTERPRESS_CSS author-facing image/block utilities (M17)", () => {
   // gp-* only: the five pre-vocabulary names were REMOVED, so the regexes
   // must match bare gp-* selectors — a grouped legacy alias reappearing here
   // is a regression.
   test("defines .gp-center as a block-centering rule", () => {
-    const rule = PAGED_CSS.match(/\.gp-center\s*\{[^}]*\}/);
+    const rule = GUTTERPRESS_CSS.match(/\.gp-center\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     expect(rule![0]).toMatch(/margin-left:\s*auto/);
     expect(rule![0]).toMatch(/margin-right:\s*auto/);
   });
 
   test("defines .gp-left / .gp-right as real floats with margins", () => {
-    const left = PAGED_CSS.match(/\.gp-left\s*\{[^}]*\}/);
-    const right = PAGED_CSS.match(/\.gp-right\s*\{[^}]*\}/);
+    const left = GUTTERPRESS_CSS.match(/\.gp-left\s*\{[^}]*\}/);
+    const right = GUTTERPRESS_CSS.match(/\.gp-right\s*\{[^}]*\}/);
     expect(left).not.toBeNull();
     expect(right).not.toBeNull();
     expect(left![0]).toMatch(/float:\s*left/);
@@ -1247,13 +1248,13 @@ describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
   });
 
   test("defines .gp-full as 100% of the content width", () => {
-    const rule = PAGED_CSS.match(/\.gp-full\s*\{[^}]*\}/);
+    const rule = GUTTERPRESS_CSS.match(/\.gp-full\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     expect(rule![0]).toMatch(/width:\s*100%/);
   });
 
   test("defines .gp-bleed as break-before + the zero-side-margin named page (no margin out-dent)", () => {
-    const rule = PAGED_CSS.match(/\.gp-bleed\s*\{[^}]*\}/);
+    const rule = GUTTERPRESS_CSS.match(/\.gp-bleed\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     const body = rule![0];
     expect(body).toMatch(/break-before:\s*page/);
@@ -1269,12 +1270,12 @@ describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
     // Paged.js is gone (native-only-migration-plan.md Phase 6) — nothing sets
     // its page-margin custom properties any more, so they must not survive
     // here as a permanent no-op.
-    expect(PAGED_CSS).not.toMatch(/--pagedjs-margin/);
+    expect(GUTTERPRESS_CSS).not.toMatch(/--pagedjs-margin/);
     expect(body).not.toMatch(/--gp-margin/);
-    expect(PAGED_CSS).toMatch(/@page gp-full-bleed\s*\{[^}]*margin-left:\s*0/);
+    expect(GUTTERPRESS_CSS).toMatch(/@page gp-full-bleed\s*\{[^}]*margin-left:\s*0/);
     // Must NOT promise a named `art` page template or header/footer removal —
     // neither is implemented.
-    expect(PAGED_CSS).not.toMatch(/@page\s+art\b/);
+    expect(GUTTERPRESS_CSS).not.toMatch(/@page\s+art\b/);
   });
 });
 
@@ -1304,7 +1305,7 @@ describe("author-facing image/block utilities — rendered output (M17)", () => 
 
     expect(html).toContain('<img src="art.jpg" alt="Art" class="gp-bleed">');
     // The style block is the one, real vehicle for this CSS (assemble.ts
-    // injects PAGED_CSS verbatim) — no separate theme/plugin CSS is involved.
+    // injects GUTTERPRESS_CSS verbatim) — no separate theme/plugin CSS is involved.
     for (const selector of [".gp-center", ".gp-left", ".gp-right", ".gp-full", ".gp-bleed"]) {
       expect(html).toContain(selector);
     }
@@ -1314,27 +1315,27 @@ describe("author-facing image/block utilities — rendered output (M17)", () => 
 // The composable gp-* vocabulary (image positioning v1) — gp-* ONLY: the
 // pre-vocabulary utility names (.center/.float-left/.float-right/
 // .full-width/.full-bleed) were removed, not aliased. Rule ORDER inside
-// PAGED_CSS is the contract — flow positions → sizes → spacing → shape →
+// GUTTERPRESS_CSS is the contract — flow positions → sizes → spacing → shape →
 // .gp-pin → pin-edge modifiers, all at flat 0-1-0 specificity so
 // combinations resolve by source order. The index assertions below pin that
 // order; they are load-bearing, not cosmetic (e.g. a size's max-width:100%
 // only lifts the floats' 50% cap because it comes later in the sheet).
-describe("PAGED_CSS gp-* vocabulary", () => {
+describe("GUTTERPRESS_CSS gp-* vocabulary", () => {
   test("the removed pre-vocabulary class names stay removed", () => {
     // One vocabulary: a legacy selector reappearing (even grouped as an
     // alias) reintroduces a second way to spell every layout and undoes the
     // removal. The desktop's editing helpers recognize these names only to
     // REWRITE them to gp-* — the CSS must not quietly resurrect them.
     for (const legacy of [".center", ".float-left", ".float-right", ".full-width", ".full-bleed"]) {
-      expect(PAGED_CSS).not.toContain(`${legacy} `);
-      expect(PAGED_CSS).not.toContain(`${legacy},`);
+      expect(GUTTERPRESS_CSS).not.toContain(`${legacy} `);
+      expect(GUTTERPRESS_CSS).not.toContain(`${legacy},`);
     }
   });
 
   test("sizes declare width 25/50/75% with the float-cap lift", () => {
-    const small = PAGED_CSS.match(/\.gp-small\s*\{[^}]*\}/);
-    const medium = PAGED_CSS.match(/\.gp-medium\s*\{[^}]*\}/);
-    const large = PAGED_CSS.match(/\.gp-large\s*\{[^}]*\}/);
+    const small = GUTTERPRESS_CSS.match(/\.gp-small\s*\{[^}]*\}/);
+    const medium = GUTTERPRESS_CSS.match(/\.gp-medium\s*\{[^}]*\}/);
+    const large = GUTTERPRESS_CSS.match(/\.gp-large\s*\{[^}]*\}/);
     expect(small![0]).toMatch(/width:\s*25%/);
     expect(medium![0]).toMatch(/width:\s*50%/);
     expect(large![0]).toMatch(/width:\s*75%/);
@@ -1342,20 +1343,20 @@ describe("PAGED_CSS gp-* vocabulary", () => {
       expect(rule![0]).toMatch(/max-width:\s*100%/);
     }
     // After the float rules, so max-width:100% beats the 50% cap on order.
-    expect(PAGED_CSS.indexOf(".gp-small")).toBeGreaterThan(PAGED_CSS.indexOf(".gp-right {"));
+    expect(GUTTERPRESS_CSS.indexOf(".gp-small")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
   });
 
   test("spacing presets set --gp-gap and the float rules consume it", () => {
-    expect(PAGED_CSS).toMatch(/\.gp-tight\s*\{\s*--gp-gap:\s*0\.5em;\s*\}/);
-    expect(PAGED_CSS).toMatch(/\.gp-loose\s*\{\s*--gp-gap:\s*2em;\s*\}/);
-    const left = PAGED_CSS.match(/\.gp-left\s*\{[^}]*\}/)![0];
-    const right = PAGED_CSS.match(/\.gp-right\s*\{[^}]*\}/)![0];
+    expect(GUTTERPRESS_CSS).toMatch(/\.gp-tight\s*\{\s*--gp-gap:\s*0\.5em;\s*\}/);
+    expect(GUTTERPRESS_CSS).toMatch(/\.gp-loose\s*\{\s*--gp-gap:\s*2em;\s*\}/);
+    const left = GUTTERPRESS_CSS.match(/\.gp-left\s*\{[^}]*\}/)![0];
+    const right = GUTTERPRESS_CSS.match(/\.gp-right\s*\{[^}]*\}/)![0];
     expect(left).toContain("var(--gp-gap, 1em)");
     expect(right).toContain("var(--gp-gap, 1em)");
   });
 
   test(".gp-pin is abspos with inset:0 and EXPLICIT center defaults", () => {
-    const pin = PAGED_CSS.match(/\.gp-pin\s*\{[^}]*\}/)![0];
+    const pin = GUTTERPRESS_CSS.match(/\.gp-pin\s*\{[^}]*\}/)![0];
     expect(pin).toMatch(/position:\s*absolute/);
     // inset:0 is load-bearing: abspos self-alignment aligns within the
     // inset-modified containing block; with auto insets that collapses to
@@ -1367,34 +1368,34 @@ describe("PAGED_CSS gp-* vocabulary", () => {
     expect(pin).toMatch(/justify-self:\s*center/);
     expect(pin).toMatch(/margin:\s*0/);
     // After the float rules, so margin:0/max-width:100% beat float declarations.
-    expect(PAGED_CSS.indexOf(".gp-pin")).toBeGreaterThan(PAGED_CSS.indexOf(".gp-right {"));
+    expect(GUTTERPRESS_CSS.indexOf(".gp-pin")).toBeGreaterThan(GUTTERPRESS_CSS.indexOf(".gp-right {"));
   });
 
   test("pin edge modifiers come after .gp-pin so they beat its center defaults", () => {
-    expect(PAGED_CSS).toMatch(/\.gp-top\s*\{\s*align-self:\s*start;\s*\}/);
-    expect(PAGED_CSS).toMatch(/\.gp-bottom\s*\{\s*align-self:\s*end;\s*\}/);
-    expect(PAGED_CSS).toMatch(/\.gp-left\s*\{\s*justify-self:\s*start;\s*\}/);
-    expect(PAGED_CSS).toMatch(/\.gp-right\s*\{\s*justify-self:\s*end;\s*\}/);
-    const pinRuleAt = PAGED_CSS.indexOf(".gp-pin {");
+    expect(GUTTERPRESS_CSS).toMatch(/\.gp-top\s*\{\s*align-self:\s*start;\s*\}/);
+    expect(GUTTERPRESS_CSS).toMatch(/\.gp-bottom\s*\{\s*align-self:\s*end;\s*\}/);
+    expect(GUTTERPRESS_CSS).toMatch(/\.gp-left\s*\{\s*justify-self:\s*start;\s*\}/);
+    expect(GUTTERPRESS_CSS).toMatch(/\.gp-right\s*\{\s*justify-self:\s*end;\s*\}/);
+    const pinRuleAt = GUTTERPRESS_CSS.indexOf(".gp-pin {");
     expect(pinRuleAt).toBeGreaterThan(-1);
     // .gp-left/.gp-right appear twice (float rule + pin edge); the edge
     // occurrence must be the later one, after .gp-pin.
-    expect(PAGED_CSS.lastIndexOf(".gp-left")).toBeGreaterThan(pinRuleAt);
-    expect(PAGED_CSS.lastIndexOf(".gp-right")).toBeGreaterThan(pinRuleAt);
-    expect(PAGED_CSS.indexOf(".gp-top")).toBeGreaterThan(pinRuleAt);
-    expect(PAGED_CSS.indexOf(".gp-bottom")).toBeGreaterThan(pinRuleAt);
+    expect(GUTTERPRESS_CSS.lastIndexOf(".gp-left")).toBeGreaterThan(pinRuleAt);
+    expect(GUTTERPRESS_CSS.lastIndexOf(".gp-right")).toBeGreaterThan(pinRuleAt);
+    expect(GUTTERPRESS_CSS.indexOf(".gp-top")).toBeGreaterThan(pinRuleAt);
+    expect(GUTTERPRESS_CSS.indexOf(".gp-bottom")).toBeGreaterThan(pinRuleAt);
   });
 
   test("wrapper-margin neutralizers cover bleed and pin at zero specificity", () => {
-    expect(PAGED_CSS).toContain(":where(p:has(> img.gp-bleed:only-child)) { margin: 0; }");
-    expect(PAGED_CSS).toContain(":where(p:has(> img.gp-pin:only-child)) { margin: 0; }");
+    expect(GUTTERPRESS_CSS).toContain(":where(p:has(> img.gp-bleed:only-child)) { margin: 0; }");
+    expect(GUTTERPRESS_CSS).toContain(":where(p:has(> img.gp-pin:only-child)) { margin: 0; }");
   });
 
   test("adds no new @page gp-* names (gp-full-bleed stays the only one)", () => {
     // build.ts's shrink-to-fit guard excludes the whole `gp-` named-page
     // namespace from its page-width Math.max; every name added here widens
     // that exclusion and must be deliberate.
-    expect(PAGED_CSS.match(/@page gp-/g)).toHaveLength(1);
+    expect(GUTTERPRESS_CSS.match(/@page gp-/g)).toHaveLength(1);
   });
 });
 

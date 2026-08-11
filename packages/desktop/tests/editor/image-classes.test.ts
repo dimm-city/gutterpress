@@ -2,7 +2,7 @@
  * image-classes — the shared class table + token-preserving attrs editing.
  *
  * The drift gate at the bottom is the load-bearing test: the desktop's
- * option tables mirror core's PAGED_CSS vocabulary, and this is the check
+ * option tables mirror core's GUTTERPRESS_CSS vocabulary, and this is the check
  * that keeps a class from existing in one place but not the other (the
  * pre-gp-* surface had the list hand-copied in four places).
  */
@@ -197,13 +197,13 @@ describe("shape facet (boolean)", () => {
   });
 });
 
-describe("drift gate against core PAGED_CSS", () => {
+describe("drift gate against core GUTTERPRESS_CSS", () => {
   // markdown-it-paged.js is deliberately self-contained ESM (zero imports),
   // so the sibling-package source import works under bun test without
   // building the lib. If this import ever breaks, fall back to reading the
   // file as text and scanning for the selectors.
-  test("every canonical class the desktop offers exists as a PAGED_CSS selector", async () => {
-    const { PAGED_CSS } = await import("../../../cli/src/lib/markdown/markdown-it-paged.js");
+  test("every canonical class the desktop offers exists as a GUTTERPRESS_CSS selector", async () => {
+    const { GUTTERPRESS_CSS } = await import("../../../cli/src/lib/markdown/gutterpress-css.ts");
     const canonical = [
       ...IMAGE_POSITION_OPTIONS.map((o) => o.class),
       ...IMAGE_SIZE_OPTIONS.map((o) => o.class),
@@ -211,21 +211,21 @@ describe("drift gate against core PAGED_CSS", () => {
     ];
     expect(canonical.length).toBeGreaterThan(0);
     for (const cls of canonical) {
-      expect(PAGED_CSS).toContain(`.${cls}`);
+      expect(GUTTERPRESS_CSS).toContain(`.${cls}`);
     }
   });
 
-  test("no legacy alias exists as a PAGED_CSS selector — removal must stick", async () => {
+  test("no legacy alias exists as a GUTTERPRESS_CSS selector — removal must stick", async () => {
     // Aliases are a desktop-side READ convenience for migrating old books;
     // if one reappears in core CSS the vocabulary is duplicated again.
-    const { PAGED_CSS } = await import("../../../cli/src/lib/markdown/markdown-it-paged.js");
+    const { GUTTERPRESS_CSS } = await import("../../../cli/src/lib/markdown/gutterpress-css.ts");
     const aliases = [...IMAGE_POSITION_OPTIONS, ...IMAGE_SIZE_OPTIONS].flatMap(
       (o) => o.aliases ?? [],
     );
     expect(aliases.length).toBeGreaterThan(0);
     for (const alias of aliases) {
-      expect(PAGED_CSS).not.toContain(`.${alias} `);
-      expect(PAGED_CSS).not.toContain(`.${alias},`);
+      expect(GUTTERPRESS_CSS).not.toContain(`.${alias} `);
+      expect(GUTTERPRESS_CSS).not.toContain(`.${alias},`);
     }
   });
 });

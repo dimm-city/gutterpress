@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { PAGED_CSS } from "./markdown-it-paged.js";
+import { GUTTERPRESS_CSS } from "./gutterpress-css.ts";
 import { resolveChromiumExecutable } from "../chromium.ts";
 import { closeBrowser, getBrowser } from "../browser-pool.ts";
 import { inspectPdf } from "../../engine/shared/pdf-inspect.ts";
@@ -51,6 +52,7 @@ const SVG = encodeURIComponent(
 const fixture = `<!doctype html><meta charset="utf-8"><style>
 html, body { margin: 0; padding: 0; }
 ${PAGED_CSS}
+${GUTTERPRESS_CSS}
 @page a { size: 384px 480px; margin: 24px; }
 @page b { size: 384px 300px; margin: 24px; }
 .page.a { page: a; }

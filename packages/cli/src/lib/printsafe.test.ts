@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { checkCss, ruleRiskyProps } from "./printsafe";
+import { checkCss, ruleRiskyProps, rulePageContainment } from "./printsafe";
 
 // MIGRATION.md Step 1 "Scope filter:" — filter: is measured to rasterize its
 // subtree to a 300 DPI bitmap and dominate build time (~90%; 57.0s -> 6.2s
@@ -73,4 +73,41 @@ test("checkCss does not flag a full-height margin box that paints its own chip",
 test("checkCss does not flag fit-content width outside an @page margin box", () => {
   const css = `.chip { width: fit-content; }`;
   expect(checkCss(css).filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
+});
+
+// `.page` / `.spread` are the containing blocks core creates for pinned and
+// full-bleed content, so what a book declares on them decides whether those
+// classes work. Both failure modes are silent and look nothing like their
+// cause — a clipped .gp-bleed plate cost a multi-hour bisection to find.
+test("checkCss warns when a page wrapper clips its descendants", () => {
+  const css = `.page { overflow-x: clip; }`;
+  const w = checkCss(css).filter((x) => x.rule === rulePageContainment);
+  expect(w.length).toBe(1);
+  expect(w[0]!.message).toContain("clips out-of-flow descendants");
+});
+
+test("checkCss warns when a page wrapper becomes a stacking context", () => {
+  for (const d of ["z-index: 1", "isolation: isolate", "opacity: 0.9", "transform: translateZ(0)"]) {
+    const w = checkCss(`.spread { ${d}; }`).filter((x) => x.rule === rulePageContainment);
+    expect(w.length).toBe(1);
+    expect(w[0]!.message).toContain("stacking context");
+  }
+});
+
+test("checkCss accepts the values core itself relies on", () => {
+  const css = `.page, .spread { position: relative; z-index: auto; overflow: visible; }`;
+  expect(checkCss(css).filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
+});
+
+// `.page-credits` is a different class; flagging it would make the rule noise.
+test("checkCss does not flag classes that merely start with page/spread", () => {
+  const css = `.page-credits { overflow: hidden; z-index: 2; } .spread-wide { overflow: clip; }`;
+  expect(checkCss(css).filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
+});
+
+// A scoped exception is the documented fix, so it must not warn — a rule
+// that fires on its own recommended remedy teaches people to ignore it.
+test("checkCss accepts a :has()-scoped clip exception", () => {
+  const css = `.page:not(:has(.gp-bleed, .gp-pin)) { overflow-x: clip; }`;
+  expect(checkCss(css).filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
 });

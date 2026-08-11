@@ -8,11 +8,12 @@ import { resolveChromiumExecutable } from "../../lib/chromium.ts";
 import { launchChromium } from "../shared/cdp.ts";
 import { build } from "./build.ts";
 import { PAGED_CSS } from "../../lib/markdown/markdown-it-paged.js";
+import { GUTTERPRESS_CSS } from "../../lib/markdown/gutterpress-css.ts";
 
 /**
  * The engine.abspos.leak audit's class exclusion. Historically the scan
  * skipped ANY element with a `gp-*` class — written when gp-* classes were
- * engine-internal DOM. `.gp-pin` (PAGED_CSS) made `gp-` author-facing
+ * engine-internal DOM. `.gp-pin` (GUTTERPRESS_CSS) made `gp-` author-facing
  * vocabulary that is abspos BY DESIGN, so the exclusion was narrowed to the
  * engine's own print-document class (`gp-recto-spacer`) + `__gp` classes.
  *
@@ -37,6 +38,7 @@ const SRC = `data:image/svg+xml,${SVG}`;
 
 const fixture = `<!doctype html><meta charset="utf-8"><style>
 ${PAGED_CSS}
+${GUTTERPRESS_CSS}
 @page { size: 384px 480px; margin: 24px; }
 </style>
 <div class="page">
