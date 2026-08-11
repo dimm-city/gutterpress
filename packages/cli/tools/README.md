@@ -35,7 +35,7 @@ Batch-converts images from RGB to CMYK using ImageMagick with optional ICC profi
 
 Converts a PNG image's alpha channel into a CSS `polygon()` string for `shape-outside`. Uses row-scan silhouette extraction and Ramer-Douglas-Peucker simplification to produce a compact polygon.
 
-**When to use:** You have irregular-shaped images that text should wrap around. Using `shape-outside: url(...)` causes Chromium/Paged.js to rasterize entire pages — a pre-computed `polygon()` avoids this.
+**When to use:** You want a hand-tuned or simplified wrap polygon instead of the image's raw alpha silhouette. NOTE: the historical reason for this tool — "`shape-outside: url(...)` causes Chromium/Paged.js to rasterize entire pages" — was a Paged.js-era failure and does NOT reproduce on the native engine (measured 2026-08-11, Chromium 141: a shaped page prints as a ~13 KB vector PDF with fully extractable text; `paged-css-image-shape.test.ts` guards this). For the common case, authors should just use the core `.gp-shape` class; reach for a polygon only when the alpha silhouette itself is unsatisfying (noisy alpha, deliberate looser wrap).
 
 **Requires:** Python 3, Pillow, numpy
 

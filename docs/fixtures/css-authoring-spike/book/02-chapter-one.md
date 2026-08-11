@@ -4,7 +4,7 @@
 
 # Reading the Tides
 
-![A heron waiting at low tide](assets/heron.jpg){.float-left}
+![A heron waiting at low tide](assets/heron.jpg){.gp-left}
 
 The marsh reveals itself twice a day. At low tide, mudflats stretch out
 toward the channel, pocked with the breathing holes of clams and the

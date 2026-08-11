@@ -57,6 +57,18 @@ The Contextual Cascade pattern solves these by inverting where the styling inten
 
 The result: markdown is **portable** (the same section can move between books and look the same), CSS is **composable** (new variants = new rules, not retrofits), and authors **don't have to learn** the styling vocabulary — they pick from a menu of section component names.
 
+**The scope of the per-element anti-pattern — and the image exception.** The
+first anti-pattern above condemns per-element classes as a vehicle for
+*variant/component identity* — restyleable intent that should live in CSS
+context. Core's `gp-*` image classes (`{.gp-right .gp-small}` — see the user
+guide's Chapter 3) are not that: which side an image sits on and how large
+it prints is *per-instance layout intent*, a decision made once per image by
+the author, exactly like the paragraph order it sits in. There is no "change
+every gp-right in chapter 4" scenario for a context rule to absorb. Placement
+classes on images are therefore the sanctioned surface, not a violation —
+the anti-pattern still applies the moment a class starts naming a *look*
+(`{.dc-photo-vintage}`) rather than a *placement*.
+
 ---
 
 ## The three layers of context

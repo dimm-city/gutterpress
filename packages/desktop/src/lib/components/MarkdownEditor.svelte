@@ -831,8 +831,8 @@
         break;
       }
       case "image": {
-        const img = payload as { src: string; alt: string; width?: string; position?: string } | undefined;
-        if (img) applyImage(view, img.src, img.alt, img.width, img.position);
+        const img = payload as { src: string; alt: string; width?: string; position?: string; size?: string; shape?: boolean } | undefined;
+        if (img) applyImage(view, img.src, img.alt, img.width, img.position, img.size, img.shape);
         break;
       }
       case "layout-block": {

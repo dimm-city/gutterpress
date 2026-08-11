@@ -120,12 +120,12 @@ Add CSS classes, IDs, and attributes to any element using `markdown-it-attrs` sy
 
 Paragraph with custom styling. {.highlight}
 
-![Image](photo.jpg){.center width="80%"}
+![Image](photo.jpg){.gp-center .gp-medium}
 
 [Link text](page.html){.download}
 ```
 
-`.center` above is one of core Gutterpress's built-in image/block utility classes — see [Chapter 3, Common image classes](./03-visual-elements.md#common-image-classes) for the full set.
+`.gp-center` and `.gp-medium` above come from core Gutterpress's built-in `gp-*` image vocabulary — position, size, and spacing classes that compose — see [Chapter 3, Common image classes](./03-visual-elements.md#common-image-classes) for the full set.
 
 ### Cross-References
 

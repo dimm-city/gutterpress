@@ -23,10 +23,10 @@ export type ReadText = (relPath: string) => Promise<string>;
 /**
  * One author-mistake warning emitted by `markdown-it-paged` (ARCH finding #4).
  * Mirrors the shape `markdown-it-paged.js`'s `warn()` pushes onto
- * `env.layoutWarnings` — see that file's header comment for the 8 warning
+ * `env.layoutWarnings` — see that file's header comment for the 9 warning
  * `type`s (`ambiguous_marker_token`, `section_without_page`, `nested_spread`,
  * `continue_without_section`, `spread_without_pages`, `spread_eof_close`,
- * `page_outside_spread`, `implicit_page`).
+ * `page_outside_spread`, `implicit_page`, `pin_outside_page`).
  */
 export interface LayoutWarning {
   line: number;

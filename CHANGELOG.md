@@ -7,6 +7,48 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`gp-*` image positioning vocabulary** in core `PAGED_CSS` — composable
+  classes authors attach with markdown attrs (`![Art](x.png){.gp-right .gp-small}`):
+  - **Positions**: `.gp-left`/`.gp-right` (floats, text wraps), `.gp-center`,
+    `.gp-full`, `.gp-bleed`.
+  - **Sizes**: `.gp-small`/`.gp-medium`/`.gp-large` (25/50/75% of the column;
+    compose with any position and override the floats' 50% cap).
+  - **Spacing**: `.gp-tight`/`.gp-loose` clearance presets via the new
+    author-settable `--gp-gap` custom property (default 1em — existing float
+    layouts are unchanged).
+  - **Shape wrap**: `.gp-shape` wraps text to a floated image's alpha
+    silhouette (`shape-outside`). The pipeline mirrors the image's src into
+    an inline `--gp-shape` custom property at render time, and the build
+    inlines it as a data: URI at staging so the printed PDF wraps exactly
+    like the preview (shape-outside reads pixels, which `file://` origins
+    block — measured and worked around, not guessed). Measured on the
+    native engine: shaped pages print as small vector PDFs with extractable
+    text — the Paged.js-era "rasterizes entire pages" warning no longer
+    applies (guarded by `paged-css-image-shape.test.ts`).
+  - **Pin mode**: `.gp-pin` pins an image within its `@page`/`@spread`
+    container (centered by default; `.gp-top`/`.gp-bottom`/`.gp-left`/
+    `.gp-right` select edges). A new `pin_outside_page` authoring warning
+    fires when `.gp-pin` is used outside any `@page`/`@spread` — there the
+    image would resolve against the whole document and can print on the
+    wrong sheet (the build's `engine.abspos.leak` diagnostic now also covers
+    author `gp-*` elements instead of skipping them as engine-internal).
+  - Desktop: the image dialog's Position options use the `gp-*` names, with
+    a new Size dropdown and a "Wrap text to the image's shape" toggle; the
+    preview context menu gained "Set size…" and "Wrap text to image shape",
+    and its "Set width…"/"Set position…" now preserve every attribute they
+    don't manage (the old rewrite dropped unrecognized classes/ids). The
+    class list lives in one shared table (`$lib/editor/image-classes`).
+
+### Removed
+
+- **The five pre-`gp-*` image utility classes** — `.center`, `.float-left`,
+  `.float-right`, `.full-width`, `.full-bleed` — are gone from core
+  `PAGED_CSS`, replaced by the `gp-*` vocabulary above with no aliases: one
+  vocabulary, one way to spell each layout. Migration is a find-and-replace
+  in your markdown (`.float-left` → `.gp-left`, etc.); the desktop editor's
+  "Set position…" recognizes the old names and rewrites them in place. See
+  `docs/migrations/2026-08-gp-image-classes.md`.
+
 - **Inline editing in the preview** (ADR 0009): the paginated preview is now an
   editing surface, not just a viewer.
   - **Right-click context menu** over the preview, with actions matched to what

@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { loadManifestWithPath, MANIFEST_FILENAMES, resolveConfig } from "./manifest";
 import { renderChaptersToFile } from "./markdown/index";
 import { loadPluginsWithCss } from "./markdown/plugins";
-import { planImageCopies, type AssetCopy } from "./asset-inline";
+import { inlineShapeUrls, planImageCopies, type AssetCopy } from "./asset-inline";
 import { resolveOutputDir, artifactName, BOOK_HTML } from "./output-paths";
 import { prewarmBrowser, closeBrowser, RENDER_TIMEOUT_MS } from "./browser-pool";
 import {
@@ -409,6 +409,16 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   if (copies.length > 0) {
     log.info(`Copying ${copies.length} referenced asset(s)`);
     await copyReferencedAssets(copies, workDir);
+  }
+
+  // .gp-shape images: inline the mirrored --gp-shape URLs as data: URIs so
+  // shape-outside works when the staged book is loaded via file:// (opaque
+  // origins block its pixel reads; the http preview needs no such help) —
+  // see inlineShapeUrls' doc comment. After the copy step so the staged
+  // files are what get inlined.
+  const staged = await fsp.readFile(htmlFile, "utf8");
+  if (staged.includes("--gp-shape:")) {
+    await fsp.writeFile(htmlFile, await inlineShapeUrls(staged, workDir), "utf8");
   }
 
   return htmlFile;

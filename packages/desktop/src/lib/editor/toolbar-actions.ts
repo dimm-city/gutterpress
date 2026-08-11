@@ -15,6 +15,16 @@
  */
 import type { EditorView } from "@codemirror/view";
 import { EditorSelection } from "@codemirror/state";
+import {
+  IMAGE_POSITION_OPTIONS,
+  IMAGE_SIZE_OPTIONS,
+  normalizeClassInput,
+  serializeImageAttrs,
+  setPositionClass,
+  setShapeClass,
+  setSizeClass,
+  setWidth,
+} from "./image-classes";
 
 // ── Helper: single-range accessor ────────────────────────────────────────────
 
@@ -293,24 +303,40 @@ export function applyTable(view: EditorView, cols: number): void {
 }
 
 // ── Image ─────────────────────────────────────────────────────────────────────
-// Supported positioning classes come from the Gutterpress user guide (ch03):
-//   {.float-left}, {.float-right}, {.center}, {.full-width}, {.full-bleed}
-// Width is via markdown-it-attrs: {width="300px"}.
+// The supported class vocabulary (positions, sizes, and their permanent
+// legacy aliases) lives in ONE place: `$lib/editor/image-classes` — the
+// option tables there drive the insert dialog, the context menu, and the
+// attrs round-trip helpers alike.
 
 /**
- * Build the `{…}` markdown-it-attrs suffix for an image from a width/position
- * pair (empty string when neither is set). Extracted out of `applyImage` below
- * (inline-editing plan §4.4) so the context menu's image actions (`Set
- * width…`, `Set position`) can rewrite an EXISTING image token's attrs suffix
- * with the exact same rule `applyImage` uses to insert a new one — `applyImage`
- * itself only inserts a new snippet at the cursor and is not directly reusable
- * for editing a token already in the document.
+ * Build the `{…}` markdown-it-attrs suffix for a NEW image from the insert
+ * dialog's width/position/size/shape picks (empty string when none are
+ * set). Position/size inputs are canonicalized through the option tables,
+ * so a caller still holding a removed legacy name ("full-bleed") writes the
+ * live gp-* class, never a dead one. Extracted out of `applyImage` below
+ * (inline-editing plan §4.4) so the context menu's image actions can share
+ * the exact same suffix rule — though for EXISTING tokens they go through
+ * image-classes' tokenize → set-facet → serialize instead, which preserves
+ * attrs this builder doesn't know about.
  */
-export function buildImageAttrsString(width?: string, position?: string): string {
-  const attrs: string[] = [];
-  if (width) attrs.push(`width="${width}"`);
-  if (position) attrs.push(`.${position}`);
-  return attrs.length > 0 ? `{${attrs.join(" ")}}` : "";
+export function buildImageAttrsString(
+  width?: string,
+  position?: string,
+  size?: string,
+  shape?: boolean,
+): string {
+  let tokens: string[] = [];
+  tokens = setWidth(tokens, width || null);
+  tokens = setPositionClass(
+    tokens,
+    position ? (normalizeClassInput(IMAGE_POSITION_OPTIONS, position) ?? null) : null,
+  );
+  tokens = setSizeClass(
+    tokens,
+    size ? (normalizeClassInput(IMAGE_SIZE_OPTIONS, size) ?? null) : null,
+  );
+  tokens = setShapeClass(tokens, shape === true);
+  return serializeImageAttrs(tokens);
 }
 
 export function applyImage(
@@ -319,8 +345,10 @@ export function applyImage(
   alt: string,
   width?: string,
   position?: string,
+  size?: string,
+  shape?: boolean,
 ): void {
-  const attrStr = buildImageAttrsString(width, position);
+  const attrStr = buildImageAttrsString(width, position, size, shape);
   const snippet = `\n\n![${alt}](${src})${attrStr}\n\n`;
   const insertAt = insertionPointAfterCurrentLine(view);
   view.dispatch({

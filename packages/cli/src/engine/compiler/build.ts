@@ -653,7 +653,12 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
                 tag !== "GP-ANCHOR" &&
                 !id.startsWith("gp-") &&
                 !id.startsWith("__gp") &&
-                !/(^|\\s)(gp-|__gp)/.test(cls) &&
+                // gp-* CLASSES are author-facing vocabulary (PAGED_CSS's
+                // .gp-pin is abspos by design and must stay visible to this
+                // leak check); only the engine's own print-document class is
+                // excluded. Engine-internal DOM identifies itself via ids or
+                // __gp classes, never bare gp-* classes.
+                !/(^|\\s)(gp-recto-spacer|__gp)/.test(cls) &&
                 !el.closest("#gp-instrumentation") &&
                 cs.position === "absolute" &&
                 el.getClientRects().length !== 0 // not a display:none subtree

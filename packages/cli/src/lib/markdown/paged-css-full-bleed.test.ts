@@ -8,10 +8,10 @@ import { resolveChromiumExecutable } from "../chromium.ts";
 import { closeBrowser, getBrowser } from "../browser-pool.ts";
 
 /**
- * Regression: `.full-bleed` must reach the paper edge on a book that has NOT
+ * Regression: `.gp-bleed` must reach the paper edge on a book that has NOT
  * written its own `body { margin: 0 }`.
  *
- * `.full-bleed` gets edge-to-edge under the native engine by sitting on
+ * `.gp-bleed` gets edge-to-edge under the native engine by sitting on
  * `@page gp-full-bleed`, whose side margins are zero — so the PAGE content
  * box is the sheet. But `width: 100%` resolves against the element's
  * containing block, which is the BODY, and the UA default `body { margin:
@@ -27,7 +27,7 @@ import { closeBrowser, getBrowser } from "../browser-pool.ts";
  * Paged.js leg byte-for-byte where it already was.
  *
  * This test asserts the layout cause rather than re-rastering a PDF: with
- * PAGED_CSS applied and no author reset, a `.full-bleed` block must span the
+ * PAGED_CSS applied and no author reset, a `.gp-bleed` block must span the
  * full width of its containing block's own containing block (here the
  * viewport, standing in for the zero-margin page box) with no inset on
  * either side. Deleting the `body` rule from PAGED_CSS fails this with
@@ -47,7 +47,7 @@ ${PAGED_CSS}
 @page { size: 600px 400px; margin: 40px; }
 </style>
 <p>text</p>
-<img class="full-bleed" src="data:image/svg+xml,${SVG}" alt="art">`;
+<img class="gp-bleed" src="data:image/svg+xml,${SVG}" alt="art">`;
 
 const chromium = await resolveChromiumExecutable();
 const testIf = chromium ? test : test.skip;
@@ -63,7 +63,7 @@ afterAll(async () => {
 });
 
 testIf(
-  ".full-bleed spans edge to edge on a book with no body-margin reset of its own",
+  ".gp-bleed spans edge to edge on a book with no body-margin reset of its own",
   async () => {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gp-fullbleed-"));
     try {
@@ -78,7 +78,7 @@ testIf(
         // Source string, not a closure: this package's tsconfig is DOM-free.
         const measured = (await page.evaluate(
           `(() => {
-            const r = document.querySelector(".full-bleed").getBoundingClientRect();
+            const r = document.querySelector(".gp-bleed").getBoundingClientRect();
             const cs = getComputedStyle(document.body);
             return {
               left: r.left,
