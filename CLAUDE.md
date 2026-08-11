@@ -302,14 +302,34 @@ removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,
 `@sidebar`, `@callout`, etc.) is the canonical author surface for wrapped
 blocks. Do NOT reintroduce `markdown-it-container` to core.
 
-### 6. `markdown-it-paged` owns its full contract
+### 6. `markdown-it-paged` is a STANDALONE plugin — keep Gutterpress out of it
 
-The inlined `packages/cli/src/lib/markdown/markdown-it-paged.js` owns: markers
-→ tokens → HTML emission → the supporting CSS (`PAGED_CSS` named export).
-`index.ts` imports the CSS and injects it; it does NOT override the plugin's
-renderer rules or maintain its own layout state. Per-render state lives on
-`env.__colSplitDepth`, not a module-level closure, so a thrown render can't
-leak depth state into the next chapter.
+`packages/cli/src/lib/markdown/markdown-it-paged.js` is inlined from the
+independently published `markdown-it-paged` package. It owns exactly its own
+contract: markers → tokens → HTML emission → the CSS the emitted DOM needs
+(`PAGED_CSS` named export). Per-render state lives on `env.__colSplitDepth`,
+not a module-level closure, so a thrown render can't leak depth state into
+the next chapter.
+
+**No Gutterpress-specific code may live in that file.** Anything meaningless
+to someone using the plugin on its own belongs in a Gutterpress-owned module
+beside it:
+
+- `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author-facing `gp-*`
+  vocabulary: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
+  `.gp-bleed`, and the `--gp-z-*` depth ladder. `assemble.ts` injects it
+  directly after `PAGED_CSS`, so the cascade is: plugin layout primitives →
+  Gutterpress vocabulary → user plugin CSS → author stylesheets last.
+- `gp-pin-scope.js` — the `gp_pin_scope_check` diagnostic, registered by
+  `renderer.ts` right after the paged plugin (it walks that plugin's
+  `layout_*` tokens and reads classes markdown-it-attrs attached, so the
+  order is load-bearing).
+
+The `gp-*` vocabulary was originally added inside the plugin and moved out;
+don't move it back. The one Gutterpress name still emitted by the plugin is
+the `gutterpress-continued` class on `@continue` — author-facing, documented
+in the user guide, and asserted in tests, so renaming it is a deliberate
+breaking change, not a cleanup.
 
 ### 7. Git/source operations are Node-native — no external OS tools (0.4.0+)
 
