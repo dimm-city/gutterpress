@@ -357,6 +357,10 @@ pre {
   border-left: var(--border-accent);
   padding: 0.75em 1em;
   margin: 0.75em 0 1.1em;
+  /* a long command line has nowhere to scroll on paper: without wrapping it
+     overflows the page box and Chromium silently shrinks the WHOLE book */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   /* both properties required — break-* is spec, page-break-* is Paged.js legacy */
   break-inside: avoid;
   page-break-inside: avoid;

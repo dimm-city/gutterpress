@@ -373,7 +373,7 @@ export default function plugin(md, pluginOptions = {}) {
       // annotation rule (source-range.ts) to consume. Do NOT set token.map
       // here: markdown-it-source-map would then stamp data-source-line onto
       // this wrapper div, and topVisibleSourceEl()'s strictly-greater rect
-      // tie-break in pagedjs-interface.js would resolve scroll-sync to this
+      // tie-break in preview-interface.js would resolve scroll-sync to this
       // marker's line instead of the paragraph actually on screen, on every
       // page of a multi-page chapter (the wrapper is cloned per page). See
       // ADR 0009.
@@ -760,6 +760,31 @@ export default function plugin(md, pluginOptions = {}) {
  * Consumers should inject this into <head> after their user stylesheets so
  * the layout contract (page/section/column breaks) wins at equal specificity.
  *
+ * `.page`/`.spread` are given `position: relative` so they are the containing
+ * block for any abspos descendant: a mispinned `bottom: 0` now fails LOCALLY
+ * on its own page instead of resolving against the document canvas and
+ * painting on the last page of the book. Under Paged.js the page div is
+ * already the containing block, so this is a no-op there — engine
+ * convergence, not a native-only hack.
+ *
+ * The break/orphan rules below (`break-after` on headings, image sizing,
+ * first-child glue) are all `:where()` so they carry zero specificity —
+ * author CSS at any specificity wins outright, reusing this same
+ * after-author injection point.
+ *
+ * `vertical-align: bottom` on a lone image is a print-correctness rule, not
+ * cosmetics. An `<img>` in a `<p>` is inline-level, so its line box adds
+ * half-leading/descender space UNDER the image: an image sized to exactly the
+ * page content box (a book capping art at `page-height - margins`, or art that
+ * naturally fills the page) produces a paragraph a few px TALLER than the box
+ * it was sized to fit. MEASURED (Chromium 148, field guide chapter 1, 10in
+ * content box): a 956px image made a 963.59px paragraph — a 3.6px overflow
+ * that pushed the enclosing named-page wrapper's bottom edge onto the NEXT
+ * sheet, so Chromium named that sheet after the PREVIOUS page name and the new
+ * template's running head and folio silently vanished. `vertical-align:
+ * bottom` collapses the line box onto the image, keeping the image inline (so
+ * `text-align: center` still centers it — `display: block` would not).
+ *
  * Also ships five author-facing image/block utility classes (CLAUDE.md §0 —
  * a behavior broadly useful to non-technical authors belongs in core, not a
  * project layer; see UX finding M17). markdown-it-attrs is bundled by
@@ -771,36 +796,93 @@ export default function plugin(md, pluginOptions = {}) {
  *   .float-left   — floats left with clearance margins.
  *   .float-right  — floats right with clearance margins.
  *   .full-width   — fills the page's content width (100%).
- *   .full-bleed   — forces its own page (break-before) and cancels the
- *                   page's LEFT/RIGHT margins via Paged.js's real
- *                   `--pagedjs-margin-left`/`--pagedjs-margin-right` custom
- *                   properties (set per-page by the polyfill from the active
- *                   `@page` rule — see pagedjs/src/polisher/base.js), so
- *                   content spans the page edge-to-edge horizontally. This
- *                   does NOT cancel the top/bottom margins, extend past the
- *                   trim into printer bleed overage, apply a named `@page`
- *                   template, or remove headers/footers — none of that is
- *                   implemented; the custom-property fallback of 0 means it
- *                   degrades to plain full-width outside a Paged.js render.
+ *   .full-bleed   — forces its own page (break-before) and spans it
+ *                   edge-to-edge horizontally. This does NOT cancel the
+ *                   top/bottom margins, extend past the trim into printer
+ *                   bleed overage, or remove headers/footers — none of that
+ *                   is implemented.
+ *
+ *                   The mechanism is a named page: the rule below assigns the
+ *                   element's page to `@page gp-full-bleed`, which has zero
+ *                   side margins, so the page's own CONTENT box IS the sheet
+ *                   and a plain `width: 100%` already reaches both edges —
+ *                   with no shrink-to-fit trigger, because nothing out-dents
+ *                   past the content box. MEASURED (Chromium 148, 6x4in
+ *                   sheet, 0.75in margins): the earlier mechanism (a negative
+ *                   out-dent of the real page margins, inherited from the
+ *                   Paged.js era, where the polyfill published them as
+ *                   `--pagedjs-margin-left/right`) shrank the WHOLE document
+ *                   ~10% under native print (text run 204.4pt -> 182.9pt),
+ *                   because the shrink-to-fit trigger is the page CONTENT
+ *                   box, not the sheet — that failure mode is why the named
+ *                   page exists. Paged.js has since been removed
+ *                   (native-only-migration-plan.md Phase 6), so the out-dent
+ *                   (whose custom properties nothing sets any more, making it
+ *                   a permanent no-op) went with it.
+ *
+ *                   KNOWN GAP: on the bleed page, native's running head/folio
+ *                   move onto the trim line (margin boxes are positioned by
+ *                   the page's own margins, which are now zero on this named
+ *                   page). This is not fixed in core — see
+ *                   docs/native-engine-styling-guide.md §9 for the one-line
+ *                   author remedy (`@top-center { content: none }` etc. on
+ *                   `@page gp-full-bleed`).
+ *
+ *                   A standalone `![Art](x.jpg){.full-bleed}` markdown image
+ *                   is rendered as `<p><img class="full-bleed"></p>` — a
+ *                   naked markdown-it standalone-image wrap, not something
+ *                   this plugin controls. The `<p>`'s UA default vertical
+ *                   margin sits above/below an image sized to the page's
+ *                   full content box, overflows the box by that margin, and
+ *                   on native print pushes the whole page onto a spurious
+ *                   extra sheet, which then renders BLANK (the art landed on
+ *                   the sheet after). MEASURED (300dpi, 6x9in sheet, a
+ *                   4-source-file fixture book): with the paragraph margin
+ *                   left at UA default, native emits 8pp with page 6 fully
+ *                   blank (0 dark pixels of 540,000 sampled); zeroing the
+ *                   wrapping paragraph's margin below gives the intended
+ *                   7pp with the art bleeding edge-to-edge on page 6. Scoped
+ *                   to `:only-child` so a `.full-bleed` image sharing a
+ *                   paragraph with other inline content keeps its margin.
  */
 export const PAGED_CSS = `
+/* The UA default of 8px body margin is a screen affordance with no meaning
+   in paged media, and the two engines disagree about it: Paged.js's polisher
+   drops it (the body is not the page box there), native print keeps it. Left
+   in place it insets EVERY native page's content by 8px per side relative to
+   the paged leg, and -- measured, 300dpi, 6x4in sheet -- it is what stops
+   .full-bleed below from reaching the paper: the art lands at 0.080..5.917in
+   of a 6in sheet instead of 0.000..6.000in, because width:100% resolves
+   against the BODY content box, not the page's. Zeroing it here (first in
+   the cascade -- assemble.ts puts author CSS last) makes the two engines
+   agree and makes .full-bleed actually bleed on a book that has not written
+   its own reset. Authors who want a body margin still just declare one. */
+body { margin: 0; }
+
 .md-page-break { break-before: page; }
 .page { break-before: page; }
 .spread { break-before: page; }
-.section { break-inside: avoid; }
-.section.col-split { break-inside: auto; }
+:where(.page, .spread) { position: relative; }
 .md-column-break { break-after: column; height: 0; font-size: 0; line-height: 0; visibility: hidden; }
+
+:where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }
+:where(img, svg, video) { max-width: 100%; }
+:where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }
+:where(.section, figure) > :where(:first-child) { break-before: avoid; }
 
 .center { display: block; margin-left: auto; margin-right: auto; max-width: 100%; }
 .float-left { float: left; margin: 0 1em 1em 0; max-width: 50%; }
 .float-right { float: right; margin: 0 0 1em 1em; max-width: 50%; }
 .full-width { display: block; width: 100%; max-width: 100%; }
+@page gp-full-bleed { margin-left: 0; margin-right: 0; }
 .full-bleed {
   display: block;
   break-before: page;
+  page: gp-full-bleed;
   max-width: none;
-  width: calc(100% + var(--pagedjs-margin-left, 0px) + var(--pagedjs-margin-right, 0px));
-  margin-left: calc(-1 * var(--pagedjs-margin-left, 0px));
-  margin-right: calc(-1 * var(--pagedjs-margin-right, 0px));
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
 }
+:where(p:has(> img.full-bleed:only-child)) { margin: 0; }
 `;

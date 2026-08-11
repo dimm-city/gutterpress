@@ -32,18 +32,21 @@ import { test, expect, spyOn, afterEach, mock } from "bun:test";
 import puppeteerCore from "puppeteer-core";
 import type { Browser } from "puppeteer-core";
 import * as chromium from "./chromium.ts";
-import { getBrowser, prewarmBrowser, closeBrowser } from "./browser-pool.ts";
+import { getBrowser, getBrowserPage, prewarmBrowser, closeBrowser } from "./browser-pool.ts";
 
-/** Minimal fake satisfying the two Browser members browser-pool.ts touches. */
-function makeFakeBrowser(): {
+/** Minimal fake satisfying the Browser members browser-pool.ts touches. */
+function makeFakeBrowser(opts?: { newPage?: () => Promise<unknown> }): {
   browser: Browser;
   close: ReturnType<typeof mock>;
+  newPage: ReturnType<typeof mock>;
   emitDisconnected: () => void;
 } {
   let disconnectedHandler: (() => void) | undefined;
   const close = mock(async () => {});
+  const newPage = mock(opts?.newPage ?? (async () => ({ __fakePage: true })));
   const fake = {
     close,
+    newPage,
     on: (event: string, handler: () => void) => {
       if (event === "disconnected") disconnectedHandler = handler;
       return fake;
@@ -52,6 +55,7 @@ function makeFakeBrowser(): {
   return {
     browser: fake as unknown as Browser,
     close,
+    newPage,
     emitDisconnected: () => disconnectedHandler?.(),
   };
 }
@@ -301,4 +305,52 @@ test("GUTTERPRESS_CHROMIUM_ARGS unset yields an empty args array (no stray empty
   } finally {
     if (prevArgs !== undefined) process.env.GUTTERPRESS_CHROMIUM_ARGS = prevArgs;
   }
+});
+
+test("getBrowserPage() returns a page from the pooled browser on the happy path", async () => {
+  stubChromium();
+  const { browser, newPage } = makeFakeBrowser();
+  launchMock = spyOn(puppeteerCore, "launch").mockImplementation(async () => browser);
+
+  const { browser: gotBrowser, page } = await getBrowserPage(1000);
+
+  expect(gotBrowser).toBe(browser);
+  expect(page).toEqual({ __fakePage: true } as never);
+  expect(newPage).toHaveBeenCalledTimes(1);
+});
+
+test("getBrowserPage() retries once, against a freshly-launched browser, when newPage() rejects (dead pooled browser)", async () => {
+  stubChromium();
+  const dead = makeFakeBrowser({
+    newPage: async () => {
+      throw new Error("WebSocket connection to 'ws://127.0.0.1:1/devtools/browser/x' failed: Connection ended");
+    },
+  });
+  const fresh = makeFakeBrowser();
+  launchMock = spyOn(puppeteerCore, "launch")
+    .mockImplementationOnce(async () => dead.browser)
+    .mockImplementationOnce(async () => fresh.browser);
+
+  const { browser: gotBrowser, page } = await getBrowserPage(1000);
+
+  expect(gotBrowser).toBe(fresh.browser);
+  expect(page).toEqual({ __fakePage: true } as never);
+  // The dead browser's newPage() was tried (and failed) once; close() was
+  // called on it while dropping it from the pool; the retry launched fresh.
+  expect(dead.newPage).toHaveBeenCalledTimes(1);
+  expect(dead.close).toHaveBeenCalledTimes(1);
+  expect(launchMock).toHaveBeenCalledTimes(2);
+});
+
+test("getBrowserPage() propagates the error when the RETRY also fails", async () => {
+  stubChromium();
+  const dead = makeFakeBrowser({
+    newPage: async () => {
+      throw new Error("Connection ended");
+    },
+  });
+  launchMock = spyOn(puppeteerCore, "launch").mockImplementation(async () => dead.browser);
+
+  await expect(getBrowserPage(1000)).rejects.toThrow("Connection ended");
+  expect(launchMock).toHaveBeenCalledTimes(2);
 });

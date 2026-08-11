@@ -24,7 +24,6 @@ import {
   decideBroadcast,
   type ChangedFile,
 } from './file-watcher';
-import { pagedjsPolyfillTag } from '../lib/pagedjs-marker';
 import { resolveConfig } from '../lib/manifest';
 import type { ServerState } from './server-context';
 import type { PreviewServerOptions } from '../types';
@@ -215,7 +214,7 @@ describe('generateAndWriteHtml', () => {
     expect(content).toContain('data-chapter-src="chapter-02.md"');
     expect(content).not.toContain('Chapter 1');
     expect(content).toContain('<style>.gutterpress-chapter{break-before:page}</style>');
-    expect(content).toContain('/vendor/paged.polyfill.js');
+    expect(content).toContain('/engine/gutterpress-viewer.js');
   }, 60000);
 
   test('omits incremental wrappers when the incremental preview is disabled', async () => {
@@ -287,14 +286,13 @@ describe('generateAndWriteHtml', () => {
 });
 
 describe('injectPreviewScripts', () => {
-  const html = `<!doctype html>\n<html><head><title>t</title>\n  ${pagedjsPolyfillTag()}\n</head><body></body></html>`;
+  const html = `<!doctype html>\n<html><head><title>t</title>\n</head><body></body></html>`;
 
-  test('swaps the polyfill slot for the interface scripts + served polyfill', () => {
+  test('injects the viewer bundle + interface scripts before </head>', () => {
     const out = injectPreviewScripts(html, false);
-    expect(out).toContain('/preview/scripts/pagedjs-interface.js');
-    expect(out).toContain('/preview/scripts/pagedjs-bridge.js');
-    expect(out).toContain('/vendor/paged.polyfill.js');
-    expect(out).not.toContain('data-pagedjs-polyfill');
+    expect(out).toContain('/engine/gutterpress-viewer.js');
+    expect(out).toContain('/preview/scripts/preview-interface.js');
+    expect(out).toContain('/preview/scripts/preview-bridge.js');
   });
 
   test('page-isolates source wrappers only for incremental preview', () => {
@@ -725,7 +723,7 @@ describe('createFileWatcher', () => {
     await watcher.close();
   }, 50000);
 
-  test('css-only burst full-reloads so Paged.js repaginates', async () => {
+  test('css-only burst full-reloads so the engine repaginates', async () => {
     await writeFile(join(testDir, 'a.css'), 'body{color:red}');
     await writeFile(join(testDir, 'b.css'), 'body{margin:0}');
     const calls = attachBroadcastRecorder(state);

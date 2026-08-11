@@ -273,6 +273,30 @@ async function waitFinished(capMs, label) {
 const totalPages = await waitFinished(START_CAP_S * 1000, "initial layout");
 log(`initial layout finished: ${totalPages} pages`);
 
+// Which engine is this fixture rendering with? Read straight from the
+// manifest rather than probing the live preview: the preview iframe runs on
+// its own localhost port (a different origin from the `app://` shell), so a
+// top-frame Runtime.evaluate cannot see into its `contentWindow` at all —
+// cross-origin property access throws, `?.` does not catch that, and the
+// probe silently resolved to `undefined`/false every time. resolveConfig's
+// own precedence is `c.engine ?? m.engine ?? "native"` (manifest.ts) with no
+// CLI `--engine` override in this harness, so the manifest's own `engine` key
+// (absent here) is the whole answer.
+const manifestText = readFileSync(join(projectDir, "manifest.yaml"), "utf8");
+const manifestEngineMatch = manifestText.match(/^\s*engine:\s*["']?(paged|native)["']?\s*$/m);
+const isNativeEngine = (manifestEngineMatch?.[1] ?? "native") === "native";
+// Native's preview has NO incremental DOM-splice mechanism — it was
+// implemented and then removed as unsound (grafting a chapter node and
+// calling `Gutterpress.refresh()` cannot absorb a new page context; see
+// docs/native-engine-acceptance-gate.md "Native's incremental preview splice"
+// — closed 08-08). Independently re-measured there: native's plain full
+// iframe reload is ~2x FASTER than paged's incremental splice end-to-end, so
+// requiring a `chapter-splice` updateMode from native would be enforcing a
+// mechanism this engine deliberately does not have, not catching a
+// regression. What still matters for native is that the SERVER did the cheap
+// single-chapter regen (`chapterUpdate`), not a whole-document rebuild.
+log(`engine under test: ${isNativeEngine ? "native (full-reload is the expected mechanism)" : "paged (chapter-splice is the expected mechanism)"}`);
+
 await evalJs(`(() => {
   window.__gutterpressHotReloadProbe = null;
   if (window.__gutterpressHotReloadProbeInstalled) return;
@@ -344,7 +368,13 @@ for (let it = 0; it < ITERATIONS; it++) {
   }
   const chapterUpdate = iterationOutput.includes(`Chapter updated: ${chapterName}`);
   const fullReload = iterationOutput.includes("Preview updated");
-  const spliceOk = result.updateMode === "chapter-splice" && chapterUpdate && !fullReload;
+  // Native has no client-side splice mechanism (see the note above the engine
+  // detection): its contract is a cheap server-side single-chapter regen
+  // (chapterUpdate) followed by a full iframe reload — updateMode
+  // "full-reload" is the CORRECT outcome there, not a fallback failure.
+  const spliceOk = isNativeEngine
+    ? result.updateMode === "full-reload" && chapterUpdate && !fullReload
+    : result.updateMode === "chapter-splice" && chapterUpdate && !fullReload;
   mechanismSamples.push({
     iteration: it,
     updateMode: result.updateMode,

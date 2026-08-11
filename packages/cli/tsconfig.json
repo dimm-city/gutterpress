@@ -29,5 +29,15 @@
   },
   // Type-check the package source only — not the standalone helper scripts in
   // tools/ or the gitignored tests/ scratch dir.
-  "include": ["src"]
+  "include": ["src"],
+  // The Gutterpress engine's browser-side sources (bundled to an IIFE by
+  // scripts/build-engine-bundles.mjs, never imported by any Node-side file
+  // here — see src/engine/browser.tsconfig.json) run against `window`/
+  // `document`/etc. This program is Node-targeted (`lib: ["ESNext"]`, no DOM)
+  // on purpose: TypeScript's `lib` is program-global, not scoped per file, so
+  // adding DOM here would leak DOM's `Response`/`Uint8Array`/`fetch` overloads
+  // into every Node file in the package (measured: it silently broke an
+  // unrelated `new Response(uint8Array)` call in npm-plugin-installer.test.ts).
+  // Excluded here and checked in their own isolated program instead.
+  "exclude": ["src/engine/viewer", "src/engine/compiler/agent.ts"]
 }

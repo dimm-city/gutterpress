@@ -135,7 +135,7 @@ function make(): Harness {
     landingVisible: false,
     pageNav: { totalPages: 0, currentPage: 1 },
     zoomView: { userSetViewMode: false, restoreSplitRatio: spy<[number]>() },
-    startPreviewResult: { previewStarted: true, url: "preview://book", title: "My Book" },
+    startPreviewResult: { previewStarted: true, url: "preview://book", title: "My Book", engine: "paged" },
     flushResult: true,
     activeBookHasManifest: true,
     /** Per-project persisted state, keyed by the dir it is stored under. */
@@ -255,6 +255,16 @@ test("startFolderPreview: happy path opens the folder and starts the watcher", a
   expect(deps.setPendingRecoveryScanDir.calls.length).toBe(0);
   expect(deps.clearStaleProjectState.calls.length).toBe(1);
   expect(deps.resetFirstRenderGate.calls.length).toBe(1);
+  expect(ctrl.previewEngine).toBe("paged");
+});
+
+test("startFolderPreview captures the started preview's engine", async () => {
+  const { ctrl, deps } = make();
+  deps.startPreviewResult = { previewStarted: true, url: "preview://book", title: "My Book", engine: "native" };
+  await ctrl.startFolderPreview("/proj", "Opening…");
+  await flush();
+
+  expect(ctrl.previewEngine).toBe("native");
 });
 
 test("startFolderPreview retains the successful-open setup banner for a loose folder", async () => {
@@ -311,6 +321,7 @@ test("retryPreview repairs only the preview and preserves the open workspace", a
     previewStarted: true,
     url: "preview://repaired",
     title: "Repaired Book",
+    engine: "paged",
   };
 
   expect(await ctrl.retryPreview()).toBe(true);
@@ -519,7 +530,7 @@ test("a supersession landing DURING the outgoing-buffer pre-flush (before startP
     desktopRequiredMessage: "needs desktop",
     startPreviewHost: () => {
       startCall++;
-      return Promise.resolve({ previewStarted: true as const, url: "preview://ok", title: "Ok" });
+      return Promise.resolve({ previewStarted: true as const, url: "preview://ok", title: "Ok", engine: "paged" as const });
     },
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: () => Promise.resolve(),
@@ -596,7 +607,7 @@ test("a superseded open's failure must not clobber the winning open's state", as
     call++;
     return call === 1
       ? firstStart.promise
-      : Promise.resolve({ previewStarted: true as const, url: "preview://ok", title: "Ok" });
+      : Promise.resolve({ previewStarted: true as const, url: "preview://ok", title: "Ok", engine: "paged" as const });
   };
 
   // Start the first open alone and let it run past classify (default: resolves
@@ -637,7 +648,7 @@ test("startFolderPreview: switching projects flushes the OUTGOING project's dirt
     desktopRequiredMessage: "needs desktop",
     startPreviewHost: () => {
       order.push("startPreviewHost");
-      return Promise.resolve({ previewStarted: true as const, url: "preview://b", title: "B" });
+      return Promise.resolve({ previewStarted: true as const, url: "preview://b", title: "B", engine: "paged" as const });
     },
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: () => Promise.resolve(),
@@ -712,7 +723,7 @@ test("setUpAsBook: adopt failure sets openError and clears busy without opening"
   const rejectingCtrl = new ProjectLifecycleController({
     isDesktop: () => true,
     desktopRequiredMessage: "needs desktop",
-    startPreviewHost: () => Promise.resolve({ previewStarted: true, url: "x", title: null }),
+    startPreviewHost: () => Promise.resolve({ previewStarted: true, url: "x", title: null, engine: "paged" }),
     stopPreviewHost: () => Promise.resolve({}),
     adoptFolder: (dir) => {
       adoptFolder(dir);

@@ -8,6 +8,8 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 interface Harness {
   ctrl: PreviewEventController;
   log: string[];
+  /** Every injectStyles(id, css) the controller made, in order. */
+  injectedCss: Array<{ id: string; css: string }>;
   client: {
     calls: Array<{ cmd: string; args: unknown[] }>;
     rejectSetZoom: boolean;
@@ -43,8 +45,10 @@ interface Harness {
 
 function make(): Harness {
   const log: string[] = [];
+  const injectedCss: Array<{ id: string; css: string }> = [];
   const h = {
     log,
+    injectedCss,
     hasClient: true,
     zoom: "fit-width",
     viewMode: "two-column" as "single" | "two-column",
@@ -85,8 +89,9 @@ function make(): Harness {
     if (cmd === "getTotalPages") return Promise.resolve(client.getTotalPagesResult);
     return Promise.resolve(undefined);
   };
-  client.injectStyles = (id: string) => {
+  client.injectStyles = (id: string, css: string) => {
     log.push(`inject:${id}`);
+    injectedCss.push({ id, css });
   };
 
   h.pageNav = {
@@ -174,7 +179,6 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
     "setRendering:false",
     "overlay:true",
     "inject:desktop-canvas",
-    "inject:debug",
     "applyViewMode:two-column:false",
     "call:setZoom",
     "toast:Your book is ready — 12 pages",
@@ -188,6 +192,14 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
   // Reveal is the LAST thing to happen, only after the zoom round-trip settles.
   expect(h.log[h.log.length - 1]).toBe("reveal");
   expect(h.client.calls).toContainEqual({ cmd: "setZoom", args: [0.5] });
+
+  // Only the engine-agnostic preview canvas background is injected — Paged.js
+  // has been removed (native-only-migration-plan.md Phase 6), and the rest
+  // of the native viewer's chrome (zoom, sheet background, view modes, debug
+  // guides) lives in decorate.ts + viewer.css, not injected from the toolbar.
+  const canvas = h.injectedCss.filter((i) => i.id === "desktop-canvas");
+  expect(canvas.length).toBe(1);
+  expect(canvas[0]!.css).toContain("background-color: #123456 !important");
 });
 
 test("renderingComplete fit-width path measures-and-fits, never assumes 100%", async () => {

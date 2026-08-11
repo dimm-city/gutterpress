@@ -18,15 +18,13 @@ import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
-import { BREAK_INSIDE_HANDLER } from '../lib/pagedjs';
-import { pagedjsPolyfillTagRegex } from '../lib/pagedjs-marker';
 import type { ResolvedPluginConfig } from '../schema/manifest.types';
 
 /**
  * Tiny placeholder book.html for no-input mode. The desktop's iframe needs a
  * valid src to load; the desktop app (packages/desktop) detects `hasInput: false`
  * via /api/status and shows its own folder picker. Plain text only — no
- * Paged.js, no plugins, no manifest.
+ * engine, no plugins, no manifest.
  */
 const EMPTY_BOOK_HTML = `<!doctype html>
 <html lang="en">
@@ -55,8 +53,7 @@ export function incrementalPreviewEnabled(): boolean {
 }
 
 /**
- * Shared preview render path. renderChapters() does all Markdown, CSS, and
- * Paged.js-slot work.
+ * Shared preview render path. renderChapters() does all Markdown + CSS work.
  *
  * Named `renderPreviewBook` (ARCH finding #53) to distinguish it from
  * build-runner.ts's `renderBook` — same name, different module, and a
@@ -106,33 +103,31 @@ async function renderPreviewBook(
 }
 
 /**
- * Rewrite rendered book HTML for the live preview. Injects, in order:
- *   1. pagedjs-interface.js — defines window.previewAPI for in-iframe controls
- *   2. pagedjs-bridge.js    — postMessage bridge for cross-origin toolbar (desktop)
- *   3. BREAK_INSIDE_HANDLER — polyfill for break-inside: avoid
- *   4. Paged.js polyfill itself, served directly from the process-wide
- *      embedded-assets dir by the HTTP server (see http-server.ts route
- *      for /vendor/*). We no longer copy it into the per-project tempDir
- *      because:
- *        - The polyfill is 904 KB and copying it per open is wasted IO
- *          (one of the worst-case Defender scan targets on Windows).
- *        - The per-process extracted copy is identical across opens so
- *          serving it from a stable disk path lets the OS file-cache
- *          and Defender hash-cache stay warm across sessions.
+ * Rewrite rendered book HTML for the live preview: inject the Gutterpress
+ * engine's viewer bundle (`/engine/gutterpress-viewer.js`, embedded the same
+ * way as every other preview asset — see lib/embedded-assets.ts) PLUS the
+ * preview-interface.js/preview-bridge.js pair, before `</head>`.
+ * preview-interface.js defines `window.previewAPI` for in-iframe controls;
+ * preview-bridge.js is the postMessage bridge for the cross-origin desktop
+ * toolbar — together they make the desktop's whole
+ * `gutterpress:cmd/reply/event` command protocol work.
  *
  * With `pageIsolateChapters`, each source wrapper starts on a fresh page. This
  * is the v0.8.3 incremental-preview invariant: a standalone source render owns
  * the same page boundary as that source in the live preview and can be spliced
  * without paginating the full document.
  */
-export function injectPreviewScripts(html: string, pageIsolateChapters: boolean): string {
-  const iface =
-    '<script src="/preview/scripts/pagedjs-interface.js"></script>\n  '
-    + '<script src="/preview/scripts/pagedjs-bridge.js"></script>\n  ';
-  let output = html.replace(
-    pagedjsPolyfillTagRegex(),
-    iface + BREAK_INSIDE_HANDLER + `\n  <script src="/vendor/paged.polyfill.js"></script>`
-  );
+export function injectPreviewScripts(
+  html: string,
+  pageIsolateChapters: boolean,
+): string {
+  const scripts =
+    '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
+    + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
+    + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
+  let output = /<\/head>/i.test(html)
+    ? html.replace(/<\/head>/i, scripts + '</head>')
+    : html + scripts;
   if (pageIsolateChapters && /<\/head>/i.test(output)) {
     output = output.replace(
       /<\/head>/i,
@@ -477,6 +472,56 @@ export async function externalWatchTargets(
 }
 
 /**
+ * `chokidar.FSWatcher#add()` returns the watcher instance synchronously —
+ * the real work (stat the path, read the directory, THEN call `fs.watch()`)
+ * runs as a fire-and-forget internal promise that `add()` never returns to
+ * the caller. Await-ing only the synchronous return therefore does not mean
+ * the OS-level watch is live yet: `runSyncExternalWatches` could resolve,
+ * `state.isRebuilding` could flip back to `false`, and a caller could write
+ * the newly-declared file before chokidar had actually started listening —
+ * the exact race behind the `file-watcher.test.ts` "recovers when a manifest
+ * declares a shared stylesheet before that file exists" flake (~1-in-3, 20s
+ * timeout: the manifest rebuild registers the missing file's watch
+ * asynchronously, and the test's write can land before the watch does).
+ *
+ * Chokidar 5 doesn't expose that internal promise publicly. This captures it
+ * by wrapping the internal handler method `add()` itself calls, for the
+ * duration of ONE `add()` call only, then awaits every promise it produced —
+ * `add()`'s own bookkeeping (ready-count, ignore state, …) runs completely
+ * untouched; this only observes the promise it already creates. If a future
+ * chokidar version renames or removes that internal method, this silently
+ * falls back to plain `add()` — still correct, just racy again on that
+ * fallback path (the behavior this function replaces).
+ *
+ * ALL roots go through ONE call: the wrap/unwrap pair is not reentrant, and
+ * two overlapping calls would nest their wrappers and restore them out of
+ * order, leaving one installed on the shared handler for the life of the
+ * process (its `pending` array then retains every later add's promise).
+ * `add()` takes an array, so one call covers every new root anyway.
+ */
+async function addAndAwaitWatch(watcher: FSWatcher, roots: string[]): Promise<void> {
+  const handler = (watcher as unknown as { _nodeFsHandler?: Record<string, unknown> })
+    ._nodeFsHandler;
+  const original = handler?._addToNodeFs;
+  if (!handler || typeof original !== "function") {
+    watcher.add(roots);
+    return;
+  }
+  const pending: Array<Promise<unknown>> = [];
+  handler._addToNodeFs = (...args: unknown[]) => {
+    const p = (original as (...a: unknown[]) => Promise<unknown>).apply(handler, args);
+    pending.push(p);
+    return p;
+  };
+  try {
+    watcher.add(roots); // synchronously invokes the wrapped method above
+    await Promise.all(pending);
+  } finally {
+    handler._addToNodeFs = original;
+  }
+}
+
+/**
  * Create and configure a file watcher for the project's input directory plus
  * the book's declared external dependencies (see {@link externalWatchTargets}).
  *
@@ -640,9 +685,8 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         }
       }
     }
-    for (const root of nextRoots) {
-      if (!watchedExternalRoots.has(root)) externalWatcher.add(root);
-    }
+    const newRoots = [...nextRoots].filter((root) => !watchedExternalRoots.has(root));
+    if (newRoots.length) await addAndAwaitWatch(externalWatcher, newRoots);
     for (const target of nextTargets) {
       if (!previousTargets.has(target)) info(`Watching shared dependency: ${target}`);
     }
@@ -679,7 +723,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         // styles until some later markdown edit happened to force one.
         const manifest = await loadManifest(inputResolved);
         if (closed) return;
-        const updatedConfig = resolveConfig({}, manifest);
+        const updatedConfig = resolveConfig({ engine: state.options.engine }, manifest);
         state.config = updatedConfig;
         // Subscribe from the new manifest BEFORE rendering it. A newly declared
         // shared file may not exist yet, which correctly makes this render fail;

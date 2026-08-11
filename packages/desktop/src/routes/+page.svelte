@@ -13,7 +13,7 @@
   import type { ToastController } from "$lib/components/Toast.svelte";
   import type { MarkdownFileLaunchEvent, RecoveryConfirmRequest } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
-  import { problemCounts } from "$lib/problems";
+  import { buildProblems, problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
   import RecoveryOverlay from "$lib/components/RecoveryOverlay.svelte";
@@ -50,7 +50,7 @@
   import { StartupController } from "$lib/routes/startup-controller.svelte";
   import { CrashRecoveryController } from "$lib/routes/crash-recovery-controller.svelte";
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
-  import { buildDesktopStyles } from "$lib/iframe-styles";
+  import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api, type ProjectConfigFields } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
@@ -161,7 +161,8 @@
     chooseSavePath: (defaultName) => api.dialog.savePdf(defaultName),
     onBuildProgress: (cb) => getPlatform().onBuildProgress(cb),
     buildPdf: (input, outPath, opts) =>
-      getPlatform().build({
+      getPlatform()
+        .build({
         input,
         format: "pdf",
         out: outPath,
@@ -172,7 +173,15 @@
         // print-safety checks catch real CSS problems before PDF gen.
         skipPreValidate: !opts?.validate,
         skipPostValidate: !opts?.validate,
-      }),
+        })
+        // Print-quality findings are only knowable once the book paginates,
+        // so they arrive from the export rather than the source lint that
+        // fills the panel. Held separately (see `buildProblems`) so the next
+        // lint refresh — any file save — does not wipe them.
+        .then((result) => {
+          buildProblemEntries = buildProblems(result.diagnostics ?? []);
+          return result;
+        }),
     buildHtml: (input) => getPlatform().build({ input, format: "html" }),
     cancelExportHost: (exportId) => getPlatform().cancelExport(exportId),
     downloadFile: (url, filename) => {
@@ -541,6 +550,7 @@
     toast: () => toast,
     clearStaleProjectState: () => {
       problems = [];
+      buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
       logFilePath = null;
@@ -562,6 +572,7 @@
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
       problems = [];
+      buildProblemEntries = [];
       problemsLoading = false;
       problemsError = null;
       problemsOpen = false;
@@ -1356,7 +1367,13 @@
   const autoSaveDelaySink = settingsChangeGuard<number>((delay) => book?.setSaveDelayMs(delay));
   const recoverySink = settingsChangeGuard<boolean>((enabled) => book?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
-    (bg) => client?.injectStyles("desktop-canvas", buildDesktopStyles(bg)),
+    (bg) => {
+      // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
+      // native is the only engine, and the native viewer honours this
+      // background rule directly. See buildCanvasBackgroundStyles' doc
+      // comment.
+      client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(bg));
+    },
     () => !!client,
   );
   // Split ratio (#103): the durable settings value seeds the controller (which
@@ -1797,6 +1814,8 @@
   // toolbar with an errors+warnings count badge.
   let problemsOpen = $state(false);
   let problems = $state<ProblemEntry[]>([]);
+  /** Findings from the last export (see the `buildPdf` wrapper above). */
+  let buildProblemEntries = $state<ProblemEntry[]>([]);
   let problemsLoading = $state(false);
   // M5: distinct from "problems === [] because the project is clean" — set
   // when the lint API call itself failed, so the panel can render a neutral
@@ -1814,8 +1833,9 @@
             source: "desktop.preview",
           },
           ...problems,
+          ...buildProblemEntries,
         ]
-      : problems,
+      : [...problems, ...buildProblemEntries],
   );
   let problemBadge = $derived(problemCounts(displayedProblems).badge);
 
@@ -2129,7 +2149,7 @@
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
-    openBlockOverlay: (chapter, range, ref) => void blockOverlay.show({ chapter, range, ref }),
+    openBlockOverlay: (chapter, range) => void blockOverlay.show({ chapter, range }),
   });
 
   // ----------------------------------------------------------------

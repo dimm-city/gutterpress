@@ -9,7 +9,6 @@ import {
   resolveIccProfile,
   BuildError,
 } from "./build-runner.ts";
-import type { PdfRenderInput } from "./pagination.ts";
 import { resolveChromiumExecutable } from "./chromium.ts";
 import { getAssetPath } from "./embedded-assets.ts";
 
@@ -141,8 +140,3 @@ test("resolveIccProfile throws BuildError(2) when the profile cannot be found", 
     resolveIccProfile("profiles/missing.icc", "/nonexistent", undefined)
   ).rejects.toBeInstanceOf(BuildError);
 });
-
-// A no-op reference so the PdfRenderInput import is exercised (keeps the seam
-// type visible to this suite even though the html path doesn't use a renderer).
-const _rendererType: (i: PdfRenderInput) => void = () => {};
-void _rendererType;

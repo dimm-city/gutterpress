@@ -1,0 +1,223 @@
+/* Gutterpress viewer chrome. The author's content CSS is untouched; everything here
+   is scoped to Gutterpress's own wrappers/layers. */
+
+/* The stage backdrop is viewer chrome and must stay chrome: this rule (0-1-0)
+   deliberately outranks an author's `body { background: … }` (0-0-1). An
+   author's canvas background is not lost — `decorate()` reads it before this
+   class is applied and replays it on every sheet, which is where print puts
+   it (see `captureCanvasBackground`). */
+.gp-stage {
+  --gp-sheet-bg: #fff;
+  --gp-stage-bg: #4a4a52;
+  --gp-guide: #e5484d;
+  --gp-safe: #30a46c;
+  background: var(--gp-stage-bg);
+  margin: 0;
+  padding: 32px;
+  overflow: auto;
+  /* Two independent inputs: the host's zoom control (`--gutterpress-zoom`, set
+     on <html> by preview-interface.js) and the viewer's own fit-to-width
+     shrink for narrow viewports (`--gutterpress-fit-zoom`, set on <body> by
+     fitZoom()). They MUST compose — writing both to one property makes the
+     <body> value shadow the host's and the zoom control goes dead. */
+  zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));
+  /* Kept for a host that makes THIS element the scroll container. In the
+     ordinary document the viewport scrolls, not <body> — `overflow: auto`
+     above propagates to the viewport and leaves <body> itself a non-scroller,
+     so a `scroll-snap-type` declared here is inert (measured: with the
+     property only here, a smooth scroll settles exactly where asked, sheet
+     left edges 152–300px off the viewport edge, in every view mode). The
+     rule that actually does the work is on :root below. */
+  scroll-snap-type: x proximity;
+}
+
+/* Manual wheel/trackpad scroll settles on a page boundary (single mode) or a
+   recto-page boundary (two-up, see `data-side` below) — `proximity`, not
+   `mandatory`, so a fast gesture isn't fought to a stop mid-flick. `x` only:
+   rows (chapters) stack vertically with no equivalent "page" unit to snap to.
+   Declared on the viewport's real scroll container (:root), scoped by :has()
+   so it can only ever apply to a document the viewer itself owns. */
+:root:has(> body.gp-stage) {
+  scroll-snap-type: x proximity;
+}
+
+/* One flow strip per named-page run. Chromium fragments its content into
+   columns; each column IS a page's content area. `width` is deliberately ONE
+   column wide — it sizes the strip's own box to the first page's content
+   area, matching where the strip sits inside that sheet (see the transform
+   below). `overflow` must stay `visible`: with a fixed height and no
+   `column-count`, Chromium creates as many columns as the content needs,
+   extending past this box in the inline direction (`scrollWidth` — read by
+   `measure()` — reflects the true extent). `overflow: hidden` here would
+   clip every column past the first from painting while leaving
+   getClientRects()/scrollWidth (and so pageOf()) unaffected, so pages 2+ of
+   a run would measure correctly but render blank — the `.gp-run` wrapper
+   below is already sized to the run's full width and owns the actual
+   clipping/visibility, so the strip does not need to. */
+.gp-strip {
+  position: relative;
+  width: var(--gp-content-w);
+  height: var(--gp-content-h);
+  column-width: var(--gp-content-w);
+  column-gap: calc(
+    var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
+  );
+  column-fill: auto;
+  overflow: visible;
+  margin: 0 0 var(--gp-sheet-gap);
+  /* strip sits inside the first sheet's content box */
+  transform: translate(var(--gp-margin-left), var(--gp-margin-top));
+}
+
+/* Sheets/margin boxes are painted behind/around the strip by the decoration
+   layer; the strip itself must stay transparent so they show through. */
+.gp-strip > * {
+  break-inside: auto;
+}
+
+/* Two-up/spread view mode (`applySpreadMode` in fragment.ts): wraps this
+   run's multicol columns into 2-column ROWS instead of one long row, using
+   CSS Multicol L2's `column-wrap: wrap` + `column-height` (shipped unflagged
+   Chrome/Edge 145+ — CSS.supports-gated in JS, so this selector only ever
+   matches on a browser that has it; the base `.gp-strip` rules above are
+   the single-row fallback everywhere else). `row-gap` mirrors `column-gap`
+   above: content box height + top/bottom margins + the visual sheet gap, so
+   consecutive wrapped rows are spaced exactly one page-pitch apart, matching
+   how `column-gap` already encodes left/right margins for columns within a
+   row. Width reserves exactly two columns so a lone page (a strip with only
+   one fragment) still gets its correct left/right slot, with nothing
+   inserted to fill the other. */
+.gp-strip[data-wrap="on"] {
+  column-wrap: wrap;
+  column-height: var(--gp-content-h);
+  column-count: 2;
+  row-gap: calc(
+    var(--gp-margin-top) + var(--gp-margin-bottom) + var(--gp-sheet-gap)
+  );
+  width: calc(
+    var(--gp-content-w) * 2 + var(--gp-margin-right) + var(--gp-margin-left) +
+      var(--gp-sheet-gap)
+  );
+}
+
+/* Cross-run correctness (no padding, no inserted PAGE): a run whose first
+   physical page is a RECTO would otherwise fall into multicol's first
+   (LEFT) grid slot and get grouped with the verso that follows it — wrong
+   side AND wrong pairing (a recto pairs with the verso that PRECEDES it).
+   `fragment.ts`'s `applySpreadMode` inserts this as the strip's first
+   child to consume exactly ONE column-flow slot with zero content, pushing
+   the run's real content one slot later so it lands correctly — see its
+   doc comment for why a same-box CSS-only mirror (e.g. `direction: rtl`)
+   cannot fix this (it changes placement, not grouping). */
+.gp-wrap-spacer {
+  break-after: column;
+  height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.gp-run {
+  position: relative;
+  margin: 0 0 var(--gp-sheet-gap);
+}
+
+.gp-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.gp-sheet {
+  position: absolute;
+  top: 0;
+  width: var(--gp-page-w);
+  height: var(--gp-page-h);
+  background: var(--gp-sheet-bg);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 0.35);
+  scroll-snap-align: start;
+}
+
+/* View modes (WORK PACKAGE B item 3): content NEVER moves — sheets stay
+   exactly where decorate.ts painted them (see draw()'s own comment on why a
+   prior repositioning approach shipped broken and was retired). A view mode
+   is purely a paging/scroll-snap granularity choice: `pageStep()`
+   (preview-interface.js) already steps next/prevPage by 1 or 2 book pages;
+   this is the matching manual-scroll behavior. Two-up snaps ONLY on recto
+   sheets, so a manual scroll settles with a recto+verso PAIR in view
+   together, never split across a snap point. Keyed off `data-side` (written
+   by decorate.ts from the sheet's own 1-based book page number), NOT
+   `nth-child(odd)`: a `.gp-layer`'s first sheet is NOT always a recto —
+   measured on the 34pp field guide, the layers start at pages 1, 3, 5, 7 and
+   **14** (a verso), so nth-child parity would snap that 20-page run on its
+   VERSO pages, splitting exactly the pairs this is meant to keep together. */
+body.view-two-column .gp-sheet[data-side="verso"],
+body.view-spread .gp-sheet[data-side="verso"] {
+  scroll-snap-align: none;
+}
+
+.gp-marginbox {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: pre;
+  font: inherit;
+  color: inherit;
+}
+
+.gp-marginbox[data-align="start"] { justify-content: flex-start; }
+.gp-marginbox[data-align="center"] { justify-content: center; }
+.gp-marginbox[data-align="end"] { justify-content: flex-end; }
+
+/* designer mode ------------------------------------------------------- */
+.gp-guide-trim,
+.gp-guide-safe,
+.gp-crop-mark {
+  position: absolute;
+  pointer-events: none;
+  display: none;
+}
+
+.gp-stage[data-designer="on"] .gp-guide-trim,
+.gp-stage[data-designer="on"] .gp-guide-safe,
+.gp-stage[data-designer="on"] .gp-crop-mark {
+  display: block;
+}
+
+.gp-guide-trim { outline: 1px dashed var(--gp-guide); }
+.gp-guide-safe { outline: 1px dashed var(--gp-safe); }
+.gp-crop-mark { background: var(--gp-guide); }
+
+.gp-warning {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  background: var(--gp-guide);
+  color: #fff;
+  font: 600 10px/1.4 ui-sans-serif, system-ui, sans-serif;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+/* An accidental Ctrl+P on the published page must not print the dark stage
+   plus decorations — the PDF, shipped alongside book.html, is the print
+   artifact. This is a minimal reset, not a print layout. */
+@media print {
+  .gp-stage {
+    background: none;
+    padding: 0;
+    overflow: visible;
+    zoom: 1;
+  }
+  .gp-layer,
+  .gp-warning,
+  .gp-guide-trim,
+  .gp-guide-safe,
+  .gp-crop-mark {
+    display: none !important;
+  }
+  .gp-sheet {
+    box-shadow: none;
+  }
+}

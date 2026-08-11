@@ -123,13 +123,14 @@ function hmrClientSnippet(initialRevision: number, instanceId: string): string {
       readyToAcknowledge = true;
       acknowledge();
     }
-    // CRITICAL ordering: when the Paged.js polyfill is present it re-paginates on
-    // load and its PagedConfig.after scrolls to the document start THEN fires
-    // 'renderingComplete'. So in engine mode we MUST wait for that event —
-    // restoring earlier would be wiped by that initial scroll. In static mode (no
-    // engine) the content is final immediately, so restore right after load.
-    var hasEngine = !!document.querySelector('script[src*="paged.polyfill"]');
-    window.addEventListener('renderingComplete', finishInitialRender);
+    // CRITICAL ordering: when the pagination engine is present it restructures
+    // the DOM after load, so restoring the scroll anchor early would target
+    // pre-pagination geometry. The Gutterpress engine viewer fires
+    // 'gp:layout' when its pagination completes — wait for it. In static
+    // mode (no engine) the content is final immediately, so restore right
+    // after load.
+    var hasEngine = !!document.querySelector('script[src*="/engine/gutterpress-viewer.js"]');
+    window.addEventListener('gp:layout', finishInitialRender, { once: true });
     if (!hasEngine) {
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () { setTimeout(finishInitialRender, 50); });
@@ -397,7 +398,7 @@ async function serveStatic(
  * response across reloads within the same preview session instead of
  * re-fetching the ~900 KB polyfill on every load.
  */
-const EMBEDDED_PREFIXES = ['/vendor/', '/preview/scripts/'];
+const EMBEDDED_PREFIXES = ['/preview/scripts/', '/engine/'];
 const EMBEDDED_EXACT = new Set(['/favicon.ico']);
 
 /**

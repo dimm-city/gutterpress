@@ -83,6 +83,50 @@ test(".cjs extension with a separator is also recognized as a file path", () => 
 // (`styles`'s preset default, `allowedCallouts`) are characterized
 // separately, below, as "before" (bug) / "after" (fix) pairs — not locked in
 // here.
+describe("resolveConfig engineStyles — Paged.js removed, only .native applies (native-only-migration-plan.md Phase 6)", () => {
+  test("native extras append after base styles regardless of the (ignored) engine field", () => {
+    const m = {
+      styles: ["css/index.css"],
+      engineStyles: { native: ["css/native-furniture.css"] },
+    };
+    expect(resolveConfig({}, { ...m, engine: "native" as const }).styles).toEqual([
+      "css/index.css",
+      "css/native-furniture.css",
+    ]);
+    expect(resolveConfig({}, m).styles).toEqual([
+      "css/index.css",
+      "css/native-furniture.css",
+    ]); // native default (no engine: key)
+    expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
+      "css/index.css",
+      "css/native-furniture.css",
+    ]); // engine: "paged" is ignored — still native extras
+    expect(resolveConfig({ engine: "native" }, m).styles).toEqual([
+      "css/index.css",
+      "css/native-furniture.css",
+    ]); // CLI override is likewise a no-op
+  });
+
+  test("engineStyles.paged is ignored — only engineStyles.native applies", () => {
+    const m = { styles: ["a.css"], engineStyles: { paged: ["b.css"], native: ["c.css"] } };
+    expect(resolveConfig({}, m).styles).toEqual(["a.css", "c.css"]);
+    expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
+      "a.css",
+      "c.css",
+    ]);
+    expect(resolveConfig({ engine: "native" }, m).styles).toEqual(["a.css", "c.css"]);
+  });
+
+  test("engineStyles.native alone (no base styles) still loads, regardless of the engine field", () => {
+    const m = { engineStyles: { native: ["only.css"] } };
+    expect(resolveConfig({ engine: "native" }, m).styles).toEqual(["only.css"]);
+    expect(resolveConfig({}, m).styles).toEqual(["only.css"]);
+    expect(resolveConfig({}, { ...m, engine: "paged" as const }).styles).toEqual([
+      "only.css",
+    ]); // engine: "paged" is ignored — native extras still apply
+  });
+});
+
 describe("resolveConfig characterization — merge precedence (finding #24 refactor safety net)", () => {
   test("all-preset (no cli, no manifest overrides) reproduces the dtrpg preset verbatim", () => {
     const config = resolveConfig({}, {});

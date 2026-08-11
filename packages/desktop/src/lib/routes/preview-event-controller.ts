@@ -23,7 +23,7 @@
  * builders (browser-safe string templates).
  */
 
-import { buildDesktopStyles, DEBUG_STYLES } from "$lib/iframe-styles";
+import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
 import type { PreviewEvent } from "$lib/preview-client";
 
 /** Minimal host-command client surface the controller drives. */
@@ -182,8 +182,13 @@ export class PreviewEventController {
     // and unnecessary settings writes.
     if (!hotReload) {
       const client = d.client();
-      client?.injectStyles("desktop-canvas", buildDesktopStyles(d.bgColor()));
-      client?.injectStyles("debug", DEBUG_STYLES);
+      // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
+      // native is the only engine. The rest of the old iframe-styles.ts sheet
+      // targeted `.pagedjs_*` classes the native viewer's DOM never has (it
+      // uses `.gp-*`, styled by decorate.ts + viewer.css); the preview
+      // background is the one rule the native viewer needs injected here (it
+      // is the author's preview-background setting, not engine chrome).
+      client?.injectStyles("desktop-canvas", buildCanvasBackgroundStyles(d.bgColor()));
       const auto = d.viewportWidth() < 1280 ? "single" : "two-column";
       const { page: restorePage, viewMode: restoreMode } = d.consumePendingRestore();
       const mode = restoreMode ?? (d.zoomView.userSetViewMode ? d.viewMode() : auto);

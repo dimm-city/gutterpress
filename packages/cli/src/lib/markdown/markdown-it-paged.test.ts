@@ -1152,12 +1152,63 @@ describe("PAGED_CSS export", () => {
       ".md-page-break",
       ".page",
       ".spread",
-      ".section",
-      ".section.col-split",
+      ":where(.page, .spread)",
       ".md-column-break",
     ]) {
       expect(PAGED_CSS).toContain(selector);
     }
+  });
+
+  // #6: the old blanket `.section { break-inside: avoid }` produced a
+  // taller-than-a-column dead-column collapse in multicol layouts and had to
+  // be undone by `.section.col-split { break-inside: auto }`. Both are gone;
+  // keep-together is now only the empty-first-fragment glue, which achieves
+  // the same intent without the collapse.
+  test("no longer sets a blanket break-inside: avoid on .section (or the col-split override that undid it)", () => {
+    expect(PAGED_CSS).not.toMatch(/\.section\s*\{[^}]*break-inside/);
+    expect(PAGED_CSS).not.toContain(".section.col-split");
+  });
+
+  // #7: the safe default reset — heading orphans, image sizing, and the
+  // first-child keep-together glue that replaces #6's blanket rule.
+  test("defines the safe default reset (headings, image sizing, first-child glue), all at zero specificity", () => {
+    expect(PAGED_CSS).toContain(":where(h1,h2,h3,h4,h5,h6) { break-after: avoid; }");
+    expect(PAGED_CSS).toContain(":where(img, svg, video) { max-width: 100%; }");
+    expect(PAGED_CSS).toContain(
+      ":where(p > img:only-child, figure > img) { width: fit-content; max-width: 100%; height: auto; vertical-align: bottom; }"
+    );
+    expect(PAGED_CSS).toContain(":where(.section, figure) > :where(:first-child) { break-before: avoid; }");
+  });
+
+  // The standalone-image default must bound the PREFERRED width (only an
+  // explicit width does; max-width alone does not — measured), without
+  // upscaling small art. `fit-content` does both: a 3000px plate scales down
+  // to the content box, a 64px icon stays 64px. Measured on Chromium 148 at
+  // 6x4in: width:auto shrank the whole document to 0.667 (text run 100.2pt
+  // vs 150.4pt); width:100% stopped the shrink but blew a 64px icon to 5in;
+  // fit-content stopped the shrink AND left the icon alone.
+  test("standalone image default bounds preferred width without upscaling", () => {
+    expect(PAGED_CSS).toMatch(/width: fit-content/);
+    expect(PAGED_CSS).not.toMatch(/img:only-child[^{]*\{[^}]*[^-]width: 100%/);
+  });
+
+  // The utility classes style `![alt](src){.class}` output, whose `<p><img
+  // class="...">` still matches `p > img:only-child`. At :where()'s zero
+  // specificity their `max-width` wins outright, so no `:not([class])`
+  // guard is needed (verified in print: a .float-left 3000px image renders
+  // at the class's 50% width, not the default's 100%).
+  test("utility-class images keep their own sizing over the zero-specificity default", () => {
+    const md = createMarkdownRenderer();
+    const html = md.render("![b](b.png){.float-left}");
+    expect(html).toContain('<img src="b.png" alt="b" class="float-left">');
+    expect(PAGED_CSS).toContain(".float-left { float: left; margin: 0 1em 1em 0; max-width: 50%; }");
+  });
+
+  // #2: .page/.spread must be the containing block for abspos descendants so
+  // a mispinned bottom:0 fails locally instead of painting on the book's last
+  // page. :where() so author CSS at any specificity can opt back to static.
+  test("makes .page/.spread positioned containing blocks at zero specificity", () => {
+    expect(PAGED_CSS).toContain(":where(.page, .spread) { position: relative; }");
   });
 });
 
@@ -1193,18 +1244,26 @@ describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
     expect(rule![0]).toMatch(/width:\s*100%/);
   });
 
-  test("defines .full-bleed using break-before + Paged.js's own page-margin custom properties (no fabricated @page art template)", () => {
+  test("defines .full-bleed as break-before + the zero-side-margin named page (no margin out-dent)", () => {
     const rule = PAGED_CSS.match(/\.full-bleed\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     const body = rule![0];
     expect(body).toMatch(/break-before:\s*page/);
-    // Escapes to the page's own trim edge via the real, Paged.js-populated
-    // --pagedjs-margin-* custom properties (see node_modules/pagedjs
-    // src/polisher/base.js / atpage.js) — not an invented mechanism.
-    expect(body).toMatch(/--pagedjs-margin-left/);
-    expect(body).toMatch(/--pagedjs-margin-right/);
-    expect(body).toMatch(/margin-left:\s*calc\(-1 \*/);
-    expect(body).toMatch(/margin-right:\s*calc\(-1 \*/);
+    // The bleed comes from `@page gp-full-bleed { margin-left/right: 0 }` —
+    // the page's content box IS the sheet, so a plain `width: 100%` reaches
+    // both edges. Nothing may out-dent past the content box: measured on
+    // Chromium 148, feeding the real page margins into a negative margin
+    // shrinks the WHOLE document ~10% (the shrink-to-fit trigger is the
+    // content box, not the sheet).
+    expect(body).toMatch(/page:\s*gp-full-bleed/);
+    expect(body).toMatch(/width:\s*100%/);
+    expect(body).not.toMatch(/calc\(/);
+    // Paged.js is gone (native-only-migration-plan.md Phase 6) — nothing sets
+    // its page-margin custom properties any more, so they must not survive
+    // here as a permanent no-op.
+    expect(PAGED_CSS).not.toMatch(/--pagedjs-margin/);
+    expect(body).not.toMatch(/--gp-margin/);
+    expect(PAGED_CSS).toMatch(/@page gp-full-bleed\s*\{[^}]*margin-left:\s*0/);
     // Must NOT promise a named `art` page template or header/footer removal —
     // neither is implemented.
     expect(PAGED_CSS).not.toMatch(/@page\s+art\b/);

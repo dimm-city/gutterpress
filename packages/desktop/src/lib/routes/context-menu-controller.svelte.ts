@@ -99,7 +99,7 @@ export interface ContextMenuDeps {
    * destination, closing the menu itself is this controller's job, not the
    * overlay's.
    */
-  openBlockOverlay: (chapter: string, range: SourceRange, ref: string | null) => void;
+  openBlockOverlay: (chapter: string, range: SourceRange) => void;
 }
 
 export interface ContextMenuItem {
@@ -195,7 +195,7 @@ export class ContextMenuController {
     const kind = detail.kind;
     // PR 2's keyboard path can dispatch kind:"none" (anchor resolved to
     // nothing annotated); its mouse path cannot (native behavior is kept for
-    // those clicks instead — see pagedjs-interface.js). Either way: no menu.
+    // those clicks instead — see preview-interface.js). Either way: no menu.
     if (!kind || kind === "none") return;
 
     const target: ContextTarget = {
@@ -204,7 +204,6 @@ export class ContextMenuController {
       range: detail.range ?? null,
       blockTag: detail.blockTag ?? null,
       split: !!detail.split,
-      ref: detail.ref ?? null,
       rect: detail.rect ?? null,
       image: detail.image ?? null,
       link: detail.link ?? null,
@@ -592,7 +591,7 @@ export class ContextMenuController {
         label: "Edit this block",
         enabled: true,
         run: () => {
-          this.deps.openBlockOverlay(chapter, range, target.ref);
+          this.deps.openBlockOverlay(chapter, range);
           this.close();
         },
       },
@@ -657,7 +656,7 @@ export class ContextMenuController {
    * Uses `selection.chapter`/`selection.range` (the selection's OWN anchor
    * block), never `target.chapter`/`target.range` (the right-click POINT's
    * resolved block, which for a selection is populated from `pointEl` and
-   * is not guaranteed to be the same block — see `pagedjs-interface.js`'s
+   * is not guaranteed to be the same block — see `preview-interface.js`'s
    * `buildContextTarget`).
    */
   private async singleBlockSelectionItems(target: ContextTarget): Promise<ContextMenuItem[]> {

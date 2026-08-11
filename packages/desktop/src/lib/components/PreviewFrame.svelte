@@ -53,7 +53,7 @@
   bridge via main.ts's — now closed — will-navigate hole). `sandbox` denies
   top-navigation and popups outright, as defense in depth alongside the host's
   will-navigate/setWindowOpenHandler policy.
-  allow-scripts is required: the pagedjs-bridge.js running inside the frame
+  allow-scripts is required: the preview-bridge.js running inside the frame
   drives paged.js layout and the postMessage command bridge (preview-client.ts).
   allow-same-origin is required too: without it the sandboxed frame gets an
   opaque origin, which breaks its own same-origin resource fetches (fonts,
@@ -76,8 +76,9 @@
    * renders the author's own document CSS and must always sit on a fixed,
    * neutral print-condition background regardless of the app's light/dark
    * theme. This literal is the one deliberate exception to the no-hardcoded-
-   * colour rule; see iframe-styles.ts buildDesktopStyles for the matching
-   * in-iframe canvas background. Do NOT replace it with an app theme token.
+   * colour rule; see iframe-styles.ts's buildCanvasBackgroundStyles for the
+   * matching in-iframe canvas background. Do NOT replace it with an app
+   * theme token.
    */
   iframe {
     flex: 1;

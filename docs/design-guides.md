@@ -121,7 +121,7 @@ _site/
 ├── book.html               ← the rendered guide, CSS + fonts inlined (pre-paginated)
 ├── index.html              ← redirects to book.html, for hosts that need a default entry point
 └── preview/
-    └── scripts/            ← pagedjs-interface.js and pagedjs-bridge.js (page nav, zoom, toolbar)
+    └── scripts/            ← preview-interface.js and preview-bridge.js (page nav, zoom, toolbar)
 ```
 
 There's no `shared/` or `styles/` in the output: your stylesheets are read and

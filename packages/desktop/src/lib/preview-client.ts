@@ -1,5 +1,5 @@
 /**
- * Client for the cross-origin pagedjs-bridge.js running inside the preview iframe.
+ * Client for the cross-origin preview-bridge.js running inside the preview iframe.
  * Sends commands via postMessage and tracks replies by id.
  */
 export interface PreviewEvent {
@@ -38,8 +38,6 @@ export interface PreviewEvent {
     blockTag?: string | null;
     /** contextMenuRequested: true when the target fragment carries data-split-from/-to. */
     split?: boolean;
-    /** contextMenuRequested: data-ref — the one identity Paged.js keeps stable across split fragments. */
-    ref?: string | null;
     /** contextMenuRequested: the target fragment's rect (post-zoom, plain object — no DOMRect). */
     rect?: PlainRect | null;
     /** contextMenuRequested: populated whenever the point is on/in an <img>, regardless of `kind`. */
@@ -91,7 +89,6 @@ export interface ContextTarget {
   range: SourceRange | null;
   blockTag: string | null;
   split: boolean;
-  ref: string | null;
   rect: PlainRect | null;
   image: { src: string | null; alt: string | null } | null;
   link: { href: string | null; text: string } | null;
@@ -113,21 +110,16 @@ export interface PreviewRect {
 }
 
 /**
- * `getRectsFor()`'s result: every fragment rect for one logical block, plus
- * the `data-ref` that grouped them. `ref` is echoed back even for a
- * `{chapter, range}` lookup — the post-splice fallback resolves a FRESH
- * data-ref the caller has no other way to learn, and the block overlay needs
- * it to target the matching `setEditMask()` call after a re-anchor. `ref` is
- * null (and `rects` empty) when nothing resolves — a stale ref, or a range
- * that no longer matches anything in `chapter` (the block was deleted/moved).
+ * `getRectsFor()`'s result: every fragment rect for one logical block.
+ * `rects` is empty when nothing resolves — a range that no longer matches
+ * anything in `chapter` (the block was deleted/moved).
  */
 export interface RectsForResult {
-  ref: string | null;
   rects: PreviewRect[];
 }
 
-/** Target form for `getRectsFor()` — exactly one of the two forms (§5.3). */
-export type RectsForTarget = { ref: string } | { chapter: string; range: SourceRange };
+/** Target form for `getRectsFor()` (§5.3). */
+export type RectsForTarget = { chapter: string; range: SourceRange };
 
 /** A heading from getOutline() — see ADR 0005. */
 export interface OutlineEntry {
@@ -313,24 +305,27 @@ export class PreviewClient {
   }
 
   /**
-   * All fragment rects for one logical block, keyed by `data-ref` (protocol
-   * v5, block overlay — inline-editing plan §5.3). Pass `{ref}` when the ref
-   * from the SAME render is still known; pass `{chapter, range}` (the
-   * post-splice fallback) after a `renderingComplete` re-render, whose fresh
-   * DOM mints fresh `data-ref`s.
+   * All fragment rects for one logical block, keyed by `{chapter, range}`
+   * (protocol v6, block overlay — inline-editing plan §5.3). A source range is
+   * duplicated verbatim onto every split fragment (Paged.js clones a block
+   * across pages but copies every data attribute to each clone), so it
+   * identifies the whole fragment set on its own — no separate ref needed,
+   * and it survives a fresh render (a splice mints fresh DOM but the same
+   * range) without a post-splice fallback.
    */
   getRectsFor(target: RectsForTarget): Promise<RectsForResult> {
     return this.call<RectsForResult>("getRectsFor", [target]);
   }
 
   /**
-   * Toggle a masking class on every fragment sharing `ref`, plus the book
-   * document's own scroll lock (protocol v5, block overlay — inline-editing
-   * plan §5.1/§5.3). Purely cosmetic and reversible; `masked: false` clears
-   * the scroll lock even when `ref` no longer resolves to any live fragment
-   * (defense-in-depth teardown after a splice already replaced the DOM).
+   * Toggle a masking class on every fragment matching `{chapter, range}`,
+   * plus the book document's own scroll lock (protocol v6, block overlay —
+   * inline-editing plan §5.1/§5.3). Purely cosmetic and reversible; `masked:
+   * false` clears the scroll lock even when the range no longer resolves to
+   * any live fragment (defense-in-depth teardown after a splice already
+   * replaced the DOM).
    */
-  setEditMask(spec: { ref: string; masked: boolean }): Promise<{ count: number }> {
+  setEditMask(spec: { chapter: string; range: SourceRange; masked: boolean }): Promise<{ count: number }> {
     return this.call<{ count: number }>("setEditMask", [spec]);
   }
 

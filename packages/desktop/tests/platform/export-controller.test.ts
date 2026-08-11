@@ -111,6 +111,7 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     isOnline: () => opts.isOnline ?? true,
     usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
+    engineBrowser: (async () => ({}) as never) as ExportControllerDeps["engineBrowser"],
     sync,
     getActiveExportSession: () => session,
     setActiveExportSession: (s) => {

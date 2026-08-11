@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Committed regression tests for the preview-bridge primitives (ADR 0005) that
 // power the chapter-jump dropdown and editor↔preview sync. These run the REAL
-// lib script (pagedjs-interface.js) against a real DOM (happy-dom), so they
+// lib script (preview-interface.js) against a real DOM (happy-dom), so they
 // exercise the actual querySelector/closest/getBoundingClientRect logic — not a
 // hand-mock that can drift from the source.
 //
@@ -26,34 +26,61 @@ const scriptPath = path.resolve(
   "assets",
   "preview",
   "scripts",
-  "pagedjs-interface.js",
+  "preview-interface.js",
 );
 const source = readFileSync(scriptPath, "utf8");
 
+// Wrap `inner` in the page-boundary element the native viewer uses. `n` is
+// the page's 1-based book position, matching what decorate.ts stamps.
+function pageWrap(engine, n, inner) {
+  return `<div class="gp-sheet" data-page="${n}">${inner}</div>`;
+}
+
 // Two chapters that DELIBERATELY share the same source-line numbers (1, 4, 9) —
 // the realistic case, since data-source-line resets per file.
-const HTML = `
-<div class="pagedjs_pages">
-  <div class="pagedjs_page">
-    <div class="gutterpress-chapter" data-chapter-src="a.md">
-      <h1 data-source-line="1" id="a-title">Alpha Title</h1>
-      <p data-source-line="4">alpha body</p>
-      <h2 data-source-line="9">Alpha Section</h2>
-    </div>
-  </div>
-  <div class="pagedjs_page">
-    <div class="gutterpress-chapter" data-chapter-src="b.md">
-      <h1 data-source-line="1" id="b-title">Beta Title</h1>
-      <p data-source-line="4">beta body</p>
-      <h2 data-source-line="9">Beta Section</h2>
-    </div>
-  </div>
-</div>`;
+function chapterHtml(engine) {
+  return (
+    pageWrap(
+      engine,
+      1,
+      `<div class="gutterpress-chapter" data-chapter-src="a.md">
+        <h1 data-source-line="1" id="a-title">Alpha Title</h1>
+        <p data-source-line="4">alpha body</p>
+        <h2 data-source-line="9">Alpha Section</h2>
+      </div>`,
+    ) +
+    pageWrap(
+      engine,
+      2,
+      `<div class="gutterpress-chapter" data-chapter-src="b.md">
+        <h1 data-source-line="1" id="b-title">Beta Title</h1>
+        <p data-source-line="4">beta body</p>
+        <h2 data-source-line="9">Beta Section</h2>
+      </div>`,
+    )
+  );
+}
 
-function setup(markup = HTML) {
+// engine defaults to "paged" for compatibility with the pre-parameterization
+// call sites; pass "native" to run the SAME assertions against the
+// Gutterpress engine viewer's DOM shape instead.
+function setup(markup, engine = "paged") {
   const window = new Window({ url: "http://localhost/" });
   const document = window.document;
-  document.body.innerHTML = markup;
+  if (engine === "native") {
+    document.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
+    // Book-wide (0-based) page index of an element, from its enclosing
+    // .gp-sheet's dataset.page — the fixture's stand-in for the real
+    // viewer's fragmentainer-position math (engine/viewer/fragment.ts's
+    // pageOf()), which happy-dom can't lay out to measure.
+    window.Gutterpress = {
+      pageOf(el) {
+        const sheet = el && el.closest ? el.closest(".gp-sheet") : null;
+        return sheet ? parseInt(sheet.getAttribute("data-page"), 10) - 1 : -1;
+      },
+    };
+  }
+  document.body.innerHTML = markup ?? chapterHtml(engine);
 
   // happy-dom does no layout, so synthesise a vertical stack: each source-mapped
   // block sits 100px below the previous; each page 1000px. `scrollY` slides the
@@ -70,7 +97,8 @@ function setup(markup = HTML) {
       height: 40,
     });
   });
-  const pages = [...document.querySelectorAll(".pagedjs_page")];
+  const pageSelector = engine === "native" ? ".gp-sheet" : ".pagedjs_page";
+  const pages = [...document.querySelectorAll(pageSelector)];
   pages.forEach((el, i) => {
     el.getBoundingClientRect = () => ({
       top: i * 1000 - state.scrollY,
@@ -105,9 +133,13 @@ function setup(markup = HTML) {
 }
 
 async function main() {
+ // Paged.js has been removed (native-only-migration-plan.md Phase 6) — native
+ // is the only engine now; the loop stays (rather than being flattened) so a
+ // future second engine slots back in with minimal diff.
+ for (const engine of ["native"]) {
   // ── 1. Chapter-scoped line resolution (the critical correctness property) ──
   {
-    const { api, scrolls } = setup();
+    const { api, scrolls } = setup(undefined, engine);
 
     const b = api.scrollTo({ line: 9, chapter: "b.md" });
     assert.equal(b.page, 2, "line 9 in chapter b resolves to page 2");
@@ -135,7 +167,7 @@ async function main() {
 
   // ── 2. getVisibleSource reports the top block's line + chapter + page ──────
   {
-    const { api, state } = setup();
+    const { api, state } = setup(undefined, engine);
     // Slide so chapter b's <h1> (4th block, top=300) sits at the viewport top.
     state.scrollY = 300;
     const vs = api.getVisibleSource();
@@ -155,7 +187,7 @@ async function main() {
 
   // ── 3. getOutline returns headings with chapter + page ────────────────────
   {
-    const { api } = setup();
+    const { api } = setup(undefined, engine);
     const outline = api.getOutline();
     assert.deepEqual(
       outline.map((o) => [o.text, o.level, o.sourceLine, o.chapter, o.page]),
@@ -170,7 +202,7 @@ async function main() {
 
   // ── 4. queryDom is chapter-aware and read-only ────────────────────────────
   {
-    const { api } = setup();
+    const { api } = setup(undefined, engine);
     const rows = api.queryDom({
       selector: "h2",
       fields: ["text", "sourceLine", "chapter", "page"],
@@ -182,7 +214,7 @@ async function main() {
 
   // ── 5. Scrolling emits sourceLineChanged carrying the chapter ─────────────
   {
-    const { api, window, state } = setup();
+    const { api, window, state } = setup(undefined, engine);
     let detail = null;
     window.addEventListener("sourceLineChanged", (e) => (detail = e.detail));
     api.getTotalPages(); // prime the page list
@@ -196,16 +228,10 @@ async function main() {
 
   // ── 6. Interpolation never crosses a chapter boundary ─────────────────────
   {
-    const crossChapterLines = `
-      <div class="pagedjs_pages">
-        <div class="pagedjs_page"><div data-chapter-src="a.md">
-          <p data-source-line="9">end of a</p>
-        </div></div>
-        <div class="pagedjs_page"><div data-chapter-src="b.md">
-          <p data-source-line="20">b starts after front matter</p>
-        </div></div>
-      </div>`;
-    const { api, state } = setup(crossChapterLines);
+    const crossChapterLines =
+      pageWrap(engine, 1, '<div data-chapter-src="a.md"><p data-source-line="9">end of a</p></div>') +
+      pageWrap(engine, 2, '<div data-chapter-src="b.md"><p data-source-line="20">b starts after front matter</p></div>');
+    const { api, state } = setup(crossChapterLines, engine);
     state.scrollY = 50;
     assert.deepEqual(api.getVisibleSource(), {
       sourceLine: 9,
@@ -216,7 +242,7 @@ async function main() {
 
   // ── 7. A reader scroll during a programmatic guard is deferred, not lost ──
   {
-    const { api, window, state } = setup();
+    const { api, window, state } = setup(undefined, engine);
     let detail = null;
     window.addEventListener("sourceLineChanged", (e) => (detail = e.detail));
     api.setZoom("0.8");
@@ -227,7 +253,8 @@ async function main() {
     assert.equal(detail?.sourceLine, 1);
   }
 
-  console.log("preview-bridge.test.mjs: all assertions passed");
+  console.log(`preview-bridge.test.mjs: all assertions passed (engine: ${engine})`);
+ }
 }
 
 main().catch((err) => {

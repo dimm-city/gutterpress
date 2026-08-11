@@ -163,7 +163,7 @@ try {
   await step("1. app launches, project opens, preview paginates", async () => {
     await page.locator(".toc-item").first().waitFor({ state: "visible", timeout: 120_000 });
     await book.locator("body").waitFor({ state: "attached", timeout: 30_000 });
-    await book.locator(".pagedjs_page").first().waitFor({ state: "visible", timeout: 60_000 });
+    await book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 });
     const chapterAttr = await book.locator("[data-chapter-src]").first().getAttribute("data-chapter-src");
     if (chapterAttr !== "01-chapter.md") {
       throw new Error(`expected chapter 01-chapter.md open, got ${chapterAttr}`);
@@ -171,12 +171,12 @@ try {
   });
 
   const targetPara = book.locator("p", { hasText: "target paragraph for right click testing" });
-  const marginBox = book.locator(".pagedjs_margin-top-center");
+  const marginBox = book.locator('.gp-marginbox[data-box="top-center"]');
 
   async function boxOf(locator) {
     // Defensive: the fixture's chapter is long enough that later steps'
-    // targets are not guaranteed to be on the first rendered page (Paged.js
-    // renders every page into one continuously scrollable flow) — scroll
+    // targets are not guaranteed to be on the first rendered page (the viewer
+    // stacks every sheet into one continuously scrollable stage) — scroll
     // into view first so page.mouse's absolute coordinates are meaningful
     // regardless of which page the element ends up on.
     await locator.first().scrollIntoViewIfNeeded();

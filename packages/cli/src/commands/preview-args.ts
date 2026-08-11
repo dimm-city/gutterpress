@@ -20,4 +20,5 @@ export const previewArgs = {
   "skip-lint": { type: "boolean", description: "Skip CSS linting (pdf|pdfx only)" },
   "skip-pre-validate": { type: "boolean", description: "Skip pre-build validation (pdf|pdfx only)" },
   "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation (pdfx only)" },
+  engine: { type: "string", description: "Pagination engine. Paged.js has been removed; native is the only engine. This flag is accepted but ignored (a warning fires for --engine paged)." },
 } as const;

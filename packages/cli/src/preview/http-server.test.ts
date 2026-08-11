@@ -617,7 +617,7 @@ describe('/__chapter route', () => {
     const body = await res.text();
     expect(body).toContain('Hello Chapter');
     expect(body).toContain('data-chapter-src="chapter1.md"');
-    expect(body).toContain('/vendor/paged.polyfill.js');
+    expect(body).toContain('/engine/gutterpress-viewer.js');
     expect(body).not.toContain('Other Chapter');
   });
 

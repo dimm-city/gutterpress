@@ -5,9 +5,10 @@
  * playwright.config.ts), renders the preview in chromium, firefox, and
  * webkit and asserts:
  *
- *   - Paged.js dispatches `renderingComplete` within a generous timeout
- *   - page count > 0 and matches the event's totalPages
- *   - no layout collapse (pages have non-zero size; no uncaught page errors)
+ *   - the native engine's viewer bundle dispatches `gp:layout` within a
+ *     generous timeout
+ *   - page count > 0 and matches the event's `pages` count
+ *   - no layout collapse (sheets have non-zero size; no uncaught page errors)
  *   - page count is within tolerance of the chromium baseline (engines
  *     legitimately reflow slightly differently because of font-fallback
  *     metrics — the 2026-06 audit measured webkit at -10% on the user guide)
@@ -49,14 +50,14 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
     });
     page.on("pageerror", (err) => pageErrors.push(String(err)));
 
-    // pagedjs-interface.js dispatches `renderingComplete` on the preview
-    // window once pagination finishes. Init scripts run in every frame, so
-    // this works for both the shell at "/" (book.html in an iframe) and a
-    // direct /book.html load.
+    // The native engine's viewer bundle (engine/viewer/index.ts) dispatches
+    // `gp:layout` on the window once pagination finishes. Init scripts run
+    // in every frame, so this works for both the shell at "/" (book.html in
+    // an iframe) and a direct /book.html load.
     await page.addInitScript(() => {
       (window as any).__gutterpressRender = { done: false };
-      window.addEventListener("renderingComplete", (e: any) => {
-        (window as any).__gutterpressRender = { done: true, totalPages: e?.detail?.totalPages ?? null };
+      window.addEventListener("gp:layout", (e: any) => {
+        (window as any).__gutterpressRender = { done: true, totalPages: e?.detail?.pages ?? null };
       });
     });
 
@@ -78,12 +79,12 @@ async function renderPreview(engine: BrowserType, url: string): Promise<RenderRe
     });
 
     const measured = await frame.evaluate(() => {
-      const pages = Array.from(document.querySelectorAll(".pagedjs_page"));
+      const pages = Array.from(document.querySelectorAll(".gp-sheet"));
       // A trailing structural 0×0 sheet can legitimately exist; what signals
-      // collapse is content pages without geometry.
+      // collapse is content sheets without geometry.
       const zeroSizedContentPages = pages.filter((p) => {
         const b = p.getBoundingClientRect();
-        const hasText = ((p.querySelector(".pagedjs_page_content")?.textContent) || "").trim().length > 0;
+        const hasText = (p.textContent || "").trim().length > 0;
         return hasText && (b.width < 10 || b.height < 10);
       }).length;
       return {

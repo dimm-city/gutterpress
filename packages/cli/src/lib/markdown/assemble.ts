@@ -16,7 +16,6 @@ import { PAGED_CSS } from "./markdown-it-paged.js";
 import { canonicalChapterId } from "./chapter-id";
 import { createMarkdownRenderer, type LoadedPlugin } from "./renderer";
 import { collectHtmlImageRefs, type ImageRefEnv } from "./images";
-import { pagedjsPolyfillTag } from "../pagedjs-marker";
 
 /** Reader injected by the host: resolve a project-root-relative file → its text. */
 export type ReadText = (relPath: string) => Promise<string>;
@@ -176,7 +175,6 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   <style data-project-css>\n${inlineCss}\n</style>
-  ${pagedjsPolyfillTag()}
 </head>
 <body>
 ${bodyContent}

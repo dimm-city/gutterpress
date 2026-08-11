@@ -7,6 +7,7 @@ import {
   BuildError,
 } from "../index.ts";
 import {
+  parseEngine,
   parseFormat,
   parsePdfxFlavor,
   rejectExtraPositionals,
@@ -26,6 +27,7 @@ const commandArgs = {
   "skip-lint": { type: "boolean", description: "Skip CSS linting (default: lint runs for pdf/pdfx)" },
   "skip-pre-validate": { type: "boolean", description: "Skip pre-build validation" },
   "skip-post-validate": { type: "boolean", description: "Skip post-build PDF/X validation" },
+  engine: { type: "string", description: "Pagination engine. Paged.js has been removed; native is the only engine. This flag is accepted but ignored (a warning fires for --engine paged)." },
 } as const;
 
 export default defineCommand({
@@ -60,6 +62,7 @@ export default defineCommand({
         skipLint: !!args["skip-lint"],
         skipPreValidate: !!args["skip-pre-validate"],
         skipPostValidate: !!args["skip-post-validate"],
+        engine: parseEngine(args.engine),
         rawArgs: args as Record<string, unknown>,
       });
     } catch (error) {

@@ -82,7 +82,7 @@ interface Harness {
   toastErrorCalls: string[];
   workspaceRect: { left: number; top: number; width: number; height: number } | null;
   iframeOrigin: { left: number; top: number } | null;
-  openBlockOverlayCalls: Array<[string, [number, number], string | null]>;
+  openBlockOverlayCalls: Array<[string, [number, number]]>;
 }
 
 function make(): Harness {
@@ -128,7 +128,7 @@ function make(): Harness {
     },
     toastSuccess: (m) => h.toastSuccessCalls.push(m),
     toastError: (m) => h.toastErrorCalls.push(m),
-    openBlockOverlay: (chapter, range, ref) => h.openBlockOverlayCalls.push([chapter, range, ref]),
+    openBlockOverlay: (chapter, range) => h.openBlockOverlayCalls.push([chapter, range]),
   };
   h.ctrl = new ContextMenuController(deps);
   h.ctrl.subscribe(client);
@@ -315,12 +315,12 @@ describe("block kind", () => {
 
   test("Edit this block opens the block overlay and closes the menu (PR 5)", async () => {
     const h = make();
-    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block", range: [3, 5], ref: "b-ref" }) });
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block", range: [3, 5] }) });
     await flush();
     const item = h.ctrl.items.find((i) => i.id === "block-edit")!;
     expect(item.enabled).toBe(true);
     await h.ctrl.runItem(item);
-    expect(h.openBlockOverlayCalls).toEqual([["ch1.md", [3, 5], "b-ref"]]);
+    expect(h.openBlockOverlayCalls).toEqual([["ch1.md", [3, 5]]]);
     expect(h.ctrl.open).toBe(false);
   });
 

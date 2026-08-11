@@ -8,46 +8,40 @@ import { Window } from "happy-dom";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const scriptDir = path.resolve(__dirname, "..", "..", "cli", "src", "assets", "preview", "scripts");
 const shellSource = readFileSync(path.join(scriptDir, "preview-shell.js"), "utf8");
-const interfaceSource = readFileSync(path.join(scriptDir, "pagedjs-interface.js"), "utf8");
+const interfaceSource = readFileSync(path.join(scriptDir, "preview-interface.js"), "utf8");
 
-const BOOK = `
-  <div class="pagedjs_pages">
-    <div class="pagedjs_page"><div class="gutterpress-chapter" data-chapter-src="chapter-1.md">
-      <p data-source-line="1">Chapter one</p>
-    </div></div>
-    <div class="pagedjs_page"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
-      <p data-source-line="1">Chapter two start</p>
-    </div></div>
-    <div class="pagedjs_page"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
-      <p data-source-line="20">Chapter two anchor</p>
-    </div></div>
-  </div>`;
+// `.gp-sheet` elements (the viewer's page unit — see
+// engine/viewer/decorate.ts). Paged.js has been removed
+// (native-only-migration-plan.md Phase 6) — the incremental chapter-splice
+// scenario this fixture set used to also cover (UPDATED_CHAPTER) was removed
+// with it: every content-update now goes through the same full-reload swap
+// as a geometry-wide change (see preview-shell.js's header comment on the
+// removed spliceChapter()).
+const BOOK_NATIVE = `
+  <div class="gp-sheet" data-page="1"><div class="gutterpress-chapter" data-chapter-src="chapter-1.md">
+    <p data-source-line="1">Chapter one</p>
+  </div></div>
+  <div class="gp-sheet" data-page="2"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+    <p data-source-line="1">Chapter two start</p>
+  </div></div>
+  <div class="gp-sheet" data-page="3"><div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
+    <p data-source-line="20">Chapter two anchor</p>
+  </div></div>`;
 
-const UPDATED_CHAPTER = `
-  <div class="pagedjs_pages">
-    <div id="page-1" data-page-number="1" class="pagedjs_page pagedjs_first_page pagedjs_right_page">
-      <div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
-        <p data-source-line="1">Updated chapter two start</p>
-      </div>
-    </div>
-    <div id="page-2" data-page-number="2" class="pagedjs_page pagedjs_left_page">
-      <div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
-        <p data-source-line="20">Updated chapter two anchor</p>
-      </div>
-    </div>
-    <div id="page-3" data-page-number="3" class="pagedjs_page pagedjs_right_page">
-      <div class="gutterpress-chapter" data-chapter-src="chapter-2.md">
-        <p data-source-line="40">Updated chapter two ending</p>
-      </div>
-    </div>
-  </div>`;
-
-function installBook(frame, markup = BOOK) {
+function installBook(frame, markup = BOOK_NATIVE) {
   const frameWindow = frame.contentWindow;
   const frameDocument = frame.contentDocument;
   const scroll = { y: 0 };
+  frameDocument.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
+  frameWindow.Gutterpress = {
+    pageOf(el) {
+      const sheet = el && el.closest ? el.closest(".gp-sheet") : null;
+      return sheet ? parseInt(sheet.getAttribute("data-page"), 10) - 1 : -1;
+    },
+  };
   frameDocument.body.innerHTML = markup;
-  const pages = [...frameDocument.querySelectorAll(".pagedjs_page")];
+  const pageSelector = ".gp-sheet";
+  const pages = [...frameDocument.querySelectorAll(pageSelector)];
   const blocks = [...frameDocument.querySelectorAll("[data-source-line]")];
   let zoom = 1;
 
@@ -85,7 +79,7 @@ function installBook(frame, markup = BOOK) {
     });
   });
   blocks.forEach((block) => {
-    const page = pages.indexOf(block.closest(".pagedjs_page"));
+    const page = pages.indexOf(block.closest(pageSelector));
     block.getBoundingClientRect = () => ({
       top: (page * 1000 + 20) * zoom - frameWindow.scrollY,
       bottom: (page * 1000 + 60) * zoom - frameWindow.scrollY,
@@ -136,7 +130,7 @@ async function main() {
   active.contentDocument.body.classList.add("debug");
   const desktopStyle = active.contentDocument.createElement("style");
   desktopStyle.setAttribute("data-gutterpress-desktop-canvas", "true");
-  desktopStyle.textContent = ".pagedjs_page { box-shadow: 0 0 2px black; }";
+  desktopStyle.textContent = ".gp-sheet { box-shadow: 0 0 2px black; }";
   active.contentDocument.head.appendChild(desktopStyle);
 
   let onChange;
@@ -159,15 +153,12 @@ async function main() {
   };
   let deferNextFrameLoad = false;
   let deferredFrame = null;
-  let lastChapterFrameSrc = null;
 
   const appendChild = document.body.appendChild.bind(document.body);
   document.body.appendChild = (node) => {
     const result = appendChild(node);
     if (node.tagName === "IFRAME" && node !== active) {
-      const isChapterFrame = String(node.src).includes("/__chapter");
-      if (isChapterFrame) lastChapterFrameSrc = String(node.src);
-      installBook(node, isChapterFrame ? UPDATED_CHAPTER : BOOK);
+      installBook(node);
       const refresh = node.contentWindow.previewAPI.refresh;
       node.contentWindow.previewAPI.refresh = () => {
         const result = refresh();
@@ -186,14 +177,33 @@ async function main() {
         deferNextFrameLoad = false;
         deferredFrame = node;
       } else {
+        // Real production: the viewer's mount() fires 'gp:layout' once its
+        // own async fragmentDocument() resolves; preview-interface.js's
+        // listener (installed by installBook() above) turns that into
+        // 'renderingComplete' for preview-shell.js's onReady() to pick up —
+        // see preview-interface.js's onRenderingComplete(). installBook has
+        // no real viewer to await, so the fixture fires it directly.
+        node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
         node.dispatchEvent(new outer.Event("load"));
       }
     }
     return result;
   };
 
+  // The fixture carries the viewer <script> tag (preview-interface.js needs
+  // it), so onReady() takes the wait-for-'renderingComplete' branch and arms
+  // a real ~180s timeout. Only short (poll/debounce) timers should fire
+  // synchronously; the long readiness timeout must NOT fire before the
+  // explicit 'gp:layout' dispatch above reaches it, or it discards the
+  // frame as "timed out".
   const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
-  runShell(outer, document, (callback) => callback(), clearTimeout);
+  runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
+  // The initial `active` frame carries the viewer <script> tag too (same as
+  // every frame `installBook` produces), so it needs the same explicit
+  // 'gp:layout' -> __GUTTERPRESS_RENDERED__ latch as the swap-in frames
+  // below, or markActiveReady()'s onReady() call never resolves and the
+  // shell never acknowledges the initial revision.
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
   active.dispatchEvent(new outer.Event("load"));
 
   onChange?.({ type: "reload-state", instance: "instance-a", revision: 0 });
@@ -387,65 +397,41 @@ async function main() {
   );
   flushAnimationFrames();
 
-  const beforeSplice = document.getElementById("gutterpress-active");
-  const beforeSpliceEvents = hostEvents.length;
+  // A `content-update` message now goes through the exact same full-reload
+  // swap as `full-reload` (Paged.js's incremental chapter splice was removed
+  // along with Paged.js — see preview-shell.js's header comment on the
+  // removed spliceChapter()).
+  const beforeUpdate = document.getElementById("gutterpress-active");
+  const beforeUpdateEvents = hostEvents.length;
   onChange?.({
     type: "content-update",
     instance: "instance-b",
     revision: 2,
     file: "chapter-2.md",
   });
-  const afterSplice = document.getElementById("gutterpress-active");
-  assert.equal(afterSplice, beforeSplice, "a chapter update preserves the active iframe identity");
-  assert.match(lastChapterFrameSrc ?? "", /\/__chapter\?/, "a chapter update paginates through /__chapter");
-  assert.equal(
-    afterSplice.contentDocument.body.textContent.includes("Updated chapter two anchor"),
-    true,
-    "the edited chapter's fresh pages are visible",
-  );
-  assert.equal(
-    afterSplice.contentDocument.body.textContent.includes("Updated chapter two ending"),
-    true,
-    "a page-count-changing update keeps every fresh page",
-  );
-  assert.equal(
-    afterSplice.contentDocument.body.textContent.includes("Chapter two anchor"),
-    false,
-    "the edited chapter's stale pages are removed",
-  );
-  assert.equal(
-    afterSplice.contentDocument.body.textContent.includes("Chapter one"),
-    true,
-    "unmodified chapter pages remain in place",
-  );
-  const updatedPages = [...afterSplice.contentDocument.querySelectorAll(
-    '.pagedjs_page[data-chapter-src="chapter-2.md"]',
-  )];
-  assert.deepEqual(
-    updatedPages.map((page) => [page.id, page.getAttribute("data-page-number")]),
-    [["page-1", "1"], ["page-2", "2"], ["page-3", "3"]],
-    "spliced pages retain the standalone pagination metadata",
-  );
-  assert.deepEqual(
-    updatedPages.map((page) => [
-      page.classList.contains("pagedjs_left_page"),
-      page.classList.contains("pagedjs_right_page"),
-    ]),
-    [[false, true], [true, false], [false, true]],
-    "spliced pages retain the standalone left/right classes",
-  );
+  const afterUpdate = document.getElementById("gutterpress-active");
+  assert.notEqual(afterUpdate, beforeUpdate, "a content-update triggers a full swap, same as full-reload");
   assert.equal(acknowledgedRevisions.at(-1), "instance-b:2");
-  const spliceComplete = hostEvents.slice(beforeSpliceEvents).find(
+  // preview-bridge.js (not loaded by this fixture — see the file header)
+  // is what relays the swapped-in frame's own 'renderingComplete' DOM event
+  // to the host via postMessage in production; simulate that one message so
+  // the shell's hotReload-detail enrichment can be asserted directly.
+  const updateCompleteEvent = new outer.Event("message");
+  Object.defineProperties(updateCompleteEvent, {
+    data: { value: { type: "gutterpress:event", name: "renderingComplete", detail: { totalPages: 3 } } },
+    source: { value: afterUpdate.contentWindow },
+  });
+  outer.dispatchEvent(updateCompleteEvent);
+  const updateComplete = hostEvents.slice(beforeUpdateEvents).find(
     (message) => message?.name === "renderingComplete",
   );
-  assert.equal(spliceComplete?.detail?.hotReload, true);
-  assert.equal(spliceComplete?.detail?.revision, 2);
-  assert.equal(spliceComplete?.detail?.totalPages, 4);
-  assert.equal(spliceComplete?.detail?.updateMode, "chapter-splice");
+  assert.equal(updateComplete?.detail?.hotReload, true);
+  assert.equal(updateComplete?.detail?.revision, 2);
+  assert.equal(updateComplete?.detail?.updateMode, "full-reload");
 
-  // A second source update arriving before the first chapter pagination
-  // completes must reconcile through the latest authoritative full book. It
-  // cannot cancel chapter A, splice chapter B, and acknowledge both.
+  // A second source update arriving before the first swap's replacement frame
+  // has loaded must reconcile through the latest authoritative revision, not
+  // apply both in sequence.
   deferNextFrameLoad = true;
   onChange?.({
     type: "content-update",
@@ -461,18 +447,187 @@ async function main() {
     revision: 4,
     file: "chapter-1.md",
   });
-  assert.equal(deferredFrame.isConnected, false, "the superseded chapter frame is discarded");
+  assert.equal(deferredFrame.isConnected, false, "the superseded frame is discarded");
   assert.notEqual(
     document.getElementById("gutterpress-active"),
     beforeOverlapRecovery,
-    "overlapping chapter updates recover through a full-book swap",
+    "overlapping updates recover through a full-book swap",
   );
   assert.equal(acknowledgedRevisions.at(-1), "instance-b:4");
   flushAnimationFrames();
 
 }
 
-main().catch((error) => {
-  console.error("[desktop-test] FAIL", error);
-  process.exit(1);
-});
+// ── Native engine: the same double-buffer swap + anchor-preservation core
+// (the property this suite exists to guard), against `.gp-sheet` fixtures
+// instead of `.pagedjs_page`. The chapter-splice scenario in main() above
+// stays paged-only — see BOOK_NATIVE's comment.
+async function runNativeCoreRegression() {
+  const outer = new Window({ url: "http://localhost/" });
+  const document = outer.document;
+  const hostEvents = [];
+  Object.defineProperty(outer, "parent", {
+    configurable: true,
+    value: { postMessage: (message) => hostEvents.push(message) },
+  });
+  const active = document.createElement("iframe");
+  active.id = "gutterpress-active";
+  active.title = "preview";
+  document.body.appendChild(active);
+  installBook(active, BOOK_NATIVE, "native");
+
+  active.contentWindow.scrollBy({ top: 2016 });
+  active.contentWindow.previewAPI.setViewMode("single");
+  active.contentWindow.previewAPI.setZoom("0.8");
+  active.contentDocument.body.classList.add("debug");
+  const desktopStyle = active.contentDocument.createElement("style");
+  desktopStyle.setAttribute("data-gutterpress-desktop-canvas", "true");
+  desktopStyle.textContent = ".gp-sheet { box-shadow: 0 0 2px black; }";
+  active.contentDocument.head.appendChild(desktopStyle);
+
+  let onChange;
+  outer.__GUTTERPRESS_INSTANCE = "instance-a";
+  outer.__GUTTERPRESS_REVISION = 0;
+  outer.__GUTTERPRESS_CHANGE_SOURCE = {
+    subscribe(callback) {
+      onChange = callback;
+      return () => {};
+    },
+    acknowledge() {},
+  };
+  const animationFrames = [];
+  outer.requestAnimationFrame = (callback) => animationFrames.push(callback);
+  const flushAnimationFrames = () => {
+    while (animationFrames.length) animationFrames.shift()();
+  };
+
+  const appendChild = document.body.appendChild.bind(document.body);
+  document.body.appendChild = (node) => {
+    const result = appendChild(node);
+    if (node.tagName === "IFRAME" && node !== active) {
+      installBook(node, BOOK_NATIVE, "native");
+      const refresh = node.contentWindow.previewAPI.refresh;
+      node.contentWindow.previewAPI.refresh = () => {
+        const result = refresh();
+        const event = new outer.Event("message");
+        Object.defineProperties(event, {
+          data: { value: { type: "gutterpress:event", name: "pageChanged", detail: {
+            currentPage: node.contentWindow.previewAPI.getCurrentPage(),
+            totalPages: node.contentWindow.previewAPI.getTotalPages(),
+          } } },
+          source: { value: node.contentWindow },
+        });
+        outer.dispatchEvent(event);
+        return result;
+      };
+      // Real production: the viewer's mount() fires 'gp:layout' once its
+      // own async fragmentDocument() resolves; preview-interface.js's
+      // listener (installed by installBook() above) turns that into
+      // 'renderingComplete' for preview-shell.js's onReady() to pick up —
+      // see preview-interface.js's onRenderingComplete(). installBook has no
+      // real viewer to await, so the fixture fires it directly.
+      // Ordering matters and is measured, not assumed: the viewer mounts on
+      // DOMContentLoaded, so on a small book it finishes BEFORE the iframe's
+      // `load` event — i.e. before preview-shell.js attaches its
+      // 'renderingComplete' listener. Only onRenderingComplete()'s
+      // __GUTTERPRESS_RENDERED__ latch makes the swap complete at all.
+      node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+      node.dispatchEvent(new outer.Event("load"));
+    }
+    return result;
+  };
+
+  // Unlike main()'s fixtures (which never carry an engine <script> tag, so
+  // onReady() always takes the immediate `.pagedjs_page`-polling branch),
+  // this fixture DOES carry the viewer <script> tag (preview-interface.js
+  // needs it for NATIVE_ENGINE detection) — so onReady() takes the
+  // wait-for-'renderingComplete' branch and arms a real ~180s timeout. Only
+  // short (poll/debounce) timers should fire synchronously; the long
+  // readiness timeout must NOT fire before the explicit 'gp:layout'
+  // dispatch below reaches it, or it discards the frame as "timed out".
+  const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
+  runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+  active.dispatchEvent(new outer.Event("load"));
+
+  onChange?.({ type: "full-reload", instance: "instance-a", revision: 1 });
+
+  const fresh = [...document.querySelectorAll("iframe")].find((frame) => frame !== active);
+  assert.ok(fresh, "native: full-reload swaps in a freshly paginated iframe");
+  const api = fresh.contentWindow.previewAPI;
+  const anchorElement = fresh.contentDocument.querySelector('[data-source-line="20"]');
+  const anchorTop = () => anchorElement.getBoundingClientRect().top;
+  const restoredAnchorTop = anchorTop();
+  assert.equal(fresh.id, "gutterpress-active", "native: the replacement retains the active-frame identity");
+  assert.equal(
+    fresh.contentDocument.body.classList.contains("view-single"),
+    true,
+    "native: view mode is copied before reveal",
+  );
+  assert.equal(
+    fresh.contentDocument.documentElement.style.getPropertyValue("--gutterpress-zoom"),
+    "0.8",
+    "native: zoom is copied before reveal",
+  );
+  assert.deepEqual(api.getVisibleSource(), {
+    sourceLine: 20,
+    chapter: "chapter-2.md",
+    page: 3,
+  }, "native: preview-shell restore keeps the chapter-2/page-3 anchor before settle");
+  assert.equal(api.getCurrentPage(), 3, "native: preview-shell restore updates the active frame page state");
+  assert.deepEqual(hostEvents.find((message) => message?.name === "pageChanged")?.detail, {
+    currentPage: 3,
+    totalPages: 3,
+  }, "native: refresh pageChanged is relayed from the active frame");
+
+  const completeEvent = new outer.Event("message");
+  Object.defineProperties(completeEvent, {
+    data: { value: { type: "gutterpress:event", name: "renderingComplete", detail: { totalPages: 3 } } },
+    source: { value: fresh.contentWindow },
+  });
+  outer.dispatchEvent(completeEvent);
+  const hotReloadDetail = hostEvents.find((message) => message?.name === "renderingComplete")?.detail;
+  assert.equal(hotReloadDetail?.totalPages, 3);
+  assert.equal(hotReloadDetail?.hotReload, true);
+  assert.equal(hotReloadDetail?.revision, 1);
+  assert.equal(hotReloadDetail?.updateMode, "full-reload");
+
+  const sourceChanges = [];
+  fresh.contentWindow.addEventListener("sourceLineChanged", (event) => {
+    sourceChanges.push(event.detail);
+  });
+  for (const mode of ["single", "two-column", "single"]) {
+    api.setViewMode(mode);
+    assert.deepEqual(api.getVisibleSource(), {
+      sourceLine: 20,
+      chapter: "chapter-2.md",
+      page: 3,
+    }, `native: anchored ${mode} view-mode changes preserve the source position`);
+    assert.equal(anchorTop(), restoredAnchorTop, `native: anchored ${mode} view-mode changes preserve the viewport anchor`);
+  }
+  await new Promise((resolve) => setTimeout(resolve, 320));
+  assert.deepEqual(sourceChanges, [], "native: the restored viewport is the source-sync baseline");
+
+  // Genuine reader movement still emits, chapter-scoped.
+  const chapterOneStart = fresh.contentDocument.querySelector(
+    '[data-chapter-src="chapter-1.md"] [data-source-line="1"]',
+  );
+  fresh.contentWindow.scrollBy({ top: chapterOneStart.getBoundingClientRect().top });
+  fresh.contentWindow.dispatchEvent(new fresh.contentWindow.Event("scroll"));
+  await new Promise((resolve) => setTimeout(resolve, 170));
+  assert.deepEqual(sourceChanges[0], {
+    sourceLine: 1,
+    chapter: "chapter-1.md",
+    page: 1,
+  }, "native: reader movement to another source position emits");
+  flushAnimationFrames();
+
+  console.log("[desktop-test] PASS native-engine preview-shell double-buffer swap + anchor preservation");
+}
+
+main()
+  .then(runNativeCoreRegression)
+  .catch((error) => {
+    console.error("[desktop-test] FAIL", error);
+    process.exit(1);
+  });

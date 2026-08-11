@@ -290,8 +290,8 @@ never touches electron-updater directly.
 - **Preview iframe** — `lib.startPreviewServer` returns an `http://127.0.0.1:N`
   URL that the renderer puts in `<iframe src={url}>`. Iframe is cross-origin
   (different scheme) from the SPA's `app://` parent; postMessage bridge
-  (`pagedjs-bridge.js`) handles communication.
-- **Vendored assets** — paged.polyfill.js + desktop scripts are served from
-  the lib's process-wide embedded-assets dir, not copied into each preview
-  session's tempDir. See `packages/cli/src/preview/http-server.ts`
+  (`preview-bridge.js`) handles communication.
+- **Vendored assets** — the native engine's viewer bundle + desktop scripts
+  are served from the lib's process-wide embedded-assets dir, not copied into
+  each preview session's tempDir. See `packages/cli/src/preview/http-server.ts`
   `EMBEDDED_PREFIXES`.

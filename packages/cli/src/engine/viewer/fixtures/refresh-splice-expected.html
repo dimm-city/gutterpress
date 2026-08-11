@@ -1,0 +1,26 @@
+<!--
+  Ground truth for `refresh.test.ts`: identical to `refresh-splice.html`
+  after the DOM splice the test performs, but present from a fresh navigation
+  (no refresh() involved) — the page count a sound refresh() must match.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Refresh splice (expected)</title>
+<style>
+@page { size: 4in 3in; margin: 0.4in; }
+@page named { margin: 1in; }
+body { font: 12pt/1.4 Georgia, serif; margin: 0; }
+p { margin: 0 0 8pt; }
+.on-named { page: named; background: #eee; }
+</style>
+</head>
+<body>
+<main id="root">
+<p id="p1">Base content, one short paragraph — one page on its own.</p>
+<div class="on-named" id="spliced"><p id="p2">Spliced content on its own named page.</p></div>
+</main>
+<script src="gutterpress-viewer.js"></script>
+</body>
+</html>

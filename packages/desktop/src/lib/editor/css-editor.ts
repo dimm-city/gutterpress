@@ -64,7 +64,7 @@ export interface CssDiagnostic {
   severity: "error" | "warning";
   /** Human-readable message shown in the gutter tooltip. */
   message: string;
-  /** The print-safety rule id (e.g. `printsafe/no-pagedjs-crash-selectors`). */
+  /** The print-safety rule id (e.g. `printsafe/no-remote-urls`). */
   source: string;
 }
 

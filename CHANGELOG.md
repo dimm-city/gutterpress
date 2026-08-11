@@ -121,6 +121,29 @@ This project follows [Semantic Versioning](https://semver.org/).
   user guide's TTRPG chapter. Stat blocks, dice notation, and read-aloud boxes
   never needed a plugin or a dedicated template — tables, layout markers, and
   CSS classes cover them, as the rest of the guide shows.
+- **Breaking: the native engine's `folio`-prefixed public surface is renamed
+  to `gp`/`Gutterpress`, and the deprecated `window.Folio`/`window.folio`
+  aliases are gone.** Native is now the only engine — Paged.js itself has
+  been deleted; `engine: paged` is still accepted in the manifest but ignored
+  (deprecation warning, builds natively regardless). If you hand-authored CSS
+  or JS against the native engine's generated hooks, update:
+  - `window.Folio` / `window.folio` → `window.Gutterpress` (the aliases have
+    been removed, not just deprecated).
+  - Every `.folio-*` engine-generated CSS class (`.folio-sheet`,
+    `.folio-strip`, `.folio-run`, `.folio-marginbox`, …) → `.gp-*`.
+  - Every `--folio-*` engine-generated custom property (`--folio-page-w`,
+    `--folio-content-w`, `--folio-margin-*`, …) → `--gp-*`.
+  - The `folio--blank` generated `@page` name (for authors styling
+    `@page folio--blank {}`) → `gp--blank`.
+  - The `folio:layout` window event → `gp:layout`.
+  - The `folio:page` window event → `gp:page`, and the matching
+    iframe-embed message the viewer posts to its parent changes payload key:
+    `{ folio: { page, pagecount } }` → `{ gp: { page, pagecount } }`. If you
+    embed a published book in an `<iframe>` and listen for page changes, read
+    `event.data.gp`.
+  - `folio.js`/`folio-agent.js` were already renamed to
+    `gutterpress-viewer.js`/`gutterpress-agent.js` in an earlier prerelease;
+    that rename is now final (no alias file).
 
 ### Fixed
 

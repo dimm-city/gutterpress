@@ -1,6 +1,10 @@
 import type { Browser } from "puppeteer-core";
 import { requireChromiumExecutable } from "./chromium";
 
+/** Hard ceiling for navigation + rendering. Large books need this budget; it
+ *  is also the puppeteer protocolTimeout for the pooled browser. */
+export const RENDER_TIMEOUT_MS = 60 * 60 * 1000;
+
 /**
  * Shared, pre-warmable headless-Chromium instance.
  *
@@ -68,6 +72,35 @@ export function prewarmBrowser(timeoutMs: number): void {
 export async function getBrowser(timeoutMs: number): Promise<Browser> {
   if (!browserPromise) prewarmBrowser(timeoutMs);
   return browserPromise!;
+}
+
+/**
+ * Get the shared browser and open a fresh page on it, tolerating a browser
+ * that died between the last health check and this call (e.g. a CI runner
+ * that OOM-kills Chromium under memory pressure, or the pooled instance's own
+ * devtools connection dropping): `browser.newPage()` on a disconnected
+ * browser rejects with a websocket/"Connection ended"-shaped error rather
+ * than triggering the `disconnected` listener in time to save this caller.
+ * One retry after dropping the stale pool entry converts that into a clean
+ * relaunch instead of a hard failure — the same shape of resilience
+ * `getBrowser`/`prewarmBrowser` already give a launch that fails outright.
+ */
+export async function getBrowserPage(
+  timeoutMs: number
+): Promise<{ browser: Browser; page: Awaited<ReturnType<Browser["newPage"]>> }> {
+  const attempt = async () => {
+    const browser = await getBrowser(timeoutMs);
+    return { browser, page: await browser.newPage() };
+  };
+  try {
+    return await attempt();
+  } catch {
+    // Drop whatever the pool is holding (closeBrowser() swallows a
+    // close() failure on an already-dead browser) so the retry launches
+    // fresh rather than getting the same broken instance back.
+    await closeBrowser();
+    return await attempt();
+  }
 }
 
 /**

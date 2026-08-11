@@ -7,13 +7,16 @@
 //
 //  - no-remote-urls           blocks http(s):// and protocol-relative url()
 //  - no-risky-print-effects   warns on properties that can force rasterization
-//  - no-pagedjs-crash-selectors  flags selectors Paged.js silently skips
+//
+// `no-pagedjs-crash-selectors` was removed along with Paged.js
+// (native-only-migration-plan.md Phase 6): authors regain sibling
+// combinators (`+`/`~`) combined with `:is()`/`:where()`/`:not()`/
+// `:nth-of-type` in their CSS — Chromium's native print has no such crash.
 
 import postcss from "postcss";
 
 export const ruleRemoteUrls = "printsafe/no-remote-urls";
 export const ruleRiskyProps = "printsafe/no-risky-print-effects";
-export const rulePagedjsCrashSelectors = "printsafe/no-pagedjs-crash-selectors";
 export const ruleSyntax = "printsafe/syntax-error";
 
 export interface PrintSafeWarning {
@@ -54,67 +57,26 @@ const riskyProperties = new Set([
   "clip-path",
 ]);
 
-function splitSelectorList(selectorList: string): string[] {
-  const selectors: string[] = [];
-  let current = "";
-  let depth = 0;
-  let quote: string | null = null;
+const marginBoxAtRuleNames = new Set([
+  "top-left-corner", "top-left", "top-center", "top-right", "top-right-corner",
+  "bottom-left-corner", "bottom-left", "bottom-center", "bottom-right", "bottom-right-corner",
+  "left-top", "left-middle", "left-bottom",
+  "right-top", "right-middle", "right-bottom",
+]);
 
-  for (let i = 0; i < selectorList.length; i += 1) {
-    const char = selectorList[i]!;
+// Chromium silently ignores these inside @page margin boxes (renders square,
+// unshadowed) though they are valid per CSS Paged Media. Delete this check if/
+// when Chromium implements them in margin boxes — see ENGINE recommendation #11.
+const marginBoxIgnoredProperties = new Set([
+  "transform", "rotate", "translate", "scale", "box-shadow",
+]);
 
-    current += char;
-
-    if (quote) {
-      // A quote closes the string only if it is not escaped. It is escaped when
-      // an ODD number of backslashes immediately precede it; an even count means
-      // those backslashes escape each other and the quote stands on its own.
-      if (char === quote) {
-        let backslashes = 0;
-        for (let j = i - 1; j >= 0 && selectorList[j] === "\\"; j -= 1) backslashes += 1;
-        if (backslashes % 2 === 0) quote = null;
-      }
-      continue;
-    }
-
-    if (char === '"' || char === "'") {
-      quote = char;
-      continue;
-    }
-
-    if (char === "(" || char === "[") {
-      depth += 1;
-      continue;
-    }
-
-    if ((char === ")" || char === "]") && depth > 0) {
-      depth -= 1;
-      continue;
-    }
-
-    if (char === "," && depth === 0) {
-      selectors.push(current.slice(0, -1).trim());
-      current = "";
-    }
-  }
-
-  if (current.trim()) selectors.push(current.trim());
-  return selectors;
-}
-
-function isPagedjsCrashProneSelector(selector: string): boolean {
-  const hasSiblingCombinator = selector.includes("+") || selector.includes("~");
-  // :is()/:where()/:not() combined with sibling combinators crash
-  // DocumentFragment.querySelectorAll in Paged.js's CSS pipeline. As of Gutterpress's
-  // vendored Paged.js the crash is caught and the selector skipped with a
-  // console.warn — but the CSS still has no effect on break/nth processing.
-  const hasFunctionalPseudoWithSibling =
-    hasSiblingCombinator && /:(?:is|where|not)\s*\(/i.test(selector);
-  // :first-of-type/:last-of-type/:nth-of-type with an adjacent sibling was the
-  // original crash pattern — keep detecting it.
-  const hasNthOfTypeWithSibling =
-    hasSiblingCombinator && /:(?:first|last|nth)-of-type\b/i.test(selector);
-  return hasFunctionalPseudoWithSibling || hasNthOfTypeWithSibling;
+function isInPageMarginBox(decl: postcss.Declaration): boolean {
+  const box = decl.parent;
+  if (!box || box.type !== "atrule") return false;
+  if (!marginBoxAtRuleNames.has((box as postcss.AtRule).name.toLowerCase())) return false;
+  const page = box.parent;
+  return !!page && page.type === "atrule" && (page as postcss.AtRule).name.toLowerCase() === "page";
 }
 
 function nodeLoc(node: postcss.Node): { line: number; column: number } {
@@ -164,26 +126,32 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
   root.walkAtRules((at) => reportRemoteUrls(at.params || "", at));
 
   root.walkDecls((decl) => {
-    if (riskyProperties.has(decl.prop.toLowerCase())) {
+    const prop = decl.prop.toLowerCase();
+    if (prop === "filter") {
+      // `filter:` gets its own message (not the generic risky-props text
+      // below): it's the one property measured to have a specific, severe
+      // cost — see MIGRATION.md Step 1 "Scope filter:" and ENGINE.md §10.
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message:
+          "Property is high-risk for print/PDF: 'filter' rasterizes its subtree to a 300 DPI bitmap in the printed PDF (text becomes unselectable, unsearchable, and inaccessible), and it dominates build time (~90% measured; 57.0s -> 6.2s over 60pp when scoped — see ENGINE.md §10). Scope it to the smallest possible selector.",
+        ...nodeLoc(decl),
+      });
+    } else if (riskyProperties.has(prop)) {
       warnings.push({
         rule: ruleRiskyProps,
         severity: "warning",
         message: `Property is high-risk for print/PDF (can force rasterization): ${decl.prop}`,
         ...nodeLoc(decl),
       });
-    }
-  });
-
-  root.walkRules((rule) => {
-    for (const selector of splitSelectorList(rule.selector)) {
-      if (isPagedjsCrashProneSelector(selector)) {
-        warnings.push({
-          rule: rulePagedjsCrashSelectors,
-          severity: "error",
-          message: `Selector will be skipped by Paged.js (DocumentFragment.querySelectorAll rejects this pattern — break/nth rules won't apply): ${selector}`,
-          ...nodeLoc(rule),
-        });
-      }
+    } else if (marginBoxIgnoredProperties.has(prop) && isInPageMarginBox(decl)) {
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message: `Property "${decl.prop}" is not supported in Chromium @page margin boxes and is silently ignored — the chrome renders square/unshadowed.`,
+        ...nodeLoc(decl),
+      });
     }
   });
 
