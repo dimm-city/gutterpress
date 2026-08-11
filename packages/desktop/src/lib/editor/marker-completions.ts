@@ -146,7 +146,7 @@ export const markerCompletions: readonly MarkerCompletion[] = [
   },
   {
     label: "@continue",
-    detail: "Close the current @section and reopen a matching one, marked .gutterpress-continued",
+    detail: "Close the current @section and reopen a matching one, marked .md-continued",
     apply: "@continue",
   },
   {

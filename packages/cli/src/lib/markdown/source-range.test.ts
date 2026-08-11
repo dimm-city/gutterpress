@@ -265,7 +265,7 @@ describe("source_range: layout markers", () => {
     // line 4: "@continue" -> continuation section's OWN line is 4, and it
     // gets a FINITE range (the §2.1 @continue fix)
     expect(html).toContain(
-      `<div class="section gutterpress-continued" data-section="S" ${SOURCE_RANGE_ATTR}="4:5"`
+      `<div class="section md-continued" data-section="S" ${SOURCE_RANGE_ATTR}="4:5"`
     );
     // line 7: "@page-break" -> break div range [7,8) — proves the renderer
     // rule fix (markdown-it-paged.js) actually emits the attribute a custom

@@ -569,7 +569,7 @@ export default function plugin(md, pluginOptions = {}) {
         // offsets (see ADR 0009).
         contMeta.__line = line;
         const cls = (contMeta.attrs.class || '').split(/\s+/).filter(Boolean);
-        if (!cls.includes('gutterpress-continued')) cls.push('gutterpress-continued');
+        if (!cls.includes('md-continued')) cls.push('md-continued');
         contMeta.attrs.class = cls.join(' ');
 
         stack.close('section');

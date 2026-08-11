@@ -236,7 +236,7 @@ Each layout marker emits a predictable CSS class that you can style. This mirror
 | `@page` | `<div class="page">` | `.page` |
 | `@page-break` | `<div class="md-page-break">` (no page wrapper) | `.md-page-break` |
 | `@section` | `<div class="section">` | `.section` |
-| `@continue` | `<div class="section gutterpress-continued">` | `.section.gutterpress-continued` |
+| `@continue` | `<div class="section md-continued">` | `.section.md-continued` |
 | `@column-break` | `<div class="md-column-break">` (or a `.col` boundary inside `.col-split`) | `.md-column-break` |
 
 Note: `@section` emits `.section`, never `.region`; `@page-break` emits `.md-page-break`, never `.md-break`.
