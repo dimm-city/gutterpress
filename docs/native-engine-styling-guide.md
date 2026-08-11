@@ -30,12 +30,26 @@ gotcha below is a consequence of that difference.
   viewport-dependent and unreliable under print. The `html` background is
   viewport-independent and repeats correctly on every page.
 - **Margin boxes support**: `background`, `border`, `padding`, `counter()`,
-  `width: fit-content` (great for chip/pill footers), fonts, and
+  `width: fit-content` + `height: fit-content` (chip/pill footers), fonts, and
   `text-transform`. They do **not** support `transform: rotate()` or
   `box-shadow` — rotated/shadowed sticker chrome must be flattened to a square,
   unshadowed version. **[reported]** — the CSS linter warns when it sees one
   of these inside a margin box, so a silently-ignored declaration doesn't read
   as "my shadow just isn't showing up".
+- **A chip needs BOTH `fit-content` axes — `width` alone is the common trap.**
+  A margin box is sized by its margin area, so `width: fit-content` collapses
+  the chip horizontally while it stays stretched to the full band height: a
+  9pt folio in a 0.75in bottom margin paints as a tall rectangle around the
+  number, not a pill. Add `height: fit-content` (equivalently
+  `block-size: fit-content`, or an explicit `height`) to collapse the other
+  axis. MEASURED (Chromium 148, 7×4in sheet, 0.75in margins): `height:
+  fit-content` and `block-size: fit-content` both give a tight pill;
+  `align-self: end` and `vertical-align: bottom` do **nothing** — the box
+  stays full-height. Those two are the Paged.js-era reflex, because there the
+  chrome was styled on an inner `.pagedjs_margin-content` element that was
+  already text-sized and only needed aligning inside a flex slot. Native has
+  no inner element: the margin box IS the box, so you size it, not align
+  within it.
 - **Named pages and `:blank` can override margin-box chrome.** A later
   `@page chapter-start { @bottom-left { content: ""; … } }` suppresses chips on
   chrome-free pages. Keep an empty background fill in the suppressed box so a

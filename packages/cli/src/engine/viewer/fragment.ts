@@ -790,7 +790,12 @@ export function rowStrideOf(strip: HTMLElement): number {
  */
 export function wrapGeometry(strip: StripInfo): { perRow: number; shift: number } {
   if (!strip.wrapCols) return { perRow: strip.pages, shift: 0 };
-  return { perRow: strip.wrapCols, shift: strip.offset % 2 === 0 ? 1 : 0 };
+  // Only two-up pairs pages, so only two-up needs the recto/verso slot
+  // shift; a 1-column wrap is a plain vertical stack.
+  return {
+    perRow: strip.wrapCols,
+    shift: strip.wrapCols === 2 && strip.offset % 2 === 0 ? 1 : 0,
+  };
 }
 
 function indexInStrip(left: number, top: number, strip: StripInfo): number {
@@ -836,12 +841,22 @@ export function spreadModeSupported(): boolean {
 }
 
 /**
- * Two-up/spread view mode. Wraps each run's own multicol flow into 2-column
- * ROWS instead of one long row (`.gp-strip[data-wrap="on"]` in
- * viewer.css) — content genuinely moves with the columns, because they are
- * the same box; this is not the retired chrome-only two-up (`decorate.ts`'s
- * `draw()` comment). No-ops to single-row when the browser lacks the
- * capability (`spreadModeSupported()`).
+ * View mode. Wraps each run's own multicol flow into N-column ROWS instead
+ * of one long row (`.gp-strip[data-wrap="on"]` in viewer.css) — content
+ * genuinely moves with the columns, because they are the same box; this is
+ * not the retired chrome-only two-up (`decorate.ts`'s `draw()` comment).
+ *
+ * BOTH view modes wrap: spread is 2 columns, single is ONE — a plain
+ * vertical stack of pages, which is what a page-at-a-time reader expects.
+ * Without the 1-column wrap, single mode is each run's pages in one long
+ * HORIZONTAL row with runs stacked vertically, so a book with many
+ * named-page runs reads as pages ragged-wrapped into rows of varying
+ * length (reported against 0.10.0-alpha.1 on the field guide). Only the
+ * column count differs, so `decorate.ts`'s row/col arithmetic covers both
+ * unchanged, and only two-up takes the recto/verso slot shift below.
+ *
+ * No-ops to the pre-wrap single-row layout when the browser lacks the
+ * capability (`spreadModeSupported()` — Firefox/Safari today).
  *
  * CROSS-RUN CORRECTNESS: each run starts its own fresh 2-column grid at grid
  * slot 0, so a run whose first physical page is a RECTO would otherwise land
@@ -868,19 +883,22 @@ export function spreadModeSupported(): boolean {
  * single-page-spread convention — with nothing else inserted.
  */
 export function applySpreadMode(strips: StripInfo[], spread: boolean): void {
-  const on = spread && spreadModeSupported();
+  const cols = spread ? 2 : 1;
+  const on = spreadModeSupported();
   for (const strip of strips) {
     const el = strip.el;
     const existingSpacer = el.querySelector(":scope > .gp-wrap-spacer");
     if (!on) {
       existingSpacer?.remove();
       delete el.dataset.wrap;
+      el.style.removeProperty("--gp-wrap-cols");
       strip.wrapCols = undefined;
       continue;
     }
-    strip.wrapCols = 2;
+    strip.wrapCols = cols;
     const { shift } = wrapGeometry(strip);
     el.dataset.wrap = "on";
+    el.style.setProperty("--gp-wrap-cols", String(cols));
     if (shift) {
       if (!existingSpacer) {
         const spacer = document.createElement("div");

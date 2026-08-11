@@ -71,6 +71,14 @@ testIf(
             // "Paragraph 20" sits on page 3 of the run (a column past the
             // first) — the exact site the regression clipped from painting.
             const last = paras.find((p) => p.textContent?.includes("Paragraph 20"))!;
+            // Bring it on screen first. The viewport clamp below asks "is any
+            // of this paintable", and scrolled-out-of-view is not clipped —
+            // it's what scrolling is for. Single mode is a 1-column wrap
+            // (a vertical stack of pages), so page 3 of the run is simply
+            // below the fold until scrolled to; without this the clamp
+            // reports a negative height and reads it as the clipping
+            // regression it is meant to catch.
+            last.scrollIntoView({ block: "center", inline: "center" });
             const rect = last.getBoundingClientRect();
 
             // `elementFromPoint` is unreliable for this check — measured

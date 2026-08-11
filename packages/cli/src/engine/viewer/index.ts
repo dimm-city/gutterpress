@@ -42,6 +42,10 @@ let resizeListener: (() => void) | undefined;
 export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
   const t0 = performance.now();
   const layout = await fragmentDocument(opts);
+  // Single mode is a 1-column wrap, not the unwrapped default — apply it
+  // BEFORE the first decorate() or the initial paint is the long-horizontal-
+  // row layout and only the first view-mode toggle would fix it.
+  applySpreadMode(layout.strips, false);
   const decoration = decorate(layout, { designer: opts.designer });
   // Tracked here (not derived from the DOM) because `relayout()` rebuilds
   // `layout.strips` from scratch on every refresh — the fresh elements carry

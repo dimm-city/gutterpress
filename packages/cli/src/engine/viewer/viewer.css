@@ -75,8 +75,9 @@
   break-inside: auto;
 }
 
-/* Two-up/spread view mode (`applySpreadMode` in fragment.ts): wraps this
-   run's multicol columns into 2-column ROWS instead of one long row, using
+/* View mode (`applySpreadMode` in fragment.ts): wraps this run's multicol
+   columns into `--gp-wrap-cols` ROWS instead of one long row — 2 for
+   two-up/spread, 1 for single (a plain vertical stack of pages), using
    CSS Multicol L2's `column-wrap: wrap` + `column-height` (shipped unflagged
    Chrome/Edge 145+ — CSS.supports-gated in JS, so this selector only ever
    matches on a browser that has it; the base `.gp-strip` rules above are
@@ -84,19 +85,21 @@
    above: content box height + top/bottom margins + the visual sheet gap, so
    consecutive wrapped rows are spaced exactly one page-pitch apart, matching
    how `column-gap` already encodes left/right margins for columns within a
-   row. Width reserves exactly two columns so a lone page (a strip with only
-   one fragment) still gets its correct left/right slot, with nothing
-   inserted to fill the other. */
+   row. Width reserves the full column count so a lone page (a strip with
+   only one fragment) still gets its correct left/right slot in two-up, with
+   nothing inserted to fill the other. */
 .gp-strip[data-wrap="on"] {
   column-wrap: wrap;
   column-height: var(--gp-content-h);
-  column-count: 2;
+  column-count: var(--gp-wrap-cols, 2);
   row-gap: calc(
     var(--gp-margin-top) + var(--gp-margin-bottom) + var(--gp-sheet-gap)
   );
   width: calc(
-    var(--gp-content-w) * 2 + var(--gp-margin-right) + var(--gp-margin-left) +
-      var(--gp-sheet-gap)
+    var(--gp-content-w) * var(--gp-wrap-cols, 2) +
+      (
+        var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
+      ) * (var(--gp-wrap-cols, 2) - 1)
   );
 }
 

@@ -63,6 +63,7 @@ interface SpreadReport {
   pageOfMismatches: Array<{ id: string; single: number; spread: number }>;
   outside: Array<{ id: string; page: number; rect: number[]; sheet: number[] }>;
   rows: Array<{ top: number; sheets: Array<{ page: number; side: string }> }>;
+  singleRows: Array<{ top: number; sheets: Array<{ page: number; side: string }> }>;
 }
 
 testIf(
@@ -97,6 +98,29 @@ testIf(
               document.querySelectorAll<HTMLElement>(".gp-strip p, .gp-strip h1")
             );
             const single = probeEls.map((el) => gp.pageOf(el));
+
+            const collectRows = () => {
+              const m = new Map<number, Array<{ page: number; side: string; l: number }>>();
+              for (const sh of Array.from(
+                document.querySelectorAll<HTMLElement>(".gp-sheet"),
+              )) {
+                const r = sh.getBoundingClientRect();
+                const top = Math.round(r.top);
+                if (!m.has(top)) m.set(top, []);
+                m.get(top)!.push({
+                  page: Number(sh.dataset.page),
+                  side: sh.dataset.side ?? "",
+                  l: r.left,
+                });
+              }
+              return [...m.entries()]
+                .sort((a, b) => a[0] - b[0])
+                .map(([top, v]) => ({
+                  top,
+                  sheets: v.sort((a, b) => a.l - b.l).map(({ page, side }) => ({ page, side })),
+                }));
+            };
+            const singleRows = collectRows();
 
             gp.setSpread(true);
 
@@ -160,6 +184,7 @@ testIf(
               pageOfMismatches,
               outside,
               rows,
+              singleRows,
             } as SpreadReport;
           });
         } finally {
@@ -175,6 +200,20 @@ testIf(
         // broken row pitch trivially.
         expect(report.totalPages).toBeGreaterThanOrEqual(6);
         expect(report.probes).toBeGreaterThan(10);
+
+        // SINGLE MODE is a 1-column wrap: one page per row, top to bottom,
+        // in book order — one continuous vertical column of pages, which is
+        // what a page-at-a-time reader expects. The regression this guards
+        // (reported against 0.10.0-alpha.1): with no wrap applied at all,
+        // each named-page RUN laid its pages out in one long HORIZONTAL row
+        // and the runs stacked vertically, so a book with many runs showed
+        // its pages ragged-wrapped into rows of varying length. Note the
+        // fixture must have several runs for this to have teeth — a
+        // single-run book stacks correctly either way.
+        expect(report.singleRows.map((r) => r.sheets.length > 1)).not.toContain(true);
+        expect(report.singleRows.flatMap((r) => r.sheets.map((s) => s.page))).toEqual(
+          Array.from({ length: report.totalPages }, (_, i) => i + 1),
+        );
 
         // (2) a view mode may not move a page boundary.
         expect(report.pageOfMismatches).toEqual([]);

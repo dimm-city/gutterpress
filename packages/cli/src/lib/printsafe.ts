@@ -79,6 +79,29 @@ function isInPageMarginBox(decl: postcss.Declaration): boolean {
   return !!page && page.type === "atrule" && (page as postcss.AtRule).name.toLowerCase() === "page";
 }
 
+/**
+ * A margin box is sized by its margin AREA, so `width: fit-content` alone
+ * collapses a chip horizontally while it stays stretched to the full band
+ * height — a 9pt folio in a 0.75in bottom margin paints as a tall rectangle
+ * around the number instead of a pill. `height: fit-content` collapses the
+ * other axis; `align-self`/`vertical-align` (the Paged.js-era reflex, where
+ * the chrome sat on an already-text-sized inner `.pagedjs_margin-content`)
+ * do nothing here. Measured: Chromium 148, 7x4in sheet, 0.75in margins.
+ */
+function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
+  const prop = decl.prop.toLowerCase();
+  if (prop !== "width" && prop !== "inline-size") return false;
+  if (!/\bfit-content\b/i.test(decl.value)) return false;
+  if (!isInPageMarginBox(decl)) return false;
+  // any explicit block-axis size counts — fit-content, a length, whatever the
+  // author chose is a deliberate answer to "how tall is this chip".
+  return !(decl.parent as postcss.AtRule).nodes?.some(
+    (n) =>
+      n.type === "decl" &&
+      ["height", "block-size"].includes((n as postcss.Declaration).prop.toLowerCase()),
+  );
+}
+
 function nodeLoc(node: postcss.Node): { line: number; column: number } {
   return {
     line: node.source?.start?.line ?? 1,
@@ -150,6 +173,13 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
         rule: ruleRiskyProps,
         severity: "warning",
         message: `Property "${decl.prop}" is not supported in Chromium @page margin boxes and is silently ignored — the chrome renders square/unshadowed.`,
+        ...nodeLoc(decl),
+      });
+    } else if (isUnpairedFitContentWidth(decl)) {
+      warnings.push({
+        rule: ruleRiskyProps,
+        severity: "warning",
+        message: `"${decl.prop}: fit-content" in a @page margin box collapses only the inline axis — the box stays stretched to the full margin band, so a chip/pill renders as a tall rectangle around its text. Add "height: fit-content" (align-self / vertical-align do nothing here).`,
         ...nodeLoc(decl),
       });
     }

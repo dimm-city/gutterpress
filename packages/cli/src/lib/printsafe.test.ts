@@ -38,3 +38,27 @@ test("checkCss does not flag transform: outside an @page margin box", () => {
   const warnings = checkCss(css);
   expect(warnings.filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
 });
+
+// A margin box is sized by its margin AREA: `width: fit-content` collapses
+// only the inline axis, so a chip stays stretched to the full band height and
+// paints as a tall rectangle around its text. This shipped in a real book's
+// folio (reported against 0.10.0-alpha.1) — the author wrote the Paged.js-era
+// `align-self: end`, which does nothing under native.
+test("checkCss warns on width: fit-content with no block-axis size in a margin box", () => {
+  const css = `@page { @bottom-left { content: "P." counter(page); width: fit-content; align-self: end; } }`;
+  const warnings = checkCss(css).filter((w) => w.rule === ruleRiskyProps);
+  expect(warnings.length).toBe(1);
+  expect(warnings[0]!.message).toContain("collapses only the inline axis");
+});
+
+test("checkCss accepts fit-content width once a block-axis size is present", () => {
+  for (const h of ["height: fit-content", "block-size: fit-content", "height: 1.4em"]) {
+    const css = `@page { @bottom-left { content: "x"; width: fit-content; ${h}; } }`;
+    expect(checkCss(css).filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
+  }
+});
+
+test("checkCss does not flag fit-content width outside an @page margin box", () => {
+  const css = `.chip { width: fit-content; }`;
+  expect(checkCss(css).filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
+});

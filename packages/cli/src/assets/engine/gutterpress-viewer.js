@@ -119,8 +119,9 @@
   break-inside: auto;
 }
 
-/* Two-up/spread view mode (\`applySpreadMode\` in fragment.ts): wraps this
-   run's multicol columns into 2-column ROWS instead of one long row, using
+/* View mode (\`applySpreadMode\` in fragment.ts): wraps this run's multicol
+   columns into \`--gp-wrap-cols\` ROWS instead of one long row — 2 for
+   two-up/spread, 1 for single (a plain vertical stack of pages), using
    CSS Multicol L2's \`column-wrap: wrap\` + \`column-height\` (shipped unflagged
    Chrome/Edge 145+ — CSS.supports-gated in JS, so this selector only ever
    matches on a browser that has it; the base \`.gp-strip\` rules above are
@@ -128,19 +129,21 @@
    above: content box height + top/bottom margins + the visual sheet gap, so
    consecutive wrapped rows are spaced exactly one page-pitch apart, matching
    how \`column-gap\` already encodes left/right margins for columns within a
-   row. Width reserves exactly two columns so a lone page (a strip with only
-   one fragment) still gets its correct left/right slot, with nothing
-   inserted to fill the other. */
+   row. Width reserves the full column count so a lone page (a strip with
+   only one fragment) still gets its correct left/right slot in two-up, with
+   nothing inserted to fill the other. */
 .gp-strip[data-wrap="on"] {
   column-wrap: wrap;
   column-height: var(--gp-content-h);
-  column-count: 2;
+  column-count: var(--gp-wrap-cols, 2);
   row-gap: calc(
     var(--gp-margin-top) + var(--gp-margin-bottom) + var(--gp-sheet-gap)
   );
   width: calc(
-    var(--gp-content-w) * 2 + var(--gp-margin-right) + var(--gp-margin-left) +
-      var(--gp-sheet-gap)
+    var(--gp-content-w) * var(--gp-wrap-cols, 2) +
+      (
+        var(--gp-margin-right) + var(--gp-margin-left) + var(--gp-sheet-gap)
+      ) * (var(--gp-wrap-cols, 2) - 1)
   );
 }
 
@@ -1209,7 +1212,10 @@ body.view-spread .gp-sheet[data-side="verso"] {
   function wrapGeometry(strip) {
     if (!strip.wrapCols)
       return { perRow: strip.pages, shift: 0 };
-    return { perRow: strip.wrapCols, shift: strip.offset % 2 === 0 ? 1 : 0 };
+    return {
+      perRow: strip.wrapCols,
+      shift: strip.wrapCols === 2 && strip.offset % 2 === 0 ? 1 : 0
+    };
   }
   function indexInStrip(left, top, strip) {
     const { stride, rowStride } = stripMetrics(strip.el);
@@ -1235,19 +1241,22 @@ body.view-spread .gp-sheet[data-side="verso"] {
     return typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("column-wrap", "wrap") && CSS.supports("column-height", "100px");
   }
   function applySpreadMode(strips, spread) {
-    const on = spread && spreadModeSupported();
+    const cols = spread ? 2 : 1;
+    const on = spreadModeSupported();
     for (const strip of strips) {
       const el = strip.el;
       const existingSpacer = el.querySelector(":scope > .gp-wrap-spacer");
       if (!on) {
         existingSpacer?.remove();
         delete el.dataset.wrap;
+        el.style.removeProperty("--gp-wrap-cols");
         strip.wrapCols = undefined;
         continue;
       }
-      strip.wrapCols = 2;
+      strip.wrapCols = cols;
       const { shift } = wrapGeometry(strip);
       el.dataset.wrap = "on";
+      el.style.setProperty("--gp-wrap-cols", String(cols));
       if (shift) {
         if (!existingSpacer) {
           const spacer = document.createElement("div");
@@ -1929,6 +1938,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
   async function mount(opts = {}) {
     const t0 = performance.now();
     const layout = await fragmentDocument(opts);
+    applySpreadMode(layout.strips, false);
     const decoration = decorate(layout, { designer: opts.designer });
     let spreadOn = false;
     const api = Object.assign(layout, {
