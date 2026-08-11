@@ -15,6 +15,12 @@
    - `html { background }` on top of a page background (page 4's run): the
      canvas layer paints ABOVE the page background per CSS Paged Media
      §3.1, so the canvas colour must win where both are declared.
+   - `var(--x)` resolving inside `background` (page 3, the named `tinted`
+     page): `background` is deliberately left untouched by
+     `gcpm-extract.ts`'s var()-resolution pass (that pass only covers
+     geometry declarations — see its header comment) and passed through to
+     Chromium as-is, so this proves the pass-through actually resolves in
+     the viewer, not just in print.
 -->
 <!doctype html>
 <html>
@@ -22,9 +28,10 @@
 <meta charset="utf-8">
 <title>Page background</title>
 <style>
+:root { --tinted-bg: #1e8a4c; }
 @page { size: 5in 3in; margin: 0.5in; background: #2d6cdf; }
 @page :left { background: #d94f2b; }
-@page tinted { background: #1e8a4c; }
+@page tinted { background: var(--tinted-bg); }
 body { font: 11pt/1.35 Georgia, serif; margin: 0; }
 h1 { font-size: 16pt; margin: 0; break-before: page; }
 h1.tinted { page: tinted; }

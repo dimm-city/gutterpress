@@ -21,6 +21,16 @@ import { closeBrowser, getBrowser } from "../../lib/browser-pool.ts";
  * `rgb(255, 255, 255)` while the PDF for the same source painted
  * #2d6cdf / #d94f2b.
  *
+ * Also covers `var()` inside `background`: `gcpm-extract.ts` deliberately
+ * leaves `background` untouched by its var()-resolution pass (that pass
+ * only covers geometry declarations: `size`/`margin`/`bleed`/`marks`) and
+ * relies on Chromium to resolve it as normal CSS. The named `tinted` page
+ * below sources its color from `var(--tinted-bg)` — measured against the
+ * pre-existing print/PDF path too (Preflight A, 2026-08-11): both legs
+ * resolve `var()` in `@page { background }` correctly, including a
+ * `url()` background-image and `background-size` driven by custom
+ * properties.
+ *
  * The parity gate cannot catch this class of defect at all — it asserts
  * page counts, page-of-element maps and resolved target-counter values,
  * and makes no paint assertions whatsoever. So it needs its own test.
