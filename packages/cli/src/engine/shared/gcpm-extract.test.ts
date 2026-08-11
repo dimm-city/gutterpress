@@ -182,6 +182,15 @@ describe("scanner primitives", () => {
     expect(d.margin).toBe("1in 2in");
   });
 
+  test("parseDeclarations strips a comment trailing the PREVIOUS declaration, not just its own", () => {
+    // Regression: `push()` only skipped comments while scanning for the next
+    // `;`, it never stripped them from the chunk it pushed — so `--y` here
+    // was captured as the property name `/* note */\n  --y`, silently
+    // dropping `--y` from the map. Caught via a real book's `--page-margin`.
+    const d = parseDeclarations(`--x: 1in; /* note */\n  --y: 2in;`);
+    expect(d).toEqual({ "--x": "1in", "--y": "2in" });
+  });
+
   test("splitTopLevel respects nesting", () => {
     expect(splitTopLevel(`a content(), b target-counter(attr(href url), page)`, ",")).toEqual([
       "a content()",
@@ -217,5 +226,116 @@ describe("margin cascade (regression: full-bleed cover)", () => {
     expect(resolvePage(m).geometry.margin).toEqual({
       top: 72, right: 72, bottom: 72, left: 144,
     });
+  });
+});
+
+describe("var() in @page geometry (§−1a: never fail silently)", () => {
+  test("size: var(--x) resolves to the :root value, not the Letter fallback", () => {
+    const model = extract(`
+      :root { --trim: 6in 9in; }
+      @page { size: var(--trim); }
+    `);
+    expect(resolvePage(model).geometry.width).toBe(432);
+    expect(resolvePage(model).geometry.height).toBe(648);
+  });
+
+  test("margin: var(--x) resolves from :root and the shrink guard sees the real margin", () => {
+    const model = extract(`
+      :root { --m: 1in; }
+      @page { size: 6in 9in; margin: var(--m); }
+    `);
+    const { geometry } = resolvePage(model);
+    expect(geometry.margin).toEqual({ top: 72, right: 72, bottom: 72, left: 72 });
+  });
+
+  test("var(--x, fallback) uses the fallback when --x is undefined", () => {
+    const model = extract(`@page { size: 6in 9in; margin: var(--undefined-margin, 0.75in); }`);
+    expect(resolvePage(model).geometry.margin).toEqual({
+      top: 54, right: 54, bottom: 54, left: 54,
+    });
+  });
+
+  test("var(--x, fallback) prefers the :root value over the fallback when both exist", () => {
+    const model = extract(`
+      :root { --binding-margin: 1in; }
+      @page { size: 6in 9in; margin: var(--binding-margin, 0.75in); }
+    `);
+    expect(resolvePage(model).geometry.margin).toEqual({
+      top: 72, right: 72, bottom: 72, left: 72,
+    });
+  });
+
+  test("an unresolvable var() hard-errors with the declaration and a fix hint", () => {
+    expect(() =>
+      extract(`@page { size: var(--undefined-trim); }`),
+    ).toThrow(/--undefined-trim.*not defined at :root/s);
+  });
+
+  test("an unresolvable var() in margin also hard-errors (never silently disables the guard)", () => {
+    expect(() => extract(`@page { margin: var(--nope); }`)).toThrow(/:root/);
+  });
+
+  test("a fallback containing a nested var() is rejected, not resolved", () => {
+    expect(() =>
+      extract(`@page { margin: var(--a, var(--b, 1in)); }`),
+    ).toThrow(/another var\(\)/);
+  });
+
+  test("var() in a descriptor this engine doesn't read (e.g. background) is left untouched", () => {
+    const model = extract(`@page { background: var(--cover-art); size: 6in 9in; }`);
+    expect(model.pageRules[0]!.decls.background).toBe("var(--cover-art)");
+  });
+
+  test("a var() defined by a LATER stylesheet still resolves (sheets are concatenated)", () => {
+    const model = extract(`@page { size: 6in 9in; margin: var(--m); }\n:root { --m: 0.75in; }`);
+    expect(resolvePage(model).geometry.margin.left).toBe(54);
+  });
+
+  test("var() resolves in a NAMED page rule with a pseudo (@page chapter:left)", () => {
+    const model = extract(`
+      :root { --binding: 0.9in; }
+      @page { size: 6in 9in; margin: 0.5in; }
+      @page chapter:left { margin: var(--binding); }
+    `);
+    const g = resolvePage(model, { name: "chapter", pseudos: ["left"] }).geometry;
+    expect(g.margin).toEqual({ top: 64.8, right: 64.8, bottom: 64.8, left: 64.8 });
+  });
+
+  test("only ONE dimension of `size` given as a var still resolves", () => {
+    const model = extract(`:root { --w: 6in; }\n@page { size: var(--w) 9in; }`);
+    const g = resolvePage(model).geometry;
+    expect([g.width, g.height]).toEqual([432, 648]);
+  });
+
+  // The resolution half is not enough on its own: these three all RESOLVE and
+  // then fall through this file's lenient parsers to Letter / 0pt margins —
+  // the silent-wrong-geometry §−1a exists to kill. They must hard-error.
+  test("a var() resolving to an empty custom property does not silently become Letter", () => {
+    expect(() => extract(`:root { --trim: ; }\n@page { size: var(--trim); }`)).toThrow(
+      /resolves to ``, which is empty/,
+    );
+  });
+
+  test("a var() resolving to a non-size does not silently become Letter", () => {
+    expect(() => extract(`:root { --trim: banana; }\n@page { size: var(--trim); }`)).toThrow(
+      /not a page size/,
+    );
+  });
+
+  test("a var() inside calc() in margin does not silently become a 0pt margin", () => {
+    expect(() =>
+      extract(`:root { --m: 0.5in; }\n@page { size: 6in 9in; margin: calc(var(--m) + 12pt); }`),
+    ).toThrow(/cannot read as a length/);
+  });
+
+  test("a var() resolving to a non-length margin does not silently become 0pt", () => {
+    expect(() =>
+      extract(`:root { --m: banana; }\n@page { size: 6in 9in; margin: var(--m); }`),
+    ).toThrow(/cannot read as a length/);
+  });
+
+  test("`bleed: auto` via var() stays valid (it is not a length, and must not error)", () => {
+    const model = extract(`:root { --b: auto; }\n@page { size: 6in 9in; bleed: var(--b); }`);
+    expect(resolvePage(model).geometry.bleed).toBe(0);
   });
 });

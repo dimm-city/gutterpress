@@ -389,13 +389,14 @@ body.view-spread .gp-sheet[data-side="verso"] {
     let start = 0;
     let depth = 0;
     const push = (chunk) => {
-      const s = chunk.trim();
+      const s = stripComments(chunk).trim();
       if (!s)
         return;
       const colon = indexOfTopLevel(s, ":");
       if (colon <= 0)
         return;
-      const prop = s.slice(0, colon).trim().toLowerCase();
+      const rawProp = s.slice(0, colon).trim();
+      const prop = rawProp.startsWith("--") ? rawProp : rawProp.toLowerCase();
       const value = s.slice(colon + 1).trim().replace(/\s*!important$/i, "");
       if (prop)
         decls[prop] = value;
@@ -466,6 +467,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
       warnings: []
     };
     walk(css, model);
+    resolveGeometryVars(model, collectRootCustomProperties(css));
     const names = new Set;
     for (const r of model.pageRules)
       if (r.name)
@@ -474,6 +476,159 @@ body.view-spread .gp-sheet[data-side="verso"] {
       names.add(a.page);
     model.pageNames = [...names];
     return model;
+  }
+  var GEOMETRY_PROPS = [
+    "size",
+    "margin",
+    "margin-top",
+    "margin-right",
+    "margin-bottom",
+    "margin-left",
+    "bleed",
+    "marks"
+  ];
+  function collectRootCustomProperties(css) {
+    const props = new Map;
+    const walkForRoot = (body) => {
+      for (const rule of scanRules(body)) {
+        if ("statement" in rule)
+          continue;
+        const { prelude, body: ruleBody } = rule;
+        if (NESTED_AT_RULES.test(prelude)) {
+          walkForRoot(ruleBody);
+          continue;
+        }
+        if (!prelude.startsWith("@")) {
+          const selectors = splitTopLevel(prelude, ",");
+          if (selectors.some((s) => s.trim() === ":root")) {
+            const decls = parseDeclarations(ruleBody);
+            for (const [k, v] of Object.entries(decls)) {
+              if (k.startsWith("--"))
+                props.set(k, v);
+            }
+          }
+        }
+      }
+    };
+    walkForRoot(css);
+    return props;
+  }
+  function matchParen(s, open) {
+    let depth = 0;
+    let i = open;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === '"' || c === "'") {
+        i = skipString(s, i);
+        continue;
+      }
+      if (c === "(")
+        depth++;
+      else if (c === ")") {
+        depth--;
+        if (depth === 0)
+          return i;
+      }
+      i++;
+    }
+    return -1;
+  }
+  function resolveVarsInValue(value, customProps, stack = new Set) {
+    let out = "";
+    let i = 0;
+    while (i < value.length) {
+      const isVarStart = /^var\(/i.test(value.slice(i, i + 4)) && (i === 0 || !/[\w-]/.test(value[i - 1]));
+      if (!isVarStart) {
+        out += value[i];
+        i++;
+        continue;
+      }
+      const open = i + 3;
+      const close = matchParen(value, open);
+      if (close === -1) {
+        out += value.slice(i);
+        break;
+      }
+      const inner = value.slice(open + 1, close);
+      const commaIdx = indexOfTopLevel(inner, ",");
+      const name = (commaIdx === -1 ? inner : inner.slice(0, commaIdx)).trim();
+      const fallback = commaIdx === -1 ? undefined : inner.slice(commaIdx + 1).trim();
+      if (!/^--[\w-]+$/.test(name)) {
+        return { text: out, unresolved: `var(${inner}) is not a valid custom property reference` };
+      }
+      if (stack.has(name)) {
+        return { text: out, unresolved: `var(${name}) is circular` };
+      }
+      const rootValue = customProps.get(name);
+      if (rootValue !== undefined) {
+        const nested = resolveVarsInValue(rootValue, customProps, new Set(stack).add(name));
+        if (nested.unresolved)
+          return { text: out, unresolved: nested.unresolved };
+        out += nested.text;
+      } else if (fallback !== undefined) {
+        if (/\bvar\(/i.test(fallback)) {
+          return {
+            text: out,
+            unresolved: `var(${name}, ${fallback}) — a fallback containing another var() is not resolved`
+          };
+        }
+        out += fallback;
+      } else {
+        return {
+          text: out,
+          unresolved: `${name} is not defined at :root and var() has no fallback`
+        };
+      }
+      i = close + 1;
+    }
+    return { text: out };
+  }
+  function resolveGeometryVars(model, customProps) {
+    for (const rule of model.pageRules) {
+      for (const prop of GEOMETRY_PROPS) {
+        const value = rule.decls[prop];
+        if (!value || !/\bvar\(/i.test(value))
+          continue;
+        const { text, unresolved } = resolveVarsInValue(value, customProps);
+        if (unresolved) {
+          throw new Error(`${rule.raw} { ${prop}: ${value} } — cannot resolve ${unresolved}. ` + `Define the custom property at :root, add a literal var(--x, fallback) fallback, or use a literal value.`);
+        }
+        const unparsable = unparsableGeometry(prop, text);
+        if (unparsable) {
+          throw new Error(`${rule.raw} { ${prop}: ${value} } — resolves to \`${text.trim()}\`, ${unparsable}. ` + `Use a value this engine can read (a length like 0.75in/12pt/10mm, or a named page size for \`size\`).`);
+        }
+        rule.decls[prop] = text;
+      }
+    }
+  }
+  function unparsableGeometry(prop, text) {
+    const t = text.trim();
+    if (prop === "size") {
+      if (!t)
+        return "which is empty";
+      return parseSize(t) ? undefined : "which is not a page size";
+    }
+    if (prop === "margin" || prop.startsWith("margin-")) {
+      if (!t)
+        return "which is empty";
+      const parts = t.split(/\s+/);
+      if (prop !== "margin" && parts.length !== 1)
+        return "which is not a single length";
+      if (parts.length > 4)
+        return "which is not a valid margin";
+      const bad = parts.filter((p) => toPt(p) === undefined);
+      if (bad.length)
+        return `which this engine cannot read as a length (\`${bad[0]}\`)`;
+      return;
+    }
+    if (prop === "bleed") {
+      if (!t)
+        return "which is empty";
+      if (/^(auto|none)$/i.test(t))
+        return;
+      return toPt(t) === undefined ? "which this engine cannot read as a length" : undefined;
+    }
+    return;
   }
   function walk(css, model) {
     for (const rule of scanRules(css)) {
@@ -1385,7 +1540,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
       const fn = FUNC.exec(rest);
       if (fn && fn[1] !== undefined) {
         const open = i + fn[0].length - 1;
-        const close = matchParen(s, open);
+        const close = matchParen2(s, open);
         const args = splitTopLevel(s.slice(open + 1, close), ",");
         parts.push(toPart(fn[1].toLowerCase(), args));
         i = close + 1;
@@ -1436,7 +1591,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
     }
     return i;
   }
-  function matchParen(s, open) {
+  function matchParen2(s, open) {
     let depth = 0;
     for (let i = open;i < s.length; i++) {
       const c = s[i];

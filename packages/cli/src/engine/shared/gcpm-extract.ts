@@ -204,11 +204,21 @@ export function parseDeclarations(body: string): Declarations {
   let start = 0;
   let depth = 0;
   const push = (chunk: string) => {
-    const s = chunk.trim();
+    // `chunk` is a raw slice between `;` boundaries — the scanner above skips
+    // OVER comments while looking for the next `;`/`{`/`}` but never moves
+    // `start`, so a comment sitting between two declarations (extremely
+    // common: `--x: 1in; /* note */\n--y: 2in;`) is still embedded verbatim
+    // in the next chunk. Left unstripped, it became part of the "property
+    // name" (`/* note */\n--y`), silently dropping `--y` from the map —
+    // caught when a real book's `--page-margin` vanished this way.
+    const s = stripComments(chunk).trim();
     if (!s) return;
     const colon = indexOfTopLevel(s, ":");
     if (colon <= 0) return;
-    const prop = s.slice(0, colon).trim().toLowerCase();
+    const rawProp = s.slice(0, colon).trim();
+    // custom-property names are case-sensitive (CSS Custom Properties §2);
+    // everything else in this file is a known lowercase-ASCII descriptor.
+    const prop = rawProp.startsWith("--") ? rawProp : rawProp.toLowerCase();
     const value = s.slice(colon + 1).trim().replace(/\s*!important$/i, "");
     if (prop) decls[prop] = value;
   };
@@ -286,11 +296,215 @@ export function extract(css: string): GcpmModel {
     warnings: [],
   };
   walk(css, model);
+  resolveGeometryVars(model, collectRootCustomProperties(css));
   const names = new Set<string>();
   for (const r of model.pageRules) if (r.name) names.add(r.name);
   for (const a of model.pageAssignments) names.add(a.page);
   model.pageNames = [...names];
   return model;
+}
+
+// ---------------------------------------------------------------------------
+// var() resolution (§−1a) — geometry declarations only
+// ---------------------------------------------------------------------------
+//
+// This engine reads `size`/`margin`/`margin-*`/`bleed`/`marks` off `@page`
+// itself (Chromium's CSSOM drops the descriptors it doesn't implement, and
+// even `size`/`margin` need to be known BEFORE print so the viewport and the
+// shrink-to-fit guard can be set up). Everything else in an `@page` rule
+// (e.g. `background`) is left untouched and resolved by Chromium as normal —
+// var() there was never our business and must keep working unmodified.
+//
+// A `var()` in one of OUR declarations must never resolve to a wrong value
+// silently (§−1a): `size: var(--trim)` silently becoming Letter, or
+// `margin: var(--m)` silently becoming 0, both defeat protections this
+// engine exists to provide. So: resolve what can be resolved from `:root`
+// custom properties in the same stylesheet (honoring `var(--x, fallback)`),
+// and hard-error on anything left over.
+
+/** The subset of `@page` descriptors this engine's own parsing depends on. */
+const GEOMETRY_PROPS = [
+  "size",
+  "margin",
+  "margin-top",
+  "margin-right",
+  "margin-bottom",
+  "margin-left",
+  "bleed",
+  "marks",
+] as const;
+
+/** `:root { --x: ... }` custom properties, gathered from the whole stylesheet
+ *  (incl. inside `@media`/`@supports`/etc.) — last declaration wins, same as
+ *  the cascade a browser would apply to an unconditional `:root` rule. */
+function collectRootCustomProperties(css: string): Map<string, string> {
+  const props = new Map<string, string>();
+  const walkForRoot = (body: string) => {
+    for (const rule of scanRules(body)) {
+      if ("statement" in rule) continue;
+      const { prelude, body: ruleBody } = rule;
+      if (NESTED_AT_RULES.test(prelude)) {
+        walkForRoot(ruleBody);
+        continue;
+      }
+      if (!prelude.startsWith("@")) {
+        const selectors = splitTopLevel(prelude, ",");
+        if (selectors.some((s) => s.trim() === ":root")) {
+          const decls = parseDeclarations(ruleBody);
+          for (const [k, v] of Object.entries(decls)) {
+            if (k.startsWith("--")) props.set(k, v);
+          }
+        }
+      }
+    }
+  };
+  walkForRoot(css);
+  return props;
+}
+
+/** Index of the `)` matching the `(` at `s[open]`, string- and nesting-aware. */
+function matchParen(s: string, open: number): number {
+  let depth = 0;
+  let i = open;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '"' || c === "'") {
+      i = skipString(s, i);
+      continue;
+    }
+    if (c === "(") depth++;
+    else if (c === ")") {
+      depth--;
+      if (depth === 0) return i;
+    }
+    i++;
+  }
+  return -1;
+}
+
+/**
+ * Resolve every `var(--x)` / `var(--x, fallback)` in `value` against
+ * `customProps`. Returns the resolved text, or an `unresolved` message the
+ * caller turns into a hard error. A fallback containing a nested `var()` is
+ * deliberately rejected rather than resolved (documented scope narrowing —
+ * §−1a step 1).
+ */
+function resolveVarsInValue(
+  value: string,
+  customProps: Map<string, string>,
+  stack: Set<string> = new Set(),
+): { text: string; unresolved?: string } {
+  let out = "";
+  let i = 0;
+  while (i < value.length) {
+    const isVarStart =
+      /^var\(/i.test(value.slice(i, i + 4)) && (i === 0 || !/[\w-]/.test(value[i - 1]!));
+    if (!isVarStart) {
+      out += value[i];
+      i++;
+      continue;
+    }
+    const open = i + 3;
+    const close = matchParen(value, open);
+    if (close === -1) {
+      // unterminated var( — leave as-is, nothing more we can do
+      out += value.slice(i);
+      break;
+    }
+    const inner = value.slice(open + 1, close);
+    const commaIdx = indexOfTopLevel(inner, ",");
+    const name = (commaIdx === -1 ? inner : inner.slice(0, commaIdx)).trim();
+    const fallback = commaIdx === -1 ? undefined : inner.slice(commaIdx + 1).trim();
+    if (!/^--[\w-]+$/.test(name)) {
+      return { text: out, unresolved: `var(${inner}) is not a valid custom property reference` };
+    }
+    if (stack.has(name)) {
+      return { text: out, unresolved: `var(${name}) is circular` };
+    }
+    const rootValue = customProps.get(name);
+    if (rootValue !== undefined) {
+      const nested = resolveVarsInValue(rootValue, customProps, new Set(stack).add(name));
+      if (nested.unresolved) return { text: out, unresolved: nested.unresolved };
+      out += nested.text;
+    } else if (fallback !== undefined) {
+      if (/\bvar\(/i.test(fallback)) {
+        return {
+          text: out,
+          unresolved: `var(${name}, ${fallback}) — a fallback containing another var() is not resolved`,
+        };
+      }
+      out += fallback;
+    } else {
+      return {
+        text: out,
+        unresolved: `${name} is not defined at :root and var() has no fallback`,
+      };
+    }
+    i = close + 1;
+  }
+  return { text: out };
+}
+
+/**
+ * Resolve `var()` in the geometry-affecting declarations of every `@page`
+ * rule in place. Anything left unresolved is a hard error (§−1a) — never a
+ * silent fallback to a default trim size or a zeroed-out margin.
+ */
+function resolveGeometryVars(model: GcpmModel, customProps: Map<string, string>): void {
+  for (const rule of model.pageRules) {
+    for (const prop of GEOMETRY_PROPS) {
+      const value = rule.decls[prop];
+      if (!value || !/\bvar\(/i.test(value)) continue;
+      const { text, unresolved } = resolveVarsInValue(value, customProps);
+      if (unresolved) {
+        throw new Error(
+          `${rule.raw} { ${prop}: ${value} } — cannot resolve ${unresolved}. ` +
+            `Define the custom property at :root, add a literal var(--x, fallback) fallback, or use a literal value.`,
+        );
+      }
+      // Resolving the var() is only half the job: the RESOLVED text still has
+      // to be something this engine can parse. `size: var(--trim)` with
+      // `--trim: ;` or `--trim: banana` resolves fine and then falls through
+      // `parseSize` to Letter — the exact silent-wrong-trim this step exists
+      // to kill. Same for margins: an unparsable token becomes 0pt, which
+      // widens the shrink-to-fit guard's content box and silently disables
+      // it. So: anything var()-derived that our own parser can't read is a
+      // hard error too. (Literal values are left on the existing lenient
+      // path — narrowing those is a separate, wider-blast-radius change.)
+      const unparsable = unparsableGeometry(prop, text);
+      if (unparsable) {
+        throw new Error(
+          `${rule.raw} { ${prop}: ${value} } — resolves to \`${text.trim()}\`, ${unparsable}. ` +
+            `Use a value this engine can read (a length like 0.75in/12pt/10mm, or a named page size for \`size\`).`,
+        );
+      }
+      rule.decls[prop] = text;
+    }
+  }
+}
+
+/** Why a var()-resolved geometry value is unreadable, or `undefined` if it is fine. */
+function unparsableGeometry(prop: string, text: string): string | undefined {
+  const t = text.trim();
+  if (prop === "size") {
+    if (!t) return "which is empty";
+    return parseSize(t) ? undefined : "which is not a page size";
+  }
+  if (prop === "margin" || prop.startsWith("margin-")) {
+    if (!t) return "which is empty";
+    const parts = t.split(/\s+/);
+    if (prop !== "margin" && parts.length !== 1) return "which is not a single length";
+    if (parts.length > 4) return "which is not a valid margin";
+    const bad = parts.filter((p) => toPt(p) === undefined);
+    if (bad.length) return `which this engine cannot read as a length (\`${bad[0]}\`)`;
+    return undefined;
+  }
+  if (prop === "bleed") {
+    if (!t) return "which is empty";
+    if (/^(auto|none)$/i.test(t)) return undefined;
+    return toPt(t) === undefined ? "which this engine cannot read as a length" : undefined;
+  }
+  return undefined;
 }
 
 function walk(css: string, model: GcpmModel) {
