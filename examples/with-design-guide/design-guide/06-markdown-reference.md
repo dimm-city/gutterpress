@@ -120,7 +120,7 @@ Specimen content here...
 @section .no-break
 
 <span class="callout-label">Note</span>
-This callout is wrapped in a `@section .no-break` block. Paged.js will push the entire block to the next page rather than split it mid-block.
+This callout is wrapped in a `@section .no-break` block. The engine will push the entire block to the next page rather than split it mid-block.
 
 @end-section
 

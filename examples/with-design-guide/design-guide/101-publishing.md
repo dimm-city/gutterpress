@@ -128,7 +128,7 @@ design-guide-site/
 ├── index.html       ← redirects to book.html (a default entry point for static hosts)
 ├── book.html        ← the rendered guide, CSS + fonts inlined, pre-paginated
 └── preview/
-    └── scripts/      ← pagedjs-interface.js and pagedjs-bridge.js (page nav, zoom)
+    └── scripts/      ← preview-interface.js and preview-bridge.js (page nav, zoom)
 ```
 
 There's no `css/` or `fonts/` folder in the output — stylesheets are read and

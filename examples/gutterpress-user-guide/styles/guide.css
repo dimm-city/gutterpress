@@ -77,6 +77,7 @@ h1 { string-set: chapter-title content(); }
 @page {
   size: 8.5in 11in;
   margin: 0.875in 0.875in 1in;
+  background: #ffffff; /* --color-paper */
 
   @top-center {
     content: string(chapter-title);
@@ -197,10 +198,6 @@ body {
   counter-reset: chapter;
 }
 
-.pagedjs_sheet {
-  background-color: var(--color-paper);
-}
-
 h1 {
   font-family: var(--font-display);
   font-size: var(--fs-h1);
@@ -215,7 +212,7 @@ h1 {
 }
 
 /* Only real chapters count: every chapter h1 carries an `{#ch-...}` id
-   (markdown-it-attrs); the cover and TOC h1s have none. Paged.js's counter
+   (markdown-it-attrs); the cover and TOC h1s have none. The engine's counter
    pass matches increments by selector, and `counter-increment: none` does
    NOT cancel an increment there — so the increment itself is scoped instead
    of overridden. This also makes the opener badges match the TOC's own

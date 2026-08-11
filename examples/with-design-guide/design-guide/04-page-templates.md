@@ -142,7 +142,7 @@ And placed in the margin via:
 }
 ```
 
-**To customize** — change the `content:` value in the margin box. You can use `string()`, `counter()`, or any combination. See the [Paged.js margin box documentation](https://pagedjs.org/documentation/7-generated-content-in-margin-boxes/) for the full reference.
+**To customize** — change the `content:` value in the margin box. You can use `string()`, `counter()`, or any combination. See the [CSS Generated Content for Paged Media margin box specification](https://www.w3.org/TR/css-gcpm-3/#margin-boxes) for the full reference.
 
 ---
 
@@ -179,7 +179,7 @@ Define new named pages in `styles/guide.css § 2 PAGE SETUP` following the exist
 
 ## Facing-Page Spread Layout
 
-Use `@spread` to group content into a logical two-page spread — the left and right pages are authored as a unit and Paged.js keeps them paired.
+Use `@spread` to group content into a logical two-page spread — the left and right pages are authored as a unit and the engine keeps them paired.
 
 ```markdown
 @spread #sp-intro .intro-spread

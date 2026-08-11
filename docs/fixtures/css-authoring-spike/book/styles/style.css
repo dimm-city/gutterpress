@@ -1,7 +1,8 @@
 /* style.css — the OBVIOUS, standard CSS a non-technical author would write
    first, working from the Gutterpress user guide + standard Paged Media CSS.
-   Loaded on BOTH engines. Anything that had to move to style-native.css or
-   style-paged.css is a recorded workaround — see the spike's findings doc. */
+   The spike's engine-specific override files (style-native.css, which was
+   always an empty stub, and style-paged.css) are gone with the second engine;
+   the recorded workarounds live on in the spike's findings doc only. */
 
 :root {
   --color-ink: #1a1a1a;

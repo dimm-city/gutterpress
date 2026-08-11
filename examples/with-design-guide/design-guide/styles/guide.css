@@ -100,13 +100,14 @@
    ───────────────────────────────────────────────────────────────────────────── */
 
 /* string-set captures h1 text into a named string for @page margin boxes below.
-   Paged.js reads this before pagination, so it's always the current chapter. */
+   The engine reads this before pagination, so it's always the current chapter. */
 h1 { string-set: chapter-title content(); }
 
 /* ── Default body pages ── */
 @page {
   size: 8.5in 11in;
   margin: 0.875in 0.875in 1in;
+  background: #ffffff; /* --color-paper */
 
   @top-center {
     content: string(chapter-title);
@@ -235,12 +236,6 @@ body {
   counter-reset: chapter;
 }
 
-/* Paged.js generates transparent .pagedjs_sheet elements — explicitly set the paper
-   colour here so the desktop canvas colour never bleeds onto the visible page surface. */
-.pagedjs_sheet {
-  background-color: var(--color-paper);
-}
-
 /* H1: chapter title — page-breaks before, uses chapter @page */
 h1 {
   font-family: var(--font-display);
@@ -361,7 +356,7 @@ pre {
      overflows the page box and Chromium silently shrinks the WHOLE book */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  /* both properties required — break-* is spec, page-break-* is Paged.js legacy */
+  /* both properties required — break-* is current spec, page-break-* is CSS2 legacy */
   break-inside: avoid;
   page-break-inside: avoid;
 }
