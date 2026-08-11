@@ -94,6 +94,13 @@ export async function loadStyleSources(doc: Document = document): Promise<string
   return collectCssText(doc);
 }
 
+/** Forced break values that mean "start a new page" in author CSS — the ones
+ * `injectBreakMapping` maps to `column` for the outer `.gp-strip`. `column`
+ * itself is excluded: it is already the multicol-native value and needs no
+ * CSS mapping (only `synthesizeColumnBreaks`'s JS fallback, and only for the
+ * outer strip — see that function's doc comment). */
+const FORCED_PAGE_LIKE = /^(page|left|right|recto|verso|always)$/;
+
 /**
  * Screen-scoped companion rules for `break-*: page|left|right`.
  * Authors write page breaks; inside a multicol strip that must mean `column`.
@@ -102,7 +109,7 @@ export function injectBreakMapping(model: GcpmModel, doc: Document = document): 
   const rules: string[] = [];
   for (const b of model.breaks) {
     if (b.prop === "break-inside") continue; // `avoid` works identically in multicol
-    if (!/^(page|left|right|recto|verso|always)$/.test(b.value.trim())) continue;
+    if (!FORCED_PAGE_LIKE.test(b.value.trim())) continue;
     rules.push(`.gp-strip ${b.selector} { ${b.prop}: column; }`);
   }
   const css = rules.join("\n");
@@ -113,6 +120,94 @@ export function injectBreakMapping(model: GcpmModel, doc: Document = document): 
     doc.head.appendChild(style);
   }
   return css;
+}
+
+/**
+ * Whether this browser implements forced `column` breaks at all
+ * (`break-before`/`break-after: column`). Firefox does not — a long-standing
+ * Gecko gap (bug 549114) — which `injectBreakMapping()`'s CSS-only mapping
+ * depends on. Feature-probed, not UA-sniffed.
+ */
+export function forcedColumnBreaksSupported(): boolean {
+  return (
+    typeof CSS !== "undefined" &&
+    typeof CSS.supports === "function" &&
+    CSS.supports("break-before", "column") &&
+    CSS.supports("break-after", "column")
+  );
+}
+
+/**
+ * JS fallback for `injectBreakMapping()` on a browser without
+ * `forcedColumnBreaksSupported()`. There an unsupported CSS VALUE makes the
+ * whole declaration invalid, so `.gp-strip h1 { break-before: column }`
+ * doesn't just fail to lay out as a break — it never wins the cascade at
+ * all, and computed style falls through to whatever OTHER declaration the
+ * author actually wrote (usually `break-before: page`, itself meaningless
+ * outside a page context). The mapped break silently never happens.
+ *
+ * Reads the same forced-break declarations straight from the extracted CSS
+ * model (not computed style, for the reason above) and, for each site,
+ * inserts a reserve spacer sized to the space REMAINING in the element's
+ * current column of its `.gp-strip` — `.gp-strip` is `column-fill: auto`
+ * with a fixed `--gp-content-h`, so every column shares the same top edge,
+ * and reserving exactly to the strip's bottom edge pushes the element to the
+ * top of the next column, matching what the CSS mapping achieves natively
+ * elsewhere.
+ *
+ * Scoped to the OUTER strip only (`FORCED_PAGE_LIKE` values — the ones
+ * `injectBreakMapping` maps to `column`), because that is what the
+ * cross-browser page COUNT depends on. A break already authored as `column`
+ * directly (`.md-column-break`, used for a nested in-page `.section`
+ * multicol) targets an auto-height BALANCED multicol context with no fixed
+ * column height to reserve against — out of scope here, a known remaining
+ * Firefox cosmetic limitation (docs/native-engine-acceptance-gate.md).
+ *
+ * Processed in document order, remeasuring between insertions: an insertion
+ * shifts every later break site, and a site that already lands at the top of
+ * its column (the strip's own leading break — see `clearLeadingForcedBreaks`
+ * — or the second half of a wrapper/inner-heading pair that both carry the
+ * same forced break) needs no spacer, which is what dedupes those pairs
+ * without extra bookkeeping.
+ */
+export function synthesizeColumnBreaks(model: GcpmModel): void {
+  if (forcedColumnBreaksSupported()) return;
+  const sites: Array<{ el: Element; prop: string }> = [];
+  for (const b of model.breaks) {
+    if (b.prop === "break-inside") continue;
+    if (!FORCED_PAGE_LIKE.test(b.value.trim())) continue;
+    let els: Element[];
+    try {
+      els = Array.from(document.querySelectorAll(b.selector));
+    } catch {
+      continue; // unsupported selector — ignore, never throw on author CSS
+    }
+    for (const el of els) if (el.closest(".gp-strip")) sites.push({ el, prop: b.prop });
+  }
+  sites.sort((a, b) =>
+    a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1,
+  );
+  for (const { el, prop } of sites) {
+    // `buildStrips()` already ran `clearLeadingForcedBreaks()`, which sets
+    // this exact inline style on a break-before element sitting on the
+    // strip's leading in-flow chain — a forced break there is spec-ignorable
+    // (CSS Fragmentation Module Level 3), and Chromium/WebKit already ignore
+    // it. Honour the same call here instead of re-deriving it from geometry,
+    // which a chapter opener with a non-zero margin-top would get wrong (see
+    // `clearLeadingForcedBreaks`'s own doc comment).
+    if (prop === "break-before" && (el as HTMLElement).style.breakBefore === "auto") continue;
+    const strip = el.closest<HTMLElement>(".gp-strip");
+    if (!strip) continue;
+    const offset = el.getBoundingClientRect().top - strip.getBoundingClientRect().top;
+    if (offset < 0.5) continue; // already at the top of its column
+    const reserve = Math.ceil(strip.clientHeight - offset);
+    if (reserve <= 0) continue;
+    const spacer = document.createElement("div");
+    spacer.className = "gp-column-break-spacer";
+    spacer.setAttribute("aria-hidden", "true");
+    spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
+    el.before(spacer);
+  }
 }
 
 /** Named page assigned directly ON `el` itself (not a descendant). */
@@ -597,11 +692,15 @@ export function compensateRectoBreaks(
 function unwrapStrips(strips: StripInfo[]): void {
   for (const strip of strips) {
     const stripEl = strip.el;
-    // `applySpreadMode` may have inserted a leading `.gp-wrap-spacer` —
-    // viewer chrome, not authored content. It has to come out same as the
-    // `.gp-run` decoration wrapper below, or it leaks into the flow root
-    // and the NEXT `buildStrips()` sweeps it up as if an author wrote it.
-    for (const spacer of Array.from(stripEl.querySelectorAll(".gp-wrap-spacer")))
+    // `applySpreadMode` may have inserted a leading `.gp-wrap-spacer`, and
+    // `synthesizeColumnBreaks()` may have inserted `.gp-column-break-spacer`s
+    // — viewer chrome, not authored content. Both have to come out same as
+    // the `.gp-run` decoration wrapper below, or they leak into the flow
+    // root and the NEXT `buildStrips()` sweeps them up as if an author wrote
+    // them.
+    for (const spacer of Array.from(
+      stripEl.querySelectorAll(".gp-wrap-spacer, .gp-column-break-spacer"),
+    ))
       spacer.remove();
     const runWrapper = stripEl.parentElement;
     const removalTarget =
@@ -896,6 +995,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
   const authoring: string[] = [];
   const strips = buildStrips(model, opts, authoring);
   await layoutReady;
+  synthesizeColumnBreaks(model);
   measure(strips);
   const blanks = compensateRectoBreaks(model, strips);
   if (blanks) measure(strips);
@@ -929,6 +1029,7 @@ export async function fragmentDocument(opts: LayoutOptions = {}): Promise<Gutter
       const rebuilt = buildStrips(model, opts, authoring);
       strips.length = 0;
       strips.push(...rebuilt);
+      synthesizeColumnBreaks(model);
       measure(strips);
       api.blankPages = compensateRectoBreaks(model, strips);
       if (opts.compensateHeaders !== false)

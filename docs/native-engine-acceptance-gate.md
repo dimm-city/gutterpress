@@ -620,3 +620,89 @@ transcription slip — the no-JS row read "`innerText.length` is unchanged
 (47,251)" against a JS-enabled figure of 48,062 in the row above it, i.e. it
 called two different numbers unchanged.
 
+### 08-10 (follow-up) — E. Firefox drops EVERY forced page break in the preview viewer — ROOT-CAUSED and FIXED for the page-count-affecting case
+
+CI's "Preview cross-browser smoke" job started failing on
+`tests/compat/fixtures/feature-probe`: Chromium renders 4 pages, Firefox 2 —
+outside the smoke test's 20% page-count tolerance (§ `preview-smoke.pw.ts`).
+Reproduced locally with Playwright driving both engines directly against the
+fixture's live preview server; zero console/page errors in either, so the
+divergence is silent, not a crash.
+
+**Root cause, confirmed with `CSS.supports`:** `CSS.supports("break-before",
+"column")` is `true` in Chromium and WebKit and **`false` in Firefox** — a
+long-standing Gecko gap (bug 549114), not a fragmentation-timing artifact.
+`injectBreakMapping()` (`fragment.ts`) maps every author forced page break
+(`h1{break-before:page}`, `.page{break-before:page}`, etc.) onto
+`.gp-strip <selector> { break-before: column }`, because inside the viewer's
+own `.gp-strip` — a fixed-height `column-fill:auto` multicol container that
+IS the on-screen page fragmenter — "page" means nothing and "column" is what
+actually turns the mapped break into a new sheet. In Firefox that mapped
+declaration is not merely ineffective, it is **invalid CSS from Firefox's own
+parser's point of view**: an unsupported VALUE drops the WHOLE declaration,
+so the higher-specificity `.gp-strip .page { break-before: column }` rule
+never wins the cascade at all, and computed style falls through to whatever
+OTHER declaration the author actually wrote (`.page { break-before: page }`
+— itself meaningless outside a real page context). Verified directly:
+`getComputedStyle` on the fixture's forced-break elements read `"page"` in
+Firefox and `"column"` in Chromium/WebKit for byte-identical injected CSS
+text at byte-identical cascade order. Net effect: in Firefox, **every**
+author page break inside a `.gp-strip` silently did nothing — not scoped to
+this fixture; any real book with a chapter-opener `break-before:page` rule
+was affected the same way, just usually within the 20% tolerance.
+
+**Fix (`fragment.ts`):** `forcedColumnBreaksSupported()` feature-probes the
+gap directly (no UA sniffing). When absent, `synthesizeColumnBreaks()` reads
+the same forced-break declarations straight from the extracted CSS model —
+not computed style, for the reason above — and for each site inserts a JS
+spacer sized to the space REMAINING in the element's current column (every
+column shares the strip's own top edge under `column-fill:auto`), pushing it
+to the top of the next column: the same effect the CSS mapping achieves
+natively in Chromium/WebKit. Processed in document order, remeasuring
+between insertions, and explicitly deferring to `clearLeadingForcedBreaks()`'s
+existing leading-chain neutralization (checked via the inline style it sets,
+not geometry — a chapter opener with a non-zero margin-top would make a pure
+geometric "am I at the top of my column" check lie, the same failure mode
+`clearLeadingForcedBreaks()`'s own doc comment describes for WebKit). Scoped
+deliberately to the `page/left/right/recto/verso/always` values
+`injectBreakMapping` maps to `column` — the ones the cross-browser page COUNT
+depends on. `.md-column-break` (nested in-page `.section` multicol, e.g. the
+fixture's Chapter Three) is a **known remaining Firefox limitation, left
+unfixed here**: it targets an auto-height BALANCED multicol context with no
+fixed column height to reserve against, so the reserve-spacer technique does
+not apply, and it does not affect page count (nested multicol height doesn't
+overflow the outer page unless content overflows the outer content box too —
+confirmed on the fixture: Chapter Three still renders as exactly 1 outer page
+in both engines after the fix, just with its two inner columns split at a
+different point in Firefox than Chromium).
+
+**Verified:** rebuilt `gutterpress-viewer.js`
+(`bun scripts/build-engine-bundles.mjs --force`) and re-measured all three
+`preview-smoke.pw.ts` targets in Chromium vs Firefox directly with a
+standalone probe script:
+
+| Fixture | Chromium pages | Firefox pages | Deviation | Zero-sized pages | Page errors |
+|---|---|---|---|---|---|
+| `gutterpress-user-guide` | 63 | 63 | 0.0% | 0 / 0 | 0 / 0 |
+| `with-design-guide` | 53 | 53 | 0.0% | 0 / 0 | 0 / 0 |
+| `feature-probe` | 4 | 4 | 0.0% | 0 / 0 | 0 / 0 |
+
+All three now byte-for-byte agree on page count between Chromium and
+Firefox — a real fix, not a loosened tolerance (`PAGE_COUNT_TOLERANCE` in
+`preview-smoke.pw.ts` is unchanged at 0.2). This fix's own code path is
+gated off entirely for WebKit — `forcedColumnBreaksSupported()` returns
+`true` there, same as Chromium — so it was not expected to move WebKit's
+numbers at all; confirmed directly rather than assumed by then getting
+WebKit driven in this same sandbox (extracted `libicu74`/`libxml2`/
+`libwoff1`/`libbacktrace0`/`libjxl0.11` .debs, symlinked `libjxl.so.0.11` to
+the `libjxl.so.0.8` soname the wrapper wants, `LD_PRELOAD`-ed all of them —
+same recipe as the doc's existing WebKit rows above, `libwoff2common.so.1.0.2`
+needed adding to the preload list this time since `LD_LIBRARY_PATH` alone
+doesn't survive the wrapper) and running the actual `preview-smoke.pw.ts`
+suite for real: **all 3 fixtures × Chromium/Firefox/WebKit — 3 passed**, zero
+loosened assertions. The full `bun test` suite in `packages/cli` (2300 pass /
+0 fail / 1 skip), `packages/desktop`'s `npm test` (2402 pass / 0 fail) and
+`npm run typecheck` (clean), and `bun scripts/native-parity-gate.ts` (empty
+allowlist, 0 divergences across all 6 fixtures) were all re-run green against
+the same rebuilt bundle.
+

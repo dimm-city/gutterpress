@@ -19,6 +19,7 @@
   __export(exports_fragment, {
     wrapGeometry: () => wrapGeometry,
     waitForLayoutReady: () => waitForLayoutReady,
+    synthesizeColumnBreaks: () => synthesizeColumnBreaks,
     stripMetrics: () => stripMetrics,
     strideOf: () => strideOf,
     spreadModeSupported: () => spreadModeSupported,
@@ -30,6 +31,7 @@
     injectViewerCss: () => injectViewerCss,
     injectBreakMapping: () => injectBreakMapping,
     fragmentDocument: () => fragmentDocument,
+    forcedColumnBreaksSupported: () => forcedColumnBreaksSupported,
     compensateRepeatedHeaders: () => compensateRepeatedHeaders,
     compensateRectoBreaks: () => compensateRectoBreaks,
     collectCssText: () => collectCssText,
@@ -832,12 +834,13 @@ body.view-spread .gp-sheet[data-side="verso"] {
     }));
     return collectCssText(doc);
   }
+  var FORCED_PAGE_LIKE = /^(page|left|right|recto|verso|always)$/;
   function injectBreakMapping(model, doc = document) {
     const rules = [];
     for (const b of model.breaks) {
       if (b.prop === "break-inside")
         continue;
-      if (!/^(page|left|right|recto|verso|always)$/.test(b.value.trim()))
+      if (!FORCED_PAGE_LIKE.test(b.value.trim()))
         continue;
       rules.push(`.gp-strip ${b.selector} { ${b.prop}: column; }`);
     }
@@ -850,6 +853,48 @@ body.view-spread .gp-sheet[data-side="verso"] {
       doc.head.appendChild(style);
     }
     return css;
+  }
+  function forcedColumnBreaksSupported() {
+    return typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("break-before", "column") && CSS.supports("break-after", "column");
+  }
+  function synthesizeColumnBreaks(model) {
+    if (forcedColumnBreaksSupported())
+      return;
+    const sites = [];
+    for (const b of model.breaks) {
+      if (b.prop === "break-inside")
+        continue;
+      if (!FORCED_PAGE_LIKE.test(b.value.trim()))
+        continue;
+      let els;
+      try {
+        els = Array.from(document.querySelectorAll(b.selector));
+      } catch {
+        continue;
+      }
+      for (const el of els)
+        if (el.closest(".gp-strip"))
+          sites.push({ el, prop: b.prop });
+    }
+    sites.sort((a, b) => a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+    for (const { el, prop } of sites) {
+      if (prop === "break-before" && el.style.breakBefore === "auto")
+        continue;
+      const strip = el.closest(".gp-strip");
+      if (!strip)
+        continue;
+      const offset = el.getBoundingClientRect().top - strip.getBoundingClientRect().top;
+      if (offset < 0.5)
+        continue;
+      const reserve = Math.ceil(strip.clientHeight - offset);
+      if (reserve <= 0)
+        continue;
+      const spacer = document.createElement("div");
+      spacer.className = "gp-column-break-spacer";
+      spacer.setAttribute("aria-hidden", "true");
+      spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
+      el.before(spacer);
+    }
   }
   function directPageName(el, model) {
     for (const a of model.pageAssignments) {
@@ -1124,7 +1169,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
   function unwrapStrips(strips) {
     for (const strip of strips) {
       const stripEl = strip.el;
-      for (const spacer of Array.from(stripEl.querySelectorAll(".gp-wrap-spacer")))
+      for (const spacer of Array.from(stripEl.querySelectorAll(".gp-wrap-spacer, .gp-column-break-spacer")))
         spacer.remove();
       const runWrapper = stripEl.parentElement;
       const removalTarget = runWrapper && runWrapper.classList.contains("gp-run") ? runWrapper : stripEl;
@@ -1260,6 +1305,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
     await layoutReady;
+    synthesizeColumnBreaks(model);
     measure(strips);
     const blanks = compensateRectoBreaks(model, strips);
     if (blanks)
@@ -1282,6 +1328,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
         strips.push(...rebuilt);
+        synthesizeColumnBreaks(model);
         measure(strips);
         api.blankPages = compensateRectoBreaks(model, strips);
         if (opts.compensateHeaders !== false)

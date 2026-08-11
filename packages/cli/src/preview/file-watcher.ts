@@ -472,6 +472,50 @@ export async function externalWatchTargets(
 }
 
 /**
+ * `chokidar.FSWatcher#add()` returns the watcher instance synchronously —
+ * the real work (stat the path, read the directory, THEN call `fs.watch()`)
+ * runs as a fire-and-forget internal promise that `add()` never returns to
+ * the caller. Await-ing only the synchronous return therefore does not mean
+ * the OS-level watch is live yet: `runSyncExternalWatches` could resolve,
+ * `state.isRebuilding` could flip back to `false`, and a caller could write
+ * the newly-declared file before chokidar had actually started listening —
+ * the exact race behind the `file-watcher.test.ts` "recovers when a manifest
+ * declares a shared stylesheet before that file exists" flake (~1-in-3, 20s
+ * timeout: the manifest rebuild registers the missing file's watch
+ * asynchronously, and the test's write can land before the watch does).
+ *
+ * Chokidar 5 doesn't expose that internal promise publicly. This captures it
+ * by wrapping the internal handler method `add()` itself calls, for the
+ * duration of ONE `add()` call only, then awaits every promise it produced —
+ * `add()`'s own bookkeeping (ready-count, ignore state, …) runs completely
+ * untouched; this only observes the promise it already creates. If a future
+ * chokidar version renames or removes that internal method, this silently
+ * falls back to plain `add()` — still correct, just racy again on that
+ * fallback path (the behavior this function replaces).
+ */
+async function addAndAwaitWatch(watcher: FSWatcher, root: string): Promise<void> {
+  const handler = (watcher as unknown as { _nodeFsHandler?: Record<string, unknown> })
+    ._nodeFsHandler;
+  const original = handler?._addToNodeFs;
+  if (!handler || typeof original !== "function") {
+    watcher.add(root);
+    return;
+  }
+  const pending: Array<Promise<unknown>> = [];
+  handler._addToNodeFs = (...args: unknown[]) => {
+    const p = (original as (...a: unknown[]) => Promise<unknown>).apply(handler, args);
+    pending.push(p);
+    return p;
+  };
+  try {
+    watcher.add(root); // synchronously invokes the wrapped method above
+    await Promise.all(pending);
+  } finally {
+    handler._addToNodeFs = original;
+  }
+}
+
+/**
  * Create and configure a file watcher for the project's input directory plus
  * the book's declared external dependencies (see {@link externalWatchTargets}).
  *
@@ -635,9 +679,8 @@ export function createFileWatcher(state: ServerState): FSWatcher {
         }
       }
     }
-    for (const root of nextRoots) {
-      if (!watchedExternalRoots.has(root)) externalWatcher.add(root);
-    }
+    const newRoots = [...nextRoots].filter((root) => !watchedExternalRoots.has(root));
+    await Promise.all(newRoots.map((root) => addAndAwaitWatch(externalWatcher, root)));
     for (const target of nextTargets) {
       if (!previousTargets.has(target)) info(`Watching shared dependency: ${target}`);
     }
