@@ -492,13 +492,19 @@ export async function externalWatchTargets(
  * chokidar version renames or removes that internal method, this silently
  * falls back to plain `add()` — still correct, just racy again on that
  * fallback path (the behavior this function replaces).
+ *
+ * ALL roots go through ONE call: the wrap/unwrap pair is not reentrant, and
+ * two overlapping calls would nest their wrappers and restore them out of
+ * order, leaving one installed on the shared handler for the life of the
+ * process (its `pending` array then retains every later add's promise).
+ * `add()` takes an array, so one call covers every new root anyway.
  */
-async function addAndAwaitWatch(watcher: FSWatcher, root: string): Promise<void> {
+async function addAndAwaitWatch(watcher: FSWatcher, roots: string[]): Promise<void> {
   const handler = (watcher as unknown as { _nodeFsHandler?: Record<string, unknown> })
     ._nodeFsHandler;
   const original = handler?._addToNodeFs;
   if (!handler || typeof original !== "function") {
-    watcher.add(root);
+    watcher.add(roots);
     return;
   }
   const pending: Array<Promise<unknown>> = [];
@@ -508,7 +514,7 @@ async function addAndAwaitWatch(watcher: FSWatcher, root: string): Promise<void>
     return p;
   };
   try {
-    watcher.add(root); // synchronously invokes the wrapped method above
+    watcher.add(roots); // synchronously invokes the wrapped method above
     await Promise.all(pending);
   } finally {
     handler._addToNodeFs = original;
@@ -680,7 +686,7 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       }
     }
     const newRoots = [...nextRoots].filter((root) => !watchedExternalRoots.has(root));
-    await Promise.all(newRoots.map((root) => addAndAwaitWatch(externalWatcher, root)));
+    if (newRoots.length) await addAndAwaitWatch(externalWatcher, newRoots);
     for (const target of nextTargets) {
       if (!previousTargets.has(target)) info(`Watching shared dependency: ${target}`);
     }
