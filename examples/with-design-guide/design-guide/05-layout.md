@@ -75,6 +75,29 @@ Float an image alongside body text using `.img-float-right` or `.img-float-left`
 Body paragraph flows alongside the image...
 ```
 
+`.img-float-right`/`.img-float-left` are **this guide's own** project-layer
+classes (44% width, defined in `guide.css`). Core Gutterpress also ships an
+always-available `gp-*` vocabulary that needs no project CSS at all — a
+position word plus optional size and spacing words that compose:
+
+<div class="example">
+<div style="overflow: hidden; padding: 0.2em 0;">
+  <div style="float: right; width: 25%; margin: 0 0 1em 1em; background: var(--color-tint); border: var(--border-thin); height: 60pt; display: flex; align-items: center; justify-content: center;">
+    <span style="font-family: var(--font-display); font-size: var(--fs-small); color: var(--color-ink-faint);">.gp-right .gp-small</span>
+  </div>
+  <p>A quarter-width right float via <code>{.gp-right .gp-small}</code> — no stylesheet required. Sizes (<code>.gp-small/.gp-medium/.gp-large</code>) and wrap spacing (<code>.gp-tight/.gp-loose</code>) compose with either float, and <code>.gp-center</code>/<code>.gp-full</code>/<code>.gp-bleed</code> cover the no-wrap layouts.</p>
+  <p style="clear: both;">Inside an <code>@page</code> block, <code>{.gp-pin .gp-bottom .gp-right}</code> pins an image to the page corner instead of flowing. See the User Guide's Chapter 3 for the full vocabulary.</p>
+</div>
+</div>
+
+```markdown
+![Alt text](path/to/image.png){.gp-right .gp-small}
+
+Body paragraph flows alongside the image...
+
+![Watermark](path/to/mark.png){.gp-pin .gp-bottom .gp-right .gp-small}
+```
+
 ---
 
 ## Figures with Captions
@@ -132,6 +155,9 @@ Content that must not split across a page break.
 <tr><td>.three-column</td><td>@section .three-column</td><td>Three narrow columns for dense lists</td></tr>
 <tr><td>.img-float-right</td><td>![alt](src){.img-float-right}</td><td>Float image right, 44% width, text wraps</td></tr>
 <tr><td>.img-float-left</td><td>![alt](src){.img-float-left}</td><td>Float image left, 44% width, text wraps</td></tr>
+<tr><td>.gp-left / .gp-right / .gp-center / .gp-full / .gp-bleed</td><td>![alt](src){.gp-right}</td><td>Core image positions (no project CSS needed)</td></tr>
+<tr><td>.gp-small / .gp-medium / .gp-large</td><td>![alt](src){.gp-right .gp-small}</td><td>Core image sizes — 25/50/75% of the column</td></tr>
+<tr><td>.gp-pin (+ .gp-top/.gp-bottom/.gp-left/.gp-right)</td><td>![alt](src){.gp-pin .gp-bottom}</td><td>Pin an image to its @page container instead of flowing</td></tr>
 <tr><td>.no-break</td><td>@section .no-break</td><td>Prevent block from splitting across pages</td></tr>
 <tr><td>.break-before</td><td>## Heading {.break-before}</td><td>Force new page before this element</td></tr>
 <tr><td>.keep-next</td><td>@section .keep-next</td><td>Keep block on same page as next element</td></tr>

@@ -1,0 +1,18 @@
+title: "Placing Pictures"
+authors:
+  - "Gutterpress Fixture"
+
+preset: book
+
+styles:
+  - styles/style.css
+
+source:
+  files:
+    - 01-flow.md
+    - 02-pin.md
+
+page:
+  width: 432   # 6in
+  height: 648  # 9in
+  tolerance: 0.5

@@ -391,6 +391,88 @@ describe("image kind", () => {
     ]);
   });
 
+  // Token-preserving facet edits (image-classes): the old parse+rebuild
+  // write path recognized exactly five classes and silently DROPPED every
+  // other token when the user edited width or position. These pin the
+  // round-trip contract.
+  test("Set width… preserves gp-*/custom classes and ids verbatim", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] =
+      '![Art](x.png){width="300px" .gp-right .gp-small .my-note #fig1}\n';
+    h.promptResult = "50%";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-width")!);
+    expect(h.commitEngine.calls).toEqual([
+      {
+        chapter: "ch1.md",
+        range: [0, 1],
+        expected: '![Art](x.png){width="300px" .gp-right .gp-small .my-note #fig1}\n',
+        replacement: '![Art](x.png){width="50%" .gp-right .gp-small .my-note #fig1}\n',
+        expectedGeneration: 0,
+      },
+    ]);
+  });
+
+  test("Set position… accepts a short name and rewrites in place as the canonical gp-* class", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.float-right .gp-small}\n";
+    h.promptResult = "left";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-position")!);
+    const call = h.commitEngine.calls[0] as { replacement: string };
+    expect(call.replacement).toBe("![Art](x.png){.gp-left .gp-small}\n");
+  });
+
+  test("Set position… with blank input clears only the position facet", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-pin .gp-small}\n";
+    h.promptResult = "";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-position")!);
+    const call = h.commitEngine.calls[0] as { replacement: string };
+    expect(call.replacement).toBe("![Art](x.png){.gp-small}\n");
+  });
+
+  test("Set position… rejects unknown input with a toast and commits nothing", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";
+    h.promptResult = "diagonal";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-position")!);
+    expect(h.toastErrorCalls.length).toBe(1);
+    expect(h.commitEngine.calls).toEqual([]);
+  });
+
+  test("Set size… appends a size class without touching the rest", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";
+    h.promptResult = "small";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-size")!);
+    const call = h.commitEngine.calls[0] as { replacement: string };
+    expect(call.replacement).toBe("![Art](x.png){.gp-right .gp-small}\n");
+  });
+
   test("a raw HTML <img> block only offers 'Edit block in editor'", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = '<img src="cat.png" alt="cat">\n';

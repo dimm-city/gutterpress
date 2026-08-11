@@ -93,6 +93,13 @@ const DEFAULT_FIXTURES = [
   // one page late in print (headingPageMap divergence on pages 2-3) — see
   // agent.ts's `ensureAnchor`.
   join(REPO, "docs", "fixtures", "css-authoring-spike", "book"),
+  // The gp-* image-positioning fixture (committed): floats/sizes/spacing in
+  // flow plus @page-scoped .gp-pin images. The gate holds the vocabulary to
+  // identical page maps in both renderers; the pins are out-of-flow, so any
+  // divergence here means the image CSS itself perturbed fragmentation.
+  // (In-page pin GEOMETRY is asserted by paged-css-image-pin.test.ts — the
+  // gate only sees page indices.)
+  join(REPO, "docs", "fixtures", "gp-image-positioning", "book"),
 ];
 
 type DivergenceKind = "pageCount" | "pageMap" | "targetCounter" | "headingPageMap";

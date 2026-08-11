@@ -88,11 +88,22 @@ smaller, more pages, different pagination) appears far from the cause.
 - **Fix A (preferred): don't position — flow.** Seat art in normal flow and
   let floats/margins do the design. In-flow art also rebalances surrounding
   multicol content, often improving the page.
-- **Fix B (when you truly need a pin): give it a local containing block.**
-  `position: relative` on the element's own wrapper (scope with `:has()` if
-  the wrapper has no class). Remember: a semantic ".page" div in the source is
-  NOT one printed page natively — it can span several sheets, so `bottom: 0`
-  pins to the *element's* end, not a sheet edge.
+- **Fix A½ (for images): core now ships a supported pin idiom.** A markdown
+  image with `{.gp-pin}` (+ `.gp-top/.gp-bottom/.gp-left/.gp-right` edge
+  modifiers, `.gp-small/.gp-medium/.gp-large` sizes) is abspos done the safe
+  way: PAGED_CSS supplies `inset: 0` + explicit self-alignment, the
+  containing block is the `.page`/`.spread` the image sits in, and a
+  `pin_outside_page` parse-time warning fires when there is no such
+  container (the preview would otherwise mask exactly that mistake — its
+  strip wrapper is positioned and one page tall). Same caveat as Fix B: the
+  pin anchors to the CONTAINER, so keep pinned layouts to single-page
+  `@page` blocks.
+- **Fix B (when you truly need a pin on something else): give it a local
+  containing block.** `position: relative` on the element's own wrapper
+  (scope with `:has()` if the wrapper has no class). Remember: a semantic
+  ".page" div in the source is NOT one printed page natively — it can span
+  several sheets, so `bottom: 0` pins to the *element's* end, not a sheet
+  edge.
 - **An abspos replaced element with `width: auto` resolves to its intrinsic
   pixel width** even with both `left` and `right` set. Divs stretch; images
   don't. Set width explicitly (see §2 — this also triggers shrink-to-fit).

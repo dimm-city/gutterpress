@@ -102,34 +102,101 @@ Use `markdown-it-attrs` (bundled — no install step needed) for precise sizing:
 
 ### Common image classes {#common-image-classes}
 
-Core Gutterpress ships five ready-to-use image/block utility classes — they're plain CSS rules in `PAGED_CSS`, always present, no plugin or theme required. `markdown-it-attrs` (also bundled) is what lets you attach `{.center}` and friends to an image:
+Core Gutterpress ships a small, composable `gp-*` vocabulary for placing
+images — plain CSS rules in `PAGED_CSS`, always present, no plugin or theme
+required. `markdown-it-attrs` (also bundled) is what lets you attach
+`{.gp-right}` and friends to an image. Pick one **position** word, and
+optionally add a **size** and a **spacing** word — the classes compose:
 
 ```markdown
-![Centered](assets/photo.jpg){.center}
+![Float right, quarter width](assets/small.jpg){.gp-right .gp-small}
 
-![Float left](assets/small.jpg){.float-left}
+![Centered, half width](assets/photo.jpg){.gp-center .gp-medium}
 
-![Float right](assets/portrait.jpg){.float-right}
+![Float left, roomy text wrap](assets/portrait.jpg){.gp-left .gp-loose}
 
-![Full width](assets/wide.jpg){.full-width}
+![Full width](assets/wide.jpg){.gp-full}
 ```
+
+**Positions** (text wraps around the floats; the image's vertical spot on
+the page is simply where it appears in your markdown):
 
 | Class | What it does |
 |-------|--------------|
-| `.center` | Centers a block-level image (`display: block; margin: 0 auto`) |
-| `.float-left` | Floats left with clearance margins, capped at 50% width |
-| `.float-right` | Floats right with clearance margins, capped at 50% width |
-| `.full-width` | Fills the page's content width (`width: 100%`) |
+| `.gp-left` | Floats left with clearance margins, capped at 50% width |
+| `.gp-right` | Floats right with clearance margins, capped at 50% width |
+| `.gp-center` | Centers a block-level image (`display: block; margin: 0 auto`) |
+| `.gp-full` | Fills the page's content width (`width: 100%`) |
+| `.gp-bleed` | Own page, edge-to-edge — see [Full-bleed artwork](#full-bleed-artwork) |
+| `.gp-pin` | Pins to a spot on the page instead of flowing — see [Pinned images](#pinned-images) |
+
+**Sizes** (work with any position, including `.gp-pin`; an explicit size
+overrides the floats' 50% cap):
+
+| Class | Width |
+|-------|-------|
+| `.gp-small` | 25% of the column |
+| `.gp-medium` | 50% |
+| `.gp-large` | 75% |
+
+**Spacing** (how much room a float leaves for the text wrapping around it —
+no class means the normal 1em):
+
+| Class | Clearance |
+|-------|-----------|
+| `.gp-tight` | 0.5em |
+| `.gp-loose` | 2em |
+
+Under the hood the presets set the `--gp-gap` custom property, so a
+stylesheet can also tune the clearance directly (`img { --gp-gap: 0.75em }`).
+
+**Legacy names.** The original five classes — `.center`, `.float-left`,
+`.float-right`, `.full-width`, `.full-bleed` — are permanent aliases of
+`.gp-center`/`.gp-left`/`.gp-right`/`.gp-full`/`.gp-bleed`. Books that use
+them keep working, forever; new writing should prefer the `gp-*` names.
+
+### Pinned images {#pinned-images}
+
+`.gp-pin` takes an image out of the text flow entirely and pins it to a spot
+on the page — centered by default, or against an edge with `.gp-top`,
+`.gp-bottom`, `.gp-left`, and `.gp-right` (the same position words the
+floats use):
+
+```markdown
+@page
+
+# A Title Page
+
+![Watermark, page center](assets/sigil.png){.gp-pin .gp-medium}
+
+![Colophon mark, bottom right](assets/mark.png){.gp-pin .gp-bottom .gp-right .gp-small}
+```
+
+One horizontal word + one vertical word gives nine positions; sizes compose
+the same way they do in flow.
+
+Two rules keep pinning predictable:
+
+- **A pinned image must live inside an `@page` (or `@spread`) block.** The
+  pin is anchored to that container. Outside one there is nothing on the
+  page to anchor to — the image would resolve against the whole document
+  and can print on a completely different sheet, so the build and preview
+  warn (`pin_outside_page`) when you do it.
+- **The pin anchors to the `@page` container, not the paper.** For the
+  single-page layouts pinning is meant for — title pages, chapter openers,
+  watermark pages — those are the same thing. If one `@page` block runs
+  long and fragments across several sheets, `.gp-bottom` means the bottom
+  of that whole block, not of each sheet.
 
 ### Full-bleed artwork {#full-bleed-artwork}
 
-`.full-bleed` forces the image onto its own page and cancels that page's left/right margins so the image spans the page edge-to-edge horizontally:
+`.gp-bleed` (alias: `.full-bleed`) forces the image onto its own page and cancels that page's left/right margins so the image spans the page edge-to-edge horizontally:
 
 ```markdown
-![Full page art](assets/artwork.jpg){.full-bleed}
+![Full page art](assets/artwork.jpg){.gp-bleed}
 ```
 
-`.full-bleed` produces the edge-to-edge result this way:
+`.gp-bleed` produces the edge-to-edge result this way:
 - **Forces a page break before the image** (`break-before: page`).
 - **It assigns the image's page to a core-owned named page** (`@page gp-full-bleed`) with zero left/right margins, so the page's own content box already is the sheet — no negative margin needed.
 

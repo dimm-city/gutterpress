@@ -31,7 +31,19 @@ import {
   spliceToken,
   type LinkResolution,
 } from "$lib/editor/context-menu-actions";
-import { buildImageAttrsString } from "$lib/editor/toolbar-actions";
+import {
+  IMAGE_POSITION_OPTIONS,
+  IMAGE_SIZE_OPTIONS,
+  getPositionClass,
+  getSizeClass,
+  getWidth,
+  normalizeClassInput,
+  serializeImageAttrs,
+  setPositionClass,
+  setSizeClass,
+  setWidth,
+  tokenizeImageAttrs,
+} from "$lib/editor/image-classes";
 import {
   locateSelectionInSource,
   touchesStructuralSyntax,
@@ -424,14 +436,17 @@ export class ContextMenuController {
         disabledReason,
         run: async () => {
           if (!match) return;
-          const current = parseWidth(match.attrsRaw);
+          // Token-preserving facet edit (image-classes): only the width
+          // token changes; every other attr — position/size classes, custom
+          // classes, #ids, key=val — survives verbatim, in order.
+          const tokens = tokenizeImageAttrs(match.attrsRaw);
           const next = await this.deps.promptText({
             title: "Set width",
             label: "Width (e.g. 300px, 50%) — leave blank to clear",
-            initialValue: current,
+            initialValue: getWidth(tokens),
           });
           if (next == null) return;
-          const attrs = buildImageAttrsString(next || undefined, parsePosition(match.attrsRaw));
+          const attrs = serializeImageAttrs(setWidth(tokens, next || null));
           const token = `![${match.alt}](${match.src})${attrs}`;
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
@@ -443,15 +458,61 @@ export class ContextMenuController {
         disabledReason,
         run: async () => {
           if (!match) return;
-          const current = parsePosition(match.attrsRaw) ?? "";
+          const tokens = tokenizeImageAttrs(match.attrsRaw);
+          const written = getPositionClass(tokens);
+          const current = written ? normalizeClassInput(IMAGE_POSITION_OPTIONS, written) : undefined;
+          const short = IMAGE_POSITION_OPTIONS.find((o) => o.class === current)?.short ?? "";
           const next = await this.deps.promptText({
             title: "Set position",
-            label: "left, right, center, or leave blank",
-            initialValue: current,
+            label: "center, left, right, full, bleed, pin — or leave blank",
+            initialValue: short,
           });
           if (next == null) return;
-          const attrs = buildImageAttrsString(parseWidth(match.attrsRaw) || undefined, next || undefined);
-          const token = `![${match.alt}](${match.src})${attrs}`;
+          let updated: string[];
+          if (!next.trim()) {
+            updated = setPositionClass(tokens, null);
+          } else {
+            const cls = normalizeClassInput(IMAGE_POSITION_OPTIONS, next);
+            if (!cls) {
+              this.deps.toastError(
+                "Positions are center, left, right, full, bleed, or pin.",
+              );
+              return;
+            }
+            updated = setPositionClass(tokens, cls);
+          }
+          const token = `![${match.alt}](${match.src})${serializeImageAttrs(updated)}`;
+          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
+        },
+      },
+      {
+        id: "image-size",
+        label: "Set size…",
+        enabled: !!match,
+        disabledReason,
+        run: async () => {
+          if (!match) return;
+          const tokens = tokenizeImageAttrs(match.attrsRaw);
+          const current = getSizeClass(tokens);
+          const short = IMAGE_SIZE_OPTIONS.find((o) => o.class === current)?.short ?? "";
+          const next = await this.deps.promptText({
+            title: "Set size",
+            label: "small, medium, large — or leave blank",
+            initialValue: short,
+          });
+          if (next == null) return;
+          let updated: string[];
+          if (!next.trim()) {
+            updated = setSizeClass(tokens, null);
+          } else {
+            const cls = normalizeClassInput(IMAGE_SIZE_OPTIONS, next);
+            if (!cls) {
+              this.deps.toastError("Sizes are small, medium, or large.");
+              return;
+            }
+            updated = setSizeClass(tokens, cls);
+          }
+          const token = `![${match.alt}](${match.src})${serializeImageAttrs(updated)}`;
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
       },
@@ -764,10 +825,3 @@ export class ContextMenuController {
   }
 }
 
-function parseWidth(attrsRaw: string): string {
-  return attrsRaw.match(/width="([^"]*)"/)?.[1] ?? "";
-}
-
-function parsePosition(attrsRaw: string): string | undefined {
-  return attrsRaw.match(/\.(float-left|float-right|center|full-width|full-bleed)\b/)?.[1];
-}

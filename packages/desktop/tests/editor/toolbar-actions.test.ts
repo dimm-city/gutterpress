@@ -307,6 +307,24 @@ test("applyImage: no attrs when neither width nor position given", () => {
   expect(getDoc(v)).not.toContain("{");
 });
 
+test("applyImage: canonical gp-* position classes insert as-is", () => {
+  const v = makeMockView("text");
+  applyImage(v as unknown as EditorView, "assets/art.jpg", "Art", undefined, "gp-right");
+  expect(getDoc(v)).toContain("![Art](assets/art.jpg){.gp-right}");
+});
+
+test("applyImage: size composes with width and position, in stable order", () => {
+  const v = makeMockView("text");
+  applyImage(v as unknown as EditorView, "assets/art.jpg", "Art", "300px", "gp-right", "gp-small");
+  expect(getDoc(v)).toContain('![Art](assets/art.jpg){width="300px" .gp-right .gp-small}');
+});
+
+test("applyImage: size alone builds a one-class suffix", () => {
+  const v = makeMockView("text");
+  applyImage(v as unknown as EditorView, "assets/art.jpg", "Art", undefined, undefined, "gp-medium");
+  expect(getDoc(v)).toContain("![Art](assets/art.jpg){.gp-medium}");
+});
+
 // ── L6: empty-selection toggle must not pile up marker debris ───────────────
 // Repeated Ctrl+B (or Ctrl+I / Ctrl+Shift+X / Ctrl+`) on an empty selection
 // used to insert a brand-new marker pair every time instead of noticing the

@@ -1201,7 +1201,10 @@ describe("PAGED_CSS export", () => {
     const md = createMarkdownRenderer();
     const html = md.render("![b](b.png){.float-left}");
     expect(html).toContain('<img src="b.png" alt="b" class="float-left">');
-    expect(PAGED_CSS).toContain(".float-left { float: left; margin: 0 1em 1em 0; max-width: 50%; }");
+    const rule = PAGED_CSS.match(/\.float-left,\s*\.gp-left\s*\{[^}]*\}/);
+    expect(rule).not.toBeNull();
+    expect(rule![0]).toMatch(/float:\s*left/);
+    expect(rule![0]).toMatch(/max-width:\s*50%/);
   });
 
   // #2: .page/.spread must be the containing block for abspos descendants so
@@ -1220,16 +1223,19 @@ describe("PAGED_CSS export", () => {
 // attach `{.center}` etc. to any element; PAGED_CSS must supply the matching
 // print-safe rules so the classes actually do something.
 describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
+  // The five legacy names are grouped with their gp-* successors (permanent
+  // aliases sharing one rule body) — the regexes match the grouped selector,
+  // which doubles as the alias-permanence guard.
   test("defines .center as a block-centering rule", () => {
-    const rule = PAGED_CSS.match(/\.center\s*\{[^}]*\}/);
+    const rule = PAGED_CSS.match(/\.center,\s*\.gp-center\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     expect(rule![0]).toMatch(/margin-left:\s*auto/);
     expect(rule![0]).toMatch(/margin-right:\s*auto/);
   });
 
   test("defines .float-left / .float-right as real floats with margins", () => {
-    const left = PAGED_CSS.match(/\.float-left\s*\{[^}]*\}/);
-    const right = PAGED_CSS.match(/\.float-right\s*\{[^}]*\}/);
+    const left = PAGED_CSS.match(/\.float-left,\s*\.gp-left\s*\{[^}]*\}/);
+    const right = PAGED_CSS.match(/\.float-right,\s*\.gp-right\s*\{[^}]*\}/);
     expect(left).not.toBeNull();
     expect(right).not.toBeNull();
     expect(left![0]).toMatch(/float:\s*left/);
@@ -1239,13 +1245,13 @@ describe("PAGED_CSS author-facing image/block utilities (M17)", () => {
   });
 
   test("defines .full-width as 100% of the content width", () => {
-    const rule = PAGED_CSS.match(/\.full-width\s*\{[^}]*\}/);
+    const rule = PAGED_CSS.match(/\.full-width,\s*\.gp-full\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     expect(rule![0]).toMatch(/width:\s*100%/);
   });
 
   test("defines .full-bleed as break-before + the zero-side-margin named page (no margin out-dent)", () => {
-    const rule = PAGED_CSS.match(/\.full-bleed\s*\{[^}]*\}/);
+    const rule = PAGED_CSS.match(/\.full-bleed,\s*\.gp-bleed\s*\{[^}]*\}/);
     expect(rule).not.toBeNull();
     const body = rule![0];
     expect(body).toMatch(/break-before:\s*page/);
@@ -1300,5 +1306,169 @@ describe("author-facing image/block utilities — rendered output (M17)", () => 
     for (const selector of [".center", ".float-left", ".float-right", ".full-width", ".full-bleed"]) {
       expect(html).toContain(selector);
     }
+  });
+});
+
+// The composable gp-* vocabulary (image positioning v1). Canonical names are
+// gp-*; the M17 five are permanent aliases sharing rule bodies (asserted by
+// the grouped-selector regexes in the M17 block above). Rule ORDER inside
+// PAGED_CSS is the contract — flow positions → sizes → spacing → .gp-pin →
+// pin-edge modifiers, all at flat 0-1-0 specificity so combinations resolve
+// by source order. The index assertions below pin that order; they are
+// load-bearing, not cosmetic (e.g. a size's max-width:100% only lifts the
+// floats' 50% cap because it comes later in the sheet).
+describe("PAGED_CSS gp-* vocabulary", () => {
+  test("sizes declare width 25/50/75% with the float-cap lift", () => {
+    const small = PAGED_CSS.match(/\.gp-small\s*\{[^}]*\}/);
+    const medium = PAGED_CSS.match(/\.gp-medium\s*\{[^}]*\}/);
+    const large = PAGED_CSS.match(/\.gp-large\s*\{[^}]*\}/);
+    expect(small![0]).toMatch(/width:\s*25%/);
+    expect(medium![0]).toMatch(/width:\s*50%/);
+    expect(large![0]).toMatch(/width:\s*75%/);
+    for (const rule of [small, medium, large]) {
+      expect(rule![0]).toMatch(/max-width:\s*100%/);
+    }
+    // After the float rules, so max-width:100% beats the 50% cap on order.
+    expect(PAGED_CSS.indexOf(".gp-small")).toBeGreaterThan(PAGED_CSS.indexOf(".float-right,"));
+  });
+
+  test("spacing presets set --gp-gap and the float rules consume it", () => {
+    expect(PAGED_CSS).toMatch(/\.gp-tight\s*\{\s*--gp-gap:\s*0\.5em;\s*\}/);
+    expect(PAGED_CSS).toMatch(/\.gp-loose\s*\{\s*--gp-gap:\s*2em;\s*\}/);
+    const left = PAGED_CSS.match(/\.float-left,\s*\.gp-left\s*\{[^}]*\}/)![0];
+    const right = PAGED_CSS.match(/\.float-right,\s*\.gp-right\s*\{[^}]*\}/)![0];
+    expect(left).toContain("var(--gp-gap, 1em)");
+    expect(right).toContain("var(--gp-gap, 1em)");
+  });
+
+  test(".gp-pin is abspos with inset:0 and EXPLICIT center defaults", () => {
+    const pin = PAGED_CSS.match(/\.gp-pin\s*\{[^}]*\}/)![0];
+    expect(pin).toMatch(/position:\s*absolute/);
+    // inset:0 is load-bearing: abspos self-alignment aligns within the
+    // inset-modified containing block; with auto insets that collapses to
+    // the static-position rectangle and alignment does nothing.
+    expect(pin).toMatch(/inset:\s*0/);
+    // `normal` behaves as `start` for abspos replaced elements — the
+    // centered-by-default promise requires explicit centers.
+    expect(pin).toMatch(/align-self:\s*center/);
+    expect(pin).toMatch(/justify-self:\s*center/);
+    expect(pin).toMatch(/margin:\s*0/);
+    // After the float rules, so margin:0/max-width:100% beat float declarations.
+    expect(PAGED_CSS.indexOf(".gp-pin")).toBeGreaterThan(PAGED_CSS.indexOf(".float-right,"));
+  });
+
+  test("pin edge modifiers come after .gp-pin so they beat its center defaults", () => {
+    expect(PAGED_CSS).toMatch(/\.gp-top\s*\{\s*align-self:\s*start;\s*\}/);
+    expect(PAGED_CSS).toMatch(/\.gp-bottom\s*\{\s*align-self:\s*end;\s*\}/);
+    expect(PAGED_CSS).toMatch(/\.gp-left\s*\{\s*justify-self:\s*start;\s*\}/);
+    expect(PAGED_CSS).toMatch(/\.gp-right\s*\{\s*justify-self:\s*end;\s*\}/);
+    const pinRuleAt = PAGED_CSS.indexOf(".gp-pin {");
+    expect(pinRuleAt).toBeGreaterThan(-1);
+    // .gp-left/.gp-right appear twice (float rule + pin edge); the edge
+    // occurrence must be the later one, after .gp-pin.
+    expect(PAGED_CSS.lastIndexOf(".gp-left")).toBeGreaterThan(pinRuleAt);
+    expect(PAGED_CSS.lastIndexOf(".gp-right")).toBeGreaterThan(pinRuleAt);
+    expect(PAGED_CSS.indexOf(".gp-top")).toBeGreaterThan(pinRuleAt);
+    expect(PAGED_CSS.indexOf(".gp-bottom")).toBeGreaterThan(pinRuleAt);
+  });
+
+  test("wrapper-margin neutralizers cover bleed (both names) and pin at zero specificity", () => {
+    expect(PAGED_CSS).toContain(
+      ":where(p:has(> img:is(.full-bleed, .gp-bleed):only-child)) { margin: 0; }"
+    );
+    expect(PAGED_CSS).toContain(":where(p:has(> img.gp-pin:only-child)) { margin: 0; }");
+  });
+
+  test("adds no new @page gp-* names (gp-full-bleed stays the only one)", () => {
+    // build.ts's shrink-to-fit guard excludes the whole `gp-` named-page
+    // namespace from its page-width Math.max; every name added here widens
+    // that exclusion and must be deliberate.
+    expect(PAGED_CSS.match(/@page gp-/g)).toHaveLength(1);
+  });
+});
+
+describe("gp-* vocabulary — rendered output", () => {
+  test("multi-class attrs compose on the rendered <img>", () => {
+    const md = createMarkdownRenderer();
+    const html = md.render("![Art](x.png){.gp-right .gp-small}");
+    expect(html).toContain('<img src="x.png" alt="Art" class="gp-right gp-small">');
+  });
+
+  test("assembleBookHtml carries every gp-* selector into the injected <style> block", async () => {
+    const html = await assembleBookHtml({
+      files: ["01-page.md"],
+      readText: async () => "@page\n\n![Art](art.jpg){.gp-pin .gp-bottom}\n",
+      title: "gp-* build test",
+    });
+    expect(html).toContain('<img src="art.jpg" alt="Art" class="gp-pin gp-bottom">');
+    for (const selector of [
+      ".gp-left", ".gp-right", ".gp-center", ".gp-full", ".gp-bleed",
+      ".gp-small", ".gp-medium", ".gp-large", ".gp-tight", ".gp-loose",
+      ".gp-pin", ".gp-top", ".gp-bottom",
+    ]) {
+      expect(html).toContain(selector);
+    }
+  });
+});
+
+// gp_pin_scope_check: a .gp-pin outside any @page/@spread resolves against
+// the document canvas in print (and the preview MASKS it — the viewer strip
+// is positioned and one page tall), so the plugin warns at parse time. These
+// tests go through createMarkdownRenderer() because the classes only exist
+// after markdown-it-attrs runs — a bare MarkdownIt + markdownItPaged never
+// attaches `{.gp-pin}`.
+describe("pin_outside_page warning (gp_pin_scope_check)", () => {
+  function pinWarnings(src: string): { all: LayoutWarning[]; pin: LayoutWarning[] } {
+    const md = createMarkdownRenderer();
+    const env: PagedEnv = {};
+    md.render(src, env);
+    const all = env.layoutWarnings ?? [];
+    return { all, pin: all.filter((w) => w.type === "pin_outside_page") };
+  }
+
+  test("warns once, with the 1-based source line, in a markerless document", () => {
+    const { all, pin } = pinWarnings("intro\n\n![w](w.png){.gp-pin}\n");
+    expect(all).toEqual(pin); // fires even though no markers are used
+    expect(pin).toHaveLength(1);
+    expect(pin[0]!.line).toBe(3);
+    expect(pin[0]!.message).toContain("@page or @spread");
+  });
+
+  test("silent for a .gp-pin image inside @page", () => {
+    const { pin } = pinWarnings("@page\n\n![w](w.png){.gp-pin .gp-bottom}\n");
+    expect(pin).toEqual([]);
+  });
+
+  test("silent for a .gp-pin image inside @spread", () => {
+    const { pin } = pinWarnings("@spread\n\n![w](w.png){.gp-pin}\n");
+    expect(pin).toEqual([]);
+  });
+
+  test("silent under nested @spread + @page (no double-count, no double-warn)", () => {
+    const { pin } = pinWarnings("@spread\n\n@page\n\n![w](w.png){.gp-pin}\n");
+    expect(pin).toEqual([]);
+  });
+
+  test("warns for a pin placed before the first @page", () => {
+    const { pin } = pinWarnings("![w](w.png){.gp-pin}\n\n@page\n\ncontent\n");
+    expect(pin).toHaveLength(1);
+    expect(pin[0]!.line).toBe(1);
+  });
+
+  test("two uncontained pins warn twice (no dedupe)", () => {
+    const { pin } = pinWarnings("![a](a.png){.gp-pin}\n\n![b](b.png){.gp-pin}\n");
+    expect(pin).toHaveLength(2);
+    expect(pin.map((w) => w.line)).toEqual([1, 3]);
+  });
+
+  test("warns for a block-level {.gp-pin} outside any page", () => {
+    const { pin } = pinWarnings("# Title {.gp-pin}\n");
+    expect(pin).toHaveLength(1);
+    expect(pin[0]!.line).toBe(1);
+  });
+
+  test("an image with other gp-* classes but no .gp-pin never warns", () => {
+    const { pin } = pinWarnings("![w](w.png){.gp-right .gp-small}\n");
+    expect(pin).toEqual([]);
   });
 });

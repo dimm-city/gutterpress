@@ -7,6 +7,33 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`gp-*` image positioning vocabulary** in core `PAGED_CSS` — composable
+  classes authors attach with markdown attrs (`![Art](x.png){.gp-right .gp-small}`):
+  - **Positions**: `.gp-left`/`.gp-right` (floats, text wraps), `.gp-center`,
+    `.gp-full`, `.gp-bleed`. The original five classes (`.center`,
+    `.float-left`, `.float-right`, `.full-width`, `.full-bleed`) remain as
+    permanent aliases sharing the same rule bodies.
+  - **Sizes**: `.gp-small`/`.gp-medium`/`.gp-large` (25/50/75% of the column;
+    compose with any position and override the floats' 50% cap).
+  - **Spacing**: `.gp-tight`/`.gp-loose` float-clearance presets via the new
+    author-settable `--gp-gap` custom property (default 1em — existing float
+    layouts are unchanged).
+  - **Pin mode**: `.gp-pin` pins an image within its `@page`/`@spread`
+    container (centered by default; `.gp-top`/`.gp-bottom`/`.gp-left`/
+    `.gp-right` select edges). A new `pin_outside_page` authoring warning
+    fires when `.gp-pin` is used outside any `@page`/`@spread` — there the
+    image would resolve against the whole document and can print on the
+    wrong sheet (the build's `engine.abspos.leak` diagnostic now also covers
+    author `gp-*` elements instead of skipping them as engine-internal).
+  - Desktop: the image dialog's Position options now use the `gp-*` names and
+    a Size dropdown was added; the preview context menu gained "Set size…"
+    and its "Set width…"/"Set position…" now preserve every attribute they
+    don't manage (the old rewrite dropped unrecognized classes/ids). The
+    class list lives in one shared table (`$lib/editor/image-classes`).
+  - Minor behavior fix: combining a float class with `.gp-center`/`.gp-full`/
+    `.gp-bleed` (e.g. `{.float-left .center}`) now resolves to the non-float
+    layout — previously the contradictory combination stayed floated.
+
 - **Inline editing in the preview** (ADR 0009): the paginated preview is now an
   editing surface, not just a viewer.
   - **Right-click context menu** over the preview, with actions matched to what

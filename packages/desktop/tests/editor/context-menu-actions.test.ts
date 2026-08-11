@@ -17,6 +17,15 @@ describe("findImageToken", () => {
     expect(slice.slice(m!.start, m!.end)).toBe('![A cat](cat.png){width="200px"}');
   });
 
+  test("captures a multi-token attrs suffix verbatim — classes, ids, custom attrs", () => {
+    // The attrs suffix is the raw material for image-classes' token-
+    // preserving edits; if the capture ever trims or reorders it, "Set
+    // width" starts corrupting gp-*/custom attrs again.
+    const slice = "![Art](x.png){.gp-right .gp-small #fig .custom}\n";
+    const m = findImageToken(slice, { src: "x.png", alt: "Art" });
+    expect(m?.attrsRaw).toBe("{.gp-right .gp-small #fig .custom}");
+  });
+
   test("finds a token with no attrs suffix", () => {
     const slice = "![alt](img.png)\n";
     const m = findImageToken(slice, { src: "img.png", alt: "alt" });
