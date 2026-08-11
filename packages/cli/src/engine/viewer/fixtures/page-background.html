@@ -1,0 +1,44 @@
+<!--
+  Regression fixture: `@page { background }` must paint the SHEET in the
+  viewer, because it paints the whole sheet (margins included) in Chromium's
+  print path — measured. Before `applyPageBackground` in decorate.ts the
+  viewer rendered white sheets here while the PDF came out blue/orange: a
+  silent preview↔print divergence that the parity gate cannot see (it
+  asserts page counts, page-of-id maps and target-counter values, never
+  paint).
+
+  Shaped to test three things at once:
+   - a base `@page` background (page 1, a recto)
+   - a `:left` override, so pseudo-class resolution is exercised, not just
+     the base rule (page 2, a verso)
+   - a NAMED page override (page 3), so the name+pseudo cascade is covered
+   - `html { background }` on top of a page background (page 4's run): the
+     canvas layer paints ABOVE the page background per CSS Paged Media
+     §3.1, so the canvas colour must win where both are declared.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Page background</title>
+<style>
+@page { size: 5in 3in; margin: 0.5in; background: #2d6cdf; }
+@page :left { background: #d94f2b; }
+@page tinted { background: #1e8a4c; }
+body { font: 11pt/1.35 Georgia, serif; margin: 0; }
+h1 { font-size: 16pt; margin: 0; break-before: page; }
+h1.tinted { page: tinted; }
+p { margin: 0 0 9pt; }
+</style>
+</head>
+<body>
+<div id="root">
+  <p id="p1">Page one sits on the base @page background.</p>
+  <h1 id="h2">Two</h1>
+  <p id="p2">Page two is a verso, so the :left override applies.</p>
+  <h1 id="h3" class="tinted">Three</h1>
+  <p id="p3">Page three is on the named page `tinted`.</p>
+</div>
+<script src="gutterpress-viewer.js"></script>
+</body>
+</html>

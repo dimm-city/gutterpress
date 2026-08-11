@@ -74,6 +74,42 @@ interface PageCtx {
   pseudos: string[];
   geometry: PageGeometry;
   marginBoxes: Record<string, Declarations>;
+  /** the page box's own declarations — `background-*` is read from here
+   * (`applyPageBackground`); everything else is already folded into
+   * `geometry`/`marginBoxes`. */
+  decls: Declarations;
+}
+
+/**
+ * The page box's own background, per CSS Paged Media §3.1's paint order:
+ * page background (bottom), then canvas background, then borders, contents,
+ * and margin boxes on top.
+ *
+ * `@page { background: … }` paints the WHOLE SHEET including the margins in
+ * Chromium's print path (measured) — which is exactly what a book wants for
+ * paper texture, and the one mechanism that does not need all 16 margin
+ * boxes given a copy of the same background. The viewer used to ignore it:
+ * `resolvePage()` has always returned these declarations, but `PageCtx`
+ * kept only `geometry` + `marginBoxes`, so a book that used it printed a
+ * page background and previewed a blank white sheet. That is a preview↔print
+ * divergence, which CLAUDE.md calls the worst failure this project can
+ * produce, and it is invisible to the parity gate (which asserts page
+ * counts, page-of-id maps and target-counter values — no paint assertions).
+ *
+ * Applied BEFORE the canvas background on the same element, so when a book
+ * declares both, the canvas wins on any property they share — the spec's
+ * order, since the canvas layer paints above the page background.
+ *
+ * `background-attachment` is skipped for the same reason `captureCanvasBackground`
+ * skips it: `fixed` is viewport-relative and meaningless for a page box.
+ */
+function applyPageBackground(sheet: HTMLElement, decls: Declarations): void {
+  for (const [prop, value] of Object.entries(decls)) {
+    const p = prop.toLowerCase();
+    if (p !== "background" && !p.startsWith("background-")) continue;
+    if (p === "background-attachment") continue;
+    sheet.style.setProperty(p, value);
+  }
 }
 
 export function decorate(
@@ -110,16 +146,19 @@ export function decorate(
     // and content off the surrounding run's context (ARCHITECTURE.md §1).
     if (blankPages.has(bookIndex)) {
       const pseudos = ["blank"];
-      const { geometry, marginBoxes } = resolvePage(model, { pseudos });
-      return { index: bookIndex, strip, pseudos, geometry, marginBoxes };
+      const { geometry, marginBoxes, decls } = resolvePage(model, { pseudos });
+      return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
     }
     const pseudos: string[] = [];
     if (bookIndex === 0) pseudos.push("first");
     if (indexInStrip === 0) pseudos.push("nth-first-of-run");
     // page 1 is a recto
     pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
-    const { geometry, marginBoxes } = resolvePage(model, { name: strip.page, pseudos });
-    return { index: bookIndex, strip, pseudos, geometry, marginBoxes };
+    const { geometry, marginBoxes, decls } = resolvePage(model, {
+      name: strip.page,
+      pseudos,
+    });
+    return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
   }
 
   /** Which page is each string-set / xref target element on. */
@@ -338,6 +377,7 @@ export function decorate(
         sheet.style.top = `${sheetTop}px`;
         sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
         sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
+        applyPageBackground(sheet, ctx.decls);
         for (const [prop, value] of canvasBg) sheet.style.setProperty(prop, value);
         layer.appendChild(sheet);
         sheets.set(bookIndex, sheet);

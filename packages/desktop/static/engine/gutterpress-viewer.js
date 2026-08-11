@@ -1569,6 +1569,16 @@ body.view-spread .gp-sheet[data-side="verso"] {
     } catch {}
     return document.getElementById(id);
   }
+  function applyPageBackground(sheet, decls) {
+    for (const [prop, value] of Object.entries(decls)) {
+      const p = prop.toLowerCase();
+      if (p !== "background" && !p.startsWith("background-"))
+        continue;
+      if (p === "background-attachment")
+        continue;
+      sheet.style.setProperty(p, value);
+    }
+  }
   function decorate(layout, opts = {}) {
     const model = layout.model;
     const sheets = new Map;
@@ -1592,8 +1602,8 @@ body.view-spread .gp-sheet[data-side="verso"] {
     function pageContext(strip, indexInStrip2, bookIndex) {
       if (blankPages.has(bookIndex)) {
         const pseudos2 = ["blank"];
-        const { geometry: geometry2, marginBoxes: marginBoxes2 } = resolvePage(model, { pseudos: pseudos2 });
-        return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2 };
+        const { geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 } = resolvePage(model, { pseudos: pseudos2 });
+        return { index: bookIndex, strip, pseudos: pseudos2, geometry: geometry2, marginBoxes: marginBoxes2, decls: decls2 };
       }
       const pseudos = [];
       if (bookIndex === 0)
@@ -1601,8 +1611,11 @@ body.view-spread .gp-sheet[data-side="verso"] {
       if (indexInStrip2 === 0)
         pseudos.push("nth-first-of-run");
       pseudos.push(bookIndex % 2 === 0 ? "right" : "left");
-      const { geometry, marginBoxes } = resolvePage(model, { name: strip.page, pseudos });
-      return { index: bookIndex, strip, pseudos, geometry, marginBoxes };
+      const { geometry, marginBoxes, decls } = resolvePage(model, {
+        name: strip.page,
+        pseudos
+      });
+      return { index: bookIndex, strip, pseudos, geometry, marginBoxes, decls };
     }
     function buildMaps() {
       api.stringMap = new Map;
@@ -1762,6 +1775,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
           sheet.style.top = `${sheetTop}px`;
           sheet.style.setProperty("--gp-page-w", px(ctx.geometry.width));
           sheet.style.setProperty("--gp-page-h", px(ctx.geometry.height));
+          applyPageBackground(sheet, ctx.decls);
           for (const [prop, value] of canvasBg)
             sheet.style.setProperty(prop, value);
           layer.appendChild(sheet);
