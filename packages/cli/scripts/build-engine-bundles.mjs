@@ -47,6 +47,25 @@ function newestSourceMtime(dir) {
 }
 
 export async function buildEngineBundles(force = false, outDir = OUT_DIR) {
+  // Bun writes each module's `// path` comment RELATIVE TO CWD, so the same
+  // source yields different BYTES depending on where the build ran
+  // ("// src/engine/…" from packages/cli, "// packages/cli/src/engine/…" from
+  // the repo root). That is not cosmetic: bundle-freshness.test.ts byte-
+  // compares the committed bundle against a fresh build, so its verdict
+  // depended on cwd — the gate whose entire job is catching a silently stale
+  // bundle would fail on a clean tree run from the root, and (worse) a bundle
+  // committed from the wrong directory reads as fresh in one place and stale
+  // in another. Pin cwd so the output is canonical wherever it is invoked.
+  const prevCwd = process.cwd();
+  process.chdir(PKG_ROOT);
+  try {
+    return await buildEngineBundlesHere(force, outDir);
+  } finally {
+    process.chdir(prevCwd);
+  }
+}
+
+async function buildEngineBundlesHere(force, outDir) {
   const srcMtime = newestSourceMtime(ENGINE_SRC);
   const built = [];
   for (const target of TARGETS) {

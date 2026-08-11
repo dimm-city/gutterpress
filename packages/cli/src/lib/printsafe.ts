@@ -93,13 +93,21 @@ function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
   if (prop !== "width" && prop !== "inline-size") return false;
   if (!/\bfit-content\b/i.test(decl.value)) return false;
   if (!isInPageMarginBox(decl)) return false;
+  const siblings = (decl.parent as postcss.AtRule).nodes ?? [];
+  const decls = siblings.filter((n): n is postcss.Declaration => n.type === "decl");
   // any explicit block-axis size counts — fit-content, a length, whatever the
   // author chose is a deliberate answer to "how tall is this chip".
-  return !(decl.parent as postcss.AtRule).nodes?.some(
-    (n) =>
-      n.type === "decl" &&
-      ["height", "block-size"].includes((n as postcss.Declaration).prop.toLowerCase()),
-  );
+  if (decls.some((d) => ["height", "block-size"].includes(d.prop.toLowerCase())))
+    return false;
+  // A layered/gradient background means the author is PAINTING the chip
+  // themselves rather than relying on the box's own background+border — the
+  // box is then deliberately left full-height (so its last layer can keep a
+  // patterned margin band continuous) and the visible chip is drawn at a
+  // fixed size inside it. That is the correct way to get a chip AND a hard
+  // drop shadow, since `box-shadow` is dropped in a margin box and a real
+  // `border` would wrap the shadow too. Warning there would be backwards.
+  if (decls.some((d) => /gradient\(/i.test(d.value))) return false;
+  return true;
 }
 
 function nodeLoc(node: postcss.Node): { line: number; column: number } {

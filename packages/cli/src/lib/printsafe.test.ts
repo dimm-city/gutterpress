@@ -58,6 +58,18 @@ test("checkCss accepts fit-content width once a block-axis size is present", () 
   }
 });
 
+// A layered/gradient background means the author paints the chip themselves
+// and leaves the box full-height on purpose (so its last layer keeps a
+// patterned margin band continuous) — the opposite of the defect.
+test("checkCss does not flag a full-height margin box that paints its own chip", () => {
+  const css = `@page { @bottom-left {
+    content: "P." counter(page); width: fit-content; padding: 0 13px 0 9px;
+    background: linear-gradient(#eee,#eee) no-repeat 0 center / calc(100% - 4px) 0.22in,
+                url("brick.png") repeat;
+  } }`;
+  expect(checkCss(css).filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
+});
+
 test("checkCss does not flag fit-content width outside an @page margin box", () => {
   const css = `.chip { width: fit-content; }`;
   expect(checkCss(css).filter((w) => w.rule === ruleRiskyProps)).toHaveLength(0);
