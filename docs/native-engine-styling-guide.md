@@ -4,7 +4,9 @@ Field notes from migrating a 300-page book (the Dimm City Field Guide) from
 Paged.js to the Gutterpress native engine (Chromium print pagination). Every
 claim below was **measured** against real builds, not inferred from specs.
 Where a fix lives in a real stylesheet, the canonical example is
-`dc-op-manual/dc-design-guide/css/native-furniture.css`.
+`dc-op-manual/dc-design-guide/css/page.css` (the page-furniture sections at the
+end of the file; these used to live in a separate `native-furniture.css`, which
+was dissolved into the regular cascade).
 
 > **Several of these gotchas no longer bite** — the engine now defends
 > against them by default (marked **[handled]** below). They stay documented
