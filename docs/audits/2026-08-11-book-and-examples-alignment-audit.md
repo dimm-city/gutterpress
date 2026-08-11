@@ -12,7 +12,9 @@ Goal: make dc-op-manual a project that demonstrates best practice — profession
 
 The book is in better shape than its size suggests: **zero `!important`**, **zero vendor prefixes**, only 3 uses of superseded `page-break-*`, and 158 of 171 component classes are live. The problems are not sprawl — they are **stale scaffolding from the Paged.js era that no longer describes reality**, and a **project plugin that has grown past what it needs to do**.
 
-The six changes that matter most, in order:
+**Two CRITICAL engine bugs came out of this, and they outrank everything else.** `var()` inside `@page` fails silently, two different ways: in `size:` it yields **Letter instead of the book's trim**, and in `margin:` it **disables the shrink-to-fit guard**. Both reproduced. The field guide is running with the guard off right now. See §6b.
+
+The six *book* changes that matter most, in order:
 
 1. **The design guide does not render like the field guide.** It loads `css/index.css`, which imports 7 stylesheets but **not** `native-furniture.css` — so the book that documents the design system, with live specimens in it, is missing the brick wall, the folio stickers, the image-bottom flow, the multicol fixes and the break glue. The reference is not showing the product.
 2. **`@page { background }` collapses the brick wall from 15 rules to 1** — and dissolves two more sections of workaround with it.
@@ -206,7 +208,61 @@ Load-bearing parity fixtures (per `native-parity-gate.ts`): `examples/with-desig
 
 ---
 
-## 7. Cross-cutting: a limitation in the new containment lint
+## 6b. Two CRITICAL engine bugs — `var()` in `@page` fails silently
+
+These are **Gutterpress bugs, not book bugs**, and both fail silently. I reproduced each myself.
+
+### B1 — `var()` in `@page { size }` silently yields Letter
+
+```css
+:root { --pw: 8.625in; --ph: 11.25in; }
+@page { size: var(--pw) var(--ph); }   /* → 612 × 792 pt (Letter)  ✗ */
+@page { size: 8.625in 11.25in; }       /* → 621 × 810 pt           ✓ */
+```
+
+Measured, same fixture, one line changed. A book that tokenises its trim size gets **Letter with no warning** — a wrong-trim PDF is unusable to a printer. Root cause is in `engine/shared/gcpm-extract.ts` (~448-469, 525): `toPt` is lexical and the size parser falls back to `letter` silently.
+
+**This makes the book's literal `size: 8.625in 11.25in` (`page-rules.css:86`) load-bearing.** Anyone "tidying" it to use the `--page-width`/`--page-height` tokens that sit right beside it in `dc-tokens.css:237-238` would silently reformat a 300-page book. Until the engine is fixed, that literal needs a comment saying so.
+
+### B2 — `var()` in `@page { margin }` silently disables the shrink-to-fit guard
+
+```css
+@page { size: 6in 4in; margin: 0.75in; }        .wide { width: 5.5in }  → HARD ERROR ✓
+:root { --m: 0.75in }
+@page { size: 6in 4in; margin: var(--m); }      .wide { width: 5.5in }  → builds clean ✗
+```
+
+Identical geometry; only the margin's spelling differs. With `var()`, the compiler's width check — the one that hard-errors on content wider than the page content box — does not fire.
+
+**The field guide is in exactly this state**: `page-rules.css:98,106,164,165,171,172` all use `var(--binding-margin, …)` / `var(--page-margin)`, so its named pages have been building with the guard effectively off.
+
+#### CORRECTED — weakens evidence I gave earlier
+
+When I removed the two `overflow-x: clip` shrink guards, part of my justification was that a full 300pp build reported **zero** shrink-to-fit offenders. Given B2, that signal was weaker than I represented — the check was disabled on the very pages it needed to cover.
+
+The conclusion still holds, but on the *other* evidence: text occupies x 51.7..557.5pt in both builds, identical to a tenth of a point, which rules out a document scale directly. That measurement is what the decision should rest on, not the offender count.
+
+---
+
+## 7. Standards conformance — what's already right, and what to modernise
+
+**Already standards-based, and worth protecting:** the GCPM layer is genuinely idiomatic — `string-set: guideSection attr(data-ch)` + `content: string(guideSection, first)`, `target-counter(attr(href), page)`, `counter(page)`, named pages via the `page` property. Nothing hand-rolled. All six `float`s are legitimate text-wrap floats that grid/flex cannot replace, already paired with `shape-outside` and `display: flow-root`.
+
+| Finding | Replacement | Verified | Lines |
+|---|---|---|---|
+| `width: calc(100% + 1.25in)` + twin negative margins + `box-sizing` (4 decls, 5 sites) | `margin-inline: calc(-1 * var(--outer-margin))` | **Yes** — byte-identical raster | ~18 |
+| `--outer-margin` declared with **zero** `var()` references; `0.625in` ×16, content-box arithmetic restated in 3 files | mint `--content-width`/`--content-height` as `calc()` off the page tokens | **Yes** — token chain and literal land identically | −20 magic numbers |
+| 5 comments forbidding `:is()`/`:has()` as "Paged.js crashes" | Paged.js is gone — collapse the selector lists | **Yes** — `:is()`, `:has()` all build and apply | ~25 unblocked |
+| 3 hand-typed `rgba()` copies of base tokens, **all three already drifted** | `color-mix(in srgb, var(--base) N%, transparent)` | **Yes** | fixes 3 live bugs |
+| 57 physical properties vs 6 logical | `margin-inline`, `inset`, `border-block` | partial | ~20 |
+| `page-break-*` alongside `break-*` (3 sites) | delete the legacy alias | **Yes** | 3 |
+| `deprecated.css` (137 lines), unreferenced | dead file | Yes | 137 |
+
+**Do not convert:** the hexes at `dc-tokens.css:122,128,132,140,149` carry measured WCAG ratios in their comments — `color-mix` won't reproduce them. `@page :left/:right` binding margins must stay **physical**; mirroring is the whole point.
+
+---
+
+## 7b. Cross-cutting: a limitation in the new containment lint
 
 `printsafe/page-containment` (added `635076f`) flags stacking contexts and clipping ancestors on `.page`/`.spread`. But `dc-components.css`'s `.section` sets **`isolation: isolate`**, which is a stacking context that would trap a `.gp-behind` image inside any section — and the lint cannot see it, because `.section` is a book class, not one of core's wrappers.
 
@@ -215,6 +271,8 @@ Core cannot know a book's wrapper names. Options: let a book declare its own wra
 ---
 
 ## Recommended sequence
+
+**−1. Fix the two `var()`-in-`@page` engine bugs (B1, B2) before touching the book's CSS.** They are the only findings here that can silently produce a wrong artefact, and B2 means the book's own safety net is currently off. Everything else in this audit is refactoring; this is correctness. Until B1 ships, add a comment to `page-rules.css:86` explaining why `size:` must stay literal.
 
 0. **Make the design guide load what the field guide loads** (finding L1). Until this is true, every visual judgement made against the design guide is being made against a different stylesheet than the product. One line, and it likely surfaces further divergence — do it first and look at the result.
 1. Rewrite `css-architecture.md` and `constitution.md` against the native engine *(nothing else should be built on stale doctrine)*
