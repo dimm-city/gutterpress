@@ -74,6 +74,7 @@ describe("Check Registry", () => {
     expect(sourceIds).toContain("source.links.local-refs");
     expect(sourceIds).toContain("source.accessibility.alt-text");
     expect(sourceIds).toContain("source.accessibility.heading-order");
+    expect(sourceIds).toContain("source.markdown.layout-markers");
   });
 
   test("all expected asset checks are registered", () => {
@@ -192,7 +193,7 @@ describe("Check Registry", () => {
     // checks are namespaced by category (pdf/source/asset/heuristic) and never
     // start with `test.`, so excluding those makes the count deterministic.
     const all = getAllCheckIds().filter((id) => !id.startsWith("test."));
-    // 15 pdf + 6 source + 7 asset + 4 heuristic = 32
+    // 15 pdf + 7 source + 7 asset + 4 heuristic = 33
     // (source.callout-validation removed with ::: container syntax, 2026-05-17;
     // asset.font.missing-refs removed — lib/asset-inline.ts's `inlineStyles`
     // now READS every referenced font to embed it, so a missing font is
@@ -201,7 +202,7 @@ describe("Check Registry", () => {
     // treated commented-out @font-face blocks as live, never percent-decoded
     // (so a correct url("Source%20Sans%20Pro.ttf") failed the build), and
     // mis-diagnosed protocol-relative //host/f.woff2 refs.)
-    expect(all.length).toBe(32);
+    expect(all.length).toBe(33);
   });
 });
 

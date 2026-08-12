@@ -1517,3 +1517,122 @@ describe("marker arguments accept the {.class} spelling", () => {
     expect(render("@page cover\n\ntext\n")).toContain('data-page="cover"');
   });
 });
+
+/**
+ * Loud failure on marker mistakes.
+ *
+ * Every case below used to render something plausible-looking and say
+ * NOTHING — the same silence that let `@section {.two-column}` ship as a
+ * bare `.section` for two days. Rendering is deliberately unchanged: the
+ * point is that the author is now told.
+ */
+describe("marker mistakes are reported (not silently absorbed)", () => {
+  const warnings = (src: string) => {
+    const { env } = renderPaged(src);
+    return env.layoutWarnings ?? [];
+  };
+  const ofType = (src: string, type: string) =>
+    warnings(src).filter((w) => w.type === type);
+
+  describe("unrecognized_marker_token", () => {
+    test("a token the grammar has no form for is reported, and still lands as a class", () => {
+      const { html, env } = renderPaged("@page =oops\nHi\n");
+      expect(classList(html)).toEqual(["page", "=oops"]);
+      const w = env.layoutWarnings!.filter((x) => x.type === "unrecognized_marker_token");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.line).toBe(1);
+      expect(w[0]!.message).toContain('"=oops"');
+      expect(w[0]!.message).toContain(".my-class");
+    });
+
+    test("a stray arrow from a copy-pasted docs table is reported", () => {
+      const w = ofType("@page .skills → <div>\nHi\n", "unrecognized_marker_token");
+      expect(w.map((x) => x.message.match(/"([^"]+)"/)![1])).toEqual(["→", "<div>"]);
+    });
+
+    test("an empty .class / #id token is reported rather than silently dropped", () => {
+      expect(ofType("@page .\nHi\n", "unrecognized_marker_token")).toHaveLength(1);
+      expect(ofType("@page #\nHi\n", "unrecognized_marker_token")).toHaveLength(1);
+    });
+
+    test("every well-formed argument spelling stays silent", () => {
+      expect(warnings("@page cover .a .b #id template=x class=c,d\nHi\n")).toEqual([]);
+      expect(warnings("@page {.a} {#b}\nHi\n")).toEqual([]);
+      expect(warnings('@page title="Hello World"\nHi\n')).toEqual([]);
+      expect(warnings("@page C.01 .chapter-1\nHi\n")).toEqual([]);
+    });
+  });
+
+  describe("extra_bare_marker_token", () => {
+    test("two plain words with nothing else: the name is silently lost — now reported", () => {
+      const { html, env } = renderPaged("@page My Cover\nHi\n");
+      // Unchanged behavior: no data-page at all, both words became classes.
+      expect(html).not.toContain("data-page");
+      expect(classList(html)).toEqual(["page", "My", "Cover"]);
+      const w = env.layoutWarnings!.filter((x) => x.type === "extra_bare_marker_token");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.line).toBe(1);
+      expect(w[0]!.message).toContain("NONE of them was used as the name");
+      expect(w[0]!.message).toContain('"My Cover"');
+    });
+
+    test("a second plain word alongside a .class: first wins the name, rest demoted", () => {
+      const { html, env } = renderPaged("@page cover extra .a\nHi\n");
+      expect(attr(html, "data-page")).toBe("cover");
+      expect(classList(html)).toEqual(["page", "extra", "a"]);
+      const w = env.layoutWarnings!.filter((x) => x.type === "extra_bare_marker_token");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toContain('"extra"');
+    });
+
+    test("one plain word is a name, not a mistake", () => {
+      expect(ofType("@page cover .a\nHi\n", "extra_bare_marker_token")).toEqual([]);
+    });
+
+    test("does not double-report alongside ambiguous_marker_token", () => {
+      const w = warnings("@page cover class=a bar\nHi\n");
+      expect(w.map((x) => x.type)).toEqual(["ambiguous_marker_token"]);
+    });
+  });
+
+  describe("unknown_marker", () => {
+    test("a mistyped kind that no rule consumed is reported with a suggestion", () => {
+      const w = ofType("@page\n\n@secton .two-column\n\ntext\n", "unknown_marker");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.line).toBe(3);
+      expect(w[0]!.message).toContain('"@secton"');
+      expect(w[0]!.message).toContain('"@section"');
+    });
+
+    test("a case mismatch is caught (marker names are lower-case)", () => {
+      const w = ofType("@page\n\n@Section\n\ntext\n", "unknown_marker");
+      expect(w).toHaveLength(1);
+      expect(w[0]!.message).toContain('"@Section"');
+    });
+
+    test("plural typos are caught", () => {
+      expect(ofType("@page\n\n@sections\n\nt\n", "unknown_marker")).toHaveLength(1);
+      expect(ofType("@page\n\n@pages\n\nt\n", "unknown_marker")).toHaveLength(1);
+    });
+
+    test("a plugin-style marker far from any known kind stays silent", () => {
+      for (const m of ["@skill", "@callout", "@lede", "@tape", "@gear", "@specialty"]) {
+        expect(ofType(`@page\n\n${m} Foo\n\nt\n`, "unknown_marker")).toEqual([]);
+      }
+    });
+
+    test("prose, handles and email addresses stay silent", () => {
+      expect(ofType("@page\n\n@itlackey said hi\n\n", "unknown_marker")).toEqual([]);
+      expect(ofType("@page\n\nfoo@bar.com\n\n", "unknown_marker")).toEqual([]);
+      expect(ofType("@page\n\n@user.name pinged me\n\n", "unknown_marker")).toEqual([]);
+    });
+
+    test("fenced code is not scanned (a CSS `@page {` example is not a marker)", () => {
+      expect(ofType("@page\n\n```css\n@page {\n  margin: 0;\n}\n```\n", "unknown_marker")).toEqual([]);
+    });
+
+    test("a document with no core markers at all is never scanned (deliberately conservative)", () => {
+      expect(warnings("@secton .two-column\n\ntext\n")).toEqual([]);
+    });
+  });
+});

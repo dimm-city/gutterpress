@@ -107,6 +107,57 @@ function isBareToken(token) {
   return token && !token.includes('=') && !token.startsWith('.') && !token.startsWith('#');
 }
 
+/** The marker kinds this module understands. Also the near-miss dictionary. */
+const KNOWN_KINDS = [
+  'chapter',
+  'spread',
+  'page',
+  'section',
+  'continue',
+  'page-break',
+  'column-break',
+  'end-section',
+];
+
+/**
+ * A plain-word marker argument that can serve as a name or a class: it must
+ * look like a CSS-usable identifier. Anything else (`=x`, `"x`, `(x)`, a
+ * stray `→`) is a token the parser has no meaning for — it currently ends up
+ * verbatim in the element's class list, which is never what the author meant.
+ */
+const BARE_TOKEN_RE = /^[A-Za-z0-9_][A-Za-z0-9_.:-]*$/;
+
+/** Levenshtein distance — used only for "did you mean @section?" suggestions. */
+function editDistance(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Nearest known marker kind to `word`, or null when nothing is close enough.
+ *
+ * HEURISTIC (deliberately tight — see unknownMarkerScan): only an edit
+ * distance of 0 (a case-only mismatch, e.g. `@Section`) or 1 (`@sections`,
+ * `@secton`) counts. Distance 2 was measured against the real DC plugin
+ * marker vocabulary and produced a false positive (`@tape` → `@page`), so a
+ * plugin-defined marker this parser never sees must not be flagged.
+ */
+function nearestKind(word) {
+  const w = word.toLowerCase();
+  if (w.length < 3) return null;
+  for (const kind of KNOWN_KINDS) {
+    if (editDistance(w, kind) <= 1) return kind;
+  }
+  return null;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -157,7 +208,7 @@ function parseMarkerLine(line) {
   const head = tokens[0]; // "@chapter" | "@spread" | "@page" | "@section" | "@continue" | "@end-section" | "@page-break" | "@column-break"
   const kind = head.slice(1);
 
-  if (!['chapter', 'spread', 'page', 'section', 'continue', 'page-break', 'column-break', 'end-section'].includes(kind)) return null;
+  if (!KNOWN_KINDS.includes(kind)) return null;
 
   if (kind === 'page-break' || kind === 'column-break' || kind === 'end-section' || kind === 'continue') {
     return { kind, name: null, attrs: {} };
@@ -190,6 +241,22 @@ function parseMarkerLine(line) {
   const classes = [];
   let sawExplicitAttr = false;
   let hasAmbiguousBareToken = false;
+  /** Tokens the grammar has no meaning for (reported, not dropped). */
+  const unknownTokens = [];
+
+  // Classification pass. Every argument must be one of the four forms the
+  // grammar defines; anything else silently ends up verbatim in the class
+  // list, which is the defect class this reports (a `@section {.two-column}`
+  // whose class vanished cost two days). Behaviour is unchanged — the token
+  // still lands where it always did — but the author is now told.
+  for (const t of body) {
+    if (t.startsWith('.') || t.startsWith('#')) {
+      if (!BARE_TOKEN_RE.test(t.slice(1).trim())) unknownTokens.push(t);
+      continue;
+    }
+    if (t.indexOf('=') > 0) continue;
+    if (!BARE_TOKEN_RE.test(t)) unknownTokens.push(t);
+  }
 
   for (let idx = 0; idx < body.length; idx++) {
     if (idx === nameIndex) {
@@ -240,6 +307,17 @@ function parseMarkerLine(line) {
   // probes, so warning from here would push duplicates onto env.
   const marker = { kind, name, attrs };
   if (hasAmbiguousBareToken) marker.__ambiguousBareToken = true;
+  if (unknownTokens.length) marker.__unknownTokens = unknownTokens;
+  // A marker has exactly one name slot. A second plain word is either
+  // demoted to a class (when something already claimed the name) or — the
+  // nastier case — costs the marker its name entirely, because the parser
+  // refuses to guess which word was meant. Both were silent.
+  // Suppressed when __ambiguousBareToken or an unrecognized token already
+  // fired: same confusion, and the more specific warning is the useful one
+  // (a garbled line must not produce three overlapping complaints).
+  if (bareTokens.length > 1 && !hasAmbiguousBareToken && !unknownTokens.length) {
+    marker.__extraBareTokens = { tokens: bareTokens, named: name !== null };
+  }
   return marker;
 }
 
@@ -308,6 +386,42 @@ export default function plugin(md, pluginOptions = {}) {
       );
     }
 
+    if (parsed.__unknownTokens) {
+      const unknown = parsed.__unknownTokens;
+      delete parsed.__unknownTokens;
+      for (const t of unknown) {
+        warn(
+          state.env,
+          startLine + 1,
+          'unrecognized_marker_token',
+          `@${parsed.kind}: "${t}" is not something a marker understands, so it was kept verbatim as a class name. Write a class as .my-class (or {.my-class}), an id as #my-id, and anything else as key=value.`,
+          parsed
+        );
+      }
+    }
+
+    if (parsed.__extraBareTokens) {
+      const { tokens, named } = parsed.__extraBareTokens;
+      delete parsed.__extraBareTokens;
+      const list = tokens.map((t) => `"${t}"`).join(', ');
+      warn(
+        state.env,
+        startLine + 1,
+        'extra_bare_marker_token',
+        named
+          ? `@${parsed.kind}: only the first plain word (${list.split(', ')[0]}) is used as the name; the rest (${tokens
+              .slice(1)
+              .map((t) => `"${t}"`)
+              .join(', ')}) became class names instead. Quote a name that contains spaces ("${tokens.join(
+              ' '
+            )}"), or write classes as .${tokens.slice(1).join(' .')}.`
+          : `@${parsed.kind}: ${list} are several plain words, but a marker has only one name slot — so NONE of them was used as the name and they all became class names instead. Quote a name that contains spaces ("${tokens.join(
+              ' '
+            )}"), or write classes as .${tokens.join(' .')}.`,
+        parsed
+      );
+    }
+
     state.line = startLine + 1;
     return true;
   }
@@ -325,8 +439,54 @@ export default function plugin(md, pluginOptions = {}) {
   // hand-ordered close helpers historically did.
   const SCOPE_CLOSE_ORDER = ['section', 'page', 'spread', 'chapter'];
 
+  /**
+   * Report `@word` lines that look like a mistyped marker.
+   *
+   * WHERE it looks: only at text that survived block parsing as ordinary
+   * paragraph content — i.e. nothing claimed it. Fenced code (`@page {` in a
+   * CSS example) and every marker a plugin defines are therefore invisible
+   * to it... except that user plugins register on `md.core.ruler.push`, which
+   * runs AFTER this rule, so their markers ARE still paragraphs here. That is
+   * why the suggestion filter has to be tight rather than "any unknown @word".
+   *
+   * HEURISTIC, and what it will not catch / could get wrong:
+   *   - only fires in a document that already uses core markers
+   *     (`__layoutMarkersUsed`), so a file whose ONLY marker is the typo is
+   *     silent;
+   *   - only fires when the word is within one edit of a known kind, so
+   *     `@twocolumn` is silent but `@sections` / `@secton` / `@Section` are
+   *     caught;
+   *   - it CAN misfire on a plugin- or prose-authored `@word` that happens to
+   *     sit one edit from a core kind (e.g. a plugin marker named `@pages`);
+   *     the real DC plugin vocabulary was measured and has none at distance
+   *     ≤ 1 (`@tape` is 2 from `@page`, which is why the threshold is 1).
+   *   - an email or handle cannot match: the word must run to whitespace or
+   *     end-of-line, so `@foo.com` / `@user.name` stop at the dot and fail.
+   */
+  function scanForMistypedMarkers(state) {
+    for (const tok of state.tokens) {
+      if (tok.type !== 'inline' || !tok.map) continue;
+      const lines = tok.content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const m = /^@([A-Za-z][A-Za-z0-9-]*)(?=\s|$)/.exec(lines[i].trim());
+        if (!m) continue;
+        const suggestion = nearestKind(m[1]);
+        if (!suggestion) continue;
+        warn(
+          state.env,
+          tok.map[0] + i + 1,
+          'unknown_marker',
+          `"@${m[1]}" is not a marker Gutterpress knows, so this line was left as ordinary text. Did you mean "@${suggestion}"? (marker names are lower-case).`,
+          null
+        );
+      }
+    }
+  }
+
   md.core.ruler.after('block', 'layout_transform', function (state) {
     if (!state.env.__layoutMarkersUsed) return;
+
+    scanForMistypedMarkers(state);
 
     const out = [];
     setDepth(state.env, 0);
