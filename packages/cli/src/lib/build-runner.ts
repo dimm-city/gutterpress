@@ -17,6 +17,7 @@ import {
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { getAssetPath } from "./embedded-assets";
+import { placeholderPng } from "./missing-asset-placeholder";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
@@ -438,12 +439,24 @@ async function copyReferencedAssets(
     copies.map((c) => path.dirname(path.resolve(outDir, c.to)))
   );
   await Promise.all([...dirs].map((d) => fsp.mkdir(d, { recursive: true })));
+
+  // A missing image substitutes a loud placeholder instead of aborting the
+  // book — see missing-asset-placeholder.ts for why. Any OTHER copy failure
+  // (permissions, a directory where a file should be, a full disk) still
+  // throws: those are environment faults the author cannot fix by editing
+  // their markdown, and silently papering over them would hide real damage.
+  const missing: string[] = [];
   await Promise.all(
     copies.map(async (c) => {
       const dest = path.resolve(outDir, c.to);
       try {
         await fsp.copyFile(c.from, dest);
       } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
+          await fsp.writeFile(dest, placeholderPng());
+          missing.push(c.to);
+          return;
+        }
         throw new BuildError(
           `Could not copy asset ${c.from} → ${c.to}: ` +
             (err instanceof Error ? err.message : String(err)),
@@ -452,6 +465,15 @@ async function copyReferencedAssets(
       }
     })
   );
+
+  if (missing.length > 0) {
+    log.warn(
+      `${missing.length} referenced image(s) do not exist — a magenta placeholder ` +
+        `was substituted so the build could finish. Each one is a visible hole ` +
+        `in the PDF:`
+    );
+    for (const m of missing.sort()) log.warn(`  missing: ${m}`);
+  }
 }
 
 /**
