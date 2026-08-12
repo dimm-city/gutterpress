@@ -76,6 +76,11 @@ Last updated 2026-08-12.
       authoring surface.
 - [ ] **Placeholder PNG at a non-PNG extension** may not decode (a stand-in for
       `.jpg`). Fix by rewriting the `src` to the placeholder's own path.
+- [ ] **#151 — move `printsafe/page-containment` to a build-time DOM check.**
+      Implementation design is now on the issue: it belongs in the existing
+      in-page audit block in `engine/compiler/build.ts` (no extra round trip),
+      as a new `engine.layer.trapped` diagnostic. One decision left — whether
+      the CSS-source rule is deleted or kept with an honest scope note.
 - [ ] **Audit categories B/C/E** from the layer-boundary audit — resets/undo
       rules, generic behavior stranded in the book layer, duplicate
       definitions. Measured but unchecked by me; the audit was wrong on 2 of
