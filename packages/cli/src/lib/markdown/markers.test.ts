@@ -1484,3 +1484,36 @@ describe("pin_outside_page warning (gp_pin_scope_check)", () => {
     expect(pin).toEqual([]);
   });
 });
+
+/**
+ * The markdown-it-attrs `{...}` spelling on core marker arguments.
+ *
+ * Regression: `@section {.two-column}` used to swallow the braces token as
+ * the section's NAME, so the class silently vanished and the element
+ * rendered as a bare `.section` — no warning, no columns, and (in a book
+ * that styles `.section` by default) unwanted chrome. A field-guide chapter
+ * shipped that way. Both spellings must now mean the same thing.
+ */
+describe("marker arguments accept the {.class} spelling", () => {
+  const render = (src: string) => new MarkdownIt().use(markdownItPaged).render(src);
+
+  test("{.class} on @section is equivalent to .class", () => {
+    const braced = render("@section {.two-column}\n\ntext\n");
+    const bare = render("@section .two-column\n\ntext\n");
+    expect(braced).toContain('class="section two-column"');
+    expect(braced).toBe(bare);
+  });
+
+  test("the multi-class form survives the tokenizer split", () => {
+    const html = render("@section {.a .b}\n\ntext\n");
+    expect(html).toContain('class="section a b"');
+  });
+
+  test("{#id} normalizes the same way", () => {
+    expect(render("@section {#intro}\n\ntext\n")).toContain('id="intro"');
+  });
+
+  test("a bare name is still a name, not a class", () => {
+    expect(render("@page cover\n\ntext\n")).toContain('data-page="cover"');
+  });
+});

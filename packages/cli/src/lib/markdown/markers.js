@@ -74,6 +74,35 @@
  *   coerce.
  */
 
+/**
+ * Strip one layer of markdown-it-attrs braces from a marker token, so
+ * `@section {.two-column}` means the same thing as `@section .two-column`.
+ *
+ * WHY: markdown-it-attrs' `{.class}` form is what authors type everywhere
+ * else in a document, and plugin-defined markers (e.g. the dimm-city
+ * plugin's `@skill {.continued}`) accept it. Core markers did not, and a
+ * braces token silently degraded into the marker's NAME instead: the class
+ * vanished, no warning was emitted, and the element rendered with only its
+ * structural class. That shipped a real defect — a field-guide chapter's
+ * `@section {.two-column}` produced a bare `.section` for two days, so the
+ * content never got its columns AND picked up the book's default section
+ * chrome. Accepting both spellings removes the trap; it cannot break an
+ * existing document, because a token starting with `{` had no meaning here
+ * before.
+ *
+ * Applied per token, so the multi-class form works too: the tokenizer has
+ * already split `{.a .b}` into `{.a` and `.b}`, and stripping the brace off
+ * each end yields `.a` and `.b`. A token that is nothing but a brace is
+ * left alone rather than reduced to an empty string.
+ */
+function unwrapAttrBraces(token) {
+  if (typeof token !== 'string') return token;
+  let t = token.trim();
+  if (t.startsWith('{')) t = t.slice(1).trim();
+  if (t.endsWith('}')) t = t.slice(0, -1).trim();
+  return t || token;
+}
+
 function isBareToken(token) {
   return token && !token.includes('=') && !token.startsWith('.') && !token.startsWith('#');
 }
@@ -119,6 +148,11 @@ function parseMarkerLine(line) {
   }
 
   if (buf) tokens.push(buf);
+
+  // Accept the markdown-it-attrs `{...}` spelling on every marker argument —
+  // see unwrapAttrBraces. The head token is left untouched; only arguments
+  // can carry attrs.
+  for (let i = 1; i < tokens.length; i++) tokens[i] = unwrapAttrBraces(tokens[i]);
 
   const head = tokens[0]; // "@chapter" | "@spread" | "@page" | "@section" | "@continue" | "@end-section" | "@page-break" | "@column-break"
   const kind = head.slice(1);

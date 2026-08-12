@@ -179,6 +179,24 @@ export const GUTTERPRESS_CSS = `
 .gp-tight { --gp-gap: 0.5em; }
 .gp-loose { --gp-gap: 2em; }
 
+/* column runs — plain CSS Multi-column, exposed as author vocabulary so
+   "put this in two columns" does not require borrowing a styled container
+   from the book's own component layer. That borrowing is what this exists
+   to prevent: a book whose theme paints .section chrome by default gives
+   every author who opens a section just to start a column run a panel they
+   did not ask for, and the book then needs a reset rule to take it back.
+   With a neutral primitive the author opts into columns and nothing else.
+
+   Permanent vocabulary, not a shim: Chromium implements multicol natively
+   and these rules are the standard properties verbatim, so there is no
+   spec gap here to remove later. Deliberately minimal — column-fill is
+   NOT set, because the correct value depends on whether the run fragments
+   across pages (auto packs each page's columns; the CSS initial balance is
+   right for a run that fits on one page) and only the author knows which.
+   --gp-column-gap is author-settable. */
+.gp-columns-2 { columns: 2; column-gap: var(--gp-column-gap, 1.5em); }
+.gp-columns-3 { columns: 3; column-gap: var(--gp-column-gap, 1.5em); }
+
 /* shape wrap — text follows the image's alpha silhouette instead of its
    rectangular box. shape-outside only applies to floats, so this is inert
    without .gp-left/.gp-right (and under .gp-pin, which un-floats). The
