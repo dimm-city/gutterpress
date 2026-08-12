@@ -233,7 +233,7 @@ function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): MarkdownIt {
   const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
 
   md.use(markdownItAttrs);
-  md.use(markdownItPaged, { implicitPage: false }); // Primary layout: @spread, @page, @section, @end-section, @page-break, @column-break
+  md.use(markdownItPaged); // Primary layout: @spread, @page, @section, @end-section, @page-break, @column-break
 
   // markdown-it-container removed 2026-05-17; @-marker family is canonical.
 

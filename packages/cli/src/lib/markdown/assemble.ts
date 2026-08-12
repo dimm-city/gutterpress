@@ -23,11 +23,17 @@ export type ReadText = (relPath: string) => Promise<string>;
 
 /**
  * One author-mistake warning emitted by `markdown-it-paged` (ARCH finding #4).
- * Mirrors the shape `markdown-it-paged.js`'s `warn()` pushes onto
- * `env.layoutWarnings` — see that file's header comment for the 9 warning
- * `type`s (`ambiguous_marker_token`, `section_without_page`, `nested_spread`,
+ * Mirrors the shape `markers.js`'s `warn()` pushes onto
+ * `env.layoutWarnings` — see that file's header comment for the warning
+ * `type`s (`ambiguous_marker_token`, `unrecognized_marker_token`,
+ * `extra_bare_marker_token`, `unknown_marker`, `nested_spread`,
  * `continue_without_section`, `spread_without_pages`, `spread_eof_close`,
- * `page_outside_spread`, `implicit_page`, `pin_outside_page`).
+ * `page_outside_spread`, `pin_outside_page`).
+ *
+ * `section_without_page` and `implicit_page` were REMOVED 2026-08-12: a
+ * @section with no open @page is valid authoring (audited, 17/17 false
+ * positives across two real books), and the `implicitPage` option that
+ * produced the latter was unreachable and latently broken.
  */
 export interface LayoutWarning {
   line: number;

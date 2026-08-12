@@ -355,7 +355,7 @@ function attachDataAttrs(token, kind, name, attrs) {
 
 export default function plugin(md, pluginOptions = {}) {
   const options = {
-    implicitPage: false,
+    // `implicitPage` was removed 2026-08-12 — see the @section branch below.
     preferPagesInSpreads: false,
     ...pluginOptions,
   };
@@ -752,15 +752,25 @@ export default function plugin(md, pluginOptions = {}) {
       if (kind === 'section') {
         stack.close('section');
 
-        if (!stack.has('page')) {
-          if (options.implicitPage) {
-            warn(state.env, line, 'implicit_page', '@section used without an open @page; creating an implicit page wrapper (data-page="auto").', meta);
-            openPage({ name: 'auto', attrs: {}, __line: line });
-          } else {
-            warn(state.env, line, 'section_without_page', '@section used without an open @page; region will render but will not be wrapped in a page.', meta);
-          }
-        }
-
+        // A @section with no open @page is VALID AUTHORING and warns about
+        // nothing. Audited 2026-08-12 across both real books: all 17
+        // occurrences were `@section .gp-columns-2` — column runs used as
+        // layout wrappers around flowing prose, exactly what the marker is
+        // for. Zero rendered wrong, zero used .gp-pin. A diagnostic that is
+        // 17-for-17 false positives trains authors to ignore diagnostics.
+        //
+        // The one harm an unwrapped section could cause — a .gp-pin with no
+        // containing block — already has its own dedicated diagnostic in
+        // gp-pin-scope.js, which reports it precisely instead of by proxy.
+        //
+        // An `implicitPage` option used to wrap these in a synthetic
+        // `data-page="auto"` page. Removed with the warning: nothing in the
+        // product ever set it, no manifest key or CLI flag could reach it,
+        // and enabling it would have forced a page break before every
+        // wrapped section (`.page { break-before: page }` applies to the
+        // synthetic wrapper too). If page-assignment is ever genuinely
+        // wanted, build it deliberately against a measured symptom — do not
+        // resurrect a switch that was unreachable and broken.
         const spread = stack.get('spread');
         if (spread && spread.noPagesYet) {
           warn(

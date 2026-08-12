@@ -120,15 +120,6 @@ describe("token.meta.line threading (source-range primitive, plan §2.1)", () =>
     expect(t.map).toBeNull();
   });
 
-  test("layout_page_open carries the marker line even on the implicit-page synthetic-meta path", () => {
-    // implicitPage: true makes a bare @section synthesize an implicit
-    // @page — openPage({ name: 'auto', attrs: {}, __line: line }) — whose
-    // __line must still thread through to token.meta.line.
-    const { tokens } = parsePaged("@section\nHi\n", { implicitPage: true });
-    const t = findToken(tokens, "layout_page_open")!;
-    expect(t.meta.line).toBe(1);
-  });
-
   test("layout_section_open carries the marker line alongside hasColumnBreak", () => {
     const { tokens } = parsePaged("@page\n@section S\nHi\n");
     const t = findToken(tokens, "layout_section_open")!;
@@ -194,18 +185,14 @@ describe("marker grammar (parsed via rendered output + warnings)", () => {
       expect(html).toBe('<div class="page"><p>Hi</p>\n</div>');
     });
 
-    test("@section (standalone, warns section_without_page)", () => {
+    test("@section (standalone) renders unwrapped and warns about nothing", () => {
+      // A section with no open @page is valid authoring — audited across two
+      // real books, all 17 occurrences were `@section .gp-columns-2` layout
+      // wrappers that rendered correctly. See the @section branch in
+      // markers.js for why the warning (and `implicitPage`) were removed.
       const { html, env } = renderPaged("@section\nHi\n");
       expect(html).toBe('<div class="section"><p>Hi</p>\n</div>');
-      expect(env.layoutWarnings).toEqual([
-        {
-          line: 1,
-          type: "section_without_page",
-          message:
-            "@section used without an open @page; region will render but will not be wrapped in a page.",
-          marker: { kind: "section", name: null, attrs: {}, __line: 1 },
-        },
-      ]);
+      expect(env.layoutWarnings ?? []).toEqual([]);
     });
   });
 
@@ -234,7 +221,7 @@ describe("marker grammar (parsed via rendered output + warnings)", () => {
       expect(html).toBe(
         '<div class="section" data-section="MySection"><p>Hi</p>\n</div>'
       );
-      expect(env.layoutWarnings?.[0]?.type).toBe("section_without_page");
+      expect(env.layoutWarnings ?? []).toEqual([]);
     });
   });
 
@@ -467,12 +454,10 @@ describe("single markers -> HTML wrapper", () => {
     expect(html).toBe('<div class="page"><p>Hello</p>\n</div>');
   });
 
-  test("@section wraps content in div.section (warns, unwrapped by a page)", () => {
+  test("@section wraps content in div.section, no page required", () => {
     const { html, env } = renderPaged("@section\nHello\n");
     expect(html).toBe('<div class="section"><p>Hello</p>\n</div>');
-    expect(env.layoutWarnings?.map((w) => w.type)).toEqual([
-      "section_without_page",
-    ]);
+    expect(env.layoutWarnings ?? []).toEqual([]);
   });
 });
 
@@ -601,34 +586,28 @@ describe("auto-close at end-of-document (scope-leak prevention)", () => {
 });
 
 describe("mis-ordered markers, implicit wrapping, and warnings", () => {
-  test("@section without an open @page: section_without_page warning, unwrapped section", () => {
+  // AUDITED 2026-08-12 and settled: a @section with no open @page is valid
+  // authoring. All 17 occurrences across two real books were
+  // `@section .gp-columns-2` — column runs used as layout wrappers around
+  // flowing prose. None rendered wrong; none used .gp-pin. The warning was
+  // 17-for-17 false positives, and the `implicitPage` option that would have
+  // wrapped them was unreachable (settable from no manifest key or CLI flag)
+  // AND latently broken (`.page { break-before: page }` applies to the
+  // synthetic wrapper, so enabling it inserted a page break before every
+  // stray section). Both removed. The one real harm — a .gp-pin with no
+  // containing block — has its own precise diagnostic in gp-pin-scope.js.
+  test("@section without an open @page: no warning, section left unwrapped", () => {
     const { html, env } = renderPaged("@section\nHi\n");
     expect(html).toBe('<div class="section"><p>Hi</p>\n</div>');
-    expect(env.layoutWarnings).toEqual([
-      {
-        line: 1,
-        type: "section_without_page",
-        message:
-          "@section used without an open @page; region will render but will not be wrapped in a page.",
-        marker: { kind: "section", name: null, attrs: {}, __line: 1 },
-      },
-    ]);
+    expect(env.layoutWarnings ?? []).toEqual([]);
   });
 
-  test("@section without a page + implicitPage:true wraps it in an auto page instead", () => {
-    const { html, env } = renderPaged("@section\nHi\n", { implicitPage: true });
-    expect(html).toBe(
-      '<div class="page" data-page="auto"><div class="section"><p>Hi</p>\n</div></div>'
-    );
-    expect(env.layoutWarnings).toEqual([
-      {
-        line: 1,
-        type: "implicit_page",
-        message:
-          '@section used without an open @page; creating an implicit page wrapper (data-page="auto").',
-        marker: { kind: "section", name: null, attrs: {}, __line: 1 },
-      },
-    ]);
+  test("no synthetic page wrapper is ever produced for a stray @section", () => {
+    // Pins the removal itself: a previously-supported option could inject
+    // `<div class="page" data-page="auto">` here. Nothing may do so now.
+    const { html } = renderPaged("@section\nHi\n", { implicitPage: true });
+    expect(html).not.toContain('data-page="auto"');
+    expect(html).toBe('<div class="section"><p>Hi</p>\n</div>');
   });
 
   test("@spread while a spread is already open: auto-closes the previous one + nested_spread warning", () => {
@@ -670,13 +649,16 @@ describe("mis-ordered markers, implicit wrapping, and warnings", () => {
     ]);
   });
 
-  test("@section directly inside a spread with no @page yet: BOTH section_without_page and spread_without_pages fire", () => {
+  test("@section directly inside a spread with no @page: only the SPREAD warns", () => {
+    // A spread genuinely needs pages — it is a two-page construct, so a
+    // spread with no page is malformed. A bare section is not: that warning
+    // was removed as a 17-for-17 false positive. The two were adjacent, so
+    // this pins that removing one left the other intact.
     const { html, env } = renderPaged("@spread\n@section\nHi\n");
     expect(html).toBe(
       '<div class="spread"><div class="section"><p>Hi</p>\n</div></div>'
     );
     expect(env.layoutWarnings?.map((w) => w.type)).toEqual([
-      "section_without_page",
       "spread_without_pages",
       // The spread never saw a @page before EOF either.
       "spread_eof_close",
