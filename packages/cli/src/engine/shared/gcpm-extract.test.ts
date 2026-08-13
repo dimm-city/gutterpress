@@ -66,6 +66,32 @@ describe("gcpm-extract", () => {
     );
   });
 
+  test("comments and apostrophes inside one margin box do not swallow the next box", () => {
+    const m = extract(`
+      @page :right {
+        @bottom-left {
+          /* The chapter's chip may mention \`@bottom-right\` in prose. */
+          content: "C." counter(page);
+          background: magenta;
+        }
+        @bottom-right {
+          /* The folio's face remains independent. */
+          content: "P." counter(page);
+          background: cream;
+        }
+      }
+    `);
+    const recto = resolvePage(m, { pseudos: ["right"] });
+    expect(recto.marginBoxes["@bottom-left"]).toEqual({
+      content: '"C." counter(page)',
+      background: "magenta",
+    });
+    expect(recto.marginBoxes["@bottom-right"]).toEqual({
+      content: '"P." counter(page)',
+      background: "cream",
+    });
+  });
+
   test("captures string-set, page assignment, breaks and xrefs", () => {
     expect(model.stringSets).toEqual([
       { selector: "h1", name: "chapter-title", value: "content()" },

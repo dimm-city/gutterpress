@@ -15,6 +15,7 @@ import {
   type PageGeometry,
 } from "../shared/gcpm-extract.ts";
 import { evaluate, needsMeasurement } from "../shared/content-value.ts";
+import { isIgnoredMarginBoxProperty } from "../shared/margin-box-support.ts";
 import {
   generatedContentCss,
   leaderFillCount,
@@ -447,18 +448,37 @@ export function decorate(
       const box = document.createElement("div");
       box.className = "gp-marginbox";
       box.dataset.box = name;
-      box.textContent = text;
-      Object.assign(box.style, rectFor(name, g), {
-        font: decls["font"] ?? "",
-        fontSize: decls["font-size"] ?? "",
-        fontFamily: decls["font-family"] ?? "",
-        color: decls["color"] ?? "",
-      });
+      Object.assign(box.style, rectFor(name, g));
       box.dataset.align = name.includes("center") || name.includes("middle")
         ? "center"
         : /right/.test(name)
           ? "end"
           : "start";
+
+      // The absolutely positioned element above is the margin box's SLOT.
+      // Keep its resolved third-of-the-margin geometry intact, and replay the
+      // author's declarations on an inner generated box. That distinction is
+      // important for declarations such as `width: fit-content`: applying
+      // them to the slot moves a @bottom-right chip to the start of the last
+      // third, while the inner box can shrink and still be end-aligned by the
+      // slot exactly as a native page-margin box is.
+      //
+      // This used to copy only font/font-size/font-family/color. Everything
+      // that makes real book furniture look like furniture -- background,
+      // padding, borders, explicit height/line-height, weight, tracking,
+      // casing, and custom properties -- disappeared in the viewer while the
+      // printed PDF remained correct. Replay the declaration list, except for
+      // the small measured set Chromium itself silently drops in native
+      // margin boxes (shared with the print-safety linter), instead of
+      // maintaining another inevitably-incomplete property allowlist.
+      const content = document.createElement("span");
+      content.className = "gp-marginbox-content";
+      content.textContent = text;
+      for (const [prop, value] of Object.entries(decls)) {
+        if (prop.toLowerCase() === "content" || isIgnoredMarginBoxProperty(prop)) continue;
+        content.style.setProperty(prop, value);
+      }
+      box.appendChild(content);
       sheet.appendChild(box);
     }
   }

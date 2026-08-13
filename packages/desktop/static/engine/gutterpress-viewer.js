@@ -217,6 +217,25 @@ body.view-spread .gp-sheet[data-side="verso"] {
 .gp-marginbox[data-align="center"] { justify-content: center; }
 .gp-marginbox[data-align="end"] { justify-content: flex-end; }
 
+/* The outer .gp-marginbox is the fixed geometric slot; this inner generated
+   box receives the author's @page margin-box declarations. It defaults to the
+   slot's full dimensions (the \`auto\` margin-box case), while explicit author
+   width/height such as \`fit-content\` override these declarations and the
+   outer flex alignment keeps the resulting sticker on the correct edge. */
+.gp-marginbox-content {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  white-space: inherit;
+}
+
+.gp-marginbox[data-align="start"] > .gp-marginbox-content { justify-content: flex-start; }
+.gp-marginbox[data-align="center"] > .gp-marginbox-content { justify-content: center; }
+.gp-marginbox[data-align="end"] > .gp-marginbox-content { justify-content: flex-end; }
+
 /* designer mode ------------------------------------------------------- */
 .gp-guide-trim,
 .gp-guide-safe,
@@ -662,7 +681,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
     let rest = "";
     let i = 0;
     while (i < body.length) {
-      const at = body.indexOf("@", i);
+      const at = findNextAtRule(body, i);
       if (at === -1) {
         rest += body.slice(i);
         break;
@@ -678,6 +697,11 @@ body.view-spread .gp-sheet[data-side="verso"] {
       let j = open + 1;
       while (j < body.length && depth > 0) {
         const c = body[j];
+        if (c === "/" && body[j + 1] === "*") {
+          const end = body.indexOf("*/", j + 2);
+          j = end === -1 ? body.length : end + 2;
+          continue;
+        }
         if (c === '"' || c === "'") {
           j = skipString(body, j);
           continue;
@@ -693,6 +717,25 @@ body.view-spread .gp-sheet[data-side="verso"] {
     }
     rule.decls = parseDeclarations(rest);
     return rule;
+  }
+  function findNextAtRule(body, start) {
+    let i = start;
+    while (i < body.length) {
+      const c = body[i];
+      if (c === "/" && body[i + 1] === "*") {
+        const end = body.indexOf("*/", i + 2);
+        i = end === -1 ? body.length : end + 2;
+        continue;
+      }
+      if (c === '"' || c === "'") {
+        i = skipString(body, i);
+        continue;
+      }
+      if (c === "@")
+        return i;
+      i++;
+    }
+    return -1;
   }
   function parseQualifiedRule(selector, body, model) {
     const decls = parseDeclarations(body);
@@ -1712,6 +1755,18 @@ body.view-spread .gp-sheet[data-side="verso"] {
     return parseContent(value).some((p) => p.type === "target-counter" || p.type === "target-text" || p.type === "leader");
   }
 
+  // src/engine/shared/margin-box-support.ts
+  var MARGIN_BOX_IGNORED_PROPERTIES = new Set([
+    "transform",
+    "rotate",
+    "translate",
+    "scale",
+    "box-shadow"
+  ]);
+  function isIgnoredMarginBoxProperty(property) {
+    return MARGIN_BOX_IGNORED_PROPERTIES.has(property.toLowerCase());
+  }
+
   // src/engine/viewer/decorate.ts
   var px = (v) => `${v * PX_PER_PT}px`;
   function elementForHref(href) {
@@ -1966,14 +2021,17 @@ body.view-spread .gp-sheet[data-side="verso"] {
         const box = document.createElement("div");
         box.className = "gp-marginbox";
         box.dataset.box = name;
-        box.textContent = text;
-        Object.assign(box.style, rectFor(name, g), {
-          font: decls["font"] ?? "",
-          fontSize: decls["font-size"] ?? "",
-          fontFamily: decls["font-family"] ?? "",
-          color: decls["color"] ?? ""
-        });
+        Object.assign(box.style, rectFor(name, g));
         box.dataset.align = name.includes("center") || name.includes("middle") ? "center" : /right/.test(name) ? "end" : "start";
+        const content = document.createElement("span");
+        content.className = "gp-marginbox-content";
+        content.textContent = text;
+        for (const [prop, value] of Object.entries(decls)) {
+          if (prop.toLowerCase() === "content" || isIgnoredMarginBoxProperty(prop))
+            continue;
+          content.style.setProperty(prop, value);
+        }
+        box.appendChild(content);
         sheet.appendChild(box);
       }
     }

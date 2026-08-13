@@ -14,6 +14,7 @@
 // `:nth-of-type` in their CSS — Chromium's native print has no such crash.
 
 import postcss from "postcss";
+import { MARGIN_BOX_IGNORED_PROPERTIES } from "../engine/shared/margin-box-support.ts";
 
 export const ruleRemoteUrls = "printsafe/no-remote-urls";
 export const ruleRiskyProps = "printsafe/no-risky-print-effects";
@@ -68,9 +69,7 @@ const marginBoxAtRuleNames = new Set([
 // Chromium silently ignores these inside @page margin boxes (renders square,
 // unshadowed) though they are valid per CSS Paged Media. Delete this check if/
 // when Chromium implements them in margin boxes — see ENGINE recommendation #11.
-const marginBoxIgnoredProperties = new Set([
-  "transform", "rotate", "translate", "scale", "box-shadow",
-]);
+const marginBoxIgnoredProperties = MARGIN_BOX_IGNORED_PROPERTIES;
 
 function isInPageMarginBox(decl: postcss.Declaration): boolean {
   const box = decl.parent;

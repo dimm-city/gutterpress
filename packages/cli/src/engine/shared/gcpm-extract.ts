@@ -541,7 +541,7 @@ function parsePageRule(prelude: string, body: string): PageRule {
   let rest = "";
   let i = 0;
   while (i < body.length) {
-    const at = body.indexOf("@", i);
+    const at = findNextAtRule(body, i);
     if (at === -1) {
       rest += body.slice(i);
       break;
@@ -557,6 +557,11 @@ function parsePageRule(prelude: string, body: string): PageRule {
     let j = open + 1;
     while (j < body.length && depth > 0) {
       const c = body[j];
+      if (c === "/" && body[j + 1] === "*") {
+        const end = body.indexOf("*/", j + 2);
+        j = end === -1 ? body.length : end + 2;
+        continue;
+      }
       if (c === '"' || c === "'") {
         j = skipString(body, j);
         continue;
@@ -570,6 +575,30 @@ function parsePageRule(prelude: string, body: string): PageRule {
   }
   rule.decls = parseDeclarations(rest);
   return rule;
+}
+
+/** Find the next nested margin at-rule without treating comment prose such as
+ *  `` `@bottom-left` `` as syntax. Comments also commonly contain apostrophes
+ *  ("the chip's face"); a raw `indexOf("@")` plus string-aware brace scan
+ *  mistakes that apostrophe for a CSS string and can swallow the next margin
+ *  box into the current one. */
+function findNextAtRule(body: string, start: number): number {
+  let i = start;
+  while (i < body.length) {
+    const c = body[i];
+    if (c === "/" && body[i + 1] === "*") {
+      const end = body.indexOf("*/", i + 2);
+      i = end === -1 ? body.length : end + 2;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      i = skipString(body, i);
+      continue;
+    }
+    if (c === "@") return i;
+    i++;
+  }
+  return -1;
 }
 
 function parseQualifiedRule(selector: string, body: string, model: GcpmModel) {
