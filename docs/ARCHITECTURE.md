@@ -28,7 +28,7 @@ The repo is a Bun workspace with two packages:
 
 - **Multi-format output**: PDF, HTML, and preview bundles
 - **Live preview server**: Node-compatible `node:http` + WebSocket, with
-  incremental single-chapter updates and full-document reloads for wider changes
+  automatic full-document swaps after source changes
 - **Extensible markdown**: Plugin system for custom syntax
 - **CSS Paged Media**: Full control over print layout
 - **Bun-native**: Fast runtime with native TypeScript support
@@ -323,9 +323,10 @@ return result.diagnostics;
 
 Preview mode runs a single `node:http` server (plus a `ws` `WebSocketServer`)
 that handles static files, the one `/api/status` route, and a
-`/__gutterpress-hmr` WebSocket. A single Markdown edit normally sends a focused
-chapter splice; CSS, manifest, multi-file, deletion, and other geometry-wide
-changes send a full-document reload. It deliberately does
+`/__gutterpress-hmr` WebSocket. A single Markdown edit may use the focused
+`content-update` notification, while wider changes use `full-reload`; the
+preview shell deliberately handles both by swapping the complete regenerated
+book so pagination never depends on per-source isolation wrappers. It does
 **not** use `Bun.serve`: the lib runtime must stay Node-compatible so the
 Electron desktop can run it in-process on Electron's bundled Node (see
 `CLAUDE.md`, Monorepo layout section, and §1). There is no toolbar, page
@@ -337,7 +338,8 @@ User Browser / Electron Desktop → http://127.0.0.1:{port}
     ↓
 http.createServer (packages/cli/src/preview/http-server.ts) + ws WebSocketServer
     ├─→ /__gutterpress-hmr  WebSocket upgrade → broadcastReload()
-    │    (subscribers receive a chapter update or {type:"full-reload"})
+    │    (subscribers receive a content update or {type:"full-reload"};
+    │     both replace the complete generated book)
     ├─→ GET /api/status  inlined handler — reports hasInput + currentPath
     │    (the only API route; a separate route-table module was removed as
     │    unneeded scaffolding for one hard-coded endpoint)
@@ -668,7 +670,7 @@ See [User Guide: Chapter 5 — Plugins](../examples/gutterpress-user-guide/05-pl
 
 **Reasons**:
 - Gutterpress does not bundle code at preview time — it serves rendered HTML
-  and sends either an incremental chapter splice or a full-document update.
+  and swaps the complete regenerated document after an update notification.
   A bundler-based dev server is the wrong tool.
 - `node:http` + the `ws` package provides everything needed (static files,
   WebSocket pub/sub, request routing) without the transitive native bindings

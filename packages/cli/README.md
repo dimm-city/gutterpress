@@ -69,7 +69,7 @@ uses its bundled browser for standard PDF export.
 # Build a PDF from a project directory
   gutterpress build ./my-book
 
-# Live native-engine preview (incremental Markdown updates over WebSocket)
+# Live native-engine preview (automatic updates over WebSocket)
   gutterpress preview ./my-book
 
 # Custom output path

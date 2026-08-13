@@ -216,10 +216,12 @@ Monorepo layout section above: no `Bun.serve`/`Bun.file`) so Electron's bundled
 Node can run it in-process; `Bun.serve` would work under Bun but crash the
 packaged desktop app. The actual implementation
 (`packages/cli/src/preview/http-server.ts`) is a `node:http` static file
-server + a `ws` WebSocket server. It sends a focused chapter update for a
-single Markdown edit and a full-document reload for CSS, manifest, multi-file,
-deletion, and structural changes. It is Node-compatible, runs under both Bun
-(dev / compiled binary) and Node.js (Electron), with no bundler involved.
+server + a `ws` WebSocket server. A single Markdown edit may use the focused
+`content-update` notification and wider changes use `full-reload`, but the
+preview shell handles both by swapping the complete regenerated book. This
+keeps pagination independent of per-source isolation wrappers. The server is
+Node-compatible, runs under both Bun (dev / compiled binary) and Node.js
+(Electron), with no bundler involved.
 
 ### 2. Lazy-load heavy optional deps
 

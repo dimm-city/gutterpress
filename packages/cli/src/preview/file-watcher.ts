@@ -112,10 +112,11 @@ async function renderPreviewBook(
  * toolbar — together they make the desktop's whole
  * `gutterpress:cmd/reply/event` command protocol work.
  *
- * With `pageIsolateChapters`, each source wrapper starts on a fresh page. This
- * is the v0.8.3 incremental-preview invariant: a standalone source render owns
- * the same page boundary as that source in the live preview and can be spliced
- * without paginating the full document.
+ * `pageIsolateChapters` is reserved for the one-source render. The full book
+ * always paginates as one document: native preview updates use a full iframe
+ * swap, so forcing every source wrapper to a new page buys no incremental
+ * splice boundary and diverges from the PDF whenever a source file begins in
+ * the middle of a printed page.
  */
 export function injectPreviewScripts(
   html: string,
@@ -166,10 +167,9 @@ export async function generateAndWriteHtml(
   // leaves the previous (still-served) book.html's assets resolvable instead
   // of half-clearing them.
   const nextAssets = new Map<string, string>();
-  const incremental = incrementalPreviewEnabled();
   const html = await renderPreviewBook(inputPath, config, {
     files: config.source?.files ?? null,
-    wrapChapters: incremental,
+    wrapChapters: false,
     onCssAssets: (copies) => {
       for (const copy of copies) nextAssets.set(copy.to, copy.from);
     },
@@ -178,7 +178,7 @@ export async function generateAndWriteHtml(
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, incremental),
+    injectPreviewScripts(html, false),
     "utf-8"
   );
 }

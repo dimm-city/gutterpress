@@ -22,6 +22,7 @@
     synthesizeColumnBreaks: () => synthesizeColumnBreaks,
     stripMetrics: () => stripMetrics,
     strideOf: () => strideOf,
+    stabilizeFullHeightPageRoots: () => stabilizeFullHeightPageRoots,
     spreadModeSupported: () => spreadModeSupported,
     rowStrideOf: () => rowStrideOf,
     pageRangeOf: () => pageRangeOf,
@@ -32,6 +33,7 @@
     injectBreakMapping: () => injectBreakMapping,
     fragmentDocument: () => fragmentDocument,
     forcedColumnBreaksSupported: () => forcedColumnBreaksSupported,
+    compensateTrailingMarginsBeforeAvoids: () => compensateTrailingMarginsBeforeAvoids,
     compensateRepeatedHeaders: () => compensateRepeatedHeaders,
     compensateRectoBreaks: () => compensateRectoBreaks,
     collectCssText: () => collectCssText,
@@ -1035,33 +1037,17 @@ body.view-spread .gp-sheet[data-side="verso"] {
     }));
     return collectCssText(doc);
   }
-  var FORCED_PAGE_LIKE = /^(page|left|right|recto|verso|always)$/;
-  function injectBreakMapping(model, doc = document) {
-    const rules = [];
-    for (const b of model.breaks) {
-      if (b.prop === "break-inside")
-        continue;
-      if (!FORCED_PAGE_LIKE.test(b.value.trim()))
-        continue;
-      rules.push(`.gp-strip ${b.selector} { ${b.prop}: column; }`);
-    }
-    const css = rules.join(`
-`);
-    if (css) {
-      const style = doc.createElement("style");
-      style.id = "gp-break-mapping";
-      style.textContent = css;
-      doc.head.appendChild(style);
-    }
-    return css;
+  var FORCED_PAGE_LIKE = /^(page|left|right|recto|verso)$/;
+  function injectBreakMapping(_model, doc = document) {
+    doc.getElementById("gp-break-mapping")?.remove();
+    return "";
   }
   function forcedColumnBreaksSupported() {
     return typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("break-before", "column") && CSS.supports("break-after", "column");
   }
   function synthesizeColumnBreaks(model) {
-    if (forcedColumnBreaksSupported())
-      return;
     const sites = [];
+    const seen = new WeakMap;
     for (const b of model.breaks) {
       if (b.prop === "break-inside")
         continue;
@@ -1073,9 +1059,20 @@ body.view-spread .gp-sheet[data-side="verso"] {
       } catch {
         continue;
       }
-      for (const el of els)
-        if (el.closest(".gp-strip"))
-          sites.push({ el, prop: b.prop });
+      for (const el of els) {
+        if (!el.closest(".gp-strip"))
+          continue;
+        const cs = getComputedStyle(el);
+        const effective = b.prop === "break-before" ? cs.breakBefore : cs.breakAfter;
+        if (!FORCED_PAGE_LIKE.test(effective.trim()))
+          continue;
+        const props = seen.get(el) ?? new Set;
+        if (props.has(b.prop))
+          continue;
+        props.add(b.prop);
+        seen.set(el, props);
+        sites.push({ el, prop: b.prop });
+      }
     }
     sites.sort((a, b) => a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
     for (const { el, prop } of sites) {
@@ -1084,8 +1081,20 @@ body.view-spread .gp-sheet[data-side="verso"] {
       const strip = el.closest(".gp-strip");
       if (!strip)
         continue;
-      const offset = el.getBoundingClientRect().top - strip.getBoundingClientRect().top;
-      if (offset < 0.5)
+      if (prop === "break-before" && !el.previousElementSibling)
+        continue;
+      if (prop === "break-after" && !el.nextElementSibling)
+        continue;
+      const rects = Array.from(el.getClientRects());
+      const rect = prop === "break-after" ? rects.at(-1) : rects[0];
+      if (!rect)
+        continue;
+      const stripTop = strip.getBoundingClientRect().top;
+      const edge = prop === "break-after" ? rect.bottom : rect.top;
+      const offset = edge - stripTop;
+      if (prop === "break-before" && offset < 0.5)
+        continue;
+      if (prop === "break-after" && strip.clientHeight - offset < 0.5)
         continue;
       const reserve = Math.ceil(strip.clientHeight - offset);
       if (reserve <= 0)
@@ -1094,7 +1103,10 @@ body.view-spread .gp-sheet[data-side="verso"] {
       spacer.className = "gp-column-break-spacer";
       spacer.setAttribute("aria-hidden", "true");
       spacer.style.cssText = `height:${reserve}px;margin:0;padding:0;border:0;`;
-      el.before(spacer);
+      if (prop === "break-after")
+        el.after(spacer);
+      else
+        el.before(spacer);
     }
   }
   function directPageName(el, model) {
@@ -1185,6 +1197,124 @@ body.view-spread .gp-sheet[data-side="verso"] {
       const cs = getComputedStyle(el);
       if (FORCED_BREAK.test(cs.breakBefore))
         el.style.breakBefore = "auto";
+    }
+  }
+  function stabilizeFullHeightPageRoots(model, strips) {
+    let stabilized = 0;
+    for (const strip of strips) {
+      if (!strip.page)
+        continue;
+      const stripHeight = parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-content-h"));
+      if (!(stripHeight > 0))
+        continue;
+      for (let el = strip.el.firstElementChild;el; el = el.firstElementChild) {
+        if (directPageName(el, model) !== strip.page)
+          continue;
+        const cs = getComputedStyle(el);
+        const height = parseFloat(cs.height);
+        const rootRects = el.getClientRects();
+        if (cs.display === "block" && cs.position !== "static" && Math.abs(height - stripHeight) <= 0.5 && (rootRects.length > 1 || el.getBoundingClientRect().top - strip.el.getBoundingClientRect().top > 0.5)) {
+          el.dataset.gpLeadingPageRootDisplay = el.style.getPropertyValue("display");
+          el.dataset.gpLeadingPageRootDisplayPriority = el.style.getPropertyPriority("display");
+          el.style.display = "flow-root";
+          el.dataset.gpLeadingPageRoot = "stabilized";
+          stabilized++;
+        }
+        break;
+      }
+    }
+    return stabilized;
+  }
+  function restoreFullHeightPageRoots(doc = document) {
+    for (const el of Array.from(doc.querySelectorAll('[data-gp-leading-page-root="stabilized"]'))) {
+      const value = el.dataset.gpLeadingPageRootDisplay ?? "";
+      const priority = el.dataset.gpLeadingPageRootDisplayPriority ?? "";
+      if (value)
+        el.style.setProperty("display", value, priority);
+      else
+        el.style.removeProperty("display");
+      delete el.dataset.gpLeadingPageRoot;
+      delete el.dataset.gpLeadingPageRootDisplay;
+      delete el.dataset.gpLeadingPageRootDisplayPriority;
+    }
+  }
+  function compensateTrailingMarginsBeforeAvoids(model, strips) {
+    const candidates = new Set;
+    for (const decl of model.breaks) {
+      if (decl.prop !== "break-inside" || !/^avoid(?:-|$)/.test(decl.value.trim()))
+        continue;
+      let els;
+      try {
+        els = Array.from(document.querySelectorAll(decl.selector));
+      } catch {
+        continue;
+      }
+      for (const el of els) {
+        if (el instanceof HTMLElement && el.closest(".gp-strip"))
+          candidates.add(el);
+      }
+    }
+    let compensated = 0;
+    const orderedCandidates = Array.from(candidates).sort((a, b) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+    for (const el of orderedCandidates) {
+      if (!/^avoid(?:-|$)/.test(getComputedStyle(el).breakInside))
+        continue;
+      const prev = el.previousElementSibling;
+      const stripEl = el.closest(".gp-strip");
+      const strip = strips.find((item) => item.el === stripEl);
+      if (!prev || !stripEl || !strip)
+        continue;
+      const rects = Array.from(el.getClientRects());
+      const prevRects = Array.from(prev.getClientRects());
+      if (rects.length !== 1 || !prevRects.length)
+        continue;
+      const rect = rects[0];
+      const prevRect = prevRects.at(-1);
+      const stripRect = stripEl.getBoundingClientRect();
+      const { stride } = stripMetrics(stripEl);
+      const colOf = (r) => Math.floor((r.left - stripRect.left + 1) / stride);
+      const currentCol = colOf(rect);
+      if (currentCol !== colOf(prevRect) + 1)
+        continue;
+      if (Math.abs(rect.top - stripRect.top) > 0.5)
+        continue;
+      const marginEnd = parseFloat(getComputedStyle(prev).marginBlockEnd) || 0;
+      if (marginEnd <= 0.5)
+        continue;
+      const remaining = stripEl.clientHeight - (prevRect.bottom - stripRect.top);
+      if (rect.height > remaining + 0.5)
+        continue;
+      if (rect.height + marginEnd <= remaining + 0.5)
+        continue;
+      prev.dataset.gpTrailingMargin = "compensated";
+      prev.dataset.gpTrailingMarginValue = prev.style.getPropertyValue("margin-block-end");
+      prev.dataset.gpTrailingMarginPriority = prev.style.getPropertyPriority("margin-block-end");
+      prev.style.setProperty("margin-block-end", "0px");
+      compensated++;
+    }
+    return compensated;
+  }
+  function restoreTrailingMargins(doc = document) {
+    for (const el of Array.from(doc.querySelectorAll('[data-gp-trailing-margin="compensated"]')))
+      restoreTrailingMargin(el);
+  }
+  function restoreTrailingMargin(el) {
+    const value = el.dataset.gpTrailingMarginValue ?? "";
+    const priority = el.dataset.gpTrailingMarginPriority ?? "";
+    if (value)
+      el.style.setProperty("margin-block-end", value, priority);
+    else
+      el.style.removeProperty("margin-block-end");
+    delete el.dataset.gpTrailingMargin;
+    delete el.dataset.gpTrailingMarginValue;
+    delete el.dataset.gpTrailingMarginPriority;
+  }
+  function restoreIneffectiveTrailingMargins(strips) {
+    for (const prev of Array.from(document.querySelectorAll('[data-gp-trailing-margin="compensated"]'))) {
+      const target = prev.nextElementSibling;
+      if (!target || pageOf(target, strips) !== pageRangeOf(prev, strips)[1]) {
+        restoreTrailingMargin(prev);
+      }
     }
   }
   function buildStrips(model, opts = {}, warnings = []) {
@@ -1512,12 +1642,15 @@ body.view-spread .gp-sheet[data-side="verso"] {
     const authoring = [];
     const strips = buildStrips(model, opts, authoring);
     await layoutReady;
+    stabilizeFullHeightPageRoots(model, strips);
+    compensateTrailingMarginsBeforeAvoids(model, strips);
     synthesizeColumnBreaks(model);
     measure(strips);
     const blanks = compensateRectoBreaks(model, strips);
     if (blanks)
       measure(strips);
     const headers = opts.compensateHeaders === false ? { tables: 0, passes: 0, warnings: [] } : compensateRepeatedHeaders(strips);
+    restoreIneffectiveTrailingMargins(strips);
     const { totalPages } = measure(strips);
     const api = {
       model,
@@ -1529,12 +1662,16 @@ body.view-spread .gp-sheet[data-side="verso"] {
       pageOf: (sel) => pageOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       pageRangeOf: (sel) => pageRangeOf(typeof sel === "string" ? document.querySelector(sel) : sel, strips),
       relayout: () => {
+        restoreFullHeightPageRoots();
+        restoreTrailingMargins();
         unwrapStrips(strips);
         for (const spacer of Array.from(document.querySelectorAll(".gp-recto-spacer")))
           spacer.remove();
         const rebuilt = buildStrips(model, opts, authoring);
         strips.length = 0;
         strips.push(...rebuilt);
+        stabilizeFullHeightPageRoots(model, strips);
+        compensateTrailingMarginsBeforeAvoids(model, strips);
         synthesizeColumnBreaks(model);
         measure(strips);
         api.blankPages = compensateRectoBreaks(model, strips);
@@ -1542,6 +1679,7 @@ body.view-spread .gp-sheet[data-side="verso"] {
           api.warnings = [
             ...new Set([...authoring, ...compensateRepeatedHeaders(strips).warnings])
           ];
+        restoreIneffectiveTrailingMargins(strips);
         const r = measure(strips);
         api.totalPages = r.totalPages;
         api.blankPageIndices = blankPageIndices(strips);

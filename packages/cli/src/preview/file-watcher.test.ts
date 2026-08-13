@@ -195,8 +195,9 @@ describe('generateAndWriteHtml', () => {
     const content = await Bun.file(join(tempDir, 'book.html')).text();
     expect(content).toContain('Chapter 1');
     expect(content).toContain('Chapter 2');
-    expect(content).toContain('class="gutterpress-chapter"');
-    expect(content).toContain('<style>.gutterpress-chapter{break-before:page}</style>');
+    expect(content).not.toContain('class="gutterpress-chapter"');
+    expect(content).not.toContain('data-chapter-src');
+    expect(content).not.toContain('<style>.gutterpress-chapter{break-before:page}</style>');
   }, 60000);
 
   test('renders one source file for an incremental chapter update', async () => {

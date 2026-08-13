@@ -117,6 +117,16 @@ Labelled `upstream` and written up for authors in
 
 ## Known-unresolved, low priority
 
+- **Screen-preview text metrics can differ slightly from native PDF metrics.**
+  On the Field Guide's embedded Titillium face, Chromium screen layout measures
+  some word advances about 2% wider than raw-CDP `printToPDF`. The preview and
+  PDF both total 269 pages after the 0.10 pagination fixes, and the reported
+  page-7/pinned-art regressions are resolved, but a few specialty headings can
+  move one or two physical pages before the flows reconverge. Chromium's
+  `text-rendering`, kerning, and optical-sizing controls do not close the gap;
+  a global letter-spacing correction over-compresses later content. Treat this
+  as print-metric calibration work, not a reason to add element-specific break
+  rules or book typography overrides.
 - **`/tmp/.git` writer unidentified.** The damage path is fixed (ancestor walk
   now validates `HEAD`); the cause is not known. If it recurs, the file mtime
   plus the running command pins it immediately.
