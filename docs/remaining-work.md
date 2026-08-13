@@ -4,7 +4,7 @@
 let it drift into a historical record. Spans two repos: `gutterpress`
 (this one) and `dc-op-manual` (DC design guide + field guide).
 
-Last updated 2026-08-12.
+Last updated 2026-08-13.
 
 ---
 
@@ -20,7 +20,7 @@ Last updated 2026-08-12.
 | Outcome ladders | **Exactly five mechanical d20 rows.** Fixed ranges/tiers/colors; `@outcome` may customize display labels | Count/range mismatches fail loudly; non-d20 five-row lookups use ordinary tables |
 | Streetwarden `<br>` | **Leave them.** A `<br>` in a table cell is legitimate markdown | The earlier flag was over-eager |
 | Missing art placeholders | **Leave them.** Loud magenta placeholders act as the to-do list | Build no longer fails; the gap stays visible |
-| Visual regression gate | **Gallery baseline + invariants**, deferred until the architecture settled — **now unblocked** | A book baseline needs re-approval so often it decays into rubber-stamping |
+| Visual regression gate | **Gallery baseline + invariants**, owner-approved 2026-08-13 | The reviewed 44-page gallery is now the portable release gate; future changes still require an explained diff before re-approval |
 
 ---
 
@@ -35,9 +35,10 @@ Last updated 2026-08-12.
 ## Open — actionable now
 
 ### Verification (highest value — this is the debt that caused the 0.10.0 defects)
-- [ ] **Owner sign-off on the gallery baseline**: the focused 39-page gallery
-      manifest, portable 3.4MB baseline, and review PDF are prepared. The gate
-      passes; approval is still deliberately outstanding.
+- [x] **Owner sign-off on the gallery baseline**: the focused 44-page gallery
+      manifest and portable 3.7MB baseline were approved on 2026-08-13 after
+      review of the final PDF (`sha256 4c16dedcfd6d9b65bfb31c7c4fb820962a210c932caf44acd550aeb56872b73b`).
+      The promoted baseline passes the text, raster, and semantic/paint gates.
 - [x] **Invariant gates**: page-edge plate paint, populated multicol fragments,
       skill tab/body glue, final-fragment border/notch geometry, marker leaks
       with an explicit code-specimen exemption, and the one intentional
@@ -72,7 +73,7 @@ Last updated 2026-08-12.
 - [x] **Split card corner notch**: fragmentable cards use final-slice decoration;
       explicit `.allow-split` cards and the Field Guide's default-splitting
       specialty cards share that rule, while `.no-split` remains atomic. Gallery
-      pages 24–25 and real Field Guide pages 49–50 were inspected; final slices
+      pages 29–30 and real Field Guide pages 49–50 were inspected; final slices
       have their bottom rule/notch and non-final slices remain open.
 - [x] **Outcome ladder contract**: exactly five canonical ranges are required;
       malformed counts/ranges throw instead of recycling `hit`. Emphasized GFM
