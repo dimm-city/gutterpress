@@ -55,6 +55,9 @@ export class EditorPreviewSyncController {
   // Timestamp guard: while the preview is being driven from the editor side,
   // ignore the sourceLineChanged it emits so the two panes don't feed back.
   private suppressUntil = 0;
+  // Only the newest editor anchor may reflect its result into toolbar state.
+  // PreviewClient commands are asynchronous and can resolve out of order.
+  private anchorRequestId = 0;
 
   constructor(deps: EditorPreviewSyncDeps) {
     this.deps = deps;
@@ -65,8 +68,16 @@ export class EditorPreviewSyncController {
     return this.suppressUntil;
   }
 
+  /** Invalidate asynchronous replies from a render/frame epoch that ended. */
+  invalidatePending(): void {
+    this.anchorRequestId++;
+  }
+
   /** Open the echo-suppression window for `ms` from now. */
   suppressFor(ms: number): void {
+    // A direct preview interaction supersedes any editor-driven command that
+    // is still waiting to report its page.
+    this.invalidatePending();
     this.suppressUntil = this.deps.now() + ms;
   }
 
@@ -84,6 +95,7 @@ export class EditorPreviewSyncController {
     origin: "scroll" | "caret",
     chapter: string | null,
   ): void {
+    const requestId = ++this.anchorRequestId;
     const client = this.deps.client();
     if (!client || this.deps.rendering()) return;
     this.suppressUntil = this.deps.now() + 400;
@@ -95,6 +107,7 @@ export class EditorPreviewSyncController {
     client
       .scrollTo({ line, chapter }, { block: origin === "caret" ? "center" : "start" })
       .then((res) => {
+        if (requestId !== this.anchorRequestId || this.deps.rendering()) return;
         // scrollTo suppresses the book's scroll-driven pageChanged, so reflect
         // the new page in the toolbar from the command's own return value.
         if (res?.page) this.deps.syncPageAfterScroll(res.page);

@@ -2,8 +2,7 @@
  * PreviewEventController — the single owner of the PreviewClient event router
  * that used to live inline as the `onClientReady` closure in `+page.svelte`.
  *
- * It reduces over the four preview-frame events (`renderingComplete`, `ready`,
- * `pageChanged`, `sourceLineChanged`) and drives the post-render *settle
+ * It reduces over preview-frame lifecycle/navigation/source events and drives the post-render *settle
  * sequence*: view-mode auto-selection, the fit-width-vs-numeric-zoom reveal
  * race, page restore, outline rebuild, and re-lint.
  *
@@ -51,6 +50,8 @@ interface PreviewEventZoomView {
  * follow). Grouped so the editor coupling stays behind one injected surface.
  */
 interface PreviewEventEditorSync {
+  /** Invalidate replies issued against a preview frame/render being replaced. */
+  invalidatePending: () => void;
   /** Timestamp (ms) before which preview→editor follow is suppressed (echo guard). */
   suppressPreviewSyncUntil: () => number;
   editorPaneOpen: () => boolean;
@@ -147,6 +148,9 @@ export class PreviewEventController {
 
   handleEvent(e: PreviewEvent): void {
     switch (e.name) {
+      case "renderingStarted":
+        this.deps.editorSync.invalidatePending();
+        break;
       case "renderingComplete":
         this.onRenderingComplete(e.detail);
         break;
@@ -283,6 +287,7 @@ export class PreviewEventController {
 
   private onReady(): void {
     const d = this.deps;
+    d.editorSync.invalidatePending();
     d.setRendering(true);
     // New render starting — overlay covers the layout shuffle; fades out on
     // renderingComplete.

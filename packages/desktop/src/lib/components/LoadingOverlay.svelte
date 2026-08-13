@@ -78,7 +78,7 @@
        retry render. Blocking here is what made "scrolling in the desktop completely
        broken while everything else works" (scroll-dead-preview regression;
        pinned by tests/platform/preview-scroll-regression.test.ts). Only the
-       spinner card below restores pointer-events for its Cancel button. */
+       Cancel button below restores pointer-events for itself. */
     pointer-events: none;
     /* Default z-index: below the toolbar and all dialogs so the
        overlay never traps interactive UI elements above it. The pane variant
@@ -106,9 +106,7 @@
     flex-direction: column;
     align-items: center;
     gap: 16px;
-    /* Restore interactivity for the card's Cancel button (the scrim itself is
-       pointer-events: none — see .loading-overlay). */
-    pointer-events: auto;
+    pointer-events: none;
   }
 
   .spinner {
@@ -132,6 +130,7 @@
   }
 
   .cancel-btn {
+    pointer-events: auto;
     background: transparent;
     border: 1px solid var(--app-border-strong);
     color: var(--app-text-secondary);

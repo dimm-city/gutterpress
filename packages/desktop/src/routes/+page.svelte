@@ -2149,7 +2149,7 @@
     copyToClipboard,
     toastSuccess: (message) => toast?.success(message),
     toastError: (message) => toast?.error(message),
-    openBlockOverlay: (chapter, range) => void blockOverlay.show({ chapter, range }),
+    openBlockOverlay: (chapter, range, anchor) => void blockOverlay.show({ chapter, range, anchor }),
   });
 
   // ----------------------------------------------------------------
@@ -2164,6 +2164,7 @@
     pageNav,
     zoomView,
     editorSync: {
+      invalidatePending: () => editorSync.invalidatePending(),
       suppressPreviewSyncUntil: () => editorSync.suppressPreviewSyncUntil,
       editorPaneOpen: () => editorPaneOpen,
       updateActiveOutline: (line) => updateActiveOutline(line),

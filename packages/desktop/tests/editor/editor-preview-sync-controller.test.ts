@@ -27,12 +27,14 @@ class FakeClient implements EditorPreviewSyncClient {
   calls: Array<{ target: unknown; opts: unknown }> = [];
   page: number | null = null;
   reject = false;
+  scrollToImpl: (() => Promise<{ page: number; sourceLine: number | null } | null>) | null = null;
 
   scrollTo(
     target: unknown,
     opts?: unknown,
   ): Promise<{ page: number; sourceLine: number | null } | null> {
     this.calls.push({ target, opts });
+    if (this.scrollToImpl) return this.scrollToImpl();
     if (this.reject) return Promise.reject(new Error("boom"));
     return Promise.resolve(this.page != null ? { page: this.page, sourceLine: null } : null);
   }
@@ -139,6 +141,48 @@ test("onEditorAnchorLine reflects the scrollTo page into the toolbar", async () 
   h.ctrl.onEditorAnchorLine(10, "caret", "ch1.md");
   await flush();
   expect(h.syncPageAfterScroll.calls).toEqual([[4]]);
+});
+
+test("a stale scrollTo completion cannot roll the toolbar back from the latest editor anchor", async () => {
+  const h = make();
+  const pending: Array<(result: { page: number; sourceLine: number | null }) => void> = [];
+  (h.client as FakeClient).scrollToImpl = () =>
+    new Promise((resolve) => pending.push(resolve));
+
+  h.ctrl.onEditorAnchorLine(10, "scroll", "ch1.md");
+  h.ctrl.onEditorAnchorLine(20, "scroll", "ch1.md");
+  pending[1]!({ page: 8, sourceLine: 20 });
+  await flush();
+  pending[0]!({ page: 3, sourceLine: 10 });
+  await flush();
+
+  expect(h.syncPageAfterScroll.calls).toEqual([[8]]);
+});
+
+test("suppressFor invalidates an editor scroll result still in flight", async () => {
+  const h = make();
+  let resolve!: (result: { page: number; sourceLine: number | null }) => void;
+  (h.client as FakeClient).scrollToImpl = () => new Promise((done) => (resolve = done));
+  h.ctrl.onEditorAnchorLine(10, "scroll", "ch1.md");
+
+  h.ctrl.suppressFor(400);
+  resolve({ page: 3, sourceLine: 10 });
+  await flush();
+  expect(h.syncPageAfterScroll.calls).toEqual([]);
+});
+
+test("render invalidation survives rendering returning to false before a stale result resolves", async () => {
+  const h = make();
+  let resolve!: (result: { page: number; sourceLine: number | null }) => void;
+  (h.client as FakeClient).scrollToImpl = () => new Promise((done) => (resolve = done));
+  h.ctrl.onEditorAnchorLine(10, "scroll", "ch1.md");
+
+  h.rendering = true;
+  h.ctrl.invalidatePending();
+  h.rendering = false;
+  resolve({ page: 3, sourceLine: 10 });
+  await flush();
+  expect(h.syncPageAfterScroll.calls).toEqual([]);
 });
 
 test("onEditorAnchorLine does not sync a page when scrollTo returns none", async () => {

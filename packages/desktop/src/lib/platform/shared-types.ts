@@ -189,7 +189,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     fontSize: 14,
     lineHeight: 1.6,
     spellCheckLanguage: "en-US",
-    autoSaveDelay: 2500,
+    autoSaveDelay: 500,
     crashRecovery: true,
   },
   appearance: {

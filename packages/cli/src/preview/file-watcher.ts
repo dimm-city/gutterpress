@@ -89,6 +89,7 @@ async function renderPreviewBook(
     plugins,
     pluginCss,
     wrapChapters: opts.wrapChapters,
+    annotateSourceChapters: true,
     ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
     // ARCH finding #4: Gutterpress's typed, line-numbered marker warnings
     // (env.layoutWarnings) used to be discarded here too — this is the

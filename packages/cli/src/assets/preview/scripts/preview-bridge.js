@@ -71,6 +71,9 @@
   window.addEventListener('sourceLineChanged', function (e) {
     post({ type: 'gutterpress:event', name: 'sourceLineChanged', detail: e.detail });
   });
+  window.addEventListener('viewportChanged', function (e) {
+    post({ type: 'gutterpress:event', name: 'viewportChanged', detail: e.detail });
+  });
   window.addEventListener('elementActivated', function (e) {
     post({ type: 'gutterpress:event', name: 'elementActivated', detail: e.detail });
   });

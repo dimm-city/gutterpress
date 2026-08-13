@@ -249,6 +249,17 @@ describe("source_range: negative fixture (§2.6 deliberate gap)", () => {
 // ── layout markers (@section / @continue / @page-break) ─────────────────────
 
 describe("source_range: layout markers", () => {
+  test("preview chapter identity survives custom layout-marker renderers", () => {
+    const md = createMarkdownRenderer();
+    const html = md.render(
+      "@section .col-split\nA\n@column-break\nB\n@end-section\n@page-break\n",
+      { sourceChapter: "chapters/a.md" },
+    );
+
+    expect(html).toMatch(/class="section col-split"[^>]*data-chapter-src="chapters\/a\.md"/);
+    expect(html).toMatch(/class="gp-page-break"[^>]*data-chapter-src="chapters\/a\.md"/);
+  });
+
   test("@chapter / @page / @section / @continue / @page-break all get single-line ranges that reproduce their exact marker line", () => {
     const md = createMarkdownRenderer();
     const src =

@@ -137,24 +137,77 @@
     });
   }
 
-  // The block straddling the top of the viewport (greatest top still at/above a
-  // reference line just below the viewport edge); falls back to the first block
-  // below the fold when scrolled to the very top.
-  function topVisibleSourceEl() {
-    var blocks = sourcedBlocks();
-    if (blocks.length === 0) return null;
+  function rectsOf(el) {
+    var rects = el && el.getClientRects ? Array.from(el.getClientRects()) : [];
+    return rects.length ? rects : [el.getBoundingClientRect()];
+  }
+
+  function visibleRectOf(el, pageRect) {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
     var ref = 4;
-    var best = null, bestTop = -Infinity;
-    for (var i = 0; i < blocks.length; i++) {
-      var top = blocks[i].getBoundingClientRect().top;
-      if (top <= ref && top > bestTop) { bestTop = top; best = blocks[i]; }
-    }
-    if (!best) {
-      for (var j = 0; j < blocks.length; j++) {
-        if (blocks[j].getBoundingClientRect().top >= 0) { best = blocks[j]; break; }
+    var rects = rectsOf(el);
+    var best = null;
+    var bestIndex = -1;
+    var bestDistance = Infinity;
+    var bestArea = -1;
+    for (var i = 0; i < rects.length; i++) {
+      var r = rects[i];
+      var width = Math.min(r.right, vw, pageRect ? pageRect.right : vw) -
+        Math.max(r.left, 0, pageRect ? pageRect.left : 0);
+      var height = Math.min(r.bottom, vh, pageRect ? pageRect.bottom : vh) -
+        Math.max(r.top, 0, pageRect ? pageRect.top : 0);
+      if (width <= 0 || height <= 0) continue;
+      var distance = r.top <= ref && r.bottom > ref ? 0 : Math.abs(r.top - ref);
+      var area = width * height;
+      if (distance < bestDistance || (distance === bestDistance && area > bestArea)) {
+        best = r;
+        bestIndex = i;
+        bestDistance = distance;
+        bestArea = area;
       }
     }
-    return best || blocks[0];
+    return best ? { rect: best, index: bestIndex, distance: bestDistance, area: bestArea } : null;
+  }
+
+  function rectOnPage(el, pageRect) {
+    if (!pageRect) return null;
+    var rects = rectsOf(el);
+    for (var i = 0; i < rects.length; i++) {
+      var r = rects[i];
+      var width = Math.min(r.right, pageRect.right) - Math.max(r.left, pageRect.left);
+      var height = Math.min(r.bottom, pageRect.bottom) - Math.max(r.top, pageRect.top);
+      if (width > 0 && height > 0) return r;
+    }
+    return null;
+  }
+
+  // Find the source fragment nearest the viewport's top edge. getClientRects()
+  // matters here: one source block can fragment across several printed pages.
+  function topVisibleSource() {
+    var blocks = sourcedBlocks();
+    if (blocks.length === 0) return null;
+    if (pages.length === 0) refreshPages();
+    var page = pages[detectVisiblePage() - 1];
+    var pageRect = page ? page.getBoundingClientRect() : null;
+    var best = null, bestRect = null, bestIndex = -1, bestDistance = Infinity, bestArea = -1;
+    for (var i = 0; i < blocks.length; i++) {
+      var visible = visibleRectOf(blocks[i], pageRect);
+      if (!visible) continue;
+      if (visible.distance < bestDistance || (visible.distance === bestDistance && visible.area > bestArea)) {
+        best = blocks[i];
+        bestRect = visible.rect;
+        bestIndex = visible.index;
+        bestDistance = visible.distance;
+        bestArea = visible.area;
+      }
+    }
+    return best ? { el: best, rect: bestRect, index: bestIndex, pageRect: pageRect } : null;
+  }
+
+  function topVisibleSourceEl() {
+    var source = topVisibleSource();
+    return source ? source.el : null;
   }
 
   // {el, line} of the viewport-top source position, with the line interpolated
@@ -162,12 +215,13 @@
   // next annotated block (source-map only annotates top-level blocks, so the
   // block's start line alone can be tens of lines above the visible content).
   function visibleSourcePosition() {
-    var el = topVisibleSourceEl();
-    if (!el) return null;
+    var source = topVisibleSource();
+    if (!source) return null;
+    var el = source.el;
     var line = lineOf(el);
-    if (line == null) return { el: el, line: null };
+    if (line == null) return { el: el, rect: source.rect, index: source.index, line: null };
     var ref = 4; // same reference line as topVisibleSourceEl
-    var top = el.getBoundingClientRect().top;
+    var top = source.rect.top;
     if (top < ref) {
       // Find the next annotated sibling-in-flow (document order, higher line —
       // explicitly constrained to this chapter because source lines restart per
@@ -180,7 +234,9 @@
         var nl = lineOf(blocks[i]);
         if (nl == null) continue;
         if (nl <= line) break;
-        var nextTop = blocks[i].getBoundingClientRect().top;
+        var nextRect = source.pageRect ? rectOnPage(blocks[i], source.pageRect) : null;
+        if (!nextRect) break;
+        var nextTop = nextRect.top;
         if (nextTop > top) {
           var f = Math.max(0, Math.min(1, (ref - top) / (nextTop - top)));
           line = line + Math.round(f * (nl - line));
@@ -188,7 +244,7 @@
         break;
       }
     }
-    return { el: el, line: line };
+    return { el: el, rect: source.rect, index: source.index, line: line };
   }
 
   function recordVisibleSource() {
@@ -202,7 +258,9 @@
     var position = visibleSourcePosition();
     var anchor = position ? {
       el: position.el,
-      top: position.el.getBoundingClientRect().top
+      index: position.index,
+      top: position.rect.top,
+      left: position.rect.left
     } : null;
     change();
     refreshPages();
@@ -211,9 +269,12 @@
       return;
     }
     ignoreScrollUntil = Date.now() + 300;
-    var delta = anchor.el.getBoundingClientRect().top - anchor.top;
-    if (delta) {
-      window.scrollBy({ top: delta, behavior: 'instant' });
+    var rects = rectsOf(anchor.el);
+    var currentRect = rects[anchor.index] || anchor.el.getBoundingClientRect();
+    var delta = currentRect.top - anchor.top;
+    var deltaX = currentRect.left - anchor.left;
+    if (delta || deltaX) {
+      window.scrollBy({ top: delta, left: deltaX, behavior: 'instant' });
     }
     currentPage = detectVisiblePage();
     recordVisibleSource();
@@ -433,20 +494,36 @@
   // getRectsFor(): the viewer never clones, so a spec resolves to AT MOST ONE
   // element. Its fragment rects come straight from getClientRects() — a block
   // can still visually span pages if the browser's own multicol layout breaks
-  // it there — each reported under the block's own page
-  // (window.Gutterpress.pageOf() locates the fragmentainer the element
-  // STARTS in, so every rect shares that one page number).
+  // it there. Resolve each rect against the sheet it actually intersects;
+  // pageOf(el) can only identify the element's starting fragmentainer.
   function nativeRectsFor(spec) {
     spec = spec || {};
     var el = blocksMatchingRange(spec.chapter, spec.range)[0] || null;
     if (!el) return { rects: [] };
-    var page = pageIndexOf(el);
-    var raw = el.getClientRects ? Array.from(el.getClientRects()) : [];
+    var geometryEl = el.tagName && el.tagName.toLowerCase() === 'code' &&
+      el.parentElement && el.parentElement.tagName.toLowerCase() === 'pre'
+      ? el.parentElement
+      : el;
+    if (pages.length === 0) refreshPages();
+    var fallbackPage = pageIndexOf(el);
+    var raw = geometryEl.getClientRects ? Array.from(geometryEl.getClientRects()) : [];
     if (!raw.length) {
-      var r0 = plainRect(el);
+      var r0 = plainRect(geometryEl);
       raw = r0 ? [r0] : [];
     }
     var rects = raw.map(function (r) {
+      var page = fallbackPage;
+      var bestArea = 0;
+      for (var i = 0; i < pages.length; i++) {
+        var sheetRect = pages[i].getBoundingClientRect();
+        var width = Math.min(r.right, sheetRect.right) - Math.max(r.left, sheetRect.left);
+        var height = Math.min(r.bottom, sheetRect.bottom) - Math.max(r.top, sheetRect.top);
+        var area = width > 0 && height > 0 ? width * height : 0;
+        if (area > bestArea) {
+          bestArea = area;
+          page = i + 1;
+        }
+      }
       return { top: r.top, left: r.left, width: r.width, height: r.height, page: page };
     });
     return { rects: rects };
@@ -654,8 +731,9 @@
     // Source line + page of the block at the top of the viewport (host scroll
     // position read for preview->editor sync).
     getVisibleSource: function () {
+      if (pages.length === 0) refreshPages();
       var pos = visibleSourcePosition();
-      return pos ? { sourceLine: pos.line, chapter: chapterOf(pos.el), page: pageIndexOf(pos.el) } : null;
+      return pos ? { sourceLine: pos.line, chapter: chapterOf(pos.el), page: detectVisiblePage() } : null;
     },
 
     // Generic, read-only DOM extraction. fields: 'text'|'id'|'sourceLine'|
@@ -816,6 +894,7 @@
 
   // Scroll tracking
   var scrollTimer = null;
+  var viewportFrame = null;
   function publishScrollPosition(force, silent) {
     scrollTimer = null;
     var remainingGuard = ignoreScrollUntil - Date.now();
@@ -837,7 +916,7 @@
     if (sl != null && (sl !== lastSourceLine || chapter !== lastSourceChapter)) {
       lastSourceLine = sl;
       lastSourceChapter = chapter;
-      var detail = { sourceLine: sl, chapter: chapter, page: pageIndexOf(pos.el) };
+      var detail = { sourceLine: sl, chapter: chapter, page: page };
       if (!silent) {
         window.dispatchEvent(new CustomEvent('sourceLineChanged', { detail: detail }));
       }
@@ -845,10 +924,23 @@
     }
     return null;
   }
+  function scheduleViewportChanged() {
+    if (!viewportFrame) {
+      var schedule = typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : function (fn) { return setTimeout(fn, 0); };
+      viewportFrame = schedule(function () {
+        viewportFrame = null;
+        window.dispatchEvent(new CustomEvent('viewportChanged', { detail: {} }));
+      });
+    }
+  }
   window.addEventListener('scroll', function () {
+    scheduleViewportChanged();
     if (scrollTimer) clearTimeout(scrollTimer);
     scrollTimer = setTimeout(publishScrollPosition, 150);
   });
+  window.addEventListener('resize', scheduleViewportChanged);
 
   // Reset to page 1, scroll to top, and announce completion once the native
   // viewer's pagination finishes.

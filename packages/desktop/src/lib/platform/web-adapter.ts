@@ -781,6 +781,7 @@ export class WebAdapter implements Platform {
       readText: (relPath) => readFileFromRoot(root, relPath),
       projectCss,
       title: input.displayName,
+      annotateSourceChapters: true,
     });
 
     // Inject a <script src> for the same-origin, vendored viewer bundle (the

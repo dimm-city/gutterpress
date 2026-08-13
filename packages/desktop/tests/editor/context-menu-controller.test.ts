@@ -74,6 +74,7 @@ interface Harness {
   /** Live in-editor content by path (the book document's open chapters). */
   openContent: Map<string, string>;
   readFileMap: Record<string, string>;
+  readFileImpl: ((path: string) => Promise<string>) | null;
   promptResult: string | null;
   goToSourceCalls: Array<[string, number]>;
   openMediaPanelCalls: number;
@@ -82,7 +83,7 @@ interface Harness {
   toastErrorCalls: string[];
   workspaceRect: { left: number; top: number; width: number; height: number } | null;
   iframeOrigin: { left: number; top: number } | null;
-  openBlockOverlayCalls: Array<[string, [number, number]]>;
+  openBlockOverlayCalls: Array<[string, [number, number], { x: number; y: number }]>;
 }
 
 function make(): Harness {
@@ -97,6 +98,7 @@ function make(): Harness {
     currentDir: "/proj",
     openContent: new Map<string, string>(),
     readFileMap: {},
+    readFileImpl: null,
     promptResult: "edited",
     goToSourceCalls: [],
     openMediaPanelCalls: 0,
@@ -114,6 +116,7 @@ function make(): Harness {
     currentDir: () => h.currentDir,
     openContent: (path: string) => h.openContent.get(path) ?? null,
     readFile: async (path: string) => {
+      if (h.readFileImpl) return h.readFileImpl(path);
       if (path in h.readFileMap) return h.readFileMap[path]!;
       throw new Error(`not found: ${path}`);
     },
@@ -128,7 +131,7 @@ function make(): Harness {
     },
     toastSuccess: (m) => h.toastSuccessCalls.push(m),
     toastError: (m) => h.toastErrorCalls.push(m),
-    openBlockOverlay: (chapter, range) => h.openBlockOverlayCalls.push([chapter, range]),
+    openBlockOverlay: (chapter, range, anchor) => h.openBlockOverlayCalls.push([chapter, range, anchor]),
   };
   h.ctrl = new ContextMenuController(deps);
   h.ctrl.subscribe(client);
@@ -151,6 +154,18 @@ describe("open", () => {
 
   test("kind: 'none' never opens (PR 2's keyboard path can dispatch it)", async () => {
     const h = make();
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "none" }) });
+    await flush();
+    expect(h.ctrl.open).toBe(false);
+  });
+
+  test("kind: 'none' closes an existing menu because the new request invalidates its target", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
+    h.client.emit({ name: "contextMenuRequested", detail: detail() });
+    await flush();
+    expect(h.ctrl.open).toBe(true);
+
     h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "none" }) });
     await flush();
     expect(h.ctrl.open).toBe(false);
@@ -193,6 +208,37 @@ describe("open", () => {
     expect(h.ctrl.open).toBe(true);
     expect(h.ctrl.x).not.toBe(firstX);
   });
+
+  test("an older async request cannot overwrite a newer context menu", async () => {
+    const h = make();
+    const pending: Array<(source: string) => void> = [];
+    h.readFileImpl = () => new Promise((resolve) => pending.push(resolve));
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "image", range: [0, 1], x: 100 }) });
+    await flush();
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "image", range: [1, 2], x: 700 }) });
+    await flush();
+
+    pending[1]!("![Second](second.png)\n");
+    await flush();
+    expect(h.ctrl.x).toBe(710);
+    pending[0]!("![First](first.png)\n");
+    await flush();
+    expect(h.ctrl.x).toBe(710);
+  });
+
+  test("an ignored request cancels an older asynchronous menu build", async () => {
+    const h = make();
+    let resolveRead!: (source: string) => void;
+    h.readFileImpl = () => new Promise((resolve) => (resolveRead = resolve));
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "image" }) });
+    await flush();
+
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "none" }) });
+    resolveRead("![Late](late.png)\n");
+    await flush();
+    expect(h.ctrl.open).toBe(false);
+    expect(h.ctrl.items).toEqual([]);
+  });
 });
 
 // ── dismissal ────────────────────────────────────────────────────────────────
@@ -227,6 +273,16 @@ describe("dismissal", () => {
     expect(h.commitEngine.generation).toBe(1);
   });
 
+  test("renderingStarted closes the menu before its frame is replaced", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
+    h.client.emit({ name: "contextMenuRequested", detail: detail() });
+    await flush();
+    expect(h.ctrl.open).toBe(true);
+    h.client.emit({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+    expect(h.ctrl.open).toBe(false);
+  });
+
   test("pageChanged closes the menu (anchor invalidated)", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
@@ -237,7 +293,7 @@ describe("dismissal", () => {
     expect(h.ctrl.open).toBe(false);
   });
 
-  test("sourceLineChanged and elementActivated do not close the menu (not part of the dismissal matrix)", async () => {
+  test("viewportChanged closes the menu while unrelated source events do not", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
     h.client.emit({ name: "contextMenuRequested", detail: detail() });
@@ -245,6 +301,8 @@ describe("dismissal", () => {
     h.client.emit({ name: "sourceLineChanged", detail: {} });
     h.client.emit({ name: "elementActivated", detail: {} });
     expect(h.ctrl.open).toBe(true);
+    h.client.emit({ name: "viewportChanged", detail: {} });
+    expect(h.ctrl.open).toBe(false);
   });
 });
 
@@ -320,7 +378,7 @@ describe("block kind", () => {
     const item = h.ctrl.items.find((i) => i.id === "block-edit")!;
     expect(item.enabled).toBe(true);
     await h.ctrl.runItem(item);
-    expect(h.openBlockOverlayCalls).toEqual([["ch1.md", [3, 5]]]);
+    expect(h.openBlockOverlayCalls).toEqual([["ch1.md", [3, 5], { x: 100, y: 100 }]]);
     expect(h.ctrl.open).toBe(false);
   });
 

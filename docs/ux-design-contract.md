@@ -321,7 +321,7 @@ the plan wins.**
 - **Auto-save is SHIPPED and works as follows** (do not respecify): debounced
   disk save 500ms after the last edit (`EditorBuffer`), crash-recovery
   snapshots at 1000ms, a user setting ("Save edits automatically",
-  default 2500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
+  default 500ms), plus explicit `Cmd/Ctrl+S` / toolbar Save. The save
   indicator is subtle (no modal) — see Anti-Patterns.
 - Image insertion on mobile: system photo picker + camera (PROPOSED — gate on
   the PWA file-write path).

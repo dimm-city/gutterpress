@@ -28,10 +28,10 @@ const BOOK_NATIVE = `
     <p data-source-line="20">Chapter two anchor</p>
   </div></div>`;
 
-function installBook(frame, markup = BOOK_NATIVE) {
+function installBook(frame, markup = BOOK_NATIVE, layout = "vertical") {
   const frameWindow = frame.contentWindow;
   const frameDocument = frame.contentDocument;
-  const scroll = { y: 0 };
+  const scroll = { x: 0, y: 0 };
   frameDocument.head.innerHTML = '<script src="/engine/gutterpress-viewer.js"></script>';
   frameWindow.Gutterpress = {
     pageOf(el) {
@@ -46,12 +46,17 @@ function installBook(frame, markup = BOOK_NATIVE) {
   let zoom = 1;
 
   frameWindow.innerHeight = 900;
+  frameWindow.innerWidth = 500;
   Object.defineProperty(frameWindow, "scrollY", { configurable: true, get: () => scroll.y });
+  Object.defineProperty(frameWindow, "scrollX", { configurable: true, get: () => scroll.x });
   frameWindow.scrollBy = (xOrOptions, y) => {
     const top = typeof xOrOptions === "number" ? y : xOrOptions?.top;
+    const left = typeof xOrOptions === "number" ? xOrOptions : xOrOptions?.left;
     const apply = () => {
       scroll.y += typeof top === "number" ? top : 0;
+      scroll.x += typeof left === "number" ? left : 0;
       frameDocument.documentElement.scrollTop = scroll.y;
+      frameDocument.documentElement.scrollLeft = scroll.x;
     };
     // Model `scroll-behavior: smooth`: the numeric overload is asynchronous,
     // while the explicit instant behavior used by restoration is synchronous.
@@ -59,6 +64,7 @@ function installBook(frame, markup = BOOK_NATIVE) {
     else apply();
   };
   frameDocument.documentElement.scrollTop = 0;
+  frameDocument.documentElement.scrollLeft = 0;
   const setProperty = frameDocument.documentElement.style.setProperty.bind(frameDocument.documentElement.style);
   frameDocument.documentElement.style.setProperty = (name, value) => {
     setProperty(name, value);
@@ -66,14 +72,16 @@ function installBook(frame, markup = BOOK_NATIVE) {
   };
   pages.forEach((page, index) => {
     page.scrollIntoView = () => {
-      scroll.y = index * 1000;
+      if (layout === "horizontal") scroll.x = index * 500;
+      else scroll.y = index * 1000;
       frameDocument.documentElement.scrollTop = scroll.y;
+      frameDocument.documentElement.scrollLeft = scroll.x;
     };
     page.getBoundingClientRect = () => ({
-      top: index * 1000 * zoom - frameWindow.scrollY,
-      bottom: index * 1000 * zoom - frameWindow.scrollY + 900 * zoom,
-      left: 0,
-      right: 400,
+      top: (layout === "horizontal" ? 0 : index * 1000) * zoom - frameWindow.scrollY,
+      bottom: (layout === "horizontal" ? 900 : index * 1000 + 900) * zoom - frameWindow.scrollY,
+      left: (layout === "horizontal" ? index * 500 : 0) * zoom - frameWindow.scrollX,
+      right: (layout === "horizontal" ? index * 500 + 400 : 400) * zoom - frameWindow.scrollX,
       width: 400,
       height: 900 * zoom,
     });
@@ -81,10 +89,10 @@ function installBook(frame, markup = BOOK_NATIVE) {
   blocks.forEach((block) => {
     const page = pages.indexOf(block.closest(pageSelector));
     block.getBoundingClientRect = () => ({
-      top: (page * 1000 + 20) * zoom - frameWindow.scrollY,
-      bottom: (page * 1000 + 60) * zoom - frameWindow.scrollY,
-      left: 0,
-      right: 400,
+      top: (layout === "horizontal" ? 20 : page * 1000 + 20) * zoom - frameWindow.scrollY,
+      bottom: (layout === "horizontal" ? 60 : page * 1000 + 60) * zoom - frameWindow.scrollY,
+      left: (layout === "horizontal" ? page * 500 : 0) * zoom - frameWindow.scrollX,
+      right: (layout === "horizontal" ? page * 500 + 400 : 400) * zoom - frameWindow.scrollX,
       width: 400,
       height: 40 * zoom,
     });
@@ -107,6 +115,113 @@ function installBook(frame, markup = BOOK_NATIVE) {
     setTimeout,
     clearTimeout,
   );
+}
+
+async function runHorizontalAnchorRegression() {
+  const outer = new Window({ url: "http://localhost/" });
+  const document = outer.document;
+  Object.defineProperty(outer, "parent", { configurable: true, value: { postMessage() {} } });
+  const active = document.createElement("iframe");
+  active.id = "gutterpress-active";
+  document.body.appendChild(active);
+  installBook(active, BOOK_NATIVE, "horizontal");
+  const makeTargetFragmented = (frame) => {
+    const target = frame.contentDocument.querySelector('[data-source-line="20"]');
+    target.getClientRects = () => [
+      { top: 20, bottom: 60, left: 500 - frame.contentWindow.scrollX, right: 900 - frame.contentWindow.scrollX, width: 400, height: 40 },
+      { top: 20, bottom: 60, left: 1000 - frame.contentWindow.scrollX, right: 1400 - frame.contentWindow.scrollX, width: 400, height: 40 },
+    ];
+  };
+  makeTargetFragmented(active);
+  active.contentWindow.scrollBy({ left: 1000 });
+
+  let onChange;
+  outer.__GUTTERPRESS_INSTANCE = "horizontal";
+  outer.__GUTTERPRESS_REVISION = 0;
+  outer.__GUTTERPRESS_CHANGE_SOURCE = {
+    subscribe(callback) { onChange = callback; return () => {}; },
+    acknowledge() {},
+  };
+  outer.requestAnimationFrame = (callback) => callback();
+  const appendChild = document.body.appendChild.bind(document.body);
+  document.body.appendChild = (node) => {
+    const result = appendChild(node);
+    if (node.tagName === "IFRAME" && node !== active) {
+      installBook(node, BOOK_NATIVE, "horizontal");
+      makeTargetFragmented(node);
+      node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+      node.dispatchEvent(new outer.Event("load"));
+    }
+    return result;
+  };
+
+  const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
+  runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+  active.dispatchEvent(new outer.Event("load"));
+  onChange?.({ type: "full-reload", instance: "horizontal", revision: 1 });
+
+  const fresh = document.getElementById("gutterpress-active");
+  assert.notEqual(fresh, active, "horizontal: full reload swaps the frame");
+  assert.deepEqual(fresh.contentWindow.previewAPI.getVisibleSource(), {
+    sourceLine: 20,
+    chapter: "chapter-2.md",
+    page: 3,
+  }, "horizontal: full reload restores the visible source fragment");
+  assert.equal(fresh.contentWindow.scrollX, 1000, "horizontal: full reload restores horizontal scroll");
+  console.log("[desktop-test] PASS horizontal preview-shell anchor preservation");
+}
+
+async function runPartialHorizontalAnchorRegression() {
+  const outer = new Window({ url: "http://localhost/" });
+  const document = outer.document;
+  Object.defineProperty(outer, "parent", { configurable: true, value: { postMessage() {} } });
+  const active = document.createElement("iframe");
+  active.id = "gutterpress-active";
+  document.body.appendChild(active);
+  installBook(active, BOOK_NATIVE, "horizontal");
+  active.contentWindow.scrollBy({ left: 300 });
+
+  // Page 2 has three times page 1's visible width, but page 1 deliberately has
+  // a much larger source block closer to the top. Page and source must still
+  // come from the same selected sheet.
+  const first = active.contentDocument.querySelector('[data-chapter-src="chapter-1.md"] [data-source-line="1"]');
+  const second = active.contentDocument.querySelector('[data-chapter-src="chapter-2.md"] [data-source-line="1"]');
+  first.getClientRects = () => [{ top: 4, bottom: 500, left: -300, right: 100, width: 400, height: 496 }];
+  second.getClientRects = () => [{ top: 80, bottom: 120, left: 200, right: 600, width: 400, height: 40 }];
+
+  let onChange;
+  outer.__GUTTERPRESS_INSTANCE = "partial-horizontal";
+  outer.__GUTTERPRESS_REVISION = 0;
+  outer.__GUTTERPRESS_CHANGE_SOURCE = {
+    subscribe(callback) { onChange = callback; return () => {}; },
+    acknowledge() {},
+  };
+  outer.requestAnimationFrame = (callback) => callback();
+  const appendChild = document.body.appendChild.bind(document.body);
+  document.body.appendChild = (node) => {
+    const result = appendChild(node);
+    if (node.tagName === "IFRAME" && node !== active) {
+      installBook(node, BOOK_NATIVE, "horizontal");
+      node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+      node.dispatchEvent(new outer.Event("load"));
+    }
+    return result;
+  };
+  const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
+  runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+  active.dispatchEvent(new outer.Event("load"));
+  onChange?.({ type: "full-reload", instance: "partial-horizontal", revision: 1 });
+
+  const fresh = document.getElementById("gutterpress-active");
+  assert.deepEqual(fresh.contentWindow.previewAPI.getVisibleSource(), {
+    sourceLine: 1,
+    chapter: "chapter-2.md",
+    page: 2,
+  }, "partial horizontal: source restores from the sheet with greatest overlap");
+  assert.equal(fresh.contentWindow.scrollX, 300);
+  console.log("[desktop-test] PASS partial horizontal preview-shell anchor preservation");
 }
 
 async function main() {
@@ -209,6 +324,12 @@ async function main() {
   onChange?.({ type: "reload-state", instance: "instance-a", revision: 0 });
   assert.equal(document.getElementById("gutterpress-active"), active, "current revision does not reload");
   onChange?.({ type: "full-reload", instance: "instance-a", revision: 1 });
+
+  assert.ok(hostEvents.some((message) =>
+    message?.type === "gutterpress:event" &&
+    message?.name === "renderingStarted" &&
+    message?.detail?.revision === 1
+  ), "host is told a replacement render started before the active frame changes");
 
   const fresh = [...document.querySelectorAll("iframe")].find((frame) => frame !== active);
   assert.ok(fresh, "full-reload swaps in a freshly paginated iframe");
@@ -627,6 +748,8 @@ async function runNativeCoreRegression() {
 
 main()
   .then(runNativeCoreRegression)
+  .then(runHorizontalAnchorRegression)
+  .then(runPartialHorizontalAnchorRegression)
   .catch((error) => {
     console.error("[desktop-test] FAIL", error);
     process.exit(1);

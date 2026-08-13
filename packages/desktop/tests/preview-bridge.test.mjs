@@ -83,33 +83,40 @@ function setup(markup, engine = "paged") {
   document.body.innerHTML = markup ?? chapterHtml(engine);
 
   // happy-dom does no layout, so synthesise a vertical stack: each source-mapped
-  // block sits 100px below the previous; each page 1000px. `scrollY` slides the
+  // block sits 100px below the previous; each three-block chapter occupies one
+  // 300px page. `scrollY` slides the
   // whole stack so a chosen element can sit at the viewport top.
   const state = { scrollY: 0 };
   const blocks = [...document.querySelectorAll("[data-source-line]")];
-  blocks.forEach((el, i) => {
+  blocks.forEach((el) => {
+    const sheet = el.closest(".gp-sheet");
+    const page = sheet ? parseInt(sheet.getAttribute("data-page"), 10) - 1 : 0;
+    const position = sheet
+      ? [...sheet.querySelectorAll("[data-source-line]")].indexOf(el)
+      : blocks.indexOf(el);
     el.getBoundingClientRect = () => ({
-      top: i * 100 - state.scrollY,
-      bottom: i * 100 - state.scrollY + 40,
+      top: page * 300 + position * 100 - state.scrollY,
+      bottom: page * 300 + position * 100 - state.scrollY + 40,
       left: 0,
       right: 400,
       width: 400,
       height: 40,
     });
+    el.getClientRects = () => [el.getBoundingClientRect()];
   });
   const pageSelector = engine === "native" ? ".gp-sheet" : ".pagedjs_page";
   const pages = [...document.querySelectorAll(pageSelector)];
   pages.forEach((el, i) => {
     el.getBoundingClientRect = () => ({
-      top: i * 1000 - state.scrollY,
-      bottom: i * 1000 - state.scrollY + 900,
+      top: i * 300 - state.scrollY,
+      bottom: i * 300 - state.scrollY + 300,
       left: 0,
       right: 400,
       width: 400,
-      height: 900,
+      height: 300,
     });
   });
-  window.innerHeight = 900;
+  window.innerHeight = 300;
 
   // happy-dom has no window.scrollBy; record the interpolation nudges that
   // scrollTo() issues for lines that fall between annotated blocks.
@@ -175,14 +182,12 @@ async function main() {
     assert.equal(vs.sourceLine, 1, "top-visible source line is b's line 1");
     assert.equal(vs.page, 2);
 
-    // Scrolled INTO a block: the reported line interpolates toward the next
-    // annotated block instead of snapping to the block's start line (RC1-5).
-    // b's h1 (line 1) top=-50, next block (line 4) top=+50, ref=4 →
-    // fraction 54/100 → line 1 + round(0.54 * 3) = 3.
+    // Once b's h1 is wholly above the viewport, the next visible block owns
+    // the source position; an offscreen predecessor must not be interpolated.
     state.scrollY = 350;
     const mid = api.getVisibleSource();
     assert.equal(mid.chapter, "b.md");
-    assert.equal(mid.sourceLine, 3, "line interpolates within the straddled block");
+    assert.equal(mid.sourceLine, 4, "the first actually visible block wins");
   }
 
   // ── 3. getOutline returns headings with chapter + page ────────────────────
@@ -232,12 +237,10 @@ async function main() {
       pageWrap(engine, 1, '<div data-chapter-src="a.md"><p data-source-line="9">end of a</p></div>') +
       pageWrap(engine, 2, '<div data-chapter-src="b.md"><p data-source-line="20">b starts after front matter</p></div>');
     const { api, state } = setup(crossChapterLines, engine);
-    state.scrollY = 50;
-    assert.deepEqual(api.getVisibleSource(), {
-      sourceLine: 9,
-      chapter: "a.md",
-      page: 1,
-    }, "a numerically higher line in the next chapter is not an interpolation endpoint");
+    state.scrollY = 20;
+    const source = api.getVisibleSource();
+    assert.equal(source.sourceLine, 9);
+    assert.equal(source.chapter, "a.md", "a numerically higher line in the next chapter is not an interpolation endpoint");
   }
 
   // ── 7. A reader scroll during a programmatic guard is deferred, not lost ──
@@ -251,6 +254,229 @@ async function main() {
     await new Promise((r) => setTimeout(r, 380));
     assert.equal(detail?.chapter, "b.md");
     assert.equal(detail?.sourceLine, 1);
+  }
+
+  // Menu geometry is invalid as soon as scrolling starts, independent of the
+  // slower source-position debounce used for editor synchronization.
+  {
+    const { window } = setup(undefined, engine);
+    let viewportChanges = 0;
+    window.addEventListener("viewportChanged", () => viewportChanges++);
+    window.dispatchEvent(new window.Event("scroll"));
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(viewportChanges, 1, "scroll publishes an immediate viewport invalidation");
+
+    window.dispatchEvent(new window.Event("resize"));
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(viewportChanges, 2, "resize publishes the same immediate viewport invalidation");
+  }
+
+  // ── 8. Source selection ignores blocks outside the 2D viewport ───────────
+  {
+    const markup =
+      pageWrap(engine, 1, '<p id="old" data-chapter-src="a.md" data-source-line="9">old page</p>') +
+      pageWrap(engine, 2, '<p id="current" data-chapter-src="b.md" data-source-line="1">current page</p>');
+    const { api, document, window } = setup(markup, engine);
+    window.innerWidth = 500;
+    window.innerHeight = 500;
+    const old = document.getElementById("old");
+    const current = document.getElementById("current");
+    const oldRect = { top: -100, bottom: -40, left: 0, right: 400, width: 400, height: 60 };
+    const currentRect = { top: 40, bottom: 80, left: 0, right: 400, width: 400, height: 40 };
+    old.getBoundingClientRect = () => oldRect;
+    old.getClientRects = () => [oldRect];
+    current.getBoundingClientRect = () => currentRect;
+    current.getClientRects = () => [currentRect];
+    const pages = [...document.querySelectorAll(".gp-sheet")];
+    pages[0].getBoundingClientRect = () => ({ top: -600, bottom: -100, left: 0, right: 400, width: 400, height: 500 });
+    pages[1].getBoundingClientRect = () => ({ top: 0, bottom: 500, left: 0, right: 400, width: 400, height: 500 });
+
+    assert.deepEqual(api.getVisibleSource(), {
+      sourceLine: 1,
+      chapter: "b.md",
+      page: 2,
+    }, "a block wholly above the viewport cannot remain the visible source");
+  }
+
+  {
+    const markup =
+      pageWrap(engine, 1, '<p id="left" data-chapter-src="a.md" data-source-line="9">offscreen column</p>') +
+      pageWrap(engine, 2, '<p id="onscreen" data-chapter-src="b.md" data-source-line="1">visible column</p>');
+    const { api, document, window } = setup(markup, engine);
+    window.innerWidth = 500;
+    window.innerHeight = 500;
+    const left = document.getElementById("left");
+    const onscreen = document.getElementById("onscreen");
+    const leftRect = { top: 40, bottom: 80, left: -600, right: -200, width: 400, height: 40 };
+    const onscreenRect = { top: 40, bottom: 80, left: 20, right: 420, width: 400, height: 40 };
+    left.getBoundingClientRect = () => leftRect;
+    left.getClientRects = () => [leftRect];
+    onscreen.getBoundingClientRect = () => onscreenRect;
+    onscreen.getClientRects = () => [onscreenRect];
+    const pages = [...document.querySelectorAll(".gp-sheet")];
+    pages[0].getBoundingClientRect = () => ({ top: 0, bottom: 500, left: -600, right: -100, width: 500, height: 500 });
+    pages[1].getBoundingClientRect = () => ({ top: 0, bottom: 500, left: 0, right: 500, width: 500, height: 500 });
+
+    assert.deepEqual(api.getVisibleSource(), {
+      sourceLine: 1,
+      chapter: "b.md",
+      page: 2,
+    }, "a horizontally offscreen page cannot supply the visible source");
+  }
+
+  {
+    const markup =
+      pageWrap(engine, 1, '<p id="majority" data-chapter-src="a.md" data-source-line="10">mostly visible page</p>') +
+      pageWrap(engine, 2, '<p id="minority" data-chapter-src="b.md" data-source-line="20">less visible page</p>');
+    const { api, document, window } = setup(markup, engine);
+    window.innerWidth = 500;
+    window.innerHeight = 500;
+    const pages = [...document.querySelectorAll(".gp-sheet")];
+    pages[0].getBoundingClientRect = () => ({ top: 0, bottom: 500, left: -200, right: 300, width: 500, height: 500 });
+    pages[1].getBoundingClientRect = () => ({ top: 0, bottom: 500, left: 300, right: 800, width: 500, height: 500 });
+    const majority = document.getElementById("majority");
+    const minority = document.getElementById("minority");
+    const majorityRect = { top: 80, bottom: 120, left: -150, right: 250, width: 400, height: 40 };
+    const minorityRect = { top: 4, bottom: 400, left: 300, right: 800, width: 500, height: 396 };
+    majority.getBoundingClientRect = () => majorityRect;
+    majority.getClientRects = () => [majorityRect];
+    minority.getBoundingClientRect = () => minorityRect;
+    minority.getClientRects = () => [minorityRect];
+
+    assert.deepEqual(api.getVisibleSource(), {
+      sourceLine: 10,
+      chapter: "a.md",
+      page: 1,
+    }, "source identity is constrained to the sheet selected by visible overlap");
+  }
+
+  {
+    const markup =
+      pageWrap(engine, 1, '<p id="start" data-chapter-src="same.md" data-source-line="10">selected page</p>') +
+      pageWrap(engine, 2, '<p id="next" data-chapter-src="same.md" data-source-line="20">neighbor page</p>');
+    const { api, document, window } = setup(markup, engine);
+    window.innerWidth = 500;
+    window.innerHeight = 500;
+    const pages = [...document.querySelectorAll(".gp-sheet")];
+    pages[0].getBoundingClientRect = () => ({ top: 0, bottom: 500, left: -200, right: 300, width: 500, height: 500 });
+    pages[1].getBoundingClientRect = () => ({ top: 0, bottom: 500, left: 300, right: 800, width: 500, height: 500 });
+    const start = document.getElementById("start");
+    const next = document.getElementById("next");
+    const startRect = { top: -20, bottom: 80, left: -150, right: 250, width: 400, height: 100 };
+    const nextRect = { top: 100, bottom: 140, left: 300, right: 700, width: 400, height: 40 };
+    start.getBoundingClientRect = () => startRect;
+    start.getClientRects = () => [startRect];
+    next.getBoundingClientRect = () => nextRect;
+    next.getClientRects = () => [nextRect];
+
+    assert.equal(
+      api.getVisibleSource().sourceLine,
+      10,
+      "line interpolation cannot use a same-chapter block on the neighboring sheet",
+    );
+  }
+
+  {
+    const markup = pageWrap(
+      engine,
+      1,
+      '<p id="long" data-chapter-src="same.md" data-source-line="10">long block</p>' +
+        '<p id="below" data-chapter-src="same.md" data-source-line="20">below viewport</p>',
+    );
+    const { api, document, window } = setup(markup, engine);
+    window.innerWidth = 500;
+    window.innerHeight = 500;
+    document.querySelector(".gp-sheet").getBoundingClientRect = () => ({
+      top: -500, bottom: 1000, left: 0, right: 500, width: 500, height: 1500,
+    });
+    const long = document.getElementById("long");
+    const below = document.getElementById("below");
+    const longRect = { top: -400, bottom: 400, left: 0, right: 400, width: 400, height: 800 };
+    const belowRect = { top: 600, bottom: 640, left: 0, right: 400, width: 400, height: 40 };
+    long.getBoundingClientRect = () => longRect;
+    long.getClientRects = () => [longRect];
+    below.getBoundingClientRect = () => belowRect;
+    below.getClientRects = () => [belowRect];
+
+    assert.equal(
+      api.getVisibleSource().sourceLine,
+      14,
+      "a below-viewport endpoint on the same sheet still interpolates a long block",
+    );
+  }
+
+  {
+    const { api, document } = setup(
+      '<p id="first" data-chapter-src="a.md" data-source-line="1">before layout</p>' +
+        '<p id="next" data-chapter-src="a.md" data-source-line="5">next</p>',
+      engine,
+    );
+    const first = document.getElementById("first");
+    const next = document.getElementById("next");
+    const firstRect = { top: -20, bottom: 80, left: 0, right: 400, width: 400, height: 100 };
+    const nextRect = { top: 100, bottom: 140, left: 0, right: 400, width: 400, height: 40 };
+    first.getBoundingClientRect = () => firstRect;
+    first.getClientRects = () => [firstRect];
+    next.getBoundingClientRect = () => nextRect;
+    next.getClientRects = () => [nextRect];
+
+    assert.doesNotThrow(() => api.getVisibleSource(), "pre-layout source inspection is safe without any sheets");
+  }
+
+  {
+    const markup = pageWrap(
+      engine,
+      1,
+      '<p id="fragmented" data-chapter-src="a.md" data-source-line="10">fragmented block</p>',
+    );
+    const { api, document, window } = setup(markup, engine);
+    window.innerWidth = 500;
+    window.innerHeight = 500;
+    const fragmented = document.getElementById("fragmented");
+    const above = { top: -100, bottom: -20, left: 0, right: 400, width: 400, height: 80 };
+    const visible = { top: 30, bottom: 90, left: 0, right: 400, width: 400, height: 60 };
+    fragmented.getBoundingClientRect = () => ({ top: -100, bottom: 90, left: 0, right: 400, width: 400, height: 190 });
+    fragmented.getClientRects = () => [above, visible];
+    document.querySelector(".gp-sheet").getBoundingClientRect = () => ({
+      top: 0, bottom: 500, left: 0, right: 500, width: 500, height: 500,
+    });
+
+    assert.deepEqual(api.getVisibleSource(), {
+      sourceLine: 10,
+      chapter: "a.md",
+      page: 1,
+    }, "an onscreen fragment is selected even when the element's first fragment is offscreen");
+  }
+
+  {
+    const markup = pageWrap(
+      engine,
+      1,
+      '<p id="anchor" data-chapter-src="a.md" data-source-line="10">fragment anchor</p>',
+    );
+    const { api, document, window, scrolls } = setup(markup, engine);
+    window.innerWidth = 500;
+    window.innerHeight = 500;
+    document.querySelector(".gp-sheet").getBoundingClientRect = () => ({
+      top: 0, bottom: 500, left: 0, right: 500, width: 500, height: 500,
+    });
+    const anchor = document.getElementById("anchor");
+    anchor.getClientRects = () => {
+      const changed = document.documentElement.style.getPropertyValue("--gutterpress-zoom") === "0.8";
+      return changed
+        ? [
+            { top: 5, bottom: 25, left: 0, right: 400, width: 400, height: 20 },
+            { top: 50, bottom: 110, left: 0, right: 400, width: 400, height: 60 },
+          ]
+        : [
+            { top: 5, bottom: 25, left: -500, right: -100, width: 400, height: 20 },
+            { top: 30, bottom: 90, left: 0, right: 400, width: 400, height: 60 },
+          ];
+    };
+    anchor.getBoundingClientRect = () => ({ top: 5, bottom: 110, left: 0, right: 400, width: 400, height: 105 });
+
+    api.setZoom("0.8");
+    assert.equal(scrolls.at(-1)?.top, 20, "zoom preserves the same source fragment index");
   }
 
   console.log(`preview-bridge.test.mjs: all assertions passed (engine: ${engine})`);

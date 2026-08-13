@@ -113,7 +113,7 @@ export interface ContextMenuDeps {
    * destination, closing the menu itself is this controller's job, not the
    * overlay's.
    */
-  openBlockOverlay: (chapter: string, range: SourceRange) => void;
+  openBlockOverlay: (chapter: string, range: SourceRange, anchor: { x: number; y: number }) => void;
 }
 
 export interface ContextMenuItem {
@@ -167,6 +167,7 @@ export class ContextMenuController {
   private rawX = 0;
   private rawY = 0;
   private target: ContextTarget | null = null;
+  private requestId = 0;
   // Set for a short window right after open(), across the SAME event-loop
   // discipline as EditorToolbar.svelte's outside-click popover handling —
   // reused here defensively (plan §4.2) even though the menu's OPENING
@@ -195,14 +196,21 @@ export class ContextMenuController {
         this.deps.commitEngine.noteRenderingComplete();
         this.close();
         break;
+      case "renderingStarted":
       case "pageChanged":
-        // Anchor invalidated (scroll/page navigation moved the target).
+      case "viewportChanged":
+        // Anchor invalidated (frame replacement, scroll, or page navigation).
         this.close();
         break;
     }
   }
 
   private async handleContextMenuRequested(detail: PreviewEvent["detail"]): Promise<void> {
+    // Every request supersedes the previous one, even when the new target is
+    // ineligible. Otherwise a kind:"none" request can leave an old menu open,
+    // or an older asynchronous source read can reopen it afterward.
+    const requestId = ++this.requestId;
+    this.reset();
     if (!this.deps.enabled()) return;
     // Ignore while a render is in flight (same guard the sync controller uses).
     if (this.deps.rendering()) return;
@@ -211,7 +219,6 @@ export class ContextMenuController {
     // nothing annotated); its mouse path cannot (native behavior is kept for
     // those clicks instead — see preview-interface.js). Either way: no menu.
     if (!kind || kind === "none") return;
-
     const target: ContextTarget = {
       kind,
       chapter: detail.chapter ?? null,
@@ -224,9 +231,10 @@ export class ContextMenuController {
       selection: detail.selection ?? null,
     };
 
-    const items = await this.buildItems(target);
+    const anchor = { x: detail.x ?? 0, y: detail.y ?? 0 };
+    const items = await this.buildItems(target, anchor);
     // A render/navigation could have raced the async item-build above.
-    if (this.deps.rendering()) return;
+    if (requestId !== this.requestId || this.deps.rendering()) return;
     if (items.length === 0) return;
 
     this.target = target;
@@ -258,7 +266,11 @@ export class ContextMenuController {
   }
 
   close(): void {
-    if (!this.open) return;
+    this.requestId++;
+    this.reset();
+  }
+
+  private reset(): void {
     this.open = false;
     this.items = [];
     this.target = null;
@@ -319,7 +331,10 @@ export class ContextMenuController {
     }
   }
 
-  private async buildItems(target: ContextTarget): Promise<ContextMenuItem[]> {
+  private async buildItems(
+    target: ContextTarget,
+    anchor: { x: number; y: number },
+  ): Promise<ContextMenuItem[]> {
     if (target.kind === "selection") {
       if (target.selection?.withinSingleBlock) return this.singleBlockSelectionItems(target);
       return this.crossBlockSelectionItems(target);
@@ -337,7 +352,7 @@ export class ContextMenuController {
       case "marker":
         return this.markerItems(target, gen);
       case "block":
-        return this.blockItems(target, gen);
+        return this.blockItems(target, gen, anchor);
       default:
         return [];
     }
@@ -658,7 +673,11 @@ export class ContextMenuController {
 
   // ── Block (plan §4.3) ───────────────────────────────────────────────────────
 
-  private blockItems(target: ContextTarget, gen: number): ContextMenuItem[] {
+  private blockItems(
+    target: ContextTarget,
+    gen: number,
+    anchor: { x: number; y: number },
+  ): ContextMenuItem[] {
     const chapter = target.chapter!;
     const range = target.range!;
     // Note: the block slice itself is unused here — the insert actions below
@@ -670,7 +689,7 @@ export class ContextMenuController {
         label: "Edit this block",
         enabled: true,
         run: () => {
-          this.deps.openBlockOverlay(chapter, range);
+          this.deps.openBlockOverlay(chapter, range, anchor);
           this.close();
         },
       },
@@ -842,4 +861,3 @@ export class ContextMenuController {
     return items;
   }
 }
-

@@ -196,7 +196,11 @@ describe('generateAndWriteHtml', () => {
     expect(content).toContain('Chapter 1');
     expect(content).toContain('Chapter 2');
     expect(content).not.toContain('class="gutterpress-chapter"');
-    expect(content).not.toContain('data-chapter-src');
+    // Full previews cannot add chapter wrappers because wrappers alter native
+    // pagination, but every source-mapped block still needs its chapter id so
+    // preview→editor sync can disambiguate per-file line numbers.
+    expect(content).toMatch(/<h1[^>]*data-chapter-src="chapter-01\.md"/);
+    expect(content).toMatch(/<h1[^>]*data-chapter-src="chapter-02\.md"/);
     expect(content).not.toContain('<style>.gutterpress-chapter{break-before:page}</style>');
   }, 60000);
 
@@ -232,7 +236,8 @@ describe('generateAndWriteHtml', () => {
 
     const content = await Bun.file(join(tempDir, 'book.html')).text();
     expect(content).not.toContain('class="gutterpress-chapter"');
-    expect(content).not.toContain('data-chapter-src');
+    expect(content).toContain('data-chapter-src="chapter-01.md"');
+    expect(content).toContain('data-chapter-src="chapter-02.md"');
     expect(content).not.toContain('.gutterpress-chapter{break-before:page}');
   }, 60000);
 

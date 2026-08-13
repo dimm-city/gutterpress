@@ -56,6 +56,8 @@ export async function renderChapters(
     pluginCss?: string;
     /** Wrap each source file for incremental preview pagination. */
     wrapChapters?: boolean;
+    /** Add source-file ids to source-mapped preview blocks without wrappers. */
+    annotateSourceChapters?: boolean;
     /**
      * ARCH finding #4: per-chapter author-mistake warnings computed by
      * Gutterpress's marker parser (`env.layoutWarnings`), forwarded straight
@@ -104,6 +106,7 @@ export async function renderChapters(
     plugins: opts.plugins,
     pluginCss: opts.pluginCss,
     wrapChapters: opts.wrapChapters,
+    annotateSourceChapters: opts.annotateSourceChapters,
     onChapterWarnings: opts.onChapterWarnings,
     onImageRefs: opts.onImageRefs,
   });

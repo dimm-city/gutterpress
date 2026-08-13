@@ -84,6 +84,13 @@ writeFileSync(
     leftPanel: { open: true, activeTab: "files", width: 280 },
   }),
 );
+// This regression specifically verifies that a configured delay reaches the
+// buffer instead of falling back to 500 ms. Keep it distinct from the product
+// default so autosave cannot win before the Save-button assertion.
+writeFileSync(
+  join(userDataDir, "app-settings.json"),
+  JSON.stringify({ settingsSchemaVersion: 2, editor: { autoSaveDelay: 2500 } }),
+);
 appArgv.push(`--user-data-dir=${userDataDir}`);
 
 const useXvfb = process.platform === "linux" && !process.env.DISPLAY;
@@ -221,7 +228,7 @@ if (stuckOnLoading) {
 }
 
 // ── 8. packaged source-save path ─────────────────────────────────────────────
-// The configured default is 2.5 s. A regression left EditorBuffer on its 500 ms
+// This test explicitly configures 2.5 s. A regression left EditorBuffer on its 500 ms
 // fallback, making the main Save button look permanently disabled and turning
 // Ctrl+S into an apparent no-op because autosave had already won the race.
 const chapterName = readdirSync(bookDir).sort().find((name) => name.endsWith(".md") && name !== "README.md");

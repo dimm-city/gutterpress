@@ -10,7 +10,7 @@
  * geometry, the captured-at-open patch context (chapter/range/expected/
  * trailingBlank/generation), the bridge calls (`getRectsFor`/
  * `setEditMask`), and the dismissal-event subscription
- * (`renderingComplete`/`pageChanged`) — it has ZERO DOM / CodeMirror
+ * (`renderingComplete`/page/viewport changes) — it has ZERO DOM / CodeMirror
  * awareness. The component owns the live CodeMirror view and therefore the
  * CURRENT edited text; `commit(text)`/`cancel()` are the two entry points the
  * component calls with that text (or none, for cancel) whenever a dismissal
@@ -44,6 +44,8 @@ export interface BlockOverlayRect {
 export interface BlockOverlayTarget {
   chapter: string;
   range: SourceRange;
+  /** Context-menu request point in iframe viewport coordinates. */
+  anchor?: { x: number; y: number };
 }
 
 export interface BlockOverlayDeps {
@@ -117,6 +119,8 @@ interface Captured {
   expected: string;
   trailingBlank: string;
   expectedGeneration: number;
+  /** Keeps a split block tied to the fragment the user chose. */
+  anchor?: { x: number; y: number };
 }
 
 export class BlockOverlayController {
@@ -133,6 +137,8 @@ export class BlockOverlayController {
   initialText = $state("");
 
   private captured: Captured | null = null;
+  private requestId = 0;
+  private geometryId = 0;
 
   constructor(deps: BlockOverlayDeps) {
     this.deps = deps;
@@ -163,6 +169,11 @@ export class BlockOverlayController {
         // all three anchor-invalidating cases the plan lists separately.
         await this.reanchorAfterViewportChange();
         break;
+      case "viewportChanged":
+        // Splitter/window resize and viewport movement invalidate geometry
+        // without replacing the annotated block DOM.
+        await this.reanchorAfterViewportChange();
+        break;
     }
   }
 
@@ -170,7 +181,11 @@ export class BlockOverlayController {
   async show(target: BlockOverlayTarget): Promise<void> {
     const dir = this.deps.currentDir();
     if (!dir) return;
+    const requestId = ++this.requestId;
+    this.teardown();
+    this.reset();
     const source = await this.readChapterSource(target.chapter);
+    if (requestId !== this.requestId) return;
     if (source == null) {
       this.deps.toastError("Couldn't read this chapter's source.");
       return;
@@ -193,6 +208,7 @@ export class BlockOverlayController {
       expected: slice,
       trailingBlank,
       expectedGeneration: this.deps.commitEngine.generation,
+      anchor: target.anchor,
     };
     this.initialText = editable;
     this.open = true;
@@ -204,18 +220,19 @@ export class BlockOverlayController {
       return;
     }
     let result: RectsForResult;
+    const geometryId = ++this.geometryId;
     try {
       result = await client.getRectsFor({ chapter: target.chapter, range: target.range });
     } catch {
       result = { rects: [] };
     }
-    if (!this.open || this.captured?.chapter !== target.chapter) return; // closed/reopened while awaiting
+    if (requestId !== this.requestId || geometryId !== this.geometryId || !this.open) return;
     if (!result.rects.length) {
       this.deps.toastError("Couldn't locate this block on the page.");
       this.close();
       return;
     }
-    this.applyRects(result.rects);
+    this.applyRects(result.rects, target.anchor);
     void client.setEditMask({ chapter: target.chapter, range: target.range, masked: true });
   }
 
@@ -271,6 +288,12 @@ export class BlockOverlayController {
   }
 
   private close(): void {
+    this.requestId++;
+    this.reset();
+  }
+
+  private reset(): void {
+    this.geometryId++;
     this.open = false;
     this.captured = null;
     this.initialText = "";
@@ -304,17 +327,18 @@ export class BlockOverlayController {
       return;
     }
     let result: RectsForResult;
+    const geometryId = ++this.geometryId;
     try {
       result = await client.getRectsFor({ chapter, range });
     } catch {
       result = { rects: [] };
     }
-    if (!this.open || this.captured?.chapter !== chapter) return; // closed while awaiting
+    if (geometryId !== this.geometryId || !this.open || this.captured?.chapter !== chapter) return;
     if (!result.rects.length) {
       this.closeWithToast();
       return;
     }
-    this.applyRects(result.rects);
+    this.applyRects(result.rects, this.captured.anchor);
     void client.setEditMask({ chapter, range, masked: true });
   }
 
@@ -329,13 +353,14 @@ export class BlockOverlayController {
     if (!client) return;
     const { chapter, range } = this.captured;
     let result: RectsForResult;
+    const geometryId = ++this.geometryId;
     try {
       result = await client.getRectsFor({ chapter, range });
     } catch {
       return;
     }
-    if (!this.open || this.captured?.chapter !== chapter) return;
-    if (result.rects.length) this.applyRects(result.rects);
+    if (geometryId !== this.geometryId || !this.open || this.captured?.chapter !== chapter) return;
+    if (result.rects.length) this.applyRects(result.rects, this.captured.anchor);
   }
 
   private closeWithToast(): void {
@@ -362,7 +387,7 @@ export class BlockOverlayController {
   // ── Geometry (plan §5.1) ────────────────────────────────────────────────
 
   /**
-   * Position/size the overlay from the block's FIRST fragment rect, clamped
+   * Position/size the overlay from the clicked or most-visible fragment, clamped
    * fully inside `.preview-pane` (never flipped — unlike the point-anchored
    * context menu, this overlay is anchored to sit ON the block itself, so
    * flipping it to the opposite side of the anchor point would put it over
@@ -371,21 +396,47 @@ export class BlockOverlayController {
    * to the component's own internal CM scroll (a split block can span 9+
    * pages, plan §5.1).
    */
-  private applyRects(rects: RectsForResult["rects"]): void {
-    const first = rects[0];
+  private applyRects(
+    rects: RectsForResult["rects"],
+    anchor?: { x: number; y: number },
+  ): void {
     const pane = this.deps.getPaneRect();
-    if (!first || !pane) return; // keep the last-known geometry rather than jump to (0,0)
+    if (!rects.length || !pane) return; // keep the last-known geometry rather than jump to (0,0)
     const origin = this.deps.getIframeOrigin();
-    const baseX = (origin?.left ?? 0) + first.left;
-    const baseY = (origin?.top ?? 0) + first.top;
+    const iframeLeft = origin?.left ?? pane.left;
+    const iframeTop = origin?.top ?? pane.top;
+    let first = rects[0]!;
+    let bestDistance = Infinity;
+    let bestArea = -1;
+    for (const rect of rects) {
+      const left = iframeLeft + rect.left;
+      const top = iframeTop + rect.top;
+      const width = Math.min(left + rect.width, pane.left + pane.width) - Math.max(left, pane.left);
+      const height = Math.min(top + rect.height, pane.top + pane.height) - Math.max(top, pane.top);
+      const area = width > 0 && height > 0 ? width * height : 0;
+      const dx = anchor
+        ? Math.max(rect.left - anchor.x, 0, anchor.x - (rect.left + rect.width))
+        : 0;
+      const dy = anchor
+        ? Math.max(rect.top - anchor.y, 0, anchor.y - (rect.top + rect.height))
+        : 0;
+      const distance = anchor ? dx * dx + dy * dy : 0;
+      if (distance < bestDistance || (distance === bestDistance && area > bestArea)) {
+        first = rect;
+        bestDistance = distance;
+        bestArea = area;
+      }
+    }
+    const baseX = iframeLeft - pane.left + first.left;
+    const baseY = iframeTop - pane.top + first.top;
 
-    const maxX = pane.left + pane.width;
-    const maxY = pane.top + pane.height;
+    const maxX = pane.width;
+    const maxY = pane.height;
     const naturalWidth = Math.max(first.width, MIN_WIDTH);
     const naturalHeight = Math.max(first.height, MIN_HEIGHT);
 
-    const x = Math.min(Math.max(baseX, pane.left), Math.max(pane.left, maxX - naturalWidth));
-    const y = Math.min(Math.max(baseY, pane.top), Math.max(pane.top, maxY - MIN_HEIGHT));
+    const x = Math.min(Math.max(baseX, 0), Math.max(0, maxX - naturalWidth));
+    const y = Math.min(Math.max(baseY, 0), Math.max(0, maxY - MIN_HEIGHT));
     const maxHeight = Math.max(MIN_HEIGHT, maxY - y - 8);
 
     this.x = x;

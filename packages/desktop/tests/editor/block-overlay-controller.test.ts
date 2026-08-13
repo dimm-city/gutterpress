@@ -33,6 +33,7 @@ class FakeClient implements BlockOverlayClient {
   maskCalls: Array<{ chapter: string; range: SourceRange; masked: boolean }> = [];
   /** Queue of responses returned by successive getRectsFor() calls; the last entry repeats. */
   rectsForResponses: RectsForResult[] = [{ rects: [{ top: 10, left: 20, width: 100, height: 40, page: 1 }] }];
+  getRectsForImpl: ((target: { chapter: string; range: SourceRange }) => Promise<RectsForResult>) | null = null;
 
   on(fn: (e: PreviewEvent) => void): () => void {
     this.listeners.push(fn);
@@ -45,6 +46,7 @@ class FakeClient implements BlockOverlayClient {
   }
   async getRectsFor(target: { chapter: string; range: SourceRange }): Promise<RectsForResult> {
     this.rectsForCalls.push(target);
+    if (this.getRectsForImpl) return this.getRectsForImpl(target);
     const idx = Math.min(this.rectsForCalls.length - 1, this.rectsForResponses.length - 1);
     return this.rectsForResponses[idx]!;
   }
@@ -170,6 +172,59 @@ describe("show", () => {
     await h.ctrl.show({ chapter: "ch1.md", range: [0, 1] });
     expect(h.ctrl.open).toBe(false);
     expect(h.toastErrorCalls.length).toBe(1);
+  });
+
+  test("positions absolute overlay in pane-local coordinates and picks the visible fragment", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "text\n";
+    h.paneRect = { left: 400, top: 100, width: 800, height: 600 };
+    h.iframeOrigin = { left: 420, top: 130 };
+    h.client.rectsForResponses = [{ rects: [
+      { top: -500, left: 20, width: 300, height: 80, page: 1 },
+      { top: 50, left: 30, width: 300, height: 80, page: 2 },
+    ] }];
+
+    await h.ctrl.show({ chapter: "ch1.md", range: [0, 1] });
+
+    expect(h.ctrl.x).toBe(50); // iframe 20px into pane + rect.left 30
+    expect(h.ctrl.y).toBe(80); // iframe 30px into pane + rect.top 50
+    expect(h.ctrl.width).toBe(300);
+  });
+
+  test("prefers the simultaneously visible fragment that was clicked", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "text\n";
+    h.client.rectsForResponses = [{ rects: [
+      { top: 40, left: 20, width: 200, height: 80, page: 1 },
+      { top: 40, left: 320, width: 200, height: 80, page: 2 },
+    ] }];
+
+    await h.ctrl.show({ chapter: "ch1.md", range: [0, 1], anchor: { x: 350, y: 60 } });
+
+    expect(h.ctrl.x).toBe(320);
+    expect(h.ctrl.y).toBe(40);
+  });
+
+  test("an older async show cannot overwrite a newer target in the same chapter", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "first\nsecond\n";
+    const pending: Array<(result: RectsForResult) => void> = [];
+    h.client.getRectsForImpl = () => new Promise((resolve) => pending.push(resolve));
+
+    const first = h.ctrl.show({ chapter: "ch1.md", range: [0, 1] });
+    await flush();
+    const second = h.ctrl.show({ chapter: "ch1.md", range: [1, 2] });
+    await flush();
+    pending[1]!({ rects: [{ top: 20, left: 200, width: 100, height: 40, page: 1 }] });
+    await second;
+    expect(h.ctrl.initialText).toBe("second\n");
+    expect(h.ctrl.x).toBe(200);
+
+    pending[0]!({ rects: [{ top: 20, left: 10, width: 100, height: 40, page: 1 }] });
+    await first;
+    expect(h.ctrl.initialText).toBe("second\n");
+    expect(h.ctrl.x).toBe(200);
+    expect(h.client.maskCalls.at(-1)).toEqual({ chapter: "ch1.md", range: [1, 2], masked: true });
   });
 });
 
@@ -331,6 +386,43 @@ describe("pageChanged", () => {
     h.client.emit({ name: "pageChanged", detail: {} });
     await flush();
     expect(h.client.rectsForCalls.length).toBe(0);
+  });
+
+  test("an older re-anchor cannot overwrite newer geometry", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "text\n";
+    await h.ctrl.show({ chapter: "ch1.md", range: [0, 1] });
+    const pending: Array<(result: RectsForResult) => void> = [];
+    h.client.getRectsForImpl = () => new Promise((resolve) => pending.push(resolve));
+
+    h.client.emit({ name: "pageChanged", detail: {} });
+    await flush();
+    h.client.emit({ name: "pageChanged", detail: {} });
+    await flush();
+    pending[1]!({ rects: [{ top: 20, left: 200, width: 100, height: 40, page: 1 }] });
+    await flush();
+    expect(h.ctrl.x).toBe(200);
+    pending[0]!({ rects: [{ top: 20, left: 10, width: 100, height: 40, page: 1 }] });
+    await flush();
+    expect(h.ctrl.x).toBe(200);
+  });
+});
+
+describe("viewportChanged", () => {
+  test("re-anchors an open overlay after iframe resize or scroll", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "text\n";
+    h.client.rectsForResponses = [
+      { rects: [{ top: 10, left: 20, width: 100, height: 40, page: 1 }] },
+      { rects: [{ top: 80, left: 220, width: 100, height: 40, page: 1 }] },
+    ];
+    await h.ctrl.show({ chapter: "ch1.md", range: [0, 1] });
+
+    h.client.emit({ name: "viewportChanged", detail: {} });
+    await flush();
+    expect(h.client.rectsForCalls[1]).toEqual({ chapter: "ch1.md", range: [0, 1] });
+    expect(h.ctrl.x).toBe(220);
+    expect(h.ctrl.y).toBe(80);
   });
 });
 

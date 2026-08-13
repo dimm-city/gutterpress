@@ -115,6 +115,7 @@ function make(): Harness {
     pageNav: h.pageNav,
     zoomView: h.zoomView,
     editorSync: {
+      invalidatePending: () => log.push("invalidateEditorSync"),
       suppressPreviewSyncUntil: () => h.suppressUntil,
       editorPaneOpen: () => h.editorPaneOpen,
       updateActiveOutline: (line) => log.push(`updateActiveOutline:${line}`),
@@ -357,10 +358,17 @@ test("ready flips into rendering, clears outline, and peeks total pages", async 
   h.client.getTotalPagesResult = 6;
   h.ctrl.handleEvent({ name: "ready", detail: {} });
   expect(h.log).toContain("setRendering:true");
+  expect(h.log).toContain("invalidateEditorSync");
   expect(h.log).toContain("setProgress:0");
   expect(h.log).toContain("resetOutline");
   await flush();
   expect(h.pageNav.totalPages).toBe(6);
+});
+
+test("renderingStarted invalidates pending editor scroll commands before frame replacement", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+  expect(h.log).toEqual(["invalidateEditorSync"]);
 });
 
 // ── sourceLineChanged ────────────────────────────────────────────────────────

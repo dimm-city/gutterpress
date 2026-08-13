@@ -302,7 +302,7 @@ export class CommitEngine {
 
     // ── Step 5 — flush immediately. A discrete committed action must not sit
     // behind the autosave debounce (settings.editor.autoSaveDelay, default
-    // 2500ms — EditorBuffer's own `?? 500` class fallback is never reached by
+    // 500ms — EditorBuffer's own `?? 500` class fallback is never reached by
     // the desktop app, which always passes an explicit saveDelayMs).
     try {
       await buf.flush();

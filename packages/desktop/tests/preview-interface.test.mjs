@@ -22,6 +22,10 @@ const scriptPath = path.resolve(
   "preview-interface.js"
 );
 const scriptSource = readFileSync(scriptPath, "utf8");
+const bridgeSource = readFileSync(
+  path.resolve(__dirname, "..", "..", "cli", "src", "assets", "preview", "scripts", "preview-bridge.js"),
+  "utf8",
+);
 
 // A `.gp-sheet`, keyed by its 1-based `dataset.page` (the same value the
 // real viewer's decorate.ts
@@ -555,6 +559,49 @@ async function main() {
     assert.deepEqual(JSON.parse(JSON.stringify(result)), result, "JSON-cloneable, no DOMRect instances");
   }
 
+  // Each client rect carries the page it actually intersects. A browser
+  // column fragment can put one element's rects on adjacent sheets even
+  // though Gutterpress.pageOf(el) can only report the element's start page.
+  {
+    const html = `
+      <div class="gp-sheet" data-page="1"><div data-chapter-src="a.md"><p id="split" data-source-range="0:1">Split</p></div></div>
+      <div class="gp-sheet" data-page="2"></div>`;
+    const { window, document, api } = loadInterfaceWithDom(html, { native: true, pageOf: () => 0 });
+    window.innerWidth = 800;
+    window.innerHeight = 600;
+    const sheets = [...document.querySelectorAll(".gp-sheet")];
+    sheets[0].getBoundingClientRect = () => ({ top: 0, bottom: 600, left: 0, right: 390, width: 390, height: 600 });
+    sheets[1].getBoundingClientRect = () => ({ top: 0, bottom: 600, left: 410, right: 800, width: 390, height: 600 });
+    const split = document.getElementById("split");
+    split.getClientRects = () => [
+      { top: 20, bottom: 60, left: 20, right: 370, width: 350, height: 40 },
+      { top: 20, bottom: 60, left: 430, right: 780, width: 350, height: 40 },
+    ];
+    assert.deepEqual(api.getRectsFor({ chapter: "a.md", range: [0, 1] }), {
+      rects: [
+        { top: 20, left: 20, width: 350, height: 40, page: 1 },
+        { top: 20, left: 430, width: 350, height: 40, page: 2 },
+      ],
+    });
+  }
+
+  // A fence's source identity lives on <code>, but its editable visual box is
+  // the enclosing <pre>; line-box rects from <code> make the overlay tiny.
+  {
+    const html = `<div data-chapter-src="a.md"><pre id="pre"><code id="code" data-source-range="4:7">x\ny</code></pre></div>`;
+    const { document, api } = loadInterfaceWithDom(html, { native: true, pageOf: () => 0 });
+    const pre = document.getElementById("pre");
+    const code = document.getElementById("code");
+    pre.getClientRects = () => [{ top: 10, left: 20, bottom: 130, right: 420, width: 400, height: 120 }];
+    code.getClientRects = () => [
+      { top: 20, left: 30, bottom: 34, right: 80, width: 50, height: 14 },
+      { top: 36, left: 30, bottom: 50, right: 80, width: 50, height: 14 },
+    ];
+    assert.deepEqual(api.getRectsFor({ chapter: "a.md", range: [4, 7] }), {
+      rects: [{ top: 10, left: 20, width: 400, height: 120, page: 1 }],
+    });
+  }
+
   // Unmatched range: empty result, no throw.
   {
     const { api } = loadInterfaceWithDom(nativeOverlayHtml, { native: true });
@@ -564,6 +611,33 @@ async function main() {
   console.log("[desktop-test] PASS native-engine getRectsFor (no clone grouping)");
 
   console.log("[desktop-test] PASS getRectsFor / setEditMask / protocol v6");
+
+  // The cross-origin bridge must forward the immediate viewport invalidation,
+  // not merely emit it inside the iframe where desktop controllers cannot see it.
+  {
+    const listeners = new Map();
+    const posted = [];
+    const windowObj = {
+      previewAPI: {},
+      parent: { postMessage: (message) => posted.push(message) },
+      addEventListener(name, fn) {
+        listeners.set(name, [...(listeners.get(name) ?? []), fn]);
+      },
+      dispatchEvent(event) {
+        for (const fn of listeners.get(event.type) ?? []) fn(event);
+      },
+      print() {},
+    };
+    const document = { documentElement: { style: {} } };
+    const runBridge = new Function("window", "document", "setTimeout", bridgeSource);
+    runBridge(windowObj, document, setTimeout);
+    windowObj.dispatchEvent({ type: "viewportChanged", detail: { reason: "resize" } });
+    assert.ok(posted.some((message) =>
+      message.type === "gutterpress:event" &&
+      message.name === "viewportChanged" &&
+      message.detail.reason === "resize"
+    ));
+  }
 }
 
 main().catch((error) => {

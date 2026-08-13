@@ -71,6 +71,8 @@ export interface AssembleBookHtmlOptions {
    * output is unaffected.
    */
   wrapChapters?: boolean;
+  /** Add a layout-neutral source-file id to source-mapped preview blocks. */
+  annotateSourceChapters?: boolean;
   /**
    * ARCH finding #4: per-chapter callback receiving any `env.layoutWarnings`
    * Gutterpress's marker parser computed while rendering `file` (only called
@@ -141,7 +143,8 @@ export async function assembleBookHtml(opts: AssembleBookHtmlOptions): Promise<s
     // ONLY change needed to make ~150 lines of already-written, already-tested
     // author-mistake diagnostics (§6: the marker parser still owns computing them)
     // observable to a caller.
-    const env: { layoutWarnings?: LayoutWarning[] } & ImageRefEnv = {};
+    const env: { layoutWarnings?: LayoutWarning[]; sourceChapter?: string } & ImageRefEnv = {};
+    if (opts.annotateSourceChapters) env.sourceChapter = chapterId;
     // Always use the public render path: standard markdown-it plugins may
     // legitimately wrap md.render(), and preview/build must both observe it.
     const rendered = md.render(content, env);

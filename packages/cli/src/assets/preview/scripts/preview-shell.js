@@ -68,25 +68,73 @@
     return matched;
   }
 
-  function capture(f) {
-    var d = fdoc(f); if (!d) return null;
-    var els = d.querySelectorAll('[data-source-line]'), best = null, bestTop = -Infinity;
-    for (var i = 0; i < els.length; i++) {
-      var r = els[i].getBoundingClientRect();
-      if (r.bottom < 0 || r.height === 0) continue;
-      if (r.top <= 80 && r.top > bestTop) { bestTop = r.top; best = els[i]; }
+  function rectsOf(el) {
+    var rects = el && el.getClientRects ? Array.from(el.getClientRects()) : [];
+    return rects.length ? rects : [el.getBoundingClientRect()];
+  }
+
+  function selectedPageRect(d, w) {
+    var sheets = d.querySelectorAll('.gp-sheet'), best = null, bestArea = -1;
+    for (var i = 0; i < sheets.length; i++) {
+      var r = sheets[i].getBoundingClientRect();
+      var width = Math.min(r.right, w.innerWidth) - Math.max(r.left, 0);
+      var height = Math.min(r.bottom, w.innerHeight) - Math.max(r.top, 0);
+      var area = width > 0 && height > 0 ? width * height : 0;
+      if (area > bestArea) { best = r; bestArea = area; }
     }
-    if (!best) {
-      for (var j = 0; j < els.length; j++) {
-        var rr = els[j].getBoundingClientRect();
-        if (rr.bottom > 0 && rr.height > 0) { best = els[j]; break; }
+    return best;
+  }
+
+  function visibleRect(el, w, pageRect) {
+    var rects = rectsOf(el), best = null, bestIndex = -1;
+    var bestDistance = Infinity, bestArea = -1;
+    for (var i = 0; i < rects.length; i++) {
+      var r = rects[i];
+      var width = Math.min(r.right, w.innerWidth, pageRect ? pageRect.right : w.innerWidth) -
+        Math.max(r.left, 0, pageRect ? pageRect.left : 0);
+      var height = Math.min(r.bottom, w.innerHeight, pageRect ? pageRect.bottom : w.innerHeight) -
+        Math.max(r.top, 0, pageRect ? pageRect.top : 0);
+      if (width <= 0 || height <= 0) continue;
+      var distance = r.top <= 80 && r.bottom > 80 ? 0 : Math.abs(r.top - 80);
+      var area = width * height;
+      if (distance < bestDistance || (distance === bestDistance && area > bestArea)) {
+        best = r;
+        bestIndex = i;
+        bestDistance = distance;
+        bestArea = area;
+      }
+    }
+    return best ? {
+      rect: best,
+      index: bestIndex,
+      distance: bestDistance,
+      area: bestArea
+    } : null;
+  }
+
+  function capture(f) {
+    var d = fdoc(f), w = fwin(f); if (!d || !w) return null;
+    var els = d.querySelectorAll('[data-source-line]'), best = null, bestRect = null;
+    var pageRect = selectedPageRect(d, w);
+    var bestDistance = Infinity, bestArea = -1, bestFragment = -1;
+    for (var i = 0; i < els.length; i++) {
+      var visible = visibleRect(els[i], w, pageRect);
+      if (!visible) continue;
+      if (visible.distance < bestDistance || (visible.distance === bestDistance && visible.area > bestArea)) {
+        best = els[i];
+        bestRect = visible.rect;
+        bestFragment = visible.index;
+        bestDistance = visible.distance;
+        bestArea = visible.area;
       }
     }
     if (!best) return null;
     return {
       chapter: chapterOf(best),
       line: best.getAttribute('data-source-line'),
-      offset: best.getBoundingClientRect().top
+      fragment: bestFragment,
+      top: bestRect.top,
+      left: bestRect.left
     };
   }
 
@@ -104,10 +152,15 @@
       var diff = Math.abs(line - wanted);
       if (diff < bestDiff) { bestDiff = diff; el = els[i]; }
     }
-    if (el) w.scrollBy({
-      top: el.getBoundingClientRect().top - anchor.offset,
-      behavior: 'instant'
-    });
+    if (el) {
+      var rects = rectsOf(el);
+      var rect = rects[anchor.fragment] || el.getBoundingClientRect();
+      w.scrollBy({
+        top: rect.top - anchor.top,
+        left: rect.left - anchor.left,
+        behavior: 'instant'
+      });
+    }
   }
 
   // Carry desktop canvas/debug CSS and view state into the hidden replacement
@@ -335,6 +388,13 @@
     ) return;
     desiredInstance = instance;
     desiredRevision = revision;
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: 'gutterpress:event',
+        name: 'renderingStarted',
+        detail: { hotReload: true, revision: revision }
+      }, '*');
+    }
     swap(instance, revision);
   });
   window.addEventListener('beforeunload', disconnectChanges);

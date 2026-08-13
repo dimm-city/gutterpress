@@ -954,7 +954,9 @@ export default function plugin(md, pluginOptions = {}) {
       // wrapper token IS annotated internally.
       const rangeAttr = token.attrGet('data-source-range');
       const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
-      return `<div class="${escapeAttr(cls)}"${rangeHtml}><div class="col">\n`;
+      const chapterAttr = token.attrGet('data-chapter-src');
+      const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
+      return `<div class="${escapeAttr(cls)}"${rangeHtml}${chapterHtml}><div class="col">\n`;
     }
 
     return self.renderToken(tokens, idx, opts);
@@ -986,7 +988,9 @@ export default function plugin(md, pluginOptions = {}) {
     const cls = tokens[idx].attrGet('class') || 'gp-page-break';
     const rangeAttr = tokens[idx].attrGet('data-source-range');
     const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
-    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}></div>\n`;
+    const chapterAttr = tokens[idx].attrGet('data-chapter-src');
+    const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
+    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}${chapterHtml}></div>\n`;
   };
 
   md.renderer.rules.layout_column_break = (tokens, idx, opts, env) => {
@@ -996,7 +1000,9 @@ export default function plugin(md, pluginOptions = {}) {
     const cls = tokens[idx].attrGet('class') || 'gp-column-break';
     const rangeAttr = tokens[idx].attrGet('data-source-range');
     const rangeHtml = rangeAttr ? ` data-source-range="${escapeAttr(rangeAttr)}"` : '';
-    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}></div>\n`;
+    const chapterAttr = tokens[idx].attrGet('data-chapter-src');
+    const chapterHtml = chapterAttr ? ` data-chapter-src="${escapeAttr(chapterAttr)}"` : '';
+    return `<div class="${escapeAttr(cls)}" aria-hidden="true"${rangeHtml}${chapterHtml}></div>\n`;
   };
 
   // layout_marker tokens are transformed away in the core rule

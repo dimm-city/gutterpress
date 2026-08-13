@@ -5,8 +5,10 @@
 export interface PreviewEvent {
   name:
     | "pageChanged"
+    | "renderingStarted"
     | "renderingComplete"
     | "ready"
+    | "viewportChanged"
     | "sourceLineChanged"
     | "elementActivated"
     | "contextMenuRequested";
@@ -294,8 +296,12 @@ export class PreviewClient {
     return this.call("scrollTo", [target, opts ?? {}]);
   }
 
-  /** Source line + page of the block at the top of the viewport. */
-  getVisibleSource(): Promise<{ sourceLine: number | null; page: number } | null> {
+  /** Source line, chapter, and page of the block at the top of the viewport. */
+  getVisibleSource(): Promise<{
+    sourceLine: number | null;
+    chapter: string | null;
+    page: number;
+  } | null> {
     return this.call("getVisibleSource");
   }
 

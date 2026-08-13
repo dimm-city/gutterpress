@@ -762,7 +762,7 @@ range, expected, replacement })`:
    - increment the edit-generation counter (§4.9)
 5. FLUSH: await buffer.flush()
    // Discrete committed actions must not sit behind the autosave debounce —
-   // which is settings.editor.autoSaveDelay, DEFAULT 2500 ms (the 500 ms in
+   // which is settings.editor.autoSaveDelay, DEFAULT 500 ms (the 500 ms in
    // EditorBuffer's class fallback is never used by the desktop app,
    // review-verified). An immediate flush gives the ~1 s preview refresh
    // the UX story promises. flush() can throw (external change detected by

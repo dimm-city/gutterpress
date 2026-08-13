@@ -57,6 +57,7 @@ import type Token from "markdown-it/lib/token.mjs";
 
 /** The attribute this rule writes. Exported so tests/consumers don't hardcode the string. */
 export const SOURCE_RANGE_ATTR = "data-source-range";
+export const SOURCE_CHAPTER_ATTR = "data-chapter-src";
 
 /**
  * Self-closing (nesting === 0) block token types with a usable range.
@@ -109,19 +110,23 @@ function isAnnotationTarget(token: Token): boolean {
   return token.nesting === 0 && SELF_CLOSING_BLOCK_TYPES.has(token.type);
 }
 
-function annotateToken(token: Token): void {
+function annotateToken(token: Token, chapter: string | null): void {
   if (!isAnnotationTarget(token)) return;
 
   const range = resolveRange(token);
   if (!range) return;
 
   token.attrSet(SOURCE_RANGE_ATTR, `${range[0]}:${range[1]}`);
+  if (chapter) token.attrSet(SOURCE_CHAPTER_ATTR, chapter);
 }
 
 /** The core rule itself — registered via `md.core.ruler.push("source_range", sourceRangeRule)` in renderer.ts. */
 export const sourceRangeRule: RuleCore = (state) => {
+  const chapter = typeof state.env?.sourceChapter === "string"
+    ? state.env.sourceChapter
+    : null;
   for (const token of state.tokens) {
-    annotateToken(token);
+    annotateToken(token, chapter);
   }
 };
 
