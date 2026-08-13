@@ -9,6 +9,48 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Multi-column runs are core vocabulary: `.gp-columns-2` and
+  `.gp-columns-3`.** Put a stretch of prose in columns with
+  `@section .gp-columns-2` (or the equivalent `{.gp-columns-2}` spelling) and
+  set the gutter with `--gp-column-gap`. Previously "put this in two columns"
+  meant borrowing a styled container from your book's own component layer —
+  which, if that layer decorates `.section` by default, handed you a panel you
+  never asked for and a reset rule to take it back. `column-fill` is
+  deliberately left unset: only you know whether a given run should fragment
+  across pages.
+- **Marker arguments accept the `{...}` spelling.** `@section {.gp-columns-2}`
+  and `@section .gp-columns-2` are now equivalent on core markers. Plugin
+  markers already accepted the braces form, so authors reasonably typed it
+  everywhere — and core silently swallowed the whole `{...}` token as the
+  marker's *name*, dropping the class with no warning. That is how a
+  field-guide chapter rendered wrong for two days.
+- **Markers tell you when they don't understand you.** Three new
+  author-readable warnings, surfaced in the CLI and the desktop Problems panel
+  (click to jump to the line):
+  - `unrecognized_marker_token` — an argument that is not `key=value`,
+    `.class`, `#id`, or a CSS-usable word.
+  - `extra_bare_marker_token` — a second plain word. A marker has one name
+    slot, so `@page My Cover Page` used to produce no name at all and three
+    classes.
+  - `unknown_marker` — an `@word` line nothing consumed, within one edit of a
+    marker that exists (typo detection is edit distance ≤ 1).
+- **A missing image no longer kills the build.** A referenced file that isn't
+  there now renders as a generated magenta/black checkerboard and the build
+  warns by name; the rest of the book builds. It used to abort everything with
+  `Could not copy asset … ENOENT` — one stale path in a 273-page book and
+  nothing rendered, with a filesystem error as the only explanation. The
+  placeholder is deliberately loud rather than blank, because a silently
+  invisible image is how missing art ships to print. Other copy failures
+  (permissions, disk) still fail the build: those are environment faults you
+  can't fix by editing markdown.
+- **`engine.layer.trapped` build diagnostic** — reports a `.gp-behind` element
+  trapped by an ancestor that creates a stacking context, so it can never paint
+  behind the page as intended. It inspects the live rendered document's
+  computed styles, so it sees wrapper elements regardless of what they're
+  called. The faster CSS-source lint (`printsafe/page-containment`) stays for
+  the editor's live lint gutter, now with a message that states its own limited
+  scope.
+
 - **`gp-*` image positioning vocabulary** in core `GUTTERPRESS_CSS` — composable
   classes authors attach with markdown attrs (`![Art](x.png){.gp-right .gp-small}`):
   - **Positions**: `.gp-left`/`.gp-right` (floats, text wraps), `.gp-center`,
@@ -151,6 +193,23 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **Breaking: `@section` no longer warns when it isn't inside a `@page`.** A
+  bare `@section` is valid authoring, and the warning that said otherwise was
+  wrong every time it fired: audited across both real books, all 17 occurrences
+  were `@section .gp-columns-2` column runs wrapping flowing prose — exactly
+  what the marker is for — and none rendered wrong. A diagnostic that is always
+  wrong trains authors to ignore diagnostics. The one real hazard an unwrapped
+  section could carry, a `.gp-pin` with no containing block, already has its own
+  precise warning. The undocumented `implicitPage` option is gone with it; it
+  was reachable from no manifest key, no CLI flag, and no product code path, and
+  turning it on would have inserted a page break before every wrapped section.
+- **Breaking: CSS sibling combinators work again.** The
+  `printsafe/no-pagedjs-crash-selectors` rule is gone along with Paged.js. It
+  was an *error*-severity rule, so books that needed `+`/`~` combined with
+  `:is()`/`:where()`/`:not()`/`:nth-of-type` had to work around it. Write them
+  normally now. If you suppressed that rule ID in your manifest or theme, the
+  suppression is dead configuration and can be deleted.
+
 - **The five pre-`gp-*` image utility classes** — `.center`, `.float-left`,
   `.float-right`, `.full-width`, `.full-bleed` — are gone from core
   `GUTTERPRESS_CSS`, replaced by the `gp-*` vocabulary above with no aliases:
@@ -187,6 +246,30 @@ This project follows [Semantic Versioning](https://semver.org/).
     that rename is now final (no alias file).
 
 ### Fixed
+
+- **Breaking: `var()` inside `@page` now resolves, or fails loudly — never
+  silently wrong.** Two reproduced bugs: a custom property in `@page { size }`
+  silently fell back to US Letter, and one in `@page { margin }` silently zeroed
+  your margins *and* disabled the shrink-to-fit guard. Custom properties are now
+  resolved for the `@page` declarations Gutterpress parses itself (`size`,
+  `margin`/`margin-*`, `bleed`), from `:root` in any stylesheet in the set, plus
+  `var(--x, fallback)` fallbacks. Anything still unresolvable — or resolving to
+  a value that isn't valid geometry — **hard-errors and names the rule and
+  declaration** instead of guessing. This is breaking in the sense that a book
+  which was silently building at the wrong trim will now stop and tell you.
+  Fixed en route: comments between declarations were mishandled, which had been
+  silently dropping `var()`-based mirrored binding margins — every page context
+  resolved to the same margins, so `:left`/`:right` never mirrored.
+- **A stray directory named `.git` no longer captures every project beneath
+  it.** The ancestor walk that decides whether a folder lives inside a
+  repository accepted anything merely *named* `.git`, so one junk directory high
+  in the tree reclassified everything under it — observed with a `/tmp/.git`
+  holding a single unrelated file, which made every project under the OS temp
+  directory report as versioned and refuse to initialize version history. The
+  walk now checks for a real `HEAD`. Classification of the folder you actually
+  opened stays lenient on purpose: a `.git` with an unreadable `HEAD` is a
+  *corrupt* repository and must route to recovery as damaged, not present itself
+  as a fresh folder to set up.
 
 - **"Add to application menu" could leave you launching an old version.** The
   action copies the app you're running, so upgrading and not re-running it

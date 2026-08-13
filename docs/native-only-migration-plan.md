@@ -1,23 +1,40 @@
-# Native-engine migration plan (make native the default; keep Paged.js behind a flag)
+# Native-engine migration plan (native is now the only engine)
 
-Status: agreed plan, in execution. Supersedes the draft that circulated as "A/B".
+**Status: COMPLETE. Phases 0–6 all executed; Paged.js was deleted 2026-08-10
+and the `folio` → `gutterpress` rename landed after it.** This document is kept
+as the record of how the migration was sequenced and why each call was made —
+it is history, not a work list. The 0.10.0 release notes are in
+[`CHANGELOG.md`](../CHANGELOG.md); anything still outstanding is in
+[`remaining-work.md`](./remaining-work.md).
 
-> **DIRECTIVE (product owner, 2026-08-08) — READ FIRST.**
-> **Paged.js is NOT being deleted.** It stays fully implemented and selectable
-> behind `--engine paged` / `engine: "paged"` until we are 100% certain the
-> native engine reaches parity with, or improves on, it.
+Verified in source: no Paged.js code path remains. `engine: "paged"` and
+`engineStyles.paged` are still *accepted* in the manifest and ignored with a
+deprecation warning — they are scheduled for removal one release after this
+one, and are the only Paged.js-shaped surface left.
+
+> **Superseded directive (product owner, 2026-08-08).** Recorded because it
+> governed the middle of the migration and explains why Phase 6 is written as a
+> separate, separately-gated phase. It no longer describes the codebase.
 >
-> The goal of this execution pass is: **native becomes the DEFAULT**, and the
-> migration can be reliably finished and tested. That means Phases 0-5 land;
-> **Phase 6 (deletion) does NOT run.** Nothing Paged.js-related is removed —
-> not the polyfill, not `pagination.ts`, not `engineStyles`, not the `engine`
-> manifest key, not `rulePagedjsCrashSelectors`, not the PWA's polyfill.
-> Every "*Deleted:*" line in Phases 0-5 that names a PAGED.JS file is
-> suspended; deletions of code made genuinely dead by the new native path
-> (e.g. `iframe-styles.ts`, the `data-ref` grouping inside the shared preview
-> interface) still apply, but only where the paged leg keeps working.
-> Phase 6 remains written below as the eventual follow-up, gated on the
-> parity evidence Phase 5 produces.
+> > **Paged.js is NOT being deleted.** It stays fully implemented and selectable
+> > behind `--engine paged` / `engine: "paged"` until we are 100% certain the
+> > native engine reaches parity with, or improves on, it.
+> >
+> > The goal of this execution pass is: **native becomes the DEFAULT**, and the
+> > migration can be reliably finished and tested. That means Phases 0-5 land;
+> > **Phase 6 (deletion) does NOT run.** Nothing Paged.js-related is removed —
+> > not the polyfill, not `pagination.ts`, not `engineStyles`, not the `engine`
+> > manifest key, not `rulePagedjsCrashSelectors`, not the PWA's polyfill.
+> > Every "*Deleted:*" line in Phases 0-5 that names a PAGED.JS file is
+> > suspended; deletions of code made genuinely dead by the new native path
+> > (e.g. `iframe-styles.ts`, the `data-ref` grouping inside the shared preview
+> > interface) still apply, but only where the paged leg keeps working.
+> > Phase 6 remains written below as the eventual follow-up, gated on the
+> > parity evidence Phase 5 produces.
+>
+> The parity evidence it gated on was produced (Phase 5, archived at
+> [`native-engine-parity-evidence-archive.md`](./native-engine-parity-evidence-archive.md)),
+> Gate B passed, and the deletion was authorized and executed on 2026-08-10.
 
 ## Decisions
 
@@ -194,7 +211,13 @@ That last one is a user-visible win worth a changelog line: authors regain sibli
 
 ---
 
-## The rename
+## The rename — **EXECUTED** (`rename(folio->gutterpress): full structural sweep`)
+
+Verified with this section's own step-5 check: the structural-token grep over
+`packages`, `docs`, `tools`, `.github` returns zero hits. The surviving
+`folio` matches are `docs/engine-history/` (preserved deliberately) and prose
+using the typographic sense of the word — exactly the set "The trap" below says
+to leave alone.
 
 Full sweep lands **after** the Paged.js deletion, in the same major release, so authors absorb one breaking change instead of two. The ~35.5k deleted lines contain essentially no `folio` identifiers, so nothing is wasted by waiting — and renaming into a moving target doubles the merge surface and makes `git bisect` on a parity regression miserable. Phase 0 already took the three names that later code hard-codes.
 
