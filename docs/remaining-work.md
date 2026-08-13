@@ -97,6 +97,24 @@ Last updated 2026-08-13.
 
 ---
 
+## Upstream Chromium gaps — documented, not fixable here
+
+Labelled `upstream` and written up for authors in
+[`docs/known-limitations.md`](./known-limitations.md). All three fail
+**silently**; each entry carries a workaround and a removal trigger. No shims —
+"Chrome wins once it ships."
+
+- [ ] **#149** gradient-only `@page { background }` paints nothing (solid and
+      `url()` paint the full sheet)
+- [ ] **#150** `box-shadow` and `transform` dropped in `@page` margin boxes
+      (`border`/`background` on the same element paint fine)
+- [ ] **#152** large rasters dropped from `@page { background }` — bounded at
+      450×582 paints / 638×825 dropped; workaround shipped in `dc-op-manual`
+- [ ] A maintainer with a crbug.com account should file all three against
+      Chromium; our issues stay open as the citable reference and re-test trigger
+
+---
+
 ## Known-unresolved, low priority
 
 - **`/tmp/.git` writer unidentified.** The damage path is fixed (ancestor walk
