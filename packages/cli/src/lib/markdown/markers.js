@@ -464,12 +464,24 @@ export default function plugin(md, pluginOptions = {}) {
    *     end-of-line, so `@foo.com` / `@user.name` stop at the dot and fail.
    */
   function scanForMistypedMarkers(state) {
-    for (const tok of state.tokens) {
+    for (let tokenIndex = 0; tokenIndex < state.tokens.length; tokenIndex++) {
+      const tok = state.tokens[tokenIndex];
+      // A genuine unclaimed marker-like line is an inline token whose parent
+      // block is a paragraph. Headings/list items/quotes can legitimately
+      // document `@chapter` or discuss it as prose; scanning every inline
+      // token made the user guide warn about its own marker headings.
       if (tok.type !== 'inline' || !tok.map) continue;
+      const opener = state.tokens[tokenIndex - 1];
+      if (!opener || opener.type !== 'paragraph_open') continue;
       const lines = tok.content.split('\n');
       for (let i = 0; i < lines.length; i++) {
         const m = /^@([A-Za-z][A-Za-z0-9-]*)(?=\s|$)/.exec(lines[i].trim());
         if (!m) continue;
+        // Exact known spellings survived only because this text is not acting
+        // as a standalone marker (for example prose/code documentation).
+        // `nearestKind()` intentionally returns distance 0 for CASE-only
+        // mistakes, so exclude exact lower-case kinds before asking it.
+        if (KNOWN_KINDS.includes(m[1])) continue;
         const suggestion = nearestKind(m[1]);
         if (!suggestion) continue;
         warn(

@@ -47,7 +47,7 @@ sw.addEventListener("install", (event) => {
     (async () => {
       const cache = await caches.open(CACHE);
       // addAll rejects atomically if any request fails; dedupe to avoid double
-      // entries (paged.js may already be in `files`).
+      // entries (a preview asset may already be in `files`).
       await cache.addAll([...new Set(SHELL)]);
       await sw.skipWaiting();
     })(),

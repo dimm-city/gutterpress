@@ -3,7 +3,7 @@ name: Gutterpress render-perf gate
 
 # Catches the v0.4.1..v0.5.0-rc.3 class of regression: hiding the cross-origin
 # preview iframe (opacity:0 / opaque cover) makes Chromium render-throttle it
-# to ~1fps, so paged.js layout crawls at ~1 page/sec instead of 10-30+.
+# to ~1fps, so viewer layout crawls at ~1 page/sec instead of 10-30+.
 # Fix tag: render-fix-iframe-visibility.
 #
 # Verified 2026-06-10 that the throttle reproduces identically under xvfb-run

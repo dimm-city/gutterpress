@@ -188,6 +188,27 @@ describe("planImageCopies", () => {
     expect(errors).toHaveLength(0);
   });
 
+  test("skips every non-filesystem scheme and query-only reference", async () => {
+    const { copies, errors, destinations } = await planImageCopies(dir, [
+      "ftp://example.com/art.png",
+      "blob:https://example.com/id",
+      "mailto:art@example.com",
+      "?image=1",
+      "#poster",
+      "//cdn.example.com/art.png",
+    ]);
+    expect(copies).toEqual([]);
+    expect(errors).toEqual([]);
+    expect(destinations.size).toBe(0);
+  });
+
+  test("does not let a file URL bypass the relative-image policy", async () => {
+    const { copies, errors } = await planImageCopies(dir, ["file:///etc/passwd"]);
+    expect(copies).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("must be relative to the project");
+  });
+
   test("rejects a reference that escapes the project, with actionable advice", async () => {
     const { errors } = await planImageCopies(dir, ["../outside/a.png"]);
     expect(errors).toHaveLength(1);

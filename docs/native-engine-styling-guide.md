@@ -339,6 +339,7 @@ spell-check-style source findings; from the CLI they print as warnings.
 | Image has no width set | An auto-width image whose natural size exceeds the page — the shrink risk of §2, as a warning. |
 | Broken link | A cross-reference points at an id that does not exist; its page number would print blank (§7). |
 | Placed off its page | An absolutely positioned element with nothing positioned around it (§3). |
+| Trapped background layer | A `.gp-behind` element has a live ancestor that clips it or creates a stacking context, so it cannot paint behind the page as intended. The source-only `printsafe/page-containment` lint is an early hint for `.page`/`.spread`; this build-time check is authoritative for every wrapper class. |
 | Empty column | A balanced multi-column block that runs past one page, leaving dead columns (§5). |
 | Taller than the page | Content that print splits but the screen preview clips — the two will not agree there (§4). |
 | Image resolution | Below the DPI floor; may look soft in print. |

@@ -95,9 +95,66 @@ test("collectHtmlImageRefs collects every srcset candidate, not just src", () =>
   expect(refs).toEqual(["a.png", "a-1x.png", "a-2x.png"]);
 });
 
+test("collectHtmlImageRefs preserves data and local URL commas in srcset", () => {
+  const refs = collectHtmlImageRefs(
+    `<source srcset="data:image/svg+xml,%3Csvg%3E%3C/svg%3E 1x, images/actual,comma.png 2x, ordinary.png 3x">`,
+  );
+  expect(refs).toEqual([
+    "data:image/svg+xml,%3Csvg%3E%3C/svg%3E",
+    "images/actual,comma.png",
+    "ordinary.png",
+  ]);
+});
+
+test("collectHtmlImageRefs separates descriptor-less candidates without splitting internal commas", () => {
+  expect(
+    collectHtmlImageRefs(
+      `<source srcset="images/a,b.png, images/plain.png, data:image/png;base64,AAAA,">`,
+    ),
+  ).toEqual(["images/a,b.png", "images/plain.png", "data:image/png;base64,AAAA"]);
+});
+
 test("collectHtmlImageRefs handles <source srcset> inside <picture>", () => {
   const refs = collectHtmlImageRefs(
     `<picture><source srcset="wide.avif 1200w, narrow.avif 400w"><img src="fallback.png"></picture>`
   );
   expect(refs).toEqual(["fallback.png", "wide.avif", "narrow.avif"]);
+});
+
+test("collectHtmlImageRefs collects an unquoted single-URL srcset", () => {
+  expect(
+    collectHtmlImageRefs(`<picture><source srcset=missing.jpg><img src=fallback.png></picture>`),
+  ).toEqual(["fallback.png", "missing.jpg"]);
+});
+
+test("collectHtmlImageRefs does not confuse data-src with src in either order", () => {
+  expect(
+    collectHtmlImageRefs(
+      `<img data-src="lazy-before.jpg" src="real-before.jpg">
+       <img src="real-after.jpg" data-src="lazy-after.jpg">
+       <img data-src="lazy-only.jpg">`,
+    ),
+  ).toEqual(["real-before.jpg", "real-after.jpg"]);
+});
+
+test("collectHtmlImageRefs does not confuse data-srcset with srcset in either order", () => {
+  expect(
+    collectHtmlImageRefs(
+      `<source data-srcset="lazy-before.jpg 1x" srcset="real-a.jpg 1x, real-b.jpg 2x">
+       <img srcset="real-c.jpg 1x, real-d.jpg 2x" data-srcset="lazy-after.jpg 1x">
+       <img data-srcset="lazy-only.jpg 1x">`,
+    ),
+  ).toEqual(["real-a.jpg", "real-b.jpg", "real-c.jpg", "real-d.jpg"]);
+});
+
+test("collectHtmlImageRefs ignores tag-looking literals and comments", () => {
+  const refs = collectHtmlImageRefs(
+    `<style>.demo::before { content: '<img src="style.jpg">' }</style>
+     <script>const example = '<img src="script.jpg">';</script>
+     <pre><img src="pre.jpg"></pre><code><img src="code.jpg"></code>
+     <textarea><img src="textarea.jpg"></textarea>
+     <!-- <picture><source srcset="comment-a.jpg 1x"><img src="comment-b.jpg"></picture> -->
+     <picture><source srcset="real-wide.jpg 2x"><img src="real.jpg"></picture>`,
+  );
+  expect(refs).toEqual(["real.jpg", "real-wide.jpg"]);
 });

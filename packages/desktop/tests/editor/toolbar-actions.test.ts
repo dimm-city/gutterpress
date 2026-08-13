@@ -469,7 +469,7 @@ test("applySectionBlock: inserts the @section/@end-section pair with cursor on t
   expect(v.state.doc.lineAt(sel.from).text).toBe("");
 });
 
-test("applyTwoColumnBlock: uses .col-split (not bare .two-column) so @column-break actually breaks under Paged.js", () => {
+test("applyTwoColumnBlock: uses .col-split (not bare .two-column) so @column-break creates a fixed authored split", () => {
   const v = makeMockView("before");
   applyTwoColumnBlock(v as unknown as EditorView);
   const doc = getDoc(v);

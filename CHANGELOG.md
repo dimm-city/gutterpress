@@ -5,9 +5,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-12
+
 ### Added
 
-- **`gp-*` image positioning vocabulary** in core `PAGED_CSS` — composable
+- **`gp-*` image positioning vocabulary** in core `GUTTERPRESS_CSS` — composable
   classes authors attach with markdown attrs (`![Art](x.png){.gp-right .gp-small}`):
   - **Positions**: `.gp-left`/`.gp-right` (floats, text wraps), `.gp-center`,
     `.gp-full`, `.gp-bleed`.
@@ -38,16 +40,6 @@ This project follows [Semantic Versioning](https://semver.org/).
     and its "Set width…"/"Set position…" now preserve every attribute they
     don't manage (the old rewrite dropped unrecognized classes/ids). The
     class list lives in one shared table (`$lib/editor/image-classes`).
-
-### Removed
-
-- **The five pre-`gp-*` image utility classes** — `.center`, `.float-left`,
-  `.float-right`, `.full-width`, `.full-bleed` — are gone from core
-  `PAGED_CSS`, replaced by the `gp-*` vocabulary above with no aliases: one
-  vocabulary, one way to spell each layout. Migration is a find-and-replace
-  in your markdown (`.float-left` → `.gp-left`, etc.); the desktop editor's
-  "Set position…" recognizes the old names and rewrites them in place. See
-  `docs/migrations/2026-08-gp-image-classes.md`.
 
 - **Inline editing in the preview** (ADR 0009): the paginated preview is now an
   editing surface, not just a viewer.
@@ -159,6 +151,13 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Removed
 
+- **The five pre-`gp-*` image utility classes** — `.center`, `.float-left`,
+  `.float-right`, `.full-width`, `.full-bleed` — are gone from core
+  `GUTTERPRESS_CSS`, replaced by the `gp-*` vocabulary above with no aliases:
+  one vocabulary, one way to spell each layout. Migration is a find-and-replace
+  in your markdown (`.float-left` → `.gp-left`, etc.); the desktop editor's
+  "Set position…" recognizes the old names and rewrites them in place. See
+  `docs/migrations/2026-08-gp-image-classes.md`.
 - The TTRPG starter template and the TTRPG Supplement theme, along with the
   user guide's TTRPG chapter. Stat blocks, dice notation, and read-aloud boxes
   never needed a plugin or a dedicated template — tables, layout markers, and
@@ -209,16 +208,16 @@ This project follows [Semantic Versioning](https://semver.org/).
   no equivalent for, so any project that splits one chapter across several
   source files previewed with different page boundaries than the PDF it
   produced. Preview and build now break only where project CSS or a
-  markdown-it-paged marker says to. Measured on a 292-page book whose chapter 2
+  Gutterpress layout marker says to. Measured on a 292-page book whose chapter 2
   spans nine source files: 227 of 293 preview pages previously carried
   different content than the build; now every page carries the same content the
   build puts there.
   Source attribution now annotates existing blocks instead of inserting a
   file-level wrapper, so authored structural selectors see the same element tree
-  in preview and build. Every watched source change runs a complete document
-  pagination before the hidden frame is swapped into view. This keeps cross-file
-  page boundaries aligned after both Markdown and CSS edits instead of splicing
-  isolated chapter pages.
+  in preview and build. Eligible edits to one Markdown source rerender and splice
+  only that chapter into the live preview; CSS changes, source-list changes, and
+  edits that cannot be isolated safely still trigger complete-document
+  pagination. Both paths preserve the build's cross-file page flow.
 
 ## [0.8.3] - 2026-07-22
 

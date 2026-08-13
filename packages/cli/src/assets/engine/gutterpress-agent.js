@@ -416,16 +416,29 @@
     }
     return inserted;
   }
-  function auditContent(contentHeightPx, dpiFloor) {
+  function auditContent(contentHeights, dpiFloor) {
     const out = [];
     const name = (el) => el.tagName.toLowerCase() + (el.id ? `#${el.id}` : "") + (el.className && typeof el.className === "string" ? `.${el.className.split(/\s+/)[0]}` : "");
+    const pageContext = (el) => {
+      for (let node = el;node; node = node.parentElement) {
+        const pageName = getComputedStyle(node).getPropertyValue("page").trim();
+        if (pageName && pageName !== "auto") {
+          return {
+            name: pageName,
+            height: contentHeights.named[pageName] ?? contentHeights.default
+          };
+        }
+      }
+      return { name: "default", height: contentHeights.default };
+    };
     for (const el of Array.from(document.querySelectorAll("figure,img,table,pre,svg,div"))) {
       const h = el.getBoundingClientRect().height;
-      if (h > contentHeightPx + 1 && el.children.length === 0) {
+      const context = pageContext(el);
+      if (h > context.height + 1 && el.children.length === 0) {
         out.push({
           kind: "overheight",
           what: name(el),
-          detail: `${Math.round(h)}px tall on a ${Math.round(contentHeightPx)}px content box`
+          detail: `${Math.round(h)}px tall on a ${Math.round(context.height)}px ` + `${context.name === "default" ? "default-page" : `${context.name} page`} content box`
         });
       }
     }

@@ -2,7 +2,7 @@
  * marker-completions.test.ts (UX M26)
  *
  * Unit tests for the CodeMirror completion source over Gutterpress's CORE
- * `@marker` family (markdown-it-paged.js's parseMarkerLine whitelist:
+ * `@marker` family (the core `parseMarkerLine` whitelist:
  * chapter/spread/page/section/continue/page-break/column-break/end-section).
  * Written test-first, mirroring css-editor.test.ts's pattern for
  * pagedMediaCompletionSource and toolbar-actions.test.ts's headless
@@ -54,7 +54,7 @@ function getSel(view: EditorView): { from: number; to: number } {
 
 // ── markerCompletions data table ─────────────────────────────────────────────
 
-test("markerCompletions covers exactly the core marker whitelist (markdown-it-paged.js parseMarkerLine)", () => {
+test("markerCompletions covers exactly the core marker whitelist (parseMarkerLine)", () => {
   const labels = markerCompletions.map((c) => c.label).sort();
   expect(labels).toEqual(
     [
@@ -197,7 +197,7 @@ test("@chapter completion apply replaces a partially-typed marker (from/to mid-w
 });
 
 // ── Round-trip: the produced @chapter line must actually render a label +
-// chapter-opener through the REAL markdown-it-paged plugin ──────────────────
+// chapter-opener through the REAL core marker renderer ─────────────────────────
 //
 // This is the guard against the exact class of bug FIX ROUND 1 caught: a
 // template that "looks right" as a string but silently mis-parses. Rendered

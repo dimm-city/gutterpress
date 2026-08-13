@@ -79,3 +79,37 @@ testIf("runBuild (pdf) leaves no .gutterpress-stage* dir in cwd and still writes
 // 30s: this drives the FULL native runBuild pipeline (staging, chapter
 // render, a real Chromium PDF render, fingerprinting) — real disk/process/
 // browser work, not a fixed-cost unit test.
+
+testIf("runBuild prevalidation permits a missing image and paginates its placeholder", async () => {
+  const inputDir = await mkdtemp(join(tmpdir(), "gutterpress-placeholder-prevalidate-in-"));
+  const outDir = await mkdtemp(join(tmpdir(), "gutterpress-placeholder-prevalidate-out-"));
+  dirsToClean.push(inputDir, outDir);
+
+  await writeFile(
+    join(inputDir, "chapter-01.md"),
+    "# Placeholder Contract\n\n![Missing](images/does-not-exist.jpg)\n",
+    "utf-8",
+  );
+  await writeFile(
+    join(inputDir, "manifest.yaml"),
+    "title: Placeholder Prevalidation\npreset: book\n",
+    "utf-8",
+  );
+
+  const result = await runBuild({
+    inputDir,
+    format: "pdf",
+    outDir,
+    skipLint: true,
+    // This is the contract under test: the ordinary pre-build validation gate
+    // runs, reports the missing image as a warning, and does not abort before
+    // the asset planner can create its visible fallback.
+    skipPreValidate: false,
+    skipPostValidate: true,
+    rawArgs: {},
+  });
+
+  expect(result.pdfPath).not.toBeNull();
+  const bytes = await readFile(result.pdfPath!);
+  expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+}, 60_000);

@@ -2,8 +2,8 @@
  * Pure (node-free) markdown rendering core.
  *
  * §1/§8 / ADR 0004: this module imports ONLY pure JS — markdown-it and its
- * plugins, the inlined `markdown-it-paged.js`, and the node-free leveled
- * logger (console-only). It contains NO `node:*`,
+ * plugins, Gutterpress's inlined marker parser (`markers.js`), and the node-free
+ * leveled logger (console-only). It contains NO `node:*`,
  * NO `fs`/`path`/`url`, and NO filesystem access, so it can be imported by the
  * browser renderer (the PWA WebAdapter, #33) AND bundled into the
  * `bun build --compile` CLI binary alike.
@@ -19,7 +19,7 @@ import MarkdownIt from "markdown-it";
 import { debug } from "../../utils/logger";
 import markdownItAttrs from "markdown-it-attrs";
 import markdownItFootnote from "markdown-it-footnote";
-import markdownItPaged from "./markers.js";
+import gutterpressMarkers from "./markers.js";
 import gpPinScope from "./gp-pin-scope.js";
 import markdownItSourceMap from "markdown-it-source-map";
 import markdownItDeflist from "markdown-it-deflist";
@@ -120,7 +120,7 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
  *
  * Built-in pipeline (runs before any user plugins):
  *   markdown-it-attrs → markdown-it-footnote → markdown-it-deflist →
- *   markdown-it-source-map → markdown-it-paged
+ *   markdown-it-source-map → Gutterpress markers
  *
  * The `source_range` core rule (source-range.ts, `data-source-range`) is
  * registered LAST — after any custom (manifest) plugins — so it always sees
@@ -154,15 +154,15 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   // `{ default: fn }` to the function in dev mode; the standalone-binary
   // loader does not, so the import surfaces as `{ default: fn }` and
   // `md.use` blows up with "plugin.apply is not a function". Unwrap
-  // defensively via the shared helper. `markdown-it-paged.js` is our own
-  // ESM file (§6) with a real `export default`, so it needs no unwrap.
+  // defensively via the shared helper. `markers.js` is Gutterpress's own ESM
+  // file (§6) with a real `export default`, so it needs no unwrap.
   md.use(unwrapPlugin(markdownItAttrs));
   md.use(unwrapPlugin(markdownItFootnote));
   md.use(unwrapPlugin(markdownItDeflist));
   md.use(unwrapPlugin(markdownItSourceMap));
-  md.use(markdownItPaged);
-  // Gutterpress's own diagnostic; must follow the paged plugin (it walks the
-  // layout_* tokens that plugin emits) and markdown-it-attrs (it reads the
+  md.use(gutterpressMarkers);
+  // This diagnostic must follow the Gutterpress marker parser (it walks the
+  // layout_* tokens that parser emits) and markdown-it-attrs (it reads the
   // {.gp-pin} classes attrs attaches).
   md.use(gpPinScope);
 

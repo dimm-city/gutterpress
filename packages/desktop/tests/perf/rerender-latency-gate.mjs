@@ -2,7 +2,7 @@
 /**
  * Preview RE-RENDER latency and mechanism gate (GitHub issue #107).
  *
- * Sibling of render-gate.mjs. Where render-gate measures paged.js layout
+ * Sibling of render-gate.mjs. Where render-gate measures viewer layout
  * THROUGHPUT (pages/sec) to catch the hidden-iframe throttle and HARD-FAILS,
  * this script measures how long a warm PREVIEW RE-RENDER takes for a fixed
  * ~50-page project (bench/novel-50p). It is advisory by default for local use;

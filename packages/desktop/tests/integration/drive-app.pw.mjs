@@ -68,8 +68,7 @@ try {
 
   // ── 1. open -> first rendered preview timing ────────────────────────────
   await book.locator("body").waitFor({ state: "attached", timeout: 60_000 });
-  // First visible page element differs by engine: paged uses .pagedjs_page,
-  // native uses .gp-sheet.
+  // The native viewer exposes each visible page as a .gp-sheet.
   await Promise.race([
     book.locator(".pagedjs_page").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),
     book.locator(".gp-sheet").first().waitFor({ state: "visible", timeout: 60_000 }).catch(() => {}),

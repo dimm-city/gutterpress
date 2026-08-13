@@ -15,6 +15,38 @@
 >   in both books (safe to delete), and the two parallel column vocabularies are real
 >   (design guide: 37 `.two-column` / 0 `.gp-columns-*`).
 
+> **FINAL B/C/E RECONCILIATION — current source + rendered gallery, 2026-08-12.**
+> The tables below are historical measurements; do not action their old line
+> numbers. The current tree has inverted panel chrome to `.dc-panel` /
+> `.dc-panel-sections`, unified authored columns on `.gp-columns-2/3`, and
+> deleted `.section.dc-rules-definition` and `.col-split`. The remaining
+> `.two-column-list` and `.dc-skill-card.two-col` rules are distinct,
+> component-internal behaviors (Category C's clean verdict), not duplicate
+> page-column vocabulary. Fresh current-tree HTML builds measured
+> `.two-column-list` at **2 / 0** (field guide / design guide), canonical
+> `.gp-columns-2/3` at **20+0 / 37+1**, and the obsolete `.two-column`,
+> `.three-column`, `.col-split`, and `.dc-rules-definition` classes at
+> **0 / 0**.
+>
+> The remaining section-pseudo suppression is load-bearing template
+> composition, not a stale undo of bare structural chrome. Every current
+> matching element is inside an explicit `.dc-panel-sections` policy scope:
+> `credits-colophon` **1 / 1**, standalone `page-intro` direct sections
+> **0 / 1**, and labeled `data-page="intro"` chapter-opener sections
+> **0 / 16**. The policy therefore creates panel pseudos on those sections;
+> the template rules deliberately remove or reshape them to make one credits,
+> intro, or opener silhouette. The chapter-opener page-level
+> `filter:drop-shadow` and the surviving child `box-shadow:none` declarations
+> remain load-bearing parts of that one-shadow composite. By contrast,
+> `.section.dc-card-grid { filter:none }` was dead: the panel gate excludes all
+> **0 / 2** card grids and `filter` is not inherited, so that declaration and
+> its stale "chrome reset" wording were removed.
+>
+> A fresh 39-page gallery
+> render passes text/raster comparison plus populated-multicol, marker,
+> tab/body, image-page, and page-edge paint invariants. Categories B/C/E need
+> no further release-blocking edits.
+
 Date: 2026-08-12. Read-only audit, no code changed. Method: read core
 (`markers.js`, `gutterpress-css.ts`) and every dc-design-guide CSS file with
 its header contract; built both books to HTML

@@ -134,10 +134,12 @@ test("SOURCE_LABELS covers every engine build-diagnostic code", async () => {
 test("buildProblems maps diagnostics to panel entries without inventing a source location", () => {
   const entries = buildProblems([
     { code: "engine.xref.broken", severity: "warning", message: "The link \"#nope\" doesn't point at anything" },
+    { code: "engine.layer.trapped", severity: "warning", message: "div.overlay is trapped inside div.page" },
     { code: "engine.image.low-dpi", severity: "info", message: "img.art is below the 300 DPI print bar" },
   ]);
   expect(entries).toEqual([
     { severity: "warning", message: 'The link "#nope" doesn\'t point at anything', source: "engine.xref.broken" },
+    { severity: "warning", message: "div.overlay is trapped inside div.page", source: "engine.layer.trapped" },
     { severity: "info", message: "img.art is below the 300 DPI print bar", source: "engine.image.low-dpi" },
   ]);
   // A pagination finding names a rendered element, not a source line — the

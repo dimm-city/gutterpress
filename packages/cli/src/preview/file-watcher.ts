@@ -90,8 +90,8 @@ async function renderPreviewBook(
     pluginCss,
     wrapChapters: opts.wrapChapters,
     ...(opts.onCssAssets ? { onCssAssets: opts.onCssAssets } : {}),
-    // ARCH finding #4: markdown-it-paged's typed, line-numbered author-mistake
-    // warnings (env.layoutWarnings) used to be discarded here too — this is the
+    // ARCH finding #4: Gutterpress's typed, line-numbered marker warnings
+    // (env.layoutWarnings) used to be discarded here too — this is the
     // ONE preview render path, so wiring it here surfaces a marker mistake live
     // in the terminal on both startup and every rebuild.
     onChapterWarnings: (file, warnings) => {

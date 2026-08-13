@@ -193,8 +193,7 @@ test("renderingComplete runs the settle sequence in the JUMP-preventing order", 
   expect(h.log[h.log.length - 1]).toBe("reveal");
   expect(h.client.calls).toContainEqual({ cmd: "setZoom", args: [0.5] });
 
-  // Only the engine-agnostic preview canvas background is injected — Paged.js
-  // has been removed (native-only-migration-plan.md Phase 6), and the rest
+  // Only the engine-agnostic preview canvas background is injected. The rest
   // of the native viewer's chrome (zoom, sheet background, view modes, debug
   // guides) lives in decorate.ts + viewer.css, not injected from the toolbar.
   const canvas = h.injectedCss.filter((i) => i.id === "desktop-canvas");

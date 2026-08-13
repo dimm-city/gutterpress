@@ -198,7 +198,7 @@ describe("shape facet (boolean)", () => {
 });
 
 describe("drift gate against core GUTTERPRESS_CSS", () => {
-  // markdown-it-paged.js is deliberately self-contained ESM (zero imports),
+  // The core Gutterpress CSS module is deliberately self-contained ESM,
   // so the sibling-package source import works under bun test without
   // building the lib. If this import ever breaks, fall back to reading the
   // file as text and scanning for the selectors.

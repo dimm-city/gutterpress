@@ -103,7 +103,7 @@ Use `markdown-it-attrs` (bundled — no install step needed) for precise sizing:
 ### Common image classes {#common-image-classes}
 
 Core Gutterpress ships a small, composable `gp-*` vocabulary for placing
-images — plain CSS rules in `PAGED_CSS`, always present, no plugin or theme
+images — plain CSS rules in `GUTTERPRESS_CSS`, always present, no plugin or theme
 required. `markdown-it-attrs` (also bundled) is what lets you attach
 `{.gp-right}` and friends to an image. Pick one **position** word, and
 optionally add a **size**, a **spacing**, and a **shape** word — the
@@ -232,10 +232,12 @@ It does **not**: cancel the top/bottom margins, remove headers or footers, or ad
 
 ### Image galleries
 
-Keep a group of images together on one page using `@section`:
+Wrap a gallery in a named section so your own stylesheet can choose its layout
+and fragmentation policy. A plain `@section` is structural and may split; this
+guide's `.figure` class is the opt-in keep-together treatment:
 
 ```markdown
-@section
+@section .figure
 ![Image 1](assets/1.jpg){width="30%"}
 ![Image 2](assets/2.jpg){width="30%"}
 ![Image 3](assets/3.jpg){width="30%"}

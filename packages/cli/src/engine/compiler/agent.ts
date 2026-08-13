@@ -227,6 +227,13 @@ export interface ContentWarning {
   detail: string;
 }
 
+export interface PageContentHeights {
+  /** Minimum default/unnamed content-box height across its pseudo-page variants. */
+  default: number;
+  /** Named page -> minimum content-box height across its pseudo-page variants. */
+  named: Record<string, number>;
+}
+
 /**
  * Print-quality audit of the document, run once against the real layout.
  *
@@ -237,20 +244,47 @@ export interface ContentWarning {
  *  - a raster whose natural resolution lands below the print bar once scaled
  *    to its printed size — invisible on screen, muddy on paper.
  */
-export function auditContent(contentHeightPx: number, dpiFloor: number): ContentWarning[] {
+export function auditContent(
+  contentHeights: PageContentHeights,
+  dpiFloor: number,
+): ContentWarning[] {
   const out: ContentWarning[] = [];
   const name = (el: Element) =>
     el.tagName.toLowerCase() +
     (el.id ? `#${el.id}` : "") +
     (el.className && typeof el.className === "string" ? `.${el.className.split(/\s+/)[0]}` : "");
 
+  const pageContext = (el: Element): { name: string; height: number } => {
+    // `page` is read from computed style so cascade/specificity and downstream
+    // book wrapper classes are already resolved. Walk ancestors as a backstop
+    // for a leaf inside a wrapper that owns the named-page assignment.
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      const pageName = getComputedStyle(node).getPropertyValue("page").trim();
+      if (pageName && pageName !== "auto") {
+        return {
+          name: pageName,
+          // Computed style exposes the assigned page NAME but not which
+          // pseudo-page (:left/:right/:first/...) the element ultimately lands
+          // on. Node therefore sends the minimum content height across every
+          // applicable variant. This can warn conservatively when variants
+          // differ, but can never miss an element too tall for one of them.
+          height: contentHeights.named[pageName] ?? contentHeights.default,
+        };
+      }
+    }
+    return { name: "default", height: contentHeights.default };
+  };
+
   for (const el of Array.from(document.querySelectorAll<HTMLElement>("figure,img,table,pre,svg,div"))) {
     const h = el.getBoundingClientRect().height;
-    if (h > contentHeightPx + 1 && el.children.length === 0) {
+    const context = pageContext(el);
+    if (h > context.height + 1 && el.children.length === 0) {
       out.push({
         kind: "overheight",
         what: name(el),
-        detail: `${Math.round(h)}px tall on a ${Math.round(contentHeightPx)}px content box`,
+        detail:
+          `${Math.round(h)}px tall on a ${Math.round(context.height)}px ` +
+          `${context.name === "default" ? "default-page" : `${context.name} page`} content box`,
       });
     }
   }

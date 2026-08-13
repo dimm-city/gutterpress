@@ -2,7 +2,7 @@
  * marker-completions.ts (UX review M26)
  *
  * CodeMirror completion source for Gutterpress's CORE `@marker` family — the
- * markdown-it-paged layout markers (`@chapter`, `@spread`, `@page`,
+ * core layout markers (`@chapter`, `@spread`, `@page`,
  * `@section`, `@continue`, `@page-break`, `@column-break`, `@end-section`).
  * The whitelist below is copied verbatim from `parseMarkerLine`'s `.includes`
  * check in `packages/cli/src/lib/markdown/markers.js` — the single
@@ -20,7 +20,7 @@
  * core. They MUST NOT be added to this table — a plugin that wants its own
  * marker completions should register its own CodeMirror extension instead of
  * extending this one, exactly as plugins register their own markdown-it
- * rules rather than reaching into `markdown-it-paged`'s internals.
+ * rules rather than reaching into the core marker renderer's internals.
  *
  * Trigger contract: markers are only meaningful as the FIRST token on a line
  * (optionally after leading whitespace) — `parseMarkerLine` trims the raw
@@ -76,7 +76,7 @@ const CHAPTER_TITLE_PLACEHOLDER = "Chapter Title";
  * `bareTokens.length === 1` name rule and actually produces
  * `data-chapter-label="Chapter Title"` + the chapter-opener element — the
  * exact behavior this completion's `detail` string advertises. Verified by
- * feeding both forms through the real markdown-it-paged plugin.
+ * feeding both forms through the real core marker renderer.
  */
 function applyChapterCompletion(
   view: EditorView,

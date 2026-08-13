@@ -667,8 +667,8 @@ function createWindow() {
     // Created hidden, then shown right after loadURL is dispatched (below) —
     // the in-window start screen (WelcomeLanding) is the launch surface; the
     // old external splash window is gone. The window must be VISIBLE during
-    // the first render so paged.js's requestAnimationFrame loop produces
-    // frames (a hidden window stalls it on real hardware).
+    // the first render so the viewer's requestAnimationFrame-driven layout
+    // produces frames (a hidden window stalls it on real hardware).
     show: false,
     webPreferences: {
       // NOTE: .cjs — a sandboxed preload cannot be ESM (see
@@ -683,7 +683,7 @@ function createWindow() {
       // third-party content in the cross-origin preview iframe.
       sandbox: true,
       // CRITICAL: Electron background-throttles hidden/occluded windows —
-      // timers and rAF drop to ~1/sec — which collapses the first paged.js
+      // timers and rAF drop to ~1/sec — which collapses the first viewer
       // render to ~1 page/sec (the "12 pages in 30s" regression) whenever the
       // window is covered or minimized. Keep throttling off so layout always
       // runs at full speed.
@@ -828,7 +828,7 @@ function createWindow() {
 
   // Show the window immediately — the in-window start screen (WelcomeLanding)
   // is the launch surface, and a visible window is THE first-render-speed fix:
-  // paged.js drives its pagination loop with requestAnimationFrame, and on
+  // The live viewer drives pagination with requestAnimationFrame, and on
   // real hardware a hidden window (show:false) produces no compositor frames,
   // so rAF stalls and layout collapses to ~1 page/sec — the "12 pages in 30s"
   // regression.
@@ -916,7 +916,7 @@ const skAuthToken = randomBytes(32).toString("hex");
 // harmless Chromium GPU-probe noise, NOT the cause of slow launches — the
 // multi-second blank window was profile-lock contention between two instances
 // (see the single-instance lock below). So we keep hardware acceleration at its
-// Electron default; forcing software rendering only slows the paged.js preview.
+// Electron default; forcing software rendering only slows the live preview.
 
 // Register the scheme as standard (must happen before app.whenReady) so fetch
 // and origin-scoped browser APIs such as IndexedDB work from the app:// page.
@@ -1779,7 +1779,7 @@ secureHandle("updater:applyNow", () => installNow());
 // ── Never throttle the renderer (THE first-render-speed fix) ────────────────
 // Chromium throttles hidden/occluded windows: once a window has been
 // visible→hidden, background timer throttling clamps the setTimeout()s
-// paged.js yields on between pages, collapsing layout to ~1 page/sec
+// the viewer yields on between pages, collapsing layout to ~1 page/sec
 // (measured: a hidden window dropped from 490 setTimeout callbacks/2s to 35 —
 // and worse on real hardware with the 1s clamp). That was the "12 pages in
 // 30s" report, back when an external splash window covered the main window at

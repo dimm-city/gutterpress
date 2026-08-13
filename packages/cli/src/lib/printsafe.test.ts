@@ -91,7 +91,14 @@ test("checkCss warns when a page wrapper becomes a stacking context", () => {
     const w = checkCss(`.spread { ${d}; }`).filter((x) => x.rule === rulePageContainment);
     expect(w.length).toBe(1);
     expect(w[0]!.message).toContain("stacking context");
+    expect(w[0]!.message).toContain("source-only");
+    expect(w[0]!.message).toContain("engine.layer.trapped");
   }
+});
+
+test("page-containment stays a narrow source hint; live wrapper chains belong to the engine audit", () => {
+  const css = `.book-defined-wrapper { isolation: isolate; overflow: hidden; }`;
+  expect(checkCss(css).filter((x) => x.rule === rulePageContainment)).toHaveLength(0);
 });
 
 test("checkCss accepts the values core itself relies on", () => {

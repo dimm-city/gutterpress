@@ -127,7 +127,9 @@ testIf(
         // what catches an unwrap that "works" only because the page count
         // happens to survive.
         expect(repeat.counts).toEqual([expected, expected, expected]);
-        expect(repeat.runs).toEqual([repeat.runs[0], repeat.runs[0], repeat.runs[0]]);
+        const firstRunCount = repeat.runs[0];
+        expect(firstRunCount).toBeDefined();
+        expect(repeat.runs).toEqual([firstRunCount!, firstRunCount!, firstRunCount!]);
         expect(repeat.textSame).toEqual([true, true, true]);
       } finally {
         await close();

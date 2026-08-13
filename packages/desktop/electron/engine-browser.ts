@@ -168,9 +168,9 @@ export async function createElectronEngineBrowser(): Promise<EngineBrowser> {
   function newWindow(): BrowserWindow {
     const win = new BrowserWindow({
       show: false,
-      // Same reasoning as electron/pdf-export.ts's Paged.js renderer: a
-      // hidden window is throttled by Chromium unless told otherwise, which
-      // would slow native pagination the same way it slows Paged.js.
+      // A hidden window is throttled by Chromium unless told otherwise,
+      // which would slow native pagination while the app is covered or
+      // minimized.
       paintWhenInitiallyHidden: true,
       width: 1280,
       height: 1024,

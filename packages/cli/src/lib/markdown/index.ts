@@ -58,8 +58,8 @@ export async function renderChapters(
     wrapChapters?: boolean;
     /**
      * ARCH finding #4: per-chapter author-mistake warnings computed by
-     * markdown-it-paged (`env.layoutWarnings`), forwarded straight through
-     * from {@link assembleBookHtml}. See that option's docstring — omitting
+     * Gutterpress's marker parser (`env.layoutWarnings`), forwarded straight
+     * through from {@link assembleBookHtml}. See that option's docstring — omitting
      * it is fully backward compatible.
      */
     onChapterWarnings?: (file: string, warnings: LayoutWarning[]) => void;

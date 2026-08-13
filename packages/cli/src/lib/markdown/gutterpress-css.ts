@@ -1,16 +1,14 @@
 /**
  * GUTTERPRESS_CSS — the `gp-*` author vocabulary.
  *
- * This is GUTTERPRESS's stylesheet, not markdown-it-paged's. The plugin is a
- * standalone, independently published markdown-it extension whose contract is
- * markers -> tokens -> the `.page`/`.spread`/`.section`/`.chapter` wrappers and
- * the minimal CSS those wrappers need. The `gp-*` classes are a product
- * vocabulary layered on top of that DOM: they are meaningless to anyone using
- * the plugin on its own, so they do not belong in it. They were added there
- * when the vocabulary shipped and are moved here now.
+ * This is Gutterpress's broad author-vocabulary stylesheet. The separate
+ * `MARKER_CSS` block owns only the `.page`/`.spread`/`.section`/`.chapter`
+ * structure emitted by Gutterpress's marker parser; this file owns the `gp-*`
+ * classes authors apply to content. Keeping the two core blocks separate makes
+ * that ownership boundary explicit without implying an external plugin.
  *
  * Injected by assemble.ts immediately AFTER `MARKER_CSS` and BEFORE user plugin
- * and project CSS, so the cascade order is: plugin layout primitives ->
+ * and project CSS, so the cascade order is: marker layout primitives ->
  * Gutterpress vocabulary -> plugin CSS -> the author's stylesheets last. An
  * author overriding a `gp-*` class at equal specificity still wins.
  *
@@ -261,7 +259,9 @@ img.gp-shape {
        precisely so they are not stacking contexts.
      - a clipping ancestor (overflow other than visible), the same mechanism
        that clips a .gp-bleed plate back to the wrapper's width.
-   Both are reported by the printsafe/page-containment check. */
+   The build-time engine.layer.trapped audit reports both against the live
+   ancestor chain. printsafe/page-containment is only an early source hint for
+   declarations written directly on .page/.spread. */
 :root {
   --gp-z-behind: -1;
   --gp-z-base: 0;

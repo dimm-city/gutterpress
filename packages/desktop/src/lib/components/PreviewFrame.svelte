@@ -54,7 +54,7 @@
   top-navigation and popups outright, as defense in depth alongside the host's
   will-navigate/setWindowOpenHandler policy.
   allow-scripts is required: the preview-bridge.js running inside the frame
-  drives paged.js layout and the postMessage command bridge (preview-client.ts).
+  drives native viewer layout and the postMessage command bridge (preview-client.ts).
   allow-same-origin is required too: without it the sandboxed frame gets an
   opaque origin, which breaks its own same-origin resource fetches (fonts,
   images, the adapter-node routes it's served from) — normally allow-scripts +
@@ -86,7 +86,7 @@
     height: 100%;
     border: 0;
     background: #5a5a5a;
-    /* NEVER hide this iframe (opacity/visibility/display) while paged.js is
+    /* NEVER hide this iframe (opacity/visibility/display) while the viewer is
        laying out. It is CROSS-ORIGIN (http://127.0.0.1 inside app://), and
        Chromium throttles invisible cross-origin iframes to ~1fps — which
        turned a ~10s layout into ~5 minutes (~1 page/sec) on a 287-page book

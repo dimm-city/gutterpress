@@ -104,7 +104,7 @@ test("the external splash window is gone — the in-window start screen is the l
   expect(main).not.toContain("createSplashWindow");
   expect(main).not.toContain("showMainWindowAndCloseSplash");
   expect(main).not.toContain("splashFallbackTimer");
-  // …and the main window shows immediately (paged.js needs a visible window
+  // …and the main window shows immediately (the viewer needs a visible window
   // to render at full speed; WelcomeLanding covers the boot).
   expect(main).toContain("mainWindow.show();");
 });

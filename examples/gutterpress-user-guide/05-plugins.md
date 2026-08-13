@@ -171,7 +171,7 @@ These run automatically before any user plugins and do not need to be declared i
 | `markdown-it-footnote` | `[^1]` footnote syntax |
 | `markdown-it-deflist` | `Term` / `: definition` definition lists |
 | Source map | `data-source-line` attributes for error reporting |
-| `markdown-it-paged` | `@page`, `@section`, `@column-break` layout markers |
+| Gutterpress markers | `@page`, `@section`, `@column-break` layout markers |
 
 @end-section
 

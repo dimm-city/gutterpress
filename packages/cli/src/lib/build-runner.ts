@@ -17,7 +17,11 @@ import {
 } from "./ghostscript";
 import { writeBuildFingerprint, type BuildFingerprintInput } from "./build-fingerprint";
 import { getAssetPath } from "./embedded-assets";
-import { placeholderPng } from "./missing-asset-placeholder";
+import {
+  placeholderOutputPath,
+  placeholderPng,
+  rewriteMissingImageReferences,
+} from "./missing-asset-placeholder";
 import { runLint } from "./lint-runner";
 import { executeAndReport } from "./validation-exec";
 import { log } from "../utils/logger";
@@ -209,6 +213,17 @@ export interface BuildContext {
   workDir: string;
   /** What to do with `workDir` once the build succeeds. */
   target: PublishTarget;
+  /**
+   * Exact layout-marker findings already printed by pre-build validation.
+   * Render-time parsing consults this set so only true duplicates disappear;
+   * a disabled/failed/skipped marker check never suppresses a legitimate
+   * warning from the final render path.
+   */
+  prevalidatedLayoutWarningKeys: Set<string>;
+}
+
+function layoutWarningKey(file: string, line: number | undefined, message: string): string {
+  return `${path.resolve(file)}\0${line ?? 0}\0${message}`;
 }
 
 /**
@@ -297,6 +312,7 @@ export async function resolveBuildContext(
     manifestDir,
     config,
     gates,
+    prevalidatedLayoutWarningKeys: new Set(),
   };
 }
 
@@ -329,6 +345,17 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
       },
       "text"
     );
+    for (const finding of result.execution.report.results) {
+      if (
+        finding.checkId === "source.markdown.layout-markers" &&
+        finding.file &&
+        finding.code !== "inspect-failed"
+      ) {
+        ctx.prevalidatedLayoutWarningKeys.add(
+          layoutWarningKey(finding.file, finding.line, finding.message),
+        );
+      }
+    }
     if (!result.ok) {
       throw new BuildError("Pre-build validation failed", 1);
     }
@@ -341,7 +368,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * rendered book.html both output strategies then paginate. This is the shared
  * pre-format work; the per-format tails live in the strategies.
  *
- * ARCH finding #4: markdown-it-paged computes typed, line-numbered
+ * ARCH finding #4: Gutterpress's marker parser computes typed, line-numbered
  * author-mistake warnings (`env.layoutWarnings`) that every real render path
  * used to discard silently. `renderChaptersToFile`'s `onChapterWarnings`
  * threads them back out here so a final artifact never omits a marker
@@ -350,7 +377,7 @@ async function runQualityGates(ctx: BuildContext): Promise<void> {
  * without driving the full `runBuild` pagination/PDF machinery.
  */
 export async function renderBook(ctx: BuildContext): Promise<string> {
-  const { config, renderDir, workDir, opts } = ctx;
+  const { config, gates, renderDir, workDir, opts } = ctx;
 
   if (config.source.files && config.source.files.length > 0) {
     log.info(`Using specified files (${config.source.files.length} total)`);
@@ -384,9 +411,16 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
     files: config.source.files,
     plugins,
     pluginCss,
+    // Prevalidation may have reported these exact parser findings through
+    // source.markdown.layout-markers. Suppress only an exact match: a disabled,
+    // failed, or skipped check leaves this set empty and the final render still
+    // tells the author about every legitimate marker mistake.
     onChapterWarnings: (file, warnings) => {
       for (const w of warnings) {
-        log.warn(`  ${file}, line ${w.line}: ${w.message}`);
+        const key = layoutWarningKey(path.resolve(renderDir, file), w.line, w.message);
+        if (!ctx.prevalidatedLayoutWarningKeys.has(key)) {
+          log.warn(`  ${file}, line ${w.line}: ${w.message}`);
+        }
       }
     },
     onImageRefs: (refs) => imageRefs.push(...refs),
@@ -397,7 +431,10 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   });
   log.success(`Wrote ${htmlFile}`);
 
-  const { copies: imageCopies, errors } = await planImageCopies(renderDir, imageRefs);
+  const { copies: imageCopies, errors, destinations } = await planImageCopies(
+    renderDir,
+    imageRefs,
+  );
   if (errors.length > 0) {
     throw new BuildError(
       `Cannot resolve ${errors.length} image reference(s):\n` +
@@ -407,9 +444,10 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   }
 
   const copies = [...cssAssets, ...imageCopies];
+  let missingPlaceholders = new Map<string, string>();
   if (copies.length > 0) {
     log.info(`Copying ${copies.length} referenced asset(s)`);
-    await copyReferencedAssets(copies, workDir);
+    missingPlaceholders = await copyReferencedAssets(copies, workDir);
   }
 
   // .gp-shape images: inline the mirrored --gp-shape URLs as data: URIs so
@@ -417,7 +455,20 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
   // origins block its pixel reads; the http preview needs no such help) —
   // see inlineShapeUrls' doc comment. After the copy step so the staged
   // files are what get inlined.
-  const staged = await fsp.readFile(htmlFile, "utf8");
+  let staged = await fsp.readFile(htmlFile, "utf8");
+  if (missingPlaceholders.size > 0) {
+    // CSS assets already use their output-relative destination in the inlined
+    // <style>; prose images may preserve an authored spelling such as
+    // `./images/a.jpg` or a percent-escaped path. Cover both from the one copy
+    // plan, then rewrite src/srcset/CSS URLs before Chromium sees the document.
+    const rewrites = new Map(missingPlaceholders);
+    for (const [ref, dest] of destinations) {
+      const placeholder = missingPlaceholders.get(dest);
+      if (placeholder) rewrites.set(ref, placeholder);
+    }
+    staged = rewriteMissingImageReferences(staged, rewrites);
+    await fsp.writeFile(htmlFile, staged, "utf8");
+  }
   if (staged.includes("--gp-shape:")) {
     await fsp.writeFile(htmlFile, await inlineShapeUrls(staged, workDir), "utf8");
   }
@@ -434,7 +485,7 @@ export async function renderBook(ctx: BuildContext): Promise<string> {
 async function copyReferencedAssets(
   copies: AssetCopy[],
   outDir: string
-): Promise<void> {
+): Promise<Map<string, string>> {
   const dirs = new Set(
     copies.map((c) => path.dirname(path.resolve(outDir, c.to)))
   );
@@ -445,7 +496,7 @@ async function copyReferencedAssets(
   // (permissions, a directory where a file should be, a full disk) still
   // throws: those are environment faults the author cannot fix by editing
   // their markdown, and silently papering over them would hide real damage.
-  const missing: string[] = [];
+  const missing = new Map<string, string>();
   await Promise.all(
     copies.map(async (c) => {
       const dest = path.resolve(outDir, c.to);
@@ -453,8 +504,11 @@ async function copyReferencedAssets(
         await fsp.copyFile(c.from, dest);
       } catch (err) {
         if ((err as NodeJS.ErrnoException)?.code === "ENOENT") {
-          await fsp.writeFile(dest, placeholderPng());
-          missing.push(c.to);
+          const placeholder = placeholderOutputPath(c.to);
+          const placeholderDest = path.resolve(outDir, placeholder);
+          await fsp.mkdir(path.dirname(placeholderDest), { recursive: true });
+          await fsp.writeFile(placeholderDest, placeholderPng());
+          missing.set(c.to, placeholder);
           return;
         }
         throw new BuildError(
@@ -466,14 +520,16 @@ async function copyReferencedAssets(
     })
   );
 
-  if (missing.length > 0) {
+  if (missing.size > 0) {
     log.warn(
-      `${missing.length} referenced image(s) do not exist — a magenta placeholder ` +
+      `${missing.size} referenced image(s) do not exist — a magenta placeholder ` +
         `was substituted so the build could finish. Each one is a visible hole ` +
         `in the PDF:`
     );
-    for (const m of missing.sort()) log.warn(`  missing: ${m}`);
+    for (const m of [...missing.keys()].sort()) log.warn(`  missing: ${m}`);
   }
+
+  return missing;
 }
 
 /**

@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { deflateSync } from "node:zlib";
+import { parseSrcsetUrlCandidates } from "./markdown/images";
 
 /**
  * A visible stand-in for an image the book references but does not have.
@@ -21,12 +23,188 @@ import { deflateSync } from "node:zlib";
  * FORMAT: a hand-encoded PNG, because the alternative — embedding a fixture
  * file — cannot adapt its dimensions, and a wrongly-shaped placeholder
  * distorts the surrounding layout while the author is trying to judge it.
- * PNG is the only format written, whatever extension the reference used;
- * Chromium resolves a local image's type from its extension, so a
- * placeholder standing in for `.jpg` may itself fail to decode. That is
- * acceptable and deliberate: the build still succeeds, and the author still
- * gets the warning naming the file. It is not a silent fallback either way.
+ * PNG is the only format written. The staging pipeline writes it to the
+ * dedicated `.png` path returned by {@link placeholderOutputPath} and rewrites
+ * every rendered reference to that path, so a missing `.jpg`/`.webp`/etc. can
+ * never turn this loud fallback into a browser broken-image icon.
  */
+
+/**
+ * Collision-resistant, output-relative path for a missing image's PNG.
+ *
+ * Keeping placeholders under one engine-owned directory avoids overwriting an
+ * author's real file (which an appended `.missing.png` sibling name could do),
+ * while hashing the original output path keeps repeat references deterministic.
+ */
+export function placeholderOutputPath(missingOutputPath: string): string {
+  const hash = createHash("sha256").update(missingOutputPath).digest("hex").slice(0, 16);
+  return `assets/gutterpress-missing/${hash}.png`;
+}
+
+/** Decode the small entity set that can occur inside an HTML URL attribute. */
+function decodeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * Rewrite missing local image URLs in rendered HTML to their real PNG paths.
+ *
+ * Covers ordinary `src`, every `srcset` candidate, and CSS `url()` tokens in
+ * actual `<style>` blocks / `style` attributes. The structural boundary is
+ * load-bearing: prose examples and scripts may legitimately contain the same
+ * `url("missing.jpg")` text and must remain byte-for-byte authored. The CSS
+ * pass is required for `.gp-shape`: its mirrored `--gp-shape` URL must point
+ * at the same staged PNG before `inlineShapeUrls()` reads and embeds it.
+ */
+export function rewriteMissingImageReferences(
+  html: string,
+  replacements: ReadonlyMap<string, string>,
+): string {
+  if (replacements.size === 0) return html;
+
+  const replacementFor = (raw: string): string | undefined =>
+    replacements.get(raw) ?? replacements.get(decodeHtmlAttribute(raw));
+
+  const cssUrl = /url\(\s*(?:"([^"]*)"|'([^']*)'|&quot;((?:(?!&quot;).)*)&quot;|([^'"()\s]*))\s*\)/giy;
+  const rewriteCssUrls = (css: string): string => {
+    let out = "";
+    let copiedThrough = 0;
+    let index = 0;
+    while (index < css.length) {
+      // CSS strings and comments are opaque. A regex-only pass rewrote
+      // documentation such as content:'url("missing.jpg")' and comments,
+      // even though neither URL is fetched by the browser.
+      if (css.startsWith("/*", index)) {
+        const end = css.indexOf("*/", index + 2);
+        index = end < 0 ? css.length : end + 2;
+        continue;
+      }
+      const char = css[index];
+      if (char === '"' || char === "'") {
+        const quote = char;
+        index++;
+        while (index < css.length) {
+          if (css[index] === "\\") {
+            index += 2;
+            continue;
+          }
+          const current = css[index++];
+          if (current === quote) break;
+        }
+        continue;
+      }
+
+      const previous = index > 0 ? css[index - 1]! : "";
+      if (!/[a-z0-9_-]/i.test(previous) && css.slice(index, index + 3).toLowerCase() === "url") {
+        cssUrl.lastIndex = index;
+        const match = cssUrl.exec(css);
+        if (match) {
+          const raw = match[1] ?? match[2] ?? match[3] ?? match[4] ?? "";
+          const replacement = replacementFor(raw);
+          if (replacement) {
+            out += css.slice(copiedThrough, index);
+            out += match[3] !== undefined
+              ? `url(&quot;${replacement}&quot;)`
+              : `url("${replacement}")`;
+            index = cssUrl.lastIndex;
+            copiedThrough = index;
+            continue;
+          }
+        }
+      }
+      index++;
+    }
+    return copiedThrough === 0 ? css : out + css.slice(copiedThrough);
+  };
+
+  const rewriteTag = (tag: string): string => {
+    let out = tag;
+    if (/^<img\b/i.test(tag)) {
+      out = out.replace(
+        /(\s+src\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+        (
+          whole,
+          prefix: string,
+          double: string | undefined,
+          single: string | undefined,
+          bare: string | undefined,
+        ) => {
+          const raw = double ?? single ?? bare ?? "";
+          const replacement = replacementFor(raw);
+          if (!replacement) return whole;
+          if (double !== undefined) return `${prefix}"${replacement}"`;
+          if (single !== undefined) return `${prefix}'${replacement}'`;
+          return `${prefix}${replacement}`;
+        },
+      );
+    }
+
+    if (/^<(?:img|source)\b/i.test(tag)) {
+      out = out.replace(
+        /(\s+srcset\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+        (whole, prefix: string, double: string | undefined, single: string | undefined, bare: string | undefined) => {
+          const value = double ?? single ?? bare ?? "";
+          let rewritten = "";
+          let copiedThrough = 0;
+          let changed = false;
+          for (const candidate of parseSrcsetUrlCandidates(value)) {
+            const replacement = replacementFor(candidate.url);
+            if (!replacement) continue;
+            rewritten += value.slice(copiedThrough, candidate.start) + replacement;
+            copiedThrough = candidate.end;
+            changed = true;
+          }
+          if (!changed) return whole;
+          rewritten += value.slice(copiedThrough);
+          if (double !== undefined) return `${prefix}"${rewritten}"`;
+          if (single !== undefined) return `${prefix}'${rewritten}'`;
+          return `${prefix}${rewritten}`;
+        },
+      );
+    }
+
+    out = out.replace(
+      /(\s+style\s*=\s*)(["'])(.*?)\2/gi,
+      (whole, prefix: string, quote: string, value: string) => {
+        const rewritten = rewriteCssUrls(value);
+        return rewritten === value ? whole : `${prefix}${quote}${rewritten}${quote}`;
+      },
+    );
+    return out;
+  };
+
+  const rewriteActiveHtml = (active: string): string =>
+    active.replace(/<(?:"[^"]*"|'[^']*'|[^'">])*>/g, (tag) => rewriteTag(tag));
+
+  // HTML raw-text / literal-content elements and comments are opaque to the
+  // tag pass. Style bodies get their one intentional CSS-url pass here, while
+  // remaining opaque to markup rewriting: CSS strings/comments can contain
+  // tag-looking examples that are not real HTML. Other protected regions stay
+  // byte-for-byte authored.
+  const protectedRegion =
+    /<!--[\s\S]*?-->|<(script|style|pre|code|textarea)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+  let out = "";
+  let last = 0;
+  for (const match of html.matchAll(protectedRegion)) {
+    out += rewriteActiveHtml(html.slice(last, match.index));
+    if (match[1]?.toLowerCase() === "style") {
+      const style = /^(<style\b[^>]*>)([\s\S]*)(<\/style\s*>)$/i.exec(match[0]);
+      out += style
+        ? `${rewriteTag(style[1]!)}${rewriteCssUrls(style[2]!)}${style[3]!}`
+        : match[0];
+    } else {
+      out += match[0];
+    }
+    last = (match.index ?? 0) + match[0].length;
+  }
+  out += rewriteActiveHtml(html.slice(last));
+  return out;
+}
 
 function crc32(buf: Uint8Array): number {
   let c = ~0;

@@ -5,7 +5,7 @@
  * Catches the v0.4.1..v0.5.0-rc.3 class of bug where the preview iframe was
  * hidden (opacity:0) during layout. The iframe is CROSS-ORIGIN
  * (http://127.0.0.1 inside app://) and Chromium render-throttles invisible
- * cross-origin iframes to ~1fps — paged.js is rAF-driven, so layout crawled
+ * cross-origin iframes to ~1fps — the viewer is rAF-driven, so layout crawled
  * at ~1 page/sec instead of 10-30+. Fix tag: render-fix-iframe-visibility.
  *
  * What it does:

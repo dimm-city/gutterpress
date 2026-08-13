@@ -112,7 +112,7 @@ export async function requireChromiumExecutable(): Promise<string> {
       // No doc path here on purpose — `docs/adr/0002` is not published in the
       // repo (the ADR lives in the gitignored `.reviews/`), so a user of the
       // shipped binary cannot open it.
-      "Paged.js and --engine native export, and needs no separate install.",
+      "PDF export and needs no separate install.",
       "This message is about the CLI, which does need one.",
     ].join("\n")
   );

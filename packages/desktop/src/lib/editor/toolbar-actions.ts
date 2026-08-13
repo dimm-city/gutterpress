@@ -360,7 +360,7 @@ export function applyImage(
 // ── Insert layout block (UX M26) ─────────────────────────────────────────────
 // The toolbar previously exposed none of Gutterpress's own layout primitives
 // beyond @page-break (UX finding M26). These helpers insert a correct core
-// `@marker` skeleton (markdown-it-paged.js's whitelist — chapter/spread/
+// `@marker` skeleton (the core marker whitelist — chapter/spread/
 // page/section/continue/page-break/column-break/end-section; see the
 // plugin's own header comment) as its own block after the CURRENT line,
 // blank-line padded — the same convention applyHr/applyPageBreak above
@@ -381,8 +381,8 @@ export type LayoutBlockKind = "chapter" | "section" | "two-column" | "page-break
  *  silently degrades to no `data-chapter-label` / no `.chapter-opener` —
  *  exactly the opposite of what this control advertises. Quoting collapses
  *  the label to a single token regardless of internal spaces, so it actually
- *  produces the label + chapter-opener (verified against the real
- *  markdown-it-paged plugin). See marker-completions.ts's
+ *  produces the label + chapter-opener (verified against the core marker
+ *  renderer). See marker-completions.ts's
  *  `applyChapterCompletion` for the identical fix applied to the completion
  *  source's `@chapter` template. */
 export function applyChapterBlock(view: EditorView): void {
@@ -413,11 +413,9 @@ export function applySectionBlock(view: EditorView): void {
 }
 
 /** A working two-column section. `.col-split` (not bare `.two-column`) is
- *  required — Paged.js strips `break-after: column` during CSS
- *  preprocessing, so plain CSS column balancing never breaks where
- *  `@column-break` sits; `.col-split` opts into markdown-it-paged's explicit
- *  `<div class="col">` renderer path instead (see the plugin's own
- *  "col-split handling" comment), which is what actually breaks reliably. */
+ *  required because `@column-break` is structural within that authoring
+ *  primitive; plain CSS multicol does not create the explicit left/right
+ *  wrappers the fixed split needs. */
 export function applyTwoColumnBlock(view: EditorView): void {
   const insertAt = insertionPointAfterCurrentLine(view);
   const prefix = "\n\n@section .col-split\n";

@@ -80,16 +80,23 @@ function extractCssUrls(value: string): string[] {
   return [...value.matchAll(URL_TOKEN_RE)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
 }
 
-/** A URL that is not a local file reference and must be left exactly as-is. */
-function isNonFileUrl(url: string): boolean {
-  const lower = url.trim().toLowerCase();
-  return (
-    lower.startsWith("data:") ||
-    lower.startsWith("http://") ||
-    lower.startsWith("https://") ||
-    lower.startsWith("//") ||
-    lower.startsWith("#")
-  );
+/**
+ * A rendered destination that must not be resolved against the book's
+ * filesystem. Shared by validation and asset planning so schemes cannot be
+ * ignored by one path but staged as bogus files by the other.
+ *
+ * `file:` is deliberately excluded: author-supplied file URLs must reach the
+ * relative/containment policy and fail loudly, never bypass it as a remote
+ * resource. Empty, fragment-only, and query-only references fetch no distinct
+ * book asset and are ignored.
+ */
+export function isNonFilesystemRef(url: string): boolean {
+  const value = url.trim();
+  if (!value || value.startsWith("#") || value.startsWith("?") || value.startsWith("//")) {
+    return true;
+  }
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1]?.toLowerCase();
+  return scheme !== undefined && scheme !== "file";
 }
 
 /** `fonts/x.woff2?v=2#iefix` must resolve to `fonts/x.woff2`. */
@@ -138,7 +145,7 @@ export function escapesProjectRoot(projectDir: string, absPath: string): boolean
  */
 export function proseImageRefError(ref: string, projectDir: string): string | null {
   const cleaned = stripUrlSuffix(decodeRef(ref));
-  if (path.isAbsolute(cleaned)) {
+  if (/^file:/i.test(cleaned) || path.isAbsolute(cleaned)) {
     return (
       `Image reference must be relative to the project: ${ref}\n` +
       `  Copy the file into your project folder and reference it from there.`
@@ -249,7 +256,7 @@ function importTarget(atRule: AtRule): string | null {
   const urlMatch = params.match(/^url\(\s*(['"]?)([^'")]*)\1\s*\)/i);
   const strMatch = params.match(/^(['"])(.*?)\1/);
   const target = urlMatch?.[2] ?? strMatch?.[2];
-  if (!target || isNonFileUrl(target)) return null;
+  if (!target || isNonFilesystemRef(target)) return null;
   return target;
 }
 
@@ -297,7 +304,7 @@ async function inlineOne(
 
   for (const decl of decls) {
     decl.value = await rewriteUrls(decl.value, async (raw) => {
-      if (!raw || isNonFileUrl(raw)) {
+      if (!raw || isNonFilesystemRef(raw)) {
         if (raw && !raw.startsWith("data:")) {
           warnings.push(
             `Remote asset left as-is (it must be reachable at print time): ${raw}`
@@ -432,7 +439,7 @@ export async function collectStyleDependencies(
     root.walkDecls((decl) => {
       if (!decl.value.includes("url(")) return;
       for (const raw of extractCssUrls(decl.value)) {
-        if (!raw || isNonFileUrl(raw)) continue;
+        if (!raw || isNonFilesystemRef(raw)) continue;
         found.add(path.resolve(cssDir, stripUrlSuffix(decodeRef(raw))));
       }
     });
@@ -462,12 +469,13 @@ export async function collectStyleDependencies(
 export async function planImageCopies(
   projectDir: string,
   refs: Iterable<string>
-): Promise<{ copies: AssetCopy[]; errors: string[] }> {
+): Promise<{ copies: AssetCopy[]; errors: string[]; destinations: Map<string, string> }> {
   const copies = new Map<string, AssetCopy>();
   const errors: string[] = [];
+  const destinations = new Map<string, string>();
 
   for (const ref of refs) {
-    if (isNonFileUrl(ref)) continue;
+    if (isNonFilesystemRef(ref)) continue;
 
     // Absolute-ref and escapes-the-book rejection (with the author-facing "copy
     // it in" message) is shared with the pre-build local-refs check via
@@ -484,9 +492,10 @@ export async function planImageCopies(
     const rel = path.relative(projectDir, abs);
     const dest = toPosix(rel);
     copies.set(dest, { from: abs, to: dest });
+    destinations.set(ref, dest);
   }
 
-  return { copies: [...copies.values()], errors };
+  return { copies: [...copies.values()], errors, destinations };
 }
 
 /**
@@ -526,7 +535,7 @@ export async function inlineShapeUrls(html: string, baseDir: string): Promise<st
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&amp;/g, "&");
-    if (!raw || isNonFileUrl(raw)) continue;
+    if (!raw || isNonFilesystemRef(raw)) continue;
     const cleaned = stripUrlSuffix(decodeRef(raw));
     if (path.isAbsolute(cleaned)) continue;
     const abs = path.resolve(baseDir, cleaned);

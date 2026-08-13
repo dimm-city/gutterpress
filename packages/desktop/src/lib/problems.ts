@@ -50,6 +50,7 @@ const SOURCE_LABELS: Record<string, string> = {
   "engine.width.intrinsic": "Image has no width set",
   "engine.xref.broken": "Broken link",
   "engine.abspos.leak": "Placed off its page",
+  "engine.layer.trapped": "Layer trapped on a page",
   "engine.multicol.dead-column": "Empty column",
   "engine.content.overheight": "Taller than the page",
   "engine.image.low-dpi": "Image resolution",

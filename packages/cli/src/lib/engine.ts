@@ -25,8 +25,8 @@
  * as `build()`'s `opts.browser`. `build()` already had this seam (`opts.browser`
  * / `ownsBrowser`, used by the dev server) — it never closes a browser it did
  * not launch, so lifecycle stays owned by `browser-pool.ts`'s
- * `closeBrowser()`, same as the Paged.js path. `build-runner.ts` pre-warms the
- * pool for `engine: "native"` builds the same way it does for Paged.js.
+ * `closeBrowser()`. `build-runner.ts` pre-warms that pool for every CLI PDF
+ * build before this bridge attaches to it.
  */
 import { writeFile } from "node:fs/promises";
 import { build, type BuildDiagnostic } from "../engine/compiler/build.ts";
@@ -58,8 +58,8 @@ export interface NativePdfOptions {
  * build path — they only ever reached the engine dev CLI.
  *
  * `getEngineBrowser` is an optional injected factory, mirroring the
- * `pdfRenderer` seam `build-runner.ts` already has for the Paged.js leg: when
- * omitted (the CLI's default), this module gets `browser-pool.ts`'s pooled
+ * engine-browser injection seam in `build-runner.ts`: when omitted (the CLI's
+ * default), this module gets `browser-pool.ts`'s pooled
  * puppeteer browser and attaches `cdp.ts`'s `connectChromium()` to it, same as
  * always. When supplied (the desktop, over its own Electron `BrowserWindow` —
  * see `packages/desktop/electron`'s engine-browser module), that browser is

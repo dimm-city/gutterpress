@@ -341,8 +341,8 @@ export class ExportController {
     this.start();
     let offProgress: (() => void) | undefined;
     try {
-      // Live progress: Paged.js pagination of large books takes minutes, so show
-      // the growing page count instead of an opaque spinner.
+      // Live progress: pagination of large books can take time, so show the
+      // growing page count instead of an opaque spinner.
       offProgress = h.onBuildProgress((p) => {
         if (p.state === "canceled") {
           this.markCanceling();

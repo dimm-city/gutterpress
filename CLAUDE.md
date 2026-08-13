@@ -5,8 +5,8 @@
 This repo is a Bun workspace with two packages:
 
 - **`packages/cli/`** (`gutterpress`) — the single published package:
-  ALL runtime logic (markdown rendering, preview HTTP server, PDF generation via
-  puppeteer-core, lint, validation — under `src/`) **and** the CLI entry
+  ALL runtime logic (markdown rendering, preview HTTP server, native-engine PDF
+  generation, lint, validation — under `src/`) **and** the CLI entry
   (`src/cli.ts`). It exposes a library (`exports` → `dist/index.js`) and a CLI
   (`bin` → `dist/cli.js`). Built the standard way: `bun build` (the Node
   entrypoints, `--target=node --packages=external --splitting`; `src/render.ts`
@@ -175,7 +175,8 @@ pipeline.
 Default, author-facing layout primitives belong in the most general reusable
 layer that can own them:
 
-1. Put generic markdown authoring behavior in core Gutterpress / `markdown-it-paged`
+1. Put generic markdown authoring behavior in core Gutterpress (`markers.js`
+   for structural markers, `gutterpress-css.ts` for author utilities)
 2. Put project-specific component chrome and macro semantics in that project's
    plugin and component CSS layer
 3. Put book-specific positioning and context-only break tuning in that book's
@@ -215,9 +216,10 @@ Monorepo layout section above: no `Bun.serve`/`Bun.file`) so Electron's bundled
 Node can run it in-process; `Bun.serve` would work under Bun but crash the
 packaged desktop app. The actual implementation
 (`packages/cli/src/preview/http-server.ts`) is a `node:http` static file
-server + a `ws` WebSocket server that broadcasts a "full-reload" message on
-file change — Node-compatible, runs under both Bun (dev / compiled binary)
-and Node.js (Electron), with no bundler involved.
+server + a `ws` WebSocket server. It sends a focused chapter update for a
+single Markdown edit and a full-document reload for CSS, manifest, multi-file,
+deletion, and structural changes. It is Node-compatible, runs under both Bun
+(dev / compiled binary) and Node.js (Electron), with no bundler involved.
 
 ### 2. Lazy-load heavy optional deps
 
@@ -260,8 +262,8 @@ Reasons:
   2. Plugin authors cannot reliably import from `gutterpress` because
      the compiled binary has no `node_modules` for plugin code to resolve
      against. If a plugin needs an internal helper, it must inline-copy it
-     (e.g. a plugin's marker parser should be an inlined copy of
-     `markdown-it-paged`'s `parseMarkerLine`, not an import).
+     (e.g. a plugin's marker parser should be an inlined copy of Gutterpress
+     `markers.js`'s `parseMarkerLine`, not an import).
   3. `packages/cli/src/index.ts` re-exports type-only definitions
      (`GutterpressPlugin`, `GutterpressPluginMetadata`, `GutterpressPluginExport`) for
      TypeScript plugin authors. Types only — zero runtime coupling.
@@ -298,9 +300,11 @@ The loader has two modes via `loadPlugins(configs, baseDir, onError?)`:
 Authoring guide lives in [User Guide: Chapter 5 — Plugins](./examples/gutterpress-user-guide/05-plugins.md).
 
 **Block container syntax** (`:::name ... :::` via `markdown-it-container`) was
-removed 2026-05-17. The DC plugin's `@marker` family (`@page`, `@section`,
-`@sidebar`, `@callout`, etc.) is the canonical author surface for wrapped
-blocks. Do NOT reintroduce `markdown-it-container` to core.
+removed 2026-05-17. Core owns the structural marker family (`@chapter`,
+`@spread`, `@page`, `@section`, breaks, and continuations); project plugins may
+add branded component markers such as `@sidebar` or `@callout`. These marker
+families are the canonical author surface for wrapped blocks. Do NOT
+reintroduce `markdown-it-container` to core.
 
 ### 6. Gutterpress owns its markers — `markers.js`
 
@@ -329,13 +333,21 @@ prefixed. The split between the two modules is by ROLE, not owner:
   closure, so a thrown render can't leak depth state into the next chapter.
 - `gutterpress-css.ts` (`GUTTERPRESS_CSS`) — the author **utility
   vocabulary**: image flow/size/spacing, `.gp-shape`, `.gp-pin` + edges,
-  `.gp-bleed`, and the `--gp-z-*` depth ladder.
+  `.gp-bleed`, `.gp-columns-2` / `.gp-columns-3`, and the `--gp-z-*` depth
+  ladder. Column utilities are core layout vocabulary; themes must not create
+  competing generic names such as `.two-column` / `.three-column`.
 - `gp-pin-scope.js` — the `.gp-pin` diagnostic, registered by `renderer.ts`
   right after the marker plugin (it walks that plugin's `layout_*` tokens and
   reads classes markdown-it-attrs attached, so the order is load-bearing).
 
 `assemble.ts` injects `MARKER_CSS` then `GUTTERPRESS_CSS`, before user plugin
 CSS and the author's stylesheets, so author rules win at equal specificity.
+
+Marker attributes accept both the compact spelling (`@section .gp-columns-2`)
+and markdown-it-attrs braces (`@section {.gp-columns-2}`). They are equivalent
+authoring forms and both are part of the public marker contract. A bare
+`@section` is valid without an enclosing `@page`; do not restore implicit page
+wrapping or a warning for that shape.
 
 ### 7. Git/source operations are Node-native — no external OS tools (0.4.0+)
 
@@ -535,10 +547,10 @@ What remains relevant to **this** repo:
   [`docs/contextual-cascade-principle.md`](./docs/contextual-cascade-principle.md),
   with a worked implementation in [`examples/with-design-guide/`](./examples/with-design-guide/).
 - The frozen chapter-opener's **plugin** half still lives in this repo at
-  `packages/cli/src/lib/markdown/markdown-it-paged.js` (`@chapter` parsing,
+  `packages/cli/src/lib/markdown/markers.js` (`@chapter` parsing,
   `data-chapter-label` propagation, `.chapter-opener` injection); its CSS half
-  moved to dc-op-manual. The full frozen contract and the durable paged.js CSS
-  anti-patterns are preserved in AKM
+  moved to dc-op-manual. The full frozen contract and the historical Paged.js
+  CSS anti-patterns are preserved in AKM
   (`memory:gutterpress-dc-design-guide-frozen-chapter-opener-historical`,
   `memory:print-css-architectural-anti-patterns`).
 

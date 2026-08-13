@@ -7,7 +7,7 @@ used by the throughput `render-gate.mjs`), everything here is committed.
 ## `novel-50p/`
 
 A ~50-page, **text-only** Gutterpress project (10 deterministic prose chapters +
-`themes/novel/theme.css`). Paginates to ~48 pages via paged.js under the theme's
+`themes/novel/theme.css`). Paginates to ~48 pages in the native viewer under the theme's
 fixed `@page` box, so page count — and therefore re-render cost — is
 reproducible. Consumed by `tests/perf/rerender-latency-gate.mjs`.
 

@@ -112,11 +112,11 @@ function isUnpairedFitContentWidth(decl: postcss.Declaration): boolean {
 }
 
 /**
- * `.page` / `.spread` are the containing blocks core creates for pinned
- * content (`:where(.page, .spread) { position: relative }` in MARKER_CSS), so
- * what a book declares on them decides whether `.gp-pin` and `.gp-bleed`
- * work at all. Two mistakes are silent, look nothing like their symptom, and
- * cost hours; both are cheap to spot in the stylesheet.
+ * Early source-only check for declarations directly targeting `.page` /
+ * `.spread`, the containing blocks core creates for pinned content. This is a
+ * cheap authoring hint, not the authority: CSS source cannot know a book's own
+ * wrapper names or actual ancestor chain. The build-time `engine.layer.trapped`
+ * audit checks every live `.gp-behind` ancestor regardless of its class.
  *
  * Matches `.page`/`.spread` as whole class tokens — `.page-credits` and
  * `.spread-wide` are different classes and must not be flagged.
@@ -177,8 +177,7 @@ function nodeLoc(node: postcss.Node): { line: number; column: number } {
 
 /**
  * Run print-safety checks against a CSS string. Returns one warning per finding
- * (errors for remote URLs / crash-prone selectors / syntax errors; warnings for
- * risky print effects).
+ * (errors for remote URLs / syntax errors; warnings for risky print effects).
  */
 export function checkCss(css: string, from?: string): PrintSafeWarning[] {
   let root: postcss.Root;
@@ -251,8 +250,9 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
     }
   });
 
-  // What a book declares on .page / .spread decides whether pinned and
-  // full-bleed content works, and both failure modes are silent.
+  // Fast source hint for declarations on core's known page wrappers. The
+  // computed-DOM engine.layer.trapped audit is authoritative for real
+  // .gp-behind ancestor chains, including book/plugin wrapper classes.
   root.walkRules((rule) => {
     if (rule.parent?.type === "atrule") {
       const at = (rule.parent as postcss.AtRule).name.toLowerCase();
@@ -264,14 +264,14 @@ export function checkCss(css: string, from?: string): PrintSafeWarning[] {
         warnings.push({
           rule: rulePageContainment,
           severity: "warning",
-          message: `"${decl.prop}: ${decl.value}" on "${rule.selector}" clips out-of-flow descendants: a .gp-bleed plate is cut back to this box's width instead of reaching the sheet edge, and a .gp-behind image is cut the same way. Scope it with :has() (e.g. "${rule.selector}:not(:has(.gp-bleed, .gp-pin))") or drop it.`,
+          message: `"${decl.prop}: ${decl.value}" on "${rule.selector}" clips out-of-flow descendants: a .gp-bleed plate is cut back to this box's width instead of reaching the sheet edge, and a .gp-behind image is cut the same way. Scope it with :has() (e.g. "${rule.selector}:not(:has(.gp-bleed, .gp-pin))") or drop it. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.`,
           ...nodeLoc(decl),
         });
       } else if (createsStackingContext(decl)) {
         warnings.push({
           rule: rulePageContainment,
           severity: "warning",
-          message: `"${decl.prop}: ${decl.value}" on "${rule.selector}" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at "position: relative; z-index: auto" for this reason.`,
+          message: `"${decl.prop}: ${decl.value}" on "${rule.selector}" makes the page box a stacking context, so a .gp-behind image is trapped inside it and paints ABOVE the page's text instead of under it. Core keeps .page/.spread at "position: relative; z-index: auto" for this reason. This is an early source-only check; the build-time engine.layer.trapped audit is authoritative for the live ancestor chain.`,
           ...nodeLoc(decl),
         });
       }

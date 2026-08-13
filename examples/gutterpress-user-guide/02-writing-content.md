@@ -107,7 +107,7 @@ Alignment:
 
 GFM tables render as standard `<table><thead>…</thead><tbody>…</tbody></table>` — that's markdown-it's built-in table support, not a Gutterpress addition. Because the header row is real `<thead>` markup, Chromium can repeat it when a table is forced to break across a page — standard CSS table fragmentation, independent of any stylesheet.
 
-Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; wrap a table in `@section` (see [Layout Directives](#layout-directives)) if you need core to keep it together.
+Alternating row shading and keeping a whole table on one page (`table { break-inside: avoid; }`) are **this guide's `guide.css`**, not core. A bare Gutterpress project renders plain, unshaded tables that may break anywhere; add your own `break-inside: avoid` rule to a table or an explicitly classed `@section` when it must stay together.
 
 Keep tables simple — 5 to 7 columns maximum. Align numbers right, text left.
 
@@ -141,7 +141,7 @@ Headings do **not** get an automatic id from their text — core Gutterpress has
 
 ## Layout Directives {#layout-directives}
 
-Layout directives are `@`-prefixed markers that control how content flows across pages. They are provided by the built-in `markdown-it-paged` plugin — this is core behavior, present in every Gutterpress project regardless of theme.
+Layout directives are `@`-prefixed markers that control how content flows across pages. They are built into Gutterpress — this is core behavior, present in every project regardless of theme.
 
 ### Quick syntax reference
 
@@ -153,7 +153,7 @@ Layout directives are `@`-prefixed markers that control how content flows across
 | `@spread` | Start a two-page spread group |
 | `@page` | Start a new page (optionally named and/or classed) |
 | `@page-break` | Hard break, no page wrapper emitted |
-| `@section` | Group content together to avoid mid-section breaks |
+| `@section` | Wrap related content in a structural group for styling and layout |
 | `@end-section` | Close the current `@section` (no-op if none is open); stays on the same page |
 | `@continue` | Close the current `@section` and reopen a matching one, marked `.gp-continued` |
 | `@column-break` | Force a column break inside a multi-column section |
@@ -210,6 +210,10 @@ Starts a new page. A **single** bare word names the page; `.class` shorthand (or
 - `@page .cover .sidebar` (or `@page class=cover,sidebar`) → `<div class="page cover sidebar">`.
 - `@page intro .cover` (name + shorthand) → `<div class="page cover" data-page="intro">`.
 
+Marker classes may also use markdown-it-attrs braces. For example,
+`@page {.cover .sidebar}` is equivalent to `@page .cover .sidebar`, and
+`@section {.gp-columns-2}` is equivalent to `@section .gp-columns-2`.
+
 **Two or more bare words with no `.class`/`class=` are all treated as classes, with no name at all** — `@page cover sidebar` renders `<div class="page cover sidebar">`, no `data-page`. For predictable results, always use `.class` shorthand (or `class=...`) when you want a class, and reserve a single bare word for the page's name.
 
 ### @page-break — hard break
@@ -228,7 +232,13 @@ Renders `<div class="gp-page-break" aria-hidden="true"></div>` between the two p
 
 ### @section and @end-section
 
-`@section` groups content to avoid mid-section page breaks (`.section { break-inside: avoid; }`, from core `PAGED_CSS`). Close with `@end-section` — which stays on the current page rather than forcing a break:
+`@section` wraps related content in a structural group. Core keeps the group's
+first child from being stranded by itself at a page boundary, but deliberately
+does **not** put `break-inside: avoid` on the whole section: long sections must
+be allowed to fragment. Add that stronger rule to an explicitly classed
+section in your project CSS only when the entire group really must stay
+together. Close with `@end-section`, which stays on the current page rather
+than forcing a break:
 
 ```markdown
 @section
@@ -281,7 +291,7 @@ Renders:
 `@column-break` forces a break inside a multi-column section. `@spread` groups content into a two-page spread:
 
 ```markdown
-@section .two-column
+@section {.gp-columns-2}
 
 Left column content.
 
@@ -291,6 +301,11 @@ Right column content.
 
 @end-section
 ```
+
+`.gp-columns-2` and `.gp-columns-3` are the core two- and three-column
+utilities. They use `--gp-column-gap` for their gutter and are valid on a bare
+`@section`; an enclosing `@page` is not required. Themes may add decoration to
+an explicitly themed class, but should not redefine generic column vocabulary.
 
 ## Writing Guidelines
 

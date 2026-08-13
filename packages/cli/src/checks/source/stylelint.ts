@@ -4,14 +4,14 @@ import type { Check, CheckContext, CheckResult } from "../types";
 import { checkCss } from "../../lib/printsafe";
 
 // Print-safety CSS check. Runs gutterpress's own postcss-based checks (remote
-// URLs, risky print effects, Paged.js crash-prone selectors) — no stylelint.
+// URLs, risky print effects, page-layer containment hints) — no stylelint.
 // The id and the `validate.source.stylelint` config key are kept for backward
 // compatibility with existing manifests; `false` disables the check.
 const check: Check = {
   id: "source.stylelint",
   name: "Print-safety CSS",
   description:
-    "Checks CSS for print-safety issues (remote URLs, rasterizing effects, Paged.js crash-prone selectors)",
+    "Checks CSS for print-safety issues (remote URLs, rasterizing effects, and page-layer containment)",
   category: "source",
   phase: "pre-build",
   // Declarative enable gate: the `validate.source.stylelint` config key toggles

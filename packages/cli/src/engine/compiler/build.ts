@@ -48,7 +48,7 @@ const BLANK_PAGE = "gp--blank";
 
 /**
  * Shared element-description helper for every in-page audit's evaluated JS
- * (width offenders, abspos leaks, fragmenting multicol) — one implementation
+ * (width offenders, abspos leaks, fragmenting multicol, trapped layers) — one implementation
  * of "name this element for a warning", not a copy per pass.
  */
 const DESC_JS = `(el) => {
@@ -57,6 +57,55 @@ const DESC_JS = `(el) => {
     const src = el.tagName === "IMG" ? " src=" + (el.getAttribute("src") || "").slice(-40) : "";
     return el.tagName.toLowerCase() + cls + src;
   }`;
+
+/**
+ * Page contexts needed by geometry audits, without an exponential powerset.
+ *
+ * The four standard traits have a fixed cross-product ceiling:
+ * physical side (none/left/right) × progression side (none/recto/verso) ×
+ * first (no/yes) × blank (no/yes) = 36. Exact/nonstandard pseudos such as
+ * `nth(17)` are kept in the sets authors actually wrote, then crossed with
+ * those standard states. Thus compound `:right:recto` geometry is retained,
+ * while N distinct `:nth()` rules produce at most 36 × (N + 1) candidates
+ * before deduplication instead of 2^N.
+ */
+function pagePseudoContexts(model: GcpmModel): string[][] {
+  const used = new Set(pseudoVariants(model));
+  const standard = new Set(["left", "right", "recto", "verso", "first", "blank"]);
+  const choices = (a: string, b: string): Array<string | undefined> => [
+    undefined,
+    ...(used.has(a) ? [a] : []),
+    ...(used.has(b) ? [b] : []),
+  ];
+  const physical = choices("left", "right");
+  const progression = choices("recto", "verso");
+  const first = used.has("first") ? [false, true] : [false];
+  const blank = used.has("blank") ? [false, true] : [false];
+  const standardContexts: string[][] = [];
+  for (const p of physical)
+    for (const r of progression)
+      for (const f of first)
+        for (const b of blank)
+          standardContexts.push([
+            ...(p ? [p] : []),
+            ...(r ? [r] : []),
+            ...(f ? ["first"] : []),
+            ...(b ? ["blank"] : []),
+          ]);
+
+  const authoredExactSets = [
+    [] as string[],
+    ...model.pageRules.map((rule) => rule.pseudos.filter((pseudo) => !standard.has(pseudo))),
+  ];
+  const contexts = new Map<string, string[]>();
+  for (const exact of authoredExactSets) {
+    for (const common of standardContexts) {
+      const context = [...new Set([...exact, ...common])].sort();
+      contexts.set(context.join("\0"), context);
+    }
+  }
+  return [...contexts.values()];
+}
 
 /**
  * Codes are stable identifiers a UI can map to a plain-language label; the
@@ -68,6 +117,7 @@ export type BuildDiagnosticCode =
   | "engine.width.intrinsic"
   | "engine.xref.broken"
   | "engine.abspos.leak"
+  | "engine.layer.trapped"
   | "engine.multicol.dead-column"
   | "engine.content.overheight"
   | "engine.image.low-dpi";
@@ -77,6 +127,7 @@ export const BUILD_DIAGNOSTIC_CODES: readonly BuildDiagnosticCode[] = [
   "engine.width.intrinsic",
   "engine.xref.broken",
   "engine.abspos.leak",
+  "engine.layer.trapped",
   "engine.multicol.dead-column",
   "engine.content.overheight",
   "engine.image.low-dpi",
@@ -583,22 +634,38 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // Print-quality audit against the settled layout, just before the artifact
     // is final: content taller than the page (where screen and print diverge)
     // and rasters below the print resolution bar.
-    const base = resolvePage(model);
-    const contentHeightPx =
-      ((base.geometry.height - base.geometry.margin.top - base.geometry.margin.bottom) * 96) / 72;
+    // A DOM element's computed `page` value tells the browser-side audit only
+    // the named page, not whether the resulting sheet is :left, :right,
+    // :first, etc. Enumerate compatible combinations and pass the MINIMUM
+    // content height for each name. That is deliberately conservative: a leaf
+    // that cannot fit one real variant must never escape the warning merely
+    // because the unqualified named page is taller.
+    const pseudoContexts = pagePseudoContexts(model);
+    const contentHeightPt = (name?: string): number =>
+      Math.min(
+        ...pseudoContexts.map((pseudos) => {
+          const geometry = resolvePage(model, { name, pseudos }).geometry;
+          return geometry.height - geometry.margin.top - geometry.margin.bottom;
+        }),
+      );
+    const contentHeightPx = (contentHeightPt() * 96) / 72;
+    const namedContentHeightsPx = Object.fromEntries(
+      model.pageNames.map((name) => [name, (contentHeightPt(name) * 96) / 72]),
+    );
     // Minimum content height across every page context (base + named pages),
     // for the multicol fragmentation check below: that check needs a
     // conservative (never too generous) threshold, since a named page with
     // smaller margins has a shorter content box than the default page and
     // would otherwise under-report fragmentation there.
-    const pageContexts = [base, ...model.pageNames.map((n) => resolvePage(model, { name: n }))];
     const minContentHeightPx =
-      (Math.min(
-        ...pageContexts.map((c) => c.geometry.height - c.geometry.margin.top - c.geometry.margin.bottom),
-      ) * 96) / 72;
+      (Math.min(contentHeightPt(), ...model.pageNames.map((name) => contentHeightPt(name))) * 96) /
+      72;
     {
       const audit = await page.evaluate<Array<{ kind: string; what: string; detail: string }>>(
-        `window.__gp.auditContent(${contentHeightPx}, ${opts.dpiFloor ?? 300})`,
+        `window.__gp.auditContent(${JSON.stringify({
+          default: contentHeightPx,
+          named: namedContentHeightsPx,
+        })}, ${opts.dpiFloor ?? 300})`,
       );
       for (const w of audit) {
         if (w.kind === "overheight")
@@ -615,9 +682,11 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
       if (audit.length) log(`audit: ${audit.length} print-quality warning(s)`);
     }
 
-    // Abspos containing-block leak + fragmenting-multicol warnings — one
-    // shared `querySelectorAll("*")` walk with a single `getComputedStyle`
-    // call per element (was two separate document-wide walks).
+    // Abspos containing-block leak + fragmenting-multicol + trapped-layer
+    // warnings — one shared `querySelectorAll("*")` walk with a single base
+    // `getComputedStyle` call per element (was separate document-wide walks).
+    // Only a `.gp-behind` hit performs the additional, targeted ancestor-style
+    // reads needed to answer the containment question against the live DOM.
     //
     // Abspos: independent of the width/height passes above. A
     // `position: absolute` element whose `offsetParent` is the document (or
@@ -637,12 +706,54 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
     // `column-count: auto`, so checking `columnCount` alone misses it), not a
     // relaxation of auditContent's leaf guard — that would make every wrapper
     // div in a 300-page book a candidate.
+    //
+    // Layer containment: CSS-source lint can cheaply spot dangerous
+    // declarations written directly on `.page`/`.spread`, but it cannot know a
+    // downstream book's wrapper names. The live DOM can: walk from every
+    // visible `.gp-behind` to its closest page/spread boundary and report any
+    // intervening stacking context or clipping box. This build-time result is
+    // authoritative; findings are capped like the sibling audits so malformed
+    // generated markup cannot flood the Problems panel.
     {
-      const { leaks, multicol } = JSON.parse(
+      const { leaks, multicol, layerTraps } = JSON.parse(
         await page.evaluate<string>(`(() => {
           const desc = ${DESC_JS};
           const leaks = [];
           const multicol = [];
+          const layerTraps = [];
+          const seenLayerTraps = new Set();
+
+          const stackingReasons = (el, cs) => {
+            const reasons = [];
+            const positioned = cs.position !== "static";
+            const parentDisplay = el.parentElement
+              ? getComputedStyle(el.parentElement).display
+              : "";
+            const flexOrGridItem = /^(inline-)?(flex|grid)$/.test(parentDisplay);
+            if (cs.isolation === "isolate") reasons.push("isolation: isolate");
+            if (Number.parseFloat(cs.opacity) < 1) reasons.push("opacity: " + cs.opacity);
+            if (cs.mixBlendMode !== "normal") reasons.push("mix-blend-mode: " + cs.mixBlendMode);
+            if (cs.position === "fixed" || cs.position === "sticky")
+              reasons.push("position: " + cs.position);
+            if (cs.zIndex !== "auto" && (positioned || flexOrGridItem))
+              reasons.push("z-index: " + cs.zIndex);
+            for (const prop of [
+              "transform", "scale", "rotate", "translate", "filter",
+              "backdropFilter", "perspective", "clipPath", "mask", "maskImage",
+            ]) {
+              const value = cs[prop];
+              if (value && value !== "none")
+                reasons.push(prop.replace(/[A-Z]/g, (m) => "-" + m.toLowerCase()) + ": " + value);
+            }
+            if (/\\b(layout|paint|strict|content)\\b/.test(cs.contain))
+              reasons.push("contain: " + cs.contain);
+            if (cs.containerType && cs.containerType !== "normal")
+              reasons.push("container-type: " + cs.containerType);
+            if (/\\b(transform|opacity|filter|perspective|clip-path|mask)\\b/.test(cs.willChange))
+              reasons.push("will-change: " + cs.willChange);
+            return reasons;
+          };
+
           for (const el of document.querySelectorAll("*")) {
             const cs = getComputedStyle(el);
             if (leaks.length < 20) {
@@ -675,16 +786,60 @@ export async function build(opts: BuildOptions): Promise<BuildResult> {
             ) {
               multicol.push(desc(el));
             }
+
+            if (
+              layerTraps.length < 20 &&
+              el.classList.contains("gp-behind") &&
+              el.getClientRects().length !== 0
+            ) {
+              const boundary = el.closest(".page, .spread");
+              if (boundary) {
+                for (let ancestor = el.parentElement; ancestor; ancestor = ancestor.parentElement) {
+                  const ancestorStyle = getComputedStyle(ancestor);
+                  const reasons = stackingReasons(ancestor, ancestorStyle);
+                  const clips = ancestorStyle.overflowX !== "visible" ||
+                    ancestorStyle.overflowY !== "visible";
+                  if ((reasons.length || clips) && !seenLayerTraps.has(ancestor)) {
+                    seenLayerTraps.add(ancestor);
+                    const effects = [];
+                    if (reasons.length)
+                      effects.push("creates a stacking context (" + reasons.join(", ") + ")");
+                    if (clips)
+                      effects.push(
+                        "clips descendants (overflow-x: " + ancestorStyle.overflowX +
+                        ", overflow-y: " + ancestorStyle.overflowY + ")"
+                      );
+                    layerTraps.push({
+                      behind: desc(el),
+                      ancestor: desc(ancestor),
+                      detail: effects.join(" and "),
+                    });
+                    if (layerTraps.length >= 20) break;
+                  }
+                  if (ancestor === boundary) break;
+                }
+              }
+            }
           }
-          return JSON.stringify({ leaks, multicol });
+          return JSON.stringify({ leaks, multicol, layerTraps });
         })()`),
-      ) as { leaks: string[]; multicol: string[] };
+      ) as {
+        leaks: string[];
+        multicol: string[];
+        layerTraps: Array<{ behind: string; ancestor: string; detail: string }>;
+      };
       for (const d of leaks)
         diagnose(
           "engine.abspos.leak",
           `${d} uses position: absolute with nothing positioned around it, so it is placed against the whole document rather than the page it sits on in your markdown — it can print on a completely different page.`,
         );
       if (leaks.length) log(`audit: ${leaks.length} abspos containing-block leak(s)`);
+      for (const trap of layerTraps)
+        diagnose(
+          "engine.layer.trapped",
+          `${trap.behind} cannot paint behind the page as intended because ancestor ${trap.ancestor} ${trap.detail}. Remove or narrowly scope that containment style around the .gp-behind element.`,
+        );
+      if (layerTraps.length) log(`audit: ${layerTraps.length} trapped layer warning(s)`);
       for (const d of multicol)
         diagnose(
           "engine.multicol.dead-column",

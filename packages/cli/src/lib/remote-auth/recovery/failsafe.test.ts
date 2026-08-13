@@ -19,8 +19,9 @@
  * bun:test only.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { makeTempDir as freshTempDir, makeTestRepo } from "../../../test-helpers/testkit";
 
@@ -35,9 +36,24 @@ import type {
 
 // ── Temp dir helpers ──────────────────────────────────────────────────────────
 
+const tempDirs = new Set<string>();
+const backupDirs = new Set<string>();
+
 async function makeTempDir(): Promise<string> {
-  return freshTempDir("failsafe-test-");
+  const dir = await freshTempDir("failsafe-test-");
+  tempDirs.add(dir);
+  return dir;
 }
+
+afterEach(async () => {
+  const dirs = [...tempDirs];
+  const backups = [...backupDirs];
+  tempDirs.clear();
+  backupDirs.clear();
+  await Promise.all(
+    [...dirs, ...backups].map((dir) => rm(dir, { recursive: true, force: true })),
+  );
+});
 
 // ── Context builder ───────────────────────────────────────────────────────────
 
@@ -45,11 +61,16 @@ function makeCtx(
   repoDir: string,
   overrides: Partial<RecoveryContext> = {},
 ): RecoveryContext {
+  // Every fixture gets its own backup namespace. The old fixed `test-book`
+  // slug leaked zips under BACKUP_ROOT even after the repo temp directory was
+  // removed, and could collide with other recovery suites running in parallel.
+  const repoSlug = `failsafe-${path.basename(repoDir)}`;
+  backupDirs.add(path.join(BACKUP_ROOT, repoSlug.toLowerCase()));
   return {
     projectDir: repoDir,
     repoDir,
     branch: "main",
-    repoSlug: "test-book",
+    repoSlug,
     confirmation: {
       confirmRepair: async () => true, // default: approved
     },

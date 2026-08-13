@@ -1,5 +1,10 @@
 import { test, expect, describe } from "bun:test";
-import { placeholderPng } from "./missing-asset-placeholder";
+import {
+  placeholderOutputPath,
+  placeholderPng,
+  rewriteMissingImageReferences,
+} from "./missing-asset-placeholder";
+import { collectHtmlImageRefs } from "./markdown/images";
 
 /**
  * The placeholder stands in for an image the book references but does not
@@ -64,5 +69,143 @@ describe("missing-asset placeholder", () => {
     }
     expect(seen).toBe(3);
     expect(off).toBe(png.length);
+  });
+
+  test("uses a deterministic engine-owned .png path without preserving the missing extension", () => {
+    const first = placeholderOutputPath("images/cover.jpg");
+    expect(first).toMatch(/^assets\/gutterpress-missing\/[a-f0-9]{16}\.png$/);
+    expect(first).toBe(placeholderOutputPath("images/cover.jpg"));
+    expect(first).not.toBe(placeholderOutputPath("images/cover.webp"));
+  });
+
+  test("rewrites src, srcset, and mirrored shape URLs while leaving unrelated URLs alone", () => {
+    const replacements = new Map([
+      ["images/missing.jpg", "assets/gutterpress-missing/a.png"],
+      ["images/wide.webp", "assets/gutterpress-missing/b.png"],
+    ]);
+    const html = `<style>.plate{background:url("images/missing.jpg")}</style>
+      <img src='images/missing.jpg' srcset="images/missing.jpg 1x, images/wide.webp 2x, ok.png 3x"
+        style="--gp-shape:url(&quot;images/missing.jpg&quot;)">
+      <img data-src="images/missing.jpg" src="ok.png">`;
+    const out = rewriteMissingImageReferences(html, replacements);
+
+    expect(out).toContain(`src='assets/gutterpress-missing/a.png'`);
+    expect(out).toContain(
+      `srcset="assets/gutterpress-missing/a.png 1x, assets/gutterpress-missing/b.png 2x, ok.png 3x"`,
+    );
+    expect(out).toContain(`url(&quot;assets/gutterpress-missing/a.png&quot;)`);
+    expect(out).toContain(`background:url("assets/gutterpress-missing/a.png")`);
+    expect(out).toContain(`<img data-src="images/missing.jpg" src="ok.png">`);
+  });
+
+  test("rewrites an unquoted srcset to the staged placeholder URL", () => {
+    const html = `<picture><source srcset=images/missing.jpg><img src=images/missing.jpg></picture>`;
+    const collected = collectHtmlImageRefs(html);
+    expect(collected).toEqual(["images/missing.jpg", "images/missing.jpg"]);
+    const out = rewriteMissingImageReferences(
+      html,
+      new Map(collected.map((ref) => [ref, "assets/gutterpress-missing/a.png"])),
+    );
+    expect(out).toContain(`srcset=assets/gutterpress-missing/a.png`);
+    expect(out).toContain(`src=assets/gutterpress-missing/a.png`);
+    expect(out).not.toContain(`srcset=images/missing.jpg`);
+  });
+
+  test("shares srcset comma boundaries between collection and rewriting", () => {
+    const localHtml = `<img srcset="images/a,b.png, images/plain.png">`;
+    const localRefs = collectHtmlImageRefs(localHtml);
+    expect(localRefs).toEqual(["images/a,b.png", "images/plain.png"]);
+    const localOut = rewriteMissingImageReferences(
+      localHtml,
+      new Map([
+        [localRefs[0]!, "assets/gutterpress-missing/comma.png"],
+        [localRefs[1]!, "assets/gutterpress-missing/plain.png"],
+      ]),
+    );
+    expect(localOut).toBe(
+      `<img srcset="assets/gutterpress-missing/comma.png, assets/gutterpress-missing/plain.png">`,
+    );
+
+    const dataHtml = `<img srcset="data:image/png;base64,AAAA, missing.png">`;
+    const dataRefs = collectHtmlImageRefs(dataHtml);
+    expect(dataRefs).toEqual(["data:image/png;base64,AAAA", "missing.png"]);
+    const dataOut = rewriteMissingImageReferences(
+      dataHtml,
+      new Map([[dataRefs[1]!, "assets/gutterpress-missing/missing.png"]]),
+    );
+    expect(dataOut).toBe(
+      `<img srcset="data:image/png;base64,AAAA, assets/gutterpress-missing/missing.png">`,
+    );
+  });
+
+  test("rewrites only real tags and CSS, leaving code/pre/script literals untouched", () => {
+    const replacements = new Map([
+      ["images/missing.jpg", "assets/gutterpress-missing/a.png"],
+    ]);
+    const literal = `url("images/missing.jpg")`;
+    const html = `<style>.real{background:${literal}}</style>
+      <div style='background:${literal}'></div>
+      <pre>${literal} &lt;img src="images/missing.jpg"&gt;</pre>
+      <code>${literal}</code>
+      <script>const example = '${literal}'; const tag = '<img src="images/missing.jpg">';</script>
+      <img src="images/missing.jpg" style="--gp-shape:url(&quot;images/missing.jpg&quot;)">`;
+
+    const out = rewriteMissingImageReferences(html, replacements);
+
+    expect(out).toContain(`<style>.real{background:url("assets/gutterpress-missing/a.png")}</style>`);
+    expect(out).toContain(`<div style='background:url("assets/gutterpress-missing/a.png")'></div>`);
+    expect(out).toContain(`<pre>${literal} &lt;img src="images/missing.jpg"&gt;</pre>`);
+    expect(out).toContain(`<code>${literal}</code>`);
+    expect(out).toContain(
+      `<script>const example = '${literal}'; const tag = '<img src="images/missing.jpg">';</script>`,
+    );
+    expect(out).toContain(`src="assets/gutterpress-missing/a.png"`);
+    expect(out).toContain(`--gp-shape:url(&quot;assets/gutterpress-missing/a.png&quot;)`);
+  });
+
+  test("does not treat tag-looking CSS strings or comments as real HTML", () => {
+    const replacements = new Map([
+      ["images/missing.jpg", "assets/gutterpress-missing/a.png"],
+      ["images/wide.webp", "assets/gutterpress-missing/b.png"],
+    ]);
+    const html = `<style>.real{background:url("images/missing.jpg")}
+      .demo::before{content:"<img src='images/missing.jpg'>"}
+      /* <img src="images/missing.jpg"> */</style>
+      <img src="images/missing.jpg"
+        srcset="images/missing.jpg 1x, images/wide.webp 2x">
+      <div style="--gp-shape:url(&quot;images/missing.jpg&quot;)"></div>`;
+
+    const out = rewriteMissingImageReferences(html, replacements);
+
+    expect(out).toContain(`.real{background:url("assets/gutterpress-missing/a.png")}`);
+    expect(out).toContain(`.demo::before{content:"<img src='images/missing.jpg'>"}`);
+    expect(out).toContain(`/* <img src="images/missing.jpg"> */`);
+    expect(out).toContain(`<img src="assets/gutterpress-missing/a.png"`);
+    expect(out).toContain(
+      `srcset="assets/gutterpress-missing/a.png 1x, assets/gutterpress-missing/b.png 2x"`,
+    );
+    expect(out).toContain(`--gp-shape:url(&quot;assets/gutterpress-missing/a.png&quot;)`);
+  });
+
+  test("rewrites CSS URL tokens but preserves url-looking strings and comments", () => {
+    const replacement = "assets/gutterpress-missing/a.png";
+    const html = `<style>
+      .real{background:url("images/missing.jpg")}
+      .single::before{content:'url("images/missing.jpg")'}
+      .double::before{content:"url('images/missing.jpg')"}
+      /* url("images/missing.jpg") */
+    </style>
+    <div style="background:url(&quot;images/missing.jpg&quot;);content:'url(images/missing.jpg)'"></div>`;
+    const out = rewriteMissingImageReferences(
+      html,
+      new Map([["images/missing.jpg", replacement]]),
+    );
+
+    expect(out).toContain(`.real{background:url("${replacement}")}`);
+    expect(out).toContain(`.single::before{content:'url("images/missing.jpg")'}`);
+    expect(out).toContain(`.double::before{content:"url('images/missing.jpg')"}`);
+    expect(out).toContain(`/* url("images/missing.jpg") */`);
+    expect(out).toContain(`background:url(&quot;${replacement}&quot;)`);
+    expect(out).toContain(`content:'url(images/missing.jpg)'`);
   });
 });

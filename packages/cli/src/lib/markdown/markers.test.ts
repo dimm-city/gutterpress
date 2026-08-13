@@ -1609,6 +1609,20 @@ describe("marker mistakes are reported (not silently absorbed)", () => {
       expect(ofType("@page\n\n@user.name pinged me\n\n", "unknown_marker")).toEqual([]);
     });
 
+    test("known marker names in documentation headings and prose stay silent", () => {
+      const src = `@page
+
+### @chapter
+
+@chapter is the wrapper used for a chapter opener.
+
+- @section starts a smaller layout region.
+
+> @page is also safe in quoted documentation.
+`;
+      expect(ofType(src, "unknown_marker")).toEqual([]);
+    });
+
     test("fenced code is not scanned (a CSS `@page {` example is not a marker)", () => {
       expect(ofType("@page\n\n```css\n@page {\n  margin: 0;\n}\n```\n", "unknown_marker")).toEqual([]);
     });

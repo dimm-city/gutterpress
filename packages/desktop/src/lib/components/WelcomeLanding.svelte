@@ -188,7 +188,7 @@
   }
 
   // Stall watchdog for the continue card: the render pipeline has no failure
-  // event (a paged.js hang inside the iframe never fires renderingComplete),
+  // event (a stalled viewer inside the iframe never fires renderingComplete),
   // so if the status stops progressing we tell the author instead of spinning
   // forever. A use: action with update() — the param changes on every status
   // label/detail tick, re-arming the timer; "ready" disarms it.
