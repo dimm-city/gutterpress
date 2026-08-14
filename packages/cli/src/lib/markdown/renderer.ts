@@ -34,6 +34,7 @@ import markdownItSup from "markdown-it-sup";
 import markdownItAbbr from "markdown-it-abbr";
 import { registerImageRule } from "./images";
 import { sourceRangeRule } from "./source-range";
+import { registerInlineSourceMetadata } from "./inline-source";
 
 /**
  * Plugin author API.
@@ -173,6 +174,11 @@ export function createMarkdownRenderer(customPlugins?: LoadedPlugin[]): Markdown
   if (customPlugins && customPlugins.length > 0) {
     applyPlugins(md, customPlugins);
   }
+
+  // The parser that recognized an inline image/link records its exact source
+  // token for desktop menu edits. This must wrap the final rules after custom
+  // plugins; consumers never need a second Markdown parser.
+  registerInlineSourceMetadata(md);
 
   // Source-range annotation (data-source-range) — registered UNCONDITIONALLY
   // after the custom-plugin block above, not inside it: projects with zero

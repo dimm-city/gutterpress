@@ -26,7 +26,10 @@ import { chapterPath } from "$lib/editor/chapter-path";
 import { buildLineStarts, charRange } from "$lib/editor/source-range";
 import {
   findImageToken,
-  hasRawHtmlImg,
+  findImageWrapper,
+  makeLinkToken,
+  rewriteImageToken,
+  rewriteLinkToken,
   resolveLinkToken,
   spliceToken,
   type LinkResolution,
@@ -74,6 +77,8 @@ export interface ContextMenuDeps {
   enabled: () => boolean;
   /** True while a preview render is in flight (ignore contextMenuRequested). */
   rendering: () => boolean;
+  /** Editor navigation actions stay disabled until the author opens the pane. */
+  editorPaneOpen: () => boolean;
   /** The open project directory, or null when none is loaded. */
   currentDir: () => string | null;
   /**
@@ -99,7 +104,7 @@ export interface ContextMenuDeps {
   getWorkspaceRect: () => ContextMenuRect | null;
   /** A small modal text prompt. Null return = cancelled (plan §4.4's marker/image/link prompts). */
   promptText: (opts: { title: string; label: string; initialValue: string }) => Promise<string | null>;
-  /** Reveal a chapter/line in the editor, opening the pane if needed (mirrors PR 0's onElementActivated). */
+  /** Reveal a chapter/line only when the author has already opened the editor pane. */
   goToSource: (chapter: string, line: number) => void;
   /** Switch the left panel to the Media tab ("Reveal in Media panel"). */
   openMediaPanel: () => void;
@@ -197,9 +202,7 @@ export class ContextMenuController {
         this.close();
         break;
       case "renderingStarted":
-      case "pageChanged":
-      case "viewportChanged":
-        // Anchor invalidated (frame replacement, scroll, or page navigation).
+        // A frame replacement invalidates the captured source.
         this.close();
         break;
     }
@@ -375,11 +378,12 @@ export class ContextMenuController {
   ): ContextMenuItem {
     const chapter = override?.chapter ?? target.chapter;
     const range = override?.range ?? target.range;
+    const editorReason = disabledReason ?? (this.deps.editorPaneOpen() ? undefined : "Open the editor pane first.");
     return {
       id: "edit-block-editor",
       label: "Edit block in editor",
-      enabled: !disabledReason,
-      disabledReason,
+      enabled: !editorReason,
+      disabledReason: editorReason,
       run: () => {
         if (chapter && range) this.deps.goToSource(chapter, range[0] + 1);
         this.close();
@@ -422,11 +426,12 @@ export class ContextMenuController {
       return [this.editBlockItem(target, "Couldn't read this chapter's source.")];
     }
     const match = findImageToken(blockSlice, image);
-    if (!match && hasRawHtmlImg(blockSlice)) {
+    if (!match && !image.source) {
       // Raw HTML <img> — no markdown token to address (plan §2.6).
       return [this.editBlockItem(target)];
     }
     const disabledReason = match ? undefined : "Couldn't locate this image in the source.";
+    const wrapper = match ? findImageWrapper(blockSlice, match) : null;
     const slice = blockSlice; // narrowed for closures below
     const items: ContextMenuItem[] = [
       {
@@ -442,7 +447,7 @@ export class ContextMenuController {
             initialValue: match.alt,
           });
           if (next == null) return;
-          const token = `![${next}](${match.src})${match.attrsRaw}`;
+          const token = rewriteImageToken(match, { alt: next });
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
       },
@@ -464,7 +469,7 @@ export class ContextMenuController {
           });
           if (next == null) return;
           const attrs = serializeImageAttrs(setWidth(tokens, next || null));
-          const token = `![${match.alt}](${match.src})${attrs}`;
+          const token = rewriteImageToken(match, { attrsRaw: attrs });
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
       },
@@ -498,7 +503,7 @@ export class ContextMenuController {
             }
             updated = setPositionClass(tokens, cls);
           }
-          const token = `![${match.alt}](${match.src})${serializeImageAttrs(updated)}`;
+          const token = rewriteImageToken(match, { attrsRaw: serializeImageAttrs(updated) });
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
       },
@@ -529,13 +534,15 @@ export class ContextMenuController {
             }
             updated = setSizeClass(tokens, cls);
           }
-          const token = `![${match.alt}](${match.src})${serializeImageAttrs(updated)}`;
+          const token = rewriteImageToken(match, { attrsRaw: serializeImageAttrs(updated) });
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
       },
       {
         id: "image-shape",
-        label: "Wrap text to image shape",
+        label: match && hasShapeClass(tokenizeImageAttrs(match.attrsRaw))
+          ? "Stop wrapping text to image shape"
+          : "Wrap text to image shape",
         enabled: !!match,
         disabledReason,
         run: async () => {
@@ -545,7 +552,7 @@ export class ContextMenuController {
           // applies to floats), so toggling is always safe.
           const tokens = tokenizeImageAttrs(match.attrsRaw);
           const updated = setShapeClass(tokens, !hasShapeClass(tokens));
-          const token = `![${match.alt}](${match.src})${serializeImageAttrs(updated)}`;
+          const token = rewriteImageToken(match, { attrsRaw: serializeImageAttrs(updated) });
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
       },
@@ -562,7 +569,7 @@ export class ContextMenuController {
             initialValue: match.src,
           });
           if (!next) return;
-          const token = `![${match.alt}](${next})${match.attrsRaw}`;
+          const token = rewriteImageToken(match, { src: next });
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
       },
@@ -575,6 +582,20 @@ export class ContextMenuController {
           this.close();
         },
       },
+      ...(wrapper ? [{
+        id: "image-unwrap",
+        label: "Unwrap image",
+        enabled: true,
+        run: async () => {
+          await this.commit(
+            chapter,
+            range,
+            slice,
+            spliceToken(slice, wrapper.start, wrapper.end, wrapper.imageToken),
+            gen,
+          );
+        },
+      }] : []),
       this.editBlockItem(target),
     ];
     return items;
@@ -604,7 +625,7 @@ export class ContextMenuController {
             initialValue: resolution.match.href,
           });
           if (next == null) return;
-          const token = `[${resolution.match.text}](${next})`;
+          const token = rewriteLinkToken(resolution.match, next);
           await this.commit(
             chapter,
             range,
@@ -661,7 +682,8 @@ export class ContextMenuController {
       {
         id: "marker-source",
         label: "Go to source",
-        enabled: true,
+        enabled: this.deps.editorPaneOpen(),
+        disabledReason: this.deps.editorPaneOpen() ? undefined : "Open the editor pane first.",
         run: () => {
           this.deps.goToSource(chapter, range[0] + 1);
           this.close();
@@ -715,7 +737,8 @@ export class ContextMenuController {
       {
         id: "block-source",
         label: "Go to source",
-        enabled: true,
+        enabled: this.deps.editorPaneOpen(),
+        disabledReason: this.deps.editorPaneOpen() ? undefined : "Open the editor pane first.",
         run: () => {
           this.deps.goToSource(chapter, range[0] + 1);
           this.close();
@@ -816,7 +839,12 @@ export class ContextMenuController {
           initialValue: "https://",
         });
         if (!url) return;
-        const replacement = spliceToken(blockSlice, match.start, match.end, `[${matchedText}](${url})`);
+        const replacement = spliceToken(
+          blockSlice,
+          match.start,
+          match.end,
+          makeLinkToken(matchedText, url),
+        );
         await this.commit(chapter, range, blockSlice, replacement, gen);
       },
     });
@@ -851,7 +879,8 @@ export class ContextMenuController {
       {
         id: "selection-edit",
         label: "Edit in editor (jump to start)",
-        enabled: !!(target.chapter && target.range),
+        enabled: !!(target.chapter && target.range) && this.deps.editorPaneOpen(),
+        disabledReason: this.deps.editorPaneOpen() ? undefined : "Open the editor pane first.",
         run: () => {
           if (target.chapter && target.range) this.deps.goToSource(target.chapter, target.range[0] + 1);
           this.close();

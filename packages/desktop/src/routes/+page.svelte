@@ -42,6 +42,7 @@
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { BlockOverlayController } from "$lib/routes/block-overlay-controller.svelte";
   import BlockEditOverlay from "$lib/components/BlockEditOverlay.svelte";
+  import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
   import { CommitEngine } from "$lib/editor/commit-engine";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
@@ -1778,15 +1779,15 @@
   }
 
   /**
-   * Reveal a chapter/line in the editor, opening the pane if needed — the
+   * Reveal a chapter/line only when the author already opened the editor — the
    * context menu's "Go to source"/"Edit block in editor" destination
    * (inline-editing plan §4.4). Mirrors `PreviewEventController`'s
-   * `onElementActivated` handling (PR 0): a closed pane is opened rather than
-   * silently no-op'ing, then the line is revealed. There is no cross-chapter
+   * `onElementActivated` handling (PR 0): a closed pane is left untouched.
+   * There is no cross-chapter
    * case left to handle — the whole book is already in the document.
    */
   function goToSource(chapter: string, line: number): void {
-    if (!editorPaneOpen) openEditorPane({ focus: true, ensureFile: false });
+    if (!editorPaneOpen || editorView !== "editor") return;
     revealInEditor(chapter, line, true);
   }
 
@@ -2077,10 +2078,23 @@
       editorRef?.applyRangeEditIn(path, from, to, insert),
   });
 
-  /** A small native modal text prompt (plan §4.4's marker/image/link edits). */
+  let textPrompt = $state<{
+    title: string;
+    label: string;
+    initialValue: string;
+    resolve: (value: string | null) => void;
+  } | null>(null);
+
   async function promptText(opts: { title: string; label: string; initialValue: string }): Promise<string | null> {
-    if (typeof window === "undefined") return null;
-    return window.prompt(`${opts.title} — ${opts.label}`, opts.initialValue);
+    return new Promise((resolve) => {
+      textPrompt = { ...opts, resolve };
+    });
+  }
+
+  function finishTextPrompt(value: string | null): void {
+    const pending = textPrompt;
+    textPrompt = null;
+    pending?.resolve(value);
   }
 
   async function copyToClipboard(text: string): Promise<void> {
@@ -2130,6 +2144,7 @@
     client: () => client,
     enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
+    editorPaneOpen: () => editorPaneOpen && editorView === "editor",
     currentDir: () => lifecycle.currentDir,
     openContent: (path) => book?.contentFor(path) ?? null,
     readFile: (path) => getPlatform().readFile(path),
@@ -2166,11 +2181,10 @@
     editorSync: {
       invalidatePending: () => editorSync.invalidatePending(),
       suppressPreviewSyncUntil: () => editorSync.suppressPreviewSyncUntil,
-      editorPaneOpen: () => editorPaneOpen,
+      editorPaneOpen: () => editorPaneOpen && editorView === "editor",
       updateActiveOutline: (line) => updateActiveOutline(line),
       revealEditorLine: (chapter, line, deliberate) =>
         revealInEditor(chapter, line, deliberate),
-      openEditorPane: (opts) => openEditorPane(opts),
     },
     zoom: () => zoom,
     viewMode: () => viewMode,
@@ -3410,6 +3424,15 @@
   onShowBackup={(path) => showBackupInFolder(path)}
   onPrimary={onRecoveryGuidancePrimary}
 />
+
+{#if textPrompt}
+  <TextPromptDialog
+    title={textPrompt.title}
+    label={textPrompt.label}
+    initialValue={textPrompt.initialValue}
+    onDone={finishTextPrompt}
+  />
+{/if}
 
 <style>
   :global(html, body) {

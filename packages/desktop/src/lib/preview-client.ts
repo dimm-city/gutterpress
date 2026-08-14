@@ -43,9 +43,9 @@ export interface PreviewEvent {
     /** contextMenuRequested: the target fragment's rect (post-zoom, plain object — no DOMRect). */
     rect?: PlainRect | null;
     /** contextMenuRequested: populated whenever the point is on/in an <img>, regardless of `kind`. */
-    image?: { src: string | null; alt: string | null } | null;
+    image?: { src: string | null; alt: string | null; source: InlineSourceToken | null } | null;
     /** contextMenuRequested: populated whenever the point is on/in an <a>, regardless of `kind`. */
-    link?: { href: string | null; text: string } | null;
+    link?: { href: string | null; text: string; source: InlineSourceToken | null } | null;
     /** contextMenuRequested: populated whenever a non-collapsed selection exists, regardless of `kind`. */
     selection?: ContextTargetSelection | null;
     /** contextMenuRequested: viewport point the menu was requested at. */
@@ -59,6 +59,12 @@ export interface PreviewEvent {
 
 /** A `data-source-range` value — token.map's own 0-based half-open `[start, end)` convention. */
 export type SourceRange = [number, number];
+
+/** Parser-owned coordinates for one rendered Markdown image/link token. */
+export interface InlineSourceToken {
+  token: string;
+  occurrence: number;
+}
 
 /** `getContextTargetAt()` / `contextMenuRequested`'s `kind` (protocol v4, ADR 0009). Precedence:
  * selection -> image -> link -> marker -> block -> none. */
@@ -92,8 +98,8 @@ export interface ContextTarget {
   blockTag: string | null;
   split: boolean;
   rect: PlainRect | null;
-  image: { src: string | null; alt: string | null } | null;
-  link: { href: string | null; text: string } | null;
+  image: { src: string | null; alt: string | null; source: InlineSourceToken | null } | null;
+  link: { href: string | null; text: string; source: InlineSourceToken | null } | null;
   selection: ContextTargetSelection | null;
 }
 

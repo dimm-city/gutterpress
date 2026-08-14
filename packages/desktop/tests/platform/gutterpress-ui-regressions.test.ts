@@ -70,6 +70,14 @@ test("closing activity restores the workspace it displaced (no stuck 'Loading co
   expect(src).toContain('editorView = "editor";\n      paneViewRestore = null;');
 });
 
+test("preview interactions treat Project Activity as closed, not as a Markdown editor", () => {
+  const src = read("src/routes/+page.svelte");
+  expect(src).toContain(
+    'editorPaneOpen: () => editorPaneOpen && editorView === "editor",',
+  );
+  expect(src).not.toContain("editorPaneOpen: () => editorPaneOpen,\n      updateActiveOutline");
+});
+
 test("app settings live ONLY on the start screen's Settings tab — no separate window", () => {
   const src = read("src/routes/+page.svelte");
   // One settings surface: the settings button opens the landing on its

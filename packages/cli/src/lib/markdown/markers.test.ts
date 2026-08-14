@@ -1183,7 +1183,8 @@ describe("MARKER_CSS export", () => {
   test("utility-class images keep their own sizing over the zero-specificity default", () => {
     const md = createMarkdownRenderer();
     const html = md.render("![b](b.png){.gp-left}");
-    expect(html).toContain('<img src="b.png" alt="b" class="gp-left">');
+    expect(html).toContain('<img src="b.png" alt="b"');
+    expect(html).toContain('class="gp-left"');
     // First .gp-left rule in the sheet is the float rule (the later one is
     // the pin-edge justify-self modifier).
     const rule = GUTTERPRESS_CSS.match(/\.gp-left\s*\{[^}]*\}/);
@@ -1271,11 +1272,17 @@ describe("author-facing image/block utilities — rendered output (M17)", () => 
       "![Wide](d.jpg){.gp-full}\n\n" +
       "![Bleed](e.jpg){.gp-bleed}\n"
     );
-    expect(html).toContain('<img src="a.jpg" alt="Centered" class="gp-center">');
-    expect(html).toContain('<img src="b.jpg" alt="Left" class="gp-left">');
-    expect(html).toContain('<img src="c.jpg" alt="Right" class="gp-right">');
-    expect(html).toContain('<img src="d.jpg" alt="Wide" class="gp-full">');
-    expect(html).toContain('<img src="e.jpg" alt="Bleed" class="gp-bleed">');
+    for (const [src, alt, cls] of [
+      ["a.jpg", "Centered", "gp-center"],
+      ["b.jpg", "Left", "gp-left"],
+      ["c.jpg", "Right", "gp-right"],
+      ["d.jpg", "Wide", "gp-full"],
+      ["e.jpg", "Bleed", "gp-bleed"],
+    ]) {
+      const imageAt = html.indexOf(`<img src="${src}" alt="${alt}"`);
+      expect(imageAt).toBeGreaterThan(-1);
+      expect(html.slice(imageAt, html.indexOf(">", imageAt))).toContain(`class="${cls}"`);
+    }
   });
 
   test("a book.html build carries the utility-class CSS through assembleBookHtml's injected <style> block", async () => {
@@ -1285,7 +1292,9 @@ describe("author-facing image/block utilities — rendered output (M17)", () => 
       title: "Utility class build test",
     });
 
-    expect(html).toContain('<img src="art.jpg" alt="Art" class="gp-bleed">');
+    const imageAt = html.indexOf('<img src="art.jpg" alt="Art"');
+    expect(imageAt).toBeGreaterThan(-1);
+    expect(html.slice(imageAt, html.indexOf(">", imageAt))).toContain('class="gp-bleed"');
     // The style block is the one, real vehicle for this CSS (assemble.ts
     // injects GUTTERPRESS_CSS verbatim) — no separate theme/plugin CSS is involved.
     for (const selector of [".gp-center", ".gp-left", ".gp-right", ".gp-full", ".gp-bleed"]) {
@@ -1385,7 +1394,8 @@ describe("gp-* vocabulary — rendered output", () => {
   test("multi-class attrs compose on the rendered <img>", () => {
     const md = createMarkdownRenderer();
     const html = md.render("![Art](x.png){.gp-right .gp-small}");
-    expect(html).toContain('<img src="x.png" alt="Art" class="gp-right gp-small">');
+    expect(html).toContain('<img src="x.png" alt="Art"');
+    expect(html).toContain('class="gp-right gp-small"');
   });
 
   test("assembleBookHtml carries every gp-* selector into the injected <style> block", async () => {
@@ -1394,7 +1404,8 @@ describe("gp-* vocabulary — rendered output", () => {
       readText: async () => "@page\n\n![Art](art.jpg){.gp-pin .gp-bottom}\n",
       title: "gp-* build test",
     });
-    expect(html).toContain('<img src="art.jpg" alt="Art" class="gp-pin gp-bottom">');
+    expect(html).toContain('<img src="art.jpg" alt="Art"');
+    expect(html).toContain('class="gp-pin gp-bottom"');
     for (const selector of [
       ".gp-left", ".gp-right", ".gp-center", ".gp-full", ".gp-bleed",
       ".gp-small", ".gp-medium", ".gp-large", ".gp-tight", ".gp-loose",

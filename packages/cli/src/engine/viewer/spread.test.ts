@@ -4,6 +4,7 @@ import http from "node:http";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
@@ -59,6 +60,10 @@ interface SpreadReport {
   supported: boolean;
   wrapped: boolean;
   totalPages: number;
+  sheetGap: number;
+  singleVerticalGaps: number[];
+  spreadVerticalGaps: number[];
+  spreadHorizontalGaps: number[];
   probes: number;
   pageOfMismatches: Array<{ id: string; single: number; spread: number }>;
   outside: Array<{ id: string; page: number; rect: number[]; sheet: number[] }>;
@@ -69,7 +74,7 @@ interface SpreadReport {
 testIf(
   "spread mode re-presents pages without moving content out of its own sheet",
   async () => {
-    const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".spread-test-"));
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gutterpress-spread-test-"));
     try {
       await fsp.copyFile(
         path.join(FIXTURES_DIR, "spread-rows.html"),
@@ -100,7 +105,7 @@ testIf(
             const single = probeEls.map((el) => gp.pageOf(el));
 
             const collectRows = () => {
-              const m = new Map<number, Array<{ page: number; side: string; l: number }>>();
+              const m = new Map<number, Array<{ page: number; side: string; l: number; r: number; b: number }>>();
               for (const sh of Array.from(
                 document.querySelectorAll<HTMLElement>(".gp-sheet"),
               )) {
@@ -111,16 +116,25 @@ testIf(
                   page: Number(sh.dataset.page),
                   side: sh.dataset.side ?? "",
                   l: r.left,
+                  r: r.right,
+                  b: r.bottom,
                 });
               }
               return [...m.entries()]
                 .sort((a, b) => a[0] - b[0])
                 .map(([top, v]) => ({
                   top,
-                  sheets: v.sort((a, b) => a.l - b.l).map(({ page, side }) => ({ page, side })),
+                  sheets: v.sort((a, b) => a.l - b.l),
                 }));
             };
-            const singleRows = collectRows();
+            const singleGeometry = collectRows();
+            const singleRows = singleGeometry.map((row) => ({
+              top: row.top,
+              sheets: row.sheets.map(({ page, side }) => ({ page, side })),
+            }));
+            const singleVerticalGaps = singleGeometry.slice(1).map((row, i) =>
+              Math.round(row.top - Math.max(...singleGeometry[i]!.sheets.map((sheet) => sheet.b))),
+            );
 
             gp.setSpread(true);
 
@@ -175,11 +189,25 @@ testIf(
                 sheets: v.sort((a, b) => a.l - b.l).map(({ page, side }) => ({ page, side })),
               }));
 
+            const spreadGeometry = collectRows();
+            const spreadVerticalGaps = spreadGeometry.slice(1).map((row, i) =>
+              Math.round(row.top - Math.max(...spreadGeometry[i]!.sheets.map((sheet) => sheet.b))),
+            );
+            const spreadHorizontalGaps = spreadGeometry.flatMap((row) =>
+              row.sheets.slice(1).map((sheet, i) => Math.round(sheet.l - row.sheets[i]!.r)),
+            );
+
             return {
               supported:
                 CSS.supports("column-wrap", "wrap") && CSS.supports("column-height", "100px"),
               wrapped: !!document.querySelector('.gp-strip[data-wrap="on"]'),
               totalPages: gp.totalPages,
+              sheetGap: Math.round(parseFloat(
+                getComputedStyle(document.querySelector<HTMLElement>(".gp-strip")!).getPropertyValue("--gp-sheet-gap"),
+              )),
+              singleVerticalGaps,
+              spreadVerticalGaps,
+              spreadHorizontalGaps,
               probes: probeEls.length,
               pageOfMismatches,
               outside,
@@ -214,6 +242,10 @@ testIf(
         expect(report.singleRows.flatMap((r) => r.sheets.map((s) => s.page))).toEqual(
           Array.from({ length: report.totalPages }, (_, i) => i + 1),
         );
+        expect(report.singleVerticalGaps.length).toBeGreaterThan(1);
+        expect(report.singleVerticalGaps).toEqual(
+          report.singleVerticalGaps.map(() => report.sheetGap),
+        );
 
         // (2) a view mode may not move a page boundary.
         expect(report.pageOfMismatches).toEqual([]);
@@ -232,6 +264,14 @@ testIf(
         });
         expect(badRows).toEqual([]);
         expect(report.rows[0]!.sheets).toEqual([{ page: 1, side: "recto" }]);
+        expect(report.spreadVerticalGaps.length).toBeGreaterThan(1);
+        expect(report.spreadVerticalGaps).toEqual(
+          report.spreadVerticalGaps.map(() => report.sheetGap),
+        );
+        expect(report.spreadHorizontalGaps.length).toBeGreaterThan(1);
+        expect(report.spreadHorizontalGaps).toEqual(
+          report.spreadHorizontalGaps.map(() => report.sheetGap),
+        );
 
         // CROSS-RUN COMPOSITION: a recto-starting run overlaps the previous
         // run's solo-verso row (decorate.ts's parity-proof margin pull), so

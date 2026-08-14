@@ -80,7 +80,8 @@ export function normalizeClassInput(
   options: readonly ImageClassOption[],
   input: string,
 ): string | undefined {
-  const t = input.trim().toLowerCase().replace(/^\./, "");
+  const raw = input.trim().toLowerCase();
+  const t = raw.startsWith(".") ? raw.slice(1) : raw;
   if (!t) return undefined;
   return options.find(
     (o) => o.class === t || o.short === t || o.aliases?.includes(t),
@@ -94,8 +95,30 @@ export function normalizeClassInput(
  * token it doesn't understand must survive round-trips byte-for-byte.
  */
 export function tokenizeImageAttrs(attrsRaw: string): string[] {
-  const body = attrsRaw.trim().replace(/^\{/, "").replace(/\}$/, "");
-  return body.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
+  const tokens: string[] = [];
+  let token = "";
+  let quote = "";
+  const flush = () => {
+    if (token) tokens.push(token);
+    token = "";
+  };
+  for (let i = 0; i < attrsRaw.length; i++) {
+    const char = attrsRaw[i]!;
+    if (quote) {
+      token += char;
+      if (char === "\\" && i + 1 < attrsRaw.length) token += attrsRaw[++i];
+      else if (char === quote) quote = "";
+    } else if (char === '"' || char === "'") {
+      quote = char;
+      token += char;
+    } else if (char === "{" || char === "}" || char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f") {
+      flush();
+    } else {
+      token += char;
+    }
+  }
+  flush();
+  return tokens;
 }
 
 /** `[]` → `""`, otherwise `{a b c}` — the shape `applyImage` inserts. */
@@ -104,7 +127,7 @@ export function serializeImageAttrs(tokens: readonly string[]): string {
 }
 
 function isWidthToken(token: string): boolean {
-  return /^width=/.test(token);
+  return token.startsWith("width=");
 }
 
 function classTokenName(token: string): string | undefined {
@@ -121,7 +144,12 @@ function isFacetToken(options: readonly ImageClassOption[]) {
 /** Current width value, `""` when absent. */
 export function getWidth(tokens: readonly string[]): string {
   const token = tokens.find(isWidthToken);
-  return token?.match(/^width="?([^"]*)"?$/)?.[1] ?? "";
+  if (!token) return "";
+  const value = token.slice("width=".length);
+  if (value.length >= 2 && value[0] === '"' && value[value.length - 1] === '"') {
+    return value.slice(1, -1);
+  }
+  return value;
 }
 
 /**
@@ -183,10 +211,9 @@ export function getSizeClass(tokens: readonly string[]): string | undefined {
 }
 
 /**
- * Replace the first token matching `matches` in place (list position kept),
- * remove it on null, append on absent — every other token passes through
- * verbatim, in order. Extra matching tokens (e.g. a hand-written second
- * position class) are left alone: this edits one facet, it does not tidy.
+ * Replace all tokens matching `matches` with one value at the first match's
+ * position. This makes a property edit authoritative even when hand-written
+ * source contains duplicate/conflicting facet tokens.
  */
 function setFacetToken(
   tokens: readonly string[],
@@ -197,9 +224,8 @@ function setFacetToken(
   if (at === -1) {
     return replacement == null ? [...tokens] : [...tokens, replacement];
   }
-  const next = [...tokens];
-  if (replacement == null) next.splice(at, 1);
-  else next[at] = replacement;
+  const next = tokens.filter((token) => !matches(token));
+  if (replacement != null) next.splice(at, 0, replacement);
   return next;
 }
 

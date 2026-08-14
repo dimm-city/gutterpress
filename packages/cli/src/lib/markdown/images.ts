@@ -117,6 +117,13 @@ export function registerImageRule(md: MarkdownIt): void {
 
   md.renderer.rules.image = (tokens, idx, options, env, self) => {
     const token = tokens[idx]!;
+    // markdown-it 14 leaves escaped punctuation/entities as `text_special`
+    // inside image children, while renderInlineAsText only reads `text` and
+    // `code_inline`. Normalize those children before the default image rule
+    // derives `alt`, so authored/edited plain text survives byte-for-byte.
+    for (const child of token.children ?? []) {
+      if (child.type === "text_special" || child.type === "code_inline") child.type = "text";
+    }
     const srcIdx = token.attrIndex("src");
     if (srcIdx >= 0 && token.attrs) {
       const src = token.attrs[srcIdx]![1];

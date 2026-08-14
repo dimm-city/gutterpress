@@ -63,6 +63,14 @@ function installBook(frame, markup = BOOK_NATIVE, layout = "vertical") {
     if (typeof xOrOptions === "number") setTimeout(apply, 20);
     else apply();
   };
+  frameWindow.scrollTo = (xOrOptions, y) => {
+    const top = typeof xOrOptions === "number" ? y : xOrOptions?.top;
+    const left = typeof xOrOptions === "number" ? xOrOptions : xOrOptions?.left;
+    scroll.y = typeof top === "number" ? top : scroll.y;
+    scroll.x = typeof left === "number" ? left : scroll.x;
+    frameDocument.documentElement.scrollTop = scroll.y;
+    frameDocument.documentElement.scrollLeft = scroll.x;
+  };
   frameDocument.documentElement.scrollTop = 0;
   frameDocument.documentElement.scrollLeft = 0;
   const setProperty = frameDocument.documentElement.style.setProperty.bind(frameDocument.documentElement.style);
@@ -159,6 +167,7 @@ async function runHorizontalAnchorRegression() {
   runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
   active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
   active.dispatchEvent(new outer.Event("load"));
+  active.contentWindow.scrollTo({ left: 1000, top: 0 });
   onChange?.({ type: "full-reload", instance: "horizontal", revision: 1 });
 
   const fresh = document.getElementById("gutterpress-active");
@@ -212,6 +221,7 @@ async function runPartialHorizontalAnchorRegression() {
   runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
   active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
   active.dispatchEvent(new outer.Event("load"));
+  active.contentWindow.scrollTo({ left: 300, top: 0 });
   onChange?.({ type: "full-reload", instance: "partial-horizontal", revision: 1 });
 
   const fresh = document.getElementById("gutterpress-active");
@@ -320,6 +330,7 @@ async function main() {
   // shell never acknowledges the initial revision.
   active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
   active.dispatchEvent(new outer.Event("load"));
+  active.contentWindow.scrollTo({ left: 0, top: 1600 });
 
   onChange?.({ type: "reload-state", instance: "instance-a", revision: 0 });
   assert.equal(document.getElementById("gutterpress-active"), active, "current revision does not reload");
@@ -670,6 +681,7 @@ async function runNativeCoreRegression() {
   runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
   active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
   active.dispatchEvent(new outer.Event("load"));
+  active.contentWindow.scrollTo({ left: 0, top: 1600 });
 
   onChange?.({ type: "full-reload", instance: "instance-a", revision: 1 });
 

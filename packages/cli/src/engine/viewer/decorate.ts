@@ -340,7 +340,11 @@ export function decorate(
       // synchronous style recalc per strip on every mount and hot reload.
       const { stride, rowStride } = stripMetrics(strip.el);
       const sheetGap =
-        parseFloat(getComputedStyle(run).getPropertyValue("--gp-sheet-gap")) || 0;
+        parseFloat(getComputedStyle(strip.el).getPropertyValue("--gp-sheet-gap")) || 0;
+      // The gap originates on the strip because it also drives multicol's
+      // row/column pitch. The run owns spacing BETWEEN named-page runs, so
+      // copy that one value up instead of giving both elements a margin.
+      run.style.setProperty("--gp-sheet-gap", `${sheetGap}px`);
       // `wrapCols` unset (view mode off, or the browser lacks
       // `column-wrap: wrap`) ⇒ every page sits in one row, exactly the
       // pre-wrap layout — `perRow = strip.pages` makes the row/col math
@@ -370,9 +374,7 @@ export function decorate(
         const sheet = document.createElement("div");
         sheet.className = "gp-sheet";
         sheet.dataset.page = String(bookIndex + 1);
-        // Recto = odd 1-based page (page 1 is a recto). Read by viewer.css's
-        // two-up scroll-snap rule; a `.gp-layer`'s first sheet is NOT
-        // reliably a recto, so DOM-order parity cannot stand in for this.
+        // Recto = odd 1-based page (page 1 is a recto).
         sheet.dataset.side = bookIndex % 2 === 0 ? "recto" : "verso";
         sheet.style.left = `${sheetLeft}px`;
         sheet.style.top = `${sheetTop}px`;

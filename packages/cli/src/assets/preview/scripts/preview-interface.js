@@ -422,9 +422,32 @@
   function buildContextTarget(pointEl) {
     var selection = selectionInfo();
     var imageEl = pointEl && pointEl.closest ? pointEl.closest('img') : null;
-    var image = imageEl ? { src: imageEl.getAttribute('src'), alt: imageEl.getAttribute('alt') } : null;
+    var sourceOf = function (el) {
+      if (!el || !el.hasAttribute || !el.hasAttribute('data-gp-source-token')) return null;
+      var token = el.getAttribute('data-gp-source-token');
+      var rawOccurrence = el.getAttribute('data-gp-source-occurrence');
+      if (!token || !rawOccurrence) return null;
+      for (var i = 0; i < rawOccurrence.length; i++) {
+        if (rawOccurrence[i] < '0' || rawOccurrence[i] > '9') return null;
+      }
+      var occurrence = Number(rawOccurrence);
+      if (!Number.isSafeInteger(occurrence)) return null;
+      return {
+        token: token,
+        occurrence: occurrence
+      };
+    };
+    var image = imageEl ? {
+      src: imageEl.getAttribute('src'),
+      alt: imageEl.getAttribute('alt'),
+      source: sourceOf(imageEl)
+    } : null;
     var linkEl = pointEl && pointEl.closest ? pointEl.closest('a') : null;
-    var link = linkEl ? { href: linkEl.getAttribute('href'), text: (linkEl.textContent || '').trim() } : null;
+    var link = linkEl ? {
+      href: linkEl.getAttribute('href'),
+      text: (linkEl.textContent || '').trim(),
+      source: sourceOf(linkEl)
+    } : null;
 
     var block = resolveAnnotatedBlock(pointEl);
 
@@ -553,11 +576,8 @@
         currentViewMode = mode || 'two-column';
         document.body.classList.remove('view-single', 'view-spread', 'view-two-column');
         if (mode) document.body.classList.add('view-' + mode);
-        // The classes drive CSS scroll-snap granularity (viewer.css: 1 page
-        // per snap point in single mode, recto+verso pairs in two-up/spread)
-        // — `pageStep()` above already makes next/prevPage step by 1 or 2
-        // book pages to match. `setSpread()` additionally does the real
-        // relayout: `column-wrap: wrap` (CSS Multicol L2) wraps each
+        // `pageStep()` above makes next/prevPage step by 1 or 2 book pages.
+        // `setSpread()` does the real relayout: `column-wrap: wrap` wraps each
         // chapter's columns into a 2-column grid so content, not just sheet
         // chrome, actually moves into pairs — see fragment.ts's
         // `applySpreadMode`. No-ops to single-row on a browser without the

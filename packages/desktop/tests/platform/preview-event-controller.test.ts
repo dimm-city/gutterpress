@@ -121,10 +121,6 @@ function make(): Harness {
       updateActiveOutline: (line) => log.push(`updateActiveOutline:${line}`),
       revealEditorLine: (chapter, line, deliberate) =>
         log.push(`revealEditorLine:${chapter}:${line}:${deliberate ? "deliberate" : "passive"}`),
-      openEditorPane: (opts) => {
-        h.editorPaneOpen = true;
-        log.push(`openEditorPane:${opts.focus}:${opts.ensureFile}`);
-      },
     },
     zoom: () => h.zoom,
     viewMode: () => h.viewMode,
@@ -440,14 +436,11 @@ test("elementActivated is NOT gated by the preview→editor echo-suppression win
   expect(h.log).toContain("revealEditorLine:ch1.md:12:deliberate");
 });
 
-test("elementActivated opens a closed pane and reveals the clicked chapter", () => {
+test("elementActivated never opens a closed editor pane", () => {
   const h = make();
   h.editorPaneOpen = false;
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: "ch3.md" } });
-  // ensureFile:false — the reveal targets the clicked chapter itself, so the
-  // pane's own default first-file pick would only race it.
-  expect(h.log).toContain("openEditorPane:true:false");
-  expect(h.log).toContain("revealEditorLine:ch3.md:5:deliberate");
+  expect(h.log).toEqual([]);
 });
 
 test("a scroll follow is PASSIVE, a click is DELIBERATE", () => {
@@ -464,12 +457,11 @@ test("a scroll follow is PASSIVE, a click is DELIBERATE", () => {
   ]);
 });
 
-test("elementActivated with no known chapter still opens the pane and reveals the line", () => {
+test("elementActivated with no known chapter also leaves a closed pane closed", () => {
   const h = make();
   h.editorPaneOpen = false;
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: null } });
-  expect(h.log).toContain("openEditorPane:true:false");
-  expect(h.log).toContain("revealEditorLine:null:5:deliberate");
+  expect(h.log).toEqual([]);
 });
 
 test("elementActivated no-ops on a missing/null sourceLine", () => {

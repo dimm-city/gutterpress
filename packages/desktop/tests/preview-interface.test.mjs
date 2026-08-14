@@ -203,7 +203,7 @@ async function main() {
         <div class="chapter" data-chapter-src="a.md" data-source-range="0:12" data-ref="chapter-ref">
           <div class="page" data-source-range="0:12" data-ref="page-ref">
             <p id="plain" data-source-range="1:2" data-ref="plain-ref">Just a plain paragraph.</p>
-            <p id="para" data-source-range="2:3" data-ref="para-ref">Hello <a id="lnk" href="https://example.com/x">link text</a> and <img id="img" src="art.jpg" alt="Art"> world.</p>
+            <p id="para" data-source-range="2:3" data-ref="para-ref">Hello <a id="lnk" href="https://example.com/x" data-gp-source-token="[link text](https://example.com/x)" data-gp-source-occurrence="0">link text</a> and <img id="img" src="art.jpg" alt="Art" data-gp-source-token="![Art](art.jpg)" data-gp-source-occurrence="1"> <img id="bad-source" src="raw.jpg" data-gp-source-token="![Victim](x.png)" data-gp-source-occurrence="oops"> world.</p>
             <div class="gp-page-break" data-source-range="3:4" data-ref="break-ref" aria-hidden="true"></div>
             <pre id="pre" data-ref="pre-ref"><code id="code" data-source-range="4:5" data-ref="code-ref">const x = 1;</code></pre>
             <p id="frag1" data-source-range="5:7" data-ref="split-ref">first half</p>
@@ -231,13 +231,26 @@ async function main() {
     assert.equal(Object.getPrototypeOf(detail.rect), Object.prototype, "rect is a plain object, not a DOMRect");
   }
 
+  // Malformed coordinates fail closed instead of being coerced to occurrence 0.
+  {
+    const { document, api } = loadInterfaceWithDom(contextHtml);
+    document.elementFromPoint = () => document.getElementById("bad-source");
+    const detail = api.getContextTargetAt({ x: 1, y: 1 });
+    assert.equal(detail.kind, "image");
+    assert.equal(detail.image.source, null);
+  }
+
   // kind: 'image' — wins over 'block' even though the <img> sits inside an annotated <p>.
   {
     const { document, api } = loadInterfaceWithDom(contextHtml);
     document.elementFromPoint = () => document.getElementById("img");
     const detail = api.getContextTargetAt({ x: 1, y: 1 });
     assert.equal(detail.kind, "image");
-    assert.deepEqual(detail.image, { src: "art.jpg", alt: "Art" });
+    assert.deepEqual(detail.image, {
+      src: "art.jpg",
+      alt: "Art",
+      source: { token: "![Art](art.jpg)", occurrence: 1 },
+    });
     assert.deepEqual(detail.range, [2, 3], "the enclosing block's range still resolves");
     assert.equal(detail.blockTag, "p");
     assert.equal(detail.link, null);
@@ -249,7 +262,11 @@ async function main() {
     document.elementFromPoint = () => document.getElementById("lnk");
     const detail = api.getContextTargetAt({ x: 1, y: 1 });
     assert.equal(detail.kind, "link");
-    assert.deepEqual(detail.link, { href: "https://example.com/x", text: "link text" });
+    assert.deepEqual(detail.link, {
+      href: "https://example.com/x",
+      text: "link text",
+      source: { token: "[link text](https://example.com/x)", occurrence: 0 },
+    });
     assert.equal(detail.image, null);
   }
 

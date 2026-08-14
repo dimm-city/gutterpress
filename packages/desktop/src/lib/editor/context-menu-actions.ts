@@ -1,114 +1,294 @@
-/**
- * context-menu-actions.ts — pure parameter-resolution helpers for the preview
- * context menu's image/link items (inline-editing plan §4.4).
- *
- * Given the RAW MARKDOWN SOURCE of the block the author right-clicked (the
- * `data-source-range` slice — never the rendered HTML) and the rendered
- * `image`/`link` fields `getContextTargetAt` reported, these locate the exact
- * markdown token so a menu action can splice just that token, and detect the
- * documented degrade cases (reference-style links, linkified bare URLs, raw
- * HTML `<img>`) so the caller can disable/relabel items instead of guessing.
- *
- * Pure string functions — zero DOM / `node:*` / lib value imports, testable
- * directly under `bun test`.
- */
+/** Pure source-token helpers for preview context-menu edits. */
 
-/** A located `![alt](src "title")` (or with a trailing `{...}` attrs suffix)
- *  markdown image token — offsets are relative to the BLOCK SLICE passed in. */
+import type { InlineSourceToken } from "$lib/preview-client";
+
 export interface ImageTokenMatch {
   start: number;
   end: number;
   alt: string;
   src: string;
-  /** The `{...}` attrs suffix text (markdown-it-attrs), or "" when absent. */
+  tokenRaw: string;
   attrsRaw: string;
+  altStart: number;
+  altEnd: number;
+  destinationStart: number;
+  destinationEnd: number;
 }
 
-const IMAGE_TOKEN_RE = /!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)(\{[^}]*\})?/g;
-
-/**
- * Find the markdown image token in `blockSlice` whose rendered `src`/`alt`
- * match the point-resolved `image` field (`registerImageRule` records refs
- * but does not rewrite `src`, so the attribute text matches author text
- * verbatim — plan §4.4). Returns null when no such token exists in the slice
- * (e.g. the block is a raw HTML `<img>` instead — see {@link hasRawHtmlImg}).
- */
-export function findImageToken(
-  blockSlice: string,
-  image: { src: string | null; alt: string | null },
-): ImageTokenMatch | null {
-  if (!image.src) return null;
-  IMAGE_TOKEN_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = IMAGE_TOKEN_RE.exec(blockSlice))) {
-    const [full, alt, src, attrsRaw] = m;
-    if (src === image.src && (image.alt == null || alt === image.alt)) {
-      return { start: m.index, end: m.index + full.length, alt: alt ?? "", src, attrsRaw: attrsRaw ?? "" };
-    }
-  }
-  return null;
-}
-
-/** True when the block slice contains a raw HTML `<img>` tag — those never
- *  carry `data-source-range`-addressable markdown syntax (plan §2.6); the
- *  only available image action for one is "Edit block in editor". */
-export function hasRawHtmlImg(blockSlice: string): boolean {
-  return /<img\b/i.test(blockSlice);
-}
-
-/** A located `[text](href "title")` markdown link token (never an image —
- *  the match is rejected when immediately preceded by `!`). */
 export interface LinkTokenMatch {
   start: number;
   end: number;
-  text: string;
   href: string;
+  tokenRaw: string;
+  destinationStart: number;
+  destinationEnd: number;
 }
 
-const LINK_TOKEN_RE = /(^|[^!])\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+interface DestinationMatch {
+  start: number;
+  end: number;
+  close: number;
+}
 
-function findLinkToken(blockSlice: string, link: { href: string | null }): LinkTokenMatch | null {
-  if (!link.href) return null;
-  LINK_TOKEN_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = LINK_TOKEN_RE.exec(blockSlice))) {
-    const [full, pre, text, href] = m;
-    if (href === link.href) {
-      return { start: m.index + pre.length, end: m.index + full.length, text, href };
-    }
+function isSpace(char: string | undefined): boolean {
+  return char === " " || char === "\t" || char === "\n" || char === "\r" || char === "\f";
+}
+
+function isEscaped(text: string, index: number): boolean {
+  let slashes = 0;
+  for (let i = index - 1; i >= 0 && text[i] === "\\"; i--) slashes++;
+  return slashes % 2 === 1;
+}
+
+function findOccurrence(text: string, source: InlineSourceToken): number {
+  if (!source.token || !Number.isInteger(source.occurrence) || source.occurrence < 0) return -1;
+  let from = 0;
+  for (let current = 0; current <= source.occurrence; current++) {
+    const found = text.indexOf(source.token, from);
+    if (found < 0) return -1;
+    if (current === source.occurrence) return found;
+    from = found + source.token.length;
+  }
+  return -1;
+}
+
+function scanBracket(text: string, open: number): { close: number } | null {
+  if (text[open] !== "[") return null;
+  let depth = 1;
+  for (let i = open + 1; i < text.length; i++) {
+    if (text[i] === "`") {
+      let ticks = 1;
+      while (text[i + ticks] === "`") ticks++;
+      let close = i + ticks;
+      while (close < text.length) {
+        if (text[close] !== "`") {
+          close++;
+          continue;
+        }
+        let closeTicks = 1;
+        while (text[close + closeTicks] === "`") closeTicks++;
+        if (closeTicks === ticks) break;
+        close += closeTicks;
+      }
+      if (close < text.length) i = close + ticks - 1;
+      else i += ticks - 1;
+    } else if (text[i] === "\\") i++;
+    else if (text[i] === "[") depth++;
+    else if (text[i] === "]" && --depth === 0) return { close: i };
   }
   return null;
+}
+
+/** Locate only the destination inside an already parser-verified inline token. */
+function scanDestination(text: string, open: number): DestinationMatch | null {
+  let i = open + 1;
+  while (isSpace(text[i])) i++;
+  const start = i;
+  if (text[i] === "<") {
+    for (i++; i < text.length; i++) {
+      if (text[i] === "\\") i++;
+      else if (text[i] === ">") { i++; break; }
+    }
+    if (text[i - 1] !== ">") return null;
+  } else {
+    let depth = 0;
+    for (; i < text.length; i++) {
+      const char = text[i]!;
+      if (char === "\\") { i++; continue; }
+      if (isSpace(char) && depth === 0) break;
+      if (char === "(") depth++;
+      else if (char === ")") {
+        if (depth === 0) break;
+        depth--;
+      }
+    }
+  }
+  const end = i;
+
+  while (isSpace(text[i])) i++;
+  if (text[i] !== ")") {
+    const opener = text[i];
+    const closer = opener === "(" ? ")" : opener;
+    if (opener !== '"' && opener !== "'" && opener !== "(") return null;
+    let depth = 1;
+    for (i++; i < text.length; i++) {
+      if (text[i] === "\\") i++;
+      else if (opener === "(" && text[i] === "(") depth++;
+      else if (text[i] === closer && --depth === 0) { i++; break; }
+    }
+    while (isSpace(text[i])) i++;
+  }
+  return text[i] === ")" ? { start, end, close: i } : null;
+}
+
+function scanAttrs(text: string, open: number): { raw: string; end: number } {
+  let end = open;
+  while (text[end] === "{") {
+    const groupStart = end;
+    let quote = "";
+    let closed = false;
+    for (let i = end + 1; i < text.length; i++) {
+      const char = text[i]!;
+      if (char === "\\") i++;
+      else if (quote) {
+        if (char === quote) quote = "";
+      } else if (char === '"' || char === "'") quote = char;
+      else if (char === "}") {
+        if (i === end + 1) break;
+        const body = text.slice(groupStart + 1, i).trim();
+        // markdown-it-attrs leaves these as visible literal text. Never
+        // absorb them into a property edit merely because braces balance.
+        if (!body || body.includes("\\") || body === "." || body === "#") break;
+        end = i + 1;
+        closed = true;
+        break;
+      }
+    }
+    if (!closed) break;
+  }
+  return { raw: text.slice(open, end), end };
+}
+
+export function findImageToken(
+  blockSlice: string,
+  image: { src: string | null; alt: string | null; source: InlineSourceToken | null },
+): ImageTokenMatch | null {
+  if (!image.source) return null;
+  const start = findOccurrence(blockSlice, image.source);
+  if (start < 0) return null;
+  const tokenRaw = image.source.token;
+  if (!tokenRaw.startsWith("![")) return null;
+  const label = scanBracket(tokenRaw, 1);
+  if (!label || tokenRaw[label.close + 1] !== "(") return null;
+  const destination = scanDestination(tokenRaw, label.close + 1);
+  if (!destination || destination.close !== tokenRaw.length - 1) return null;
+  const attrs = scanAttrs(blockSlice, start + tokenRaw.length);
+  return {
+    start,
+    end: attrs.end,
+    alt: image.alt ?? "",
+    src: image.src ?? "",
+    tokenRaw,
+    attrsRaw: attrs.raw,
+    altStart: 2,
+    altEnd: label.close,
+    destinationStart: destination.start,
+    destinationEnd: destination.end,
+  };
 }
 
 export type LinkResolution =
   | { kind: "found"; match: LinkTokenMatch }
-  /** `[text][id]` — the definition line is unrecoverable from the rendered
-   *  block alone (plan §2.6). Only "Copy link target" stays enabled. */
   | { kind: "reference-style" }
-  /** `linkify: true` renders a bare URL as an anchor with no bracket syntax
-   *  in the source at all (plan §4.4). Only "Copy link target" stays enabled. */
   | { kind: "linkified" }
-  /** Neither pattern found — degrade to "Edit block in editor" only. */
   | { kind: "not-found" };
 
-/** Resolve a rendered `<a>`'s `href`/text back to its markdown source form,
- * or one of the documented degrade cases (plan §4.4). */
 export function resolveLinkToken(
   blockSlice: string,
-  link: { href: string | null; text: string },
+  link: { href: string | null; text: string; source: InlineSourceToken | null },
 ): LinkResolution {
-  const match = findLinkToken(blockSlice, link);
-  if (match) return { kind: "found", match };
-  if (/\[[^\]]*\]\[[^\]]*\]/.test(blockSlice)) return { kind: "reference-style" };
-  if (link.href && blockSlice.includes(link.href)) return { kind: "linkified" };
-  return { kind: "not-found" };
+  if (!link.source) {
+    return link.href && blockSlice.includes(link.href) ? { kind: "linkified" } : { kind: "not-found" };
+  }
+  const start = findOccurrence(blockSlice, link.source);
+  if (start < 0) return { kind: "not-found" };
+  const tokenRaw = link.source.token;
+  const label = scanBracket(tokenRaw, 0);
+  if (!label || tokenRaw[label.close + 1] !== "(") return { kind: "reference-style" };
+  const destination = scanDestination(tokenRaw, label.close + 1);
+  if (!destination || destination.close !== tokenRaw.length - 1) return { kind: "not-found" };
+  return {
+    kind: "found",
+    match: {
+      start,
+      end: start + tokenRaw.length,
+      href: link.href ?? "",
+      tokenRaw,
+      destinationStart: destination.start,
+      destinationEnd: destination.end,
+    },
+  };
 }
 
-/**
- * Splice `insert` in place of `[start, end)` within `text` — the shared
- * primitive every image/link edit action uses to rewrite just its token
- * inside an already-resolved block slice.
- */
 export function spliceToken(text: string, start: number, end: number, insert: string): string {
   return text.slice(0, start) + insert + text.slice(end);
+}
+
+function escapeLabel(value: string): string {
+  let escaped = "";
+  for (const char of value) {
+    if (char === "\\" || char === "[" || char === "]") escaped += "\\";
+    escaped += char;
+  }
+  return escaped;
+}
+
+function escapePlainAlt(value: string): string {
+  const punctuation = `!"#$%&'()*+,-./:;<=>?@[\\]^_\`{|}~`;
+  let escaped = "";
+  for (const char of value) {
+    if (punctuation.includes(char)) escaped += "\\";
+    escaped += char;
+  }
+  return escaped;
+}
+
+function serializeDestination(value: string): string {
+  if (!value) return "";
+  let needsAngles = false;
+  for (const char of value) {
+    if (isSpace(char) || char === "(" || char === ")" || char === "<" || char === ">") {
+      needsAngles = true;
+      break;
+    }
+  }
+  if (!needsAngles) return value;
+  let escaped = "";
+  for (const char of value) {
+    if (char === "\\" || char === "<" || char === ">") escaped += "\\";
+    escaped += char;
+  }
+  return `<${escaped}>`;
+}
+
+export function makeLinkToken(label: string, href: string): string {
+  return `[${escapeLabel(label)}](${serializeDestination(href)})`;
+}
+
+export function rewriteImageToken(
+  image: ImageTokenMatch,
+  changes: { alt?: string; src?: string; attrsRaw?: string },
+): string {
+  const alt = changes.alt === undefined
+    ? image.tokenRaw.slice(image.altStart, image.altEnd)
+    : escapePlainAlt(changes.alt);
+  const originalDestination = image.tokenRaw.slice(image.destinationStart, image.destinationEnd);
+  const destination = changes.src === undefined
+    ? originalDestination
+    : serializeDestination(changes.src);
+  const beforeDestination = image.tokenRaw.slice(image.altEnd, image.destinationStart);
+  const afterDestination = image.tokenRaw.slice(image.destinationEnd);
+  return `![${alt}${beforeDestination}${destination}${afterDestination}${changes.attrsRaw ?? image.attrsRaw}`;
+}
+
+export function rewriteLinkToken(link: LinkTokenMatch, href: string): string {
+  return spliceToken(
+    link.tokenRaw,
+    link.destinationStart,
+    link.destinationEnd,
+    serializeDestination(href),
+  );
+}
+
+/** Locate a normal Markdown link wrapped directly around an image token. */
+export function findImageWrapper(
+  text: string,
+  image: ImageTokenMatch,
+): { start: number; end: number; imageToken: string } | null {
+  const start = image.start - 1;
+  if (start < 0 || text[start] !== "[" || isEscaped(text, start) || text.slice(image.end, image.end + 2) !== "](") return null;
+  const wrapper = scanDestination(text, image.end + 1);
+  return wrapper
+    ? { start, end: wrapper.close + 1, imageToken: text.slice(image.start, image.end) }
+    : null;
 }

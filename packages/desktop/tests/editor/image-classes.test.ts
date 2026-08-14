@@ -49,6 +49,14 @@ describe("tokenizeImageAttrs / serializeImageAttrs", () => {
     const raw = '{.gp-right .my-note #fig1 data-x="a b" .gp-small}';
     expect(serializeImageAttrs(tokenizeImageAttrs(raw))).toBe(raw);
   });
+
+  test("flattens consecutive attribute groups before a facet edit", () => {
+    const tokens = tokenizeImageAttrs("{.gp-right}{width=40% .custom}");
+    expect(tokens).toEqual([".gp-right", "width=40%", ".custom"]);
+    expect(serializeImageAttrs(setWidth(tokens, "55%"))).toBe(
+      '{.gp-right width="55%" .custom}',
+    );
+  });
 });
 
 describe("facet getters", () => {

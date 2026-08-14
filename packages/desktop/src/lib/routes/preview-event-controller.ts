@@ -69,13 +69,6 @@ interface PreviewEventEditorSync {
    * leaves the author in the file they are working in.
    */
   revealEditorLine: (chapter: string | null, line: number, deliberate: boolean) => void;
-  /**
-   * Open (mount) the editor pane when it is closed/unmounted — lazy-loads the
-   * editor module and moves focus into it. Used by `elementActivated`: a
-   * click on a preview block is an explicit "go here" intent that must never
-   * silently no-op just because the pane isn't open.
-   */
-  openEditorPane: (opts: { focus: boolean; ensureFile: boolean }) => void;
 }
 
 export interface PreviewEventDeps {
@@ -251,9 +244,9 @@ export class PreviewEventController {
   /**
    * `elementActivated`: the author clicked a `[data-source-line]` block in the
    * preview — an explicit "go to source" intent (PR 0 of the inline-editing
-   * plan; `docs/inline-editing-plan.md`). Same reveal as `onSourceLineChanged`,
-   * plus one addition: a closed/unmounted editor pane is opened rather than
-   * silently dropping the click. `data-source-line` is level-0-only today, so
+   * plan; `docs/inline-editing-plan.md`). Same reveal as `onSourceLineChanged`.
+   * A closed/unmounted editor pane is left untouched. `data-source-line` is
+   * level-0-only today, so
    * this jumps to a LINE; it cannot select the clicked block (that precision
    * arrives with the `data-source-range` primitive in a later PR — not
    * retrofitted here).
@@ -268,10 +261,9 @@ export class PreviewEventController {
     const line = detail.sourceLine;
     if (typeof line !== "number") return;
 
-    // Explicit "go here" click: open the pane instead of no-op'ing. The reveal
-    // below targets the clicked chapter itself, so the pane's own default
-    // first-file pick would only race it and flash the wrong place.
-    if (!es.editorPaneOpen()) es.openEditorPane({ focus: true, ensureFile: false });
+    // Preview interaction never opens the editor. If the author explicitly
+    // opened it, keep the existing click-to-reveal behavior.
+    if (!es.editorPaneOpen()) return;
     es.revealEditorLine(detail.chapter ?? null, line, true);
   }
 

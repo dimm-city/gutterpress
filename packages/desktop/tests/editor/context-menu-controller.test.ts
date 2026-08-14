@@ -52,7 +52,7 @@ class FakeCommitEngine {
 }
 
 function detail(over: Partial<PreviewEvent["detail"]> = {}): PreviewEvent["detail"] {
-  return {
+  const result = {
     kind: "block",
     chapter: "ch1.md",
     range: [2, 3],
@@ -62,6 +62,23 @@ function detail(over: Partial<PreviewEvent["detail"]> = {}): PreviewEvent["detai
     via: "mouse",
     ...over,
   };
+  if (result.image && !("source" in result.image)) {
+    result.image = {
+      ...result.image,
+      source: result.image.src
+        ? { token: `![${result.image.alt ?? ""}](${result.image.src})`, occurrence: 0 }
+        : null,
+    };
+  }
+  if (result.link && !("source" in result.link)) {
+    result.link = {
+      ...result.link,
+      source: result.link.href
+        ? { token: `[${result.link.text}](${result.link.href})`, occurrence: 0 }
+        : null,
+    };
+  }
+  return result;
 }
 
 interface Harness {
@@ -70,6 +87,7 @@ interface Harness {
   commitEngine: FakeCommitEngine;
   enabled: boolean;
   rendering: boolean;
+  editorPaneOpen: boolean;
   currentDir: string | null;
   /** Live in-editor content by path (the book document's open chapters). */
   openContent: Map<string, string>;
@@ -95,6 +113,7 @@ function make(): Harness {
     commitEngine,
     enabled: true,
     rendering: false,
+    editorPaneOpen: true,
     currentDir: "/proj",
     openContent: new Map<string, string>(),
     readFileMap: {},
@@ -113,6 +132,7 @@ function make(): Harness {
     client: () => client,
     enabled: () => h.enabled,
     rendering: () => h.rendering,
+    editorPaneOpen: () => h.editorPaneOpen,
     currentDir: () => h.currentDir,
     openContent: (path: string) => h.openContent.get(path) ?? null,
     readFile: async (path: string) => {
@@ -283,26 +303,16 @@ describe("dismissal", () => {
     expect(h.ctrl.open).toBe(false);
   });
 
-  test("pageChanged closes the menu (anchor invalidated)", async () => {
+  test("page and viewport notifications do not make an open menu disappear", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
     h.client.emit({ name: "contextMenuRequested", detail: detail() });
     await flush();
     expect(h.ctrl.open).toBe(true);
     h.client.emit({ name: "pageChanged", detail: {} });
-    expect(h.ctrl.open).toBe(false);
-  });
-
-  test("viewportChanged closes the menu while unrelated source events do not", async () => {
-    const h = make();
-    h.readFileMap["/proj/ch1.md"] = "a\nb\nc\n";
-    h.client.emit({ name: "contextMenuRequested", detail: detail() });
-    await flush();
-    h.client.emit({ name: "sourceLineChanged", detail: {} });
-    h.client.emit({ name: "elementActivated", detail: {} });
     expect(h.ctrl.open).toBe(true);
     h.client.emit({ name: "viewportChanged", detail: {} });
-    expect(h.ctrl.open).toBe(false);
+    expect(h.ctrl.open).toBe(true);
   });
 });
 
@@ -391,6 +401,17 @@ describe("block kind", () => {
     expect(h.goToSourceCalls).toEqual([["ch1.md", 4]]);
     expect(h.ctrl.open).toBe(false);
   });
+
+  test("editor navigation items are disabled while the editor pane is closed", async () => {
+    const h = make();
+    h.editorPaneOpen = false;
+    h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block", range: [3, 5] }) });
+    await flush();
+    const item = h.ctrl.items.find((i) => i.id === "block-source")!;
+    expect(item.enabled).toBe(false);
+    await h.ctrl.runItem(item);
+    expect(h.goToSourceCalls).toEqual([]);
+  });
 });
 
 describe("marker kind", () => {
@@ -449,6 +470,40 @@ describe("image kind", () => {
     ]);
   });
 
+  test("Edit alt text… escapes prompt delimiters", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![old](cat.png)\n";
+    h.promptResult = "new ] alt";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "cat.png", alt: "old" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-alt")!);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      String.raw`![new \] alt](cat.png)` + "\n",
+    );
+  });
+
+  test("Replace image… safely wraps a path containing spaces", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = '![Art](old.png "Title")\n';
+    h.promptResult = "new path.png";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "image",
+        range: [0, 1],
+        image: { src: "old.png", alt: "Art", source: { token: '![Art](old.png "Title")', occurrence: 0 } },
+      }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-replace")!);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      '![Art](<new path.png> "Title")\n',
+    );
+  });
+
   // Token-preserving facet edits (image-classes): the old parse+rebuild
   // write path recognized exactly five classes and silently DROPPED every
   // other token when the user edited width or position. These pin the
@@ -473,6 +528,21 @@ describe("image kind", () => {
         expectedGeneration: 0,
       },
     ]);
+  });
+
+  test("Set width… preserves an existing markdown image title", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = '![Art](x.png "Caption"){width="300px"}\n';
+    h.promptResult = "50%";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art", source: { token: '![Art](x.png "Caption")', occurrence: 0 } } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-width")!);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      '![Art](x.png "Caption"){width="50%"}\n',
+    );
   });
 
   test("Set position… accepts a short name and rewrites in place as the canonical gp-* class", async () => {
@@ -542,6 +612,37 @@ describe("image kind", () => {
     );
   });
 
+  test("Unwrap image removes a surrounding markdown link and preserves image properties", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = '[![Art](x.png){width="50%" .gp-right}](https://example.com)\n';
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    const item = h.ctrl.items.find((i) => i.id === "image-unwrap")!;
+    expect(item?.label).toBe("Unwrap image");
+    await h.ctrl.runItem(item);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      '![Art](x.png){width="50%" .gp-right}\n',
+    );
+  });
+
+  test("Unwrap image handles balanced link parentheses and link titles", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] =
+      '[![Art](x.png "Caption"){width="50%"}](https://example.com/a_(b) "title ) retained")\n';
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art", source: { token: '![Art](x.png "Caption")', occurrence: 0 } } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-unwrap")!);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      '![Art](x.png "Caption"){width="50%"}\n',
+    );
+  });
+
   test("Set size… appends a size class without touching the rest", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";
@@ -561,7 +662,7 @@ describe("image kind", () => {
     h.readFileMap["/proj/ch1.md"] = '<img src="cat.png" alt="cat">\n';
     h.client.emit({
       name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "cat.png", alt: "cat" } }),
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "cat.png", alt: "cat", source: null } }),
     });
     await flush();
     expect(h.ctrl.items.map((i) => i.id)).toEqual(["edit-block-editor"]);
@@ -583,6 +684,44 @@ describe("image kind", () => {
 });
 
 describe("link kind", () => {
+  test("Edit link preserves an escaped label and markdown title", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = String.raw`See [A \[link\]](old "Title") now.` + "\n";
+    h.promptResult = "new";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "link",
+        range: [0, 1],
+        link: { href: "old", text: "A [link]", source: { token: String.raw`[A \[link\]](old "Title")`, occurrence: 0 } },
+      }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "link-edit")!);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      String.raw`See [A \[link\]](new "Title") now.` + "\n",
+    );
+  });
+
+  test("Edit link safely wraps a destination containing spaces", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = '[A](old "Title")\n';
+    h.promptResult = "new path";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "link",
+        range: [0, 1],
+        link: { href: "old", text: "A", source: { token: '[A](old "Title")', occurrence: 0 } },
+      }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "link-edit")!);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      '[A](<new path> "Title")\n',
+    );
+  });
+
   test("Copy link target copies the rendered href even for a linkified bare URL", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "Visit https://example.com now.\n";

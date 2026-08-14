@@ -47,3 +47,7 @@ Filler paragraph number eighteen, added only to lengthen the chapter's markdown 
 Filler paragraph number nineteen, added only to lengthen the chapter's markdown source so that the CodeMirror editor pane cannot show the whole file without scrolling.
 
 Filler paragraph number twenty, added only to lengthen the chapter's markdown source so that the CodeMirror editor pane cannot show the whole file without scrolling.
+
+@page image
+
+[![Wrapped test image](media/wrapped-test.svg "Preserved image title"){width=160px .gp-center}](https://example.com/a_(b) "Wrapper title ) retained")

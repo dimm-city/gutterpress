@@ -14,10 +14,8 @@
  * `_electron`, a fresh `--user-data-dir` per run, a fresh temp copy of a
  * fixture project, `[etest]`-prefixed logging, exit 0/1.
  *
- * UNLIKE the other `tests/integration/*.pw.mjs` scripts, this one launches
- * the UNPACKED build directly (`out/main/main.js` via the raw `electron`
- * binary from `node_modules`) rather than a packaged AppImage/exe — no
- * `npm run dist:*` required, only `npm run build && npm run electron:build`.
+ * When passed a packaged executable this test launches that exact artifact.
+ * With no argument it falls back to the unpacked development build.
  *
  * DOM topology this test relies on (verified empirically, not assumed):
  *   main app:// page
@@ -36,8 +34,8 @@
  * -a`, exactly as render-perf-gate.yml does for the other packaged-app CI
  * gates. Locally, with a real display, drop the xvfb-run wrapper.)
  *
- * Exit 0 if every check passed, 1 if any failed. Each of the 7 plan
- * verifications is run independently (a failure in one does not stop the
+ * Exit 0 if every check passed, 1 if any failed. Each verification is run
+ * independently (a failure in one does not stop the
  * others from running) and reported in a summary at the end.
  */
 import { _electron as electron } from "playwright-core";
@@ -53,10 +51,16 @@ const desktopDir = resolve(__dirname, "..", "..");
 
 function log(msg) { console.log(`[etest] ${msg}`); }
 
-const mainJsArg = process.argv[2];
-const mainJs = resolve(mainJsArg || join(desktopDir, "out", "main", "main.js"));
-if (!existsSync(mainJs)) {
-  console.error(`[etest] FAIL: no ${mainJs} — run \`npm run build && npm run electron:build\` first`);
+const cliArgs = process.argv.slice(2);
+const requirePackaged = cliArgs.includes("--require-packaged");
+const executableArg = cliArgs.find((arg) => !arg.startsWith("--"));
+const desktopVersion = JSON.parse(readFileSync(join(desktopDir, "package.json"), "utf8")).version;
+const defaultTarget = requirePackaged
+  ? join(desktopDir, "dist", `Gutterpress-${desktopVersion}.AppImage`)
+  : join(desktopDir, "out", "main", "main.js");
+const launchTarget = resolve(executableArg || defaultTarget);
+if (!existsSync(launchTarget)) {
+  console.error(`[etest] FAIL: no ${launchTarget} — build the desktop first`);
   process.exit(1);
 }
 
@@ -106,10 +110,17 @@ writeFileSync(
   }),
 );
 
-log(`launching ${mainJs} via ${electronBin}`);
+const packaged = /(?:\.AppImage|\.exe)$/i.test(launchTarget) || launchTarget.includes(".app/");
+if (requirePackaged && !packaged) {
+  console.error(`[etest] FAIL: --require-packaged received a development build: ${launchTarget}`);
+  process.exit(1);
+}
+log(`launching ${packaged ? "packaged app" : "development build"}: ${launchTarget}`);
 const electronApp = await electron.launch({
-  executablePath: electronBin,
-  args: [mainJs, `--user-data-dir=${userDataDir}`, "--no-sandbox"],
+  executablePath: packaged ? launchTarget : electronBin,
+  args: packaged
+    ? [`--user-data-dir=${userDataDir}`, "--no-sandbox"]
+    : [launchTarget, `--user-data-dir=${userDataDir}`, "--no-sandbox"],
   env: { ...process.env, ELECTRON_DISABLE_GPU: "1" },
   timeout: 60_000,
 });
@@ -186,6 +197,12 @@ try {
   }
   function centerOf(box) { return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; }
 
+  async function assertEditorClosed(action) {
+    if (await page.locator(".cm-editor").count()) {
+      throw new Error(`${action} opened the editor pane`);
+    }
+  }
+
   async function dismissMenuViaOutsideClick() {
     // Escape does not reliably close the menu (see step 4's note) — click a
     // known-inert point in the MAIN document (never inside either iframe:
@@ -221,6 +238,21 @@ try {
     if (count !== 0) {
       throw new Error(`expected 0 native context-menu events after an in-page menu click, got ${count}`);
     }
+  });
+
+  await step("3b. the real block-menu action opens an operable inline editor", async () => {
+    await page.locator(".context-menu-item", { hasText: "Edit this block" }).click();
+    const overlay = page.locator(".block-edit-overlay");
+    await overlay.waitFor({ state: "visible", timeout: 10_000 });
+    const input = overlay.locator(".cm-content");
+    await input.click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(" test");
+    const text = await input.textContent();
+    if (!text?.includes("test")) throw new Error("typing did not reach the inline block editor");
+    await page.keyboard.press("Escape");
+    await overlay.waitFor({ state: "hidden", timeout: 10_000 });
+    await assertEditorClosed("inline block editing");
   });
 
   await dismissMenuViaOutsideClick();
@@ -266,6 +298,7 @@ try {
         "see NOTE above and this test's final report; recovered via outside-click to continue)",
       );
     }
+    await assertEditorClosed("keyboard menu use");
   });
   // Belt-and-braces: whatever step 4 left open, make sure it's actually closed
   // before step 5 asserts "no menu appears".
@@ -295,11 +328,8 @@ try {
   // ── 6. An actual edit round-trips to disk (only the intended region
   //      changes) ─────────────────────────────────────────────────────────────
   await step("6. a menu action's edit round-trips to disk, touching only the intended region", async () => {
-    // "Insert page break before" needs no window.prompt() — the app uses
-    // window.prompt() for several menu actions (alt text, width, position,
-    // link edit, marker edit); rather than stub/auto-accept that dialog, this
-    // test picks the one block action that mutates with no prompt at all, per
-    // the task's explicit allowance.
+    // Use a no-dialog action here so this step isolates exact boundary editing.
+    // Step 8 separately drives the real in-app property dialog.
     const box = await boxOf(targetPara);
     const { x, y } = centerOf(box);
     await page.mouse.click(x, y, { button: "right" });
@@ -334,12 +364,12 @@ try {
       );
     }
     log("disk content matches the expected exact insertion (only the boundary before the target block changed)");
+    await assertEditorClosed("a preview menu edit");
   });
 
-  // ── 7. Click-to-source: clicking a preview block reveals it in the editor,
-  //      opening the pane if closed ──────────────────────────────────────────
+  // ── 7. Passive preview interaction never opens the editor ────────────────
   const DEEP_TARGET_TEXT = "This deep paragraph is the click to source target";
-  await step("7. clicking a preview block reveals it in the editor, opening the pane if closed", async () => {
+  await step("7. clicking a preview block leaves the closed editor closed", async () => {
     // Step 6's edit triggers an async settled-write -> chapter-splice
     // refresh; let it fully settle first (the loading overlay clears, the
     // book iframe re-attaches) so this step's coordinates are computed
@@ -348,76 +378,186 @@ try {
     await book.locator("body").waitFor({ state: "attached", timeout: 15_000 });
     await page.waitForTimeout(300);
 
-    const cmBefore = await page.locator(".cm-editor").count();
-    if (cmBefore !== 0) {
-      note(`editor pane was already open (.cm-editor count=${cmBefore}) before this step — "opens if closed" is not exercised, only "reveals the right line"`);
-    }
-    // The fixture's last paragraph sits ~20 paragraphs into the file
-    // specifically so that revealing it requires the CodeMirror scroller to
-    // actually move — with a short file the whole document fits in the pane
-    // already and "revealed the right line" is untestable (scrollTop stays 0
-    // regardless of whether the reveal logic ran at all). This was caught
-    // empirically: an earlier, shorter fixture made this assertion vacuous.
+    if (await page.locator(".cm-editor").count()) throw new Error("editor started open");
     const deepPara = book.locator("p", { hasText: DEEP_TARGET_TEXT });
     await deepPara.first().waitFor({ state: "visible", timeout: 15_000 });
+    const box = await boxOf(deepPara);
+    const { x, y } = centerOf(box);
+    await page.mouse.click(x, y, { button: "left" });
+    await page.waitForTimeout(750);
+    await assertEditorClosed("a normal preview click");
 
-    // Retry the click a few times: a re-render landing between the
-    // coordinate read and the click dispatch (both real async gaps) can make
-    // a single attempt miss, which is a timing hazard of this harness, not a
-    // feature behavior — confirmed by re-fetching fresh coordinates each try.
-    let opened = false;
-    for (let attempt = 0; attempt < 3 && !opened; attempt++) {
-      const box = await boxOf(deepPara);
-      const { x, y } = centerOf(box);
-      await page.mouse.click(x, y, { button: "left" });
-      opened = await page
-        .locator(".cm-editor")
-        .waitFor({ state: "visible", timeout: 5_000 })
-        .then(() => true)
-        .catch(() => false);
-      if (!opened) note(`click-to-source attempt ${attempt + 1} did not open the editor within 5s — retrying`);
-    }
-    if (!opened) throw new Error("editor pane never opened after 3 click attempts");
+    await page.mouse.click(x, y, { button: "right" });
+    await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
+    const sourceItem = page.locator(".context-menu-item", { hasText: "Go to source" });
+    if (await sourceItem.isEnabled()) throw new Error("Go to source is enabled while the editor is closed");
+    await dismissMenuViaOutsideClick();
+    await assertEditorClosed("the preview source menu");
+  });
 
-    // Confirm it revealed the RIGHT line, not just "some editor opened" —
-    // poll for the CodeMirror scroller to settle with the target line at (or
-    // very near) its top, matching MarkdownEditor.svelte's revealLine()
-    // (`EditorView.scrollIntoView(pos, { y: "start" })`), AND that the
-    // scroller actually moved (scrollTop > 0) — proof this is real scroll
-    // behavior, not a no-op that happens to already show the target.
-    let settled = null;
-    const deadline = Date.now() + 10_000;
-    while (Date.now() < deadline) {
-      settled = await page.evaluate((needle) => {
-        const scroller = document.querySelector(".cm-editor .cm-scroller");
-        if (!scroller) return null;
-        const line = Array.from(document.querySelectorAll(".cm-editor .cm-line")).find((l) =>
-          l.textContent.includes(needle),
-        );
-        if (!line) return { found: false, scrollTop: scroller.scrollTop };
-        const lineTop = line.getBoundingClientRect().top;
-        const scrollerTop = scroller.getBoundingClientRect().top;
-        return { found: true, offset: lineTop - scrollerTop, scrollTop: scroller.scrollTop };
-      }, DEEP_TARGET_TEXT);
-      // Tolerance: 200px (~27% of the 732px pane observed in this window
-      // size) distinguishes "revealed near the top" from "scrolled to an
-      // unrelated part of the document" (which misses by 500px+ in this
-      // fixture) without demanding pixel-perfect flush-top alignment, which
-      // the plan does not promise. Empirically, a fresh click lands within a
-      // few px; a reveal issued right after a prior commit-engine edit (this
-      // test's step 6 ran first) lands ~100-110px off — still clearly "near
-      // the top", not a functional miss.
-      if (settled?.found && Math.abs(settled.offset) < 200) break;
-      await sleep(200);
+  // ── 8. Image menus expose real property actions and a clear unwrap action ─
+  await step("8. right-clicking an image exposes usable property and unwrap actions", async () => {
+    const image = book.locator('img[alt="Wrapped test image"]');
+    const box = await boxOf(image);
+    const { x, y } = centerOf(box);
+    await page.mouse.click(x, y, { button: "right" });
+    await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
+    const labels = (await page.locator(".context-menu-item").allTextContents()).map((s) => s.trim());
+    for (const expected of ["Edit alt text…", "Set width…", "Set position…", "Set size…"]) {
+      if (!labels.includes(expected)) throw new Error(`missing image action ${JSON.stringify(expected)}; got ${JSON.stringify(labels)}`);
     }
-    if (!settled?.found) throw new Error("target line never appeared in the editor's rendered viewport");
-    if (settled.scrollTop === 0) {
-      throw new Error("editor scroller never left scrollTop 0 — reveal did not actually scroll (or the fixture is too short to tell)");
+    const widthItem = page.locator(".context-menu-item", { hasText: "Set width…" });
+    if (!(await widthItem.isEnabled())) throw new Error("image property actions are disabled");
+
+    await widthItem.click();
+    const prompt = page.locator(".text-prompt");
+    await prompt.waitFor({ state: "visible", timeout: 10_000 });
+    await prompt.locator("input").fill("55%");
+    await prompt.locator('button[type="submit"]').click();
+    await prompt.waitFor({ state: "hidden", timeout: 10_000 });
+    let source = readFileSync(chapterPath, "utf8");
+    const widthDeadline = Date.now() + 15_000;
+    while (Date.now() < widthDeadline && !source.includes('width="55%"')) {
+      await sleep(100);
+      source = readFileSync(chapterPath, "utf8");
     }
-    if (Math.abs(settled.offset) >= 200) {
-      throw new Error(`editor did not scroll the target line near the top: offset ${settled.offset}px from scroller top (scrollTop ${settled.scrollTop})`);
+    if (!source.includes('width="55%"')) throw new Error("Set width did not update the real markdown file");
+    if (!source.includes('"Preserved image title"')) throw new Error("Set width deleted the image title");
+
+    const sourceAfterWidth = source;
+    const openImageAction = async (label) => {
+      await page.locator(".loading-overlay").waitFor({ state: "hidden", timeout: 15_000 }).catch(() => {});
+      const currentImage = book.locator('img[alt="Wrapped test image"]');
+      const currentPoint = centerOf(await boxOf(currentImage));
+      await page.mouse.click(currentPoint.x, currentPoint.y, { button: "right" });
+      await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
+      await page.locator(".context-menu-item", { hasText: label }).click();
+      await page.locator(".text-prompt").waitFor({ state: "visible", timeout: 10_000 });
+    };
+
+    await openImageAction("Set position…");
+    await page.locator('.text-prompt button[type="button"]', { hasText: "Cancel" }).click();
+    await page.locator(".text-prompt").waitFor({ state: "hidden", timeout: 10_000 });
+    if (readFileSync(chapterPath, "utf8") !== sourceAfterWidth) throw new Error("Cancel changed the image source");
+
+    await openImageAction("Set size…");
+    await page.keyboard.press("Escape");
+    await page.locator(".text-prompt").waitFor({ state: "hidden", timeout: 10_000 });
+    if (readFileSync(chapterPath, "utf8") !== sourceAfterWidth) throw new Error("Escape changed the image source");
+
+    await page.locator(".loading-overlay").waitFor({ state: "hidden", timeout: 15_000 }).catch(() => {});
+    const updatedImage = book.locator('img[alt="Wrapped test image"]');
+    const updatedBox = await boxOf(updatedImage);
+    const updatedPoint = centerOf(updatedBox);
+    await page.mouse.click(updatedPoint.x, updatedPoint.y, { button: "right" });
+    await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
+    const unwrap = page.locator(".context-menu-item", { hasText: "Unwrap image" });
+    if (!(await unwrap.count())) {
+      const updatedLabels = (await page.locator(".context-menu-item").allTextContents()).map((s) => s.trim());
+      throw new Error(`missing "Unwrap image" after property edit; got ${JSON.stringify(updatedLabels)}`);
     }
-    log(`editor scrolled to target line (scrollTop=${settled.scrollTop}, offset from scroller top=${settled.offset}px)`);
+    await unwrap.click();
+    const unwrapDeadline = Date.now() + 15_000;
+    while (Date.now() < unwrapDeadline && /^\[!\[Wrapped test image\]/m.test(source)) {
+      await sleep(100);
+      source = readFileSync(chapterPath, "utf8");
+    }
+    if (/\[!\[Wrapped test image\]/.test(source)) throw new Error("Unwrap image did not remove the image link wrapper");
+    if (!source.includes('![Wrapped test image](media/wrapped-test.svg "Preserved image title"){width="55%" .gp-center}')) {
+      throw new Error("Unwrap image did not preserve the complete image token");
+    }
+    await assertEditorClosed("image property and unwrap actions");
+  });
+
+  // ── 9. A real watcher-driven update keeps the exact preview viewport ─────
+  await step("9. a real preview update preserves the two-column scroll position", async () => {
+    await dismissMenuViaOutsideClick();
+    if (await page.locator(".cm-editor").count()) {
+      await page.locator('[aria-label="Toggle markdown editor"]').click();
+      await page.locator(".cm-editor").waitFor({ state: "detached", timeout: 10_000 });
+    }
+
+    await book.locator("body").evaluate(() => window.previewAPI.setViewMode("two-column", true));
+    const deepPara = book.locator("p", { hasText: DEEP_TARGET_TEXT });
+    await deepPara.scrollIntoViewIfNeeded();
+    await book.locator("body").evaluate(() => window.scrollBy({ left: -80, top: 0, behavior: "instant" }));
+    await page.waitForTimeout(250);
+    const before = await book.locator("body").evaluate(() => ({
+      x: window.scrollX,
+      y: window.scrollY,
+      page: window.previewAPI.getCurrentPage(),
+    }));
+    if (before.x === 0 && before.y === 0) throw new Error("fixture did not produce a nonzero preview scroll position");
+
+    const active = shell.locator("#gutterpress-active");
+    const oldSrc = await active.getAttribute("src");
+    const current = readFileSync(chapterPath, "utf8");
+    writeFileSync(chapterPath, `${current}\n<!-- packaged viewport stability probe -->\n`);
+
+    const deadline = Date.now() + 20_000;
+    let newSrc = oldSrc;
+    while (Date.now() < deadline && newSrc === oldSrc) {
+      await sleep(100);
+      newSrc = await active.getAttribute("src");
+    }
+    if (newSrc === oldSrc) throw new Error("preview frame was not replaced after the real file update");
+    await page.locator(".loading-overlay").waitFor({ state: "hidden", timeout: 15_000 }).catch(() => {});
+    await page.waitForTimeout(500);
+
+    const after = await book.locator("body").evaluate(() => ({
+      x: window.scrollX,
+      y: window.scrollY,
+      page: window.previewAPI.getCurrentPage(),
+    }));
+    const dx = Math.abs(after.x - before.x);
+    const dy = Math.abs(after.y - before.y);
+    if (dx > 4 || dy > 4) {
+      throw new Error(`viewport jumped from ${JSON.stringify(before)} to ${JSON.stringify(after)} (dx=${dx}, dy=${dy})`);
+    }
+  });
+
+  // ── 10. Every adjacent page has the same visible gap ─────────────────────
+  await step("10. page spacing is consistent in the packaged preview", async () => {
+    await book.locator("body").evaluate(() => window.previewAPI.setViewMode("single", true));
+    await page.waitForTimeout(500);
+    const geometry = await book.locator("body").evaluate(() => {
+      const sheets = Array.from(document.querySelectorAll(".gp-sheet"))
+        .sort((a, b) => Number(a.getAttribute("data-page")) - Number(b.getAttribute("data-page")))
+        .map((sheet) => {
+          const rect = sheet.getBoundingClientRect();
+          return {
+            page: Number(sheet.getAttribute("data-page")),
+            run: Array.from(document.querySelectorAll(".gp-run")).indexOf(sheet.closest(".gp-run")),
+            top: rect.top,
+            bottom: rect.bottom,
+          };
+        });
+      return {
+        pages: sheets.length,
+        runs: document.querySelectorAll(".gp-run").length,
+        gaps: sheets.slice(1).map((sheet, i) => Math.round(sheet.top - sheets[i].bottom)),
+        runBoundaryGaps: sheets.flatMap((sheet, i) =>
+          i > 0 && sheet.run !== sheets[i - 1].run
+            ? [Math.round(sheet.top - sheets[i - 1].bottom)]
+            : [],
+        ),
+      };
+    });
+    if (geometry.gaps.length < 2) {
+      throw new Error(`fixture produced only ${geometry.pages} pages; spacing check needs at least 3`);
+    }
+    if (geometry.runs < 2 || geometry.runBoundaryGaps.length < 1) {
+      throw new Error(`fixture produced ${geometry.runs} page runs; cross-run spacing was not exercised`);
+    }
+    const smallest = Math.min(...geometry.gaps);
+    const largest = Math.max(...geometry.gaps);
+    log(`single-page visual gaps: ${JSON.stringify(geometry.gaps)}`);
+    if (largest - smallest > 1) {
+      throw new Error(`page gaps are inconsistent: ${JSON.stringify(geometry.gaps)}`);
+    }
+    if (geometry.runBoundaryGaps.some((gap) => Math.abs(gap - geometry.gaps[0]) > 1)) {
+      throw new Error(`named-page boundary gaps differ: ${JSON.stringify(geometry.runBoundaryGaps)}`);
+    }
   });
 } catch (err) {
   console.error("[etest] uncaught:", err);
