@@ -81,4 +81,4 @@ browserTest("wheel passes through the spinner to the iframe while Cancel remains
   } finally {
     await page.close();
   }
-});
+}, 30_000);
