@@ -15,6 +15,10 @@
   var desiredRevision = appliedRevision;
   var reportAppliedState = function () {};
   var activeReady = false;
+  var lastViewportChangeAt = 0;
+  var pendingSwap = null;
+  var pendingSwapTimer = null;
+  var SCROLL_IDLE_MS = 250;
   if (!active) return;
 
   // Transparent bridge relay: forward host-toolbar commands to the active book
@@ -23,8 +27,12 @@
     try {
       if (window.parent !== window && e.source === window.parent) {
         if (active && active.contentWindow) active.contentWindow.postMessage(e.data, '*');
-      } else if (active && e.source === active.contentWindow && window.parent !== window) {
+      } else if (active && e.source === active.contentWindow) {
         var data = e.data;
+        if (data && data.type === 'gutterpress:event' && data.name === 'viewportChanged') {
+          lastViewportChangeAt = Date.now();
+          if (pendingSwap) armPendingSwap();
+        }
         if (active === hotReloadFrame && data && data.type === 'gutterpress:event' && data.name === 'ready') return;
         if (active === hotReloadFrame && data && data.type === 'gutterpress:event' && data.name === 'renderingComplete') {
           var detail = {}, sourceDetail = data.detail || {};
@@ -39,7 +47,7 @@
           data = { type: data.type, name: data.name, detail: detail };
           hotReloadFrame = null;
         }
-        window.parent.postMessage(data, '*');
+        if (window.parent !== window) window.parent.postMessage(data, '*');
       } else if (retiring && e.source === retiring.contentWindow && window.parent !== window) {
         var retiringData = e.data;
         if (
@@ -192,6 +200,38 @@
     document.body.appendChild(frame);
   }
 
+  // Paginating a large replacement frame monopolizes Chromium's renderer
+  // thread. Starting it in the middle of a wheel gesture makes the visible
+  // preview appear to seize and then jump. Autosave has already decided WHEN
+  // content is ready; this tiny gate only waits when the reader is actively
+  // scrolling, then starts immediately after a short quiet period.
+  function beginPendingSwap() {
+    pendingSwapTimer = null;
+    var next = pendingSwap;
+    pendingSwap = null;
+    if (!next) return;
+    if (window.parent !== window) {
+      window.parent.postMessage({
+        type: 'gutterpress:event',
+        name: 'renderingStarted',
+        detail: { hotReload: true, revision: next.revision }
+      }, '*');
+    }
+    swap(next.instance, next.revision);
+  }
+
+  function armPendingSwap() {
+    if (pendingSwapTimer !== null) clearTimeout(pendingSwapTimer);
+    var delay = Math.max(0, SCROLL_IDLE_MS - (Date.now() - lastViewportChangeAt));
+    if (delay === 0) beginPendingSwap();
+    else pendingSwapTimer = setTimeout(beginPendingSwap, delay);
+  }
+
+  function scheduleSwap(instance, revision) {
+    pendingSwap = { instance: instance, revision: revision };
+    armPendingSwap();
+  }
+
   // Incremental chapter splice used to live here (spliceChapter): it needed
   // Paged.js's `.pagedjs_page` DOM to find a chapter's live page range and
   // graft a freshly-paginated replacement into it. Paged.js has been removed
@@ -286,18 +326,14 @@
     }
     if (
       instance === desiredInstance &&
-      (revision < desiredRevision || (revision === desiredRevision && building))
+      (revision < desiredRevision || (revision === desiredRevision && (building || pendingSwap)))
     ) return;
     desiredInstance = instance;
     desiredRevision = revision;
-    if (window.parent !== window) {
-      window.parent.postMessage({
-        type: 'gutterpress:event',
-        name: 'renderingStarted',
-        detail: { hotReload: true, revision: revision }
-      }, '*');
-    }
-    swap(instance, revision);
+    scheduleSwap(instance, revision);
   });
-  window.addEventListener('beforeunload', disconnectChanges);
+  window.addEventListener('beforeunload', function () {
+    if (pendingSwapTimer !== null) clearTimeout(pendingSwapTimer);
+    disconnectChanges();
+  });
 })();

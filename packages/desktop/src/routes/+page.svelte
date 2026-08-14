@@ -2082,10 +2082,16 @@
     title: string;
     label: string;
     initialValue: string;
+    options?: readonly { value: string; label: string }[];
     resolve: (value: string | null) => void;
   } | null>(null);
 
-  async function promptText(opts: { title: string; label: string; initialValue: string }): Promise<string | null> {
+  async function promptText(opts: {
+    title: string;
+    label: string;
+    initialValue: string;
+    options?: readonly { value: string; label: string }[];
+  }): Promise<string | null> {
     return new Promise((resolve) => {
       textPrompt = { ...opts, resolve };
     });
@@ -3430,6 +3436,7 @@
     title={textPrompt.title}
     label={textPrompt.label}
     initialValue={textPrompt.initialValue}
+    options={textPrompt.options}
     onDone={finishTextPrompt}
   />
 {/if}

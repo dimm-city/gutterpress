@@ -10,7 +10,7 @@
 
 import http from 'node:http';
 import net from 'node:net';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'path';
 import { WebSocket, WebSocketServer } from 'ws';
@@ -331,19 +331,10 @@ function injectHmrClient(html: string, revision: number, instanceId: string): st
  * Serve a static file (or directory's `index.html`) with HMR injection for
  * HTML responses. Writes 404 if the path doesn't resolve to a real file.
  *
- * `cacheControl` is the value sent in the Cache-Control header. Defaults to
- * 'no-store' — the preview server binds a NEW port every launch, so any disk
- * caching keys per-origin and accumulates a fresh copy of every asset on each
- * run (this grew a user's HTTP cache to ~1.5 GB and made launch take ~10s as
- * Chromium indexed it). Live preview content changes on every edit anyway —
- * `state.tempDir`'s book.html on every rebuild, and any project file served
- * in place under `state.currentInputPath` whenever the author edits it — so
- * neither should ever be written to the HTTP disk cache; every caller below
- * serving one of those two roots relies on the 'no-store' default. The one
- * override is the embedded-assets route just below, which passes a long
- * cache value: those files are content-fixed per binary build (not per
- * project), so caching them across reloads within one preview session is
- * safe and saves re-downloading the ~900 KB polyfill on every page load.
+ * `cacheControl` is the value sent in the Cache-Control header. Generated
+ * HTML uses the `no-store` default. Project assets are served through
+ * `serveRevalidatedStatic` below so replacement frames can reuse unchanged
+ * image bytes without ever accepting an edited file as fresh.
  */
 async function serveStatic(
   absPath: string,
@@ -416,6 +407,81 @@ const EMBEDDED_CACHE_CONTROL = 'public, no-cache';
 /** Version-stamped ETag so a gutterpress upgrade invalidates the browser cache. */
 const EMBEDDED_ETAG = `"gutterpress-${PACKAGE_VERSION}"`;
 
+const PROJECT_ASSET_CACHE_CONTROL = 'private, no-cache';
+
+interface ProjectAssetValidator {
+  stamp: string;
+  etag: string;
+}
+
+/**
+ * Let replacement preview frames reuse unchanged local assets. `no-cache`
+ * still requires a request on every load; an exact content hash turns it into
+ * a body-less 304 only when the bytes really are unchanged. HTML deliberately
+ * stays on `serveStatic`'s `no-store` path because it contains each render.
+ * The desktop clears its previous random-origin preview cache before opening
+ * a project, bounding storage to the active preview instead of accumulating a
+ * fresh copy of a large book on every open.
+ */
+async function serveRevalidatedStatic(
+  req: http.IncomingMessage,
+  absPath: string,
+  res: http.ServerResponse,
+  validators: Map<string, ProjectAssetValidator>,
+): Promise<void> {
+  const extension = path.extname(absPath).toLowerCase();
+  if (extension === '.html' || extension === '.htm') {
+    await serveStatic(absPath, res);
+    return;
+  }
+
+  let fileStat;
+  try {
+    fileStat = await stat(absPath, { bigint: true });
+  } catch {
+    await serveStatic(absPath, res);
+    return;
+  }
+  if (!fileStat.isFile()) {
+    await serveStatic(absPath, res);
+    return;
+  }
+
+  const stamp = [
+    fileStat.dev,
+    fileStat.ino,
+    fileStat.size,
+    fileStat.mtimeNs,
+    fileStat.ctimeNs,
+  ].join(':');
+  let validator = validators.get(absPath);
+  let data: Buffer | undefined;
+  if (!validator || validator.stamp !== stamp) {
+    try {
+      data = await readFile(absPath);
+    } catch {
+      await serveStatic(absPath, res);
+      return;
+    }
+    const digest = createHash('sha256').update(data).digest('base64url');
+    validator = { stamp, etag: `"gutterpress-file-${digest}"` };
+    validators.set(absPath, validator);
+  }
+  const headers = { ETag: validator.etag, 'Cache-Control': PROJECT_ASSET_CACHE_CONTROL };
+  if (req.headers['if-none-match'] === validator.etag) {
+    res.writeHead(304, headers);
+    res.end();
+    return;
+  }
+  if (data) {
+    const contentType = STATIC_MIME[extension] ?? 'application/octet-stream';
+    res.writeHead(200, { 'Content-Type': contentType, ...headers });
+    res.end(data);
+    return;
+  }
+  await serveStatic(absPath, res, PROJECT_ASSET_CACHE_CONTROL, { ETag: validator.etag });
+}
+
 function matchesEmbedded(urlPathname: string): boolean {
   if (EMBEDDED_EXACT.has(urlPathname)) return true;
   return EMBEDDED_PREFIXES.some((p) => urlPathname.startsWith(p));
@@ -440,6 +506,7 @@ export async function createPreviewServer(
   const ACK_RETRY_MS = 2000;
   const MAX_ACK_RETRIES = 95;
   const instanceId = randomUUID();
+  const projectAssetValidators = new Map<string, ProjectAssetValidator>();
   let reloadRevision = 0;
   const clients = new Map<WebSocket, {
     acknowledgedRevision: number;
@@ -687,7 +754,7 @@ export async function createPreviewServer(
     // that our own inliner put it there, not where it happens to live.
     const cssAssetSource = state.cssAssets.get(pathname.replace(/^\/+/, ''));
     if (cssAssetSource) {
-      await serveStatic(cssAssetSource, res).catch((err: Error) => {
+      await serveRevalidatedStatic(req, cssAssetSource, res, projectAssetValidators).catch((err: Error) => {
         if (!res.headersSent) {
           res.writeHead(500);
           res.end(`Internal Server Error: ${err.message}`);
@@ -709,7 +776,10 @@ export async function createPreviewServer(
       res.end('Not Found');
       return;
     }
-    await serveStatic(absPath, res, 'no-store', {}, reloadRevision, instanceId).catch((err: Error) => {
+    const serve = servingProjectRoot
+      ? serveRevalidatedStatic(req, absPath, res, projectAssetValidators)
+      : serveStatic(absPath, res, 'no-store', {}, reloadRevision, instanceId);
+    await serve.catch((err: Error) => {
       if (!res.headersSent) {
         res.writeHead(500);
         res.end(`Internal Server Error: ${err.message}`);

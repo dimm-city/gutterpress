@@ -94,6 +94,12 @@ interface Harness {
   readFileMap: Record<string, string>;
   readFileImpl: ((path: string) => Promise<string>) | null;
   promptResult: string | null;
+  promptCalls: Array<{
+    title: string;
+    label: string;
+    initialValue: string;
+    options?: readonly { value: string; label: string }[];
+  }>;
   goToSourceCalls: Array<[string, number]>;
   openMediaPanelCalls: number;
   copyToClipboardCalls: string[];
@@ -119,6 +125,7 @@ function make(): Harness {
     readFileMap: {},
     readFileImpl: null,
     promptResult: "edited",
+    promptCalls: [],
     goToSourceCalls: [],
     openMediaPanelCalls: 0,
     copyToClipboardCalls: [],
@@ -143,7 +150,10 @@ function make(): Harness {
     commitEngine: commitEngine as unknown as CommitEngine,
     getIframeOrigin: () => h.iframeOrigin,
     getWorkspaceRect: () => h.workspaceRect,
-    promptText: async () => h.promptResult,
+    promptText: async (opts) => {
+      h.promptCalls.push(opts);
+      return h.promptResult;
+    },
     goToSource: (chapter, line) => h.goToSourceCalls.push([chapter, line]),
     openMediaPanel: () => h.openMediaPanelCalls++,
     copyToClipboard: async (text) => {
@@ -555,6 +565,15 @@ describe("image kind", () => {
     });
     await flush();
     await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-position")!);
+    expect(h.promptCalls[0]?.options).toEqual([
+      { value: "", label: "None — no position class" },
+      { value: "gp-center", label: "Center — .gp-center" },
+      { value: "gp-left", label: "Float left — .gp-left" },
+      { value: "gp-right", label: "Float right — .gp-right" },
+      { value: "gp-full", label: "Full width — .gp-full" },
+      { value: "gp-bleed", label: "Full bleed (own page, edge-to-edge) — .gp-bleed" },
+      { value: "gp-pin", label: "Pin to page — .gp-pin" },
+    ]);
     const call = h.commitEngine.calls[0] as { replacement: string };
     expect(call.replacement).toBe("![Art](x.png){.gp-left .gp-small}\n");
   });
@@ -585,6 +604,47 @@ describe("image kind", () => {
     await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-position")!);
     expect(h.toastErrorCalls.length).toBe(1);
     expect(h.commitEngine.calls).toEqual([]);
+  });
+
+  test("Set pin alignment… lists and applies the available edge combinations", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-pin .gp-top .gp-left .gp-small}\n";
+    h.promptResult = "bottom-right";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    const alignmentItem = h.ctrl.items.find((i) => i.id === "image-pin-alignment")!;
+    await h.ctrl.runItem(alignmentItem);
+    expect(alignmentItem.disabledReason).toBeUndefined();
+    expect(h.promptCalls[0]?.options).toEqual([
+      { value: "center", label: "Centered — no edge classes" },
+      { value: "top", label: "Top — .gp-top" },
+      { value: "bottom", label: "Bottom — .gp-bottom" },
+      { value: "left", label: "Left — .gp-left" },
+      { value: "right", label: "Right — .gp-right" },
+      { value: "top-left", label: "Top left — .gp-top .gp-left" },
+      { value: "top-right", label: "Top right — .gp-top .gp-right" },
+      { value: "bottom-left", label: "Bottom left — .gp-bottom .gp-left" },
+      { value: "bottom-right", label: "Bottom right — .gp-bottom .gp-right" },
+    ]);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      "![Art](x.png){.gp-pin .gp-bottom .gp-right .gp-small}\n",
+    );
+  });
+
+  test("Set pin alignment… is visible but disabled until position is pinned", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    const item = h.ctrl.items.find((i) => i.id === "image-pin-alignment")!;
+    expect(item.enabled).toBe(false);
+    expect(item.disabledReason).toBe("Choose Pin to page first.");
   });
 
   test("Wrap text to image shape toggles .gp-shape on, then off, preserving the rest", async () => {
@@ -646,15 +706,43 @@ describe("image kind", () => {
   test("Set size… appends a size class without touching the rest", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";
-    h.promptResult = "small";
+    // Select controls return the canonical option value, not the old free-text
+    // shorthand. Exercise the exact value the real modal submits.
+    h.promptResult = "gp-small";
     h.client.emit({
       name: "contextMenuRequested",
       detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
     });
     await flush();
     await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-size")!);
+    expect(h.promptCalls[0]?.options).toEqual([
+      { value: "", label: "None — no preset size class" },
+      { value: "gp-small", label: "Small (25%) — .gp-small" },
+      { value: "gp-medium", label: "Medium (50%) — .gp-medium" },
+      { value: "gp-large", label: "Large (75%) — .gp-large" },
+    ]);
     const call = h.commitEngine.calls[0] as { replacement: string };
     expect(call.replacement).toBe("![Art](x.png){.gp-right .gp-small}\n");
+  });
+
+  test("Set float spacing… uses canonical gap presets and preserves other classes", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right .gp-shape .my-note}\n";
+    h.promptResult = "gp-tight";
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-spacing")!);
+    expect(h.promptCalls[0]?.options).toEqual([
+      { value: "", label: "Default (1em) — no spacing class" },
+      { value: "gp-tight", label: "Tight (0.5em) — .gp-tight" },
+      { value: "gp-loose", label: "Loose (2em) — .gp-loose" },
+    ]);
+    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
+      "![Art](x.png){.gp-right .gp-shape .my-note .gp-tight}\n",
+    );
   });
 
   test("a raw HTML <img> block only offers 'Edit block in editor'", async () => {

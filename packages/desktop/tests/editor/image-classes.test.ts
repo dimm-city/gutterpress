@@ -9,18 +9,24 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  IMAGE_PIN_ALIGNMENT_OPTIONS,
   IMAGE_POSITION_OPTIONS,
   IMAGE_SHAPE_CLASS,
   IMAGE_SIZE_OPTIONS,
+  IMAGE_SPACING_OPTIONS,
+  getPinAlignment,
   getPositionClass,
   getSizeClass,
+  getSpacingClass,
   getWidth,
   hasShapeClass,
   normalizeClassInput,
   serializeImageAttrs,
+  setPinAlignment,
   setPositionClass,
   setShapeClass,
   setSizeClass,
+  setSpacingClass,
   setWidth,
   tokenizeImageAttrs,
 } from "../../src/lib/editor/image-classes";
@@ -170,6 +176,47 @@ describe("pinned positions are edited as one composed set", () => {
   });
 });
 
+describe("pin alignment is an explicit composed choice", () => {
+  test("reads and replaces both pin edge classes without touching other facets", () => {
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-top .gp-left .gp-small .my-note}");
+    expect(getPinAlignment(tokens)).toBe("top-left");
+    expect(
+      serializeImageAttrs(setPinAlignment(tokens, "bottom-right")),
+    ).toBe("{.gp-pin .gp-bottom .gp-right .gp-small .my-note}");
+  });
+
+  test("center removes edge modifiers but keeps the pin itself", () => {
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-bottom .gp-right}");
+    expect(serializeImageAttrs(setPinAlignment(tokens, "center"))).toBe("{.gp-pin}");
+  });
+
+  test("the option table includes every supported edge combination", () => {
+    expect(IMAGE_PIN_ALIGNMENT_OPTIONS.map((option) => option.value)).toEqual([
+      "center",
+      "top",
+      "bottom",
+      "left",
+      "right",
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right",
+    ]);
+  });
+});
+
+describe("float and shape spacing facet", () => {
+  test("reads, replaces, and clears only gp-tight/gp-loose", () => {
+    const tokens = tokenizeImageAttrs("{.gp-right .gp-tight .gp-shape .custom}");
+    expect(getSpacingClass(tokens)).toBe("gp-tight");
+    const loose = setSpacingClass(tokens, "gp-loose");
+    expect(serializeImageAttrs(loose)).toBe("{.gp-right .gp-loose .gp-shape .custom}");
+    expect(serializeImageAttrs(setSpacingClass(loose, null))).toBe(
+      "{.gp-right .gp-shape .custom}",
+    );
+  });
+});
+
 describe("normalizeClassInput", () => {
   test("accepts short names, canonical classes, and legacy aliases", () => {
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "right")).toBe("gp-right");
@@ -215,6 +262,8 @@ describe("drift gate against core GUTTERPRESS_CSS", () => {
     const canonical = [
       ...IMAGE_POSITION_OPTIONS.map((o) => o.class),
       ...IMAGE_SIZE_OPTIONS.map((o) => o.class),
+      ...IMAGE_SPACING_OPTIONS.map((o) => o.class),
+      ...IMAGE_PIN_ALIGNMENT_OPTIONS.flatMap((o) => o.classes),
       IMAGE_SHAPE_CLASS,
     ];
     expect(canonical.length).toBeGreaterThan(0);

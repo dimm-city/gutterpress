@@ -234,6 +234,88 @@ async function runPartialHorizontalAnchorRegression() {
   console.log("[desktop-test] PASS partial horizontal preview-shell anchor preservation");
 }
 
+async function runTopLevelScrollIdleRegression() {
+  const outer = new Window({ url: "http://localhost/" });
+  const document = outer.document;
+  Object.defineProperty(outer, "parent", { configurable: true, value: outer });
+  const active = document.createElement("iframe");
+  active.id = "gutterpress-active";
+  document.body.appendChild(active);
+  installBook(active);
+
+  let onChange;
+  const acknowledged = [];
+  outer.__GUTTERPRESS_INSTANCE = "cli";
+  outer.__GUTTERPRESS_REVISION = 0;
+  outer.__GUTTERPRESS_CHANGE_SOURCE = {
+    subscribe(callback) { onChange = callback; return () => {}; },
+    acknowledge(instance, revision) { acknowledged.push(`${instance}:${revision}`); },
+  };
+  outer.requestAnimationFrame = (callback) => callback();
+
+  const idleTimers = new Map();
+  const clearedTimers = [];
+  let nextTimerId = 1;
+  const fakeSetTimeout = (callback, ms = 0) => {
+    const id = nextTimerId++;
+    if (ms === 0) callback();
+    else if (ms <= 250) idleTimers.set(id, callback);
+    return id;
+  };
+  const fakeClearTimeout = (id) => {
+    clearedTimers.push(id);
+    idleTimers.delete(id);
+  };
+
+  const appendChild = document.body.appendChild.bind(document.body);
+  document.body.appendChild = (node) => {
+    const result = appendChild(node);
+    if (node.tagName === "IFRAME" && node !== active) {
+      installBook(node);
+      node.contentWindow.dispatchEvent(new node.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+      node.dispatchEvent(new outer.Event("load"));
+    }
+    return result;
+  };
+
+  const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
+  runShell(outer, document, fakeSetTimeout, fakeClearTimeout);
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+  active.dispatchEvent(new outer.Event("load"));
+
+  const dispatchViewportChanged = () => {
+    const event = new outer.Event("message");
+    Object.defineProperties(event, {
+      data: { value: { type: "gutterpress:event", name: "viewportChanged", detail: {} } },
+      source: { value: active.contentWindow },
+    });
+    outer.dispatchEvent(event);
+  };
+
+  dispatchViewportChanged();
+  onChange?.({ type: "content-update", instance: "cli", revision: 1, file: "chapter-1.md" });
+  const firstTimer = [...idleTimers.keys()].at(-1);
+  assert.equal(typeof firstTimer, "number", "CLI top-level: active scrolling defers the first revision");
+
+  onChange?.({ type: "content-update", instance: "cli", revision: 2, file: "chapter-2.md" });
+  const secondTimer = [...idleTimers.keys()].at(-1);
+  assert.notEqual(secondTimer, firstTimer, "CLI top-level: a newer revision replaces the pending timer");
+  assert.equal(clearedTimers.includes(firstTimer), true, "CLI top-level: the superseded timer is cancelled");
+
+  dispatchViewportChanged();
+  const finalTimer = [...idleTimers.keys()].at(-1);
+  assert.notEqual(finalTimer, secondTimer, "CLI top-level: continued scrolling rearms the idle window");
+  assert.equal(clearedTimers.includes(secondTimer), true, "CLI top-level: the earlier idle deadline is cancelled");
+  assert.equal(document.querySelectorAll("iframe").length, 1, "CLI top-level: no pagination starts mid-scroll");
+
+  const fireLatest = idleTimers.get(finalTimer);
+  idleTimers.delete(finalTimer);
+  fireLatest();
+  assert.equal(document.getElementById("gutterpress-active").__gutterpressRevision, 2);
+  assert.equal(acknowledged.at(-1), "cli:2", "CLI top-level: only the latest revision is applied");
+  console.log("[desktop-test] PASS CLI top-level scroll-idle latest-revision scheduling");
+}
+
 async function main() {
   const outer = new Window({ url: "http://localhost/" });
   const document = outer.document;
@@ -678,12 +760,40 @@ async function runNativeCoreRegression() {
   // readiness timeout must NOT fire before the explicit 'gp:layout'
   // dispatch below reaches it, or it discards the frame as "timed out".
   const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
-  runShell(outer, document, (callback, ms) => { if ((ms || 0) < 1000) callback(); }, clearTimeout);
+  let scrollIdleCallback = null;
+  runShell(outer, document, (callback, ms) => {
+    if ((ms || 0) > 0 && (ms || 0) <= 250) {
+      scrollIdleCallback = callback;
+      return 1;
+    }
+    if ((ms || 0) < 1000) callback();
+    return 2;
+  }, clearTimeout);
   active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
   active.dispatchEvent(new outer.Event("load"));
   active.contentWindow.scrollTo({ left: 0, top: 1600 });
 
+  const viewportEvent = new outer.Event("message");
+  Object.defineProperties(viewportEvent, {
+    data: { value: { type: "gutterpress:event", name: "viewportChanged", detail: {} } },
+    source: { value: active.contentWindow },
+  });
+  outer.dispatchEvent(viewportEvent);
+
   onChange?.({ type: "full-reload", instance: "instance-a", revision: 1 });
+
+  assert.equal(
+    [...document.querySelectorAll("iframe")].length,
+    1,
+    "native: a reload waits while preview scrolling is active",
+  );
+  assert.equal(
+    hostEvents.some((message) => message?.name === "renderingStarted"),
+    false,
+    "native: the loading state also waits for scroll idle",
+  );
+  assert.equal(typeof scrollIdleCallback, "function", "native: scroll idle arms one deferred reload");
+  scrollIdleCallback();
 
   const fresh = [...document.querySelectorAll("iframe")].find((frame) => frame !== active);
   assert.ok(fresh, "native: full-reload swaps in a freshly paginated iframe");
@@ -762,6 +872,7 @@ main()
   .then(runNativeCoreRegression)
   .then(runHorizontalAnchorRegression)
   .then(runPartialHorizontalAnchorRegression)
+  .then(runTopLevelScrollIdleRegression)
   .catch((error) => {
     console.error("[desktop-test] FAIL", error);
     process.exit(1);

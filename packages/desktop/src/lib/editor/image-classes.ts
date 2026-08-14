@@ -49,13 +49,37 @@ export const IMAGE_POSITION_OPTIONS: readonly ImageClassOption[] = [
   { class: "gp-right", short: "right", aliases: ["float-right"], label: "Float right" },
   { class: "gp-full", short: "full", aliases: ["full-width"], label: "Full width" },
   { class: "gp-bleed", short: "bleed", aliases: ["full-bleed"], label: "Full bleed (own page, edge-to-edge)" },
-  { class: "gp-pin", short: "pin", label: "Pin to page (centered)" },
+  { class: "gp-pin", short: "pin", label: "Pin to page" },
 ] as const;
 
 export const IMAGE_SIZE_OPTIONS: readonly ImageClassOption[] = [
   { class: "gp-small", short: "small", label: "Small (25%)" },
   { class: "gp-medium", short: "medium", label: "Medium (50%)" },
   { class: "gp-large", short: "large", label: "Large (75%)" },
+] as const;
+
+export const IMAGE_SPACING_OPTIONS: readonly ImageClassOption[] = [
+  { class: "gp-tight", short: "tight", label: "Tight (0.5em)" },
+  { class: "gp-loose", short: "loose", label: "Loose (2em)" },
+] as const;
+
+export interface ImagePinAlignmentOption {
+  value: string;
+  label: string;
+  classes: readonly string[];
+}
+
+/** Complete, valid edge combinations for a `.gp-pin` image. */
+export const IMAGE_PIN_ALIGNMENT_OPTIONS: readonly ImagePinAlignmentOption[] = [
+  { value: "center", label: "Centered", classes: [] },
+  { value: "top", label: "Top", classes: ["gp-top"] },
+  { value: "bottom", label: "Bottom", classes: ["gp-bottom"] },
+  { value: "left", label: "Left", classes: ["gp-left"] },
+  { value: "right", label: "Right", classes: ["gp-right"] },
+  { value: "top-left", label: "Top left", classes: ["gp-top", "gp-left"] },
+  { value: "top-right", label: "Top right", classes: ["gp-top", "gp-right"] },
+  { value: "bottom-left", label: "Bottom left", classes: ["gp-bottom", "gp-left"] },
+  { value: "bottom-right", label: "Bottom right", classes: ["gp-bottom", "gp-right"] },
 ] as const;
 
 export type ImagePositionClass = (typeof IMAGE_POSITION_OPTIONS)[number]["class"];
@@ -210,6 +234,26 @@ export function getSizeClass(tokens: readonly string[]): string | undefined {
   return undefined;
 }
 
+export function getSpacingClass(tokens: readonly string[]): string | undefined {
+  for (const token of tokens) {
+    const name = classTokenName(token);
+    if (name && optionFor(IMAGE_SPACING_OPTIONS, name)) return name;
+  }
+  return undefined;
+}
+
+/** Current visual pin alignment, accounting for core CSS's bottom/right wins. */
+export function getPinAlignment(tokens: readonly string[]): string | undefined {
+  if (!isPinned(tokens)) return undefined;
+  const vertical = tokens.includes(".gp-bottom")
+    ? "bottom"
+    : tokens.includes(".gp-top") ? "top" : "";
+  const horizontal = tokens.includes(".gp-right")
+    ? "right"
+    : tokens.includes(".gp-left") ? "left" : "";
+  return [vertical, horizontal].filter(Boolean).join("-") || "center";
+}
+
 /**
  * Replace all tokens matching `matches` with one value at the first match's
  * position. This makes a property edit authoritative even when hand-written
@@ -261,6 +305,27 @@ export function setSizeClass(tokens: readonly string[], cls: string | null): str
     isFacetToken(IMAGE_SIZE_OPTIONS),
     cls == null ? null : `.${cls}`,
   );
+}
+
+export function setSpacingClass(tokens: readonly string[], cls: string | null): string[] {
+  return setFacetToken(
+    tokens,
+    isFacetToken(IMAGE_SPACING_OPTIONS),
+    cls == null ? null : `.${cls}`,
+  );
+}
+
+/** Replace only a pinned image's edge modifiers; every other token survives. */
+export function setPinAlignment(tokens: readonly string[], value: string): string[] {
+  const option = IMAGE_PIN_ALIGNMENT_OPTIONS.find((candidate) => candidate.value === value);
+  if (!option || !isPinned(tokens)) return [...tokens];
+  const kept = tokens.filter((token) => {
+    const name = classTokenName(token);
+    return name == null || !PIN_EDGE_CLASSES.includes(name);
+  });
+  const pinAt = kept.indexOf(`.${IMAGE_PIN_CLASS}`);
+  kept.splice(pinAt + 1, 0, ...option.classes.map((cls) => `.${cls}`));
+  return kept;
 }
 
 /**

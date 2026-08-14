@@ -1662,6 +1662,7 @@ registerHostServices({
 // last). main.ts wires the live host touch-points and keeps a thin delegator.
 const previewOpen = new PreviewOpenController({
   loadLib,
+  clearPreviewAssetCache: () => session.defaultSession.clearCache(),
   getActivePreview: () => activePreview,
   setActivePreview: (preview) => {
     activePreview = preview;

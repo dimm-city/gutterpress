@@ -184,16 +184,34 @@ try {
   const targetPara = book.locator("p", { hasText: "target paragraph for right click testing" });
   const marginBox = book.locator('.gp-marginbox[data-box="top-center"]');
 
+  function isFrameSwapError(error) {
+    return /Cannot find context|Execution context was destroyed|Frame was detached/i.test(
+      error?.message || String(error),
+    );
+  }
+
   async function boxOf(locator) {
     // Defensive: the fixture's chapter is long enough that later steps'
     // targets are not guaranteed to be on the first rendered page (the viewer
     // stacks every sheet into one continuously scrollable stage) — scroll
     // into view first so page.mouse's absolute coordinates are meaningful
     // regardless of which page the element ends up on.
-    await locator.first().scrollIntoViewIfNeeded();
-    const box = await locator.first().boundingBox();
-    if (!box) throw new Error("locator has no bounding box (not visible?)");
-    return box;
+    let lastError;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        await locator.first().scrollIntoViewIfNeeded();
+        const box = await locator.first().boundingBox();
+        if (!box) throw new Error("locator has no bounding box (not visible?)");
+        return box;
+      } catch (error) {
+        if (!isFrameSwapError(error)) throw error;
+        lastError = error;
+      }
+      // A successful edit intentionally swaps #gutterpress-active. Reacquire
+      // the FrameLocator target if that atomic swap lands during this read.
+      await sleep(200);
+    }
+    throw lastError;
   }
   function centerOf(box) { return { x: box.x + box.width / 2, y: box.y + box.height / 2 }; }
 
@@ -403,18 +421,41 @@ try {
     await page.mouse.click(x, y, { button: "right" });
     await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
     const labels = (await page.locator(".context-menu-item").allTextContents()).map((s) => s.trim());
-    for (const expected of ["Edit alt text…", "Set width…", "Set position…", "Set size…"]) {
+    for (const expected of ["Edit alt text…", "Set custom width…", "Set position…", "Set size…"]) {
       if (!labels.includes(expected)) throw new Error(`missing image action ${JSON.stringify(expected)}; got ${JSON.stringify(labels)}`);
     }
-    const widthItem = page.locator(".context-menu-item", { hasText: "Set width…" });
+    const widthItem = page.locator(".context-menu-item", { hasText: "Set custom width…" });
     if (!(await widthItem.isEnabled())) throw new Error("image property actions are disabled");
+
+    let pendingPreviewRevision = null;
+    const previewRevision = async () => shell.locator("#gutterpress-active").evaluate(
+      (frame) => Number(frame.__gutterpressRevision) || 0,
+    );
+    const submitImagePrompt = async () => {
+      pendingPreviewRevision = await previewRevision();
+      await page.locator('.text-prompt button[type="submit"]').click();
+      await page.locator(".text-prompt").waitFor({ state: "hidden", timeout: 10_000 });
+    };
+    const waitForPendingPreview = async () => {
+      if (pendingPreviewRevision == null) return;
+      const prior = pendingPreviewRevision;
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        if (await previewRevision().catch(() => prior) > prior) {
+          pendingPreviewRevision = null;
+          await page.locator(".loading-overlay").waitFor({ state: "hidden", timeout: 15_000 });
+          return;
+        }
+        await sleep(100);
+      }
+      throw new Error(`preview did not advance past revision ${prior} after image edit`);
+    };
 
     await widthItem.click();
     const prompt = page.locator(".text-prompt");
     await prompt.waitFor({ state: "visible", timeout: 10_000 });
     await prompt.locator("input").fill("55%");
-    await prompt.locator('button[type="submit"]').click();
-    await prompt.waitFor({ state: "hidden", timeout: 10_000 });
+    await submitImagePrompt();
     let source = readFileSync(chapterPath, "utf8");
     const widthDeadline = Date.now() + 15_000;
     while (Date.now() < widthDeadline && !source.includes('width="55%"')) {
@@ -426,9 +467,11 @@ try {
 
     const sourceAfterWidth = source;
     const openImageAction = async (label) => {
-      await page.locator(".loading-overlay").waitFor({ state: "hidden", timeout: 15_000 }).catch(() => {});
+      await waitForPendingPreview();
       const currentImage = book.locator('img[alt="Wrapped test image"]');
-      const currentPoint = centerOf(await boxOf(currentImage));
+      const currentBox = await boxOf(currentImage);
+      const currentPoint = centerOf(currentBox);
+      log(`opening ${label} at ${JSON.stringify(currentBox)}`);
       await page.mouse.click(currentPoint.x, currentPoint.y, { button: "right" });
       await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
       await page.locator(".context-menu-item", { hasText: label }).click();
@@ -436,16 +479,107 @@ try {
     };
 
     await openImageAction("Set position…");
-    await page.locator('.text-prompt button[type="button"]', { hasText: "Cancel" }).click();
-    await page.locator(".text-prompt").waitFor({ state: "hidden", timeout: 10_000 });
-    if (readFileSync(chapterPath, "utf8") !== sourceAfterWidth) throw new Error("Cancel changed the image source");
+    const positionSelect = page.locator(".text-prompt select");
+    if (!(await positionSelect.count())) throw new Error("Set position did not provide a select list");
+    const positionOptions = await positionSelect.locator("option").allTextContents();
+    for (const expected of ["None — no position class", "Center — .gp-center", "Float right — .gp-right", "Full bleed (own page, edge-to-edge) — .gp-bleed", "Pin to page — .gp-pin"]) {
+      if (!positionOptions.includes(expected)) {
+        throw new Error(`missing position option ${JSON.stringify(expected)}; got ${JSON.stringify(positionOptions)}`);
+      }
+    }
+    await positionSelect.selectOption("gp-right");
+    await submitImagePrompt();
+    const positionDeadline = Date.now() + 15_000;
+    source = readFileSync(chapterPath, "utf8");
+    while (Date.now() < positionDeadline && !source.includes(".gp-right")) {
+      await sleep(100);
+      source = readFileSync(chapterPath, "utf8");
+    }
+    if (!source.includes(".gp-right")) throw new Error("Set position did not apply the selected class");
+    if (!source.includes('"Preserved image title"')) throw new Error("Set position deleted the image title");
+
+    await openImageAction("Set position…");
+    await page.locator(".text-prompt select").selectOption("gp-pin");
+    await submitImagePrompt();
+    const pinDeadline = Date.now() + 15_000;
+    while (Date.now() < pinDeadline && !readFileSync(chapterPath, "utf8").includes(".gp-pin")) await sleep(100);
+    if (!readFileSync(chapterPath, "utf8").includes(".gp-pin")) throw new Error("Set position did not apply .gp-pin");
+
+    await openImageAction("Set pin alignment…");
+    const alignmentSelect = page.locator(".text-prompt select");
+    const alignmentOptions = await alignmentSelect.locator("option").allTextContents();
+    for (const expected of ["Centered — no edge classes", "Top left — .gp-top .gp-left", "Bottom right — .gp-bottom .gp-right"]) {
+      if (!alignmentOptions.includes(expected)) {
+        throw new Error(`missing pin alignment option ${JSON.stringify(expected)}; got ${JSON.stringify(alignmentOptions)}`);
+      }
+    }
+    await alignmentSelect.selectOption("bottom-right");
+    await submitImagePrompt();
+    const alignmentDeadline = Date.now() + 15_000;
+    while (Date.now() < alignmentDeadline && !readFileSync(chapterPath, "utf8").includes(".gp-pin .gp-bottom .gp-right")) await sleep(100);
+    if (!readFileSync(chapterPath, "utf8").includes(".gp-pin .gp-bottom .gp-right")) {
+      throw new Error("Set pin alignment did not apply the selected edge classes");
+    }
+
+    await openImageAction("Set position…");
+    await page.locator(".text-prompt select").selectOption("gp-right");
+    await submitImagePrompt();
+    const unpinDeadline = Date.now() + 15_000;
+    source = readFileSync(chapterPath, "utf8");
+    while (Date.now() < unpinDeadline && (source.includes(".gp-pin") || source.includes(".gp-bottom"))) {
+      await sleep(100);
+      source = readFileSync(chapterPath, "utf8");
+    }
+    if (source.includes(".gp-pin") || source.includes(".gp-bottom") || !source.includes(".gp-right")) {
+      throw new Error("Switching from pin back to float right left stale pin classes");
+    }
 
     await openImageAction("Set size…");
+    const sizeSelect = page.locator(".text-prompt select");
+    if (!(await sizeSelect.count())) throw new Error("Set size did not provide a select list");
+    const sizeOptions = await sizeSelect.locator("option").allTextContents();
+    for (const expected of ["None — no preset size class", "Small (25%) — .gp-small", "Medium (50%) — .gp-medium", "Large (75%) — .gp-large"]) {
+      if (!sizeOptions.includes(expected)) {
+        throw new Error(`missing size option ${JSON.stringify(expected)}; got ${JSON.stringify(sizeOptions)}`);
+      }
+    }
+    await sizeSelect.selectOption("gp-small");
+    await submitImagePrompt();
+    const sizeDeadline = Date.now() + 15_000;
+    source = readFileSync(chapterPath, "utf8");
+    while (Date.now() < sizeDeadline && !source.includes(".gp-small")) {
+      await sleep(100);
+      source = readFileSync(chapterPath, "utf8");
+    }
+    if (!source.includes(".gp-small")) throw new Error("Set size did not apply the selected class");
+    if (!source.includes('"Preserved image title"')) throw new Error("Set size deleted the image title");
+
+    await openImageAction("Set size…");
+    await page.locator(".text-prompt select").selectOption("gp-large");
     await page.keyboard.press("Escape");
     await page.locator(".text-prompt").waitFor({ state: "hidden", timeout: 10_000 });
-    if (readFileSync(chapterPath, "utf8") !== sourceAfterWidth) throw new Error("Escape changed the image source");
+    if (readFileSync(chapterPath, "utf8") !== source) throw new Error("Escape changed the image source");
 
-    await page.locator(".loading-overlay").waitFor({ state: "hidden", timeout: 15_000 }).catch(() => {});
+    await openImageAction("Set float spacing…");
+    const spacingSelect = page.locator(".text-prompt select");
+    const spacingOptions = await spacingSelect.locator("option").allTextContents();
+    for (const expected of ["Default (1em) — no spacing class", "Tight (0.5em) — .gp-tight", "Loose (2em) — .gp-loose"]) {
+      if (!spacingOptions.includes(expected)) {
+        throw new Error(`missing spacing option ${JSON.stringify(expected)}; got ${JSON.stringify(spacingOptions)}`);
+      }
+    }
+    await spacingSelect.selectOption("gp-tight");
+    await submitImagePrompt();
+    const spacingDeadline = Date.now() + 15_000;
+    source = readFileSync(chapterPath, "utf8");
+    while (Date.now() < spacingDeadline && !source.includes(".gp-tight")) {
+      await sleep(100);
+      source = readFileSync(chapterPath, "utf8");
+    }
+    if (!source.includes(".gp-tight")) throw new Error("Set float spacing did not apply the selected class");
+    if (!source.includes('"Preserved image title"')) throw new Error("Set float spacing deleted the image title");
+
+    await waitForPendingPreview();
     const updatedImage = book.locator('img[alt="Wrapped test image"]');
     const updatedBox = await boxOf(updatedImage);
     const updatedPoint = centerOf(updatedBox);
@@ -463,7 +597,7 @@ try {
       source = readFileSync(chapterPath, "utf8");
     }
     if (/\[!\[Wrapped test image\]/.test(source)) throw new Error("Unwrap image did not remove the image link wrapper");
-    if (!source.includes('![Wrapped test image](media/wrapped-test.svg "Preserved image title"){width="55%" .gp-center}')) {
+    if (!source.includes('![Wrapped test image](media/wrapped-test.svg "Preserved image title"){width="55%" .gp-right .gp-small .gp-tight}')) {
       throw new Error("Unwrap image did not preserve the complete image token");
     }
     await assertEditorClosed("image property and unwrap actions");

@@ -35,17 +35,24 @@ import {
   type LinkResolution,
 } from "$lib/editor/context-menu-actions";
 import {
+  IMAGE_PIN_ALIGNMENT_OPTIONS,
+  IMAGE_PIN_CLASS,
   IMAGE_POSITION_OPTIONS,
   IMAGE_SIZE_OPTIONS,
+  IMAGE_SPACING_OPTIONS,
+  getPinAlignment,
   getPositionClass,
   getSizeClass,
+  getSpacingClass,
   getWidth,
   hasShapeClass,
   normalizeClassInput,
   serializeImageAttrs,
+  setPinAlignment,
   setPositionClass,
   setShapeClass,
   setSizeClass,
+  setSpacingClass,
   setWidth,
   tokenizeImageAttrs,
 } from "$lib/editor/image-classes";
@@ -102,8 +109,13 @@ export interface ContextMenuDeps {
   getIframeOrigin: () => { left: number; top: number } | null;
   /** The workspace container's rect, for clamping the menu on-screen. */
   getWorkspaceRect: () => ContextMenuRect | null;
-  /** A small modal text prompt. Null return = cancelled (plan §4.4's marker/image/link prompts). */
-  promptText: (opts: { title: string; label: string; initialValue: string }) => Promise<string | null>;
+  /** A small modal prompt. `options` renders a constrained select; null = cancelled. */
+  promptText: (opts: {
+    title: string;
+    label: string;
+    initialValue: string;
+    options?: readonly { value: string; label: string }[];
+  }) => Promise<string | null>;
   /** Reveal a chapter/line only when the author has already opened the editor pane. */
   goToSource: (chapter: string, line: number) => void;
   /** Switch the left panel to the Media tab ("Reveal in Media panel"). */
@@ -432,6 +444,8 @@ export class ContextMenuController {
     }
     const disabledReason = match ? undefined : "Couldn't locate this image in the source.";
     const wrapper = match ? findImageWrapper(blockSlice, match) : null;
+    const pinAlignmentEnabled = !!match &&
+      getPositionClass(tokenizeImageAttrs(match.attrsRaw)) === IMAGE_PIN_CLASS;
     const slice = blockSlice; // narrowed for closures below
     const items: ContextMenuItem[] = [
       {
@@ -453,7 +467,7 @@ export class ContextMenuController {
       },
       {
         id: "image-width",
-        label: "Set width…",
+        label: "Set custom width…",
         enabled: !!match,
         disabledReason,
         run: async () => {
@@ -463,8 +477,8 @@ export class ContextMenuController {
           // classes, #ids, key=val — survives verbatim, in order.
           const tokens = tokenizeImageAttrs(match.attrsRaw);
           const next = await this.deps.promptText({
-            title: "Set width",
-            label: "Width (e.g. 300px, 50%) — leave blank to clear",
+            title: "Set custom width",
+            label: "CSS width (for example 300px, 50%, or 12rem) — blank removes it",
             initialValue: getWidth(tokens),
           });
           if (next == null) return;
@@ -483,11 +497,17 @@ export class ContextMenuController {
           const tokens = tokenizeImageAttrs(match.attrsRaw);
           const written = getPositionClass(tokens);
           const current = written ? normalizeClassInput(IMAGE_POSITION_OPTIONS, written) : undefined;
-          const short = IMAGE_POSITION_OPTIONS.find((o) => o.class === current)?.short ?? "";
           const next = await this.deps.promptText({
             title: "Set position",
-            label: "center, left, right, full, bleed, pin — or leave blank",
-            initialValue: short,
+            label: "Choose one canonical position class",
+            initialValue: current ?? "",
+            options: [
+              { value: "", label: "None — no position class" },
+              ...IMAGE_POSITION_OPTIONS.map((option) => ({
+                value: option.class,
+                label: `${option.label} — .${option.class}`,
+              })),
+            ],
           });
           if (next == null) return;
           let updated: string[];
@@ -508,6 +528,37 @@ export class ContextMenuController {
         },
       },
       {
+        id: "image-pin-alignment",
+        label: "Set pin alignment…",
+        enabled: pinAlignmentEnabled,
+        disabledReason: disabledReason ?? (pinAlignmentEnabled ? undefined : "Choose Pin to page first."),
+        run: async () => {
+          if (!match) return;
+          const tokens = tokenizeImageAttrs(match.attrsRaw);
+          if (getPositionClass(tokens) !== IMAGE_PIN_CLASS) return;
+          const next = await this.deps.promptText({
+            title: "Set pin alignment",
+            label: "Choose where the pinned image sits on the page",
+            initialValue: getPinAlignment(tokens) ?? "center",
+            options: IMAGE_PIN_ALIGNMENT_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.classes.length > 0
+                ? `${option.label} — ${option.classes.map((cls) => `.${cls}`).join(" ")}`
+                : `${option.label} — no edge classes`,
+            })),
+          });
+          if (next == null) return;
+          if (!IMAGE_PIN_ALIGNMENT_OPTIONS.some((option) => option.value === next)) {
+            this.deps.toastError("Choose one of the listed pin alignments.");
+            return;
+          }
+          const token = rewriteImageToken(match, {
+            attrsRaw: serializeImageAttrs(setPinAlignment(tokens, next)),
+          });
+          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
+        },
+      },
+      {
         id: "image-size",
         label: "Set size…",
         enabled: !!match,
@@ -516,11 +567,17 @@ export class ContextMenuController {
           if (!match) return;
           const tokens = tokenizeImageAttrs(match.attrsRaw);
           const current = getSizeClass(tokens);
-          const short = IMAGE_SIZE_OPTIONS.find((o) => o.class === current)?.short ?? "";
           const next = await this.deps.promptText({
             title: "Set size",
-            label: "small, medium, large — or leave blank",
-            initialValue: short,
+            label: "Choose one canonical preset size class",
+            initialValue: normalizeClassInput(IMAGE_SIZE_OPTIONS, current ?? "") ?? "",
+            options: [
+              { value: "", label: "None — no preset size class" },
+              ...IMAGE_SIZE_OPTIONS.map((option) => ({
+                value: option.class,
+                label: `${option.label} — .${option.class}`,
+              })),
+            ],
           });
           if (next == null) return;
           let updated: string[];
@@ -535,6 +592,41 @@ export class ContextMenuController {
             updated = setSizeClass(tokens, cls);
           }
           const token = rewriteImageToken(match, { attrsRaw: serializeImageAttrs(updated) });
+          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
+        },
+      },
+      {
+        id: "image-spacing",
+        label: "Set float spacing…",
+        enabled: !!match,
+        disabledReason,
+        run: async () => {
+          if (!match) return;
+          const tokens = tokenizeImageAttrs(match.attrsRaw);
+          const current = getSpacingClass(tokens);
+          const next = await this.deps.promptText({
+            title: "Set float spacing",
+            label: "Space between a floated image and text (also used by shape wrap)",
+            initialValue: normalizeClassInput(IMAGE_SPACING_OPTIONS, current ?? "") ?? "",
+            options: [
+              { value: "", label: "Default (1em) — no spacing class" },
+              ...IMAGE_SPACING_OPTIONS.map((option) => ({
+                value: option.class,
+                label: `${option.label} — .${option.class}`,
+              })),
+            ],
+          });
+          if (next == null) return;
+          const cls = next.trim()
+            ? normalizeClassInput(IMAGE_SPACING_OPTIONS, next)
+            : undefined;
+          if (next.trim() && !cls) {
+            this.deps.toastError("Spacing is default, tight, or loose.");
+            return;
+          }
+          const token = rewriteImageToken(match, {
+            attrsRaw: serializeImageAttrs(setSpacingClass(tokens, cls ?? null)),
+          });
           await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
         },
       },

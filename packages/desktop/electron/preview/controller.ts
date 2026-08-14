@@ -54,6 +54,8 @@ export interface PreviewOpenArgs {
 export interface PreviewOpenControllerDeps {
   /** Lazily load gutterpress. Cached by the caller. */
   loadLib: () => Promise<LibModule>;
+  /** Drop the prior random-origin preview's HTTP cache before a new open. */
+  clearPreviewAssetCache: () => Promise<void>;
   /** main.ts's single module-level `activePreview` slot. */
   getActivePreview: () => PreviewHandle | null;
   setActivePreview: (preview: PreviewHandle | null) => void;
@@ -164,6 +166,10 @@ export class PreviewOpenController {
     }
     this.deps.setActivePreview(null);
     this.deps.setActiveRepositoryRoot(null);
+    // Cache cleanup bounds storage used by the desktop's random preview origins,
+    // but it is housekeeping: a cleanup failure must not leave a stopped handle
+    // active or prevent the author from opening the next book.
+    await this.deps.clearPreviewAssetCache().catch(() => {});
     this.deps.setActiveWorkspaceRoot(openedDir);
 
     let lib: LibModule | null = null;

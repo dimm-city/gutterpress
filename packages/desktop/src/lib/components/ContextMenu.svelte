@@ -18,22 +18,22 @@
   let menuEl = $state<HTMLDivElement | undefined>(undefined);
   let previouslyFocused: HTMLElement | null = null;
 
-  function itemButtons(): HTMLButtonElement[] {
-    if (!menuEl) return [];
-    return Array.from(menuEl.querySelectorAll<HTMLButtonElement>("[role='menuitem']"));
+  function itemButtons(root = menuEl): HTMLButtonElement[] {
+    if (!root) return [];
+    return Array.from(root.querySelectorAll<HTMLButtonElement>("[role='menuitem']"));
   }
 
-  function focusIndex(i: number): void {
-    const els = itemButtons();
+  function focusIndex(i: number, root = menuEl): void {
+    const els = itemButtons(root);
     if (els.length === 0) return;
     const clamped = ((i % els.length) + els.length) % els.length;
     els[clamped]?.focus();
   }
 
-  function focusFirstEnabled(): void {
-    const els = itemButtons();
+  function focusFirstEnabled(root = menuEl): void {
+    const els = itemButtons(root);
     const idx = els.findIndex((el) => !el.disabled);
-    focusIndex(idx === -1 ? 0 : idx);
+    focusIndex(idx === -1 ? 0 : idx, root);
   }
 
   function onKeydown(e: KeyboardEvent): void {
@@ -112,7 +112,11 @@
     if (!menuEl) menuEl = node;
     const rect = node.getBoundingClientRect();
     controller.reportMenuSize(rect.width, rect.height);
-    requestAnimationFrame(focusFirstEnabled);
+    // Take focus from the cross-origin preview synchronously. Waiting only for
+    // the next animation frame leaves a short window where Escape is still
+    // delivered to the iframe and the newly opened menu cannot dismiss.
+    node.focus({ preventScroll: true });
+    requestAnimationFrame(() => focusFirstEnabled(node));
     return {
       destroy() {
         previouslyFocused?.focus?.();

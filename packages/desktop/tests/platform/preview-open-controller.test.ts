@@ -26,6 +26,7 @@ interface HarnessOpts {
   statThrows?: boolean;
   statIsDirectory?: boolean;
   watchedDir?: string | null;
+  clearPreviewAssetCacheThrows?: boolean;
 }
 
 interface Harness {
@@ -106,6 +107,10 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
 
   const deps: PreviewOpenControllerDeps = {
     loadLib: async () => lib,
+    clearPreviewAssetCache: async () => {
+      calls.push("clearPreviewAssetCache");
+      if (opts.clearPreviewAssetCacheThrows) throw new Error("cache cleanup failed");
+    },
     getActivePreview: () => activePreview,
     setActivePreview: (p) => {
       activePreview = p;
@@ -204,6 +209,47 @@ test("happy path (local-folder): starts server, sets activePreview, returns resu
   });
   expect(h.getActivePreview()?.inputPath).toBe("/book");
   expect(h.getActiveRepositoryRoot()).toBeNull();
+});
+
+test("clears the previous random-origin preview cache before starting a server", async () => {
+  const h = makeHarness({
+    activePreview: makeHandle({
+      stop: async () => {
+        h.calls.push("stopPreview");
+      },
+    }),
+  });
+
+  await h.controller.open({ input: "/book" });
+
+  expect(h.calls.indexOf("stopPreview")).toBeLessThan(
+    h.calls.indexOf("clearPreviewAssetCache"),
+  );
+  expect(h.calls.indexOf("clearPreviewAssetCache")).toBeLessThan(
+    h.calls.indexOf("startPreviewServer"),
+  );
+});
+
+test("cache cleanup failure cannot retain a stopped handle or prevent the new preview", async () => {
+  const h = makeHarness({
+    clearPreviewAssetCacheThrows: true,
+    activePreview: makeHandle({
+      stop: async () => {
+        h.calls.push("stopPreview");
+      },
+    }),
+  });
+
+  const res = await h.controller.open({ input: "/book" });
+
+  expect(res.previewStarted).toBe(true);
+  expect(h.getActivePreview()?.inputPath).toBe("/book");
+  expect(h.calls.indexOf("stopPreview")).toBeLessThan(
+    h.calls.indexOf("clearPreviewAssetCache"),
+  );
+  expect(h.calls.indexOf("clearPreviewAssetCache")).toBeLessThan(
+    h.calls.indexOf("startPreviewServer"),
+  );
 });
 
 test("a nested git book authorizes its host-detected repository for shared project files", async () => {
@@ -446,6 +492,7 @@ test("overlapping open() calls are serialized in arrival order", async () => {
   let activeWorkspaceRoot: string | null = null;
   const controller = new PreviewOpenController({
     loadLib: async () => lib,
+    clearPreviewAssetCache: async () => {},
     getActivePreview: () => activePreview,
     setActivePreview: (p) => {
       activePreview = p;

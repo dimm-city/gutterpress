@@ -403,4 +403,6 @@ test("ContextMenu focus-on-open runs per menu-open, not once at app boot (keyboa
   const menuDiv = src.slice(openBlockIdx, src.indexOf("</div>", openBlockIdx));
   expect(menuDiv).toContain("use:menuLifecycle");
   expect(menuDiv).toContain('class="context-menu"');
+  expect(src).toContain("node.focus({ preventScroll: true });");
+  expect(src).toContain("focusFirstEnabled(node)");
 });
