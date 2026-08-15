@@ -385,9 +385,9 @@ try {
     await assertEditorClosed("a preview menu edit");
   });
 
-  // ── 7. Passive preview interaction never opens the editor ────────────────
+  // ── 7. Only Go to source opens the editor ────────────────────────────────
   const DEEP_TARGET_TEXT = "This deep paragraph is the click to source target";
-  await step("7. clicking a preview block leaves the closed editor closed", async () => {
+  await step("7. normal preview clicks stay passive; Go to source opens and places the caret", async () => {
     // Step 6's edit triggers an async settled-write -> chapter-splice
     // refresh; let it fully settle first (the loading overlay clears, the
     // book iframe re-attaches) so this step's coordinates are computed
@@ -408,199 +408,211 @@ try {
     await page.mouse.click(x, y, { button: "right" });
     await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
     const sourceItem = page.locator(".context-menu-item", { hasText: "Go to source" });
-    if (await sourceItem.isEnabled()) throw new Error("Go to source is enabled while the editor is closed");
-    await dismissMenuViaOutsideClick();
-    await assertEditorClosed("the preview source menu");
+    if (!(await sourceItem.isEnabled())) throw new Error("Go to source is disabled while the editor is closed");
+    await sourceItem.click();
+    await page.locator(".cm-editor").waitFor({ state: "visible", timeout: 15_000 });
+    await page.locator('.file-item.active .file-name', { hasText: "01-chapter.md" })
+      .waitFor({ state: "attached", timeout: 15_000 });
+    await page.locator(".cm-focused").waitFor({ state: "attached", timeout: 10_000 });
+    const activeLine = (await page.locator(".cm-activeLine").textContent()) ?? "";
+    if (!activeLine.includes(DEEP_TARGET_TEXT)) {
+      throw new Error(`Go to source focused the wrong editor line: ${JSON.stringify(activeLine)}`);
+    }
+
+    // Once open, an ordinary preview click still must not move the caret. The
+    // context-menu command is the sole preview→editor navigation path.
+    const otherPara = book.locator("p", { hasText: "Filler paragraph number twenty" });
+    await otherPara.scrollIntoViewIfNeeded();
+    const otherBox = await boxOf(otherPara);
+    const otherPoint = centerOf(otherBox);
+    await page.mouse.click(otherPoint.x, otherPoint.y, { button: "left" });
+    await page.waitForTimeout(500);
+    const lineAfterPlainClick = (await page.locator(".cm-activeLine").textContent()) ?? "";
+    if (!lineAfterPlainClick.includes(DEEP_TARGET_TEXT)) {
+      throw new Error(`ordinary preview click moved the caret: ${JSON.stringify(lineAfterPlainClick)}`);
+    }
+
+    // Close it again so the remaining menu actions prove they do not open it.
+    await page.locator('[aria-label="Toggle markdown editor"]').click();
+    await page.locator(".cm-editor").waitFor({ state: "detached", timeout: 10_000 });
+    await assertEditorClosed("closing after Go to source");
   });
 
-  // ── 8. Image menus expose real property actions and a clear unwrap action ─
-  await step("8. right-clicking an image exposes usable property and unwrap actions", async () => {
-    const image = book.locator('img[alt="Wrapped test image"]');
-    const box = await boxOf(image);
-    const { x, y } = centerOf(box);
-    await page.mouse.click(x, y, { button: "right" });
-    await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
+  // ── 8. One image-properties dialog exposes every supported option ────────
+  await step("8. one image-properties dialog applies several changes once and preserves source", async () => {
+    const openImageMenu = async () => {
+      const image = book.locator('img[alt="Wrapped test image"]');
+      const box = await boxOf(image);
+      const point = centerOf(box);
+      await page.mouse.click(point.x, point.y, { button: "right" });
+      await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
+    };
+
+    await openImageMenu();
     const labels = (await page.locator(".context-menu-item").allTextContents()).map((s) => s.trim());
-    for (const expected of ["Edit alt text…", "Set custom width…", "Set position…", "Set size…"]) {
+    for (const expected of ["Set properties…", "Reveal in Media panel", "Unwrap image", "Go to source"]) {
       if (!labels.includes(expected)) throw new Error(`missing image action ${JSON.stringify(expected)}; got ${JSON.stringify(labels)}`);
     }
-    const widthItem = page.locator(".context-menu-item", { hasText: "Set custom width…" });
-    if (!(await widthItem.isEnabled())) throw new Error("image property actions are disabled");
-
-    let pendingPreviewRevision = null;
-    const previewRevision = async () => shell.locator("#gutterpress-active").evaluate(
-      (frame) => Number(frame.__gutterpressRevision) || 0,
-    );
-    const submitImagePrompt = async () => {
-      pendingPreviewRevision = await previewRevision();
-      await page.locator('.text-prompt button[type="submit"]').click();
-      await page.locator(".text-prompt").waitFor({ state: "hidden", timeout: 10_000 });
-    };
-    const waitForPendingPreview = async () => {
-      if (pendingPreviewRevision == null) return;
-      const prior = pendingPreviewRevision;
-      const deadline = Date.now() + 15_000;
-      while (Date.now() < deadline) {
-        if (await previewRevision().catch(() => prior) > prior) {
-          pendingPreviewRevision = null;
-          await page.locator(".loading-overlay").waitFor({ state: "hidden", timeout: 15_000 });
-          return;
-        }
-        await sleep(100);
-      }
-      throw new Error(`preview did not advance past revision ${prior} after image edit`);
-    };
-
-    await widthItem.click();
-    const prompt = page.locator(".text-prompt");
-    await prompt.waitFor({ state: "visible", timeout: 10_000 });
-    await prompt.locator("input").fill("55%");
-    await submitImagePrompt();
-    let source = readFileSync(chapterPath, "utf8");
-    const widthDeadline = Date.now() + 15_000;
-    while (Date.now() < widthDeadline && !source.includes('width="55%"')) {
-      await sleep(100);
-      source = readFileSync(chapterPath, "utf8");
+    for (const removed of ["Edit alt text…", "Set custom width…", "Set position…", "Set size…", "Set pin alignment…"]) {
+      if (labels.includes(removed)) throw new Error(`obsolete separate image action is still present: ${removed}`);
     }
-    if (!source.includes('width="55%"')) throw new Error("Set width did not update the real markdown file");
-    if (!source.includes('"Preserved image title"')) throw new Error("Set width deleted the image title");
 
-    const sourceAfterWidth = source;
-    const openImageAction = async (label) => {
-      await waitForPendingPreview();
-      const currentImage = book.locator('img[alt="Wrapped test image"]');
-      const currentBox = await boxOf(currentImage);
-      const currentPoint = centerOf(currentBox);
-      log(`opening ${label} at ${JSON.stringify(currentBox)}`);
-      await page.mouse.click(currentPoint.x, currentPoint.y, { button: "right" });
-      await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
-      await page.locator(".context-menu-item", { hasText: label }).click();
-      await page.locator(".text-prompt").waitFor({ state: "visible", timeout: 10_000 });
-    };
+    await page.locator(".context-menu-item", { hasText: "Set properties…" }).click();
+    const modal = page.locator(".image-properties");
+    await modal.waitFor({ state: "visible", timeout: 10_000 });
 
-    await openImageAction("Set position…");
-    const positionSelect = page.locator(".text-prompt select");
-    if (!(await positionSelect.count())) throw new Error("Set position did not provide a select list");
-    const positionOptions = await positionSelect.locator("option").allTextContents();
-    for (const expected of ["None — no position class", "Center — .gp-center", "Float right — .gp-right", "Full bleed (own page, edge-to-edge) — .gp-bleed", "Pin to page — .gp-pin"]) {
+    const positionOptions = await modal.locator('select[name="position"] option').allTextContents();
+    for (const expected of ["None", "Center — .gp-center", "Float right — .gp-right", "Full bleed (own page, edge-to-edge) — .gp-bleed", "Pin to page — .gp-pin"]) {
       if (!positionOptions.includes(expected)) {
         throw new Error(`missing position option ${JSON.stringify(expected)}; got ${JSON.stringify(positionOptions)}`);
       }
     }
-    await positionSelect.selectOption("gp-right");
-    await submitImagePrompt();
-    const positionDeadline = Date.now() + 15_000;
-    source = readFileSync(chapterPath, "utf8");
-    while (Date.now() < positionDeadline && !source.includes(".gp-right")) {
-      await sleep(100);
-      source = readFileSync(chapterPath, "utf8");
-    }
-    if (!source.includes(".gp-right")) throw new Error("Set position did not apply the selected class");
-    if (!source.includes('"Preserved image title"')) throw new Error("Set position deleted the image title");
-
-    await openImageAction("Set position…");
-    await page.locator(".text-prompt select").selectOption("gp-pin");
-    await submitImagePrompt();
-    const pinDeadline = Date.now() + 15_000;
-    while (Date.now() < pinDeadline && !readFileSync(chapterPath, "utf8").includes(".gp-pin")) await sleep(100);
-    if (!readFileSync(chapterPath, "utf8").includes(".gp-pin")) throw new Error("Set position did not apply .gp-pin");
-
-    await openImageAction("Set pin alignment…");
-    const alignmentSelect = page.locator(".text-prompt select");
-    const alignmentOptions = await alignmentSelect.locator("option").allTextContents();
-    for (const expected of ["Centered — no edge classes", "Top left — .gp-top .gp-left", "Bottom right — .gp-bottom .gp-right"]) {
-      if (!alignmentOptions.includes(expected)) {
-        throw new Error(`missing pin alignment option ${JSON.stringify(expected)}; got ${JSON.stringify(alignmentOptions)}`);
-      }
-    }
-    await alignmentSelect.selectOption("bottom-right");
-    await submitImagePrompt();
-    const alignmentDeadline = Date.now() + 15_000;
-    while (Date.now() < alignmentDeadline && !readFileSync(chapterPath, "utf8").includes(".gp-pin .gp-bottom .gp-right")) await sleep(100);
-    if (!readFileSync(chapterPath, "utf8").includes(".gp-pin .gp-bottom .gp-right")) {
-      throw new Error("Set pin alignment did not apply the selected edge classes");
-    }
-
-    await openImageAction("Set position…");
-    await page.locator(".text-prompt select").selectOption("gp-right");
-    await submitImagePrompt();
-    const unpinDeadline = Date.now() + 15_000;
-    source = readFileSync(chapterPath, "utf8");
-    while (Date.now() < unpinDeadline && (source.includes(".gp-pin") || source.includes(".gp-bottom"))) {
-      await sleep(100);
-      source = readFileSync(chapterPath, "utf8");
-    }
-    if (source.includes(".gp-pin") || source.includes(".gp-bottom") || !source.includes(".gp-right")) {
-      throw new Error("Switching from pin back to float right left stale pin classes");
-    }
-
-    await openImageAction("Set size…");
-    const sizeSelect = page.locator(".text-prompt select");
-    if (!(await sizeSelect.count())) throw new Error("Set size did not provide a select list");
-    const sizeOptions = await sizeSelect.locator("option").allTextContents();
-    for (const expected of ["None — no preset size class", "Small (25%) — .gp-small", "Medium (50%) — .gp-medium", "Large (75%) — .gp-large"]) {
+    const sizeOptions = await modal.locator('select[name="size"] option').allTextContents();
+    for (const expected of ["None", "Small (25%) — .gp-small", "Medium (50%) — .gp-medium", "Large (75%) — .gp-large"]) {
       if (!sizeOptions.includes(expected)) {
         throw new Error(`missing size option ${JSON.stringify(expected)}; got ${JSON.stringify(sizeOptions)}`);
       }
     }
-    await sizeSelect.selectOption("gp-small");
-    await submitImagePrompt();
-    const sizeDeadline = Date.now() + 15_000;
-    source = readFileSync(chapterPath, "utf8");
-    while (Date.now() < sizeDeadline && !source.includes(".gp-small")) {
-      await sleep(100);
-      source = readFileSync(chapterPath, "utf8");
-    }
-    if (!source.includes(".gp-small")) throw new Error("Set size did not apply the selected class");
-    if (!source.includes('"Preserved image title"')) throw new Error("Set size deleted the image title");
-
-    await openImageAction("Set size…");
-    await page.locator(".text-prompt select").selectOption("gp-large");
-    await page.keyboard.press("Escape");
-    await page.locator(".text-prompt").waitFor({ state: "hidden", timeout: 10_000 });
-    if (readFileSync(chapterPath, "utf8") !== source) throw new Error("Escape changed the image source");
-
-    await openImageAction("Set float spacing…");
-    const spacingSelect = page.locator(".text-prompt select");
-    const spacingOptions = await spacingSelect.locator("option").allTextContents();
-    for (const expected of ["Default (1em) — no spacing class", "Tight (0.5em) — .gp-tight", "Loose (2em) — .gp-loose"]) {
+    const spacingOptions = await modal.locator('select[name="spacing"] option').allTextContents();
+    for (const expected of ["Default (1em)", "Tight (0.5em) — .gp-tight", "Loose (2em) — .gp-loose"]) {
       if (!spacingOptions.includes(expected)) {
         throw new Error(`missing spacing option ${JSON.stringify(expected)}; got ${JSON.stringify(spacingOptions)}`);
       }
     }
-    await spacingSelect.selectOption("gp-tight");
-    await submitImagePrompt();
-    const spacingDeadline = Date.now() + 15_000;
-    source = readFileSync(chapterPath, "utf8");
-    while (Date.now() < spacingDeadline && !source.includes(".gp-tight")) {
-      await sleep(100);
-      source = readFileSync(chapterPath, "utf8");
-    }
-    if (!source.includes(".gp-tight")) throw new Error("Set float spacing did not apply the selected class");
-    if (!source.includes('"Preserved image title"')) throw new Error("Set float spacing deleted the image title");
 
-    await waitForPendingPreview();
-    const updatedImage = book.locator('img[alt="Wrapped test image"]');
-    const updatedBox = await boxOf(updatedImage);
-    const updatedPoint = centerOf(updatedBox);
-    await page.mouse.click(updatedPoint.x, updatedPoint.y, { button: "right" });
-    await page.locator(".context-menu").waitFor({ state: "visible", timeout: 10_000 });
-    const unwrap = page.locator(".context-menu-item", { hasText: "Unwrap image" });
-    if (!(await unwrap.count())) {
-      const updatedLabels = (await page.locator(".context-menu-item").allTextContents()).map((s) => s.trim());
-      throw new Error(`missing "Unwrap image" after property edit; got ${JSON.stringify(updatedLabels)}`);
+    const layerOptions = await modal.locator('select[name="layer"] option').allTextContents();
+    for (const expected of ["Default", "Behind page content — .gp-behind", "Base — .gp-base", "Raised — .gp-raised", "Front — .gp-front"]) {
+      if (!layerOptions.includes(expected)) {
+        throw new Error(`missing layer option ${JSON.stringify(expected)}; got ${JSON.stringify(layerOptions)}`);
+      }
     }
-    await unwrap.click();
-    const unwrapDeadline = Date.now() + 15_000;
-    while (Date.now() < unwrapDeadline && /^\[!\[Wrapped test image\]/m.test(source)) {
+
+    await modal.locator('select[name="position"]').selectOption("gp-pin");
+    if (!(await modal.locator('select[name="pinAlignment"]').isEnabled())) {
+      throw new Error("pin alignment did not become available after selecting .gp-pin");
+    }
+    const alignmentOptions = await modal.locator('select[name="pinAlignment"] option').allTextContents();
+    for (const expected of ["Centered", "Top left", "Bottom right"]) {
+      if (!alignmentOptions.includes(expected)) {
+        throw new Error(`missing pin alignment ${JSON.stringify(expected)}; got ${JSON.stringify(alignmentOptions)}`);
+      }
+    }
+    await modal.locator('select[name="pinAlignment"]').selectOption("bottom-right");
+    await modal.locator('select[name="size"]').selectOption("gp-small");
+    if ((await modal.locator('input[name="width"]').inputValue()) !== "") {
+      throw new Error("selecting a preset size did not clear the conflicting custom width");
+    }
+    if (await modal.locator('select[name="spacing"]').isEnabled()) {
+      throw new Error("float spacing remained enabled for a pinned image");
+    }
+    if (await modal.locator('input[name="shape"]').isEnabled()) {
+      throw new Error("shape wrapping remained enabled for a pinned image");
+    }
+    if (!(await modal.locator('select[name="layer"]').isEnabled())) {
+      throw new Error("layer selection did not become available for a pinned image");
+    }
+    await modal.locator('select[name="layer"]').selectOption("gp-front");
+
+    const priorRevision = await shell.locator("#gutterpress-active").evaluate(
+      (frame) => Number(frame.__gutterpressRevision) || 0,
+    );
+    // The tiny fixture can rebuild faster than Playwright's next polling turn.
+    // Observe the actual DOM transition before submitting so a brief but real
+    // update indicator is still proven without forcing a minimum UI delay.
+    await page.evaluate(() => {
+      window.__etestPreviewIndicatorSeen = !!document.querySelector(".preview-updating-pill");
+      const observer = new MutationObserver(() => {
+        if (document.querySelector(".preview-updating-pill")) {
+          window.__etestPreviewIndicatorSeen = true;
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    });
+    await modal.locator('button[type="submit"]').click();
+    await modal.waitFor({ state: "hidden", timeout: 10_000 });
+
+    // The save-triggered replacement remains interactive and reports itself
+    // with a small corner indicator, not the blocking layout overlay.
+    await page.waitForFunction(() => window.__etestPreviewIndicatorSeen === true, null, { timeout: 10_000 });
+    await page.locator(".loading-overlay").waitFor({ state: "hidden", timeout: 10_000 }).catch(() => {});
+    await page.locator(".preview-updating-pill").waitFor({ state: "hidden", timeout: 20_000 });
+
+    const revisionDeadline = Date.now() + 20_000;
+    let revisionAdvanced = false;
+    while (Date.now() < revisionDeadline) {
+      const revision = await shell.locator("#gutterpress-active").evaluate(
+        (frame) => Number(frame.__gutterpressRevision) || 0,
+      ).catch(() => priorRevision);
+      if (revision > priorRevision) {
+        revisionAdvanced = true;
+        break;
+      }
+      await sleep(100);
+    }
+    if (!revisionAdvanced) throw new Error("preview revision did not advance after Apply changes");
+
+    let source = readFileSync(chapterPath, "utf8");
+    const propertyDeadline = Date.now() + 15_000;
+    const expectedImage =
+      '![Wrapped *test* image](media/wrapped\\-test.svg "Preserved image title"){.gp-pin .gp-bottom .gp-right .gp-small .gp-front}';
+    while (Date.now() < propertyDeadline && !source.includes(expectedImage)) {
       await sleep(100);
       source = readFileSync(chapterPath, "utf8");
     }
-    if (/\[!\[Wrapped test image\]/.test(source)) throw new Error("Unwrap image did not remove the image link wrapper");
-    if (!source.includes('![Wrapped test image](media/wrapped-test.svg "Preserved image title"){width="55%" .gp-right .gp-small .gp-tight}')) {
-      throw new Error("Unwrap image did not preserve the complete image token");
+    if (!source.includes(expectedImage)) {
+      throw new Error(`one-shot image properties did not preserve/apply the complete token:\n${source}`);
     }
-    await assertEditorClosed("image property and unwrap actions");
+    if (!source.includes("Wrapper title ) retained")) throw new Error("image properties changed the outer link title");
+    const renderedImage = book.locator('img[alt="Wrapped test image"]');
+    await renderedImage.waitFor({ state: "visible", timeout: 15_000 });
+    const renderedProperties = await renderedImage.evaluate((image) => {
+      const style = getComputedStyle(image);
+      return {
+        classes: Array.from(image.classList),
+        position: style.position,
+        zIndex: style.zIndex,
+        alignSelf: style.alignSelf,
+        justifySelf: style.justifySelf,
+      };
+    });
+    for (const cls of ["gp-pin", "gp-bottom", "gp-right", "gp-small", "gp-front"]) {
+      if (!renderedProperties.classes.includes(cls)) {
+        throw new Error(`rendered image is missing ${cls}: ${JSON.stringify(renderedProperties)}`);
+      }
+    }
+    if (renderedProperties.position !== "absolute" || renderedProperties.zIndex !== "2") {
+      throw new Error(`image properties did not affect computed layout: ${JSON.stringify(renderedProperties)}`);
+    }
+
+    // Escape and Cancel are independently one-shot and never touch source.
+    const sourceAfterApply = source;
+    await openImageMenu();
+    await page.locator(".context-menu-item", { hasText: "Set properties…" }).click();
+    await modal.waitFor({ state: "visible", timeout: 10_000 });
+    await modal.locator('select[name="size"]').selectOption("gp-large");
+    await page.keyboard.press("Escape");
+    await modal.waitFor({ state: "hidden", timeout: 10_000 });
+    if (readFileSync(chapterPath, "utf8") !== sourceAfterApply) throw new Error("Escape changed image source");
+
+    await openImageMenu();
+    await page.locator(".context-menu-item", { hasText: "Set properties…" }).click();
+    await modal.waitFor({ state: "visible", timeout: 10_000 });
+    await modal.locator('select[name="layer"]').selectOption("gp-raised");
+    await modal.locator(".dlg-ghost", { hasText: "Cancel" }).click();
+    await modal.waitFor({ state: "hidden", timeout: 10_000 });
+    if (readFileSync(chapterPath, "utf8") !== sourceAfterApply) throw new Error("Cancel changed image source");
+
+    await openImageMenu();
+    await page.locator(".context-menu-item", { hasText: "Unwrap image" }).click();
+    const unwrapDeadline = Date.now() + 15_000;
+    while (Date.now() < unwrapDeadline && /^\[!\[Wrapped \*test\* image\]/m.test(source)) {
+      await sleep(100);
+      source = readFileSync(chapterPath, "utf8");
+    }
+    if (/\[!\[Wrapped \*test\* image\]/.test(source)) throw new Error("Unwrap image did not remove the image link wrapper");
+    if (!source.includes(expectedImage)) throw new Error("Unwrap image did not preserve the complete image token");
+    await assertEditorClosed("image properties and unwrap actions");
   });
 
   // ── 9. A real watcher-driven update keeps the exact preview viewport ─────
@@ -614,7 +626,7 @@ try {
     await book.locator("body").evaluate(() => window.previewAPI.setViewMode("two-column", true));
     const deepPara = book.locator("p", { hasText: DEEP_TARGET_TEXT });
     await deepPara.scrollIntoViewIfNeeded();
-    await book.locator("body").evaluate(() => window.scrollBy({ left: -80, top: 0, behavior: "instant" }));
+    await book.locator("body").evaluate(() => window.scrollBy({ left: -80, top: -240, behavior: "instant" }));
     await page.waitForTimeout(250);
     const before = await book.locator("body").evaluate(() => ({
       x: window.scrollX,
@@ -627,6 +639,26 @@ try {
     const oldSrc = await active.getAttribute("src");
     const current = readFileSync(chapterPath, "utf8");
     writeFileSync(chapterPath, `${current}\n<!-- packaged viewport stability probe -->\n`);
+
+    // Physical wheel input while the watcher update is queued must stay live,
+    // move monotonically, and become the position restored into the new frame.
+    await book.locator("body").hover();
+    const wheelSamples = [before.y];
+    for (let i = 0; i < 3; i += 1) {
+      await page.mouse.wheel(0, 120);
+      await sleep(60);
+      wheelSamples.push(await book.locator("body").evaluate(() => window.scrollY));
+    }
+    if (wheelSamples.some((sample, i) => i > 0 && sample < wheelSamples[i - 1] - 1)) {
+      throw new Error(`physical wheel samples moved backward during update: ${JSON.stringify(wheelSamples)}`);
+    }
+    if (wheelSamples.at(-1) - wheelSamples[0] < 40) {
+      throw new Error(`physical wheel did not move the live preview during update: ${JSON.stringify(wheelSamples)}`);
+    }
+    const expectedAfterWheel = {
+      ...before,
+      y: wheelSamples.at(-1),
+    };
 
     const deadline = Date.now() + 20_000;
     let newSrc = oldSrc;
@@ -643,10 +675,10 @@ try {
       y: window.scrollY,
       page: window.previewAPI.getCurrentPage(),
     }));
-    const dx = Math.abs(after.x - before.x);
-    const dy = Math.abs(after.y - before.y);
+    const dx = Math.abs(after.x - expectedAfterWheel.x);
+    const dy = Math.abs(after.y - expectedAfterWheel.y);
     if (dx > 4 || dy > 4) {
-      throw new Error(`viewport jumped from ${JSON.stringify(before)} to ${JSON.stringify(after)} (dx=${dx}, dy=${dy})`);
+      throw new Error(`viewport jumped from ${JSON.stringify(expectedAfterWheel)} to ${JSON.stringify(after)} (dx=${dx}, dy=${dy})`);
     }
   });
 
@@ -691,6 +723,107 @@ try {
     }
     if (geometry.runBoundaryGaps.some((gap) => Math.abs(gap - geometry.gaps[0]) > 1)) {
       throw new Error(`named-page boundary gaps differ: ${JSON.stringify(geometry.runBoundaryGaps)}`);
+    }
+  });
+
+  await step("11. single-page fit-to-width stays aligned and refits after a real window resize", async () => {
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1100, 850);
+    });
+    await page.waitForTimeout(250);
+
+    const singleButton = page.getByRole("button", { name: "Single page" });
+    if (!(await singleButton.count())) {
+      await page.locator('summary[aria-label="Page view mode"]').click();
+    }
+    await page.getByRole("button", { name: "Single page" }).click();
+    await page.locator('summary[aria-label="Zoom level"]').click();
+    await page.getByRole("button", { name: "Fit to width" }).click();
+
+    const measureFit = async () => book.locator("body").evaluate(() => {
+      const sheets = Array.from(document.querySelectorAll(".gp-sheet"));
+      const first = sheets[0]?.getBoundingClientRect();
+      const lefts = sheets.map((sheet) => sheet.getBoundingClientRect().left);
+      return {
+        // CSS centers against the layout viewport, which excludes the vertical
+        // scrollbar. window.innerWidth includes that scrollbar in Electron.
+        viewport: document.documentElement.clientWidth,
+        width: first?.width ?? 0,
+        left: first?.left ?? 0,
+        right: first ? document.documentElement.clientWidth - first.right : 0,
+        leftSpread: lefts.length ? Math.max(...lefts) - Math.min(...lefts) : 0,
+      };
+    });
+    // CSS zoom and fractional device pixels can leave the two physical gutters
+    // a few pixels apart even when the page is centered in the layout viewport.
+    const gutterTolerance = 6;
+    const waitForBalancedFit = async () => {
+      const deadline = Date.now() + 10_000;
+      let geometry = await measureFit();
+      while (Date.now() < deadline && (Math.abs(geometry.left - geometry.right) > gutterTolerance || geometry.leftSpread > 1)) {
+        await sleep(100);
+        geometry = await measureFit();
+      }
+      return geometry;
+    };
+
+    const before = await waitForBalancedFit();
+    if (Math.abs(before.left - before.right) > gutterTolerance || before.leftSpread > 1) {
+      throw new Error(`single fit is not centered/aligned before resize: ${JSON.stringify(before)}`);
+    }
+
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(900, 850);
+    });
+    const after = await waitForBalancedFit();
+    if (Math.abs(after.left - after.right) > gutterTolerance || after.leftSpread > 1) {
+      throw new Error(`single fit is not centered/aligned after resize: ${JSON.stringify(after)}`);
+    }
+    if (before.width - after.width < 100) {
+      throw new Error(`fit width did not react to the narrower viewer: ${JSON.stringify({ before, after })}`);
+    }
+  });
+
+  await step("12. two-column fit-to-width uses the visible spread and refits after resize", async () => {
+    await page.locator('summary[aria-label="Page view mode"]').click();
+    await page.getByRole("button", { name: "Two pages side by side" }).click();
+
+    const measureSpreadFit = async () => book.locator("body").evaluate(() => {
+      const viewport = document.documentElement.clientWidth;
+      const sheets = Array.from(document.querySelectorAll(".gp-sheet"));
+      const left = Math.min(...sheets.map((sheet) => sheet.getBoundingClientRect().left));
+      const rightEdge = Math.max(...sheets.map((sheet) => sheet.getBoundingClientRect().right));
+      return {
+        viewport,
+        left,
+        right: viewport - rightEdge,
+        width: rightEdge - left,
+        overflow: Math.max(0, rightEdge - viewport),
+      };
+    });
+    const waitForSpreadFit = async () => {
+      const deadline = Date.now() + 10_000;
+      let geometry = await measureSpreadFit();
+      while (Date.now() < deadline && (geometry.overflow > 2 || Math.abs(geometry.left - geometry.right) > 8)) {
+        await sleep(100);
+        geometry = await measureSpreadFit();
+      }
+      return geometry;
+    };
+
+    const before = await waitForSpreadFit();
+    if (before.overflow > 2 || Math.abs(before.left - before.right) > 8) {
+      throw new Error(`two-column fit is clipped or off-center before resize: ${JSON.stringify(before)}`);
+    }
+    await electronApp.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0]?.setSize(1050, 850);
+    });
+    const after = await waitForSpreadFit();
+    if (after.overflow > 2 || Math.abs(after.left - after.right) > 8) {
+      throw new Error(`two-column fit is clipped or off-center after resize: ${JSON.stringify(after)}`);
+    }
+    if (after.width - before.width < 80) {
+      throw new Error(`two-column fit did not grow with the viewer: ${JSON.stringify({ before, after })}`);
     }
   });
 } catch (err) {

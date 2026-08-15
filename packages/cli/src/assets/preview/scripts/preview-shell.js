@@ -193,6 +193,13 @@
     frame.addEventListener('load', function () {
       frame.__gutterpressCancelReady = onReady(frame, finish, function () {
         if (building !== frame) return;
+        if (window.parent !== window) {
+          window.parent.postMessage({
+            type: 'gutterpress:event',
+            name: 'renderingCancelled',
+            detail: { hotReload: true, revision: frame.__gutterpressRevision }
+          }, '*');
+        }
         discardBuilding();
         if (window.console) console.warn('[gutterpress] replacement pagination timed out');
       });

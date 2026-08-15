@@ -367,8 +367,12 @@ export function decorate(
         const slot = i + shift;
         const row = Math.floor(slot / perRow);
         const colVisual = slot % perRow;
-        const columnLeft = PX_PER_PT * g.margin.left + colVisual * stride;
-        const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
+        // Keep paper geometry stable. Chromium multicol gives every fragment
+        // in a run one fixed content-column origin; moving the paper around
+        // that origin to mimic page-specific mirrored margins made single
+        // sheets wobble and facing sheets touch. The PDF remains the exact
+        // page-margin contract; the interactive viewer keeps equal paper gaps.
+        const sheetLeft = colVisual * stride;
         const sheetTop = row * rowStride;
 
         const sheet = document.createElement("div");

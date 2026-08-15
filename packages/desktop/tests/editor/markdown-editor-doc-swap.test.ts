@@ -11,8 +11,8 @@
  *     `{#key editorFilePath}` — that wrapper destroyed/rebuilt the whole
  *     EditorView (and its undo history/selection/scroll) on every file
  *     switch, contradicting the component's own header comment.
- *  2. MarkdownEditor uses the per-file EditorStateCache (LRU) and
- *     `view.setState(...)` to swap documents instead of remounting.
+ *  2. MarkdownEditor uses one synchronous `view.setState(...)` swap instead
+ *     of a deferred per-file scroll/cache restoration.
  *  3. The header comment describes the real (now-true) architecture and no
  *     longer contains the old, contradictory "doc-swap effect reconfigures
  *     the compartments" claim that nothing implemented.
@@ -29,20 +29,16 @@ import * as path from "node:path";
 
 const EDITOR_PATH = path.resolve(__dirname, "../../src/lib/components/MarkdownEditor.svelte");
 const PAGE_PATH = path.resolve(__dirname, "../../src/routes/+page.svelte");
-const CACHE_PATH = path.resolve(__dirname, "../../src/lib/editor/editor-state-cache.ts");
 
 function read(p: string): string {
   return fs.readFileSync(p, "utf8");
 }
 
-describe("MarkdownEditor — M8 fix prerequisites exist", () => {
+describe("MarkdownEditor — one-file prerequisites exist", () => {
   test("component file exists", () => {
     expect(fs.existsSync(EDITOR_PATH)).toBe(true);
   });
 
-  test("EditorStateCache module exists", () => {
-    expect(fs.existsSync(CACHE_PATH)).toBe(true);
-  });
 });
 
 describe("+page.svelte — no {#key editorFilePath} remount around MarkdownEditor", () => {
@@ -56,35 +52,46 @@ describe("+page.svelte — no {#key editorFilePath} remount around MarkdownEdito
     expect(src).toMatch(/<MarkdownEditor[\s\S]*?filePath=\{editorFilePath\}/);
   });
 
-  test("the parent pushes the document explicitly whenever the open file changes", () => {
+  test("the parent gives the editor exactly one file at a time", () => {
     const src = read(PAGE_PATH);
-    // One choke point (pushEditorDocument) rather than a switchFile() call at
-    // every site: it picks the document SHAPE — the whole book when the caret
-    // is in a chapter, a single file for a stylesheet — so no call site has to
-    // know which is live.
-    expect(src).toContain("function pushEditorDocument()");
-    expect(src).toContain("editorRef.switchBook(");
-    expect(src).toContain("editorRef.switchFile(");
-    const pushes = src.match(/pushEditorDocument\b/g) ?? [];
-    expect(pushes.length).toBeGreaterThanOrEqual(4);
+    expect(src).not.toContain("BookDocument");
+    expect(src).not.toContain("editorRef.switchBook(");
+    expect(src).not.toContain("onSectionChange=");
+    expect(src).toContain("editorRef?.switchFile(");
+  });
+
+  test("same-path recovery/reload replaces content and delete clears editor ownership", () => {
+    const src = read(PAGE_PATH);
+    const show = src.slice(
+      src.indexOf("function showEditorContent("),
+      src.indexOf("function createEditorBuffer("),
+    );
+    expect(show).toContain("editorRef?.hasFile(path)");
+    expect(show).toContain("editorRef.updateContent(content)");
+    const reset = src.slice(
+      src.indexOf("function resetEditorBuffer("),
+      src.indexOf("async function flushEditorBuffer("),
+    );
+    expect(reset).toContain("editorFiles.reset()");
+    expect(src).toContain('onClear: () => editorRef?.switchFile(null, "")');
   });
 });
 
-describe("MarkdownEditor.svelte — one persistent EditorView, cache-backed swap", () => {
-  test("imports EditorStateCache", () => {
-    const src = read(EDITOR_PATH);
-    expect(src).toContain('import { EditorStateCache } from "$lib/editor/editor-state-cache"');
-  });
-
-  test("instantiates a bounded (~20) per-file state cache", () => {
-    const src = read(EDITOR_PATH);
-    expect(src).toMatch(/new EditorStateCache</);
-    expect(src).toMatch(/>\(\s*20\s*\)/);
-  });
-
+describe("MarkdownEditor.svelte — one persistent EditorView, synchronous swap", () => {
   test("swaps documents via view.setState(...), not by destroying the view", () => {
     const src = read(EDITOR_PATH);
     expect(src).toContain("view.setState(");
+  });
+
+  test("does not defer scroll restoration from a previous file", () => {
+    const src = read(EDITOR_PATH);
+    const swap = src.slice(
+      src.indexOf("export function switchFile("),
+      src.indexOf("export function updateContent("),
+    );
+    expect(src).not.toContain("EditorStateCache");
+    expect(swap).not.toContain("requestAnimationFrame");
+    expect(swap).not.toContain("scrollTop");
   });
 
   test("exports switchFile() as the file-switch entry point (no $effect anywhere in the file)", () => {
@@ -92,6 +99,14 @@ describe("MarkdownEditor.svelte — one persistent EditorView, cache-backed swap
     expect(src).toMatch(/export function switchFile\(\s*newPath:\s*string \| null,\s*newContent:\s*string\s*\)/);
     // The literal call form the banned-syntax eslint rule forbids.
     expect(src).not.toMatch(/[^.]\$effect\s*\(/);
+  });
+
+  test("does not compose chapter files into one editable document", () => {
+    const src = read(EDITOR_PATH);
+    expect(src).not.toContain("switchBook");
+    expect(src).not.toContain("bookBoundaryField");
+    expect(src).not.toContain("emitChangedSections");
+    expect(src).not.toContain("repairCollapsed");
   });
 
   test("switchFile no-ops when called with the already-open path (avoids redundant cache churn)", () => {
@@ -123,16 +138,20 @@ describe("MarkdownEditor.svelte — one persistent EditorView, cache-backed swap
     expect(header).toMatch(/bans `\$effect`/);
   });
 
-  test("header comment documents the real architecture (one view, state cache, setState)", () => {
+  test("header comment documents the real architecture (one view, one file, setState)", () => {
     const src = read(EDITOR_PATH);
     const header = src.slice(0, src.indexOf("import {"));
     expect(header).toMatch(/ONE EditorView/);
-    expect(header).toMatch(/stateCache/);
+    expect(header).toMatch(/ONE source file/);
     expect(header).toMatch(/setState/);
   });
 
-  test("updateContent() (the #H1 same-file external-edit path) is preserved", () => {
+  test("same-file replacement preserves the viewport without scrollIntoView", () => {
     const src = read(EDITOR_PATH);
-    expect(src).toContain("export function updateContent(nextDoc: string): void {");
+    const update = src.slice(src.indexOf("export function updateContent("), src.indexOf("export function focus("));
+    expect(update).toContain("suppressEmitUntil = Date.now() + 300");
+    expect(update).toContain("const scrollTop = view.scrollDOM.scrollTop");
+    expect(update).toContain("view.scrollDOM.scrollTop = scrollTop");
+    expect(update).not.toContain("EditorView.scrollIntoView");
   });
 });

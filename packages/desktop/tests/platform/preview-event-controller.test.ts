@@ -35,12 +35,9 @@ interface Harness {
   rendering: boolean;
   renderProgressPage: number;
   overlay: boolean;
+  updating: boolean;
   viewportWidth: number;
-  now: number;
   pendingRestore: { page: number | null; viewMode: "single" | "two-column" | null };
-  // editor-sync ambient state
-  suppressUntil: number;
-  editorPaneOpen: boolean;
 }
 
 function make(): Harness {
@@ -55,14 +52,12 @@ function make(): Harness {
     rendering: false,
     renderProgressPage: 0,
     overlay: false,
+    updating: false,
     viewportWidth: 1400,
-    now: 1000,
     pendingRestore: { page: null, viewMode: null } as {
       page: number | null;
       viewMode: "single" | "two-column" | null;
     },
-    suppressUntil: 0,
-    editorPaneOpen: true,
   } as Harness;
 
   h.client = {
@@ -116,11 +111,7 @@ function make(): Harness {
     zoomView: h.zoomView,
     editorSync: {
       invalidatePending: () => log.push("invalidateEditorSync"),
-      suppressPreviewSyncUntil: () => h.suppressUntil,
-      editorPaneOpen: () => h.editorPaneOpen,
       updateActiveOutline: (line) => log.push(`updateActiveOutline:${line}`),
-      revealEditorLine: (chapter, line, deliberate) =>
-        log.push(`revealEditorLine:${chapter}:${line}:${deliberate ? "deliberate" : "passive"}`),
     },
     zoom: () => h.zoom,
     viewMode: () => h.viewMode,
@@ -139,6 +130,10 @@ function make(): Harness {
       h.overlay = v;
       log.push(`overlay:${v}`);
     },
+    setPreviewUpdating: (v) => {
+      h.updating = v;
+      log.push(`updating:${v}`);
+    },
     resetOutline: () => log.push("resetOutline"),
     consumePendingRestore: () => {
       const r = h.pendingRestore;
@@ -150,7 +145,6 @@ function make(): Harness {
     revealSettledPages: () => log.push("reveal"),
     toastSuccess: (m) => log.push(`toast:${m}`),
     viewportWidth: () => h.viewportWidth,
-    now: () => h.now,
     scheduleMicrotask: (fn) => queueMicrotask(fn),
   });
   return h;
@@ -364,115 +358,41 @@ test("ready flips into rendering, clears outline, and peeks total pages", async 
 test("renderingStarted invalidates pending editor scroll commands before frame replacement", () => {
   const h = make();
   h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
-  expect(h.log).toEqual(["invalidateEditorSync"]);
+  expect(h.log).toEqual(["invalidateEditorSync", "updating:true"]);
 });
 
-// ── sourceLineChanged ────────────────────────────────────────────────────────
-
-test("sourceLineChanged always updates the active outline", () => {
+test("hot reload exposes a non-blocking updating state until the replacement is visible", () => {
   const h = make();
-  h.suppressUntil = h.now + 1000; // sync suppressed
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 42, chapter: "ch1.md" } });
+  h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+  expect(h.updating).toBe(true);
+  expect(h.rendering).toBe(false);
+
+  h.ctrl.handleEvent({ name: "renderingComplete", detail: { totalPages: 4, hotReload: true, revision: 2 } });
+  expect(h.updating).toBe(false);
+});
+
+test("a cancelled replacement clears the non-blocking updating state", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "renderingStarted", detail: { hotReload: true, revision: 2 } });
+  expect(h.updating).toBe(true);
+
+  h.ctrl.handleEvent({ name: "renderingCancelled", detail: { hotReload: true, revision: 2 } });
+  expect(h.updating).toBe(false);
+});
+
+// ── preview → editor policy ──────────────────────────────────────────────────
+
+test("sourceLineChanged updates outline state but never moves the editor", () => {
+  const h = make();
+  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 42, chapter: "ch2.md" } });
   expect(h.log).toContain("updateActiveOutline:42");
-  // suppression blocks the editor follow.
-  expect(h.log.some((l) => l.startsWith("revealEditorLine:"))).toBe(false);
+  expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
 });
 
-test("sourceLineChanged reveals the scrolled line in the editor", () => {
+test("normal preview activation never moves or opens the editor; Go to source owns navigation", () => {
   const h = make();
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 12, chapter: "ch1.md" } });
-  expect(h.log).toContain("revealEditorLine:ch1.md:12:passive");
-});
-
-test("sourceLineChanged reveals a line in ANY chapter — no cross-chapter branch", () => {
-  // The editor holds the whole book, so scrolling into another chapter takes
-  // exactly the same path as staying in one. This used to open the other
-  // chapter's file behind a clean-buffer gate.
-  const h = make();
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log).toContain("revealEditorLine:ch2.md:8:passive");
-});
-
-test("sourceLineChanged follows even with unsaved edits — nothing is yanked away", () => {
-  // The old dirty-buffer gate skipped the follow entirely (the editor stopped
-  // tracking the reader mid-edit). With one document there is no file swap to
-  // protect the author from, so the follow always happens.
-  const h = make();
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log).toContain("revealEditorLine:ch2.md:8:passive");
-});
-
-test("sourceLineChanged does not follow while the pane is closed", () => {
-  const h = make();
-  h.editorPaneOpen = false;
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log).toContain("updateActiveOutline:8");
-  expect(h.log.some((l) => l.startsWith("revealEditorLine:"))).toBe(false);
-});
-
-// ── elementActivated (PR 0 — click-to-source) ─────────────────────────────────
-
-test("elementActivated reveals the clicked line when the pane is already open", () => {
-  const h = make();
-  h.editorPaneOpen = true;
   h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
-  expect(h.log).toContain("revealEditorLine:ch1.md:12:deliberate");
-  expect(h.log.some((l) => l.startsWith("openEditorPane:"))).toBe(false);
-});
-
-test("elementActivated reveals into another chapter with no file open behind it", () => {
-  const h = make();
-  h.editorPaneOpen = true;
-  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 8, chapter: "ch2.md" } });
-  expect(h.log).toContain("revealEditorLine:ch2.md:8:deliberate");
-  expect(h.log.some((l) => l.startsWith("openEditorPane:"))).toBe(false);
-});
-
-test("elementActivated is NOT gated by the preview→editor echo-suppression window (unlike sourceLineChanged)", () => {
-  const h = make();
-  h.editorPaneOpen = true;
-  h.suppressUntil = h.now + 1000; // would block sourceLineChanged, but a click is real intent
-  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 12, chapter: "ch1.md" } });
-  expect(h.log).toContain("revealEditorLine:ch1.md:12:deliberate");
-});
-
-test("elementActivated never opens a closed editor pane", () => {
-  const h = make();
-  h.editorPaneOpen = false;
-  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: "ch3.md" } });
-  expect(h.log).toEqual([]);
-});
-
-test("a scroll follow is PASSIVE, a click is DELIBERATE", () => {
-  // The flag decides what happens when the editor is showing something that
-  // isn't the book (a stylesheet), where a chapter-local line has no meaning: a
-  // click brings the book back, a scroll leaves the author in their file.
-  const h = make();
-  h.editorPaneOpen = true;
-  h.ctrl.handleEvent({ name: "sourceLineChanged", detail: { sourceLine: 1, chapter: "ch1.md" } });
-  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 2, chapter: "ch1.md" } });
-  expect(h.log.filter((l) => l.startsWith("revealEditorLine:"))).toEqual([
-    "revealEditorLine:ch1.md:1:passive",
-    "revealEditorLine:ch1.md:2:deliberate",
-  ]);
-});
-
-test("elementActivated with no known chapter also leaves a closed pane closed", () => {
-  const h = make();
-  h.editorPaneOpen = false;
-  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: 5, chapter: null } });
-  expect(h.log).toEqual([]);
-});
-
-test("elementActivated no-ops on a missing/null sourceLine", () => {
-  const h = make();
-  h.editorPaneOpen = false;
-  h.ctrl.handleEvent({ name: "elementActivated", detail: { sourceLine: null, chapter: "ch1.md" } });
-  expect(h.log).toEqual([]);
-
-  const h2 = make();
-  h2.ctrl.handleEvent({ name: "elementActivated", detail: { chapter: "ch1.md" } });
-  expect(h2.log).toEqual([]);
+  expect(h.log.some((line) => line.startsWith("revealEditorLine:"))).toBe(false);
 });
 
 // ── subscribe wiring ─────────────────────────────────────────────────────────

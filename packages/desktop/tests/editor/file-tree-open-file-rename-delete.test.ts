@@ -253,37 +253,47 @@ test("+page.svelte defines and wires the FileTree open-file rename/delete handle
   expect(page).toContain("function onTreeBeforeDelete");
   expect(page).toContain("function onTreeFileRenamed");
   expect(page).toContain("function onTreeFileDeleted");
-  expect(page).toContain("book?.forget(filePath)");
-  expect(page).toContain("loadBookDocument(true)");
+  expect(page).toContain("resetEditorBuffer()");
   // The delete handler must treat a deleted DIRECTORY as affecting every open
   // file nested inside it (code-review), not only an exact path match — the
   // containment predicate is unit-tested in paths.test.ts.
-  expect(page).toContain("isPathAtOrUnder(filePath, path)");
-  expect(page).toContain("isPathAtOrUnder(active, oldPath)");
+  expect(page).toContain("isPathAtOrUnder(buffer.filePath, path)");
+  expect(page).toContain("isPathAtOrUnder(editorFilePath, oldPath)");
   expect(page).toContain("onBeforeRenameOpenFile={onTreeBeforeRename}");
   expect(page).toContain("onBeforeDeleteOpenFile={onTreeBeforeDelete}");
   expect(page).toContain("onFileRenamed={onTreeFileRenamed}");
   expect(page).toContain("onFileDeleted={onTreeFileDeleted}");
 });
 
-// Maintainer review finding #8: the pre-rename FLUSH must not be skipped for
-// a dirty file the rename affects. It used to be conditional — matched
-// against "the one open file" — and an exact-match-only check silently
-// skipped the flush when a FOLDER containing the dirty file was renamed, so
-// the edit was carried away unsaved under the buffer's still-old path. With
-// the whole book open, the editor can hold unsaved edits in several chapters
-// at once and any of them may be under the renamed path, so the handler
-// flushes EVERYTHING unconditionally — strictly stronger than the containment
-// check it replaced, and nothing left for a predicate to get wrong.
-test("+page.svelte's rename/delete pre-hooks flush unconditionally", () => {
+// The one open buffer is flushed only when the renamed/deleted path contains
+// its file; unrelated tree actions cannot perturb the editor.
+test("+page.svelte's rename/delete pre-hooks scope the flush to the open file", () => {
   const root = path.resolve(import.meta.dir, "../..");
   const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
   for (const name of ["onTreeBeforeRename", "onTreeBeforeDelete"]) {
     const match = page.match(new RegExp(`async function ${name}\\([\\s\\S]*?\\n  \\}`));
     expect(match).not.toBeNull();
     const body = match![0];
-    expect(body).toContain("return flushEditorBuffer();");
-    // No condition guarding the flush — that is the whole point.
-    expect(body).not.toContain("if (");
+    expect(body).toContain("isPathAtOrUnder(buffer.filePath, path)");
+    expect(body).toContain("return flushEditorBuffer(buffer);");
   }
+});
+
+test("switching from CSS to Markdown uses the normal flush-before-select path", () => {
+  const root = path.resolve(import.meta.dir, "../..");
+  const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
+  const fn = page.slice(
+    page.indexOf("async function selectMobileTab("),
+    page.indexOf("// ── Virtual-keyboard handling"),
+  );
+  expect(fn).not.toContain("buffer?.reset()");
+  expect(fn).toContain("selectEditorFile(");
+});
+
+test("+page delegates file selection and default loading to the behavior-tested session", () => {
+  const root = path.resolve(import.meta.dir, "../..");
+  const page = readFileSync(path.join(root, "src/routes/+page.svelte"), "utf8");
+  expect(page).toContain("return editorFiles.select(path)");
+  expect(page).toContain("await editorFiles.ensureDefault(");
+  expect(page).toContain("return editorFiles.restore(filePath, content)");
 });

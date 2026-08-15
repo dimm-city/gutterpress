@@ -2,12 +2,9 @@
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
-  import {
-    BookDocument,
-    resolveBookChapters,
-    type BookSectionRef,
-  } from "$lib/editor/book-document.svelte";
-  import { chapterPath } from "$lib/editor/chapter-path";
+  import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
+  import { EditorFileSession } from "$lib/editor/editor-file-session.svelte";
+  import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
   import { ExportController } from "$lib/export/export-controller.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
@@ -43,6 +40,8 @@
   import { BlockOverlayController } from "$lib/routes/block-overlay-controller.svelte";
   import BlockEditOverlay from "$lib/components/BlockEditOverlay.svelte";
   import TextPromptDialog from "$lib/components/TextPromptDialog.svelte";
+  import ImagePropertiesDialog from "$lib/components/ImagePropertiesDialog.svelte";
+  import type { ImagePropertiesValue } from "$lib/editor/image-classes";
   import { CommitEngine } from "$lib/editor/commit-engine";
   import { SyncController } from "$lib/routes/sync-controller.svelte";
   import { ProjectSessionController } from "$lib/routes/project-session-controller.svelte";
@@ -53,7 +52,7 @@
   import { PublishSectionController } from "$lib/routes/publish-section-controller.svelte";
   import { buildCanvasBackgroundStyles } from "$lib/iframe-styles";
   import { getPlatform, isDesktop } from "$lib/platform";
-  import { api, type ProjectConfigFields } from "$lib/api";
+  import { api } from "$lib/api";
   import { isEditableTarget } from "$lib/a11y";
   import { invalidateDiscoveredProjects } from "$lib/projects-discover-cache";
   import { basenameOf, joinPath, isPathAtOrUnder } from "$lib/platform/paths";
@@ -63,7 +62,6 @@
     NARROW_BREAKPOINT,
     type MobileTab,
     paneModeForTab,
-    tabFromPaneMode,
     keyboardOffset,
   } from "$lib/editor/mobile-layout";
   import { commandForSaveShortcut } from "$lib/editor/save-shortcuts";
@@ -249,6 +247,7 @@
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
+  let previewUpdating = $state(false);
   // Ref to the mounted PreviewFrame component so callers can reach its own
   // <iframe> element (getBoundingClientRect for context-menu positioning,
   // clientWidth for fit-width zoom) instead of `document.querySelector("iframe")`.
@@ -303,17 +302,13 @@
   // heading the reader is currently within (updated from sourceLineChanged).
   let outline = $state<OutlineEntry[]>([]);
   let activeOutlineIndex = $state(0);
-  // Editor↔preview scroll/anchor timing machine: owns the echo-suppression
-  // window (the timestamp guard that stops the preview's own sourceLineChanged
-  // from bouncing back into the editor), the cross-chapter reveal poll loop, and
-  // the editor→preview anchor follow. Clock + scheduler are injected so the
-  // whole state machine is deterministic under fake timers in its unit test.
+  // One-way editor→preview anchor sync. Ordinary preview scrolling never moves
+  // the editor; the explicit Go to source action owns that reverse direction.
   const editorSync = new EditorPreviewSyncController({
     client: () => client,
     rendering: () => lifecycle.rendering,
     syncPageAfterScroll: (page) =>
       pageNav.syncPageState({ currentPage: page, totalPages: pageNav.totalPages }),
-    now: () => Date.now(),
   });
   // ── User settings (#45) ────────────────────────────────────────────────
   // bgColor, viewMode and zoom are sourced from the persisted settings store
@@ -434,8 +429,7 @@
    * external change (see `startFolderWatch`/`onSyncFilesChanged`) — and
    * re-check for print problems, since a restore can rewrite many files. */
   function onSnapshotRestored(): void {
-    void book?.reconcileAll();
-    void loadBookDocument();
+    void buffer?.reconcileExternalChange();
     refreshProblems();
   }
   // A loose markdown folder opens fine (no manifest = defaults), but has no
@@ -539,7 +533,7 @@
     getDesktopProjectState: (dir) => api.app.getDesktopProjectState(dir).catch(() => null),
     resetFirstRenderGate: () => previewEvents.resetFirstRenderGate(),
     flushBuffer: () => flushEditorBuffer(),
-    resetBuffer: () => book?.reset(),
+    resetBuffer: () => resetEditorBuffer(),
     ensureEditorFile: () => void ensureEditorFile(),
     startFolderWatch: (dir) => startFolderWatch(dir),
     isLandingVisible: () => landingVisible,
@@ -569,7 +563,7 @@
       // next project on that stale view.
       editorView = "editor";
       paneViewRestore = null;
-      book?.reset();
+      resetEditorBuffer();
       crashRecovery.reset();
       pendingRecoveryScanDir = null;
       problems = [];
@@ -878,24 +872,18 @@
     clearRecovery: (filePath) => api.recovery.clear(filePath),
     readRecoveryFile: (path) => api.fs.readFile(path),
     restoreIntoBuffer: (filePath, content) => restoreRecoveredFile(filePath, content),
-    bufferFilePath: () => book?.activePath ?? null,
-    bufferContent: () => book?.active?.content ?? "",
-    // Push the recovered bytes into whichever document shape is live: a
-    // chapter is spliced into the book document (the rest of the manuscript
-    // stays put), a standalone file replaces its document.
-    switchEditorFile: (path, content) => whenEditorReady(() => applyExternalContent(path, content)),
-    openEditorPane: () => {
-      editorOpen = true;
+    showEditor: () => {
+      editorView = "editor";
+      paneViewRestore = null;
+      openEditorPane({ ensureFile: false });
+      if (isNarrow && paneMode !== "edit") setPaneMode("edit");
     },
-    loadEditorModule: () => loadEditorModule(),
-    focusEditorWhenReady: () => focusEditorWhenReady(),
     toast: () => toast,
     friendlyHostError: (message) => friendlyHostError(message),
   });
 
   function onSyncFilesChanged() {
-    void book?.reconcileAll();
-    void loadBookDocument();
+    void buffer?.reconcileExternalChange();
     refreshProblems();
   }
 
@@ -1032,8 +1020,7 @@
   // in-memory content, the dirty/save state machine, the debounced disk write
   // (which the preview file-watcher picks up to re-render), debounced
   // crash-recovery snapshots, the close/navigate flush, and external-edit
-  // reconciliation. BookDocument owns one of those per open file and is what
-  // this page talks to — see `book` below.
+  // reconciliation. The editor owns exactly one file buffer at a time.
   let editorOpen = $state(false);
   let previewHidden = $state(false);
   // Focus mode (#104) — transient editor-only layout. Declared here (before the
@@ -1049,7 +1036,7 @@
   let blockOverlayRef = $state<{ commitNow: () => void } | null>(null);
   let editorRef = $state<{
     focus: () => void;
-    revealLine: (line: number, chapter?: string | null) => void;
+    revealLine: (line: number, focusEditor?: boolean) => void;
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     getSelectionText: () => string;
     insertSnippet: (text: string) => void;
@@ -1058,11 +1045,7 @@
      * the buffer's open file changes; MarkdownEditor has no reactive effect
      * of its own (this repo bans `$effect`). */
     switchFile: (path: string | null, content: string) => void;
-    /** Open the whole book as one continuous document ($lib/editor/book-layout). */
-    switchBook: (sections: { path: string; chapter: string; content: string }[]) => void;
-    /** Replace ONE chapter's text inside the book document (external reload). */
-    spliceSection: (path: string, content: string) => boolean;
-    /** Whether the live document actually holds this file
+    /** Whether the live document is this file
      * (inline-editing plan §4.7 Step 4 — commit-engine.ts). */
     hasFile: (path: string) => boolean;
     /** Apply a `[from, to)` character-range edit to one file as a single
@@ -1137,16 +1120,14 @@
   // subscription further down; declared here so the derived below can read it.
   let isNarrow = $state(false);
 
-  // Whether the editor pane is shown — DERIVED, not synced via $effect. In narrow
-  // single-pane mode the Edit/View mode decides it; in the wide split it's the
-  // editorOpen toggle. This fixes the "blank pane on launch in edit mode" bug:
-  // previously the editor only rendered `{#if editorOpen}`, so a persisted
-  // paneMode="edit" hid the preview without rendering the editor.
+  // Whether the editor pane is shown — always requires an explicit action that
+  // sets editorOpen. A persisted narrow Edit preference alone never opens it.
   let editorPaneOpen = $derived(
     editorView === "activity" ||
       (!!lifecycle.currentDir &&
         lifecycle.sourceMode === "folder" &&
-        (isNarrow ? paneMode === "edit" : editorOpen)),
+        editorOpen &&
+        (!isNarrow || paneMode === "edit")),
   );
   let splitGridColumns = $derived(
     editorPaneOpen && !isNarrow && !previewHidden && !focusMode
@@ -1248,102 +1229,77 @@
     requestAnimationFrame(tryInsert);
   }
 
-  // Construct lazily on first desktop use so the WebAdapter path never touches
-  // it (the editor is desktop-only). ONE BookDocument for the lifetime of the
-  // app: it owns an EditorBuffer per open file — every chapter of the book plus
-  // any standalone file (a stylesheet) — and `buffer` below is whichever one
-  // the caret is currently in.
-  let book = $state<BookDocument | null>(null);
+  // One session owns one active file and performs atomic buffer handoffs.
+  const editorFiles = new EditorFileSession({
+    createBuffer: () => createEditorBuffer(),
+    flush: (target) => flushEditorBuffer(target),
+    onActivate: (target) => {
+      if (target.filePath) showEditorContent(target.filePath, target.content);
+      if (isDesktop()) trackPersistence(api.app.setDirtyState(target.hasPendingSave));
+    },
+    onClear: () => editorRef?.switchFile(null, ""),
+    onSelectionError: () => toast?.error("Could not open that file."),
+  });
+  let buffer = $derived(editorFiles.active);
 
-  /**
-   * The buffer for the file under the caret. Every consumer of "the open file's
-   * buffer" (status bar, conflict banner, commit engine, context menu) reads
-   * this; with the whole book in one document it follows the caret across
-   * chapters instead of following an explicit file-open.
-   */
-  let buffer = $derived(book?.active ?? null);
-
-  // Mirrors used by the markup/props (chapter highlight, dirty dot, editor pane).
-  let editorFilePath = $derived(book?.activePath ?? null);
+  let editorFilePath = $derived(buffer?.filePath ?? null);
   let editorContent = $derived(buffer?.content ?? "");
-  // The `editorChapter` derived that used to live here — the open file's
-  // project-relative chapter id, used to scope editor↔preview sync to the ONE
-  // chapter the editor held — is gone with the single-file editor. The editor
-  // holds every chapter now and reports the chapter each anchor line belongs to
-  // directly (MarkdownEditor's `onAnchorLine`), read off the book document's
-  // own segment table, so nothing has to infer it from the open file's path.
-  /**
-   * Save-state for the editor status bar. This is the WHOLE BOOK's state, not
-   * just the chapter under the caret: with one continuous document an author
-   * can leave unsaved edits several chapters back, and a status bar that only
-   * described the caret's chapter would report "saved" while they were pending.
-   */
-  let editorSavePhase = $derived(book?.phase ?? "clean");
+  let editorChapter = $derived.by(() => {
+    if (!editorFilePath) return null;
+    const file = editorFilePath.replace(/\\/g, "/");
+    const dir = lifecycle.currentDir?.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (dir && file.startsWith(dir + "/")) return file.slice(dir.length + 1);
+    return basenameOf(file);
+  });
+  let editorSavePhase = $derived(buffer?.phase ?? "clean");
+  let externalChange = $derived(buffer?.externalChange ?? null);
+  let externalFileName = $derived(editorFilePath ? basenameOf(editorFilePath) : "");
 
-  // External-edit conflict banner state (#44). Derived from the first file
-  // awaiting a decision so Reload / Keep mine route back through its buffer.
-  let externalConflict = $derived(book?.conflict ?? null);
-  let externalChange = $derived(externalConflict?.change ?? null);
-  let externalFileName = $derived(
-    externalConflict ? basenameOf(externalConflict.path) : "",
-  );
-
-  function ensureBook(): BookDocument {
-    if (!book) {
-      book = new BookDocument({
-        platform: getPlatform(),
-        saveDelayMs: settings.current.editor.autoSaveDelay,
-        recoveryEnabled: settings.current.editor.crashRecovery,
-        onError: (msg) => toast?.error(msg),
-        // Single content-replacement path (#H1): every place a buffer swaps in
-        // disk content — the silent clean-buffer auto-reload AND the
-        // conflict-banner "Reload" action (acceptExternal) — funnels through
-        // here, so the on-screen CodeMirror doc can never lag behind the
-        // buffer. Runs before the auto-reload toast below.
-        onContentReplaced: (path, content) => applyExternalContent(path, content),
-        onAutoReloaded: () => toast?.info?.("Reloaded from disk"),
-        onSectionsUnavailable: (paths) =>
-          toast?.info?.(
-            paths.length === 1
-              ? `${basenameOf(paths[0]!)} is listed in this book but couldn't be opened.`
-              : `${paths.length} chapters listed in this book couldn't be opened.`,
-          ),
-        // Best-effort host hint for diagnostics. Close safety does not trust
-        // this fallible fetch; main always requests a direct renderer flush.
-        onDirty: (pending) => {
-          if (isDesktop()) {
-            trackPersistence(api.app.setDirtyState(pending));
-          }
-        },
-      });
-    }
-    return book;
+  function showEditorContent(path: string, content: string): void {
+    if (editorRef?.hasFile(path)) editorRef.updateContent(content);
+    else editorRef?.switchFile(path, content);
   }
 
-  /**
-   * Push disk content the author didn't type into the live editor. A chapter of
-   * the book document is spliced in place (the rest of the manuscript, and the
-   * author's position in it, stay put); a standalone document is replaced.
-   */
-  function applyExternalContent(path: string, content: string): void {
-    if (!editorRef) return;
-    if (book?.isSection(path)) {
-      if (!editorRef.spliceSection(path, content)) pushEditorDocument();
-      return;
-    }
-    if (book?.activePath === path) editorRef.updateContent(content);
+  function createEditorBuffer(): EditorBuffer {
+    let instance: EditorBuffer;
+    instance = new EditorBuffer({
+      platform: getPlatform(),
+      saveDelayMs: settings.current.editor.autoSaveDelay,
+      recoveryEnabled: settings.current.editor.crashRecovery,
+      onError: (msg) => {
+        if (editorFiles.isActive(instance)) toast?.error(msg);
+      },
+      onContentReplaced: (path, content) => {
+        if (editorFiles.isActive(instance) && instance.filePath === path) showEditorContent(path, content);
+      },
+      onAutoReloaded: () => {
+        if (editorFiles.isActive(instance)) toast?.info?.("Reloaded from disk");
+      },
+      onDirty: (pending) => {
+        if (editorFiles.isActive(instance) && isDesktop()) {
+          trackPersistence(api.app.setDirtyState(pending));
+        }
+      },
+    });
+    return instance;
   }
 
-  /** Flush EVERY unsaved file before replacing/resetting the book. A false
-   * result is a hard navigation stop; close uses the host gate's direct marker
-   * write because the renderer may be hung or already gone. The book document
-   * can hold pending edits in several chapters at once, so this fans out — a
-   * flush of only the caret's chapter would drop the others on the floor. */
-  async function flushEditorBuffer(recordMarker = true): Promise<boolean> {
-    if (!book) return true;
+  function ensureBuffer(): EditorBuffer {
+    return editorFiles.ensure();
+  }
+
+  function resetEditorBuffer(): void {
+    editorFiles.reset();
+  }
+
+  async function flushEditorBuffer(
+    target: EditorBuffer | null = buffer,
+    recordMarker = true,
+  ): Promise<boolean> {
+    if (!target) return true;
     const projectDir = lifecycle.currentDir;
     try {
-      await book.flushAll();
+      await target.flush();
       return true;
     } catch {
       reportIgnoredPersistenceFailure();
@@ -1365,8 +1321,8 @@
   //   the renderingComplete handler, this catches live changes. The ready()
   //   check keeps a pre-mount change from being dropped (it re-fires once the
   //   preview client exists).
-  const autoSaveDelaySink = settingsChangeGuard<number>((delay) => book?.setSaveDelayMs(delay));
-  const recoverySink = settingsChangeGuard<boolean>((enabled) => book?.setRecoveryEnabled(enabled));
+  const autoSaveDelaySink = settingsChangeGuard<number>((delay) => buffer?.setSaveDelayMs(delay));
+  const recoverySink = settingsChangeGuard<boolean>((enabled) => buffer?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
     (bg) => {
       // Paged.js has been removed (native-only-migration-plan.md Phase 6) —
@@ -1408,11 +1364,7 @@
     if (!isDesktop()) return;
     _watchFolderOff?.();
     _watchFolderOff = getPlatform().watchFolder(dir, () => {
-      void book?.reconcileAll();
-      // The book's SHAPE can change out from under us too — a chapter added or
-      // deleted on disk, or `source.files` reordered in the manifest. This
-      // no-ops unless the resolved chapter list actually differs.
-      void loadBookDocument();
+      buffer?.reconcileExternalChange().catch(() => {});
     }) ?? undefined;
   }
   function stopFolderWatch() {
@@ -1424,7 +1376,7 @@
   // closing, flush the buffer. The preload wrapper signals main when done.
   onMount(() => {
     if (!isDesktop()) return;
-    const off = getPlatform().onFlushBeforeClose(() => flushEditorBuffer(false));
+    const off = getPlatform().onFlushBeforeClose(() => flushEditorBuffer(buffer, false));
     return () => off?.();
   });
 
@@ -1448,158 +1400,43 @@
     requestAnimationFrame(attempt);
   }
 
-  /**
-   * Push the current document shape into the live editor view: the whole book
-   * when the caret is in a chapter, the single file when it's a stylesheet or
-   * other standalone file. Called explicitly (this repo bans `$effect`, and the
-   * editor deliberately has no reactive prop watcher — see MarkdownEditor's
-   * header comment).
-   */
-  function pushEditorDocument(): void {
-    const b = book;
-    if (!editorRef || !b) return;
-    const active = b.activePath;
-    if (active && !b.isSection(active)) {
-      editorRef.switchFile(active, b.contentFor(active) ?? "");
-      return;
-    }
-    if (b.sections.length === 0) {
-      editorRef.switchFile(active, active ? (b.contentFor(active) ?? "") : "");
-      return;
-    }
-    editorRef.switchBook(
-      b.sections.map((s) => ({
-        path: s.path,
-        chapter: s.chapter,
-        content: b.contentFor(s.path) ?? "",
-      })),
-    );
-  }
-
-  /**
-   * Whether the editor is showing the BOOK (rather than a standalone document
-   * like a stylesheet). The document's shape is derived from the active file in
-   * `pushEditorDocument`, so this is the same question answered from the page's
-   * side without another editor export.
-   */
-  function editorShowsBook(): boolean {
-    const active = book?.activePath;
-    return !!active && !!book?.isSection(active);
-  }
-
-  /**
-   * The ONE way anything reveals a source line in the editor.
-   *
-   * `chapter` is a chapter-local coordinate and only means something to the
-   * book document, so this has to know which document is on screen. The
-   * difference between the two callers matters:
-   *
-   * - **Passive follow** (`deliberate: false`) — the reader scrolled the
-   *   preview. If the author has a stylesheet open, do NOTHING: revealing would
-   *   either scroll the wrong document (a chapter line applied to CSS) or yank
-   *   them out of the file they are working in, neither of which they asked
-   *   for by scrolling.
-   * - **Deliberate** (`deliberate: true`) — a click on a block, an outline
-   *   jump, a problem, "go to source". That IS a request to go somewhere, so
-   *   put the book back on screen, make the chapter active, and reveal.
-   */
-  function revealInEditor(
+  /** Explicit navigation: switch to the source file, place the caret, focus. */
+  async function revealInEditor(
     chapter: string | null,
     line: number,
-    deliberate = false,
-  ): void {
+  ): Promise<void> {
     if (!chapter) {
-      // No chapter to resolve — only meaningful for a standalone document.
-      if (!editorShowsBook()) whenEditorReady(() => editorRef?.revealLine(line));
+      const path = editorFilePath;
+      if (path) {
+        whenEditorReady(() => {
+          if (editorRef?.hasFile(path)) editorRef.revealLine(line, true);
+        });
+      }
       return;
     }
-    if (editorShowsBook()) {
-      whenEditorReady(() => editorRef?.revealLine(line, chapter));
-      return;
-    }
-    if (!deliberate) return;
-    // Bring the book back (loadBookDocument no-ops when it is already loaded,
-    // so this costs nothing in the normal case) before resolving the chapter.
-    void loadBookDocument().then(() => {
-      const path = book?.pathForChapter(chapter);
-      if (!path || !book?.setActive(path)) return;
-      whenEditorReady(() => {
-        pushEditorDocument();
-        editorRef?.revealLine(line, chapter);
-      });
-    });
-  }
-
-  /**
-   * (Re)build the book document from the manifest's chapter list. Cheap to call
-   * repeatedly: it no-ops when the resolved chapter list is unchanged, which is
-   * the common case for the folder watcher (an ordinary save).
-   */
-  async function loadBookDocument(force = false): Promise<void> {
+    if (!isSafeChapterId(chapter)) return;
     const dir = lifecycle.currentDir;
-    if (!dir || !isDesktop()) return;
-    const b = ensureBook();
-    let refs: BookSectionRef[];
-    try {
-      const [fields, entries] = await Promise.all([
-        api.manifest.read(dir).catch(() => ({}) as ProjectConfigFields),
-        api.fs.listDir(dir),
-      ]);
-      if (dir !== lifecycle.currentDir) return; // another project took over
-      const markdown = entries
-        .filter((e) => !e.isDir && /\.md$/i.test(e.name))
-        .map((e) => e.name);
-      refs = resolveBookChapters(markdown, fields.sourceFiles).map((chapter) => ({
-        chapter,
-        path: chapterPath(dir, chapter),
-      }));
-    } catch {
-      return; // non-fatal: the author can still open files from the tree
+    if (!dir) return;
+    const path = chapterPath(dir, chapter);
+    if (path !== editorFilePath) {
+      if (!(await selectEditorFile(path))) return;
     }
-    if (!force && b.matchesSections(refs)) return;
-    await b.open(refs);
-    if (dir !== lifecycle.currentDir) return;
-    // Only push into a MOUNTED editor. A pane that isn't open yet gets the
-    // book from `openEditorPane` instead — waiting on a bounded rAF poll here
-    // would spin on every folder-change tick and still time out long before an
-    // author who opens the pane minutes later.
-    if (editorRef) pushEditorDocument();
+    whenEditorReady(() => {
+      if (editorRef?.hasFile(path)) editorRef.revealLine(line, true);
+    });
   }
 
   /**
    * Make `path` the file the author is working in.
    *
-   * For a chapter of the book this is now a pure navigation: the text is
-   * ALREADY in the open document, so there is no flush, no disk read, no
-   * document swap and no epoch race to guard — just move the active file and
-   * scroll. (The flush/load/epoch machinery this function used to carry existed
-   * because every chapter change replaced the whole document.) A file outside
-   * the book — a stylesheet, or markdown the manifest doesn't build from —
-   * still opens as its own single-file document.
-   *
-   * `reveal: false` suppresses the scroll for callers that only need the file
-   * to be the active one (the commit engine), not the author moved to it.
+   * The session keeps the outgoing file active while the target reads and
+   * performs one atomic handoff after any required flush succeeds.
    */
   async function selectEditorFile(
     path: string,
-    opts: { reveal?: boolean } = {},
   ): Promise<boolean> {
     if (!isDesktop()) return false;
-    const { reveal = true } = opts;
-    const b = ensureBook();
-    if (b.isSection(path)) {
-      b.setActive(path);
-      const chapter = b.chapterFor(path);
-      whenEditorReady(() => {
-        pushEditorDocument();
-        if (reveal && chapter) editorRef?.revealLine(1, chapter);
-      });
-      return true;
-    }
-    const content = await b.openStandalone(path);
-    if (content == null) return false;
-    whenEditorReady(pushEditorDocument);
-    return b.activePath === path;
+    return editorFiles.select(path);
   }
 
   /**
@@ -1631,30 +1468,27 @@
    * buffer under neither name. Flushing is a no-op when nothing is dirty,
    * so it's safe to await unconditionally.
    */
-  async function onTreeBeforeRename(_path: string): Promise<boolean> {
-    return flushEditorBuffer();
+  async function onTreeBeforeRename(path: string): Promise<boolean> {
+    if (buffer?.filePath && isPathAtOrUnder(buffer.filePath, path)) {
+      return flushEditorBuffer(buffer);
+    }
+    return true;
   }
 
-  async function onTreeBeforeDelete(_path: string): Promise<boolean> {
-    return flushEditorBuffer();
+  async function onTreeBeforeDelete(path: string): Promise<boolean> {
+    if (buffer?.filePath && isPathAtOrUnder(buffer.filePath, path)) {
+      return flushEditorBuffer(buffer);
+    }
+    return true;
   }
 
   /**
-   * Called after a successful rename. Rebuild the book from the manifest so the
-   * renamed chapter takes its new path (and, when the manifest listed it by its
-   * old name, drops out until the author updates `source.files`). When a FOLDER
-   * containing an open standalone file is renamed, that file moves with it:
-   * repoint to its new nested path rather than leaving the editor bound to the
-   * old, now-missing location.
+   * Repoint the open buffer when its file (or an ancestor directory) moved.
    */
   function onTreeFileRenamed(oldPath: string, newPath: string): void {
-    const active = book?.activePath;
-    const activeMoved = !!active && isPathAtOrUnder(active, oldPath);
-    void loadBookDocument(true).then(() => {
-      if (activeMoved && active && !book?.isSection(active)) {
-        void selectEditorFile(newPath + active.slice(oldPath.length));
-      }
-    });
+    if (editorFilePath && isPathAtOrUnder(editorFilePath, oldPath)) {
+      void selectEditorFile(newPath + editorFilePath.slice(oldPath.length));
+    }
   }
 
   /**
@@ -1666,51 +1500,37 @@
    * under the deleted path, not just an exact match.
    */
   function onTreeFileDeleted(path: string): void {
-    const open = [
-      ...(book?.sections.map((s) => s.path) ?? []),
-      ...(book?.standalonePaths ?? []),
-    ];
-    for (const filePath of open) {
-      if (isPathAtOrUnder(filePath, path)) book?.forget(filePath);
+    if (editorFilePath && isPathAtOrUnder(editorFilePath, path)) {
+      resetEditorBuffer();
     }
-    void loadBookDocument(true);
   }
 
-  /** A standalone document's whole content changed (a stylesheet, non-book markdown). */
   function onEditorChange(value: string) {
     if (!isDesktop()) return;
-    const active = book?.activePath;
-    if (active) book?.applyEdit(active, value);
+    ensureBuffer().edit(value);
   }
 
-  /**
-   * A chapter of the book document changed. Fires once per file an edit
-   * actually touched — normally one, two when a paste or a delete crosses a
-   * chapter boundary — and each goes to that file's OWN buffer, so both files
-   * save independently.
-   */
-  function onEditorSectionChange(path: string, text: string) {
-    if (!isDesktop()) return;
-    book?.applyEdit(path, text);
+  async function defaultEditorFile(dir: string, markdownOnly = false): Promise<string | null> {
+    const files = (await api.fs.listDir(dir)).filter((entry) => !entry.isDir);
+    const markdown = files
+      .filter((entry) => /\.md$/i.test(entry.name))
+      .sort((a, b) => a.name.localeCompare(b.name))[0];
+    return markdown?.path ??
+      (markdownOnly ? null : files.find((entry) => /\.(md|css)$/i.test(entry.name))?.path ?? null);
   }
 
-  // When the editor opens with nothing loaded, load the book. Falls back to the
-  // first editable file when the folder has no markdown at all, so the author
-  // isn't dropped on an empty "Select a file" pane.
+  // When the editor opens with nothing loaded, choose one real file.
   async function ensureEditorFile() {
     if (!lifecycle.currentDir || !isDesktop()) return;
     // Fire-and-forget continuation: capture the dir and bail if a different
     // project took over during the listing, or this would load the OLD
     // project's chapters (and auto-save edits into the wrong book on disk).
     const dir = lifecycle.currentDir;
-    await loadBookDocument();
-    if (dir !== lifecycle.currentDir) return;
-    if (book?.activePath) return;
     try {
-      const files = (await api.fs.listDir(dir)).filter((e) => !e.isDir);
-      if (dir !== lifecycle.currentDir || book?.activePath) return;
-      const pick = files.find((e) => /\.(md|css)$/i.test(e.name));
-      if (pick) void selectEditorFile(pick.path);
+      await editorFiles.ensureDefault(async () => {
+        const path = await defaultEditorFile(dir);
+        return dir === lifecycle.currentDir ? path : null;
+      });
     } catch {
       /* non-fatal: the user can still pick a file from the tree */
     }
@@ -1720,26 +1540,18 @@
     // acceptExternal() fires the buffer's onContentReplaced callback above,
     // which pushes the reloaded content into the editor — no separate
     // updateContent call needed here (#H1).
-    book?.acceptExternal();
+    buffer?.acceptExternal();
   }
 
   function keepMineExternal() {
-    book?.keepMine();
+    buffer?.keepMine();
   }
 
   /**
-   * Load crash-recovered bytes for `filePath` (CrashRecoveryController). The
-   * file has to be open here before its buffer can hold the recovered text, and
-   * a recovered chapter must land in the book document rather than replacing it
-   * with a single-file view.
+   * Load crash-recovered bytes into the one-file buffer.
    */
-  async function restoreRecoveredFile(filePath: string, content: string): Promise<void> {
-    const b = ensureBook();
-    if (!b.bufferFor(filePath)) await selectEditorFile(filePath, { reveal: false });
-    const target = b.bufferFor(filePath);
-    if (!target) return;
-    await target.restoreContent(filePath, content);
-    b.setActive(filePath);
+  async function restoreRecoveredFile(filePath: string, content: string): Promise<boolean> {
+    return editorFiles.restore(filePath, content);
   }
 
   // scanForRecovery/restoreRecovery/discardRecovery/dismissRecovery (#44,
@@ -1772,23 +1584,19 @@
     editorOpen = true;
     loadEditorModule();
     if (ensureFile) void ensureEditorFile();
-    // The book may have been loaded long before the pane was opened — push it
-    // into the freshly-mounted view. A no-op when the view already holds it.
-    whenEditorReady(pushEditorDocument);
     if (focus) focusEditorWhenReady();
   }
 
   /**
-   * Reveal a chapter/line only when the author already opened the editor — the
-   * context menu's "Go to source"/"Edit block in editor" destination
-   * (inline-editing plan §4.4). Mirrors `PreviewEventController`'s
-   * `onElementActivated` handling (PR 0): a closed pane is left untouched.
-   * There is no cross-chapter
-   * case left to handle — the whole book is already in the document.
+   * The preview context menu's one editor-opening action. It opens the Markdown
+   * editor, loads the owning file, then places the caret on the source line.
    */
   function goToSource(chapter: string, line: number): void {
-    if (!editorPaneOpen || editorView !== "editor") return;
-    revealInEditor(chapter, line, true);
+    editorView = "editor";
+    paneViewRestore = null;
+    openEditorPane({ focus: false, ensureFile: false });
+    if (isNarrow && paneMode !== "edit") setPaneMode("edit");
+    void revealInEditor(chapter, line);
   }
 
   function toggleEditor() {
@@ -1878,8 +1686,7 @@
 
   /**
    * Open the problem's file in the editor at the offending line. Reuses the
-   * existing cross-chapter reveal (the same path the preview→editor sync and
-   * outline jumps use) — no new navigation machinery.
+   * existing file-selection + reveal path — no new navigation machinery.
    */
   function openProblem(p: ProblemEntry) {
     if (!p.filePath || !lifecycle.currentDir) return;
@@ -1891,13 +1698,13 @@
       editorOpen = true;
       loadEditorModule();
     }
-    const filePath = p.filePath;
-    void selectEditorFile(filePath, { reveal: false }).then(() => {
-      // A problem can point at a stylesheet as easily as a chapter. chapterFor
-      // returns null for the former, which routes to the single-file reveal —
-      // resolving by PATH, never by the report's file label, so a stylesheet is
-      // never mistaken for a chapter that happens to share its name.
-      if (p.line) revealInEditor(book?.chapterFor(filePath) ?? null, p.line, true);
+    void selectEditorFile(p.filePath).then((selected) => {
+      if (selected && p.line) {
+        const path = p.filePath!;
+        whenEditorReady(() => {
+          if (editorRef?.hasFile(path)) editorRef.revealLine(p.line!, true);
+        });
+      }
     });
     focusEditorWhenReady();
   }
@@ -2072,7 +1879,7 @@
     buffer: () => buffer,
     // reveal:false — a committed menu action must not also scroll the author's
     // editor to the top of the chapter it happened to touch.
-    selectEditorFile: (path) => selectEditorFile(path, { reveal: false }),
+    selectEditorFile: (path) => selectEditorFile(path),
     editorHasFile: (path) => editorRef?.hasFile(path) ?? false,
     applyRangeEdit: (path, from, to, insert) =>
       editorRef?.applyRangeEditIn(path, from, to, insert),
@@ -2103,6 +1910,25 @@
     pending?.resolve(value);
   }
 
+  let imagePropertiesPrompt = $state<{
+    initialValue: ImagePropertiesValue;
+    resolve: (value: ImagePropertiesValue | null) => void;
+  } | null>(null);
+
+  async function promptImageProperties(
+    initialValue: ImagePropertiesValue,
+  ): Promise<ImagePropertiesValue | null> {
+    return new Promise((resolve) => {
+      imagePropertiesPrompt = { initialValue, resolve };
+    });
+  }
+
+  function finishImageProperties(value: ImagePropertiesValue | null): void {
+    const pending = imagePropertiesPrompt;
+    imagePropertiesPrompt = null;
+    pending?.resolve(value);
+  }
+
   async function copyToClipboard(text: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
@@ -2124,7 +1950,7 @@
   const blockOverlay = new BlockOverlayController({
     client: () => client,
     currentDir: () => lifecycle.currentDir,
-    openContent: (path) => book?.contentFor(path) ?? null,
+    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
     readFile: (path) => getPlatform().readFile(path),
     commitEngine,
     getIframeOrigin: () => {
@@ -2150,9 +1976,8 @@
     client: () => client,
     enabled: () => settings.current.preview.contextMenu,
     rendering: () => lifecycle.rendering,
-    editorPaneOpen: () => editorPaneOpen && editorView === "editor",
     currentDir: () => lifecycle.currentDir,
-    openContent: (path) => book?.contentFor(path) ?? null,
+    openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
     readFile: (path) => getPlatform().readFile(path),
     commitEngine,
     getIframeOrigin: () => {
@@ -2165,6 +1990,7 @@
       return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     },
     promptText,
+    promptImageProperties,
     goToSource,
     openMediaPanel,
     copyToClipboard,
@@ -2176,8 +2002,8 @@
   // ----------------------------------------------------------------
   // Preview-frame event router. Owns the post-render settle sequence (view-mode
   // auto-selection, the fit-width-vs-numeric-zoom reveal race, page restore,
-  // outline rebuild, re-lint) + the preview→editor
-  // sourceLineChanged follow. Host coupling is injected so the ordering that
+  // outline rebuild, re-lint) + sourceLineChanged outline tracking. Host
+  // coupling is injected so the ordering that
   // prevents the visible page JUMP is unit-tested in isolation. Composes
   // pageNav + zoomView rather than duplicating their logic.
   const previewEvents = new PreviewEventController({
@@ -2186,11 +2012,7 @@
     zoomView,
     editorSync: {
       invalidatePending: () => editorSync.invalidatePending(),
-      suppressPreviewSyncUntil: () => editorSync.suppressPreviewSyncUntil,
-      editorPaneOpen: () => editorPaneOpen && editorView === "editor",
       updateActiveOutline: (line) => updateActiveOutline(line),
-      revealEditorLine: (chapter, line, deliberate) =>
-        revealInEditor(chapter, line, deliberate),
     },
     zoom: () => zoom,
     viewMode: () => viewMode,
@@ -2200,6 +2022,7 @@
     setRenderProgressPage: (v) => (lifecycle.renderProgressPage = v),
     getRenderProgressPage: () => lifecycle.renderProgressPage,
     setRenderCompleteOverlay: (v) => (lifecycle.renderCompleteOverlay = v),
+    setPreviewUpdating: (v) => (previewUpdating = v),
     resetOutline: () => {
       outline = [];
       activeOutlineIndex = 0;
@@ -2215,7 +2038,6 @@
     revealSettledPages: () => revealSettledPages(),
     toastSuccess: (message) => toast?.success(message),
     viewportWidth: () => window.innerWidth,
-    now: () => Date.now(),
     scheduleMicrotask: (fn) => queueMicrotask(fn),
   });
 
@@ -2233,6 +2055,7 @@
   // third-party page, which must never get the command/event bridge wired up
   // at all (a locked client's later attach() call is a permanent no-op).
   function onClientReady(c: PreviewClient) {
+    previewUpdating = false;
     if (lifecycle.sourceMode === "url") {
       c.lockDown();
       return;
@@ -2546,14 +2369,10 @@
         : entry.sourceLine != null
           ? { line: entry.sourceLine, chapter: entry.chapter }
           : { page: entry.page };
-    // Keep the editor in step with the jump. Editor-side first so its scroll
-    // doesn't get mistaken for a reader scroll. The jump suppresses the
-    // scroll-driven follow, so a cross-chapter jump must move the editor here
-    // explicitly — otherwise the preview lands on the new chapter while the
-    // editor is left on the old file (they desync).
-    editorSync.suppressFor(400);
-    if (entry.sourceLine != null && editorPaneOpen) {
-      revealInEditor(entry.chapter, entry.sourceLine, true);
+    // An outline jump may keep an already-open editor in step, but it never
+    // opens the editor. Preview scrolling/clicking alone never moves it.
+    if (entry.sourceLine != null && editorPaneOpen && editorView === "editor") {
+      revealInEditor(entry.chapter, entry.sourceLine);
     }
     client
       .scrollTo(target, { block: "start" })
@@ -2595,7 +2414,6 @@
     isNarrow = mq.matches;
     const onChange = (e: MediaQueryListEvent) => {
       isNarrow = e.matches;
-      if (e.matches && paneMode === "edit") void ensureEditorFile();
     };
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
@@ -2631,7 +2449,9 @@
     // Switching to the edit pane should open the editor + focus it (folder only).
     if (mode === "edit" && lifecycle.currentDir && lifecycle.sourceMode === "folder") {
       // Only steal focus if the editor was previously closed.
-      openEditorPane({ focus: !editorOpen });
+      // Callers that need a default file request it explicitly; navigation
+      // callers already have a target and must not race a background default.
+      openEditorPane({ focus: !editorOpen, ensureFile: false });
     }
   }
 
@@ -2713,9 +2533,9 @@
 
   // ── Mobile tab bar (#34): Markdown / Preview ───────────────────────────────
   // The single-column (narrow) layout switches the one visible pane between the
-  // editor and the preview. The persisted two-state `paneMode` ("edit"/"view")
-  // is the source of truth so the existing restore + wide-screen behaviour is
-  // untouched. (The defunct CSS/style tab was retired with the toolbar
+  // editor and the preview. `editorPaneOpen` is the visible source of truth;
+  // the persisted paneMode is only consulted after the editor was explicitly
+  // opened. (The defunct CSS/style tab was retired with the toolbar
   // refactor — project styling lives in the Project settings view.)
   //
   // M1 (single source of truth): whether the shared editor is on a CSS file is
@@ -2724,8 +2544,8 @@
   let openFileIsCss = $derived(
     !!editorFilePath && /\.css$/i.test(editorFilePath),
   );
-  // Active mobile tab, derived from the persisted paneMode. No new persistence.
-  let mobileTab = $derived<MobileTab>(tabFromPaneMode(paneMode));
+  // Active mobile tab follows the pane that is actually visible.
+  let mobileTab = $derived<MobileTab>(editorPaneOpen ? "markdown" : "preview");
 
   /**
    * Switch the visible mobile pane. Preview → view mode; Markdown → edit mode
@@ -2733,15 +2553,9 @@
    */
   async function selectMobileTab(tab: MobileTab): Promise<void> {
     if (tab === "markdown") {
-      // Only swap documents if the editor is currently on a CSS file;
-      // otherwise the book is already open and the author keeps their place.
-      // Nothing is reset here any more: the stylesheet's buffer keeps its own
-      // pending save and settles on its own debounce, so switching tabs can no
-      // longer drop an edit made inside the autosave window (B1).
-      if (openFileIsCss) {
-        const first = book?.sections[0]?.path;
-        if (first) await selectEditorFile(first, { reveal: false });
-        else await ensureEditorFile();
+      if (openFileIsCss && lifecycle.currentDir) {
+        const path = await defaultEditorFile(lifecycle.currentDir, true);
+        if (path) await selectEditorFile(path);
       } else {
         void ensureEditorFile();
       }
@@ -2814,10 +2628,10 @@
    * Mirrors the same flush path used on project-switch and window-close.
    */
   async function handleForceSave() {
-    if (!book || forceSaving) return;
+    if (!buffer || forceSaving) return;
     forceSaving = true;
     try {
-      await book.flushAll();
+      await buffer.flush();
     } catch (e) {
       toast?.error(`Save failed: ${friendlyHostError(e instanceof Error ? e.message : String(e))}`);
     } finally {
@@ -2931,7 +2745,7 @@
     onSelectMobileTab={selectMobileTab}
     editorTabDisabled={!toolbarProjectOpen}
     previewTabDisabled={!lifecycle.previewUrl && !lifecycle.previewError}
-    hidePreviewControls={isNarrow && paneMode === "edit"}
+    hidePreviewControls={isNarrow && editorPaneOpen}
     {viewMode}
     {zoom}
     previewControlsDisabled={!lifecycle.previewUrl}
@@ -3022,8 +2836,8 @@
       class="workspace"
       class:editor-open={editorPaneOpen}
       class:narrow={isNarrow}
-      class:show-edit={isNarrow && paneMode === "edit"}
-      class:show-view={isNarrow && paneMode === "view"}
+      class:show-edit={isNarrow && editorPaneOpen}
+      class:show-view={isNarrow && !editorPaneOpen}
       class:preview-hidden={previewHidden}
       class:preview-collapsed={previewHidden}
       bind:this={workspaceEl}
@@ -3077,26 +2891,17 @@
               onSave={handleForceSave}
             />
             {#if MarkdownEditor}
-              <!-- No per-file `{#key}` remount wrapper here (UX review M8):
-                   MarkdownEditor keeps ONE EditorView for its whole lifetime.
-                   `filePath`/`content` below only seed its INITIAL document —
-                   selectEditorFile()/crashRecovery.restore() push every later switch
-                   explicitly via editorRef.switchFile() (this repo bans
-                   `$effect`, so the switch can't be a reactive prop watcher),
-                   which reconfigures the SAME view from its own per-file
-                   EditorState cache, preserving undo history, selection, and
-                   scroll. Remounting here on every chapter change destroyed
-                   all of that — exactly the bug this review found. -->
+              <!-- No per-file `{#key}` remount: MarkdownEditor keeps ONE
+                   EditorView, while EditorFileSession gives it exactly ONE
+                   source file via a synchronous switchFile() handoff. -->
               <MarkdownEditor
                 bind:this={editorRef}
                 filePath={editorFilePath}
                 content={editorContent}
                 onChange={onEditorChange}
-                onSectionChange={onEditorSectionChange}
-                onActiveSection={(path) => book?.setActive(path)}
                 onSave={() => void handleForceSave()}
-                onAnchorLine={(line, origin, chapter) =>
-                  editorSync.onEditorAnchorLine(line, origin, chapter)}
+                onAnchorLine={(line, origin) =>
+                  editorSync.onEditorAnchorLine(line, origin, editorChapter)}
               />
             {:else if editorModuleFailed}
               <div class="editor-loading" role="alert">
@@ -3148,7 +2953,7 @@
         role={isNarrow ? "tabpanel" : undefined}
         aria-labelledby={isNarrow ? "mobile-tab-preview" : undefined}
         aria-hidden={previewHidden}
-        inert={previewHidden || (isNarrow && (paneMode === "edit" || editorView !== "editor")) ? true : undefined}
+        inert={previewHidden || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
       >
         {#if lifecycle.previewUrl}
           {#key lifecycle.previewUrl}
@@ -3187,6 +2992,12 @@
                 <pre>{previewErrorDisplay.details}</pre>
               </details>
             </div>
+          </div>
+        {/if}
+        {#if previewUpdating}
+          <div class="preview-updating-pill" role="status" aria-live="polite">
+            <span aria-hidden="true"></span>
+            Updating preview…
           </div>
         {/if}
         <!-- RC3-1: Pane-scoped overlay — position:absolute within .preview-pane
@@ -3313,7 +3124,7 @@
   onDismiss={() => dismissLanding()}
   settingsTab={landingSettingsTab}
   onViewModeChange={(mode) => { if (client && !lifecycle.rendering) client.call("setViewMode", [mode]).catch(() => {}); }}
-  onCrashRecoveryChange={(enabled) => { book?.setRecoveryEnabled(enabled); }}
+  onCrashRecoveryChange={(enabled) => { buffer?.setRecoveryEnabled(enabled); }}
 />
 {#if projectSettingsOpen}
   <!-- Project settings (manifest): full-window like the app settings. Keyed by
@@ -3438,6 +3249,13 @@
     initialValue={textPrompt.initialValue}
     options={textPrompt.options}
     onDone={finishTextPrompt}
+  />
+{/if}
+
+{#if imagePropertiesPrompt}
+  <ImagePropertiesDialog
+    initialValue={imagePropertiesPrompt.initialValue}
+    onDone={finishImageProperties}
   />
 {/if}
 
@@ -3602,6 +3420,33 @@
   }
   .preview-pane {
     position: relative;
+  }
+  .preview-updating-pill {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    z-index: 9;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px;
+    border: 1px solid var(--app-border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--app-surface-raised) 92%, transparent);
+    box-shadow: 0 2px 8px var(--app-shadow-md);
+    color: var(--app-text-secondary);
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .preview-updating-pill span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--app-focus-ring);
+    animation: preview-update-pulse 0.9s ease-in-out infinite alternate;
+  }
+  @keyframes preview-update-pulse {
+    to { opacity: 0.35; }
   }
   .preview-error-view {
     flex: 1;

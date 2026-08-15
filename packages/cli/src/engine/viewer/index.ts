@@ -112,12 +112,15 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
 }
 
 /**
- * Narrow viewports (phones) get a SMALLER PAGE, never a reflow: scale the
- * stage down via `--gutterpress-fit-zoom`, which `.gp-stage` multiplies
- * with the host's own `--gutterpress-zoom` (viewer.css). Never zooms up past
- * 1 — only shrinks to fit.
+ * Narrow standalone viewports get a smaller page, never a reflow. Embedded
+ * hosts own fitting once they set `--gutterpress-zoom`; keeping one zoom
+ * owner prevents the two independent scales from multiplying.
  */
 function fitZoom() {
+  if (document.documentElement.style.getPropertyValue("--gutterpress-zoom")) {
+    document.body.style.removeProperty("--gutterpress-fit-zoom");
+    return;
+  }
   const sheet = document.querySelector<HTMLElement>(".gp-sheet");
   if (!sheet) return;
   const pageW = parseFloat(sheet.style.getPropertyValue("--gp-page-w"));

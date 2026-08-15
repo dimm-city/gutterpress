@@ -61,7 +61,7 @@ interface Harness {
   selectEditorFileResult: boolean;
   /** When set, selectEditorFile "switches" the live buffer to this instance. */
   selectEditorFileSwitchTo: FakeBuffer | null;
-  /** Files the mounted editor's live document holds (the whole book, or one file). */
+  /** The one file the mounted editor currently holds. */
   editorFiles: string[];
   applyRangeEditCalls: Array<{ path: string; from: number; to: number; insert: string }>;
 }

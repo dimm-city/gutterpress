@@ -20,7 +20,13 @@
 <title>Spread rows</title>
 <style>
 @page { size: 5in 5in; margin: 0.5in 0.5in 0.75in; }
-@page chapter { margin-top: 1.5in; }
+@page :left { margin-left: 0.75in; margin-right: 0.25in; }
+@page :right { margin-left: 0.25in; margin-right: 0.75in; }
+@page chapter {
+  margin-top: 1.5in;
+  margin-left: 0.125in;
+  margin-right: 0.875in;
+}
 body { font: 11pt/1.35 Georgia, serif; margin: 0; }
 h1 { font-size: 20pt; page: chapter; break-before: page; margin: 0; }
 p { margin: 0 0 9pt; }

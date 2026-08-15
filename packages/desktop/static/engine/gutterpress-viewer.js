@@ -61,11 +61,8 @@
   margin: 0;
   padding: 32px;
   overflow: auto;
-  /* Two independent inputs: the host's zoom control (\`--gutterpress-zoom\`, set
-     on <html> by preview-interface.js) and the viewer's own fit-to-width
-     shrink for narrow viewports (\`--gutterpress-fit-zoom\`, set on <body> by
-     fitZoom()). They MUST compose — writing both to one property makes the
-     <body> value shadow the host's and the zoom control goes dead. */
+  /* Standalone pages use \`--gutterpress-fit-zoom\`; embedded previews use the
+     host-owned \`--gutterpress-zoom\`. fitZoom() guarantees only one is active. */
   zoom: calc(var(--gutterpress-zoom, 1) * var(--gutterpress-fit-zoom, 1));
 }
 
@@ -2076,8 +2073,7 @@
           const slot = i + shift;
           const row = Math.floor(slot / perRow);
           const colVisual = slot % perRow;
-          const columnLeft = PX_PER_PT * g.margin.left + colVisual * stride;
-          const sheetLeft = columnLeft - PX_PER_PT * ctx.geometry.margin.left;
+          const sheetLeft = colVisual * stride;
           const sheetTop = row * rowStride;
           const sheet = document.createElement("div");
           sheet.className = "gp-sheet";
@@ -2321,6 +2317,10 @@
     return api;
   }
   function fitZoom() {
+    if (document.documentElement.style.getPropertyValue("--gutterpress-zoom")) {
+      document.body.style.removeProperty("--gutterpress-fit-zoom");
+      return;
+    }
     const sheet = document.querySelector(".gp-sheet");
     if (!sheet)
       return;

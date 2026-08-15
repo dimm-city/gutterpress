@@ -6,6 +6,7 @@ import {
 } from "../../src/lib/routes/context-menu-controller.svelte";
 import type { CommitEngine } from "$lib/editor/commit-engine";
 import type { PreviewEvent } from "$lib/preview-client";
+import type { ImagePropertiesValue } from "$lib/editor/image-classes";
 
 // Bun imports the rune-bearing .svelte.ts module without Svelte's compiler in
 // these unit tests. The production compiler replaces $state; the class only
@@ -87,9 +88,8 @@ interface Harness {
   commitEngine: FakeCommitEngine;
   enabled: boolean;
   rendering: boolean;
-  editorPaneOpen: boolean;
   currentDir: string | null;
-  /** Live in-editor content by path (the book document's open chapters). */
+  /** Live in-editor content for the one open path. */
   openContent: Map<string, string>;
   readFileMap: Record<string, string>;
   readFileImpl: ((path: string) => Promise<string>) | null;
@@ -100,6 +100,8 @@ interface Harness {
     initialValue: string;
     options?: readonly { value: string; label: string }[];
   }>;
+  imagePropertiesResult: ImagePropertiesValue | null;
+  imagePropertiesCalls: ImagePropertiesValue[];
   goToSourceCalls: Array<[string, number]>;
   openMediaPanelCalls: number;
   copyToClipboardCalls: string[];
@@ -119,13 +121,14 @@ function make(): Harness {
     commitEngine,
     enabled: true,
     rendering: false,
-    editorPaneOpen: true,
     currentDir: "/proj",
     openContent: new Map<string, string>(),
     readFileMap: {},
     readFileImpl: null,
     promptResult: "edited",
     promptCalls: [],
+    imagePropertiesResult: null,
+    imagePropertiesCalls: [],
     goToSourceCalls: [],
     openMediaPanelCalls: 0,
     copyToClipboardCalls: [],
@@ -139,7 +142,6 @@ function make(): Harness {
     client: () => client,
     enabled: () => h.enabled,
     rendering: () => h.rendering,
-    editorPaneOpen: () => h.editorPaneOpen,
     currentDir: () => h.currentDir,
     openContent: (path: string) => h.openContent.get(path) ?? null,
     readFile: async (path: string) => {
@@ -153,6 +155,10 @@ function make(): Harness {
     promptText: async (opts) => {
       h.promptCalls.push(opts);
       return h.promptResult;
+    },
+    promptImageProperties: async (initial) => {
+      h.imagePropertiesCalls.push(initial);
+      return h.imagePropertiesResult;
     },
     goToSource: (chapter, line) => h.goToSourceCalls.push([chapter, line]),
     openMediaPanel: () => h.openMediaPanelCalls++,
@@ -223,6 +229,17 @@ describe("open", () => {
     h.client.emit({ name: "contextMenuRequested", detail: detail({ via: "keyboard" }) });
     await flush();
     expect(h.ctrl.open).toBe(true);
+  });
+
+  test("rejects an unsafe source chapter before reading or navigating", async () => {
+    const h = make();
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({ kind: "block", chapter: "../../outside.md", range: [0, 1] }),
+    });
+    await flush();
+    expect(h.ctrl.open).toBe(false);
+    expect(h.goToSourceCalls).toEqual([]);
   });
 
   test("a second right-click reopens at the new target (items/position update in place)", async () => {
@@ -406,21 +423,20 @@ describe("block kind", () => {
     const h = make();
     h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block", range: [3, 5] }) });
     await flush();
-    const item = h.ctrl.items.find((i) => i.id === "block-source")!;
+    const item = h.ctrl.items.find((i) => i.id === "go-to-source")!;
     await h.ctrl.runItem(item);
     expect(h.goToSourceCalls).toEqual([["ch1.md", 4]]);
     expect(h.ctrl.open).toBe(false);
   });
 
-  test("editor navigation items are disabled while the editor pane is closed", async () => {
+  test("Go to source remains enabled and opens the editor when its pane is closed", async () => {
     const h = make();
-    h.editorPaneOpen = false;
     h.client.emit({ name: "contextMenuRequested", detail: detail({ kind: "block", range: [3, 5] }) });
     await flush();
-    const item = h.ctrl.items.find((i) => i.id === "block-source")!;
-    expect(item.enabled).toBe(false);
+    const item = h.ctrl.items.find((i) => i.id === "go-to-source")!;
+    expect(item.enabled).toBe(true);
     await h.ctrl.runItem(item);
-    expect(h.goToSourceCalls).toEqual([]);
+    expect(h.goToSourceCalls).toEqual([["ch1.md", 4]]);
   });
 });
 
@@ -457,219 +473,188 @@ describe("marker kind", () => {
 });
 
 describe("image kind", () => {
-  test("Edit alt text… resolves the token and commits a full-block replacement", async () => {
+  test("offers one Set properties action instead of separate image facet actions", async () => {
     const h = make();
-    h.readFileMap["/proj/ch1.md"] = "para\n\n![old alt](cat.png)\n\nmore\n";
-    h.promptResult = "new alt";
-    h.client.emit({
-      name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [2, 3], image: { src: "cat.png", alt: "old alt" } }),
-    });
-    await flush();
-    const item = h.ctrl.items.find((i) => i.id === "image-alt")!;
-    expect(item.enabled).toBe(true);
-    await h.ctrl.runItem(item);
-    expect(h.commitEngine.calls).toEqual([
-      {
-        chapter: "ch1.md",
-        range: [2, 3],
-        expected: "![old alt](cat.png)\n",
-        replacement: "![new alt](cat.png)\n",
-        expectedGeneration: 0,
-      },
-    ]);
-  });
-
-  test("Edit alt text… escapes prompt delimiters", async () => {
-    const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![old](cat.png)\n";
-    h.promptResult = "new ] alt";
-    h.client.emit({
-      name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "cat.png", alt: "old" } }),
-    });
-    await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-alt")!);
-    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
-      String.raw`![new \] alt](cat.png)` + "\n",
-    );
-  });
-
-  test("Replace image… safely wraps a path containing spaces", async () => {
-    const h = make();
-    h.readFileMap["/proj/ch1.md"] = '![Art](old.png "Title")\n';
-    h.promptResult = "new path.png";
+    h.readFileMap["/proj/ch1.md"] =
+      '![Art](x.png "Caption"){width="40%" .gp-right .gp-small .gp-tight .gp-shape}\n';
     h.client.emit({
       name: "contextMenuRequested",
       detail: detail({
         kind: "image",
         range: [0, 1],
-        image: { src: "old.png", alt: "Art", source: { token: '![Art](old.png "Title")', occurrence: 0 } },
+        image: { src: "x.png", alt: "Art", source: { token: '![Art](x.png "Caption")', occurrence: 0 } },
       }),
     });
     await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-replace")!);
-    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
-      '![Art](<new path.png> "Title")\n',
-    );
+    expect(h.ctrl.items.map((item) => item.id).filter((id) => id.startsWith("image-"))).toEqual([
+      "image-properties",
+      "image-reveal",
+    ]);
   });
 
-  // Token-preserving facet edits (image-classes): the old parse+rebuild
-  // write path recognized exactly five classes and silently DROPPED every
-  // other token when the user edited width or position. These pin the
-  // round-trip contract.
-  test("Set width… preserves gp-*/custom classes and ids verbatim", async () => {
+  test("Set properties seeds every supported option and applies multiple changes in one commit", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] =
-      '![Art](x.png){width="300px" .gp-right .gp-small .my-note #fig1}\n';
-    h.promptResult = "50%";
+      '![Art](x.png "Caption"){width="40%" .gp-right .gp-small .gp-tight .gp-shape .custom #hero data-x="y"}\n';
+    h.imagePropertiesResult = {
+      src: "new path.png",
+      alt: "New ] alt",
+      width: "",
+      position: "gp-pin",
+      pinAlignment: "bottom-right",
+      size: "gp-large",
+      spacing: "gp-loose",
+      shape: true,
+      layer: "gp-front",
+    };
     h.client.emit({
       name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
-    });
-    await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-width")!);
-    expect(h.commitEngine.calls).toEqual([
-      {
-        chapter: "ch1.md",
+      detail: detail({
+        kind: "image",
         range: [0, 1],
-        expected: '![Art](x.png){width="300px" .gp-right .gp-small .my-note #fig1}\n',
-        replacement: '![Art](x.png){width="50%" .gp-right .gp-small .my-note #fig1}\n',
-        expectedGeneration: 0,
-      },
-    ]);
-  });
-
-  test("Set width… preserves an existing markdown image title", async () => {
-    const h = make();
-    h.readFileMap["/proj/ch1.md"] = '![Art](x.png "Caption"){width="300px"}\n';
-    h.promptResult = "50%";
-    h.client.emit({
-      name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art", source: { token: '![Art](x.png "Caption")', occurrence: 0 } } }),
+        image: { src: "x.png", alt: "Art", source: { token: '![Art](x.png "Caption")', occurrence: 0 } },
+      }),
     });
     await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-width")!);
-    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
-      '![Art](x.png "Caption"){width="50%"}\n',
-    );
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+
+    expect(h.imagePropertiesCalls).toEqual([{
+      src: "x.png",
+      alt: "Art",
+      width: "40%",
+      position: "gp-right",
+      pinAlignment: "center",
+      size: "gp-small",
+      spacing: "gp-tight",
+      shape: true,
+      layer: "",
+    }]);
+    expect(h.commitEngine.calls).toEqual([{
+      chapter: "ch1.md",
+      range: [0, 1],
+      expected: '![Art](x.png "Caption"){width="40%" .gp-right .gp-small .gp-tight .gp-shape .custom #hero data-x="y"}\n',
+      replacement:
+        String.raw`![New \] alt](<new path.png> "Caption"){.gp-pin .gp-bottom .gp-right .gp-large .gp-loose .gp-shape .custom #hero data-x="y" .gp-front}` + "\n",
+      expectedGeneration: 0,
+    }]);
   });
 
-  test("Set position… accepts a short name and rewrites in place as the canonical gp-* class", async () => {
+  test("changing only size preserves the exact escaped destination, formatted alt, and title", async () => {
     const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.float-right .gp-small}\n";
-    h.promptResult = "left";
+    const source = String.raw`![A *b*](media/a\(b\).png "Caption"){.gp-small .custom}` + "\n";
+    h.readFileMap["/proj/ch1.md"] = source;
+    h.imagePropertiesResult = {
+      src: "media/a(b).png",
+      alt: "A b",
+      width: "",
+      position: "",
+      pinAlignment: "center",
+      size: "gp-large",
+      spacing: "",
+      shape: false,
+      layer: "",
+    };
+    h.client.emit({
+      name: "contextMenuRequested",
+      detail: detail({
+        kind: "image",
+        range: [0, 1],
+        image: {
+          src: "media/a(b).png",
+          alt: "A b",
+          source: { token: String.raw`![A *b*](media/a\(b\).png "Caption")`, occurrence: 0 },
+        },
+      }),
+    });
+    await flush();
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+    expect(h.commitEngine.calls[0]).toMatchObject({
+      expected: source,
+      replacement: String.raw`![A *b*](media/a\(b\).png "Caption"){.gp-large .custom}` + "\n",
+    });
+  });
+
+  test("cancelling Set properties leaves the source unchanged", async () => {
+    const h = make();
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-center}\n";
+    h.imagePropertiesResult = null;
     h.client.emit({
       name: "contextMenuRequested",
       detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
     });
     await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-position")!);
-    expect(h.promptCalls[0]?.options).toEqual([
-      { value: "", label: "None — no position class" },
-      { value: "gp-center", label: "Center — .gp-center" },
-      { value: "gp-left", label: "Float left — .gp-left" },
-      { value: "gp-right", label: "Float right — .gp-right" },
-      { value: "gp-full", label: "Full width — .gp-full" },
-      { value: "gp-bleed", label: "Full bleed (own page, edge-to-edge) — .gp-bleed" },
-      { value: "gp-pin", label: "Pin to page — .gp-pin" },
-    ]);
-    const call = h.commitEngine.calls[0] as { replacement: string };
-    expect(call.replacement).toBe("![Art](x.png){.gp-left .gp-small}\n");
-  });
-
-  test("Set position… with blank input clears only the position facet", async () => {
-    const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-pin .gp-small}\n";
-    h.promptResult = "";
-    h.client.emit({
-      name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
-    });
-    await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-position")!);
-    const call = h.commitEngine.calls[0] as { replacement: string };
-    expect(call.replacement).toBe("![Art](x.png){.gp-small}\n");
-  });
-
-  test("Set position… rejects unknown input with a toast and commits nothing", async () => {
-    const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";
-    h.promptResult = "diagonal";
-    h.client.emit({
-      name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
-    });
-    await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-position")!);
-    expect(h.toastErrorCalls.length).toBe(1);
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
     expect(h.commitEngine.calls).toEqual([]);
   });
 
-  test("Set pin alignment… lists and applies the available edge combinations", async () => {
+  test("Set properties presents a legacy image position as its canonical supported class", async () => {
     const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-pin .gp-top .gp-left .gp-small}\n";
-    h.promptResult = "bottom-right";
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.float-right}\n";
     h.client.emit({
       name: "contextMenuRequested",
       detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
     });
     await flush();
-    const alignmentItem = h.ctrl.items.find((i) => i.id === "image-pin-alignment")!;
-    await h.ctrl.runItem(alignmentItem);
-    expect(alignmentItem.disabledReason).toBeUndefined();
-    expect(h.promptCalls[0]?.options).toEqual([
-      { value: "center", label: "Centered — no edge classes" },
-      { value: "top", label: "Top — .gp-top" },
-      { value: "bottom", label: "Bottom — .gp-bottom" },
-      { value: "left", label: "Left — .gp-left" },
-      { value: "right", label: "Right — .gp-right" },
-      { value: "top-left", label: "Top left — .gp-top .gp-left" },
-      { value: "top-right", label: "Top right — .gp-top .gp-right" },
-      { value: "bottom-left", label: "Bottom left — .gp-bottom .gp-left" },
-      { value: "bottom-right", label: "Bottom right — .gp-bottom .gp-right" },
-    ]);
-    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
-      "![Art](x.png){.gp-pin .gp-bottom .gp-right .gp-small}\n",
-    );
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+    expect(h.imagePropertiesCalls[0]?.position).toBe("gp-right");
   });
 
-  test("Set pin alignment… is visible but disabled until position is pinned", async () => {
+  test.each([
+    {
+      source: "![Art](x.png){.gp-center}\n",
+      value: { width: "", position: "gp-center", pinAlignment: "center", layer: "" },
+    },
+    {
+      source: "![Art](x.png){width=160px .custom .gp-right .gp-pin .gp-raised}\n",
+      value: { width: "160px", position: "gp-pin", pinAlignment: "right", layer: "gp-raised" },
+    },
+    {
+      source: "![Art](x.png){width=160px   .custom}{.gp-pin .gp-right}\n",
+      value: { width: "160px", position: "gp-pin", pinAlignment: "right", layer: "" },
+    },
+  ])("unchanged properties preserve source bytes and do not rebuild: $source", async ({ source, value }) => {
     const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";
+    h.readFileMap["/proj/ch1.md"] = source;
+    h.imagePropertiesResult = {
+      src: "x.png",
+      alt: "Art",
+      size: "",
+      spacing: "",
+      shape: false,
+      ...value,
+    };
     h.client.emit({
       name: "contextMenuRequested",
       detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
     });
     await flush();
-    const item = h.ctrl.items.find((i) => i.id === "image-pin-alignment")!;
-    expect(item.enabled).toBe(false);
-    expect(item.disabledReason).toBe("Choose Pin to page first.");
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+    expect(h.commitEngine.calls).toEqual([]);
+    expect(h.ctrl.open).toBe(false);
   });
 
-  test("Wrap text to image shape toggles .gp-shape on, then off, preserving the rest", async () => {
+  test("rejects image values outside the dialog's option lists", async () => {
     const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right .my-note}\n";
+    h.readFileMap["/proj/ch1.md"] = "![Art](x.png)\n";
+    h.imagePropertiesResult = {
+      src: "x.png",
+      alt: "Art",
+      width: "",
+      position: "gp-diagonal",
+      pinAlignment: "center",
+      size: "",
+      spacing: "",
+      shape: false,
+      layer: "",
+    };
     h.client.emit({
       name: "contextMenuRequested",
       detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
     });
     await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-shape")!);
-    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
-      "![Art](x.png){.gp-right .my-note .gp-shape}\n"
-    );
-
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right .my-note .gp-shape}\n";
-    h.client.emit({
-      name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
-    });
-    await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-shape")!);
-    expect((h.commitEngine.calls[1] as { replacement: string }).replacement).toBe(
-      "![Art](x.png){.gp-right .my-note}\n"
-    );
+    await h.ctrl.runItem(h.ctrl.items.find((item) => item.id === "image-properties")!);
+    expect(h.commitEngine.calls).toEqual([]);
+    expect(h.toastErrorCalls).toEqual(["Choose image options from the lists."]);
   });
 
   test("Unwrap image removes a surrounding markdown link and preserves image properties", async () => {
@@ -694,7 +679,11 @@ describe("image kind", () => {
       '[![Art](x.png "Caption"){width="50%"}](https://example.com/a_(b) "title ) retained")\n';
     h.client.emit({
       name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art", source: { token: '![Art](x.png "Caption")', occurrence: 0 } } }),
+      detail: detail({
+        kind: "image",
+        range: [0, 1],
+        image: { src: "x.png", alt: "Art", source: { token: '![Art](x.png "Caption")', occurrence: 0 } },
+      }),
     });
     await flush();
     await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-unwrap")!);
@@ -703,49 +692,7 @@ describe("image kind", () => {
     );
   });
 
-  test("Set size… appends a size class without touching the rest", async () => {
-    const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right}\n";
-    // Select controls return the canonical option value, not the old free-text
-    // shorthand. Exercise the exact value the real modal submits.
-    h.promptResult = "gp-small";
-    h.client.emit({
-      name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
-    });
-    await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-size")!);
-    expect(h.promptCalls[0]?.options).toEqual([
-      { value: "", label: "None — no preset size class" },
-      { value: "gp-small", label: "Small (25%) — .gp-small" },
-      { value: "gp-medium", label: "Medium (50%) — .gp-medium" },
-      { value: "gp-large", label: "Large (75%) — .gp-large" },
-    ]);
-    const call = h.commitEngine.calls[0] as { replacement: string };
-    expect(call.replacement).toBe("![Art](x.png){.gp-right .gp-small}\n");
-  });
-
-  test("Set float spacing… uses canonical gap presets and preserves other classes", async () => {
-    const h = make();
-    h.readFileMap["/proj/ch1.md"] = "![Art](x.png){.gp-right .gp-shape .my-note}\n";
-    h.promptResult = "gp-tight";
-    h.client.emit({
-      name: "contextMenuRequested",
-      detail: detail({ kind: "image", range: [0, 1], image: { src: "x.png", alt: "Art" } }),
-    });
-    await flush();
-    await h.ctrl.runItem(h.ctrl.items.find((i) => i.id === "image-spacing")!);
-    expect(h.promptCalls[0]?.options).toEqual([
-      { value: "", label: "Default (1em) — no spacing class" },
-      { value: "gp-tight", label: "Tight (0.5em) — .gp-tight" },
-      { value: "gp-loose", label: "Loose (2em) — .gp-loose" },
-    ]);
-    expect((h.commitEngine.calls[0] as { replacement: string }).replacement).toBe(
-      "![Art](x.png){.gp-right .gp-shape .my-note .gp-tight}\n",
-    );
-  });
-
-  test("a raw HTML <img> block only offers 'Edit block in editor'", async () => {
+  test("a raw HTML <img> block only offers Go to source", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = '<img src="cat.png" alt="cat">\n';
     h.client.emit({
@@ -753,7 +700,7 @@ describe("image kind", () => {
       detail: detail({ kind: "image", range: [0, 1], image: { src: "cat.png", alt: "cat", source: null } }),
     });
     await flush();
-    expect(h.ctrl.items.map((i) => i.id)).toEqual(["edit-block-editor"]);
+    expect(h.ctrl.items.map((i) => i.id)).toEqual(["go-to-source"]);
   });
 
   test("Reveal in Media panel opens the media panel and closes the menu", async () => {
@@ -831,7 +778,7 @@ describe("link kind", () => {
 });
 
 describe("selection kind", () => {
-  test("cross-block: Copy copies selection.text; Edit in editor jumps to target.range", async () => {
+  test("cross-block: Copy copies selection.text; Go to source jumps to target.range", async () => {
     const h = make();
     h.client.emit({
       name: "contextMenuRequested",
@@ -855,12 +802,12 @@ describe("selection kind", () => {
       }),
     });
     await flush();
-    const edit = h.ctrl.items.find((i) => i.id === "selection-edit")!;
+    const edit = h.ctrl.items.find((i) => i.id === "go-to-source")!;
     await h.ctrl.runItem(edit);
     expect(h.goToSourceCalls).toEqual([["ch1.md", 3]]);
   });
 
-  test("single-block selection offers the formatting row plus 'Edit block in editor' (PR 4)", async () => {
+  test("single-block selection offers the formatting row plus Go to source", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "before\na phrase here\nafter\n";
     h.client.emit({
@@ -879,7 +826,7 @@ describe("selection kind", () => {
       "format-strike",
       "format-code",
       "format-link",
-      "edit-block-editor",
+      "go-to-source",
     ]);
     expect(h.ctrl.items.every((i) => i.enabled)).toBe(true);
   });
@@ -1077,7 +1024,7 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
       }),
     });
     await flush();
-    const formatItems = h.ctrl.items.filter((i) => i.id !== "edit-block-editor");
+    const formatItems = h.ctrl.items.filter((i) => i.id !== "go-to-source");
     expect(formatItems.length).toBe(5);
     for (const item of formatItems) {
       expect(item.enabled).toBe(false);
@@ -1085,7 +1032,7 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
         "Couldn't locate this text uniquely in the source — open the editor",
       );
     }
-    expect(h.ctrl.items.find((i) => i.id === "edit-block-editor")!.enabled).toBe(true);
+    expect(h.ctrl.items.find((i) => i.id === "go-to-source")!.enabled).toBe(true);
   });
 
   test("multiple matches (ambiguous) disables every format item", async () => {
@@ -1192,7 +1139,7 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
     );
   });
 
-  test("'Edit block in editor' jumps to the selection's block, not the right-click point's block", async () => {
+  test("Go to source jumps to the selection's block, not the right-click point's block", async () => {
     const h = make();
     h.readFileMap["/proj/ch1.md"] = "before\na phrase here\nafter\n";
     h.client.emit({
@@ -1205,12 +1152,12 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
       }),
     });
     await flush();
-    const editItem = h.ctrl.items.find((i) => i.id === "edit-block-editor")!;
+    const editItem = h.ctrl.items.find((i) => i.id === "go-to-source")!;
     await h.ctrl.runItem(editItem);
     expect(h.goToSourceCalls).toEqual([["ch1.md", 2]]);
   });
 
-  test("cross-block selection still offers only Copy / Edit in editor — no formatting row", async () => {
+  test("cross-block selection still offers only Copy / Go to source — no formatting row", async () => {
     const h = make();
     h.client.emit({
       name: "contextMenuRequested",
@@ -1221,7 +1168,7 @@ describe("selection formatting (plan §4.6, PR 4)", () => {
       }),
     });
     await flush();
-    expect(h.ctrl.items.map((i) => i.id)).toEqual(["selection-copy", "selection-edit"]);
+    expect(h.ctrl.items.map((i) => i.id)).toEqual(["selection-copy", "go-to-source"]);
   });
 });
 

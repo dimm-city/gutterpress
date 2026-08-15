@@ -73,9 +73,19 @@ test("closing activity restores the workspace it displaced (no stuck 'Loading co
 test("preview interactions treat Project Activity as closed, not as a Markdown editor", () => {
   const src = read("src/routes/+page.svelte");
   expect(src).toContain(
-    'editorPaneOpen: () => editorPaneOpen && editorView === "editor",',
+    'entry.sourceLine != null && editorPaneOpen && editorView === "editor"',
   );
-  expect(src).not.toContain("editorPaneOpen: () => editorPaneOpen,\n      updateActiveOutline");
+});
+
+test("a persisted narrow Edit tab cannot open the editor without an explicit action", () => {
+  const src = read("src/routes/+page.svelte");
+  const derived = src.slice(
+    src.indexOf("let editorPaneOpen = $derived("),
+    src.indexOf("let splitGridColumns = $derived("),
+  );
+  expect(derived).toContain("editorOpen &&");
+  expect(src).toContain("class:show-edit={isNarrow && editorPaneOpen}");
+  expect(src).toContain("class:show-view={isNarrow && !editorPaneOpen}");
 });
 
 test("app settings live ONLY on the start screen's Settings tab — no separate window", () => {

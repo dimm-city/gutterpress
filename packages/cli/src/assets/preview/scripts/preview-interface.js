@@ -565,7 +565,33 @@
       refreshPages();
       var page = pages[0] || null;
       if (!page) return null;
-      return { width: page.offsetWidth, height: page.offsetHeight };
+      var width = page.offsetWidth;
+      if (currentViewMode !== 'single') {
+        var runs = Array.from(document.querySelectorAll('.gp-run'));
+        for (var i = 0; i < runs.length; i++) {
+          var gap = parseFloat(getComputedStyle(runs[i]).getPropertyValue('--gp-sheet-gap')) || 0;
+          var runSheets = Array.from(runs[i].querySelectorAll('.gp-sheet'));
+          if (runSheets.length) {
+            var left = 0;
+            var right = page.offsetWidth;
+            for (var j = 0; j < runSheets.length; j++) {
+              left = Math.min(left, runSheets[j].offsetLeft || 0);
+              right = Math.max(right, (runSheets[j].offsetLeft || 0) + (runSheets[j].offsetWidth || 0));
+            }
+            width = Math.max(width, right - left);
+          } else {
+            width = Math.max(width, Math.max(0, (runs[i].offsetWidth || 0) - gap));
+          }
+        }
+      }
+      return {
+        width: width,
+        height: page.offsetHeight,
+        // The host iframe's clientWidth includes this document's vertical
+        // scrollbar. Report the actual layout viewport so fit-width can center
+        // within the pixels available to the book.
+        viewportWidth: document.documentElement.clientWidth
+      };
     },
     firstPage: function () { return api.goToPage(1); },
     prevPage: function (mode) { return api.goToPage(currentPage - pageStep(mode)); },
@@ -590,6 +616,9 @@
     },
     setZoom: function (z, silent) {
       preserveViewport(function () {
+        // Embedded previews have one zoom owner. Clear the standalone
+        // viewer's narrow-screen fit before applying the host scale.
+        document.body.style.removeProperty('--gutterpress-fit-zoom');
         document.documentElement.style.setProperty('--gutterpress-zoom', z);
       });
       if (!silent) api.notifyPageChange();

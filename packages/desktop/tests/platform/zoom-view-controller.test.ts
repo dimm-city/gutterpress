@@ -17,7 +17,7 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
  */
 class FakeClient {
   calls: Array<{ cmd: string; args: unknown[] }> = [];
-  dims: { width: number; height: number } | null = null;
+  dims: { width: number; height: number; viewportWidth?: number } | null = null;
   reject = false;
 
   call<T>(cmd: string, args: unknown[] = []): Promise<T> {
@@ -123,18 +123,39 @@ test("applyZoom of fit-width computes the scale from measured widths", async () 
   h.ctrl.applyZoom("fit-width");
   expect(h.persistZoom.calls).toEqual([["fit-width"]]);
   await flush();
-  // (containerWidth - 32) / pageWidth = (800 - 32) / 1000 = 0.768
-  expect((h.client as FakeClient).callsFor("setZoom")).toEqual([{ cmd: "setZoom", args: [0.768] }]);
+  // CSS zoom scales the 32px stage padding too, so fit the complete stage:
+  // 800 / (1000 + 64). This leaves equal visible gutters on both sides.
+  expect((h.client as FakeClient).callsFor("setZoom")[0]?.args[0]).toBeCloseTo(800 / 1064, 6);
 });
 
 // ── applyFitWidthZoom ─────────────────────────────────────────────────────────
 
-test("applyFitWidthZoom uses scale 1 when the page is not wider than the container", async () => {
+test("applyFitWidthZoom scales up as well as down to actually fit width", async () => {
   const h = make();
   h.containerWidth = 1200;
   (h.client as FakeClient).dims = { width: 1000, height: 1400 };
   await h.ctrl.applyFitWidthZoom();
-  expect((h.client as FakeClient).callsFor("setZoom")).toEqual([{ cmd: "setZoom", args: [1] }]);
+  expect((h.client as FakeClient).callsFor("setZoom")[0]?.args[0]).toBeCloseTo(1200 / 1064, 6);
+});
+
+test("applyFitWidthZoom recomputes from the latest resized container width", async () => {
+  const h = make();
+  (h.client as FakeClient).dims = { width: 1000, height: 1400 };
+  h.containerWidth = 800;
+  await h.ctrl.applyFitWidthZoom();
+  h.containerWidth = 600;
+  await h.ctrl.applyFitWidthZoom();
+  const calls = (h.client as FakeClient).callsFor("setZoom");
+  expect(calls[0]?.args[0]).toBeCloseTo(800 / 1064, 6);
+  expect(calls[1]?.args[0]).toBeCloseTo(600 / 1064, 6);
+});
+
+test("applyFitWidthZoom uses the preview's scrollbar-free layout width", async () => {
+  const h = make();
+  h.containerWidth = 600;
+  (h.client as FakeClient).dims = { width: 1000, height: 1400, viewportWidth: 585 };
+  await h.ctrl.applyFitWidthZoom();
+  expect((h.client as FakeClient).callsFor("setZoom")[0]?.args[0]).toBeCloseTo(585 / 1064, 6);
 });
 
 test("applyFitWidthZoom uses scale 1 when dimensions are missing", async () => {
@@ -205,6 +226,19 @@ test("applyViewMode(fromUser=false) does not set the user lock", () => {
   h.ctrl.applyViewMode("two-column", false);
   expect(h.ctrl.userSetViewMode).toBe(false);
   expect(h.persistViewMode.calls).toEqual([["two-column"]]);
+});
+
+test("changing view mode re-fits after the new layout is applied", async () => {
+  const h = make();
+  h.zoom = "fit-width";
+  (h.client as FakeClient).dims = { width: 1600, height: 1400 };
+  h.ctrl.applyViewMode("two-column", true);
+  await flush();
+  expect((h.client as FakeClient).calls.map((call) => call.cmd)).toEqual([
+    "setViewMode",
+    "getPageDimensions",
+    "setZoom",
+  ]);
 });
 
 test("applyViewMode with no client still persists and saves prefs", () => {

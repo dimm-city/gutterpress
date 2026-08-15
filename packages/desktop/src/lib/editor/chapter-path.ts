@@ -22,3 +22,11 @@ export function chapterPath(dir: string, chapter: string): string {
   const sep = d.includes("\\") ? "\\" : "/";
   return `${d}${sep}${chapter.replaceAll("/", sep)}`;
 }
+
+/** Validate an untrusted project-relative chapter id before joining it. */
+export function isSafeChapterId(chapter: string): boolean {
+  if (!chapter || chapter.startsWith("/") || chapter.includes("\\") || chapter.includes(":")) {
+    return false;
+  }
+  return chapter.split("/").every((part) => part !== "" && part !== "." && part !== "..");
+}

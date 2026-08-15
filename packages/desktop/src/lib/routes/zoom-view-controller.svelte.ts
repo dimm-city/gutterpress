@@ -81,11 +81,21 @@ export class ZoomViewController {
     const client = this.deps.client();
     if (!client) return;
     try {
-      const containerWidth = this.deps.measureContainerWidth();
-      const dims = await client.call<{ width: number; height: number } | null>("getPageDimensions");
+      const dims = await client.call<{ width: number; height: number; viewportWidth?: number } | null>("getPageDimensions");
       const pageWidth = dims?.width ?? 0;
-      const scale =
-        pageWidth > 0 && pageWidth > containerWidth ? (containerWidth - 32) / pageWidth : 1;
+      // Measure after the async dimension query so overlapping resize calls
+      // all use the newest pane width. CSS `zoom` scales the stage's 32px
+      // padding too, so fit the complete page/run + both gutters. Subtracting
+      // unscaled padding produced unequal left/right gaps and overflow.
+      const measuredWidth = this.deps.measureContainerWidth();
+      // The iframe element includes its own vertical scrollbar, while the
+      // preview document lays out against documentElement.clientWidth. Use the
+      // smaller width so a fit never overflows or shifts by one scrollbar.
+      const previewWidth = dims?.viewportWidth ?? measuredWidth;
+      const containerWidth = Math.min(measuredWidth, previewWidth);
+      const scale = pageWidth > 0 && containerWidth > 0
+        ? Math.max(0.25, Math.min(4, containerWidth / (pageWidth + 64)))
+        : 1;
       await client.call("setZoom", [scale]);
     } catch {
       await client.call("setZoom", [1]).catch(() => {});
@@ -118,7 +128,13 @@ export class ZoomViewController {
     this.deps.persistViewMode(mode);
     if (fromUser) this.userSetViewMode = true;
     this.deps.saveDesktopPrefs({ viewMode: mode });
-    this.deps.client()?.call("setViewMode", [mode]).catch(() => {});
+    const client = this.deps.client();
+    if (!client) return;
+    void client.call("setViewMode", [mode])
+      .then(() => {
+        if (this.deps.zoom() === "fit-width") return this.applyFitWidthZoom();
+      })
+      .catch(() => {});
   }
 
   toggleViewMode(): void {

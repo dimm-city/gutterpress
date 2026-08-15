@@ -6,6 +6,7 @@ export interface PreviewEvent {
   name:
     | "pageChanged"
     | "renderingStarted"
+    | "renderingCancelled"
     | "renderingComplete"
     | "ready"
     | "viewportChanged"

@@ -46,14 +46,15 @@ function makeSheet(page, offsetWidth = 400, offsetHeight = 600) {
 // tag present (the NATIVE_ENGINE detection signal) and a minimal
 // window.Gutterpress stub, against `.gp-sheet` fixtures instead of
 // `.pagedjs_page`.
-function loadNativePreviewApi(sheets) {
+function loadNativePreviewApi(sheets, runs = []) {
   const listeners = new Map();
 
   const document = {
     body: { classList: { add() {}, remove() {} } },
-    documentElement: { scrollTop: 0, style: { setProperty() {} } },
+    documentElement: { scrollTop: 0, clientWidth: 385, style: { setProperty() {} } },
     querySelectorAll(selector) {
       if (selector === ".gp-sheet") return sheets;
+      if (selector === ".gp-run") return runs;
       return [];
     },
     querySelector(selector) {
@@ -120,9 +121,18 @@ function loadNativePreviewApi(sheets) {
     "MutationObserver",
     "setTimeout",
     "clearTimeout",
+    "getComputedStyle",
     scriptSource
   );
-  run(windowObj, document, CustomEventStub, MutationObserverStub, setTimeout, clearTimeout);
+  run(
+    windowObj,
+    document,
+    CustomEventStub,
+    MutationObserverStub,
+    setTimeout,
+    clearTimeout,
+    (el) => ({ getPropertyValue: (name) => name === "--gp-sheet-gap" ? String(el.sheetGap ?? 0) : "" }),
+  );
 
   return { windowObj, sheets, api: windowObj.previewAPI };
 }
@@ -178,8 +188,25 @@ async function main() {
     assert.equal(api.getCurrentPage(), 3);
     assert.deepEqual(
       api.getPageDimensions(),
-      { width: 400, height: 600 },
-      "native: dimensions come straight off the sheet — no wrapper-derived two-column width"
+      { width: 400, height: 600, viewportWidth: 385 },
+      "native: single-view dimensions come straight off one sheet"
+    );
+  }
+
+  {
+    const sheets = [makeSheet(1), makeSheet(2)];
+    sheets[0].offsetLeft = 0;
+    sheets[1].offsetLeft = 426;
+    const { api } = loadNativePreviewApi(sheets, [{
+      offsetWidth: 850,
+      sheetGap: 24,
+      querySelectorAll: () => sheets,
+    }]);
+    api.setViewMode("two-column", true);
+    assert.deepEqual(
+      api.getPageDimensions(),
+      { width: 826, height: 600, viewportWidth: 385 },
+      "native: two-column dimensions exclude the run's trailing sheet gap"
     );
   }
 

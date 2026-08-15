@@ -28,13 +28,8 @@ interface Harness {
     listRecovery: Spy<[string]> & { impl: (dir: string) => Promise<CrashRecoveryEntry[]> };
     clearRecovery: Spy<[string]>;
     readRecoveryFile: Spy<[string]> & { impl: (path: string) => Promise<string> };
-    restoreIntoBuffer: Spy<[string, string]> & { impl?: () => Promise<void> };
-    bufferFilePath: Spy<[]> & { value: string | null };
-    bufferContent: Spy<[]> & { value: string };
-    switchEditorFile: Spy<[string, string]>;
-    openEditorPane: Spy<[]>;
-    loadEditorModule: Spy<[]>;
-    focusEditorWhenReady: Spy<[]>;
+    restoreIntoBuffer: Spy<[string, string]> & { impl?: () => Promise<boolean> };
+    showEditor: Spy<[]>;
     toastError: Spy<[string]>;
   };
 }
@@ -50,14 +45,9 @@ function make(): Harness {
     impl: async (): Promise<string> => "recovered text",
   });
   const restoreIntoBuffer = Object.assign(spy<[string, string]>(), {
-    impl: async () => {},
+    impl: async () => true,
   });
-  const bufferFilePath = Object.assign(spy<[]>(), { value: null as string | null });
-  const bufferContent = Object.assign(spy<[]>(), { value: "" });
-  const switchEditorFile = spy<[string, string]>();
-  const openEditorPane = spy<[]>();
-  const loadEditorModule = spy<[]>();
-  const focusEditorWhenReady = spy<[]>();
+  const showEditor = spy<[]>();
   const toastError = spy<[string]>();
 
   const deps: CrashRecoveryDeps = {
@@ -85,18 +75,7 @@ function make(): Harness {
       restoreIntoBuffer(filePath, content);
       return restoreIntoBuffer.impl!();
     },
-    bufferFilePath: () => {
-      bufferFilePath();
-      return bufferFilePath.value;
-    },
-    bufferContent: () => {
-      bufferContent();
-      return bufferContent.value;
-    },
-    switchEditorFile: (path, content) => switchEditorFile(path, content),
-    openEditorPane: () => openEditorPane(),
-    loadEditorModule: () => loadEditorModule(),
-    focusEditorWhenReady: () => focusEditorWhenReady(),
+    showEditor: () => showEditor(),
     toast: () => ({ error: (msg) => toastError(msg) }),
     friendlyHostError: (msg) => `friendly: ${msg}`,
   };
@@ -110,12 +89,7 @@ function make(): Harness {
       clearRecovery,
       readRecoveryFile,
       restoreIntoBuffer,
-      bufferFilePath,
-      bufferContent,
-      switchEditorFile,
-      openEditorPane,
-      loadEditorModule,
-      focusEditorWhenReady,
+      showEditor,
       toastError,
     },
   };
@@ -152,6 +126,24 @@ test("scan() a different folder re-scans", async () => {
   expect(deps.listRecovery.calls.length).toBe(2);
 });
 
+test("an older project scan cannot replace a newer project's recovery items", async () => {
+  const { ctrl, deps } = make();
+  let releaseA!: (entries: CrashRecoveryEntry[]) => void;
+  deps.listRecovery.impl = (dir) =>
+    dir === "/proj-a"
+      ? new Promise((resolve) => (releaseA = resolve))
+      : Promise.resolve([
+          { filePath: "/proj-b/b.md", recoveryPath: "/recovery/b", savedAt: 2 },
+        ]);
+
+  const scanA = ctrl.scan("/proj-a");
+  await ctrl.scan("/proj-b");
+  releaseA([{ filePath: "/proj-a/a.md", recoveryPath: "/recovery/a", savedAt: 1 }]);
+  await scanA;
+
+  expect(ctrl.items.map((item) => item.filePath)).toEqual(["/proj-b/b.md"]);
+});
+
 test("scan() maps entries to RecoveryItem with a derived fileName", async () => {
   const { ctrl, deps } = make();
   deps.listRecovery.impl = async () => [
@@ -175,29 +167,14 @@ test("scan() failure clears items instead of throwing", async () => {
 
 const ITEM = { filePath: "/proj/ch1.md", recoveryPath: "/userdata/rec1", fileName: "ch1.md", savedAt: 100 };
 
-test("restore() removes the item optimistically, loads it into the buffer, and pushes it to the live editor when it matches", async () => {
+test("restore() removes the item, restores the session, and opens the editor", async () => {
   const { ctrl, deps } = make();
   ctrl.items = [ITEM];
-  deps.bufferFilePath.value = ITEM.filePath;
-  deps.bufferContent.value = "recovered text";
   await ctrl.restore(ITEM);
   expect(ctrl.items).toEqual([]);
   expect(deps.readRecoveryFile.calls).toEqual([[ITEM.recoveryPath]]);
   expect(deps.restoreIntoBuffer.calls).toEqual([[ITEM.filePath, "recovered text"]]);
-  expect(deps.switchEditorFile.calls).toEqual([[ITEM.filePath, "recovered text"]]);
-  expect(deps.openEditorPane.calls.length).toBe(1);
-  expect(deps.loadEditorModule.calls.length).toBe(1);
-  expect(deps.focusEditorWhenReady.calls.length).toBe(1);
-});
-
-test("restore() does not push to the editor when a race left a different file open", async () => {
-  const { ctrl, deps } = make();
-  deps.bufferFilePath.value = "/proj/some-other-file.md"; // a newer selectEditorFile won the race
-  await ctrl.restore(ITEM);
-  expect(deps.switchEditorFile.calls.length).toBe(0);
-  // Still opens the pane / loads the module — matches the original's
-  // unconditional tail.
-  expect(deps.openEditorPane.calls.length).toBe(1);
+  expect(deps.showEditor.calls.length).toBe(1);
 });
 
 test("restore() no-ops on the web after removing the item", async () => {
@@ -209,13 +186,47 @@ test("restore() no-ops on the web after removing the item", async () => {
   expect(deps.readRecoveryFile.calls.length).toBe(0);
 });
 
-test("restore() failure toasts a friendly error and leaves the item removed (no re-add)", async () => {
+test("restore() read failure toasts and re-offers the still-safe recovery item", async () => {
   const { ctrl, deps } = make();
   deps.readRecoveryFile.impl = () => Promise.reject(new Error("disk error"));
   ctrl.items = [ITEM];
   await ctrl.restore(ITEM);
-  expect(ctrl.items).toEqual([]);
+  expect(ctrl.items).toEqual([ITEM]);
   expect(deps.toastError.calls).toEqual([["Could not restore: friendly: disk error"]]);
+});
+
+test("reset during a recovery read prevents the stale project from restoring or opening", async () => {
+  const { ctrl, deps } = make();
+  let release!: (value: string) => void;
+  deps.readRecoveryFile.impl = () => new Promise((resolve) => (release = resolve));
+  const restoring = ctrl.restore(ITEM);
+  ctrl.reset();
+  release("recovered text");
+  await restoring;
+  expect(deps.restoreIntoBuffer.calls).toEqual([]);
+  expect(deps.showEditor.calls).toEqual([]);
+});
+
+test("reset during a failed recovery read neither re-offers nor toasts the old project", async () => {
+  const { ctrl, deps } = make();
+  let reject!: (reason: Error) => void;
+  deps.readRecoveryFile.impl = () => new Promise((_resolve, rejectPromise) => (reject = rejectPromise));
+  ctrl.items = [ITEM];
+  const restoring = ctrl.restore(ITEM);
+  ctrl.reset();
+  reject(new Error("old project read failed"));
+  await restoring;
+  expect(ctrl.items).toEqual([]);
+  expect(deps.toastError.calls).toEqual([]);
+});
+
+test("a cancelled session restore does not open or focus the editor", async () => {
+  const { ctrl, deps } = make();
+  ctrl.items = [ITEM];
+  deps.restoreIntoBuffer.impl = async () => false;
+  await ctrl.restore(ITEM);
+  expect(ctrl.items).toEqual([ITEM]);
+  expect(deps.showEditor.calls).toEqual([]);
 });
 
 // ── discard ──────────────────────────────────────────────────────────────────

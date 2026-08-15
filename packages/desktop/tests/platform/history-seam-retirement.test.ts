@@ -92,11 +92,7 @@ describe("+page.svelte — H2 sync-completion refresh wired to ProjectActivityVi
       src.indexOf("function onSnapshotRestored("),
       src.indexOf("function onSnapshotRestored(") + 400,
     );
-    // A snapshot restore can rewrite MANY files, so every open chapter
-    // reconciles, and the book itself is rebuilt in case the restore changed
-    // which chapters exist.
-    expect(fn).toContain("book?.reconcileAll()");
-    expect(fn).toContain("loadBookDocument()");
+    expect(fn).toContain("buffer?.reconcileExternalChange()");
     expect(fn).toContain("refreshProblems()");
   });
 

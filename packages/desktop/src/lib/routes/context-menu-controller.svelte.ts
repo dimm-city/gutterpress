@@ -22,7 +22,7 @@
  */
 import type { PreviewEvent, ContextTarget, SourceRange } from "$lib/preview-client";
 import type { CommitEngine } from "$lib/editor/commit-engine";
-import { chapterPath } from "$lib/editor/chapter-path";
+import { chapterPath, isSafeChapterId } from "$lib/editor/chapter-path";
 import { buildLineStarts, charRange } from "$lib/editor/source-range";
 import {
   findImageToken,
@@ -37,10 +37,12 @@ import {
 import {
   IMAGE_PIN_ALIGNMENT_OPTIONS,
   IMAGE_PIN_CLASS,
+  IMAGE_LAYER_OPTIONS,
   IMAGE_POSITION_OPTIONS,
   IMAGE_SIZE_OPTIONS,
   IMAGE_SPACING_OPTIONS,
   getPinAlignment,
+  getLayerClass,
   getPositionClass,
   getSizeClass,
   getSpacingClass,
@@ -49,12 +51,14 @@ import {
   normalizeClassInput,
   serializeImageAttrs,
   setPinAlignment,
+  setLayerClass,
   setPositionClass,
   setShapeClass,
   setSizeClass,
   setSpacingClass,
   setWidth,
   tokenizeImageAttrs,
+  type ImagePropertiesValue,
 } from "$lib/editor/image-classes";
 import {
   locateSelectionInSource,
@@ -84,17 +88,9 @@ export interface ContextMenuDeps {
   enabled: () => boolean;
   /** True while a preview render is in flight (ignore contextMenuRequested). */
   rendering: () => boolean;
-  /** Editor navigation actions stay disabled until the author opens the pane. */
-  editorPaneOpen: () => boolean;
   /** The open project directory, or null when none is loaded. */
   currentDir: () => string | null;
-  /**
-   * The live in-editor content of a file, or null when it isn't open. With the
-   * whole book open as one document a chapter can carry unsaved edits while the
-   * caret sits somewhere else entirely, so this must be asked per PATH — a
-   * check against "the open file" would fall through to the stale disk copy for
-   * every chapter but one.
-   */
+  /** The live in-editor content of the one open file, or null. */
   openContent: (path: string) => string | null;
   /**
    * Read a chapter's file DIRECTLY — NOT through `selectEditorFile`. Menu
@@ -116,7 +112,9 @@ export interface ContextMenuDeps {
     initialValue: string;
     options?: readonly { value: string; label: string }[];
   }) => Promise<string | null>;
-  /** Reveal a chapter/line only when the author has already opened the editor pane. */
+  /** Edit every supported image property in one modal and apply once. */
+  promptImageProperties: (initial: ImagePropertiesValue) => Promise<ImagePropertiesValue | null>;
+  /** Open the editor, reveal the chapter, and place its caret on the source line. */
   goToSource: (chapter: string, line: number) => void;
   /** Switch the left panel to the Media tab ("Reveal in Media panel"). */
   openMediaPanel: () => void;
@@ -146,20 +144,6 @@ export interface ContextMenuItem {
  *  has mounted and can report its real size via {@link ContextMenuController.reportMenuSize}. */
 const ESTIMATED_WIDTH = 240;
 const ESTIMATED_HEIGHT = 260;
-
-/**
- * `data-chapter-src` crosses the untrusted preview bridge (plan §3.5) —
- * reject anything that isn't a plain forward-slash-relative id before it is
- * ever joined onto the project directory. Mirrors `commit-engine.ts`'s
- * identical guard (kept local rather than shared to avoid a needless public
- * export from the write-path module for what is, here, a read-only peek).
- */
-function isSafeChapterId(chapter: string): boolean {
-  if (!chapter) return false;
-  if (chapter.startsWith("/") || chapter.includes("\\")) return false;
-  if (/^[a-zA-Z]:/.test(chapter)) return false;
-  return chapter.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
-}
 
 function linkDisabledReason(kind: LinkResolution["kind"]): string {
   switch (kind) {
@@ -354,7 +338,7 @@ export class ContextMenuController {
       if (target.selection?.withinSingleBlock) return this.singleBlockSelectionItems(target);
       return this.crossBlockSelectionItems(target);
     }
-    if (!target.chapter || !target.range) return [];
+    if (!target.chapter || !isSafeChapterId(target.chapter) || !target.range) return [];
     const gen = this.deps.commitEngine.generation;
     const source = await this.readChapterSource(target.chapter);
     const blockSlice = source != null ? this.sliceRange(source, target.range) : null;
@@ -373,29 +357,27 @@ export class ContextMenuController {
     }
   }
 
-  private editBlockItem(
+  private goToSourceItem(
     target: ContextTarget,
-    disabledReason?: string,
     /**
      * Overrides `target.chapter`/`target.range` (the RIGHT-CLICK POINT's
      * resolved block) with an explicit chapter/range. Used by the selection-
      * formatting row (plan §4.6): a selection's anchor block
      * (`selection.chapter`/`selection.range`) is the block actually being
      * formatted and can, in principle, differ from the point the
-     * context-menu event fired at — "Edit block in editor" for that row must
-     * jump to the block being formatted, not wherever the pointer happened
-     * to land.
+     * context-menu event fired at. "Go to source" must jump to the block
+     * being formatted, not wherever the pointer happened to land.
      */
     override?: { chapter: string; range: SourceRange },
   ): ContextMenuItem {
     const chapter = override?.chapter ?? target.chapter;
     const range = override?.range ?? target.range;
-    const editorReason = disabledReason ?? (this.deps.editorPaneOpen() ? undefined : "Open the editor pane first.");
+    const enabled = !!chapter && isSafeChapterId(chapter) && !!range;
     return {
-      id: "edit-block-editor",
-      label: "Edit block in editor",
-      enabled: !editorReason,
-      disabledReason: editorReason,
+      id: "go-to-source",
+      label: "Go to source",
+      enabled,
+      disabledReason: enabled ? undefined : "This source location is invalid.",
       run: () => {
         if (chapter && range) this.deps.goToSource(chapter, range[0] + 1);
         this.close();
@@ -435,234 +417,83 @@ export class ContextMenuController {
     const range = target.range!;
     const image = target.image;
     if (blockSlice == null || !image) {
-      return [this.editBlockItem(target, "Couldn't read this chapter's source.")];
+      return [this.goToSourceItem(target)];
     }
     const match = findImageToken(blockSlice, image);
     if (!match && !image.source) {
       // Raw HTML <img> — no markdown token to address (plan §2.6).
-      return [this.editBlockItem(target)];
+      return [this.goToSourceItem(target)];
     }
     const disabledReason = match ? undefined : "Couldn't locate this image in the source.";
     const wrapper = match ? findImageWrapper(blockSlice, match) : null;
-    const pinAlignmentEnabled = !!match &&
-      getPositionClass(tokenizeImageAttrs(match.attrsRaw)) === IMAGE_PIN_CLASS;
     const slice = blockSlice; // narrowed for closures below
     const items: ContextMenuItem[] = [
       {
-        id: "image-alt",
-        label: "Edit alt text…",
-        enabled: !!match,
-        disabledReason,
-        run: async () => {
-          if (!match) return;
-          const next = await this.deps.promptText({
-            title: "Edit alt text",
-            label: "Alt text",
-            initialValue: match.alt,
-          });
-          if (next == null) return;
-          const token = rewriteImageToken(match, { alt: next });
-          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
-        },
-      },
-      {
-        id: "image-width",
-        label: "Set custom width…",
-        enabled: !!match,
-        disabledReason,
-        run: async () => {
-          if (!match) return;
-          // Token-preserving facet edit (image-classes): only the width
-          // token changes; every other attr — position/size classes, custom
-          // classes, #ids, key=val — survives verbatim, in order.
-          const tokens = tokenizeImageAttrs(match.attrsRaw);
-          const next = await this.deps.promptText({
-            title: "Set custom width",
-            label: "CSS width (for example 300px, 50%, or 12rem) — blank removes it",
-            initialValue: getWidth(tokens),
-          });
-          if (next == null) return;
-          const attrs = serializeImageAttrs(setWidth(tokens, next || null));
-          const token = rewriteImageToken(match, { attrsRaw: attrs });
-          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
-        },
-      },
-      {
-        id: "image-position",
-        label: "Set position…",
+        id: "image-properties",
+        label: "Set properties…",
         enabled: !!match,
         disabledReason,
         run: async () => {
           if (!match) return;
           const tokens = tokenizeImageAttrs(match.attrsRaw);
-          const written = getPositionClass(tokens);
-          const current = written ? normalizeClassInput(IMAGE_POSITION_OPTIONS, written) : undefined;
-          const next = await this.deps.promptText({
-            title: "Set position",
-            label: "Choose one canonical position class",
-            initialValue: current ?? "",
-            options: [
-              { value: "", label: "None — no position class" },
-              ...IMAGE_POSITION_OPTIONS.map((option) => ({
-                value: option.class,
-                label: `${option.label} — .${option.class}`,
-              })),
-            ],
-          });
+          const position = getPositionClass(tokens);
+          const initial: ImagePropertiesValue = {
+            src: match.src,
+            alt: match.alt,
+            width: getWidth(tokens),
+            position: position ? normalizeClassInput(IMAGE_POSITION_OPTIONS, position) ?? "" : "",
+            pinAlignment: getPinAlignment(tokens) ?? "center",
+            size: getSizeClass(tokens) ?? "",
+            spacing: getSpacingClass(tokens) ?? "",
+            shape: hasShapeClass(tokens),
+            layer: getLayerClass(tokens) ?? "",
+          };
+          const next = await this.deps.promptImageProperties(initial);
           if (next == null) return;
-          let updated: string[];
-          if (!next.trim()) {
-            updated = setPositionClass(tokens, null);
-          } else {
-            const cls = normalizeClassInput(IMAGE_POSITION_OPTIONS, next);
-            if (!cls) {
-              this.deps.toastError(
-                "Positions are center, left, right, full, bleed, or pin.",
-              );
-              return;
-            }
-            updated = setPositionClass(tokens, cls);
-          }
-          const token = rewriteImageToken(match, { attrsRaw: serializeImageAttrs(updated) });
-          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
-        },
-      },
-      {
-        id: "image-pin-alignment",
-        label: "Set pin alignment…",
-        enabled: pinAlignmentEnabled,
-        disabledReason: disabledReason ?? (pinAlignmentEnabled ? undefined : "Choose Pin to page first."),
-        run: async () => {
-          if (!match) return;
-          const tokens = tokenizeImageAttrs(match.attrsRaw);
-          if (getPositionClass(tokens) !== IMAGE_PIN_CLASS) return;
-          const next = await this.deps.promptText({
-            title: "Set pin alignment",
-            label: "Choose where the pinned image sits on the page",
-            initialValue: getPinAlignment(tokens) ?? "center",
-            options: IMAGE_PIN_ALIGNMENT_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.classes.length > 0
-                ? `${option.label} — ${option.classes.map((cls) => `.${cls}`).join(" ")}`
-                : `${option.label} — no edge classes`,
-            })),
-          });
-          if (next == null) return;
-          if (!IMAGE_PIN_ALIGNMENT_OPTIONS.some((option) => option.value === next)) {
-            this.deps.toastError("Choose one of the listed pin alignments.");
+          if (!next.src.trim()) {
+            this.deps.toastError("Choose an image path or URL.");
             return;
           }
-          const token = rewriteImageToken(match, {
-            attrsRaw: serializeImageAttrs(setPinAlignment(tokens, next)),
-          });
-          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
-        },
-      },
-      {
-        id: "image-size",
-        label: "Set size…",
-        enabled: !!match,
-        disabledReason,
-        run: async () => {
-          if (!match) return;
-          const tokens = tokenizeImageAttrs(match.attrsRaw);
-          const current = getSizeClass(tokens);
-          const next = await this.deps.promptText({
-            title: "Set size",
-            label: "Choose one canonical preset size class",
-            initialValue: normalizeClassInput(IMAGE_SIZE_OPTIONS, current ?? "") ?? "",
-            options: [
-              { value: "", label: "None — no preset size class" },
-              ...IMAGE_SIZE_OPTIONS.map((option) => ({
-                value: option.class,
-                label: `${option.label} — .${option.class}`,
-              })),
-            ],
-          });
-          if (next == null) return;
-          let updated: string[];
-          if (!next.trim()) {
-            updated = setSizeClass(tokens, null);
-          } else {
-            const cls = normalizeClassInput(IMAGE_SIZE_OPTIONS, next);
-            if (!cls) {
-              this.deps.toastError("Sizes are small, medium, or large.");
-              return;
-            }
-            updated = setSizeClass(tokens, cls);
-          }
-          const token = rewriteImageToken(match, { attrsRaw: serializeImageAttrs(updated) });
-          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
-        },
-      },
-      {
-        id: "image-spacing",
-        label: "Set float spacing…",
-        enabled: !!match,
-        disabledReason,
-        run: async () => {
-          if (!match) return;
-          const tokens = tokenizeImageAttrs(match.attrsRaw);
-          const current = getSpacingClass(tokens);
-          const next = await this.deps.promptText({
-            title: "Set float spacing",
-            label: "Space between a floated image and text (also used by shape wrap)",
-            initialValue: normalizeClassInput(IMAGE_SPACING_OPTIONS, current ?? "") ?? "",
-            options: [
-              { value: "", label: "Default (1em) — no spacing class" },
-              ...IMAGE_SPACING_OPTIONS.map((option) => ({
-                value: option.class,
-                label: `${option.label} — .${option.class}`,
-              })),
-            ],
-          });
-          if (next == null) return;
-          const cls = next.trim()
-            ? normalizeClassInput(IMAGE_SPACING_OPTIONS, next)
-            : undefined;
-          if (next.trim() && !cls) {
-            this.deps.toastError("Spacing is default, tight, or loose.");
+          const validPosition = !next.position || IMAGE_POSITION_OPTIONS.some((option) => option.class === next.position);
+          const validAlignment = IMAGE_PIN_ALIGNMENT_OPTIONS.some((option) => option.value === next.pinAlignment);
+          const validSize = !next.size || IMAGE_SIZE_OPTIONS.some((option) => option.class === next.size);
+          const validSpacing = !next.spacing || IMAGE_SPACING_OPTIONS.some((option) => option.class === next.spacing);
+          const validLayer = !next.layer || IMAGE_LAYER_OPTIONS.some((option) => option.class === next.layer);
+          if (!validPosition || !validAlignment || !validSize || !validSpacing || !validLayer) {
+            this.deps.toastError("Choose image options from the lists.");
             return;
           }
+          if (next.width.trim() && next.size) {
+            this.deps.toastError("Choose either a custom width or a preset size, not both.");
+            return;
+          }
+          const width = next.width.trim();
+          let updated = tokens;
+          if (width !== initial.width) updated = setWidth(updated, width || null);
+          if (next.position !== initial.position) {
+            updated = setPositionClass(updated, next.position || null);
+          }
+          if (next.position === IMAGE_PIN_CLASS &&
+              (initial.position !== IMAGE_PIN_CLASS || next.pinAlignment !== initial.pinAlignment)) {
+            updated = setPinAlignment(updated, next.pinAlignment);
+          }
+          if (next.size !== initial.size) updated = setSizeClass(updated, next.size || null);
+          if (next.spacing !== initial.spacing) updated = setSpacingClass(updated, next.spacing || null);
+          if (next.shape !== initial.shape) updated = setShapeClass(updated, next.shape);
+          if (next.layer !== initial.layer) updated = setLayerClass(updated, next.layer || null);
+          const sourceChanges: { src?: string; alt?: string; attrsRaw?: string } = {};
+          if (updated !== tokens) sourceChanges.attrsRaw = serializeImageAttrs(updated);
+          if (next.src.trim() !== initial.src) sourceChanges.src = next.src.trim();
+          if (next.alt !== initial.alt) sourceChanges.alt = next.alt;
           const token = rewriteImageToken(match, {
-            attrsRaw: serializeImageAttrs(setSpacingClass(tokens, cls ?? null)),
+            ...sourceChanges,
           });
-          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
-        },
-      },
-      {
-        id: "image-shape",
-        label: match && hasShapeClass(tokenizeImageAttrs(match.attrsRaw))
-          ? "Stop wrapping text to image shape"
-          : "Wrap text to image shape",
-        enabled: !!match,
-        disabledReason,
-        run: async () => {
-          if (!match) return;
-          // Boolean facet toggle — every other token passes through
-          // verbatim. Inert without a float position (shape-outside only
-          // applies to floats), so toggling is always safe.
-          const tokens = tokenizeImageAttrs(match.attrsRaw);
-          const updated = setShapeClass(tokens, !hasShapeClass(tokens));
-          const token = rewriteImageToken(match, { attrsRaw: serializeImageAttrs(updated) });
-          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
-        },
-      },
-      {
-        id: "image-replace",
-        label: "Replace image…",
-        enabled: !!match,
-        disabledReason,
-        run: async () => {
-          if (!match) return;
-          const next = await this.deps.promptText({
-            title: "Replace image",
-            label: "New image path or URL",
-            initialValue: match.src,
-          });
-          if (!next) return;
-          const token = rewriteImageToken(match, { src: next });
-          await this.commit(chapter, range, slice, spliceToken(slice, match.start, match.end, token), gen);
+          const replacement = spliceToken(slice, match.start, match.end, token);
+          if (replacement === slice) {
+            this.close();
+            return;
+          }
+          await this.commit(chapter, range, slice, replacement, gen);
         },
       },
       {
@@ -688,7 +519,7 @@ export class ContextMenuController {
           );
         },
       }] : []),
-      this.editBlockItem(target),
+      this.goToSourceItem(target),
     ];
     return items;
   }
@@ -737,7 +568,7 @@ export class ContextMenuController {
           this.close();
         },
       },
-      this.editBlockItem(target),
+      this.goToSourceItem(target),
     ];
     return items;
   }
@@ -771,16 +602,7 @@ export class ContextMenuController {
           await this.commit(chapter, range, slice, next + trailingNl, gen);
         },
       },
-      {
-        id: "marker-source",
-        label: "Go to source",
-        enabled: this.deps.editorPaneOpen(),
-        disabledReason: this.deps.editorPaneOpen() ? undefined : "Open the editor pane first.",
-        run: () => {
-          this.deps.goToSource(chapter, range[0] + 1);
-          this.close();
-        },
-      },
+      this.goToSourceItem(target),
     ];
     return items;
   }
@@ -826,16 +648,7 @@ export class ContextMenuController {
           await this.commit(chapter, [range[1], range[1]], "", "@page-break\n\n", gen);
         },
       },
-      {
-        id: "block-source",
-        label: "Go to source",
-        enabled: this.deps.editorPaneOpen(),
-        disabledReason: this.deps.editorPaneOpen() ? undefined : "Open the editor pane first.",
-        run: () => {
-          this.deps.goToSource(chapter, range[0] + 1);
-          this.close();
-        },
-      },
+      this.goToSourceItem(target),
     ];
     return items;
   }
@@ -863,8 +676,8 @@ export class ContextMenuController {
    * block's raw markdown source before it can be wrapped; see
    * `$lib/editor/selection-search.ts` for the whitespace/typographer/
    * delimiter matching this delegates to. Every disabled path here (no
-   * match, structural syntax, same-delimiter nesting) degrades to "Edit
-   * block in editor" only — never a guessed edit (plan §1 principle 3).
+   * match, structural syntax, same-delimiter nesting) degrades to "Go to
+   * source" only — never a guessed edit (plan §1 principle 3).
    *
    * Uses `selection.chapter`/`selection.range` (the selection's OWN anchor
    * block), never `target.chapter`/`target.range` (the right-click POINT's
@@ -875,17 +688,17 @@ export class ContextMenuController {
   private async singleBlockSelectionItems(target: ContextTarget): Promise<ContextMenuItem[]> {
     const sel = target.selection;
     if (!sel || !sel.chapter || !sel.range) {
-      return [this.editBlockItem(target)];
+      return [this.goToSourceItem(target)];
     }
     const chapter = sel.chapter;
     const range = sel.range;
-    const editItem = this.editBlockItem(target, undefined, { chapter, range });
+    const editItem = this.goToSourceItem(target, { chapter, range });
 
     const gen = this.deps.commitEngine.generation;
     const source = await this.readChapterSource(chapter);
     const blockSlice = source != null ? this.sliceRange(source, range) : null;
     if (blockSlice == null) {
-      return [this.editBlockItem(target, "Couldn't read this chapter's source.", { chapter, range })];
+      return [this.goToSourceItem(target, { chapter, range })];
     }
 
     const match = locateSelectionInSource(blockSlice, sel.text);
@@ -968,16 +781,7 @@ export class ContextMenuController {
           this.close();
         },
       },
-      {
-        id: "selection-edit",
-        label: "Edit in editor (jump to start)",
-        enabled: !!(target.chapter && target.range) && this.deps.editorPaneOpen(),
-        disabledReason: this.deps.editorPaneOpen() ? undefined : "Open the editor pane first.",
-        run: () => {
-          if (target.chapter && target.range) this.deps.goToSource(target.chapter, target.range[0] + 1);
-          this.close();
-        },
-      },
+      this.goToSourceItem(target),
     ];
     return items;
   }

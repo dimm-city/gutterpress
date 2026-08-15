@@ -181,6 +181,76 @@ async function runHorizontalAnchorRegression() {
   console.log("[desktop-test] PASS horizontal preview-shell anchor preservation");
 }
 
+async function runReplacementTimeoutRegression() {
+  const outer = new Window({ url: "http://localhost/" });
+  const document = outer.document;
+  const hostEvents = [];
+  Object.defineProperty(outer, "parent", {
+    configurable: true,
+    value: { postMessage(message) { hostEvents.push(message); } },
+  });
+  const active = document.createElement("iframe");
+  active.id = "gutterpress-active";
+  document.body.appendChild(active);
+  installBook(active);
+  active.contentWindow.dispatchEvent(new active.contentWindow.CustomEvent("gp:layout", { detail: {} }));
+
+  let onChange;
+  outer.__GUTTERPRESS_INSTANCE = "timeout";
+  outer.__GUTTERPRESS_REVISION = 0;
+  outer.__GUTTERPRESS_CHANGE_SOURCE = {
+    subscribe(callback) { onChange = callback; return () => {}; },
+    acknowledge() {},
+  };
+  outer.requestAnimationFrame = (callback) => callback();
+
+  const appendChild = document.body.appendChild.bind(document.body);
+  document.body.appendChild = (node) => {
+    const result = appendChild(node);
+    if (node.tagName === "IFRAME" && node !== active) {
+      installBook(node);
+      // Deliberately never dispatch gp:layout: this replacement times out.
+      node.dispatchEvent(new outer.Event("load"));
+    }
+    return result;
+  };
+
+  let readinessTimeout = null;
+  let timerId = 0;
+  const runShell = new Function("window", "document", "setTimeout", "clearTimeout", shellSource);
+  runShell(
+    outer,
+    document,
+    (callback, ms) => {
+      const id = ++timerId;
+      if ((ms || 0) >= 1000) readinessTimeout = callback;
+      else callback();
+      return id;
+    },
+    () => {},
+  );
+
+  onChange?.({ type: "full-reload", instance: "timeout", revision: 1 });
+  assert.equal(typeof readinessTimeout, "function", "replacement arms its bounded readiness timeout");
+  assert.equal(
+    hostEvents.some((message) => message?.name === "renderingStarted"),
+    true,
+    "host is told the replacement started",
+  );
+  readinessTimeout();
+  assert.equal(
+    hostEvents.some((message) =>
+      message?.name === "renderingCancelled" &&
+      message?.detail?.hotReload === true &&
+      message?.detail?.revision === 1
+    ),
+    true,
+    "a timed-out replacement clears the host's ambient updating state",
+  );
+  assert.equal(document.getElementById("gutterpress-active"), active, "timeout keeps the last good preview active");
+  console.log("[desktop-test] PASS replacement timeout cancellation event");
+}
+
 async function runPartialHorizontalAnchorRegression() {
   const outer = new Window({ url: "http://localhost/" });
   const document = outer.document;
@@ -873,6 +943,7 @@ main()
   .then(runHorizontalAnchorRegression)
   .then(runPartialHorizontalAnchorRegression)
   .then(runTopLevelScrollIdleRegression)
+  .then(runReplacementTimeoutRegression)
   .catch((error) => {
     console.error("[desktop-test] FAIL", error);
     process.exit(1);

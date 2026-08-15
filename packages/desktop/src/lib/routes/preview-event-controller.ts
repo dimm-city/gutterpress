@@ -46,29 +46,13 @@ interface PreviewEventZoomView {
 }
 
 /**
- * Editor↔preview sync seams for the `sourceLineChanged` branch (preview→editor
- * follow). Grouped so the editor coupling stays behind one injected surface.
+ * Editor/outline seams: render replacement invalidates pending editor→preview
+ * commands, while preview scrolling updates outline chrome only.
  */
 interface PreviewEventEditorSync {
   /** Invalidate replies issued against a preview frame/render being replaced. */
   invalidatePending: () => void;
-  /** Timestamp (ms) before which preview→editor follow is suppressed (echo guard). */
-  suppressPreviewSyncUntil: () => number;
-  editorPaneOpen: () => boolean;
   updateActiveOutline: (line: number) => void;
-  /**
-   * Reveal a chapter-local line in the editor. The editor holds the whole book
-   * as one document, so this is just a scroll — there is no file to open and
-   * nothing to wait for, whether or not the line is in the chapter the caret
-   * currently sits in.
-   *
-   * `deliberate` says whether the author ASKED to go there (a click) or merely
-   * scrolled the preview. It decides what happens when the editor is showing
-   * something that isn't the book — a stylesheet — where a chapter-local line
-   * has no meaning: a deliberate jump brings the book back, a passive follow
-   * leaves the author in the file they are working in.
-   */
-  revealEditorLine: (chapter: string | null, line: number, deliberate: boolean) => void;
 }
 
 export interface PreviewEventDeps {
@@ -87,6 +71,8 @@ export interface PreviewEventDeps {
   setRenderProgressPage: (v: number) => void;
   getRenderProgressPage: () => number;
   setRenderCompleteOverlay: (v: boolean) => void;
+  /** Tiny non-blocking status shown only for save-triggered replacement frames. */
+  setPreviewUpdating: (v: boolean) => void;
   /** Clear the outline + reset the active index (on a new render starting). */
   resetOutline: () => void;
   /** Read-and-clear the pending per-project restore (page + view mode). */
@@ -102,7 +88,6 @@ export interface PreviewEventDeps {
   toastSuccess: (message: string) => void;
   // ── Environment / clock ──────────────────────────────────────────────────
   viewportWidth: () => number;
-  now: () => number;
   scheduleMicrotask: (fn: () => void) => void;
 }
 
@@ -143,15 +128,16 @@ export class PreviewEventController {
     switch (e.name) {
       case "renderingStarted":
         this.deps.editorSync.invalidatePending();
+        if (e.detail.hotReload === true) this.deps.setPreviewUpdating(true);
+        break;
+      case "renderingCancelled":
+        if (e.detail.hotReload === true) this.deps.setPreviewUpdating(false);
         break;
       case "renderingComplete":
         this.onRenderingComplete(e.detail);
         break;
       case "sourceLineChanged":
         this.onSourceLineChanged(e.detail);
-        break;
-      case "elementActivated":
-        this.onElementActivated(e.detail);
         break;
       case "pageChanged":
         this.onPageChanged(e.detail);
@@ -165,6 +151,7 @@ export class PreviewEventController {
   private onRenderingComplete(detail: PreviewEvent["detail"]): void {
     const d = this.deps;
     const hotReload = detail.hotReload === true;
+    if (hotReload) d.setPreviewUpdating(false);
     const n = detail.totalPages ?? 0;
     d.pageNav.totalPages = n;
     d.setRenderProgressPage(n);
@@ -222,49 +209,13 @@ export class PreviewEventController {
   }
 
   private onSourceLineChanged(detail: PreviewEvent["detail"]): void {
-    const d = this.deps;
-    const es = d.editorSync;
-    // Preview→editor sync: the reader scrolled. Follow in the editor and update
-    // the active outline entry — but not while the editor itself is driving the
-    // preview (echo guard).
-    const line = detail.sourceLine;
-    const chap = detail.chapter;
-    if (typeof line !== "number") return;
-    es.updateActiveOutline(line);
-    if (d.now() < es.suppressPreviewSyncUntil() || !es.editorPaneOpen()) return;
-    // The editor holds the whole book, so a scroll that crosses into another
-    // chapter is not a special case: the same reveal handles it. This branch
-    // used to carry a chapter-match test, a cross-chapter file-open, and a
-    // dirty-buffer gate that skipped the follow entirely (so the editor stopped
-    // tracking the reader mid-edit — the "sporadic" complaint). None of them
-    // have anything left to guard.
-    es.revealEditorLine(chap ?? null, line, false);
-  }
-
-  /**
-   * `elementActivated`: the author clicked a `[data-source-line]` block in the
-   * preview — an explicit "go to source" intent (PR 0 of the inline-editing
-   * plan; `docs/inline-editing-plan.md`). Same reveal as `onSourceLineChanged`.
-   * A closed/unmounted editor pane is left untouched. `data-source-line` is
-   * level-0-only today, so
-   * this jumps to a LINE; it cannot select the clicked block (that precision
-   * arrives with the `data-source-range` primitive in a later PR — not
-   * retrofitted here).
-   *
-   * Unlike `onSourceLineChanged`, this is not gated behind the echo-suppression
-   * window (`suppressPreviewSyncUntil`) — that guard exists to swallow scroll
-   * events that are themselves an echo of an editor-driven `scrollTo`, but a
-   * click is always genuine author intent, never an echo.
-   */
-  private onElementActivated(detail: PreviewEvent["detail"]): void {
-    const es = this.deps.editorSync;
+    // Preview scrolling updates navigation chrome only. It must never move the
+    // editor's viewport/caret: that feedback loop was the source of delayed
+    // editor jumps after a hot reload. "Go to source" is the single explicit
+    // preview→editor navigation action.
     const line = detail.sourceLine;
     if (typeof line !== "number") return;
-
-    // Preview interaction never opens the editor. If the author explicitly
-    // opened it, keep the existing click-to-reveal behavior.
-    if (!es.editorPaneOpen()) return;
-    es.revealEditorLine(detail.chapter ?? null, line, true);
+    this.deps.editorSync.updateActiveOutline(line);
   }
 
   private onPageChanged(detail: PreviewEvent["detail"]): void {

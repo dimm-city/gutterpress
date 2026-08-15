@@ -396,6 +396,51 @@ test("an in-flight crash-recovery restore does not mutate a newly loaded file", 
   expect(buffer.phase).toBe("clean");
 });
 
+test("an in-flight external reconcile for file A cannot overwrite newly loaded file B", async () => {
+  class SlowExternalReadPlatform extends MemoryPlatform {
+    blockA = false;
+    readStarted: (() => void) | null = null;
+    releaseRead: (() => void) | null = null;
+
+    async readFile(path: string): Promise<string> {
+      if (this.blockA && path === "/book/a.md") {
+        this.readStarted?.();
+        await new Promise<void>((resolve) => {
+          this.releaseRead = resolve;
+        });
+      }
+      return super.readFile(path);
+    }
+  }
+
+  const platform = new SlowExternalReadPlatform({
+    "/book/a.md": "a original",
+    "/book/b.md": "b original",
+  });
+  const replaced: Array<[string, string]> = [];
+  const buffer = new EditorBuffer({
+    platform: platform as Platform,
+    recoveryEnabled: false,
+    onContentReplaced: (path, content) => replaced.push([path, content]),
+  });
+
+  await buffer.load("/book/a.md");
+  platform.externalWrite("/book/a.md", "a external");
+  platform.blockA = true;
+  const readStarted = new Promise<void>((resolve) => (platform.readStarted = resolve));
+  const reconcileA = buffer.reconcileExternalChange();
+  await readStarted;
+
+  await buffer.load("/book/b.md");
+  platform.releaseRead?.();
+  await reconcileA;
+
+  expect(buffer.filePath).toBe("/book/b.md");
+  expect(buffer.content).toBe("b original");
+  expect(buffer.diskContent).toBe("b original");
+  expect(replaced).toEqual([]);
+});
+
 test("a failed disk write rejects flush and remains dirty for the close gate", async () => {
   class FailingWritePlatform extends MemoryPlatform {
     async writeFile(): Promise<FileWriteResult> {

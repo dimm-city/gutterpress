@@ -53,13 +53,7 @@ export interface BlockOverlayDeps {
   client: () => BlockOverlayClient | undefined;
   /** The open project directory, or null when none is loaded. */
   currentDir: () => string | null;
-  /**
-   * The live in-editor content of a file, or null when it isn't open. With the
-   * whole book open as one document a chapter can carry unsaved edits while the
-   * caret sits somewhere else entirely, so this must be asked per PATH — a
-   * check against "the open file" would fall through to the stale disk copy for
-   * every chapter but one.
-   */
+  /** The live in-editor content of the one open file, or null. */
   openContent: (path: string) => string | null;
   /**
    * Read a chapter's file DIRECTLY — NOT through `selectEditorFile`, mirroring

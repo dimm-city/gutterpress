@@ -10,11 +10,13 @@ import { describe, expect, test } from "bun:test";
 
 import {
   IMAGE_PIN_ALIGNMENT_OPTIONS,
+  IMAGE_LAYER_OPTIONS,
   IMAGE_POSITION_OPTIONS,
   IMAGE_SHAPE_CLASS,
   IMAGE_SIZE_OPTIONS,
   IMAGE_SPACING_OPTIONS,
   getPinAlignment,
+  getLayerClass,
   getPositionClass,
   getSizeClass,
   getSpacingClass,
@@ -23,6 +25,7 @@ import {
   normalizeClassInput,
   serializeImageAttrs,
   setPinAlignment,
+  setLayerClass,
   setPositionClass,
   setShapeClass,
   setSizeClass,
@@ -217,6 +220,19 @@ describe("float and shape spacing facet", () => {
   });
 });
 
+describe("depth layer facet", () => {
+  test("lists, reads, replaces, and clears the complete core depth ladder", () => {
+    expect(IMAGE_LAYER_OPTIONS.map((option) => option.class)).toEqual([
+      "gp-behind", "gp-base", "gp-raised", "gp-front",
+    ]);
+    const tokens = tokenizeImageAttrs("{.gp-pin .gp-raised .custom}");
+    expect(getLayerClass(tokens)).toBe("gp-raised");
+    const front = setLayerClass(tokens, "gp-front");
+    expect(serializeImageAttrs(front)).toBe("{.gp-pin .gp-front .custom}");
+    expect(serializeImageAttrs(setLayerClass(front, null))).toBe("{.gp-pin .custom}");
+  });
+});
+
 describe("normalizeClassInput", () => {
   test("accepts short names, canonical classes, and legacy aliases", () => {
     expect(normalizeClassInput(IMAGE_POSITION_OPTIONS, "right")).toBe("gp-right");
@@ -263,6 +279,7 @@ describe("drift gate against core GUTTERPRESS_CSS", () => {
       ...IMAGE_POSITION_OPTIONS.map((o) => o.class),
       ...IMAGE_SIZE_OPTIONS.map((o) => o.class),
       ...IMAGE_SPACING_OPTIONS.map((o) => o.class),
+      ...IMAGE_LAYER_OPTIONS.map((o) => o.class),
       ...IMAGE_PIN_ALIGNMENT_OPTIONS.flatMap((o) => o.classes),
       IMAGE_SHAPE_CLASS,
     ];

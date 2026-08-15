@@ -4,6 +4,7 @@ import http from "node:http";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { resolveChromiumExecutable } from "../../lib/chromium.ts";
@@ -42,7 +43,7 @@ testIf(
     // Stage the fixture beside a fresh copy of the viewer bundle — the
     // supported drop-in usage is exactly this: one HTML file, one script tag,
     // no build step.
-    const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".standalone-test-"));
+    const dir = await fsp.mkdtemp(path.join(tmpdir(), "gutterpress-standalone-test-"));
     try {
       await fsp.copyFile(
         path.join(FIXTURES_DIR, "standalone-hand.html"),
@@ -140,11 +141,9 @@ testIf(
           expect(result.visibleWidth).toBeGreaterThan(0);
           expect(result.visibleHeight).toBeGreaterThan(0);
 
-          // The viewer's fit-to-width shrink and a host's zoom control are
-          // separate inputs and must COMPOSE: preview-interface.js's setZoom()
-          // writes `--gutterpress-zoom` on <html>, so a fit value written to
-          // the same property on <body> (the stage) would shadow it and the
-          // zoom control would go dead under the native engine.
+          // Once an embedding host writes a zoom, it is the single owner.
+          // The standalone fit must stand down instead of multiplying a
+          // second scale into the host's fit-width calculation.
           const zoom = await page.evaluate(() => {
             document.documentElement.style.setProperty("--gutterpress-zoom", "2");
             const wide = getComputedStyle(document.body).zoom;
@@ -155,16 +154,15 @@ testIf(
 
           await page.setViewport({ width: 320, height: 900 });
           const narrow = await page.evaluate(async () => {
+            window.dispatchEvent(new Event("resize"));
             await new Promise((r) => setTimeout(r, 100));
             return {
-              fit: parseFloat(document.body.style.getPropertyValue("--gutterpress-fit-zoom")),
+              fit: document.body.style.getPropertyValue("--gutterpress-fit-zoom"),
               zoom: parseFloat(getComputedStyle(document.body).zoom),
             };
           });
-          expect(narrow.fit).toBeGreaterThan(0);
-          expect(narrow.fit).toBeLessThan(1);
-          // still multiplied by the host's 2, not replaced by it
-          expect(narrow.zoom).toBeCloseTo(narrow.fit * 2, 2);
+          expect(narrow.fit).toBe("");
+          expect(narrow.zoom).toBeCloseTo(2, 2);
         } finally {
           await page.close();
         }
@@ -181,7 +179,7 @@ testIf(
 testIf(
   "a named-page box splits its container without losing the container's loose text",
   async () => {
-    const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".named-page-test-"));
+    const dir = await fsp.mkdtemp(path.join(tmpdir(), "gutterpress-named-page-test-"));
     try {
       await fsp.copyFile(
         path.join(FIXTURES_DIR, "named-page-runs.html"),
@@ -234,7 +232,7 @@ testIf(
 testIf(
   "the author's canvas background is painted on every sheet, not behind the filmstrip",
   async () => {
-    const dir = await fsp.mkdtemp(path.join(path.dirname(FIXTURES_DIR), ".canvas-bg-test-"));
+    const dir = await fsp.mkdtemp(path.join(tmpdir(), "gutterpress-canvas-bg-test-"));
     try {
       const html = await fsp.readFile(
         path.join(FIXTURES_DIR, "standalone-hand.html"),

@@ -19,7 +19,7 @@
  * gates meaningful (see the clean-buffer-gate comment inline below and ADR
  * 0009).
  */
-import { chapterPath } from "./chapter-path";
+import { chapterPath, isSafeChapterId } from "./chapter-path";
 import { buildLineStarts, charRange } from "./source-range";
 import { basenameOf } from "$lib/platform/paths";
 
@@ -45,27 +45,17 @@ export interface CommitEngineDeps {
   buffer: () => CommitEngineBuffer | null;
   /**
    * The app's EXISTING file-selection machinery (`+page.svelte`'s
-   * `selectEditorFile`) — pairs `buffer.load()` with `editorRef.switchFile()`
-   * and owns the load-epoch / in-flight guards. Calling `buffer.load()`
-   * directly is FORBIDDEN (plan §4.7 Step 1): every existing call site pairs
-   * load() with switchFile(), and skipping that pairing dispatches offsets
-   * computed for chapter B into a view still showing chapter A. Resolves
-   * `true` on success; can also resolve `true` with the buffer left in an
-   * "error" phase (a failed read still records the path) — the engine
-   * re-checks the clean-buffer gate after calling this, per the plan.
+   * `selectEditorFile`) — atomically loads, flushes, and activates one file.
+   * Resolves false when the handoff cannot safely complete.
    */
   selectEditorFile: (path: string) => Promise<boolean>;
   /**
-   * Whether the mounted editor's live document actually holds this file — the
-   * book document holds every chapter at once, a single-file document holds
-   * one. Ask the EDITOR (`MarkdownEditor.hasFile()`) — never infer this from
-   * `buffer.filePath` alone (plan §4.7 Step 4).
+   * Whether the mounted one-file editor currently displays this file.
    */
   editorHasFile: (path: string) => boolean;
   /**
-   * Dispatch a range edit into the live CodeMirror view (shared undo history).
-   * `from`/`to` are offsets into `path`'s OWN content — the editor rebases them
-   * onto that chapter's segment when the document is the whole book.
+   * Dispatch a range edit into the live CodeMirror view. `from`/`to` are
+   * offsets into that one file's content.
    */
   applyRangeEdit: (path: string, from: number, to: number, insert: string) => void;
 }
@@ -144,13 +134,6 @@ export type CommitOutcome = CommitSuccess | CommitFailure;
  * segment that doesn't look like an ordinary relative path name rejects the
  * whole chapter id.
  */
-function isSafeChapterId(chapter: string): boolean {
-  if (!chapter) return false;
-  if (chapter.startsWith("/") || chapter.includes("\\")) return false;
-  if (/^[a-zA-Z]:/.test(chapter)) return false;
-  return chapter.split("/").every((seg) => seg !== "" && seg !== "." && seg !== "..");
-}
-
 /**
  * CLEAN means: the buffer isn't in an error phase, has no pending external
  * change awaiting the conflict banner, and its live content exactly equals

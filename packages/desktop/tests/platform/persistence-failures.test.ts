@@ -75,14 +75,11 @@ test("the page routes every destructive buffer transition and close through the 
 
   expect(page).not.toMatch(/\.flush\(\)\.catch\(\(\) => \{\}\)/);
   expect(page).toContain("flushBuffer: () => flushEditorBuffer()"); // project close/switch lifecycle
-  expect(page).toContain("onFlushBeforeClose(() => flushEditorBuffer(false))");
-  expect(page).toContain("return flushEditorBuffer();"); // tree rename/delete
+  expect(page).toContain("onFlushBeforeClose(() => flushEditorBuffer(buffer, false))");
+  expect(page).toContain("return flushEditorBuffer(buffer);"); // tree rename/delete
 
-  // Switching chapters and switching the mobile Markdown/CSS tab used to be
-  // destructive too — each replaced the ONE editor document, so each had to
-  // flush first or drop an edit still inside the autosave window. Neither
-  // replaces anything now: every open file keeps its own buffer and its own
-  // pending save, so there is no transition left for a missing flush to lose.
+  // File replacement is delegated to the behavior-tested editor session,
+  // which flushes the outgoing one-file buffer before atomic activation.
   expect(page).not.toContain("flushEditorBuffer(buf)");
 
   const fileTree = readFileSync(

@@ -63,6 +63,13 @@ export const IMAGE_SPACING_OPTIONS: readonly ImageClassOption[] = [
   { class: "gp-loose", short: "loose", label: "Loose (2em)" },
 ] as const;
 
+export const IMAGE_LAYER_OPTIONS: readonly ImageClassOption[] = [
+  { class: "gp-behind", short: "behind", label: "Behind page content" },
+  { class: "gp-base", short: "base", label: "Base" },
+  { class: "gp-raised", short: "raised", label: "Raised" },
+  { class: "gp-front", short: "front", label: "Front" },
+] as const;
+
 export interface ImagePinAlignmentOption {
   value: string;
   label: string;
@@ -84,6 +91,19 @@ export const IMAGE_PIN_ALIGNMENT_OPTIONS: readonly ImagePinAlignmentOption[] = [
 
 export type ImagePositionClass = (typeof IMAGE_POSITION_OPTIONS)[number]["class"];
 export type ImageSizeClass = (typeof IMAGE_SIZE_OPTIONS)[number]["class"];
+
+/** Complete value edited by the one image-properties dialog. */
+export interface ImagePropertiesValue {
+  src: string;
+  alt: string;
+  width: string;
+  position: string;
+  pinAlignment: string;
+  size: string;
+  spacing: string;
+  shape: boolean;
+  layer: string;
+}
 
 /** class-or-alias → its option, for one facet's option table. */
 function optionFor(
@@ -242,6 +262,14 @@ export function getSpacingClass(tokens: readonly string[]): string | undefined {
   return undefined;
 }
 
+export function getLayerClass(tokens: readonly string[]): string | undefined {
+  for (const token of tokens) {
+    const name = classTokenName(token);
+    if (name && optionFor(IMAGE_LAYER_OPTIONS, name)) return name;
+  }
+  return undefined;
+}
+
 /** Current visual pin alignment, accounting for core CSS's bottom/right wins. */
 export function getPinAlignment(tokens: readonly string[]): string | undefined {
   if (!isPinned(tokens)) return undefined;
@@ -311,6 +339,14 @@ export function setSpacingClass(tokens: readonly string[], cls: string | null): 
   return setFacetToken(
     tokens,
     isFacetToken(IMAGE_SPACING_OPTIONS),
+    cls == null ? null : `.${cls}`,
+  );
+}
+
+export function setLayerClass(tokens: readonly string[], cls: string | null): string[] {
+  return setFacetToken(
+    tokens,
+    isFacetToken(IMAGE_LAYER_OPTIONS),
     cls == null ? null : `.${cls}`,
   );
 }

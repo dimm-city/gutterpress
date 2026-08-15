@@ -2,32 +2,17 @@
  * EditorPreviewSyncController — the editor↔preview scroll/anchor timing machine
  * that used to live inline in `+page.svelte`.
  *
- * ## What used to be here
+ * Sync is intentionally one-way: the editor can position the preview, while
+ * ordinary preview scrolling never moves the editor. "Go to source" owns the
+ * reverse direction. This controller therefore needs only a latest-request
+ * guard; the former echo-suppression clock and feedback loop are gone.
  *
- * The editor held ONE chapter file while the preview rendered the whole book,
- * so following the preview across a chapter boundary meant opening a different
- * file: a `setTimeout` poll loop waiting for the async buffer swap, a nudge
- * counter re-issuing the reveal five times because the load reset scroll to the
- * top, retry bookkeeping capped at ~2s, and a dirty-buffer gate so none of it
- * fired mid-edit. All of that is gone. The editor now holds the WHOLE BOOK as
- * one document (`$lib/editor/book-layout.ts`), so the target line is already on
- * screen — `revealEditorLine(chapter, line)` is the entire follow.
- *
- * ## What is left
- *
- * One thing that genuinely needs state: the echo-suppression window. Driving
- * either pane makes it emit the scroll event the other pane would follow, so a
- * timestamp guard marks the interval during which an incoming
- * `sourceLineChanged` is our own echo rather than a reader scrolling.
- *
- * The clock (`now`) is INJECTED so the guard is deterministic in tests, as is
- * host coupling (the preview client, the editor accessor, the page-sync sink),
+ * Host coupling (the preview client and page-sync sink) is injected,
  * which keeps this PWA-clean (§8 / ADR 0004): ZERO direct DOM / `node:*` / lib
  * value imports.
  *
  * Single-owner discipline mirrors `PreviewEventController`
  * (`routes/preview-event-controller.ts`), whose `sourceLineChanged` branch reads
- * `suppressPreviewSyncUntil` before following.
  */
 
 /** Minimal preview-client surface the sync machine drives. */
@@ -45,16 +30,11 @@ export interface EditorPreviewSyncDeps {
   rendering: () => boolean;
   /** Reflect a scroll-driven page into the toolbar (pageNav.syncPageState). */
   syncPageAfterScroll: (page: number) => void;
-  /** Injected clock (ms). */
-  now: () => number;
 }
 
 export class EditorPreviewSyncController {
   private deps: EditorPreviewSyncDeps;
 
-  // Timestamp guard: while the preview is being driven from the editor side,
-  // ignore the sourceLineChanged it emits so the two panes don't feed back.
-  private suppressUntil = 0;
   // Only the newest editor anchor may reflect its result into toolbar state.
   // PreviewClient commands are asynchronous and can resolve out of order.
   private anchorRequestId = 0;
@@ -63,32 +43,16 @@ export class EditorPreviewSyncController {
     this.deps = deps;
   }
 
-  /** Timestamp (ms) before which preview→editor follow is suppressed (echo guard). */
-  get suppressPreviewSyncUntil(): number {
-    return this.suppressUntil;
-  }
-
   /** Invalidate asynchronous replies from a render/frame epoch that ended. */
   invalidatePending(): void {
     this.anchorRequestId++;
   }
 
-  /** Open the echo-suppression window for `ms` from now. */
-  suppressFor(ms: number): void {
-    // A direct preview interaction supersedes any editor-driven command that
-    // is still waiting to report its page.
-    this.invalidatePending();
-    this.suppressUntil = this.deps.now() + ms;
-  }
-
   /**
    * Editor→preview: the caret moved or the editor scrolled. Drive the preview
-   * to the matching source line; guard the echo so the preview's resulting
-   * sourceLineChanged doesn't bounce back into the editor.
+   * to the matching source line.
    *
-   * `chapter` comes from the editor itself — it is whichever chapter of the
-   * book document that line fell in — so a scroll that crosses a chapter
-   * boundary needs no special case at all.
+   * `chapter` is the project-relative path of the one displayed editor file.
    */
   onEditorAnchorLine(
     line: number,
@@ -98,7 +62,6 @@ export class EditorPreviewSyncController {
     const requestId = ++this.anchorRequestId;
     const client = this.deps.client();
     if (!client || this.deps.rendering()) return;
-    this.suppressUntil = this.deps.now() + 400;
     // Scroll-driven anchors are the editor's TOP visible line → anchor the
     // preview block to the TOP so the panes agree. Caret-driven anchors carry
     // no viewport position (the caret sits anywhere), so CENTER the target —

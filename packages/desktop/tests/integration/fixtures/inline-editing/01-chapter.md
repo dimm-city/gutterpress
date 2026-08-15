@@ -50,4 +50,4 @@ Filler paragraph number twenty, added only to lengthen the chapter's markdown so
 
 @page image
 
-[![Wrapped test image](media/wrapped-test.svg "Preserved image title"){width=160px .gp-center}](https://example.com/a_(b) "Wrapper title ) retained")
+[![Wrapped *test* image](media/wrapped\-test.svg "Preserved image title"){width=160px .gp-center}](https://example.com/a_(b) "Wrapper title ) retained")

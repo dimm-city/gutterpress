@@ -69,6 +69,7 @@ interface SpreadReport {
   outside: Array<{ id: string; page: number; rect: number[]; sheet: number[] }>;
   rows: Array<{ top: number; sheets: Array<{ page: number; side: string }> }>;
   singleRows: Array<{ top: number; sheets: Array<{ page: number; side: string }> }>;
+  singleSheetLefts: number[];
 }
 
 testIf(
@@ -132,10 +133,12 @@ testIf(
               top: row.top,
               sheets: row.sheets.map(({ page, side }) => ({ page, side })),
             }));
+            const singleSheetLefts = singleGeometry.flatMap((row) =>
+              row.sheets.map((sheet) => Math.round(sheet.l)),
+            );
             const singleVerticalGaps = singleGeometry.slice(1).map((row, i) =>
               Math.round(row.top - Math.max(...singleGeometry[i]!.sheets.map((sheet) => sheet.b))),
             );
-
             gp.setSpread(true);
 
             const spread = probeEls.map((el) => gp.pageOf(el));
@@ -213,6 +216,7 @@ testIf(
               outside,
               rows,
               singleRows,
+              singleSheetLefts,
             } as SpreadReport;
           });
         } finally {
@@ -246,6 +250,12 @@ testIf(
         expect(report.singleVerticalGaps).toEqual(
           report.singleVerticalGaps.map(() => report.sheetGap),
         );
+        // Screen-viewer paper is a stable navigation surface: mirrored and
+        // named-page margins may not make sheets wobble horizontally. Native
+        // multicol has one fixed content-column origin, so page-specific
+        // margin fidelity remains the PDF's contract; moving paper chrome
+        // around that fixed origin made the real field guide stagger by 24px.
+        expect(Math.max(...report.singleSheetLefts) - Math.min(...report.singleSheetLefts)).toBeLessThanOrEqual(1);
 
         // (2) a view mode may not move a page boundary.
         expect(report.pageOfMismatches).toEqual([]);
