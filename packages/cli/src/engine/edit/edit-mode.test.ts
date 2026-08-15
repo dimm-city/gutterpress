@@ -56,6 +56,10 @@ Raw <kbd>html</kbd> paragraph.
 
 Closing paragraph on the default page.
 
+\`\`\`js
+const answer = 41;
+\`\`\`
+
 Second-strip paragraph over here. {.on-two}
 `;
 
@@ -369,6 +373,87 @@ testIf(
             () => document.querySelector("[data-gp-edit-degraded]")!.textContent,
           );
           expect(degradedAfter).toBe(degradedBlocked);
+
+          // ── 8. typing inside a FENCE proposes a fence, never a deletion ──
+          //     markdown-it stamps the range on the inner <code>, so an
+          //     extent lookup that filtered non-content tags found nothing
+          //     and serialized the block as deleted.
+          const fenceBatchIndex = await page.evaluate(() => {
+            const w = window as unknown as { __batches: unknown[] };
+            return w.__batches.length;
+          });
+          await page.evaluate(() => {
+            const code = document.querySelector("pre code")!;
+            const text = code.firstChild as Text;
+            const sel = getSelection()!;
+            const r = document.createRange();
+            r.setStart(text, "const answer = ".length);
+            r.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(r);
+            (code.closest(".gp-strip") as HTMLElement).focus();
+          });
+          await page.keyboard.type("4");
+          await page.waitForFunction(
+            `window.__batches.length > ${fenceBatchIndex}`,
+          );
+          const fenceBatch = (await page.evaluate(
+            `window.__batches[${fenceBatchIndex}]`,
+          )) as { patches: Array<{ replacement: string }>; refusals: unknown[] };
+          expect(fenceBatch.patches.length).toBe(1);
+          // The whole fence round-trips; the old bug produced "" (deletion).
+          expect(fenceBatch.patches[0]!.replacement).toBe(
+            "```js\nconst answer = 441;\n```",
+          );
+
+          // ── 9. typing while a commit is in flight is never dropped ───────
+          const inflight = await page.evaluate(async () => {
+            const w = window as unknown as {
+              GutterpressEdit: { ackPatches(s: object): void };
+              __batches: Array<{ batchId: number; patches: Array<Record<string, unknown>> }>;
+            };
+            const before = w.__batches.length;
+            const batch = w.__batches[before - 1]!;
+            // Author keeps typing in the same block BEFORE the ack lands.
+            const code = document.querySelector("pre code")!;
+            (code.firstChild as Text).appendData("\nconst more = 1;");
+            w.GutterpressEdit.ackPatches({
+              batchId: batch.batchId,
+              results: batch.patches.map((p) => ({ ...p, status: "applied" })),
+            });
+            return { before };
+          });
+          // The newer keystrokes must still reach disk: a fresh patch is
+          // proposed rather than the entry being cleared as clean.
+          await page.waitForFunction(
+            `window.__batches.length > ${inflight.before}`,
+          );
+          const followUp = (await page.evaluate(
+            `window.__batches[${inflight.before}]`,
+          )) as { patches: Array<{ replacement: string }> };
+          expect(followUp.patches[0]!.replacement).toContain("const more = 1;");
+
+          // ── 10. disabling mid-debounce flushes instead of dropping ───────
+          const disabledFlush = await page.evaluate(async () => {
+            const w = window as unknown as {
+              GutterpressEdit: { disable(): void; enable(o: object): void };
+              __batches: unknown[];
+            };
+            const before = w.__batches.length;
+            const p = [...document.querySelectorAll("p")].find((el) =>
+              el.textContent!.startsWith("Second-strip"),
+            )!;
+            (p.firstChild as Text).appendData(" TYPED-THEN-DISABLED");
+            // Simulate the input path's dirty tracking, then kill the switch
+            // immediately — inside the autosync debounce.
+            const sel = getSelection()!;
+            sel.setBaseAndExtent(p.firstChild!, 0, p.firstChild!, 0);
+            p.dispatchEvent(new InputEvent("input", { bubbles: true }));
+            w.GutterpressEdit.disable();
+            await new Promise((r) => setTimeout(r, 200));
+            return { before, after: (w.__batches as unknown[]).length };
+          });
+          expect(disabledFlush.after).toBeGreaterThan(disabledFlush.before);
         } finally {
           await page.close();
         }

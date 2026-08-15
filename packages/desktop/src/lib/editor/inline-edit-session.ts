@@ -142,12 +142,22 @@ export class InlineEditSession {
       return;
     }
 
-    const results: PatchResult[] = [];
+    // Keyed by the proposed patch so the ACK payload keeps the frame's
+    // original proposal order — the bottom-up commit order below is an
+    // internal concern and must not leak into the wire shape.
+    const resultFor = new Map<(typeof batch.patches)[number], PatchResult>();
 
     // Sequential on purpose: patches in one batch may target the same
     // chapter, and each commit re-reads the buffer the next one validates
-    // against.
-    for (const patch of batch.patches) {
+    // against. BOTTOM-UP within a chapter (descending start line): a commit
+    // that changes line count moves everything BELOW it, so a top-down order
+    // would hand later patches stale ranges — normally caught by the
+    // expected-slice gate as a refusal, but with repeated source text it
+    // could match and rewrite the wrong occurrence.
+    const ordered = [...batch.patches].sort((a, b) =>
+      a.chapter === b.chapter ? b.range[0] - a.range[0] : a.chapter < b.chapter ? -1 : 1,
+    );
+    for (const patch of ordered) {
       const outcome = await engine.commitRangePatch({
         chapter: patch.chapter,
         range: patch.range,
@@ -158,10 +168,10 @@ export class InlineEditSession {
       });
       if (outcome.ok) {
         this.applied++;
-        results.push({ chapter: patch.chapter, range: patch.range, status: "applied" });
+        resultFor.set(patch, { chapter: patch.chapter, range: patch.range, status: "applied" });
       } else {
         const refused = outcome.reason === "mismatch" || outcome.reason === "unsafe-chapter-path";
-        results.push({
+        resultFor.set(patch, {
           chapter: patch.chapter,
           range: patch.range,
           status: refused ? "refused" : "failed",
@@ -179,6 +189,9 @@ export class InlineEditSession {
         }
       }
     }
+    const results = batch.patches
+      .map((p) => resultFor.get(p))
+      .filter((r): r is PatchResult => r != null);
     try {
       await client?.ackEditPatches({ batchId: batch.batchId, results });
     } catch {

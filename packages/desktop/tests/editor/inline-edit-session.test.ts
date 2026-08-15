@@ -3,7 +3,10 @@ import { InlineEditSession } from "../../src/lib/editor/inline-edit-session";
 import type { CommitOutcome, CommitPatch } from "../../src/lib/editor/commit-engine";
 
 /** Fakes matching the injected seams (same style as commit-engine.test.ts). */
-function makeHarness(outcomes: CommitOutcome[]) {
+/** Outcomes are keyed by the patch's START LINE, not call order — commits run
+ *  bottom-up within a chapter, so a positional mapping would encode ordering
+ *  the tests don't mean to assert. */
+function makeHarness(outcomes: Record<number, CommitOutcome> = {}) {
   const committed: CommitPatch[] = [];
   const acks: unknown[] = [];
   const refusals: unknown[] = [];
@@ -11,7 +14,7 @@ function makeHarness(outcomes: CommitOutcome[]) {
     generation: 7,
     commitRangePatch: async (patch: CommitPatch) => {
       committed.push(patch);
-      return outcomes[committed.length - 1] ?? { ok: true as const, flushed: true };
+      return outcomes[patch.range[0]] ?? { ok: true as const, flushed: true };
     },
   };
   const listeners: Array<(e: { name: string; detail: unknown }) => void> = [];
@@ -47,7 +50,7 @@ const patch = (n: number) => ({
 
 describe("InlineEditSession", () => {
   test("commits each proposed patch through the engine with inline-edit origin and acks applied", async () => {
-    const h = makeHarness([{ ok: true, flushed: true }, { ok: true, flushed: true }]);
+    const h = makeHarness();
     h.session.handleEvent("editPatches", { batchId: 3, patches: [patch(0), patch(4)], refusals: [] });
     await Bun.sleep(0);
 
@@ -67,10 +70,10 @@ describe("InlineEditSession", () => {
   });
 
   test("mismatch degrades to refused + onRefusal; transient gate failures ack as failed", async () => {
-    const h = makeHarness([
-      { ok: false, reason: "mismatch", message: "slice changed", degradeLine: 1 },
-      { ok: false, reason: "not-clean", message: "buffer dirty", degradeLine: 5 },
-    ]);
+    const h = makeHarness({
+      0: { ok: false, reason: "mismatch", message: "slice changed", degradeLine: 1 },
+      4: { ok: false, reason: "not-clean", message: "buffer dirty", degradeLine: 5 },
+    });
     h.session.handleEvent("editPatches", { batchId: 9, patches: [patch(0), patch(4)], refusals: [] });
     await Bun.sleep(0);
 
@@ -87,7 +90,7 @@ describe("InlineEditSession", () => {
   });
 
   test("frame-side serializer refusals surface through onRefusal without touching the engine", async () => {
-    const h = makeHarness([]);
+    const h = makeHarness();
     h.session.handleEvent("editPatches", {
       batchId: 1,
       patches: [],
@@ -99,7 +102,7 @@ describe("InlineEditSession", () => {
   });
 
   test("editStateChanged drives the dirty flag", () => {
-    const h = makeHarness([]);
+    const h = makeHarness();
     h.session.handleEvent("editStateChanged", { dirty: true });
     expect(h.session.dirty).toBe(true);
     h.session.handleEvent("editStateChanged", { dirty: false });
@@ -107,7 +110,7 @@ describe("InlineEditSession", () => {
   });
 
   test("subscribe owns the event stream: routes patches, re-syncs on render passes", async () => {
-    const h = makeHarness([{ ok: true, flushed: true }]);
+    const h = makeHarness();
     const selections: unknown[] = [];
     let renderPasses = 0;
     h.session.subscribe(h.client, {
@@ -123,8 +126,21 @@ describe("InlineEditSession", () => {
     expect(renderPasses).toBe(1);
   });
 
+  test("same-chapter patches commit bottom-up so line shifts can't stale later ranges", async () => {
+    const h = makeHarness();
+    // Proposed top-down; a line-changing commit at line 0 would move the
+    // blocks below it, so they must be committed FIRST (highest line first).
+    h.session.handleEvent("editPatches", {
+      batchId: 1,
+      patches: [patch(0), patch(20), patch(8)],
+      refusals: [],
+    });
+    await Bun.sleep(0);
+    expect(h.committed.map((p) => p.range[0])).toEqual([20, 8, 0]);
+  });
+
   test("viewport changes dismiss the bubble (its coords are window-space)", () => {
-    const h = makeHarness([]);
+    const h = makeHarness();
     let dismissals = 0;
     h.session.subscribe(h.client, { onViewportChanged: () => dismissals++ });
     h.emit("viewportChanged", { scrollTop: 120 });

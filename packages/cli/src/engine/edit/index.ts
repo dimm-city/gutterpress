@@ -80,6 +80,14 @@ interface DirtyEntry {
   chapter: string;
   range: [number, number];
   pristine: BlockNode | null;
+  /**
+   * The models of this entry's live extent AT THE MOMENT a patch was emitted.
+   * An ack clears the entry only if the DOM still matches this — otherwise the
+   * author typed again while the commit was in flight and those newer
+   * keystrokes must survive (they'd otherwise never reach disk, and the drift
+   * verifier would heal them away with the older committed render).
+   */
+  proposed: BlockNode[] | null;
 }
 
 const keyOf = (chapter: string, range: [number, number]): string =>
@@ -164,7 +172,36 @@ function chapterOf(el: Element): string | null {
 function extentOf(entry: DirtyEntry): Element[] {
   const sel = `[data-source-range="${entry.range[0]}:${entry.range[1]}"]` +
     `[data-chapter-src="${CSS.escape(entry.chapter)}"]`;
-  return [...document.querySelectorAll(sel)].filter(isContentTag);
+  const out: Element[] = [];
+  for (const el of document.querySelectorAll(sel)) {
+    // A fence carries its range on the inner <code>, never on the <pre>
+    // (findBlockRangeAttr's indirection, and what commitUnitOf/
+    // discoverContentBlocks address). Resolve to that same commit unit —
+    // filtering the <code> out instead would leave an EMPTY extent, which
+    // serializes as "the block was deleted" and proposes removing the whole
+    // fence from the source the moment an author types inside a code block.
+    const unit = isContentTag(el)
+      ? el
+      : el.tagName === "CODE" && el.parentElement?.tagName === "PRE"
+        ? el.parentElement
+        : null;
+    if (unit && !out.includes(unit)) out.push(unit);
+  }
+  return out;
+}
+
+/** Models of an entry's live extent, or null if any piece is unextractable. */
+function extentModels(entry: DirtyEntry): BlockNode[] | null {
+  const options = { features: opts.features };
+  const models: BlockNode[] = [];
+  for (const el of extentOf(entry)) {
+    try {
+      models.push(extractBlockModel(el as unknown as ElementLike, options));
+    } catch {
+      return null;
+    }
+  }
+  return models;
 }
 
 // ── caret capture/restore ───────────────────────────────────────────────────
@@ -278,7 +315,7 @@ function ensureTracked(el: Element): void {
       pristine = null; // unextractable pristine — serialization will refuse
     }
   }
-  dirty.set(key, { chapter, range, pristine });
+  dirty.set(key, { chapter, range, pristine, proposed: null });
   void mirrorOf(chapter); // warm the mirror before autosync needs it
 }
 
@@ -395,6 +432,7 @@ async function autosync(): Promise<void> {
       dirty.delete(key); // byte-identical — nothing to write
       continue;
     }
+    entry.proposed = extentModels(entry);
     patches.push({
       chapter: entry.chapter,
       range: entry.range,
@@ -426,13 +464,31 @@ function shiftRangesBelow(chapter: string, fromLine: number, delta: number): voi
     if (!range || range[0] < fromLine) continue;
     el.setAttribute("data-source-range", `${range[0] + delta}:${range[1] + delta}`);
   }
+  // The dirty map is KEYED by range, so it has to move with the DOM. Left
+  // behind, a pending entry's selector would match nothing on the next
+  // autosync — and an empty extent serializes as a DELETION of whatever
+  // source now sits at the stale lines.
+  for (const [key, entry] of [...dirty.entries()]) {
+    if (entry.chapter !== chapter || entry.range[0] < fromLine) continue;
+    dirty.delete(key);
+    entry.range = [entry.range[0] + delta, entry.range[1] + delta];
+    dirty.set(keyOf(chapter, entry.range), entry);
+  }
 }
 
 export function ackPatches(spec: { batchId: number; results: PatchResult[] }): void {
   const batch = pendingBatches.get(spec.batchId) ?? [];
   pendingBatches.delete(spec.batchId);
 
-  for (const result of spec.results) {
+  // BOTTOM-UP within a chapter: applying a line-changing patch moves every
+  // block below it, so a lower patch processed first would leave the higher
+  // ones' ranges (and extent queries) stale. Descending order means each
+  // patch's range is still valid when its turn comes.
+  const ordered = [...spec.results].sort((a, b) =>
+    a.chapter === b.chapter ? b.range[0] - a.range[0] : a.chapter < b.chapter ? -1 : 1,
+  );
+
+  for (const result of ordered) {
     const patch = batch.find(
       (p) => p.chapter === result.chapter &&
         p.range[0] === result.range[0] && p.range[1] === result.range[1],
@@ -449,8 +505,16 @@ export function ackPatches(spec: { batchId: number; results: PatchResult[] }): v
         `[data-source-range="${patch.range[0]}:${patch.range[1]}"]` +
           `[data-chapter-src="${CSS.escape(patch.chapter)}"]`,
       );
+      // Did the author keep typing in this block while the commit was in
+      // flight? Compare BEFORE any re-annotation, while the entry's range
+      // still addresses the live extent.
+      const key = keyOf(patch.chapter, patch.range);
+      const entry = dirty.get(key);
+      const advanced = entry ? !modelsEqual(extentModels(entry), entry.proposed) : false;
+
       shiftRangesBelow(patch.chapter, patch.range[1], delta);
       const newEnd = patch.range[0] + replacementLines.length;
+      const newRange: [number, number] = [patch.range[0], newEnd];
       for (const el of extent) {
         el.setAttribute("data-source-range", `${patch.range[0]}:${newEnd}`);
         if (isContentTag(el)) {
@@ -464,7 +528,16 @@ export function ackPatches(spec: { batchId: number; results: PatchResult[] }): v
           }
         }
       }
-      dirty.delete(keyOf(patch.chapter, patch.range));
+      dirty.delete(key);
+      if (entry && advanced) {
+        // Disk now holds what we proposed, so that becomes the baseline; the
+        // newer on-screen text stays dirty and is proposed on the next pass.
+        entry.range = newRange;
+        entry.pristine = entry.proposed?.[0] ?? null;
+        entry.proposed = null;
+        dirty.set(keyOf(patch.chapter, newRange), entry);
+        scheduleAutosync();
+      }
     }
     scheduleVerify(patch.chapter);
   }
@@ -787,6 +860,11 @@ export function enable(options: EnableOptions = {}): boolean {
 
 export function disable(): void {
   if (!enabled) return;
+  // Anything typed inside the autosync debounce is on screen but not yet
+  // proposed. Emit it BEFORE tearing down (the call runs synchronously up to
+  // its first await, while `enabled` is still true), then clear state once it
+  // settles — otherwise toggling the kill switch mid-edit silently drops it.
+  const flushing = autosync();
   enabled = false;
   document.removeEventListener("beforeinput", onBeforeInput as EventListener, true);
   document.removeEventListener("input", onInput as EventListener, true);
@@ -801,9 +879,11 @@ export function disable(): void {
   clearTimeout(autosyncTimer);
   for (const t of verifyTimers.values()) clearTimeout(t);
   verifyTimers.clear();
-  dirty.clear();
-  pendingBatches.clear();
   applyEditability();
+  void flushing.finally(() => {
+    dirty.clear();
+    pendingBatches.clear();
+  });
 }
 
 export const isEnabled = (): boolean => enabled;

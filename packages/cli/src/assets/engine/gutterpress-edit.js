@@ -72,6 +72,7 @@
     "data-gp-source-token",
     "data-gp-source-occurrence",
     "data-gp-edit-degraded",
+    "data-gutterpress-hl-group",
     "contenteditable",
     "spellcheck"
   ]);
@@ -982,7 +983,25 @@ ${emitBlocks(item.blocks, ctx)}`;
   }
   function extentOf(entry) {
     const sel = `[data-source-range="${entry.range[0]}:${entry.range[1]}"]` + `[data-chapter-src="${CSS.escape(entry.chapter)}"]`;
-    return [...document.querySelectorAll(sel)].filter(isContentTag);
+    const out = [];
+    for (const el of document.querySelectorAll(sel)) {
+      const unit = isContentTag(el) ? el : el.tagName === "CODE" && el.parentElement?.tagName === "PRE" ? el.parentElement : null;
+      if (unit && !out.includes(unit))
+        out.push(unit);
+    }
+    return out;
+  }
+  function extentModels(entry) {
+    const options = { features: opts.features };
+    const models = [];
+    for (const el of extentOf(entry)) {
+      try {
+        models.push(extractBlockModel(el, options));
+      } catch {
+        return null;
+      }
+    }
+    return models;
   }
   function captureCaret() {
     const sel = getSelection();
@@ -1071,7 +1090,7 @@ ${emitBlocks(item.blocks, ctx)}`;
         pristine = null;
       }
     }
-    dirty.set(key, { chapter, range, pristine });
+    dirty.set(key, { chapter, range, pristine, proposed: null });
     mirrorOf(chapter);
   }
   function markDirtyFromSelection() {
@@ -1170,6 +1189,7 @@ ${emitBlocks(item.blocks, ctx)}`;
         dirty.delete(key);
         continue;
       }
+      entry.proposed = extentModels(entry);
       patches.push({
         chapter: entry.chapter,
         range: entry.range,
@@ -1198,11 +1218,19 @@ ${emitBlocks(item.blocks, ctx)}`;
         continue;
       el.setAttribute("data-source-range", `${range[0] + delta}:${range[1] + delta}`);
     }
+    for (const [key, entry] of [...dirty.entries()]) {
+      if (entry.chapter !== chapter || entry.range[0] < fromLine)
+        continue;
+      dirty.delete(key);
+      entry.range = [entry.range[0] + delta, entry.range[1] + delta];
+      dirty.set(keyOf(chapter, entry.range), entry);
+    }
   }
   function ackPatches(spec) {
     const batch = pendingBatches.get(spec.batchId) ?? [];
     pendingBatches.delete(spec.batchId);
-    for (const result of spec.results) {
+    const ordered = [...spec.results].sort((a, b) => a.chapter === b.chapter ? b.range[0] - a.range[0] : a.chapter < b.chapter ? -1 : 1);
+    for (const result of ordered) {
       const patch = batch.find((p) => p.chapter === result.chapter && p.range[0] === result.range[0] && p.range[1] === result.range[1]);
       if (!patch || result.status !== "applied")
         continue;
@@ -1212,8 +1240,12 @@ ${emitBlocks(item.blocks, ctx)}`;
         lines.splice(patch.range[0], patch.range[1] - patch.range[0], ...replacementLines);
         const delta = replacementLines.length - (patch.range[1] - patch.range[0]);
         const extent = document.querySelectorAll(`[data-source-range="${patch.range[0]}:${patch.range[1]}"]` + `[data-chapter-src="${CSS.escape(patch.chapter)}"]`);
+        const key = keyOf(patch.chapter, patch.range);
+        const entry = dirty.get(key);
+        const advanced = entry ? !modelsEqual(extentModels(entry), entry.proposed) : false;
         shiftRangesBelow(patch.chapter, patch.range[1], delta);
         const newEnd = patch.range[0] + replacementLines.length;
+        const newRange = [patch.range[0], newEnd];
         for (const el of extent) {
           el.setAttribute("data-source-range", `${patch.range[0]}:${newEnd}`);
           if (isContentTag(el)) {
@@ -1224,7 +1256,14 @@ ${emitBlocks(item.blocks, ctx)}`;
             }
           }
         }
-        dirty.delete(keyOf(patch.chapter, patch.range));
+        dirty.delete(key);
+        if (entry && advanced) {
+          entry.range = newRange;
+          entry.pristine = entry.proposed?.[0] ?? null;
+          entry.proposed = null;
+          dirty.set(keyOf(patch.chapter, newRange), entry);
+          scheduleAutosync();
+        }
       }
       scheduleVerify(patch.chapter);
     }
@@ -1493,6 +1532,7 @@ ${emitBlocks(item.blocks, ctx)}`;
   function disable() {
     if (!enabled)
       return;
+    const flushing = autosync();
     enabled = false;
     document.removeEventListener("beforeinput", onBeforeInput, true);
     document.removeEventListener("input", onInput, true);
@@ -1508,9 +1548,11 @@ ${emitBlocks(item.blocks, ctx)}`;
     for (const t of verifyTimers.values())
       clearTimeout(t);
     verifyTimers.clear();
-    dirty.clear();
-    pendingBatches.clear();
     applyEditability();
+    flushing.finally(() => {
+      dirty.clear();
+      pendingBatches.clear();
+    });
   }
   var isEnabled = () => enabled;
   function flushPatches() {

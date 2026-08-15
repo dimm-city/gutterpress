@@ -178,6 +178,15 @@ jobs:
         working-directory: packages/cli
         run: bun run typecheck
 
+      # The engine's browser-side sources (viewer, compiler agent, and the
+      # inline-edit module) live in their own DOM-lib program — excluded from
+      # the Node program above, so this is the ONLY thing that type-checks
+      # them. Same class of gap as the Electron one below: the script existed
+      # but nothing ran it.
+      - name: Run TypeScript compiler (engine browser sources)
+        working-directory: packages/cli
+        run: bun run typecheck:engine-browser
+
       - name: Run TypeScript compiler (desktop SPA)
         working-directory: packages/desktop
         run: bun run check
