@@ -125,6 +125,9 @@ export function injectPreviewScripts(
 ): string {
   const scripts =
     '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
+    // Inline-edit module (ADR 0010): preview-only by construction — build
+    // output goes through shipViewerHtml, never through this injector.
+    + '<script src="/engine/gutterpress-edit.js"></script>\n  '
     + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
     + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
   let output = /<\/head>/i.test(html)

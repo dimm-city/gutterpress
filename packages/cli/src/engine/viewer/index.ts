@@ -74,6 +74,12 @@ export async function mount(opts: LayoutOptions & { designer?: boolean } = {}) {
       applySpreadMode(layout.strips, spreadOn);
       decoration.redraw();
       emit();
+      // relayout() rebuilds the strips from scratch — anything stamped onto
+      // strip elements (the edit module's contenteditable hosts) is gone and
+      // must be re-applied by whoever owns it.
+      window.dispatchEvent(
+        new CustomEvent("gp:relayout", { detail: { pages: layout.totalPages } }),
+      );
     },
     setSpread(on: boolean) {
       spreadOn = on;

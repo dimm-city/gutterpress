@@ -660,7 +660,41 @@
     // v6 (WORK PACKAGE B item 2): getRectsFor()/setEditMask() dropped the
     // {ref} form entirely — {chapter, range} is the only target shape now
     // (the native viewer never mints a ref — it never clones).
-    getProtocolVersion: function () { return 6; },
+    // v7 (ADR 0010): inline editing — setEditMode / ackEditPatches /
+    // verifyChapter / getSelectionState / flushEditState, delegating to the
+    // preview-only gutterpress-edit.js bundle (window.GutterpressEdit), plus
+    // the editPatches / editDrift / editStateChanged events.
+    getProtocolVersion: function () { return 7; },
+
+    // ── protocol v7: inline editing (ADR 0010) ─────────────────────────────
+    // All five delegate to window.GutterpressEdit; absent (a stale or
+    // published bundle set) they report inert results rather than throwing.
+    setEditMode: function (spec) {
+      spec = spec || {};
+      var edit = window.GutterpressEdit;
+      if (!edit) return { on: false };
+      if (spec.on) edit.enable(spec);
+      else edit.disable();
+      return { on: !!edit.isEnabled() };
+    },
+    ackEditPatches: function (spec) {
+      var edit = window.GutterpressEdit;
+      if (edit) edit.ackPatches(spec || {});
+      return { ok: !!edit };
+    },
+    verifyChapter: function (spec) {
+      var edit = window.GutterpressEdit;
+      if (!edit) return { healed: 0, mismatch: 'edit module unavailable' };
+      return edit.verifyChapter(spec || {});
+    },
+    getSelectionState: function () {
+      var edit = window.GutterpressEdit;
+      return edit ? edit.getSelectionState() : null;
+    },
+    flushEditState: function () {
+      var edit = window.GutterpressEdit;
+      return edit ? edit.flushPatches() : Promise.resolve();
+    },
 
     // Resolve the annotated element/selection at a viewport point (protocol
     // v4). Pure read; see buildContextTarget() above for the full contract.

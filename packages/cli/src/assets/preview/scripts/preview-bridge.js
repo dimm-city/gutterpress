@@ -82,6 +82,17 @@
   window.addEventListener('contextMenuRequested', function (e) {
     post({ type: 'gutterpress:event', name: 'contextMenuRequested', detail: e.detail });
   });
+  // Inline-editing events (protocol v7, ADR 0010): patch proposals from the
+  // edit module, drift-heal reports, and the dirty indicator.
+  window.addEventListener('editPatches', function (e) {
+    post({ type: 'gutterpress:event', name: 'editPatches', detail: e.detail });
+  });
+  window.addEventListener('editDrift', function (e) {
+    post({ type: 'gutterpress:event', name: 'editDrift', detail: e.detail });
+  });
+  window.addEventListener('editStateChanged', function (e) {
+    post({ type: 'gutterpress:event', name: 'editStateChanged', detail: e.detail });
+  });
 
   // Announce readiness as soon as previewAPI is defined.
   function announceReady() {

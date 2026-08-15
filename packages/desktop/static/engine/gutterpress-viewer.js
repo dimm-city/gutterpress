@@ -2283,6 +2283,7 @@
         applySpreadMode(layout.strips, spreadOn);
         decoration.redraw();
         emit();
+        window.dispatchEvent(new CustomEvent("gp:relayout", { detail: { pages: layout.totalPages } }));
       },
       setSpread(on) {
         spreadOn = on;
