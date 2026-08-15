@@ -133,6 +133,9 @@ function markerAtomInputRules(): InputRule[] {
 
 export interface GalleyEditor {
   editor: Editor;
+  /** Resolves when the viewer has mounted over the editor's DOM; rejects on
+   * mount failure so the caller can fall back instead of hanging layout. */
+  ready: Promise<void>;
   applyFormat(format: "bold" | "italic" | "strike" | "code"): boolean;
   insertMarkdown(markdown: string): Promise<boolean>;
   setOpaqueSource(pos: number, src: string): boolean;
@@ -442,6 +445,7 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
   // ── public surface ────────────────────────────────────────────────────────
   return {
     editor,
+    ready,
 
     applyFormat(format) {
       const chain = editor.chain().focus();

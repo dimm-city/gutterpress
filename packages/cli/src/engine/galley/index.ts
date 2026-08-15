@@ -3,18 +3,23 @@
  * (gutterpress-galley.js) that turns the paginated book into the editor.
  *
  * Mount orchestration: the preview server injects `window.__GP_MANUAL__=1`,
- * so the viewer does NOT auto-mount. This module decides the mode:
+ * so the viewer does NOT auto-mount. This module decides the mode with NO
+ * timing races (a grace-timer design lost the setEditMode race on loaded
+ * runners and reload-looped — the render-perf gate caught it):
  *
- *   pending ──setEditMode({on:true})──▶ editing   (PM takeover, then viewer
- *           │                                      mounts over the PM root)
- *           ├─setEditMode({on:false})─▶ readonly  (plain viewer mount —
- *           │                                      identical to today)
- *           └─grace timeout (400ms)──▶ readonly   (no bridge host: CLI
- *                                                  browser preview)
+ *   boot ──DOMContentLoaded──▶ readonly   (plain viewer mount, immediately —
+ *          │                               the CLI browser preview IS this)
+ *          └─setEditMode({on:true}) before DOMContentLoaded──▶ editing
  *
- * readonly⇄editing after the fact is a reload (the server re-serves
- * book.html and the host re-issues setEditMode) — a deliberate v1
- * simplification for the rare kill-switch flip.
+ *   readonly ──setEditMode({on:true})──▶ editing   IN PLACE: the old flow
+ *            DOM is discarded, ProseMirror renders the same content from
+ *            tokens, and the viewer re-mounts over the PM root. No reload.
+ *   editing ──setEditMode({on:false})─▶ flush + location.reload() (the
+ *            rare kill-switch direction; a reload here cannot loop because
+ *            the off state needs no timing).
+ *
+ * A failed editing mount always falls back to readonly — layout must
+ * complete no matter what.
  *
  * Events out (window CustomEvents, forwarded by preview-bridge):
  *   editSelection, editStateChanged  — same names/shapes as protocol v7
@@ -24,12 +29,10 @@
 import { createGalleyEditor, type GalleyEditor, type GalleyChapter } from "./editor.ts";
 import type { GalleyToken } from "./markdown.ts";
 
-type Mode = "pending" | "readonly" | "editing";
+type Mode = "boot" | "readonly" | "editing";
 
-const GRACE_MS = 400;
-
-let mode: Mode = "pending";
-let graceTimer: ReturnType<typeof setTimeout> | null = null;
+let mode: Mode = "boot";
+let transitioning = false;
 let active: GalleyEditor | null = null;
 
 function emit(name: string, detail: unknown): void {
@@ -54,8 +57,59 @@ function viewerGlobal(): { mount(opts?: object): Promise<unknown> } | null {
 
 /** Plain read-only viewer, exactly what a published book or CLI preview shows. */
 async function mountReadonly(): Promise<void> {
-  mode = "readonly";
   await viewerGlobal()?.mount();
+  mode = "readonly";
+}
+
+/**
+ * Desired-state reconciliation — the single place mounts happen, so a
+ * setEditMode arriving while another mount is in flight can never overlap
+ * it; the loop re-checks `desired` after every transition.
+ *
+ * readonly→editing is IN PLACE: the old flow DOM (server-rendered content,
+ * or a readonly mount's strips — the content nodes live inside them) is
+ * discarded wholesale; ProseMirror re-renders the same content from the
+ * server's tokens and the viewer re-mounts over the PM root
+ * (`Gutterpress.mount` replaces its own global state). A failed editing
+ * mount falls back to readonly — layout must ALWAYS complete.
+ */
+let desired: "readonly" | "editing" | null = null;
+
+async function reconcile(): Promise<void> {
+  if (transitioning) return;
+  const target = desired ?? (mode === "boot" ? "readonly" : mode);
+  if (target === mode) return;
+  transitioning = true;
+  try {
+    if (target === "editing") {
+      try {
+        await mountEditing();
+        mode = "editing";
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[galley] editing mount failed — staying read-only:", err);
+        active?.destroy();
+        active = null;
+        desired = "readonly";
+        try {
+          await mountReadonly();
+        } catch {
+          /* the viewer global is missing entirely — nothing left to show */
+        }
+      }
+    } else if (mode === "boot") {
+      await mountReadonly();
+    } else {
+      // editing → readonly: the rare kill-switch direction. Flush and
+      // reload; this cannot loop because the off state needs no timing.
+      active?.saveNow();
+      location.reload();
+      return;
+    }
+  } finally {
+    transitioning = false;
+  }
+  if ((desired ?? mode) !== mode) void reconcile();
 }
 
 /**
@@ -64,7 +118,6 @@ async function mountReadonly(): Promise<void> {
  * paginate the editor's DOM.
  */
 async function mountEditing(): Promise<void> {
-  mode = "editing";
   const { chapters } = await json<{ chapters: GalleyChapter[] }>("/__galley/book");
 
   // Replace the rendered flow with the editor root. Scripts/styles stay;
@@ -93,49 +146,30 @@ async function mountEditing(): Promise<void> {
     onDirtyChanged: (dirty) => emit("editStateChanged", { dirty }),
     onOpaqueEdit: (payload) => emit("galleyOpaqueEdit", payload),
   });
+  // A viewer-mount failure must surface here (enterEditing falls back to
+  // readonly), never hang layout as an unhandled rejection.
+  await active.ready;
 }
 
-function armGrace(): void {
+function bootMount(): void {
   // Test hook: a page that sets __GP_GALLEY_HOLD__ drives the mode switch
-  // itself and must never race the readonly fallback.
+  // itself (no automatic readonly mount).
   if ((window as unknown as { __GP_GALLEY_HOLD__?: boolean }).__GP_GALLEY_HOLD__) return;
-  graceTimer = setTimeout(() => {
-    graceTimer = null;
-    if (mode === "pending") void mountReadonly();
-  }, GRACE_MS);
+  void reconcile();
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", armGrace, { once: true });
+  document.addEventListener("DOMContentLoaded", bootMount, { once: true });
 } else {
-  armGrace();
+  bootMount();
 }
 
 const api = {
   /** Bridge-facing mode switch (previewAPI.setEditMode delegates here). */
   setEditMode(spec: { on: boolean }): { on: boolean } {
-    if (graceTimer) {
-      clearTimeout(graceTimer);
-      graceTimer = null;
-    }
-    if (spec.on) {
-      if (mode === "editing") return { on: true };
-      if (mode === "readonly") {
-        // Kill-switch flip after a readonly mount — reload; the host
-        // re-issues setEditMode when the fresh frame reports ready.
-        location.reload();
-        return { on: false };
-      }
-      void mountEditing();
-      return { on: true };
-    }
-    if (mode === "editing") {
-      active?.saveNow();
-      location.reload();
-      return { on: false };
-    }
-    if (mode === "pending") void mountReadonly();
-    return { on: false };
+    desired = spec.on ? "editing" : "readonly";
+    void reconcile();
+    return { on: spec.on };
   },
 
   isEditing(): boolean {

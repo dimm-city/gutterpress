@@ -119,6 +119,70 @@ p { margin: 0 0 0.5em; font: 12px/1.4 serif; }
 }
 
 testIf(
+  "readonly mount first, then setEditMode(on) takes over IN PLACE (no reload) — the render-perf regression shape",
+  async () => {
+    const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gutterpress-galley-takeover-"));
+    try {
+      await fsp.writeFile(path.join(dir, "book.html"), pageHtml());
+      for (const bundle of ["gutterpress-viewer.js", "gutterpress-galley.js"]) {
+        await fsp.copyFile(await getAssetPath(`engine/${bundle}`), path.join(dir, bundle));
+      }
+      const { url: root, close } = await serveDir(dir, "book.html");
+      try {
+        const browser = await getBrowser(TIMEOUT_MS);
+        const page = await browser.newPage();
+        try {
+          await page.goto(`${root}book.html`, { waitUntil: "networkidle0" });
+          await page.waitForFunction("window.GutterpressGalley !== undefined");
+
+          // The host declines editing → plain readonly viewer mount.
+          await page.evaluate(() => {
+            window.GutterpressGalley.setEditMode({ on: false });
+          });
+          await page.waitForFunction(
+            "window.Gutterpress && window.Gutterpress.totalPages > 0",
+          );
+          const readonly = (await page.evaluate(() => ({
+            editing: window.GutterpressGalley.isEditing(),
+            tiptap: document.querySelector(".tiptap") !== null,
+          }))) as { editing: boolean; tiptap: boolean };
+          expect(readonly.editing).toBe(false);
+          expect(readonly.tiptap).toBe(false);
+
+          // The kill-switch flips on late (the packaged-app race the
+          // render-perf gate caught): the takeover must happen in place —
+          // same document, no reload — and layout must complete.
+          await page.evaluate(() => {
+            (window as unknown as { __no_reload_marker: boolean }).__no_reload_marker = true;
+            window.GutterpressGalley.setEditMode({ on: true });
+          });
+          await page.waitForFunction(
+            "window.Gutterpress && window.Gutterpress.totalPages > 0 && document.querySelector('.tiptap[contenteditable=true]') && window.GutterpressGalley.isEditing()",
+          );
+          const after = (await page.evaluate(() => ({
+            sameDocument: (window as unknown as { __no_reload_marker?: boolean })
+              .__no_reload_marker === true,
+            chapters: document.querySelectorAll("div.gutterpress-chapter").length,
+            alpha: [...(document.querySelectorAll(".tiptap p") as unknown as Iterable<{ textContent: string | null }>)]
+              .some((p) => p.textContent!.startsWith("Alpha paragraph")),
+          }))) as { sameDocument: boolean; chapters: number; alpha: boolean };
+          expect(after.sameDocument).toBe(true);
+          expect(after.chapters).toBe(2);
+          expect(after.alpha).toBe(true);
+        } finally {
+          await page.close();
+        }
+      } finally {
+        await close();
+      }
+    } finally {
+      await fsp.rm(dir, { recursive: true, force: true });
+    }
+  },
+  TIMEOUT_MS,
+);
+
+testIf(
   "galley mount: PM view is the flow root; typing survives refresh and emits byte-preserving whole-file saves",
   async () => {
     const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "gutterpress-galley-mount-"));
