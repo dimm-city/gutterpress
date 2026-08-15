@@ -35,7 +35,7 @@
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
-  import { InlineEditSession } from "$lib/editor/inline-edit-session";
+  import { GalleySession, type GalleyOpaqueEditDetail } from "$lib/editor/galley-session";
   import FormattingBubble from "$lib/components/FormattingBubble.svelte";
   import type { BubbleState } from "$lib/components/FormattingBubble.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
@@ -249,6 +249,13 @@
 
   // Frame state
   let client = $state<PreviewClient | undefined>(undefined);
+  /**
+   * The live frame's bridge protocol version (0 until the frame's `ready`
+   * event answers the probe in onClientReady). Gates the v8-only surfaces:
+   * galley markdown insertion routes and the custom preview context menu
+   * (whose v7 `data-source-range` hit-testing finds nothing in a v8 frame).
+   */
+  let frameProtocol = $state(0);
   let previewUpdating = $state(false);
   // Ref to the mounted PreviewFrame component so callers can reach its own
   // <iframe> element (getBoundingClientRect for context-menu positioning,
@@ -1161,6 +1168,23 @@
   }
 
   /**
+   * Route authored markdown (a resolved snippet, an image line) into the live
+   * galley editor when a v8 frame is up and inline editing is on — the
+   * fragment lands at the cursor in the page, and the resulting doc change
+   * drives the normal `galleyContent` save. Returns false when there is no
+   * galley surface to insert into, so callers fall back to the classic
+   * source-editor path.
+   */
+  function insertAuthoredMarkdown(text: string): boolean {
+    const c = client;
+    if (!c || frameProtocol < 8 || !settings.current.preview.inlineEditing) return false;
+    c.galleyInsertMarkdown({ markdown: text }).catch(() => {
+      toast?.error("Couldn't insert into the page — try the source editor.");
+    });
+    return true;
+  }
+
+  /**
    * Insert an image even when no chapter is open yet (UX audit P3#8: the Media
    * "Insert" button used to dead-end behind a disabled state, telling the author
    * to go open a file first). If no markdown chapter is open, open one and the
@@ -1169,6 +1193,9 @@
    * doc) and no infinite loop (gives up with a clear toast).
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
+    // Galley v2 (protocol v8): with the inline editor live, insert at the
+    // cursor in the page rather than into the source pane.
+    if (insertAuthoredMarkdown(`![${payload.alt ?? ""}](${payload.src})`)) return;
     const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
     if (!isMd(editorFilePath)) {
       void ensureEditorFile();
@@ -1284,12 +1311,12 @@
   //   check keeps a pre-mount change from being dropped (it re-fires once the
   //   preview client exists).
   const autoSaveDelaySink = settingsChangeGuard<number>((delay) => buffer?.setSaveDelayMs(delay));
-  // Kill switch (ADR 0010): flipping preview.inlineEditing re-syncs the
+  // Kill switch (Galley v2): flipping preview.inlineEditing re-syncs the
   // frame's edit surface immediately, not just on the next render pass.
   const inlineEditingSink = settingsChangeGuard<boolean>(
     () => {
       hideBubble();
-      void inlineEdit.syncEditMode();
+      void galley.syncEditMode();
     },
     () => !!client,
   );
@@ -1944,23 +1971,39 @@
   // listener — separate from previewEvents' switch below (PR 0 already owns
   // the elementActivated case there).
   // ----------------------------------------------------------------
-  // HTML-first inline editing (ADR 0010): the frame proposes patches; this
-  // session commits them through the commit engine (origin: "inline-edit",
-  // so the preview server never rebuilds/swaps under the editing surface)
-  // and acks outcomes back. Subscribed below next to the other client.on
-  // consumers; edit mode re-syncs on every renderingComplete.
-  const inlineEdit = new InlineEditSession({
+  // Galley v2 inline editing (protocol v8, docs/tiptap-galley-architecture.md):
+  // the frame's ProseMirror doc is the one truth; it serializes whole chapters
+  // (`galleyContent`) and this session commits each through the commit engine
+  // as ONE whole-file range patch (origin: "inline-edit", so the preview
+  // server never rebuilds/swaps under the editing surface). Subscribed below
+  // next to the other client.on consumers; edit mode re-syncs on every
+  // renderingComplete.
+  const galley = new GalleySession({
     client: () => client ?? null,
     engine: () => commitEngine,
     enabled: () => settings.current.preview.inlineEditing,
-    onRefusal: (r) =>
-      void blockOverlay.show({ chapter: r.chapter, range: r.range }),
-    onDriftMismatch: (chapter) =>
-      toast?.info?.(`Preview drifted for ${chapter} — reload the preview to reconcile.`),
-    // Never fail silently: the edit is on screen but not on disk.
-    onCommitFailed: ({ chapter, message }) =>
-      toast?.error(`Couldn't save your edit to ${chapter}: ${message}`),
   });
+
+  /**
+   * `galleyOpaqueEdit`: the author activated a block the galley editor does
+   * not model richly (raw HTML, plugin structures). Open the block overlay in
+   * galley mode over the atom's rect, seeded with its verbatim source; commit
+   * replaces the atom (`galleySetOpaqueSource`), and the resulting doc change
+   * produces `galleyContent` → the normal whole-chapter save.
+   */
+  function openGalleyBlockOverlay(detail: GalleyOpaqueEditDetail): void {
+    if (!settings.current.preview.inlineEditing) return;
+    blockOverlay.showGalley({
+      text: detail.src,
+      rect: detail.rect ?? { top: 24, left: 24, width: 320, height: 160 },
+      onCommitText: (text) => {
+        if (text === detail.src) return; // untouched — no doc change to make
+        void client?.galleySetOpaqueSource({ pos: detail.pos, src: text }).catch(() => {
+          toast?.error("Couldn't apply this edit — reload the preview and try again.");
+        });
+      },
+    });
+  }
 
   // Floating inline-format toolbar over the frame's selection (ADR 0010
   // Phase 4). Position tracks the frame's debounced editSelection events,
@@ -2005,7 +2048,13 @@
 
   const contextMenu = new ContextMenuController({
     client: () => client,
-    enabled: () => settings.current.preview.contextMenu,
+    // Gated OFF for v8 (galley) frames: the v7 data-source-range hit-testing
+    // (getContextTargetAt/getRectsFor/setEditMask) finds nothing in a galley
+    // frame, so let the native menu show instead of an empty custom one. The
+    // source-view context path is untouched.
+    // TODO(galley): rebuild the preview context menu on the v8 galleyTargetAt
+    // command ({x,y} → {kind, chapter, pos, src?}).
+    enabled: () => settings.current.preview.contextMenu && frameProtocol < 8,
     rendering: () => lifecycle.rendering,
     currentDir: () => lifecycle.currentDir,
     openContent: (path) => (buffer?.filePath === path ? buffer.content : null),
@@ -2095,14 +2144,31 @@
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
     blockOverlay.subscribe(c);
-    // Inline editing (ADR 0010): the session owns its slice of the event
-    // stream (commits, acks, drift, edit-mode re-sync) — the page keeps only
-    // bubble positioning, which needs the iframe rect.
-    inlineEdit.subscribe(c, {
+    // Feature-detect the frame's bridge protocol once it is actually up (the
+    // probe can't run before the iframe attaches and the bundle loads, which
+    // is exactly what `ready` signals). Gates the v8-only surfaces below.
+    frameProtocol = 0;
+    c.on((e) => {
+      if (e.name !== "ready") return;
+      void c.getProtocolVersion().then((v) => {
+        if (client === c) frameProtocol = v;
+      });
+    });
+    // Galley inline editing (protocol v8): the session owns its slice of the
+    // event stream (whole-chapter commits, dirty state, edit-mode re-sync) —
+    // the page keeps bubble positioning (needs the iframe rect), the opaque-
+    // atom overlay handoff, and the stale-commit toast.
+    galley.subscribe(c, {
       onSelection: (detail) =>
         handleEditSelection(detail as Parameters<typeof handleEditSelection>[0]),
       onRenderPass: hideBubble,
       onViewportChanged: hideBubble,
+      onOpaqueEdit: (detail) => openGalleyBlockOverlay(detail),
+      // Never fail silently: the edit is on screen but not on disk.
+      onStale: (chapter, reason) =>
+        toast?.error(
+          `Couldn't save your edit to ${chapter} (${reason}) — reload the preview and try again.`,
+        ),
     });
   }
 
@@ -3246,7 +3312,11 @@
   bind:open={snippetPickerOpen}
   projectDir={lifecycle.currentDir}
   getSelectionText={() => editorRef?.getSelectionText() ?? ""}
-  onInsert={(text) => editorRef?.insertSnippet(text)}
+  onInsert={(text) => {
+    // Galley v2 (protocol v8): with the inline editor live, snippets land at
+    // the cursor in the page; otherwise the classic source-editor path.
+    if (!insertAuthoredMarkdown(text)) editorRef?.insertSnippet(text);
+  }}
 />
 <!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar
      Export button. Mounted fresh per open so its state resets. -->

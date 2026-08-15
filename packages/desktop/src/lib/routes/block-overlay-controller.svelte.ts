@@ -131,6 +131,15 @@ export class BlockOverlayController {
   initialText = $state("");
 
   private captured: Captured | null = null;
+  /**
+   * Galley mode (protocol v8, docs/tiptap-galley-architecture.md): set, the
+   * overlay was handed initial text + a commit callback by `showGalley()` and
+   * resolves NO chapter/range of its own — commit routes the edited text to
+   * this callback (which calls `galleySetOpaqueSource`; the resulting doc
+   * change produces `galleyContent` → the normal save path) instead of the
+   * commit engine. Null in the classic chapter/range mode.
+   */
+  private galleyCommit: ((text: string) => void) | null = null;
   private requestId = 0;
   private geometryId = 0;
 
@@ -155,6 +164,15 @@ export class BlockOverlayController {
         // controller) keeps this controller correct standalone, e.g. under
         // test with no ContextMenuController present at all.
         this.deps.commitEngine.noteRenderingComplete();
+        // Galley mode: a fresh render rebuilds the frame's doc, so the
+        // captured ProseMirror position the commit callback closes over is
+        // stale — discard rather than write through a wrong pos ("fail safe,
+        // not fail wrong"). Under v8 typing never rebuilds (inline-edit saves
+        // suppress it), so this fires only for external changes/CSS edits.
+        if (this.galleyCommit && this.open) {
+          this.closeWithToast();
+          break;
+        }
         await this.reanchorAfterRender();
         break;
       case "pageChanged":
@@ -230,6 +248,31 @@ export class BlockOverlayController {
     void client.setEditMask({ chapter: target.chapter, range: target.range, masked: true });
   }
 
+  /**
+   * Galley-mode entry point (protocol v8): open the overlay over an opaque
+   * atom's on-screen rect, seeded with its verbatim source. The caller owns
+   * what a commit MEANS (`onCommitText` → `galleySetOpaqueSource`); this
+   * controller only owns geometry and the open/commit/cancel lifecycle. No
+   * chapter/range capture, no `getRectsFor`, no edit mask — the frame's
+   * editor already owns the block on screen.
+   */
+  showGalley(target: {
+    /** The atom's verbatim markdown source — seeds the CM view. */
+    text: string;
+    /** The atom's rect in frame-viewport coordinates (converted with the
+     *  iframe origin offset by `applyRects`, like the formatting bubble). */
+    rect: BlockOverlayRect;
+    onCommitText: (text: string) => void;
+  }): void {
+    this.requestId++;
+    this.teardown();
+    this.reset();
+    this.galleyCommit = target.onCommitText;
+    this.initialText = target.text;
+    this.open = true;
+    this.applyRects([{ ...target.rect, page: 1 }]);
+  }
+
   /** Discard the in-progress edit (Escape). */
   cancel(): void {
     this.teardown();
@@ -246,6 +289,13 @@ export class BlockOverlayController {
    */
   async commit(editedText: string, opts: { duringComposition?: boolean } = {}): Promise<void> {
     if (opts.duringComposition) return;
+    const galleyCommit = this.galleyCommit;
+    if (galleyCommit) {
+      this.teardown();
+      this.close();
+      galleyCommit(editedText);
+      return;
+    }
     const captured = this.captured;
     if (!captured) return;
     const replacement = editedText + captured.trailingBlank;
@@ -290,6 +340,7 @@ export class BlockOverlayController {
     this.geometryId++;
     this.open = false;
     this.captured = null;
+    this.galleyCommit = null;
     this.initialText = "";
   }
 

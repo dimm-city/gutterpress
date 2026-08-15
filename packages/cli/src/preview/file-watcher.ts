@@ -16,7 +16,6 @@ import { loadManifest, resolveConfig } from '../lib/manifest';
 import { resolveActiveStyles } from '../lib/style-resolver';
 import { collectStyleDependencies, type AssetCopy } from '../lib/asset-inline';
 import { loadPluginsWithCss } from '../lib/markdown/plugins';
-import { SERIALIZER_FEATURE_BY_PLUGIN } from '../lib/markdown/renderer';
 import { BOOK_HTML_FILENAME } from '../lib/desktop';
 import type { ServerState } from './server-context';
 import type { ResolvedPluginConfig } from '../schema/manifest.types';
@@ -108,11 +107,18 @@ async function renderPreviewBook(
  * Rewrite rendered book HTML for the live preview: inject the Gutterpress
  * engine's viewer bundle (`/engine/gutterpress-viewer.js`, embedded the same
  * way as every other preview asset — see lib/embedded-assets.ts) PLUS the
- * preview-interface.js/preview-bridge.js pair, before `</head>`.
+ * galley editor bundle and the preview-interface.js/preview-bridge.js pair,
+ * before `</head>`.
  * preview-interface.js defines `window.previewAPI` for in-iframe controls;
  * preview-bridge.js is the postMessage bridge for the cross-origin desktop
  * toolbar — together they make the desktop's whole
  * `gutterpress:cmd/reply/event` command protocol work.
+ *
+ * The galley editor (Galley v2 — see docs/tiptap-galley-architecture.md)
+ * orchestrates the viewer mount itself, so `window.__GP_MANUAL__=1` is set
+ * between the viewer and galley bundles to suppress the viewer's auto-mount.
+ * Both bundles are preview-only by construction — build output goes through
+ * shipViewerHtml, never through this injector.
  *
  * `pageIsolateChapters` is reserved for the one-source render. The full book
  * always paginates as one document: native preview updates use a full iframe
@@ -123,20 +129,11 @@ async function renderPreviewBook(
 export function injectPreviewScripts(
   html: string,
   pageIsolateChapters: boolean,
-  editFeatures?: Record<string, boolean>,
 ): string {
-  // The serializer's optional-plugin feature flags (mark/sub/sup/abbr) come
-  // from the manifest, which only the server sees — hand them to the edit
-  // module as a global so enable() knows which tags are markdown vs raw HTML.
-  const features = editFeatures && Object.keys(editFeatures).length
-    ? `<script>window.__GP_EDIT_FEATURES__=${JSON.stringify(editFeatures)};</script>\n  `
-    : '';
   const scripts =
     '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
-    // Inline-edit module (ADR 0010): preview-only by construction — build
-    // output goes through shipViewerHtml, never through this injector.
-    + features
-    + '<script src="/engine/gutterpress-edit.js"></script>\n  '
+    + '<script>window.__GP_MANUAL__=1</script>\n  '
+    + '<script src="/engine/gutterpress-galley.js"></script>\n  '
     + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
     + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
   let output = /<\/head>/i.test(html)
@@ -191,23 +188,9 @@ export async function generateAndWriteHtml(
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, false, editFeaturesOf(config.plugins)),
+    injectPreviewScripts(html, false),
     "utf-8"
   );
-}
-
-/** The manifest's bundled opt-in plugins as serializer feature flags
- *  (ADR 0010); the mapping itself lives beside BUILTIN_OPTIONAL_PLUGINS. */
-function editFeaturesOf(
-  plugins: ResolvedPluginConfig[] | undefined,
-): Record<string, boolean> {
-  const features: Record<string, boolean> = {};
-  for (const plugin of plugins ?? []) {
-    const name = typeof plugin === "string" ? plugin : plugin?.name;
-    const feature = name ? SERIALIZER_FEATURE_BY_PLUGIN[name] : undefined;
-    if (feature) features[feature] = true;
-  }
-  return features;
 }
 
 /**
@@ -588,6 +571,8 @@ export function createFileWatcher(state: ServerState): FSWatcher {
   // Paths changed during the current debounce window. Multi-file rewrites are
   // coalesced into one full-document rebuild; one Markdown save can splice.
   const pendingChanges = new Map<string, string>(); // filePath -> last event
+  /** Debounced no-broadcast regeneration after inline-edit saves (ADR 0011). */
+  let silentRegenTimer: ReturnType<typeof setTimeout> | null = null;
   const suppressInitialExternalAdds = new Set<string>();
   const settledWrites = new Map<string, { content: string; expiresAt: number }>();
   let immediatePending = false;
@@ -646,10 +631,30 @@ export function createFileWatcher(state: ServerState): FSWatcher {
     }, 2000);
     expiry.unref?.();
     // An inline-edit write is a projection of the DOM the author is looking
-    // at (ADR 0010): suppress the watcher echo, but do NOT re-render or
-    // broadcast — the editing surface must never swap mid-session. book.html
-    // regenerates on the next load/reload or external change.
-    if (origin === 'inline-edit') return;
+    // at (ADR 0011): suppress the watcher echo and NEVER broadcast — the
+    // editing surface must not swap mid-session. But DO regenerate
+    // book.html quietly after typing settles, so the next load (a readonly
+    // toggle, a fresh window, the CLI preview) serves the edited book
+    // instead of a stale one.
+    if (origin === 'inline-edit') {
+      if (silentRegenTimer) clearTimeout(silentRegenTimer);
+      silentRegenTimer = setTimeout(() => {
+        silentRegenTimer = null;
+        if (closed || state.isRebuilding) return;
+        void (async () => {
+          try {
+            const manifest = await loadManifest(inputResolved);
+            if (closed) return;
+            const updatedConfig = resolveConfig({ engine: state.options.engine }, manifest);
+            await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets);
+          } catch {
+            /* best-effort freshness — the next ordinary rebuild converges */
+          }
+        })();
+      }, 3000);
+      silentRegenTimer.unref?.();
+      return;
+    }
     pendingChanges.set(target, 'change');
     immediatePending = true;
     if (state.rebuildTimer) {

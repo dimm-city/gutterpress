@@ -11,6 +11,7 @@ import {
 } from "./build-runner.ts";
 import { resolveChromiumExecutable } from "./chromium.ts";
 import { getAssetPath } from "./embedded-assets.ts";
+import { shipViewerHtml } from "./build-staging.ts";
 
 /**
  * Orchestration characterization tests for the runBuild decomposition
@@ -88,6 +89,13 @@ htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint an
   const book = await readFile(htmlPath, "utf-8");
   expect(book).toMatch(/Hello/);
 
+  // Published output carries the viewer bundle and NO editing code — neither
+  // the deleted inline-edit module nor the preview-only galley editor bundle
+  // (belt and braces: the strings must not appear at all).
+  expect(book).toContain("engine/gutterpress-viewer.js");
+  expect(book).not.toContain("gutterpress-edit.js");
+  expect(book).not.toContain("gutterpress-galley.js");
+
   // A redirect index.html is written as the static-host entry point.
   const indexHtml = await readFile(join(outDir, "index.html"), "utf-8");
   expect(indexHtml).toMatch(/url=book\.html/);
@@ -97,6 +105,25 @@ htmlFallbackTest("runBuild (html) writes book.html + index.html + fingerprint an
   expect(fp.command).toBe("build");
 }, 30_000); // A cold full build (markdown render + asset copy + fingerprint) can
 // sit near bun's default 5s timeout on a slow runner; give it comfortable head-room.
+
+// The published-output injector itself (always runs, Chromium or not): it
+// ships exactly the viewer bundle — no gutterpress-edit.js, no
+// gutterpress-galley.js. Editing code is preview-only by construction
+// (injectPreviewScripts); a published book must never carry it.
+test("shipViewerHtml injects only the viewer bundle — no edit or galley code", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "gutterpress-ship-viewer-"));
+  dirsToClean.push(dir);
+  const htmlFile = join(dir, "book.html");
+  await writeFile(htmlFile, "<!doctype html><html><head><title>t</title></head><body></body></html>", "utf-8");
+
+  await shipViewerHtml(htmlFile, dir);
+
+  const book = await readFile(htmlFile, "utf-8");
+  expect(book).toContain('<script src="engine/gutterpress-viewer.js"></script>');
+  expect(book).not.toContain("gutterpress-edit.js");
+  expect(book).not.toContain("gutterpress-galley.js");
+  expect(existsSync(join(dir, "engine", "gutterpress-viewer.js"))).toBe(true);
+});
 
 // resolveIccProfile is the pure ICC-candidate resolver extracted from the pdfx
 // branch. It resolves relative paths against the manifest dir first, then cwd,

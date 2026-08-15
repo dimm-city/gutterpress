@@ -26,6 +26,7 @@ import {
 import { PACKAGE_VERSION } from '../lib/version.ts';
 import type { ServerState } from './server-context.ts';
 import { incrementalPreviewEnabled, renderChapterPreviewHtml } from './file-watcher.ts';
+import { handleGalleyRequest } from './galley-routes.ts';
 import { canonicalChapterId } from '../lib/markdown/chapter-id.ts';
 import { resolvePort, UsageError } from '../lib/cli-args.ts';
 import { BuildError } from '../lib/build-error.ts';
@@ -666,6 +667,15 @@ export async function createPreviewServer(
         res.writeHead(500);
         res.end(error instanceof Error ? error.message : String(error));
       }
+      return;
+    }
+
+    // 3b. Galley editor routes (preview-interface protocol v8): the frame
+    //     editor's source-of-truth endpoints — book source + tokens,
+    //     tokenization, fragment rendering — all through THE SAME markdown-it
+    //     configuration as the preview render path. See ./galley-routes.ts.
+    if (url.pathname.startsWith('/__galley/')) {
+      await handleGalleyRequest(req, res, url, state);
       return;
     }
 

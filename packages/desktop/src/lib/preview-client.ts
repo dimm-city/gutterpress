@@ -13,11 +13,11 @@ export interface PreviewEvent {
     | "sourceLineChanged"
     | "elementActivated"
     | "contextMenuRequested"
-    // Inline editing (protocol v7, ADR 0010):
-    | "editPatches"
-    | "editDrift"
+    // Inline editing (protocol v8, Galley v2 — docs/tiptap-galley-architecture.md):
     | "editStateChanged"
-    | "editSelection";
+    | "editSelection"
+    | "galleyContent"
+    | "galleyOpaqueEdit";
   detail: {
     currentPage?: number;
     totalPages?: number;
@@ -60,6 +60,16 @@ export interface PreviewEvent {
     y?: number;
     /** contextMenuRequested: how the menu was invoked. */
     via?: "mouse" | "keyboard";
+    /** galleyContent: the frame's fresh whole-chapter serialization. */
+    markdown?: string;
+    /** galleyContent: the frame's PREVIOUS serialization of that chapter
+     *  (initially the exact source the server sent) — the commit gate's
+     *  `expected` slice. */
+    expected?: string;
+    /** galleyOpaqueEdit: the opaque atom's ProseMirror doc position. */
+    pos?: number;
+    /** galleyOpaqueEdit: the atom's verbatim markdown source slice. */
+    src?: string;
   };
 }
 
@@ -134,6 +144,19 @@ export interface RectsForResult {
 
 /** Target form for `getRectsFor()` (§5.3). */
 export type RectsForTarget = { chapter: string; range: SourceRange };
+
+/**
+ * `galleyTargetAt()`'s result (protocol v8): what the galley doc holds at a
+ * frame-viewport point. `src` is populated only when `kind` identifies an
+ * opaque atom (a verbatim source slice the editor does not model richly).
+ */
+export interface GalleyTarget {
+  kind: string;
+  chapter: string;
+  /** ProseMirror doc position of the resolved node. */
+  pos: number;
+  src?: string;
+}
 
 /** A heading from getOutline() — see ADR 0005. */
 export interface OutlineEntry {
@@ -322,6 +345,55 @@ export class PreviewClient {
     return this.call<ContextTarget>("getContextTargetAt", [point]);
   }
 
+  // ── protocol v8: Galley v2 inline editing ─────────────────────────────
+  // (docs/tiptap-galley-architecture.md — one ProseMirror doc per chapter in
+  // the frame; the SPA saves whole chapters and never splices block patches.)
+
+  /** Turn the in-frame edit surface on/off. */
+  setEditMode(spec: { on: boolean }): Promise<{ on: boolean }> {
+    return this.call<{ on: boolean }>("setEditMode", [spec]);
+  }
+
+  /** The frame's current selection (same shape as the editSelection event), or
+   *  null when the galley editor has no selection. */
+  getSelectionState(): Promise<{
+    collapsed: boolean;
+    formats: { strong: boolean; em: boolean; s: boolean; code: boolean };
+    rect: PlainRect;
+    chapter: string | null;
+  } | null> {
+    return this.call("getSelectionState");
+  }
+
+  /** Toggle bold/italic/strike/code on the frame's current selection. */
+  applyInlineFormat(spec: { format: "bold" | "italic" | "strike" | "code" }): Promise<{ applied: boolean }> {
+    return this.call<{ applied: boolean }>("applyInlineFormat", [spec]);
+  }
+
+  /** Insert a markdown fragment at the galley cursor (snippets, images). The
+   *  frame tokenizes through the server's parser and lands it as rich nodes;
+   *  the resulting doc change drives the normal galleyContent save path. */
+  galleyInsertMarkdown(spec: { markdown: string }): Promise<{ inserted: boolean }> {
+    return this.call<{ inserted: boolean }>("galleyInsertMarkdown", [spec]);
+  }
+
+  /** Replace one opaque atom's verbatim source slice (the BlockEditOverlay's
+   *  galley-mode commit). `pos` is the atom's doc position from
+   *  galleyOpaqueEdit / galleyTargetAt. */
+  galleySetOpaqueSource(spec: { pos: number; src: string }): Promise<{ ok: boolean }> {
+    return this.call<{ ok: boolean }>("galleySetOpaqueSource", [spec]);
+  }
+
+  /** Flush any debounced galley serialization immediately (close/navigate). */
+  galleySaveNow(): Promise<{ flushed: boolean }> {
+    return this.call<{ flushed: boolean }>("galleySaveNow");
+  }
+
+  /** Resolve what the galley doc holds at a frame-viewport point. */
+  galleyTargetAt(point: { x: number; y: number }): Promise<GalleyTarget | null> {
+    return this.call<GalleyTarget | null>("galleyTargetAt", [point]);
+  }
+
   /**
    * All fragment rects for one logical block, keyed by `{chapter, range}`
    * (protocol v6, block overlay — inline-editing plan §5.3). A source range is
@@ -331,33 +403,6 @@ export class PreviewClient {
    * and it survives a fresh render (a splice mints fresh DOM but the same
    * range) without a post-splice fallback.
    */
-  // ── protocol v7: inline editing (ADR 0010) ────────────────────────────
-
-  /** Turn the in-frame edit surface on/off. (Serializer feature flags are
-   *  not passed here — the preview server injects them from the manifest.) */
-  setEditMode(spec: { on: boolean }): Promise<{ on: boolean }> {
-    return this.call<{ on: boolean }>("setEditMode", [spec]);
-  }
-
-  /** Report per-patch commit outcomes back to the frame (mirror update +
-   *  range shifting + drift verification happen there). */
-  ackEditPatches(spec: {
-    batchId: number;
-    results: Array<{
-      chapter: string;
-      range: [number, number];
-      status: "applied" | "refused" | "failed";
-      reason?: string;
-    }>;
-  }): Promise<{ ok: boolean }> {
-    return this.call<{ ok: boolean }>("ackEditPatches", [spec]);
-  }
-
-  /** Toggle bold/italic/strike/code on the frame's current selection. */
-  applyInlineFormat(spec: { format: "bold" | "italic" | "strike" | "code" }): Promise<{ applied: boolean }> {
-    return this.call<{ applied: boolean }>("applyInlineFormat", [spec]);
-  }
-
   getRectsFor(target: RectsForTarget): Promise<RectsForResult> {
     return this.call<RectsForResult>("getRectsFor", [target]);
   }

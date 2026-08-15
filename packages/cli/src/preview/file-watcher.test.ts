@@ -297,11 +297,22 @@ describe('generateAndWriteHtml', () => {
 describe('injectPreviewScripts', () => {
   const html = `<!doctype html>\n<html><head><title>t</title>\n</head><body></body></html>`;
 
-  test('injects the viewer bundle + interface scripts before </head>', () => {
+  test('injects the viewer + galley bundles + interface scripts before </head>', () => {
     const out = injectPreviewScripts(html, false);
     expect(out).toContain('/engine/gutterpress-viewer.js');
+    // The galley entry orchestrates the viewer mount itself, so the manual
+    // flag must land BETWEEN the viewer and galley bundles.
+    expect(out).toContain('window.__GP_MANUAL__=1');
+    expect(out).toContain('/engine/gutterpress-galley.js');
+    expect(out.indexOf('/engine/gutterpress-viewer.js'))
+      .toBeLessThan(out.indexOf('window.__GP_MANUAL__=1'));
+    expect(out.indexOf('window.__GP_MANUAL__=1'))
+      .toBeLessThan(out.indexOf('/engine/gutterpress-galley.js'));
     expect(out).toContain('/preview/scripts/preview-interface.js');
     expect(out).toContain('/preview/scripts/preview-bridge.js');
+    // The old inline-edit module and its feature flags are gone (Galley v2).
+    expect(out).not.toContain('gutterpress-edit.js');
+    expect(out).not.toContain('__GP_EDIT_FEATURES__');
   });
 
   test('page-isolates source wrappers only for incremental preview', () => {

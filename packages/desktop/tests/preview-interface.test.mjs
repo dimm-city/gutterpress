@@ -423,7 +423,7 @@ async function main() {
 
   // getProtocolVersion() is at least 4 (getContextTargetAt's own protocol
   // floor) — the exact current value is asserted once, definitively, by the
-  // "protocol v6" check further down; this just pins the v4 floor here so a
+  // protocol-version check further down; this just pins the v4 floor here so a
   // future regression in THIS section's own feature set is caught locally.
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
@@ -578,18 +578,26 @@ async function main() {
     );
   }
 
-  // getProtocolVersion() bumped to 7 (ADR 0010: inline editing).
+  // getProtocolVersion() bumped to 8 (Galley v2: one ProseMirror editor over
+  // the whole book — docs/tiptap-galley-architecture.md).
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 7);
-    // The v7 commands degrade to inert results when the edit bundle is
-    // absent (published books, stale bundles) instead of throwing.
+    assert.equal(api.getProtocolVersion(), 8);
+    // The v7 patch-proposal lifecycle went away with the edit module that
+    // drove it — its commands are simply gone from the API surface.
+    assert.equal(api.ackEditPatches, undefined);
+    assert.equal(api.verifyChapter, undefined);
+    assert.equal(api.flushEditState, undefined);
+    // The surviving edit commands and the new galley commands degrade to
+    // inert results when the galley bundle is absent (published books, stale
+    // bundles) instead of throwing.
     assert.deepEqual(api.setEditMode({ on: true }), { on: false });
-    assert.deepEqual(api.ackEditPatches({ batchId: 1, results: [] }), { ok: false });
     assert.equal(api.getSelectionState(), null);
     assert.deepEqual(api.applyInlineFormat({ format: "bold" }), { applied: false });
-    const verify = api.verifyChapter({ chapter: "a.md" });
-    assert.equal(verify.healed, 0);
+    assert.deepEqual(api.galleyInsertMarkdown({ markdown: "# Hi" }), { inserted: false });
+    assert.deepEqual(api.galleySetOpaqueSource({ pos: 1, src: "raw" }), { ok: false });
+    assert.deepEqual(api.galleySaveNow(), { flushed: false });
+    assert.equal(api.galleyTargetAt({ x: 1, y: 1 }), null);
   }
 
   // ── Native engine getRectsFor: no clone-grouping — a spec resolves to AT
@@ -662,7 +670,7 @@ async function main() {
 
   console.log("[desktop-test] PASS native-engine getRectsFor (no clone grouping)");
 
-  console.log("[desktop-test] PASS getRectsFor / setEditMask / protocol v6");
+  console.log("[desktop-test] PASS getRectsFor / setEditMask / protocol v8");
 
   // The cross-origin bridge must forward the immediate viewport invalidation,
   // not merely emit it inside the iframe where desktop controllers cannot see it.

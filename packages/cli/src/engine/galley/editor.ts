@@ -36,11 +36,17 @@ export interface GalleyChapter {
   tokens: GalleyToken[];
 }
 
+/**
+ * v7-compatible selection payload — the SPA bubble handler reads
+ * `rects[0]`, `block`, and `formats.{strong,em,s,code}` and is deliberately
+ * unchanged by the galley swap, so those exact keys are the contract.
+ */
 export interface SelectionPayload {
   collapsed: boolean;
-  /** v7-compatible keys — the SPA bubble reads strong/em/s/code. */
   formats: { strong: boolean; em: boolean; s: boolean; code: boolean };
-  rect: { top: number; left: number; width: number; height: number } | null;
+  rects: Array<{ top: number; left: number; width: number; height: number }>;
+  /** Truthy when the selection sits inside editable content (bubble gate). */
+  block: { chapter: string | null } | null;
   chapter: string | null;
 }
 
@@ -370,22 +376,23 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     const { state, view } = editor;
     const sel = state.selection;
     const collapsed = sel.empty;
-    let rect: SelectionPayload["rect"] = null;
+    const rects: SelectionPayload["rects"] = [];
     if (!collapsed) {
       try {
         const a = view.coordsAtPos(sel.from);
         const b = view.coordsAtPos(sel.to, -1);
         const sameLine = Math.abs(a.top - b.top) < 4;
-        rect = {
+        rects.push({
           top: a.top,
           left: sameLine ? Math.min(a.left, b.left) : a.left,
           width: sameLine ? Math.abs(b.left - a.left) : 1,
           height: a.bottom - a.top,
-        };
+        });
       } catch {
-        rect = null;
+        /* position outside the viewport during a relayout beat */
       }
     }
+    const chapter = chapterAtPos(state.doc, sel.from);
     return {
       collapsed,
       formats: {
@@ -394,8 +401,11 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
         s: editor.isActive("strike"),
         code: editor.isActive("code"),
       },
-      rect,
-      chapter: chapterAtPos(state.doc, sel.from),
+      rects,
+      // The bubble shows only for selections inside editable content — a
+      // NodeSelection on an atom reports no block.
+      block: !collapsed && sel instanceof NodeSelection === false ? { chapter } : null,
+      chapter,
     };
   }
 

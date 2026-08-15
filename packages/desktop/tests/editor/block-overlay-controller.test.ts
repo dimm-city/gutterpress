@@ -481,3 +481,55 @@ describe("boundary round-trip via show()/commit() with an UNEDITED body", () => 
     expect(call.replacement).toBe("last line");
   });
 });
+
+describe("galley mode (protocol v8) — showGalley/commit route to onCommitText", () => {
+  const rect = { top: 10, left: 20, width: 100, height: 40 };
+
+  test("opens seeded with the atom's source; commit hands the edited text to the callback", async () => {
+    const h = make();
+    const commits: string[] = [];
+    h.ctrl.showGalley({ text: "<div>raw</div>", rect, onCommitText: (t) => commits.push(t) });
+    expect(h.ctrl.open).toBe(true);
+    expect(h.ctrl.initialText).toBe("<div>raw</div>");
+    // No chapter/range capture in this mode: no rect fetch, no edit mask.
+    expect(h.client.rectsForCalls.length).toBe(0);
+    expect(h.client.maskCalls.length).toBe(0);
+    // Geometry converts the frame-viewport rect like the classic mode does.
+    expect(h.ctrl.x).toBe(20);
+    expect(h.ctrl.y).toBe(10);
+
+    await h.ctrl.commit("<div>edited</div>");
+    expect(commits).toEqual(["<div>edited</div>"]);
+    expect(h.ctrl.open).toBe(false);
+    // The commit engine is NOT the write path in galley mode.
+    expect(h.commitEngine.calls.length).toBe(0);
+  });
+
+  test("cancel discards; a mid-composition commit is the IME no-op", async () => {
+    const h = make();
+    const commits: string[] = [];
+    h.ctrl.showGalley({ text: "x", rect, onCommitText: (t) => commits.push(t) });
+    await h.ctrl.commit("half-composed", { duringComposition: true });
+    expect(commits).toEqual([]);
+    expect(h.ctrl.open).toBe(true);
+    h.ctrl.cancel();
+    expect(commits).toEqual([]);
+    expect(h.ctrl.open).toBe(false);
+    // A later commit (blur after close) must not resurrect the callback.
+    await h.ctrl.commit("late");
+    expect(commits).toEqual([]);
+  });
+
+  test("renderingComplete closes a galley overlay (the captured pos is stale) with a toast", async () => {
+    const h = make();
+    const commits: string[] = [];
+    h.ctrl.showGalley({ text: "x", rect, onCommitText: (t) => commits.push(t) });
+    h.client.emit({ name: "renderingComplete", detail: {} });
+    await Promise.resolve();
+    expect(h.ctrl.open).toBe(false);
+    expect(commits).toEqual([]);
+    expect(h.toastInfoCalls.length).toBe(1);
+    // The generation bump still happened (sibling-controller parity).
+    expect(h.commitEngine.generation).toBe(1);
+  });
+});

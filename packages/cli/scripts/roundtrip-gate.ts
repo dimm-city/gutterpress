@@ -1,55 +1,37 @@
 #!/usr/bin/env bun
 /**
- * roundtrip-gate.ts — corpus soundness gate for the block serializer
- * (inline-editing Phase 1, ADR 0010).
+ * roundtrip-gate.ts — corpus soundness gate for the Galley codec (Galley v2,
+ * docs/tiptap-galley-architecture.md).
  *
- * For EVERY content block of EVERY example book: canonically serialize the
- * block's rendered DOM, substitute the result into the source file,
- * re-render, and require the whole file to be model-identical (the edited
- * block equal, every other block unperturbed).
+ * For EVERY markdown file of EVERY example book, tokenize with the product's
+ * one markdown-it renderer, build the ProseMirror galley doc, and enforce the
+ * codec's four invariants (the same ones galley.test.ts holds, ratcheted here
+ * over the whole corpus as a release gate):
  *
- * Two verdicts, two rules:
- *   - UNSOUND (a block the serializer ACCEPTED whose substitution changed
- *     any model) — hard fail, zero tolerance. This is the wrong-edit class.
- *   - REFUSED (a block the serializer declined — raw HTML islands, exotic
- *     constructs) — safe by design; tracked as per-book COVERAGE with a
- *     ratchet baseline (scripts/roundtrip-baseline.json) so coverage can
- *     only improve. Run with --update to (re)write the baseline.
+ *   (a) ZERO LOST WORDS — canonical serialization AND byte-preserving
+ *       serialization each keep every source word (word-multiset diff).
+ *   (b) CANONICAL IDEMPOTENCE — serialize(reparse(serialize(doc))) equals
+ *       serialize(doc): the canonical form is a fixed point.
+ *   (c) OPAQUE RATE — at most 2% of all blocks degrade to opaque rawBlock
+ *       atoms (verbatim but uneditable).
+ *   (d) BYTE PRESERVATION — at least 80% of untouched corpus files serialize
+ *       back byte-identical (modulo leading/trailing whitespace).
  *
- * Runs under plain `bun` — renderer HTML is parsed by the strict testkit
- * parser, no browser involved.
+ * Runs under plain `bun` — tokens → doc → markdown, no browser involved.
  */
-import { readFile } from "node:fs/promises";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadManifest, resolveConfig } from "../src/lib/manifest";
-import { resolveActiveMarkdownFiles } from "../src/lib/markdown/index";
+import { createMarkdownRenderer } from "../src/lib/markdown/renderer";
+import { galleySchema } from "../src/engine/galley/extensions";
 import {
-  BUILTIN_OPTIONAL_PLUGINS,
-  SERIALIZER_FEATURE_BY_PLUGIN,
-  createMarkdownRenderer,
-  type LoadedPlugin,
-} from "../src/lib/markdown/renderer";
-import {
-  canonicalizeBlock,
-  discoverContentBlocks,
-  extractBlockModel,
-  findBlockRangeAttr,
-  modelsEqual,
-  type SerializeOptions,
-} from "../src/lib/markdown/serialize";
-import {
-  parseHtml,
-  parseRange,
-  sliceLines,
-  substitute,
-  type TestElement,
-} from "../src/lib/markdown/serialize-testkit";
+  buildGalleyDoc,
+  serializeGalleyDoc,
+  type GalleyToken,
+} from "../src/engine/galley/markdown";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const baselinePath = join(dirname(fileURLToPath(import.meta.url)), "roundtrip-baseline.json");
 
 const BOOKS: Array<{ name: string; dir: string }> = [
   { name: "gutterpress-user-guide", dir: "examples/gutterpress-user-guide" },
@@ -61,201 +43,144 @@ const BOOKS: Array<{ name: string; dir: string }> = [
   { name: "css-authoring-spike", dir: "docs/fixtures/css-authoring-spike/book" },
 ];
 
+const OPAQUE_RATE_MAX = 0.02;
+const BYTE_IDENTICAL_MIN = 0.8;
 
+const md = createMarkdownRenderer();
+const schema = galleySchema();
 
-interface Unsound {
-  book: string;
-  file: string;
-  blockIndex: number;
-  detail: string;
+/** Tokens exactly as the server route ships them: through JSON. */
+const tokensOf = (source: string): GalleyToken[] =>
+  JSON.parse(JSON.stringify(md.parse(source, {}))) as GalleyToken[];
+
+const words = (s: string) => s.toLowerCase().match(/[a-z0-9]+/gi) ?? [];
+
+/** Multiset difference a − b: words of `a` missing from `b`. */
+function lostWords(a: string, b: string): string[] {
+  const pool = new Map<string, number>();
+  for (const w of words(b)) pool.set(w, (pool.get(w) ?? 0) + 1);
+  const missing: string[] = [];
+  for (const w of words(a)) {
+    const n = pool.get(w) ?? 0;
+    if (n === 0) missing.push(w);
+    else pool.set(w, n - 1);
+  }
+  return missing;
 }
 
 interface BookStats {
   name: string;
+  files: number;
   blocks: number;
-  covered: number;
-  reasons: Map<string, number>;
+  opaque: number;
+  byteIdentical: number;
 }
 
-function pluginNames(manifest: { plugins?: unknown }): string[] {
-  if (!Array.isArray(manifest.plugins)) return [];
-  return manifest.plugins
-    .map((p) => (typeof p === "string" ? p : (p as { name?: string })?.name ?? ""))
-    .filter(Boolean);
-}
-
-async function gateBook(book: { name: string; dir: string }, unsound: Unsound[]): Promise<BookStats> {
-  const dir = join(repoRoot, book.dir);
-  const manifest = await loadManifest(dir);
-  const config = resolveConfig({}, manifest);
-
-  const names = pluginNames(manifest);
-  const features: NonNullable<SerializeOptions["features"]> = {};
-  const loaded: LoadedPlugin[] = [];
-  for (const name of names) {
-    const feature = SERIALIZER_FEATURE_BY_PLUGIN[name];
-    const plugin = BUILTIN_OPTIONAL_PLUGINS[name];
-    if (feature && plugin) {
-      features[feature] = true;
-      loaded.push({ name, plugin, options: {} });
-    } else {
-      // Non-bundled plugins would need the vendored loader; no corpus book
-      // uses one today. Fail loudly if that changes so the gate stays honest.
-      throw new Error(`${book.name}: manifest plugin "${name}" is not a bundled plugin — teach the gate to load it`);
-    }
-  }
-  const opts: SerializeOptions = { features };
-  const md = createMarkdownRenderer(loaded.length ? loaded : undefined);
-
-  const files = await resolveActiveMarkdownFiles(dir, config.source?.files ?? null);
-  const stats: BookStats = { name: book.name, blocks: 0, covered: 0, reasons: new Map() };
-
-  for (const file of files) {
-    const src = (await readFile(join(dir, file), "utf8")).replace(/\r\n?/g, "\n");
-    const html1 = md.render(src, {});
-    let root1: TestElement;
-    try {
-      root1 = parseHtml(html1);
-    } catch (err) {
-      // Author raw HTML the strict parser can't read → the whole file is
-      // outside the gate's reach; count its blocks as uncovered via a
-      // sentinel reason rather than crashing the gate.
-      stats.reasons.set(`file unparseable: ${(err as Error).message}`, 1);
-      continue;
-    }
-    const blocks1 = discoverContentBlocks(root1) as TestElement[];
-    const models1 = blocks1.map((b) => {
-      try {
-        return extractBlockModel(b, opts);
-      } catch {
-        return null;
-      }
-    });
-    stats.blocks += blocks1.length;
-
-    blocks1.forEach((block, i) => {
-      const range = parseRange(findBlockRangeAttr(block)!);
-      const res = canonicalizeBlock(block, sliceLines(src, range), opts);
-      if (res.kind === "refused") {
-        stats.reasons.set(res.reason, (stats.reasons.get(res.reason) ?? 0) + 1);
-        return;
-      }
-      if (res.kind !== "replacement") return;
-
-      const src2 = substitute(src, range, res.text);
-      const html2 = md.render(src2, {});
-      let blocks2: TestElement[];
-      try {
-        blocks2 = discoverContentBlocks(parseHtml(html2)) as TestElement[];
-      } catch (err) {
-        unsound.push({
-          book: book.name,
-          file,
-          blockIndex: i,
-          detail: `re-rendered file unparseable: ${(err as Error).message}`,
-        });
-        return;
-      }
-      if (blocks2.length !== blocks1.length) {
-        unsound.push({
-          book: book.name,
-          file,
-          blockIndex: i,
-          detail:
-            `block count changed ${blocks1.length} → ${blocks2.length}\n` +
-            `--- replacement ---\n${res.text}`,
-        });
-        return;
-      }
-      for (let j = 0; j < blocks2.length; j++) {
-        if (models1[j] === null) continue;
-        let m2: unknown;
-        try {
-          m2 = extractBlockModel(blocks2[j]!, opts);
-        } catch (err) {
-          m2 = `<<unextractable: ${(err as Error).message}>>`;
-        }
-        if (!modelsEqual(m2, models1[j])) {
-          unsound.push({
-            book: book.name,
-            file,
-            blockIndex: i,
-            detail:
-              `block ${j} drifted (slice lines ${range[0]}:${range[1]})\n` +
-              `--- original slice ---\n${sliceLines(src, range)}\n` +
-              `--- replacement ---\n${res.text}\n` +
-              `--- expected model ---\n${JSON.stringify(models1[j])}\n` +
-              `--- got ---\n${JSON.stringify(m2)}`,
-          });
-          return;
-        }
-      }
-      stats.covered++;
-    });
-  }
-  return stats;
-}
-
-const updateBaseline = process.argv.includes("--update");
-
-const unsound: Unsound[] = [];
+const failures: string[] = [];
 const allStats: BookStats[] = [];
+
 for (const book of BOOKS) {
-  allStats.push(await gateBook(book, unsound));
+  const dir = join(repoRoot, book.dir);
+  const stats: BookStats = { name: book.name, files: 0, blocks: 0, opaque: 0, byteIdentical: 0 };
+
+  for (const f of readdirSync(dir).filter((f) => f.endsWith(".md")).sort()) {
+    const rel = `${book.name}/${f}`;
+    const source = readFileSync(join(dir, f), "utf8").replace(/\r\n?/g, "\n");
+    stats.files++;
+
+    const { doc, srcMap, stats: buildStats } = buildGalleyDoc(schema, tokensOf(source), source);
+    stats.blocks += buildStats.blocks;
+    stats.opaque += buildStats.opaque;
+
+    // (a) zero lost words — canonical mode.
+    const canonical = serializeGalleyDoc(schema, doc);
+    const lostCanonical = lostWords(source, canonical);
+    if (lostCanonical.length) {
+      failures.push(
+        `${rel}: canonical serialization lost ${lostCanonical.length} word(s) — ${lostCanonical.slice(0, 10).join(" ")}`,
+      );
+    }
+
+    // (a) zero lost words — byte-preserving mode; (d) byte-identical count.
+    const preserved = serializeGalleyDoc(schema, doc, srcMap);
+    const lostPreserved = lostWords(source, preserved);
+    if (lostPreserved.length) {
+      failures.push(
+        `${rel}: preserved serialization lost ${lostPreserved.length} word(s) — ${lostPreserved.slice(0, 10).join(" ")}`,
+      );
+    }
+    if (preserved.trim() === source.trim()) stats.byteIdentical++;
+
+    // (b) canonical idempotence: serialize of the reparse equals the first
+    // serialize.
+    const { doc: doc2 } = buildGalleyDoc(schema, tokensOf(canonical), canonical);
+    const twice = serializeGalleyDoc(schema, doc2);
+    if (twice !== canonical) {
+      const i = [...canonical].findIndex((c, idx) => twice[idx] !== c);
+      failures.push(
+        `${rel}: canonical serialization is not idempotent — diverges at ${i}: ` +
+          `${JSON.stringify(canonical.slice(i, i + 60))} vs ${JSON.stringify(twice.slice(i, i + 60))}`,
+      );
+    }
+  }
+
+  allStats.push(stats);
 }
 
 // ── report ──────────────────────────────────────────────────────────────────
 
-const pct = (s: BookStats) => (s.blocks ? (100 * s.covered) / s.blocks : 100);
+const totals = allStats.reduce(
+  (t, s) => ({
+    files: t.files + s.files,
+    blocks: t.blocks + s.blocks,
+    opaque: t.opaque + s.opaque,
+    byteIdentical: t.byteIdentical + s.byteIdentical,
+  }),
+  { files: 0, blocks: 0, opaque: 0, byteIdentical: 0 },
+);
 
-console.log("\nround-trip corpus gate — canonical serialize → substitute → re-render → model-equal\n");
-console.log("book                                    blocks  covered  coverage");
+const opaquePct = (s: { blocks: number; opaque: number }) =>
+  s.blocks ? (100 * s.opaque) / s.blocks : 0;
+
+console.log("\ngalley round-trip corpus gate — tokens → PM doc → markdown\n");
+console.log("book                                     files  blocks  opaque  opaque%  byte-id");
 for (const s of allStats) {
   console.log(
-    `${s.name.padEnd(40)}${String(s.blocks).padStart(6)}${String(s.covered).padStart(9)}` +
-      `${pct(s).toFixed(1).padStart(9)}%`,
+    `${s.name.padEnd(40)}${String(s.files).padStart(6)}${String(s.blocks).padStart(8)}` +
+      `${String(s.opaque).padStart(8)}${opaquePct(s).toFixed(1).padStart(8)}%` +
+      `${`${s.byteIdentical}/${s.files}`.padStart(9)}`,
   );
-  const reasons = [...s.reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4);
-  for (const [reason, count] of reasons) {
-    console.log(`    ↳ ${count}× ${reason}`);
-  }
 }
+console.log(
+  `${"TOTAL".padEnd(40)}${String(totals.files).padStart(6)}${String(totals.blocks).padStart(8)}` +
+    `${String(totals.opaque).padStart(8)}${opaquePct(totals).toFixed(1).padStart(8)}%` +
+    `${`${totals.byteIdentical}/${totals.files}`.padStart(9)}`,
+);
 
 let failed = false;
 
-if (unsound.length) {
+if (failures.length) {
   failed = true;
-  console.error(`\n✖ ${unsound.length} UNSOUND result(s) — serializer accepted a block whose substitution changed the document:\n`);
-  for (const u of unsound.slice(0, 10)) {
-    console.error(`— ${u.book} ${u.file} block #${u.blockIndex}\n${u.detail}\n`);
-  }
-  if (unsound.length > 10) console.error(`… and ${unsound.length - 10} more`);
+  console.error(`\n✖ ${failures.length} zero-loss/idempotence failure(s):\n`);
+  for (const f of failures.slice(0, 20)) console.error(`— ${f}`);
+  if (failures.length > 20) console.error(`… and ${failures.length - 20} more`);
 }
 
-if (updateBaseline) {
-  const baseline = Object.fromEntries(
-    allStats.map((s) => [s.name, Math.floor(pct(s) * 10) / 10]),
-  );
-  writeFileSync(baselinePath, `${JSON.stringify(baseline, null, 2)}\n`);
-  console.log(`\nbaseline written → ${baselinePath}`);
-} else if (!existsSync(baselinePath)) {
+if (totals.blocks && totals.opaque / totals.blocks > OPAQUE_RATE_MAX) {
   failed = true;
-  console.error(`\n✖ no baseline at ${baselinePath} — run with --update to record one`);
-} else {
-  const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as Record<string, number>;
-  for (const s of allStats) {
-    const min = baseline[s.name];
-    if (min == null) {
-      failed = true;
-      console.error(`✖ ${s.name}: not in baseline — run with --update`);
-    } else if (pct(s) + 1e-9 < min) {
-      failed = true;
-      console.error(`✖ ${s.name}: coverage ${pct(s).toFixed(1)}% fell below baseline ${min}%`);
-    } else if (pct(s) > min + 2) {
-      console.log(`↑ ${s.name}: coverage ${pct(s).toFixed(1)}% beats baseline ${min}% — consider --update to ratchet`);
-    }
-  }
+  console.error(
+    `\n✖ opaque rate ${opaquePct(totals).toFixed(2)}% exceeds the ${(OPAQUE_RATE_MAX * 100).toFixed(0)}% ceiling ` +
+      `(${totals.opaque}/${totals.blocks} blocks)`,
+  );
+}
+
+if (totals.byteIdentical < Math.floor(totals.files * BYTE_IDENTICAL_MIN)) {
+  failed = true;
+  console.error(
+    `\n✖ only ${totals.byteIdentical}/${totals.files} untouched files serialize byte-identical ` +
+      `(floor is ${(BYTE_IDENTICAL_MIN * 100).toFixed(0)}%)`,
+  );
 }
 
 if (failed) process.exit(1);
-console.log("\n✓ corpus round-trip gate green");
+console.log("\n✓ galley corpus round-trip gate green");

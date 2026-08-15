@@ -27,33 +27,3 @@ export type {
 } from "./lib/markdown/renderer";
 
 export { MARKER_CSS } from "./lib/markdown/markers.js";
-
-// Block-scoped HTML→markdown serializer for the inline-editing previewer
-// (ADR 0010). Pure by construction. This subpath ships only the CONTRACT
-// surface a browser host needs to run the edit loop (the in-repo consumers —
-// the edit bundle and the roundtrip gate — import relatively); emitter
-// internals stay private.
-export {
-  CONTENT_BLOCK_TAGS,
-  discoverContentBlocks,
-  extractBlockModel,
-  findBlockRangeAttr,
-  modelsEqual,
-  parseSourceRange,
-  serializeBlock,
-  serializeBlockGroup,
-  UnextractableBlock,
-} from "./lib/markdown/serialize";
-export type {
-  AttrList,
-  BlockNode,
-  ElementLike,
-  InlineNode,
-  ListItemNode,
-  SerializeBlockInput,
-  SerializeFeatures,
-  SerializeOptions,
-  SerializeResult,
-  TableAlign,
-  TextLike,
-} from "./lib/markdown/serialize";

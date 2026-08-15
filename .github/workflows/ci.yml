@@ -46,10 +46,11 @@ jobs:
       - name: Run tests
         run: bun --filter gutterpress test
 
-      # Inline-editing serializer soundness over every example book: zero
-      # unsound substitutions allowed; per-book coverage ratchets via
-      # scripts/roundtrip-baseline.json (see ADR 0010).
-      - name: Serializer round-trip corpus gate
+      # Galley codec soundness over every example book: zero lost words in
+      # both serialization modes, canonical idempotence, opaque rate <= 2%,
+      # byte-identical untouched files >= 80% (Galley v2 —
+      # docs/tiptap-galley-architecture.md).
+      - name: Galley round-trip corpus gate
         working-directory: packages/cli
         run: bun run roundtrip:gate
 

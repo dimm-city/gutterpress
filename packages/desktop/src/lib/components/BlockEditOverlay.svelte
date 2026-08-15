@@ -14,6 +14,11 @@
    * trap/restore discipline the app's existing dialogs use
    * (`$lib/dialog.ts`'s `dialogBehavior`/`trapFocus`).
    *
+   * Galley mode (protocol v8) is invisible to this component: the controller's
+   * `showGalley()` seeds `initialText` and routes `commit()` to an injected
+   * `onCommitText` callback (→ `galleySetOpaqueSource`) instead of the commit
+   * engine — same widget, same dismissal matrix, different write path.
+   *
    * A second, INDEPENDENT `EditorView` here does NOT violate
    * `MarkdownEditor.svelte`'s "ONE EditorView" doctrine (UX review M8): that
    * rule forbids recreating the MAIN editor's view on a file switch (which

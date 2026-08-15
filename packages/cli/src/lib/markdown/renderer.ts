@@ -117,21 +117,6 @@ export const BUILTIN_OPTIONAL_PLUGINS: Record<string, GutterpressPlugin> = {
 };
 
 /**
- * Bundled optional plugin → the serializer feature flag its output needs
- * (ADR 0010). Lives HERE, next to {@link BUILTIN_OPTIONAL_PLUGINS}, because
- * the two must stay in lockstep: enabling one of these plugins makes its
- * tags first-class markdown, and the inline-edit codec (serialize.ts) then
- * serializes them instead of refusing them as raw HTML. Consumed by the
- * preview server's feature injection and the roundtrip corpus gate.
- */
-export const SERIALIZER_FEATURE_BY_PLUGIN: Record<string, "mark" | "sub" | "sup" | "abbr"> = {
-  "markdown-it-mark": "mark",
-  "markdown-it-sub": "sub",
-  "markdown-it-sup": "sup",
-  "markdown-it-abbr": "abbr",
-};
-
-/**
  * Create a fully-configured MarkdownIt instance.
  *
  * Built-in pipeline (runs before any user plugins):
