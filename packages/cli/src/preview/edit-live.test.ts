@@ -22,6 +22,40 @@ import { closeBrowser, getBrowser } from "../lib/browser-pool.ts";
 
 const TIMEOUT_MS = 120_000;
 
+// This package's tsconfig has no DOM lib (lib: ESNext); evaluate() callbacks
+// run in the page, where these globals exist — declare the narrow slices the
+// callbacks touch (same pattern as nav-native.test.ts).
+declare const window: {
+  Gutterpress?: { totalPages: number };
+  GutterpressEdit: {
+    enable(o: object): void;
+    ackPatches(s: object): void;
+    verifyChapter(s: { chapter: string }): Promise<{ healed: number; mismatch?: string }>;
+  };
+  previewAPI: { getProtocolVersion(): number };
+  __batches: Array<{ batchId: number; patches: unknown[] }>;
+  addEventListener(name: string, cb: (e: { detail: unknown }) => void): void;
+};
+declare const document: {
+  querySelectorAll(sel: string): ArrayLike<{
+    textContent: string | null;
+    firstChild: unknown;
+    closest(sel: string): { focus(): void } | null;
+  }> & Iterable<{
+    textContent: string | null;
+    firstChild: unknown;
+    closest(sel: string): { focus(): void } | null;
+  }>;
+  createRange(): {
+    setStart(node: unknown, offset: number): void;
+    collapse(toStart: boolean): void;
+  };
+};
+declare function getSelection(): {
+  removeAllRanges(): void;
+  addRange(r: unknown): void;
+} | null;
+
 const chromium = await resolveChromiumExecutable();
 const testIf = chromium ? test : test.skip;
 if (!chromium) {
@@ -52,9 +86,11 @@ testIf(
         input: dir,
         port: 0,
         host: "127.0.0.1",
+        verbose: false,
+        noWatch: false,
         openBrowser: false,
-        installSignals: false,
-      } as Parameters<typeof startPreviewServer>[0]);
+        installSignalHandlers: false,
+      });
       const base = `http://127.0.0.1:${server.port}`;
 
       const browser = await getBrowser(TIMEOUT_MS);
@@ -65,22 +101,15 @@ testIf(
         await page.waitForFunction("window.GutterpressEdit && window.previewAPI");
 
         // The injected interface must be protocol v7 with edit mode live.
-        const protocol = await page.evaluate(() =>
-          (window as unknown as { previewAPI: { getProtocolVersion(): number } })
-            .previewAPI.getProtocolVersion(),
-        );
+        const protocol = await page.evaluate(() => window.previewAPI.getProtocolVersion());
         expect(protocol).toBe(7);
 
         await page.evaluate(() => {
-          const w = window as unknown as {
-            GutterpressEdit: { enable(o: object): void };
-            __batches: Array<{ batchId: number; patches: unknown[] }>;
-          };
-          w.__batches = [];
+          window.__batches = [];
           window.addEventListener("editPatches", (e) =>
-            w.__batches.push((e as CustomEvent).detail),
+            window.__batches.push(e.detail as { batchId: number; patches: unknown[] }),
           );
-          w.GutterpressEdit.enable({ relayoutDelayMs: 40, autosyncDelayMs: 80 });
+          window.GutterpressEdit.enable({ relayoutDelayMs: 40, autosyncDelayMs: 80 });
         });
 
         // Type into the first paragraph through the real input path.
@@ -94,7 +123,7 @@ testIf(
           r.collapse(true);
           sel.removeAllRanges();
           sel.addRange(r);
-          (p.closest(".gp-strip") as HTMLElement).focus();
+          p.closest(".gp-strip")!.focus();
         });
         await page.keyboard.type(", now edited,");
         await page.waitForFunction("window.__batches.length >= 1");
@@ -129,18 +158,12 @@ testIf(
 
         const zeroDrift = await page.evaluate(
           async (b: unknown) => {
-            const batch = b as { batchId: number; patches: Array<Record<string, unknown>> };
-            const w = window as unknown as {
-              GutterpressEdit: {
-                ackPatches(s: object): void;
-                verifyChapter(s: { chapter: string }): Promise<{ healed: number; mismatch?: string }>;
-              };
-            };
-            w.GutterpressEdit.ackPatches({
-              batchId: batch.batchId,
-              results: batch.patches.map((p) => ({ ...p, status: "applied" })),
+            const acked = b as { batchId: number; patches: Array<Record<string, unknown>> };
+            window.GutterpressEdit.ackPatches({
+              batchId: acked.batchId,
+              results: acked.patches.map((p) => ({ ...p, status: "applied" })),
             });
-            return w.GutterpressEdit.verifyChapter({ chapter: "chapter.md" });
+            return window.GutterpressEdit.verifyChapter({ chapter: "chapter.md" });
           },
           batch,
         );
@@ -156,12 +179,7 @@ testIf(
           .replace("Beta paragraph stays put.", "Beta paragraph was changed elsewhere.");
         await fsp.writeFile(path.join(dir, chapterFile), external);
         const healed = await page.evaluate(async () => {
-          const w = window as unknown as {
-            GutterpressEdit: {
-              verifyChapter(s: { chapter: string }): Promise<{ healed: number; mismatch?: string }>;
-            };
-          };
-          const result = await w.GutterpressEdit.verifyChapter({ chapter: "chapter.md" });
+          const result = await window.GutterpressEdit.verifyChapter({ chapter: "chapter.md" });
           return {
             result,
             text: [...document.querySelectorAll("p")].map((p) => p.textContent).join("|"),

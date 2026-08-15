@@ -122,11 +122,19 @@ async function renderPreviewBook(
 export function injectPreviewScripts(
   html: string,
   pageIsolateChapters: boolean,
+  editFeatures?: Record<string, boolean>,
 ): string {
+  // The serializer's optional-plugin feature flags (mark/sub/sup/abbr) come
+  // from the manifest, which only the server sees — hand them to the edit
+  // module as a global so enable() knows which tags are markdown vs raw HTML.
+  const features = editFeatures && Object.keys(editFeatures).length
+    ? `<script>window.__GP_EDIT_FEATURES__=${JSON.stringify(editFeatures)};</script>\n  `
+    : '';
   const scripts =
     '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
     // Inline-edit module (ADR 0010): preview-only by construction — build
     // output goes through shipViewerHtml, never through this injector.
+    + features
     + '<script src="/engine/gutterpress-edit.js"></script>\n  '
     + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
     + '<script src="/preview/scripts/preview-bridge.js"></script>\n';
@@ -182,9 +190,30 @@ export async function generateAndWriteHtml(
   for (const [to, from] of nextAssets) cssAssets.set(to, from);
   await fsp.writeFile(
     path.join(tempDir, BOOK_HTML_FILENAME),
-    injectPreviewScripts(html, false),
+    injectPreviewScripts(html, false, editFeaturesOf(config.plugins)),
     "utf-8"
   );
+}
+
+/** Bundled opt-in plugins → serializer feature flags (ADR 0010). Mirrors
+ *  scripts/roundtrip-gate.ts's mapping; non-bundled plugins add no flags. */
+const FEATURE_BY_PLUGIN: Record<string, string> = {
+  "markdown-it-mark": "mark",
+  "markdown-it-sub": "sub",
+  "markdown-it-sup": "sup",
+  "markdown-it-abbr": "abbr",
+};
+
+export function editFeaturesOf(
+  plugins: ResolvedPluginConfig[] | undefined,
+): Record<string, boolean> {
+  const features: Record<string, boolean> = {};
+  for (const plugin of plugins ?? []) {
+    const name = typeof plugin === "string" ? plugin : plugin?.name;
+    const feature = name ? FEATURE_BY_PLUGIN[name] : undefined;
+    if (feature) features[feature] = true;
+  }
+  return features;
 }
 
 /**

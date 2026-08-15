@@ -1480,7 +1480,13 @@ ${emitBlocks(item.blocks, ctx)}`;
       ev.preventDefault();
   }
   function enable(options = {}) {
-    opts = { relayoutDelayMs: 300, autosyncDelayMs: 600, ...options };
+    const injected = window.__GP_EDIT_FEATURES__;
+    opts = {
+      relayoutDelayMs: 300,
+      autosyncDelayMs: 600,
+      ...injected ? { features: injected } : {},
+      ...options
+    };
     if (!enabled) {
       enabled = true;
       try {

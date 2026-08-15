@@ -759,7 +759,17 @@ function onDragStart(ev: Event): void {
 }
 
 export function enable(options: EnableOptions = {}): boolean {
-  opts = { relayoutDelayMs: 300, autosyncDelayMs: 600, ...options };
+  // The preview server injects the manifest's bundled-plugin feature flags
+  // (window.__GP_EDIT_FEATURES__) so mark/sub/sup/abbr tags serialize
+  // instead of refusing; an explicit features option still wins.
+  const injected = (window as unknown as { __GP_EDIT_FEATURES__?: SerializeFeatures })
+    .__GP_EDIT_FEATURES__;
+  opts = {
+    relayoutDelayMs: 300,
+    autosyncDelayMs: 600,
+    ...(injected ? { features: injected } : {}),
+    ...options,
+  };
   if (!enabled) {
     enabled = true;
     try {
