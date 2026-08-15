@@ -2752,6 +2752,11 @@
       onOpenUrl={openUrl}
       onOpenGitHub={isDesktop() ? () => { contextMenu.close(); blockOverlayRef?.commitNow(); githubOpen = true; } : undefined}
       onNewProject={() => { contextMenu.close(); blockOverlayRef?.commitNow(); newProjectWizardRef?.show(); }}
+      onShowWelcome={() => {
+        contextMenu.close();
+        landingRef?.showTab("projects");
+        landingForcedOpen = true;
+      }}
       onSyncReconnect={onSyncReconnect}
       onPanelStateChange={persistLeftPanelPrefs}
     />

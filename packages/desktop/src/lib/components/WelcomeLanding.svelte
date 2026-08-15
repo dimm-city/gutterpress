@@ -30,6 +30,7 @@
   import SettingsView from "$lib/components/SettingsView.svelte";
   import BrandMark from "$lib/components/BrandMark.svelte";
   import HelpContent from "$lib/components/HelpContent.svelte";
+  import LogsPanel from "$lib/components/LogsPanel.svelte";
   import { isEditableTarget } from "$lib/a11y";
   import type { ContinueStatus } from "$lib/routes/startup-landing";
   import type { UpdaterAvailableAction } from "$lib/platform";
@@ -126,24 +127,27 @@
     onCrashRecoveryChange?: (enabled: boolean) => void;
   } = $props();
 
-  // ── Tabs (Projects / Settings / Help) ─────────────────────────────────────
+  // ── Tabs (Projects / Settings / Help / Logs) ──────────────────────────────
   // The landing is the app's front door: Projects carries the continue card +
   // quick actions + book list; Settings embeds the WHOLE settings surface,
-  // sub-tabs and all; Help carries the former help modal's content. Because
-  // both are tabs here, the brand row no longer needs its own settings and
-  // help buttons. The host can land on a specific tab (help button → "help";
+  // sub-tabs and all; Help carries the former help modal's content; Logs
+  // shows the app's diagnostic logs for easy copy/paste sharing. Because
+  // settings and help are tabs here, the brand row no longer needs its own
+  // buttons. The host can land on a specific tab (help button → "help";
   // missing identity at launch → "settings" on its Accounts sub-tab).
-  type LandingTab = "projects" | "settings" | "help";
+  type LandingTab = "projects" | "settings" | "help" | "logs";
   const LANDING_TABS: Array<{ id: LandingTab; label: string }> = [
     { id: "projects", label: "Projects" },
     { id: "settings", label: "Settings" },
     { id: "help", label: "Help" },
+    { id: "logs", label: "Logs" },
   ];
   let activeTab = $state<LandingTab>("projects");
   let tabEls = $state<Record<LandingTab, HTMLButtonElement | undefined>>({
     projects: undefined,
     settings: undefined,
     help: undefined,
+    logs: undefined,
   });
 
   /** Host-driven tab switch (help button, launch-time identity nudge). */
@@ -448,6 +452,13 @@
           {onCrashRecoveryChange}
         />
       </section>
+      {:else if activeTab === "logs"}
+      <section class="logs-sec" aria-label="Diagnostic logs">
+        <!-- Keyed so each visit re-lists (a sync may have written since). -->
+        {#key activeTab}
+          <LogsPanel />
+        {/key}
+      </section>
       {:else}
       <section class="help-sec" aria-label="Help and about">
         <HelpContent
@@ -598,7 +609,7 @@
     gap: 22px;
     min-height: 0;
   }
-  .settings-sec, .help-sec { display: flex; flex-direction: column; gap: 14px; }
+  .settings-sec, .help-sec, .logs-sec { display: flex; flex-direction: column; gap: 14px; }
 
   /* ── Continue card ─────────────────────────────────────────────────── */
   .continue-sec { display: flex; flex-direction: column; gap: 10px; }

@@ -114,6 +114,7 @@ export type {
 } from './platform/dtos';
 
 import type {
+  LogFileEntry,
   AppImageIntegrationStatus,
   AppImageIntegrationInstallResult,
   AppImageIntegrationRemoveResult,
@@ -237,6 +238,8 @@ export const api = {
   log: {
     /** Read an operation log file. Returns null when the file doesn't exist. */
     read: (logPath: string) => post<string | null>('/api/log/read', { logPath }),
+    /** List the app's diagnostic log files (newest first). */
+    list: () => post<LogFileEntry[]>('/api/log/list', {}),
   },
 
   fs: {

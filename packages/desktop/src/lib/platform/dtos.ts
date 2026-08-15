@@ -297,6 +297,18 @@ export type RemoteGuidanceId =
   | "ready-to-sync"
   | "ssh-use-own-tools";
 
+/** One diagnostic log file the host can list (userData/logs, newest first). */
+export interface LogFileEntry {
+  /** File name (e.g. "my-book.log"). */
+  name: string;
+  /** Absolute path — feed to `api.log.read`. */
+  path: string;
+  /** File size in bytes. */
+  sizeBytes: number;
+  /** Last-modified time, ISO-8601. */
+  modifiedAt: string;
+}
+
 /** Payload types for the image pick/copy host service (#31). */
 export interface ImagePickResult {
   /** Absolute path chosen by the user, or null when cancelled. */
