@@ -1470,7 +1470,8 @@ ${emitBlocks(item.blocks, ctx)}`;
       return;
     clearTimeout(selectionTimer);
     selectionTimer = setTimeout(() => {
-      const collapsed = getSelection()?.isCollapsed ?? true;
+      const finding = Boolean(window.__GP_FIND_ACTIVE__);
+      const collapsed = finding || (getSelection()?.isCollapsed ?? true);
       if (collapsed) {
         if (!lastSelectionCollapsed) {
           lastSelectionCollapsed = true;

@@ -896,6 +896,12 @@
     find: function (query, backwards) {
       query = String(query == null ? '' : query);
       if (!query) return api.clearFind();
+      // window.find() sets a REAL DOM selection on the match. With inline
+      // editing on (ADR 0010) that selection is indistinguishable from a
+      // user selection, so the formatting bubble would pop over every search
+      // hit with live bold/italic buttons. Mark the frame as searching; the
+      // edit module suppresses its selection reporting while this is set.
+      window.__GP_FIND_ACTIVE__ = true;
       if (query !== findQuery) {
         findQuery = query;
         var text = (document.body.textContent || '').toLowerCase();
@@ -923,6 +929,7 @@
     clearFind: function () {
       findQuery = '';
       findTotal = 0;
+      window.__GP_FIND_ACTIVE__ = false;
       var sel = window.getSelection();
       if (sel) sel.removeAllRanges();
       return { found: false, total: 0 };

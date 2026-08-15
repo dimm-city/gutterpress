@@ -787,10 +787,18 @@ function onSelectionChange(): void {
   if (!enabled) return;
   clearTimeout(selectionTimer);
   selectionTimer = setTimeout(() => {
+    // A find session drives the DOM selection itself (preview-interface's
+    // window.find()), and that selection is indistinguishable from a user
+    // one — reporting it would float the formatting bubble over every
+    // search hit with live formatting buttons. Treat it as no selection
+    // until clearFind() releases the frame.
+    const finding = Boolean(
+      (window as unknown as { __GP_FIND_ACTIVE__?: boolean }).__GP_FIND_ACTIVE__,
+    );
     // Typing keeps the selection collapsed — the state that can never show
     // the bubble. Skip the layout-forcing rect/format computation entirely
     // and report only the expanded↔collapsed transition.
-    const collapsed = getSelection()?.isCollapsed ?? true;
+    const collapsed = finding || (getSelection()?.isCollapsed ?? true);
     if (collapsed) {
       if (!lastSelectionCollapsed) {
         lastSelectionCollapsed = true;

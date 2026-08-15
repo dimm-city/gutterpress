@@ -454,6 +454,53 @@ testIf(
             return { before, after: (w.__batches as unknown[]).length };
           });
           expect(disabledFlush.after).toBeGreaterThan(disabledFlush.before);
+
+          // ── 11. a find session's selection must not float the bubble ────
+          //     Upstream's in-frame find (window.find()) sets a REAL DOM
+          //     selection on each match; reporting it would put live
+          //     bold/italic buttons over every search hit.
+          const findSel = await page.evaluate(async () => {
+            const w = window as unknown as {
+              GutterpressEdit: { enable(o: object): void };
+              __GP_FIND_ACTIVE__?: boolean;
+              __sel: unknown[];
+            };
+            w.GutterpressEdit.enable({ relayoutDelayMs: 40, autosyncDelayMs: 80 });
+            w.__sel = [];
+            window.addEventListener("editSelection", (e) =>
+              w.__sel.push((e as CustomEvent).detail),
+            );
+            const p = [...document.querySelectorAll("p")].find((el) =>
+              el.textContent!.startsWith("Second paragraph"),
+            )!;
+            const selectMatch = () => {
+              const sel = getSelection()!;
+              const r = document.createRange();
+              r.setStart(p.firstChild!, 0);
+              r.setEnd(p.firstChild!, 6);
+              sel.removeAllRanges();
+              sel.addRange(r);
+            };
+            // While a find session owns the selection → suppressed.
+            w.__GP_FIND_ACTIVE__ = true;
+            selectMatch();
+            await new Promise((r) => setTimeout(r, 250));
+            const duringFind = (w.__sel as Array<{ collapsed: boolean }>).filter(
+              (d) => !d.collapsed,
+            ).length;
+            // Once find releases the frame, a real selection reports again.
+            w.__GP_FIND_ACTIVE__ = false;
+            getSelection()!.removeAllRanges();
+            await new Promise((r) => setTimeout(r, 250));
+            selectMatch();
+            await new Promise((r) => setTimeout(r, 250));
+            const afterFind = (w.__sel as Array<{ collapsed: boolean }>).filter(
+              (d) => !d.collapsed,
+            ).length;
+            return { duringFind, afterFind };
+          });
+          expect(findSel.duringFind).toBe(0);
+          expect(findSel.afterFind).toBeGreaterThan(0);
         } finally {
           await page.close();
         }
