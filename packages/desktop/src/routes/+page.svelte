@@ -1957,6 +1957,9 @@
       void blockOverlay.show({ chapter: r.chapter, range: r.range }),
     onDriftMismatch: (chapter) =>
       toast?.info?.(`Preview drifted for ${chapter} — reload the preview to reconcile.`),
+    // Never fail silently: the edit is on screen but not on disk.
+    onCommitFailed: ({ chapter, message }) =>
+      toast?.error(`Couldn't save your edit to ${chapter}: ${message}`),
   });
 
   // Floating inline-format toolbar over the frame's selection (ADR 0010
@@ -2099,6 +2102,7 @@
       onSelection: (detail) =>
         handleEditSelection(detail as Parameters<typeof handleEditSelection>[0]),
       onRenderPass: hideBubble,
+      onViewportChanged: hideBubble,
     });
   }
 

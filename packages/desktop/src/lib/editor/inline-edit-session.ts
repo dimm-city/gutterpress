@@ -38,6 +38,12 @@ export interface InlineEditSessionDeps {
   onRefusal?: (r: { chapter: string; range: [number, number]; reason: string }) => void;
   /** Drift verification could not reconcile (count mismatch) — classic reload advised. */
   onDriftMismatch?: (chapter: string, mismatch: string) => void;
+  /**
+   * A commit failed for a NON-refusal reason (buffer not clean, load failed,
+   * stale generation, …). The author's typing is still on screen but did not
+   * reach disk, so this must be visible — silence here is invisible data loss.
+   */
+  onCommitFailed?: (r: { chapter: string; range: [number, number]; reason: string; message: string }) => void;
 }
 
 interface EditPatchesDetail {
@@ -69,11 +75,18 @@ export class InlineEditSession {
    */
   subscribe(
     client: InlineEditClient,
-    hooks?: { onSelection?: (detail: unknown) => void; onRenderPass?: () => void },
+    hooks?: {
+      onSelection?: (detail: unknown) => void;
+      onRenderPass?: () => void;
+      onViewportChanged?: () => void;
+    },
   ): () => void {
     return client.on((e) => {
       this.handleEvent(e.name, e.detail);
       if (e.name === "editSelection") hooks?.onSelection?.(e.detail);
+      // A scroll/zoom moves the frame content out from under the bubble,
+      // whose coordinates are window-space and computed once per selection.
+      if (e.name === "viewportChanged") hooks?.onViewportChanged?.();
       if (e.name === "ready" || e.name === "renderingComplete") {
         hooks?.onRenderPass?.();
         void this.syncEditMode();
@@ -156,6 +169,13 @@ export class InlineEditSession {
         });
         if (refused) {
           this.deps.onRefusal?.({ chapter: patch.chapter, range: patch.range, reason: outcome.message });
+        } else {
+          this.deps.onCommitFailed?.({
+            chapter: patch.chapter,
+            range: patch.range,
+            reason: outcome.reason,
+            message: outcome.message,
+          });
         }
       }
     }

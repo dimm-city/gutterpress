@@ -62,6 +62,8 @@
 {/if}
 
 <style>
+  /* App design tokens only — same set the sibling ContextMenu uses
+     (tools/check-app-tokens.mjs). */
   .bubble {
     position: fixed;
     transform: translate(-50%, calc(-100% - 8px));
@@ -69,10 +71,10 @@
     gap: 2px;
     padding: 3px;
     border-radius: 7px;
-    background: var(--panel-bg);
-    border: 1px solid var(--panel-border);
-    box-shadow: 0 4px 16px color-mix(in srgb, var(--text-primary) 18%, transparent);
-    z-index: 60;
+    background: var(--app-surface);
+    border: 1px solid var(--app-border);
+    box-shadow: var(--app-shadow-lg);
+    z-index: var(--app-z-menu);
   }
   .verb {
     display: inline-flex;
@@ -84,14 +86,18 @@
     border: none;
     border-radius: 5px;
     background: transparent;
-    color: var(--text-primary);
+    color: var(--app-text);
     cursor: pointer;
   }
   .verb:hover {
-    background: var(--hover-bg);
+    background: var(--app-control-hover-bg);
+  }
+  .verb:focus-visible {
+    outline: 2px solid var(--app-focus-ring);
+    outline-offset: -2px;
   }
   .verb.active {
-    background: var(--accent-soft-bg, var(--hover-bg));
-    color: var(--accent, var(--text-primary));
+    background: var(--app-control-hover-bg);
+    color: var(--app-accent-text);
   }
 </style>

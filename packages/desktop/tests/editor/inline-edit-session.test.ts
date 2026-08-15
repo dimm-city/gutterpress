@@ -26,14 +26,16 @@ function makeHarness(outcomes: CommitOutcome[]) {
       return () => {};
     },
   };
+  const failures: unknown[] = [];
   const session = new InlineEditSession({
     client: () => client,
     engine: () => engine,
     enabled: () => true,
     onRefusal: (r) => refusals.push(r),
+    onCommitFailed: (r) => failures.push(r),
   });
   const emit = (name: string, detail: unknown) => listeners.forEach((fn) => fn({ name, detail }));
-  return { session, client, committed, acks, refusals, emit };
+  return { session, client, committed, acks, refusals, failures, emit };
 }
 
 const patch = (n: number) => ({
@@ -77,6 +79,11 @@ describe("InlineEditSession", () => {
     expect(ack.results[1]!.status).toBe("failed");
     expect(ack.results[1]!.reason).toBe("not-clean");
     expect(h.refusals.length).toBe(1); // only the mismatch opens the overlay path
+    // A transient failure must still be VISIBLE — the edit is on screen but
+    // never reached disk, so silence here would be invisible data loss.
+    expect(h.failures).toEqual([
+      { chapter: "ch.md", range: [4, 5], reason: "not-clean", message: "buffer dirty" },
+    ]);
   });
 
   test("frame-side serializer refusals surface through onRefusal without touching the engine", async () => {
@@ -114,5 +121,14 @@ describe("InlineEditSession", () => {
     expect(h.committed.length).toBe(1);
     expect(selections).toEqual([{ collapsed: true }]);
     expect(renderPasses).toBe(1);
+  });
+
+  test("viewport changes dismiss the bubble (its coords are window-space)", () => {
+    const h = makeHarness([]);
+    let dismissals = 0;
+    h.session.subscribe(h.client, { onViewportChanged: () => dismissals++ });
+    h.emit("viewportChanged", { scrollTop: 120 });
+    h.emit("viewportChanged", { scrollTop: 240 });
+    expect(dismissals).toBe(2);
   });
 });

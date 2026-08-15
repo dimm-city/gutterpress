@@ -329,6 +329,22 @@ describe("edited DOM", () => {
     expect(res.text).toBe("a **bold** and *ital* plain");
   });
 
+  test("preview highlight chrome (class AND attr) never reaches the markdown", () => {
+    // preview-interface.js's highlight sets both on a live block; editing a
+    // highlighted block must not write either into the author's source.
+    const root = parseHtml(
+      `<p data-source-range="0:1" class="gutterpress-hl" data-gutterpress-hl-group="g1">a b</p>`,
+    );
+    const res = serializeBlock({
+      edited: root.childNodes[0] as TestElement,
+      originalSlice: "a b",
+      pristineModel: null,
+    });
+    expect(res.kind).toBe("replacement");
+    if (res.kind !== "replacement") return;
+    expect(res.text).toBe("a b");
+  });
+
   test("NBSP from double-space typing normalizes to a plain space", () => {
     const root = parseHtml(`<p data-source-range="0:1">a b</p>`);
     const res = serializeBlock({

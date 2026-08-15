@@ -171,6 +171,11 @@ const ARTIFACT_ATTRS = new Set([
   "data-gp-source-token",
   "data-gp-source-occurrence",
   "data-gp-edit-degraded",
+  // preview-interface.js's block highlight sets BOTH a class and this attr
+  // (:866-867); ARTIFACT_CLASS_RE strips the class, so the attr must be
+  // stripped here or editing a highlighted block would write
+  // `{data-gutterpress-hl-group=…}` into the author's markdown.
+  "data-gutterpress-hl-group",
   "contenteditable",
   "spellcheck",
 ]);
