@@ -41,13 +41,7 @@ import { defaultGitHttp } from "./git-http.ts";
 
 import { resolveGitAuthor, withRepoLock } from "../source-provider.ts";
 import { resolveLogger } from "./operation-log.ts";
-import {
-  classifyFromHealth,
-  isMergeConflictError,
-  isPushRejected,
-  RepoNeedsRecoveryError,
-} from "./recovery/classify.ts";
-import { inspectRepo } from "./recovery/inspect.ts";
+import { isMergeConflictError, isPushRejected } from "./recovery/classify.ts";
 import {
   MSG_CONFLICT,
   MSG_PULL_FIRST,
@@ -62,6 +56,7 @@ import {
   MSG_UP_TO_DATE_PULLED,
 } from "./sync-messages.ts";
 import {
+  assertNoStructuralDamage,
   conflictFilesFrom,
   currentBranchOrThrow,
   failureOutcome,
@@ -116,34 +111,13 @@ function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Structural preflight — never touch the tree of a damaged repo. An interrupted
- * merge/rebase/cherry-pick, detached HEAD, stale lock, or missing `.git` must be
- * REPAIRED before any sync work: snapshotBeforeAction would otherwise commit
- * whatever is on disk (e.g. the literal conflict markers a half-done native-git
- * merge leaves in tracked files) and push it to every collaborator. Throwing the
- * typed error routes the caller through the recover() path. `checkLocalChanges:
- * false` — only the structural flags matter here.
- *
- * Runs INSIDE pullChanges' and pushChanges' repo lock (deep-analysis fix: the
- * History tab's Pull/Push buttons call them directly, so the guard must live
- * there, not only in syncProject). syncProject deliberately has NO entry
- * preflight of its own — its first pull hits this guard before any try/catch,
- * so the typed error propagates identically, and each inspectRepo (parent-dir
- * walk + several stat/exists probes) runs once per locked operation instead of
- * an extra time per ~2-minute auto-sync.
- */
-async function assertNoStructuralDamage(
-  projectDir: string,
-  logger: ReturnType<typeof resolveLogger>,
-): Promise<void> {
-  const health = await inspectRepo({ repoDir: projectDir }, { checkLocalChanges: false });
-  const structural = classifyFromHealth(health);
-  if (structural) {
-    logger.warn("sync", "structural preflight blocked sync", { kind: structural });
-    throw new RepoNeedsRecoveryError(structural);
-  }
-}
+// assertNoStructuralDamage now lives in transport.ts (shared with
+// conflict-resolution.ts, whose resolve path was originally missing the
+// guard). It runs INSIDE pullChanges'/pushChanges'/resolveConflicts' repo
+// lock; syncProject deliberately has NO entry preflight of its own — its
+// first pull hits the guard before any try/catch, so the typed error
+// propagates identically, and each inspectRepo runs once per locked
+// operation instead of an extra time per ~2-minute auto-sync.
 
 /**
  * Snapshot-first sync (ADR 0006 D5) — the composition of {@link pullChanges}
@@ -225,6 +199,7 @@ export async function syncProject(
   logger.error("sync", `exhausted ${attempts} retry attempts (race)`);
   return {
     status: "error",
+    code: "race",
     message: MSG_RACE,
     ...(filesChanged ? { filesChanged: true } : {}),
     ...(snapshotId ? { snapshotId } : {}),

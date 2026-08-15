@@ -43,6 +43,7 @@ import {
   SYNC_SNAPSHOT_MESSAGE,
 } from "./sync-messages.ts";
 import {
+  assertNoStructuralDamage,
   conflictFilesFrom,
   currentBranchOrThrow,
   failureOutcome,
@@ -73,21 +74,41 @@ export function onlineCopyPath(filepath: string, counter?: number): string {
   return dirname === "." ? renamed : `${dirname}/${renamed}`;
 }
 
+/** Byte equality for two blobs (never decoded through a string). */
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /**
- * First "(online copy)" name that doesn't already exist in the working dir or
- * in either side's tree — a pre-existing file with that name must never be
- * overwritten by a "Keep both copies" resolution.
+ * First "(online copy)" name that is SAFE for `content`: a name whose every
+ * existing occurrence (working dir, either side's tree) is byte-identical to
+ * `content` — or that doesn't exist at all. A pre-existing file with that name
+ * and DIFFERENT bytes must never be overwritten by a "Keep both copies"
+ * resolution, so the counter bumps past it.
+ *
+ * The identical-bytes reuse makes retries idempotent: a failed resolution
+ * (e.g. the push raced and the author confirms again) finds its own
+ * "(online copy)" file from the previous attempt and reuses it instead of
+ * committing "(online copy 2)", "(online copy 3)", … on every retry — the
+ * accumulation defect from the 2026-08 field incident.
  */
 async function uniqueOnlineCopyPath(
   dir: string,
   filepath: string,
   oids: string[],
+  content: Uint8Array,
   cache: GitCache,
 ): Promise<string> {
   const taken = async (candidate: string): Promise<boolean> => {
-    if (fs.existsSync(path.join(dir, candidate))) return true;
+    const abs = path.join(dir, candidate);
+    if (fs.existsSync(abs) && !bytesEqual(fs.readFileSync(abs), content)) {
+      return true;
+    }
     for (const oid of oids) {
-      if ((await tryReadBlob(dir, oid, candidate, cache)) !== null) return true;
+      const blob = await tryReadBlob(dir, oid, candidate, cache);
+      if (blob !== null && !bytesEqual(blob, content)) return true;
     }
     return false;
   };
@@ -352,6 +373,7 @@ async function pushWithRaceRecovery(params: {
     if (!newRemoteTip) {
       return {
         status: "error",
+        code: "race",
         message: MSG_RACE,
         ...(snapshotId ? { snapshotId } : {}),
       };
@@ -371,6 +393,7 @@ async function pushWithRaceRecovery(params: {
       if (isPushRejected(retryErr)) {
         return {
           status: "error",
+          code: "race",
           message: MSG_RACE,
           ...(snapshotId ? { snapshotId } : {}),
         };
@@ -432,11 +455,17 @@ export async function resolveConflicts(
   ) {
     return {
       status: "error",
+      code: "expired-choices",
       message: MSG_EXPIRED_CHOICES,
     };
   }
 
   return withRepoLock(dir, async (): Promise<SyncOutcome> => {
+    // Structural preflight INSIDE the lock — same guard as pullChanges/
+    // pushChanges. Without it, the resolve path (the one most likely to run
+    // right after an interrupted operation) would snapshot and merge a
+    // damaged tree. The typed error routes the caller through recover().
+    await assertNoStructuralDamage(options.projectDir, logger);
     // One object cache for this resolve operation only — released with it.
     const cache: GitCache = {};
     let snapshotId: string | undefined;
@@ -455,7 +484,7 @@ export async function resolveConflicts(
         (await isRealCommit(dir, normalizedLocalId, cache)) &&
         (await isRealCommit(dir, normalizedRemoteId, cache));
       if (!bothExist) {
-        return { status: "error", message: MSG_EXPIRED_CHOICES };
+        return { status: "error", code: "expired-choices", message: MSG_EXPIRED_CHOICES };
       }
 
       // Safety: capture any edits (whole tree) made while the choices dialog
@@ -481,8 +510,8 @@ export async function resolveConflicts(
       // the git side-effects of applying the plan below.
       const plan = await buildResolutionPlan(options.resolutions, localTip, remoteId, {
         readBlob: (oid, filepath) => tryReadBlob(dir, oid, filepath, cache),
-        uniqueOnlineCopyPath: (filepath, oids) =>
-          uniqueOnlineCopyPath(dir, filepath, oids, cache),
+        uniqueOnlineCopyPath: (filepath, oids, content) =>
+          uniqueOnlineCopyPath(dir, filepath, oids, content, cache),
       });
 
       // Apply the plan into an honest two-parent merge. Bails with a `conflict`

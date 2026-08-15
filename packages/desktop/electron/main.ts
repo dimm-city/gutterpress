@@ -42,7 +42,7 @@ import type { AppImageHooks, DesktopHooks, DoctorHooks } from "./server-bridge/h
 import { AppImageIntegration } from "./appimage-integration";
 import type { MediaHooks } from "./server-bridge/media-hooks";
 import type { VcsHooks } from "./server-bridge/vcs-hooks";
-import type { RemoteHooks } from "./server-bridge/remote-hooks";
+import { postResolveLatchAction, type RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors } from "./server-bridge/friendly-errors";
@@ -1370,16 +1370,31 @@ const remoteHooksImpl: RemoteHooks<LibModule> = {
       tokenStore: electronTokenStore,
       logFile: operationLogPathForDir(dir),
     });
-    // §6.1: After successful resolution, clear the conflict latch so auto-sync
-    // resumes the transparent flow. The latch was set (and the timer cancelled)
-    // when the conflict was first detected; re-arm it now so the resolved content
-    // is pushed without requiring the user to toggle Settings off/on.
+    // §6.1: After SUCCESSFUL resolution, clear the conflict latch so auto-sync
+    // resumes the transparent flow. The decision table is the PURE
+    // `postResolveLatchAction` (unit-tested in remote-hooks-latch.test.ts) —
+    // the 2026-08 field incident found this used to unlatch UNCONDITIONALLY,
+    // silently resuming auto-sync behind a failed resolution's still-open
+    // dialog. See that function's doc comment for the three arms.
     const resolvedKey = path.resolve(dir);
     if (autoSync.hasState(resolvedKey)) {
-      autoSync.unlatch(resolvedKey);
-      // Re-arm the periodic timer (scheduleAutoSync is idempotent — safe to
-      // call even if a timer is already running).
-      autoSync.schedule(resolvedKey);
+      const latchAction = postResolveLatchAction(outcome.status);
+      if (latchAction === "resume") {
+        autoSync.unlatch(resolvedKey);
+        // Re-arm the periodic timer (scheduleAutoSync is idempotent — safe to
+        // call even if a timer is already running).
+        autoSync.schedule(resolvedKey);
+      } else if (latchAction === "relatch" && outcome.status === "conflict") {
+        // Re-latch with the FRESH ids so the pill's stored conflict state
+        // matches what the dialog now shows (the dialog itself re-renders
+        // from the returned outcome via SyncController.applyReconflict).
+        autoSync.latchConflict(
+          resolvedKey,
+          outcome.files,
+          outcome.localId,
+          outcome.remoteId,
+        );
+      }
     }
     return outcome;
   },

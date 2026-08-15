@@ -18,6 +18,7 @@
   import { api } from "$lib/api";
   import { basenameOf } from "$lib/platform/paths";
   import { friendlyHostError } from "$lib/errors";
+  import { routeResolveOutcome } from "$lib/components/resolve-outcome";
   import type {
     ConflictFileEntry,
     ConflictResolutionChoice,
@@ -49,6 +50,15 @@
     onRetryIds,
     /** Called after successful resolution so the parent can refresh the preview. */
     onResolved,
+    /**
+     * The online copy changed AGAIN while the author was deciding, and the
+     * resolution came back as a fresh conflict with new files/ids (the lib's
+     * push-race recovery). The parent must replace its conflict state so the
+     * `files`/`localId`/`remoteId` props re-render against reality — wired to
+     * SyncController.applyReconflict. Without this the dialog was a dead end:
+     * every retry re-submitted the stale ids (2026-08 field incident).
+     */
+    onReconflict,
     /** Re-routes to the reconnect flow on the unlikely auth error during resolution. */
     onReconnect,
     triggerEl,
@@ -62,6 +72,7 @@
     idsFetchFailed?: boolean;
     onRetryIds?: () => void;
     onResolved?: (mergedRemoteChanges: boolean) => void;
+    onReconflict?: (files: ConflictFileEntry[], localId: string, remoteId: string) => void;
     onReconnect?: () => void;
     triggerEl?: HTMLButtonElement | undefined;
   } = $props();
@@ -75,10 +86,17 @@
    * the same point in confirm(), so the header can be a function of state the
    * same way the body already is (visual-gate round 1 finding: a static
    * "file conflict" title was shown over the unrelated connection-setup
-   * error). Any future non-conflict error state reusing this dialog shell
-   * should add a case here rather than leaving the header hardcoded.
+   * error). "sync-again" = the resolution can't succeed with the ids in hand
+   * (race exhausted / expired choices) — its footer offers "Sync again"
+   * (fresh ids via onRetryIds), never a blind retry of the stale resolution.
    */
-  let errorKind = $state<"conflict" | "connection-setup">("conflict");
+  let errorKind = $state<"conflict" | "connection-setup" | "sync-again">("conflict");
+  /**
+   * True right after a reconflict: the online copy changed again mid-decision
+   * and the file list below was refreshed against the NEW online version.
+   * Cleared on the next confirm/mount.
+   */
+  let reconflicted = $state(false);
 
   /** Header icon + title as a function of the dialog's current state. */
   const header = $derived(
@@ -92,18 +110,19 @@
   /** Memoised preview results (path → ConflictPreview | null | "loading" | "error"). */
   let previewCache = $state<Record<string, ConflictPreview | null | "loading" | "error">>({});
 
+  /** Default per-file choice: lossless "both" for edits, "mine" for deletions. */
+  function defaultChoice(kind: ConflictFileEntry["kind"]): "mine" | "theirs" | "both" {
+    return kind === "both-edited" ? "both" : "mine";
+  }
+
   function onDialogMount(_el: HTMLElement) {
     phase = "choosing";
     errorMessage = null;
     errorKind = "conflict";
+    reconflicted = false;
     previewExpanded = {};
     previewCache = {};
-    choices = Object.fromEntries(
-      files.map((f) => [
-        f.path,
-        f.kind === "both-edited" ? ("both" as const) : ("mine" as const),
-      ]),
-    );
+    choices = Object.fromEntries(files.map((f) => [f.path, defaultChoice(f.kind)]));
   }
 
   /** Human-readable label for the file, falling back to the repo-relative path. */
@@ -168,9 +187,10 @@
     phase = "resolving";
     errorMessage = null;
     errorKind = "conflict";
+    reconflicted = false;
     const resolutions: ConflictResolutionChoice[] = files.map((f) => ({
       path: f.path,
-      choice: choices[f.path] ?? "both",
+      choice: choices[f.path] ?? defaultChoice(f.kind),
     }));
     try {
       const outcome: SyncOutcome = await getPlatform().resolveSyncConflicts({
@@ -179,47 +199,82 @@
         localId,
         remoteId,
       });
-      if (outcome.status === "synced") {
-        phase = "done";
-        onResolved?.(outcome.mergedRemoteChanges);
-        close();
-      } else if (outcome.status === "up-to-date") {
-        phase = "done";
-        onResolved?.(false);
-        close();
-      } else if (outcome.status === "auth") {
-        phase = "error";
-        errorMessage = outcome.message;
-        onReconnect?.();
-      } else if (outcome.status === "offline") {
-        // Already a plain-language, non-technical message — safe to render
-        // as-is (unchanged from before this fix).
-        phase = "error";
-        errorMessage = outcome.message;
-      } else if (outcome.status === "error" && outcome.code === "needs-connection-setup") {
-        // The project's online connection itself is the problem (no online
-        // address / an SSH address / no named version line) — never render
-        // outcome.message here, it carries the lib's technical wording for
-        // that case. Route straight to the same connect/setup surface the
-        // "auth" branch above uses; the author's per-file choices are left
-        // untouched so they can close this dialog and pick up later.
-        phase = "error";
-        errorKind = "connection-setup";
-        errorMessage =
-          "This project needs its online connection set up differently before syncing can work.";
-        onReconnect?.();
-      } else {
-        phase = "error";
-        // Deliberately a fixed friendly string, NOT outcome.message: that
-        // field can carry raw technical error text that is unhelpful (and
-        // often alarming) to the non-technical authors this app targets.
-        // Same fixed copy as SyncController.handleForceSync's generic arm.
-        errorMessage = "Couldn't update the online copy. Your work is saved on this computer — we'll try again later.";
+      // ALL outcome routing lives in routeResolveOutcome — an exhaustively
+      // switched shared module, so an unrouted status is a compile error, not
+      // a silent fall-through into the generic arm (the 2026-08 field
+      // incident: a "conflict" outcome — the lib's designed answer when the
+      // online copy moves mid-decision — was swallowed by the old inline
+      // else, dead-ending the author forever).
+      const action = routeResolveOutcome(outcome);
+      switch (action.kind) {
+        case "done":
+          phase = "done";
+          onResolved?.(action.mergedRemoteChanges);
+          close();
+          break;
+        case "reconflict":
+          // The online copy changed again while deciding. Hand the FRESH
+          // files/ids to the parent (they flow back down as props), rebuild
+          // the per-file choices for the new list, and return to choosing —
+          // with a visible notice so the refresh isn't mistaken for a no-op.
+          onReconflict?.(action.files, action.localId, action.remoteId);
+          choices = Object.fromEntries(
+            action.files.map((f) => [f.path, defaultChoice(f.kind)]),
+          );
+          previewExpanded = {};
+          previewCache = {};
+          reconflicted = true;
+          phase = "choosing";
+          break;
+        case "auth":
+          phase = "error";
+          errorMessage = action.message;
+          onReconnect?.();
+          break;
+        case "offline":
+          phase = "error";
+          errorMessage = action.message;
+          break;
+        case "connection-setup":
+          // The project's online connection itself is the problem — route to
+          // the same connect/setup surface the "auth" branch uses; the
+          // author's per-file choices are left untouched.
+          phase = "error";
+          errorKind = "connection-setup";
+          errorMessage = action.message;
+          onReconnect?.();
+          break;
+        case "sync-again":
+          // The resolution can't succeed with the ids in hand (race
+          // exhausted / choices expired). The footer offers "Sync again",
+          // which fetches FRESH ids — retrying the stale resolution can
+          // never succeed, so no plain retry is offered here.
+          phase = "error";
+          errorKind = "sync-again";
+          errorMessage = action.message;
+          break;
+        case "failed":
+          phase = "error";
+          errorMessage = action.message;
+          break;
       }
     } catch (e) {
       phase = "error";
       errorMessage = friendlyHostError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  /**
+   * "Sync again" from the sync-again error state: back to the choosing shell
+   * and ask the parent for a fresh sync (SyncController.retryConflictIds →
+   * a full sync that either resolves outright or returns a NEW conflict whose
+   * files/ids replace this dialog's props).
+   */
+  function syncAgain() {
+    phase = "choosing";
+    errorMessage = null;
+    errorKind = "conflict";
+    onRetryIds?.();
   }
 
   function setAll(choice: "mine" | "theirs" | "both") {
@@ -304,6 +359,16 @@
           <div class="ids-status ids-status-error" role="alert">
             <span>We couldn't get things ready to combine your changes.</span>
             <button class="ids-retry-btn" onclick={() => onRetryIds?.()}>Try again</button>
+          </div>
+        {:else if reconflicted}
+          <!-- The online copy moved again mid-decision: the list below was
+               refreshed against the NEW online version (never a dead end —
+               2026-08 field incident). -->
+          <div class="ids-status" role="alert">
+            <span>
+              The online copy changed again while you were deciding. The files
+              below show the newest differences — choose again.
+            </span>
           </div>
         {/if}
 
@@ -436,7 +501,12 @@
          commit and the safe-escape are always visible no matter how many files
          are listed (three-judge gate finding). -->
     <footer class="dlg-actions">
-      {#if phase === "error"}
+      {#if phase === "error" && errorKind === "sync-again"}
+        <!-- The stale resolution can never succeed — the ONLY useful action
+             is a fresh sync (new ids). No blind "Try again" here. -->
+        <button class="dlg-ghost" onclick={close}>Close</button>
+        <button class="dlg-primary app-btn-primary" onclick={syncAgain}>Sync again</button>
+      {:else if phase === "error"}
         <button class="dlg-ghost" onclick={close}>Close</button>
         <button class="dlg-primary app-btn-primary" onclick={confirm}>Try again</button>
       {:else}

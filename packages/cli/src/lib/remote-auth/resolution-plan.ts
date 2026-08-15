@@ -53,10 +53,16 @@ export interface ResolutionPlanDeps {
   /** Read a file's blob from a commit oid, or null when absent in that tree. */
   readBlob: (oid: string, filepath: string) => Promise<Uint8Array | null>;
   /**
-   * First "(online copy)" name for `filepath` that collides with nothing in
-   * the working dir or in either side's tree (given by `oids`).
+   * First "(online copy)" name for `filepath` that is safe for `content`:
+   * every existing occurrence (working dir, the trees given by `oids`) is
+   * byte-identical to `content`, or the name is unused. Identical-bytes reuse
+   * keeps retried resolutions from accumulating "(online copy N)" files.
    */
-  uniqueOnlineCopyPath: (filepath: string, oids: string[]) => Promise<string>;
+  uniqueOnlineCopyPath: (
+    filepath: string,
+    oids: string[],
+    content: Uint8Array,
+  ) => Promise<string>;
 }
 
 /**
@@ -107,9 +113,14 @@ export async function buildResolutionPlan(
         postBinaryFixes.push({ path: filepath, content: mine });
         if (resolution.choice === "both") {
           // Uniquified: a pre-existing "(online copy)" file (from an
-          // earlier "Keep both") must survive untouched.
+          // earlier "Keep both") with different bytes must survive
+          // untouched; an identical one (a retried resolution) is reused.
           preWrites.push({
-            path: await deps.uniqueOnlineCopyPath(filepath, [localTip, remoteId]),
+            path: await deps.uniqueOnlineCopyPath(
+              filepath,
+              [localTip, remoteId],
+              theirs,
+            ),
             content: theirs,
           });
         }

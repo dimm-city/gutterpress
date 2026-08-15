@@ -70,13 +70,22 @@ export type SyncOutcome =
       status: "error";
       message: string;
       /**
-       * Stable machine-readable signal for the small set of known "the project
-       * isn't set up right" failures (no remote / SSH remote / no named
-       * branch) — set by conflict-resolution.ts's setupErrorMessage() check.
-       * Lets a host UI route to its connect/setup surface without
-       * string-matching `message` (which stays free to reword).
+       * Stable machine-readable signal for the known error causes, so a host
+       * UI can route without string-matching `message` (which stays free to
+       * reword):
+       *
+       * - `"needs-connection-setup"` — the project isn't set up right (no
+       *   remote / SSH remote / no named branch); route to the connect/setup
+       *   surface. Set by conflict-resolution.ts's setupErrorMessage() check.
+       * - `"race"` — someone else synced at the same moment and the bounded
+       *   retry/recovery passes were exhausted (MSG_RACE). The correct user
+       *   action is to run Sync again, which computes FRESH conflict ids —
+       *   retrying a resolution with the same stale ids cannot succeed.
+       * - `"expired-choices"` — the localId/remoteId handed to
+       *   resolveConflicts no longer name real commits (MSG_EXPIRED_CHOICES).
+       *   Same user action as "race": run Sync again for fresh ids.
        */
-      code?: "needs-connection-setup";
+      code?: "needs-connection-setup" | "race" | "expired-choices";
       snapshotId?: string;
       filesChanged?: boolean;
     };

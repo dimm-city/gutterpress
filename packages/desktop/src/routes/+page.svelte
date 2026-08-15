@@ -3217,6 +3217,8 @@
     onSyncCompleted(mergedRemoteChanges);
     syncController.clearConflict();
   }}
+  onReconflict={(files, localId, remoteId) =>
+    syncController.applyReconflict(files, localId, remoteId)}
   onReconnect={onSyncReconnect}
 />
 

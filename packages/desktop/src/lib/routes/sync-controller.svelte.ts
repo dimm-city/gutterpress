@@ -241,6 +241,22 @@ export class SyncController {
     }
   }
 
+  /**
+   * ConflictChoicesDialog onReconflict: the resolution came back as a FRESH
+   * conflict (the online copy moved again mid-decision — the lib's push-race
+   * recovery). Replace the conflict state so the dialog's props re-render
+   * against the new files/ids. Without this the dialog retried the stale ids
+   * forever (2026-08 field incident).
+   */
+  applyReconflict(files: ConflictFileEntry[], localId: string, remoteId: string): void {
+    if (!this.conflictOpen) return;
+    this.conflictFiles = files;
+    this.conflictLocalId = localId;
+    this.conflictRemoteId = remoteId;
+    this.conflictPending = false;
+    this.conflictFetchFailed = false;
+  }
+
   /** ConflictChoicesDialog onResolved cleanup: reset files/ids (leaves conflictOpen to the bind). */
   clearConflict(): void {
     this.conflictFiles = [];

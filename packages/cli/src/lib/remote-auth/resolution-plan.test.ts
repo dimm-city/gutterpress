@@ -26,14 +26,20 @@ const bytes = (s: string): Uint8Array => new TextEncoder().encode(s);
 function makeDeps(
   files: Record<string, Record<string, Uint8Array>>,
   onlineCopyName = (p: string) => `${p} (online copy)`,
-): ResolutionPlanDeps & { copyCalls: Array<{ filepath: string; oids: string[] }> } {
-  const copyCalls: Array<{ filepath: string; oids: string[] }> = [];
+): ResolutionPlanDeps & {
+  copyCalls: Array<{ filepath: string; oids: string[]; content: Uint8Array }>;
+} {
+  const copyCalls: Array<{ filepath: string; oids: string[]; content: Uint8Array }> = [];
   return {
     copyCalls,
     readBlob: async (oid: string, filepath: string) =>
       files[oid]?.[filepath] ?? null,
-    uniqueOnlineCopyPath: async (filepath: string, oids: string[]) => {
-      copyCalls.push({ filepath, oids });
+    uniqueOnlineCopyPath: async (
+      filepath: string,
+      oids: string[],
+      content: Uint8Array,
+    ) => {
+      copyCalls.push({ filepath, oids, content });
       return onlineCopyName(filepath);
     },
   };
@@ -92,9 +98,12 @@ describe("buildResolutionPlan", () => {
     expect(plan.preWrites).toEqual([
       { path: "a.md (online copy)", content: bytes("theirs") },
     ]);
-    // uniqueOnlineCopyPath is asked with BOTH tips so a pre-existing copy in
-    // either tree is skipped.
-    expect(deps.copyCalls).toEqual([{ filepath: "a.md", oids: [LOCAL, REMOTE] }]);
+    // uniqueOnlineCopyPath is asked with BOTH tips (so a pre-existing copy in
+    // either tree is skipped) AND the online bytes (so an identical copy from
+    // a retried resolution is reused instead of a new "(online copy N)").
+    expect(deps.copyCalls).toEqual([
+      { filepath: "a.md", oids: [LOCAL, REMOTE], content: bytes("theirs") },
+    ]);
   });
 
   test("you-deleted (mine absent, theirs present), choice 'mine' → equalize then re-delete", async () => {

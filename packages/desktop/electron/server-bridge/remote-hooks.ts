@@ -58,6 +58,32 @@ export interface RemoteHooks<RemoteLibModule = LibModule, TokenStoreType = Token
 }
 
 /**
+ * What the resolve hook should do with the auto-sync conflict latch after a
+ * `resolveConflicts` outcome. PURE — unit-tested in
+ * tests/platform/remote-hooks-latch.test.ts; main.ts's closure executes it.
+ *
+ * WHY GATED (2026-08 field incident): the hook used to unlatch + re-arm
+ * UNCONDITIONALLY, so a FAILED resolution silently resumed auto-sync —
+ * churning re-detections (and, on an auth outcome, the network) behind the
+ * still-open dialog, against the hook's own "after successful resolution"
+ * comment.
+ *
+ * - `"resume"`  — resolved (synced/up-to-date): unlatch + re-arm the timers so
+ *   the combined content flows without a Settings toggle.
+ * - `"relatch"` — a FRESH conflict came back (the online copy moved again
+ *   mid-decision): re-latch with the NEW ids so the pill's stored conflict
+ *   state matches what the dialog now shows.
+ * - `"hold"`    — auth/offline/error: leave the latch alone; the user acts first.
+ */
+export function postResolveLatchAction(
+  status: SyncOutcome["status"],
+): "resume" | "relatch" | "hold" {
+  if (status === "synced" || status === "up-to-date") return "resume";
+  if (status === "conflict") return "relatch";
+  return "hold";
+}
+
+/**
  * The live `RemoteHooks` slice of the collapsed host object, narrowed to
  * whatever generic view the caller asks for (same "narrow at the point of
  * use" pattern as `getPrefsHooks` — see its doc comment).

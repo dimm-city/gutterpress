@@ -30,7 +30,6 @@ import {
   type SyncOutcome,
 } from "./sync.ts";
 import type { HostCredential } from "./token-store.ts";
-import { MSG_NO_BRANCH } from "./sync-messages.ts";
 import {
   createFixtureRepo,
   FLUSH,
@@ -819,6 +818,86 @@ describe("resolveConflicts", () => {
     }
   });
 
+  test('retried "Keep both" after a failed attempt reuses its own "(online copy)" file (2026-08 field incident)', async () => {
+    const { h, conflict, localText, onlineText } = await conflictSetup();
+    try {
+      // First attempt: the contested file moved online again, so the
+      // resolution merges locally but the push is rejected and a fresh
+      // conflict comes back. The "(online copy)" file from THIS attempt is
+      // already committed on the local side.
+      const newerText = "# One\n\nOnline rewrite, take two.\n";
+      await serverCommit(h.serverDir, { "chapter-01.md": newerText }, "online edit two");
+
+      const first = await resolveConflicts({
+        projectDir: h.projectDir,
+        resolutions: [{ path: "chapter-01.md", choice: "both" }],
+        localId: conflict.localId,
+        remoteId: conflict.remoteId,
+      });
+      expect(first.status).toBe("conflict");
+      if (first.status !== "conflict") throw new Error("unreachable");
+      const copyName = "chapter-01 (online copy).md";
+      expect(fs.existsSync(path.join(h.projectDir, copyName))).toBe(true);
+
+      // Second attempt with the FRESH ids and "both" again: the online copy
+      // of the ORIGINAL conflict (identical bytes) is reused, and the newer
+      // online text lands under the next name — the retry does not mint
+      // "(online copy 2)" for bytes it already saved. (The field incident
+      // retried with STALE ids, where the reuse matters even more: every
+      // retry re-planned the identical write.)
+      const second = await resolveConflicts({
+        projectDir: h.projectDir,
+        resolutions: [{ path: "chapter-01.md", choice: "both" }],
+        localId: first.localId,
+        remoteId: first.remoteId,
+      });
+      expect(second.status).toBe("synced");
+      expect(await readFile(path.join(h.projectDir, copyName), "utf8")).toBe(onlineText);
+      expect(
+        await readFile(path.join(h.projectDir, "chapter-01 (online copy 2).md"), "utf8"),
+      ).toBe(newerText);
+      // No third copy was ever created.
+      expect(fs.existsSync(path.join(h.projectDir, "chapter-01 (online copy 3).md"))).toBe(false);
+      expect(
+        await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
+      ).toBe(localText);
+      expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("retrying the SAME resolution with STALE ids is idempotent — no accumulating copies", async () => {
+    const { h, conflict, onlineText } = await conflictSetup();
+    try {
+      // Simulate the field loop: the first "Keep both" fails to push (the
+      // remote moved), and the author retries with the SAME stale ids.
+      const newerText = "# One\n\nOnline rewrite, take two.\n";
+      await serverCommit(h.serverDir, { "chapter-01.md": newerText }, "online edit two");
+
+      const staleArgs = {
+        projectDir: h.projectDir,
+        resolutions: [{ path: "chapter-01.md", choice: "both" as const }],
+        localId: conflict.localId,
+        remoteId: conflict.remoteId,
+      };
+      const first = await resolveConflicts(staleArgs);
+      expect(first.status).toBe("conflict");
+      const second = await resolveConflicts(staleArgs);
+      expect(second.status).toBe("conflict");
+      const third = await resolveConflicts(staleArgs);
+      expect(third.status).toBe("conflict");
+
+      // Three stale retries, ONE online-copy file: the identical bytes are
+      // reused every time instead of committing "(online copy 2)", "…3", "…4".
+      const copyName = "chapter-01 (online copy).md";
+      expect(await readFile(path.join(h.projectDir, copyName), "utf8")).toBe(onlineText);
+      expect(fs.existsSync(path.join(h.projectDir, "chapter-01 (online copy 2).md"))).toBe(false);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
   test("recovery merges the racer cleanly but the retry push STILL races → friendly race message, work safe", async () => {
     const { h, conflict } = await conflictSetup();
     try {
@@ -843,6 +922,9 @@ describe("resolveConflicts", () => {
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
       expect(outcome.message).toContain("at the same moment");
+      // Machine-readable: the host UI routes "race" to a fresh Sync (new ids)
+      // rather than a blind retry of the same resolution.
+      expect(outcome.code).toBe("race");
       // The work is not lost or left dirty; the merged racer changes landed
       // locally even though the push could not.
       expect(await isClean(h.projectDir)).toBe(true);
@@ -854,13 +936,12 @@ describe("resolveConflicts", () => {
   test("setup error (detached HEAD → no named branch) → status error, code needs-connection-setup", async () => {
     const { h, conflict } = await conflictSetup();
     try {
-      // Detach HEAD directly (isomorphic-git's currentBranch() returns
-      // undefined once HEAD is a raw oid instead of a symbolic ref) so
-      // resolveConflicts's own currentBranchOrThrow() throws MSG_NO_BRANCH —
-      // the same setup-error path the desktop's ConflictChoicesDialog must
-      // route to its connect surface instead of rendering verbatim.
-      const oid = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
-      fs.writeFileSync(path.join(h.projectDir, ".git", "HEAD"), `${oid}\n`);
+      // Remove the remote so resolveConflicts's resolveTransport() throws
+      // MSG_NO_REMOTE — the setup-error path the desktop's
+      // ConflictChoicesDialog must route to its connect surface instead of
+      // rendering verbatim. (Detached HEAD — the old vehicle for this test —
+      // now routes to the RECOVERY path instead; see the next test.)
+      await git.deleteRemote({ fs, dir: h.projectDir, remote: "origin" });
 
       const outcome = await resolveConflicts({
         projectDir: h.projectDir,
@@ -871,9 +952,43 @@ describe("resolveConflicts", () => {
       expect(outcome.status).toBe("error");
       if (outcome.status !== "error") throw new Error("unreachable");
       expect(outcome.code).toBe("needs-connection-setup");
-      expect(outcome.message).toBe(MSG_NO_BRANCH);
-      // Nothing was touched: the working tree is untouched, no snapshot taken.
+      // The local edit from conflictSetup() is snapshotted before the failure
+      // is discovered (snapshot-first invariant) — the tree ends clean.
       expect(await isClean(h.projectDir)).toBe(true);
+    } finally {
+      await h.cleanup();
+    }
+  });
+
+  test("structural damage (detached HEAD) → typed RepoNeedsRecoveryError BEFORE any tree work", async () => {
+    const { h, conflict } = await conflictSetup();
+    try {
+      // Detach HEAD: resolveConflicts must refuse to snapshot/merge a
+      // structurally damaged repo — the same preflight pullChanges and
+      // pushChanges run. (The resolve path was originally the ONE sync
+      // operation without this guard.) The typed error routes the desktop
+      // host through recover(), which can repair a detached HEAD.
+      const oid = await git.resolveRef({ fs, dir: h.projectDir, ref: "HEAD" });
+      fs.writeFileSync(path.join(h.projectDir, ".git", "HEAD"), `${oid}\n`);
+
+      let thrown: unknown;
+      try {
+        await resolveConflicts({
+          projectDir: h.projectDir,
+          resolutions: [{ path: "chapter-01.md", choice: "mine" }],
+          localId: conflict.localId,
+          remoteId: conflict.remoteId,
+        });
+      } catch (e) {
+        thrown = e;
+      }
+      expect((thrown as { code?: string })?.code).toBe("RepoNeedsRecovery");
+      expect((thrown as { kind?: string })?.kind).toBe("detached_head");
+      // Preflight refused before any merge work: the author's content is
+      // still on disk exactly as it was.
+      expect(
+        await readFile(path.join(h.projectDir, "chapter-01.md"), "utf8"),
+      ).toBe("# One\n\nLocal rewrite.\n");
     } finally {
       await h.cleanup();
     }
@@ -1197,6 +1312,9 @@ describe("resolveConflicts OID verification (BUG 5)", () => {
       expect(outcome.message).toBe(
         "Those combine choices have expired. Please run Sync again.",
       );
+      // Machine-readable signal so the host UI can route to "refresh the ids
+      // via a fresh Sync" instead of retrying the same stale ids forever.
+      expect(outcome.code).toBe("expired-choices");
       // Work stays safe (clean tree).
       expect(await isClean(h.projectDir)).toBe(true);
     } finally {
@@ -1225,6 +1343,7 @@ describe("resolveConflicts OID verification (BUG 5)", () => {
       expect(outcome.message).toBe(
         "Those combine choices have expired. Please run Sync again.",
       );
+      expect(outcome.code).toBe("expired-choices");
     } finally {
       await h.cleanup();
     }

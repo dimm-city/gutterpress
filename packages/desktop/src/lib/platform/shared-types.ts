@@ -481,13 +481,20 @@ export type SyncOutcome =
       status: "error";
       message: string;
       /**
-       * Stable machine-readable signal for the small set of "the project isn't
-       * set up right" failures (no online address / SSH address / no named
-       * version line) the lib can identify. Lets the host route to its
-       * connect/setup surface without matching against `message` text (which
-       * stays free to reword) — mirrors the lib's SyncOutcome (sync-types.ts).
+       * Stable machine-readable signal for the known error causes, so the UI
+       * can route without matching against `message` text (which stays free to
+       * reword) — mirrors the lib's SyncOutcome (sync-types.ts):
+       *
+       * - `"needs-connection-setup"` — the project isn't set up right (no
+       *   online address / SSH address / no named version line); route to the
+       *   connect/setup surface.
+       * - `"race"` — someone else synced at the same moment and the bounded
+       *   retry passes were exhausted. The user should run Sync again for
+       *   FRESH conflict ids — retrying with the same stale ids cannot succeed.
+       * - `"expired-choices"` — the localId/remoteId no longer name real
+       *   versions. Same user action as "race": run Sync again.
        */
-      code?: "needs-connection-setup";
+      code?: "needs-connection-setup" | "race" | "expired-choices";
       snapshotId?: string;
       filesChanged?: boolean;
     };

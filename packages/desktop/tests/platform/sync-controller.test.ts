@@ -537,3 +537,34 @@ test("clearConflict resets files/ids/pending/failed (dialog onResolved cleanup) 
   expect(h.ctrl.conflictPending).toBe(false);
   expect(h.ctrl.conflictFetchFailed).toBe(false);
 });
+
+// ── applyReconflict (2026-08 field incident) ────────────────────────────────
+
+test("applyReconflict replaces files/ids so the dialog re-renders against the NEW conflict", () => {
+  const h = make();
+  h.ctrl.conflictOpen = true;
+  h.ctrl.conflictFiles = FILES;
+  h.ctrl.conflictLocalId = "L1";
+  h.ctrl.conflictRemoteId = "R1";
+  h.ctrl.conflictPending = true;
+  h.ctrl.conflictFetchFailed = true;
+  const fresh: ConflictFileInfo[] = [{ path: "b.md", kind: "both-edited" }];
+  h.ctrl.applyReconflict(fresh, "L2", "R2");
+  expect(h.ctrl.conflictFiles).toEqual(fresh);
+  expect(h.ctrl.conflictLocalId).toBe("L2");
+  expect(h.ctrl.conflictRemoteId).toBe("R2");
+  expect(h.ctrl.conflictPending).toBe(false);
+  expect(h.ctrl.conflictFetchFailed).toBe(false);
+});
+
+test("applyReconflict is a no-op when the dialog is already closed (stale resolution result)", () => {
+  const h = make();
+  h.ctrl.conflictOpen = false;
+  h.ctrl.conflictFiles = FILES;
+  h.ctrl.conflictLocalId = "L1";
+  h.ctrl.conflictRemoteId = "R1";
+  h.ctrl.applyReconflict([{ path: "b.md", kind: "both-edited" }], "L2", "R2");
+  expect(h.ctrl.conflictFiles).toEqual(FILES);
+  expect(h.ctrl.conflictLocalId).toBe("L1");
+  expect(h.ctrl.conflictRemoteId).toBe("R1");
+});
