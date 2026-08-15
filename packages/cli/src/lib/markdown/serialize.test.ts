@@ -7,97 +7,29 @@
  * OTHER block in the file. Blocks outside the closed set must REFUSE, never
  * emit.
  *
- * These tests run the REAL renderer (`createMarkdownRenderer`) on markdown
- * fixtures and feed its actual HTML output to the extractor through a small
- * test-only parser (bun has no DOM; the renderer's output is disciplined
- * well-formed HTML, which is all this parser accepts).
+ * Runs the REAL renderer on markdown fixtures; renderer HTML reaches the
+ * extractor through the strict test-only parser in serialize-testkit.ts.
+ * The same harness logic runs at corpus scale in scripts/roundtrip-gate.ts.
  */
 import { describe, expect, test } from "bun:test";
 import { createMarkdownRenderer, BUILTIN_OPTIONAL_PLUGINS } from "./renderer";
 import {
   canonicalizeBlock,
+  discoverContentBlocks,
   extractBlockModel,
+  findBlockRangeAttr,
   modelsEqual,
   serializeBlock,
-  type ElementLike,
   type SerializeOptions,
   type TextLike,
 } from "./serialize";
-import { SOURCE_RANGE_ATTR } from "./source-range";
-
-// ────────────────────────────────────────────────────────────────────────────
-// Test-only HTML parser (renderer output only: well-formed, double-quoted)
-// ────────────────────────────────────────────────────────────────────────────
-
-const VOID_TAGS = new Set(["br", "hr", "img", "input", "meta", "link"]);
-
-interface TestElement extends ElementLike {
-  tagName: string;
-  attrs: Map<string, string>;
-  childNodes: Array<TestElement | TextLike>;
-  parent: TestElement | null;
-}
-
-function makeElement(tag: string, parent: TestElement | null): TestElement {
-  const attrs = new Map<string, string>();
-  const el: TestElement = {
-    nodeType: 1,
-    tagName: tag.toUpperCase(),
-    attrs,
-    childNodes: [],
-    parent,
-    getAttribute: (name) => attrs.get(name.toLowerCase()) ?? null,
-    getAttributeNames: () => [...attrs.keys()],
-  };
-  return el;
-}
-
-function decodeEntities(text: string): string {
-  return text
-    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
-    .replace(/&#[xX]([0-9a-fA-F]+);/g, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&");
-}
-
-/** Parse renderer-emitted HTML into a synthetic root ElementLike. */
-export function parseHtml(html: string): TestElement {
-  const root = makeElement("root", null);
-  let current = root;
-  const tagRe = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s+[^\s=>]+(?:="[^"]*")?)*)\s*(\/?)>/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = tagRe.exec(html))) {
-    const text = html.slice(last, m.index);
-    if (text) current.childNodes.push({ nodeType: 3, data: decodeEntities(text) });
-    last = m.index + m[0].length;
-
-    const [, close, rawTag, rawAttrs, selfClose] = m;
-    const tag = rawTag!.toLowerCase();
-    if (close) {
-      if (current.tagName.toLowerCase() !== tag) {
-        throw new Error(`test parser: </${tag}> closes <${current.tagName.toLowerCase()}>`);
-      }
-      current = current.parent!;
-      continue;
-    }
-    const el = makeElement(tag, current);
-    const attrRe = /([^\s=]+)(?:="([^"]*)")?/g;
-    let a: RegExpExecArray | null;
-    while ((a = attrRe.exec(rawAttrs ?? ""))) {
-      el.attrs.set(a[1]!.toLowerCase(), decodeEntities(a[2] ?? ""));
-    }
-    current.childNodes.push(el);
-    if (!selfClose && !VOID_TAGS.has(tag)) current = el;
-  }
-  const trailing = html.slice(last);
-  if (trailing) current.childNodes.push({ nodeType: 3, data: decodeEntities(trailing) });
-  if (current !== root) throw new Error(`test parser: unclosed <${current.tagName}>`);
-  return root;
-}
+import {
+  parseHtml,
+  parseRange,
+  sliceLines,
+  substitute,
+  type TestElement,
+} from "./serialize-testkit";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Round-trip harness
@@ -121,63 +53,11 @@ const ALL_FEATURES: SerializeOptions = {
   features: { sup: true, sub: true, mark: true, abbr: true },
 };
 
-function isTestElement(n: TestElement | TextLike): n is TestElement {
-  return n.nodeType === 1;
-}
-
-/** A block's range attribute — fences carry it on the inner <code>. */
-function rangeAttrOf(el: TestElement): string | null {
-  const own = el.getAttribute(SOURCE_RANGE_ATTR);
-  if (own != null) return own;
-  if (el.tagName === "PRE") {
-    const code = el.childNodes.find(
-      (c): c is TestElement => isTestElement(c) && c.tagName === "CODE",
-    );
-    return code?.getAttribute(SOURCE_RANGE_ATTR) ?? null;
-  }
-  return null;
-}
-
-/** Top-level annotated blocks, diving into the footnote section's items. */
-function annotatedBlocks(root: TestElement): TestElement[] {
-  const out: TestElement[] = [];
-  for (const child of root.childNodes) {
-    if (!isTestElement(child)) continue;
-    if (rangeAttrOf(child) != null) {
-      out.push(child);
-      continue;
-    }
-    // section.footnotes > ol > li > (annotated blocks)
-    if (child.tagName === "SECTION") {
-      for (const ol of child.childNodes) {
-        if (!isTestElement(ol)) continue;
-        for (const li of ol.childNodes) {
-          if (!isTestElement(li)) continue;
-          for (const block of li.childNodes) {
-            if (isTestElement(block) && block.getAttribute(SOURCE_RANGE_ATTR) != null) {
-              out.push(block);
-            }
-          }
-        }
-      }
-    }
-  }
-  return out;
-}
-
-function sliceLines(src: string, range: [number, number]): string {
-  return src.split("\n").slice(range[0], range[1]).join("\n");
-}
-
-function substitute(src: string, range: [number, number], text: string): string {
-  const lines = src.split("\n");
-  return [...lines.slice(0, range[0]), ...text.split("\n"), ...lines.slice(range[1])].join("\n");
-}
+const annotatedBlocks = (root: TestElement) =>
+  discoverContentBlocks(root) as TestElement[];
 
 function rangeOf(el: TestElement): [number, number] {
-  const raw = rangeAttrOf(el)!;
-  const [a, b] = raw.split(":").map(Number);
-  return [a!, b!];
+  return parseRange(findBlockRangeAttr(el)!);
 }
 
 /** Extraction that reports refusal as null instead of throwing. */

@@ -699,6 +699,66 @@ function extractDeflist(el: ElementLike, options: SerializeOptions): BlockNode {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Content-block discovery
+// ────────────────────────────────────────────────────────────────────────────
+
+const CONTENT_BLOCK_TAGS = new Set([
+  "p", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol",
+  "table", "pre", "hr", "dl",
+]);
+
+/** The block's `data-source-range` value — fences carry it on the inner
+ *  `<code>` (markdown-it applies fence token attrs there, never `<pre>`). */
+export function findBlockRangeAttr(el: ElementLike): string | null {
+  const own = el.getAttribute("data-source-range");
+  if (own != null) return own;
+  if (tagOf(el) === "pre") {
+    const kids = el.childNodes;
+    for (let i = 0; i < kids.length; i++) {
+      const k = kids[i]!;
+      if (isElement(k) && tagOf(k) === "code") {
+        return k.getAttribute("data-source-range");
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Collect the OUTERMOST serializable content blocks under `root` — the
+ * commit units of inline editing. Descends through everything that is not
+ * itself a content block (layout wrappers `.page`/`.section`/…, the footnote
+ * section's `ol`/`li` scaffolding, plugin component wrappers) and collects
+ * elements that are (a) a known content tag and (b) source-annotated.
+ * Nested annotated elements (`li`, `tr`, blockquote paragraphs) are covered
+ * by their outermost block and never collected separately.
+ *
+ * `skip` lets callers exclude subtrees (e.g. viewer decoration in the live
+ * preview DOM).
+ */
+export function discoverContentBlocks(
+  root: ElementLike,
+  opts?: { skip?: (el: ElementLike) => boolean },
+): ElementLike[] {
+  const out: ElementLike[] = [];
+  const visit = (el: ElementLike): void => {
+    const children = el.childNodes;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i]!;
+      if (!isElement(child)) continue;
+      if (opts?.skip?.(child)) continue;
+      if (CONTENT_BLOCK_TAGS.has(tagOf(child)) && findBlockRangeAttr(child) != null) {
+        out.push(child);
+        continue;
+      }
+      visit(child);
+    }
+  };
+  visit(root);
+  return out;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Model equality
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1025,8 +1085,12 @@ const FENCE_OPEN_RE = /^[ \t]*(`{3,}|~{3,})/m;
 function harvestContext(originalSlice: string): EmitContext {
   const footnoteLabels: string[] = [];
   const defMatch = FOOTNOTE_DEF_RE.exec(originalSlice);
-  const scanFrom = defMatch ? defMatch[0].length : 0;
-  for (const m of originalSlice.slice(scanFrom).matchAll(FOOTNOTE_LABEL_RE)) {
+  // A literal `[^…]` inside a code span is not a footnote ref — blank code
+  // spans out before scanning for labels (backtick runs pair in order).
+  const scannable = originalSlice
+    .slice(defMatch ? defMatch[0].length : 0)
+    .replace(/(`+)[^`]*\1/g, (m) => " ".repeat(m.length));
+  for (const m of scannable.matchAll(FOOTNOTE_LABEL_RE)) {
     footnoteLabels.push(m[1]!);
   }
   const fence = FENCE_OPEN_RE.exec(originalSlice);
@@ -1037,6 +1101,18 @@ function harvestContext(originalSlice: string): EmitContext {
     fenceChar: fence ? fence[1]![0]! : "`",
     fenceLen: fence ? fence[1]!.length : 3,
   };
+}
+
+/**
+ * markdown-it block maps (lists especially) often include the blank line(s)
+ * separating the block from its successor. The canonical emission has no
+ * trailing blanks, so the original slice's exact trailing newline run is
+ * re-appended — dropping it would merge the block with its neighbor (the
+ * same boundary rule the block overlay ships, plan §5.5).
+ */
+function preserveTrailingBlanks(originalSlice: string, text: string): string {
+  const run = /(?:\n[ \t]*)+$/.exec(originalSlice);
+  return run ? text + run[0] : text;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -1087,7 +1163,7 @@ export function serializeBlock(input: SerializeBlockInput): SerializeResult {
       return { kind: "refused", reason: "footnote reference count changed" };
     }
     if (text.trim() === "") return { kind: "refused", reason: "block became empty" };
-    return { kind: "replacement", text };
+    return { kind: "replacement", text: preserveTrailingBlanks(input.originalSlice, text) };
   } catch (err) {
     if (err instanceof UnextractableBlock) return { kind: "refused", reason: err.message };
     throw err;

@@ -46,6 +46,13 @@ jobs:
       - name: Run tests
         run: bun --filter gutterpress test
 
+      # Inline-editing serializer soundness over every example book: zero
+      # unsound substitutions allowed; per-book coverage ratchets via
+      # scripts/roundtrip-baseline.json (see ADR 0010).
+      - name: Serializer round-trip corpus gate
+        working-directory: packages/cli
+        run: bun run roundtrip:gate
+
       - name: Test Open Design plugin contract
         working-directory: packages/open-design-plugin
         run: bun test
