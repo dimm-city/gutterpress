@@ -231,6 +231,19 @@ contextBridge.exposeInMainWorld("electron", {
   // resolveSyncConflicts migrated to server route (api.remote.resolveSyncConflicts)
   // — ARCH review #8: plain request/response.
 
+  // ── Global find-in-page (Ctrl+F over the viewer) ────────────────────────
+  // Drives the live BrowserWindow's native find (the only way to search the
+  // cross-origin preview frame); results arrive on the find:result push.
+  findInPage: (
+    text: string,
+    opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
+  ): Promise<void> => ipcRenderer.invoke("find:start", text, opts),
+  stopFindInPage: (
+    action?: "clearSelection" | "keepSelection" | "activateSelection",
+  ): Promise<void> => ipcRenderer.invoke("find:stop", action),
+  onFindResult: (cb: (data: unknown) => void): (() => void) =>
+    forwardPush("find:result", cb),
+
   startPreview: (args: RawPreviewStartArgs): Promise<PreviewStartResult> =>
     ipcRenderer.invoke("api:preview", args),
   stopPreview: (): Promise<{ stopped: boolean }> =>

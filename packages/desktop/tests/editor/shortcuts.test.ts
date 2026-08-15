@@ -77,10 +77,10 @@ test("Cmd/Ctrl+Shift+F toggles focus mode (uppercase)", () => {
   ).toBe("focus-mode");
 });
 
-test("Cmd/Ctrl+F (no shift) is NOT focus mode (browser find left alone)", () => {
+test("Cmd/Ctrl+F (no shift) is NOT focus mode — it is the global find (2026-08-15)", () => {
   expect(
     resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "f" }),
-  ).toBe("none");
+  ).toBe("find");
 });
 
 test("plain keys without a modifier resolve to none", () => {
@@ -190,4 +190,14 @@ test("unknown keys resolve to none", () => {
   expect(
     resolvePreviewNavCommand({ ctrlOrMeta: false, shift: false, key: "Enter" }),
   ).toBe("none");
+});
+
+test("Cmd/Ctrl+F resolves to find; Ctrl+Shift+F stays focus-mode (global find, 2026-08-15)", () => {
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "f" })).toBe("find");
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: false, key: "F" })).toBe("find");
+  expect(resolveGlobalShortcut({ ctrlOrMeta: true, shift: true, key: "f" })).toBe("focus-mode");
+});
+
+test("bare f (preview fit-width) stays untouched by the find shortcut", () => {
+  expect(resolveGlobalShortcut({ ctrlOrMeta: false, shift: false, key: "f" })).toBe("none");
 });

@@ -1,5 +1,6 @@
 <script lang="ts">
   import PreviewFrame from "$lib/components/PreviewFrame.svelte";
+  import FindBar from "$lib/components/FindBar.svelte";
   import ExternalEditBanner from "$lib/components/ExternalEditBanner.svelte";
   import CrashRecoveryDialog from "$lib/components/CrashRecoveryDialog.svelte";
   import { EditorBuffer } from "$lib/editor/buffer-state.svelte";
@@ -982,6 +983,7 @@
   let blockOverlayRef = $state<{ commitNow: () => void } | null>(null);
   let editorRef = $state<{
     focus: () => void;
+    openSearch: () => void;
     revealLine: (line: number, focusEditor?: boolean) => void;
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     getSelectionText: () => string;
@@ -1075,6 +1077,19 @@
         editorOpen &&
         (!isNarrow || paneMode === "edit")),
   );
+  // ── Global find (Ctrl+F) ───────────────────────────────────────────────────
+  // Routed by visibility: viewer showing → the FindBar (native window find,
+  // the only way to search the cross-origin preview frame); otherwise the
+  // editor's own CodeMirror search panel. When focus is INSIDE the editor,
+  // CodeMirror's searchKeymap consumes Ctrl+F before this ever fires.
+  let findBarOpen = $state(false);
+  let findBarRef = $state<{ focusInput: () => void } | null>(null);
+  const viewerVisibleForFind = $derived(
+    !!lifecycle.previewUrl &&
+      !previewHidden &&
+      !(isNarrow && (editorPaneOpen || editorView !== "editor")),
+  );
+
   let splitGridColumns = $derived(
     editorPaneOpen && !isNarrow && !previewHidden && !focusMode
       ? splitTemplateColumns(zoomView.splitPaneRatio)
@@ -2072,6 +2087,25 @@
         exitFocusMode();
         return;
       }
+      // Cmd/Ctrl+F finds in whichever view is showing (viewer first; the
+      // editor's own CodeMirror panel when only the editor is open). A
+      // Ctrl+F that CodeMirror already handled (focus inside the editor)
+      // arrives with defaultPrevented and is left alone.
+      if (command === "find") {
+        if (e.defaultPrevented) return;
+        if ((e.target as HTMLElement | null)?.closest?.(".cm-editor")) return;
+        if (viewerVisibleForFind) {
+          e.preventDefault();
+          if (findBarOpen) findBarRef?.focusInput();
+          else findBarOpen = true;
+          return;
+        }
+        if (editorPaneOpen && editorView === "editor") {
+          e.preventDefault();
+          editorRef?.openSearch();
+        }
+        return;
+      }
       // Cmd/Ctrl+E toggles the in-app editor (#38) when a folder is open.
       if (command === "toggle-editor") {
         e.preventDefault();
@@ -2906,6 +2940,7 @@
         aria-hidden={previewHidden}
         inert={previewHidden || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
       >
+        <FindBar bind:this={findBarRef} bind:open={findBarOpen} />
         {#if lifecycle.previewUrl}
           {#key lifecycle.previewUrl}
             <PreviewFrame

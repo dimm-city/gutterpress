@@ -10,6 +10,7 @@ export type GlobalShortcutCommand =
   | "toggle-left-panel"
   | "snippet"
   | "focus-mode"
+  | "find"
   | "none";
 
 export interface ShortcutInput {
@@ -29,9 +30,11 @@ export function resolveGlobalShortcut(i: ShortcutInput): GlobalShortcutCommand {
   if (i.ctrlOrMeta && (i.key === "e" || i.key === "E")) return "toggle-editor";
   if (i.ctrlOrMeta && i.key === "\\") return "toggle-left-panel";
   if (i.ctrlOrMeta && i.shift && (i.key === "s" || i.key === "S")) return "snippet";
-  // Cmd/Ctrl+Shift+F toggles focus mode. The shift guard keeps plain
-  // Cmd/Ctrl+F (and the preview's bare "f" fit-width) untouched.
+  // Cmd/Ctrl+Shift+F toggles focus mode; plain Cmd/Ctrl+F is find. The
+  // shift guard is what keeps the two apart (and the preview's bare "f"
+  // fit-width stays untouched by both).
   if (i.ctrlOrMeta && i.shift && (i.key === "f" || i.key === "F")) return "focus-mode";
+  if (i.ctrlOrMeta && (i.key === "f" || i.key === "F")) return "find";
   return "none";
 }
 

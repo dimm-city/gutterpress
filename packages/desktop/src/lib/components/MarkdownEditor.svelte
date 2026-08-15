@@ -23,6 +23,7 @@
    * explicit-call design is the right one independent of the lint rule.
    */
   import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
+  import { search, searchKeymap, openSearchPanel } from "@codemirror/search";
   import {
     EditorState,
     EditorSelection,
@@ -254,8 +255,14 @@
         cssCompletionCompartment.of(cssCompletionExtensions(lang)),
         markdownCompletionCompartment.of(markdownCompletionExtensions(lang)),
          syntaxHighlighting(gutterpressHighlight, { fallback: true }),
+        // In-editor find (global Ctrl+F routes here when the editor has
+        // focus): CodeMirror's own search panel — virtualization-safe (the
+        // DOM only holds visible lines, so a DOM/window text search would
+        // miss most of a long chapter).
+        search({ top: true }),
         keymap.of([
           { key: "Mod-s", run: () => { onSave?.(); return true; } },
+          ...searchKeymap,
           ...defaultKeymap,
           ...historyKeymap,
           indentWithTab,
@@ -383,6 +390,13 @@
   /** Move keyboard focus into the editor (used when the pane is opened). */
   export function focus(): void {
     view?.focus();
+  }
+
+  /** Open the editor's find panel (global Ctrl+F routing — see +page.svelte). */
+  export function openSearch(): void {
+    if (!view) return;
+    view.focus();
+    openSearchPanel(view);
   }
 
   /** True only when this editor is displaying the requested file. */

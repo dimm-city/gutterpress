@@ -71,6 +71,7 @@ import type {
   CloneRepositoryArgs,
   SyncOutcome,
   SyncStatus,
+  FindInPageResult,
   FolderRef,
   FileRef,
   PlatformCapabilities,
@@ -677,6 +678,24 @@ export class WebAdapter implements Platform {
   // running in a browser; setAutoSync is a silent no-op so callers need no guard.
   onSyncStatus(_handler: (status: SyncStatus) => void): () => void {
     // Never emits on the web — return a no-op unsubscribe.
+    return () => {};
+  }
+
+  // ── Global find-in-page — no native find on the web target yet ────────────
+  findInPage(
+    _text: string,
+    _opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
+  stopFindInPage(
+    _action?: "clearSelection" | "keepSelection" | "activateSelection",
+  ): Promise<void> {
+    return Promise.resolve();
+  }
+
+  onFindResult(_handler: (result: FindInPageResult) => void): () => void {
     return () => {};
   }
 

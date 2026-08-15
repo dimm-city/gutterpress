@@ -862,6 +862,18 @@ function createWindow() {
     });
   });
 
+  // Global find (Ctrl+F over the viewer): findInPage results push to the
+  // renderer's FindBar. Native Chromium find is the ONLY way to search the
+  // cross-origin preview iframe (http://127.0.0.1 inside app://) — the
+  // renderer can't reach its DOM, but webContents.findInPage searches every
+  // frame and paints the native match highlights.
+  win.webContents.on("found-in-page", (_e, result) => {
+    safeSend("find:result", {
+      matches: result.matches,
+      activeMatchOrdinal: result.activeMatchOrdinal,
+    });
+  });
+
   win.on("closed", () => {
     nativeTheme.removeListener("updated", onNativeThemeUpdated);
     markdownFileLaunchQueue.suspend();
@@ -1004,6 +1016,27 @@ function secureHandle<Args extends unknown[], R>(
 // Backs external-edit detection: a shallow fs.watch on the open project whose
 // debounced changes are pushed to the renderer as `fs:folderChanged`. Only one
 // project is open at a time, so subscribing replaces any prior watch.
+// ── Global find-in-page (Ctrl+F over the viewer) ─────────────────────────────
+// Must drive the live BrowserWindow (CLAUDE.md §8's second capability class),
+// so it stays on the IPC bridge rather than a server route.
+secureHandle(
+  "find:start",
+  (_e, text: string, opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean }): void => {
+    if (typeof text !== "string" || text.length === 0) return;
+    mainWindow?.webContents.findInPage(text, {
+      forward: opts?.forward ?? true,
+      findNext: opts?.findNext ?? false,
+      matchCase: opts?.matchCase ?? false,
+    });
+  },
+);
+secureHandle(
+  "find:stop",
+  (_e, action?: "clearSelection" | "keepSelection" | "activateSelection"): void => {
+    mainWindow?.webContents.stopFindInPage(action ?? "clearSelection");
+  },
+);
+
 secureHandle("fs:watchFolder", async (_e, dirPath: string): Promise<void> => {
   if (!path.isAbsolute(dirPath)) {
     throw new Error(`fs:watchFolder requires an absolute path, got: ${dirPath}`);
