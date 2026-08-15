@@ -131,8 +131,14 @@ export function injectPreviewScripts(
   pageIsolateChapters: boolean,
 ): string {
   const scripts =
-    '  <script src="/engine/gutterpress-viewer.js"></script>\n  '
-    + '<script>window.__GP_MANUAL__=1</script>\n  '
+    // ORDER IS LOAD-BEARING: the viewer decides whether to arm its
+    // DOMContentLoaded auto-mount AT SCRIPT EVALUATION, so the manual flag
+    // must exist BEFORE the viewer bundle runs. With the flag after it, the
+    // viewer auto-mounted AND the galley mounted — a double mount that
+    // doubled every sheet (the cross-browser smoke caught it: gp:layout
+    // said 4 pages, the DOM held 8).
+    '  <script>window.__GP_MANUAL__=1</script>\n  '
+    + '<script src="/engine/gutterpress-viewer.js"></script>\n  '
     + '<script src="/engine/gutterpress-galley.js"></script>\n  '
     + '<script src="/preview/scripts/preview-interface.js"></script>\n  '
     + '<script src="/preview/scripts/preview-bridge.js"></script>\n';

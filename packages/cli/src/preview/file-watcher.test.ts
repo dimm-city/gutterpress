@@ -304,9 +304,12 @@ describe('injectPreviewScripts', () => {
     // flag must land BETWEEN the viewer and galley bundles.
     expect(out).toContain('window.__GP_MANUAL__=1');
     expect(out).toContain('/engine/gutterpress-galley.js');
-    expect(out.indexOf('/engine/gutterpress-viewer.js'))
-      .toBeLessThan(out.indexOf('window.__GP_MANUAL__=1'));
+    // ORDER IS LOAD-BEARING: the manual flag must precede the VIEWER bundle
+    // — the viewer arms its auto-mount at script evaluation, and a flag set
+    // after it produced a double mount (doubled sheets; smoke regression).
     expect(out.indexOf('window.__GP_MANUAL__=1'))
+      .toBeLessThan(out.indexOf('/engine/gutterpress-viewer.js'));
+    expect(out.indexOf('/engine/gutterpress-viewer.js'))
       .toBeLessThan(out.indexOf('/engine/gutterpress-galley.js'));
     expect(out).toContain('/preview/scripts/preview-interface.js');
     expect(out).toContain('/preview/scripts/preview-bridge.js');
