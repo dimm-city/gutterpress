@@ -1,4 +1,5 @@
 import { serveDir } from "../viewer/test-support/serve-dir.ts";
+import { batchWithReplacement } from "./test-support.ts";
 import { test, expect, afterAll } from "bun:test";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -152,9 +153,7 @@ testIf(
             (p.closest(".gp-strip") as HTMLElement).focus();
           });
           await page.keyboard.type(" typed");
-          await page.waitForFunction("window.__batches.length >= 1");
-
-          const batch1 = (await page.evaluate("window.__batches[0]")) as {
+          const batch1 = (await batchWithReplacement(page, " typed")) as {
             batchId: number;
             patches: Array<{
               chapter: string;
@@ -207,8 +206,7 @@ testIf(
           });
           await page.keyboard.press("Enter");
           await page.keyboard.type("Fresh start");
-          await page.waitForFunction("window.__batches.length >= 2");
-          const batch2 = (await page.evaluate("window.__batches[1]")) as typeof batch1;
+          const batch2 = (await batchWithReplacement(page, "Fresh start")) as typeof batch1;
           expect(batch2.patches.length).toBe(1);
           const split = batch2.patches[0]!;
           expect(split.replacement).toBe(

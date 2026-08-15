@@ -6,6 +6,7 @@ import path from "node:path";
 import { startPreviewServer } from "../server.ts";
 import { resolveChromiumExecutable } from "../lib/chromium.ts";
 import { closeBrowser, getBrowser } from "../lib/browser-pool.ts";
+import { batchWithReplacement } from "../engine/edit/test-support.ts";
 
 /**
  * LIVE end-to-end test for inline editing (ADR 0010) against the REAL
@@ -126,9 +127,7 @@ testIf(
           p.closest(".gp-strip")!.focus();
         });
         await page.keyboard.type(", now edited,");
-        await page.waitForFunction("window.__batches.length >= 1");
-
-        const batch = (await page.evaluate("window.__batches[0]")) as {
+        const batch = (await batchWithReplacement(page, ", now edited,")) as {
           batchId: number;
           patches: Array<{
             chapter: string;
