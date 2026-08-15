@@ -7,24 +7,25 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **HTML-first inline editing (ADR 0010).** The paginated preview is now the
-  editor: type directly into the page — the browser reflows across page
-  boundaries natively, pagination re-settles on an idle caret-preserving
-  relayout, and a debounced autosync writes your edits back to the markdown
-  source files through the existing commit gates. The preview never rebuilds
-  or swaps while you edit; a background converge-on-drift pass heals only
-  blocks whose authoritative render differs. Blocks the codec can't prove
-  (raw HTML, exotic plugin output) refuse inline editing and degrade to the
-  block overlay. New corpus soundness gate (`roundtrip:gate`, CI) proves the
-  HTML→markdown codec over every example book — zero unsound results, 100%
-  coverage on 6/7 books. `preview.inlineEditing` (default on) is the kill
-  switch — Settings → Preview → "Edit directly in the preview" — and the
-  source pane remains available as an on-demand view.
+- **The Galley editor (ADR 0011).** The paginated preview is the editor,
+  built on ProseMirror/Tiptap: one document model for the whole book, with
+  the screen and the markdown files both projections of it. Type directly
+  into the page — pagination re-settles around your caret, undo is
+  model-level (relayout- and IME-proof), and a debounced whole-chapter save
+  flows through the existing write gates. Markdown shortcuts work as you
+  type (`**bold**`, `# heading`, `- list`, and `@section ` / `@page-break `
+  for layout markers), and **tables are edited directly on the page** for
+  the first time. Content the schema doesn't model (raw HTML, exotic plugin
+  output) still displays exactly right — rendered by the real pipeline —
+  and double-click opens its markdown source in place; nothing is ever
+  dropped (the `roundtrip:gate` corpus CI holds the codec at zero lost
+  words, with untouched blocks preserved byte-for-byte). Snippets and the
+  media gallery insert at the caret in the page. `preview.inlineEditing`
+  (default on) remains the kill switch, and the source pane remains a fully
+  functional on-demand view.
 - **Formatting bubble.** Select text on the page to get a floating
-  bold / italic / strikethrough / inline-code toolbar; formatting applies
-  in place and syncs to markdown like any typed edit (native undo covers
-  it). The right-click menu keeps the rest of the surface: page breaks,
-  image properties, links, markers, and per-block source editing.
+  bold / italic / strikethrough / inline-code toolbar with live active
+  states, backed by editor commands rather than `document.execCommand`.
 
 ## [0.10.0] - 2026-08-12
 

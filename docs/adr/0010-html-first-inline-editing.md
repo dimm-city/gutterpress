@@ -1,6 +1,8 @@
 # ADR 0010 — HTML-first inline editing: the paginated book is the editor
 
-Date: 2026-08-15 · Status: accepted · Supersedes parts of ADR 0009 (see §5)
+Date: 2026-08-15 · Status: superseded by ADR 0011 (the Galley goal stands;
+the contenteditable/DOM→markdown mechanism described here was replaced by
+the ProseMirror document model) · Supersedes parts of ADR 0009 (see §5)
 
 ## Context
 
