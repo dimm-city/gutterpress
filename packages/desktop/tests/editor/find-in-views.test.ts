@@ -1,12 +1,10 @@
 /**
- * Global Ctrl+F — source pins for the viewer find (owner ruling 2026-08-15:
- * find works in the VIEWER only; editing a found word goes through the
- * preview's "Go to source". No editor search surface, no @codemirror/search
- * dependency).
- *
- * The FindBar drives Electron's native window find (webContents.findInPage) —
- * the ONLY way to search the cross-origin preview iframe — with highlights,
- * scroll-to-match, and a match counter from the found-in-page push.
+ * Global Ctrl+F — source pins for the viewer find (owner rulings 2026-08-15:
+ * find works in the VIEWER only, and it runs INSIDE the preview frame via
+ * the previewAPI bridge — `window.find` scoped to book content, so it can
+ * never highlight the app's toolbar chrome or the editor. Editing a found
+ * word goes through the preview's "Go to source". No @codemirror/search
+ * dependency, no Electron findInPage IPC).
  */
 import { describe, test, expect } from "bun:test";
 import * as fs from "node:fs";
@@ -15,20 +13,25 @@ import * as path from "node:path";
 const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
 
-describe("viewer find (native window find over the cross-origin frame)", () => {
-  test("FindBar drives getPlatform().findInPage and clears highlights on close", () => {
-    const bar = read("src/lib/components/FindBar.svelte");
-    expect(bar).toContain("getPlatform().findInPage");
-    expect(bar).toContain('stopFindInPage("clearSelection")');
-    expect(bar).toContain("onFindResult");
+describe("viewer find (in-frame via the previewAPI bridge)", () => {
+  test("the viewer exposes find/clearFind on previewAPI (in-frame window.find, wrap on)", () => {
+    const viewer = read("../cli/src/assets/preview/scripts/preview-interface.js");
+    expect(viewer).toContain("find: function (query, backwards)");
+    expect(viewer).toContain("clearFind: function ()");
+    expect(viewer).toContain("window.find(query, false, !!backwards, true");
   });
 
-  test("main registers the IPC pair and forwards found-in-page results", () => {
-    const main = read("electron/main.ts");
-    expect(main).toContain('secureHandle(\n  "find:start"');
-    expect(main).toContain('secureHandle(\n  "find:stop"');
-    expect(main).toContain('"found-in-page"');
-    expect(main).toContain('safeSend("find:result"');
+  test("FindBar drives client.call('find'/'clearFind') — no host code at all", () => {
+    const bar = read("src/lib/components/FindBar.svelte");
+    expect(bar).toContain('client.call<FindReply>("find", [query, backwards])');
+    expect(bar).toContain('call("clearFind")');
+    expect(bar).not.toContain("getPlatform");
+  });
+
+  test("the Electron findInPage seam stays deleted", () => {
+    expect(read("electron/main.ts")).not.toContain("findInPage");
+    expect(read("electron/preload.ts")).not.toContain("findInPage");
+    expect(read("src/lib/platform/contract.ts")).not.toContain("findInPage");
   });
 });
 

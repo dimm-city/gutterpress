@@ -212,14 +212,6 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 // alongside HostServices (rather than in ./dtos) because `onSyncStatus`
 // references this cluster directly.
 
-/** Result of a native window find step (Ctrl+F over the viewer). */
-export interface FindInPageResult {
-  /** Total matches in the window (all frames — the preview iframe included). */
-  matches: number;
-  /** 1-based ordinal of the currently highlighted match. */
-  activeMatchOrdinal: number;
-}
-
 /**
  * Ambient sync state emitted by the host auto-sync orchestrator and surfaced
  * to the renderer via the `onSyncStatus` subscription.
@@ -450,24 +442,6 @@ export interface HostServices {
    * stub never emits and returns a no-op unsubscribe.
    */
   onSyncStatus(handler: (status: SyncStatus) => void): () => void;
-
-  // ── Global find-in-page (Ctrl+F over the viewer) ───────────────────────────
-  // Native window-level find: the ONLY way to search the cross-origin preview
-  // frame. Must drive the live BrowserWindow (§8's second capability class),
-  // hence the adapter seam rather than a server route. The match counter
-  // arrives on the onFindResult push stream.
-
-  /** Start (findNext: false) or step (findNext: true) a window find. */
-  findInPage(
-    text: string,
-    opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
-  ): Promise<void>;
-  /** End the find session; "clearSelection" removes the native highlights. */
-  stopFindInPage(
-    action?: "clearSelection" | "keepSelection" | "activateSelection",
-  ): Promise<void>;
-  /** Subscribe to find results (match count + active ordinal). */
-  onFindResult(handler: (result: FindInPageResult) => void): () => void;
 
   // ── Sync recovery seam (Foundation — §8 / ADR 0004) ───────────────────────
   //

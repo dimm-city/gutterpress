@@ -1,32 +1,39 @@
 <script lang="ts">
   /**
-   * FindBar — the viewer's Ctrl+F surface. Drives Electron's native
-   * window-level find (`getPlatform().findInPage`), which is the ONLY way to
-   * search the cross-origin preview iframe: the renderer can't reach its DOM,
-   * but Chromium's find searches every frame, paints the native highlights,
-   * and scrolls the active match into view — across ALL pages, since the
-   * viewer keeps the whole book in the DOM.
+   * FindBar — the viewer's Ctrl+F surface (owner ruling 2026-08-15: find is
+   * viewer-only; editing a found word goes through "Go to source").
+   *
+   * Search runs INSIDE the preview frame via the existing previewAPI bridge
+   * (`client.call("find", …)` → the viewer's own `window.find`), so matches
+   * can only ever be book content — never the app's toolbar chrome or the
+   * editor. The viewer advances its native selection on each step (wrapping
+   * at the ends) and scrolls the match into view.
    *
    * Enter → next, Shift+Enter → previous, Escape/✕ → close (clears the
-   * highlights). The match counter comes from the onFindResult push stream.
-   *
-   * PWA-clean (§8 / ADR 0004): host work only through getPlatform().
+   * selection). PWA-clean (§8 / ADR 0004): everything goes through the
+   * PreviewClient postMessage bridge — no host code at all.
    */
   import { onMount } from "svelte";
   import Icon from "$lib/components/Icon.svelte";
-  import { getPlatform } from "$lib/platform";
-  import type { FindInPageResult } from "$lib/platform/contract";
+  import type { PreviewClient } from "$lib/preview-client";
 
   let {
     open = $bindable(false),
+    client = null,
     onClose,
   }: {
     open?: boolean;
+    client?: PreviewClient | null;
     onClose?: () => void;
   } = $props();
 
+  interface FindReply {
+    found: boolean;
+    total: number;
+  }
+
   let query = $state("");
-  let result = $state<FindInPageResult | null>(null);
+  let result = $state<FindReply | null>(null);
   let inputEl = $state<HTMLInputElement | undefined>(undefined);
 
   /** Focus + select on mount (the bar is created fresh each open). */
@@ -37,32 +44,28 @@
   }
 
   onMount(() => {
-    const off = getPlatform().onFindResult((r) => {
-      result = r;
-    });
     return () => {
-      off?.();
-      // Leaving the workspace with the bar up must not strand highlights.
-      void getPlatform().stopFindInPage("clearSelection");
+      // Leaving the workspace with the bar up must not strand a selection.
+      void client?.call("clearFind").catch(() => {});
     };
   });
 
-  function startSearch() {
+  async function find(backwards = false) {
+    if (!client) return;
     if (!query) {
       result = null;
-      void getPlatform().stopFindInPage("clearSelection");
+      void client.call("clearFind").catch(() => {});
       return;
     }
-    void getPlatform().findInPage(query, { findNext: false });
-  }
-
-  function step(forward: boolean) {
-    if (!query) return;
-    void getPlatform().findInPage(query, { forward, findNext: true });
+    try {
+      result = await client.call<FindReply>("find", [query, backwards]);
+    } catch {
+      result = null;
+    }
   }
 
   function close() {
-    void getPlatform().stopFindInPage("clearSelection");
+    void client?.call("clearFind").catch(() => {});
     query = "";
     result = null;
     open = false;
@@ -72,7 +75,7 @@
   function onInputKeydown(e: KeyboardEvent) {
     if (e.key === "Enter") {
       e.preventDefault();
-      step(!e.shiftKey);
+      void find(e.shiftKey);
     } else if (e.key === "Escape") {
       e.preventDefault();
       close();
@@ -96,24 +99,24 @@
       aria-label="Find text"
       bind:value={query}
       use:autofocus
-      oninput={startSearch}
+      oninput={() => void find()}
       onkeydown={onInputKeydown}
     />
     <span class="find-count" aria-live="polite">
       {#if query && result}
-        {result.matches > 0 ? `${result.activeMatchOrdinal}/${result.matches}` : "0 results"}
+        {result.total > 0 ? `${result.total} match${result.total === 1 ? "" : "es"}` : "No matches"}
       {/if}
     </span>
     <button
       class="find-btn"
-      onclick={() => step(false)}
+      onclick={() => void find(true)}
       disabled={!query}
       title="Previous match (Shift+Enter)"
       aria-label="Previous match"
     ><Icon name="chevron-up" size={14} /></button>
     <button
       class="find-btn"
-      onclick={() => step(true)}
+      onclick={() => void find(false)}
       disabled={!query}
       title="Next match (Enter)"
       aria-label="Next match"
@@ -159,7 +162,7 @@
   }
 
   .find-count {
-    min-width: 56px;
+    min-width: 72px;
     text-align: right;
     font-size: 11px;
     color: var(--app-text-muted);

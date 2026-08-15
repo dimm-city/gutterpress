@@ -21,6 +21,9 @@
   var ignoreScrollUntil = 0;
   var lastSourceLine = -1;
   var lastSourceChapter = null;
+  // Find-in-book state (see previewAPI.find below).
+  var findQuery = '';
+  var findTotal = 0;
 
   function refreshPages() {
     pages = Array.from(document.querySelectorAll('.gp-sheet')).sort(function (a, b) {
@@ -844,6 +847,47 @@
         }, spec.transientMs || 1200);
       }
       return { count: els.length };
+    },
+
+    // ── Find in book (the app's Ctrl+F) ─────────────────────────────────
+    // window.find() runs inside THIS frame, so it can only ever match book
+    // content — never the app's toolbar chrome or the editor. Each call with
+    // the same query advances the native selection (wrapping at the ends)
+    // and Chromium scrolls the match into view; a NEW query restarts from
+    // the top and counts total occurrences once (case-insensitive).
+    find: function (query, backwards) {
+      query = String(query == null ? '' : query);
+      if (!query) return api.clearFind();
+      if (query !== findQuery) {
+        findQuery = query;
+        var text = (document.body.textContent || '').toLowerCase();
+        var needle = query.toLowerCase();
+        findTotal = 0;
+        var idx = 0;
+        while (findTotal < 10000) {
+          idx = text.indexOf(needle, idx);
+          if (idx === -1) break;
+          findTotal++;
+          idx += needle.length;
+        }
+        var sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+      }
+      var found = false;
+      try {
+        found = window.find(query, false, !!backwards, true, false, false, false);
+      } catch (_e) {
+        found = false;
+      }
+      return { found: !!found, total: findTotal };
+    },
+
+    clearFind: function () {
+      findQuery = '';
+      findTotal = 0;
+      var sel = window.getSelection();
+      if (sel) sel.removeAllRanges();
+      return { found: false, total: 0 };
     },
 
     clearHighlights: function (group) {

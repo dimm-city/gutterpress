@@ -35,7 +35,6 @@ import type {
   CloneRepositoryArgs,
   SyncOutcome,
   SyncStatus,
-  FindInPageResult,
   FolderRef,
   PlatformCapabilities,
   MarkdownFileLaunchEvent,
@@ -192,24 +191,6 @@ export class ElectronAdapter implements Platform {
   // ── Auto-sync orchestrator seam (transparent sync, §4.4 integration plan) ──
   onSyncStatus(handler: (status: SyncStatus) => void): () => void {
     return bridge().onSyncStatus(handler as (data: unknown) => void);
-  }
-
-  // ── Global find-in-page (Ctrl+F over the viewer) — live-window IPC seam ────
-  findInPage(
-    text: string,
-    opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
-  ): Promise<void> {
-    return bridge().findInPage(text, opts);
-  }
-
-  stopFindInPage(
-    action?: "clearSelection" | "keepSelection" | "activateSelection",
-  ): Promise<void> {
-    return bridge().stopFindInPage(action);
-  }
-
-  onFindResult(handler: (result: FindInPageResult) => void): () => void {
-    return bridge().onFindResult(handler as (data: unknown) => void);
   }
 
   // ARCH review #8: was IPC despite being a pure settings write.

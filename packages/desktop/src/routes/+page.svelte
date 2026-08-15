@@ -2931,7 +2931,7 @@
         aria-hidden={previewHidden}
         inert={previewHidden || (isNarrow && (editorPaneOpen || editorView !== "editor")) ? true : undefined}
       >
-        <FindBar bind:this={findBarRef} bind:open={findBarOpen} />
+        <FindBar bind:this={findBarRef} bind:open={findBarOpen} {client} />
         {#if lifecycle.previewUrl}
           {#key lifecycle.previewUrl}
             <PreviewFrame

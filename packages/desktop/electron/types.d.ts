@@ -105,15 +105,6 @@ declare global {
        *  Note: data may carry `recovery`, `guidance`, and `backupZipPath` fields
        *  when state is 'recovering', 'recovered', or 'error' (classified failure). */
       onSyncStatus(cb: (data: unknown) => void): () => void;
-      // Global find-in-page (Ctrl+F over the viewer — native Chromium find).
-      findInPage(
-        text: string,
-        opts?: { forward?: boolean; findNext?: boolean; matchCase?: boolean },
-      ): Promise<void>;
-      stopFindInPage(
-        action?: "clearSelection" | "keepSelection" | "activateSelection",
-      ): Promise<void>;
-      onFindResult(cb: (data: unknown) => void): () => void;
       // setAutoSync migrated to server route (api.sync.setAutoSync) — ARCH
       // review #8: a pure settings write, no push stream or live-BrowserWindow
       // need.
