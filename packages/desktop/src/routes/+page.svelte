@@ -983,7 +983,6 @@
   let blockOverlayRef = $state<{ commitNow: () => void } | null>(null);
   let editorRef = $state<{
     focus: () => void;
-    openSearch: () => void;
     revealLine: (line: number, focusEditor?: boolean) => void;
     runToolbarAction: (action: ToolbarAction, payload?: ToolbarPayload) => void;
     getSelectionText: () => string;
@@ -1077,11 +1076,10 @@
         editorOpen &&
         (!isNarrow || paneMode === "edit")),
   );
-  // ── Global find (Ctrl+F) ───────────────────────────────────────────────────
-  // Routed by visibility: viewer showing → the FindBar (native window find,
-  // the only way to search the cross-origin preview frame); otherwise the
-  // editor's own CodeMirror search panel. When focus is INSIDE the editor,
-  // CodeMirror's searchKeymap consumes Ctrl+F before this ever fires.
+  // ── Global find (Ctrl+F) — VIEWER only (owner ruling 2026-08-15) ──────────
+  // The FindBar drives the native window find over the preview (the only way
+  // to search the cross-origin frame). Editing a found word goes through the
+  // preview's "Go to source"; the editor has no search surface of its own.
   let findBarOpen = $state(false);
   let findBarRef = $state<{ focusInput: () => void } | null>(null);
   const viewerVisibleForFind = $derived(
@@ -2087,22 +2085,15 @@
         exitFocusMode();
         return;
       }
-      // Cmd/Ctrl+F finds in whichever view is showing (viewer first; the
-      // editor's own CodeMirror panel when only the editor is open). A
-      // Ctrl+F that CodeMirror already handled (focus inside the editor)
-      // arrives with defaultPrevented and is left alone.
+      // Cmd/Ctrl+F finds in the VIEWER only (owner ruling 2026-08-15): the
+      // FindBar drives the native window find over the preview. To edit a
+      // found word, the writer uses the preview's "Go to source" — the
+      // editor keeps no search surface of its own.
       if (command === "find") {
-        if (e.defaultPrevented) return;
-        if ((e.target as HTMLElement | null)?.closest?.(".cm-editor")) return;
         if (viewerVisibleForFind) {
           e.preventDefault();
           if (findBarOpen) findBarRef?.focusInput();
           else findBarOpen = true;
-          return;
-        }
-        if (editorPaneOpen && editorView === "editor") {
-          e.preventDefault();
-          editorRef?.openSearch();
         }
         return;
       }

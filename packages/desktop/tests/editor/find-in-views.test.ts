@@ -1,12 +1,12 @@
 /**
- * Global Ctrl+F — source pins for the two find surfaces (2026-08-15).
+ * Global Ctrl+F — source pins for the viewer find (owner ruling 2026-08-15:
+ * find works in the VIEWER only; editing a found word goes through the
+ * preview's "Go to source". No editor search surface, no @codemirror/search
+ * dependency).
  *
- * Routing rule (see +page.svelte's onGlobalKey): viewer showing → FindBar
- * (Electron's native window find, the ONLY way to search the cross-origin
- * preview iframe); only the editor open → CodeMirror's own search panel
- * (virtualization-safe — a DOM search would miss offscreen lines). Focus
- * inside the editor never reaches the global handler: CodeMirror's
- * searchKeymap consumes Ctrl+F first.
+ * The FindBar drives Electron's native window find (webContents.findInPage) —
+ * the ONLY way to search the cross-origin preview iframe — with highlights,
+ * scroll-to-match, and a match counter from the found-in-page push.
  */
 import { describe, test, expect } from "bun:test";
 import * as fs from "node:fs";
@@ -14,16 +14,6 @@ import * as path from "node:path";
 
 const root = path.resolve(import.meta.dir, "../..");
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), "utf8");
-
-describe("editor find (CodeMirror search)", () => {
-  const editor = read("src/lib/components/MarkdownEditor.svelte");
-  test("the search extension + keymap are wired and openSearch is exported", () => {
-    expect(editor).toContain('from "@codemirror/search"');
-    expect(editor).toContain("search({ top: true })");
-    expect(editor).toContain("...searchKeymap");
-    expect(editor).toMatch(/export function openSearch\(\)/);
-  });
-});
 
 describe("viewer find (native window find over the cross-origin frame)", () => {
   test("FindBar drives getPlatform().findInPage and clears highlights on close", () => {
@@ -42,16 +32,19 @@ describe("viewer find (native window find over the cross-origin frame)", () => {
   });
 });
 
-describe("global routing (+page.svelte)", () => {
-  const page = read("src/routes/+page.svelte");
-  test("find routes viewer-first, then the editor panel", () => {
+describe("global routing (+page.svelte) — viewer only", () => {
+  test("find opens the FindBar only when the viewer is visible", () => {
+    const page = read("src/routes/+page.svelte");
     expect(page).toContain('command === "find"');
     expect(page).toContain("viewerVisibleForFind");
-    expect(page).toContain("editorRef?.openSearch()");
   });
-  test("a Ctrl+F CodeMirror already handled is left alone", () => {
-    const findBlock = page.slice(page.indexOf('command === "find"'));
-    expect(findBlock).toContain("e.defaultPrevented");
-    expect(findBlock).toContain('.closest?.(".cm-editor")');
+
+  test("the editor has NO search surface (the dep stays removed)", () => {
+    const editor = read("src/lib/components/MarkdownEditor.svelte");
+    expect(editor).not.toContain("@codemirror/search");
+    const page = read("src/routes/+page.svelte");
+    expect(page).not.toContain("openSearch");
+    const pkg = read("package.json");
+    expect(pkg).not.toContain("@codemirror/search");
   });
 });
