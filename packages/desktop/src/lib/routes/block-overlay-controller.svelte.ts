@@ -336,6 +336,17 @@ export class BlockOverlayController {
     this.reset();
   }
 
+  /**
+   * A galley-mode overlay is anchored to a rect captured at open time; a
+   * scroll/zoom/page change moves the content under it. Close (discarding
+   * nothing committed) rather than float over the wrong block. Classic
+   * chapter/range mode re-anchors through its own geometry flow and is
+   * untouched.
+   */
+  closeGalleyOnViewportChange(): void {
+    if (this.open && this.galleyCommit) this.close();
+  }
+
   private reset(): void {
     this.geometryId++;
     this.open = false;

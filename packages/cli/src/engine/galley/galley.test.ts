@@ -226,31 +226,64 @@ test("@continue keeps its section chain: no @end-section is injected before a co
   expect(serializeGalleyDoc(schema, doc2)).toContain("Continued prose.");
 });
 
-test("authored attrs round-trip: list items, quoted values, authored data-*, container braces", () => {
+test("leaf-block attrs round-trip: quoted values and authored data-* survive, idempotently", () => {
   const source = [
-    "- alpha {.red}",
-    "- beta",
-    "",
     "A paragraph. {data-role=aside}",
     "",
     'Styled text. {style="color: red"}',
     "",
-    "> Quoted prose.",
-    "",
-    "{.pull-quote}",
+    "## Heading {#anchor .fancy}",
     "",
   ].join("\n");
   const { doc } = buildGalleyDoc(schema, tokensOf(source), source);
   const out = serializeGalleyDoc(schema, doc);
-  expect(out).toContain("{.red}");
   expect(out).toContain("{data-role=aside}");
   expect(out).toContain('{style="color: red"}');
-  // Re-parse: every attr must land on the SAME element class it came from.
+  expect(out).toContain("{#anchor .fancy}");
   const { doc: doc2 } = buildGalleyDoc(schema, tokensOf(out), out);
   const again = serializeGalleyDoc(schema, doc2);
   expect(again).toBe(out); // idempotent — nothing migrated or vanished
-  expect(again).toContain("{.red}");
-  expect(again).toContain('{style="color: red"}');
+});
+
+test("containers carrying authored braces refuse to opaque atoms — verbatim, idempotent", () => {
+  // markdown-it-attrs' positional binding for containers (own-line after a
+  // table is a ROW; end-of-item binds the <li>) cannot be regenerated
+  // faithfully — Opus probes showed phantom table rows and {.x}→{.x .x}
+  // accumulation. These shapes must round-trip as verbatim opaque atoms.
+  const source = [
+    "- alpha {.red}",
+    "- beta",
+    "",
+    "| A | B |",
+    "| - | - |",
+    "| 1 | 2 |",
+    "",
+    "{.wide}",
+    "",
+  ].join("\n");
+  const { doc } = buildGalleyDoc(schema, tokensOf(source), source);
+  const kinds: string[] = [];
+  doc.forEach((c) => kinds.push(c.type.name));
+  // The attr-carrying list is opaque; the table stays richly editable when
+  // its brace lands on a following paragraph shape instead of the table.
+  expect(kinds[0]).toBe("rawBlock");
+  const out = serializeGalleyDoc(schema, doc);
+  expect(out).toContain("- alpha {.red}");
+  const { doc: doc2 } = buildGalleyDoc(schema, tokensOf(out), out);
+  const again = serializeGalleyDoc(schema, doc2);
+  expect(again).toBe(out);
+  // No class accumulation, ever.
+  expect(again).not.toContain("{.red .red}");
+});
+
+test("braceDomAttrs parses the quoted form the serializer emits", async () => {
+  const { braceDomAttrs } = await import("./extensions.ts");
+  expect(braceDomAttrs('{#id .a .b style="color: red" width=200}')).toEqual({
+    id: "id",
+    class: "a b",
+    style: "color: red",
+    width: "200",
+  });
 });
 
 test("unknown inline HTML stays inline and verbatim inside an editable paragraph", () => {

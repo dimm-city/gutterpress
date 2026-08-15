@@ -96,8 +96,11 @@ export interface CommitPatch {
    * even when the file on disk is CRLF. When set, a slice mismatch is
    * retried after CRLF→LF-normalizing the BUFFER side, and on that match
    * the replacement is re-encoded to CRLF so the file keeps its authored
-   * line endings. Never set by overlay/menu commits — their slices are
-   * byte-true by construction and stay byte-compared.
+   * line endings. A MIXED-endings file that matches this way is normalized
+   * to uniform CRLF on its first galley save — a deliberate, documented
+   * normalization (mixed endings are themselves an accident). Never set by
+   * overlay/menu commits — their slices are byte-true by construction and
+   * stay byte-compared.
    */
   eolTolerant?: boolean;
 }

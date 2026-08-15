@@ -33,12 +33,19 @@ export function braceDomAttrs(gpAttrs: string): Record<string, string> {
   if (!m) return {};
   const out: Record<string, string> = {};
   const classes: string[] = [];
-  for (const part of m[1]!.split(/\s+/).filter(Boolean)) {
+  // Tokenize respecting `key="value with spaces"` — the quoted form the
+  // serializer emits for such values must parse back identically.
+  const parts = m[1]!.match(/[^\s"]+"[^"]*"|[^\s"]+/g) ?? [];
+  for (const part of parts) {
     if (part.startsWith("#")) out.id = part.slice(1);
     else if (part.startsWith(".")) classes.push(part.slice(1));
     else {
       const eq = part.indexOf("=");
-      if (eq > 0) out[part.slice(0, eq)] = part.slice(eq + 1);
+      if (eq > 0) {
+        const raw = part.slice(eq + 1);
+        out[part.slice(0, eq)] =
+          raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+      }
     }
   }
   if (classes.length) out.class = classes.join(" ");

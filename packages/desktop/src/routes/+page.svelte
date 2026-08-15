@@ -1168,15 +1168,8 @@
   }
 
   /**
-   * Route authored markdown (a resolved snippet, an image line) into the live
-   * galley editor when a v8 frame is up and inline editing is on — the
-   * fragment lands at the cursor in the page, and the resulting doc change
-   * drives the normal `galleyContent` save. Returns false when there is no
-   * galley surface to insert into, so callers fall back to the classic
-   * source-editor path.
-   */
-  /**
-   * Insert authored markdown at the caret in the page, falling back to the
+   * Insert authored markdown (a resolved snippet, an image line) at the
+   * caret in the page, falling back to the
    * source-pane path when the galley surface is not actually live — a
    * `{inserted:false}` reply (no caret yet, editor not mounted) or a bridge
    * failure must NOT swallow the insert (verified finding).
@@ -1187,12 +1180,43 @@
       fallback();
       return;
     }
+    // The author's working caret may be in the SOURCE pane — an insert must
+    // follow their attention, not a stale page caret from minutes ago.
+    if (document.activeElement?.closest(".cm-editor")) {
+      fallback();
+      return;
+    }
     c.galleyInsertMarkdown({ markdown: text }).then(
       (r) => {
         if (!r?.inserted) fallback();
       },
       () => fallback(),
     );
+  }
+
+  /**
+   * Snippet fallback that cannot silently drop the insert: if no markdown
+   * chapter is open in the source pane, open one first (same bounded rAF
+   * retry the image path uses) instead of no-op'ing on a missing editorRef.
+   */
+  function insertSnippetViaSourcePane(text: string) {
+    const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
+    if (!isMd(editorFilePath)) {
+      void ensureEditorFile();
+      editorOpen = true;
+      loadEditorModule();
+    }
+    let tries = 0;
+    const tryInsert = () => {
+      if (editorRef && isMd(editorFilePath)) {
+        editorRef.insertSnippet(text);
+        focusEditorWhenReady();
+        return;
+      }
+      if (tries++ < 120) requestAnimationFrame(tryInsert);
+      else toast?.info?.("Open a markdown chapter, then insert the snippet.");
+    };
+    requestAnimationFrame(tryInsert);
   }
 
   /**
@@ -2178,12 +2202,19 @@
       onSelection: (detail) =>
         handleEditSelection(detail as Parameters<typeof handleEditSelection>[0]),
       onRenderPass: hideBubble,
-      onViewportChanged: hideBubble,
+      onViewportChanged: () => {
+        hideBubble();
+        // A galley-mode overlay is anchored to a rect captured at open time;
+        // scroll/zoom moves the page under it — close rather than mislead.
+        blockOverlay.closeGalleyOnViewportChange();
+      },
       onOpaqueEdit: (detail) => openGalleyBlockOverlay(detail),
       // Never fail silently: the edit is on screen but not on disk.
-      onStale: (chapter, reason) =>
+      onStale: (chapter, reason, message) =>
         toast?.error(
-          `Couldn't save your edit to ${chapter} (${reason}) — reload the preview and try again.`,
+          message
+            ? `Couldn't save ${chapter}: ${message} Reload the preview to resume editing it.`
+            : `Couldn't save your edit to ${chapter} (${reason}) — reload the preview and try again.`,
         ),
     });
   }
@@ -3331,7 +3362,7 @@
   onInsert={(text) => {
     // Galley v2 (protocol v8): with the inline editor live, snippets land at
     // the cursor in the page; otherwise the classic source-editor path.
-    insertAuthoredMarkdown(text, () => editorRef?.insertSnippet(text));
+    insertAuthoredMarkdown(text, () => insertSnippetViaSourcePane(text));
   }}
 />
 <!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar

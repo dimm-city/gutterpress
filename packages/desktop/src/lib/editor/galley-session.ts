@@ -28,6 +28,9 @@ export interface GalleyRect {
 /** `galleyContent` event payload: one chapter's fresh serialization. */
 export interface GalleyContentDetail {
   chapter: string;
+  /** Proposal nonce — echoed in the ack so a retired frame's late ack can
+   *  never advance or poison the replacement frame's chain (ADR 0011). */
+  seq?: number;
   /** The frame's current whole-chapter serialization — the replacement text. */
   markdown: string;
   /**
@@ -52,7 +55,12 @@ export interface GalleyOpaqueEditDetail {
 
 export interface GalleyClient {
   setEditMode(spec: { on: boolean }): Promise<{ on: boolean }>;
-  galleyAckContent(spec: { chapter: string; ok: boolean }): Promise<{ ok: boolean }>;
+  galleyAckContent(spec: {
+    chapter: string;
+    ok: boolean;
+    seq?: number;
+    reason?: string;
+  }): Promise<{ ok: boolean }>;
   on(fn: (e: { name: string; detail: unknown }) => void): () => void;
 }
 
@@ -75,7 +83,7 @@ export interface GalleySessionHooks {
    * is invisible data loss. No retry loops: a stale frame stays stale until
    * the author reloads it.
    */
-  onStale?: (chapter: string, reason: string) => void;
+  onStale?: (chapter: string, reason: string, message?: string) => void;
   onRenderPass?: () => void;
   onViewportChanged?: () => void;
 }
@@ -179,39 +187,68 @@ export class GalleySession {
    * `split("\n")`; the slice then mismatches and the commit refuses —
    * fail-safe, surfaced through onStale, never a wrong splice.)
    */
+  /**
+   * Text this session last successfully wrote per chapter. When a forced
+   * pre-swap flush emits a proposal whose `expected` predates a commit this
+   * session itself applied (both proposals shared the same baseline), the
+   * mismatch is against OUR OWN write — retry once against it rather than
+   * suspending the chapter (ADR 0011; Opus-verified swap-flush scenario).
+   */
+  private lastApplied = new Map<string, string>();
+
   private async commitContent(detail: GalleyContentDetail): Promise<void> {
     const engine = this.deps.engine();
     if (!engine) {
       this.hooks?.onStale?.(detail.chapter, "no-engine");
-      void this.ackFrame(detail.chapter, false);
+      void this.ackFrame(detail, false, "no-engine");
       return;
     }
-    const outcome = await engine.commitRangePatch({
-      chapter: detail.chapter,
-      range: [0, detail.expected.split("\n").length],
-      expected: detail.expected,
-      replacement: detail.markdown,
-      origin: "inline-edit",
-      expectedGeneration: engine.generation,
-      // The server LF-normalizes the source it serves to the frame, so the
-      // frame's expected/markdown are LF even for a CRLF file on disk; the
-      // engine re-encodes on match (ADR 0011).
-      eolTolerant: true,
-    });
+    const attempt = (expected: string) =>
+      engine.commitRangePatch({
+        chapter: detail.chapter,
+        range: [0, expected.split("\n").length],
+        expected,
+        replacement: detail.markdown,
+        origin: "inline-edit",
+        expectedGeneration: engine.generation,
+        // The server LF-normalizes the source it serves to the frame, so the
+        // frame's expected/markdown are LF even for a CRLF file on disk; the
+        // engine re-encodes on match (ADR 0011).
+        eolTolerant: true,
+      });
+    let outcome = await attempt(detail.expected);
+    const applied = this.lastApplied.get(detail.chapter);
+    if (!outcome.ok && outcome.reason === "mismatch" && applied && applied !== detail.expected) {
+      outcome = await attempt(applied);
+    }
     if (outcome.ok) {
       this.applied++;
+      this.lastApplied.set(detail.chapter, detail.markdown);
     } else {
-      this.hooks?.onStale?.(detail.chapter, outcome.reason);
+      this.hooks?.onStale?.(
+        detail.chapter,
+        outcome.reason,
+        "message" in outcome ? (outcome as { message?: string }).message : undefined,
+      );
     }
     // The frame advances its expected-chain ONLY on this ack — an
     // unacknowledged or refused proposal must not move it, or every later
     // save for the chapter would be refused against a wrong baseline.
-    void this.ackFrame(detail.chapter, outcome.ok);
+    void this.ackFrame(detail, outcome.ok, outcome.ok ? undefined : outcome.reason);
   }
 
-  private async ackFrame(chapter: string, ok: boolean): Promise<void> {
+  private async ackFrame(
+    detail: GalleyContentDetail,
+    ok: boolean,
+    reason?: string,
+  ): Promise<void> {
     try {
-      await this.deps.client()?.galleyAckContent({ chapter, ok });
+      await this.deps.client()?.galleyAckContent({
+        chapter: detail.chapter,
+        ok,
+        seq: detail.seq,
+        reason,
+      });
     } catch {
       /* frame gone mid-teardown — nothing to ack */
     }

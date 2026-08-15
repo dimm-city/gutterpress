@@ -66,8 +66,9 @@ export interface GalleyEditorOptions {
   fragmentHtml(markdown: string): Promise<string>;
   /** Tokenize markdown through the real pipeline (insertMarkdown). */
   parseTokens(markdown: string): Promise<GalleyToken[]>;
-  /** A chapter's serialization changed. `expected` = the previous text. */
-  onContentChanged(spec: { chapter: string; markdown: string; expected: string }): void;
+  /** A chapter's serialization changed. `expected` = the previous text;
+   *  `seq` must be echoed in the ack (guards cross-frame acks). */
+  onContentChanged(spec: { chapter: string; markdown: string; expected: string; seq: number }): void;
   onSelection(payload: SelectionPayload): void;
   onDirtyChanged(dirty: boolean): void;
   onOpaqueEdit(payload: OpaqueEditPayload): void;
@@ -140,8 +141,10 @@ export interface GalleyEditor {
   insertMarkdown(markdown: string): Promise<boolean>;
   setOpaqueSource(pos: number, src: string): boolean;
   saveNow(): void;
-  /** Host verdict on the last galleyContent proposal for `chapter`. */
-  ackContent(chapter: string, ok: boolean): void;
+  /** Host verdict on a galleyContent proposal. `seq` must match the
+   *  outstanding proposal; `reason` triages refusals (transient → retry,
+   *  divergence → suspend until reload). */
+  ackContent(chapter: string, ok: boolean, seq?: number, reason?: string): void;
   selectionState(): SelectionPayload;
   targetAt(x: number, y: number): { kind: string; chapter: string | null; pos: number; src?: string } | null;
   destroy(): void;
@@ -190,9 +193,15 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
         dom.setAttribute("contenteditable", "false");
         let currentSrc = node.attrs.src as string;
         const render = (src: string) => {
-          void fragmentFor(src).then((html) => {
-            if (dom.isConnected || !html) dom.innerHTML = html;
-          });
+          fragmentFor(src)
+            .then((html) => {
+              if (dom.isConnected || !html) dom.innerHTML = html;
+            })
+            .catch(() => {
+              // Fragment route unavailable — degrade to the verbatim source
+              // rather than a silent blank block.
+              dom.textContent = src;
+            });
         };
         render(currentSrc);
         const requestEdit = () => {
@@ -352,16 +361,39 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
   /**
    * Emit save proposals. `lastText`/`lastEmitted` advance ONLY on a
    * positive ack (`ackContent`) — an optimistic advance would break the
-   * expected-chain the moment a commit is refused, permanently stalling the
-   * chapter (verified finding). While a proposal is in flight its chapter
-   * stays quiet; typed-in-the-meantime changes re-emit after the ack. A
-   * refused chapter is suspended (stale) until the surface reloads, so a
-   * genuine divergence surfaces once instead of as a refusal storm.
+   * expected-chain the moment a commit is refused, permanently stalling
+   * the chapter (verified finding).
+   *
+   * Refusals are triaged by reason: TRANSIENT ones (a dirty source pane, a
+   * render in flight — self-healing seconds later) schedule a retry with
+   * the chain untouched; only genuine divergence (the file changed under
+   * the editor: mismatch / chapter-changed / unsafe path) suspends the
+   * chapter until the surface reloads. A suspended or in-flight chapter is
+   * DIRTY — the flag must never claim clean while text hasn't reached disk
+   * (Opus-verified regression).
+   *
+   * Every proposal carries a `seq` nonce and acks must echo it: after a
+   * frame swap, a late ack from the retired frame's proposal must not
+   * advance or poison the replacement frame's chain.
    */
-  const pendingAck = new Map<string, { markdown: string; wrapper: PMNode }>();
+  const pendingAck = new Map<string, { markdown: string; wrapper: PMNode; seq: number }>();
   const staleChapters = new Set<string>();
+  let seqCounter = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  function flushSave() {
+  const FATAL_ACK_REASONS = new Set(["mismatch", "chapter-changed", "unsafe-chapter-path"]);
+
+  function hasUnsavedContent(): boolean {
+    if (pendingAck.size > 0 || saveTimer !== null) return true;
+    let unsaved = false;
+    editor.state.doc.forEach((wrapper) => {
+      if (wrapper.type.name !== "chapterFile") return;
+      if (lastEmitted.get(wrapper.attrs.src as string) !== wrapper) unsaved = true;
+    });
+    return unsaved;
+  }
+
+  function flushSave(force = false) {
     if (saveTimer) {
       clearTimeout(saveTimer);
       saveTimer = null;
@@ -370,29 +402,48 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     doc.forEach((wrapper) => {
       if (wrapper.type.name !== "chapterFile") return;
       const chapter = wrapper.attrs.src as string;
-      if (pendingAck.has(chapter) || staleChapters.has(chapter)) return;
+      if (staleChapters.has(chapter)) return;
+      const pending = pendingAck.get(chapter);
+      // In flight: stay quiet unless forced (the pre-swap flush must push
+      // keystrokes typed AFTER the outstanding proposal — the session's
+      // per-chapter latest-wins queue supersedes the older one).
+      if (pending && !force) return;
       if (lastEmitted.get(chapter) === wrapper) return; // untouched
       const chapterDoc = schema.topNodeType.create(null, wrapper.content);
       const markdown = serializeGalleyDoc(schema, chapterDoc, srcMap);
       const expected = lastText.get(chapter) ?? "";
+      if (pending?.markdown === markdown) return; // already proposed
       if (markdown === expected) {
         lastEmitted.set(chapter, wrapper);
         return;
       }
-      pendingAck.set(chapter, { markdown, wrapper });
-      opts.onContentChanged({ chapter, markdown, expected });
+      const seq = ++seqCounter;
+      pendingAck.set(chapter, { markdown, wrapper, seq });
+      opts.onContentChanged({ chapter, markdown, expected, seq });
     });
-    if (pendingAck.size === 0 && saveTimer === null) setDirty(false);
+    if (!hasUnsavedContent() && staleChapters.size === 0) setDirty(false);
   }
 
-  function ackContent(chapter: string, ok: boolean): void {
+  function ackContent(chapter: string, ok: boolean, seq?: number, reason?: string): void {
     const p = pendingAck.get(chapter);
+    // Ignore acks that don't match the outstanding proposal — they belong
+    // to a retired frame's lifecycle or a superseded emit.
+    if (!p || (typeof seq === "number" && p.seq !== seq)) return;
     pendingAck.delete(chapter);
-    if (ok && p) {
+    if (ok) {
       lastText.set(chapter, p.markdown);
       lastEmitted.set(chapter, p.wrapper);
-    } else if (!ok) {
+    } else if (reason && !FATAL_ACK_REASONS.has(reason)) {
+      // Transient refusal — the chain is untouched; retry after a beat.
+      if (!retryTimer) {
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          if (!destroyed) flushSave();
+        }, saveDelayMs * 2);
+      }
+    } else {
       staleChapters.add(chapter);
+      setDirty(true);
     }
     // Changes typed while the proposal was in flight emit now.
     if (!destroyed) flushSave();
@@ -516,7 +567,7 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     },
 
     saveNow() {
-      flushSave();
+      flushSave(true);
     },
 
     ackContent,
@@ -550,6 +601,7 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
       destroyed = true;
       if (refreshTimer) clearTimeout(refreshTimer);
       if (saveTimer) clearTimeout(saveTimer);
+      if (retryTimer) clearTimeout(retryTimer);
       window.removeEventListener("gp:relayout", onRelayout);
       void ready.catch(() => {});
       editor.destroy();

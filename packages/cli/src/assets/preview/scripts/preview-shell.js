@@ -153,6 +153,15 @@
       if (finished || building !== frame) return;
       finished = true;
       frame.__gutterpressCancelReady = null;
+      // Last-chance galley flush at PROMOTION time: the pre-swap flushes
+      // covered scheduling and swap start, but the replacement frame spent
+      // its whole load window rendering — keystrokes typed during it would
+      // die with the old frame right here. saveNow(force) proposes them;
+      // the postMessage is queued to the parent before the frame retires.
+      try {
+        var oldGalley = fwin(active) && fwin(active).GutterpressGalley;
+        if (oldGalley && oldGalley.isEditing()) oldGalley.saveNow();
+      } catch (err) { /* teardown race — nothing to flush */ }
       var activeApi = fwin(active) && fwin(active).previewAPI;
       var pendingSource = activeApi && typeof activeApi.flushScroll === 'function'
         ? activeApi.flushScroll(true)

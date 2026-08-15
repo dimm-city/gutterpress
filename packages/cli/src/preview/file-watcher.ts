@@ -646,15 +646,25 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       if (silentRegenTimer) clearTimeout(silentRegenTimer);
       silentRegenTimer = setTimeout(() => {
         silentRegenTimer = null;
-        // Guards: the watcher may have closed, an ordinary rebuild may be
-        // running (it regenerates anyway), or restartPreview may have
-        // switched projects since this timer was armed — a stale-project
-        // regen would write the OLD book into the NEW tempDir.
-        if (closed || state.isRebuilding) return;
-        if (path.resolve(state.currentInputPath ?? inputResolved) !== inputResolved) return;
-        void (async () => {
+        if (closed) return;
+        // A rebuild in flight may have STARTED before this inline save
+        // landed on disk — its render would not include the edit, so
+        // dropping the regen here could leave book.html stale forever.
+        // Re-arm instead of dropping.
+        if (state.isRebuilding) {
+          if (!closed) {
+            silentRegenTimer = setTimeout(() => acceptSettledWrite(target, writtenContent, origin), 1500);
+            silentRegenTimer.unref?.();
+          }
+          return;
+        }
+        const regen = (async () => {
           try {
             const manifest = await loadManifest(inputResolved);
+            // Re-check AFTER the await: stopFileWatcher (project switch)
+            // sets `closed` synchronously and AWAITS this promise, so this
+            // check is what prevents a stale regen from overwriting the
+            // NEW project's book.html (Opus-verified TOCTOU race).
             if (closed) return;
             const updatedConfig = resolveConfig({ engine: state.options.engine }, manifest);
             await generateAndWriteHtml(inputResolved, state.tempDir, updatedConfig, state.cssAssets);
@@ -662,6 +672,10 @@ export function createFileWatcher(state: ServerState): FSWatcher {
             /* best-effort freshness — the next ordinary rebuild converges */
           }
         })();
+        state.silentRegenPromise = regen;
+        void regen.finally(() => {
+          if (state.silentRegenPromise === regen) state.silentRegenPromise = null;
+        });
       }, 3000);
       silentRegenTimer.unref?.();
       return;
@@ -864,6 +878,7 @@ export async function stopFileWatcher(state: ServerState): Promise<void> {
   // an active render finish against its original project so old and new projects
   // can never write the same book.html.
   await state.rebuildPromise?.catch(() => {});
+  await state.silentRegenPromise?.catch(() => {});
   await closePromise;
   if (state.rebuildTimer) {
     clearTimeout(state.rebuildTimer);

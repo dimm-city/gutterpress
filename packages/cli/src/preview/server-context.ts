@@ -21,6 +21,9 @@ export interface ServerState {
   isRebuilding: boolean;
   /** Active rebuild, awaited before a project restart closes its watcher. */
   rebuildPromise?: Promise<void> | null;
+  /** In-flight no-broadcast regen from an inline-edit save (ADR 0011) —
+   *  awaited on stop so a stale regen can never outlive its project. */
+  silentRegenPromise?: Promise<void> | null;
   /** Bypass watcher settling for a host write that has already completed.
    *  `origin: "inline-edit"` marks a write the preview DOM already shows
    *  (ADR 0010): the watcher echo is suppressed but NO rebuild runs — the
@@ -75,6 +78,7 @@ export function createServerState(
     rebuildTimer: null,
     isRebuilding: false,
     rebuildPromise: null,
+    silentRegenPromise: null,
     notifySettledWrite: null,
     previewServer: null,
     isShuttingDown: false,

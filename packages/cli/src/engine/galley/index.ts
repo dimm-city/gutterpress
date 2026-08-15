@@ -199,8 +199,8 @@ const api = {
 
   /** Host verdict on a galleyContent proposal — the expected-chain advances
    * only on ok:true (a refused chapter suspends until reload). */
-  ackContent(spec: { chapter: string; ok: boolean }) {
-    active?.ackContent(spec.chapter, !!spec.ok);
+  ackContent(spec: { chapter: string; ok: boolean; seq?: number; reason?: string }) {
+    active?.ackContent(spec.chapter, !!spec.ok, spec.seq, spec.reason);
     return { ok: active !== null };
   },
 

@@ -67,7 +67,7 @@ describe("GalleySession", () => {
     expect(patch.eolTolerant).toBe(true);
     expect(h.session.applied).toBe(1);
     // The frame's expected-chain advances ONLY on this positive ack.
-    expect(h.acks).toEqual([{ chapter: "ch.md", ok: true }]);
+    expect(h.acks).toEqual([{ chapter: "ch.md", ok: true, seq: undefined, reason: undefined }]);
   });
 
   test("failure surfaces through onStale (never silent, never retried)", async () => {
@@ -86,7 +86,7 @@ describe("GalleySession", () => {
     expect(h.session.applied).toBe(0);
     // A refused proposal is negatively acked so the frame suspends the
     // chapter instead of stacking refusals on a broken expected-chain.
-    expect(h.acks).toEqual([{ chapter: "ch.md", ok: false }]);
+    expect(h.acks).toEqual([{ chapter: "ch.md", ok: false, seq: undefined, reason: "mismatch" }]);
   });
 
   test("commits are serialized and a chapter queued twice keeps only the latest", async () => {

@@ -194,14 +194,17 @@ describe('/__galley routes', () => {
 
     // Just over the 2 MB cap once JSON-wrapped.
     const huge = 'x'.repeat(2 * 1024 * 1024 + 1024);
+    // The server must NOT destroy the socket mid-request (that resets the
+    // connection before the 413 can be read) — it stops buffering, drains,
+    // and answers with Connection: close. The assertion is unconditional: a
+    // reintroduced req.destroy() must fail this test, not skip it.
     const res = await fetch(`http://localhost:${port}/__galley/tokens`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ markdown: huge }),
-    }).catch(() => null);
-    // The server destroys the socket after responding; some clients surface
-    // that as a network error instead of the 413 — either is a rejection.
-    if (res) expect(res.status).toBe(413);
+    });
+    expect(res.status).toBe(413);
+    expect(((await res.json()) as { error: string }).error).toContain('exceeds');
   });
 
   test('wrong methods 405 and unknown subpaths 404, both as JSON', async () => {

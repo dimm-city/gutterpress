@@ -1013,6 +1013,13 @@
     // with no replacement menu would be a strict regression. No event is
     // dispatched for 'none' either.
     document.addEventListener('contextmenu', function (e) {
+      // Galley editing (ADR 0011): the SPA's context menu is gated off on
+      // v8 frames pending its galleyTargetAt rebuild — preventDefault here
+      // would leave the author with NO menu at all on selections, images,
+      // links, and raw blocks. Let the browser's native editing menu
+      // (cut/copy/paste) show instead.
+      var galley = window.GutterpressGalley;
+      if (galley && galley.isEditing && galley.isEditing()) return;
       var detail = api.getContextTargetAt({ x: e.clientX, y: e.clientY });
       if (detail.kind === 'none') return;
       e.preventDefault();

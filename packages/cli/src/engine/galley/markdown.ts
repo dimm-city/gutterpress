@@ -199,10 +199,31 @@ function runEnd(toks: GalleyToken[], i: number): number {
   return toks.length - 1;
 }
 
+/**
+ * Container tokens whose authored `{…}` braces have no serialization the
+ * schema can round-trip faithfully: markdown-it-attrs' binding rules for
+ * these are positional (own line after a table is eaten as a ROW; an
+ * end-of-item brace binds to the <li>; a blank-line brace becomes an
+ * attrs-only paragraph) and every placement we tried corrupted or migrated
+ * the attrs on reparse (Opus-verified probes: phantom table rows, `{.x}` →
+ * `{.x .x}` accumulation). Refuse-by-default instead: a container carrying
+ * authored braces escalates VERBATIM — zero loss, source-editable, and a
+ * corpus-empty path today (no example book authors container-level braces).
+ */
+const ATTR_REFUSED_CONTAINERS = new Set([
+  "bullet_list_open",
+  "ordered_list_open",
+  "blockquote_open",
+  "table_open",
+  "list_item_open",
+  "dl_open",
+]);
+
 function runIsSupported(toks: GalleyToken[], from: number, to: number, keys: Set<string>): boolean {
   for (let k = from; k <= to; k++) {
     const tok = toks[k]!;
     if (!keys.has(tok.type)) return false;
+    if (ATTR_REFUSED_CONTAINERS.has(tok.type) && braceSuffixOf(tok) !== "") return false;
     if (tok.type === "inline") {
       for (const child of tok.children ?? []) if (!keys.has(child.type)) return false;
     }
@@ -437,13 +458,13 @@ function buildTokenSpecs(lines: string[]): Record<string, Record<string, unknown
       block: "heading",
       getAttrs: (tok: GalleyToken) => ({ level: +(tok.tag ?? "h1").slice(1), ...gp(tok) }),
     },
-    blockquote: { block: "blockquote", getAttrs: gp },
-    bullet_list: { block: "bulletList", getAttrs: gp },
+    blockquote: { block: "blockquote" },
+    bullet_list: { block: "bulletList" },
     ordered_list: {
       block: "orderedList",
-      getAttrs: (tok: GalleyToken) => ({ start: +(attrOf(tok, "start") ?? "1"), ...gp(tok) }),
+      getAttrs: (tok: GalleyToken) => ({ start: +(attrOf(tok, "start") ?? "1") }),
     },
-    list_item: { block: "listItem", getAttrs: gp },
+    list_item: { block: "listItem" },
     code_block: { block: "codeBlock", noCloseToken: true, getAttrs: gp },
     fence: {
       block: "codeBlock",
@@ -524,7 +545,7 @@ function buildTokenSpecs(lines: string[]): Record<string, Record<string, unknown
     dt: { block: "defTerm" },
     dd: { block: "defDesc" },
     // Tables (thead/tbody flattened; the serializer re-derives them).
-    table: { block: "table", getAttrs: gp },
+    table: { block: "table" },
     thead: { ignore: true },
     tbody: { ignore: true },
     tr: { block: "tableRow" },
@@ -649,19 +670,14 @@ type SerializerFn = (state: never, node: PMNode, parent: PMNode, index: number) 
 const d = defaultMarkdownSerializer.nodes;
 
 /**
- * Append the authored brace suffix to what the wrapped fn just wrote.
- *
- * Placement matters to markdown-it-attrs' binding rules: for LEAF blocks
- * (paragraph, heading, code fence) the brace belongs at the end of the last
- * content line; for CONTAINER blocks (lists, blockquote, table) it must sit
- * on its OWN line after the block or it re-binds to the last inner element
- * (the final `<li>`, the quote's `<p>`) on reparse. `placement` picks the
- * form; images append with no separating space.
+ * Append the authored brace suffix to what the wrapped fn just wrote — LEAF
+ * blocks only (paragraph, heading, code fence: end of the last content
+ * line; images: no separating space). Container blocks never reach here:
+ * markdown-it-attrs' positional binding rules for them cannot be
+ * regenerated faithfully, so containers carrying authored braces are
+ * refused at escalation (ATTR_REFUSED_CONTAINERS) and round-trip verbatim.
  */
-function withBraceSuffix(
-  fn: SerializerFn,
-  placement: "line" | "ownline" | "inline" = "line",
-): SerializerFn {
+function withBraceSuffix(fn: SerializerFn, placement: "line" | "inline" = "line"): SerializerFn {
   return (state, node, parent, index) => {
     const s = state as unknown as { out: string };
     const at = s.out.length;
@@ -670,7 +686,17 @@ function withBraceSuffix(
     if (!raw) return;
     const written = s.out.slice(at);
     const body = written.replace(/\n*$/, "");
-    const sep = placement === "inline" ? "" : placement === "ownline" ? "\n" : " ";
+    if (body === "") {
+      // Attrs-only block (an empty paragraph carrying `{…}`): splicing the
+      // brace at `at` would glue it onto the PREVIOUS block's last line
+      // (closeBlock defers separators until the next write). Write it as
+      // the block's own content instead — flushing the pending separator.
+      const st = state as unknown as { write(t: string): void; closeBlock(n: PMNode): void };
+      st.write(raw);
+      st.closeBlock(node);
+      return;
+    }
+    const sep = placement === "inline" ? "" : " ";
     s.out = s.out.slice(0, at) + body + sep + raw + written.slice(body.length);
   };
 }
@@ -706,19 +732,19 @@ function buildSerializer(
   const nodes: Record<string, SerializerFn> = {
     paragraph: withBraceSuffix(d.paragraph as SerializerFn),
     heading: withBraceSuffix(d.heading as SerializerFn),
-    blockquote: withBraceSuffix(d.blockquote as SerializerFn, "ownline"),
+    blockquote: d.blockquote as SerializerFn,
     horizontalRule: (state, node) => {
       const st = state as unknown as { write(t: string): void; closeBlock(n: PMNode): void };
       st.write("---");
       st.closeBlock(node);
     },
     hardBreak: d.hard_break as SerializerFn,
-    bulletList: withBraceSuffix(((state, node) => {
+    bulletList: ((state, node) => {
       (state as unknown as {
         renderList(n: PMNode, delim: string, first: (i: number) => string): void;
       }).renderList(node, "  ", () => "- ");
-    }) as SerializerFn, "ownline"),
-    orderedList: withBraceSuffix(((state, node) => {
+    }) as SerializerFn,
+    orderedList: ((state, node) => {
       const start = ((node.attrs as { start?: number }).start ?? 1) as number;
       const maxW = String(start + node.childCount - 1).length;
       const st = state as unknown as {
@@ -729,9 +755,8 @@ function buildSerializer(
         const nStr = String(start + i);
         return st.repeat(" ", maxW - nStr.length) + nStr + ". ";
       });
-    }) as SerializerFn, "ownline"),
-    // End-of-line braces bind to the <li> itself on reparse.
-    listItem: withBraceSuffix(d.list_item as SerializerFn),
+    }) as SerializerFn,
+    listItem: d.list_item as SerializerFn,
     codeBlock: (state, node) => {
       const st = state as unknown as {
         write(t: string): void;
@@ -823,7 +848,7 @@ function buildSerializer(
       };
       st.wrapBlock("    ", ":   ", node, () => st.renderContent(node));
     },
-    table: withBraceSuffix(((state, node) => {
+    table: ((state, node) => {
       const st = state as unknown as { write(t: string): void; closeBlock(n: PMNode): void };
       const rows: Array<{ header: boolean; cells: Array<{ align: string | null; text: string }> }> =
         [];
@@ -852,7 +877,7 @@ function buildSerializer(
       });
       st.write(lines.join("\n"));
       st.closeBlock(node);
-    }) as SerializerFn, "ownline"),
+    }) as SerializerFn,
     // Rows/cells are consumed by the table serializer above; stubs keep an
     // out-of-place node from throwing.
     tableRow: () => {},
