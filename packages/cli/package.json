@@ -1,6 +1,6 @@
 {
   "name": "gutterpress",
-  "version": "0.10.0-alpha.1",
+  "version": "0.10.0-alpha.2",
   "description": "Markdown-to-PDF converter for professional print layout using a native Chromium print engine and Ghostscript.",
   "author": "itlackey",
   "license": "MPL-2.0",
