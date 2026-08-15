@@ -27,6 +27,7 @@
     "src/commands",
     "src/engine/dev-cli.ts",
     "src/engine/viewer",
+    "src/engine/edit",
     "src/engine/compiler/agent.ts"
   ]
 }

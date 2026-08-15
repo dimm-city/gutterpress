@@ -247,6 +247,18 @@
             onchange={(e) => settings.set({ preview: { contextMenu: (e.currentTarget as HTMLInputElement).checked } })}
           />
         </div>
+        <div class="row">
+          <div class="row-label">
+            <label for="set-inline-editing">Edit directly in the preview</label>
+            <span class="row-hint">Type straight into the book pages; your markdown files are kept in sync automatically. Turn off to edit only in the source view.</span>
+          </div>
+          <input
+            id="set-inline-editing"
+            type="checkbox"
+            checked={s.preview.inlineEditing}
+            onchange={(e) => settings.set({ preview: { inlineEditing: (e.currentTarget as HTMLInputElement).checked } })}
+          />
+        </div>
       </section>
 
       {#if isDesktop()}

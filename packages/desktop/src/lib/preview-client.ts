@@ -16,7 +16,8 @@ export interface PreviewEvent {
     // Inline editing (protocol v7, ADR 0010):
     | "editPatches"
     | "editDrift"
-    | "editStateChanged";
+    | "editStateChanged"
+    | "editSelection";
   detail: {
     currentPage?: number;
     totalPages?: number;
@@ -359,6 +360,11 @@ export class PreviewClient {
   /** Force all sub-debounce dirty blocks into proposals (pre-swap flush). */
   flushEditState(): Promise<void> {
     return this.call<void>("flushEditState", []);
+  }
+
+  /** Toggle bold/italic/strike/code on the frame's current selection. */
+  applyInlineFormat(spec: { format: "bold" | "italic" | "strike" | "code" }): Promise<{ applied: boolean }> {
+    return this.call<{ applied: boolean }>("applyInlineFormat", [spec]);
   }
 
   getRectsFor(target: RectsForTarget): Promise<RectsForResult> {

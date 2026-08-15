@@ -578,10 +578,18 @@ async function main() {
     );
   }
 
-  // getProtocolVersion() bumped to 6.
+  // getProtocolVersion() bumped to 7 (ADR 0010: inline editing).
   {
     const { api } = loadInterfaceWithDom("<p>x</p>");
-    assert.equal(api.getProtocolVersion(), 6);
+    assert.equal(api.getProtocolVersion(), 7);
+    // The v7 commands degrade to inert results when the edit bundle is
+    // absent (published books, stale bundles) instead of throwing.
+    assert.deepEqual(api.setEditMode({ on: true }), { on: false });
+    assert.deepEqual(api.ackEditPatches({ batchId: 1, results: [] }), { ok: false });
+    assert.equal(api.getSelectionState(), null);
+    assert.deepEqual(api.applyInlineFormat({ format: "bold" }), { applied: false });
+    const verify = api.verifyChapter({ chapter: "a.md" });
+    assert.equal(verify.healed, 0);
   }
 
   // ── Native engine getRectsFor: no clone-grouping — a spec resolves to AT

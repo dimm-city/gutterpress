@@ -170,6 +170,7 @@ const ARTIFACT_ATTRS = new Set([
   "data-chapter-label",
   "data-gp-source-token",
   "data-gp-source-occurrence",
+  "data-gp-edit-degraded",
   "contenteditable",
   "spellcheck",
 ]);
@@ -221,6 +222,7 @@ const INLINE_WRAP_TAGS: Record<string, "em" | "strong" | "s" | "sup" | "sub" | "
   b: "strong",
   s: "s",
   del: "s",
+  strike: "s", // execCommand("strikeThrough") output normalizes to ~~s~~
   sup: "sup",
   sub: "sub",
   mark: "mark",

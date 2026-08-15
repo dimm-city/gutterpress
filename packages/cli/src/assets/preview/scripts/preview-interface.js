@@ -691,6 +691,10 @@
       var edit = window.GutterpressEdit;
       return edit ? edit.getSelectionState() : null;
     },
+    applyInlineFormat: function (spec) {
+      var edit = window.GutterpressEdit;
+      return edit ? edit.applyInlineFormat(spec || {}) : { applied: false };
+    },
     flushEditState: function () {
       var edit = window.GutterpressEdit;
       return edit ? edit.flushPatches() : Promise.resolve();

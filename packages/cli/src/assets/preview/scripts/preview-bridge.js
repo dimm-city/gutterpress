@@ -93,6 +93,9 @@
   window.addEventListener('editStateChanged', function (e) {
     post({ type: 'gutterpress:event', name: 'editStateChanged', detail: e.detail });
   });
+  window.addEventListener('editSelection', function (e) {
+    post({ type: 'gutterpress:event', name: 'editSelection', detail: e.detail });
+  });
 
   // Announce readiness as soon as previewAPI is defined.
   function announceReady() {

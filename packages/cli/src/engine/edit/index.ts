@@ -590,6 +590,65 @@ export async function verifyChapter(spec: {
   return detail;
 }
 
+// ── inline formatting (the Phase 4 bubble's verbs) ──────────────────────────
+
+export type InlineFormat = "bold" | "italic" | "strike" | "code";
+
+/**
+ * Toggle an inline format on the current selection. bold/italic/strike ride
+ * `execCommand` (native undo integration; the resulting <b>/<i>/<strike>
+ * normalize inside the serializer) and flow through beforeinput/input, so
+ * dirty tracking is automatic. `code` has no command — it is applied
+ * manually and tracked manually.
+ */
+export function applyInlineFormat(spec: { format: InlineFormat }): { applied: boolean } {
+  if (!enabled) return { applied: false };
+  const sel = getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return { applied: false };
+  const unit = commitUnitOf(sel.anchorNode);
+  const focusUnit = commitUnitOf(sel.focusNode);
+  if (!unit || unit !== focusUnit || unit.hasAttribute(DEGRADED_ATTR)) {
+    return { applied: false }; // single-block selections only (v1)
+  }
+
+  if (spec.format !== "code") {
+    const command = { bold: "bold", italic: "italic", strike: "strikeThrough" }[spec.format];
+    const applied = document.execCommand(command, false);
+    return { applied };
+  }
+
+  // <code> toggle: unwrap when the selection sits inside one; else wrap the
+  // extracted range. Plain-text the extraction — a code span holds no markup.
+  const range = sel.getRangeAt(0);
+  const anchorEl =
+    sel.anchorNode?.nodeType === Node.ELEMENT_NODE
+      ? (sel.anchorNode as Element)
+      : sel.anchorNode?.parentElement ?? null;
+  const existing = anchorEl?.closest("code");
+  ensureTracked(unit);
+  if (existing && unit.contains(existing)) {
+    const text = document.createTextNode(existing.textContent ?? "");
+    existing.replaceWith(text);
+    sel.selectAllChildren(text.parentElement ?? unit);
+    sel.setBaseAndExtent(text, 0, text, text.length);
+  } else {
+    const text = range.toString();
+    if (!text) return { applied: false };
+    range.deleteContents();
+    const code = document.createElement("code");
+    code.textContent = text;
+    range.insertNode(code);
+    sel.setBaseAndExtent(code, 0, code, code.childNodes.length);
+  }
+  if (!hadDirty) {
+    hadDirty = true;
+    emit("editStateChanged", { dirty: true });
+  }
+  scheduleRelayout();
+  scheduleAutosync();
+  return { applied: true };
+}
+
 // ── selection state (for the Phase 4 formatting chrome) ─────────────────────
 
 export function getSelectionState(): {
@@ -674,6 +733,15 @@ function onKeyDown(ev: KeyboardEvent): void {
   }, 0);
 }
 
+let selectionTimer: ReturnType<typeof setTimeout> | undefined;
+function onSelectionChange(): void {
+  if (!enabled) return;
+  clearTimeout(selectionTimer);
+  selectionTimer = setTimeout(() => {
+    emit("editSelection", getSelectionState());
+  }, 150);
+}
+
 function onCompositionStart(): void {
   composing = true;
 }
@@ -707,6 +775,7 @@ export function enable(options: EnableOptions = {}): boolean {
     document.addEventListener("compositionend", onCompositionEnd, true);
     document.addEventListener("dragstart", onDragStart, true);
     document.addEventListener("keydown", onKeyDown, true);
+    document.addEventListener("selectionchange", onSelectionChange);
     window.addEventListener("gp:relayout", onRelayout);
   }
   applyEditability();
@@ -722,6 +791,8 @@ export function disable(): void {
   document.removeEventListener("compositionend", onCompositionEnd, true);
   document.removeEventListener("dragstart", onDragStart, true);
   document.removeEventListener("keydown", onKeyDown, true);
+  document.removeEventListener("selectionchange", onSelectionChange);
+  clearTimeout(selectionTimer);
   window.removeEventListener("gp:relayout", onRelayout);
   clearTimeout(relayoutTimer);
   clearTimeout(autosyncTimer);
@@ -749,5 +820,6 @@ export function flushPatches(): Promise<void> {
   ackPatches,
   verifyChapter,
   getSelectionState,
+  applyInlineFormat,
   flushPatches,
 };

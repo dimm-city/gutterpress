@@ -94,6 +94,25 @@ source file changes; the terminal always prints the actual URL on startup,
 so that's the source of truth if you've changed the port. The `build`
 command produces a PDF in a `dist/` directory next to your project.
 
+### Editing Directly in the Preview (Desktop App)
+
+In the Gutterpress desktop app, the preview *is* the editor: click into any
+paragraph, heading, list, or table on the page and start typing. Text
+reflows across pages as you type, and your markdown files are saved
+automatically to match what's on screen — the page you're looking at and
+the file on disk always agree. Select text to get a small formatting bubble
+(bold, italic, strikethrough, inline code), and right-click any block for
+the full menu — page breaks, image properties, links, markers, or "Edit
+this block" to work on that block's markdown source directly.
+
+A few blocks decline direct editing on purpose: anything written as raw
+HTML, and a handful of exotic constructs the editor can't round-trip
+safely. Those open in the block's source editor instead — nothing is ever
+guessed. You can switch to the full source view any time (it stays
+available as a tab), and the whole feature can be turned off in Settings →
+Preview ("Edit directly in the preview") if you prefer working in markdown
+only.
+
 ### Previewing in Different Browsers
 
 The live preview runs in your browser. Safari and Firefox may place page breaks slightly differently from the exported PDF because each browser measures text differently — the PDF, which always renders in Chromium, is the authoritative layout. To minimise the difference, embed your fonts with `@font-face` instead of relying on system fonts.

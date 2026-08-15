@@ -46,6 +46,7 @@
     flushPatches: () => flushPatches,
     enable: () => enable,
     disable: () => disable,
+    applyInlineFormat: () => applyInlineFormat,
     ackPatches: () => ackPatches
   });
 
@@ -70,6 +71,7 @@
     "data-chapter-label",
     "data-gp-source-token",
     "data-gp-source-occurrence",
+    "data-gp-edit-degraded",
     "contenteditable",
     "spellcheck"
   ]);
@@ -114,6 +116,7 @@
     b: "strong",
     s: "s",
     del: "s",
+    strike: "s",
     sup: "sup",
     sub: "sub",
     mark: "mark"
@@ -1337,6 +1340,49 @@ ${emitBlocks(item.blocks, ctx)}`;
     emit("editDrift", detail);
     return detail;
   }
+  function applyInlineFormat(spec) {
+    if (!enabled)
+      return { applied: false };
+    const sel = getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed)
+      return { applied: false };
+    const unit = commitUnitOf(sel.anchorNode);
+    const focusUnit = commitUnitOf(sel.focusNode);
+    if (!unit || unit !== focusUnit || unit.hasAttribute(DEGRADED_ATTR)) {
+      return { applied: false };
+    }
+    if (spec.format !== "code") {
+      const command = { bold: "bold", italic: "italic", strike: "strikeThrough" }[spec.format];
+      const applied = document.execCommand(command, false);
+      return { applied };
+    }
+    const range = sel.getRangeAt(0);
+    const anchorEl = sel.anchorNode?.nodeType === Node.ELEMENT_NODE ? sel.anchorNode : sel.anchorNode?.parentElement ?? null;
+    const existing = anchorEl?.closest("code");
+    ensureTracked(unit);
+    if (existing && unit.contains(existing)) {
+      const text = document.createTextNode(existing.textContent ?? "");
+      existing.replaceWith(text);
+      sel.selectAllChildren(text.parentElement ?? unit);
+      sel.setBaseAndExtent(text, 0, text, text.length);
+    } else {
+      const text = range.toString();
+      if (!text)
+        return { applied: false };
+      range.deleteContents();
+      const code = document.createElement("code");
+      code.textContent = text;
+      range.insertNode(code);
+      sel.setBaseAndExtent(code, 0, code, code.childNodes.length);
+    }
+    if (!hadDirty) {
+      hadDirty = true;
+      emit("editStateChanged", { dirty: true });
+    }
+    scheduleRelayout();
+    scheduleAutosync();
+    return { applied: true };
+  }
   function getSelectionState() {
     const sel = getSelection();
     const empty = {
@@ -1407,6 +1453,15 @@ ${emitBlocks(item.blocks, ctx)}`;
       node.parentElement?.scrollIntoView({ block: "nearest" });
     }, 0);
   }
+  var selectionTimer;
+  function onSelectionChange() {
+    if (!enabled)
+      return;
+    clearTimeout(selectionTimer);
+    selectionTimer = setTimeout(() => {
+      emit("editSelection", getSelectionState());
+    }, 150);
+  }
   function onCompositionStart() {
     composing = true;
   }
@@ -1437,6 +1492,7 @@ ${emitBlocks(item.blocks, ctx)}`;
       document.addEventListener("compositionend", onCompositionEnd, true);
       document.addEventListener("dragstart", onDragStart, true);
       document.addEventListener("keydown", onKeyDown, true);
+      document.addEventListener("selectionchange", onSelectionChange);
       window.addEventListener("gp:relayout", onRelayout);
     }
     applyEditability();
@@ -1452,6 +1508,8 @@ ${emitBlocks(item.blocks, ctx)}`;
     document.removeEventListener("compositionend", onCompositionEnd, true);
     document.removeEventListener("dragstart", onDragStart, true);
     document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("selectionchange", onSelectionChange);
+    clearTimeout(selectionTimer);
     window.removeEventListener("gp:relayout", onRelayout);
     clearTimeout(relayoutTimer);
     clearTimeout(autosyncTimer);
@@ -1474,6 +1532,7 @@ ${emitBlocks(item.blocks, ctx)}`;
     ackPatches,
     verifyChapter,
     getSelectionState,
+    applyInlineFormat,
     flushPatches
   };
 })();

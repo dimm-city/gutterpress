@@ -18,7 +18,13 @@ This project follows [Semantic Versioning](https://semver.org/).
   block overlay. New corpus soundness gate (`roundtrip:gate`, CI) proves the
   HTML→markdown codec over every example book — zero unsound results, 100%
   coverage on 6/7 books. `preview.inlineEditing` (default on) is the kill
-  switch; the source pane remains available as an on-demand view.
+  switch — Settings → Preview → "Edit directly in the preview" — and the
+  source pane remains available as an on-demand view.
+- **Formatting bubble.** Select text on the page to get a floating
+  bold / italic / strikethrough / inline-code toolbar; formatting applies
+  in place and syncs to markdown like any typed edit (native undo covers
+  it). The right-click menu keeps the rest of the surface: page breaks,
+  image properties, links, markers, and per-block source editing.
 
 ## [0.10.0] - 2026-08-12
 

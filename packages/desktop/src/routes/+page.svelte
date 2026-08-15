@@ -36,6 +36,8 @@
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
   import { InlineEditSession } from "$lib/editor/inline-edit-session";
+  import FormattingBubble from "$lib/components/FormattingBubble.svelte";
+  import type { BubbleState } from "$lib/components/FormattingBubble.svelte";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { BlockOverlayController } from "$lib/routes/block-overlay-controller.svelte";
   import BlockEditOverlay from "$lib/components/BlockEditOverlay.svelte";
@@ -1282,6 +1284,15 @@
   //   check keeps a pre-mount change from being dropped (it re-fires once the
   //   preview client exists).
   const autoSaveDelaySink = settingsChangeGuard<number>((delay) => buffer?.setSaveDelayMs(delay));
+  // Kill switch (ADR 0010): flipping preview.inlineEditing re-syncs the
+  // frame's edit surface immediately, not just on the next render pass.
+  const inlineEditingSink = settingsChangeGuard<boolean>(
+    () => {
+      formatBubble = { ...formatBubble, visible: false };
+      void inlineEdit.syncEditMode();
+    },
+    () => !!client,
+  );
   const recoverySink = settingsChangeGuard<boolean>((enabled) => buffer?.setRecoveryEnabled(enabled));
   const previewBgSink = settingsChangeGuard<string>(
     (bg) => {
@@ -1313,6 +1324,7 @@
       previewBgSink(s.appearance.previewBg);
       splitRatioSink(s.preview.splitRatio);
       contextMenuSettingSink(s.preview.contextMenu);
+      inlineEditingSink(s.preview.inlineEditing);
     }),
   );
 
@@ -1947,6 +1959,39 @@
       toast?.info?.(`Preview drifted for ${chapter} — reload the preview to reconcile.`),
   });
 
+  // Floating inline-format toolbar over the frame's selection (ADR 0010
+  // Phase 4). Position tracks the frame's debounced editSelection events,
+  // window-fixed like the ContextMenu (iframe origin + frame rect).
+  let formatBubble = $state<BubbleState>({
+    visible: false,
+    x: 0,
+    y: 0,
+    formats: { strong: false, em: false, s: false, code: false },
+  });
+
+  function handleEditSelection(detail: {
+    collapsed: boolean;
+    rects: Array<{ top: number; left: number; width: number; height: number }>;
+    formats: BubbleState["formats"];
+    block: unknown;
+  } | null): void {
+    const rect = detail?.rects?.[0];
+    const origin = previewFrameRef?.getIframe()?.getBoundingClientRect();
+    if (
+      !detail || detail.collapsed || !detail.block || !rect || !origin ||
+      !settings.current.preview.inlineEditing
+    ) {
+      if (formatBubble.visible) formatBubble = { ...formatBubble, visible: false };
+      return;
+    }
+    formatBubble = {
+      visible: true,
+      x: origin.left + rect.left + rect.width / 2,
+      y: origin.top + rect.top,
+      formats: detail.formats,
+    };
+  }
+
   const contextMenu = new ContextMenuController({
     client: () => client,
     enabled: () => settings.current.preview.contextMenu,
@@ -2044,7 +2089,11 @@
     // rebuilds its strips (and loses editability stamps) on each mount.
     c.on((e) => {
       inlineEdit.handleEvent(e.name, e.detail);
+      if (e.name === "editSelection") {
+        handleEditSelection(e.detail as Parameters<typeof handleEditSelection>[0]);
+      }
       if (e.name === "ready" || e.name === "renderingComplete") {
+        formatBubble = { ...formatBubble, visible: false };
         void inlineEdit.syncEditMode();
       }
     });
@@ -3017,6 +3066,10 @@
         />
         {#if isDesktop()}
           <ContextMenu controller={contextMenu} />
+          <FormattingBubble
+            state={formatBubble}
+            onFormat={(format) => void client?.applyInlineFormat({ format })}
+          />
         {/if}
         {#if isDesktop() && blockOverlay.open}
           <BlockEditOverlay controller={blockOverlay} bind:this={blockOverlayRef} />
