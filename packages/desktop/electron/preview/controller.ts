@@ -43,7 +43,9 @@ export interface PreviewHandle {
   port: number;
   inputPath: string;
   stop: () => Promise<void>;
-  notifySettledWrite: (filePath: string, writtenContent: string) => void;
+  /** `origin: "inline-edit"` suppresses the rebuild (ADR 0010) — the write
+   *  is a projection of DOM the preview already shows. */
+  notifySettledWrite: (filePath: string, writtenContent: string, origin?: string) => void;
 }
 
 export interface PreviewOpenArgs {
