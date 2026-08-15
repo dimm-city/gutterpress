@@ -10,7 +10,7 @@
  * the underlying cause, not the transport. Electron wraps `ipcMain.handle`
  * rejections as `Error invoking remote method '<ns:op>': <cause>` (sometimes with
  * a further `Error: ` prefix on the cause). This is the single source of truth
- * for that scrub, shared by `LeftPanel` and `ConflictChoicesDialog`.
+ * for that scrub (shared by `LeftPanel` and other error surfaces).
  */
 export function friendlyHostError(msg: string): string {
   return msg.replace(/^Error invoking remote method '[^']+':\s*(Error:\s*)?/, "");
@@ -123,7 +123,7 @@ export function friendlyPdfError(e: unknown): string {
   // preserve custom Error properties across the IPC boundary, so also match
   // the host's known conflict copy in the message text (both conflict
   // messages share "two places" — see electron/export/controller.ts and
-  // ConflictChoicesDialog).
+  // other error surfaces).
   if (code === "SYNC_CONFLICT" || /two places/i.test(msg)) {
     // `api:build` goes through ipcMain.handle with no re-serialization, so the
     // renderer sees Electron's own `Error invoking remote method '<ns:op>':

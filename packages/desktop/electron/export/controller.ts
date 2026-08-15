@@ -27,10 +27,9 @@ import path from "node:path";
 import os from "node:os";
 import fsp from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { preExportSyncGateBlockError } from "../recovery-bridge";
 import type { GitIdentityArgs } from "../git-identity";
 import type { ExportProgressEvent, ExportSession } from "../pdf-export";
-import type { ConflictFile, EngineBrowser, TokenStore } from "gutterpress";
+import type { EngineBrowser, TokenStore } from "gutterpress";
 
 type LibModule = typeof import("gutterpress");
 
@@ -69,20 +68,6 @@ export interface ExportBuildResult {
   diagnostics?: ExportBuildDiagnostic[];
 }
 
-/**
- * The minimal slice of AutoSyncOrchestrator the pre-export gate needs — two
- * methods, both owned by the orchestrator itself: a read (isConflictLatched)
- * and the ONE mutation surface (latchConflict), which also cancels the
- * project's timers, stamps lastSyncAt, and emits the conflict status. Finding
- * #7 (2026-07-10 architecture review): this used to be `getState`/
- * `getOrCreateState` returning the orchestrator's mutable state bag directly,
- * which let the gate below reach in and hand-write `conflictLatched`.
- */
-interface ExportSyncGate {
-  isConflictLatched(dir: string): boolean;
-  latchConflict(dir: string, files: ConflictFile[]): void;
-}
-
 /** External touch-points injected into the controller (all faked in tests). */
 export interface ExportControllerDeps {
   /** Lazily load gutterpress. Cached by the caller. */
@@ -107,8 +92,6 @@ export interface ExportControllerDeps {
    * Chromium (and its usual Chromium-milestone preflight) when set.
    */
   engineBrowser: () => Promise<EngineBrowser>;
-  /** Auto-sync state accessors (subset of AutoSyncOrchestrator). */
-  sync: ExportSyncGate;
   /** Single active export session accessors (electron/pdf-export.ts). */
   getActiveExportSession: () => ExportSession | null;
   setActiveExportSession: (session: ExportSession | null) => void;
@@ -234,30 +217,12 @@ export class ExportController {
       //   synced / up-to-date  → proceed immediately.
       //   dirty + online       → sync first (so the PDF includes teammate changes).
       //   offline              → proceed but warn (renderer receives a message).
-      //   conflict-latched     → block and return a typed error (author must resolve).
-      // Only runs when the exported dir is the currently open project and auto-sync
-      // is configured (canSync + credential). Local-only projects skip the gate.
-      // path.resolve() normalises the export dir to match the autoSyncStates key,
-      // which is always normalised at assignment time in startFolderWatch.
+      // Sync always converges (2026-08-14) — there is no conflict state to
+      // block on; the PDF is built from whatever the converged local content
+      // is, which is always valid and fully snapshotted. Gate errors are
+      // non-fatal. Only runs when the exported dir is the currently open
+      // project and auto-sync is configured (canSync + credential).
       const exportDir = path.resolve(args.input);
-      // Use exportDir (already path.resolve'd) as the canonical key into the
-      // orchestrator's state map so both the hard-block read and the mid-gate
-      // conflict latch below use the same key — regardless of whether exportDir
-      // happens to equal watchedDir.
-      if (this.deps.sync.isConflictLatched(exportDir)) {
-        // Hard block: the author MUST resolve before a PDF can be trusted.
-        this.deps.setActiveExportSession(null);
-        const err = new Error(
-          "Cannot save a PDF while there are unresolved changes from two places. " +
-          "Resolve the conflict first, then try again.",
-        );
-        (err as Error & { code?: string }).code = "SYNC_CONFLICT";
-        throw err;
-      }
-      // Attempt a pre-export sync when online + canSync. Its only hard effect is
-      // the conflict BLOCK below (a PDF must not be built over an unresolved
-      // conflict); every other outcome is soft — the PDF uses local content,
-      // which is always valid and fully snapshotted. Gate errors are non-fatal.
       try {
         const exportSource = await lib.detectProjectSource(exportDir);
         this.deps.throwIfCanceled(exportSession);
@@ -276,16 +241,7 @@ export class ExportController {
               ...(await this.deps.gitIdentity()),
             });
             this.deps.throwIfCanceled(exportSession);
-            if (syncOutcome.status === "conflict") {
-              // A conflict surfaced mid-export-gate: latch (cancels timers,
-              // stamps lastSyncAt, and emits the conflict status) and block.
-              this.deps.sync.latchConflict(exportDir, syncOutcome.files);
-              const conflictErr = new Error(
-                "Changes happened in two places. Resolve the conflict first, then save the PDF.",
-              );
-              (conflictErr as Error & { code?: string }).code = "SYNC_CONFLICT";
-              throw conflictErr;
-            }
+            void syncOutcome;
             // synced / up-to-date / offline / auth / error → export proceeds with
             // local content (the ambient pill already reflects the sync state).
           }
@@ -302,12 +258,7 @@ export class ExportController {
           (err as Error & { code?: string }).code = "EXPORT_CANCELED";
           throw err;
         }
-        // Re-throw conflict blocks; swallow all other gate errors (non-fatal for export).
-        const blockErr = preExportSyncGateBlockError(gateErr);
-        if (blockErr) {
-          this.deps.setActiveExportSession(null);
-          throw blockErr;
-        }
+        // Swallow all gate errors (non-fatal for export — sync converges).
         const msg = gateErr instanceof Error ? gateErr.message : String(gateErr);
         console.warn(`[api:build] pre-export sync gate failed (non-fatal): ${msg}`);
       }

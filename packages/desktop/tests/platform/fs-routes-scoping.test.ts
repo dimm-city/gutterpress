@@ -17,7 +17,7 @@ import { POST as listImagesRoute } from "../../src/routes/api/media/list-images/
 import { POST as inspectImageRoute } from "../../src/routes/api/media/inspect/+server";
 import { POST as thumbnailRoute } from "../../src/routes/api/media/thumbnail/+server";
 import { POST as logReadRoute } from "../../src/routes/api/log/read/+server";
-import { POST as getConflictPreviewRoute } from "../../src/routes/api/sync/get-conflict-preview/+server";
+import { POST as keepImageVersionRoute } from "../../src/routes/api/sync/keep-image-version/+server";
 
 // ARCH review #37: `/api/fs/{read-file,write-file,list-dir,stat-file,
 // copy-file}` used to accept ANY absolute path (only guard: isAbsolute).
@@ -393,67 +393,54 @@ test("log/read: an absolute path outside the read-allow-list is rejected (403)",
   expect(message).toBe("log:read: path is outside the open project");
 });
 
-// ── sync/get-conflict-preview (P1 review, PR #98 finding #5): `projectDir`
-//    used to only be checked for `isAbsolute` — no confinement to the open
-//    project at all — so a same-origin script could point it at any
-//    directory on disk and read the file back as the "mine" preview. The
-//    derived file target (`projectDir` + the caller-supplied relative
-//    `path`) must also be confined CANONICALLY, not by the lexical
-//    startsWith check `getConflictPreviewImpl` does on its own, since a
-//    project-local symlink aliasing an outside directory defeats a lexical
-//    check the same way it does for the plain fs routes above. ───────────
+// ── sync/keep-image-version: `projectDir` is confined to the open project,
+//    and the derived WRITE target (`projectDir` + the caller-supplied
+//    relative `path`) is confined CANONICALLY — a project-local symlink
+//    aliasing an outside directory must not receive the written bytes
+//    (same policy the plain fs routes enforce). ──────────────────────────
 
-test("sync/get-conflict-preview: an in-project projectDir + path is allowed", async () => {
-  const res = await getConflictPreviewRoute({
-    request: request({ projectDir, path: "chapter-01.md", kind: "both-edited" }),
-  } as Parameters<typeof getConflictPreviewRoute>[0]);
-  expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ mine: "", theirs: "", kind: "both-edited", isBinary: false });
-});
-
-test("sync/get-conflict-preview: a projectDir outside the open project is rejected (403)", async () => {
-  const { status, message } = await caught(
-    getConflictPreviewRoute({
-      request: request({ projectDir: outsideDir, path: "secret.txt", kind: "both-edited" }),
-    } as Parameters<typeof getConflictPreviewRoute>[0]),
-  );
-  expect(status).toBe(403);
-  expect(message).toBe("sync:getConflictPreview: path is outside the open project");
-});
-
-test("sync/get-conflict-preview: a sibling-prefix projectDir is rejected (403)", async () => {
+test("sync/keep-image-version: a projectDir outside the open project is rejected (403)", async () => {
   const { status } = await caught(
-    getConflictPreviewRoute({
-      request: request({ projectDir: siblingDir, path: "secret.md", kind: "both-edited" }),
-    } as Parameters<typeof getConflictPreviewRoute>[0]),
+    keepImageVersionRoute({
+      request: request({ projectDir: outsideDir, path: "cover.png", oid: "c".repeat(40) }),
+    } as Parameters<typeof keepImageVersionRoute>[0]),
   );
   expect(status).toBe(403);
 });
 
-test("sync/get-conflict-preview: fails closed (403) when no project is open (empty projectRoots)", async () => {
+test("sync/keep-image-version: a sibling-prefix projectDir is rejected (403)", async () => {
+  const { status } = await caught(
+    keepImageVersionRoute({
+      request: request({ projectDir: siblingDir, path: "cover.png", oid: "c".repeat(40) }),
+    } as Parameters<typeof keepImageVersionRoute>[0]),
+  );
+  expect(status).toBe(403);
+});
+
+test("sync/keep-image-version: fails closed (403) when no project is open (empty projectRoots)", async () => {
   registerHostServices({
     ...(await import("../../electron/server-bridge/host-services")).getHostServices()!,
     fsGuard: { projectRoots: () => [], readOnlyRoots: () => [] },
   } as HostServices);
   const { status } = await caught(
-    getConflictPreviewRoute({
-      request: request({ projectDir, path: "chapter-01.md", kind: "both-edited" }),
-    } as Parameters<typeof getConflictPreviewRoute>[0]),
+    keepImageVersionRoute({
+      request: request({ projectDir, path: "cover.png", oid: "c".repeat(40) }),
+    } as Parameters<typeof keepImageVersionRoute>[0]),
   );
   expect(status).toBe(403);
 });
 
 test.skipIf(!canSymlink)(
-  "sync/get-conflict-preview: a legitimate in-project projectDir with a `path` escaping through a project-local symlink is rejected (403)",
+  "sync/keep-image-version: a `path` escaping through a project-local symlink is rejected (403)",
   async () => {
-    await createAlias(); // projectDir/alias -> outsideDir (which contains secret.txt)
+    await createAlias(); // projectDir/alias -> outsideDir
     const { status, message } = await caught(
-      getConflictPreviewRoute({
-        request: request({ projectDir, path: "alias/secret.txt", kind: "both-edited" }),
-      } as Parameters<typeof getConflictPreviewRoute>[0]),
+      keepImageVersionRoute({
+        request: request({ projectDir, path: "alias/secret.txt", oid: "c".repeat(40) }),
+      } as Parameters<typeof keepImageVersionRoute>[0]),
     );
     expect(status).toBe(403);
-    expect(message).toBe("sync:getConflictPreview: path is outside the open project");
+    expect(message).toBe("sync:keepImageVersion: path is outside the open project");
   },
 );
 

@@ -42,11 +42,10 @@ import type { AppImageHooks, DesktopHooks, DoctorHooks } from "./server-bridge/h
 import { AppImageIntegration } from "./appimage-integration";
 import type { MediaHooks } from "./server-bridge/media-hooks";
 import type { VcsHooks } from "./server-bridge/vcs-hooks";
-import { postResolveLatchAction, type RemoteHooks } from "./server-bridge/remote-hooks";
+import type { RemoteHooks } from "./server-bridge/remote-hooks";
 import type { SyncSettingsHooks } from "./server-bridge/sync-settings-hooks";
 import type { UpdaterHooks } from "./server-bridge/updater-hooks";
 import { handleRemoteErrors } from "./server-bridge/friendly-errors";
-import type { ConflictPreviewHooks } from "./server-bridge/conflict-preview-hooks";
 import { isWithinRoot, type FsGuardHooks } from "./server-bridge/fs-guard";
 import { createPickedFilesService, createSavePathsService } from "./server-bridge/picked-files";
 import {
@@ -81,14 +80,6 @@ import {
   shouldShowLinuxBasicTextStorageNotice,
 } from "./credential-store";
 import {
-  handleConfirmResponse,
-  rejectAllPendingConfirms,
-  buildRecoveryContext,
-  conflictBaseDir,
-  getConflictPreviewImpl,
-  preExportSyncGateBlockError,
-} from "./recovery-bridge";
-import {
   AutoSyncOrchestrator,
   type SyncStatusPayload,
 } from "./auto-sync/orchestrator";
@@ -115,7 +106,6 @@ import type {
   ApplyThemeTarget,
   CheckResult,
   CloneProgressEvent,
-  ConfirmationGate,
   CreateProjectOptions,
   CreateProjectResult,
   PluginValidationResult,
@@ -125,7 +115,6 @@ import type {
   ProjectRemoteDiagnosis,
   ProjectStyle,
   RecommendedPlugin,
-  RecoveryContext,
   RepoHealth,
   RemoteAccessResult,
   RemoteBranch,
@@ -376,15 +365,9 @@ const autoSnapshot = new AutoSnapshotScheduler({
       projectDir: dir,
       lastSyncAt: null,
       logFile: operationLogPathForDir(dir),
-      guidance: {
-        userSummary:
-          "Version history needs attention — the last few automatic backups of this project didn't complete.",
-        recommendedNextStep:
-          "Try saving a version now. If it keeps failing, make sure no other program has the project folder open or locked.",
-        recommendedAction: "Try again",
-        recommendedActionKey: "restore_repo",
-        supportDetails: `Auto-snapshot failed ${consecutiveFailures} times in a row for ${dir}: ${detail}`,
-      },
+      message:
+        "Version history needs attention — the last few automatic backups of this project didn't complete. " +
+        "Try saving a version now; if it keeps failing, make sure no other program has the project folder open or locked.",
     });
   },
 });
@@ -508,7 +491,6 @@ const autoSync = new AutoSyncOrchestrator({
   now: Date.now,
   getWatchedDir: () => folderWatch.getWatchedDir(),
   operationLogPath,
-  buildRecoveryContext,
   // Piggyback on the periodic safety-sync tick + edit debounce — no dedicated
   // timer added for it (every autoSync.run() call refreshes the heartbeat).
   refreshHeartbeat: (dir) => void refreshAppHeartbeat(dir),
@@ -886,8 +868,6 @@ function createWindow() {
     flushSession.reset();
     if (activeRendererFlush?.session === flushSession) activeRendererFlush = null;
     stopFolderWatch();
-    // Reject any pending recovery confirm requests so they don't hang.
-    rejectAllPendingConfirms();
     if (mainWindow === win) mainWindow = null;
   });
   return win;
@@ -1276,13 +1256,10 @@ const GITHUB_HOST = "github.com";
 // The routes live in a separate Vite bundle and cannot directly import from
 // main.ts; they access these through the collapsed host object instead.
 //
-// cloneRepository/resolveSyncConflicts (ARCH review #8) are bound closures —
-// not raw pieces — for the same reason: the routes that call them cannot see
-// `mainWindow`/`autoSync` directly, so each closure below does the FULL
-// operation (validation, lib call, and any main-process-only side effect like
-// the clone-progress push or the conflict-latch re-arm) that the old
-// `remote:cloneRepository`/`remote:resolveSyncConflicts` IPC handlers used to
-// do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
+// cloneRepository (ARCH review #8) is a bound closure — not a raw piece —
+// for the same reason: the route that calls it cannot see `mainWindow`
+// directly, so the closure below does the FULL operation (validation, lib
+// call, clone-progress push) the old IPC handler used to do inline. Friendly-error sanitization (handleRemoteErrors) stays at the
 // ROUTE, matching every other remote:* route (e.g. remote/sync/+server.ts) —
 // these hooks are the raw operation.
 const remoteHooksImpl: RemoteHooks<LibModule> = {
@@ -1332,71 +1309,6 @@ const remoteHooksImpl: RemoteHooks<LibModule> = {
       ? path.join(result.projectDir, ...subPath.split("/"))
       : result.projectDir;
     return { projectDir: openDir };
-  },
-  resolveSyncConflicts: async (args) => {
-    if (!args || typeof args.projectDir !== "string") {
-      throw new Error("remote:resolveSyncConflicts requires { projectDir }");
-    }
-    const dir = requireAbsoluteDir("remote:resolveSyncConflicts", args.projectDir);
-    if (
-      !Array.isArray(args.resolutions) ||
-      args.resolutions.length === 0 ||
-      !args.resolutions.every(
-        (r) =>
-          r &&
-          typeof r.path === "string" &&
-          r.path.length > 0 &&
-          (r.choice === "mine" || r.choice === "theirs" || r.choice === "both"),
-      )
-    ) {
-      throw new Error(
-        "remote:resolveSyncConflicts requires a non-empty resolutions list",
-      );
-    }
-    if (
-      typeof args.localId !== "string" ||
-      typeof args.remoteId !== "string" ||
-      !/^[0-9a-f]{40}$/i.test(args.localId) ||
-      !/^[0-9a-f]{40}$/i.test(args.remoteId)
-    ) {
-      throw new Error("remote:resolveSyncConflicts requires valid version ids");
-    }
-    const lib = await loadLib();
-    const outcome = await lib.resolveConflicts({
-      projectDir: dir,
-      resolutions: args.resolutions,
-      localId: args.localId,
-      remoteId: args.remoteId,
-      tokenStore: electronTokenStore,
-      logFile: operationLogPathForDir(dir),
-    });
-    // §6.1: After SUCCESSFUL resolution, clear the conflict latch so auto-sync
-    // resumes the transparent flow. The decision table is the PURE
-    // `postResolveLatchAction` (unit-tested in remote-hooks-latch.test.ts) —
-    // the 2026-08 field incident found this used to unlatch UNCONDITIONALLY,
-    // silently resuming auto-sync behind a failed resolution's still-open
-    // dialog. See that function's doc comment for the three arms.
-    const resolvedKey = path.resolve(dir);
-    if (autoSync.hasState(resolvedKey)) {
-      const latchAction = postResolveLatchAction(outcome.status);
-      if (latchAction === "resume") {
-        autoSync.unlatch(resolvedKey);
-        // Re-arm the periodic timer (scheduleAutoSync is idempotent — safe to
-        // call even if a timer is already running).
-        autoSync.schedule(resolvedKey);
-      } else if (latchAction === "relatch" && outcome.status === "conflict") {
-        // Re-latch with the FRESH ids so the pill's stored conflict state
-        // matches what the dialog now shows (the dialog itself re-renders
-        // from the returned outcome via SyncController.applyReconflict).
-        autoSync.latchConflict(
-          resolvedKey,
-          outcome.files,
-          outcome.localId,
-          outcome.remoteId,
-        );
-      }
-    }
-    return outcome;
   },
 };
 
@@ -1482,52 +1394,10 @@ function sanitizeBookSubPath(subPath: unknown): string {
 
 // remote:diagnoseProject, remote:testRemoteAccess, remote:connectGenericHost,
 // remote:disconnectHost, remote:listConnections, remote:forgeTokenUrl,
-// remote:sync, remote:cloneRepository, remote:resolveSyncConflicts —
-// migrated to SvelteKit server routes (Phase 2F / ARCH review #8:
-// src/routes/api/remote/*). The cloneRepository/resolveSyncConflicts
-// operations themselves are bound closures on remoteHooksImpl above (they
-// need mainWindow/autoSync, which the route's separate Vite bundle can't
-// reach directly). Accessed via __gutterpressRemoteHooks__ / __gutterpressHost__.
-
-// ── Sync recovery IPC (Foundation — §8 / ADR 0004) ──────────────────────────
-
-/**
- * The renderer answers a risky-repair confirmation request. Main's pending
- * resolver map (in recovery-bridge.ts) receives the answer and unblocks the
- * awaiting recover() call.
- */
-secureHandle(
-  "recovery:confirm-response",
-  (_e, { requestId, approved }: { requestId: string; approved: boolean }) => {
-    if (typeof requestId !== "string" || typeof approved !== "boolean") {
-      throw new Error("recovery:confirm-response requires { requestId: string, approved: boolean }");
-    }
-    const found = handleConfirmResponse(requestId, approved);
-    if (!found) {
-      console.warn(`[recovery] stale/unknown requestId ignored: ${requestId}`);
-    }
-  },
-);
-
-// sync:getConflictPreview — migrated to SvelteKit server route
-// (src/routes/api/sync/get-conflict-preview). Exposed via the collapsed host object.
-const conflictPreviewHooksImpl: ConflictPreviewHooks = {
-  getConflictPreview: async (
-    projectDir: string,
-    relativePath: string,
-    kind: "both-edited" | "you-deleted" | "online-deleted",
-  ) => {
-    const lib = await loadLib();
-    // A conflict is a property of the whole REPOSITORY (R9), and the paths the
-    // sync engine reports are repo-root-relative — so the base comes from
-    // host-detected state, not from the `projectDir` the renderer sent (which
-    // is the opened BOOK folder, and joining a repo-relative path onto it
-    // produced `<repo>/books/<book>/books/<book>/…` and a blank preview in
-    // every multi-book repo). See `conflictBaseDir`.
-    const base = conflictBaseDir(activeRepositoryRoot, activeWorkspaceRoot, projectDir);
-    return getConflictPreviewImpl(base, relativePath, kind, lib.onlineCopyPath);
-  },
-};
+// remote:sync, remote:cloneRepository — migrated to SvelteKit server routes
+// (Phase 2F / ARCH review #8: src/routes/api/remote/*). cloneRepository is a
+// bound closure on remoteHooksImpl above (it needs mainWindow, which the
+// route's separate Vite bundle can't reach directly).
 
 // ── fs-route project-scoping guard (ARCH review #37) ────────────────────────
 // See electron/server-bridge/fs-guard.ts for the full policy this
@@ -1602,12 +1472,10 @@ const syncSettingsHooksImpl: SyncSettingsHooks = {
     // audit A2 fixed one function away.
     await updateSettings({ versionHistory: { autoSync: enabled } });
 
-    // When re-enabling, clear the conflict latch for the open project and arm
-    // the periodic timer — the author is explicitly asking to resume sync.
+    // When re-enabling, arm the periodic timer — the author is explicitly
+    // asking to resume sync.
     const watchedDir = folderWatch.getWatchedDir();
     if (enabled && watchedDir) {
-      autoSync.unlatch(watchedDir);
-      // Re-arm: scheduleAutoSync will start the interval.
       autoSync.schedule(watchedDir);
     }
     // When disabling, cancel all timers for the open project.
@@ -1648,7 +1516,6 @@ const updaterHooksImpl: UpdaterHooks = {
 registerHostServices({
   app: appHooksImpl,
   appImage: appImageHooksImpl,
-  conflictPreview: conflictPreviewHooksImpl,
   desktop: desktopHooksImpl,
   doctor: doctorHooksImpl,
   fsGuard: fsGuardImpl,
@@ -1729,10 +1596,6 @@ const exportController = new ExportController({
   isOnline: () => net.isOnline(),
   usePuppeteer: () => !!process.env.GUTTERPRESS_PUPPETEER,
   engineBrowser: createElectronEngineBrowser,
-  sync: {
-    isConflictLatched: (dir) => autoSync.isConflictLatched(dir),
-    latchConflict: (dir, files) => autoSync.latchConflict(dir, files),
-  },
   getActiveExportSession,
   setActiveExportSession,
   sendProgress: sendExportProgress,

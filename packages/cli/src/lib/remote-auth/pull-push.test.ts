@@ -8,7 +8,7 @@
  *  - Pull applies remote commits WITHOUT pushing local ones.
  *  - Pull snapshots unsaved work first (D5), fast-forwards, reports
  *    merged / filesChanged.
- *  - Pull conflict leaves the working tree untouched (no markers).
+ *  - A both-edited pull CONVERGES (both versions in the file, git markers).
  *  - Push sends local commits only; never merges.
  *  - Push when the remote is ahead (or diverged) → typed "pull-first",
  *    remote untouched.
@@ -173,7 +173,7 @@ describe("pullChanges", () => {
     }
   });
 
-  test("conflict → status conflict, working tree untouched, NO push", async () => {
+  test("both edited → pull CONVERGES: both versions in the file, NO push", async () => {
     const h = await setupClone();
     try {
       const remoteOid = await serverCommit(
@@ -187,23 +187,28 @@ describe("pullChanges", () => {
         "my edit",
       );
       const outcome = await pullChanges({ projectDir: h.projectDir });
-      expect(outcome.status).toBe("conflict");
-      if (outcome.status !== "conflict") throw new Error("unreachable");
-      expect(outcome.files).toEqual([
-        { path: "chapter-01.md", kind: "both-edited" },
-      ]);
-      expect(outcome.localId).toBe(myOid);
-      expect(outcome.remoteId).toBe(remoteOid);
-      // abortOnConflict: the file is EXACTLY the author's version, no markers.
+      expect(outcome.status).toBe("pulled");
+      if (outcome.status !== "pulled") throw new Error("unreachable");
+      expect(outcome.merged).toBe(true);
+      expect(outcome.combinedFiles).toEqual(["chapter-01.md"]);
+      // Both versions live in the ONE file, inside standard git markers.
       const content = await readFile(
         path.join(h.projectDir, "chapter-01.md"),
         "utf8",
       );
-      expect(content).toBe("# One\n\nMy edit.\n");
-      expect(content).not.toContain("<<<<<<<");
-      // Local branch did not move; remote untouched.
-      expect(await localTip(h)).toBe(myOid);
+      expect(content).toContain("<<<<<<< your version");
+      expect(content).toContain("My edit.");
+      expect(content).toContain("Online edit.");
+      expect(content).toContain(">>>>>>> online version");
+      // The merge commit is honest: two parents, both sides reachable.
+      const tip = await localTip(h);
+      const { commit } = await git.readCommit({ fs, dir: h.projectDir, oid: tip });
+      expect(commit.parent.sort()).toEqual([myOid, remoteOid].sort());
+      // Pull NEVER pushes: the remote is untouched.
       expect(await serverTip(h)).toBe(remoteOid);
+      // Working tree matches the merge commit (nothing left uncommitted).
+      const matrix = await git.statusMatrix({ fs, dir: h.projectDir });
+      expect(matrix.every(([, head, work, stage]) => head === 1 && work === 1 && stage === 1)).toBe(true);
     } finally {
       await h.cleanup();
     }

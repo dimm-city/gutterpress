@@ -70,9 +70,7 @@ import type {
   CloneProgressEvent,
   CloneRepositoryArgs,
   SyncOutcome,
-  ResolveSyncConflictsArgs,
   SyncStatus,
-  RecoveryConfirmRequest,
   FolderRef,
   FileRef,
   PlatformCapabilities,
@@ -687,24 +685,10 @@ export class WebAdapter implements Platform {
     return Promise.resolve();
   }
 
-  // ── Sync recovery seam — desktop-only; safe stubs on web ─────────────────
-  onRecoveryConfirm(_handler: (req: RecoveryConfirmRequest) => void): () => void {
-    // Recovery is desktop-only — return a no-op unsubscribe.
-    return () => {};
-  }
-
-  respondRecoveryConfirm(_requestId: string, _approved: boolean): Promise<void> {
-    // No-op on web — recovery only runs in the Electron host.
-    return Promise.resolve();
-  }
-
-  // getConflictPreview — migrated to server route (src/routes/api/sync/get-conflict-preview)
+  // Repair runs in the host as one automatic pipeline (2026-08-14
+  // simplification) — no renderer confirmation/guidance seam remains.
 
   // syncChanges — migrated to server route (Phase 2F).
-
-  resolveSyncConflicts(_args: ResolveSyncConflictsArgs): Promise<SyncOutcome> {
-    return rejectNotImplemented("resolveSyncConflicts");
-  }
 
   // ── In-browser live preview (#33 Phase 2) — no server, no Chromium ──────────
   // The last object URL minted by startPreview, revoked by stopPreview (and

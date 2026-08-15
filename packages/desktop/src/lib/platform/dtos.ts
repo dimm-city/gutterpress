@@ -14,7 +14,6 @@
  * one that imports FROM this file, not the reverse).
  */
 import type { ProjectSource, ProjectCapabilities } from "gutterpress";
-import type { ConflictKind } from "./shared-types";
 
 // ── Unsaved-changes / recovery types (#44) ────────────────────────────────────
 //
@@ -297,16 +296,6 @@ export type RemoteGuidanceId =
   | "https-connect-server"
   | "ready-to-sync"
   | "ssh-use-own-tools";
-
-/**
- * Yours/theirs text for the conflict preview disclosure in ConflictChoicesDialog.
- */
-export interface ConflictPreview {
-  mine: string;
-  theirs: string;
-  kind: ConflictKind;
-  isBinary: boolean;
-}
 
 /** Payload types for the image pick/copy host service (#31). */
 export interface ImagePickResult {

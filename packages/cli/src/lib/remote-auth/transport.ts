@@ -42,7 +42,7 @@ import {
   MSG_SSH_REMOTE,
   SYNC_SNAPSHOT_MESSAGE,
 } from "./sync-messages.ts";
-import type { ConflictFile, GitCache, RemoteTransport } from "./sync-types.ts";
+import type { GitCache, RemoteTransport } from "./sync-types.ts";
 
 /**
  * The git repo directory for a project dir. A project IS its git repo, so this
@@ -178,20 +178,6 @@ export function failureOutcome(
   };
 }
 
-export function conflictFilesFrom(data: {
-  filepaths: string[];
-  bothModified: string[];
-  deleteByUs: string[];
-  deleteByTheirs: string[];
-}): ConflictFile[] {
-  const byUs = new Set(data.deleteByUs ?? []);
-  const byThem = new Set(data.deleteByTheirs ?? []);
-  return (data.filepaths ?? []).map((p) => ({
-    path: p,
-    kind: byUs.has(p) ? "you-deleted" : byThem.has(p) ? "online-deleted" : "both-edited",
-  }));
-}
-
 /** Friendly setup-problem message for the expected gate errors, else null. */
 export function setupErrorMessage(e: unknown): string | null {
   if (
@@ -243,10 +229,7 @@ export async function snapshotBeforeAction(args: {
  * typed error routes the caller through the recover() path.
  * `checkLocalChanges: false` — only the structural flags matter here.
  *
- * Runs INSIDE the caller's repo lock. Shared by pullChanges, pushChanges AND
- * resolveConflicts (the resolve path was originally missing this guard — the
- * path most likely to run right after an interrupted operation was the one
- * without the protection).
+ * Runs INSIDE the caller's repo lock. Shared by pullChanges and pushChanges.
  */
 export async function assertNoStructuralDamage(
   projectDir: string,

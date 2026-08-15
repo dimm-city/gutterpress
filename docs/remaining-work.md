@@ -21,6 +21,7 @@ Last updated 2026-08-13.
 | Streetwarden `<br>` | **Leave them.** A `<br>` in a table cell is legitimate markdown | The earlier flag was over-eager |
 | Missing art placeholders | **Leave them.** Loud magenta placeholders act as the to-do list | Build no longer fails; the gap stays visible |
 | Visual regression gate | **Gallery baseline + invariants**, owner-approved 2026-08-13 | The reviewed 44-page gallery is now the portable release gate; future changes still require an explained diff before re-approval |
+| Sync/conflict model | **Convergent, never interactive** (owner directive 2026-08-14, ADR 0010) | Both-edited text keeps both versions in the file with standard git markers; deletes lose to edits; binaries keep the newer side (images get a non-blocking picker). The conflict dialog, "(online copy)" files, conflict latch, and 16-handler recovery subsystem are DELETED — do not re-expand them "for symmetry" |
 
 ---
 

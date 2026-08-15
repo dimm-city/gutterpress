@@ -20,7 +20,7 @@
    * action (Escape → "Decide later", ARIA contract owned by the action on the
    * dialog element itself, focus trap + initial focus + focus restore), adds a
    * recovered-vs-on-disk "Compare versions" disclosure per item (mirrors
-   * ConflictChoicesDialog's compare pattern) so the writer can see what they're
+   * the old compare-versions pattern) so the writer can see what they're
    * about to restore or discard, and makes Discard two-step (an inline confirm
    * swap on the button, matching the "blind destructive action" fix).
    */
@@ -68,7 +68,7 @@
    * Toggle the "Compare versions" disclosure for one recovery entry. On first
    * expand, lazily fetches the recovered sidecar text and the current on-disk
    * text and memoises the result so re-toggling doesn't re-fetch (mirrors
-   * ConflictChoicesDialog.togglePreview).
+   * the old compare-versions disclosure).
    */
   async function togglePreview(item: RecoveryItem) {
     const wasExpanded = previewExpanded[item.filePath] ?? false;
@@ -224,7 +224,7 @@
   /* Dialog is now a sibling of the backdrop (not a child), so the dialog
      element itself can own the ARIA dialog role/aria-modal via the shared
      action (M12) instead of the backdrop owning them — matches the
-     ConflictChoicesDialog centering pattern. */
+     shared dialog centering pattern. */
   .cr-dialog {
     position: fixed;
     top: 50%;

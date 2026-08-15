@@ -20,10 +20,10 @@ export const MSG_AUTH =
 // the message. Say "https", never "https://".
 export const MSG_INSECURE_TRANSPORT =
   "This project's online address isn't secure, so the saved connection wasn't sent — connections are never sent over an insecure address. Switch the address to a secure one (starting with https), or to a local loopback address for a server on this computer, to sync.";
-export const MSG_RACE =
-  "Someone else synced changes at the same moment. Your work is saved on this computer — please try Sync again.";
-export const MSG_CONFLICT =
-  "Your copy and the online copy both changed. Choose which version to keep for each file — a safety snapshot of your work was taken first.";
+export const MSG_BUSY =
+  "The online copy is changing very quickly right now. Your work is saved on this computer — try Sync again in a moment.";
+export const MSG_UNRELATED =
+  "The online address points at a different project's files, so the two can't be combined. Check the project's online address.";
 export const MSG_NO_REMOTE =
   "This project isn't connected to an online repository yet.";
 export const MSG_SSH_REMOTE =
@@ -38,8 +38,5 @@ export const MSG_PULL_UP_TO_DATE = "You already have the latest online changes."
 export const MSG_PUSH_UP_TO_DATE = "There's nothing new to send — everything is already online.";
 export const MSG_PULL_FIRST =
   "The online copy has changes you don't have yet. Get the latest changes first, then send yours.";
-export const MSG_EXPIRED_CHOICES =
-  "Those combine choices have expired. Please run Sync again.";
-
 /** Message recorded on the automatic pre-sync snapshot (D5 invariant). */
 export const SYNC_SNAPSHOT_MESSAGE = "Snapshot before syncing";

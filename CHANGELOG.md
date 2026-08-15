@@ -247,25 +247,32 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Sync conflicts are no longer a dead end when the online copy moves while
-  you're deciding.** Field-reported: an author hit "This project changed in
-  two places," picked a version, and got "Couldn't update the online copy" on
-  every attempt — because a teammate had synced again while the dialog was
-  open, and the dialog discarded the fresh conflict the engine handed back,
-  retrying forever against a stale snapshot of the online copy. The dialog now
-  re-renders against the newest differences with a visible "the online copy
-  changed again" notice, and the race/expired cases show their real
-  instruction ("please try Sync again") with a **Sync again** button instead
-  of a generic failure that promised an automatic retry that never came.
-  Three companion fixes in the same path: retrying a failed resolution no
-  longer piles up committed `(online copy 2)`, `(online copy 3)`, … duplicates
-  (identical bytes reuse the existing copy); a failed resolution no longer
-  silently resumes auto-sync behind the still-open dialog; and applying
-  conflict choices now runs the same structural-damage preflight as pull/push,
-  so a repo needing repair is repaired instead of merged. The engine's sync
-  outcomes now carry machine-readable `code`s (`race`, `expired-choices`,
-  alongside the existing `needs-connection-setup`) so no UI ever has to guess
-  a failure's cause from its message text again.
+- **Breaking: sync never asks — it always converges.** Field experience showed
+  the interactive conflict machinery was the wrong shape for a small writing
+  team: an author hit "This project changed in two places," picked a version,
+  and dead-ended on "Couldn't update the online copy" no matter what they
+  chose. That machinery is gone. When both sides change the same passage, sync
+  completes and keeps BOTH versions in the one file, wrapped in standard
+  `<<<<<<< your version` / `>>>>>>> online version` markers — visible in the
+  editor and loud in the preview until you blend them (a toast names the
+  files). A file deleted on one side but edited on the other keeps the edit.
+  A binary file changed on both sides keeps the newer one; for images a small
+  non-blocking picker shows both versions side by side afterwards so you can
+  swap in the other with one click. Nothing is ever lost — the other version
+  of anything remains in Previous versions. Removed with the machinery: the
+  per-file conflict dialog, the `(online copy)` side files, the conflict
+  status pill state, and the "resolve before exporting" PDF block.
+- **Breaking: repair is one automatic pipeline.** The 16-handler recovery
+  subsystem (risk policies, backup zips, confirmation dialogs, guidance
+  dialogs) is replaced by a single `repairRepo()` that runs silently behind
+  the "Tidying up sync…" status: sweep stale locks → clear interrupted
+  operations left by other git tools → rebuild a corrupt index → reattach a
+  detached HEAD (rescuing stranded work into a branch) → and, only as a last
+  resort, rebuild `.git` from the online copy — keeping the old history
+  folder on disk (`.git-damaged-<timestamp>`), salvaging every readable
+  commit (unpushed versions included) back into the repaired history, and
+  never touching your project files. `gutterpress repair` drives the same
+  pipeline from the terminal with one y/N prompt.
 - **Breaking: `var()` inside `@page` now resolves, or fails loudly — never
   silently wrong.** Two reproduced bugs: a custom property in `@page { size }`
   silently fell back to US Letter, and one in `@page { margin }` silently zeroed

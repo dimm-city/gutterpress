@@ -91,19 +91,6 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     BuildError: FakeBuildError,
   } as unknown as LibModule;
 
-  // Fakes the two-method ExportSyncGate surface (isConflictLatched +
-  // latchConflict) that AutoSyncOrchestrator exposes — see finding #7. The
-  // real latchConflict also cancels timers, stamps lastSyncAt, and emits the
-  // conflict status; this fake mirrors just the emit so gate tests can still
-  // assert on it.
-  const sync: ExportControllerDeps["sync"] = {
-    isConflictLatched: (dir) => latched.has(dir) || !!opts.conflictLatched,
-    latchConflict: (dir, files) => {
-      latched.add(dir);
-      emitted.push({ state: "conflict", projectDir: dir, files, lastSyncAt: null });
-    },
-  };
-
   const deps: ExportControllerDeps = {
     loadLib: async () => lib,
     tokenStore: {} as ExportControllerDeps["tokenStore"],
@@ -112,7 +99,6 @@ function makeHarness(opts: HarnessOpts = {}): Harness {
     usePuppeteer: () => false,
     pdfRenderer: (async () => {}) as ExportControllerDeps["pdfRenderer"],
     engineBrowser: (async () => ({}) as never) as ExportControllerDeps["engineBrowser"],
-    sync,
     getActiveExportSession: () => session,
     setActiveExportSession: (s) => {
       session = s;
@@ -194,28 +180,6 @@ test("the build workspace is a temp dir decoupled from the Save folder, and is c
   expect(path.dirname(pdfFileOverride!)).toBe("/Users/author/Desktop");
   // The workspace is temp scratch space — removed once the export settles.
   expect(existsSync(outDir!)).toBe(false);
-});
-
-test("the workspace is still cleaned up when the pre-export sync gate hard-blocks", async () => {
-  // The gate throws before runBuild ever runs, so `buildArgs` never captures
-  // the workspace path — assert cleanup indirectly instead, by checking no
-  // `Gutterpress-export-*` temp dir this run created is left behind afterward.
-  // This is exactly the path an earlier version of the fix got wrong: the
-  // mkdtemp'd workspace was created BEFORE the sync gate, and the gate's own
-  // early `throw` (SYNC_CONFLICT) exited past a `finally` that only wrapped
-  // the build step, leaking the workspace on every hard-blocked export.
-  const before = new Set(
-    readdirSync(os.tmpdir()).filter((n) => n.startsWith("Gutterpress-export-")),
-  );
-  const h = makeHarness({ conflictLatched: true });
-  const err = await h.controller
-    .build({ input: "/book", out: "/out/book.pdf" })
-    .catch((e) => e);
-
-  expect((err as Error & { code?: string }).code).toBe("SYNC_CONFLICT");
-  expect(h.runBuildCalls).toBe(0);
-  const after = readdirSync(os.tmpdir()).filter((n) => n.startsWith("Gutterpress-export-"));
-  expect(after.filter((n) => !before.has(n))).toEqual([]);
 });
 
 test("missing input is rejected before any work", async () => {
@@ -308,30 +272,6 @@ test("a second concurrent export is rejected while one is active", async () => {
   await expect(
     h.controller.build({ input: "/book", out: "/out/book.pdf" }),
   ).rejects.toThrow(/already in progress/);
-  expect(h.runBuildCalls).toBe(0);
-});
-
-test("a conflict-latched project hard-blocks the export with SYNC_CONFLICT", async () => {
-  const h = makeHarness({ conflictLatched: true });
-  const err = await h.controller
-    .build({ input: "/book", out: "/out/book.pdf" })
-    .catch((e) => e);
-  expect((err as Error & { code?: string }).code).toBe("SYNC_CONFLICT");
-  expect(h.runBuildCalls).toBe(0);
-});
-
-test("a conflict surfacing mid pre-export gate latches, emits, and blocks", async () => {
-  const h = makeHarness({
-    sourceType: "local-git-folder",
-    canSync: true,
-    isOnline: true,
-    syncProject: () => ({ status: "conflict", files: [{ path: "a.md" }] }),
-  });
-  const err = await h.controller
-    .build({ input: "/book", out: "/out/book.pdf" })
-    .catch((e) => e);
-  expect((err as Error & { code?: string }).code).toBe("SYNC_CONFLICT");
-  expect(h.emitted.some((e) => e.state === "conflict")).toBe(true);
   expect(h.runBuildCalls).toBe(0);
 });
 

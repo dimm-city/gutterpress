@@ -1,25 +1,23 @@
 /**
  * `gutterpress repair [dir]` — diagnose and repair a project's version history.
  *
- * The CLI front-end for the same recovery subsystem the desktop uses
- * (inspectRepo → classifyFromHealth → recover), with a terminal confirmation
- * gate in place of the desktop's dialog. `gutterpress new` initializes projects by
- * default, so CLI-only users of the standalone binary need a way out of a
- * stale lock / interrupted operation / damaged repo without git knowledge —
- * this command is that way out (CLAUDE.md §7: no system git required).
+ * The CLI front-end for the SAME single repair pipeline the desktop uses
+ * (`repairRepo` — see lib/remote-auth/recovery/repair.ts): health probe →
+ * stale-lock sweep → in-place fixes → last-resort re-clone with salvage.
+ * Working files are never touched; every readable commit stays reachable; the
+ * damaged `.git` is kept on disk as `.git-damaged-<timestamp>`.
  *
  * Modes:
- *   gutterpress repair            diagnose + prompt before any repair
+ *   gutterpress repair            diagnose + one y/N prompt before repairing
  *   gutterpress repair --check    diagnose only; exit 1 when repair is needed
- *   gutterpress repair --yes      skip the prompt (still prints what will happen)
+ *   gutterpress repair --yes      skip the prompt
  *   gutterpress repair --force    repair even if the app appears to have this open
  *
  * The app-open guard: the desktop leaves a small liveness marker under the
  * repo's own `.git` dir while a project is open (app-heartbeat.ts). A fresh
  * marker means the app may be mid-write on this same repo right now, so
  * `repair` refuses to mutate anything (still safe to `--check`) unless the
- * author passes `--force`. This is detection + an explicit override, not a
- * cross-process lock — the author is always in control.
+ * author passes `--force`.
  *
  * All git work happens in the shared library (isomorphic-git); this file is
  * argument parsing, terminal I/O, and exit codes only.
@@ -30,28 +28,20 @@ import * as readline from "node:readline/promises";
 import path from "node:path";
 
 import {
-  buildRecoveryContext,
   classifyFromHealth,
-  classifyGitError,
   defaultConfigDir,
   FileTokenStore,
   inspectRepo,
   isAppHeartbeatFresh,
   isUnbornRepo,
-  recover,
+  repairRepo,
   verifyRepoReadable,
 } from "../index.ts";
-import { makeManualGuidance } from "../lib/remote-auth/recovery/manual-guidance.ts";
 import {
   rejectExtraPositionals,
   rejectUnknownFlags,
   UsageError,
 } from "../lib/cli-args.ts";
-import type {
-  ConfirmationGate,
-  RecoveryResult,
-  RepairConfirmation,
-} from "../lib/remote-auth/recovery/types.ts";
 
 /** Ask a y/N question on the terminal. Non-interactive stdin → false (deny). */
 async function promptYesNo(question: string): Promise<boolean> {
@@ -63,50 +53,6 @@ async function promptYesNo(question: string): Promise<boolean> {
   } finally {
     rl.close();
   }
-}
-
-/** Render the confirmation summary the desktop's dialog would show. */
-function describeRepair(req: RepairConfirmation): string {
-  const lines = [
-    "",
-    `  ${req.summary}`,
-    "",
-    `  • Changes your project files:        ${req.willChangeLocalFiles ? "yes" : "no"}`,
-    `  • Changes version-history internals: ${req.willChangeGitMetadata ? "yes" : "no"}`,
-    `  • Changes anything online:           ${req.willChangeRemote ? "yes" : "no"}`,
-  ];
-  if (req.backupZipPath) {
-    lines.push(`  • Safety copy saved first:           ${req.backupZipPath}`);
-  }
-  lines.push("");
-  return lines.join("\n");
-}
-
-function printResult(result: RecoveryResult): void {
-  console.log(result.message);
-  if ("guidance" in result && result.guidance) {
-    const g = result.guidance;
-    console.log(`\nNext step: ${g.recommendedNextStep}`);
-    for (const step of g.safeNextSteps ?? []) console.log(`  - ${step}`);
-    if (g.supportDetails) console.log(`\nDetails (for support): ${g.supportDetails}`);
-  }
-  if ("backupZipPath" in result && result.backupZipPath) {
-    console.log(`\nSafety copy: ${result.backupZipPath}`);
-  }
-}
-
-/** Terminal confirmation gate: show the summary, then prompt (or honor --yes). */
-function terminalConfirmationGate(autoApprove: boolean): ConfirmationGate {
-  return {
-    confirmRepair: async (req) => {
-      console.log(describeRepair(req));
-      if (autoApprove) {
-        console.log("Proceeding (--yes).");
-        return true;
-      }
-      return promptYesNo("Apply this fix?");
-    },
-  };
 }
 
 const commandArgs = {
@@ -127,7 +73,7 @@ const commandArgs = {
   },
   force: {
     type: "boolean",
-        description: "Repair even if the Gutterpress app appears to have this project open",
+    description: "Repair even if the Gutterpress app appears to have this project open",
     default: false,
   },
 } as const;
@@ -153,61 +99,38 @@ export default defineCommand({
 
     const openedDir = path.resolve(args.dir ?? ".");
 
-    // The lib resolves everything (the project's OWN repo root — never an
-    // ancestor repo — branch, remote, credential, backup slug); this command
-    // contributes only the terminal confirmation gate.
-    const ctx = await buildRecoveryContext({
-      projectDir: openedDir,
-      confirmation: terminalConfirmationGate(args.yes),
-      tokenStore: new FileTokenStore(defaultConfigDir()),
-    });
-
-    const health = await inspectRepo({ repoDir: ctx.repoDir, source: ctx.source });
-    // minLockAgeMs: 0 — a stuck lock the author is asking us to look at right
-    // now should be diagnosed regardless of age; the stale-lock HANDLER still
-    // re-checks age itself and returns retry_later while the lock is fresh,
-    // so this only affects what `repair` reports, not whether it acts.
-    let kind = classifyFromHealth(health, { minLockAgeMs: 0 });
-
-    if (kind === null) {
-      // classifyFromHealth only inspects filesystem PRESENCE (lock files,
-      // MERGE_HEAD, HEAD readability) — it never reads a git object, so it
-      // can't see object-store or index corruption. Probe readability (the
-      // same HEAD/commit/tree check the missing-objects repair uses to
-      // verify a fix) before declaring the repo healthy, so corrupt_index /
-      // missing_or_corrupt_objects / unrelated_histories / wrong_remote_or_branch
-      // repos are diagnosed correctly instead of reported "healthy".
+    // Diagnose. classifyFromHealth only inspects filesystem PRESENCE (lock
+    // files, MERGE_HEAD, HEAD readability) — it never reads a git object, so
+    // object-store/index corruption is probed separately with
+    // verifyRepoReadable (an unborn fresh repo throws the same NotFoundError
+    // but is healthy, hence the isUnbornRepo carve-out).
+    const health = await inspectRepo({ repoDir: openedDir });
+    let needsRepair = classifyFromHealth(health, { minLockAgeMs: 0 }) !== null;
+    if (!needsRepair && health.hasGitDir) {
       try {
-        await verifyRepoReadable(ctx.repoDir);
-      } catch (err) {
-        // A fresh `git init` with no commits yet throws the same
-        // NotFoundError as a damaged ref store — but it's healthy, not
-        // corrupt. Only classify when the object store shows the repo ever
-        // had content.
-        if (!isUnbornRepo(ctx.repoDir)) {
-          kind = classifyGitError(err, health);
-        }
+        await verifyRepoReadable(openedDir);
+      } catch {
+        if (!isUnbornRepo(openedDir)) needsRepair = true;
       }
     }
+    if (!health.hasGitDir) needsRepair = true;
 
-    if (kind === null) {
+    if (!needsRepair) {
       console.log("Your project's version history looks healthy. Nothing to repair.");
       return;
     }
 
-    const guidance = makeManualGuidance(ctx, kind);
-    console.log(`Found a problem: ${guidance.userSummary}`);
+    console.log("Found a problem with this project's version history.");
 
     if (args.check) {
-      console.log(`\nRun \`gutterpress repair\` to fix it. ${guidance.recommendedNextStep}`);
+      console.log("\nRun `gutterpress repair` to fix it. Your files will not be changed.");
       process.exitCode = 1;
       return;
     }
 
-    // --check is diagnose-only and never reaches here, so this guard only ever
-    // blocks an actual repair. A fresh heartbeat means the app may be mid-write
-    // on this same project right now — refuse to race it unless overridden.
-    if (!args.force && (await isAppHeartbeatFresh(ctx.repoDir))) {
+    // A fresh heartbeat means the app may be mid-write on this same project
+    // right now — refuse to race it unless overridden.
+    if (!args.force && (await isAppHeartbeatFresh(openedDir))) {
       console.log(
         "\nThe Gutterpress app appears to have this project open. Close it first, or re-run with --force.",
       );
@@ -215,13 +138,29 @@ export default defineCommand({
       return;
     }
 
-    const result = await recover(kind, ctx);
-    console.log("");
-    printResult(result);
-
-    // Exit non-zero when the repo still needs attention.
-    if (result.status !== "recovered" && result.status !== "retry_later") {
-      process.exitCode = 1;
+    if (!args.yes) {
+      console.log(
+        "\nThe repair never changes your project files. If history has to be rebuilt,\n" +
+          "the old history folder is kept on disk as a backup and your saved versions\n" +
+          "are brought back into it wherever they are still readable.",
+      );
+      if (!(await promptYesNo("Repair now?"))) {
+        console.log("Nothing was changed.");
+        process.exitCode = 1;
+        return;
+      }
     }
+
+    const result = await repairRepo({
+      projectDir: openedDir,
+      tokenStore: new FileTokenStore(defaultConfigDir()),
+    });
+
+    console.log(`\n${result.message}`);
+    for (const action of result.actions) console.log(`  - ${action}`);
+    if (result.damagedGitBackupPath) {
+      console.log(`  - Old history kept at: ${result.damagedGitBackupPath}`);
+    }
+    if (result.status !== "repaired") process.exitCode = 1;
   },
 });

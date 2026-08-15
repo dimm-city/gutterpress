@@ -25,7 +25,7 @@
   import { api } from "$lib/api";
   import { relativeTime } from "$lib/format";
   import { onMount } from "svelte";
-  import type { ConflictFileInfo, SyncState } from "$lib/platform/contract";
+  import type { SyncState } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import type { ProjectBookEntry } from "$lib/routes/project-session-controller.svelte";
 
@@ -84,13 +84,6 @@
      *  (the `connect` state: an HTTPS remote Gutterpress isn't connected to).
      *  Routes to the same connect/reconnect flow as the pill. */
     onConnectOnline = undefined as (() => void) | undefined,
-    /** Called when the sync pill reports a conflict. Receives the pill's
-     *  localId/remoteId when it already has them (the conflict SyncStatus
-     *  payload carries them — M13), so the dialog can skip its own
-     *  ids-fetch fallback. */
-    onConflict = undefined as
-      | ((files: ConflictFileInfo[], localId?: string, remoteId?: string) => void)
-      | undefined,
     /** Called when the sync/git status pill is clicked in a quiet state —
      *  receives the project's operation-log path (or null) to view the log. */
     onShowLog = undefined as ((logFilePath: string | null) => void) | undefined,
@@ -125,7 +118,6 @@
     onProblemSelect?: (p: ProblemEntry) => void;
     onReconnect?: () => void;
     onConnectOnline?: () => void;
-    onConflict?: (files: ConflictFileInfo[], localId?: string, remoteId?: string) => void;
     onShowLog?: (logFilePath: string | null) => void;
     onForceSave?: () => void;
     onForceSync?: () => void;
@@ -190,8 +182,6 @@
         return "Paused — your work is safe here";
       case "auth":
         return "Needs reconnecting";
-      case "conflict":
-        return "Needs your review";
       case "synced":
       case "up-to-date":
       case "recovered":
@@ -353,7 +343,6 @@
         <SyncStatusPill
           {projectDir}
           onReconnect={onReconnect}
-          onConflict={onConflict}
           onDetails={onShowLog}
           onSyncState={(s) => (liveSyncState = s)}
         />

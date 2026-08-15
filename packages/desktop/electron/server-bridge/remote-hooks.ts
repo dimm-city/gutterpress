@@ -11,11 +11,7 @@
  */
 
 import { getHostServices } from './host-services';
-import type {
-  CloneRepositoryArgs,
-  ResolveSyncConflictsArgs,
-  SyncOutcome,
-} from '../bridge-types';
+import type { CloneRepositoryArgs } from '../bridge-types';
 
 export interface TokenStore {
   get(host: string): Promise<{ token: string; host: string; username?: string; kind: string; label?: string; createdAt: number } | null>;
@@ -49,38 +45,6 @@ export interface RemoteHooks<RemoteLibModule = LibModule, TokenStoreType = Token
    * `mainWindow` reference) only ever calls this one method.
    */
   cloneRepository(args: CloneRepositoryArgs): Promise<{ projectDir: string }>;
-  /**
-   * Apply the author's per-file conflict choices and sync the combined result.
-   * Bound in main.ts: also clears/re-arms the auto-sync conflict latch for the
-   * project on success, mirroring what the resolve flow always did inline.
-   */
-  resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
-}
-
-/**
- * What the resolve hook should do with the auto-sync conflict latch after a
- * `resolveConflicts` outcome. PURE — unit-tested in
- * tests/platform/remote-hooks-latch.test.ts; main.ts's closure executes it.
- *
- * WHY GATED (2026-08 field incident): the hook used to unlatch + re-arm
- * UNCONDITIONALLY, so a FAILED resolution silently resumed auto-sync —
- * churning re-detections (and, on an auth outcome, the network) behind the
- * still-open dialog, against the hook's own "after successful resolution"
- * comment.
- *
- * - `"resume"`  — resolved (synced/up-to-date): unlatch + re-arm the timers so
- *   the combined content flows without a Settings toggle.
- * - `"relatch"` — a FRESH conflict came back (the online copy moved again
- *   mid-decision): re-latch with the NEW ids so the pill's stored conflict
- *   state matches what the dialog now shows.
- * - `"hold"`    — auth/offline/error: leave the latch alone; the user acts first.
- */
-export function postResolveLatchAction(
-  status: SyncOutcome["status"],
-): "resume" | "relatch" | "hold" {
-  if (status === "synced" || status === "up-to-date") return "resume";
-  if (status === "conflict") return "relatch";
-  return "hold";
 }
 
 /**

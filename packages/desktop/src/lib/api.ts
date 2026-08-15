@@ -45,7 +45,6 @@ async function get<T>(url: string): Promise<T> {
 export type {
   FileWriteResult,
   FileStat,
-  ConflictKind,
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
@@ -69,7 +68,6 @@ export type {
 import type {
   FileWriteResult,
   FileStat,
-  ConflictKind,
   SnapshotEntry,
   RemoteConnection,
   RemoteRepository,
@@ -82,7 +80,6 @@ import type {
   SyncOutcome,
   SyncStatus,
   CloneRepositoryArgs,
-  ResolveSyncConflictsArgs,
   UpdaterStatus,
   PublishProviderCard,
   PublishRunResult,
@@ -108,7 +105,6 @@ export type {
   ThemeImportWarning,
   ProjectStyle,
   RecoveryEntry,
-  ConflictPreview,
   ProjectClassification,
   MediaImageEntry,
   MediaImageDetails,
@@ -130,7 +126,6 @@ import type {
   ThemeImportResult,
   ProjectStyle,
   RecoveryEntry,
-  ConflictPreview,
   ProjectClassification,
   MediaImageEntry,
   MediaImageDetails,
@@ -553,9 +548,13 @@ export const api = {
   },
 
   sync: {
-    /** Fetch the yours/theirs text for one conflicted file for comparison. */
-    getConflictPreview: (projectDir: string, path: string, kind?: ConflictKind) =>
-      post<ConflictPreview>('/api/sync/get-conflict-preview', { projectDir, path, kind }),
+    /**
+     * Keep a specific version of a clashing image (the non-blocking picker's
+     * one action): the host writes the chosen blob's exact bytes back to the
+     * file and snapshots; normal auto-sync publishes it.
+     */
+    keepImageVersion: (projectDir: string, path: string, oid: string) =>
+      post<{ ok: boolean }>('/api/sync/keep-image-version', { projectDir, path, oid }),
     /**
      * Enable or disable the auto-sync master switch (ARCH review #8 — was
      * IPC despite being a pure settings write).
@@ -653,12 +652,6 @@ export const api = {
     cloneRepository: (args: CloneRepositoryArgs) =>
       post<{ projectDir: string }>('/api/remote/clone-repository', args),
 
-    /**
-     * Apply per-file conflict choices and sync the combined result (ARCH
-     * review #8 — was IPC despite being a plain request/response).
-     */
-    resolveSyncConflicts: (args: ResolveSyncConflictsArgs) =>
-      post<SyncOutcome>('/api/remote/resolve-sync-conflicts', args),
   },
 
   /**

@@ -7,9 +7,8 @@
    * should never need to act on it; it silently says "Everything is in sync"
    * at rest or "Saving changes…" while a sync runs.
    *
-   * The only two states that invite interaction are:
+   * The only state that invites interaction is:
    *   auth     → clicking opens the reconnect flow
-   *   conflict → clicking opens the ConflictChoicesDialog
    *
    * No Git jargon in any string (transparent-sync plan §5.1, copy discipline).
    * No counts (§3.5 — counts require history walks).
@@ -19,20 +18,13 @@
   import { onMount } from "svelte";
   import { getPlatform, isDesktop } from "$lib/platform";
   import { api } from "$lib/api";
-  import type { SyncStatus, SyncState, ConflictFileEntry } from "$lib/platform/contract";
+  import type { SyncStatus, SyncState } from "$lib/platform/contract";
 
   let {
     /** Currently-open project directory — pill is hidden when null. */
     projectDir = null as string | null,
     /** Called when the auth pill is clicked — should open the reconnect flow. */
     onReconnect,
-    /**
-     * Called when the conflict pill is clicked — receives the conflict file
-     * list plus the localId/remoteId from the SAME SyncStatus payload (M13 —
-     * absent when the emitting host path couldn't compute them), so the parent
-     * can open ConflictChoicesDialog without a second network sync.
-     */
-    onConflict,
     /**
      * Called when the quiet pill (synced/offline/syncing) is clicked (§5.2).
      * Receives the project's operation-log path (or null if none yet) so the
@@ -45,7 +37,6 @@
   }: {
     projectDir?: string | null;
     onReconnect?: () => void;
-    onConflict?: (files: ConflictFileEntry[], localId?: string, remoteId?: string) => void;
     onDetails?: (logFilePath: string | null) => void;
     /** Fired on every sync-state transition so an ancestor (the status-bar
      *  protection summary) can show the live online-copy status instead of a
@@ -54,11 +45,6 @@
   } = $props();
 
   let syncState = $state<SyncState>("idle");
-  let conflictFiles = $state<ConflictFileEntry[]>([]);
-  // M13: the conflict ids from the same SyncStatus payload, when the emitting
-  // host path could compute them — see onConflict's doc comment above.
-  let conflictLocalId = $state<string | undefined>(undefined);
-  let conflictRemoteId = $state<string | undefined>(undefined);
   // Last-known operation-log path for this project, carried on the status stream
   // (SyncStatus.logFile). Retained across status transitions so clicking the
   // pill can always open the log once any sync/recovery has emitted a path.
@@ -92,7 +78,6 @@
     // safe no-op but we skip the wiring on the web path for clarity).
     if (!isDesktop() || !projectDir) {
       syncState = "idle";
-      conflictFiles = [];
       onSyncState?.("idle");
       return;
     }
@@ -101,9 +86,6 @@
       if (status.projectDir !== projectDir) return;
       syncState = status.state;
       onSyncState?.(status.state);
-      conflictFiles = status.files ?? [];
-      conflictLocalId = status.localId;
-      conflictRemoteId = status.remoteId;
       statusMessage = status.message ?? null;
       // M40: announce the transition via the persistent live region. `pillText`
       // is a $derived that already reflects the `syncState` assignment above by
@@ -169,10 +151,6 @@
         return "Connect to keep an online copy";
       case "auth":
         return "Reconnect your project";
-      case "conflict":
-        // Kept short so the actionable "tap to review" survives the pill's
-        // max-width and never truncates (three-judge gate finding).
-        return "Changes in two places — tap to review";
       case "error":
         // M40: honest copy — a transient/unexpected sync failure is NOT the
         // same thing as no network, and telling a writer on a working
@@ -237,7 +215,7 @@
   let recoveredTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** True for states that require user attention. */
-  let isWarning = $derived(syncState === "auth" || syncState === "conflict");
+  let isWarning = $derived(syncState === "auth");
 
   /** "connect" invites (not warns): accent dot, clickable, neutral text. */
   let isInvite = $derived(syncState === "connect");
@@ -247,8 +225,6 @@
       // Both route to the connect/reconnect flow — "connect" is the
       // never-connected variant of the same action.
       onReconnect?.();
-    } else if (syncState === "conflict") {
-      onConflict?.(conflictFiles, conflictLocalId, conflictRemoteId);
     } else if (onDetails) {
       // Quiet states (synced/offline/syncing) open the operation log when an
       // onDetails handler is wired — satisfies §5.2 advanced-path reachability.
@@ -258,11 +234,11 @@
 
   /**
    * Whether the pill is interactive.
-   * - auth/conflict always invite action.
+   * - auth/connect always invite action.
    * - quiet states are interactive when an onDetails handler is provided (§5.2).
    */
   let interactive = $derived(
-    syncState === "auth" || syncState === "conflict" || syncState === "connect" || !!onDetails,
+    syncState === "auth" || syncState === "connect" || !!onDetails,
   );
 </script>
 
@@ -277,7 +253,7 @@
 
 {#if pillText !== null && projectDir}
   {#if interactive}
-    <!-- Auth and conflict pills are buttons — they invite an action. -->
+    <!-- Auth/connect pills are buttons — they invite an action. -->
     <button
       class="sync-pill"
       class:quiet={isQuiet}
@@ -290,8 +266,6 @@
     >
       {#if isActive}
         <span class="pill-spinner" aria-hidden="true"></span>
-      {:else if syncState === "conflict"}
-        <span class="pill-dot warning-dot" aria-hidden="true"></span>
       {:else if syncState === "auth"}
         <span class="pill-dot auth-dot" aria-hidden="true"></span>
       {:else if syncState === "connect"}
@@ -368,7 +342,7 @@
     color: var(--app-text-secondary);
   }
 
-  /* auth / conflict — needs attention: a warning text colour (still no chrome),
+  /* auth — needs attention: a warning text colour (still no chrome),
      and clickable so the author can act on it. */
   .sync-pill.warning {
     color: var(--app-warning-text);
@@ -414,14 +388,13 @@
   }
   @keyframes pill-spin { to { transform: rotate(360deg); } }
 
-  /* Small dot indicator for auth/conflict (no spinner — these are stable states). */
+  /* Small dot indicator for auth/connect (no spinner — these are stable states). */
   .pill-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
     flex-shrink: 0;
   }
-  .warning-dot { background: var(--app-warning-text); }
   .auth-dot    { background: var(--app-warning-text); }
   /* "connect" invites rather than warns — accent-colored dot, neutral text. */
   .connect-dot { background: var(--app-accent); }

@@ -15,10 +15,8 @@
  * `Platform`, and the small cluster of types those interfaces' members
  * reference directly (`UpdaterApi`, `FolderRef`/`FileRef`, `PreviewStartArgs`/
  * `BuildArgs`, `PlatformCapabilities`, `NativeThemeState`,
- * `FolderChangedEvent`, and the sync/recovery status vocabulary —
- * `SyncStatus`/`SyncState`/`RecoveryConfirmRequest`/`ManualGuidanceInfo`/
- * `RepairConfirmationInfo`/`RecoveryProgressInfo`/`RecoveryActionKey`/
- * `ConflictFileEntry`). Plain request/response DTOs that the seam does NOT
+ * `FolderChangedEvent`, and the sync/repair status vocabulary —
+ * `SyncStatus`/`SyncState`/`RecoveryProgressInfo`). Plain request/response DTOs that the seam does NOT
  * reference — the ~30 shapes server routes return (plugin manager, theme
  * manager, style resolver, media panel, problems panel, project
  * classification, …) — live in `./dtos.ts`. IPC payload types shared with the
@@ -60,11 +58,8 @@ import type {
   CloneRepositoryArgs,
   RemoteAccessResult,
   ProjectRemoteDiagnosis as SharedProjectRemoteDiagnosis,
-  ConflictKind,
-  ConflictFileInfo,
-  ConflictResolutionChoice,
   SyncOutcome,
-  ResolveSyncConflictsArgs,
+  ImageClash,
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
@@ -109,11 +104,8 @@ export type {
   CloneProgressEvent,
   CloneRepositoryArgs,
   RemoteAccessResult,
-  ConflictKind,
-  ConflictFileInfo,
-  ConflictResolutionChoice,
   SyncOutcome,
-  ResolveSyncConflictsArgs,
+  ImageClash,
   ConnectGenericHostArgs,
   HostConnectionInfo,
   PublishProviderCard,
@@ -217,8 +209,8 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
 // Defined locally here — decoupled from the lib — so the SPA never
 // value-imports the lib (§8 / ADR 0004). Main emits `sync:status` events with
 // this payload; the renderer drives the ambient status pill from it. Kept
-// alongside HostServices (rather than in ./dtos) because `onSyncStatus` and
-// `onRecoveryConfirm` reference this cluster directly.
+// alongside HostServices (rather than in ./dtos) because `onSyncStatus`
+// references this cluster directly.
 
 /**
  * Ambient sync state emitted by the host auto-sync orchestrator and surfaced
@@ -231,7 +223,6 @@ export type { SharedProjectRemoteDiagnosis as ProjectRemoteDiagnosis };
  *   up-to-date  — sync ran; nothing needed (no local or remote changes)
  *   offline     — network unavailable; changes are saved locally
  *   auth        — credential missing or rejected ("Reconnect your repository")
- *   conflict    — a content conflict needs the author's attention
  *   error       — a transient/unexpected sync failure; treated like offline by the pill
  *   recovering  — automated repair in progress (translucent overlay, non-dismissable)
  *   recovered   — repair completed successfully; overlay auto-dismisses after ~1.8s
@@ -243,7 +234,6 @@ export type SyncState =
   | "up-to-date"
   | "offline"
   | "auth"
-  | "conflict"
   | "error"
   | "recovering"
   | "recovered"
@@ -275,108 +265,14 @@ export interface RecoveryProgressInfo {
 }
 
 /**
- * Machine token for the primary CTA — the host switches on this to route the
- * guidance dialog's primary button. Local mirror of the lib's
- * `RecoveryActionKey` (no lib value import in the SPA, §8 / ADR 0004).
- */
-export type RecoveryActionKey =
-  | "sync"
-  | "reconnect"
-  | "resolve_conflict"
-  | "restore_repo"
-  | "check_connection";
-
-/**
- * Plain-language guidance shown when a repair is blocked or fails.
- * Local mirror of the lib's `ManualGuidance` — no git jargon in any field
- * except `supportDetails` (which is only shown behind a "Copy details" action).
- */
-export interface ManualGuidanceInfo {
-  userSummary: string;
-  recommendedNextStep: string;
-  recommendedAction: string;
-  recommendedActionKey: RecoveryActionKey;
-  safeNextSteps?: string[];
-  supportDetails?: string;
-  backupZipPath?: string;
-}
-
-/**
- * What a risky-repair confirmation dialog shows the author.
- * Local mirror of the lib's `RepairConfirmation`.
- */
-export interface RepairConfirmationInfo {
-  repair: string;
-  risk: "none" | "low" | "medium" | "high";
-  /** Plain-language summary — no git words. */
-  summary: string;
-  backupZipPath: string;
-  willChangeLocalFiles: boolean;
-  willChangeGitMetadata: boolean;
-  willChangeRemote: boolean;
-  canBeUndoneFromBackup: boolean;
-}
-
-/**
- * Payload sent from main to the renderer when a risky repair needs the
- * author's approval before proceeding.
- */
-export interface RecoveryConfirmRequest {
-  requestId: string;
-  projectDir: string;
-  confirmation: RepairConfirmationInfo;
-}
-
-/**
- * One conflicted file as carried on a `SyncStatus` "conflict" payload, with
- * the host's authoritative binary classification attached (L12 — 2026-07-10
- * UX review). `electron/recovery-bridge.ts`'s `isConflictFileBinary` /
- * `BINARY_EXTENSIONS` is the single source of truth; `ConflictChoicesDialog`
- * must not re-derive this from the file extension itself. `isBinary` is
- * optional because not every conflict-emit site can populate it yet — a
- * missing value means "unknown, ask the host" (see the preview-disclosure
- * fallback in `ConflictChoicesDialog.svelte` and the ids-fetch fallback path
- * in `sync-controller.svelte.ts`), never "known not to be binary".
- */
-export interface ConflictFileEntry extends ConflictFileInfo {
-  isBinary?: boolean;
-}
-
-/**
  * Payload pushed to the renderer whenever the auto-sync orchestrator's state
  * changes. `projectDir` scopes the event to one open project (the host may
- * manage multiple). `files` is populated only on `"conflict"`.
+ * manage multiple).
  */
 export interface SyncStatus {
   state: SyncState;
   /** Absolute path of the project this status applies to. */
   projectDir: string;
-  /**
-   * Conflict file list — present (non-empty) only when `state === "conflict"`.
-   * Uses `ConflictFileEntry` (defined above) so the shape stays single-sourced
-   * and cannot drift from the lib's ConflictFile.kind values, while adding the
-   * host-authoritative `isBinary` flag (L12).
-   */
-  files?: ConflictFileEntry[];
-  /**
-   * Local snapshot id backing the conflict resolution (M13 — 2026-07-10 UX
-   * review). Carried directly on the payload so the renderer never needs a
-   * SECOND network sync just to unlock ConflictChoicesDialog's primary
-   * button. Present only when `state === "conflict"` AND the emitting host
-   * path could compute it — the ambient auto-sync path
-   * (`auto-sync/orchestrator.ts`) always can; the repair-driven conflict path
-   * (`auto-sync/recovery-emit.ts`'s `needs_user` branch) forwards them
-   * whenever the underlying `RecoveryResult` carries them (the
-   * binary-conflict recovery producer threads its conflict tip OIDs through),
-   * and only omits them for the text-merge conflict path, which doesn't
-   * compute a tip pair. When absent, the renderer falls back to fetching the
-   * ids via `syncChanges` (see `sync-controller.svelte.ts`'s
-   * `conflictPending`/`conflictFetchFailed` states) instead of leaving the
-   * primary button silently dead forever.
-   */
-  localId?: string;
-  /** Remote snapshot id backing the conflict resolution — see {@link localId}. */
-  remoteId?: string;
   /**
    * ISO-8601 timestamp of the last completed sync attempt, or null when none
    * has run in this session. Lets the pill show "last synced 2 min ago".
@@ -388,39 +284,43 @@ export interface SyncStatus {
    */
   recovery?: RecoveryProgressInfo;
   /**
-   * Plain-language outcome/recovery message — present when `state === "error"`
-   * and the emitting host path has one (a SyncOutcome or RecoveryResult always
+   * Plain-language outcome/repair message — present when `state === "error"`
+   * and the emitting host path has one (a SyncOutcome or RepairResult always
    * carries author-facing copy, e.g. the insecure-transport guidance). Lets
    * the ambient pill explain WHY sync is paused (tooltip) instead of only the
    * generic error copy. Absent on the raw throw paths.
    */
   message?: string;
   /**
-   * Manual guidance — present when `state === "error"` and the failure was
-   * classified (not an unexpected throw). Drives the RecoveryGuidanceDialog.
-   */
-  guidance?: ManualGuidanceInfo;
-  /**
-   * Absolute path to the backup zip created before the repair attempt, when
-   * one was made. Present on `"recovered"` and `"error"` (after a classified
-   * failure) so the UI can offer "Show backup".
+   * Absolute path to the on-disk backup of the old history folder, when the
+   * repair's last-resort re-clone ran (`.git-damaged-<timestamp>`). Present on
+   * `"recovered"` so the UI can offer "Show backup".
    */
   backupZipPath?: string;
   /**
-   * Absolute path to the operation log file written during the sync/recovery
-   * attempt. Present on `"recovered"`, `"error"`, and `"conflict"` states so
-   * the UI can offer "View log" for debugging. The log contains timestamped
-   * steps (fetch, merge, backup, etc.) but never secrets.
+   * Absolute path to the operation log file written during the sync/repair
+   * attempt. Present on `"recovered"` and `"error"` so the UI can offer
+   * "View log" for debugging. Timestamped steps, never secrets.
    */
   logFile?: string;
-  /** True when the completed sync/recovery changed files in the local worktree. */
+  /** True when the completed sync/repair changed files in the local worktree. */
   filesChanged?: boolean;
+  /**
+   * Files whose text now holds BOTH versions inside standard git conflict
+   * markers (the converge merge) — the toast tells the writer to review them.
+   * Present on "synced"/"up-to-date" after a combining sync.
+   */
+  combinedFiles?: string[];
+  /**
+   * Images that changed on both sides (the newer side was kept). Drives the
+   * non-blocking side-by-side picker. Present after a combining sync.
+   */
+  imageClashes?: ImageClash[];
 }
 
 // ── Sync (#15 sync phase, ADR 0006 D5) ────────────────────────────────────────
 //
-// ConflictKind, ConflictFileInfo, ConflictResolutionChoice, SyncOutcome,
-// ResolveSyncConflictsArgs, ConnectGenericHostArgs, HostConnectionInfo
+// SyncOutcome, ImageClash, ConnectGenericHostArgs, HostConnectionInfo
 // imported from shared-types above (re-exported at the top of this file).
 
 // ── User settings (#45) ──────────────────────────────────────────────────────
@@ -545,30 +445,9 @@ export interface HostServices {
 
   // ── Sync recovery seam (Foundation — §8 / ADR 0004) ───────────────────────
   //
-  // Recovery runs in the host (main.ts). These three methods are the only
-  // recovery-related surface the renderer needs:
-  //   1. Receive risky-repair confirmation requests from main.
-  //   2. Send the author's answer back to main.
-  //   3. Fetch yours/theirs text for the conflict-preview disclosure.
-  //
-  // All git/lib work stays in main. Credentials never cross this seam.
-
-  /**
-   * Subscribe to risky-repair confirmation requests from the host. When the
-   * recovery subsystem needs the author to approve a medium/high-risk repair
-   * before proceeding, it sends a `RecoveryConfirmRequest` here. The renderer
-   * shows `RecoveryConfirmDialog` and calls `respondRecoveryConfirm` with the
-   * author's answer. Returns an unsubscribe fn.
-   * WebAdapter: returns a no-op unsubscribe (recovery is desktop-only).
-   */
-  onRecoveryConfirm(handler: (req: RecoveryConfirmRequest) => void): () => void;
-
-  /**
-   * Send the author's approval or rejection back to main to unblock a pending
-   * risky repair. `requestId` must match the id in the `RecoveryConfirmRequest`.
-   * WebAdapter: resolves immediately (no-op).
-   */
-  respondRecoveryConfirm(requestId: string, approved: boolean): Promise<void>;
+  // Repair runs in the host (main.ts) as ONE automatic pipeline (repairRepo)
+  // behind the recovering/recovered pill states — no confirmation gates, no
+  // guidance dialogs, no renderer surface (2026-08-14 simplification).
 
   /**
    * Enable or disable the auto-sync master switch for the current project.
@@ -577,10 +456,6 @@ export interface HostServices {
    * (auto-sync is desktop-only until the PWA lands).
    */
   setAutoSync(enabled: boolean): Promise<void>;
-
-  // ── Sync (#15 sync phase, ADR 0006 D5) ─────────────────────────────────────
-  /** Apply per-file conflict choices and sync the combined result. */
-  resolveSyncConflicts(args: ResolveSyncConflictsArgs): Promise<SyncOutcome>;
 
   // Preview / build
   startPreview(args: PreviewStartArgs): Promise<PreviewStartResult>;
@@ -646,13 +521,12 @@ export interface ElectronBridge
     | "startPreview"
     | "build"
     | "capabilities"
-    // ARCH review #8: these three moved to server routes (api.sync.setAutoSync
-    // / api.remote.{cloneRepository,resolveSyncConflicts}) — the raw bridge no
-    // longer exposes them. `updater` is narrowed below instead of omitted:
-    // applyNow/onEvent stay on the bridge, only getStatus/check/download moved.
+    // ARCH review #8: these moved to server routes (api.sync.setAutoSync
+    // / api.remote.cloneRepository) — the raw bridge no longer exposes them.
+    // `updater` is narrowed below instead of omitted: applyNow/onEvent stay
+    // on the bridge, only getStatus/check/download moved.
     | "setAutoSync"
     | "cloneRemoteRepository"
-    | "resolveSyncConflicts"
     | "updater"
   > {
   // audit D3: openDirectory/readFile/writeFile/listDir/statFile were removed

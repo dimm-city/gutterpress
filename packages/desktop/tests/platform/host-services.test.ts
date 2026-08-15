@@ -2,7 +2,6 @@ import { test, expect } from "bun:test";
 import { registerHostServices, getHostServices } from "../../electron/server-bridge/host-services";
 import { makeHostServices } from "../support/host-services-fake";
 import { getAppHooks } from "../../electron/server-bridge/app-hooks";
-import { getConflictPreviewHooks } from "../../electron/server-bridge/conflict-preview-hooks";
 import { getDesktopHooks, getDoctorHooks } from "../../electron/server-bridge/host-hooks";
 import { getFsGuardHooks } from "../../electron/server-bridge/fs-guard";
 import { getMediaHooks } from "../../electron/server-bridge/media-hooks";
@@ -39,7 +38,6 @@ test("getHostServices() and every domain accessor return null before registratio
   registerHostServices(undefined as never);
   expect(getHostServices()).toBeNull();
   expect(getAppHooks()).toBeNull();
-  expect(getConflictPreviewHooks()).toBeNull();
   expect(getDesktopHooks()).toBeNull();
   expect(getDoctorHooks()).toBeNull();
   expect(getFsGuardHooks()).toBeNull();
@@ -69,7 +67,6 @@ test("registerHostServices() populates getHostServices() with the exact object r
 
 test("every domain accessor reads its own field off the single registered object", () => {
   expect(getAppHooks()).toBe(fakeServices.app);
-  expect(getConflictPreviewHooks()).toBe(fakeServices.conflictPreview);
   expect(getDesktopHooks()).toBe(fakeServices.desktop);
   expect(getDoctorHooks()).toBe(fakeServices.doctor);
   expect(getFsGuardHooks()).toBe(fakeServices.fsGuard);

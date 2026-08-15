@@ -8,14 +8,12 @@
   import { ExportController } from "$lib/export/export-controller.svelte";
   import Toast from "$lib/components/Toast.svelte";
   import type { ToastController } from "$lib/components/Toast.svelte";
-  import type { MarkdownFileLaunchEvent, RecoveryConfirmRequest } from "$lib/platform/contract";
+  import type { MarkdownFileLaunchEvent } from "$lib/platform/contract";
   import type { ProblemEntry } from "$lib/platform/dtos";
   import { buildProblems, problemCounts } from "$lib/problems";
   import StatusBar from "$lib/components/StatusBar.svelte";
-  import ConflictChoicesDialog from "$lib/components/ConflictChoicesDialog.svelte";
+  import ImageClashPicker from "$lib/components/ImageClashPicker.svelte";
   import RecoveryOverlay from "$lib/components/RecoveryOverlay.svelte";
-  import RecoveryConfirmDialog from "$lib/components/RecoveryConfirmDialog.svelte";
-  import RecoveryGuidanceDialog from "$lib/components/RecoveryGuidanceDialog.svelte";
   import LoadingOverlay from "$lib/components/LoadingOverlay.svelte";
   import ProjectActivityView from "$lib/components/ProjectActivityView.svelte";
   import SettingsView from "$lib/components/SettingsView.svelte";
@@ -462,13 +460,12 @@
   let newProjectWizardRef = $state<{ show: (t?: HTMLButtonElement) => void } | null>(null);
   // Manual force-save state for the status bar action button.
   let forceSaving = $state(false);
-  // Sync-outcome routing + conflict/diagnosis state (Phase 5b). Owns the
-  // syncDiag / forceSyncing runes and the ConflictChoicesDialog state
-  // (#transparent-sync §6.1: opened by the ambient SyncStatusPill when the
-  // auto-sync orchestrator reports a conflict). Host coupling injected so the
-  // routing is unit-testable and PWA-clean (§8). onSyncCompleted /
-  // onSyncFilesChanged stay component methods (they touch toast +
-  // activityViewRef.refreshHistory + buffer).
+  // Sync-outcome routing + diagnosis state (Phase 5b). Owns the syncDiag /
+  // forceSyncing runes and the non-blocking image-clash picker state (sync
+  // always converges — 2026-08-14). Host coupling injected so the routing is
+  // unit-testable and PWA-clean (§8). onSyncCompleted / onSyncFilesChanged
+  // stay component methods (they touch toast + activityViewRef.refreshHistory
+  // + buffer).
   const syncController = new SyncController({
     syncChanges: (dir) => api.remote.syncChanges(dir),
     diagnose: (dir) => api.remote.diagnoseProjectRemote(dir),
@@ -848,13 +845,11 @@
     trackPersistence(api.app.setDesktopPrefs({ showLandingAtStartup: show }));
   }
 
-  // ── Recovery UI state (transparent sync recovery) ────────────────────────────
-  // The whole recovery UI state machine (RecoveryOverlay scrim, the blocked-
-  // repair RecoveryGuidanceDialog, and the risky-repair RecoveryConfirmDialog)
-  // lives in the RecoveryUiController (Phase 5b). The two onMount subscriptions
-  // below keep the DOM/host glue (project-scope filter + reconcile) and delegate
-  // the transitions to recovery.applyStatus / recovery.applyConfirm; the template
-  // reads its rune getters and binds its open flags.
+  // ── Repair overlay state ─────────────────────────────────────────────────
+  // The RecoveryOverlay scrim state machine lives in the RecoveryUiController
+  // (Phase 5b). Repair is one automatic pipeline (2026-08-14) — no confirm or
+  // guidance dialogs remain. The onMount subscription below keeps the
+  // DOM/host glue and delegates transitions to recovery.applyStatus.
   const recovery = new RecoveryUiController();
 
   // ── Crash recovery (#44) ──────────────────────────────────────────────────
@@ -913,42 +908,6 @@
     else openSettings("connections");
   }
 
-  // Route the RecoveryGuidanceDialog's primary button by the guidance's machine
-  // action key — NOT always-reconnect (the exact bug this fixes). Each branch
-  // targets the flow the error kind actually calls for.
-  function onRecoveryGuidancePrimary() {
-    switch (recovery.recoveryGuidance?.recommendedActionKey) {
-      case "reconnect":
-        onSyncReconnect();
-        break;
-      case "check_connection":
-        openSettings("connections");
-        break;
-      case "sync":
-        // Retry the sync; handleForceSync also routes conflicts to the chooser.
-        void syncController.handleForceSync();
-        break;
-      case "resolve_conflict":
-        // Re-run the sync so the conflict chooser opens with fresh file IDs
-        // (handleForceSync sets conflictOpen on a "conflict" outcome).
-        void syncController.handleForceSync();
-        break;
-      case "restore_repo":
-        // Re-run the sync/recovery path: the orchestrator re-classifies the repo
-        // state and dispatches the matching recovery handler (e.g. the
-        // interrupted-rebase / interrupted-cherry-pick abort), which re-prompts
-        // for confirmation before the backup + repair.
-        void syncController.handleForceSync();
-        break;
-      default:
-        // Forward-compat safety net for an unrecognized key: do nothing (the
-        // dialog closes). Never fall back to reconnect — that was the original
-        // defect. (The generic/unknown failure now maps to "sync" above, so its
-        // "Try again" button actually retries the sync.)
-        break;
-    }
-  }
-
   // Completes the D7 Reconnect journey: a connect dialog closing may mean a
   // new credential was just stored — re-check syncability so the Sync
   // button and the dialog's auth state reflect it without a project reload.
@@ -963,14 +922,12 @@
     if (landingVisible) landingRef?.focusLayer();
   }
 
-  // ── Recovery overlay subscription ────────────────────────────────────────────
+  // ── Repair overlay + converge-report subscription ───────────────────────────
   // Subscribe to the host's sync:status channel for recovering/recovered/error
-  // states so the RecoveryOverlay (and RecoveryGuidanceDialog on blocked failure)
-  // appear/disappear transparently. The SyncStatusPill already handles the
-  // conflict/auth/syncing/synced states — this effect handles ONLY the new
-  // recovery-specific transitions (recovering, recovered, error-with-guidance).
-  // Per §8 / ADR 0004: runs in the SPA, no lib value imports, all host work
-  // through getPlatform().
+  // states (the RecoveryOverlay) and for the converge report — combined-with-
+  // markers files get a review toast, clashing images open the non-blocking
+  // picker. Per §8 / ADR 0004: runs in the SPA, no lib value imports, all
+  // host work through getPlatform().
   onMount(() => {
     if (!isDesktop()) return;
     const off = getPlatform().onSyncStatus((status) => {
@@ -979,19 +936,8 @@
       if (shouldReconcileAfterSync(status)) {
         onSyncFilesChanged();
       }
+      syncController.applyConvergeReport(status.combinedFiles, status.imageClashes);
       recovery.applyStatus(status);
-    });
-    return () => off?.();
-  });
-
-  // ── Recovery confirm subscription ─────────────────────────────────────────────
-  // The host fires onRecoveryConfirm when a medium/high-risk repair needs author
-  // approval. Show RecoveryConfirmDialog; the dialog answers the gate via
-  // respondRecoveryConfirm. Recovery must NOT proceed until the author responds.
-  onMount(() => {
-    if (!isDesktop()) return;
-    const off = getPlatform().onRecoveryConfirm((req: RecoveryConfirmRequest) => {
-      recovery.applyConfirm(req);
     });
     return () => off?.();
   });
@@ -3065,7 +3011,6 @@
     onProblemSelect={openProblem}
     onReconnect={onSyncReconnect}
     onConnectOnline={onSyncReconnect}
-    onConflict={(files, localId, remoteId) => syncController.onPillConflict(files, localId, remoteId)}
     onShowLog={showProjectLog}
     onForceSave={handleForceSave}
     onForceSync={() => syncController.handleForceSync()}
@@ -3200,48 +3145,14 @@
     onClose={() => (exportOpen = false)}
   />
 {/if}
-<!-- ConflictChoicesDialog (#transparent-sync §6.1): opened by the ambient
-     SyncStatusPill when the auto-sync orchestrator surfaces a conflict.
-     Plain-language "Keep my version / Use the online version / Keep both"
-     with "Keep both" as the highlighted lossless default. -->
-<ConflictChoicesDialog
-  bind:open={syncController.conflictOpen}
+<!-- ImageClashPicker: the ONE chooser left after the 2026-08-14 convergence
+     simplification. Sync already converged (newer image kept); this shows
+     both versions side by side, non-blocking, safe to dismiss. -->
+<ImageClashPicker
+  open={syncController.imageClashes.length > 0}
   projectDir={lifecycle.sourceMode === "folder" ? lifecycle.currentDir : null}
-  files={syncController.conflictFiles}
-  localId={syncController.conflictLocalId}
-  remoteId={syncController.conflictRemoteId}
-  pending={syncController.conflictPending}
-  idsFetchFailed={syncController.conflictFetchFailed}
-  onRetryIds={() => syncController.retryConflictIds()}
-  onResolved={(mergedRemoteChanges) => {
-    onSyncCompleted(mergedRemoteChanges);
-    syncController.clearConflict();
-  }}
-  onReconflict={(files, localId, remoteId) =>
-    syncController.applyReconflict(files, localId, remoteId)}
-  onReconnect={onSyncReconnect}
-/>
-
-<!-- RecoveryConfirmDialog: risky-repair confirmation gate. Shown when the host
-     recovery subsystem needs author approval before proceeding with a
-     medium/high-risk repair. Always answers the gate (approved or rejected) via
-     getPlatform().respondRecoveryConfirm so the host is never left hanging. -->
-<RecoveryConfirmDialog
-  bind:open={recovery.recoveryConfirmOpen}
-  request={recovery.recoveryConfirmRequest}
-  onShowBackup={(path) => showBackupInFolder(path)}
-/>
-
-<!-- RecoveryGuidanceDialog: shown when automated recovery is blocked or fails
-     with a classified error. Plain-language guidance + recommended next step +
-     optional safe-steps list. No Git jargon. -->
-<RecoveryGuidanceDialog
-  bind:open={recovery.recoveryGuidanceOpen}
-  guidance={recovery.recoveryGuidance}
-  backupZipPath={recovery.recoveryGuidanceBackupPath}
-  logFilePath={recovery.recoveryGuidanceLogPath}
-  onShowBackup={(path) => showBackupInFolder(path)}
-  onPrimary={onRecoveryGuidancePrimary}
+  clashes={syncController.imageClashes}
+  onDone={() => syncController.clearImageClashes()}
 />
 
 {#if textPrompt}
