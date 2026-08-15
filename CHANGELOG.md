@@ -5,6 +5,21 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **HTML-first inline editing (ADR 0010).** The paginated preview is now the
+  editor: type directly into the page — the browser reflows across page
+  boundaries natively, pagination re-settles on an idle caret-preserving
+  relayout, and a debounced autosync writes your edits back to the markdown
+  source files through the existing commit gates. The preview never rebuilds
+  or swaps while you edit; a background converge-on-drift pass heals only
+  blocks whose authoritative render differs. Blocks the codec can't prove
+  (raw HTML, exotic plugin output) refuse inline editing and degrade to the
+  block overlay. New corpus soundness gate (`roundtrip:gate`, CI) proves the
+  HTML→markdown codec over every example book — zero unsound results, 100%
+  coverage on 6/7 books. `preview.inlineEditing` (default on) is the kill
+  switch; the source pane remains available as an on-demand view.
+
 ## [0.10.0] - 2026-08-12
 
 ### Added
