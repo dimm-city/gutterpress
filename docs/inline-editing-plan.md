@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **Superseded (2026-08-15).** This plan built the ADR 0010 contenteditable
+> implementation, replaced the same day by the Galley editor —
+> see `docs/adr/0011-galley-editor.md`. Kept as history.
+
 # Inline editing implementation plan
 
 > **Status: reviewed, ready to schedule.** Implementation plan for the tiered

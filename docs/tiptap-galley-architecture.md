@@ -1,6 +1,6 @@
 # Galley v2: Tiptap + prosemirror-markdown as the inline editing core
 
-**Status:** proposed design, 2026-08-15. Follows
+**Status:** implemented 2026-08-15 (ADR 0011) — kept as the design rationale. Follows
 [`inline-editor-library-evaluation.md`](./inline-editor-library-evaluation.md)
 (the measured spike: 0 words lost over the corpus, 95.7% of blocks richly
 editable, escalation fallback proven). This document is the end-to-end
