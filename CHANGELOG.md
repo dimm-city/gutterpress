@@ -27,6 +27,15 @@ This project follows [Semantic Versioning](https://semver.org/).
   bold / italic / strikethrough / inline-code toolbar with live active
   states, backed by editor commands rather than `document.execCommand`.
 
+### Changed
+
+- **Preview right-click menu (v1 scope).** On the new editing surface the
+  Gutterpress context menu is temporarily disabled (the browser's native
+  menu — cut/copy/paste — shows instead) while it is rebuilt against the
+  galley editor's hit-testing; the source view's editing surface and
+  toolbar are unchanged. Block-source editing remains available by
+  double-clicking any non-editable (raw/plugin) block.
+
 ## [0.10.0] - 2026-08-12
 
 ### Added

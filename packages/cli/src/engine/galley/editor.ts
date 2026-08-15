@@ -140,6 +140,8 @@ export interface GalleyEditor {
   insertMarkdown(markdown: string): Promise<boolean>;
   setOpaqueSource(pos: number, src: string): boolean;
   saveNow(): void;
+  /** Host verdict on the last galleyContent proposal for `chapter`. */
+  ackContent(chapter: string, ok: boolean): void;
   selectionState(): SelectionPayload;
   targetAt(x: number, y: number): { kind: string; chapter: string | null; pos: number; src?: string } | null;
   destroy(): void;
@@ -159,6 +161,8 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let dirty = false;
   let destroyed = false;
+  /** True once the author has focused or edited — gates caret-relative commands. */
+  let interacted = false;
 
   const setDirty = (v: boolean) => {
     if (dirty !== v) {
@@ -244,6 +248,9 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     extensions,
     content: "",
     autofocus: false,
+    onFocus: () => {
+      interacted = true;
+    },
     onSelectionUpdate: () => emitSelection(),
     onTransaction: ({ transaction }) => {
       if (!transaction.docChanged) return;
@@ -342,6 +349,18 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     return child.node?.type.name === "chapterFile" ? (child.node.attrs.src as string) : null;
   }
 
+  /**
+   * Emit save proposals. `lastText`/`lastEmitted` advance ONLY on a
+   * positive ack (`ackContent`) — an optimistic advance would break the
+   * expected-chain the moment a commit is refused, permanently stalling the
+   * chapter (verified finding). While a proposal is in flight its chapter
+   * stays quiet; typed-in-the-meantime changes re-emit after the ack. A
+   * refused chapter is suspended (stale) until the surface reloads, so a
+   * genuine divergence surfaces once instead of as a refusal storm.
+   */
+  const pendingAck = new Map<string, { markdown: string; wrapper: PMNode }>();
+  const staleChapters = new Set<string>();
+
   function flushSave() {
     if (saveTimer) {
       clearTimeout(saveTimer);
@@ -351,6 +370,7 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     doc.forEach((wrapper) => {
       if (wrapper.type.name !== "chapterFile") return;
       const chapter = wrapper.attrs.src as string;
+      if (pendingAck.has(chapter) || staleChapters.has(chapter)) return;
       if (lastEmitted.get(chapter) === wrapper) return; // untouched
       const chapterDoc = schema.topNodeType.create(null, wrapper.content);
       const markdown = serializeGalleyDoc(schema, chapterDoc, srcMap);
@@ -359,11 +379,23 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
         lastEmitted.set(chapter, wrapper);
         return;
       }
-      lastText.set(chapter, markdown);
-      lastEmitted.set(chapter, wrapper);
+      pendingAck.set(chapter, { markdown, wrapper });
       opts.onContentChanged({ chapter, markdown, expected });
     });
-    setDirty(false);
+    if (pendingAck.size === 0 && saveTimer === null) setDirty(false);
+  }
+
+  function ackContent(chapter: string, ok: boolean): void {
+    const p = pendingAck.get(chapter);
+    pendingAck.delete(chapter);
+    if (ok && p) {
+      lastText.set(chapter, p.markdown);
+      lastEmitted.set(chapter, p.wrapper);
+    } else if (!ok) {
+      staleChapters.add(chapter);
+    }
+    // Changes typed while the proposal was in flight emit now.
+    if (!destroyed) flushSave();
   }
 
   function scheduleSave() {
@@ -461,6 +493,10 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     },
 
     async insertMarkdown(markdown) {
+      // Without a real caret (the author never focused the page), inserting
+      // would land at the very start of the book and auto-save into chapter
+      // one — refuse instead; the host falls back to the source editor.
+      if (!interacted && !editor.view.hasFocus()) return false;
       const tokens = await opts.parseTokens(markdown);
       const { doc } = buildGalleyDoc(schema, tokens, markdown, srcMap);
       if (!doc.childCount) return false;
@@ -482,6 +518,8 @@ export function createGalleyEditor(opts: GalleyEditorOptions): GalleyEditor {
     saveNow() {
       flushSave();
     },
+
+    ackContent,
 
     selectionState,
 

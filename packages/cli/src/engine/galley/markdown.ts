@@ -69,15 +69,32 @@ const INTRINSIC_ATTRS: Record<string, ReadonlySet<string>> = {
   ordered_list_open: new Set(["start"]),
 };
 
+/**
+ * Attributes the ENGINE injects (source-range annotations, marker plumbing)
+ * — never authored, never re-emitted. An exact-name set, not a data-*
+ * prefix filter: authors may write their own `{data-role=aside}` braces
+ * and those must survive.
+ */
+const INJECTED_ATTRS = new Set([
+  "data-source-range",
+  "data-source-line",
+  "data-chapter-src",
+  "data-chapter-label",
+  "aria-hidden",
+]);
+
 /** Rebuild the `{#id .class key=val}` suffix markdown-it-attrs consumed. */
 export function braceSuffixOf(tok: GalleyToken): string {
   const intrinsic = INTRINSIC_ATTRS[tok.type] ?? INTRINSIC_ATTRS[`${tok.type}_open`];
   const parts: string[] = [];
   for (const [k, v] of tok.attrs ?? []) {
-    if (intrinsic?.has(k) || k.startsWith("data-") || k === "aria-hidden") continue;
+    if (intrinsic?.has(k) || INJECTED_ATTRS.has(k)) continue;
     if (k === "id") parts.push(`#${v}`);
     else if (k === "class") for (const c of v.split(/\s+/).filter(Boolean)) parts.push(`.${c}`);
-    else parts.push(`${k}=${v}`);
+    // Values with whitespace round-trip only in markdown-it-attrs' quoted
+    // form (its grammar has no escape for embedded quotes, so a value
+    // containing `"` cannot be authored via braces in the first place).
+    else parts.push(/\s/.test(v) ? `${k}="${v}"` : `${k}=${v}`);
   }
   return parts.length ? `{${parts.join(" ")}}` : "";
 }
@@ -401,7 +418,12 @@ function markerAttrs(kind: string, tok: GalleyToken, lines: string[]) {
 }
 
 function buildTokenSpecs(lines: string[]): Record<string, Record<string, unknown>> {
-  const gp = (tok: GalleyToken) => ({ gpAttrs: braceSuffixOf(tok) });
+  const gp = (tok: GalleyToken) => ({
+    gpAttrs: braceSuffixOf(tok),
+    // Rendered as data-source-line so the source-pane scroll sync works
+    // over the editing DOM (stale after edits; heals on the next build).
+    gpLine: tok.map ? tok.map[0] + 1 : null,
+  });
   const cell = (name: string) => ({
     block: name,
     getAttrs: (tok: GalleyToken) => {
@@ -626,8 +648,20 @@ type SerializerFn = (state: never, node: PMNode, parent: PMNode, index: number) 
 
 const d = defaultMarkdownSerializer.nodes;
 
-/** Append the authored brace suffix to what the wrapped fn just wrote. */
-function withBraceSuffix(fn: SerializerFn, inline = false): SerializerFn {
+/**
+ * Append the authored brace suffix to what the wrapped fn just wrote.
+ *
+ * Placement matters to markdown-it-attrs' binding rules: for LEAF blocks
+ * (paragraph, heading, code fence) the brace belongs at the end of the last
+ * content line; for CONTAINER blocks (lists, blockquote, table) it must sit
+ * on its OWN line after the block or it re-binds to the last inner element
+ * (the final `<li>`, the quote's `<p>`) on reparse. `placement` picks the
+ * form; images append with no separating space.
+ */
+function withBraceSuffix(
+  fn: SerializerFn,
+  placement: "line" | "ownline" | "inline" = "line",
+): SerializerFn {
   return (state, node, parent, index) => {
     const s = state as unknown as { out: string };
     const at = s.out.length;
@@ -636,7 +670,8 @@ function withBraceSuffix(fn: SerializerFn, inline = false): SerializerFn {
     if (!raw) return;
     const written = s.out.slice(at);
     const body = written.replace(/\n*$/, "");
-    s.out = s.out.slice(0, at) + body + (inline ? "" : " ") + raw + written.slice(body.length);
+    const sep = placement === "inline" ? "" : placement === "ownline" ? "\n" : " ";
+    s.out = s.out.slice(0, at) + body + sep + raw + written.slice(body.length);
   };
 }
 
@@ -671,7 +706,7 @@ function buildSerializer(
   const nodes: Record<string, SerializerFn> = {
     paragraph: withBraceSuffix(d.paragraph as SerializerFn),
     heading: withBraceSuffix(d.heading as SerializerFn),
-    blockquote: withBraceSuffix(d.blockquote as SerializerFn),
+    blockquote: withBraceSuffix(d.blockquote as SerializerFn, "ownline"),
     horizontalRule: (state, node) => {
       const st = state as unknown as { write(t: string): void; closeBlock(n: PMNode): void };
       st.write("---");
@@ -682,7 +717,7 @@ function buildSerializer(
       (state as unknown as {
         renderList(n: PMNode, delim: string, first: (i: number) => string): void;
       }).renderList(node, "  ", () => "- ");
-    }) as SerializerFn),
+    }) as SerializerFn, "ownline"),
     orderedList: withBraceSuffix(((state, node) => {
       const start = ((node.attrs as { start?: number }).start ?? 1) as number;
       const maxW = String(start + node.childCount - 1).length;
@@ -694,8 +729,9 @@ function buildSerializer(
         const nStr = String(start + i);
         return st.repeat(" ", maxW - nStr.length) + nStr + ". ";
       });
-    }) as SerializerFn),
-    listItem: d.list_item as SerializerFn,
+    }) as SerializerFn, "ownline"),
+    // End-of-line braces bind to the <li> itself on reparse.
+    listItem: withBraceSuffix(d.list_item as SerializerFn),
     codeBlock: (state, node) => {
       const st = state as unknown as {
         write(t: string): void;
@@ -719,12 +755,12 @@ function buildSerializer(
           title ? ` "${title.replace(/"/g, '\\"')}"` : ""
         })`,
       );
-    }) as SerializerFn, true),
+    }) as SerializerFn, "inline"),
     text: (state, node) => {
       const st = state as unknown as { text(t: string, esc?: boolean): void; inAutolink?: boolean };
       st.text(reverseTypography(node.text ?? ""), !st.inAutolink);
     },
-    markerWrap: (state, node) => {
+    markerWrap: (state, node, parent, index) => {
       const st = state as unknown as {
         write(t: string): void;
         closeBlock(n: PMNode): void;
@@ -734,10 +770,20 @@ function buildSerializer(
       st.closeBlock(node);
       st.renderContent(node);
       // Only @end-section exists in the marker grammar; chapter/page/spread
-      // auto-close at the next marker or EOF.
+      // auto-close at the next marker or EOF. A section followed by its
+      // OWN continuation must NOT be terminated: `@continue` re-opens the
+      // current section, so an injected `@end-section` before it would make
+      // the continuation parse as continue_without_section and be dropped —
+      // a zero-loss violation (verified finding; test pins it).
       if ((node.attrs as { kind: string }).kind === "section") {
-        st.write("@end-section");
-        st.closeBlock(node);
+        const next = parent && index + 1 < parent.childCount ? parent.child(index + 1) : null;
+        const nextIsContinuation =
+          next?.type.name === "markerWrap" &&
+          /^\s*@continue\b/.test((next.attrs as { src: string }).src);
+        if (!nextIsContinuation) {
+          st.write("@end-section");
+          st.closeBlock(node);
+        }
       }
     },
     markerAtom: (state, node) => {
@@ -806,7 +852,7 @@ function buildSerializer(
       });
       st.write(lines.join("\n"));
       st.closeBlock(node);
-    }) as SerializerFn),
+    }) as SerializerFn, "ownline"),
     // Rows/cells are consumed by the table serializer above; stubs keep an
     // out-of-place node from throwing.
     tableRow: () => {},

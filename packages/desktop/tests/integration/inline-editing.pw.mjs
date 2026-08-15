@@ -1,4 +1,18 @@
 #!/usr/bin/env node
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPERSEDED (ADR 0011, 2026-08-15): this suite drives the ADR-0010 edit
+// surface — the data-source-range context menu and patch/ack lifecycle —
+// which the Galley editor replaced. Protocol-v8 frames gate that menu OFF
+// (native menu shows) pending its galleyTargetAt-based rebuild, so scenarios
+// 2-7 here cannot pass by design. The suite exits early below rather than
+// reporting a misleading failure. TODO(galley-menu): rewrite against the
+// galley context menu + bubble when they land; galley coverage today lives in
+// packages/cli/src/engine/galley/galley-mount.test.ts (chromium, real
+// bundles) and tests/editor/galley-session.test.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("[etest] SKIP: inline-editing.pw.mjs is superseded by the Galley editor (ADR 0011) — see the header note.");
+process.exit(0);
+
 /**
  * Genuine end-to-end smoke test for inline editing in the paginated preview
  * (docs/inline-editing-plan.md, docs/adr/0009-inline-editing-source-ranges.md).

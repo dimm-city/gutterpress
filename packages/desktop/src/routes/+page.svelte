@@ -1175,13 +1175,24 @@
    * galley surface to insert into, so callers fall back to the classic
    * source-editor path.
    */
-  function insertAuthoredMarkdown(text: string): boolean {
+  /**
+   * Insert authored markdown at the caret in the page, falling back to the
+   * source-pane path when the galley surface is not actually live — a
+   * `{inserted:false}` reply (no caret yet, editor not mounted) or a bridge
+   * failure must NOT swallow the insert (verified finding).
+   */
+  function insertAuthoredMarkdown(text: string, fallback: () => void): void {
     const c = client;
-    if (!c || frameProtocol < 8 || !settings.current.preview.inlineEditing) return false;
-    c.galleyInsertMarkdown({ markdown: text }).catch(() => {
-      toast?.error("Couldn't insert into the page — try the source editor.");
-    });
-    return true;
+    if (!c || frameProtocol < 8 || !settings.current.preview.inlineEditing) {
+      fallback();
+      return;
+    }
+    c.galleyInsertMarkdown({ markdown: text }).then(
+      (r) => {
+        if (!r?.inserted) fallback();
+      },
+      () => fallback(),
+    );
   }
 
   /**
@@ -1194,8 +1205,13 @@
    */
   function insertImageIntoChapter(payload: { src: string; alt?: string }) {
     // Galley v2 (protocol v8): with the inline editor live, insert at the
-    // cursor in the page rather than into the source pane.
-    if (insertAuthoredMarkdown(`![${payload.alt ?? ""}](${payload.src})`)) return;
+    // cursor in the page; the source-pane flow below is the fallback.
+    insertAuthoredMarkdown(`![${payload.alt ?? ""}](${payload.src})`, () =>
+      insertImageViaSourcePane(payload),
+    );
+  }
+
+  function insertImageViaSourcePane(payload: { src: string; alt?: string }) {
     const isMd = (p: string | null) => !!p && /\.(md|markdown)$/i.test(p);
     if (!isMd(editorFilePath)) {
       void ensureEditorFile();
@@ -3315,7 +3331,7 @@
   onInsert={(text) => {
     // Galley v2 (protocol v8): with the inline editor live, snippets land at
     // the cursor in the page; otherwise the classic source-editor path.
-    if (!insertAuthoredMarkdown(text)) editorRef?.insertSnippet(text);
+    insertAuthoredMarkdown(text, () => editorRef?.insertSnippet(text));
   }}
 />
 <!-- Export dialog: format (PDF / HTML / template) + settings for the toolbar

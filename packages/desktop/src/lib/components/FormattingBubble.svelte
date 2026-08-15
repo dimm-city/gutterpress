@@ -1,10 +1,11 @@
 <script lang="ts">
   /**
-   * FormattingBubble — floating inline-format toolbar for the inline-editing
-   * surface (ADR 0010, Phase 4). Appears above a non-collapsed selection
-   * inside an editable block; the four verbs delegate to the frame's
-   * `applyInlineFormat` (execCommand-backed, so native undo covers them and
-   * the edit module's autosync picks the change up like any typed edit).
+   * FormattingBubble — floating inline-format toolbar for the galley editing
+   * surface (ADR 0011). Appears above a non-collapsed selection inside
+   * editable content; the four verbs delegate to the frame's
+   * `applyInlineFormat` (Tiptap commands — toggleBold and friends — so
+   * ProseMirror history covers them and the whole-chapter autosave picks the
+   * change up like any typed edit).
    *
    * Presentational only: position/visibility/active-format state arrives via
    * props from +page.svelte's `editSelection` handler. `pointerdown` is

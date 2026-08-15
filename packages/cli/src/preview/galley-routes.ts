@@ -66,8 +66,12 @@ function readBody(req: http.IncomingMessage): Promise<Buffer> {
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
+        // Do NOT destroy the socket — that resets the connection before the
+        // 413 can be written. Stop buffering, drain the rest, and let the
+        // caller answer; the response carries Connection: close.
+        req.removeAllListeners('data');
+        req.resume();
         reject(new PayloadTooLargeError(`Request body exceeds ${MAX_BODY_BYTES} bytes`));
-        req.destroy();
         return;
       }
       chunks.push(chunk);
@@ -91,6 +95,7 @@ async function readMarkdownBody(
     raw = await readBody(req);
   } catch (error) {
     if (error instanceof PayloadTooLargeError) {
+      res.setHeader('Connection', 'close');
       sendJson(res, 413, { error: error.message });
     } else {
       sendJson(res, 400, { error: 'Could not read request body' });

@@ -209,6 +209,50 @@ test("unknown block constructs degrade to a single opaque atom, not the whole se
   expect(stats.blocks).toBeGreaterThan(stats.opaque);
 });
 
+test("@continue keeps its section chain: no @end-section is injected before a continuation", () => {
+  const source =
+    "@section .gp-columns-2\n\nFirst column prose.\n\n@continue\n\nContinued prose.\n\n@end-section\n\nAfter.\n";
+  const { doc } = buildGalleyDoc(schema, tokensOf(source), source);
+  const out = serializeGalleyDoc(schema, doc);
+  // The continuation must follow its section DIRECTLY — an @end-section in
+  // between would orphan it (continue_without_section) and delete the line
+  // on the next cycle.
+  expect(out).not.toMatch(/@end-section\s*\n+\s*@continue/);
+  expect(out).toContain("@continue");
+  expect(out.match(/@end-section/g)?.length).toBe(1);
+  // And the round trip is stable + lossless.
+  const { doc: doc2 } = buildGalleyDoc(schema, tokensOf(out), out);
+  expect(serializeGalleyDoc(schema, doc2)).toBe(out);
+  expect(serializeGalleyDoc(schema, doc2)).toContain("Continued prose.");
+});
+
+test("authored attrs round-trip: list items, quoted values, authored data-*, container braces", () => {
+  const source = [
+    "- alpha {.red}",
+    "- beta",
+    "",
+    "A paragraph. {data-role=aside}",
+    "",
+    'Styled text. {style="color: red"}',
+    "",
+    "> Quoted prose.",
+    "",
+    "{.pull-quote}",
+    "",
+  ].join("\n");
+  const { doc } = buildGalleyDoc(schema, tokensOf(source), source);
+  const out = serializeGalleyDoc(schema, doc);
+  expect(out).toContain("{.red}");
+  expect(out).toContain("{data-role=aside}");
+  expect(out).toContain('{style="color: red"}');
+  // Re-parse: every attr must land on the SAME element class it came from.
+  const { doc: doc2 } = buildGalleyDoc(schema, tokensOf(out), out);
+  const again = serializeGalleyDoc(schema, doc2);
+  expect(again).toBe(out); // idempotent — nothing migrated or vanished
+  expect(again).toContain("{.red}");
+  expect(again).toContain('{style="color: red"}');
+});
+
 test("unknown inline HTML stays inline and verbatim inside an editable paragraph", () => {
   const source = "Press <kbd>Ctrl</kbd> to act.\n";
   const { doc } = buildGalleyDoc(schema, tokensOf(source), source);

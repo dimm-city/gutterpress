@@ -52,6 +52,7 @@ export interface GalleyOpaqueEditDetail {
 
 export interface GalleyClient {
   setEditMode(spec: { on: boolean }): Promise<{ on: boolean }>;
+  galleyAckContent(spec: { chapter: string; ok: boolean }): Promise<{ ok: boolean }>;
   on(fn: (e: { name: string; detail: unknown }) => void): () => void;
 }
 
@@ -182,6 +183,7 @@ export class GalleySession {
     const engine = this.deps.engine();
     if (!engine) {
       this.hooks?.onStale?.(detail.chapter, "no-engine");
+      void this.ackFrame(detail.chapter, false);
       return;
     }
     const outcome = await engine.commitRangePatch({
@@ -191,11 +193,27 @@ export class GalleySession {
       replacement: detail.markdown,
       origin: "inline-edit",
       expectedGeneration: engine.generation,
+      // The server LF-normalizes the source it serves to the frame, so the
+      // frame's expected/markdown are LF even for a CRLF file on disk; the
+      // engine re-encodes on match (ADR 0011).
+      eolTolerant: true,
     });
     if (outcome.ok) {
       this.applied++;
     } else {
       this.hooks?.onStale?.(detail.chapter, outcome.reason);
+    }
+    // The frame advances its expected-chain ONLY on this ack — an
+    // unacknowledged or refused proposal must not move it, or every later
+    // save for the chapter would be refused against a wrong baseline.
+    void this.ackFrame(detail.chapter, outcome.ok);
+  }
+
+  private async ackFrame(chapter: string, ok: boolean): Promise<void> {
+    try {
+      await this.deps.client()?.galleyAckContent({ chapter, ok });
+    } catch {
+      /* frame gone mid-teardown — nothing to ack */
     }
   }
 }

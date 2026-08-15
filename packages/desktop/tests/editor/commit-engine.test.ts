@@ -351,6 +351,32 @@ describe("Steps 2-3 — offsets + mismatch", () => {
     expect(h.buf.editCalls.length).toBe(0);
   });
 
+  test("eolTolerant: an LF whole-file patch matches a CRLF buffer and re-encodes the replacement", async () => {
+    const h = make();
+    loadClean(h.buf, "/proj/ch1.md", "alpha\r\nbeta\r\n");
+    const outcome = await h.engine.commitRangePatch(
+      patch({
+        range: [0, 3],
+        expected: "alpha\nbeta\n",
+        replacement: "alpha edited\nbeta\n",
+        eolTolerant: true,
+      }),
+    );
+    expect(outcome.ok).toBe(true);
+    // The file keeps its authored CRLF line endings.
+    expect(h.buf.content).toBe("alpha edited\r\nbeta\r\n");
+  });
+
+  test("without eolTolerant a CRLF buffer still byte-mismatches (overlay/menu commits stay exact)", async () => {
+    const h = make();
+    loadClean(h.buf, "/proj/ch1.md", "alpha\r\nbeta\r\n");
+    const outcome = await h.engine.commitRangePatch(
+      patch({ range: [0, 3], expected: "alpha\nbeta\n", replacement: "x\n" }),
+    );
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.reason).toBe("mismatch");
+  });
+
   test("degradeLine is range[0]+1 on any failure", async () => {
     const h = make();
     h.rendering = true;

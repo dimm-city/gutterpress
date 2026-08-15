@@ -48,16 +48,28 @@
     var data = e.data;
     if (!data || data.type !== 'gutterpress:cmd') return;
     var id = data.id;
-    try {
-      var result = call(data.cmd, data.args);
-      post({ type: 'gutterpress:reply', id: id, ok: true, result: result });
-    } catch (err) {
+    function fail(err) {
       post({
         type: 'gutterpress:reply',
         id: id,
         ok: false,
         error: err && err.message ? err.message : String(err),
       });
+    }
+    try {
+      var result = call(data.cmd, data.args);
+      // Async commands (galleyInsertMarkdown and friends) return promises;
+      // posting one raw would DataCloneError inside post's try and the
+      // reply would silently never arrive (10s timeout host-side).
+      if (result && typeof result.then === 'function') {
+        result.then(function (r) {
+          post({ type: 'gutterpress:reply', id: id, ok: true, result: r });
+        }, fail);
+      } else {
+        post({ type: 'gutterpress:reply', id: id, ok: true, result: result });
+      }
+    } catch (err) {
+      fail(err);
     }
   });
 

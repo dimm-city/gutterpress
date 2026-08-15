@@ -217,6 +217,15 @@
     var next = pendingSwap;
     pendingSwap = null;
     if (!next) return;
+    // Second flush at the moment the swap actually executes: keystrokes
+    // typed between scheduleSwap's flush and now would otherwise die with
+    // the frame (the flush's postMessage is already queued to the parent
+    // before the frame is retired, so delivery survives the swap).
+    try {
+      var bookWin = active && active.contentWindow;
+      var galley = bookWin && bookWin.GutterpressGalley;
+      if (galley && galley.isEditing()) galley.saveNow();
+    } catch (e) { /* teardown race — nothing to flush */ }
     if (window.parent !== window) {
       window.parent.postMessage({
         type: 'gutterpress:event',

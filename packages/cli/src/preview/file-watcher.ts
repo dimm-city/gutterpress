@@ -640,7 +640,12 @@ export function createFileWatcher(state: ServerState): FSWatcher {
       if (silentRegenTimer) clearTimeout(silentRegenTimer);
       silentRegenTimer = setTimeout(() => {
         silentRegenTimer = null;
+        // Guards: the watcher may have closed, an ordinary rebuild may be
+        // running (it regenerates anyway), or restartPreview may have
+        // switched projects since this timer was armed — a stale-project
+        // regen would write the OLD book into the NEW tempDir.
         if (closed || state.isRebuilding) return;
+        if (path.resolve(state.currentInputPath ?? inputResolved) !== inputResolved) return;
         void (async () => {
           try {
             const manifest = await loadManifest(inputResolved);

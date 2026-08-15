@@ -90,6 +90,16 @@ export interface CommitPatch {
    * `range`/`expected` were captured from.
    */
   expectedGeneration: number;
+  /**
+   * Galley whole-file commits only (ADR 0011): the preview server serves
+   * LF-normalized source to the frame, so `expected`/`replacement` are LF
+   * even when the file on disk is CRLF. When set, a slice mismatch is
+   * retried after CRLF→LF-normalizing the BUFFER side, and on that match
+   * the replacement is re-encoded to CRLF so the file keeps its authored
+   * line endings. Never set by overlay/menu commits — their slices are
+   * byte-true by construction and stay byte-compared.
+   */
+  eolTolerant?: boolean;
 }
 
 export type CommitFailureReason =
@@ -275,9 +285,18 @@ export class CommitEngine {
 
     // ── Step 3 — validate the slice matches what was captured at open time.
     // This is a drift-SINCE-OPEN check only; the clean-buffer gate above is
-    // what makes it meaningful (see the comment there).
-    if (buf.content.slice(from, to) !== patch.expected) {
-      return fail("mismatch", "This block changed — reopen to make this change.");
+    // what makes it meaningful (see the comment there). eolTolerant (galley
+    // whole-file commits) retries the comparison with the buffer side
+    // CRLF-normalized and re-encodes the replacement to match the file.
+    let replacement = patch.replacement;
+    const slice = buf.content.slice(from, to);
+    if (slice !== patch.expected) {
+      const crlfMatch =
+        patch.eolTolerant === true && slice.replace(/\r\n/g, "\n") === patch.expected;
+      if (!crlfMatch) {
+        return fail("mismatch", "This block changed — reopen to make this change.");
+      }
+      replacement = patch.replacement.replace(/\n/g, "\r\n");
     }
 
     // ── Step 4 — apply through whichever path is live. Ask the EDITOR whether
@@ -285,9 +304,9 @@ export class CommitEngine {
     // an editor showing something else never receives a transaction meant for
     // the buffer-only path.
     if (this.deps.editorHasFile(absPath)) {
-      this.deps.applyRangeEdit(absPath, from, to, patch.replacement);
+      this.deps.applyRangeEdit(absPath, from, to, replacement);
     } else {
-      buf.edit(buf.content.slice(0, from) + patch.replacement + buf.content.slice(to));
+      buf.edit(buf.content.slice(0, from) + replacement + buf.content.slice(to));
     }
     this.gen++;
 

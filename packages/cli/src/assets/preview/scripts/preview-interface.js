@@ -700,6 +700,10 @@
       var galley = window.GutterpressGalley;
       return galley ? galley.saveNow() : { flushed: false };
     },
+    galleyAckContent: function (spec) {
+      var galley = window.GutterpressGalley;
+      return galley ? galley.ackContent(spec || {}) : { ok: false };
+    },
     galleyTargetAt: function (spec) {
       var galley = window.GutterpressGalley;
       spec = spec || {};

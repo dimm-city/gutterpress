@@ -385,6 +385,12 @@ export class PreviewClient {
   }
 
   /** Flush any debounced galley serialization immediately (close/navigate). */
+  /** Host verdict on a galleyContent proposal — the frame's expected-chain
+   *  advances only on ok:true (ADR 0011). */
+  galleyAckContent(spec: { chapter: string; ok: boolean }): Promise<{ ok: boolean }> {
+    return this.call<{ ok: boolean }>("galleyAckContent", [spec]);
+  }
+
   galleySaveNow(): Promise<{ flushed: boolean }> {
     return this.call<{ flushed: boolean }>("galleySaveNow");
   }

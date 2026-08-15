@@ -109,7 +109,13 @@ p { margin: 0 0 0.5em; font: 12px/1.4 serif; }
     return realFetch(url, init);
   };
   window.__contents = [];
-  window.addEventListener("galleyContent", (e) => window.__contents.push(e.detail));
+  // Ack every proposal like the SPA session does — the frame's
+  // expected-chain only advances on a positive ack, and further proposals
+  // for a chapter wait for it.
+  window.addEventListener("galleyContent", (e) => {
+    window.__contents.push(e.detail);
+    window.GutterpressGalley.ackContent({ chapter: e.detail.chapter, ok: true });
+  });
 </script>
 <script src="gutterpress-viewer.js"></script>
 <script src="gutterpress-galley.js"></script>

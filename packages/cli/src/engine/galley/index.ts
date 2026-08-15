@@ -197,6 +197,13 @@ const api = {
     return { flushed: active !== null };
   },
 
+  /** Host verdict on a galleyContent proposal — the expected-chain advances
+   * only on ok:true (a refused chapter suspends until reload). */
+  ackContent(spec: { chapter: string; ok: boolean }) {
+    active?.ackContent(spec.chapter, !!spec.ok);
+    return { ok: active !== null };
+  },
+
   targetAt(spec: { x: number; y: number }) {
     return active ? active.targetAt(spec.x, spec.y) : null;
   },

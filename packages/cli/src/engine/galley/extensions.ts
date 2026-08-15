@@ -14,7 +14,7 @@
  * that only the browser editor invokes (nodeViews live in editor.ts, not
  * here).
  */
-import { Extension, Mark, Node, getSchema } from "@tiptap/core";
+import { Extension, Mark, Node, getSchema, mergeAttributes } from "@tiptap/core";
 import type { Extensions } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
@@ -77,6 +77,22 @@ const GpAttrs = Extension.create({
               if (!raw) return {};
               return { ...braceDomAttrs(raw), "data-gp-attrs": raw };
             },
+          },
+          /**
+           * 1-based source line at parse time (token.map). Rendered as
+           * data-source-line so the source-pane scroll sync keeps working
+           * over the editing DOM; staleness after edits matches the old
+           * surface's behavior and heals on the next build. Never
+           * serialized (INJECTED_ATTRS filters it on the way back in).
+           */
+          gpLine: {
+            default: null as number | null,
+            parseHTML: (el: HTMLElement) => {
+              const v = el.getAttribute("data-source-line");
+              return v ? Number(v) : null;
+            },
+            renderHTML: (attrs: Record<string, unknown>) =>
+              attrs.gpLine ? { "data-source-line": String(attrs.gpLine) } : {},
           },
         },
       },
@@ -331,13 +347,16 @@ export const GpImage = Node.create({
       },
     ];
   },
-  renderHTML({ node }) {
+  renderHTML({ node, HTMLAttributes }) {
+    // HTMLAttributes carries the GpAttrs global attribute's output — the
+    // brace-derived classes that make `{.gp-right}` float in the editor and
+    // the data-gp-attrs fidelity attr. Node-owned attrs win on conflict.
     const attrs: Record<string, string> = {
       src: node.attrs.src as string,
       alt: node.attrs.alt as string,
     };
     if (node.attrs.title) attrs.title = node.attrs.title as string;
-    return ["img", attrs];
+    return ["img", mergeAttributes(HTMLAttributes, attrs)];
   },
 });
 

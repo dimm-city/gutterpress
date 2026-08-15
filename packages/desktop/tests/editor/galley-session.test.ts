@@ -14,11 +14,16 @@ function makeHarness(opts: { outcomes?: Record<string, CommitOutcome>; gate?: Pr
     },
   };
   const editModeCalls: Array<{ on: boolean }> = [];
+  const acks: Array<{ chapter: string; ok: boolean }> = [];
   const listeners: Array<(e: { name: string; detail: unknown }) => void> = [];
   const client = {
     setEditMode: async (spec: { on: boolean }) => {
       editModeCalls.push(spec);
       return spec;
+    },
+    galleyAckContent: async (spec: { chapter: string; ok: boolean }) => {
+      acks.push(spec);
+      return { ok: true };
     },
     on: (fn: (e: { name: string; detail: unknown }) => void) => {
       listeners.push(fn);
@@ -32,7 +37,7 @@ function makeHarness(opts: { outcomes?: Record<string, CommitOutcome>; gate?: Pr
     enabled: () => enabled,
   });
   const emit = (name: string, detail: unknown) => listeners.forEach((fn) => fn({ name, detail }));
-  return { session, client, engine, committed, editModeCalls, emit, setEnabled: (v: boolean) => (enabled = v) };
+  return { session, client, engine, committed, editModeCalls, acks, emit, setEnabled: (v: boolean) => (enabled = v) };
 }
 
 const content = (chapter: string, markdown: string, expected: string) => ({
@@ -58,7 +63,11 @@ describe("GalleySession", () => {
     expect(patch.replacement).toBe("edited\n");
     expect(patch.origin).toBe("inline-edit");
     expect(patch.expectedGeneration).toBe(7);
+    // Server-normalized LF vs a CRLF file on disk is reconciled engine-side.
+    expect(patch.eolTolerant).toBe(true);
     expect(h.session.applied).toBe(1);
+    // The frame's expected-chain advances ONLY on this positive ack.
+    expect(h.acks).toEqual([{ chapter: "ch.md", ok: true }]);
   });
 
   test("failure surfaces through onStale (never silent, never retried)", async () => {
@@ -75,6 +84,9 @@ describe("GalleySession", () => {
     expect(stale).toEqual([["ch.md", "mismatch"]]);
     expect(h.committed.length).toBe(1); // no retry loop
     expect(h.session.applied).toBe(0);
+    // A refused proposal is negatively acked so the frame suspends the
+    // chapter instead of stacking refusals on a broken expected-chain.
+    expect(h.acks).toEqual([{ chapter: "ch.md", ok: false }]);
   });
 
   test("commits are serialized and a chapter queued twice keeps only the latest", async () => {
