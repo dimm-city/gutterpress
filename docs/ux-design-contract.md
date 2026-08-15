@@ -210,9 +210,14 @@ Proposed refinements:
 - Focus mode (`Cmd/Ctrl+Shift+F` / dedicated button): hides all chrome except
   the editor; must compose with the existing pane/panel toggles.
   Tracked in **#104**.
-- Typora-style seamless WYSIWYG as an opt-in toggle — never the default;
-  explicit source/preview is the default because print layout fidelity
-  matters.
+- ~~Typora-style seamless WYSIWYG as an opt-in toggle — never the default~~
+  **Superseded 2026-08-15 by product-owner direction (ADR 0010):** HTML-first
+  inline editing in the paginated preview IS the default editing model.
+  Print-layout fidelity is protected by construction now, not by keeping the
+  surface opt-in: the editing surface is the print fragmenter's own output,
+  every save flows through the commit gates, and a converge-on-drift pass
+  heals any divergence from the authoritative render.
+  `preview.inlineEditing` (default on) is a kill switch, not an opt-in.
 - Avoid: forcing permanent single-pane mode; auto-hiding scrollbars that
   cause layout shift.
 
@@ -222,10 +227,14 @@ Proposed refinements:
 implementation plan `docs/inline-editing-plan.md`, rationale
 `docs/adr/0009-inline-editing-source-ranges.md`).
 
-The paginated preview is an editing surface, not only a viewer. This does
-**not** supersede the opt-in WYSIWYG rule above: these are explicit,
-user-invoked actions on a specific target, not a seamless typing surface.
-The source pane remains the default editing model.
+The paginated preview is an editing surface, not only a viewer. As of
+ADR 0010 (2026-08-15) it is the DEFAULT editing surface: authors type
+directly into the page; a debounced autosync serializes edited blocks back
+to markdown through the commit engine; blocks the codec cannot prove refuse
+inline editing and degrade to the block overlay below. The source pane
+survives as an on-demand view and the universal fallback — nothing shipped
+under #135/#136 is removed; the context menu and block overlay are the
+degrade tier of the new default.
 
 Shipped behavior:
 
