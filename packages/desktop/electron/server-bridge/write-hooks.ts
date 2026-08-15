@@ -13,7 +13,7 @@ import { isWithinRoot } from './fs-guard';
 export interface WriteHooks {
   scheduleAutoSnapshot: (dir: string) => void;
   scheduleAutoSync: (dir: string) => void;
-  notifyPreviewSettledWrite: (filePath: string, writtenContent: string) => void;
+  notifyPreviewSettledWrite: (filePath: string, writtenContent: string, origin?: string) => void;
   getWatchedDir: () => string | null;
   /**
    * The repository the open book belongs to, or null for a plain folder.
@@ -73,6 +73,6 @@ export function scheduleAutoWriteEffects(targetPath: string): void {
 }
 
 /** Start preview regeneration immediately after the route's awaited write. */
-export function notifyPreviewSettledWrite(targetPath: string, writtenContent: string): void {
-  getWriteHooks()?.notifyPreviewSettledWrite(targetPath, writtenContent);
+export function notifyPreviewSettledWrite(targetPath: string, writtenContent: string, origin?: string): void {
+  getWriteHooks()?.notifyPreviewSettledWrite(targetPath, writtenContent, origin);
 }

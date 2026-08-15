@@ -923,8 +923,8 @@ protocol.registerSchemesAsPrivileged([
 const writeHooksImpl: WriteHooks = {
   scheduleAutoSnapshot,
   scheduleAutoSync: (dir: string) => autoSync.schedule(dir),
-  notifyPreviewSettledWrite: (filePath, writtenContent) => {
-    activePreview?.notifySettledWrite(filePath, writtenContent);
+  notifyPreviewSettledWrite: (filePath, writtenContent, origin) => {
+    activePreview?.notifySettledWrite(filePath, writtenContent, origin);
   },
   getWatchedDir: () => folderWatch.getWatchedDir(),
   // Same host-detected root the fs guard authorizes writes against, so "this

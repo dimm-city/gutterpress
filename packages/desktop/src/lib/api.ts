@@ -250,8 +250,8 @@ export const api = {
      * auto-snapshot/sync debounce if the file is inside the open project.
      * Returns { mtimeMs } of the post-write stat.
      */
-    writeFile: (filePath: string, content: string) =>
-      post<FileWriteResult>('/api/fs/write-file', { path: filePath, content }),
+    writeFile: (filePath: string, content: string, origin?: 'inline-edit') =>
+      post<FileWriteResult>('/api/fs/write-file', { path: filePath, content, origin }),
     /** Stat a file. Returns { exists: false } instead of throwing when absent. */
     statFile: (filePath: string) => post<FileStat>('/api/fs/stat-file', { path: filePath }),
     /** List the immediate entries of a directory. Path must be absolute. */

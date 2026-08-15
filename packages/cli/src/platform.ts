@@ -69,8 +69,10 @@ export interface PlatformAdapter {
    * Resolves with the post-write {@link FileWriteResult} (`{ mtimeMs }`) so the
    * editor (#44) can record the on-disk baseline mtime; callers that ignore the
    * value are unaffected (additive widening — was `Promise<void>`).
+   * `origin: "inline-edit"` marks a save whose content the preview DOM
+   * already shows — the preview server suppresses its rebuild (ADR 0010).
    */
-  writeFile(path: string, content: string): Promise<FileWriteResult>;
+  writeFile(path: string, content: string, origin?: "inline-edit"): Promise<FileWriteResult>;
 
   /**
    * List the immediate entries of a directory (single level, no recursion).

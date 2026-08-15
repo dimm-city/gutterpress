@@ -35,6 +35,7 @@
   import { PreviewEventController } from "$lib/routes/preview-event-controller";
   import { EditorPreviewSyncController } from "$lib/routes/editor-preview-sync-controller";
   import { ContextMenuController } from "$lib/routes/context-menu-controller.svelte";
+  import { InlineEditSession } from "$lib/editor/inline-edit-session";
   import ContextMenu from "$lib/components/ContextMenu.svelte";
   import { BlockOverlayController } from "$lib/routes/block-overlay-controller.svelte";
   import BlockEditOverlay from "$lib/components/BlockEditOverlay.svelte";
@@ -1931,6 +1932,21 @@
   // listener — separate from previewEvents' switch below (PR 0 already owns
   // the elementActivated case there).
   // ----------------------------------------------------------------
+  // HTML-first inline editing (ADR 0010): the frame proposes patches; this
+  // session commits them through the commit engine (origin: "inline-edit",
+  // so the preview server never rebuilds/swaps under the editing surface)
+  // and acks outcomes back. Subscribed below next to the other client.on
+  // consumers; edit mode re-syncs on every renderingComplete.
+  const inlineEdit = new InlineEditSession({
+    client: () => client ?? null,
+    engine: () => commitEngine,
+    enabled: () => settings.current.preview.inlineEditing,
+    onRefusal: (r) =>
+      void blockOverlay.show({ chapter: r.chapter, range: r.range }),
+    onDriftMismatch: (chapter) =>
+      toast?.info?.(`Preview drifted for ${chapter} — reload the preview to reconcile.`),
+  });
+
   const contextMenu = new ContextMenuController({
     client: () => client,
     enabled: () => settings.current.preview.contextMenu,
@@ -2023,6 +2039,15 @@
     previewEvents.subscribe(c);
     contextMenu.subscribe(c);
     blockOverlay.subscribe(c);
+    // Inline editing (ADR 0010): route the v7 edit events and (re)enable the
+    // frame's edit surface on ready + after every rendering pass — the frame
+    // rebuilds its strips (and loses editability stamps) on each mount.
+    c.on((e) => {
+      inlineEdit.handleEvent(e.name, e.detail);
+      if (e.name === "ready" || e.name === "renderingComplete") {
+        void inlineEdit.syncEditMode();
+      }
+    });
   }
 
   // ----------------------------------------------------------------

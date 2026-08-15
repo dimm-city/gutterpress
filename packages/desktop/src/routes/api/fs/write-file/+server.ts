@@ -8,19 +8,21 @@ import {
 import { defineRoute, requireAbsolute, requireWithinProjectRoot } from '../../_lib/route';
 import type { RequestHandler } from './$types';
 
-export const POST: RequestHandler = defineRoute<{ path: string; content: string }>({
+export const POST: RequestHandler = defineRoute<{ path: string; content: string; origin?: string }>({
   validate: async (raw) => {
-    const body = raw as { path?: string; content?: string };
+    const body = raw as { path?: string; content?: string; origin?: string };
     if (body.content === undefined) error(400, 'content is required');
     return {
       path: await requireWithinProjectRoot(requireAbsolute(body.path, 'fs:writeFile'), 'fs:writeFile'),
       content: body.content,
+      // Only the one recognized marker survives — this crosses trust seams.
+      ...(body.origin === 'inline-edit' ? { origin: body.origin } : {}),
     };
   },
   call: async ({ body }) => {
     await mkdir(path.dirname(body.path), { recursive: true });
     await writeFile(body.path, body.content, 'utf-8');
-    notifyPreviewSettledWrite(body.path, body.content);
+    notifyPreviewSettledWrite(body.path, body.content, body.origin);
 
     // Trigger auto-snapshot/sync debounce for edits inside the open project.
     scheduleAutoWriteEffects(body.path);

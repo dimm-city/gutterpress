@@ -21,8 +21,11 @@ export interface ServerState {
   isRebuilding: boolean;
   /** Active rebuild, awaited before a project restart closes its watcher. */
   rebuildPromise?: Promise<void> | null;
-  /** Bypass watcher settling for a host write that has already completed. */
-  notifySettledWrite?: ((filePath: string, writtenContent: string) => void) | null;
+  /** Bypass watcher settling for a host write that has already completed.
+   *  `origin: "inline-edit"` marks a write the preview DOM already shows
+   *  (ADR 0010): the watcher echo is suppressed but NO rebuild runs — the
+   *  editing surface must never be swapped out from under the author. */
+  notifySettledWrite?: ((filePath: string, writtenContent: string, origin?: string) => void) | null;
   /** node:http + `ws` preview HTTP/WebSocket server instance */
   previewServer: PreviewServer | null;
   /** Is server shutting down? (prevents multiple shutdown calls) */

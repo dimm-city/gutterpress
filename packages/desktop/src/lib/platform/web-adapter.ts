@@ -367,7 +367,7 @@ export class WebAdapter implements Platform {
     return readFileFromRoot(root, relPath);
   }
 
-  async writeFile(path: string, content: string): Promise<FileWriteResult> {
+  async writeFile(path: string, content: string, _origin?: "inline-edit"): Promise<FileWriteResult> {
     const { root, relPath } = this.resolveRoot(path);
     return writeFileToRoot(root, relPath, content);
   }

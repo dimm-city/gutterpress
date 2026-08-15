@@ -139,6 +139,9 @@ export interface AppSettings {
      * the latter does not apply here.
      */
     contextMenu: boolean;
+    /** HTML-first inline editing in the preview (ADR 0010). Default ON —
+     *  this is the primary editing model; the flag is a kill switch. */
+    inlineEditing: boolean;
   };
   updates: {
     /** Release stream for desktop update checks (see UpdateChannel above). */
@@ -207,6 +210,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     // durable default and the double-click reset target agree (#103).
     splitRatio: 0.42,
     contextMenu: true,
+    inlineEditing: true,
   },
   updates: {
     channel: "stable",

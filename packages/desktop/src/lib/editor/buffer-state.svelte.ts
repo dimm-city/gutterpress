@@ -100,6 +100,9 @@ export class EditorBuffer {
     this.opts = opts;
   }
 
+  /** Set by the commit engine around inline-edit flushes; consumed per save. */
+  nextWriteOrigin: "inline-edit" | null = null;
+
   private get platform(): Platform {
     return this.opts.platform;
   }
@@ -277,7 +280,14 @@ export class EditorBuffer {
         return;
       }
 
-      const { mtimeMs } = await this.platform.writeFile(filePath, snapshot);
+      const { mtimeMs } = await this.platform.writeFile(
+        filePath,
+        snapshot,
+        // Inline-edit commits mark their saves so the preview server skips
+        // the rebuild+swap (ADR 0010) — the DOM already shows this content.
+        this.nextWriteOrigin ?? undefined,
+      );
+      this.nextWriteOrigin = null;
       this.opts.onSaved?.(filePath);
       if (this.opts.recoveryEnabled !== false) {
         api.recovery.clear(filePath).catch(() => {});

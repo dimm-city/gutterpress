@@ -70,8 +70,8 @@ export class ElectronAdapter implements Platform {
     return api.fs.readFile(path);
   }
 
-  writeFile(path: string, content: string): Promise<FileWriteResult> {
-    return api.fs.writeFile(path, content);
+  writeFile(path: string, content: string, origin?: "inline-edit"): Promise<FileWriteResult> {
+    return api.fs.writeFile(path, content, origin);
   }
 
   listDir(path: string): Promise<Array<{ name: string; path: string; isDir: boolean }>> {

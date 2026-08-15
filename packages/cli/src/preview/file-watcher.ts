@@ -614,13 +614,18 @@ export function createFileWatcher(state: ServerState): FSWatcher {
     return desiredExternals.has(target);
   }
 
-  function acceptSettledWrite(target: string, writtenContent: string): void {
+  function acceptSettledWrite(target: string, writtenContent: string, origin?: string): void {
     const settled = { content: writtenContent, expiresAt: Date.now() + 2000 };
     settledWrites.set(target, settled);
     const expiry = setTimeout(() => {
       if (settledWrites.get(target) === settled) settledWrites.delete(target);
     }, 2000);
     expiry.unref?.();
+    // An inline-edit write is a projection of the DOM the author is looking
+    // at (ADR 0010): suppress the watcher echo, but do NOT re-render or
+    // broadcast — the editing surface must never swap mid-session. book.html
+    // regenerates on the next load/reload or external change.
+    if (origin === 'inline-edit') return;
     pendingChanges.set(target, 'change');
     immediatePending = true;
     if (state.rebuildTimer) {
@@ -630,18 +635,18 @@ export function createFileWatcher(state: ServerState): FSWatcher {
     if (!state.isRebuilding) void runRebuild();
   }
 
-  state.notifySettledWrite = (filePath, writtenContent) => {
+  state.notifySettledWrite = (filePath, writtenContent, origin) => {
     if (closed) return;
     const target = path.resolve(filePath);
     if (isWatchedSource(target)) {
-      acceptSettledWrite(target, writtenContent);
+      acceptSettledWrite(target, writtenContent, origin);
       return;
     }
     // Initial discovery of declared shared dependencies is asynchronous. Recheck
     // once that scan settles so a save immediately after preview startup cannot
     // fall between direct notification and the external watcher's initial add.
     void syncQueue.then(() => {
-      if (!closed && isWatchedSource(target)) acceptSettledWrite(target, writtenContent);
+      if (!closed && isWatchedSource(target)) acceptSettledWrite(target, writtenContent, origin);
     });
   };
 

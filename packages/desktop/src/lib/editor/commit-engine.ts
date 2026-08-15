@@ -34,6 +34,8 @@ export interface CommitEngineBuffer {
   reconcileExternalChange(): Promise<void>;
   flush(): Promise<void>;
   edit(text: string): void;
+  /** See EditorBuffer.nextWriteOrigin — set around inline-edit flushes. */
+  nextWriteOrigin?: "inline-edit" | null;
 }
 
 export interface CommitEngineDeps {
@@ -74,6 +76,13 @@ export interface CommitPatch {
   expected: string;
   /** The full replacement text for the `[from, to)` character range. */
   replacement: string;
+  /**
+   * "inline-edit" for patches proposed by the preview's edit surface
+   * (ADR 0010): the resulting save is marked so the preview server suppresses
+   * its rebuild — the DOM already shows this content. Absent for overlay/
+   * context-menu commits, which keep the classic refresh.
+   */
+  origin?: "inline-edit";
   /**
    * {@link CommitEngine.generation} as read by the caller when the menu/
    * overlay opened. Re-checked at apply time (GATE 0b, plan §4.9) — closes
@@ -276,6 +285,7 @@ export class CommitEngine {
     // its document holds this file (never infer from buffer.filePath alone) so
     // an editor showing something else never receives a transaction meant for
     // the buffer-only path.
+    if (patch.origin) buf.nextWriteOrigin = patch.origin;
     if (this.deps.editorHasFile(absPath)) {
       this.deps.applyRangeEdit(absPath, from, to, patch.replacement);
     } else {
@@ -291,6 +301,7 @@ export class CommitEngine {
       await buf.flush();
       return { ok: true, flushed: true };
     } catch {
+      buf.nextWriteOrigin = null;
       // flush() throws when performSave's live disk compare finds an
       // external change. The buffer's own onExternalConflict callback has
       // already surfaced the conflict banner; the patch stays in the buffer

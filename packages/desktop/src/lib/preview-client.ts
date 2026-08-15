@@ -12,7 +12,11 @@ export interface PreviewEvent {
     | "viewportChanged"
     | "sourceLineChanged"
     | "elementActivated"
-    | "contextMenuRequested";
+    | "contextMenuRequested"
+    // Inline editing (protocol v7, ADR 0010):
+    | "editPatches"
+    | "editDrift"
+    | "editStateChanged";
   detail: {
     currentPage?: number;
     totalPages?: number;
@@ -326,6 +330,37 @@ export class PreviewClient {
    * and it survives a fresh render (a splice mints fresh DOM but the same
    * range) without a post-splice fallback.
    */
+  // ── protocol v7: inline editing (ADR 0010) ────────────────────────────
+
+  /** Turn the in-frame edit surface on/off. */
+  setEditMode(spec: { on: boolean; features?: Record<string, boolean> }): Promise<{ on: boolean }> {
+    return this.call<{ on: boolean }>("setEditMode", [spec]);
+  }
+
+  /** Report per-patch commit outcomes back to the frame (mirror update +
+   *  range shifting + drift verification happen there). */
+  ackEditPatches(spec: {
+    batchId: number;
+    results: Array<{
+      chapter: string;
+      range: [number, number];
+      status: "applied" | "refused" | "failed";
+      reason?: string;
+    }>;
+  }): Promise<{ ok: boolean }> {
+    return this.call<{ ok: boolean }>("ackEditPatches", [spec]);
+  }
+
+  /** Converge-on-drift pass for one chapter (frame-side fetch + heal). */
+  verifyChapter(spec: { chapter: string }): Promise<{ healed: number; mismatch?: string }> {
+    return this.call<{ healed: number; mismatch?: string }>("verifyChapter", [spec]);
+  }
+
+  /** Force all sub-debounce dirty blocks into proposals (pre-swap flush). */
+  flushEditState(): Promise<void> {
+    return this.call<void>("flushEditState", []);
+  }
+
   getRectsFor(target: RectsForTarget): Promise<RectsForResult> {
     return this.call<RectsForResult>("getRectsFor", [target]);
   }
