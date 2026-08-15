@@ -6,13 +6,13 @@
  * the fragmenter paginates by MOVING the flow root's element nodes into
  * per-run multicol strips and cloning shallow ancestor shells — but it
  * always moves the SAME element references. ProseMirror's view descriptors
- * track DOM *references*, not tree paths, so as long as ProseMirror is told
- * to ignore the mutations (`ignoreMutation` while a refresh runs, plus
- * ParseRule ignores for every piece of viewer chrome), its document, caret
- * mapping (posAtCoords/coordsAtPos read live rects), and in-place patching
- * all keep working while the fragmenter re-arranges presentation around the
- * nodes. Spike B measured this shape: typing median 2.70ms, view survives
- * `Gutterpress.refresh()`.
+ * track DOM *references*, not tree paths, so with its DOMObserver detached
+ * around every fragmenter pass (`withFragmenter`) and ParseRule ignores for
+ * every piece of viewer chrome, its document, caret mapping
+ * (posAtCoords/coordsAtPos read live rects), and in-place patching all keep
+ * working while the fragmenter re-arranges presentation around the nodes.
+ * Spike B measured this shape: typing median 2.70ms, view survives
+ * `Gutterpress.refresh()`; galley-mount.test.ts pins it end to end.
  *
  * Ownership rules that keep this honest:
  * - ProseMirror owns CONTENT nodes (everything the doc renders).

@@ -39,7 +39,22 @@
     return () => {
       frame!.removeEventListener("load", onLoad);
       frame!.removeEventListener("error", onErr);
-      c.detach();
+      // Galley (ADR 0011): the frame debounces save proposals (~500ms); a
+      // teardown mid-debounce (project switch, frame swap) would drop the
+      // last keystrokes. Ask the frame to flush and detach only after the
+      // command round-trips — postMessage delivery is ordered, so the
+      // galleyContent event the flush emits reaches the still-attached
+      // handlers before the reply resolves. A short timeout bounds a dead
+      // frame; detach() is idempotent.
+      let detached = false;
+      const detachOnce = () => {
+        if (!detached) {
+          detached = true;
+          c.detach();
+        }
+      };
+      void c.galleySaveNow().catch(() => {}).finally(detachOnce);
+      setTimeout(detachOnce, 500);
       client = undefined;
     };
   });
